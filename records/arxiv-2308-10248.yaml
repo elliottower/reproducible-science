@@ -12,6 +12,7 @@ year: '2024'
 venue: arXiv preprint arXiv:2308.10248
 doi: ''
 arxiv: '2308.10248'
+et_al: false
 url: https://arxiv.org/abs/2308.10248
 sha256: ''
 cited_by:

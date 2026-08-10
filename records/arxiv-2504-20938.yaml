@@ -13,6 +13,7 @@ year: '2025'
 venue: arXiv preprint
 doi: ''
 arxiv: '2504.20938'
+et_al: false
 url: https://arxiv.org/abs/2504.20938
 sha256: ''
 cited_by:

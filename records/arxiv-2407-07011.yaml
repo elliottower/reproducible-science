@@ -7,6 +7,7 @@ year: '2025'
 venue: 'Findings of the Association for Computational Linguistics: NAACL 2025'
 doi: ''
 arxiv: '2407.07011'
+et_al: false
 url: https://aclanthology.org/2025.findings-naacl.283/
 sha256: ''
 cited_by:

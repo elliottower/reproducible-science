@@ -4,11 +4,11 @@ authors:
 - Bricken, Trenton
 - Templeton, Adly
 - Batson, Joshua
-- others
 year: '2023'
 venue: Transformer Circuits Thread
 doi: ''
 arxiv: ''
+et_al: true
 url: https://transformer-circuits.pub/2023/monosemantic-features/index.html
 sha256: ''
 cited_by:

@@ -12,11 +12,11 @@ authors:
 - Mielewczik, Michael
 - Kaprielian, Raffi
 - Malik, Iqbal S.
-- others
 year: '2018'
 venue: The Lancet
 doi: 10.1016/j.jvs.2017.11.046
 arxiv: ''
+et_al: true
 url: https://doi.org/10.1016/j.jvs.2017.11.046
 sha256: ''
 cited_by:

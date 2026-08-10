@@ -11,11 +11,11 @@ authors:
 - Hemblade, Rachel
 - Bahor, Zsanett
 - Nunes-Fonseca, Cristina
-- others
 year: '2015'
 venue: PLoS Biology
 doi: 10.1371/journal.pbio.1002273
 arxiv: ''
+et_al: true
 url: https://doi.org/10.1371/journal.pbio.1002273
 sha256: ''
 cited_by:

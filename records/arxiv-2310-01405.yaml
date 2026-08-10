@@ -26,6 +26,7 @@ year: '2023'
 venue: arXiv preprint
 doi: ''
 arxiv: '2310.01405'
+et_al: false
 url: https://arxiv.org/abs/2310.01405
 sha256: ''
 cited_by:

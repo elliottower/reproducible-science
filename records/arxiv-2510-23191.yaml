@@ -7,6 +7,7 @@ year: '2025'
 venue: arXiv preprint arXiv:2510.23191
 doi: ''
 arxiv: '2510.23191'
+et_al: false
 url: https://arxiv.org/abs/2510.23191
 sha256: ''
 cited_by:

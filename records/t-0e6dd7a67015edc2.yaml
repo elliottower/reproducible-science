@@ -7,6 +7,7 @@ year: '2023'
 venue: Alignment Forum
 doi: ''
 arxiv: ''
+et_al: false
 url: https://www.alignmentforum.org/posts/u6KXXmKFbXfWzoAXn/a-circuit-for-python-docstrings-in-a-4-layer-attention-only
 sha256: ''
 cited_by:

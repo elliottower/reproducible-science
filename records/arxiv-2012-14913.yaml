@@ -9,6 +9,7 @@ year: '2021'
 venue: Proceedings of the 2021 Conference on Empirical Methods in Natural Language Processing (EMNLP)
 doi: ''
 arxiv: '2012.14913'
+et_al: false
 url: https://aclanthology.org/2021.emnlp-main.446/
 sha256: ''
 cited_by:

@@ -10,6 +10,7 @@ venue: Proceedings of the 59th Annual Meeting of the Association for Computation
   11th International Joint Conference on Natural Language Processing (ACL-IJCNLP)
 doi: ''
 arxiv: '2011.04946'
+et_al: false
 url: https://aclanthology.org/2021.acl-long.90/
 sha256: ''
 cited_by:

@@ -10,6 +10,7 @@ year: '2023'
 venue: arXiv preprint arXiv:2310.04625
 doi: ''
 arxiv: '2310.04625'
+et_al: false
 url: https://arxiv.org/abs/2310.04625
 sha256: ''
 cited_by:

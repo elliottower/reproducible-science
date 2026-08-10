@@ -11,6 +11,7 @@ year: '2024'
 venue: Proceedings of the 62nd Annual Meeting of the Association for Computational Linguistics (ACL)
 doi: ''
 arxiv: '2312.06681'
+et_al: false
 url: https://arxiv.org/abs/2312.06681
 sha256: ''
 cited_by:

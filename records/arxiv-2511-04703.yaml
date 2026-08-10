@@ -3,11 +3,11 @@ title: 'Measuring What Matters: Construct Validity in Large Language Model Bench
 authors:
 - Bean, Andrew M.
 - Kearns, Ryan Othniel
-- others
 year: '2025'
 venue: NeurIPS Datasets and Benchmarks Track
 doi: ''
 arxiv: '2511.04703'
+et_al: true
 url: https://arxiv.org/abs/2511.04703
 sha256: ''
 cited_by:

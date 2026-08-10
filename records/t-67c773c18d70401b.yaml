@@ -11,6 +11,7 @@ year: '2021'
 venue: Proceedings of the 25th Conference on Computational Natural Language Learning (CoNLL)
 doi: ''
 arxiv: ''
+et_al: false
 url: https://aclanthology.org/2021.conll-1.9/
 sha256: ''
 cited_by:

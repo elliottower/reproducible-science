@@ -11,11 +11,11 @@ authors:
 - Li, Zhuohan
 - Li, Dacheng
 - Xing, Eric P.
-- others
 year: '2023'
 venue: NeurIPS
 doi: 10.52202/075280-2020
 arxiv: ''
+et_al: true
 url: https://doi.org/10.52202/075280-2020
 sha256: ''
 cited_by:

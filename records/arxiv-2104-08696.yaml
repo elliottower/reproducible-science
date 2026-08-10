@@ -11,6 +11,7 @@ year: '2022'
 venue: ACL
 doi: ''
 arxiv: '2104.08696'
+et_al: false
 url: https://arxiv.org/abs/2104.08696
 sha256: ''
 cited_by:

@@ -16,6 +16,7 @@ year: '2022'
 venue: Transformer Circuits Thread, 2022.
 doi: ''
 arxiv: ''
+et_al: false
 url: https://transformer-circuits.pub/2022/in-context-learning-and-induction-heads
 sha256: ''
 cited_by:

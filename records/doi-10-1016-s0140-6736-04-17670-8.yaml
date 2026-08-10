@@ -6,6 +6,7 @@ year: '2005'
 venue: The Lancet
 doi: 10.1016/s0140-6736(04)17670-8
 arxiv: ''
+et_al: false
 url: https://doi.org/10.1016/s0140-6736(04)17670-8
 sha256: ''
 cited_by:

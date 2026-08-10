@@ -9,6 +9,7 @@ year: '2020'
 venue: Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)
 doi: ''
 arxiv: '2010.02180'
+et_al: false
 url: https://aclanthology.org/2020.emnlp-main.254/
 sha256: ''
 cited_by:

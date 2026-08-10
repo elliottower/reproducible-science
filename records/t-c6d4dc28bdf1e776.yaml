@@ -11,11 +11,11 @@ authors:
 - Bai, Yuntao
 - Chen, Anna
 - Conerly, Tom
-- others
 year: '2021'
 venue: Transformer Circuits Thread
 doi: ''
 arxiv: ''
+et_al: true
 url: https://transformer-circuits.pub/2021/framework/index.html
 sha256: ''
 cited_by:

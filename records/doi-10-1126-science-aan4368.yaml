@@ -11,11 +11,11 @@ authors:
 - Ruprecht, Benjamin
 - Petzoldt, Svenja
 - Meng, Chen
-- others
 year: '2017'
 venue: Science
 doi: 10.1126/science.aan4368
 arxiv: ''
+et_al: true
 url: https://doi.org/10.1126/science.aan4368
 sha256: ''
 cited_by:

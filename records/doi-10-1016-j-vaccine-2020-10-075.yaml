@@ -19,6 +19,7 @@ year: '2021'
 venue: Vaccine
 doi: 10.1016/j.vaccine.2020.10.075
 arxiv: ''
+et_al: false
 url: https://doi.org/10.1016/j.vaccine.2020.10.075
 sha256: ''
 cited_by:

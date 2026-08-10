@@ -6,6 +6,7 @@ year: '2024'
 venue: Anthropic Transformer Circuits Thread, 2024.
 doi: ''
 arxiv: ''
+et_al: false
 url: https://transformer-circuits.pub/2024/scaling-monosemanticity
 sha256: ''
 cited_by:

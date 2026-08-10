@@ -6,6 +6,7 @@ year: '2025'
 venue: arXiv preprint arXiv:2506.22105
 doi: ''
 arxiv: '2506.22105'
+et_al: false
 url: https://arxiv.org/abs/2506.22105
 sha256: ''
 cited_by:

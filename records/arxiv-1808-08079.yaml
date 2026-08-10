@@ -11,6 +11,7 @@ year: '2018'
 venue: Proceedings of the 2018 EMNLP Workshop BlackboxNLP
 doi: ''
 arxiv: '1808.08079'
+et_al: false
 url: https://aclanthology.org/W18-5426/
 sha256: ''
 cited_by:

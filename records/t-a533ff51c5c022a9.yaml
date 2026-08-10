@@ -18,6 +18,7 @@ year: '2010'
 venue: ''
 doi: ''
 arxiv: ''
+et_al: false
 url: https://www.ipcc.ch/site/assets/uploads/2018/05/uncertainty-guidance-note.pdf
 sha256: ''
 cited_by:

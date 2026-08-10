@@ -2,11 +2,11 @@ slug: arxiv-2504-13151
 title: 'MIB: A Mechanistic Interpretability Benchmark'
 authors:
 - Mueller, Aaron
-- others
 year: '2025'
 venue: arXiv preprint arXiv:2504.13151
 doi: ''
 arxiv: '2504.13151'
+et_al: true
 url: https://arxiv.org/abs/2504.13151
 sha256: ''
 cited_by:

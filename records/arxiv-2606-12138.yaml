@@ -11,6 +11,7 @@ year: '2026'
 venue: arXiv preprint
 doi: ''
 arxiv: '2606.12138'
+et_al: false
 url: https://arxiv.org/abs/2606.12138
 sha256: ''
 cited_by:

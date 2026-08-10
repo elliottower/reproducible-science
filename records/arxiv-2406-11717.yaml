@@ -12,6 +12,7 @@ year: '2024'
 venue: Advances in Neural Information Processing Systems (NeurIPS)
 doi: ''
 arxiv: '2406.11717'
+et_al: false
 url: https://arxiv.org/abs/2406.11717
 sha256: ''
 cited_by:

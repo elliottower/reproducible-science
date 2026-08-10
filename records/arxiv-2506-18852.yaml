@@ -14,6 +14,7 @@ year: '2025'
 venue: arXiv preprint arXiv:2506.18852
 doi: ''
 arxiv: '2506.18852'
+et_al: false
 url: https://arxiv.org/abs/2506.18852
 sha256: ''
 cited_by:

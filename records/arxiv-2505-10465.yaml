@@ -8,6 +8,7 @@ year: '2025'
 venue: Advances in Neural Information Processing Systems (NeurIPS)
 doi: ''
 arxiv: '2505.10465'
+et_al: false
 url: https://arxiv.org/abs/2505.10465
 sha256: ''
 cited_by:

@@ -9,6 +9,7 @@ year: '2024'
 venue: arXiv preprint
 doi: ''
 arxiv: '2407.10827'
+et_al: false
 url: https://arxiv.org/abs/2407.10827
 sha256: de26edd28d3792be78213005cc5d2e1f7999ee40a3a5a28743161f9a5ee9eba9
 cited_by:

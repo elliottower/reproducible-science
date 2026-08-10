@@ -4,11 +4,12 @@ authors:
 - Dinstein, Ilan
 - Hasson, Uri
 - Rubin, Nava
-- Heeger, David J
-year: 2007, % key says 2009; Dinstein et al. is 2007 publisher=American Physiological Society
+- Heeger, David J.
+year: '2007'
 venue: Journal of Neurophysiology
 doi: ''
 arxiv: ''
+et_al: false
 url: ''
 sha256: ''
 cited_by:
