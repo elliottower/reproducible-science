@@ -10,6 +10,7 @@ year: '2021'
 venue: Transactions of the Association for Computational Linguistics
 doi: ''
 arxiv: ''
+et_al: false
 url: https://aclanthology.org/2021.tacl-1.62/
 sha256: ''
 cited_by:

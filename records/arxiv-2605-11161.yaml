@@ -17,6 +17,7 @@ year: '2026'
 venue: ICML Workshop on Mechanistic Interpretability
 doi: ''
 arxiv: '2605.11161'
+et_al: false
 url: https://arxiv.org/abs/2605.11161
 sha256: ''
 cited_by:

@@ -4,11 +4,11 @@ authors:
 - Hultcrantz, Monica
 - Rind, David
 - Akl, Elie A.
-- others
 year: '2017'
 venue: Journal of Clinical Epidemiology
 doi: 10.1016/j.jclinepi.2017.05.006
 arxiv: ''
+et_al: true
 url: https://doi.org/10.1016/j.jclinepi.2017.05.006
 sha256: ''
 cited_by:

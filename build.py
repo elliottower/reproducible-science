@@ -40,7 +40,7 @@ PAPERS = {
         "claims": GITHUB / "mechanistic-validity-NEW2" / "claims",
     },
     "mechanistic-reference": {
-        "bib": GITHUB / "mechanistic-reference" / "paper" / "references.bib",
+        "bib": GITHUB / "mechanistic-reference-NEW" / "paper" / "references.bib",
     },
     "mechanistic-views": {
         "bibitem": GITHUB / "mechanistic-views-NEW" / "paper" / "mechviews_bib.tex",
@@ -80,6 +80,36 @@ def clean(s: str) -> str:
     return " ".join(s.split())
 
 
+CORPORATE = re.compile(r"\b(Administration|Task Force|Committee|Council|Organization|Organisation|Association|Institute|Society|Collaboration|Consortium|Agency|Commission|Academy|Department|Bureau|Office of)\b", re.I)
+
+
+def split_authors(raw: str) -> tuple[list[str], bool]:
+    """Author list, plus whether BibTeX's `and others` truncated it.
+
+    "and others" is BibTeX for et al. Read literally it produces a person named "others",
+    which 23 records had. It is a property of the list, not a member of it.
+    """
+    raw = (raw or "").strip()
+    # A corporate author is a single name that may contain "and" -- splitting
+    # "U.S. Food and Drug Administration" on it invents two organizations.
+    if CORPORATE.search(raw) and "," not in raw.split(" and ")[0]:
+        return [raw], False
+    parts = [a.strip() for a in re.split(r"\s+and\s+", raw) if a.strip()]
+    truncated = any(a.lower().rstrip(".") == "others" for a in parts)
+    parts = [a for a in parts if a.lower().rstrip(".") != "others"]
+    return [normalize_initials(a) for a in parts], truncated
+
+
+def normalize_initials(name: str) -> str:
+    """Give a bare trailing initial its period: "Glennan, Stuart S" -> "Glennan, Stuart S."
+
+    The missing period is in the source bibliographies, not introduced here. A single capital
+    at the end of a name is an initial in every style that matters.
+    """
+    # every bare initial, not just the final one: "Ioannidis, John P A" has two
+    return re.sub(r"(?<![A-Za-z.])([A-Z])(?=\s|$)", r"\1.", name.strip())
+
+
 def slug_for(rec: dict) -> str:
     """Stable identity: DOI, else arXiv id, else a hash of normalized title+first author."""
     if rec.get("doi"):
@@ -107,9 +137,10 @@ def parse_bib(path: pathlib.Path) -> dict[str, dict]:
             fm = FIELD.search(line.strip())
             if fm:
                 f[fm.group(1).lower()] = clean(fm.group(2))
-        au = [a.strip() for a in re.split(r"\s+and\s+", f.get("author", "")) if a.strip()]
+        au, truncated = split_authors(f.get("author", ""))
         out[key] = {
-            "title": f.get("title", ""), "authors": au, "year": f.get("year", ""),
+            "title": f.get("title", ""), "authors": au, "et_al": truncated,
+            "year": f.get("year", ""),
             "venue": f.get("booktitle") or f.get("journal") or f.get("howpublished", ""),
             "doi": f.get("doi", ""), "url": f.get("url", ""),
             "arxiv": arxiv_of(f.get("note", ""), f.get("url", ""), f.get("journal", "")),
@@ -135,12 +166,20 @@ def parse_bibitem(path: pathlib.Path) -> dict[str, dict]:
         ym = re.search(r"\b(19|20)\d{2}\b", venue) or re.search(r"\((\d{4})\)", ch)
         # a \bibitem author line ends the sentence, so the last name carries a period
         # that is punctuation rather than an initial
-        au = [a.strip().rstrip(".") if i and a.strip().endswith(".")
-              and not re.search(r"\b[A-Z]\.$", a.strip()) else a.strip()
-              for i, a in enumerate(re.split(r",| and ", authors_raw)) if a.strip()]
+        # a \bibitem author line ends the sentence, so a final period there is
+        # punctuation rather than an initial
+        raw = [a.strip() for a in re.split(r",| and ", authors_raw) if a.strip()]
+        au = []
+        for i, a in enumerate(raw):
+            if i and a.endswith(".") and not re.search(r"\b[A-Z]\.$", a):
+                a = a.rstrip(".")
+            au.append(normalize_initials(a))
+        truncated = any(x.lower().rstrip(".") == "others" for x in au)
+        au = [x for x in au if x.lower().rstrip(".") != "others"]
         url = re.search(r"\\url\{([^}]*)\}", ch)
         out[key] = {
-            "title": title.rstrip("."), "authors": au, "year": ym.group(0) if ym else "",
+            "title": title.rstrip("."), "authors": au, "et_al": truncated,
+            "year": ym.group(0) if ym else "",
             "venue": venue, "doi": "", "url": url.group(1) if url else "",
             "arxiv": arxiv_of(venue, ch),
         }
@@ -174,6 +213,27 @@ def enrich_from_validity(entries: dict[str, dict]) -> None:
                 e[k] = r[k]
 
 
+def carry_forward(merged: dict) -> int:
+    """Keep facts an earlier run resolved that the bibliographies still do not carry.
+
+    Records are generated from the .bib files, so anything learned afterwards -- a year looked
+    up from Crossref, a DOI resolved by hand -- would be erased on the next build. Those fields
+    are re-read from the existing record and carried forward. The bibliography still wins when
+    it has a value; this only fills gaps.
+    """
+    kept = 0
+    for slug, rec in merged.items():
+        old_file = RECORDS / f"{slug}.yaml"
+        if not old_file.exists():
+            continue
+        old = yaml.safe_load(old_file.read_text()) or {}
+        for k in ("year", "doi", "arxiv", "url", "sha256", "fields", "version_note"):
+            if old.get(k) and not rec.get(k):
+                rec[k] = old[k]
+                kept += 1
+    return kept
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--scan", action="store_true")
@@ -191,6 +251,7 @@ def main() -> int:
             rec = merged.setdefault(s, {
                 "slug": s, "title": e["title"], "authors": e["authors"], "year": e["year"],
                 "venue": e["venue"], "doi": e.get("doi", ""), "arxiv": e.get("arxiv", ""),
+                "et_al": e.get("et_al", False),
                 "url": e.get("url", ""), "sha256": e.get("sha256", ""), "cited_by": {},
             })
             for k in ("doi", "arxiv", "url", "sha256", "venue"):
@@ -200,6 +261,7 @@ def main() -> int:
                 rec["authors"] = e["authors"]
             rec["cited_by"][paper] = {"key": key}
 
+    kept = carry_forward(merged)
     shared = {s: r for s, r in merged.items() if len(r["cited_by"]) > 1}
     divergent = {s: r for s, r in shared.items()
                  if len({c["key"] for c in r["cited_by"].values()}) > 1}
@@ -208,6 +270,7 @@ def main() -> int:
     print(f"  ...under divergent keys   {len(divergent):>4}")
     unidentified = sum(1 for r in merged.values() if r["slug"].startswith("t-"))
     print(f"  with no DOI or arXiv id   {unidentified:>4}   (joined on title, less reliable)")
+    print(f"  fields carried forward    {kept:>4}   (resolved after the .bib was written)")
 
     if divergent:
         print("\n  same work, different key:")

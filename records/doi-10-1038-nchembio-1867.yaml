@@ -11,11 +11,11 @@ authors:
 - Brennan, Paul E.
 - Brown, Peter J.
 - Bunnage, Mark E.
-- others
 year: '2015'
 venue: Nature Chemical Biology
 doi: 10.1038/nchembio.1867
 arxiv: ''
+et_al: true
 url: https://doi.org/10.1038/nchembio.1867
 sha256: ''
 cited_by:

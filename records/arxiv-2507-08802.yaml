@@ -9,6 +9,7 @@ year: '2025'
 venue: NeurIPS
 doi: ''
 arxiv: '2507.08802'
+et_al: false
 url: https://arxiv.org/abs/2507.08802
 sha256: ''
 cited_by:

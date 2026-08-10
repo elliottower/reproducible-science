@@ -11,6 +11,7 @@ year: '2024'
 venue: Proceedings of the 2024 Conference on Empirical Methods in Natural Language Processing (EMNLP)
 doi: ''
 arxiv: '2408.03247'
+et_al: false
 url: https://aclanthology.org/2024.emnlp-main.420/
 sha256: ''
 cited_by:

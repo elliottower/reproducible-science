@@ -16,6 +16,7 @@ year: '2025'
 venue: Journal of Machine Learning Research
 doi: ''
 arxiv: '2301.04709'
+et_al: false
 url: https://arxiv.org/abs/2301.04709
 sha256: ''
 cited_by:

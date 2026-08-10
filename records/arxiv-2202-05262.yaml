@@ -9,6 +9,7 @@ year: '2022'
 venue: NeurIPS
 doi: ''
 arxiv: '2202.05262'
+et_al: false
 url: https://arxiv.org/abs/2202.05262
 sha256: d7c17f896cca512fb258261421b073baa6f4e6e44b6bb7ada5c90185f423054a
 cited_by:

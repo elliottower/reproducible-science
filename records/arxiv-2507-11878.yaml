@@ -2,11 +2,11 @@ slug: arxiv-2507-11878
 title: LLMs Encode Harmfulness and Refusal Separately
 authors:
 - Zhao
-- others
 year: '2025'
 venue: arXiv preprint
 doi: ''
 arxiv: '2507.11878'
+et_al: true
 url: https://arxiv.org/abs/2507.11878
 sha256: ''
 cited_by:

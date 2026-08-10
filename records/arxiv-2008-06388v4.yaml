@@ -12,11 +12,11 @@ authors:
 - Etmann, Christian
 - McCague, Cathal
 - Beer, Lucian
-- others
 year: '2021'
 venue: Nature Machine Intelligence
 doi: ''
 arxiv: 2008.06388v4
+et_al: true
 url: https://arxiv.org/abs/2008.06388v4
 sha256: ''
 cited_by:

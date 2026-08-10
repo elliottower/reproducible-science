@@ -11,11 +11,11 @@ authors:
 - Brembs, Björn
 - Brown, Lawrence
 - Camerer, Colin
-- others
 year: '2018'
 venue: Nature Human Behaviour
 doi: 10.1038/s41562-017-0189-z
 arxiv: ''
+et_al: true
 url: https://doi.org/10.1038/s41562-017-0189-z
 sha256: ''
 cited_by:

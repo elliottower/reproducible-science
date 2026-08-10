@@ -7,6 +7,7 @@ year: '2026'
 venue: arXiv preprint
 doi: ''
 arxiv: '2607.12166'
+et_al: false
 url: https://arxiv.org/abs/2607.12166
 sha256: 0c5c3a9888ae0ce3ea3558e7ef6daa7ec32dd68e7f7c0ca8b11c069d9a498d68
 cited_by:

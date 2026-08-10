@@ -11,6 +11,7 @@ year: '2026'
 venue: AAAI Conference on Artificial Intelligence (AAAI)
 doi: ''
 arxiv: '2511.08379'
+et_al: false
 url: https://arxiv.org/abs/2511.08379
 sha256: ''
 cited_by:

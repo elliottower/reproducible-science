@@ -11,6 +11,7 @@ year: '2023'
 venue: NeurIPS
 doi: ''
 arxiv: '2301.05062'
+et_al: false
 url: https://arxiv.org/abs/2301.05062
 sha256: ''
 cited_by:

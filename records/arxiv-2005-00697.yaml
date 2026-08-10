@@ -9,6 +9,7 @@ year: '2020'
 venue: Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics (ACL)
 doi: ''
 arxiv: '2005.00697'
+et_al: false
 url: https://aclanthology.org/2020.acl-main.411/
 sha256: ''
 cited_by:

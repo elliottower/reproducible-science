@@ -9,6 +9,7 @@ year: '2012'
 venue: Bioinformatics
 doi: 10.1093/bioinformatics/btr709
 arxiv: ''
+et_al: false
 url: https://doi.org/10.1093/bioinformatics/btr709
 sha256: ''
 cited_by:

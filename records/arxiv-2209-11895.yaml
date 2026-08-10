@@ -11,11 +11,11 @@ authors:
 - Askell, Amanda
 - Bai, Yuntao
 - Chen, Anna
-- others
 year: '2022'
 venue: Transformer Circuits Thread
 doi: ''
 arxiv: '2209.11895'
+et_al: true
 url: https://arxiv.org/abs/2209.11895
 sha256: ''
 cited_by:

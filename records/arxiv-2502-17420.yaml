@@ -11,6 +11,7 @@ year: '2025'
 venue: International Conference on Machine Learning (ICML)
 doi: ''
 arxiv: '2502.17420'
+et_al: false
 url: https://arxiv.org/abs/2502.17420
 sha256: ''
 cited_by:

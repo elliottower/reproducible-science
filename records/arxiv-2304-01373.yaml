@@ -18,6 +18,7 @@ year: '2023'
 venue: ICML
 doi: ''
 arxiv: '2304.01373'
+et_al: false
 url: https://arxiv.org/abs/2304.01373
 sha256: ''
 cited_by:

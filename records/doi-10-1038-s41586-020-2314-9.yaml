@@ -11,11 +11,11 @@ authors:
 - Iwanir, Roni
 - Mumford, Jeanette A.
 - Adcock, R. Alison
-- others
 year: '2020'
 venue: Nature
 doi: 10.1038/s41586-020-2314-9
 arxiv: ''
+et_al: true
 url: https://doi.org/10.1038/s41586-020-2314-9
 sha256: ''
 cited_by:

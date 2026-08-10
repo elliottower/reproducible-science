@@ -11,6 +11,7 @@ year: '2023'
 venue: BlackboxNLP
 doi: 10.18653/v1/2023.blackboxnlp-1.29
 arxiv: ''
+et_al: false
 url: https://doi.org/10.18653/v1/2023.blackboxnlp-1.29
 sha256: ''
 cited_by:

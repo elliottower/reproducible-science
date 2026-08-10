@@ -8,6 +8,7 @@ year: '2023'
 venue: International Conference on Machine Learning (ICML)
 doi: ''
 arxiv: '2302.03025'
+et_al: false
 url: https://arxiv.org/abs/2302.03025
 sha256: ''
 cited_by:
