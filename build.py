@@ -30,6 +30,7 @@ import yaml
 
 ROOT = pathlib.Path(__file__).resolve().parent
 RECORDS = ROOT / "records"
+ENRICHMENT = ROOT / "enrichment.yaml"   # facts resolved after a .bib was written
 GITHUB = ROOT.parent
 
 # Each paper: where its bibliography lives and which tex cites into it.
@@ -214,22 +215,27 @@ def enrich_from_validity(entries: dict[str, dict]) -> None:
 
 
 def carry_forward(merged: dict) -> int:
-    """Keep facts an earlier run resolved that the bibliographies still do not carry.
+    """Apply facts resolved after the bibliographies were written.
 
-    Records are generated from the .bib files, so anything learned afterwards -- a year looked
-    up from Crossref, a DOI resolved by hand -- would be erased on the next build. Those fields
-    are re-read from the existing record and carried forward. The bibliography still wins when
-    it has a value; this only fills gaps.
+    Records are generated, so anything learned later -- a year looked up from Crossref, a DOI
+    resolved by hand -- has to live somewhere that regenerating does not touch. An earlier
+    version read it back out of the records themselves, which works until someone clears the
+    directory before rebuilding, at which point sixteen verified years vanish silently. It
+    lives in enrichment.yaml instead, keyed by slug.
+
+    The bibliography still wins where it has a value; this only fills gaps.
     """
+    if not ENRICHMENT.exists():
+        return 0
+    overlay = yaml.safe_load(ENRICHMENT.read_text()) or {}
     kept = 0
-    for slug, rec in merged.items():
-        old_file = RECORDS / f"{slug}.yaml"
-        if not old_file.exists():
+    for slug, extra in overlay.items():
+        rec = merged.get(slug)
+        if not rec:
             continue
-        old = yaml.safe_load(old_file.read_text()) or {}
-        for k in ("year", "doi", "arxiv", "url", "sha256", "fields", "version_note"):
-            if old.get(k) and not rec.get(k):
-                rec[k] = old[k]
+        for k, v in (extra or {}).items():
+            if v and not rec.get(k):
+                rec[k] = v
                 kept += 1
     return kept
 
