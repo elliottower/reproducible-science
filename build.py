@@ -46,6 +46,9 @@ PAPERS = {
     "epistatic-circuits": {
         "bib": GITHUB / "epistatic-circuits" / "paper" / "references.bib",
     },
+    "neural-geometry-reliability": {
+        "bib": GITHUB / "neural-geometry-reliability-NEW" / "paper" / "references.bib",
+    },
     "mechanistic-views": {
         # v30 replaced the hand-written thebibliography block with a real .bib, so this
         # reads structured fields instead of guessing at positional ones

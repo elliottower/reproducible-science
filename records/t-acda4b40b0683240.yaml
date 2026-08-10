@@ -1,0 +1,16 @@
+slug: t-acda4b40b0683240
+title: 'Tangent Space Causal Inference: Leveraging Vector Fields for Causal Discovery in Dynamical Systems'
+authors:
+- Butler, Kurt
+- Waxman, Daniel
+- Djurić, Petar M.
+year: '2024'
+venue: Advances in Neural Information Processing Systems
+doi: ''
+arxiv: ''
+et_al: false
+url: ''
+sha256: ''
+cited_by:
+  neural-geometry-reliability:
+    key: butler2024tsci

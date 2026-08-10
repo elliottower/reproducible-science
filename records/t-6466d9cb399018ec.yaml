@@ -1,0 +1,25 @@
+slug: t-6466d9cb399018ec
+title: A multi-modal parcellation of human cerebral cortex
+authors:
+- Glasser, Matthew F.
+- Coalson, Timothy S.
+- Robinson, Emma C.
+- Hacker, Carl D.
+- Harwell, John
+- Yacoub, Essa
+- Ugurbil, Kamil
+- Andersson, Jesper
+- Beckmann, Christian F.
+- Jenkinson, Mark
+- Smith, Stephen M.
+- Van Essen, David C.
+year: '2016'
+venue: Nature
+doi: ''
+arxiv: ''
+et_al: false
+url: ''
+sha256: ''
+cited_by:
+  neural-geometry-reliability:
+    key: glasser2016multi

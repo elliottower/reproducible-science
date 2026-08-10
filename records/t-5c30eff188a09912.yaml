@@ -10,8 +10,10 @@ venue: Nature
 doi: ''
 arxiv: ''
 et_al: false
-url: ''
+url: https://dandiarchive.org/dandiset/000017
 sha256: ''
 cited_by:
   mechanistic-reference:
     key: steinmetz2019distributed
+  neural-geometry-reliability:
+    key: dandi000017

@@ -1,0 +1,16 @@
+slug: arxiv-2505-03530
+title: A Multi-Level Causal Intervention Framework for Mechanistic Interpretability of VAEs
+authors:
+- Martinez, David
+- Chen, Yifei
+- Kumar, Abhishek
+year: '2025'
+venue: arXiv preprint arXiv:2505.03530
+doi: ''
+arxiv: '2505.03530'
+et_al: false
+url: ''
+sha256: ''
+cited_by:
+  neural-geometry-reliability:
+    key: martinez2025vae_circuits

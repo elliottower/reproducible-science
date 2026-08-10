@@ -1,0 +1,14 @@
+slug: t-ebc6b08ce25e13af
+title: 'Allen Brain Observatory: Visual Behavior Neuropixels'
+authors:
+- Allen Institute for Brain Science
+year: '2022'
+venue: Dataset
+doi: ''
+arxiv: ''
+et_al: false
+url: https://brain-map.org/our-research/circuits-behavior/visual-behavior
+sha256: ''
+cited_by:
+  neural-geometry-reliability:
+    key: allenvbn2022

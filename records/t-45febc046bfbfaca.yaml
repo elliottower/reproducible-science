@@ -1,0 +1,16 @@
+slug: t-45febc046bfbfaca
+title: Learning identifiable and interpretable latent models of high-dimensional neural activity using
+  pi-VAE
+authors:
+- Zhou, Ding
+- Wei, Xue-Xin
+year: '2020'
+venue: Advances in Neural Information Processing Systems
+doi: ''
+arxiv: ''
+et_al: false
+url: ''
+sha256: ''
+cited_by:
+  neural-geometry-reliability:
+    key: zhou2020pivae

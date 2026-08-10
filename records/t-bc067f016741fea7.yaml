@@ -15,3 +15,5 @@ sha256: ''
 cited_by:
   mechanistic-reference:
     key: gallego2017neural
+  neural-geometry-reliability:
+    key: gallego2017neural

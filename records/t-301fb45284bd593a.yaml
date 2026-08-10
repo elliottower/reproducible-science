@@ -1,0 +1,17 @@
+slug: t-301fb45284bd593a
+title: A Sound and Complete Algorithm for Learning Causal Models from Relational Data
+authors:
+- Maier, Marc
+- Marazopoulou, Katerina
+- Arbour, David
+- Jensen, David
+year: '2013'
+venue: Uncertainty in Artificial Intelligence
+doi: ''
+arxiv: ''
+et_al: false
+url: ''
+sha256: ''
+cited_by:
+  neural-geometry-reliability:
+    key: maier2013sound
