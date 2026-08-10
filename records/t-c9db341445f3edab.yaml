@@ -17,3 +17,5 @@ local: ''
 cited_by:
   epistatic-circuits:
     key: conmy2023acdc
+  knockout-epistasis-dynamics:
+    key: conmy2023automated

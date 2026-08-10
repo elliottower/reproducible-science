@@ -1,0 +1,16 @@
+slug: doi-10-1016-1044-0305-94-87009-8
+title: Optimization and testing of mass spectral library search algorithms for compound identification
+authors:
+- Stein, Stephen E.
+- Scott, Donald R.
+year: '1994'
+venue: Journal of the American Society for Mass Spectrometry
+doi: 10.1016/1044-0305(94)87009-8
+arxiv: ''
+et_al: false
+url: ''
+sha256: ''
+local: ''
+cited_by:
+  msms-subspace-collapse:
+    key: stein1994

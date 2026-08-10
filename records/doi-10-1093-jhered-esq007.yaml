@@ -1,0 +1,17 @@
+slug: doi-10-1093-jhered-esq007
+title: Fitness Epistasis among 6 Biosynthetic Loci in the Budding Yeast Saccharomyces cerevisiae
+authors:
+- Hall, David W.
+- Agan, Matthew
+- Pope, Sara C.
+year: '2010'
+venue: Journal of Heredity
+doi: 10.1093/jhered/esq007
+arxiv: ''
+et_al: false
+url: ''
+sha256: ''
+local: ''
+cited_by:
+  knockout-epistasis-dynamics:
+    key: hall2010fitness

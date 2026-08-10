@@ -1,0 +1,24 @@
+slug: doi-10-1186-1752-0509-6-96
+title: 'The Cell Collective: Toward an Open and Collaborative Approach to Systems Biology'
+authors:
+- Helikar, Tomáš
+- Kowal, Bryan
+- McClenathan, Sean
+- Bruckner, Mitchell
+- Rowley, Thaine
+- Madrahimov, Alex
+- Wicks, Ben
+- Shrestha, Manish
+- Limbu, Kahani
+- Rogers, Jim A.
+year: '2012'
+venue: BMC Systems Biology
+doi: 10.1186/1752-0509-6-96
+arxiv: ''
+et_al: false
+url: ''
+sha256: ''
+local: ''
+cited_by:
+  knockout-epistasis-dynamics:
+    key: helikar2012cell

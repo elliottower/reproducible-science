@@ -1,0 +1,21 @@
+slug: doi-10-1038-s41587-025-02663-3
+title: Self-supervised learning of molecular representations from millions of tandem mass spectra using
+  DreaMS
+authors:
+- Bushuiev, Roman
+- Bushuiev, Anton
+- Samusevich, Raman
+- Brungs, Corinna
+- Sivic, Josef
+- Pluskal, Tomáš
+year: '2025'
+venue: Nature Biotechnology
+doi: 10.1038/s41587-025-02663-3
+arxiv: ''
+et_al: false
+url: ''
+sha256: ''
+local: ''
+cited_by:
+  msms-subspace-collapse:
+    key: dreams2025

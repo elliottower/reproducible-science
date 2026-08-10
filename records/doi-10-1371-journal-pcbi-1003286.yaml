@@ -1,0 +1,20 @@
+slug: doi-10-1371-journal-pcbi-1003286
+title: Integrative Modelling of the Influence of MAPK Network on Cancer Cell Fate Decision
+authors:
+- Grieco, Laurence
+- Calzone, Laurence
+- Bernard-Pierrot, Isabelle
+- Radvanyi, François
+- Kahn-Perlès, Brigitte
+- Thiéffry, Denis
+year: '2013'
+venue: PLoS Computational Biology
+doi: 10.1371/journal.pcbi.1003286
+arxiv: ''
+et_al: false
+url: ''
+sha256: ''
+local: ''
+cited_by:
+  knockout-epistasis-dynamics:
+    key: grieco2013integrative

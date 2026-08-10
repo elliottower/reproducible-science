@@ -49,6 +49,12 @@ PAPERS = {
     "neural-geometry-reliability": {
         "bib": GITHUB / "neural-geometry-reliability-NEW" / "paper" / "references.bib",
     },
+    "knockout-epistasis-dynamics": {
+        "bib": GITHUB / "knockout-epistasis-dynamics-NEW" / "paper" / "refs.bib",
+    },
+    "msms-subspace-collapse": {
+        "bib": GITHUB / "msms-subspace-collapse-NEW" / "paper" / "references.bib",
+    },
     "mechanistic-views": {
         # v30 replaced the hand-written thebibliography block with a real .bib, so this
         # reads structured fields instead of guessing at positional ones

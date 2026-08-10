@@ -1,0 +1,21 @@
+slug: doi-10-1021-acs-analchem-4c03724
+title: 'CMSSP: A Contrastive Mass Spectra-Structure Pretraining Model for Metabolite Identification'
+authors:
+- Chen, Lu
+- Xia, Bing
+- Wang, Yu
+- Huang, Xia
+- Gu, Yucheng
+- Wu, Wenlin
+- Zhou, Yan
+year: '2024'
+venue: Analytical Chemistry
+doi: 10.1021/acs.analchem.4c03724
+arxiv: ''
+et_al: false
+url: ''
+sha256: ''
+local: ''
+cited_by:
+  msms-subspace-collapse:
+    key: cmssp2024

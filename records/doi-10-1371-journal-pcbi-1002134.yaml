@@ -1,0 +1,18 @@
+slug: doi-10-1371-journal-pcbi-1002134
+title: Evolutionary Accessibility of Mutational Pathways
+authors:
+- Franke, Jasper
+- Klözer, Alexander
+- de Visser, J. Arjan G. M.
+- Krug, Joachim
+year: '2011'
+venue: PLoS Computational Biology
+doi: 10.1371/journal.pcbi.1002134
+arxiv: ''
+et_al: false
+url: ''
+sha256: ''
+local: ''
+cited_by:
+  knockout-epistasis-dynamics:
+    key: franke2011evolutionary

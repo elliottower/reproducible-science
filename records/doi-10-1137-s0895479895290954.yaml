@@ -1,0 +1,17 @@
+slug: doi-10-1137-s0895479895290954
+title: The geometry of algorithms with orthogonality constraints
+authors:
+- Edelman, Alan
+- Arias, Tomás A.
+- Smith, Steven T.
+year: '1998'
+venue: SIAM Journal on Matrix Analysis and Applications
+doi: 10.1137/S0895479895290954
+arxiv: ''
+et_al: false
+url: ''
+sha256: ''
+local: ''
+cited_by:
+  msms-subspace-collapse:
+    key: edelman1998

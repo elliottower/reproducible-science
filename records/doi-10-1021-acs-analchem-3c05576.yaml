@@ -1,0 +1,21 @@
+slug: doi-10-1021-acs-analchem-3c05576
+title: Tandem Mass Spectrometry across Platforms
+authors:
+- Bittremieux, Wout
+- Avalon, Nicole E.
+- Thomas, Sydney P.
+- Kber, Deepti S.
+- Gober, Andres Mauricio Caraballo
+- Nuñez, Jonathan R.
+- Dorrestein, Pieter C.
+year: '2024'
+venue: Analytical Chemistry
+doi: 10.1021/acs.analchem.3c05576
+arxiv: ''
+et_al: false
+url: ''
+sha256: ''
+local: ''
+cited_by:
+  msms-subspace-collapse:
+    key: bittremieux2024

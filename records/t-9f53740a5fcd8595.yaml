@@ -1,0 +1,19 @@
+slug: t-9f53740a5fcd8595
+title: A kernel two-sample test
+authors:
+- Gretton, Arthur
+- Borgwardt, Karsten M.
+- Rasch, Malte J.
+- Schölkopf, Bernhard
+- Smola, Alexander
+year: '2012'
+venue: Journal of Machine Learning Research
+doi: ''
+arxiv: ''
+et_al: false
+url: ''
+sha256: ''
+local: ''
+cited_by:
+  msms-subspace-collapse:
+    key: gretton2012
