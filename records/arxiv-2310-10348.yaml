@@ -14,5 +14,7 @@ sha256: ''
 cited_by:
   mechanistic-validity:
     key: syed2023attribution
+  epistatic-circuits:
+    key: syed2023attribution
   mechanistic-views:
     key: syed2023eap

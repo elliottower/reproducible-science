@@ -1,0 +1,18 @@
+slug: t-c9db341445f3edab
+title: Towards Automated Circuit Discovery for Mechanistic Interpretability
+authors:
+- Conmy, Arthur
+- Mavor-Parker, Augustine N.
+- Lynch, Aengus
+- Heimersheim, Stefan
+- Garriga-Alonso, Adrià
+year: '2023'
+venue: Advances in Neural Information Processing Systems (NeurIPS)
+doi: ''
+arxiv: ''
+et_al: false
+url: https://arxiv.org/abs/2304.14997
+sha256: ''
+cited_by:
+  epistatic-circuits:
+    key: conmy2023acdc

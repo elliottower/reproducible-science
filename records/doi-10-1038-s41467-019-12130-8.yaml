@@ -1,0 +1,16 @@
+slug: doi-10-1038-s41467-019-12130-8
+title: Learning the Pattern of Epistasis Linking Genotype and Phenotype in a Protein
+authors:
+- Poelwijk, Frank J.
+- Socolich, Michael
+- Ranganathan, Rama
+year: '2019'
+venue: Nature Communications
+doi: 10.1038/s41467-019-12130-8
+arxiv: ''
+et_al: false
+url: ''
+sha256: ''
+cited_by:
+  epistatic-circuits:
+    key: poelwijk2019learning

@@ -1,0 +1,15 @@
+slug: doi-10-1002-cpa-20227
+title: On Sparse Reconstruction from Fourier and Gaussian Measurements
+authors:
+- Rudelson, Mark
+- Vershynin, Roman
+year: '2008'
+venue: Communications on Pure and Applied Mathematics
+doi: 10.1002/cpa.20227
+arxiv: ''
+et_al: false
+url: ''
+sha256: ''
+cited_by:
+  epistatic-circuits:
+    key: rudelson2008sparse

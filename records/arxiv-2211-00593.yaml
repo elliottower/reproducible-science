@@ -1,18 +1,20 @@
 slug: arxiv-2211-00593
-title: 'Interpretability in the wild: A circuit for indirect object identification in GPT-2 Small'
+title: 'Interpretability in the Wild: A Circuit for Indirect Object Identification in GPT-2 Small'
 authors:
-- Kevin Wang
-- Alexandre Variengien
-- Arthur Conmy
-- Buck Shlegeris
-- Jacob Steinhardt
+- Wang, Kevin
+- Variengien, Alexandre
+- Conmy, Arthur
+- Shlegeris, Buck
+- Steinhardt, Jacob
 year: '2023'
-venue: International Conference on Learning Representations (ICLR)
+venue: Proceedings of the Eleventh International Conference on Learning Representations (ICLR)
 doi: ''
 arxiv: '2211.00593'
 et_al: false
 url: https://arxiv.org/abs/2211.00593
 sha256: ''
 cited_by:
+  epistatic-circuits:
+    key: wang2022ioi
   mechanistic-views:
     key: wang2022

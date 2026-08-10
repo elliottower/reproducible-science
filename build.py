@@ -43,6 +43,9 @@ PAPERS = {
     "mechanistic-reference": {
         "bib": GITHUB / "mechanistic-reference-NEW" / "paper" / "references.bib",
     },
+    "epistatic-circuits": {
+        "bib": GITHUB / "epistatic-circuits" / "paper" / "references.bib",
+    },
     "mechanistic-views": {
         # v30 replaced the hand-written thebibliography block with a real .bib, so this
         # reads structured fields instead of guessing at positional ones

@@ -1,0 +1,15 @@
+slug: doi-10-1109-tit-2005-858979
+title: Decoding by Linear Programming
+authors:
+- Candès, Emmanuel J.
+- Tao, Terence
+year: '2005'
+venue: IEEE Transactions on Information Theory
+doi: 10.1109/TIT.2005.858979
+arxiv: ''
+et_al: false
+url: ''
+sha256: ''
+cited_by:
+  epistatic-circuits:
+    key: candes2005decoding
