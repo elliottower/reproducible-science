@@ -1,0 +1,23 @@
+slug: doi-10-1175-bams-d-15-00135-1
+title: The Art and Science of Climate Model Tuning
+authors:
+- Hourdin, Frédéric
+- Mauritsen, Thorsten
+- Gettelman, Andrew
+- Golaz, Jean-Christophe
+- Balaji, Venkatramani
+- Duan, Qingyun
+- Folini, Doris
+- Ji, Duoying
+- Klocke, Daniel
+- Qian, Yun
+- others
+year: '2017'
+venue: Bulletin of the American Meteorological Society
+doi: 10.1175/BAMS-D-15-00135.1
+arxiv: ''
+url: https://doi.org/10.1175/BAMS-D-15-00135.1
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: hourdin2017art

@@ -1,0 +1,15 @@
+slug: doi-10-1097-ede-0b013e3181d61eeb
+title: 'Negative Controls: A Tool for Detecting Confounding and Bias in Observational Studies'
+authors:
+- Lipsitch, Marc
+- Tchetgen Tchetgen, Eric
+- Cohen, Ted
+year: '2010'
+venue: Epidemiology
+doi: 10.1097/EDE.0b013e3181d61eeb
+arxiv: ''
+url: https://doi.org/10.1097/EDE.0b013e3181d61eeb
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: lipsitch2010negative

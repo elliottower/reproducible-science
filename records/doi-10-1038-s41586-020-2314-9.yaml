@@ -1,0 +1,23 @@
+slug: doi-10-1038-s41586-020-2314-9
+title: Variability in the analysis of a single neuroimaging dataset by many teams
+authors:
+- Botvinik-Nezer, Rotem
+- Holzmeister, Felix
+- Camerer, Colin F.
+- Dreber, Anna
+- Huber, Juergen
+- Johannesson, Magnus
+- Kirchler, Michael
+- Iwanir, Roni
+- Mumford, Jeanette A.
+- Adcock, R. Alison
+- others
+year: '2020'
+venue: Nature
+doi: 10.1038/s41586-020-2314-9
+arxiv: ''
+url: https://doi.org/10.1038/s41586-020-2314-9
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: botviniknezer2020variability

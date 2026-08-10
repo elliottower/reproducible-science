@@ -1,0 +1,16 @@
+slug: t-4fde54068615fc2d
+title: 'Toward transparent AI: A survey on interpreting the inner structures of deep neural networks'
+authors:
+- Tilman Räuker
+- Anson Ho
+- Stephen Casper
+- Dylan Hadfield-Menell
+year: '2023'
+venue: In IEEE Conference on Secure and Trustworthy Machine Learning (SaTML), 2023.
+doi: ''
+arxiv: ''
+url: ''
+sha256: ''
+cited_by:
+  mechanistic-views:
+    key: rauker2023

@@ -9,7 +9,5 @@ arxiv: ''
 url: ''
 sha256: ''
 cited_by:
-  mechanistic-validity:
-    key: osc2015estimating
   mechanistic-reference:
     key: openscience2015reproducibility
