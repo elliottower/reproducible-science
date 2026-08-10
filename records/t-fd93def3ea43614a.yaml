@@ -1,0 +1,19 @@
+slug: t-fd93def3ea43614a
+title: 'SHAPIQ: Shapley Interactions for Machine Learning'
+authors:
+- Muschalik, Maximilian
+- Fumagalli, Fabian
+- Kolpaczki, Patrick
+- Hüllermeier, Eyke
+- Hammer, Barbara
+year: '2024'
+venue: Advances in Neural Information Processing Systems
+doi: ''
+arxiv: ''
+et_al: false
+url: ''
+sha256: ''
+local: ''
+cited_by:
+  knockout-epistasis-dynamics:
+    key: muschalik2024shapiq

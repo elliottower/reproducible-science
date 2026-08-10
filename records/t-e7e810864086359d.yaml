@@ -1,0 +1,19 @@
+slug: t-e7e810864086359d
+title: Approximating Shapley Interactions in the Presence of Heterogeneous Noise
+authors:
+- Kolpaczki, Patrick
+- Muschalik, Maximilian
+- Fumagalli, Fabian
+- Hüllermeier, Eyke
+- Hammer, Barbara
+year: '2024'
+venue: Proceedings of AISTATS
+doi: ''
+arxiv: ''
+et_al: false
+url: ''
+sha256: ''
+local: ''
+cited_by:
+  knockout-epistasis-dynamics:
+    key: kolpaczki2024svarmiq

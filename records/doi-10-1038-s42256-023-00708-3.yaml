@@ -1,0 +1,20 @@
+slug: doi-10-1038-s42256-023-00708-3
+title: Annotating metabolite mass spectra with domain-inspired chemical formula transformers
+authors:
+- Goldman, Samuel
+- Wohlwend, Jeremy
+- Stražar, Martin
+- Haroush, Guy
+- Xavier, Ramnik J.
+- Coley, Connor W.
+year: '2023'
+venue: Nature Machine Intelligence
+doi: 10.1038/s42256-023-00708-3
+arxiv: ''
+et_al: false
+url: ''
+sha256: ''
+local: ''
+cited_by:
+  msms-subspace-collapse:
+    key: mist2023

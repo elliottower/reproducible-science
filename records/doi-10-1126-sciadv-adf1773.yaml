@@ -1,0 +1,19 @@
+slug: doi-10-1126-sciadv-adf1773
+title: Environment-Dependent Epistasis Increases Phenotypic Diversity in Gene Regulatory Networks
+authors:
+- Baier, Florian
+- Gauye, Florence
+- Perez-Carrasco, Ruben
+- Payne, Joshua L.
+- Schaerli, Yolanda
+year: '2023'
+venue: Science Advances
+doi: 10.1126/sciadv.adf1773
+arxiv: ''
+et_al: false
+url: ''
+sha256: ''
+local: ''
+cited_by:
+  knockout-epistasis-dynamics:
+    key: baier2023environment

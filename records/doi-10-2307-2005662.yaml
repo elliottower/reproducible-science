@@ -1,0 +1,16 @@
+slug: doi-10-2307-2005662
+title: Numerical methods for computing angles between linear subspaces
+authors:
+- Björck, Åke
+- Golub, Gene H.
+year: '1973'
+venue: Mathematics of Computation
+doi: 10.2307/2005662
+arxiv: ''
+et_al: false
+url: ''
+sha256: ''
+local: ''
+cited_by:
+  msms-subspace-collapse:
+    key: bjorck1973

@@ -1,0 +1,20 @@
+slug: doi-10-1007-s10994-009-5152-4
+title: A theory of learning from different domains
+authors:
+- Ben-David, Shai
+- Blitzer, John
+- Crammer, Koby
+- Kulesza, Alex
+- Pereira, Fernando
+- Vaughan, Jennifer Wortman
+year: '2010'
+venue: Machine Learning
+doi: 10.1007/s10994-009-5152-4
+arxiv: ''
+et_al: false
+url: ''
+sha256: ''
+local: ''
+cited_by:
+  msms-subspace-collapse:
+    key: bendavid2010

@@ -1,0 +1,15 @@
+slug: t-d60aece916dd8969
+title: The Correlation between Relatives on the Supposition of Mendelian Inheritance
+authors:
+- Fisher, Ronald Aylmer
+year: '1918'
+venue: Transactions of the Royal Society of Edinburgh
+doi: ''
+arxiv: ''
+et_al: false
+url: ''
+sha256: ''
+local: ''
+cited_by:
+  knockout-epistasis-dynamics:
+    key: fisher1918correlation

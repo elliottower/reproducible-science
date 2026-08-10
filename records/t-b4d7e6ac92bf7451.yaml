@@ -1,0 +1,15 @@
+slug: t-b4d7e6ac92bf7451
+title: 'MassBank: High Quality Mass Spectral Database'
+authors:
+- MassBank Consortium
+year: '2024'
+venue: ''
+doi: ''
+arxiv: ''
+et_al: false
+url: https://massbank.eu/
+sha256: ''
+local: ''
+cited_by:
+  msms-subspace-collapse:
+    key: massbank2024
