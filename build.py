@@ -24,6 +24,7 @@ import hashlib
 import pathlib
 import re
 import sys
+import unicodedata
 
 import yaml
 
@@ -49,9 +50,33 @@ PAPERS = {
 FIELD = re.compile(r"(\w+)\s*=\s*[{\"](.*?)[}\"]\s*,?\s*$", re.S)
 
 
+# LaTeX accents resolved to the character rather than deleted. Stripping backslashes turns
+# Kram\'{a}r into Kram'ar and J\'anos into J'anos, which is how a bibliography ends up
+# misspelling people's names.
+ACCENT = {"'": "\u0301", "`": "\u0300", '"': "\u0308", "^": "\u0302", "~": "\u0303",
+          "=": "\u0304", ".": "\u0307", "u": "\u0306", "v": "\u030c", "H": "\u030b",
+          "c": "\u0327", "k": "\u0328", "r": "\u030a"}
+LIGATURE = [(r"\\ss\b", "\u00df"), (r"\\o\b", "\u00f8"), (r"\\O\b", "\u00d8"),
+            (r"\\ae\b", "\u00e6"), (r"\\AE\b", "\u00c6"), (r"\\aa\b", "\u00e5"),
+            (r"\\AA\b", "\u00c5"), (r"\\l\b", "\u0142"), (r"\\L\b", "\u0141"),
+            (r"\\i\b", "i"), (r"\\j\b", "j")]
+
+
 def clean(s: str) -> str:
     s = re.sub(r"\\emph\{([^}]*)\}", r"\1", s or "")
-    s = re.sub(r"[{}]", "", s).replace("\\&", "&").replace("--", "-").replace("\\", "")
+    for pat, ch in LIGATURE:
+        s = re.sub(pat, ch, s)
+    # \'{a}, \'a and {\'a} all mean the same character
+    for mark, comb in ACCENT.items():
+        m = re.escape(mark)
+        s = re.sub(rf"\\{m}\s*\{{(\w)\}}", lambda g: g.group(1) + comb, s)
+        s = re.sub(rf"\\{m}\s*(\w)", lambda g: g.group(1) + comb, s)
+    s = unicodedata.normalize("NFC", s)
+    s = re.sub(r"[{}]", "", s).replace("\\&", "&").replace("--", "-")
+    s = re.sub(r"\\[a-zA-Z]+", "", s).replace("\\", "")
+    # No trailing-punctuation strip here: it would take the period off an initial and turn
+    # "Fisher, Ronald A." into "Fisher, Ronald A". Trailing junk from a \bibitem author line is
+    # that parser's problem, handled where the sentence structure is still visible.
     return " ".join(s.split())
 
 
@@ -108,7 +133,11 @@ def parse_bibitem(path: pathlib.Path) -> dict[str, dict]:
         title = blocks[1] if len(blocks) > 1 else ""
         venue = blocks[2] if len(blocks) > 2 else ""
         ym = re.search(r"\b(19|20)\d{2}\b", venue) or re.search(r"\((\d{4})\)", ch)
-        au = [a.strip() for a in re.split(r",| and ", authors_raw) if a.strip()]
+        # a \bibitem author line ends the sentence, so the last name carries a period
+        # that is punctuation rather than an initial
+        au = [a.strip().rstrip(".") if i and a.strip().endswith(".")
+              and not re.search(r"\b[A-Z]\.$", a.strip()) else a.strip()
+              for i, a in enumerate(re.split(r",| and ", authors_raw)) if a.strip()]
         url = re.search(r"\\url\{([^}]*)\}", ch)
         out[key] = {
             "title": title.rstrip("."), "authors": au, "year": ym.group(0) if ym else "",

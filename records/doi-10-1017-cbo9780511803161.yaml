@@ -1,0 +1,13 @@
+slug: doi-10-1017-cbo9780511803161
+title: 'Causality: Models, Reasoning, and Inference'
+authors:
+- Pearl, Judea
+year: '2009'
+venue: ''
+doi: 10.1017/CBO9780511803161
+arxiv: ''
+url: https://doi.org/10.1017/CBO9780511803161
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: pearl2009causality
