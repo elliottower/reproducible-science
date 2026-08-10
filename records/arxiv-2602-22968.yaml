@@ -1,0 +1,17 @@
+slug: arxiv-2602-22968
+title: 'Certified Circuits: Stability Guarantees for Mechanistic Circuits'
+authors:
+- Anani, Alaa
+- Lorenz, Tobias
+- Schiele, Bernt
+- Fritz, Mario
+- Fischer, Jonas
+year: '2026'
+venue: International Conference on Machine Learning (ICML)
+doi: ''
+arxiv: '2602.22968'
+url: https://arxiv.org/abs/2602.22968
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: anani2026certified

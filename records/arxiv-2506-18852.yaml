@@ -1,0 +1,23 @@
+slug: arxiv-2506-18852
+title: Mechanistic Interpretability Needs Philosophy
+authors:
+- Williams, Iwan
+- Oldenburg, Ninell
+- Dhar, Ruchira
+- Hatherley, Joshua
+- Fierro, Constanza
+- Rajcic, Nina
+- Schiller, Sandrine R.
+- Stamatiou, Filippos
+- Sogaard, Anders
+year: '2025'
+venue: arXiv preprint arXiv:2506.18852
+doi: ''
+arxiv: '2506.18852'
+url: https://arxiv.org/abs/2506.18852
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: williams2025
+  mechanistic-views:
+    key: williams2025

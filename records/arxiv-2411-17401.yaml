@@ -1,0 +1,19 @@
+slug: arxiv-2411-17401
+title: 'One Mind, Many Tongues: A Deep Dive into Language-Agnostic Knowledge Neurons in Large Language
+  Models'
+authors:
+- Cao, Pengfei
+- Chen, Yuheng
+- Jin, Zhuoran
+- Chen, Yubo
+- Liu, Kang
+- Zhao, Jun
+year: '2026'
+venue: Artificial Intelligence
+doi: ''
+arxiv: '2411.17401'
+url: https://arxiv.org/abs/2411.17401
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: cao2024one

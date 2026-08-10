@@ -1,0 +1,14 @@
+slug: arxiv-2409-09951
+title: Optimal Ablation for Interpretability
+authors:
+- Li
+- Janson
+year: '2024'
+venue: NeurIPS
+doi: ''
+arxiv: '2409.09951'
+url: https://arxiv.org/abs/2409.09951
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: lijanson2024optimal

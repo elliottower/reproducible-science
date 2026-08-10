@@ -1,0 +1,16 @@
+slug: doi-10-1016-j-neuron-2017-05-025
+title: Neural Manifolds for the Control of Movement
+authors:
+- Gallego, Juan A.
+- Perich, Matthew G.
+- Miller, Lee E.
+- Solla, Sara A.
+year: ''
+venue: Neuron
+doi: 10.1016/j.neuron.2017.05.025
+arxiv: ''
+url: https://doi.org/10.1016/j.neuron.2017.05.025
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: gallego2017neural

@@ -1,0 +1,17 @@
+slug: arxiv-2309-08600
+title: Sparse Autoencoders Find Highly Interpretable Features in Language Models
+authors:
+- Cunningham, Hoagy
+- Ewart, Aidan
+- Riggs, Logan
+- Huben, Robert
+- Sharkey, Lee
+year: '2024'
+venue: ICLR
+doi: ''
+arxiv: '2309.08600'
+url: https://arxiv.org/abs/2309.08600
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: cunningham2023sparse

@@ -1,0 +1,20 @@
+slug: t-b55ee088fee44db7
+title: Sparse autoencoders do not find canonical units of analysis
+authors:
+- Patrick Leask
+- Bart Bussmann
+- Michael Pearce
+- Joseph Bloom
+- Curt Tigges
+- Noura Al Moubayed
+- Lee Sharkey
+- Neel Nanda.
+year: '2025'
+venue: In International Conference on Learning Representations (ICLR), 2025.
+doi: ''
+arxiv: ''
+url: ''
+sha256: ''
+cited_by:
+  mechanistic-views:
+    key: leask2025

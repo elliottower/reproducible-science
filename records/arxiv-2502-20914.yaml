@@ -1,0 +1,18 @@
+slug: arxiv-2502-20914
+title: 'Everything, Everywhere, All at Once: Is Mechanistic Interpretability Identifiable?'
+authors:
+- M'eloux, Maxime
+- Portet, Franc cois
+- Maniu, Silviu
+- Peyrard, Maxime
+year: '2025'
+venue: ICLR
+doi: ''
+arxiv: '2502.20914'
+url: https://arxiv.org/abs/2502.20914
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: meloux2025everything
+  mechanistic-views:
+    key: meloux2025

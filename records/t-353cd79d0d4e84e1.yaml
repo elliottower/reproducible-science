@@ -1,0 +1,19 @@
+slug: t-353cd79d0d4e84e1
+title: 'Interpretability in the Wild: A Circuit for Indirect Object Identification in GPT-2 Small'
+authors:
+- Wang, Kevin
+- Variengien, Alexandre
+- Conmy, Arthur
+- Shlegeris, Buck
+- Steinhardt, Jacob
+year: '2023'
+venue: ICLR
+doi: ''
+arxiv: ''
+url: ''
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: wang2023interpretability
+  mechanistic-reference:
+    key: wang2023interpretability

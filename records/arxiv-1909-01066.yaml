@@ -1,0 +1,20 @@
+slug: arxiv-1909-01066
+title: Language Models as Knowledge Bases?
+authors:
+- Petroni, Fabio
+- Rockt"aschel, Tim
+- Riedel, Sebastian
+- Lewis, Patrick
+- Bakhtin, Anton
+- Wu, Yuxiang
+- Miller, Alexander
+year: '2019'
+venue: Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the
+  9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)
+doi: ''
+arxiv: '1909.01066'
+url: https://aclanthology.org/D19-1250/
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: petroni2019language

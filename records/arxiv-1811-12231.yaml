@@ -1,0 +1,19 @@
+slug: arxiv-1811-12231
+title: ImageNet-Trained CNNs Are Biased towards Textures; Increasing Shape Bias Improves Accuracy and
+  Robustness
+authors:
+- Geirhos, Robert
+- Rubisch, Patricia
+- Michaelis, Claudio
+- Bethge, Matthias
+- Wichmann, Felix A.
+- Brendel, Wieland
+year: '2019'
+venue: ICLR
+doi: ''
+arxiv: '1811.12231'
+url: https://arxiv.org/abs/1811.12231
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: geirhos2019imagenet

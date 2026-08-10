@@ -1,0 +1,15 @@
+slug: doi-10-1073-pnas-1602413113
+title: 'Cluster Failure: Why fMRI Inferences for Spatial Extent Have Inflated False-Positive Rates'
+authors:
+- Eklund, Anders
+- Nichols, Thomas E.
+- Knutsson, Hans
+year: '2016'
+venue: Proceedings of the National Academy of Sciences
+doi: 10.1073/pnas.1602413113
+arxiv: ''
+url: https://doi.org/10.1073/pnas.1602413113
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: eklund2016cluster

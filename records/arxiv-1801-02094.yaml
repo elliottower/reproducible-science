@@ -1,0 +1,16 @@
+slug: arxiv-1801-02094
+title: 'Schroedinger''s code: A preliminary study on research source code availability and link persistence
+  in astrophysics'
+authors:
+- Allen, Alice
+- Teuben, Peter J.
+- Ryan, P. Wesley
+year: '2018'
+venue: ''
+doi: ''
+arxiv: '1801.02094'
+url: https://arxiv.org/abs/1801.02094
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: allen2018schroedinger

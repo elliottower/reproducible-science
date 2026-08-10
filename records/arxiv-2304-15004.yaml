@@ -1,0 +1,15 @@
+slug: arxiv-2304-15004
+title: Are Emergent Abilities of Large Language Models a Mirage?
+authors:
+- Schaeffer, Rylan
+- Miranda, Brando
+- Koyejo, Sanmi
+year: '2023'
+venue: NeurIPS
+doi: ''
+arxiv: '2304.15004'
+url: https://arxiv.org/abs/2304.15004
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: schaeffer2024emergent

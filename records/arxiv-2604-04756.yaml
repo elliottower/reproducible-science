@@ -1,0 +1,13 @@
+slug: arxiv-2604-04756
+title: 'Darkness Visible: Reading the Exception Handler of a Language Model'
+authors:
+- Balogh, Peter
+year: '2026'
+venue: arXiv preprint
+doi: ''
+arxiv: '2604.04756'
+url: https://arxiv.org/abs/2604.04756
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: balogh2026darkness

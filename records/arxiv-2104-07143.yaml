@@ -1,0 +1,19 @@
+slug: arxiv-2104-07143
+title: An interpretability illusion for BERT
+authors:
+- Tolga Bolukbasi
+- Adam Pearce
+- Ann Yuan
+- Andy Coenen
+- Emily Reif
+- Fernanda Vi'egas
+- Martin Wattenberg.
+year: '2021'
+venue: arXiv:2104.07143, 2021.
+doi: ''
+arxiv: '2104.07143'
+url: ''
+sha256: ''
+cited_by:
+  mechanistic-views:
+    key: bolukbasi2021

@@ -1,0 +1,24 @@
+slug: arxiv-2008-06388v4
+title: Common Pitfalls and Recommendations for Using Machine Learning to Detect and Prognosticate for
+  COVID-19 Using Chest Radiographs and CT Scans
+authors:
+- Roberts, Michael
+- Driggs, Derek
+- Thorpe, Matthew
+- Gilbey, Julian
+- Yeung, Michael
+- Ursprung, Stephan
+- Aviles-Rivero, Angelica I.
+- Etmann, Christian
+- McCague, Cathal
+- Beer, Lucian
+- others
+year: '2021'
+venue: Nature Machine Intelligence
+doi: ''
+arxiv: 2008.06388v4
+url: https://arxiv.org/abs/2008.06388v4
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: roberts2021common

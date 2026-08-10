@@ -1,0 +1,16 @@
+slug: arxiv-2410-22071
+title: Distinguishing ignorance from error in LLM hallucinations
+authors:
+- Adi Simhi
+- Jonathan Herzig
+- Idan Szpektor
+- Yonatan Belinkov.
+year: '2024'
+venue: arXiv:2410.22071, 2024.
+doi: ''
+arxiv: '2410.22071'
+url: ''
+sha256: ''
+cited_by:
+  mechanistic-views:
+    key: simhi2024

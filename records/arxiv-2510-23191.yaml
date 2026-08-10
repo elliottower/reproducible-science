@@ -1,0 +1,14 @@
+slug: arxiv-2510-23191
+title: 'The Benchmarking Epistemology: Construct Validity for Evaluating Machine Learning Models'
+authors:
+- Freiesleben, Timo
+- Zezulka, Sebastian
+year: '2025'
+venue: arXiv preprint arXiv:2510.23191
+doi: ''
+arxiv: '2510.23191'
+url: https://arxiv.org/abs/2510.23191
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: freiesleben2025benchmarking

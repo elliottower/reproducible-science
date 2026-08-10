@@ -1,0 +1,17 @@
+slug: arxiv-2011-04946
+title: When Do You Need Billions of Words of Pretraining Data?
+authors:
+- Zhang, Yian
+- Warstadt, Alex
+- Li, Xiaocheng
+- Bowman, Samuel R.
+year: '2021'
+venue: Proceedings of the 59th Annual Meeting of the Association for Computational Linguistics and the
+  11th International Joint Conference on Natural Language Processing (ACL-IJCNLP)
+doi: ''
+arxiv: '2011.04946'
+url: https://aclanthology.org/2021.acl-long.90/
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: zhang2021when

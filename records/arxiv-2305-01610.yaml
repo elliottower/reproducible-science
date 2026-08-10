@@ -1,0 +1,18 @@
+slug: arxiv-2305-01610
+title: 'Finding Neurons in a Haystack: Case Studies with Sparse Probing'
+authors:
+- Gurnee, Wes
+- Nanda, Neel
+- Pauly, Matthew
+- Harvey, Katherine
+- Troitskii, Dmitrii
+- Bertsimas, Dimitris
+year: '2023'
+venue: Transactions on Machine Learning Research
+doi: ''
+arxiv: '2305.01610'
+url: https://openreview.net/forum?id=JYs1R9IMJr
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: gurnee2023finding

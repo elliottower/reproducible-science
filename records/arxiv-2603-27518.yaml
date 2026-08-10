@@ -1,0 +1,16 @@
+slug: arxiv-2603-27518
+title: 'Over-Refusal and Representation Subspaces: A Mechanistic Analysis of Task-Conditioned Refusal
+  in Aligned LLMs'
+authors:
+- Maskey, Utsav
+- Dras, Mark
+- Naseem, Usman
+year: '2026'
+venue: arXiv preprint
+doi: ''
+arxiv: '2603.27518'
+url: https://arxiv.org/abs/2603.27518
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: maskey2026over

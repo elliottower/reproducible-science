@@ -1,0 +1,14 @@
+slug: t-48a026f138947aa6
+title: Designing and interpreting probes with control tasks
+authors:
+- John Hewitt
+- Percy Liang.
+year: '2019'
+venue: In Proceedings of EMNLP-IJCNLP, 2019.
+doi: ''
+arxiv: ''
+url: ''
+sha256: ''
+cited_by:
+  mechanistic-views:
+    key: hewitt2019control

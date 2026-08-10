@@ -1,0 +1,35 @@
+slug: t-ac6275ab10cadbb3
+title: 'MIB: A mechanistic interpretability benchmark'
+authors:
+- Aaron Mueller
+- Atticus Geiger
+- Sarah Wiegreffe
+- Dana Arad
+- Iv'an Arcuschin
+- Adam Belfki
+- Yik~Siu Chan
+- Jaden Fiotto-Kaufman
+- Tal Haklay
+- Michael Hanna
+- Jing Huang
+- Rohan Gupta
+- Yaniv Nikankin
+- Hadas Orgad
+- Nikhil Prakash
+- Anja Reusch
+- Aruna Sankaranarayanan
+- Shun Shao
+- Alessandro Stolfo
+- Martin Tutek
+- Amir Zur
+- David Bau
+- Yonatan Belinkov.
+year: '2025'
+venue: In International Conference on Machine Learning (ICML), 2025.
+doi: ''
+arxiv: ''
+url: https://github.com/aaronmueller/MIB
+sha256: ''
+cited_by:
+  mechanistic-views:
+    key: mib2025

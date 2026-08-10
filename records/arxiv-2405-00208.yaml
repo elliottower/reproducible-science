@@ -1,0 +1,16 @@
+slug: arxiv-2405-00208
+title: A primer on the inner workings of transformer-based language models
+authors:
+- Javier Ferrando
+- Gabriele Sarti
+- Arianna Bisazza
+- Marta~R. Costa-juss`a.
+year: '2024'
+venue: arXiv:2405.00208, 2024.
+doi: ''
+arxiv: '2405.00208'
+url: ''
+sha256: ''
+cited_by:
+  mechanistic-views:
+    key: ferrando2024

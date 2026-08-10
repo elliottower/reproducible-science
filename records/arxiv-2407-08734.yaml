@@ -1,0 +1,15 @@
+slug: arxiv-2407-08734
+title: Transformer Circuit Faithfulness Metrics Are Not Robust
+authors:
+- Miller, Joseph
+- Chughtai, Bilal
+- Saunders, William
+year: '2024'
+venue: COLM
+doi: ''
+arxiv: '2407.08734'
+url: https://arxiv.org/abs/2407.08734
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: miller2024transformer

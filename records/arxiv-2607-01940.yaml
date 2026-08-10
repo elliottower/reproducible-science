@@ -1,0 +1,16 @@
+slug: arxiv-2607-01940
+title: 'Conditional Co-Ablation: Recovering Self-Repair Backups in Transformer Circuits'
+authors:
+- Gong
+- Zeng
+- Yuen
+- Lim
+year: '2026'
+venue: arXiv preprint
+doi: ''
+arxiv: '2607.01940'
+url: https://arxiv.org/abs/2607.01940
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: gong2026conditional

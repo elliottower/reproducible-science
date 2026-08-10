@@ -1,0 +1,19 @@
+slug: arxiv-2511-05743
+title: In-Context Learning Without Copying
+authors:
+- cSahin, Kerem
+- Feucht, Sheridan
+- Belfki, Adam
+- Brinkmann, Jannik
+- Mueller, Aaron
+- Bau, David
+- Wendler, Chris
+year: '2025'
+venue: ''
+doi: ''
+arxiv: '2511.05743'
+url: https://arxiv.org/abs/2511.05743
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: sahin2025incontext

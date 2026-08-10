@@ -1,0 +1,20 @@
+slug: arxiv-2409-14507
+title: 'A is for Absorption: Studying Feature Splitting and Absorption in Sparse Autoencoders'
+authors:
+- Chanin, David
+- Wilken-Smith, James
+- Dulka, Tom'av s
+- Bhatnagar, Hardik
+- Golechha, Satvik
+- Bloom, Joseph
+year: '2025'
+venue: Advances in Neural Information Processing Systems (NeurIPS)
+doi: ''
+arxiv: '2409.14507'
+url: https://arxiv.org/abs/2409.14507
+sha256: fc4175d560e35e2a36d41924ed35d0be791fab555e851df1aea656a14410e6ef
+cited_by:
+  mechanistic-validity:
+    key: chanin2024absorption
+  mechanistic-views:
+    key: chanin2024absorption

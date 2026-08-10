@@ -1,0 +1,18 @@
+slug: arxiv-2407-13594
+title: 'Validating Mechanistic Interpretations: An Axiomatic Approach'
+authors:
+- Palumbo
+- Mangal
+- Wang
+- Vijayakumar
+- Pu asu areanu
+- Jha
+year: '2024'
+venue: arXiv preprint
+doi: ''
+arxiv: '2407.13594'
+url: https://arxiv.org/abs/2407.13594
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: palumbo2024validating

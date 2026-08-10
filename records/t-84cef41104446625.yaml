@@ -1,0 +1,23 @@
+slug: t-84cef41104446625
+title: In-context learning and induction heads
+authors:
+- Catherine Olsson
+- Nelson Elhage
+- Neel Nanda
+- Nicholas Joseph
+- Nova DasSarma
+- Tom Henighan
+- Ben Mann
+- Amanda Askell
+- Yuntao Bai
+- Anna Chen
+- et~al.
+year: '2022'
+venue: Transformer Circuits Thread, 2022.
+doi: ''
+arxiv: ''
+url: https://transformer-circuits.pub/2022/in-context-learning-and-induction-heads
+sha256: ''
+cited_by:
+  mechanistic-views:
+    key: olsson2022

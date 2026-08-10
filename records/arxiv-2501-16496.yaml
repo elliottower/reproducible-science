@@ -1,0 +1,23 @@
+slug: arxiv-2501-16496
+title: Open Problems in Mechanistic Interpretability
+authors:
+- Lee Sharkey
+- Bilal Chughtai
+- Joshua Batson
+- Jack Lindsey
+- Jeff Wu
+- Lucius Bushnaq
+- Nicholas Goldowsky-Dill
+- Stefan Heimersheim
+- et~al.
+year: '2025'
+venue: arXiv preprint arXiv:2501.16496
+doi: ''
+arxiv: '2501.16496'
+url: https://arxiv.org/abs/2501.16496
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: sharkey2025open
+  mechanistic-views:
+    key: sharkey2025

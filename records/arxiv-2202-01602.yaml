@@ -1,0 +1,18 @@
+slug: arxiv-2202-01602
+title: 'The Disagreement Problem in Explainable Machine Learning: A Practitioner''s Perspective'
+authors:
+- Krishna, Satyapriya
+- Han, Tessa
+- Gu, Alex
+- Wu, Steven
+- Jabbari, Shahin
+- Lakkaraju, Himabindu
+year: '2022'
+venue: arXiv preprint
+doi: ''
+arxiv: '2202.01602'
+url: https://arxiv.org/abs/2202.01602
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: krishna2022disagreement

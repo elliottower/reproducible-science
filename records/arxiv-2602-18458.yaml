@@ -1,0 +1,17 @@
+slug: arxiv-2602-18458
+title: 'The Story is Not the Science: Execution-Grounded Evaluation of Mechanistic Interpretability Research'
+authors:
+- Bai, Xiaoyan
+- Baumgartner, Alexander
+- Sun, Haojia
+- Holtzman, Ari
+- Tan, Chenhao
+year: '2026'
+venue: arXiv preprint arXiv:2602.18458
+doi: ''
+arxiv: '2602.18458'
+url: https://arxiv.org/abs/2602.18458
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: bai2026mecheval

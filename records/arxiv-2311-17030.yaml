@@ -1,0 +1,16 @@
+slug: arxiv-2311-17030
+title: Is this the subspace you are looking for? An interpretability illusion for subspace activation
+  patching
+authors:
+- Aleksandar Makelov
+- Georg Lange
+- Neel Nanda.
+year: '2023'
+venue: arXiv:2311.17030, 2023.
+doi: ''
+arxiv: '2311.17030'
+url: ''
+sha256: ''
+cited_by:
+  mechanistic-views:
+    key: makelov2023

@@ -1,0 +1,17 @@
+slug: arxiv-2311-07568
+title: 'Feature Emergence via Margin Maximization: Case Studies in Algebraic Tasks'
+authors:
+- Morwani, Depen
+- Edelman, Benjamin L.
+- Oncescu, Costin-Andrei
+- Zhao, Rosie
+- Kakade, Sham
+year: '2024'
+venue: International Conference on Learning Representations (ICLR)
+doi: ''
+arxiv: '2311.07568'
+url: https://arxiv.org/abs/2311.07568
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: morwani2023feature

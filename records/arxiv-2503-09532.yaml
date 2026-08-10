@@ -1,0 +1,27 @@
+slug: arxiv-2503-09532
+title: 'SAEBench: A Comprehensive Benchmark for Sparse Autoencoders in Language Model Interpretability'
+authors:
+- Karvonen, Adam
+- Rager, Can
+- Lin, Johnny
+- Tigges, Curt
+- Bloom, Joseph
+- Chanin, David
+- Lau, Yeu-Tong
+- Farrell, Eoin
+- McDougall, Callum
+- Ayonrinde, Kola
+- Till, Demian
+- Wearden, Matthew
+- Conmy, Arthur
+- Marks, Samuel
+- Nanda, Neel
+year: '2025'
+venue: ICML
+doi: ''
+arxiv: '2503.09532'
+url: https://arxiv.org/abs/2503.09532
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: karvonen2025saebench

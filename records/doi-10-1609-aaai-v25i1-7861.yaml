@@ -1,0 +1,14 @@
+slug: doi-10-1609-aaai-v25i1-7861
+title: 'Transportability of Causal and Statistical Relations: A Formal Approach'
+authors:
+- Pearl, Judea
+- Bareinboim, Elias
+year: '2011'
+venue: AAAI
+doi: 10.1609/aaai.v25i1.7861
+arxiv: ''
+url: https://doi.org/10.1609/aaai.v25i1.7861
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: pearl2011transportability

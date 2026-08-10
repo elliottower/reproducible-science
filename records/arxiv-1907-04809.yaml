@@ -1,0 +1,16 @@
+slug: arxiv-1907-04809
+title: 'Variational Autoencoders and Nonlinear ICA: A Unifying Framework'
+authors:
+- Khemakhem, Ilyes
+- Kingma, Diederik P.
+- Monti, Ricardo Pio
+- Hyv"arinen, Aapo
+year: '2020'
+venue: AISTATS
+doi: ''
+arxiv: '1907.04809'
+url: https://arxiv.org/abs/1907.04809
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: khemakhem2020variational

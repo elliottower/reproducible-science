@@ -1,0 +1,17 @@
+slug: arxiv-2401-14446
+title: Black-box access is insufficient for rigorous AI audits
+authors:
+- Stephen Casper
+- Jason Lin
+- Joe Kwon
+- Gilbert Tok
+- Dylan Hadfield-Menell.
+year: '2024'
+venue: arXiv:2401.14446, 2024.
+doi: ''
+arxiv: '2401.14446'
+url: ''
+sha256: ''
+cited_by:
+  mechanistic-views:
+    key: casper2023

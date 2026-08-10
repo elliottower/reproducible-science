@@ -1,0 +1,17 @@
+slug: t-8446e8ea21a534b1
+title: 'Language models don''t always say what they think: Unfaithful explanations in chain-of-thought
+  prompting'
+authors:
+- Miles Turpin
+- Julian Michael
+- Ethan Perez
+- Samuel~R. Bowman.
+year: '2023'
+venue: In Advances in Neural Information Processing Systems (NeurIPS), 2023.
+doi: ''
+arxiv: ''
+url: ''
+sha256: ''
+cited_by:
+  mechanistic-views:
+    key: turpin2023

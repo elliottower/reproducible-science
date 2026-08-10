@@ -1,0 +1,16 @@
+slug: doi-10-1073-pnas-2506316122
+title: Sparse autoencoders uncover biologically interpretable features in protein language model representations
+authors:
+- Gujral, Onkar
+- Bafna, Mihir
+- Alm, Eric
+- Berger, Bonnie
+year: '2025'
+venue: Proceedings of the National Academy of Sciences
+doi: 10.1073/pnas.2506316122
+arxiv: ''
+url: ''
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: gujral2025sparse

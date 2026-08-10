@@ -1,0 +1,17 @@
+slug: doi-10-1162-tacl-a-00644
+title: Evaluating the Ripple Effects of Knowledge Editing in Language Models
+authors:
+- Cohen, Roi
+- Biran, Eden
+- Yoran, Ori
+- Globerson, Amir
+- Geva, Mor
+year: '2024'
+venue: Transactions of the Association for Computational Linguistics
+doi: 10.1162/tacl_a_00644
+arxiv: ''
+url: https://doi.org/10.1162/tacl_a_00644
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: cohen2024evaluating

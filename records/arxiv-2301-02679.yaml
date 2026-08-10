@@ -1,0 +1,13 @@
+slug: arxiv-2301-02679
+title: Grokking Modular Arithmetic
+authors:
+- Gromov, Andrey
+year: '2023'
+venue: arXiv preprint
+doi: ''
+arxiv: '2301.02679'
+url: https://arxiv.org/abs/2301.02679
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: gromov2023grokking

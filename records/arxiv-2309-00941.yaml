@@ -1,0 +1,15 @@
+slug: arxiv-2309-00941
+title: Emergent Linear Representations in World Models of Self-Supervised Sequence Models
+authors:
+- Nanda, Neel
+- Lee, Andrew
+- Wattenberg, Martin
+year: '2023'
+venue: BlackboxNLP
+doi: ''
+arxiv: '2309.00941'
+url: https://arxiv.org/abs/2309.00941
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: nanda2023emergent

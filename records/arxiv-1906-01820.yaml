@@ -1,0 +1,19 @@
+slug: arxiv-1906-01820
+title: Risks from Learned Optimization in Advanced Machine Learning Systems
+authors:
+- Hubinger, Evan
+- van Merwijk, Chris
+- Mikulik, Vladimir
+- Skalse, Joar
+- Garrabrant, Scott
+year: '2019'
+venue: arXiv preprint arXiv:1906.01820
+doi: ''
+arxiv: '1906.01820'
+url: https://arxiv.org/abs/1906.01820
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: hubinger2019risks
+  mechanistic-views:
+    key: hubinger2021risks

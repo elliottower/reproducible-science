@@ -1,0 +1,15 @@
+slug: arxiv-2510-00845
+title: 'Mechanistic Interpretability as Statistical Estimation: A Variance Analysis'
+authors:
+- M'eloux, Maxime
+- Portet, Franc cois
+- Peyrard, Maxime
+year: '2025'
+venue: arXiv preprint
+doi: ''
+arxiv: '2510.00845'
+url: https://arxiv.org/abs/2510.00845
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: meloux2025variance

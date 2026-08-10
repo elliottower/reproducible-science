@@ -1,0 +1,18 @@
+slug: arxiv-2210-13382
+title: 'Emergent World Representations: Exploring a Sequence Model Trained on a Synthetic Task'
+authors:
+- Li, Kenneth
+- Hopkins, Aspen K.
+- Bau, David
+- Vi'egas, Fernanda
+- Pfister, Hanspeter
+- Wattenberg, Martin
+year: '2023'
+venue: ICLR
+doi: ''
+arxiv: '2210.13382'
+url: https://arxiv.org/abs/2210.13382
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: li2023othello

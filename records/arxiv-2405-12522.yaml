@@ -1,0 +1,14 @@
+slug: arxiv-2405-12522
+title: Sparse Autoencoders Enable Scalable and Reliable Circuit Identification in Language Models
+authors:
+- O'Neill
+- Bui
+year: '2024'
+venue: arXiv preprint
+doi: ''
+arxiv: '2405.12522'
+url: https://arxiv.org/abs/2405.12522
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: oneill2024sparse

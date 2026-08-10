@@ -1,0 +1,18 @@
+slug: arxiv-2502-20332
+title: Emergent Symbolic Mechanisms Support Abstract Reasoning in Large Language Models
+authors:
+- Yang, Yukang
+- Campbell, Declan
+- Huang, Kaixuan
+- Wang, Mengdi
+- Cohen, Jonathan
+- Webb, Taylor
+year: '2025'
+venue: ICML
+doi: ''
+arxiv: '2502.20332'
+url: https://arxiv.org/abs/2502.20332
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: webb2025emergent

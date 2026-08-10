@@ -1,0 +1,18 @@
+slug: arxiv-2312-06681
+title: Steering Llama 2 via Contrastive Activation Addition
+authors:
+- Panickssery, Nina
+- Gabrieli, Nick
+- Schulz, Julian
+- Tong, Meg
+- Hubinger, Evan
+- Turner, Alexander Matt
+year: '2024'
+venue: Proceedings of the 62nd Annual Meeting of the Association for Computational Linguistics (ACL)
+doi: ''
+arxiv: '2312.06681'
+url: https://arxiv.org/abs/2312.06681
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: panickssery2024steering

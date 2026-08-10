@@ -1,0 +1,14 @@
+slug: t-846f1d53159b3647
+title: 'Climbing towards NLU: On Meaning, Form, and Understanding in the Age of Data'
+authors:
+- Bender, Emily M.
+- Koller, Alexander
+year: '2020'
+venue: Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics (ACL)
+doi: ''
+arxiv: ''
+url: https://aclanthology.org/2020.acl-main.463/
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: bender2020climbing

@@ -1,0 +1,16 @@
+slug: t-8cc61b04b9eb8ae0
+title: LLM circuit analyses are consistent across training and scale
+authors:
+- Curt Tigges
+- Michael Hanna
+- Qinan Yu
+- Stella Biderman.
+year: '2024'
+venue: In Advances in Neural Information Processing Systems (NeurIPS), 2024.
+doi: ''
+arxiv: ''
+url: ''
+sha256: ''
+cited_by:
+  mechanistic-views:
+    key: tigges2024

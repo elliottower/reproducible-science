@@ -1,0 +1,17 @@
+slug: arxiv-2307-15771
+title: 'The hydra effect: Emergent self-repair in language model computations'
+authors:
+- Thomas McGrath
+- Matthew Rahtz
+- J'anos Kram'ar
+- Vladimir Mikulik
+- Shane Legg.
+year: '2023'
+venue: arXiv:2307.15771, 2023.
+doi: ''
+arxiv: '2307.15771'
+url: ''
+sha256: ''
+cited_by:
+  mechanistic-views:
+    key: mcgrath2023

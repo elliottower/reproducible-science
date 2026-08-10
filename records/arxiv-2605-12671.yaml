@@ -1,0 +1,25 @@
+slug: arxiv-2605-12671
+title: 'All Circuits Lead to Rome: Rethinking Functional Anisotropy in Circuit and Sheaf Discovery for
+  LLMs'
+authors:
+- Chen
+- Jin
+- Niu
+- Yin
+- Zhao
+- Guo
+- Metaxas
+- Wang
+- Yue
+- Penn
+year: '2026'
+venue: arXiv preprint
+doi: ''
+arxiv: '2605.12671'
+url: https://arxiv.org/abs/2605.12671
+sha256: aaec573dde3325cb351e85030b172b70dbe4ad219da5cfdf9f1d75b1e3b1198b
+cited_by:
+  mechanistic-validity:
+    key: chen2026circuits
+  mechanistic-views:
+    key: chen2026

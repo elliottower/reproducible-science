@@ -1,0 +1,14 @@
+slug: arxiv-1807-03341
+title: Troubling Trends in Machine Learning Scholarship
+authors:
+- Lipton, Zachary C.
+- Steinhardt, Jacob
+year: '2019'
+venue: Queue
+doi: ''
+arxiv: '1807.03341'
+url: https://arxiv.org/abs/1807.03341
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: lipton2019troubling

@@ -1,0 +1,13 @@
+slug: doi-10-1162-coli-a-00422
+title: 'Probing Classifiers: Promises, Shortcomings, and Advances'
+authors:
+- Belinkov, Yonatan
+year: ''
+venue: Computational Linguistics
+doi: 10.1162/coli_a_00422
+arxiv: ''
+url: https://doi.org/10.1162/coli_a_00422
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: belinkov2022probing
