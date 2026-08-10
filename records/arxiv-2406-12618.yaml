@@ -7,11 +7,11 @@ authors:
 - Dietrich Klakow
 - Mor Geva
 year: '2024'
-venue: arXiv:2406.12618, 2024.
+venue: arXiv preprint
 doi: ''
 arxiv: '2406.12618'
 et_al: false
-url: ''
+url: https://arxiv.org/abs/2406.12618
 sha256: ''
 cited_by:
   mechanistic-views:

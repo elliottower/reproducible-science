@@ -3,11 +3,11 @@ title: Harmful intent as a geometrically recoverable feature of LLM residual str
 authors:
 - Isaac Llorente-Saguer.
 year: '2026'
-venue: arXiv:2604.18901, 2026.
+venue: arXiv preprint
 doi: ''
 arxiv: '2604.18901'
 et_al: false
-url: ''
+url: https://arxiv.org/abs/2604.18901
 sha256: ''
 cited_by:
   mechanistic-views:

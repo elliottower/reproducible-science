@@ -7,11 +7,11 @@ authors:
 - Gilbert Tok
 - Dylan Hadfield-Menell
 year: '2024'
-venue: arXiv:2401.14446, 2024.
+venue: arXiv preprint
 doi: ''
 arxiv: '2401.14446'
 et_al: false
-url: ''
+url: https://arxiv.org/abs/2401.14446
 sha256: ''
 cited_by:
   mechanistic-views:

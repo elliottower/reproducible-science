@@ -7,11 +7,11 @@ authors:
 - Abulhair Saparov
 - Ziyu Yao
 year: '2024'
-venue: arXiv:2407.02646, 2024.
+venue: arXiv preprint
 doi: ''
 arxiv: '2407.02646'
 et_al: false
-url: ''
+url: https://arxiv.org/abs/2407.02646
 sha256: ''
 cited_by:
   mechanistic-views:
