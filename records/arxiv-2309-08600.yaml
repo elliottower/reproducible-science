@@ -12,7 +12,8 @@ doi: ''
 arxiv: '2309.08600'
 et_al: false
 url: https://arxiv.org/abs/2309.08600
-sha256: ''
+sha256: 0475237e835c07738a74b2f372f0b7aa33ac047dce6affd49bb750dc4009e661
+local: reference/cunningham_2023_sparse_autoencoders.pdf
 cited_by:
   mechanistic-validity:
     key: cunningham2023sparse

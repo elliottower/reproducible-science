@@ -10,6 +10,7 @@ arxiv: '2502.14010'
 et_al: false
 url: https://arxiv.org/abs/2502.14010
 sha256: aec75ecc22d1fbdfcaab9244ea4303ed09ece7310ac2f3130c82c0ae8b7006fc
+local: reference/yin_2025_which_heads.pdf
 cited_by:
   mechanistic-validity:
     key: yin2025which

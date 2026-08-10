@@ -12,6 +12,7 @@ arxiv: ''
 et_al: false
 url: https://doi.org/10.1198/jasa.2009.ap08746
 sha256: ''
+local: ''
 cited_by:
   mechanistic-validity:
     key: abadie2010synthetic

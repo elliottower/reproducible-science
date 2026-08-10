@@ -12,6 +12,7 @@ arxiv: '2509.26560'
 et_al: false
 url: ''
 sha256: ''
+local: ''
 cited_by:
   neural-geometry-reliability:
     key: chung2026dimensionality

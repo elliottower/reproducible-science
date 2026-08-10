@@ -16,6 +16,7 @@ arxiv: ''
 et_al: false
 url: https://dandiarchive.org/dandiset/000007
 sha256: ''
+local: ''
 cited_by:
   neural-geometry-reliability:
     key: dandi000007

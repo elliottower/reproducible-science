@@ -23,7 +23,8 @@ doi: ''
 arxiv: ''
 et_al: false
 url: https://transformer-circuits.pub/2026/workspace/index.html
-sha256: ''
+sha256: c906bd5972ed69e583354377968a50d93006bcf818c199f52c181a40c75ecde8
+local: reference/gurnee_2026_workspace.pdf
 cited_by:
   mechanistic-validity:
     key: gurnee2026verbalizable

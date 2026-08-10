@@ -9,7 +9,8 @@ doi: ''
 arxiv: ''
 et_al: false
 url: https://www.alignmentforum.org/posts/u6KXXmKFbXfWzoAXn/a-circuit-for-python-docstrings-in-a-4-layer-attention-only
-sha256: ''
+sha256: ff2852e43bc89b3725923e23514f1108b99e311a701e0aece2f6d230566c1f24
+local: reference/heimersheim_2023_docstring.txt
 cited_by:
   mechanistic-validity:
     key: heimersheim2023docstring

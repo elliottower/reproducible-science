@@ -14,6 +14,7 @@ arxiv: ''
 et_al: false
 url: https://doi.org/10.1038/s41380-022-01661-0
 sha256: ''
+local: ''
 cited_by:
   mechanistic-validity:
     key: moncrieff2023serotonin

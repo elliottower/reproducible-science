@@ -11,6 +11,7 @@ arxiv: '2505.03530'
 et_al: false
 url: ''
 sha256: ''
+local: ''
 cited_by:
   neural-geometry-reliability:
     key: martinez2025vae_circuits

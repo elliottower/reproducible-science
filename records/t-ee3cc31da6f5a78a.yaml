@@ -11,7 +11,8 @@ doi: ''
 arxiv: ''
 et_al: false
 url: https://arxiv.org/abs/2305.00586
-sha256: ''
+sha256: c23636a032c05443bd82984c6e8949d1b24f8b84ae4afa3a9ca634abbc7d15d1
+local: reference/hanna_2023_greater_than.pdf
 cited_by:
   mechanistic-validity:
     key: hanna2023greater

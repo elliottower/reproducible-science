@@ -31,6 +31,7 @@ arxiv: ''
 et_al: false
 url: https://github.com/aaronmueller/MIB
 sha256: ''
+local: ''
 cited_by:
   mechanistic-views:
     key: mib2025

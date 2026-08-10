@@ -34,6 +34,7 @@ arxiv: ''
 et_al: false
 url: https://transformer-circuits.pub/2024/scaling-monosemanticity/index.html
 sha256: ''
+local: ''
 cited_by:
   mechanistic-validity:
     key: templeton2024scaling

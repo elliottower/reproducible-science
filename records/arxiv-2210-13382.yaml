@@ -13,7 +13,8 @@ doi: ''
 arxiv: '2210.13382'
 et_al: false
 url: https://arxiv.org/abs/2210.13382
-sha256: ''
+sha256: 3a64ec2e9610837e577578397e7fd8b6bb49adbe60bed026a496a94356866391
+local: reference/li_2023_othello.pdf
 cited_by:
   mechanistic-validity:
     key: li2023othello

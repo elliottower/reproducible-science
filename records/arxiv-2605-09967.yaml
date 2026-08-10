@@ -11,6 +11,7 @@ arxiv: '2605.09967'
 et_al: false
 url: https://arxiv.org/abs/2605.09967
 sha256: ''
+local: ''
 cited_by:
   mechanistic-validity:
     key: lee2026tensor

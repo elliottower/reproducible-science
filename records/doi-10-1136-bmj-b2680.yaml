@@ -9,6 +9,7 @@ arxiv: ''
 et_al: false
 url: https://doi.org/10.1136/bmj.b2680
 sha256: ''
+local: ''
 cited_by:
   mechanistic-validity:
     key: greenberg2009citation

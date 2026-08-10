@@ -12,6 +12,7 @@ arxiv: ''
 et_al: false
 url: ''
 sha256: ''
+local: ''
 cited_by:
   neural-geometry-reliability:
     key: williams2021generalized

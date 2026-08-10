@@ -16,6 +16,7 @@ arxiv: '2502.04878'
 et_al: false
 url: https://arxiv.org/abs/2502.04878
 sha256: 27d45ba26a8ec59d99cd752559b387ead0bbbca635a5f0bcb6730a0c49a4195e
+local: reference/leask_2025_canonical_units.pdf
 cited_by:
   mechanistic-validity:
     key: leask2025canonical

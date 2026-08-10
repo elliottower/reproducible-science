@@ -9,6 +9,7 @@ arxiv: ''
 et_al: false
 url: https://doi.org/10.1257/jep.29.3.61
 sha256: ''
+local: ''
 cited_by:
   mechanistic-validity:
     key: olken2015promises
