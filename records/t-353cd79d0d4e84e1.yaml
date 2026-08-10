@@ -11,8 +11,9 @@ venue: ICLR
 doi: ''
 arxiv: ''
 et_al: false
-url: ''
-sha256: ''
+url: https://arxiv.org/abs/2211.00593
+sha256: af0ea3ca3912f819d2cd06b0f36f5c20bfcab72fbc83816d830c286af6872c91
+local: reference/wang_2023_ioi.pdf
 cited_by:
   mechanistic-validity:
     key: wang2023interpretability

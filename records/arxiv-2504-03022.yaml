@@ -12,6 +12,7 @@ arxiv: '2504.03022'
 et_al: false
 url: https://arxiv.org/abs/2504.03022
 sha256: 3b2d679275120a3ed2dd4d1df5ffb9ddf1570f9cd4ceab60b9888d7b187990e8
+local: reference/feucht_2025_dual_route.pdf
 cited_by:
   mechanistic-validity:
     key: feucht2025dual

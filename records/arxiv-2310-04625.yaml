@@ -12,7 +12,8 @@ doi: ''
 arxiv: '2310.04625'
 et_al: false
 url: https://arxiv.org/abs/2310.04625
-sha256: ''
+sha256: a0dc617f897adeb92bb476ab80c0c2722fb5ad58453cbc578c99e7dbd4dc62e3
+local: reference/mcdougall_2023_copy_suppression.pdf
 cited_by:
   mechanistic-validity:
     key: mcdougall2023copy

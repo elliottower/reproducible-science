@@ -11,6 +11,7 @@ arxiv: ''
 et_al: false
 url: https://doi.org/10.1214/10-STS321
 sha256: ''
+local: ''
 cited_by:
   mechanistic-validity:
     key: imai2010identification

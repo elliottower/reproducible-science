@@ -9,6 +9,7 @@ arxiv: ''
 et_al: false
 url: https://doi.org/10.1002/sim.4780080407
 sha256: ''
+local: ''
 cited_by:
   mechanistic-validity:
     key: prentice1989surrogate

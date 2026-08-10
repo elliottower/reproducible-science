@@ -207,6 +207,27 @@ def contributions() -> dict[str, dict[str, dict]]:
     return got
 
 
+def enrich_from_claims(entries: dict[str, dict]) -> None:
+    """Pull the pinned artifact out of each audited claim record.
+
+    The sixteen audited papers record their source PDF and its sha256 in claims/, which is
+    where the quote gate reads it from. Those are the artifacts actually read, so they are the
+    ones worth linking.
+    """
+    d = PAPERS["mechanistic-validity"].get("claims")
+    if not d or not d.exists():
+        return
+    for p in d.glob("*.yaml"):
+        r = yaml.safe_load(p.read_text()) or {}
+        s = r.get("source") or {}
+        e = entries.get(s.get("citation"))
+        if not e:
+            continue
+        for k in ("local", "sha256", "url"):
+            if s.get(k) and not e.get(k):
+                e[k] = s[k]
+
+
 def enrich_from_validity(entries: dict[str, dict]) -> None:
     """Fold in the url/doi/sha256 already resolved in mechanistic-validity's sources/."""
     d = PAPERS["mechanistic-validity"].get("sources")
@@ -257,6 +278,7 @@ def main() -> int:
     for name, entries in got.items():
         print(f"  {name:<24}{len(entries):>4} entries")
     enrich_from_validity(got.get("mechanistic-validity", {}))
+    enrich_from_claims(got.get("mechanistic-validity", {}))
 
     merged: dict[str, dict] = {}
     for paper, entries in got.items():
@@ -266,9 +288,10 @@ def main() -> int:
                 "slug": s, "title": e["title"], "authors": e["authors"], "year": e["year"],
                 "venue": e["venue"], "doi": e.get("doi", ""), "arxiv": e.get("arxiv", ""),
                 "et_al": e.get("et_al", False),
-                "url": e.get("url", ""), "sha256": e.get("sha256", ""), "cited_by": {},
+                "url": e.get("url", ""), "sha256": e.get("sha256", ""),
+                "local": e.get("local", ""), "cited_by": {},
             })
-            for k in ("doi", "arxiv", "url", "sha256", "venue"):
+            for k in ("doi", "arxiv", "url", "sha256", "venue", "local"):
                 if e.get(k) and not rec.get(k):
                     rec[k] = e[k]
             if len(e["authors"]) > len(rec["authors"]):

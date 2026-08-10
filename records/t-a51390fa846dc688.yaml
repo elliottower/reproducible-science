@@ -10,6 +10,7 @@ arxiv: ''
 et_al: false
 url: https://www.nobelprize.org/prizes/economic-sciences/2021/press-release/
 sha256: ''
+local: ''
 cited_by:
   mechanistic-validity:
     key: nobel2021economic

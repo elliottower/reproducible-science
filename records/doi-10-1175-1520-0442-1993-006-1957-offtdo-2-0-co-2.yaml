@@ -9,6 +9,7 @@ arxiv: ''
 et_al: false
 url: https://doi.org/10.1175/1520-0442(1993)006<1957:offtdo>2.0.co;2
 sha256: ''
+local: ''
 cited_by:
   mechanistic-validity:
     key: hasselmann1993optimal

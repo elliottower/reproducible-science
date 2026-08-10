@@ -17,6 +17,7 @@ arxiv: ''
 et_al: true
 url: ''
 sha256: ''
+local: ''
 cited_by:
   neural-geometry-reliability:
     key: siegle2021survey

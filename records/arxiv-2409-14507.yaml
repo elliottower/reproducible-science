@@ -14,6 +14,7 @@ arxiv: '2409.14507'
 et_al: false
 url: https://arxiv.org/abs/2409.14507
 sha256: fc4175d560e35e2a36d41924ed35d0be791fab555e851df1aea656a14410e6ef
+local: reference/chanin_2024_feature_absorption.pdf
 cited_by:
   mechanistic-validity:
     key: chanin2024absorption

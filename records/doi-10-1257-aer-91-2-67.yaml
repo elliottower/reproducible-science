@@ -10,6 +10,7 @@ arxiv: ''
 et_al: false
 url: https://doi.org/10.1257/aer.91.2.67
 sha256: ''
+local: ''
 cited_by:
   mechanistic-validity:
     key: bertrand2001people

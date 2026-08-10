@@ -13,7 +13,8 @@ doi: ''
 arxiv: '2104.08696'
 et_al: false
 url: https://arxiv.org/abs/2104.08696
-sha256: ''
+sha256: 7b297c75bae91e9b61d20f195522a3997f6eb640ff87bf66d3fbeb76d52d43af
+local: reference/dai_2022_knowledge_neurons.pdf
 cited_by:
   mechanistic-validity:
     key: dai2022knowledge

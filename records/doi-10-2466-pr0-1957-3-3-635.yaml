@@ -9,6 +9,7 @@ arxiv: ''
 et_al: false
 url: https://doi.org/10.2466/pr0.1957.3.3.635
 sha256: ''
+local: ''
 cited_by:
   mechanistic-validity:
     key: loevinger1957objective

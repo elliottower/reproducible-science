@@ -18,6 +18,7 @@ arxiv: ''
 et_al: false
 url: https://doi.org/10.1186/s13063-019-3173-2
 sha256: ''
+local: ''
 cited_by:
   mechanistic-validity:
     key: goldacre2019compare

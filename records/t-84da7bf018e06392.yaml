@@ -18,6 +18,7 @@ arxiv: ''
 et_al: false
 url: https://www.ipcc.ch/report/ar4/wg1/understanding-and-attributing-climate-change/
 sha256: ''
+local: ''
 cited_by:
   mechanistic-validity:
     key: hegerl2007understanding

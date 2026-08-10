@@ -11,6 +11,7 @@ arxiv: ''
 et_al: false
 url: https://unicog.org/wp_2025/wp-content/uploads/2026/07/Dehaene-and-Naccache-Workspace-commentary-on-Gurnee-Lindsey-June-2026.pdf
 sha256: d202214e25ddff879d5b1a81c494cbc1a5e82af9c67a4b43af1e1d9dd2a3ccd7
+local: reference/anthropic_2026_workspace_external_commentary.pdf
 cited_by:
   mechanistic-validity:
     key: dehaene2026workspacecommentary

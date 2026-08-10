@@ -9,6 +9,7 @@ arxiv: ''
 et_al: false
 url: https://www.cia.gov/resources/csi/books-monographs/psychology-of-intelligence-analysis-2/
 sha256: ''
+local: ''
 cited_by:
   mechanistic-validity:
     key: heuer1999psychology
