@@ -1,0 +1,17 @@
+slug: t-c0d3fea0bd658d57
+title: Similarity of neural network representations revisited
+authors:
+- Kornblith, Simon
+- Norouzi, Mohammad
+- Lee, Honglak
+- Hinton, Geoffrey
+year: '2019'
+venue: International Conference on Machine Learning
+doi: ''
+arxiv: ''
+et_al: false
+url: ''
+sha256: ''
+cited_by:
+  neural-geometry-reliability:
+    key: kornblith2019similarity

@@ -1,0 +1,16 @@
+slug: arxiv-2405-01012
+title: Correcting Biased Centered Kernel Alignment Measures in Biological and Artificial Neural Networks
+authors:
+- Murphy, Callum
+- Zylberberg, Joel
+- Bhatt, Umang
+year: '2024'
+venue: arXiv preprint arXiv:2405.01012
+doi: ''
+arxiv: '2405.01012'
+et_al: false
+url: ''
+sha256: ''
+cited_by:
+  neural-geometry-reliability:
+    key: murphy2024biased

@@ -1,0 +1,14 @@
+slug: arxiv-2606-14388
+title: A Low-Rank Subspace Analysis of LLM Interventions
+authors:
+- Anonymous
+year: '2026'
+venue: arXiv preprint arXiv:2606.14388
+doi: ''
+arxiv: '2606.14388'
+et_al: false
+url: ''
+sha256: ''
+cited_by:
+  neural-geometry-reliability:
+    key: lowrank2026llm

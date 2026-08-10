@@ -15,3 +15,5 @@ sha256: ''
 cited_by:
   mechanistic-reference:
     key: kaufman2014cortical
+  neural-geometry-reliability:
+    key: kaufman2014cortical

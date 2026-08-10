@@ -1,0 +1,17 @@
+slug: arxiv-2305-06329
+title: 'Similarity of neural network models: A survey of functional and representational measures'
+authors:
+- Klabunde, Max
+- Schumacher, Tobias
+- Strohmaier, Markus
+- Lemmerich, Florian
+year: '2023'
+venue: arXiv preprint arXiv:2305.06329
+doi: ''
+arxiv: '2305.06329'
+et_al: false
+url: ''
+sha256: ''
+cited_by:
+  neural-geometry-reliability:
+    key: klabunde2023similarity

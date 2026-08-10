@@ -1,0 +1,20 @@
+slug: t-1c8e2be8ff7ea6e4
+title: Causal discovery from heterogeneous/nonstationary data
+authors:
+- Huang, Biwei
+- Zhang, Kun
+- Zhang, Jiji
+- Ramsey, Joseph
+- Sanchez-Romero, Ruben
+- Glymour, Clark
+- Schölkopf, Bernhard
+year: '2020'
+venue: Journal of Machine Learning Research
+doi: ''
+arxiv: ''
+et_al: false
+url: ''
+sha256: ''
+cited_by:
+  neural-geometry-reliability:
+    key: huang2020causal

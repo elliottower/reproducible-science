@@ -1,0 +1,14 @@
+slug: t-033b82ae07f07191
+title: 'Ripser: efficient computation of Vietoris-Rips persistence barcodes'
+authors:
+- Bauer, Ulrich
+year: '2021'
+venue: Journal of Applied and Computational Topology
+doi: ''
+arxiv: ''
+et_al: false
+url: ''
+sha256: ''
+cited_by:
+  neural-geometry-reliability:
+    key: bauer2021ripser

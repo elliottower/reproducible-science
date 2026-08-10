@@ -1,0 +1,17 @@
+slug: arxiv-2509-26560
+title: Estimating Dimensionality of Neural Representations from Finite Samples
+authors:
+- Chun, Chanwoo
+- Canatar, Abdulkadir
+- Chung, SueYeon
+- Lee, Daniel
+year: '2026'
+venue: International Conference on Learning Representations
+doi: ''
+arxiv: '2509.26560'
+et_al: false
+url: ''
+sha256: ''
+cited_by:
+  neural-geometry-reliability:
+    key: chung2026dimensionality
