@@ -1,0 +1,20 @@
+slug: doi-10-1016-j-jtbi-2016-01-037
+title: 'Measuring Epistasis in Fitness Landscapes: The Correlation of Fitness Effects of Mutations'
+authors:
+- Ferretti, Luca
+- Schmiegelt, Benjamin
+- Weinreich, Daniel
+- Yamauchi, Atsushi
+- Kobayashi, Yutaka
+- Tajima, Fumio
+- Achaz, Guillaume
+year: '2016'
+venue: Journal of Theoretical Biology
+doi: 10.1016/j.jtbi.2016.01.037
+arxiv: ''
+et_al: false
+url: ''
+sha256: ''
+cited_by:
+  epistatic-circuits:
+    key: ferretti2016measuring

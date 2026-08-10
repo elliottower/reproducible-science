@@ -1,0 +1,16 @@
+slug: t-0f75f386c10b5175
+title: Causal Head Gating for Transformer-Based Circuit Discovery
+authors:
+- Chen, Zikang
+- Li, Xin
+- Geiger, Atticus
+year: '2025'
+venue: Advances in Neural Information Processing Systems (NeurIPS)
+doi: ''
+arxiv: ''
+et_al: false
+url: https://arxiv.org/abs/2505.14476
+sha256: ''
+cited_by:
+  epistatic-circuits:
+    key: chen2025causalheadgating

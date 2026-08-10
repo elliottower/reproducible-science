@@ -1,0 +1,17 @@
+slug: arxiv-2405-13536
+title: 'Attention Mechanisms Don''t Learn Additive Models: Rethinking Feature Importance for Transformers'
+authors:
+- Leemann, Tobias
+- Fastowski, Alina
+- Pfeiffer, Felix
+- Kasneci, Gjergji
+year: '2024'
+venue: Transactions on Machine Learning Research
+doi: ''
+arxiv: '2405.13536'
+et_al: false
+url: https://arxiv.org/abs/2405.13536
+sha256: ''
+cited_by:
+  epistatic-circuits:
+    key: leemann2024slalom
