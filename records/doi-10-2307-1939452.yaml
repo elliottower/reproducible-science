@@ -1,0 +1,15 @@
+slug: doi-10-2307-1939452
+title: 'Perturbation experiments in community ecology: theory and practice'
+authors:
+- Bender, Edward A.
+- Case, Ted J.
+- Gilpin, Michael E.
+year: '1984'
+venue: Ecology
+doi: 10.2307/1939452
+arxiv: ''
+url: https://doi.org/10.2307/1939452
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: bender1984perturbation

@@ -1,0 +1,22 @@
+slug: doi-10-1186-s12915-014-0087-z
+title: Reagent and laboratory contamination can critically impact sequence-based microbiome analyses
+authors:
+- Salter, Susannah J.
+- Cox, Michael J.
+- Turek, Elena M.
+- Calus, Szymon T.
+- Cookson, William O.
+- Moffatt, Miriam F.
+- Turner, Paul
+- Parkhill, Julian
+- Loman, Nicholas J.
+- Walker, Alan W.
+year: '2014'
+venue: BMC Biology
+doi: 10.1186/s12915-014-0087-z
+arxiv: ''
+url: https://doi.org/10.1186/s12915-014-0087-z
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: salter2014reagent

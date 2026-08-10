@@ -1,0 +1,38 @@
+slug: t-65568cc47cb13f84
+title: 'Scaling Monosemanticity: Extracting Interpretable Features from Claude 3 Sonnet'
+authors:
+- Templeton, Adly
+- Conerly, Tom
+- Marcus, Jonathan
+- Lindsey, Jack
+- Bricken, Trenton
+- Chen, Brian
+- Pearce, Adam
+- Citro, Craig
+- Ameisen, Emmanuel
+- Jones, Andy
+- Cunningham, Hoagy
+- Turner, Nicholas L.
+- McDougall, Callum
+- MacDiarmid, Monte
+- Tamkin, Alex
+- Durmus, Esin
+- Hume, Tristan
+- Mosconi, Francesco
+- Freeman, C. Daniel
+- Sumers, Theodore R.
+- Rees, Edward
+- Batson, Joshua
+- Jermyn, Adam
+- Carter, Shan
+- Olah, Chris
+- Henighan, Tom
+year: '2024'
+venue: Transformer Circuits Thread
+doi: ''
+arxiv: ''
+url: https://transformer-circuits.pub/2024/scaling-monosemanticity/index.html
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: templeton2024scaling

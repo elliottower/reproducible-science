@@ -1,0 +1,17 @@
+slug: t-5978aaac59c88616
+title: Mass-Editing Memory in a Transformer
+authors:
+- Meng, Kevin
+- Sharma, Arnab Sen
+- Andonian, Alex
+- Belinkov, Yonatan
+- Bau, David
+year: '2023'
+venue: ICLR
+doi: ''
+arxiv: ''
+url: ''
+sha256: ''
+cited_by:
+  mechanistic-reference:
+    key: meng2023massediting

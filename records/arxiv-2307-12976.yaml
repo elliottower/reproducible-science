@@ -1,0 +1,17 @@
+slug: arxiv-2307-12976
+title: Evaluating the ripple effects of knowledge editing in language models
+authors:
+- Roi Cohen
+- Eden Biran
+- Ori Yoran
+- Amir Globerson
+- Mor Geva.
+year: '2024'
+venue: Transactions of the Association for Computational Linguistics, 2024.
+doi: ''
+arxiv: '2307.12976'
+url: ''
+sha256: ''
+cited_by:
+  mechanistic-views:
+    key: cohen2023ripple

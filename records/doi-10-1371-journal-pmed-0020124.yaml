@@ -1,0 +1,13 @@
+slug: doi-10-1371-journal-pmed-0020124
+title: Why Most Published Research Findings Are False
+authors:
+- Ioannidis, John P. A.
+year: ''
+venue: PLoS Medicine
+doi: 10.1371/journal.pmed.0020124
+arxiv: ''
+url: https://doi.org/10.1371/journal.pmed.0020124
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: ioannidis2005most

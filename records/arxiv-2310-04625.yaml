@@ -1,0 +1,19 @@
+slug: arxiv-2310-04625
+title: 'Copy Suppression: Comprehensively Understanding an Attention Head'
+authors:
+- McDougall, Callum
+- Conmy, Arthur
+- Rushing, Cody
+- McGrath, Thomas
+- Nanda, Neel
+year: '2023'
+venue: arXiv preprint arXiv:2310.04625
+doi: ''
+arxiv: '2310.04625'
+url: https://arxiv.org/abs/2310.04625
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: mcdougall2023copy
+  mechanistic-views:
+    key: mcdougall2023

@@ -1,0 +1,17 @@
+slug: arxiv-2305-04388
+title: 'Language Models Don''t Always Say What They Think: Unfaithful Explanations in Chain-of-Thought
+  Prompting'
+authors:
+- Turpin, Miles
+- Michael, Julian
+- Perez, Ethan
+- Bowman, Samuel R.
+year: '2023'
+venue: NeurIPS
+doi: ''
+arxiv: '2305.04388'
+url: https://arxiv.org/abs/2305.04388
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: turpin2024unfaithful

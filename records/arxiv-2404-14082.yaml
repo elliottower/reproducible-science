@@ -1,0 +1,14 @@
+slug: arxiv-2404-14082
+title: 'Mechanistic interpretability for AI safety: A review'
+authors:
+- Leonard Bereska
+- Efstratios Gavves.
+year: '2024'
+venue: Transactions on Machine Learning Research, 2024.
+doi: ''
+arxiv: '2404.14082'
+url: ''
+sha256: ''
+cited_by:
+  mechanistic-views:
+    key: bereska2024

@@ -1,0 +1,16 @@
+slug: arxiv-2102-13249
+title: Chess as a Testbed for Language Model State Tracking
+authors:
+- Toshniwal, Shubham
+- Wiseman, Sam
+- Livescu, Karen
+- Gimpel, Kevin
+year: '2022'
+venue: Proceedings of the AAAI Conference on Artificial Intelligence
+doi: ''
+arxiv: '2102.13249'
+url: https://arxiv.org/abs/2102.13249
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: toshniwal2022chess

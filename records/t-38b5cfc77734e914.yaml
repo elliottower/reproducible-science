@@ -1,0 +1,17 @@
+slug: t-38b5cfc77734e914
+title: 'Detecting edit failures in large language models: An improved specificity benchmark'
+authors:
+- Jason H"olscher-Obermaier
+- Julia Persson
+- Esben Kran
+- Ioannis Konstas
+- Fazl Barez.
+year: '2023'
+venue: In Findings of ACL, 2023.
+doi: ''
+arxiv: ''
+url: ''
+sha256: ''
+cited_by:
+  mechanistic-views:
+    key: hoelscher2023

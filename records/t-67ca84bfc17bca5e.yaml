@@ -1,0 +1,17 @@
+slug: t-67ca84bfc17bca5e
+title: 'Inference-time intervention: Eliciting truthful answers from a language model'
+authors:
+- Kenneth Li
+- Oam Patel
+- Fernanda Vi'egas
+- Hanspeter Pfister
+- Martin Wattenberg.
+year: '2023'
+venue: In Advances in Neural Information Processing Systems (NeurIPS), 2023.
+doi: ''
+arxiv: ''
+url: ''
+sha256: ''
+cited_by:
+  mechanistic-views:
+    key: li2023iti

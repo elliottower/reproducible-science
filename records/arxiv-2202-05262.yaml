@@ -1,0 +1,16 @@
+slug: arxiv-2202-05262
+title: Locating and Editing Factual Associations in GPT
+authors:
+- Meng, Kevin
+- Bau, David
+- Andonian, Alex
+- Belinkov, Yonatan
+year: '2022'
+venue: NeurIPS
+doi: ''
+arxiv: '2202.05262'
+url: https://arxiv.org/abs/2202.05262
+sha256: d7c17f896cca512fb258261421b073baa6f4e6e44b6bb7ada5c90185f423054a
+cited_by:
+  mechanistic-validity:
+    key: meng2022locating

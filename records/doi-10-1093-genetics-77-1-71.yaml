@@ -1,0 +1,13 @@
+slug: doi-10-1093-genetics-77-1-71
+title: The Genetics of Caenorhabditis elegans
+authors:
+- Brenner, Sydney
+year: '1974'
+venue: Genetics
+doi: 10.1093/genetics/77.1.71
+arxiv: ''
+url: https://doi.org/10.1093/genetics/77.1.71
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: brenner1974genetics

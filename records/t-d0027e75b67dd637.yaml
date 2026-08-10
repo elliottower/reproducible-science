@@ -1,0 +1,16 @@
+slug: t-d0027e75b67dd637
+title: 'Towards Monosemanticity: Decomposing Language Models with Dictionary Learning'
+authors:
+- Bricken, Trenton
+- Templeton, Adly
+- Batson, Joshua
+- others
+year: '2023'
+venue: Transformer Circuits Thread
+doi: ''
+arxiv: ''
+url: ''
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: bricken2024monosemanticity

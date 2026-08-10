@@ -1,0 +1,17 @@
+slug: arxiv-2210-01892
+title: Polysemanticity and Capacity in Neural Networks
+authors:
+- Scherlis, Adam
+- Sachan, Kshitij
+- Jermyn, Adam S.
+- Benton, Joe
+- Shlegeris, Buck
+year: '2022'
+venue: arXiv preprint
+doi: ''
+arxiv: '2210.01892'
+url: https://arxiv.org/abs/2210.01892
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: scherlis2022polysemanticity

@@ -1,0 +1,15 @@
+slug: arxiv-2312-10770
+title: Identification of Knowledge Neurons in Protein Language Models
+authors:
+- Nori, Divya
+- Singireddy, Shivali
+- Ten Have, Marina
+year: '2023'
+venue: arXiv preprint
+doi: ''
+arxiv: '2312.10770'
+url: https://arxiv.org/abs/2312.10770
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: nori2023identification

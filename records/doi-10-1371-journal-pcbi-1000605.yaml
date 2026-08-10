@@ -1,0 +1,16 @@
+slug: doi-10-1371-journal-pcbi-1000605
+title: 'Annotation Error in Public Databases: Misannotation of Molecular Function in Enzyme Superfamilies'
+authors:
+- Schnoes, Alexandra M.
+- Brown, Shoshana D.
+- Dodevski, Igor
+- Babbitt, Patricia C.
+year: '2009'
+venue: PLoS Computational Biology
+doi: 10.1371/journal.pcbi.1000605
+arxiv: ''
+url: https://doi.org/10.1371/journal.pcbi.1000605
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: schnoes2009annotation

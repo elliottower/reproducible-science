@@ -1,0 +1,17 @@
+slug: doi-10-1038-nn1525
+title: Millisecond-timescale, genetically targeted optical control of neural activity
+authors:
+- Boyden, Edward S.
+- Zhang, Feng
+- Bamberg, Ernst
+- Nagel, Georg
+- Deisseroth, Karl
+year: '2005'
+venue: Nature Neuroscience
+doi: 10.1038/nn1525
+arxiv: ''
+url: https://doi.org/10.1038/nn1525
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: boyden2005millisecond

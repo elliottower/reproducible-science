@@ -1,0 +1,16 @@
+slug: arxiv-2410-21272
+title: 'Arithmetic Without Algorithms: Language Models Solve Math with a Bag of Heuristics'
+authors:
+- Nikankin, Yaniv
+- Reusch, Anja
+- Mueller, Aaron
+- Belinkov, Yonatan
+year: '2025'
+venue: International Conference on Learning Representations (ICLR)
+doi: ''
+arxiv: '2410.21272'
+url: https://arxiv.org/abs/2410.21272
+sha256: 8d141b698112693010f1183292cbd8f954108f22e4f1d1def465833d7f678410
+cited_by:
+  mechanistic-validity:
+    key: nikankin2025

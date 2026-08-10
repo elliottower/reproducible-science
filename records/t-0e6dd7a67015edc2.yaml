@@ -1,0 +1,14 @@
+slug: t-0e6dd7a67015edc2
+title: A Circuit for Python Docstrings in a 4-Layer Attention-Only Transformer
+authors:
+- Heimersheim, Stefan
+- Janiak, Jett
+year: '2023'
+venue: Alignment Forum
+doi: ''
+arxiv: ''
+url: https://www.alignmentforum.org/posts/u6KXXmKFbXfWzoAXn/a-circuit-for-python-docstrings-in-a-4-layer-attention-only
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: heimersheim2023docstring

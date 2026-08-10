@@ -1,0 +1,23 @@
+slug: doi-10-52202-075280-2020
+title: Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena
+authors:
+- Zheng, Lianmin
+- Chiang, Wei-Lin
+- Sheng, Ying
+- Zhuang, Siyuan
+- Wu, Zhanghao
+- Zhuang, Yonghao
+- Lin, Zi
+- Li, Zhuohan
+- Li, Dacheng
+- Xing, Eric P.
+- others
+year: '2023'
+venue: NeurIPS
+doi: 10.52202/075280-2020
+arxiv: ''
+url: https://doi.org/10.52202/075280-2020
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: zheng2023judging

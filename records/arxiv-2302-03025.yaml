@@ -1,0 +1,15 @@
+slug: arxiv-2302-03025
+title: 'A Toy Model of Universality: Reverse Engineering How Networks Learn Group Operations'
+authors:
+- Chughtai, Bilal
+- Chan, Lawrence
+- Nanda, Neel
+year: '2023'
+venue: International Conference on Machine Learning (ICML)
+doi: ''
+arxiv: '2302.03025'
+url: https://arxiv.org/abs/2302.03025
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: chughtai2023toy

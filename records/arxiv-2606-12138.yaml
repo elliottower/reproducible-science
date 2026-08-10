@@ -1,0 +1,20 @@
+slug: arxiv-2606-12138
+title: 'Unstable Features, Reproducible Subspaces: Understanding Seed Dependence in Sparse Autoencoders'
+authors:
+- Gerasimov, Gleb
+- Rusalev, Timofei
+- Balagansky, Nikita
+- Laptev, Daniil
+- Kurochkin, Vadim
+- Gavrilov, Daniil
+year: '2026'
+venue: arXiv preprint
+doi: ''
+arxiv: '2606.12138'
+url: https://arxiv.org/abs/2606.12138
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: gerasimov2026unstable
+  mechanistic-views:
+    key: gerasimov2026

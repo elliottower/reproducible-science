@@ -1,0 +1,16 @@
+slug: arxiv-2501-14457
+title: Understanding and Mitigating Gender Bias in LLMs via Interpretable Neuron Editing
+authors:
+- Yu, Zeping
+- Ananiadou, Sophia
+year: '2025'
+venue: arXiv preprint
+doi: ''
+arxiv: '2501.14457'
+url: https://arxiv.org/abs/2501.14457
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: yu2025gender
+  mechanistic-reference:
+    key: yu2025gender

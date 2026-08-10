@@ -1,0 +1,23 @@
+slug: arxiv-2404-09932
+title: Foundational challenges in assuring alignment and safety of large language models
+authors:
+- Usman Anwar
+- Abulhair Saparov
+- Javier Rando
+- Daniel Paleka
+- Miles Turpin
+- Peter Hase
+- Ekdeep~Singh Lubana
+- Erik Jenner
+- Stephen Casper
+- Oliver Sourbut
+- et~al.
+year: '2024'
+venue: Transactions on Machine Learning Research, 2024.
+doi: ''
+arxiv: '2404.09932'
+url: ''
+sha256: ''
+cited_by:
+  mechanistic-views:
+    key: anwar2024

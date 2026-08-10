@@ -1,0 +1,18 @@
+slug: arxiv-2501-17727
+title: Automated Interpretability Metrics Do Not Distinguish Trained and Random Transformers
+authors:
+- Heap, Thomas
+- Lawson, Tim
+- Farnik, Lucy
+- Aitchison, Laurence
+year: '2025'
+venue: arXiv preprint
+doi: ''
+arxiv: '2501.17727'
+url: https://arxiv.org/abs/2501.17727
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: heap2025sparse
+  mechanistic-views:
+    key: heap2025

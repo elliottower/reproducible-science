@@ -1,0 +1,17 @@
+slug: arxiv-2301-05217
+title: Progress Measures for Grokking via Mechanistic Interpretability
+authors:
+- Nanda, Neel
+- Chan, Lawrence
+- Lieberum, Tom
+- Smith, Jess
+- Steinhardt, Jacob
+year: '2023'
+venue: arXiv preprint arXiv:2301.05217
+doi: ''
+arxiv: '2301.05217'
+url: ''
+sha256: ''
+cited_by:
+  mechanistic-reference:
+    key: nanda2023progress

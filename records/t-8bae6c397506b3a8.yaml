@@ -1,0 +1,16 @@
+slug: t-8bae6c397506b3a8
+title: 'The non-linear representation dilemma: Is causal abstraction enough for mechanistic interpretability?'
+authors:
+- Denis Sutter
+- Julian Minder
+- Thomas Hofmann
+- Tiago Pimentel.
+year: '2025'
+venue: In Advances in Neural Information Processing Systems (NeurIPS), 2025.
+doi: ''
+arxiv: ''
+url: ''
+sha256: ''
+cited_by:
+  mechanistic-views:
+    key: sutter2025

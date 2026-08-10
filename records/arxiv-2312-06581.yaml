@@ -1,0 +1,16 @@
+slug: arxiv-2312-06581
+title: Grokking Group Multiplication with Cosets
+authors:
+- Stander, Dashiell
+- Yu, Qinan
+- Fan, Honglu
+- Biderman, Stella
+year: '2024'
+venue: International Conference on Machine Learning (ICML)
+doi: ''
+arxiv: '2312.06581'
+url: https://arxiv.org/abs/2312.06581
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: stander2023grokking

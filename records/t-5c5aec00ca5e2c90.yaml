@@ -1,0 +1,15 @@
+slug: t-5c5aec00ca5e2c90
+title: Transformer circuit faithfulness metrics are not robust
+authors:
+- Joseph Miller
+- Bilal Chughtai
+- William Saunders.
+year: '2024'
+venue: In Conference on Language Modeling (COLM), 2024.
+doi: ''
+arxiv: ''
+url: ''
+sha256: ''
+cited_by:
+  mechanistic-views:
+    key: miller2024

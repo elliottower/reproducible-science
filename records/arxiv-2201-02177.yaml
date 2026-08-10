@@ -1,0 +1,17 @@
+slug: arxiv-2201-02177
+title: 'Grokking: Generalization beyond overfitting on small algorithmic datasets'
+authors:
+- Alethea Power
+- Yuri Burda
+- Harri Edwards
+- Igor Babuschkin
+- Vedant Misra.
+year: '2022'
+venue: arXiv:2201.02177, 2022.
+doi: ''
+arxiv: '2201.02177'
+url: ''
+sha256: ''
+cited_by:
+  mechanistic-views:
+    key: power2022grokking

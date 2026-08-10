@@ -1,0 +1,18 @@
+slug: t-67c773c18d70401b
+title: Can Language Models Encode Perceptual Structure Without Grounding? A Case Study in Color
+authors:
+- Abdou, Mostafa
+- Kulmizev, Artur
+- Hershcovich, Daniel
+- Frank, Stella
+- Pavlick, Ellie
+- Sogaard, Anders
+year: '2021'
+venue: Proceedings of the 25th Conference on Computational Natural Language Learning (CoNLL)
+doi: ''
+arxiv: ''
+url: https://aclanthology.org/2021.conll-1.9/
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: abdou2021can

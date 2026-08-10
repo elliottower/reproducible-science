@@ -1,0 +1,26 @@
+slug: arxiv-2605-11161
+title: Interpretability Can Be Actionable
+authors:
+- Orgad, Hadas
+- Barez, Fazl
+- Haklay, Tal
+- Lee, Isabelle
+- Mosbach, Marius
+- Reusch, Anja
+- Saphra, Naomi
+- Wallace, Byron
+- Wiegreffe, Sarah
+- Wong, Eric
+- Tenney, Ian
+- Geva, Mor
+year: '2026'
+venue: ICML Workshop on Mechanistic Interpretability
+doi: ''
+arxiv: '2605.11161'
+url: https://arxiv.org/abs/2605.11161
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: orgad2026actionable
+  mechanistic-views:
+    key: orgad2026

@@ -1,0 +1,15 @@
+slug: arxiv-2406-09519
+title: 'Talking heads: Understanding inter-layer communication in transformer language models'
+authors:
+- Jack Merullo
+- Carsten Eickhoff
+- Ellie Pavlick.
+year: '2024'
+venue: In Advances in Neural Information Processing Systems (NeurIPS), 2024.
+doi: ''
+arxiv: '2406.09519'
+url: ''
+sha256: ''
+cited_by:
+  mechanistic-views:
+    key: merullo2024talking

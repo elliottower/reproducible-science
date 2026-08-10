@@ -1,0 +1,15 @@
+slug: arxiv-2405-04156
+title: How Does GPT-2 Predict Acronyms? Extracting and Understanding a Circuit via Mechanistic Interpretability
+authors:
+- Garc'ia-Carrasco, Jorge
+- Mat'e, Alejandro
+- Trujillo, Juan Carlos
+year: '2024'
+venue: AISTATS
+doi: ''
+arxiv: '2405.04156'
+url: https://arxiv.org/abs/2405.04156
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: garcia2024acronym

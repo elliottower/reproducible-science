@@ -1,0 +1,17 @@
+slug: t-e25d5ef43149d175
+title: Progress measures for grokking via mechanistic interpretability
+authors:
+- Neel Nanda
+- Lawrence Chan
+- Tom Lieberum
+- Jess Smith
+- Jacob Steinhardt.
+year: '2023'
+venue: In International Conference on Learning Representations (ICLR), 2023.
+doi: ''
+arxiv: ''
+url: ''
+sha256: ''
+cited_by:
+  mechanistic-views:
+    key: nanda2023grokking

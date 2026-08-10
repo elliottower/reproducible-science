@@ -1,0 +1,18 @@
+slug: arxiv-2308-13198
+title: 'Journey to the Center of the Knowledge Neurons: Discoveries of Language-Independent Knowledge
+  Neurons and Degenerate Knowledge Neurons'
+authors:
+- Chen, Yuheng
+- Cao, Pengfei
+- Chen, Yubo
+- Liu, Kang
+- Zhao, Jun
+year: '2024'
+venue: AAAI Conference on Artificial Intelligence (AAAI)
+doi: ''
+arxiv: '2308.13198'
+url: https://arxiv.org/abs/2308.13198
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: chen2023journey

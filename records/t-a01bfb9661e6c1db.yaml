@@ -1,0 +1,13 @@
+slug: t-a01bfb9661e6c1db
+title: 'Scaling monosemanticity: Extracting interpretable features from Claude 3 Sonnet'
+authors:
+- Adly Templeton et~al.
+year: '2024'
+venue: Anthropic Transformer Circuits Thread, 2024.
+doi: ''
+arxiv: ''
+url: https://transformer-circuits.pub/2024/scaling-monosemanticity
+sha256: ''
+cited_by:
+  mechanistic-views:
+    key: templeton2024

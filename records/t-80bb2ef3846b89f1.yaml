@@ -1,0 +1,16 @@
+slug: t-80bb2ef3846b89f1
+title: Trustworthy AI research agenda
+authors:
+- Schmidt Sciences.
+year: '2026'
+venue: 'urlhttps://www.schmidtsciences.org/trustworthy-ai-research-agenda/, 2026. 38 research questions
+  across three sections. % Source record: references/sources/schmidt_2026/SOURCE.md; annotated copy at
+  % references/open-problem-sources/schmidt_agenda_annotated.pdf. Do not confuse % with the program''s
+  logistics FAQ, which is a different document.'
+doi: ''
+arxiv: ''
+url: https://www.schmidtsciences.org/trustworthy-ai-research-agenda/
+sha256: ''
+cited_by:
+  mechanistic-views:
+    key: schmidt2026

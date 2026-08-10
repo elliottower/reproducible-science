@@ -1,0 +1,15 @@
+slug: arxiv-2310-06824
+title: 'The Geometry of Truth: Emergent Linear Structure in Large Language Model Representations of True/False
+  Datasets'
+authors:
+- Marks, Samuel
+- Tegmark, Max
+year: '2024'
+venue: Conference on Language Modeling (COLM)
+doi: ''
+arxiv: '2310.06824'
+url: https://arxiv.org/abs/2310.06824
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: marks2024geometry

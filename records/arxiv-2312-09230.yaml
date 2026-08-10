@@ -1,0 +1,18 @@
+slug: arxiv-2312-09230
+title: 'Successor Heads: Recurring, Interpretable Attention Heads In The Wild'
+authors:
+- Gould, Rhys
+- Ong, Euan
+- Ogden, George
+- Conmy, Arthur
+year: '2023'
+venue: arXiv preprint arXiv:2312.09230
+doi: ''
+arxiv: '2312.09230'
+url: https://arxiv.org/abs/2312.09230
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: gould2023successor
+  mechanistic-views:
+    key: gould2023successor

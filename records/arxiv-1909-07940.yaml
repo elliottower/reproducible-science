@@ -1,0 +1,18 @@
+slug: arxiv-1909-07940
+title: Do NLP Models Know Numbers? Probing Numeracy in Embeddings
+authors:
+- Wallace, Eric
+- Wang, Yizhong
+- Li, Sujian
+- Singh, Sameer
+- Gardner, Matt
+year: '2019'
+venue: Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the
+  9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)
+doi: ''
+arxiv: '1909.07940'
+url: https://aclanthology.org/D19-1534/
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: wallace2019nlp

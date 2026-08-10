@@ -1,0 +1,17 @@
+slug: t-e8d1a46d13e92489
+title: Finding alignments between interpretable causal variables and distributed neural representations
+authors:
+- Atticus Geiger
+- Zhengxuan Wu
+- Christopher Potts
+- Thomas Icard
+- Noah D. Goodman.
+year: '2024'
+venue: In Conference on Causal Learning and Reasoning (CLeaR), 2024.
+doi: ''
+arxiv: ''
+url: ''
+sha256: ''
+cited_by:
+  mechanistic-views:
+    key: geiger2024

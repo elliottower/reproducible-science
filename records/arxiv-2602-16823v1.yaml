@@ -1,0 +1,15 @@
+slug: arxiv-2602-16823v1
+title: 'Formal Mechanistic Interpretability: Automated Circuit Discovery with Provable Guarantees'
+authors:
+- Hadad, Itamar
+- Katz, Guy
+- Bassan, Shahaf
+year: '2026'
+venue: ICLR
+doi: ''
+arxiv: 2602.16823v1
+url: https://arxiv.org/abs/2602.16823v1
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: hadad2026formal

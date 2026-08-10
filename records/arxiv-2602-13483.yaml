@@ -1,0 +1,20 @@
+slug: arxiv-2602-13483
+title: Finding Interpretable Prompt-Specific Circuits in Language Models
+authors:
+- Franco, Gabriel
+- Tassis, Lucas M.
+- Rohr, Azalea
+- Crovella, Mark
+year: '2026'
+venue: arXiv preprint
+doi: ''
+arxiv: '2602.13483'
+url: https://arxiv.org/abs/2602.13483
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: franco2026finding
+  mechanistic-reference:
+    key: franco2026acc
+  mechanistic-views:
+    key: franco2026

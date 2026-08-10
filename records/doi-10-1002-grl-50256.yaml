@@ -1,0 +1,15 @@
+slug: doi-10-1002-grl-50256
+title: 'Climate model genealogy: Generation CMIP5 and how we got there'
+authors:
+- Knutti, Reto
+- Masson, David
+- Gettelman, Andrew
+year: '2013'
+venue: Geophysical Research Letters
+doi: 10.1002/grl.50256
+arxiv: ''
+url: https://doi.org/10.1002/grl.50256
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: knutti2013climate

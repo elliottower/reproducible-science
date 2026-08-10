@@ -1,0 +1,15 @@
+slug: t-3b5e3d63b5f37c12
+title: An Investigation of Structures Responsible for Gender Bias in BERT and DistilBERT
+authors:
+- Leteno, Thibaud
+- Gourru, Antoine
+- Gravier, Christophe
+year: '2023'
+venue: IDA
+doi: ''
+arxiv: ''
+url: ''
+sha256: ''
+cited_by:
+  mechanistic-reference:
+    key: leteno2023investigation

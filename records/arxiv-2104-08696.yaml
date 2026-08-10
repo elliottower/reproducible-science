@@ -1,0 +1,20 @@
+slug: arxiv-2104-08696
+title: Knowledge Neurons in Pretrained Transformers
+authors:
+- Dai, Damai
+- Dong, Li
+- Hao, Yaru
+- Sui, Zhifang
+- Chang, Baobao
+- Wei, Furu
+year: '2022'
+venue: ACL
+doi: ''
+arxiv: '2104.08696'
+url: https://arxiv.org/abs/2104.08696
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: dai2022knowledge
+  mechanistic-reference:
+    key: dai2021knowledge

@@ -1,0 +1,19 @@
+slug: t-33b48f1d6bdb6156
+title: Investigating gender bias in language models using causal mediation analysis
+authors:
+- Jesse Vig
+- Sebastian Gehrmann
+- Yonatan Belinkov
+- Sharon Qian
+- Daniel Nevo
+- Yaron Singer
+- Stuart Shieber.
+year: '2020'
+venue: In Advances in Neural Information Processing Systems (NeurIPS), 2020.
+doi: ''
+arxiv: ''
+url: ''
+sha256: ''
+cited_by:
+  mechanistic-views:
+    key: vig2020causal

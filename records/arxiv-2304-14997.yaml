@@ -1,0 +1,17 @@
+slug: arxiv-2304-14997
+title: Towards Automated Circuit Discovery for Mechanistic Interpretability
+authors:
+- Conmy, Arthur
+- Mavor-Parker, Augustine N.
+- Lynch, Aengus
+- Heimersheim, Stefan
+- Garriga-Alonso, Adri`a
+year: '2023'
+venue: NeurIPS
+doi: ''
+arxiv: '2304.14997'
+url: https://arxiv.org/abs/2304.14997
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: conmy2023towards

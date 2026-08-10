@@ -1,0 +1,20 @@
+slug: t-b80512a19310c1b1
+title: 'Causal Scrubbing: A Method for Rigorously Testing Interpretability Hypotheses'
+authors:
+- Chan, Lawrence
+- Garriga-Alonso, Adri`a
+- Goldowsky-Dill, Nicholas
+- Greenblatt, Ryan
+- Nitishinskaya, Jenny
+- Radhakrishnan, Ansh
+- Shlegeris, Buck
+- Thomas, Nate
+year: '2022'
+venue: Alignment Forum
+doi: ''
+arxiv: ''
+url: ''
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: chan2022causal

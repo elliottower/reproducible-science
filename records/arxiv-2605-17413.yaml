@@ -1,0 +1,14 @@
+slug: arxiv-2605-17413
+title: 'Ablating Safety: Mechanisms for Removing Alignment in Language Models for Security Applications'
+authors:
+- David, Isaac
+- Gervais, Arthur
+year: '2026'
+venue: arXiv preprint
+doi: ''
+arxiv: '2605.17413'
+url: https://arxiv.org/abs/2605.17413
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: david2026ablating

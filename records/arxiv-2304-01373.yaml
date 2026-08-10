@@ -1,0 +1,25 @@
+slug: arxiv-2304-01373
+title: 'Pythia: A Suite for Analyzing Large Language Models Across Training and Scaling'
+authors:
+- Biderman, Stella
+- Schoelkopf, Hailey
+- Anthony, Quentin
+- Bradley, Herbie
+- O'Brien, Kyle
+- Hallahan, Eric
+- Khan, Mohammad Aflah
+- Purohit, Shivanshu
+- Prashanth, USVSN Sai
+- Raff, Edward
+- Skowron, Aviya
+- Sutawika, Lintang
+- van der Wal, Oskar
+year: '2023'
+venue: ICML
+doi: ''
+arxiv: '2304.01373'
+url: https://arxiv.org/abs/2304.01373
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: biderman2023pythia

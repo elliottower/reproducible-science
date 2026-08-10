@@ -1,0 +1,15 @@
+slug: arxiv-2505-10465
+title: Superposition Yields Robust Neural Scaling
+authors:
+- Liu, Yizhou
+- Liu, Ziming
+- Gore, Jeff
+year: '2025'
+venue: Advances in Neural Information Processing Systems (NeurIPS)
+doi: ''
+arxiv: '2505.10465'
+url: https://arxiv.org/abs/2505.10465
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: liu2025superposition

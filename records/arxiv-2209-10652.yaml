@@ -1,0 +1,23 @@
+slug: arxiv-2209-10652
+title: Toy Models of Superposition
+authors:
+- Elhage, Nelson
+- Hume, Tristan
+- Olsson, Catherine
+- Schiefer, Nicholas
+- Henighan, Tom
+- Kravec, Shauna
+- Hatfield-Dodds, Zac
+- Lasenby, Robert
+- Drain, Dawn
+- Chen, Carol
+- others
+year: '2022'
+venue: Transformer Circuits Thread
+doi: ''
+arxiv: '2209.10652'
+url: https://arxiv.org/abs/2209.10652
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: elhage2022superposition

@@ -1,0 +1,14 @@
+slug: arxiv-2605-08348
+title: How Much Do Circuits Tell Us? Measuring the Consistency and Specificity of Language Model Circuits
+authors:
+- Li
+- Subramani
+year: '2026'
+venue: arXiv preprint
+doi: ''
+arxiv: '2605.08348'
+url: https://arxiv.org/abs/2605.08348
+sha256: ''
+cited_by:
+  mechanistic-validity:
+    key: lisubramani2026howmuch

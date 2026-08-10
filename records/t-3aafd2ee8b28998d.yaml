@@ -1,0 +1,37 @@
+slug: t-3aafd2ee8b28998d
+title: 'Towards monosemanticity: Decomposing language models with dictionary learning'
+authors:
+- Trenton Bricken
+- Adly Templeton
+- Joshua Batson
+- Brian Chen
+- Adam Jermyn
+- Tom Conerly
+- Nicholas L. Turner
+- Cem Anil
+- Carson Denison
+- Amanda Askell
+- Robert Lasenby
+- Yifan Wu
+- Shauna Kravec
+- Nicholas Schiefer
+- Tim Maxwell
+- Nicholas Joseph
+- Zac Hatfield-Dodds
+- Alex Tamkin
+- Karina Nguyen
+- Brayden McLean
+- Josiah E. Burke
+- Tristan Hume
+- Shan Carter
+- Tom Henighan
+- Chris Olah.
+year: '2023'
+venue: Transformer Circuits Thread, 2023.
+doi: ''
+arxiv: ''
+url: https://transformer-circuits.pub/2023/monosemanticity
+sha256: ''
+cited_by:
+  mechanistic-views:
+    key: bricken2023
