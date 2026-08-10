@@ -4,11 +4,11 @@ authors:
 - Subhash Kantamneni
 - Max Tegmark
 year: '2025'
-venue: arXiv:2502.00873, 2025.
+venue: arXiv preprint
 doi: ''
 arxiv: '2502.00873'
 et_al: false
-url: ''
+url: https://arxiv.org/abs/2502.00873
 sha256: ''
 cited_by:
   mechanistic-views:

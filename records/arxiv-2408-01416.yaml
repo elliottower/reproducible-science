@@ -10,17 +10,17 @@ authors:
 - Nikhil Prakash
 - Can Rager
 - Aruna Sankaranarayanan
-- Arnab Sen~Sharma
+- Arnab Sen Sharma
 - Jiuding Sun
 - Eric Todd
 - David Bau
 - Yonatan Belinkov
 year: '2025'
-venue: Computational Linguistics, 2025.
+venue: arXiv preprint
 doi: ''
 arxiv: '2408.01416'
 et_al: false
-url: ''
+url: https://arxiv.org/abs/2408.01416
 sha256: ''
 cited_by:
   mechanistic-views:

@@ -44,7 +44,9 @@ PAPERS = {
         "bib": GITHUB / "mechanistic-reference-NEW" / "paper" / "references.bib",
     },
     "mechanistic-views": {
-        "bibitem": GITHUB / "mechanistic-views-NEW" / "paper" / "mechviews_bib.tex",
+        # v30 replaced the hand-written thebibliography block with a real .bib, so this
+        # reads structured fields instead of guessing at positional ones
+        "bib": GITHUB / "mechanistic-views-NEW" / "paper" / "references.bib",
     },
 }
 

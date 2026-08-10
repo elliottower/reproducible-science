@@ -2,13 +2,13 @@ slug: arxiv-2605-28896
 title: 'Feature geometry of LoRA adapters: A sparse autoencoder analysis of representational divergence
   in fine-tuned language models'
 authors:
-- Prasanth K.~K.
+- Prasanth K. K.
 year: '2026'
-venue: arXiv:2605.28896, 2026.
+venue: arXiv preprint
 doi: ''
 arxiv: '2605.28896'
 et_al: false
-url: ''
+url: https://arxiv.org/abs/2605.28896
 sha256: ''
 cited_by:
   mechanistic-views:

@@ -6,11 +6,11 @@ authors:
 - Georg Lange
 - Neel Nanda
 year: '2023'
-venue: arXiv:2311.17030, 2023.
+venue: arXiv preprint
 doi: ''
 arxiv: '2311.17030'
 et_al: false
-url: ''
+url: https://arxiv.org/abs/2311.17030
 sha256: ''
 cited_by:
   mechanistic-views:

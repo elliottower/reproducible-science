@@ -4,11 +4,11 @@ authors:
 - Kola Ayonrinde
 - Louis Jaburi
 year: '2025'
-venue: In Proceedings of the AAAI/ACM Conference on AI, Ethics, and Society (AIES), 2025.
+venue: Proceedings of the AAAI/ACM Conference on AI, Ethics, and Society (AIES)
 doi: ''
 arxiv: '2505.00808'
 et_al: false
-url: ''
+url: https://arxiv.org/abs/2505.00808
 sha256: ''
 cited_by:
   mechanistic-views:

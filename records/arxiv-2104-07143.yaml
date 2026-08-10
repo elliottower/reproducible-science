@@ -9,11 +9,11 @@ authors:
 - Fernanda Viégas
 - Martin Wattenberg
 year: '2021'
-venue: arXiv:2104.07143, 2021.
+venue: arXiv preprint
 doi: ''
 arxiv: '2104.07143'
 et_al: false
-url: ''
+url: https://arxiv.org/abs/2104.07143
 sha256: ''
 cited_by:
   mechanistic-views:
