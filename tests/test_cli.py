@@ -1,9 +1,4 @@
-"""The command must never report success on a run that examined nothing.
-
-This is separated from the unit tests because it is the failure the tool exists to prevent, it
-occurred in this tool's own first run, and it is a property of the command rather than of the
-checking function.
-"""
+"""The command must never report success on a run that examined nothing."""
 from __future__ import annotations
 
 import pathlib
