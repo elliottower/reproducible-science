@@ -80,7 +80,17 @@ def skeleton(s: str) -> str:
 
 @functools.lru_cache(maxsize=64)
 def extract(pdf: pathlib.Path, page: int | None = None) -> str:
-    """Cached: 2,940 quotations across 16 artifacts is 16 extractions, not 2,940."""
+    """Text of a source. Cached, so N quotes against one file is one extraction.
+
+    A source is not always a PDF. Plain text and markdown are read directly; running a PDF
+    extractor over them returns nothing, which reads as an unreadable source.
+    """
+    if pdf.suffix.lower() in (".txt", ".md", ".tei", ".xml", ".html"):
+        try:
+            text = pdf.read_text(errors="replace")
+        except Exception:
+            return ""
+        return text if page is None else text      # no pagination in a text file
     cmd = ["pdftotext", "-layout"]
     if page:
         cmd += ["-f", str(page), "-l", str(page)]

@@ -15,13 +15,14 @@ citations verify
 ```
 2,940 quotes
 
-  found         2,792
+  found         2,940
   not found         0
-  unchecked       148   file not found
 
 warnings
       213  short — the source may qualify this in the next clause
       155  normalized — matched after ignoring punctuation and spacing
+
+all found.
 ```
 
 Three results, and they are exhaustive:
