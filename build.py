@@ -33,7 +33,12 @@ RECORDS = ROOT / "records"
 ENRICHMENT = ROOT / "enrichment.yaml"   # facts resolved after a .bib was written
 GITHUB = ROOT.parent
 
-# Each paper: where its bibliography lives and which tex cites into it.
+# Each paper: where its bibliography lives.
+#
+# The three mechanistic-* papers read from their -NEW repositories, which exist because those
+# were rebuilt clean for submission. The others read from their working repositories directly:
+# they are research repos where the experiments, data and pre-registrations are the substance,
+# and a stripped-down copy of one would be a different artifact, not a tidier version of it.
 PAPERS = {
     "mechanistic-validity": {
         "bib": GITHUB / "mechanistic-validity-NEW2" / "paper" / "references.bib",
@@ -47,13 +52,13 @@ PAPERS = {
         "bib": GITHUB / "epistatic-circuits" / "paper" / "references.bib",
     },
     "neural-geometry-reliability": {
-        "bib": GITHUB / "neural-geometry-reliability-NEW" / "paper" / "references.bib",
+        "bib": GITHUB / "neural-geometry-reliability" / "paper" / "references.bib",
     },
     "knockout-epistasis-dynamics": {
-        "bib": GITHUB / "knockout-epistasis-dynamics-NEW" / "paper" / "refs.bib",
+        "bib": GITHUB / "knockout-epistasis-dynamics" / "paper" / "refs.bib",
     },
     "msms-subspace-collapse": {
-        "bib": GITHUB / "msms-subspace-collapse-NEW" / "paper" / "references.bib",
+        "bib": GITHUB / "msms-subspace-collapse" / "paper" / "references.bib",
     },
     "mechanistic-views": {
         # v30 replaced the hand-written thebibliography block with a real .bib, so this
