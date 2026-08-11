@@ -8,6 +8,8 @@ import sys
 import pytest
 import yaml
 
+from citations import cli as C
+
 
 def run(args, cwd, env_home=None):
     env = {"PATH": "/usr/bin:/bin:/usr/local/bin", "HOME": str(cwd)}
@@ -54,3 +56,17 @@ def test_help_lists_every_subcommand(tmp_path):
     r = run([], tmp_path)
     for c in ("verify", "resolve", "build", "lint", "link"):
         assert c in r.stdout
+
+
+def test_claims_block_is_read_under_either_name(tmp_path):
+    # One repo writes `evidence:`, another writes `claims:`. Reading one spelling made the
+    # command find zero quotes and say so, which reads identically to a paper with none.
+    src = tmp_path / "s.txt"
+    src.write_text("the measured angle matches the Haar expectation")
+    for name, block in (("a.yaml", "evidence"), ("b.yaml", "claims")):
+        (tmp_path / name).write_text(
+            f"source:\n  citation: x\n  local: {src}\n{block}:\n  c1:\n    quotes:\n"
+            f"      - exact: 'matches the Haar expectation'\n")
+    found = list(C._quotes_from_claims(tmp_path))
+    assert len(found) == 2
+    assert {f[0] for f in found} == {"a", "b"}

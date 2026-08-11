@@ -36,7 +36,9 @@ def _quotes_from_claims(root: pathlib.Path):
         r = yaml.safe_load(p.read_text()) or {}
         src = r.get("source") or {}
         art = src.get("local")
-        for cid, ev in (r.get("evidence") or {}).items():
+        # Papers name this block either way. Reading only one spelling makes the command find
+        # nothing and report it, which is indistinguishable from a paper that has no quotes yet.
+        for cid, ev in (r.get("evidence") or r.get("claims") or {}).items():
             for q in (ev.get("quotes") or []):
                 yield p.stem, cid, (q.get("exact") or q.get("text") or ""), art, q.get("page")
 
