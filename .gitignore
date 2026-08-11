@@ -5,3 +5,6 @@ __pycache__/
 .venv/
 papis_test/
 pdfs/
+
+# secrets
+.env
