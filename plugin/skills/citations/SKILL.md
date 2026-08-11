@@ -38,24 +38,20 @@ Five states. The distinction between them is the whole point.
 | `no-source` | the artifact is not on disk. **Nothing was checked** |
 | `missing` | the artifact was read and the text is not in it |
 
-**`missing` means look at this. It never means fabricated.** A mirror-reversed scan, a
-column-order extraction failure, or an image-only PDF all produce the same signal as an invented
-quotation. Read the source before concluding anything about the author.
+**`missing` means read the source.** A mirror-reversed scan, a two-column extraction, or an
+image-only PDF produce the same signal as a passage that was never there. Do not conclude
+anything about the author from it.
 
-**`no-source` is not a pass.** If the tool reports it, nothing was verified. Do not describe a
-claim as checked on the strength of a run that could not reach its artifact.
+**`no-source` is not a pass.** Nothing was checked. Do not describe a claim as verified on the
+strength of it.
 
-**A run that checked zero quotations exits non-zero.** If that happens, the library or the
-`--claims` path is wrong — not that everything passed.
+**A zero-quotation run exits non-zero.** That means the path is wrong, not that everything
+passed.
 
-## Why `too-short` exists
+## Quote enough text
 
-A short quotation can resolve cleanly and still support a claim its source contradicts. A real
-case: the substring `"We trained 50"` verifies against a source that continues `"...each for 2,
-4, and 8 layered variants and 5 refits each for 12 layered (GPT2-small)"`. The record claimed
-fifty; the true number for the architecture in question was five.
-
-Quote enough text to carry its own qualifiers, and never end a pin mid-clause.
+`"We trained 50"` resolves against a sentence that continues `"...and 5 refits each for 12
+layered"`. Quote through the qualifiers; never end a pin mid-clause.
 
 ## When to reach for this
 

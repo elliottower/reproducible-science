@@ -1,11 +1,9 @@
 """Does each quotation appear in the source it cites?
 
-The point is not to replace grep. It is to build a corpus of quotations that have been checked
-against a pinned artifact, so later work quotes from the corpus instead of from memory. A model
-writing from a verified library makes a different class of error than one writing from
-recollection, and every fabricated quotation this project has produced came from the latter.
+Builds a corpus of quotations checked against a pinned source, so later work quotes from the
+corpus rather than from memory.
 
-Five states, and the distinction between them is the whole design:
+Five states:
 
     ok           found verbatim in the pinned artifact
     loose        found on the alphanumeric skeleton -- reported, never failed, because a
@@ -14,9 +12,8 @@ Five states, and the distinction between them is the whole design:
     no-source    the artifact is not on disk. Nothing was checked
     missing      the artifact was read and the text is not in it
 
-`missing` means look at this. It never means fabricated: a mirror-reversed scan or a broken
-extraction produces the same signal, and a tool that accuses an author of invention on that
-evidence is worse than no tool.
+`missing` means read the source. A mirror-reversed scan or a broken extraction produces the
+same signal as a passage that was never there.
 """
 from __future__ import annotations
 
@@ -28,9 +25,8 @@ import subprocess
 import unicodedata
 from dataclasses import dataclass, field
 
-# A quotation must be long enough to carry its own qualifiers. "We trained 50" resolves
-# cleanly against a source that continues "...each for 2, 4 and 8 layered variants and 5 for
-# 12 layered", which is how a record came to claim fifty refits when the true number was five.
+# Long enough to carry its own qualifiers. "We trained 50" resolves against a sentence that
+# continues "...and 5 refits each for 12 layered".
 MIN_QUOTE_CHARS = 40
 
 
@@ -49,7 +45,13 @@ class Report:
 
     @property
     def ok(self) -> bool:
-        """Only `missing` and `page-off` are failures. Unreachable is not the same as absent."""
+        """A run that checked nothing is not a pass, and `missing`/`page-off` are failures.
+
+        The zero case is decided here rather than by each caller, so no caller can report
+        success on an empty run.
+        """
+        if self.checked == 0:
+            return False
         return not any(r.state in ("missing", "page-off") for _, _, r in self.problems)
 
 

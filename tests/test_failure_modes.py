@@ -1,8 +1,5 @@
-"""Every test here is an incident that happened, not a hypothetical.
-
-A verification tool fails in one direction that matters: it says PASS when it should say
-"I could not check that." Each test below pins one way that occurred in practice, so it cannot
-recur silently.
+"""A verification tool fails in one direction that matters: saying PASS when it could not
+check. Each test pins one way that can happen.
 """
 from __future__ import annotations
 
@@ -50,7 +47,7 @@ def pinned(tmp_path, monkeypatch):
     return make
 
 
-# --- the failure that recurred five times in one session -------------------------------------
+# --- unreachable is not the same as absent -------------------------------------
 
 def test_missing_artifact_is_not_a_pass(tmp_path):
     r = V.check_one("a quotation long enough to be load bearing here", tmp_path / "absent.pdf")
@@ -74,7 +71,7 @@ def test_unreachable_source_is_distinguishable_from_absent_text(pinned, tmp_path
     assert absent.state != unreachable.state
 
 
-# --- the Bali truncation: a real quote that verifies a false claim ---------------------------
+# --- a real quote can still verify a false claim ---------------------------
 
 SOURCE = ("We trained 50 refits each for 2, 4, and 8 layered variants and 5 refits each "
           "for 12 layered (GPT2-small) architectures.")
@@ -142,15 +139,11 @@ def test_right_text_wrong_page_is_flagged(pinned):
 # --- the report must refuse to call an empty run a success ----------------------------------
 
 def test_a_report_with_nothing_checked_is_not_a_pass():
-    rep = V.Report()
-    assert rep.checked == 0
-    # `ok` being vacuously true is exactly the trap; the CLI must gate on `checked` as well,
-    # which is asserted in test_cli.py
-    assert rep.ok is True, "Report.ok is vacuous on an empty run by design"
+    assert V.Report().ok is False
 
 
 def test_only_missing_and_page_off_count_as_failures():
-    rep = V.Report()
+    rep = V.Report(checked=3)
     rep.problems = [("s", "t", V.Result("no-source")), ("s", "t", V.Result("loose")),
                     ("s", "t", V.Result("too-short"))]
     assert rep.ok, "unreachable and short are reported, not failed"
@@ -165,7 +158,7 @@ def test_two_files_with_different_names_and_identical_bytes_hash_the_same(tmp_pa
     a.write_bytes(b"identical content")
     b.write_bytes(b"identical content")
     assert V.sha256(a) == V.sha256(b), (
-        "a name-based comparison once reported these as unique and nearly caused a deletion")
+        "compare content, not names")
 
 
 def test_same_name_different_content_hashes_differently(tmp_path):
@@ -174,4 +167,4 @@ def test_same_name_different_content_hashes_differently(tmp_path):
     a.write_bytes(b"Chughtai, Chan, Nanda 2023 -- group operations")
     b.write_bytes(b"Chughtai, Cooney, Nanda 2024 -- factual recall")
     assert V.sha256(a) != V.sha256(b), (
-        "same surname, similar year, different paper: verify content, not the filename")
+        "same surname, similar year, different paper")
