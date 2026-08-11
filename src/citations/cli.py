@@ -1,5 +1,6 @@
 """The `citations` command.
 
+    citations init              make a library here
     citations verify            do my quotations resolve in the sources I pinned?
     citations resolve           backfill missing identifiers
     citations build             rebuild records from the papers' bibliographies
@@ -26,11 +27,6 @@ WARNINGS = {"short": "the source may qualify this in the next clause",
 
 def _records() -> list[dict]:
     d = paths.records()
-    if not d.is_dir():
-        print(f"no library here. Looked in {paths.home()}\n"
-              f"Set CITATIONS_HOME, or run from a directory containing records/.",
-              file=sys.stderr)
-        raise SystemExit(2)
     return [yaml.safe_load(p.read_text()) or {} for p in sorted(d.glob("*.yaml"))]
 
 
@@ -130,10 +126,10 @@ def _report(rep, counts, a) -> int:
     return 0 if rep.ok or not a.strict else 1
 
 
-def _delegate(module: str, argv: list[str]) -> int:
+def _delegate(module: str, name: str, argv: list[str]) -> int:
     import importlib
     m = importlib.import_module(f"citations.{module}")
-    sys.argv = [f"citations {module}"] + argv
+    sys.argv = [f"citations {name}"] + argv
     return m.main()
 
 
@@ -149,12 +145,14 @@ def main() -> int:
     v.add_argument("--quiet", action="store_true")
     v.set_defaults(fn=cmd_verify)
 
-    for name, helptext in [("resolve", "backfill missing identifiers"),
+    for name, helptext in [("init", "make a library here"),
+                           ("resolve", "backfill missing identifiers"),
                            ("build", "rebuild records from the papers' bibliographies"),
                            ("lint", "BibTeX correctness, via papis doctor"),
                            ("link", "point pdfs/ at the papers' artifacts")]:
         p = sub.add_parser(name, help=helptext, add_help=False)
-        p.set_defaults(fn=None, delegate={"link": "link_pdfs"}.get(name, name))
+        p.set_defaults(fn=None, delegate={"link": "link_pdfs"}.get(name, name),
+                       shown=name)
 
     args, rest = ap.parse_known_args()
     if not args.cmd:
@@ -162,7 +160,7 @@ def main() -> int:
         return 0
     if getattr(args, "fn", None):
         return args.fn(args)
-    return _delegate(args.delegate, rest)
+    return _delegate(args.delegate, args.shown, rest)
 
 
 if __name__ == "__main__":

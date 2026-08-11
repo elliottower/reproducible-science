@@ -6,8 +6,8 @@ the ones that do.
 ```bash
 uv tool install citations      # or: pip install citations
 
-citations init
-citations verify
+citations init                 # a library here
+citations verify --claims <dir>
 ```
 
 ## What it reports
@@ -47,9 +47,14 @@ the same signal as a passage that was never there.
 
 ```
 $CITATIONS_HOME             if set
-./.citations/ walking up    this project's own, like .git
-neither                     run citations init
+./.citations/ walking up    this project's own, the way git finds .git
+the shared library          if you made one with citations init --user
+none of those               it tells you to run citations init
 ```
+
+Project-local by default, so running the tool inside a paper works on that paper and there is
+no hidden global state. `citations init --user` makes one shared across projects; point at it
+with `CITATIONS_HOME`.
 
 Nothing is written to a directory you did not name. `citations` commits inside its own library
 and never pushes.
