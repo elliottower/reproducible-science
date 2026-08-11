@@ -73,6 +73,38 @@ citations link       point pdfs/ at wherever your papers keep the files
 So `git diff` shows what changed. A binary store cannot show you that a year moved from 2021 to
 2022 — a real discrepancy this found between two of one author's own papers.
 
+## What a claim file looks like
+
+One file per source, in the paper's `claims/` directory. `citations verify --claims claims`
+reads all of them.
+
+```yaml
+source:
+  citation: schiffman2026             # the bibkey
+  local: reference/schiffman2026.pdf  # what gets read
+  sha256: 3f9a…                       # which bytes were read
+  extract_cmd: pdftotext
+
+claims:
+  orthogonal-cores:
+    statement: 'Cores meeting equivalent causal criteria sit at principal angles of 75-90 degrees.'
+    quotes:
+      - exact: 'and principal angles ranged'
+        section: 'body'
+```
+
+`statement` is yours; `exact` is theirs. The tool checks the second only, so a `statement` that
+overreaches its quote is for review to catch — the command cannot.
+
+The block may be called `claims` or `evidence`; both are read. Prefer `claims`, because
+`citation` inside `source` already means the bibkey, and two near-identical words invite reaching
+for the wrong one.
+
+**Quote what survives extraction.** Text is read with `pdftotext -layout`, so a phrase crossing a
+column break in a two-column paper arrives split by the other column's text and will not match.
+Keep a quote inside one line of the rendered page, and check it against the same extraction the
+tool uses rather than a hand-made one.
+
 ## Claude Code
 
 `plugin/` is a Claude Code plugin that tells Claude when to reach for the CLI.
