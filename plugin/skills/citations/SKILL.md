@@ -28,25 +28,24 @@ citations lint                      # BibTeX correctness
 
 ## Reading the output
 
-Five states. The distinction between them is the whole point.
+Three results, exhaustive:
 
-| state | meaning |
+| | |
 |---|---|
-| `ok` | found verbatim in the pinned artifact |
-| `loose` | matched on the alphanumeric skeleton only. Reported, never failed — a skeleton match cannot tell `a - b` from `a + b` |
-| `too-short` | resolves, but short or truncated enough that the source may qualify it two words later |
-| `no-source` | the artifact is not on disk. **Nothing was checked** |
-| `missing` | the artifact was read and the text is not in it |
+| `found` | the passage is in the source |
+| `not found` | the source was read and the passage is not in it |
+| `unchecked` | the source could not be read — **no measurement was made** |
 
-**`missing` means read the source.** A mirror-reversed scan, a two-column extraction, or an
-image-only PDF produce the same signal as a passage that was never there. Do not conclude
-anything about the author from it.
+Warnings sit on their own axis. A passage can be `found` and still carry one: `short` (the
+source may qualify it in the next clause), `normalized` (matched ignoring punctuation), `page`
+(found, but not where the record says).
 
-**`no-source` is not a pass.** Nothing was checked. Do not describe a claim as verified on the
-strength of it.
+**`unchecked` is not a pass.** Do not describe a claim as verified on the strength of it.
 
-**A zero-quotation run exits non-zero.** That means the path is wrong, not that everything
-passed.
+**`not found` means read the source.** A broken extraction reads the same as a passage that
+was never there.
+
+**A run with nothing to check exits non-zero.** The path is wrong, not everything passing.
 
 ## Quote enough text
 

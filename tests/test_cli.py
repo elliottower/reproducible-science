@@ -26,8 +26,8 @@ def library(tmp_path):
 def test_zero_quotations_does_not_exit_zero(library):
     r = run(["verify"], library, library)
     assert r.returncode != 0, "a run that checked nothing must not look like a pass"
-    assert "0 quotations" in r.stdout
-    assert "examines nothing" in r.stdout
+    assert "nothing to check" in r.stdout
+    assert "claims" in r.stdout
 
 
 def test_zero_quotations_says_why_and_what_to_do(library):
@@ -47,7 +47,7 @@ def test_a_claims_directory_with_no_quotes_still_refuses(tmp_path):
         {"claim": "empty", "source": {"citation": "x"}, "evidence": {}}))
     r = run(["verify", "--claims", str(claims)], tmp_path, tmp_path)
     assert r.returncode != 0
-    assert "0 quotations" in r.stdout
+    assert "nothing to check" in r.stdout
 
 
 def test_help_lists_every_subcommand(tmp_path):

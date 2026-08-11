@@ -3,14 +3,19 @@
 Builds a corpus of quotations checked against a pinned source, so later work quotes from the
 corpus rather than from memory.
 
-Five states:
+Two orthogonal things, kept apart.
 
-    ok           found verbatim in the pinned artifact
-    loose        found on the alphanumeric skeleton -- reported, never failed, because a
-                 skeleton match cannot tell `a - b` from `a + b`
-    page-off     found, but not on the page the record claims
-    no-source    the artifact is not on disk. Nothing was checked
-    missing      the artifact was read and the text is not in it
+The result -- did the passage appear? Exhaustive, three outcomes:
+
+    found        the passage is in the source
+    not found    the source was read and the passage is not in it
+    unchecked    the source could not be read, so no measurement was made
+
+The warnings -- is the quote well formed? A quote can be `found` and still carry one:
+
+    short        the source may qualify it in the next clause
+    normalized   matched only after ignoring punctuation and spacing
+    page         found, but not on the page the record claims
 
 `missing` means read the source. A mirror-reversed scan or a broken extraction produces the
 same signal as a passage that was never there.
@@ -32,8 +37,10 @@ MIN_QUOTE_CHARS = 40
 
 @dataclass
 class Result:
-    state: str
-    detail: str = ""
+    """`state` is the measurement; `warnings` are notes about the quote itself."""
+    state: str                       # found | not found | unchecked
+    detail: str = ""                 # why, when unchecked or not found
+    warnings: list[str] = field(default_factory=list)
     page_found: int | None = None
 
 
@@ -45,14 +52,14 @@ class Report:
 
     @property
     def ok(self) -> bool:
-        """A run that checked nothing is not a pass, and `missing`/`page-off` are failures.
+        """Only `not found` is a failure. Unchecked is neither a pass nor a fail.
 
-        The zero case is decided here rather than by each caller, so no caller can report
+        A run that measured nothing is not a pass, decided here so no caller can report
         success on an empty run.
         """
         if self.checked == 0:
             return False
-        return not any(r.state in ("missing", "page-off") for _, _, r in self.problems)
+        return not any(r.state == "not found" for _, _, r in self.problems)
 
 
 @functools.lru_cache(maxsize=256)
@@ -93,31 +100,30 @@ def sha256(p: pathlib.Path) -> str:
 
 
 def check_one(quote: str, artifact: pathlib.Path | None, page: int | None = None) -> Result:
-    if len(quote.strip()) < MIN_QUOTE_CHARS:
-        return Result("too-short",
-                      f"{len(quote.strip())} chars, under the {MIN_QUOTE_CHARS} needed to "
-                      f"carry its own qualifiers")
-    if quote.strip().endswith((",", "and", "or", "but", "the", "a", "of", "for", "with")):
-        return Result("too-short", "ends mid-clause; a truncated quote can verify a claim "
-                                   "its source contradicts")
+    warn: list[str] = []
+    text = quote.strip()
+    if len(text) < MIN_QUOTE_CHARS or text.endswith(
+            (",", " and", " or", " but", " the", " a", " of", " for", " with")):
+        warn.append("short")
+
     if artifact is None or not artifact.exists():
-        return Result("no-source", f"artifact not on disk: {artifact}")
+        return Result("unchecked", "file not found", warn)
 
     full = extract(artifact)
     if not full.strip():
-        return Result("no-source", "extraction produced no text; is this a scanned image?")
+        return Result("unchecked", "no text extracted", warn)
 
     q, doc = fold(quote), fold(full)
     if q in doc:
-        if page:
-            if fold(extract(artifact, page)).find(q) < 0:
-                found = _find_page(artifact, q)
-                return Result("page-off", f"found, but not on page {page}", found)
-        return Result("ok")
+        if page and fold(extract(artifact, page)).find(q) < 0:
+            warn.append("page")
+            return Result("found", f"not on page {page}", warn, _find_page(artifact, q))
+        return Result("found", "", warn)
     if skeleton(quote) and skeleton(quote) in skeleton(full):
-        return Result("loose", "matched on the alphanumeric skeleton only")
-    return Result("missing", "not found in the artifact — look at this; a broken extraction "
-                             "produces the same signal as an invented quotation")
+        warn.append("normalized")
+        return Result("found", "", warn)
+    return Result("not found", "read the source: a broken extraction reads the same as a "
+                               "passage that was never there", warn)
 
 
 def _find_page(artifact: pathlib.Path, folded_quote: str, limit: int = 60) -> int | None:

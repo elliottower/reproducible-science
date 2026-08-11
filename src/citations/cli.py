@@ -18,9 +18,10 @@ import yaml
 
 from citations import paths, verify as V
 
-STATE_ORDER = ["missing", "page-off", "too-short", "no-source", "loose", "ok"]
-SYMBOL = {"ok": "ok", "loose": "loose", "no-source": "NO SOURCE",
-          "page-off": "PAGE OFF", "missing": "MISSING", "too-short": "TOO SHORT"}
+RESULTS = ["found", "not found", "unchecked"]
+WARNINGS = {"short": "the source may qualify this in the next clause",
+            "normalized": "matched after ignoring punctuation and spacing",
+            "page": "found, but not on the page recorded"}
 
 
 def _records() -> list[dict]:
@@ -57,7 +58,7 @@ def cmd_verify(a) -> int:
             rep.checked += 1
             r = V.check_one(text, (base / art) if art else None, page)
             counts[r.state] += 1
-            if r.state != "ok":
+            if r.state != "found" or r.warnings:
                 rep.problems.append((f"{claim}:{cid}", text[:58], r))
         rep.counts = dict(counts)
         return _report(rep, counts, a)
@@ -74,7 +75,7 @@ def cmd_verify(a) -> int:
             rep.checked += 1
             r = V.check_one(text, artifact, q.get("page"))
             counts[r.state] += 1
-            if r.state != "ok":
+            if r.state != "found" or r.warnings:
                 rep.problems.append((rec["slug"], text[:58], r))
     rep.counts = dict(counts)
     return _report(rep, counts, a)
@@ -82,30 +83,50 @@ def cmd_verify(a) -> int:
 
 def _report(rep, counts, a) -> int:
     if rep.checked == 0:
-        print("  0 quotations checked.\n")
-        print("  Refusing to report success: a check that examines nothing passes trivially.")
-        print("  Quotations live in a paper's claims/ directory, not in records/.")
-        print("  Point at one with:  citations verify --claims <path/to/claims>")
+        print("nothing to check.\n")
+        print("quotes live in a paper's claims/ directory. point at one:")
+        print("    citations verify --claims <path>")
         return 2
 
-    print(f"  {rep.checked} quotations checked\n")
-    for s in STATE_ORDER:
-        if counts.get(s):
-            print(f"    {SYMBOL[s]:<10}{counts[s]:>5}")
-    if rep.problems and not a.quiet:
+    sources = len({s for s, _, _ in rep.problems}) or "?"
+    print(f"{rep.checked:,} quotes\n")
+    for s in RESULTS:
+        n = counts.get(s, 0)
+        if not n and s == "not found":
+            print(f"  {s:<12}{n:>7}")
+            continue
+        if not n:
+            continue
+        why = ""
+        if s == "unchecked":
+            reasons = collections.Counter(r.detail for _, _, r in rep.problems
+                                          if r.state == "unchecked")
+            why = ("   " + " · ".join(f"{c:,} {d}" for d, c in reasons.most_common())
+                   if len(reasons) > 1 else f"   {reasons.most_common(1)[0][0]}")
+        print(f"  {s:<12}{n:>7,}{why}")
+
+    warns = collections.Counter(w for _, _, r in rep.problems for w in r.warnings)
+    if warns:
+        print("\nwarnings")
+        for w, n in warns.most_common():
+            print(f"  {n:>7,}  {w} — {WARNINGS.get(w, '')}")
+
+    bad = [(s, q, r) for s, q, r in rep.problems if r.state == "not found"]
+    if bad and not a.quiet:
         print()
-        for slug, text, r in rep.problems[:40]:
-            if r.state in ("ok", "loose") and not a.verbose:
-                continue
-            print(f"  {SYMBOL[r.state]:<10}{slug[:34]:<36}{text[:44]}")
-            print(f"             {r.detail}")
+        for slug, text, r in bad[:20]:
+            print(f"  not found  {slug[:30]:<32}{text[:44]}")
+        if len(bad) > 20:
+            print(f"             ... and {len(bad) - 20} more")
+
     print()
-    if rep.ok:
-        print("  no quotation failed. Unreachable sources are reported, not failed.")
+    if bad:
+        print(f"{len(bad)} not found. read the source before concluding anything.")
+    elif counts.get("unchecked"):
+        print(f"nothing failed. {counts['unchecked']} unchecked — no measurement was made "
+              f"for those.")
     else:
-        n = sum(counts.get(s, 0) for s in ("missing", "page-off"))
-        print(f"  {n} need looking at. A broken extraction produces the same signal as an "
-              f"invented quotation, so read before concluding.")
+        print("all found.")
     return 0 if rep.ok or not a.strict else 1
 
 
