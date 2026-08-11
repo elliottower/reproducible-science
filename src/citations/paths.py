@@ -1,26 +1,66 @@
-"""Every path the tool uses, resolved once.
+"""Where the library lives.
 
-The library lives wherever `CITATIONS_HOME` points, defaulting to the current directory. That
-makes the tool usable on someone else's project without them adopting this repository's layout.
+Resolution order, and nothing is written to a directory you did not name:
 
-This is the only module that computes a location. Everything else imports the name it wants.
+    $CITATIONS_HOME             if set
+    ./.citations/ walking up    this project's own, the way git finds .git
+    the user-level library      if one has been created
+    nothing                     the caller says to run `citations init`
+
+Project-local is the default because it is the least surprising: run the tool inside a paper
+and it works on that paper, with no hidden global state and no wondering which library was
+just written to.
 """
 from __future__ import annotations
 
 import os
 import pathlib
 
+DIRNAME = ".citations"
 
-def home() -> pathlib.Path:
-    """Where this library lives. `$CITATIONS_HOME`, else the nearest directory holding one."""
+
+def user_library() -> pathlib.Path:
+    """The per-user library, in the platform's data directory."""
+    try:
+        import platformdirs
+        return pathlib.Path(platformdirs.user_data_dir("citations"))
+    except ImportError:
+        base = os.environ.get("XDG_DATA_HOME")
+        if base:
+            return pathlib.Path(base) / "citations"
+        if os.uname().sysname == "Darwin":
+            return pathlib.Path.home() / "Library" / "Application Support" / "citations"
+        return pathlib.Path.home() / ".local" / "share" / "citations"
+
+
+def find(start: pathlib.Path | None = None) -> pathlib.Path | None:
+    """The library governing `start`, or None if there is not one."""
     env = os.environ.get("CITATIONS_HOME")
     if env:
-        return pathlib.Path(env).expanduser().resolve()
-    here = pathlib.Path.cwd().resolve()
+        p = pathlib.Path(env).expanduser()
+        return p if p.is_dir() else None
+
+    here = (start or pathlib.Path.cwd()).resolve()
     for d in [here, *here.parents]:
-        if (d / "records").is_dir() or (d / ".citations").is_file():
+        if (d / DIRNAME).is_dir():
+            return d / DIRNAME
+        if (d / "records").is_dir():      # a library that is itself the directory
             return d
-    return here
+
+    user = user_library()
+    return user if (user / "records").is_dir() else None
+
+
+def home() -> pathlib.Path:
+    """The library, or exit telling the caller how to make one."""
+    found = find()
+    if found is None:
+        raise SystemExit(
+            "no library here.\n"
+            "    citations init            make one in this directory\n"
+            "    citations init --user     make one shared across all your projects\n"
+            "    CITATIONS_HOME=<path>     use one that already exists")
+    return found
 
 
 def records() -> pathlib.Path:
