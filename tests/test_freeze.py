@@ -233,3 +233,15 @@ def test_check_at_a_root_fails_if_any_plan_below_it_changed(tmp_path):
     p.write_text(p.read_text().replace("## Randomization", "## Randomisation"))
     assert run(["check"], tmp_path).returncode != 0, \
         "a root check passed while a plan below it had been edited"
+
+
+def test_a_long_note_still_separates_from_its_access_level(repo):
+    """The access level is what distinguishes an amendment from a deviation, so it must never
+    run into the note."""
+    run(["freeze"], repo)
+    note = "restricting the target to {0,1} and {0,1,2} because its value set is integers"
+    run(["log", note, "--access", "no results seen"], repo)
+    line = next(ln for ln in (repo / "PREREG.md").read_text().splitlines() if note in ln)
+    assert line.endswith("no results seen")
+    assert not line.endswith(note + "no results seen"), "access level glued to the note"
+    assert "  no results seen" in line

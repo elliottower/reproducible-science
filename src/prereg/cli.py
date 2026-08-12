@@ -143,7 +143,10 @@ def append(path: pathlib.Path, date: str, event: str, access: str) -> None:
     if MARK not in text:
         text += MARK.rstrip("\n") + "\n\n```\n```\n"
     head, _, tail = text.partition(MARK)
-    line = f"{date}  {event:<36}{access}"
+    # Two spaces, not just padding. `{event:<36}` emits nothing extra once the note passes 36
+    # characters, and the access level then runs into the note — losing the boundary of the one
+    # field that separates an amendment from a deviation.
+    line = f"{date}  {event:<36}  {access}"
     if "```" in tail:
         before, fence, after = tail.rpartition("```")
         tail = before.rstrip("\n") + f"\n{line}\n" + fence + after
