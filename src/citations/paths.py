@@ -33,22 +33,34 @@ def user_library() -> pathlib.Path:
         return pathlib.Path.home() / ".local" / "share" / "citations"
 
 
-def find(start: pathlib.Path | None = None) -> pathlib.Path | None:
-    """The library governing `start`, or None if there is not one."""
+def find_with_origin(start: pathlib.Path | None = None) -> tuple[pathlib.Path | None, str]:
+    """The library governing `start`, and which rule produced it.
+
+    The origin is returned because the surprising case is silent. A directory with no
+    `.citations/` of its own does not fail — it walks up, reaches the user library, verifies
+    whatever is in there and reports `all found` about a set of records that has nothing to do
+    with the work in front of you. Reporting the path turns that into something a reader can
+    notice.
+    """
     env = os.environ.get("CITATIONS_HOME")
     if env:
         p = pathlib.Path(env).expanduser()
-        return p if p.is_dir() else None
+        return (p, "CITATIONS_HOME") if p.is_dir() else (None, "CITATIONS_HOME")
 
     here = (start or pathlib.Path.cwd()).resolve()
     for d in [here, *here.parents]:
         if (d / DIRNAME).is_dir():
-            return d / DIRNAME
+            return d / DIRNAME, "project"
         if (d / "records").is_dir():      # a library that is itself the directory
-            return d
+            return d, "project"
 
     user = user_library()
-    return user if (user / "records").is_dir() else None
+    return (user, "user") if (user / "records").is_dir() else (None, "none")
+
+
+def find(start: pathlib.Path | None = None) -> pathlib.Path | None:
+    """The library governing `start`, or None if there is not one."""
+    return find_with_origin(start)[0]
 
 
 def home() -> pathlib.Path:
