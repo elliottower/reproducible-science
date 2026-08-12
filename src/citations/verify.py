@@ -67,8 +67,10 @@ def fold(s: str) -> str:
     """Normalize the way a PDF extractor mangles text, without changing which words appear."""
     s = unicodedata.normalize("NFKC", s)
     # A PDF's embedded fonts can reach the extractor as raw glyph codes, arriving as control
-    # characters mid-page. They become separators rather than being deleted: deleting them would
-    # join two words that were never one word, which manufactures a match that is not there.
+    # characters mid-page. They become separators rather than being deleted: deleting them welds
+    # the words on either side into one that appears in neither text, so a passage that is really
+    # there stops resolving. `logit\x00difference` deleted is `logitdifference`, which no honest
+    # quotation of it can match.
     s = re.sub(r"[\x00-\x08\x0b\x0e-\x1f\x7f]", " ", s)
     s = s.replace("’", "'").replace("‘", "'")
     s = s.replace("“", '"').replace("”", '"')
