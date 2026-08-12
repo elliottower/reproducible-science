@@ -47,6 +47,11 @@ was never there.
 
 **A run with nothing to check exits non-zero.** The path is wrong, not everything passing.
 
+**Check which library you are on before believing a clean run.** The library resolves in order:
+`$CITATIONS_HOME`, else `.citations/` found by walking up from the current directory, else the
+shared one from `citations init --user`. So the same command run one directory over can verify a
+different set of records and still report `all found`.
+
 ## Quote enough text
 
 `"We trained 50"` resolves against a sentence that continues `"...and 5 refits each for 12
