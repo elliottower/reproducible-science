@@ -70,3 +70,42 @@ def test_claims_block_is_read_under_either_name(tmp_path):
     found = list(C._quotes_from_claims(tmp_path))
     assert len(found) == 2
     assert {f[0] for f in found} == {"a", "b"}
+
+
+# --- which library did that clean run actually check? ------------------------------------------
+
+def test_origin_reports_the_rule_that_found_the_library(tmp_path):
+    from citations import paths
+    proj = tmp_path / "paper"
+    (proj / ".citations" / "records").mkdir(parents=True)
+    deep = proj / "sections" / "intro"
+    deep.mkdir(parents=True)
+    p, origin = paths.find_with_origin(deep)
+    assert origin == "project"
+    assert p == (proj / ".citations").resolve() or p == proj / ".citations"
+
+
+def test_env_overrides_the_walk_up(tmp_path, monkeypatch):
+    from citations import paths
+    proj = tmp_path / "paper"
+    (proj / ".citations" / "records").mkdir(parents=True)
+    other = tmp_path / "elsewhere"
+    other.mkdir()
+    monkeypatch.setenv("CITATIONS_HOME", str(other))
+    _, origin = paths.find_with_origin(proj)
+    assert origin == "CITATIONS_HOME", "an env override that is silently ignored is the worst case"
+
+
+def test_find_still_returns_just_the_path(tmp_path):
+    from citations import paths
+    proj = tmp_path / "paper"
+    (proj / ".citations" / "records").mkdir(parents=True)
+    assert paths.find(proj) == paths.find_with_origin(proj)[0]
+
+
+def test_verify_names_the_library_it_checked(library):
+    (library / "records" / "r.yaml").write_text(yaml.safe_dump(
+        {"slug": "r", "quotes": [{"text": "anything at all", "page": None}]}))
+    r = run(["verify"], library, library)
+    assert str(library) in r.stdout, \
+        "a clean run against the wrong library reads exactly like a clean run against the right one"

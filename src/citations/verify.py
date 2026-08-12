@@ -66,6 +66,10 @@ class Report:
 def fold(s: str) -> str:
     """Normalize the way a PDF extractor mangles text, without changing which words appear."""
     s = unicodedata.normalize("NFKC", s)
+    # A PDF's embedded fonts can reach the extractor as raw glyph codes, arriving as control
+    # characters mid-page. They become separators rather than being deleted: deleting them would
+    # join two words that were never one word, which manufactures a match that is not there.
+    s = re.sub(r"[\x00-\x08\x0b\x0e-\x1f\x7f]", " ", s)
     s = s.replace("’", "'").replace("‘", "'")
     s = s.replace("“", '"').replace("”", '"')
     s = s.replace("—", "-").replace("–", "-").replace("−", "-")
@@ -125,6 +129,8 @@ def check_one(quote: str, artifact: pathlib.Path | None, page: int | None = None
 
     q, doc = fold(quote), fold(full)
     if q in doc:
+        if _cuts_a_token(q, doc):
+            warn.append("truncated")
         if page and fold(extract(artifact, page)).find(q) < 0:
             warn.append("page")
             return Result("found", f"not on page {page}", warn, _find_page(artifact, q))
@@ -134,6 +140,29 @@ def check_one(quote: str, artifact: pathlib.Path | None, page: int | None = None
         return Result("found", "", warn)
     return Result("not found", "read the source: a broken extraction reads the same as a "
                                "passage that was never there", warn)
+
+
+def _cuts_a_token(q: str, doc: str) -> bool:
+    """Does every occurrence of the quote stop in the middle of a word or a number?
+
+    `"an accuracy of 0.9"` is genuinely present in a source reporting **0.95**, so it is `found`
+    and the reader is told a true thing that misstates the result. The same cut turns
+    `"We trained 50"` into `"We trained 5"`. This is not the `short` warning: length is not the
+    problem, and a long quote ending one digit early is the more convincing version of it.
+
+    Every occurrence must cut, because a quote that lands cleanly somewhere in the document is
+    quoting that place.
+    """
+    if not q or not q[-1].isalnum():
+        return False
+    at, seen = doc.find(q), False
+    while at >= 0:
+        seen = True
+        after = at + len(q)
+        if after >= len(doc) or not doc[after].isalnum():
+            return False
+        at = doc.find(q, at + 1)
+    return seen
 
 
 def _find_page(artifact: pathlib.Path, folded_quote: str, limit: int = 60) -> int | None:

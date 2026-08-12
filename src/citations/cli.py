@@ -20,7 +20,8 @@ import yaml
 from citations import paths, verify as V
 
 RESULTS = ["found", "not found", "unchecked"]
-WARNINGS = {"short": "the source may qualify this in the next clause",
+WARNINGS = {"truncated": "stops mid-word or mid-number — the source continues it",
+            "short": "the source may qualify this in the next clause",
             "normalized": "matched after ignoring punctuation and spacing",
             "page": "found, but not on the page recorded"}
 
