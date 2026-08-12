@@ -60,6 +60,36 @@ def sha256_of(s: str) -> str:
     return hashlib.sha256(s.encode()).hexdigest()
 
 
+def unhashed_content(text: str) -> list[str]:
+    """Parts of the plan the hash would not cover, which `freeze` refuses to register.
+
+    Two things are skipped when hashing, both for good reasons, and both exploitable if they
+    appear where they are not meant to. The log marker ends the hashed region, so a second one
+    in the body leaves everything after it editable without `check` noticing. Marker-prefixed
+    lines are skipped because `freeze` writes them, so one in the body is editable the same way.
+
+    Refusing is better than hashing them anyway: changing what the hash covers would invalidate
+    every plan already frozen, while refusing only affects plans not yet registered.
+    """
+    problems = []
+    if text.count(MARK) > 1:
+        problems.append(
+            "the log marker (`---` then `## Log`) appears more than once. Hashing stops at the "
+            "first, so the plan after it would not be covered.")
+    i = text.find(MARK)
+    plan = text if i < 0 else text[:i]
+    m = STATUS_BLOCK.search(plan)
+    body = (plan[:m.start()] + plan[m.end():]) if m else plan
+    stray = [ln for ln in body.splitlines()
+             if ln.startswith(("**Status:**", "**Plan sha256:**", "**Frozen:**"))]
+    if stray:
+        problems.append(
+            "these lines sit outside the status block and are skipped when hashing, so they "
+            "could be edited after freezing without `check` noticing:\n      "
+            + "\n      ".join(stray[:5]))
+    return problems
+
+
 STATUS_BLOCK = re.compile(r"^\*\*Status:\*\*.*?(?=\n[ \t]*\n|\Z)", re.S | re.M)
 
 # A status line may carry a note after its sentence — "third version; see Log".
@@ -144,8 +174,21 @@ def cmd_freeze(a) -> int:
         print(f"no {PREREG} here or above. `prereg new <name>` makes one.")
         return 2
     text = path.read_text()
+    if STATUS_BLOCK.search(text) is None:
+        print(f"{path} has no `**Status:**` line, so there is nowhere to record the freeze.")
+        print("Add one — `**Status:** DRAFT — not frozen.` — or scaffold with `prereg new`.")
+        return 1
     if "**Status:** DRAFT" not in text and not a.force:
         print(f"{path} is already frozen. Use `prereg log` to append, or --force.")
+        return 1
+
+    problems = unhashed_content(text)
+    if problems:
+        print(f"{path} has content the freeze would not cover:\n")
+        for p in problems:
+            print(f"  - {p}")
+        print("\nA freeze that leaves part of the plan editable is worse than none, because it"
+              "\nreads as registered. Fix these and freeze again.")
         return 1
 
     repo = path.parent
@@ -181,6 +224,16 @@ def cmd_log(a) -> int:
         return 2
     if a.access not in ACCESS:
         print(f"access must be one of: {', '.join(ACCESS)}")
+        return 1
+    # The log is the tamper record, so a note is not free text. One line of it is one entry, and
+    # a note carrying a newline writes a second line that reads exactly like an entry somebody
+    # made — including a `frozen at ...` one. A fence closes the block early and puts everything
+    # after it outside the log.
+    if "\n" in a.note or "\r" in a.note:
+        print("a note is one line — a newline in it would read as a second log entry.")
+        return 1
+    if "```" in a.note:
+        print("a note cannot contain ``` — it would close the log block early.")
         return 1
     append(path, today(), a.note, a.access)
     print(f"logged: {a.note}  ({a.access})")

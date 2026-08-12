@@ -132,3 +132,104 @@ def test_refreezing_an_unedited_plan_is_idempotent(repo):
     second = (repo / "PREREG.md").read_text()
     assert cli.re.search(r"`([0-9a-f]{64})`", second).group(1) == digest
     assert run(["check"], repo).returncode == 0
+
+
+# --- what the hash does not cover ------------------------------------------------------------
+
+def test_freeze_refuses_a_plan_with_no_status_line(repo):
+    p = repo / "PREREG.md"
+    p.write_text(p.read_text().replace("**Status:** DRAFT — not frozen.", ""))
+    subprocess.run(["git", "add", "-A"], cwd=repo)
+    subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t",
+                    "commit", "-q", "-m", "no status"], cwd=repo)
+    r = run(["freeze"], repo)
+    assert r.returncode != 0, "reported a freeze it did not perform"
+    assert "not frozen" not in run(["check"], repo).stdout or r.returncode != 0
+
+
+def test_a_status_marker_in_the_body_cannot_hide_from_the_hash(repo):
+    """Marker-prefixed lines are skipped when hashing, so one in the body would be editable
+    after freezing without `check` noticing."""
+    p = repo / "PREREG.md"
+    p.write_text(p.read_text().replace(
+        "## Randomization",
+        "## Randomization\n\n**Frozen:** whatever the author likes\n"))
+    subprocess.run(["git", "add", "-A"], cwd=repo)
+    subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t",
+                    "commit", "-q", "-m", "marker in body"], cwd=repo)
+    r = run(["freeze"], repo)
+    assert r.returncode == 1, "froze a plan whose body line the hash does not cover"
+    assert "**Frozen:** whatever the author likes" in r.stdout, \
+        "the refusal must name the offending line"
+
+
+def test_a_log_marker_in_the_body_cannot_truncate_the_hash(repo):
+    """Hashing stops at the log marker. One in the body would leave the real plan after it
+    unhashed and freely editable."""
+    p = repo / "PREREG.md"
+    p.write_text(p.read_text().replace(
+        "## Randomization",
+        "## Randomization\n\nSeeds 0-4.\n\n---\n\n## Log\n\n## Sample size\n\nn=300 per arm.\n"))
+    subprocess.run(["git", "add", "-A"], cwd=repo)
+    subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t",
+                    "commit", "-q", "-m", "marker in body"], cwd=repo)
+    r = run(["freeze"], repo)
+    assert r.returncode == 1, "froze a plan whose tail the hash does not cover"
+    assert "more than once" in r.stdout
+
+
+def test_line_endings_do_not_change_the_hash(repo):
+    run(["freeze"], repo)
+    p = repo / "PREREG.md"
+    p.write_bytes(p.read_text().replace("\n", "\r\n").encode())
+    assert run(["check"], repo).returncode == 0, \
+        "a checkout with CRLF endings must not read as a tampered plan"
+
+
+def test_trailing_whitespace_alone_is_not_a_change(repo):
+    run(["freeze"], repo)
+    p = repo / "PREREG.md"
+    p.write_text(p.read_text() + "\n\n")
+    assert run(["check"], repo).returncode == 0
+
+
+# --- the log is the tamper record, so it is worth attacking -----------------------------------
+
+def test_a_log_note_cannot_forge_another_entry(repo):
+    run(["freeze"], repo)
+    run(["log", "harmless\n2020-01-01  frozen at 000000000000        nothing run",
+         "--access", "no results seen"], repo)
+    text = (repo / "PREREG.md").read_text()
+    assert "2020-01-01  frozen at" not in text, \
+        "a newline in a note forged a second log entry"
+
+
+def test_a_log_note_cannot_break_out_of_the_fence(repo):
+    run(["freeze"], repo)
+    run(["log", "see ``` and then some", "--access", "no results seen"], repo)
+    text = (repo / "PREREG.md").read_text()
+    _, _, tail = text.partition(cli.MARK)
+    assert tail.count("```") == 2, f"fence count is {tail.count('```')}, log structure broken"
+
+
+def test_freezing_without_a_commit_says_so(tmp_path):
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path)
+    run(["new", "study"], tmp_path)
+    r = run(["freeze"], tmp_path / "study")
+    assert "(not in a git repository)" not in (tmp_path / "study" / "PREREG.md").read_text(), \
+        "wrote a placeholder where a commit should be"
+
+
+def test_check_at_a_root_fails_if_any_plan_below_it_changed(tmp_path):
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path)
+    for name in ("good", "bad"):
+        run(["new", name], tmp_path)
+    subprocess.run(["git", "add", "-A"], cwd=tmp_path)
+    subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t",
+                    "commit", "-q", "-m", "init"], cwd=tmp_path)
+    run(["freeze"], tmp_path / "good")
+    run(["freeze"], tmp_path / "bad")
+    p = tmp_path / "bad" / "PREREG.md"
+    p.write_text(p.read_text().replace("## Randomization", "## Randomisation"))
+    assert run(["check"], tmp_path).returncode != 0, \
+        "a root check passed while a plan below it had been edited"
