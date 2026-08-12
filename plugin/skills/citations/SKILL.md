@@ -36,9 +36,14 @@ Three results, exhaustive:
 | `not found` | the source was read and the passage is not in it |
 | `unchecked` | the source could not be read — **no measurement was made** |
 
-Warnings sit on their own axis. A passage can be `found` and still carry one: `short` (the
-source may qualify it in the next clause), `normalized` (matched ignoring punctuation), `page`
-(found, but not where the record says).
+Warnings sit on their own axis. A passage can be `found` and still carry one: `truncated` (stops
+mid-word or mid-number and the source continues it), `short` (the source may qualify it in the next
+clause), `normalized` (matched ignoring punctuation), `page` (found, but not where the record says).
+
+**`truncated` is the one to stop for.** `"an accuracy of 0.9"` is genuinely present in a paper
+reporting **0.95**, so it passes every other check while misstating the result. Length is not the
+tell — a long quote ending one digit early is the convincing version — so `short` will not fire.
+Extend the quote through the end of the number or the word.
 
 **`unchecked` is not a pass.** Do not describe a claim as verified on the strength of it.
 

@@ -102,6 +102,25 @@ def test_hyphenation_across_a_line_break_is_normalized():
     assert V.fold("inter-\npretable") == "interpretable"
 
 
+def test_glyph_codes_from_a_figure_do_not_hide_the_passage(pinned):
+    # pdftotext emits a figure's embedded font as raw UTF-16 glyph codes. They land mid-page and
+    # must not swallow the surrounding prose.
+    junk = "\x00$\x00F\x00F\x00X\x00U\x00D\x00F"
+    r = V.check_one("ranks first in Language, eighth in Vision",
+                    pinned(f"we observe that CKA {junk} ranks first in Language, eighth in Vision"))
+    assert r.state == "found"
+
+
+def test_control_characters_separate_words_rather_than_joining_them():
+    # deleting them outright would manufacture a word that is in neither text
+    assert V.fold("logit\x00difference") == "logit difference"
+    assert V.fold("a\x13b\x11c") == "a b c"
+
+
+def test_page_break_still_reads_as_whitespace():
+    assert V.fold("end of page\x0cstart of next") == "end of page start of next"
+
+
 # --- a page claim that is wrong does not make the passage absent -----------------------------
 
 def test_right_passage_wrong_page_is_found_and_warned(pinned):
@@ -142,3 +161,54 @@ def test_same_name_different_bytes_hash_apart(tmp_path):
     a.write_bytes(b"Chughtai, Chan, Nanda 2023 - group operations")
     b.write_bytes(b"Chughtai, Cooney, Nanda 2024 - factual recall")
     assert V.sha256(a) != V.sha256(b)
+
+
+# --- a quote can be genuinely present and still misstate the source ----------------------------
+
+def _src(tmp_path, text):
+    f = tmp_path / "src.txt"
+    f.write_text(text)
+    return f
+
+
+def test_a_quote_cut_mid_number_is_flagged(tmp_path):
+    f = _src(tmp_path, "The model reached an accuracy of 0.95 on the held-out split.")
+    r = V.check_one("The model reached an accuracy of 0.9", f, None)
+    assert r.state == "found", "it is genuinely in the source; the point is the warning"
+    assert "truncated" in r.warnings, "0.9 quoted from 0.95 carried no signal"
+
+
+def test_a_quote_cut_mid_word_is_flagged(tmp_path):
+    f = _src(tmp_path, "We evaluated the catalogue of every registered variant.")
+    r = V.check_one("We evaluated the catalog", f, None)
+    assert "truncated" in r.warnings
+
+
+def test_a_quote_ending_on_a_whole_word_is_not_flagged(tmp_path):
+    f = _src(tmp_path, "The model reached an accuracy of 0.95 on the held-out split.")
+    r = V.check_one("The model reached an accuracy of 0.95", f, None)
+    assert "truncated" not in r.warnings
+
+
+def test_a_quote_ending_in_punctuation_is_not_flagged(tmp_path):
+    f = _src(tmp_path, "Effects were rare. We report them anyway.")
+    r = V.check_one("Effects were rare.", f, None)
+    assert "truncated" not in r.warnings
+
+
+def test_a_quote_that_lands_cleanly_somewhere_is_not_flagged(tmp_path):
+    """One occurrence cutting a word does not matter if another occurrence does not."""
+    f = _src(tmp_path, "the catalogue is long. the catalog is short.")
+    r = V.check_one("the catalog", f, None)
+    assert r.state == "found"
+    assert "truncated" not in r.warnings
+
+
+def test_truncation_is_independent_of_length(tmp_path):
+    """A long quote ending one digit early is the convincing version, and `short` will not fire."""
+    body = ("We describe a procedure that was applied to every held-out example without "
+            "exception, and the resulting accuracy was 0.87")
+    f = _src(tmp_path, body + "4 across all folds.")
+    r = V.check_one(body, f, None)
+    assert "short" not in r.warnings, "quote is long enough that `short` says nothing"
+    assert "truncated" in r.warnings
