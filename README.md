@@ -59,4 +59,26 @@ Neither proves you did not run the experiment first. Nothing can: a timestamp bo
 something existed, never when work began. If that matters, register the plan somewhere you do
 not control.
 
+## Freezing twice
+
+`freeze` writes the status block whether the plan is a draft or already frozen, and it hashes the
+plan *after* writing it. Two things follow.
+
+**It is idempotent.** Re-freezing an unedited plan reproduces the same hash, because the commit,
+the digest and the date sit on lines the hash skips. So `--force` on an unchanged plan is a no-op
+you can run without thinking about it.
+
+**A note on the status line survives.** Write `**Status:** DRAFT — not frozen. Third version; see
+Log.` and the note moves onto its own line under the freeze date rather than being appended to it.
+
+`--force` is for a plan that legitimately changed and was re-committed. It is not a way to clear a
+`CHANGED` warning: that warning means the plan was edited after freezing, and the honest response
+is `prereg log`, not a new hash.
+
+## Writing the header by hand
+
+Don't. `**Status:**`, `**Plan sha256:**` and `**Frozen:**` are output. A hand-written header
+produces a document that reads as registered and cannot be verified, which is worse than one that
+never claimed to be.
+
 MIT licensed.

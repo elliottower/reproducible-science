@@ -60,6 +60,54 @@ def sha256_of(s: str) -> str:
     return hashlib.sha256(s.encode()).hexdigest()
 
 
+STATUS_BLOCK = re.compile(r"^\*\*Status:\*\*.*?(?=\n[ \t]*\n|\Z)", re.S | re.M)
+
+# A status line may carry a note after its sentence — "third version; see Log".
+# The note is plan content and has to survive a freeze; the marker and its own
+# value do not.
+STATUS_VALUES = [
+    re.compile(r"^\*\*Status:\*\*[ \t]*DRAFT[ \t]*—[ \t]*not frozen\.?"),
+    re.compile(r"^\*\*Status:\*\*[ \t]*FROZEN at `[^`]*`\.?"),
+    re.compile(r"^\*\*Plan sha256:\*\*[ \t]*`[0-9a-f]*`\.?"),
+    re.compile(r"^\*\*Frozen:\*\*[ \t]*\d{4}-\d{2}-\d{2}\.?"),
+]
+
+
+def status_note(block: str) -> str:
+    """Whatever the status block says beyond the markers' own values."""
+    out = []
+    for line in block.splitlines():
+        for rx in STATUS_VALUES:
+            stripped = rx.sub("", line, count=1)
+            if stripped != line:
+                line = stripped
+                break
+        if line.strip():
+            out.append(line.strip())
+    return " ".join(out)
+
+
+def rewrite_status(text: str, commit: str, digest: str, date: str) -> str:
+    """Replace the whole status block, draft or already frozen.
+
+    Matching only the literal draft sentence did nothing on a plan that was
+    already frozen, so `--force` printed a new hash, wrote none of it, and left
+    the plan failing its own check — silently, with a zero exit code. Matching
+    the block also stops a note written after `**Status:**` from being glued onto
+    the freeze date, which is what a prefix-only replacement did to it.
+    """
+    m = STATUS_BLOCK.search(text)
+    if m is None:
+        return text
+    note = status_note(m.group(0))
+    block = (f"**Status:** FROZEN at `{commit[:12]}`\n"
+             f"**Plan sha256:** `{digest}`\n"
+             f"**Frozen:** {date}")
+    if note:
+        block += f"\n{note}"
+    return text[:m.start()] + block + text[m.end():]
+
+
 def append(path: pathlib.Path, date: str, event: str, access: str) -> None:
     text = path.read_text()
     if MARK not in text:
@@ -106,12 +154,17 @@ def cmd_freeze(a) -> int:
         print(f"{path} has uncommitted changes. Commit first — the freeze names a commit.")
         return 1
 
-    digest = sha256_of(plan_of(text))
     commit = git("rev-parse", "HEAD", cwd=repo) or "(not in a git repository)"
-    text = text.replace("**Status:** DRAFT — not frozen.",
-                        f"**Status:** FROZEN at `{commit[:12]}`\n"
-                        f"**Plan sha256:** `{digest}`\n"
-                        f"**Frozen:** {today()}")
+    # Normalize the layout first, then hash. Freezing moves any status note onto
+    # its own line, and `plan_of` skips marker lines but not that one, so hashing
+    # the pre-freeze text would store a digest of a layout the file no longer has
+    # and `check` would fail on the freeze itself. Hashing after also makes the
+    # freeze idempotent: commit and date sit on skipped lines, so re-freezing an
+    # unedited plan reproduces the same digest.
+    placeholder = "0" * 64
+    text = rewrite_status(text, commit, placeholder, today())
+    digest = sha256_of(plan_of(text))
+    text = text.replace(f"`{placeholder}`", f"`{digest}`", 1)
     path.write_text(text)
     append(path, today(), f"frozen at {commit[:12]}", "nothing run")
     print(f"frozen  {path}")
@@ -136,25 +189,51 @@ def cmd_log(a) -> int:
     return 0
 
 
-def cmd_check(a) -> int:
-    path = find()
-    if path is None:
-        print(f"no {PREREG} here or above.")
-        return 2
+def check_one(path: pathlib.Path) -> int:
+    """0 unchanged, 1 changed, 2 not frozen."""
     text = path.read_text()
     m = re.search(r"\*\*Plan sha256:\*\* `([0-9a-f]{64})`", text)
     if not m:
-        print(f"{path} is not frozen — nothing to check against.")
+        print(f"not frozen   {path}")
         return 2
     now = sha256_of(plan_of(text))
     if now == m.group(1):
-        print(f"unchanged since freeze  {path}")
+        print(f"unchanged    {path}")
         return 0
-    print(f"CHANGED since freeze  {path}")
+    print(f"CHANGED      {path}")
     print(f"  frozen  {m.group(1)[:16]}…")
     print(f"  now     {now[:16]}…")
-    print("\nThe plan was edited after freezing. Restore it and record the change in the log.")
     return 1
+
+
+def cmd_check(a) -> int:
+    """Check the governing plan, or every plan below when there is none.
+
+    A repository usually holds one plan per experiment, side by side, so running this at the
+    root has to mean "check them all" — otherwise the command is unusable from the one place
+    someone would naturally run it.
+    """
+    path = find()
+    if path is not None:
+        rc = check_one(path)
+        if rc == 1:
+            print("\nThe plan was edited after freezing. Restore it and record the change in the log.")
+        elif rc == 2:
+            print("\nNothing to check against yet. `prereg freeze` records the hash.")
+        return rc
+
+    found = sorted(pathlib.Path.cwd().rglob(PREREG))
+    if not found:
+        print(f"no {PREREG} here, above, or below.")
+        return 2
+
+    codes = [check_one(f) for f in found]
+    changed = codes.count(1)
+    print(f"\n{len(found)} plans: {codes.count(0)} unchanged, {changed} changed, "
+          f"{codes.count(2)} not frozen")
+    if changed:
+        print("A changed plan was edited after freezing. Restore it and record the change.")
+    return 1 if changed else 0
 
 
 def main() -> int:
