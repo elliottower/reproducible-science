@@ -59,8 +59,12 @@ def cmd_verify(a) -> int:
             if r.state != "found" or r.warnings:
                 rep.problems.append((f"{claim}:{cid}", text[:58], r))
         rep.counts = dict(counts)
-        return _report(rep, counts, a)
+        return _report(rep, counts, a, f"claims  {root}")
 
+    lib, origin = paths.find_with_origin()
+    source = f"library {lib}" + (
+        "  (user-level: no .citations/ in this directory or above it)"
+        if origin == "user" else "")
     for rec in _records():
         if a.only and a.only not in (rec.get("cited_by") or {}):
             continue
@@ -76,10 +80,14 @@ def cmd_verify(a) -> int:
             if r.state != "found" or r.warnings:
                 rep.problems.append((rec["slug"], text[:58], r))
     rep.counts = dict(counts)
-    return _report(rep, counts, a)
+    return _report(rep, counts, a, source)
 
 
-def _report(rep, counts, a) -> int:
+def _report(rep, counts, a, source: str = "") -> int:
+    # What was checked, before how it went. A clean run against the wrong library reads exactly
+    # like a clean run against the right one, and the path is the only thing that separates them.
+    if source:
+        print(f"{source}\n")
     if rep.checked == 0:
         print("nothing to check.\n")
         print("quotes live in a paper's claims/ directory. point at one:")
