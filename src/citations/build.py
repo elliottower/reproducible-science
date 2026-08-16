@@ -65,6 +65,10 @@ PAPERS = {
         # reads structured fields instead of guessing at positional ones
         "bib": GITHUB / "mechanistic-views-NEW" / "paper" / "references.bib",
     },
+    "mechanistic-nosology": {
+        "bib": GITHUB / "mechanistic-nosology" / "paper" / "references.bib",
+        "claims": GITHUB / "mechanistic-nosology" / "claims",
+    },
 }
 
 FIELD = re.compile(r"(\w+)\s*=\s*[{\"](.*?)[}\"]\s*,?\s*$", re.S)
