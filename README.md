@@ -96,4 +96,10 @@ something existed, never when work began.
 /plugin install prereg@prereg
 ```
 
+For all three reproducible-science tools in one plugin (prereg + [citations](https://github.com/elliottower/citations) + [results](https://github.com/elliottower/results)):
+
+```bash
+/plugin marketplace add elliottower/reproducible-science
+```
+
 MIT licensed.
