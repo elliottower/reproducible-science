@@ -5,29 +5,26 @@ adds nothing the CLI cannot do.
 
 ## Install
 
-Drop it in, no install step:
-
 ```bash
-cp -r plugin ~/.claude/skills/citations
+/plugin marketplace add elliottower/citations
+/plugin install citations@citations
 ```
 
-A directory under `~/.claude/skills/` containing `.claude-plugin/plugin.json` is discovered in
-place on the next session. Note that a bare `SKILL.md` copied there is *not* enough — the
-manifest directory is what makes it load.
+The plugin ships instructions, not binaries. Install the tool too:
+
+```bash
+uv tool install citations
+```
 
 For development against a checkout:
 
 ```bash
-claude --plugin-dir ./plugin
+/plugin marketplace add ~/Documents/GitHub/citations
+/plugin install citations@citations
 ```
 
-## It needs the CLI
+## What it changes
 
-The manifest has no field for declaring an external binary, so the requirement lives in the
-skill's description instead:
-
-```bash
-uv tool install citations     # or: pip install citations
-```
-
-Without it Claude will read the skill, run the command, and get "command not found".
+Claude will look up a source before quoting it rather than generating text that sounds like what
+a paper says. It will pin quotations to artifacts with sha256 hashes, run `citations verify` to
+check them, and flag truncated quotes that stop mid-number.

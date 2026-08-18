@@ -28,10 +28,12 @@ import unicodedata
 
 import yaml
 
-ROOT = pathlib.Path(__file__).resolve().parent
+from citations.paths import home as _home
+
+ROOT = _home()
 RECORDS = ROOT / "records"
 ENRICHMENT = ROOT / "enrichment.yaml"   # facts resolved after a .bib was written
-GITHUB = ROOT.parent
+GITHUB = pathlib.Path.home() / "Documents" / "GitHub"
 
 # Each paper: where its bibliography lives.
 #
