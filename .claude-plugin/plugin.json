@@ -1,0 +1,9 @@
+{
+  "name": "reproducible-science",
+  "description": "Preregistration, citation verification, and results provenance for reproducible science. Bundles prereg, citations, and results into one plugin.",
+  "version": "0.1.0",
+  "author": { "name": "Elliot Tower", "email": "elliot@elliottower.ai" },
+  "repository": "https://github.com/elliottower/reproducible-science",
+  "license": "MIT",
+  "keywords": ["reproducibility", "preregistration", "citations", "provenance", "open science"]
+}
