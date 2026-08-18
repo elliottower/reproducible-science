@@ -1,0 +1,27 @@
+{
+  "name": "reproducible-science",
+  "owner": {
+    "name": "Elliot Tower"
+  },
+  "metadata": {
+    "description": "Preregistration, citation verification, and results provenance for reproducible science",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "prereg",
+      "source": "./plugins/prereg",
+      "strict": false
+    },
+    {
+      "name": "citations",
+      "source": "./plugins/citations",
+      "strict": false
+    },
+    {
+      "name": "results",
+      "source": "./plugins/results",
+      "strict": false
+    }
+  ]
+}
