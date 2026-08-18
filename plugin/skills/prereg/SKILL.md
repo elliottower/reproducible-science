@@ -25,6 +25,8 @@ the one thing this skill exists to prevent.
 ```bash
 prereg new <name>      # scaffold PREREG.md in OSF's headings, plus tests/ and results/
 prereg freeze          # write the header, hash the plan, append to the log
+prereg freeze --osf    # freeze and push as a draft registration to OSF
+prereg setup           # save OSF token to .env (once)
 prereg log <note> --access <level>
 prereg check           # has anything above the log line changed since the freeze?
 ```

@@ -29,8 +29,10 @@ unchanged    V16_reliability_ceilings/PREREG.md
 |---------|-------------|
 | `prereg new <name>` | Scaffold a plan in OSF's headings |
 | `prereg freeze` | Record the commit and hash |
+| `prereg freeze --osf` | Freeze and push as a draft registration to OSF |
 | `prereg log <note>` | Append to the log without freezing |
 | `prereg check` | Has the plan changed since the freeze? |
+| `prereg setup` | Save your OSF token to `.env` |
 
 ## One file, one rule
 
@@ -77,6 +79,19 @@ rewritten. Two of the twenty-seven do the real work:
 - **Inference criteria** — the decision rule as a commitment, before the number exists.
 
 A heading that does not apply is answered `N/A` with a reason, never deleted.
+
+## OSF integration
+
+The plan uses OSF's question titles verbatim, so `prereg freeze --osf` pushes it directly to
+OSF as a draft registration. You review and submit it there — submission is irreversible.
+
+```bash
+prereg setup                  # save your OSF token (once)
+prereg freeze --osf           # freeze locally and push to OSF
+```
+
+Create a token at [osf.io/settings/tokens](https://osf.io/settings/tokens) with the
+`osf.full_write` scope. The token is stored in `.env` (gitignored).
 
 ## What a freeze is
 

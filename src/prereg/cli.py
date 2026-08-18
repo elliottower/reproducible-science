@@ -17,7 +17,7 @@ import re
 import subprocess
 import sys
 
-from prereg import template
+from prereg import osf, template
 
 PREREG = "PREREG.md"
 MARK = "\n---\n\n## Log\n"
@@ -217,6 +217,16 @@ def cmd_freeze(a) -> int:
     print(f"  commit  {commit[:12]}")
     print(f"  sha256  {digest[:16]}…  (of everything above the log)")
     print("\nCommit this. The freeze is only evidence once it is in history.")
+
+    if a.osf:
+        try:
+            draft_id, url = osf.push_draft(text)
+            print(f"\nOSF draft created: {url}")
+            print("Review and submit it there — submission is irreversible.")
+        except RuntimeError as e:
+            print(f"\nOSF push failed: {e}", file=sys.stderr)
+            return 1
+
     return 0
 
 
@@ -262,6 +272,17 @@ def check_one(path: pathlib.Path) -> int:
     return 1
 
 
+def cmd_setup(a) -> int:
+    try:
+        env_path = osf.setup_token()
+        print(f"saved to {env_path}")
+        print(".env added to .gitignore")
+    except RuntimeError as e:
+        print(str(e), file=sys.stderr)
+        return 1
+    return 0
+
+
 def cmd_check(a) -> int:
     """Check the governing plan, or every plan below when there is none.
 
@@ -303,6 +324,7 @@ def main() -> int:
 
     f = sub.add_parser("freeze", help="record the commit and hash")
     f.add_argument("--force", action="store_true")
+    f.add_argument("--osf", action="store_true", help="push as a draft registration to OSF")
     f.set_defaults(fn=cmd_freeze)
 
     lg = sub.add_parser("log", help="append a line")
@@ -310,6 +332,9 @@ def main() -> int:
     lg.add_argument("--access", default="no results seen",
                     help=f"one of: {', '.join(ACCESS)}")
     lg.set_defaults(fn=cmd_log)
+
+    s = sub.add_parser("setup", help="save OSF token to .env")
+    s.set_defaults(fn=cmd_setup)
 
     c = sub.add_parser("check", help="has the plan changed since the freeze?")
     c.set_defaults(fn=cmd_check)
