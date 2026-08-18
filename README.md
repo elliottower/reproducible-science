@@ -100,4 +100,10 @@ whether it should have.
 /plugin install results@results
 ```
 
+For all three reproducible-science tools in one plugin (results + [prereg](https://github.com/elliottower/prereg) + [citations](https://github.com/elliottower/citations)):
+
+```bash
+/plugin marketplace add elliottower/reproducible-science
+```
+
 MIT licensed.
