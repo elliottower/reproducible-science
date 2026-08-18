@@ -2,15 +2,35 @@
 
 Freeze a plan before you run it, and record what changed after.
 
-```bash
-uv tool install prereg
+## Install
 
+```bash
+pip install prereg
+```
+
+## Quick start
+
+```bash
 prereg new V16_reliability_ceilings
-# fill it in, commit
+# fill in the plan, commit it
 prereg freeze
+# run the experiment, then log what happened
 prereg log "tolerance now derived from fixtures" --access "no results seen"
 prereg check
 ```
+
+```
+unchanged    V16_reliability_ceilings/PREREG.md
+```
+
+## Commands
+
+| Command | What it does |
+|---------|-------------|
+| `prereg new <name>` | Scaffold a plan in OSF's headings |
+| `prereg freeze` | Record the commit and hash |
+| `prereg log <note>` | Append to the log without freezing |
+| `prereg check` | Has the plan changed since the freeze? |
 
 ## One file, one rule
 
@@ -38,13 +58,22 @@ The last column is what distinguishes an amendment from a deviation, so you neve
 decide which word to use. `nothing run`, `no results seen`, `results not opened`, `results
 seen`. An entry logged before results is an amendment; one logged after is a deviation.
 
+## Check output
+
+| Exit | Result | Meaning |
+|------|--------|---------|
+| 0 | `unchanged` | The plan says what it said |
+| 1 | `CHANGED` | The plan was edited above the line after freezing |
+| 2 | `not frozen` | No hash recorded — nothing was measured |
+
+`not frozen` is not a pass. It is the absence of a check.
+
 ## The plan uses OSF's headings
 
 Verbatim, so the document maps onto an [OSF registration](https://osf.io/prereg/) without being
 rewritten. Two of the twenty-seven do the real work:
 
-- **Foreknowledge of data or evidence** — what you have already seen. This is the field that
-  catches an exploratory result being reused as though it were confirmatory.
+- **Foreknowledge of data or evidence** — what you have already seen.
 - **Inference criteria** — the decision rule as a commitment, before the number exists.
 
 A heading that does not apply is answered `N/A` with a reason, never deleted.
@@ -56,29 +85,15 @@ revise quietly. The hash is the convenience that lets `prereg check` tell you in
 whether the plan still says what it said.
 
 Neither proves you did not run the experiment first. Nothing can: a timestamp bounds when
-something existed, never when work began. If that matters, register the plan somewhere you do
-not control.
+something existed, never when work began.
 
-## Freezing twice
+## Claude Code
 
-`freeze` writes the status block whether the plan is a draft or already frozen, and it hashes the
-plan *after* writing it. Two things follow.
+`plugin/` is a Claude Code plugin that tells Claude when to reach for the CLI.
 
-**It is idempotent.** Re-freezing an unedited plan reproduces the same hash, because the commit,
-the digest and the date sit on lines the hash skips. So `--force` on an unchanged plan is a no-op
-you can run without thinking about it.
-
-**A note on the status line survives.** Write `**Status:** DRAFT — not frozen. Third version; see
-Log.` and the note moves onto its own line under the freeze date rather than being appended to it.
-
-`--force` is for a plan that legitimately changed and was re-committed. It is not a way to clear a
-`CHANGED` warning: that warning means the plan was edited after freezing, and the honest response
-is `prereg log`, not a new hash.
-
-## Writing the header by hand
-
-Don't. `**Status:**`, `**Plan sha256:**` and `**Frozen:**` are output. A hand-written header
-produces a document that reads as registered and cannot be verified, which is worse than one that
-never claimed to be.
+```bash
+/plugin marketplace add elliottower/prereg
+/plugin install prereg@prereg
+```
 
 MIT licensed.
