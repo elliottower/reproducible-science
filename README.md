@@ -109,4 +109,10 @@ So `git diff` shows what changed. A binary store cannot show you that a year mov
 /plugin install citations@citations
 ```
 
+For all three reproducible-science tools in one plugin (citations + [prereg](https://github.com/elliottower/prereg) + [results](https://github.com/elliottower/results)):
+
+```bash
+/plugin marketplace add elliottower/reproducible-science
+```
+
 MIT licensed. `docs/` has the working practices this came out of.
