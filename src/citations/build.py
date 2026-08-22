@@ -302,6 +302,10 @@ def carry_forward(merged: dict) -> int:
     lives in enrichment.yaml instead, keyed by slug.
 
     The bibliography still wins where it has a value; this only fills gaps.
+
+    Identifiers are handled earlier, in main(), because a DOI that arrives here cannot change
+    the slug the record was already filed under -- it would fill the field and leave the work
+    split across two records. Everything else lands here.
     """
     if not ENRICHMENT.exists():
         return 0
@@ -356,10 +360,22 @@ def main() -> int:
     enrich_from_validity(got.get("mechanistic-validity", {}))
     enrich_from_claims(got.get("mechanistic-validity", {}))
 
+    overlay = yaml.safe_load(ENRICHMENT.read_text()) or {} if ENRICHMENT.exists() else {}
+
     merged: dict[str, dict] = {}
     for paper, entries in got.items():
         for key, e in entries.items():
             s = slug_for(e)
+            # An identifier resolved after the .bib was written has to be able to identify the
+            # work, not just decorate it. Applying the overlay only after the slug is fixed
+            # leaves the record under its title hash and still split from its twin, so look it
+            # up under the provisional slug and re-slug when it supplies a DOI or an arXiv id.
+            extra = overlay.get(s) or {}
+            if extra.get("doi") or extra.get("arxiv"):
+                for k in ("doi", "arxiv"):
+                    if extra.get(k) and not e.get(k):
+                        e[k] = extra[k]
+                s = slug_for(e)
             rec = merged.setdefault(s, {
                 "slug": s, "title": e["title"], "authors": e["authors"], "year": e["year"],
                 "venue": e["venue"], "doi": e.get("doi", ""), "arxiv": e.get("arxiv", ""),
