@@ -74,7 +74,10 @@ def test_claims_block_is_read_under_either_name(tmp_path):
 
 # --- which library did that clean run actually check? ------------------------------------------
 
-def test_origin_reports_the_rule_that_found_the_library(tmp_path):
+def test_origin_reports_the_rule_that_found_the_library(tmp_path, monkeypatch):
+    # the walk-up only applies when the env var is not set, and it is set on the machine this
+    # library was written on -- without clearing it the test asserts the wrong rule
+    monkeypatch.delenv("CITATIONS_HOME", raising=False)
     from citations import paths
     proj = tmp_path / "paper"
     (proj / ".citations" / "records").mkdir(parents=True)
