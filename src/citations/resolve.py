@@ -20,6 +20,7 @@ from __future__ import annotations
 import argparse
 import difflib
 import json
+import os
 import pathlib
 import re
 import sys
@@ -30,7 +31,11 @@ import urllib.request
 
 import yaml
 
-ROOT = pathlib.Path(__file__).resolve().parent
+from citations.paths import home as _home
+
+# The library, not the package directory. Reading the latter finds an empty records/ and
+# reports that nothing needs resolving, which is indistinguishable from being finished.
+ROOT = _home()
 RECORDS = ROOT / "records"
 ENRICHMENT = ROOT / "enrichment.yaml"
 UA = "citations/1.0 (mailto:elliot@elliottower.ai)"
@@ -51,8 +56,8 @@ def surname(author: str) -> str:
     return norm(author.split(",")[0] if "," in author else author.split()[-1])
 
 
-def fetch(url: str, timeout: int = 25):
-    req = urllib.request.Request(url, headers={"User-Agent": UA})
+def fetch(url: str, timeout: int = 25, headers: dict | None = None):
+    req = urllib.request.Request(url, headers={"User-Agent": UA, **(headers or {})})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return r
 
@@ -61,7 +66,7 @@ class Throttled(Exception):
     """The service refused to answer. Distinct from answering that it has nothing."""
 
 
-def get_json(url: str, tries: int = 4) -> dict | None:
+def get_json(url: str, tries: int = 4, headers: dict | None = None) -> dict | None:
     """None means the service answered and had nothing. Throttled means it did not answer.
 
     Collapsing those two into None is how a batch of sixty lookups reported sixty works as
@@ -72,7 +77,7 @@ def get_json(url: str, tries: int = 4) -> dict | None:
     delay = 2.0
     for attempt in range(tries):
         try:
-            with fetch(url) as r:
+            with fetch(url, headers=headers) as r:
                 return json.loads(r.read().decode())
         except urllib.error.HTTPError as e:
             if e.code in (429, 503, 504):
@@ -121,6 +126,43 @@ def try_crossref(rec: dict) -> tuple[str, str] | None:
         if best is None or score > best[0]:
             best = (score, it.get("DOI"))
     return ("doi", best[1]) if best else None
+
+
+def try_semanticscholar(rec: dict) -> tuple[str, str] | None:
+    """Semantic Scholar, which indexes preprints and workshop papers Crossref has never seen.
+
+    Anonymous requests are rate limited hard enough to look like an empty index; an empty
+    result from a 429 is not a finding. Set SEMANTIC_SCHOLAR_API_KEY to get a usable quota.
+    """
+    title, venue = rec.get("title", ""), rec.get("venue", "")
+    first = (rec.get("authors") or [""])[0]
+    q = urllib.parse.urlencode({"query": title[:250], "limit": 6,
+                                "fields": "title,externalIds,authors,year,venue"})
+    key = os.environ.get("SEMANTIC_SCHOLAR_API_KEY", "")
+    d = get_json(f"https://api.semanticscholar.org/graph/v1/paper/search?{q}",
+                 headers={"x-api-key": key} if key else None)
+    if not d:
+        return None
+    best = None
+    for it in d.get("data") or []:
+        t = it.get("title") or ""
+        ts = close(t, title)
+        if ts < TITLE_MIN:
+            continue
+        fams = {surname(a.get("name", "")) for a in (it.get("authors") or [])}
+        if first and surname(first) not in fams:
+            continue
+        if not year_ok(rec.get("year", ""), it.get("year")):
+            continue
+        ext = it.get("externalIds") or {}
+        ident = ("doi", ext["DOI"]) if ext.get("DOI") else (("arxiv", ext["ArXiv"]) if ext.get("ArXiv") else None)
+        if not ident:
+            continue
+        vs = close(it.get("venue") or "", venue) if venue else 0.0
+        score = ts + 1.5 * vs
+        if best is None or score > best[0]:
+            best = (score, ident)
+    return best[1] if best else None
 
 
 def try_arxiv(rec: dict) -> tuple[str, str] | None:
@@ -263,7 +305,7 @@ def main() -> int:
         # others from answering. A record only counts as blocked if every service refused,
         # which is different from every service having nothing.
         hit, refused = None, 0
-        for service in (try_crossref, try_openalex, try_arxiv):
+        for service in (try_semanticscholar, try_crossref, try_openalex, try_arxiv):
             try:
                 hit = service(r)
             except Throttled:
