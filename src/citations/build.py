@@ -71,6 +71,14 @@ PAPERS = {
         "bib": GITHUB / "mechanistic-nosology" / "paper" / "references.bib",
         "claims": GITHUB / "mechanistic-nosology" / "claims",
     },
+    "neurology-nosology": {
+        "bib": GITHUB / "neurology-nosology" / "paper" / "references.bib",
+        "claims": GITHUB / "neurology-nosology" / "claims",
+    },
+    "mechanistic-admissibility": {
+        "bib": GITHUB / "mechanistic-admissibility" / "paper" / "tex" / "mechscope_references.bib",
+        "claims": GITHUB / "mechanistic-admissibility" / "claims",
+    },
 }
 
 FIELD = re.compile(r"(\w+)\s*=\s*[{\"](.*?)[}\"]\s*,?\s*$", re.S)
@@ -146,12 +154,36 @@ def slug_for(rec: dict) -> str:
     return "t-" + hashlib.sha256(base.encode()).hexdigest()[:16]
 
 
+# 0704.0001 is the modern form; cs/0501001 and math.GT/0309136 are the pre-2007 one.
+ARXIV_ID = r"(\d{4}\.\d{4,5}|[a-z-]+(?:\.[a-z]{2})?/\d{7})"
+ARXIV_PATTERNS = (
+    rf"arxiv\.org/(?:abs|pdf)/{ARXIV_ID}",   # https://arxiv.org/abs/2211.00593
+    rf"arxiv[:\s]+{ARXIV_ID}",               # arXiv:2211.00593, "arXiv preprint arXiv:..."
+)
+
+
 def arxiv_of(*texts: str) -> str:
+    """The id out of any field that might carry it, as a url or as an arXiv: prefix."""
     for t in texts:
-        m = re.search(r"arxiv[:\s]*(\d{4}\.\d{4,5})", (t or "").lower())
-        if m:
-            return m.group(1)
+        low = (t or "").lower()
+        for pat in ARXIV_PATTERNS:
+            m = re.search(pat, low)
+            if m:
+                return m.group(1)
     return ""
+
+
+def arxiv_from_fields(f: dict) -> str:
+    """`eprint` is BibTeX's own field for this and holds a bare id, with no "arXiv:" to match on.
+
+    Reading only note/url/journal missed every entry written the standard way, which split one
+    work across two records whenever some bibliographies used eprint and others used a url.
+    """
+    ep = (f.get("eprint") or "").strip()
+    if re.fullmatch(ARXIV_ID, ep, re.I):
+        return ep.lower()
+    return arxiv_of(ep, f.get("note", ""), f.get("url", ""),
+                    f.get("journal", ""), f.get("howpublished", ""))
 
 
 def parse_bib(path: pathlib.Path) -> dict[str, dict]:
@@ -169,7 +201,7 @@ def parse_bib(path: pathlib.Path) -> dict[str, dict]:
             "year": f.get("year", ""),
             "venue": f.get("booktitle") or f.get("journal") or f.get("howpublished", ""),
             "doi": f.get("doi", ""), "url": f.get("url", ""),
-            "arxiv": arxiv_of(f.get("note", ""), f.get("url", ""), f.get("journal", "")),
+            "arxiv": arxiv_from_fields(f),
         }
     return out
 
@@ -286,6 +318,33 @@ def carry_forward(merged: dict) -> int:
     return kept
 
 
+def audit_existing(merged: dict) -> tuple[list[tuple[str, str, str]], list[str]]:
+    """What a write would destroy, and what it would leave behind.
+
+    A record is derived from the bibliographies, so anything written into one by hand is gone at
+    the next build. Saying so is the difference between a fact resolved once and a fact resolved
+    every time someone rebuilds.
+    """
+    losing: list[tuple[str, str, str]] = []
+    stale: list[str] = []
+    if not RECORDS.exists():
+        return losing, stale
+    for p in sorted(RECORDS.glob("*.yaml")):
+        slug = p.stem
+        rec = merged.get(slug)
+        if rec is None:
+            stale.append(slug)
+            continue
+        try:
+            old = yaml.safe_load(p.read_text()) or {}
+        except Exception:
+            continue
+        for field in ("doi", "arxiv"):
+            if old.get(field) and not rec.get(field):
+                losing.append((slug, field, str(old[field])))
+    return losing, stale
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--scan", action="store_true")
@@ -331,6 +390,18 @@ def main() -> int:
         for r in list(divergent.values())[:12]:
             keys = ", ".join(f"{p}={c['key']}" for p, c in r["cited_by"].items())
             print(f"    {r['title'][:52]:<54}{keys}")
+
+    losing, stale = audit_existing(merged)
+    if losing:
+        print("\n  identifiers on disk that this rebuild does not have:")
+        for slug, field, val in losing[:12]:
+            print(f"    {slug:<44}{field}={val}")
+        print(f"  {len(losing)} in total. Records are generated, so these are dropped on write.")
+        print(f"  Put them in the citing .bib, or in {ENRICHMENT.name} keyed by slug to fill the")
+        print("  field -- note that enrichment cannot re-slug a record, only a .bib identifier can.")
+    if stale:
+        print(f"\n  {len(stale)} record file(s) no longer produced by any bibliography (superseded);")
+        print("  they remain on disk and are not deleted.")
 
     if not a.scan:
         RECORDS.mkdir(parents=True, exist_ok=True)
