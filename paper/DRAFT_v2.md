@@ -181,13 +181,17 @@ Darden. Author, title, and year were correct in every case; only the identifier 
 elsewhere, and all four resolve, so a link checker passes them.
 
 A title-based resolver wrote 172 identifiers into that library. Of those, 21 have no record
-file, 6 have a record listing no authors, and 24 carry a DOI that Crossref does not resolve —
-all arXiv identifiers under the `10.48550` prefix, registered with DataCite rather than
-Crossref, and therefore unchecked rather than wrong. The remaining **121 are checkable, and 12
-name a work whose first author does not appear in the registry's author list: 9.9%.** A
-first-author guard rejects them, and surname matching must accept transliteration variants —
-`Hölscher` against `Hoelscher` — or the guard rejects correct entries at roughly the rate it
-catches wrong ones.
+file and 6 have a record listing no authors. The remaining **145 are checkable, and 12 name a
+work whose first author does not appear in the registry's author list: 8.3%.** A first-author
+guard rejects them.
+
+Two properties of the checking matter as much as the rate. Surname matching must accept
+transliteration variants — `Hölscher` against `Hoelscher` — or the guard rejects correct
+entries at roughly the rate it catches wrong ones. And the checker must consult the registry a
+DOI is registered with: 24 of these are arXiv and Zenodo identifiers under prefixes DataCite
+carries and Crossref answers 404 for. Reading only Crossref reported all 24 as identifiers
+that did not resolve, which is a false accusation against correct entries produced by asking
+the wrong registry.
 
 Identifier resolution is not modeled by the evidence contract. Whether it should be a third
 evidence kind is open.

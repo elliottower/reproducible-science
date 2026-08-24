@@ -1,0 +1,164 @@
+schema_version: repro/1
+project: rna Table 5
+artifacts:
+- id: phase6-rinalmo
+  path: data/phase6_compensatory/rinalmo_phase6_ps.json
+  media_type: application/json
+  digest:
+    algorithm: sha256
+    value: ee0ee3e05c0e7290f7a772f01900e1927152a1f9bc2e60e4f8f46ed55efd9f76
+- id: phase6-ernierna
+  path: data/phase6_compensatory/ernierna_phase6_ps.json
+  media_type: application/json
+  digest:
+    algorithm: sha256
+    value: 7e3c1b70b65d493c4aa02803b6eb2e88a7ac68393da54f6aa53226c212099952
+- id: phase6-ernierna_untrained
+  path: data/phase6_compensatory/ernierna_untrained_phase6.json
+  media_type: application/json
+  digest:
+    algorithm: sha256
+    value: 77a7b9ea404364d096d6930d54e1d80f0231072c6143e0a1480438da26d2d953
+- id: phase6-caduceus
+  path: data/expanded_rfam/caduceus_phase6_ps_20260716.json
+  media_type: application/json
+  digest:
+    algorithm: sha256
+    value: 847220bb1d3f71b240b8d700725f4bc85430c584ec456e913a47192b8f196e9d
+- id: phase6-hyenadna
+  path: data/phase6_compensatory/hyenadna_phase6_ps.json
+  media_type: application/json
+  digest:
+    algorithm: sha256
+    value: 0f258031327e37f3b1ad239401fde5f90cb33faa54e661591614ff528895d0b6
+- id: phase6-splicebert
+  path: data/phase6_compensatory/splicebert_phase6_ps.json
+  media_type: application/json
+  digest:
+    algorithm: sha256
+    value: 2081dbe3ec276bcc828db4cbd3f27e9006c75c22613aa417a2515794566ef770
+- id: phase6-rnafm
+  path: data/phase6_compensatory/rnafm_phase6_ps.json
+  media_type: application/json
+  digest:
+    algorithm: sha256
+    value: 09522d8de91a070fa306495f95f69b040e03a7fc98d68c1ed96a8d5334c541cc
+- id: phase6-utrlm
+  path: data/phase6_compensatory/utrlm_phase6_ps.json
+  media_type: application/json
+  digest:
+    algorithm: sha256
+    value: 57bddcef78cdf5d376c7464fa22544cb8f2fa28506cec6c9a28e9cf099752ef2
+- id: phase6-nt
+  path: data/phase6_compensatory/nt_phase6_ps.json
+  media_type: application/json
+  digest:
+    algorithm: sha256
+    value: 738c6070cbe65c47ee26745c5ea9c8c899b7eebfff88fdb1011e429a27801881
+- id: phase6-dnabert2
+  path: data/phase6_compensatory/phase6_dnabert2_synthetic.json
+  media_type: application/json
+  digest:
+    algorithm: sha256
+    value: 65de8a9cd437287c948edc27c52f9590a97d352e77136c932b9a100002204899
+claims:
+- id: rinalmo
+  confirmatory: true
+  where: Table 5
+  text: Table 5 reports mean perturbation specificity 0.2150 for rinalmo.
+  evidence:
+  - kind: metric
+    artifact: phase6-rinalmo
+    name: rinalmo
+    reported: '0.2150'
+    pointer: /results/mean_best_ps
+- id: ernierna
+  confirmatory: true
+  where: Table 5
+  text: Table 5 reports mean perturbation specificity 0.1204 for ernierna.
+  evidence:
+  - kind: metric
+    artifact: phase6-ernierna
+    name: ernierna
+    reported: '0.1204'
+    pointer: /results/mean_best_ps
+- id: ernierna_untrained
+  confirmatory: true
+  where: Table 5
+  text: Table 5 reports mean perturbation specificity 9.5e-8 for ernierna_untrained.
+  evidence:
+  - kind: metric
+    artifact: phase6-ernierna_untrained
+    name: ernierna_untrained
+    reported: '9.5e-8'
+    pointer: /results/mean_best_ps
+- id: caduceus
+  confirmatory: true
+  where: Table 5
+  text: Table 5 reports mean perturbation specificity 0.0034 for caduceus.
+  evidence:
+  - kind: metric
+    artifact: phase6-caduceus
+    name: caduceus
+    reported: '0.0034'
+    pointer: /results/mean_best_ps
+- id: hyenadna
+  confirmatory: true
+  where: Table 5
+  text: Table 5 reports mean perturbation specificity 0.0003 for hyenadna.
+  evidence:
+  - kind: metric
+    artifact: phase6-hyenadna
+    name: hyenadna
+    reported: '0.0003'
+    pointer: /results/mean_best_ps
+- id: splicebert
+  confirmatory: true
+  where: Table 5
+  text: Table 5 reports mean perturbation specificity 0.0002 for splicebert.
+  evidence:
+  - kind: metric
+    artifact: phase6-splicebert
+    name: splicebert
+    reported: '0.0002'
+    pointer: /results/mean_best_ps
+- id: rnafm
+  confirmatory: true
+  where: Table 5
+  text: Table 5 reports mean perturbation specificity 0.0001 for rnafm.
+  evidence:
+  - kind: metric
+    artifact: phase6-rnafm
+    name: rnafm
+    reported: '0.0001'
+    pointer: /results/mean_best_ps
+- id: utrlm
+  confirmatory: true
+  where: Table 5
+  text: Table 5 reports mean perturbation specificity 0.00001 for utrlm.
+  evidence:
+  - kind: metric
+    artifact: phase6-utrlm
+    name: utrlm
+    reported: '0.00001'
+    pointer: /results/mean_best_ps
+- id: nt
+  confirmatory: true
+  where: Table 5
+  text: Table 5 reports mean perturbation specificity 0.001 for nt.
+  evidence:
+  - kind: metric
+    artifact: phase6-nt
+    name: nt
+    reported: '0.001'
+    pointer: /results/mean_best_ps
+- id: dnabert2
+  confirmatory: true
+  where: Table 5
+  text: Table 5 reports mean perturbation specificity -0.016 for dnabert2.
+  evidence:
+  - kind: metric
+    artifact: phase6-dnabert2
+    name: dnabert2
+    reported: '-0.016'
+    pointer: /results/mean_best_ps

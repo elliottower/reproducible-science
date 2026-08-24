@@ -2,7 +2,7 @@ schema_version: repro/1
 project: reproducible-science (self-audit)
 provenance:
   repository: https://github.com/elliottower/reproducible-science.git
-  commit: 3c4d06a2ce7cba5b64886eebd55003b095ccfdd6
+  commit: e88ae716068180e9081de2d27528893edcc8d790
   dirty: true
   generated_by: scripts/build_self_audit.py
 artifacts:
@@ -11,13 +11,13 @@ artifacts:
   media_type: text/markdown
   digest:
     algorithm: sha256
-    value: 43fc745cd4a21eaf4756ffd87903df5c0228523edf91a8a0b701d7fc1a8b6812
+    value: cd1ced9f04a176333fe2e1d29e1dd6f267666d80f99e479a10dcde258a7b1687
 - id: figures
   path: figures.json
   media_type: application/json
   digest:
     algorithm: sha256
-    value: 8a30f5cbc3634e97bd7ceb7155ba9a2676c8ec1f51f0ffd60cf061d76616a874
+    value: 2c78753811b7a0d0e1a58325c32265255a65870c34ba51bafb3ae399b168bf29
 claims:
 - id: corpus-assertions
   confirmatory: true
@@ -126,15 +126,15 @@ claims:
 - id: resolver-checkable
   confirmatory: true
   where: Section 6
-  text: The manuscript states 121 for resolver-checkable.
+  text: The manuscript states 145 for resolver-checkable.
   evidence:
   - kind: quote
     artifact: manuscript
-    text: 121 are checkable
+    text: 145 are checkable
   - kind: metric
     artifact: figures
     name: resolver-checkable
-    reported: '121'
+    reported: '145'
     pointer: /resolver_identifiers/checkable
 - id: resolver-absent
   confirmatory: true
@@ -149,29 +149,16 @@ claims:
 - id: resolver-rate
   confirmatory: true
   where: Section 6
-  text: The manuscript states 9.9 for resolver-rate.
+  text: The manuscript states 8.3 for resolver-rate.
   evidence:
   - kind: quote
     artifact: manuscript
-    text: 9.9%
+    text: 8.3%
   - kind: metric
     artifact: figures
     name: resolver-rate
-    reported: '9.9'
+    reported: '8.3'
     pointer: /resolver_identifiers/absent_rate
-- id: resolver-unresolved
-  confirmatory: true
-  where: Section 6
-  text: The manuscript states 24 for resolver-unresolved.
-  evidence:
-  - kind: quote
-    artifact: manuscript
-    text: 24 carry a DOI that Crossref does not resolve
-  - kind: metric
-    artifact: figures
-    name: resolver-unresolved
-    reported: '24'
-    pointer: /resolver_identifiers/unresolved
 - id: conformance-fixtures
   confirmatory: true
   where: Section 6

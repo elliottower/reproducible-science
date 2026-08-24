@@ -19,7 +19,7 @@ import sys
 import yaml
 
 from citations import verify as CV
-from citations.audit import from_crossref
+from citations.audit import from_crossref, from_datacite, is_datacite
 from citations.exceptions import ClaimFileError
 from citations.models import load_claim_file
 from citations.text import surname_variants
@@ -64,7 +64,11 @@ def resolver_identifiers() -> dict:
         if not authors:
             counts["no_authors"] += 1
             continue
-        reg = from_crossref(doi, LIB / ".audit-cache")
+        cache = LIB / ".audit-cache"
+        # Ask the registry the DOI is registered with, so an arXiv or Zenodo identifier is
+        # not counted as unresolved because Crossref does not carry it.
+        reg = (from_datacite(doi, cache) if is_datacite(doi)
+               else from_crossref(doi, cache) or from_datacite(doi, cache))
         if reg is None:
             counts["unresolved"] += 1
             continue

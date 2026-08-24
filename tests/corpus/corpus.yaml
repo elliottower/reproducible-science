@@ -1,0 +1,12 @@
+entries:
+- name: citations
+  repository: https://github.com/elliottower/citations.git
+  commit: 2450e711ea11c2f55b7497a18f120dec2e2e16f4
+  artifacts:
+  - path: src/citations/verify.py
+    sha256: 453b84403942ed6ae60afb63267c18a02a452241f098f85b763b035becc862a6
+  - path: src/citations/models.py
+    sha256: 325e0181905a42a20205808783c1b94348bfca7fa0c39c6e778d9daa389eed00
+  - path: pyproject.toml
+    sha256: b8ec21b65298b6de8cb0df797cd213fd5a98edc1ba8e7e80d717994449b66d38
+  note: quotation backend; figures in section 6.2 are measured against its corpus
