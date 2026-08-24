@@ -14,10 +14,10 @@ value that disagrees, a value the artifact is silent on, and a check that never 
 cases a two-state report has to collapse and whose remedies differ. The engine returns facts
 and computes no verdict; a policy maps outcomes to severities, so an unchecked citation can be
 acceptable in a draft and disqualifying in a submission. We report a quotation corpus of 5,686
-assertions over 365 content-addressed sources drawn from seventeen manuscripts; a metric corpus
-over two manuscripts, where one agrees with its stored results on all thirty-nine values it
-prints and the other disagrees on nine of ten table rows; a conformance suite of thirteen
-fixtures with canonical expected outputs; and fault injection covering source tampering, absent
+assertions over 366 declared sources, 355 of them content-addressed, drawn from seventeen
+manuscripts; a metric corpus over two manuscripts, where one agrees with its stored results on
+all thirty-nine values it prints and the other disagrees on nine of ten table rows; a
+conformance suite of eighteen fixtures with canonical expected outputs; and fault injection covering source tampering, absent
 toolchains, and backend defects. The paper's own figures are verified by the same engine.
 
 ## 1. Introduction
@@ -137,7 +137,7 @@ read as an abstention is the failure of §2, one level up.
 
 Every profile requires that at least one assertion was evaluated, since a project with no
 evidence anywhere otherwise satisfies every condition trivially. On one demonstration manifest
-the three profiles return two, three, and five errors over identical facts.
+the three profiles return two, three, and seven errors over identical facts.
 
 ## 6. Evaluation
 
@@ -168,9 +168,9 @@ for this paper.
 | sources named and not present | 1 |
 | declaration files that do not parse | 1 |
 
-The largest single manuscript contributes 2,942 assertions, all of which resolve against their
-pinned sources; 213 carry a `short` warning, 155 a `normalized` warning, and 8 a `truncated`
-warning, the last flagging a quotation that stops mid-number.
+Warnings on a resolved quotation -- short, normalized, truncated -- are recorded per decision
+and are not aggregated here: counting them means verifying every assertion against every
+source, which the figure script does not do.
 
 A positive control copies a genuinely pinned source, flips one bit, and confirms the pin
 reports broken where the untouched file reports authoritative. Before that control existed,
@@ -212,8 +212,11 @@ fails on nine of ten rows is what distinguishes the two readings.
 
 The figures in this paper are produced by a script that writes them to a JSON artifact, and
 each of the paper's own numbers carries two assertions: that the manuscript states the
-sentence, and that the artifact holds the value. Every figure stated in Section 6 is checked
-this way, under the strictest policy profile, passing.
+sentence, and that the artifact holds the value. Sixteen figures stated in Section 6 are
+checked this way, under the strictest policy profile, passing. The section states other
+numbers -- corpus totals, counts of files and hypotheses -- that no assertion covers: a figure
+is checked where a manifest declares it, and the manifest declares what the figure script
+produces.
 
 Two figures are excluded, for the same reason in different degrees. Whether the self-audit
 passes cannot be recorded in the artifact the self-audit inspects, because writing the file
@@ -298,9 +301,12 @@ agreement rather than a false disagreement, and nothing here rules that out. An 
 check that each pointer targets the value the manuscript intends is the control this
 evaluation lacks.
 
-Ordering is specified and unimplemented; manifests carrying run records are accepted and
-ignored. When implemented it will establish internal consistency only, since a registration
-timestamp is self-recorded.
+Ordering rests on a self-recorded timestamp. A run record states when a plan was registered
+and when the run began, and the check establishes that those are consistent, not that the
+registration is contemporaneous with what it claims; an external timestamp authority closes
+that and is out of scope. Where `registered_plan` names a declared artifact the plan is
+pinned, so a plan rewritten to match results breaks its pin, but a manifest may decline to
+declare it.
 
 Coverage is a property of what the author declared. A claim whose evidence is undeclared is
 reported as offering none, and is not searched for.

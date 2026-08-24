@@ -60,19 +60,30 @@ exists, so they are not "bugs" in the ordinary sense.
 
 | | finding | where |
 |---|---|---|
-| [ ] | The manuscript says ordering is unimplemented; it is implemented, called and graded | paper/DRAFT_v2.md |
-| [ ] | "Every figure stated in Section 6 is checked this way" — 16 claims, many §6 numbers unchecked | paper/DRAFT_v2.md |
-| [ ] | The §6.2 warning counts (213 / 155 / 8) have no producing artifact: the counter is never incremented | scripts/generate_figures.py |
-| [ ] | The abstract says thirteen fixtures; the paper, the spec and the repository say eighteen | paper/DRAFT_v2.md |
-| [ ] | "two, three, and five errors" — strict returns seven | paper/DRAFT_v2.md |
-| [ ] | "365 content-addressed sources" — 366 declared, 355 pinned | paper/DRAFT_v2.md |
-| [ ] | SPEC §7 names `inverted`/`undeclared`; the code, the SARIF ids and the policy keys say `violated`/`unchecked` | docs/SPEC.md |
-| [ ] | SPEC claims the regeneration sandbox confines writes; it sets a working directory | docs/SPEC.md |
-| [ ] | SPEC's `Reason` and `Warning` vocabularies omit values the code defines; the validity table omits `artifact_absent` | docs/SPEC.md |
-| [ ] | SPEC §9 / §6.1 conformance accounting does not match the fixture set; no `error` or `broken_pin` fixture exists | docs/SPEC.md, tests/conformance |
-| [ ] | CODEBOOK §6's worked example of the comparison rule is backwards, in a pinned registration | experiments/.../CODEBOOK.md |
-| [ ] | `make hooks` passes explicit `--hook-type` flags, so the commit-msg hook is never installed | Makefile, CONTRIBUTING.md |
-| [ ] | "a green `make qa` locally means a green pull request" — three CI steps are outside `qa` | CONTRIBUTING.md |
-| [ ] | `packages/repro/README.md` documents a `verify` that shells out to three tools, and a quick start that cannot succeed | packages/repro/README.md |
-| [ ] | `README.md` documents a top-level `plugins/` directory that no longer exists | README.md |
-| [ ] | `scripts/README.md` credits a superseded script and the wrong section for the resolver figures | scripts/README.md |
+| [x] | The manuscript says ordering is unimplemented; it is implemented, called and graded | paper/DRAFT_v2.md |
+| [x] | "Every figure stated in Section 6 is checked this way" — 16 claims, many §6 numbers unchecked | paper/DRAFT_v2.md |
+| [x] | The §6.2 warning counts (213 / 155 / 8) have no producing artifact: the counter is never incremented | scripts/generate_figures.py |
+| [x] | The abstract says thirteen fixtures; the paper, the spec and the repository say eighteen | paper/DRAFT_v2.md |
+| [x] | "two, three, and five errors" — strict returns seven | paper/DRAFT_v2.md |
+| [x] | "365 content-addressed sources" — 366 declared, 355 pinned | paper/DRAFT_v2.md |
+| [x] | SPEC §7 names `inverted`/`undeclared`; the code, the SARIF ids and the policy keys say `violated`/`unchecked` | docs/SPEC.md |
+| [x] | SPEC claims the regeneration sandbox confines writes; it sets a working directory | docs/SPEC.md |
+| [x] | SPEC's `Reason` and `Warning` vocabularies omit values the code defines; the validity table omits `artifact_absent` | docs/SPEC.md |
+| [x] | SPEC §9 / §6.1 conformance accounting does not match the fixture set; no `error` or `broken_pin` fixture exists | docs/SPEC.md, tests/conformance |
+| [x] | CODEBOOK §6's worked example of the comparison rule is backwards, in a pinned registration | experiments/.../CODEBOOK.md |
+| [x] | `make hooks` passes explicit `--hook-type` flags, so the commit-msg hook is never installed | Makefile, CONTRIBUTING.md |
+| [x] | "a green `make qa` locally means a green pull request" — three CI steps are outside `qa` | CONTRIBUTING.md |
+| [x] | `packages/repro/README.md` documents a `verify` that shells out to three tools, and a quick start that cannot succeed | packages/repro/README.md |
+| [x] | `README.md` documents a top-level `plugins/` directory that no longer exists | README.md |
+| [x] | `scripts/README.md` credits a superseded script and the wrong section for the resolver figures | scripts/README.md |
+
+---
+
+All 54 findings are fixed. Two more surfaced while fixing them and are included above:
+
+* `check_pins.py` verified only that each cited digest matched *some* file, so two pins
+  swapped between the documents they named still reported as resolving. It now checks the
+  pairing, and a swap is caught.
+* The drift check refused to run when a derived file was already modified. Those files are
+  outputs; regenerating overwrites them, and the question -- does the regenerated content
+  match what is committed -- is answered the same either way.

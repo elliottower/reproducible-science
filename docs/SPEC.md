@@ -323,15 +323,23 @@ is a way for any claim to opt out of being graded. A manifest written with `conf
 or `false` still parses; `false` becomes `exploratory`, never `not_applicable`, since the
 boolean never carried that distinction.
 
-Each confirmatory claim reports one of four ordering states. `ordered`: every run producing its
-evidence started after registration. `inverted`: a run started first. `undeclared`: no run
-covers its artifacts, a timestamp is missing, or the plan is a declared artifact whose pin is
-broken. `not_applicable`: the claim is not confirmatory. A claim with no run record is
-`undeclared` and never `inverted` — an absent record is not evidence that a result predates
-its plan.
+Each confirmatory claim reports one of four ordering states. `ordered`: every run producing
+its evidence started after registration. `violated`: a run started first. `unchecked`: the
+record does not settle it. `not_applicable`: the claim is not confirmatory.
+
+An `unchecked` ordering carries a reason, because collapsing distinct conditions into one word
+loses the only information that says what to fix: `no_run_record`, `no_registered_plan`,
+`registered_plan_unpinned`, `registered_plan_changed`, `run_output_unlinked`,
+`run_output_changed`, `timestamp_missing`, `ambiguous_producing_run`. A claim with no run
+record is `unchecked` and never `violated` — an absent record is not evidence that a result
+predates its plan.
+
+Every artifact a claim's evidence names must have a covering run. Taking the runs that produce
+any one of them would let a run record for an incidental artifact order a claim whose number
+came from an artifact with no run at all.
 
 Where `registered_plan` names a declared artifact, that document is pinned, so a plan edited
-after the fact to match results breaks its pin and the ordering reverts to `undeclared`.
+after the fact to match results breaks its pin and the ordering reverts to `unchecked`.
 
 Two limits are structural. The registration timestamp is self-recorded, so the check
 establishes internal consistency and not that a registration is contemporaneous with what it
@@ -370,9 +378,14 @@ regenerations:
     volatile: ["/generated_at"]
 ```
 
-The declared inputs are copied into an empty directory and the command runs there, so nothing
-in the working tree is written to, and a command needing a file the manifest never declared
-fails. That makes the record a claim about sufficiency and not only about provenance.
+The declared inputs are copied into an empty directory and the command runs there, so a
+command needing a file the manifest never declared fails, and a command that writes where it
+was told to writes inside that directory. Every declared path is resolved and checked for
+containment before it is used, since a path holding `..` otherwise lands outside.
+
+This is a working directory, not a sandbox in the security sense: nothing stops a command
+writing to an absolute path elsewhere. Running `--regenerate` on a manifest you have not read
+is running a program you have not read. That makes the record a claim about sufficiency and not only about provenance.
 
 Three states. `reproduced`: the command produced the pinned artifact. `diverged`: it produced
 something else, produced nothing, or exited non-zero. `unchecked`: it was not requested, an
@@ -425,6 +438,12 @@ An implementation conforms when:
 8. The engine returns facts and computes no verdict.
 9. No library entry point prints, exits, or mutates global state.
 
-Conformance is executable: `packages/repro/tests/conformance/` holds eighteen fixtures, one per row of the
-table in §4 plus the escaping, undeclared-artifact, unpinned and table-addressing cases,
-each with canonical expected JSON.
+Conformance is executable: `packages/repro/tests/conformance/` holds eighteen fixtures, each
+with canonical expected JSON. They cover `verified`, `mismatch`, `not_found`, `unchecked` and
+`not_offered`, the pointer-escaping and undeclared-artifact cases, an unpinned artifact, and
+five table-addressing cases.
+
+Two rows of §4 have no fixture: `error`, which needs a backend defect, and the
+extractor-missing form of `unchecked`. Neither is producible from a file on disk alone, so
+they are exercised by the test suite rather than by the corpus. The expected JSON records the
+flattened outcome; the three stages are asserted in the suite.

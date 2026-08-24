@@ -3,7 +3,7 @@
 # that would make people bypass the hooks lives further down.
 #
 #   make format        ~5s     rewrite formatting and safe lint fixes
-#   make check         ~20s    what runs on every commit
+#   make check         ~1s     what runs on every commit
 #   make test          ~50s    the whole workspace's tests
 #   make qa            ~3m     what a pull request must pass
 #   make qa-all        ~10m+   the deep pass; advisory tools included
@@ -14,7 +14,7 @@
 PY := uv run
 PKG_SRC := packages/repro/src packages/citations/src packages/results/src packages/prereg/src
 
-.PHONY: help format check test qa qa-all release-check types drift deps wheels imports notes check-lowest hooks
+.PHONY: help format check test qa qa-all release-check types drift pins deps imports corpus dead notes check-lowest hooks
 
 help:
 	@grep -E '^#   make' Makefile | sed 's/^#   //'
@@ -36,13 +36,23 @@ test:
 	$(PY) pytest -q
 
 # ---- rung 4: a pull request --------------------------------------------------------------
-qa: check test types drift deps imports wheels
+# Exactly what CI requires, so a green `make qa` really does mean a green pull request.
+qa: check test types drift pins deps imports wheels corpus dead
 
 types:
 	$(PY) pyrefly check $(PKG_SRC)
 
 drift:
 	$(PY) python scripts/check_drift.py
+
+pins:
+	$(PY) python scripts/check_pins.py
+
+corpus:
+	$(PY) pytest -q -m corpus
+
+dead:
+	$(PY) vulture
 
 deps:
 	$(PY) python scripts/check_deps.py
@@ -59,8 +69,6 @@ wheels:
 # ---- rung 5: the deep pass ---------------------------------------------------------------
 # Advisory tools are marked with `-` so one noisy report does not stop the rest.
 qa-all: qa check-lowest
-	$(PY) pytest -q -m corpus
-	$(PY) vulture
 	-$(PY) complexipy packages --max-complexity 25
 	-$(PY) pip-audit --skip-editable
 	-$(PY) python scripts/check_drift.py
@@ -80,4 +88,6 @@ release-check: qa
 
 # ---- setup -------------------------------------------------------------------------------
 hooks:
-	$(PY) pre-commit install --hook-type pre-commit --hook-type pre-push
+	# No --hook-type flags: passing them overrides `default_install_hook_types` in the config,
+	# which silently left the commit-msg hook uninstalled for anyone following the docs.
+	$(PY) pre-commit install --install-hooks

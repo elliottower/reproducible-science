@@ -115,12 +115,13 @@ def dirty(paths: list[str]) -> list[str]:
 
 
 def main() -> int:
+    # An already-modified derived file is not a reason to refuse. These are outputs: running
+    # the generator overwrites them, and the question this asks is whether the regenerated
+    # content matches what is committed, which is answered the same either way. Say so, since
+    # a hand edit to a derived file is about to be discarded.
     already = dirty([path for path, _, _, _ in GENERATED])
-    if already:
-        print("  refusing to run: these are already modified, so drift cannot be attributed")
-        for path in already:
-            print(f"    {path}")
-        return 2
+    for path in already:
+        print(f"  note {path} was already modified; regenerating overwrites it")
 
     unverifiable = []
     for path, command, _, requires in GENERATED:
