@@ -16,7 +16,7 @@ from __future__ import annotations
 
 import re
 import urllib.parse
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
 
 from pydantic import BaseModel, ConfigDict
@@ -89,7 +89,7 @@ def _crossref_url(rec: Record) -> str:
     return f"https://api.crossref.org/works?{q}"
 
 
-def _crossref_candidates(payload) -> list[Candidate]:
+def _crossref_candidates(payload) -> Iterator[Candidate]:
     for item in (payload or {}).get("message", {}).get("items", []):
         parts = ((item.get("issued") or {}).get("date-parts") or [[None]])[0]
         doi = item.get("DOI")
@@ -117,7 +117,7 @@ def _s2_url(rec: Record) -> str:
     return f"https://api.semanticscholar.org/graph/v1/paper/search?{q}"
 
 
-def _s2_candidates(payload) -> list[Candidate]:
+def _s2_candidates(payload) -> Iterator[Candidate]:
     for item in (payload or {}).get("data") or []:
         ext = item.get("externalIds") or {}
         ident = (
@@ -151,7 +151,7 @@ def _openalex_url(rec: Record) -> str:
     return f"https://api.openalex.org/works?{q}"
 
 
-def _openalex_candidates(payload) -> list[Candidate]:
+def _openalex_candidates(payload) -> Iterator[Candidate]:
     for work in (payload or {}).get("results", []):
         doi = (work.get("doi") or "").replace("https://doi.org/", "")
         if doi.startswith("10.48550/arxiv."):
@@ -193,7 +193,7 @@ def _arxiv_url(rec: Record) -> str:
     return f"https://export.arxiv.org/api/query?{q}"
 
 
-def _arxiv_candidates(payload) -> list[Candidate]:
+def _arxiv_candidates(payload) -> Iterator[Candidate]:
     for entry in _ENTRY.findall(payload or ""):
         tm, im = _TITLE.search(entry), _ID.search(entry)
         if not (tm and im):

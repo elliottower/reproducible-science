@@ -88,10 +88,8 @@ jobs:
       - run: uv run pytest -q -m integration
 
   types:
-    # Advisory while the outstanding errors are worked down; not a required check yet.
-    name: types (advisory)
+    name: types
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5
         with:

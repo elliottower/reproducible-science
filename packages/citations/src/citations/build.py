@@ -269,7 +269,7 @@ def enrich_from_claims(entries: dict[str, dict], claims_dir: pathlib.Path) -> in
             cf = load_claim_file(p)
         except ClaimFileError:
             continue  # reported by `verify`; not this command's business
-        e = entries.get(cf.source.citation)
+        e = entries.get(cf.source.citation) if cf.source.citation else None
         if not e:
             continue
         for field in ("local", "sha256", "url"):
@@ -288,7 +288,8 @@ def enrich_from_sources(entries: dict[str, dict], sources_dir: pathlib.Path) -> 
             r = yaml.safe_load(p.read_text()) or {}
         except yaml.YAMLError:
             continue
-        e = entries.get(r.get("citation"))
+        citation = r.get("citation")
+        e = entries.get(citation) if isinstance(citation, str) else None
         if not e:
             continue
         for k in ("url", "doi", "arxiv", "sha256", "local"):

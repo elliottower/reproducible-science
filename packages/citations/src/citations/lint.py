@@ -25,6 +25,7 @@ import pathlib
 import shutil
 import subprocess
 import tempfile
+from typing import Any
 
 import yaml
 
@@ -72,7 +73,7 @@ def project(rec: Record) -> dict:
             fam, giv = (parts[-1], " ".join(parts[:-1])) if parts else (a, "")
         authors.append({"family": fam, "given": giv})
 
-    doc = {
+    doc: dict[str, Any] = {
         "ref": rec.slug,
         "title": rec.title,
         "author": " and ".join(rec.authors),

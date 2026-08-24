@@ -116,7 +116,10 @@ def to_sarif(
     ]
     index = {state.artifact_id: i for i, state in enumerate(report.artifacts)}
 
-    results = []
+    # SARIF results are heterogeneous by design -- a result carries different keys depending
+    # on what it reports -- so the value type is annotated rather than inferred from whichever
+    # entry happens to be appended first.
+    results: list[dict[str, Any]] = []
     for claim in report.claims:
         if not claim.decisions:
             results.append(

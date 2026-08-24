@@ -329,7 +329,7 @@ def cmd_verify(a) -> int:
                 c
                 for c in claims
                 if c.get("confirmatory")
-                and (first_run_timestamp(events, c.get("run_id")) or "") > seen
+                and (first_run_timestamp(events, str(c.get("run_id") or "")) or "") > seen
             ]
         if contested:
             print(
