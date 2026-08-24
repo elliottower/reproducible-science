@@ -15,7 +15,7 @@
 PY := uv run
 PKG_SRC := packages/repro/src packages/citations/src packages/results/src packages/prereg/src
 
-.PHONY: help format check test coverage qa qa-all release-check types drift pins deps imports corpus dead notes check-lowest hooks
+.PHONY: help format check test coverage versions qa qa-all release-check types drift pins deps imports corpus dead notes check-lowest hooks
 
 help:
 	@grep -E '^#   make' Makefile | sed 's/^#   //'
@@ -53,10 +53,16 @@ coverage:
 
 # ---- rung 4: a pull request --------------------------------------------------------------
 # Exactly what CI requires, so a green `make qa` really does mean a green pull request.
-qa: check test coverage types drift pins deps imports wheels corpus dead
+qa: check test coverage types versions drift pins deps imports wheels corpus dead
 
 types:
 	$(PY) pyrefly check $(PKG_SRC)
+
+# Every package carries one version and pins its siblings to that series. Enforced rather
+# than documented: the floors this repository shipped for months were wrong precisely
+# because nothing checked them.
+versions:
+	$(PY) python scripts/versions.py check
 
 drift:
 	$(PY) python scripts/check_drift.py

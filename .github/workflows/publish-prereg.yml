@@ -6,7 +6,7 @@ name: Publish prereg
 
 on:
   push:
-    tags: ["prereg-v*"]
+    tags: ["prereg-v*", "v*"]
   workflow_dispatch:
 
 jobs:

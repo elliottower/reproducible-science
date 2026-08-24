@@ -1,0 +1,183 @@
+"""One version across every package, and a gate that fails when they drift.
+
+Lockstep versioning is the dagster/opentelemetry pattern: every package carries the same
+number and every package publishes on the same day. It removes two recurring errors. The
+first is deciding per package whether a change "earned" a bump, which is a judgement call
+made under time pressure and reliably wrong. The second is the hand-maintained floor: this
+repository shipped `pyyaml>=6` and `pydantic>=2` for months, both too low to install, and
+nothing noticed because no gate resolved the declared minimum.
+
+So the version lives in one place as far as a human is concerned -- `bump` writes it to all
+four manifests and rewrites the cross-package ranges to match -- and `check` refuses a tree
+where they disagree. A rule with no gate is a comment.
+
+    python scripts/versions.py check
+    python scripts/versions.py bump 0.4.0
+"""
+
+from __future__ import annotations
+
+import argparse
+import pathlib
+import re
+
+PROJECT_ROOT = pathlib.Path(__file__).resolve().parent.parent
+
+#: Distribution name -> its manifest. The import name differs from the distribution name for
+#: two of these, which is why the mapping is written out rather than derived from the path.
+PACKAGES = {
+    "citations": PROJECT_ROOT / "packages" / "citations" / "pyproject.toml",
+    "prereg": PROJECT_ROOT / "packages" / "prereg" / "pyproject.toml",
+    "results-cli": PROJECT_ROOT / "packages" / "results" / "pyproject.toml",
+    "reproducible-science": PROJECT_ROOT / "packages" / "repro" / "pyproject.toml",
+}
+
+VERSION_LINE = re.compile(r'^version = "([^"]+)"$', re.M)
+SEMVER = re.compile(r"^\d+\.\d+\.\d+([ab]\d+|rc\d+)?$")
+
+
+class VersionError(Exception):
+    """The declared versions disagree, or a version is not one this scheme can write."""
+
+
+def declared() -> dict[str, str]:
+    out: dict[str, str] = {}
+    for name, path in PACKAGES.items():
+        m = VERSION_LINE.search(path.read_text())
+        if not m:
+            raise VersionError(f'{path.relative_to(PROJECT_ROOT)}: no `version = "..."` line')
+        out[name] = m.group(1)
+    return out
+
+
+def parts(version: str) -> tuple[int, ...]:
+    """Numeric comparison. `"0.10.0" < "0.9.0"` is true as strings and false as versions."""
+    return tuple(int(n) for n in version.split(".")[:3])
+
+
+def series(version: str) -> str:
+    """The range a lockstep release pins its siblings to: `>=0.4,<0.5`.
+
+    A range rather than an exact `==`, following langchain rather than opentelemetry: an
+    exact pin makes any hand-run release that publishes packages seconds apart briefly
+    uninstallable, and this release is run by hand.
+    """
+    major, minor, *_ = version.split(".")
+    return f">={major}.{minor},<{major}.{int(minor) + 1}"
+
+
+DEPENDENCIES_BLOCK = re.compile(r"^dependencies = \[(.*?)^\]", re.M | re.S)
+
+
+def cross_refs(text: str) -> dict[str, str]:
+    """Declared dependencies on sibling packages, as {distribution: specifier}.
+
+    Scoped to the `dependencies` array. `keywords` legitimately lists "citations" and
+    "provenance" as bare strings, and matching the whole file read those as unpinned
+    dependencies -- a false report that would have taught the reader to ignore this check.
+    """
+    block = DEPENDENCIES_BLOCK.search(text)
+    if not block:
+        return {}
+    body = block.group(1)
+    found = {}
+    for name in PACKAGES:
+        m = re.search(rf'"{re.escape(name)}((?:[><=!~][^"]*)?)"', body)
+        if m:
+            found[name] = m.group(1)
+    return found
+
+
+def check() -> list[str]:
+    problems: list[str] = []
+    versions = declared()
+    if len(set(versions.values())) > 1:
+        listed = ", ".join(f"{n}={v}" for n, v in sorted(versions.items()))
+        problems.append(f"versions are not in lockstep: {listed}")
+    version = max(versions.values(), key=parts)
+    want = series(version)
+
+    for name, path in PACKAGES.items():
+        for dep, spec in cross_refs(path.read_text()).items():
+            if dep == name:
+                continue
+            if spec != want:
+                problems.append(
+                    f"{path.relative_to(PROJECT_ROOT)}: depends on {dep}{spec}, "
+                    f"but lockstep {version} wants {dep}{want}"
+                )
+    return problems
+
+
+def bump(version: str, realign: bool = False) -> list[str]:
+    if not SEMVER.match(version):
+        raise VersionError(f"{version!r} is not a version this scheme writes (want 1.2.3)")
+    # Aligning is not advancing. The first lockstep release sets every package to the highest
+    # version already declared, so packages that are already there do not move; refusing an
+    # equal version would make that first alignment impossible. What is refused is any package
+    # going backwards, which PyPI would reject at upload and which loses history in the tree.
+    behind = {n: v for n, v in declared().items() if parts(version) < parts(v)}
+    if behind and not realign:
+        listed = ", ".join(f"{n}={v}" for n, v in sorted(behind.items()))
+        raise VersionError(
+            f"{version} is below {listed}; a version may not go backwards. "
+            f"If those versions were never published, pass --realign."
+        )
+
+    want = series(version)
+    touched = []
+    for name, path in PACKAGES.items():
+        text = original = path.read_text()
+        text = VERSION_LINE.sub(f'version = "{version}"', text, count=1)
+
+        # Confined to the dependencies array, for the same reason the read path is: a bare
+        # "prereg" also appears in `keywords` and in deptry's DEP002 ignore list, and
+        # rewriting those turned a keyword into "citations>=0.3,<0.4" and silently disabled
+        # the ignore rule. `make deps` caught it; a narrower substitution stops it happening.
+        def repin(match: re.Match[str], name: str = name) -> str:
+            body = match.group(1)
+            for dep in PACKAGES:
+                if dep == name:
+                    continue
+                body = re.sub(rf'"{re.escape(dep)}(?:[><=!~][^"]*)?"', f'"{dep}{want}"', body)
+            return f"dependencies = [{body}]"
+
+        text = DEPENDENCIES_BLOCK.sub(repin, text, count=1)
+        if text != original:
+            path.write_text(text)
+            touched.append(str(path.relative_to(PROJECT_ROOT)))
+    return touched
+
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(prog="versions", description=__doc__.split("\n")[0])
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    sub.add_parser("check", help="fail if the packages are not in lockstep")
+    b = sub.add_parser("bump", help="set every package to one version")
+    b.add_argument("version")
+    b.add_argument(
+        "--realign",
+        action="store_true",
+        help="allow a version below one already declared, for a first lockstep release "
+        "where the higher number was never published",
+    )
+    a = ap.parse_args(argv)
+
+    if a.cmd == "bump":
+        for path in bump(a.version, realign=a.realign):
+            print(f"  {path}")
+        print(f"all packages at {a.version}, siblings pinned {series(a.version)}")
+        return 0
+
+    problems = check()
+    for p in problems:
+        print(f"  {p}")
+    if problems:
+        print("\nlockstep versioning is broken. run: python scripts/versions.py bump <version>")
+        return 1
+    print(f"lockstep: every package at {max(declared().values(), key=parts)}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
