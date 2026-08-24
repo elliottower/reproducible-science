@@ -128,7 +128,20 @@ def fold(s: str) -> str:
 
 @functools.lru_cache(maxsize=256)
 def skeleton(s: str) -> str:
-    return re.sub(r"[^a-z0-9]", "", fold(s))
+    """`fold`, with whitespace removed. Nothing else.
+
+    This is the fallback used when a verbatim match fails, so it is only ever applied to a
+    passage that is provably not in the source as written. It must therefore absorb exactly
+    what a PDF extractor mangles and nothing more.
+
+    Extractors insert and drop spaces inside words -- `logit difference` comes out as
+    `logitdifference` -- so whitespace is removed. They do not turn `=` into `<`, delete a
+    minus sign, or drop a decimal point. An earlier version stripped every non-alphanumeric
+    character, which made `p < 0.05` match a source reading `p = 0.05`, and `-0.42` match
+    `0.42`: a reversed inequality and a flipped sign both reported as quoted verbatim, by the
+    one check that exists to catch a misquotation.
+    """
+    return re.sub(r"\s+", "", fold(s))
 
 
 @functools.lru_cache(maxsize=64)
@@ -213,6 +226,9 @@ def check_one(quote: str, artifact: pathlib.Path | None, page: int | None = None
         return Result("unchecked", "no text extracted", warn)
 
     q, doc = fold(quote), fold(full)
+    if not q:
+        # `"" in doc` is True. A quotation that folds away entirely is not a quotation.
+        return Result("not found", "the quotation is empty after normalization", warn)
     if q in doc:
         if _cuts_a_token(q, doc):
             warn.append("truncated")
