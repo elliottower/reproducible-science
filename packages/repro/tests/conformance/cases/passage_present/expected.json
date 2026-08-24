@@ -1,5 +1,11 @@
 {
   "outcomes": [
     "verified"
-  ]
+  ],
+  "reasons": [
+    "passage_present"
+  ],
+  "artifacts": {
+    "src": "authoritative"
+  }
 }

@@ -1,5 +1,11 @@
 {
   "outcomes": [
     "unchecked"
-  ]
+  ],
+  "reasons": [
+    "artifact_unreadable"
+  ],
+  "artifacts": {
+    "res": "authoritative"
+  }
 }

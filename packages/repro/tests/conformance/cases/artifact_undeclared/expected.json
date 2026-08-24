@@ -1,5 +1,11 @@
 {
   "outcomes": [
     "unchecked"
-  ]
+  ],
+  "reasons": [
+    "artifact_undeclared"
+  ],
+  "artifacts": {
+    "src": "authoritative"
+  }
 }

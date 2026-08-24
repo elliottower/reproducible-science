@@ -25,10 +25,31 @@ def outcomes_of(report) -> list[str]:
     return out
 
 
+def reasons_of(report) -> list[str | None]:
+    out: list[str | None] = []
+    for claim in report.claims:
+        if claim.availability is Availability.NOT_OFFERED:
+            out.append(None)
+        out.extend(d.reason.value if d.reason else None for d in claim.decisions)
+    return out
+
+
 @pytest.mark.parametrize("case", CASES, ids=lambda p: p.name)
 def test_fixture_produces_its_recorded_outcomes(case):
     expected = json.loads((case / "expected.json").read_text())["outcomes"]
     assert outcomes_of(verify(load(case / "repro.yaml"))) == expected
+
+
+@pytest.mark.parametrize("case", CASES, ids=lambda p: p.name)
+def test_fixture_produces_its_recorded_reasons(case):
+    """The outcome alone cannot tell a defect in the tool from a fact about the manuscript.
+
+    Four cases share the outcome `unchecked` and three share `not_found`; only the reason
+    separates "the manifest never declared this artifact" from "the file is not there", or an
+    absent column from an ambiguous row. Asserting outcomes and never reasons let those swap.
+    """
+    expected = json.loads((case / "expected.json").read_text())["reasons"]
+    assert reasons_of(verify(load(case / "repro.yaml"))) == expected
 
 
 @pytest.mark.parametrize("case", CASES, ids=lambda p: p.name)
@@ -73,13 +94,21 @@ def test_a_fixture_artifact_is_the_one_its_manifest_pinned(case):
     rewrites a fixture -- appending a trailing newline is enough -- breaks every pin in the
     corpus while all the outcome assertions keep passing. That is not hypothetical: it
     happened the first time the pre-commit hooks ran here.
+
+    Skipping the three cases that break a pin on purpose left the contract they exist to
+    state untested: `unpinned_artifact` recorded only that its quote resolved, so a build
+    reporting an unpinned file as authoritative passed. Each case now asserts its own
+    validity, and the fixtures that are meant to be intact assert AUTHORITATIVE.
     """
-    deliberately_broken = {"broken_pin", "unpinned_artifact", "artifact_missing"}
-    if case.name in deliberately_broken:
-        pytest.skip(f"{case.name} exists to exercise a non-authoritative artifact")
+    expected = json.loads((case / "expected.json").read_text())["artifacts"]
     report = verify(load(case / "repro.yaml"))
+    found = {state.artifact_id: state.validity.value for state in report.artifacts}
+    assert found == expected, (
+        f"{case.name}: {found} != {expected} — either the fixture's bytes have changed or "
+        f"the validity ladder has"
+    )
     for state in report.artifacts:
-        assert state.validity is Validity.AUTHORITATIVE, (
-            f"{case.name}/{state.artifact_id}: pinned {(state.expected or '')[:12]}, "
-            f"found {(state.actual or '')[:12]} — the fixture's bytes have changed"
-        )
+        if expected[state.artifact_id] == Validity.BROKEN_PIN.value:
+            assert state.expected and state.actual and state.expected != state.actual, (
+                "a broken pin has to report both digests, or there is nothing to diagnose"
+            )

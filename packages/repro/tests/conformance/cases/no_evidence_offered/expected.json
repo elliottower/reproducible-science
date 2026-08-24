@@ -1,5 +1,11 @@
 {
   "outcomes": [
     "not_offered"
-  ]
+  ],
+  "reasons": [
+    null
+  ],
+  "artifacts": {
+    "src": "authoritative"
+  }
 }

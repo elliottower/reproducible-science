@@ -1,5 +1,11 @@
 {
   "outcomes": [
     "mismatch"
-  ]
+  ],
+  "reasons": [
+    "passage_absent"
+  ],
+  "artifacts": {
+    "src": "authoritative"
+  }
 }
