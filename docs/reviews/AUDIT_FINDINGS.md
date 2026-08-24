@@ -22,8 +22,8 @@ exists, so they are not "bugs" in the ordinary sense.
 | [x] | Duplicate CSV column names resolve to the last silently; a duplicated predicate column reports a present row as absent | repro/resolve.py |
 | [x] | Duplicate JSON keys resolve last-wins, while YAML raises for exactly this | repro/resolve.py |
 | [x] | A failed `page` assertion is reported `verified`; no policy reads decision warnings | repro/verify.py |
-| [ ] | A confirmatory claim spanning several artifacts is `ordered` when only one has a producing run | repro/verify.py |
-| [ ] | An undeclared `registered_plan` is never pin-checked, so an unpinned plan yields `ordered` — and declaring it scores worse | repro/verify.py |
+| [x] | A confirmatory claim spanning several artifacts is `ordered` when only one has a producing run | repro/verify.py |
+| [x] | An undeclared `registered_plan` is never pin-checked, so an unpinned plan yields `ordered` — and declaring it scores worse | repro/verify.py |
 | [x] | Reusing a `run_id` defeats the confirmatory-claim guard and `verify` reports all checks passed | results/cli.py |
 | [x] | `reanchor` launders a truncated ledger to "chain intact" — `TRUNCATED` omitted from the refusal list | results/cli.py |
 | [x] | An edited last line becomes permanently invisible after the next append | results/ledger.py |
@@ -47,10 +47,10 @@ exists, so they are not "bugs" in the ordinary sense.
 | [x] | `verify --files` keys by path, so only the most recent seal of a path is checked | results/cli.py |
 | [x] | An unreadable or directory artifact path crashes the whole run instead of producing a report | repro/verify.py |
 | [x] | Negative array indices are unchecked: `-99` becomes a backend defect, `-1` silently resolves | repro/resolve.py |
-| [ ] | Policy severities collide on `claim_id/kind`, so an error-level mismatch can render as a warning | repro/renderers/sarif.py |
-| [ ] | A regression is verified against whatever revision is checked out, and counts are labelled with the pinned commit | repro/regression.py |
-| [ ] | `EntryStatus.usable` ignores `dirty` | repro/corpus.py |
-| [ ] | The adduce rule passes at confidence 1.0 without consulting `UNPINNED_ARTIFACT` | repro/integrations/adduce.py |
+| [x] | Policy severities collide on `claim_id/kind`, so an error-level mismatch can render as a warning | repro/renderers/sarif.py |
+| [x] | A regression is verified against whatever revision is checked out, and counts are labelled with the pinned commit | repro/regression.py |
+| [x] | `EntryStatus.usable` ignores `dirty` | repro/corpus.py |
+| [x] | The adduce rule passes at confidence 1.0 without consulting `UNPINNED_ARTIFACT` | repro/integrations/adduce.py |
 | [x] | A missing output digest is reported as `INPUT_UNPINNED` | repro/regenerate.py |
 | [x] | Two declared inputs outside the root sharing a basename overwrite each other in the sandbox | repro/regenerate.py |
 | [x] | `urlopen` in `prereg/osf.py` has no timeout | prereg/osf.py |

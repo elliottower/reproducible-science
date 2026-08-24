@@ -145,6 +145,20 @@ class ReproEvidenceRule(Rule):
         # Confidence is 1.0 throughout: a byte comparison against a hashed artifact is not a
         # signal a rule is more or less sure of. Reporting anything lower would invite the
         # number to be read as strength of evidence, which it is not.
+        unpinned = list(report.artifacts_with(Validity.UNPINNED_ARTIFACT))
+        if verified == total and unpinned:
+            # The rule's rationale is that assertions are checked byte for byte against
+            # pinned artifacts. Where nothing is pinned, every assertion can hold against a
+            # file that has changed since it was written, so this is not a pass.
+            return self.finding(
+                Status.PARTIAL,
+                1.0,
+                f"All {total} declared evidence assertions verify, but "
+                f"{len(unpinned)} artifact(s) carry no digest: {', '.join(unpinned[:3])}. "
+                f"They were checked against whatever is on disk.",
+                remediation="Record a sha256 for each artifact so the check means something.",
+                locations=locations,
+            )
         if verified == total:
             return self.finding(
                 Status.PASS,

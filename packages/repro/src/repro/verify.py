@@ -379,11 +379,16 @@ def _ordering(
 
     produced = {e.artifact for e in claim.evidence}
     runs = [r for r in manifest.runs if produced & {o.artifact for o in r.outputs}]
-    if not runs:
+    covered = {o.artifact for r in runs for o in r.outputs}
+    uncovered = sorted(produced - covered)
+    if uncovered:
+        # A claim can cite several artifacts. Taking the runs that produce *any* of them meant
+        # adding a run record for one incidental artifact turned an unregistered result into
+        # an ordered one, while the artifact carrying the number had no run at all.
         return (
             Ordering.UNCHECKED,
             OrderingReason.NO_RUN_RECORD,
-            f"no run record produces {', '.join(sorted(produced))}",
+            f"no run record produces {', '.join(uncovered)}",
             None,
         )
 
@@ -420,7 +425,14 @@ def _ordering(
     for run in runs:
         state = states.get(run.registered_plan)
         if state is None:
-            continue
+            # Undeclared, so nothing pins it: the document backing an `ordered` verdict could
+            # have been written after the results. Declaring the plan and leaving it unpinned
+            # reported `unchecked`, so the more transparent manifest scored strictly worse.
+            return unchecked(
+                OrderingReason.REGISTERED_PLAN_UNPINNED,
+                f"plan {run.registered_plan} is not a declared artifact, so nothing pins the "
+                f"document the ordering rests on",
+            )
         if state.validity is Validity.BROKEN_PIN:
             return unchecked(
                 OrderingReason.REGISTERED_PLAN_CHANGED,
