@@ -105,7 +105,7 @@ def test_force_refreeze_rewrites_the_header_it_prints(repo):
     subprocess.run(
         ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "edit"], cwd=repo
     )
-    r = run(["freeze", "--force"], repo)
+    r = run(["freeze", "--force", "--access", "nothing run"], repo)
     printed = [w for w in r.stdout.split() if len(w.rstrip("…")) == 16][-1].rstrip("…")
     assert printed in p.read_text(), "freeze printed a digest it did not write"
     assert run(["check"], repo).returncode == 0
@@ -137,7 +137,7 @@ def test_refreezing_an_unedited_plan_is_idempotent(repo):
     run(["freeze"], repo)
     first = (repo / "PREREG.md").read_text()
     digest = cli.re.search(r"`([0-9a-f]{64})`", first).group(1)
-    run(["freeze", "--force"], repo)
+    run(["freeze", "--force", "--access", "nothing run"], repo)
     second = (repo / "PREREG.md").read_text()
     assert cli.re.search(r"`([0-9a-f]{64})`", second).group(1) == digest
     assert run(["check"], repo).returncode == 0
@@ -296,6 +296,48 @@ def test_a_long_note_still_separates_from_its_access_level(repo):
     note = "restricting the target to {0,1} and {0,1,2} because its value set is integers"
     run(["log", note, "--access", "no results seen"], repo)
     line = next(ln for ln in (repo / "PREREG.md").read_text().splitlines() if note in ln)
-    assert line.endswith("no results seen")
+    entry = line.rpartition(cli.LOG_MARK)[0] or line
+    assert entry.rstrip().endswith("no results seen")
     assert not line.endswith(note + "no results seen"), "access level glued to the note"
     assert "  no results seen" in line
+
+
+# --- the log is append-only, and now says so ------------------------------------------------
+
+
+def test_deleting_a_log_entry_is_visible(repo):
+    """The plan's hash stops at the log, since the log is written after freezing. That left
+    the record of deviations -- the only account of what changed after the plan was fixed --
+    freely deletable while `check` still reported the plan unchanged."""
+    run(["freeze"], repo)
+    run(["log", "saw the outcome table", "--access", "results seen"], repo)
+    run(["log", "adjusted the threshold", "--access", "results seen"], repo)
+    path = repo / "PREREG.md"
+    assert cli.log_problems(path.read_text()) == []
+
+    kept = [ln for ln in path.read_text().splitlines() if "saw the outcome table" not in ln]
+    path.write_text("\n".join(kept) + "\n")
+    problems = cli.log_problems(path.read_text())
+    assert problems, "an entry was removed and nothing reported it"
+    assert "removed" in problems[0]
+
+
+def test_editing_a_log_entry_is_visible(repo):
+    run(["freeze"], repo)
+    run(["log", "results seen on the held-out split", "--access", "results seen"], repo)
+    path = repo / "PREREG.md"
+    path.write_text(
+        path.read_text().replace("results seen on the held-out split", "nothing was examined")
+    )
+    assert cli.log_problems(path.read_text())
+
+
+def test_check_reports_a_tampered_log(repo):
+    run(["freeze"], repo)
+    run(["log", "saw the outcomes", "--access", "results seen"], repo)
+    path = repo / "PREREG.md"
+    kept = [ln for ln in path.read_text().splitlines() if "saw the outcomes" not in ln]
+    path.write_text("\n".join(kept) + "\n")
+    result = run(["check"], repo)
+    assert result.returncode != 0
+    assert "log" in result.stdout.lower()

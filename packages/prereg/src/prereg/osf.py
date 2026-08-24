@@ -43,6 +43,9 @@ HEADING_TO_QUESTION = {
 }
 
 
+_BY_CASEFOLD = {k.casefold(): v for k, v in HEADING_TO_QUESTION.items()}
+
+
 def _token() -> str | None:
     token = os.environ.get("OSF_TOKEN")
     if token:
@@ -64,7 +67,7 @@ def _request(method: str, path: str, token: str, body: dict | None = None) -> di
     req.add_header("Authorization", f"Bearer {token}")
     req.add_header("Content-Type", "application/vnd.api+json")
     req.add_header("Accept", "application/vnd.api+json")
-    with urllib.request.urlopen(req) as resp:
+    with urllib.request.urlopen(req, timeout=45) as resp:
         return json.loads(resp.read())
 
 
@@ -129,15 +132,29 @@ def push_draft(plan_text: str) -> tuple[str, str]:
     schema_map = _fetch_schema(token)
 
     responses = {}
+    dropped: list[str] = []
     for heading, content in sections.items():
-        question = HEADING_TO_QUESTION.get(heading)
+        question = HEADING_TO_QUESTION.get(heading) or _BY_CASEFOLD.get(heading.casefold())
         if not question:
+            dropped.append(heading)
             continue
         key = schema_map.get(question)
         if key and content:
             stripped = content.lstrip("_").rstrip("_").strip()
             if stripped and stripped != "N/A —":
                 responses[key] = stripped
+        elif content and not key:
+            dropped.append(heading)
+
+    if dropped:
+        # A heading that maps to nothing was skipped without a word, so a section could be
+        # absent from the external registration while the local file looked complete. The
+        # decision rule is one of the sections most likely to be titled differently.
+        raise RuntimeError(
+            "these sections do not map onto the OSF schema and would be missing from the "
+            "registration: " + ", ".join(repr(h) for h in dropped) + ". Rename them to the "
+            "template's headings, or push without --osf."
+        )
 
     body = {
         "data": {

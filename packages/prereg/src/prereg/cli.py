@@ -55,7 +55,7 @@ def plan_of(text: str) -> str:
     keep = [
         ln
         for ln in plan.splitlines()
-        if not ln.startswith(("**Status:**", "**Plan sha256:**", "**Frozen:**"))
+        if not ln.startswith(("**Status:**", "**Plan sha256:**", "**Frozen:**", "**Log:**"))
     ]
     return "\n".join(keep).strip() + "\n"
 
@@ -147,6 +147,93 @@ def rewrite_status(text: str, commit: str, digest: str, date: str) -> str:
     return text[: m.start()] + block + text[m.end() :]
 
 
+LOG_MARK = "\u00b7"  # separates the entry from its chain value
+
+
+def log_lines(text: str) -> list[str]:
+    """The log entries, in order, without the fence."""
+    _, _, tail = text.partition(MARK)
+    inside = tail.partition("```")[2].rpartition("```")[0]
+    return [ln.rstrip() for ln in inside.splitlines() if ln.strip()]
+
+
+def chain_value(previous: str, entry: str) -> str:
+    """Each entry's link. Short, because it sits in a file people read."""
+    return sha256_of(f"{previous}\x00{entry.strip()}")[:8]
+
+
+LOG_ANCHOR = re.compile(r"^\*\*Log:\*\* (\d+) entries, head `([0-9a-f]{8})`", re.M)
+
+
+def log_head(text: str) -> tuple[int, str]:
+    """Number of entries and the chain value of the last, for the anchor line."""
+    previous, count = "", 0
+    for line in log_lines(text):
+        entry, _, recorded = line.rpartition(LOG_MARK)
+        previous = recorded.strip() if entry else chain_value(previous, line)
+        count += 1
+    return count, previous
+
+
+def set_log_anchor(text: str) -> str:
+    """Record the log's length and head beside the plan hash.
+
+    Chaining alone cannot see an entry removed from the *end*: the entries that remain still
+    follow one another. The anchor is the witness to the length, exactly as the ledger's is,
+    and it sits on a marker line the plan hash skips, so recording it cannot change the hash.
+    """
+    count, head = log_head(text)
+    line = f"**Log:** {count} entries, head `{head or '00000000'}`"
+    if LOG_ANCHOR.search(text):
+        return LOG_ANCHOR.sub(line.replace("\\", "\\\\"), text, count=1)
+    marker = re.search(r"^\*\*Plan sha256:\*\* .*$", text, re.M)
+    if marker:
+        return text[: marker.end()] + "\n" + line + text[marker.end() :]
+    return text
+
+
+def log_problems(text: str) -> list[str]:
+    """Where the log has been edited, reordered or had an entry removed.
+
+    The plan's hash deliberately stops at the log, since the log is written after freezing and
+    including it would make the hash cover itself. That left the record of deviations -- the
+    file's only account of what changed after the plan was fixed -- freely deletable with any
+    editor, while `check` still reported the plan unchanged. Chaining the entries makes a
+    removal visible without bringing them under the plan hash.
+    """
+    problems: list[str] = []
+    previous = ""
+    for i, line in enumerate(log_lines(text), start=1):
+        entry, _, recorded = line.rpartition(LOG_MARK)
+        if not entry:
+            # Written before the log was chained, or by hand. Fold it in rather than report
+            # it: the chain protects every entry from the first chained one onward, and
+            # calling a plain line tampering would flag every plan written under the old
+            # format.
+            previous = chain_value(previous, line)
+            continue
+        expected = chain_value(previous, entry)
+        if recorded.strip() != expected:
+            problems.append(
+                f"log entry {i} does not follow the one before it: an entry has been "
+                f"edited, reordered or removed"
+            )
+            return problems
+        previous = expected
+
+    anchor = LOG_ANCHOR.search(text)
+    if anchor:
+        count, head = log_head(text)
+        if int(anchor.group(1)) != count:
+            problems.append(
+                f"the log records {anchor.group(1)} entries and holds {count}: "
+                f"an entry has been removed from the end"
+            )
+        elif anchor.group(2) != (head or "00000000"):
+            problems.append("the log's last entry is not the one recorded")
+    return problems
+
+
 def append(path: pathlib.Path, date: str, event: str, access: str) -> None:
     text = path.read_text()
     if MARK not in text:
@@ -155,13 +242,20 @@ def append(path: pathlib.Path, date: str, event: str, access: str) -> None:
     # Two spaces, not just padding. `{event:<36}` emits nothing extra once the note passes 36
     # characters, and the access level then runs into the note — losing the boundary of the one
     # field that separates an amendment from a deviation.
-    line = f"{date}  {event:<36}  {access}"
+    entry = f"{date}  {event:<36}  {access}"
+    previous = ""
+    for existing in log_lines(text):
+        entry_text, _, recorded = existing.rpartition(LOG_MARK)
+        # An entry written before the log was chained carries no value; fold it in so the
+        # chain still covers it rather than restarting from nothing.
+        previous = recorded.strip() if entry_text else chain_value(previous, existing)
+    line = f"{entry}  {LOG_MARK}{chain_value(previous, entry)}"
     if "```" in tail:
         before, fence, after = tail.rpartition("```")
         tail = before.rstrip("\n") + f"\n{line}\n" + fence + after
     else:
         tail = tail.rstrip("\n") + f"\n{line}\n"
-    path.write_text(head + MARK + tail)
+    path.write_text(set_log_anchor(head + MARK + tail))
 
 
 def cmd_new(a) -> int:
@@ -211,7 +305,14 @@ def cmd_freeze(a) -> int:
         print(f"{path} has uncommitted changes. Commit first — the freeze names a commit.")
         return 1
 
-    commit = git("rev-parse", "HEAD", cwd=repo) or "(not in a git repository)"
+    commit = git("rev-parse", "HEAD", cwd=repo)
+    if not commit:
+        # `git()` returns "" on any non-zero exit, so a missing binary, a locked index and a
+        # directory outside a repository all read as clean. Recording a commit-shaped string
+        # in place of a commit made an unanchored freeze look like an anchored one.
+        print(f"{path} is not in a git repository with a commit, so a freeze would name none.")
+        print("A freeze is evidence because it is anchored: commit the plan first.")
+        return 1
     # Normalize the layout first, then hash. Freezing moves any status note onto
     # its own line, and `plan_of` skips marker lines but not that one, so hashing
     # the pre-freeze text would store a digest of a layout the file no longer has
@@ -223,7 +324,17 @@ def cmd_freeze(a) -> int:
     digest = sha256_of(plan_of(text))
     text = text.replace(f"`{placeholder}`", f"`{digest}`", 1)
     path.write_text(text)
-    append(path, today(), f"frozen at {commit[:12]}", "nothing run")
+    # `nothing run` was unconditional, so a rewrite forced after a `results seen` entry logged
+    # itself as an amendment directly beneath the line saying the outcomes had been examined.
+    # The template calls that column the thing that distinguishes an amendment from a
+    # deviation; writing it blind defeated the distinction.
+    access = getattr(a, "access", None) or ("nothing run" if not a.force else None)
+    if access is None:
+        print(f"{path} is being re-frozen, and the log already records what has been seen.")
+        print("Pass --access with one of: nothing run, no results seen, results not opened,")
+        print("results seen. A forced re-freeze cannot describe itself.")
+        return 1
+    append(path, today(), f"frozen at {commit[:12]}", access)
     print(f"frozen  {path}")
     print(f"  commit  {commit[:12]}")
     print(f"  sha256  {digest[:16]}…  (of everything above the log)")
@@ -273,14 +384,31 @@ def check_one(path: pathlib.Path) -> int:
     if not m:
         print(f"not frozen   {path}")
         return 2
+    # `plan_of` skips marker-prefixed lines so the hash cannot cover itself, and `freeze`
+    # refuses a plan that hides content behind one. `check` did not, so a line inserted after
+    # the freeze -- `**Frozen:** we will also accept p<0.10` -- sat in the plan uncovered and
+    # reported unchanged.
+    hidden = unhashed_content(text)
+    log = log_problems(text)
+
     now = sha256_of(plan_of(text))
-    if now == m.group(1):
-        print(f"unchanged    {path}")
-        return 0
-    print(f"CHANGED      {path}")
-    print(f"  frozen  {m.group(1)[:16]}…")
-    print(f"  now     {now[:16]}…")
-    return 1
+    if now != m.group(1):
+        print(f"CHANGED      {path}")
+        print(f"  frozen  {m.group(1)[:16]}…")
+        print(f"  now     {now[:16]}…")
+        return 1
+    if hidden:
+        print(f"UNCOVERED    {path}")
+        for problem in hidden:
+            print(f"  - {problem}")
+        return 1
+    if log:
+        print(f"LOG ALTERED  {path}")
+        for problem in log:
+            print(f"  - {problem}")
+        return 1
+    print(f"unchanged    {path}")
+    return 0
 
 
 def cmd_setup(a) -> int:
@@ -325,7 +453,9 @@ def cmd_check(a) -> int:
     )
     if changed:
         print("A changed plan was edited after freezing. Restore it and record the change.")
-    return 1 if changed else 0
+    # The single-plan branch returns 2 for a plan that was never frozen; this one returned 0,
+    # so whether an unfrozen registration passed CI depended on which directory it ran from.
+    return 1 if (changed or codes.count(2)) else 0
 
 
 def main() -> int:
@@ -339,6 +469,11 @@ def main() -> int:
 
     f = sub.add_parser("freeze", help="record the commit and hash")
     f.add_argument("--force", action="store_true")
+    f.add_argument(
+        "--access",
+        choices=["nothing run", "no results seen", "results not opened", "results seen"],
+        help="what had been seen when this freeze was recorded; required with --force",
+    )
     f.add_argument("--osf", action="store_true", help="push as a draft registration to OSF")
     f.set_defaults(fn=cmd_freeze)
 
