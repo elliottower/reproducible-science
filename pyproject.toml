@@ -40,3 +40,8 @@ markers = [
     "corpus: reads repositories outside this one, and may fetch them",
 ]
 addopts = "-m 'not corpus'"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
+]
