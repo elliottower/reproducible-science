@@ -7,7 +7,7 @@ requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "Elliot Tower", email = "elliot@elliottower.ai" }]
 keywords = ["preregistration", "reproducibility", "open science", "osf"]
-dependencies = ["PyYAML>=6.0"]
+dependencies = []  # stdlib only
 
 [project.scripts]
 prereg = "prereg.cli:main"
@@ -18,3 +18,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/prereg"]
+
+[tool.deptry]
+# Without this every intra-package import reads as a transitive dependency on itself.
+known_first_party = ["prereg"]

@@ -23,3 +23,7 @@ packages = ["src/results"]
 dev = [
     "pytest>=9.1.1",
 ]
+
+[tool.deptry]
+# Without this every intra-package import reads as a transitive dependency on itself.
+known_first_party = ["results"]

@@ -7,10 +7,32 @@
 members = ["packages/*"]
 
 [dependency-groups]
+# Fast enough to run on every commit.
 dev = [
     "pytest>=8",
+    "pytest-randomly>=3.15",
+    "pytest-timeout>=2.3",
+    "pytest-xdist>=3.6",
+    "coverage>=7.6",
+    "ruff>=0.14",
+    "pre-commit>=4",
     "adduce>=0.1.2",
     "numpy>=2.2.6",
+]
+
+# Type checking. Separate because adopting it is a ratchet, not a switch.
+types = ["pyrefly>=1.0"]
+
+# The deep pass: slow, or noisy enough that it advises rather than blocks.
+audit = [
+    "vulture>=2.14",
+    "deptry>=0.20",
+    "complexipy>=2",
+    "griffe>=1.5",
+    "pip-audit>=2.7",
+    "hypothesis>=6.100",
+    "check-wheel-contents>=0.6",
+    "twine>=5",
 ]
 
 [tool.pytest.ini_options]
@@ -21,7 +43,7 @@ markers = [
 # importlib import mode: three packages each have tests/test_cli.py, and the default mode
 # derives a module name from the path relative to rootdir, so they collide. This is the fix
 # that does not require scattering __init__.py through the test trees.
-addopts = "-m 'not corpus' --import-mode=importlib"
+addopts = "-m 'not corpus' --import-mode=importlib -p no:randomly"
 consider_namespace_packages = true
 
 [tool.ruff]
@@ -43,3 +65,17 @@ ignore = [
 
 [tool.ruff.format]
 docstring-code-format = false
+
+[tool.pyrefly]
+# Invoked with explicit paths (see the Makefile): the default excludes site-packages, and an
+# editable workspace install maps these same directories into it.
+project_includes = [
+    "packages/repro/src",
+    "packages/citations/src",
+    "packages/results/src",
+    "packages/prereg/src",
+]
+
+[tool.vulture]
+min_confidence = 100
+paths = ["packages", "scripts"]
