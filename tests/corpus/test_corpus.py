@@ -17,7 +17,8 @@ import pathlib
 import pytest
 import yaml
 
-from repro.corpus import Corpus, EntryState, RegressionCorpus
+from repro.corpus import Corpus, EntryState, RegressionCorpus, ensure
+from repro.regression import _manifest_against
 from repro.regression import FindingState, run
 
 HERE = pathlib.Path(__file__).parent
@@ -57,6 +58,20 @@ def test_corpus_entry_is_at_its_pinned_revision(entry):
     assert not status.artifacts_differing, status.artifacts_differing
     assert not status.artifacts_missing, status.artifacts_missing
     assert status.usable
+
+
+@pytest.mark.parametrize("entry", [e for e in corpus_entries() if e.get("manifest")],
+                         ids=lambda e: e["name"])
+def test_corpus_entry_verifies_to_its_recorded_counts(entry):
+    """A project audited at a pinned revision still produces what it produced."""
+    corpus = _load("corpus.yaml", Corpus)
+    item = next(e for e in corpus.entries if e.name == entry["name"])
+    root = ensure(item, HERE)
+    if root is None:
+        pytest.skip(f"{item.name} could not be obtained")
+    report = _manifest_against(HERE / item.manifest, root)
+    assert report.counts == item.expected, (
+        f"{item.name}: recorded {item.expected}, got {report.counts}")
 
 
 @pytest.mark.parametrize("finding", findings(), ids=lambda f: f["name"])

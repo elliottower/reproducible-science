@@ -59,6 +59,15 @@ class CorpusEntry(BaseModel):
     """Where to look on this machine. Relative paths resolve against the corpus file."""
 
     artifacts: tuple[ArtifactPin, ...] = ()
+
+    manifest: str = ""
+    """A manifest to verify against this entry, relative to the corpus file. Optional: an
+    entry may pin artifacts without asserting anything about them."""
+
+    expected: dict[str, int] = Field(default_factory=dict)
+    """Outcome counts the manifest produced when the entry was written. An entry carrying a
+    manifest and no expectation checks that verification runs and nothing else."""
+
     note: str = ""
 
     def resolve(self, corpus_dir: pathlib.Path) -> pathlib.Path:
