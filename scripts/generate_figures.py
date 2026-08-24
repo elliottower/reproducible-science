@@ -90,7 +90,77 @@ def conformance() -> dict:
     return {"fixtures": len(cases), "tests_passing": int(m.group(1)) if m else None}
 
 
+def metric_corpus() -> dict:
+    """Run each corpus manifest against the repository it audits.
+
+    The figures the paper states about the metric corpus come from the same engine and the
+    same manifests the corpus tests use, so a number in the paper and a number in a test
+    cannot disagree.
+    """
+    from repro.corpus import Corpus, ensure
+    from repro.regression import _manifest_against
+
+    here = ROOT / "tests" / "corpus"
+    cp = here / "corpus.yaml"
+    rp = here / "regressions.yaml"
+    out: dict[str, dict] = {}
+
+    if cp.is_file():
+        corpus = Corpus.model_validate({**(yaml.safe_load(cp.read_text()) or {}), "path": cp})
+        for entry in corpus.entries:
+            if not entry.manifest:
+                continue
+            root = ensure(entry, here)
+            if root is None:
+                out[entry.name] = {"available": False}
+                continue
+            report = _manifest_against(here / entry.manifest, root)
+            out[entry.name] = {"available": True, "commit": entry.commit[:12],
+                               **report.counts,
+                               "assertions": len(report.decisions)}
+
+    for finding in (yaml.safe_load(rp.read_text()) or {}).get("findings", []) if rp.is_file() else []:
+        from repro.corpus import CorpusEntry
+        before = finding.get("before") or {}
+        entry = CorpusEntry(name=finding["name"], repository=finding.get("repository", ""),
+                            commit=before.get("commit", ""),
+                            local_path=finding.get("local_path", ""))
+        root = ensure(entry, here)
+        manifest = here / before.get("manifest", "")
+        if root is None or not manifest.is_file():
+            out[finding["name"]] = {"available": False}
+            continue
+        report = _manifest_against(manifest, root)
+        out[finding["name"]] = {"available": True, "commit": entry.commit[:12],
+                                **report.counts, "assertions": len(report.decisions)}
+    return out
+
+
+def self_audit() -> dict:
+    """How many assertions the paper makes about itself.
+
+    The verdict is deliberately not recorded here. Writing this file changes it, which breaks
+    the pin the self-audit checks, so a figure stating that the self-audit passes is false at
+    the moment it is written and true only after the manifest is rebuilt. The count is stable
+    under that cycle; the verdict is not, and belongs to `repro verify` rather than to an
+    artifact it inspects.
+
+        uv run python scripts/generate_figures.py
+        uv run python scripts/build_self_audit.py
+        repro verify paper/repro.yaml --policy strict
+    """
+    from repro import load, verify
+
+    m = ROOT / "paper" / "repro.yaml"
+    if not m.is_file():
+        return {"available": False}
+    report = verify(load(m))
+    return {"available": True, "assertions": len(report.decisions)}
+
+
 figures = {"quotation_corpus": quotation_corpus(),
+           "metric_corpus": metric_corpus(),
+           "self_audit": self_audit(),
            "resolver_identifiers": resolver_identifiers(),
            "conformance": conformance()}
 

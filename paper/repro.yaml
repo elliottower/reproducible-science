@@ -2,7 +2,7 @@ schema_version: repro/1
 project: reproducible-science (self-audit)
 provenance:
   repository: https://github.com/elliottower/reproducible-science.git
-  commit: e88ae716068180e9081de2d27528893edcc8d790
+  commit: f505bdc493a326d3c950fa924523bc791d7149e8
   dirty: true
   generated_by: scripts/build_self_audit.py
 artifacts:
@@ -11,13 +11,13 @@ artifacts:
   media_type: text/markdown
   digest:
     algorithm: sha256
-    value: cd1ced9f04a176333fe2e1d29e1dd6f267666d80f99e479a10dcde258a7b1687
+    value: b974e92084e843236e3fae840f5e331f575c31394520f360512162452c92cdd2
 - id: figures
   path: figures.json
   media_type: application/json
   digest:
     algorithm: sha256
-    value: 2c78753811b7a0d0e1a58325c32265255a65870c34ba51bafb3ae399b168bf29
+    value: e1f9a69da374b38386b45f41a6c5a774f68c1de23b16ae7deb36aa55d3495fbd
 claims:
 - id: corpus-assertions
   confirmatory: true
@@ -172,3 +172,55 @@ claims:
     name: conformance-fixtures
     reported: '13'
     pointer: /conformance/fixtures
+- id: atlas-assertions
+  confirmatory: true
+  where: Section 6
+  text: The manuscript states 39 for atlas-assertions.
+  evidence:
+  - kind: quote
+    artifact: manuscript
+    text: atlas, Table 2 and text | 39
+  - kind: metric
+    artifact: figures
+    name: atlas-assertions
+    reported: '39'
+    pointer: /metric_corpus/direction-instability-atlas/assertions
+- id: atlas-verified
+  confirmatory: true
+  where: Section 6
+  text: The manuscript states 39 for atlas-verified.
+  evidence:
+  - kind: quote
+    artifact: manuscript
+    text: '| 39 | 39 | 0 |'
+  - kind: metric
+    artifact: figures
+    name: atlas-verified
+    reported: '39'
+    pointer: /metric_corpus/direction-instability-atlas/verified
+- id: rna-assertions
+  confirmatory: true
+  where: Section 6
+  text: The manuscript states 10 for rna-assertions.
+  evidence:
+  - kind: quote
+    artifact: manuscript
+    text: RNA structure-awareness, Table 5 | 10
+  - kind: metric
+    artifact: figures
+    name: rna-assertions
+    reported: '10'
+    pointer: /metric_corpus/rna-table5-mean-ps/assertions
+- id: rna-mismatch
+  confirmatory: true
+  where: Section 6
+  text: The manuscript states 9 for rna-mismatch.
+  evidence:
+  - kind: quote
+    artifact: manuscript
+    text: nine of the ten table rows
+  - kind: metric
+    artifact: figures
+    name: rna-mismatch
+    reported: '9'
+    pointer: /metric_corpus/rna-table5-mean-ps/mismatch

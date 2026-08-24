@@ -13,9 +13,11 @@ value that disagrees, a value the artifact is silent on, and a check that never 
 cases a two-state report has to collapse and whose remedies differ. The engine returns facts
 and computes no verdict; a policy maps outcomes to severities, so an unchecked citation can be
 acceptable in a draft and disqualifying in a submission. We report a quotation corpus of 5,686
-assertions over 365 content-addressed sources drawn from seventeen manuscripts, a conformance
-suite of thirteen fixtures with canonical expected outputs, and fault injection covering source
-tampering, absent toolchains, and backend defects.
+assertions over 365 content-addressed sources drawn from seventeen manuscripts; a metric corpus
+over two manuscripts, where one agrees with its stored results on all thirty-nine values it
+prints and the other disagrees on nine of ten table rows; a conformance suite of thirteen
+fixtures with canonical expected outputs; and fault injection covering source tampering, absent
+toolchains, and backend defects. The paper's own figures are verified by the same engine.
 
 ## 1. Introduction
 
@@ -126,8 +128,8 @@ the three profiles return two, three, and five errors over identical facts.
 
 ## 6. Evaluation
 
-Four separate studies. They are reported separately because they exercise different things,
-and one of them uses a tool outside this contract.
+Six studies, reported separately because they exercise different things and one of them uses a
+tool outside this contract.
 
 ### 6.1 Conformance
 
@@ -160,7 +162,57 @@ A positive control copies a genuinely pinned source, flips one bit, and confirms
 reports broken where the untouched file reports authoritative. Before that control existed,
 355 sources carried recorded hashes that nothing compared against the files on disk.
 
-### 6.3 Fault injection
+### 6.3 Metric corpus
+
+Two manuscripts were audited by declaring the values their result tables print and the
+locations those values are said to come from. Neither manuscript was written with this
+contract in mind, and neither was modified to be auditable.
+
+| manuscript | assertions | verified | mismatch |
+|---|---|---|---|
+| direction-instability atlas, Table 2 and text | 39 | 39 | 0 |
+| RNA structure-awareness, Table 5 | 10 | 1 | 9 |
+
+The atlas manifest covers the full pre-registered scorecard — sample size and effect for each
+of eleven hypotheses — together with the confidence intervals, the permutation-null mean,
+standard deviation and 99th percentile, and the raw-against-partial pairs stated in the text.
+Every one agrees with the stored result file at the precision the manuscript prints. The
+audit is reproduced from a clean clone at a pinned commit, with the ten result files matching
+the digests recorded for them.
+
+Several of those agreements hold only under decimal comparison at printed precision: the
+manuscript prints `0.012` against a stored `0.0122`, `0.038` against `0.0376`, and `0.456`
+against `0.4556`. Under float equality each is a false mismatch, and a checker producing three
+spurious findings in thirty-nine would not be usable.
+
+In the RNA manuscript, nine of the ten table rows with a stored result file disagree. Two are
+large: a model printed at `0.001` has a stored value of exactly zero, and one printed at
+`0.0003` has a stored value of `9.73e-7`. The remaining seven differ in the third or fourth
+significant figure.
+
+The two results together are the evaluation. A checker that reports disagreements everywhere
+is not evidence that disagreements exist, and one manuscript passing completely while another
+fails on nine of ten rows is what distinguishes the two readings.
+
+### 6.4 Self-audit
+
+The figures in this paper are produced by a script that writes them to a JSON artifact, and
+each of the paper's own numbers carries two assertions: that the manuscript states the
+sentence, and that the artifact holds the value. Every figure stated in Section 6 is checked
+this way, under the strictest policy profile, passing.
+
+Two figures are excluded, for the same reason in different degrees. Whether the self-audit
+passes cannot be recorded in the artifact the self-audit inspects, because writing the file
+breaks the pin being checked; the verdict belongs to a verification run rather than to a
+figure. And the number of assertions cannot itself be an assertion, since adding a claim about
+the count changes the count. Both are reported in prose and neither is checked.
+
+The loop has already caught its own paper. Adding DataCite as a registry source changed the
+denominator in §6.5 from 121 to 145 and the rate from 9.9% to 8.3%. Verification failed on the
+next run with the figures artifact's pin broken, both changed values reported as mismatches,
+and the key that had disappeared reported as absent rather than as a disagreement.
+
+### 6.5 Fault injection
 
 | injected | reported |
 |---|---|
@@ -169,7 +221,7 @@ reports broken where the untouched file reports authoritative. Before that contr
 | registered plan edited after registration | broken pin on the plan artifact |
 | backend raises `TypeError` | `error`, reason `backend_defect` |
 
-### 6.4 Identifier resolution: a case study outside this contract
+### 6.6 Identifier resolution: a case study outside this contract
 
 The following comes from a citation-library resolver, not from the evidence engine, and is
 reported to characterize the corpus rather than to evaluate the contract.
@@ -192,6 +244,11 @@ DOI is registered with: 24 of these are arXiv and Zenodo identifiers under prefi
 carries and Crossref answers 404 for. Reading only Crossref reported all 24 as identifiers
 that did not resolve, which is a false accusation against correct entries produced by asking
 the wrong registry.
+
+Both corrections moved the rate and neither moved the finding: the count of identifiers whose
+first author is absent from the registry has been twelve throughout. A rate that moves when
+the checker improves while the count does not is the more informative of the two numbers, and
+is reported as such.
 
 Identifier resolution is not modeled by the evidence contract. Whether it should be a third
 evidence kind is open.
@@ -217,14 +274,15 @@ than a shared dependency.
 
 ## 8. Limitations
 
-The quotation corpus is one researcher's, in mechanistic interpretability and computational
-biology, and its defect rates are properties of that corpus. No external project has yet used
-either backend.
+Every manuscript audited here is by one author, in mechanistic interpretability and
+computational biology, and the defect rates are properties of that corpus. No project by
+anyone else has used either backend.
 
-The metric backend is evaluated on conformance fixtures and fault injection, not on a corpus
-comparable to the quotation one. A metric corpus over published manuscripts, with an
-independent check that each pointer addresses the value the manuscript intends, is the
-evaluation this paper lacks.
+The metric corpus is two manuscripts. Each pointer in it was written by the same person who
+read the manuscript, so an error in which value a pointer addresses would produce a false
+agreement rather than a false disagreement, and nothing here rules that out. An independent
+check that each pointer targets the value the manuscript intends is the control this
+evaluation lacks.
 
 Ordering is specified and unimplemented; manifests carrying run records are accepted and
 ignored. When implemented it will establish internal consistency only, since a registration
