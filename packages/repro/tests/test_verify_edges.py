@@ -56,7 +56,7 @@ def test_a_huge_stored_value_is_a_mismatch_and_not_an_engine_error(tmp_path):
 
 @pytest.mark.parametrize("literal", ["NaN", "Infinity", "-Infinity"])
 def test_a_non_finite_stored_value_is_not_a_quantity_to_compare(tmp_path, literal):
-    path = write_json(tmp_path, '{"x": %s}' % literal)
+    path = write_json(tmp_path, f'{{"x": {literal}}}')
     decision = MetricBackend().check(CLAIM, metric("3.20"), path)
     assert decision.reason is Reason.VALUE_NOT_NUMERIC
     assert decision.outcome is Outcome.NOT_FOUND

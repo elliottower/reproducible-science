@@ -1,0 +1,30 @@
+# Hooks this repository provides to other repositories.
+#
+#   repos:
+#     - repo: https://github.com/elliottower/reproducible-science
+#       rev: repro-v0.3.0
+#       hooks:
+#         - id: repro-verify
+#
+# The hook checks a repository's own repro.yaml, so it reports on the consumer's manifest and
+# never on this one.
+
+- id: repro-verify
+  name: declared evidence assertions verify
+  description: >
+    Check every declared quotation, reported value and table cell against the artifact it
+    names, and fail where a printed number no longer matches the file it came from.
+  entry: repro verify
+  language: python
+  pass_filenames: false
+  always_run: true
+
+- id: repro-verify-strict
+  name: declared evidence assertions verify (strict)
+  description: >
+    As repro-verify, but every outcome other than verified is an error, including a check that
+    could not run.
+  entry: repro verify --policy strict
+  language: python
+  pass_filenames: false
+  always_run: true

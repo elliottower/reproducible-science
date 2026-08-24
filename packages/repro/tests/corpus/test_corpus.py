@@ -110,9 +110,10 @@ def test_a_dirty_working_tree_is_not_the_pinned_revision(tmp_path):
     prefers a clean copy where one can be fetched."""
     repo = tmp_path / "repo"
     repo.mkdir()
-    run = lambda *a: subprocess.run(
-        ["git", *a], cwd=repo, capture_output=True, check=True, timeout=30
-    )
+
+    def run(*a):
+        return subprocess.run(["git", *a], cwd=repo, capture_output=True, check=True, timeout=30)
+
     run("init", "-q")
     run("config", "user.email", "t@t")
     run("config", "user.name", "t")

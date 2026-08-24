@@ -13,33 +13,10 @@ resolution-markers = [
 members = [
     "citations",
     "prereg",
+    "repro-science",
     "reproducible-science",
     "results-cli",
 ]
-
-[manifest.dependency-groups]
-audit = [
-    { name = "check-wheel-contents", specifier = ">=0.6" },
-    { name = "complexipy", specifier = ">=2" },
-    { name = "deptry", specifier = ">=0.20" },
-    { name = "griffe", specifier = ">=1.5" },
-    { name = "hypothesis", specifier = ">=6.100" },
-    { name = "pip-audit", specifier = ">=2.7" },
-    { name = "twine", specifier = ">=5" },
-    { name = "vulture", specifier = ">=2.14" },
-]
-dev = [
-    { name = "adduce", specifier = ">=0.1.2" },
-    { name = "coverage", specifier = ">=7.6" },
-    { name = "numpy", specifier = ">=2.2.6" },
-    { name = "pre-commit", specifier = ">=4" },
-    { name = "pytest", specifier = ">=8" },
-    { name = "pytest-randomly", specifier = ">=3.15" },
-    { name = "pytest-timeout", specifier = ">=2.3" },
-    { name = "pytest-xdist", specifier = ">=3.6" },
-    { name = "ruff", specifier = ">=0.14" },
-]
-types = [{ name = "pyrefly", specifier = ">=1.0" }]
 
 [[package]]
 name = "adduce"
@@ -2412,6 +2389,77 @@ sdist = { url = "https://files.pythonhosted.org/packages/02/51/d3a6ea424652c60f0
 wheels = [
     { url = "https://files.pythonhosted.org/packages/97/1b/295bf2fa3e740131778065e5ffa2c481f0e7210182d408e9a2c244ff5b0c/readme_renderer-45.0-py3-none-any.whl", hash = "sha256:3385ed220117104a2bceb4a9dac8c5fdf6d1f96890d7ea2a9c7174fd5c84091f", size = 14134, upload-time = "2026-06-09T21:05:15.85Z" },
 ]
+
+[[package]]
+name = "repro-science"
+version = "0.1.0"
+source = { editable = "." }
+dependencies = [
+    { name = "citations" },
+    { name = "prereg" },
+    { name = "reproducible-science" },
+    { name = "results-cli" },
+]
+
+[package.dev-dependencies]
+audit = [
+    { name = "check-wheel-contents" },
+    { name = "complexipy" },
+    { name = "deptry" },
+    { name = "griffe" },
+    { name = "hypothesis" },
+    { name = "pip-audit" },
+    { name = "twine" },
+    { name = "vulture" },
+]
+dev = [
+    { name = "adduce" },
+    { name = "coverage" },
+    { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
+    { name = "numpy", version = "2.5.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "pre-commit" },
+    { name = "pytest" },
+    { name = "pytest-randomly" },
+    { name = "pytest-timeout" },
+    { name = "pytest-xdist" },
+    { name = "ruff" },
+]
+types = [
+    { name = "pyrefly" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "citations", editable = "packages/citations" },
+    { name = "prereg", editable = "packages/prereg" },
+    { name = "reproducible-science", editable = "packages/repro" },
+    { name = "results-cli", editable = "packages/results" },
+]
+
+[package.metadata.requires-dev]
+audit = [
+    { name = "check-wheel-contents", specifier = ">=0.6" },
+    { name = "complexipy", specifier = ">=2" },
+    { name = "deptry", specifier = ">=0.20" },
+    { name = "griffe", specifier = ">=1.5" },
+    { name = "hypothesis", specifier = ">=6.100" },
+    { name = "pip-audit", specifier = ">=2.7" },
+    { name = "twine", specifier = ">=5" },
+    { name = "vulture", specifier = ">=2.14" },
+]
+dev = [
+    { name = "adduce", specifier = ">=0.1.2" },
+    { name = "coverage", specifier = ">=7.6" },
+    { name = "numpy", specifier = ">=2.2.6" },
+    { name = "pre-commit", specifier = ">=4" },
+    { name = "pytest", specifier = ">=8" },
+    { name = "pytest-randomly", specifier = ">=3.15" },
+    { name = "pytest-timeout", specifier = ">=2.3" },
+    { name = "pytest-xdist", specifier = ">=3.6" },
+    { name = "ruff", specifier = ">=0.14" },
+]
+types = [{ name = "pyrefly", specifier = ">=1.0" }]
 
 [[package]]
 name = "reproducible-science"

@@ -235,11 +235,11 @@ def test_paths_recorded_relative_to_root_not_cwd(tmp_path):
     (sub / "draft.tex").write_text("\\documentclass{article}\n")
     r = run_cli("seal", "draft.tex", cwd=sub)
     assert r.returncode == 0
-    sealed = [
+    sealed = next(
         e
         for e in ledger.read_ledger(tmp_path / ".results" / "ledger.jsonl")
         if e["event"] == "seal"
-    ][0]
+    )
     assert sealed["files"][0]["path"] == "paper/draft.tex"
     v = run_cli("verify", "--files", cwd=tmp_path)
     assert v.returncode == 0
@@ -270,8 +270,10 @@ def test_verify_recomputes_ordering_rather_than_trusting_the_claim_event(tmp_pat
     assert '"after_outcomes_seen":true' in lines[-1]
     lp.write_text(
         "\n".join(
-            lines[:-1]
-            + [lines[-1].replace('"after_outcomes_seen":true', '"after_outcomes_seen":false')]
+            [
+                *lines[:-1],
+                lines[-1].replace('"after_outcomes_seen":true', '"after_outcomes_seen":false'),
+            ]
         )
         + "\n"
     )
@@ -300,8 +302,10 @@ def test_verify_catches_the_same_edit_before_recomputing_anything(tmp_path):
     lines = lp.read_text().splitlines()
     lp.write_text(
         "\n".join(
-            lines[:-1]
-            + [lines[-1].replace('"after_outcomes_seen":true', '"after_outcomes_seen":false')]
+            [
+                *lines[:-1],
+                lines[-1].replace('"after_outcomes_seen":true', '"after_outcomes_seen":false'),
+            ]
         )
         + "\n"
     )

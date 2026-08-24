@@ -231,7 +231,7 @@ def cmd_freeze(a) -> int:
 
     if a.osf:
         try:
-            draft_id, url = osf.push_draft(text)
+            _draft_id, url = osf.push_draft(text)
             print(f"\nOSF draft created: {url}")
             print("Review and submit it there — submission is irreversible.")
         except RuntimeError as e:

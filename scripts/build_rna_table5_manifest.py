@@ -9,6 +9,7 @@ pipeline's; it reports that they differ.
 import json
 import pathlib
 
+import yaml
 from repro import Digest
 
 R = pathlib.Path.home() / "Documents/GitHub/rna-sa-public"
@@ -68,7 +69,6 @@ for model, reported in REPORTED.items():
         }
     )
 
-import yaml
 
 (R / "repro.yaml").write_text(
     yaml.safe_dump(
