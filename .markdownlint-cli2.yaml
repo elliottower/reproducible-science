@@ -1,0 +1,18 @@
+# Lint prose for defects, do not restyle it. The papers, registrations and review packets are
+# hand-wrapped, and a formatter fighting an author is worse than no formatter.
+config:
+  line-length: false          # prose wraps at 95; a hard cap fights the drafts
+  no-inline-html: false       # tables and anchors use it
+  first-line-heading: false   # fragments and templates start mid-document
+  single-title: false         # a packet appends a whole document verbatim, headings included
+  table-column-style: false   # pipe alignment is a matter of taste, not correctness
+  no-duplicate-heading:
+    siblings_only: true       # OSF headings repeat across registration sections
+ignores:
+  - "**/node_modules/**"
+  - ".venv/**"
+  - "paper/prior_art/**"
+  - "packages/*/tests/conformance/cases/**"
+  # The manuscripts are pinned by digest from paper/repro.yaml. A linter that rewrites one
+  # breaks its pin and every quotation asserted against it, for a byline email.
+  - "paper/DRAFT_*.md"

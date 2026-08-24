@@ -323,6 +323,6 @@ Append only. Never edit above the line.
 The last column is what distinguishes an amendment from a deviation, so you do not have to
 decide which word to use: `nothing run`, `no results seen`, `results not opened`, `results seen`.
 
-```
+```text
 2026-08-24  created                              nothing run
 ```

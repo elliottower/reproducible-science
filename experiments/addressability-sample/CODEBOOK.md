@@ -95,7 +95,7 @@ Consequences, fixed here:
 Two variables, because retrieval describes the repository and addressability describes the
 value.
 
-```
+```text
 retrieval_status:   retrieved | absent | inaccessible | unsupported_format
 value_status:       addressable | present_unaddressable | absent_from_retrieved_artifacts
                   | not_assessable

@@ -10,7 +10,7 @@ The test throughout: **can a stranger check this without trusting me?**
 
 ## One file per experiment
 
-```
+```text
 experiments/<ID>_<short name>/
     PREREG.md      the plan, then a horizontal rule, then an append-only log
     run.py
@@ -101,7 +101,7 @@ Claim the first. Never claim the second.
 
 ## Separate what a source says from what you concluded
 
-```
+```text
 claims/     the extraction: verbatim quotations with section and page, the pinned
             artifact and its sha256, the claim as stated. Checkable by anyone.
 audits/     the judgment: statuses, verdicts, reasoning. Ours, and contestable.

@@ -5,7 +5,7 @@
 #
 # `prek` is a faster drop-in and reads this same file if you prefer it.
 
-default_install_hook_types: [pre-commit, pre-push]
+default_install_hook_types: [pre-commit, pre-push, commit-msg]
 default_stages: [pre-commit]
 
 # Conformance fixtures are pinned by digest: their exact bytes are the fixture. A hook that
@@ -44,7 +44,7 @@ repos:
       - id: forbid-submodules
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.4
+    rev: v0.16.4
     hooks:
       # check before format: a lint fix can leave code the formatter still wants to rewrap.
       - id: ruff-check
@@ -52,13 +52,51 @@ repos:
       - id: ruff-format
 
   - repo: https://github.com/codespell-project/codespell
-    rev: v2.4.1
+    rev: v2.4.3
     hooks:
       - id: codespell
         additional_dependencies: [tomli]
 
+  - repo: https://github.com/tox-dev/pyproject-fmt
+    rev: v2.28.0
+    hooks:
+      - id: pyproject-fmt
+
+  - repo: https://github.com/DavidAnson/markdownlint-cli2
+    rev: v0.23.2
+    hooks:
+      - id: markdownlint-cli2
+        args: [--config, .markdownlint-cli2.yaml]
+
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
+
+  - repo: https://github.com/python-jsonschema/check-jsonschema
+    rev: 0.38.0
+    hooks:
+      - id: check-github-workflows
+      - id: check-dependabot
+
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.12
+    hooks:
+      - id: actionlint
+
+  - repo: https://github.com/zizmorcore/zizmor-pre-commit
+    rev: v1.29.0
+    hooks:
+      - id: zizmor
+
+  - repo: https://github.com/editorconfig-checker/editorconfig-checker.python
+    rev: 3.11.1
+    hooks:
+      - id: editorconfig-checker
+        alias: ec
+
   - repo: https://github.com/abravalheri/validate-pyproject
-    rev: v0.24.1
+    rev: "0.26"
     hooks:
       - id: validate-pyproject
         files: ^(pyproject\.toml|packages/[^/]+/pyproject\.toml)$
@@ -71,6 +109,15 @@ repos:
         language: system
         pass_filenames: false
         files: ^(pyproject\.toml|packages/[^/]+/pyproject\.toml|uv\.lock)$
+
+      # `Co-Authored-By` is GitHub's credit convention and the wrong claim for a model;
+      # deleting the line instead would hide that a commit had assistance. Rewritten, not
+      # removed. Human co-authors are untouched.
+      - id: commit-attribution
+        name: AI co-authorship becomes disclosure
+        entry: uv run python scripts/commit_msg_attribution.py
+        language: system
+        stages: [commit-msg]
 
       # The repository's own product, applied to itself. Runs only when the manuscript or the
       # engine changes, which is when a number can go stale.
@@ -106,6 +153,13 @@ repos:
       - id: deptry
         name: declared dependencies match imports
         entry: uv run python scripts/check_deps.py
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: import-linter
+        name: package dependency direction
+        entry: uv run lint-imports
         language: system
         pass_filenames: false
         stages: [pre-push]

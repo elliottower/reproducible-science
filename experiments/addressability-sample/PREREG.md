@@ -5,9 +5,9 @@
 Sections use the [OSF Preregistration](https://osf.io/prereg/) question titles verbatim; a
 question that does not apply is answered **N/A** with the reason, never deleted.
 
-Frozen alongside this file: `CODEBOOK.md` (`f2670fb6bdff8ca2`) for the operational rules,
+Frozen alongside this file: `CODEBOOK.md` (`86bcded575876c63`) for the operational rules,
 `frame.json` (`5ee293dbc5ca1463`) for the drawn sample, and `docs/SPEC.md` §3.5
-(`29041ef972a62650`) for the locator grammar. Digests are sha256, first 16 hex.
+(`52843526d0c78948`) for the locator grammar. Digests are sha256, first 16 hex.
 
 ## Research questions or hypotheses
 
@@ -241,7 +241,7 @@ Append only. Never edit above the line.
 The last column is what distinguishes an amendment from a deviation, so you do not have to
 decide which word to use: `nothing run`, `no results seen`, `results not opened`, `results seen`.
 
-```
+```text
 2026-08-24  created                              nothing run
 2026-08-24  sample drawn and frozen              nothing run
 2026-08-24  revised after external review        nothing run
