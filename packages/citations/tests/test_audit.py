@@ -304,12 +304,70 @@ def test_a_cached_response_is_reused_rather_than_refetched(tmp_path, monkeypatch
     monkeypatch.setattr(A.urllib.request, "urlopen", refuse)
     cache = tmp_path / "cache"
     cache.mkdir()
-    (cache / "crossref_10_1234_x.json").write_text(
-        '{"message": {"title": ["A title"], "author": [{"family": "Smith", "given": "Ann"}]}}'
+    body = '{"message": {"title": ["A title"], "author": [{"family": "Smith", "given": "Ann"}]}}'
+    _write_cache(
+        cache, "crossref_10_1234_x.json", "https://api.crossref.org/works/10.1234%2Fx", body
     )
     got = A.from_crossref("10.1234/x", cache)
     assert got.title == "A title"
     assert got.authors == [(("smith",), ("ann",))]
+
+
+def _write_cache(cache, name, url, body):
+    """An envelope of the shape `fetch` writes, so a test exercises the real cache path."""
+    import hashlib
+    import json
+
+    (cache / name).write_text(
+        json.dumps(
+            {
+                "cache_version": A.CACHE_VERSION,
+                "url": url,
+                "fetched_at": "2026-01-01T00:00:00Z",
+                "sha256": hashlib.sha256(body.encode()).hexdigest(),
+                "body": body,
+            }
+        )
+    )
+
+
+def test_a_hand_written_cache_file_is_not_a_response(tmp_path, monkeypatch):
+    """`.audit-cache/` sits beside the bibliography and gets committed. When an entry was the
+    response body alone, a fabricated record -- a real DOI carrying an invented title -- could
+    be made to verify offline, with no network touched."""
+    reached = []
+
+    def record(*a, **kw):
+        reached.append(True)
+        raise A.NETWORK_ERRORS[0]("offline")
+
+    monkeypatch.setattr(A.urllib.request, "urlopen", record)
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    (cache / "crossref_10_1038_s41586_021_03819_3.json").write_text(
+        '{"message": {"title": ["A Completely Invented Title Nobody Wrote"],'
+        ' "author": [{"family": "Nobody", "given": "N"}]}}'
+    )
+    A.from_crossref("10.1038/s41586-021-03819-3", cache)
+    assert reached, "a bare file was trusted as a fetched response"
+
+
+def test_a_cache_entry_cannot_answer_a_different_request(tmp_path, monkeypatch):
+    reached = []
+
+    def record(*a, **kw):
+        reached.append(True)
+        raise A.NETWORK_ERRORS[0]("offline")
+
+    monkeypatch.setattr(A.urllib.request, "urlopen", record)
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    body = '{"message": {"title": ["Some other work"]}}'
+    _write_cache(
+        cache, "crossref_10_1234_x.json", "https://api.crossref.org/works/10.9999%2Fother", body
+    )
+    A.from_crossref("10.1234/x", cache)
+    assert reached, "an entry recorded for one URL answered another"
 
 
 # --- exit codes ---------------------------------------------------------------------------------

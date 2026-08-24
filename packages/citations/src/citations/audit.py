@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import argparse
 import collections
+import hashlib
 import json
 import pathlib
 import re
@@ -44,7 +45,7 @@ import xml.etree.ElementTree as ET
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from citations import paths
+from citations import bibtex, paths
 from citations.exceptions import CitationsError
 from citations.models import load_record
 from citations.text import fold, tokens, variants
@@ -65,7 +66,6 @@ NETWORK_ERRORS = (
     UnicodeDecodeError,
 )
 
-BIB_ENTRY = re.compile(r"@(\w+)\s*\{\s*([^,\s]+)\s*,(.*?)\n\}", re.DOTALL)
 BIB_FIELD = re.compile(r"(\w+)\s*=\s*[{\"](.*?)[}\"]\s*,?\s*(?=\n\s*\w+\s*=|\Z)", re.DOTALL)
 
 
@@ -230,7 +230,7 @@ class AuditReport(BaseModel):
 
 def entries_from_bib(path: pathlib.Path) -> list[Entry]:
     out = []
-    for _kind, key, body in BIB_ENTRY.findall(path.read_text()):
+    for _kind, key, body in bibtex.entries(bibtex.read(path)):
         f = {name.lower(): " ".join(value.split()) for name, value in BIB_FIELD.findall(body)}
         out.append(
             Entry(
@@ -275,12 +275,45 @@ def entries_from_library(only: str | None) -> list[Entry]:
 # --------------------------------------------------------------------------------- sources
 
 
+#: Bumped when the envelope's shape changes, so an older cache is refetched rather than
+#: misread.
+CACHE_VERSION = 1
+
+
 def fetch(url: str, cache: pathlib.Path, name: str) -> str | None:
-    """A cached registry response, or None when the request did not complete."""
+    """A cached registry response, or None when the request did not complete.
+
+    Each entry is wrapped in an envelope naming the URL it answers and a digest of the body.
+    A bare file is not a cache hit.
+
+    This matters because `.audit-cache/` sits beside the bibliography and gets committed. When
+    the entry was the response body alone, a hand-written file was indistinguishable from a
+    fetched one, so a fabricated record -- a real DOI carrying an invented title and authors --
+    could be made to verify offline, with no network touched. That is precisely the failure
+    this module exists to catch.
+
+    A local cache can never be an attestation: anyone able to write the file can write a
+    correct envelope too. What the envelope buys is that an entry cannot be repurposed for a
+    different request, and that a file dropped in by hand is ignored rather than trusted.
+    """
     cache.mkdir(parents=True, exist_ok=True)
     hit = cache / name
     if hit.exists():
-        return hit.read_text() or None
+        try:
+            envelope = json.loads(hit.read_text())
+        except (OSError, json.JSONDecodeError):
+            envelope = None
+        if (
+            isinstance(envelope, dict)
+            and envelope.get("cache_version") == CACHE_VERSION
+            and envelope.get("url") == url
+            and isinstance(envelope.get("body"), str)
+            and hashlib.sha256(envelope["body"].encode()).hexdigest() == envelope.get("sha256")
+        ):
+            return envelope["body"] or None
+        # Anything else -- a bare body, a mismatched URL, a broken digest -- is not a hit.
+        # Fetching again is the only way to answer the question that was asked.
+
     req = urllib.request.Request(url, headers={"User-Agent": UA})
     time.sleep(DELAY)
     try:
@@ -289,7 +322,18 @@ def fetch(url: str, cache: pathlib.Path, name: str) -> str | None:
     except NETWORK_ERRORS as exc:
         print(f"    could not fetch {name}: {exc}")
         return None
-    hit.write_text(body)
+    hit.write_text(
+        json.dumps(
+            {
+                "cache_version": CACHE_VERSION,
+                "url": url,
+                "fetched_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "sha256": hashlib.sha256(body.encode()).hexdigest(),
+                "body": body,
+            },
+            indent=2,
+        )
+    )
     return body
 
 

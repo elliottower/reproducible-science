@@ -30,16 +30,16 @@ exists, so they are not "bugs" in the ordinary sense.
 | [x] | The preregistration Log section is outside the hash and freely deletable | prereg/cli.py |
 | [x] | `freeze --force` logs `nothing run` even directly after a `results seen` entry | prereg/cli.py |
 | [x] | Marker-prefixed lines inserted after a freeze are not covered by the hash | prereg/cli.py |
-| [ ] | The audit response cache is trusted unconditionally, so a forged cache file verifies a fabricated bibliography entry offline | citations/audit.py |
+| [x] | The audit response cache is trusted unconditionally, so a forged cache file verifies a fabricated bibliography entry offline | citations/audit.py |
 
 ## Severity 2 — a check that cannot fail, or fails for the wrong reason
 
 | | finding | where |
 |---|---|---|
-| [ ] | A malformed claims file is skipped and `--strict` still exits 0 | citations/cli.py |
-| [ ] | `unchecked` and `unpinned` never fail `--strict`; a deleted source or a missing `pdftotext` passes CI | citations/verify.py, cli.py |
-| [ ] | Common BibTeX closing-brace styles drop entries and merge fields across entries | citations/audit.py, build.py |
-| [ ] | `resolve` matches on title alone when a record has neither author nor year | citations/resolve.py |
+| [x] | A malformed claims file is skipped and `--strict` still exits 0 | citations/cli.py |
+| [x] | `unchecked` and `unpinned` never fail `--strict`; a deleted source or a missing `pdftotext` passes CI | citations/verify.py, cli.py |
+| [x] | Common BibTeX closing-brace styles drop entries and merge fields across entries | citations/audit.py, build.py |
+| [x] | `resolve` matches on title alone when a record has neither author nor year | citations/resolve.py |
 | [x] | `freeze` outside a git repository reports success and records a commit-shaped string | prereg/cli.py |
 | [x] | `check` at a repo root exits 0 when a plan was never frozen | prereg/cli.py |
 | [x] | `--osf` drops a heading whose capitalization differs, silently | prereg/osf.py |
@@ -54,7 +54,7 @@ exists, so they are not "bugs" in the ordinary sense.
 | [x] | A missing output digest is reported as `INPUT_UNPINNED` | repro/regenerate.py |
 | [x] | Two declared inputs outside the root sharing a basename overwrite each other in the sandbox | repro/regenerate.py |
 | [x] | `urlopen` in `prereg/osf.py` has no timeout | prereg/osf.py |
-| [ ] | `audit.py` reads `.bib` without `errors=`, so a latin-1 file raises | citations/audit.py |
+| [x] | `audit.py` reads `.bib` without `errors=`, so a latin-1 file raises | citations/audit.py |
 
 ## Severity 3 — documentation asserting what the code does not do
 

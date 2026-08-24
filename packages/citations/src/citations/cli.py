@@ -45,18 +45,21 @@ def _records() -> list:
     return [load_record(p) for p in sorted(paths.records().glob("*.yaml"))]
 
 
-def _claim_files(root: pathlib.Path) -> list[ClaimFile]:
+def _claim_files(root: pathlib.Path, skipped=None) -> list[ClaimFile]:
     """Every claims file under `root`, validated.
 
     A file that cannot be parsed is reported and skipped rather than ending the run: one
     malformed file should not hide the state of the other three hundred.
     """
     out: list[ClaimFile] = []
+    skipped = [] if skipped is None else skipped
     for p in sorted(root.glob("*.yaml")):
         try:
             out.append(load_claim_file(p))
         except ClaimFileError as e:
-            print(f"  skipped  {p.name}: {e.detail.splitlines()[0]}")
+            reason = e.detail.splitlines()[0]
+            print(f"  skipped  {p.name}: {reason}")
+            skipped.append((p.name, reason))
     return out
 
 
@@ -66,11 +69,13 @@ def cmd_verify(a) -> int:
 
     if a.claims:
         root = pathlib.Path(a.claims).expanduser().resolve()
-        for cf in _claim_files(root):
+        for cf in _claim_files(root, skipped=rep.skipped):
             artifact = cf.artifact()
             pin = V.check_pin(artifact, cf.source.sha256)
             if pin.state == "broken":
                 rep.broken_pins.append((cf.name, pin))
+            elif pin.state == "unpinned":
+                rep.unpinned.append(cf.name)
             for cid, claim in cf.claims.items():
                 for q in claim.quotes:
                     if not q.text:
@@ -95,6 +100,8 @@ def cmd_verify(a) -> int:
             pin = V.check_pin(artifact, rec.sha256)
             if pin.state == "broken":
                 rep.broken_pins.append((rec.slug, pin))
+            elif pin.state == "unpinned":
+                rep.unpinned.append(rec.slug)
         for q in rec.quotes:
             if not q.text:
                 continue
@@ -176,7 +183,15 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
         )
     else:
         print("all found.")
-    return 0 if rep.ok or not a.strict else 1
+    if a.strict and not rep.strict_ok:
+        if rep.unresolved:
+            print(f"\n{rep.unresolved} quotation(s) could not be checked at all.")
+        if rep.unpinned:
+            print(f"{len(rep.unpinned)} source(s) carry no digest: {', '.join(rep.unpinned[:3])}")
+        if rep.skipped:
+            print(f"{len(rep.skipped)} claims file(s) did not parse and were never examined.")
+        print("--strict fails on these: nothing was established about them either way.")
+    return 0 if (rep.strict_ok if a.strict else rep.ok) else 1
 
 
 def _delegate(module: str, argv: list[str]) -> int:
