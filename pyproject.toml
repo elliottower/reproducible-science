@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "reproducible-science"
-version = "0.1.0"
-description = "Scaffold reproducible science workflows — prereg, citations, and results in one command"
+version = "0.3.0"
+description = "One contract for verifying declared evidence assertions against pinned artifacts"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
@@ -19,6 +19,8 @@ classifiers = [
     "Topic :: Scientific/Engineering",
 ]
 dependencies = [
+    "pydantic>=2.0",
+    "PyYAML>=6.0",
     "prereg",
     "citations",
     "results-cli",

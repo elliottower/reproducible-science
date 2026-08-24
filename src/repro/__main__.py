@@ -1,5 +1,7 @@
-"""Allow `python -m repro`."""
+"""`python -m repro`.
 
+The process boundary, and the only place in this package that exits.
+"""
 from repro.cli import main
 
-main()
+raise SystemExit(main())

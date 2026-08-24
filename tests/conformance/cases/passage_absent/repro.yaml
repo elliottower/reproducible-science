@@ -1,0 +1,15 @@
+schema_version: repro/1
+project: passage_absent
+artifacts:
+- id: src
+  path: source.txt
+  digest:
+    algorithm: sha256
+    value: d7ed6227f3ca59c15f97802a2092697737b6dc981a0d78db4da61eeceb730f4c
+claims:
+- id: c
+  text: t
+  evidence:
+  - kind: quote
+    artifact: src
+    text: matches the Poisson expectation for this ensemble

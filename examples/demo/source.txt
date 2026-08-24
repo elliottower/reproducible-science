@@ -1,0 +1,7 @@
+Methods. We trained 50 models across 12 layers, with 5 refits each.
+
+Results. Model A exceeded Model B by 3.2 percentage points on held-out accuracy.
+The direction replicates across all twelve seeds, and the effect is larger in the
+deeper layers than in the shallow ones.
+
+Discussion. The measured angle matches the Haar expectation for this ensemble.
