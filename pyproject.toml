@@ -103,9 +103,14 @@ ini_options.markers = [
 ]
 
 [tool.coverage]
-run.source = [ "packages/citations/src", "packages/prereg/src", "packages/repro/src", "packages/results/src" ]
+# Package names, not paths: a CLI test runs the command in a temporary directory, and a
+# relative source path matches nothing from there -- so every CLI reported 0% while its
+# tests passed.
+run.source_pkgs = [ "citations", "prereg", "repro", "results" ]
 run.omit = [ "*/tests/*" ]
 run.branch = true
+run.parallel = true
+run.sigterm = true
 report.exclude_also = [
   "\\.\\.\\.",
   "if TYPE_CHECKING:",
