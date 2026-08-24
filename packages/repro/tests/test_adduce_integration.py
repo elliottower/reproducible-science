@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 
@@ -216,3 +217,80 @@ def test_the_sidecar_holds_an_outcome_for_every_assertion(build, tmp_path):
 def test_the_finding_points_at_the_manifest_and_the_full_report(build):
     finding = RULE.evaluate(build(two_assertions({"a": "1.0", "b": "9.9"}))[1])
     assert {loc.path for loc in finding.locations} == {"repro.yaml", ".adduce/repro-report.json"}
+
+
+# -- the interop contract -------------------------------------------------------------------
+#
+# adduce is a separate project on its own release schedule and is not a runtime dependency of
+# repro: it is an optional extra. That makes the surface repro relies on a contract with
+# someone else's code, and an upgrade that moves it would otherwise disable the rule quietly —
+# the entry point still loads, `applies_to` still returns, and nothing is ever reported.
+
+
+@pytest.mark.integration
+def test_the_adduce_surface_this_rule_depends_on_is_present():
+    from adduce import evidence as adduce_evidence
+    from adduce import model as adduce_model
+    from adduce import rules as adduce_rules
+
+    for name in ("Rule", "Status", "Category", "Location", "Finding"):
+        assert hasattr(adduce_rules, name), f"adduce.rules.{name} is gone"
+    for name in ("PASS", "FAIL", "PARTIAL", "UNKNOWN", "NOT_APPLICABLE"):
+        assert hasattr(Status, name), f"adduce Status.{name} is gone"
+    for name in ("exists", "find_names"):
+        assert hasattr(adduce_model.Repo, name), f"adduce Repo.{name} is gone"
+    # `root` is a dataclass field, so it is on instances rather than on the class.
+    fields = {f.name for f in dataclasses.fields(adduce_model.Repo)}
+    assert "root" in fields, "adduce Repo.root is gone"
+    assert hasattr(adduce_evidence, "collect")
+    assert hasattr(adduce_model, "scan_repository")
+
+
+@pytest.mark.integration
+def test_the_rule_is_discoverable_through_the_entry_point():
+    """Installed with the extra, adduce finds the rule without repro doing anything."""
+    from importlib.metadata import entry_points
+
+    registered = {e.name: e.value for e in entry_points(group="adduce.rules")}
+    assert registered.get("repro") == "repro.integrations.adduce", (
+        f"the entry point adduce discovers this rule by is not registered: {registered}"
+    )
+
+
+@pytest.mark.integration
+def test_the_finding_helper_still_accepts_what_the_rule_passes(build):
+    """`Rule.finding` is called with five arguments; a signature change would break at runtime
+    rather than at import, and only on the path that produces a failure."""
+    finding = RULE.evaluate(build(two_assertions({"a": "1.0", "b": "9.9"}))[1])
+    for field in (
+        "rule_id",
+        "category",
+        "status",
+        "confidence",
+        "message",
+        "remediation",
+        "locations",
+        "severity",
+        "weight",
+    ):
+        assert hasattr(finding, field), f"adduce Finding.{field} is gone"
+
+
+@pytest.mark.integration
+def test_the_rule_never_writes_outside_its_sidecar(build, tmp_path):
+    """adduce rules run over other people's repositories. This one writes exactly one file,
+    under `.adduce/`, because a Finding cannot carry per-assertion outcomes."""
+    import hashlib
+
+    def snapshot():
+        return {
+            str(p.relative_to(tmp_path)): hashlib.sha256(p.read_bytes()).hexdigest()
+            for p in sorted(tmp_path.rglob("*"))
+            if p.is_file() and ".adduce" not in p.parts
+        }
+
+    _, ev = build(two_assertions({"a": "1.0", "b": "2.0"}))
+    before = snapshot()
+    RULE.evaluate(ev)
+    assert snapshot() == before, "the rule modified the repository it was auditing"
+    assert (tmp_path / ".adduce" / "repro-report.json").is_file()
