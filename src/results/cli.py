@@ -29,15 +29,42 @@ def find_root(start: pathlib.Path | None = None) -> pathlib.Path | None:
 
 
 def require_root() -> pathlib.Path:
+    """The governing `.results/`, or raise.
+
+    Raises rather than exits: this is reached through library calls, and a function that kills
+    the interpreter cannot be used from anything that is not a terminal.
+    """
     root = find_root()
     if root is None:
-        print(f"no {RESULTS_DIR}/ here or above. `results init` makes one.")
-        sys.exit(2)
+        raise ledger.NoLedgerRootError(str(pathlib.Path.cwd()))
     return root
 
 
 def ledger_path(root: pathlib.Path) -> pathlib.Path:
     return root / ledger.LEDGER
+
+
+def record_path(p: pathlib.Path, root: pathlib.Path) -> str:
+    """A path relative to the project root, so it resolves from anywhere in the tree.
+
+    Recording relative to the current directory would make a file sealed from a
+    subdirectory unfindable when verify runs at the root.
+    """
+    return os.path.relpath(p, root.parent)
+
+
+def first_outcomes_seen(events: list[dict]) -> str | None:
+    """Timestamp of the earliest 'outcomes seen' access event, if there is one."""
+    stamps = [e["timestamp"] for e in events
+              if e.get("event") == "access" and e.get("level") == "outcomes seen"]
+    return min(stamps) if stamps else None
+
+
+def first_run_timestamp(events: list[dict], run_id: str) -> str | None:
+    """Timestamp of the earliest run recorded under this id."""
+    stamps = [e["timestamp"] for e in events
+              if e.get("event") == "run" and e.get("run_id") == run_id]
+    return min(stamps) if stamps else None
 
 
 def cmd_init(a) -> int:
@@ -65,8 +92,8 @@ def cmd_seal(a) -> int:
             print(f"not a file: {name}")
             return 1
         digest = ledger.sha256_of_file(p)
-        sealed.append({"path": os.path.relpath(p), "sha256": digest})
-    ev = ledger.append_event(lp, {
+        sealed.append({"path": record_path(p, root), "sha256": digest})
+    ledger.append_event(lp, {
         "event": "seal",
         "role": a.role,
         "files": sealed,
@@ -83,7 +110,7 @@ def cmd_access(a) -> int:
     if a.level not in ACCESS_LEVELS:
         print(f"level must be one of: {', '.join(ACCESS_LEVELS)}")
         return 1
-    ev = ledger.append_event(lp, {
+    ledger.append_event(lp, {
         "event": "access",
         "level": a.level,
         "note": a.note,
@@ -91,6 +118,7 @@ def cmd_access(a) -> int:
     print(f"recorded: {a.level} — {a.note}")
     if a.level == "outcomes seen":
         print("\nany analysis registered after this is retrospective, not confirmatory.")
+        print("`results claim --confirmatory` will now refuse runs recorded after this point.")
     return 0
 
 
@@ -109,8 +137,8 @@ def cmd_run(a) -> int:
             print(f"not a file: {name}")
             return 1
         digest = ledger.sha256_of_file(p)
-        outputs.append({"path": os.path.relpath(p), "sha256": digest})
-    ev = ledger.append_event(lp, {
+        outputs.append({"path": record_path(p, root), "sha256": digest})
+    ledger.append_event(lp, {
         "event": "run",
         "run_id": a.run_id,
         "outputs": outputs,
@@ -133,11 +161,28 @@ def cmd_claim(a) -> int:
         print(f"known runs: {', '.join(sorted(run_ids)) or '(none)'}")
         return 1
 
-    ev = ledger.append_event(lp, {
+    retrospective = None
+    if a.confirmatory:
+        seen = first_outcomes_seen(events)
+        if seen is not None:
+            recorded = first_run_timestamp(events, a.run_id)
+            if recorded is None or recorded > seen:
+                retrospective = seen
+
+    if retrospective and not a.anyway:
+        print(f"refusing: outcomes were seen at {retrospective[:19]}, and run "
+              f"'{a.run_id}' was recorded after that.")
+        print("a claim from a run that postdates seeing the outcomes is retrospective.")
+        print("drop --confirmatory, or pass --anyway to record it as confirmatory")
+        print("with the ordering noted permanently in the ledger.")
+        return 1
+
+    ledger.append_event(lp, {
         "event": "claim",
         "claim": a.text,
         "run_id": a.run_id,
         "confirmatory": a.confirmatory,
+        "after_outcomes_seen": bool(retrospective),
         "location": a.location or "",
     })
     status = "confirmatory" if a.confirmatory else "exploratory"
@@ -145,6 +190,29 @@ def cmd_claim(a) -> int:
     print(f"  backed by run: {a.run_id}")
     if a.location:
         print(f"  appears in: {a.location}")
+    if retrospective:
+        print(f"  recorded after outcomes were seen at {retrospective[:19]}; "
+              f"verify will report it")
+    return 0
+
+
+def cmd_reanchor(a) -> int:
+    """Record the ledger's current length and head as authoritative.
+
+    Deliberate and separate from `verify`, because re-anchoring a truncated ledger records the
+    truncation. It repairs a ledger written before anchoring existed, or one appended to by a
+    run that crashed before the anchor was written; it recovers nothing.
+    """
+    root = require_root()
+    lp = ledger_path(root)
+    status, _ = ledger.verify(lp)
+    if status in (ledger.ChainStatus.EDITED, ledger.ChainStatus.CORRUPT,
+                  ledger.ChainStatus.REORDERED):
+        print(f"refusing to anchor a chain reported as {status.value}.")
+        print("re-anchoring would record the damage as authoritative.")
+        return 1
+    anchor = ledger.reanchor(lp)
+    print(f"anchored {anchor['count']} events at {anchor['head'][:16]}…")
     return 0
 
 
@@ -152,15 +220,32 @@ def cmd_verify(a) -> int:
     root = require_root()
     lp = ledger_path(root)
 
-    ok, problems = ledger.verify_chain(lp)
-    if not ok:
-        print("CHAIN BROKEN")
-        for p in problems:
-            print(f"  {p}")
+    status, problems = ledger.verify(lp)
+    if status is not ledger.ChainStatus.INTACT:
+        # Name which failure it is. Truncated, edited and unattested have different causes and
+        # different remedies, and one banner for all three tells a reader nothing to act on.
+        headline = {
+            ledger.ChainStatus.TRUNCATED: "CHAIN TRUNCATED — events are missing from the end",
+            ledger.ChainStatus.EXTENDED: "CHAIN EXTENDED — appended without updating the anchor",
+            ledger.ChainStatus.EDITED: "CHAIN EDITED — a recorded event has been changed",
+            ledger.ChainStatus.REORDERED: "CHAIN REORDERED — events are not in the order written",
+            ledger.ChainStatus.CORRUPT: "CHAIN CORRUPT — a line is not a readable event",
+            ledger.ChainStatus.NO_ANCHOR: "CHAIN UNATTESTED — no anchor, so length is unverified",
+            ledger.ChainStatus.ABSENT: "NO LEDGER — nothing to verify",
+        }.get(status, "CHAIN BROKEN")
+        print(headline)
+        for problem in problems:
+            print(f"  {problem}")
+        if status is ledger.ChainStatus.NO_ANCHOR:
+            print("\n  This ledger predates anchoring. If it is intact, record its length:")
+            print("      results reanchor")
+        elif status is ledger.ChainStatus.EXTENDED:
+            print("\n  If the extra events are yours, record the new length:")
+            print("      results reanchor")
         return 1
 
     events = ledger.read_ledger(lp)
-    print(f"chain intact: {len(events)} events\n")
+    print(f"chain intact: {len(events)} events, anchored\n")
 
     counts = {}
     for e in events:
@@ -176,8 +261,9 @@ def cmd_verify(a) -> int:
         for e in events:
             for f in e.get("files", []) + e.get("outputs", []):
                 file_hashes[f["path"]] = f["sha256"]
+        base = root.parent
         for path, expected in sorted(file_hashes.items()):
-            p = pathlib.Path(path)
+            p = base / path
             if not p.exists():
                 print(f"  MISSING    {path}")
                 drift += 1
@@ -201,8 +287,9 @@ def cmd_verify(a) -> int:
             print(f"  {e['timestamp'][:19]}  {e['level']:<20}  {e.get('note', '')}")
 
     claims = [e for e in events if e.get("event") == "claim"]
+    unlinked = []
+    contested = []
     if claims:
-        unlinked = []
         for c in claims:
             run_events = [e for e in events
                           if e.get("event") == "run" and e.get("run_id") == c.get("run_id")]
@@ -213,9 +300,30 @@ def cmd_verify(a) -> int:
             for c in unlinked:
                 print(f"  {c['claim'][:60]}  (run: {c.get('run_id')})")
 
+        # Recomputed from timestamps rather than read off the claim event, so a
+        # ledger written by an older version, or edited by hand, is still caught.
+        seen = first_outcomes_seen(events)
+        if seen is not None:
+            contested = [c for c in claims if c.get("confirmatory")
+                         and (first_run_timestamp(events, c.get("run_id")) or "") > seen]
+        if contested:
+            print(f"\n{len(contested)} confirmatory claim(s) rest on runs recorded "
+                  f"after outcomes were seen:")
+            for c in contested:
+                print(f"  {c['claim'][:60]}  (run: {c.get('run_id')})")
+            print("  these are retrospective; describe them as such in the manuscript.")
+
     print()
-    if ok and not (a.files and drift):
-        print("all checks passed.")
+    if unlinked:
+        print("the ledger names runs it does not contain.")
+        return 1
+    if not a.files:
+        print("chain intact. file hashes were not checked — pass --files to check them.")
+        return 0
+    if contested:
+        print("chain intact and every file hash matches, with the notes above.")
+        return 0
+    print("all checks passed.")
     return 0
 
 
@@ -256,6 +364,9 @@ def main() -> int:
     cl.add_argument("--run-id", required=True, help="which run backs this claim")
     cl.add_argument("--confirmatory", action="store_true",
                     help="mark as confirmatory (default: exploratory)")
+    cl.add_argument("--anyway", action="store_true",
+                    help="record a confirmatory claim whose run postdates seeing the "
+                         "outcomes; the ledger and verify both report the ordering")
     cl.add_argument("--location", help="where in the manuscript: Table 2, Section 4.1, etc.")
     cl.set_defaults(fn=cmd_claim)
 
@@ -264,13 +375,22 @@ def main() -> int:
                    help="also check that sealed/output files still match their hashes")
     v.set_defaults(fn=cmd_verify)
 
+    ra = sub.add_parser("reanchor",
+                        help="record the ledger's current length as authoritative")
+    ra.set_defaults(fn=cmd_reanchor)
+
     a = ap.parse_args()
     if not a.cmd:
         ap.print_help()
         return 0
-    if a.cmd == "init":
-        return cmd_init(a)
-    return a.fn(a)
+    try:
+        if a.cmd == "init":
+            return cmd_init(a)
+        return a.fn(a)
+    except ledger.ResultsError as e:
+        # The process boundary. Library code raises; only here does a failure become a code.
+        print(str(e))
+        return 2
 
 
 if __name__ == "__main__":
