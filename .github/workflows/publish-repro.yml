@@ -6,7 +6,7 @@ name: Publish reproducible-science
 
 on:
   push:
-    tags: ["repro-v*"]
+    tags: ["repro-v*", "v*"]
   workflow_dispatch:
 
 jobs:

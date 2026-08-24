@@ -6,7 +6,7 @@ name: Publish results-cli
 
 on:
   push:
-    tags: ["results-v*"]
+    tags: ["results-v*", "v*"]
   workflow_dispatch:
 
 jobs:
