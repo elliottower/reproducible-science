@@ -40,6 +40,23 @@ from repro.resolve import resolve_pointer
 _MISSING = object()
 
 
+def _inside(sandbox: pathlib.Path, source: pathlib.Path, root: pathlib.Path) -> pathlib.Path | None:
+    """Where `source` belongs inside the sandbox, or None if it would land outside.
+
+    `Path.relative_to` is lexical, so an absolute artifact path containing `..` yields a
+    relative path that climbs back out, and `sandbox / that` is not inside the sandbox at all.
+    Resolving both sides and re-checking containment is what actually confines it.
+    """
+    try:
+        relative = source.resolve().relative_to(root.resolve())
+    except ValueError:
+        relative = pathlib.Path(source.name)
+    candidate = (sandbox / relative).resolve()
+    if candidate == sandbox.resolve() or sandbox.resolve() not in candidate.parents:
+        return None
+    return candidate
+
+
 def _unchecked(
     record: RegenerationRecord, reason: RegenerationReason, detail: str
 ) -> RegenerationState:
@@ -95,8 +112,17 @@ def check(
     if record.output.digest is None:
         return _unchecked(
             record,
-            RegenerationReason.INPUT_UNPINNED,
+            RegenerationReason.OUTPUT_UNPINNED,
             "the record names no expected digest for its output",
+        )
+
+    # Copying the output in as one of its own inputs means `true` reproduces it: the file is
+    # already sitting at the expected path when the comparison runs.
+    if record.output.artifact in {i.artifact for i in record.inputs}:
+        return _unchecked(
+            record,
+            RegenerationReason.OUTPUT_IS_ALSO_AN_INPUT,
+            f"{record.output.artifact} is declared as both an input and the output",
         )
 
     files: dict[str, pathlib.Path] = {}
@@ -136,15 +162,45 @@ def check(
                 f"the record names {wanted.digest.value[:12]}",
             )
 
+    # The record declares what it expects to produce. Nothing checked that against the
+    # artifact the claims were actually read from, so a record could declare its own answer:
+    # the command writes 0.11, the record expects 0.11, the paper's pinned file says 0.99, and
+    # the report states the pinned code still produces the pinned artifact.
+    output_state = states.get(record.output.artifact)
+    if output_state is not None and not record.volatile:
+        declared = output_state.expected or output_state.actual
+        if declared and declared != record.output.digest.value:
+            return _unchecked(
+                record,
+                RegenerationReason.OUTPUT_NOT_THE_ARTIFACT,
+                f"the record expects {record.output.digest.value[:12]} but "
+                f"{record.output.artifact} is {declared[:12]}",
+            )
+
     root = manifest.path.parent if manifest.path else pathlib.Path.cwd()
     with tempfile.TemporaryDirectory(prefix="repro-regen-") as scratch:
         sandbox = pathlib.Path(scratch)
+        placed: dict[pathlib.Path, str] = {}
         for wanted in record.inputs:
             source = files[wanted.artifact]
-            try:
-                target = sandbox / source.relative_to(root)
-            except ValueError:
-                target = sandbox / source.name
+            target = _inside(sandbox, source, root)
+            if target is None:
+                return _unchecked(
+                    record,
+                    RegenerationReason.INPUT_MISSING,
+                    f"input {wanted.artifact} resolves outside the sandbox",
+                )
+            if target in placed:
+                # Two inputs from outside the root can share a basename; the second silently
+                # overwrote the first, and the command then read a file that was never
+                # digest-matched to the input it stood for.
+                return _unchecked(
+                    record,
+                    RegenerationReason.INPUT_MISSING,
+                    f"inputs {placed[target]} and {wanted.artifact} collide at "
+                    f"{target.name} in the sandbox",
+                )
+            placed[target] = wanted.artifact
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, target)
 
@@ -182,10 +238,13 @@ def check(
             )
 
         source = files[record.output.artifact]
-        try:
-            produced = sandbox / source.relative_to(root)
-        except ValueError:
-            produced = sandbox / source.name
+        produced = _inside(sandbox, source, root)
+        if produced is None:
+            return _unchecked(
+                record,
+                RegenerationReason.OUTPUT_NOT_PRODUCED,
+                f"output {record.output.artifact} resolves outside the sandbox",
+            )
         if not produced.is_file():
             return RegenerationState(
                 regeneration_id=record.id,

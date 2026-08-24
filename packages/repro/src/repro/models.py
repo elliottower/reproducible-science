@@ -787,6 +787,14 @@ class RegenerationReason(enum.StrEnum):
     this also catches a script that needs a file the manifest never declared."""
     COMMAND_TIMED_OUT = "command_timed_out"
     OUTPUT_NOT_PRODUCED = "output_not_produced"
+    OUTPUT_UNPINNED = "output_unpinned"
+    """The record names no expected digest for its output."""
+    OUTPUT_NOT_THE_ARTIFACT = "output_not_the_artifact"
+    """The record's expected output is not the artifact the claims were checked against, so
+    reproducing it would say nothing about the manuscript's numbers."""
+    OUTPUT_IS_ALSO_AN_INPUT = "output_is_also_an_input"
+    """The output was copied into the sandbox as one of its own inputs, so a command that does
+    nothing reproduces it."""
     RUNNER_UNAVAILABLE = "runner_unavailable"
 
 

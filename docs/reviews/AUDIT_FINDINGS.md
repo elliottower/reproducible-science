@@ -15,9 +15,9 @@ exists, so they are not "bugs" in the ordinary sense.
 | [x] | The normalized fallback stripped every non-alphanumeric character, so `p < 0.05` matched a source reading `p = 0.05`, and `-0.42` matched `0.42` | citations/verify.py |
 | [x] | A quotation folding to the empty string matched every source (`"" in doc`) | citations/verify.py |
 | [x] | Duplicate artifact ids drop every declaration but the last; a broken pin vanishes from the report and `strict` passes with zero violations | repro/verify.py |
-| [ ] | Regeneration compares the produced file against the record's own declared digest, never against the pinned artifact, so a record can declare its own answer | repro/regenerate.py |
-| [ ] | A no-op command "reproduces" an output that was copied in as its own input | repro/regenerate.py |
-| [ ] | `Path.relative_to` is lexical, so an absolute artifact path containing `..` escapes the sandbox on both the read and write side | repro/regenerate.py |
+| [x] | Regeneration compares the produced file against the record's own declared digest, never against the pinned artifact, so a record can declare its own answer | repro/regenerate.py |
+| [x] | A no-op command "reproduces" an output that was copied in as its own input | repro/regenerate.py |
+| [x] | `Path.relative_to` is lexical, so an absolute artifact path containing `..` escapes the sandbox on both the read and write side | repro/regenerate.py |
 | [x] | `compare_decimal` reports two identical values as a mismatch beyond 28 significant digits — a tool defect emitted as a contradicted manuscript | repro/verify.py |
 | [x] | Duplicate CSV column names resolve to the last silently; a duplicated predicate column reports a present row as absent | repro/resolve.py |
 | [x] | Duplicate JSON keys resolve last-wins, while YAML raises for exactly this | repro/resolve.py |
@@ -51,8 +51,8 @@ exists, so they are not "bugs" in the ordinary sense.
 | [ ] | A regression is verified against whatever revision is checked out, and counts are labelled with the pinned commit | repro/regression.py |
 | [ ] | `EntryStatus.usable` ignores `dirty` | repro/corpus.py |
 | [ ] | The adduce rule passes at confidence 1.0 without consulting `UNPINNED_ARTIFACT` | repro/integrations/adduce.py |
-| [ ] | A missing output digest is reported as `INPUT_UNPINNED` | repro/regenerate.py |
-| [ ] | Two declared inputs outside the root sharing a basename overwrite each other in the sandbox | repro/regenerate.py |
+| [x] | A missing output digest is reported as `INPUT_UNPINNED` | repro/regenerate.py |
+| [x] | Two declared inputs outside the root sharing a basename overwrite each other in the sandbox | repro/regenerate.py |
 | [ ] | `urlopen` in `prereg/osf.py` has no timeout | prereg/osf.py |
 | [ ] | `audit.py` reads `.bib` without `errors=`, so a latin-1 file raises | citations/audit.py |
 
