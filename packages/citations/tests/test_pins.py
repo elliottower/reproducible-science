@@ -96,3 +96,36 @@ def test_a_page_scan_that_hits_its_limit_says_so_rather_than_reporting_absence(t
     p = artifact(tmp_path)
     found, capped = V._find_page(p, "nothing like this appears", limit=3)
     assert found is None and capped is False, "a text file ends, so the scan ran out of document"
+
+
+# --- what `--strict` adds to `ok` --------------------------------------------------------------
+
+
+def test_strict_and_ok_disagree_exactly_where_nothing_was_established():
+    # `ok` deliberately passes an unchecked quote: a missing extractor says nothing about the
+    # paper. `--strict` exists because in CI that reads as a verified build.
+    unresolved = V.Report(checked=1, counts={"unchecked": 1})
+    assert unresolved.ok, "an unchecked quote is not a quotation failure"
+    assert not unresolved.strict_ok
+
+    unpinned = V.Report(checked=1, counts={"found": 1})
+    unpinned.unpinned.append("some-source")
+    assert unpinned.ok
+    assert not unpinned.strict_ok
+
+    unparsed = V.Report(checked=1, counts={"found": 1})
+    unparsed.skipped.append(("broken.yaml", "mapping values are not allowed here"))
+    assert unparsed.ok
+    assert not unparsed.strict_ok
+
+
+def test_strict_still_passes_a_run_where_every_quote_resolved():
+    # A --strict that can never pass would be turned off, so the pass has to be reachable.
+    assert V.Report(checked=3, counts={"found": 3}).strict_ok
+
+
+def test_strict_never_passes_what_ok_already_failed():
+    broken = V.Report(checked=1, counts={"found": 1})
+    broken.broken_pins.append(("some-source", V.Pin("broken", "aaa", "bbb")))
+    assert not broken.strict_ok
+    assert not V.Report(checked=0).strict_ok

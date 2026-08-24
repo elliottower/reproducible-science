@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import subprocess
 import sys
 
@@ -125,3 +126,47 @@ def test_verify_names_the_library_it_checked(library):
     assert str(library) in r.stdout, (
         "a clean run against the wrong library reads exactly like a clean run against the right one"
     )
+
+
+# --- did the command notice the source had changed? --------------------------------------------
+
+
+SOURCE_TEXT = "the measured angle matches the Haar expectation for this ensemble"
+
+
+def _pinned_claims(tmp_path, sha):
+    src = tmp_path / "source.txt"
+    src.write_text(SOURCE_TEXT)
+    claims = tmp_path / "claims"
+    claims.mkdir()
+    (claims / "angle.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "source": {"citation": "x", "local": str(src), "sha256": sha},
+                "evidence": {
+                    "c1": {"quotes": [{"exact": "matches the Haar expectation for this ensemble"}]}
+                },
+            }
+        )
+    )
+    return claims, src
+
+
+def test_verify_fails_when_the_source_no_longer_matches_its_pin(tmp_path):
+    # Report.ok is asserted on a hand-built Report elsewhere; nothing asserted that the command
+    # ever populates broken_pins, so every quote resolving against an edited source read as a
+    # clean run.
+    claims, _ = _pinned_claims(tmp_path, "0" * 64)
+    r = run(["verify", "--claims", str(claims)], tmp_path)
+    assert r.returncode != 0, "every quote resolved -- against a document the record does not pin"
+    assert "changed since being pinned" in r.stdout
+    assert "0000" in r.stdout, "the report has to show the pin it expected"
+
+
+def test_verify_passes_the_same_claims_when_the_pin_is_intact(tmp_path):
+    # The negative half: without this, a `verify` hardwired to fail would pass the test above.
+    digest = hashlib.sha256(SOURCE_TEXT.encode()).hexdigest()
+    claims, _ = _pinned_claims(tmp_path, digest)
+    r = run(["verify", "--claims", str(claims)], tmp_path)
+    assert r.returncode == 0, r.stdout
+    assert "changed since being pinned" not in r.stdout
