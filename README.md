@@ -26,6 +26,13 @@ uv run pytest packages/citations
 uv run pytest -m corpus    # tests that read repositories outside this one
 ```
 
+```console
+uv run python scripts/check_wheels.py   # build the wheels and install them outside the workspace
+```
+
+That last one is the check `pytest` cannot make: the workspace resolves the four packages from
+source, so the suite never exercises the combination a user installs. CI runs it on every push.
+
 `uv.lock` at the root is the only lockfile. A package added under `packages/` joins the
 workspace automatically.
 

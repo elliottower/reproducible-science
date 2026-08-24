@@ -283,7 +283,7 @@ wheels = [
 
 [[package]]
 name = "citations"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "packages/citations" }
 dependencies = [
     { name = "platformdirs" },
@@ -1076,7 +1076,7 @@ wheels = [
 
 [[package]]
 name = "prereg"
-version = "0.1.1"
+version = "0.2.0"
 source = { editable = "packages/prereg" }
 dependencies = [
     { name = "pyyaml" },

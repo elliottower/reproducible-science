@@ -21,9 +21,11 @@ classifiers = [
 dependencies = [
     "pydantic>=2.0",
     "PyYAML>=6.0",
-    "prereg",
-    "citations",
-    "results-cli",
+    # Floors, not bare names: without them a fresh install resolves whatever is oldest on
+    # PyPI, which is not the combination the tests exercise.
+    "prereg>=0.2.0",
+    "citations>=0.2.0",
+    "results-cli>=0.3.0",
 ]
 
 [project.scripts]
