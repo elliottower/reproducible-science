@@ -87,6 +87,33 @@ jobs:
       - run: uv sync --all-packages --group dev --upgrade-package adduce
       - run: uv run pytest -q -m integration
 
+  coverage:
+    name: coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
+      - run: uv sync --all-packages --group dev
+      # `make coverage` sets the three variables that make a subprocess measurable. Most of
+      # these suites drive a CLI the way a user does, and without them the CLI modules report
+      # near zero while their tests pass.
+      - run: make coverage
+
+  lowest-direct:
+    name: lowest declared versions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
+      # The workspace always installs the newest thing available, so a floor that is too low
+      # is invisible here and fails for the first user who resolves differently. This target
+      # existed and ran nowhere.
+      - run: make check-lowest
+
   types:
     name: types
     runs-on: ubuntu-latest

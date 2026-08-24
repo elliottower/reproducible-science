@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import subprocess
 import sys
 
@@ -10,9 +11,16 @@ import pytest
 import yaml
 from citations.models import load_claim_file
 
+#: Passed through to the child when set. The env below is deliberately minimal -- HOME and
+#: CITATIONS_HOME decide which library is read, and inheriting the real ones would make these
+#: tests depend on the machine. Coverage needs three variables to measure a subprocess, and
+#: dropping them reported this CLI at 18% while its tests exercised it.
+_COVERAGE_ENV = ("COVERAGE_FILE", "COVERAGE_PROCESS_START", "PYTHONPATH")
+
 
 def run(args, cwd, env_home=None):
     env = {"PATH": "/usr/bin:/bin:/usr/local/bin", "HOME": str(cwd)}
+    env.update({k: os.environ[k] for k in _COVERAGE_ENV if k in os.environ})
     if env_home:
         env["CITATIONS_HOME"] = str(env_home)
     return subprocess.run(

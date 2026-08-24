@@ -5,6 +5,7 @@
 #   make format        ~5s     rewrite formatting and safe lint fixes
 #   make check         ~1s     what runs on every commit
 #   make test          ~50s    the whole workspace's tests
+#   make coverage      ~2m     the same tests, measured, with a floor
 #   make qa            ~3m     what a pull request must pass
 #   make qa-all        ~10m+   the deep pass; advisory tools included
 #   make release-check ~2m     what a release must pass
@@ -14,7 +15,7 @@
 PY := uv run
 PKG_SRC := packages/repro/src packages/citations/src packages/results/src packages/prereg/src
 
-.PHONY: help format check test qa qa-all release-check types drift pins deps imports corpus dead notes check-lowest hooks
+.PHONY: help format check test coverage qa qa-all release-check types drift pins deps imports corpus dead notes check-lowest hooks
 
 help:
 	@grep -E '^#   make' Makefile | sed 's/^#   //'
@@ -35,9 +36,24 @@ check:
 test:
 	$(PY) pytest -q
 
+# Three variables, all required, all absolute. Most of these suites drive a CLI in a real
+# subprocess, and coverage measures only the process it starts: without the hook the four
+# `cli.py` modules reported 0-18% while their tests passed, and a floor on that would have
+# been a floor on a fiction. COVERAGE_FILE must be absolute because a child runs in a
+# tmp_path and would otherwise write its data where the test then deletes it.
+COV_ENV := COVERAGE_FILE=$(CURDIR)/.coverage \
+           COVERAGE_PROCESS_START=$(CURDIR)/pyproject.toml \
+           PYTHONPATH=$(CURDIR)/scripts/coverage_hook
+
+coverage:
+	@rm -f .coverage .coverage.*
+	$(COV_ENV) $(PY) coverage run -m pytest -q -p no:randomly
+	COVERAGE_FILE=$(CURDIR)/.coverage $(PY) coverage combine
+	COVERAGE_FILE=$(CURDIR)/.coverage $(PY) coverage report --fail-under=70
+
 # ---- rung 4: a pull request --------------------------------------------------------------
 # Exactly what CI requires, so a green `make qa` really does mean a green pull request.
-qa: check test types drift pins deps imports wheels corpus dead
+qa: check test coverage types drift pins deps imports wheels corpus dead
 
 types:
 	$(PY) pyrefly check $(PKG_SRC)
@@ -61,7 +77,7 @@ imports:
 	$(PY) lint-imports
 
 notes:
-	$(PY) towncrier check --compare-with origin/main || true
+	-$(PY) towncrier check --compare-with origin/main
 
 wheels:
 	$(PY) python scripts/check_wheels.py
