@@ -1,0 +1,28 @@
+{
+  "conformance": {
+    "fixtures": 13,
+    "tests_passing": 33
+  },
+  "quotation_corpus": {
+    "assertions": 5686,
+    "declaration_files": 366,
+    "manuscripts": 17,
+    "pins": {
+      "missing": 1,
+      "ok": 355,
+      "unpinned": 9
+    },
+    "unparseable_files": 1,
+    "warnings": {}
+  },
+  "resolver_identifiers": {
+    "absent_rate": 9.9,
+    "checkable": 121,
+    "first_author_absent": 12,
+    "first_author_present": 109,
+    "no_authors": 6,
+    "no_record": 21,
+    "unresolved": 24,
+    "written": 172
+  }
+}
