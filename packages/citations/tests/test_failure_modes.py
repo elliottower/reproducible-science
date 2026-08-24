@@ -99,8 +99,38 @@ def test_punctuation_difference_still_counts_as_found(pinned):
     assert r.state == "found"
 
 
-def test_normalized_match_cannot_distinguish_a_sign():
-    assert V.skeleton("the effect is a - b") == V.skeleton("the effect is a + b")
+def test_normalized_match_distinguishes_a_sign():
+    """It once did not. The fallback stripped every non-alphanumeric character, so a sign, an
+    inequality and a decimal point all vanished before the comparison."""
+    assert V.skeleton("the effect is a - b") != V.skeleton("the effect is a + b")
+
+
+@pytest.mark.parametrize(
+    "quoted",
+    [
+        "the correlation was -0.42",
+        "the effect reached p < 0.05",
+        "the effect reached p > 0.05",
+        "we used n >= 50 participants",
+        "accuracy fell to 0.042",
+    ],
+)
+def test_a_misquoted_number_is_not_found(pinned, quoted):
+    """Each of these differs from the source only in characters the fallback used to delete."""
+    source = "the correlation was 0.42 and the effect reached p = 0.05 with n = 50 participants"
+    assert V.check_one(quoted, pinned(source)).state == "not found"
+
+
+def test_a_quotation_that_folds_away_entirely_is_not_found(pinned):
+    """`"" in doc` is True, so an empty folded quote once matched every source."""
+    assert V.check_one("\x01\x02", pinned("any text at all")).state == "not found"
+
+
+def test_an_extractor_dropping_a_space_is_still_found(pinned):
+    """What the fallback is actually for: extractors join and split words, and nothing else."""
+    result = V.check_one("the logit difference was large", pinned("the logitdifference was large"))
+    assert result.state == "found"
+    assert "normalized" in result.warnings
 
 
 def test_smart_quotes_and_dashes_are_not_a_miss(pinned):
