@@ -26,8 +26,9 @@ from repro.models import (
     TreeLocator,
     Validity,
     ValueEvidence,
+    Warning_,
 )
-from repro.policy import STRICT
+from repro.policy import PUBLICATION, STRICT
 from repro.verify import compare_decimal, verify
 
 
@@ -137,13 +138,30 @@ def test_a_directory_where_a_file_was_declared_is_reported_not_raised(tmp_path):
 # -- an assertion that fails must not report as verified ------------------------------------
 
 
-def test_a_passage_on_the_wrong_page_is_a_mismatch(tmp_path):
-    """`page` is documented as verified when present. Reporting `match` with a warning left
-    the assertion unenforceable, since no policy reads decision warnings."""
-    pytest.importorskip("citations")
-    source = tmp_path / "s.txt"
-    source.write_text("the effect was large\n")
-    manifest = Manifest(
+PAGES = {1: "an unrelated opening paragraph\n", 2: "the effect was large\n"}
+
+
+@pytest.fixture
+def paginated(monkeypatch, tmp_path):
+    """A source whose pages are addressable, without depending on `pdftotext` being installed.
+
+    The earlier version of this test used a `.txt` source, for which `citations` treats the
+    page number as meaningless and never examines it -- so the wrong-page branch it was
+    written to guard was never reached, and the test accepted either outcome.
+    """
+    V = pytest.importorskip("citations.verify")
+    source = tmp_path / "s.pdf"
+    source.write_bytes(b"%PDF-1.4 stand-in; the extractor is stubbed")
+
+    def extract(artifact, page=None):
+        return "".join(PAGES.values()) if page is None else PAGES.get(page, "")
+
+    monkeypatch.setattr(V, "extract", extract)
+    return source
+
+
+def quote_manifest(source, page: int):
+    return Manifest(
         project="p",
         artifacts=(ArtifactRef(id="s", path=source, digest=Digest.of_file(source)),),
         claims=(
@@ -151,16 +169,40 @@ def test_a_passage_on_the_wrong_page_is_a_mismatch(tmp_path):
                 id="c",
                 text="t",
                 evidence=(
-                    {"kind": "quote", "artifact": "s", "text": "the effect was large", "page": 7},
+                    {
+                        "kind": "quote",
+                        "artifact": "s",
+                        "text": "the effect was large",
+                        "page": page,
+                    },
                 ),
             ),
         ),
     )
-    decision = verify(manifest).claims[0].decisions[0]
-    if decision.reason is Reason.WRONG_PAGE:
-        assert decision.outcome is Outcome.MISMATCH
-    else:  # a .txt source is not paginated, so the page is not examined at all
-        assert decision.outcome in (Outcome.VERIFIED, Outcome.UNCHECKED)
+
+
+def test_a_passage_on_the_wrong_page_is_a_mismatch(paginated):
+    """`page` is documented as verified when present. Reporting `match` with a warning left
+    the assertion unenforceable, since no policy reads decision warnings."""
+    decision = verify(quote_manifest(paginated, page=7)).claims[0].decisions[0]
+    assert decision.reason is Reason.WRONG_PAGE
+    assert decision.outcome is Outcome.MISMATCH
+    assert Warning_.WRONG_PAGE in decision.warnings
+    assert "not on page 7" in decision.detail
+
+
+def test_the_page_the_passage_is_actually_on_verifies(paginated):
+    # The control: the quote and the document are identical in both tests, so the page number
+    # is the only thing that moves the outcome.
+    decision = verify(quote_manifest(paginated, page=2)).claims[0].decisions[0]
+    assert decision.outcome is Outcome.VERIFIED
+    assert Warning_.WRONG_PAGE not in decision.warnings
+
+
+def test_a_wrong_page_fails_publication_rather_than_passing_with_a_warning(paginated):
+    assessment = PUBLICATION.assess(verify(quote_manifest(paginated, page=7)))
+    assert assessment.passed is False
+    assert any(v.rule == "evidence.mismatch" for v in assessment.errors)
 
 
 # -- exactly one scalar, for columns and keys as well as rows -------------------------------
