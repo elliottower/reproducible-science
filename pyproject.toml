@@ -1,6 +1,6 @@
 [project]
 name = "results-cli"
-version = "0.1.0"
+version = "0.3.0"
 description = "Seal a run, record what it produced, and verify the chain"
 readme = "README.md"
 requires-python = ">=3.10"

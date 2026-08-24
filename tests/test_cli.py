@@ -131,3 +131,141 @@ def test_full_workflow(tmp_path):
     assert r.returncode == 0
     assert "chain intact" in r.stdout
     assert "all checks passed" in r.stdout
+
+
+def test_confirmatory_claim_refused_after_outcomes_seen(tmp_path):
+    run_cli("init", cwd=tmp_path)
+    run_cli("access", "read the reviewer report", "--level", "outcomes seen", cwd=tmp_path)
+    (tmp_path / "out.json").write_text('{"d": 0.103}\n')
+    run_cli("run", "out.json", "--run-id", "late", cwd=tmp_path)
+    r = run_cli("claim", "d = 0.103", "--run-id", "late", "--confirmatory", cwd=tmp_path)
+    assert r.returncode == 1
+    assert "retrospective" in r.stdout
+    events = ledger.read_ledger(tmp_path / ".results" / "ledger.jsonl")
+    assert [e for e in events if e["event"] == "claim"] == []
+
+
+def test_exploratory_claim_allowed_after_outcomes_seen(tmp_path):
+    run_cli("init", cwd=tmp_path)
+    run_cli("access", "read the reviewer report", "--level", "outcomes seen", cwd=tmp_path)
+    (tmp_path / "out.json").write_text('{"d": 0.103}\n')
+    run_cli("run", "out.json", "--run-id", "late", cwd=tmp_path)
+    r = run_cli("claim", "d = 0.103", "--run-id", "late", cwd=tmp_path)
+    assert r.returncode == 0
+    claims = [e for e in ledger.read_ledger(tmp_path / ".results" / "ledger.jsonl")
+              if e["event"] == "claim"]
+    assert claims[0]["confirmatory"] is False
+    assert claims[0]["after_outcomes_seen"] is False
+
+
+def test_confirmatory_claim_allowed_when_run_predates_outcomes(tmp_path):
+    run_cli("init", cwd=tmp_path)
+    (tmp_path / "out.json").write_text('{"d": 0.103}\n')
+    run_cli("run", "out.json", "--run-id", "early", cwd=tmp_path)
+    run_cli("access", "read the reviewer report", "--level", "outcomes seen", cwd=tmp_path)
+    r = run_cli("claim", "d = 0.103", "--run-id", "early", "--confirmatory", cwd=tmp_path)
+    assert r.returncode == 0
+    claims = [e for e in ledger.read_ledger(tmp_path / ".results" / "ledger.jsonl")
+              if e["event"] == "claim"]
+    assert claims[0]["after_outcomes_seen"] is False
+
+
+def test_anyway_records_the_ordering_and_verify_reports_it(tmp_path):
+    run_cli("init", cwd=tmp_path)
+    run_cli("access", "read the reviewer report", "--level", "outcomes seen", cwd=tmp_path)
+    (tmp_path / "out.json").write_text('{"d": 0.103}\n')
+    run_cli("run", "out.json", "--run-id", "late", cwd=tmp_path)
+    r = run_cli("claim", "d = 0.103", "--run-id", "late",
+                "--confirmatory", "--anyway", cwd=tmp_path)
+    assert r.returncode == 0
+    claims = [e for e in ledger.read_ledger(tmp_path / ".results" / "ledger.jsonl")
+              if e["event"] == "claim"]
+    assert claims[0]["confirmatory"] is True
+    assert claims[0]["after_outcomes_seen"] is True
+    v = run_cli("verify", "--files", cwd=tmp_path)
+    assert v.returncode == 0
+    assert "after outcomes were seen" in v.stdout
+    assert "all checks passed" not in v.stdout
+
+
+def test_verify_without_files_does_not_claim_hashes_were_checked(tmp_path):
+    run_cli("init", cwd=tmp_path)
+    (tmp_path / "data.csv").write_text("a,b\n1,2\n")
+    run_cli("seal", "data.csv", cwd=tmp_path)
+    (tmp_path / "data.csv").write_text("a,b\n1,2\n3,4\n")
+    r = run_cli("verify", cwd=tmp_path)
+    assert r.returncode == 0
+    assert "all checks passed" not in r.stdout
+    assert "not checked" in r.stdout
+
+
+def test_paths_recorded_relative_to_root_not_cwd(tmp_path):
+    run_cli("init", cwd=tmp_path)
+    sub = tmp_path / "paper"
+    sub.mkdir()
+    (sub / "draft.tex").write_text("\\documentclass{article}\n")
+    r = run_cli("seal", "draft.tex", cwd=sub)
+    assert r.returncode == 0
+    sealed = [e for e in ledger.read_ledger(tmp_path / ".results" / "ledger.jsonl")
+              if e["event"] == "seal"][0]
+    assert sealed["files"][0]["path"] == "paper/draft.tex"
+    v = run_cli("verify", "--files", cwd=tmp_path)
+    assert v.returncode == 0
+    assert "MISSING" not in v.stdout
+
+
+def test_verify_files_resolves_paths_from_a_subdirectory(tmp_path):
+    run_cli("init", cwd=tmp_path)
+    sub = tmp_path / "paper"
+    sub.mkdir()
+    (sub / "draft.tex").write_text("\\documentclass{article}\n")
+    run_cli("seal", "draft.tex", cwd=sub)
+    v = run_cli("verify", "--files", cwd=sub)
+    assert v.returncode == 0
+    assert "MISSING" not in v.stdout
+
+
+def test_verify_recomputes_ordering_rather_than_trusting_the_claim_event(tmp_path):
+    """A ledger whose claim event lacks the flag is still caught by verify."""
+    run_cli("init", cwd=tmp_path)
+    run_cli("access", "read the outcomes", "--level", "outcomes seen", cwd=tmp_path)
+    (tmp_path / "out.json").write_text('{"d": 0.103}\n')
+    run_cli("run", "out.json", "--run-id", "late", cwd=tmp_path)
+    run_cli("claim", "d = 0.103", "--run-id", "late", "--confirmatory", "--anyway",
+            cwd=tmp_path)
+
+    lp = tmp_path / ".results" / "ledger.jsonl"
+    lines = lp.read_text().splitlines()
+    assert '"after_outcomes_seen":true' in lines[-1]
+    lp.write_text("\n".join(lines[:-1] + [lines[-1].replace(
+        '"after_outcomes_seen":true', '"after_outcomes_seen":false')]) + "\n")
+
+    # The chain catches the edit on its own, which is a stronger result than this test was
+    # written for. Re-anchor so the ledger looks untouched, and check that ordering is still
+    # recomputed from the events rather than read off the flag the claim event carries.
+    from results import ledger as L
+
+    L.reanchor(lp)
+    assert L.verify(lp)[0] is L.ChainStatus.INTACT
+
+    v = run_cli("verify", cwd=tmp_path)
+    assert "after outcomes were seen" in v.stdout
+
+
+def test_verify_catches_the_same_edit_before_recomputing_anything(tmp_path):
+    """The edit above, without re-anchoring: the chain reports it and stops."""
+    run_cli("init", cwd=tmp_path)
+    run_cli("access", "read the outcomes", "--level", "outcomes seen", cwd=tmp_path)
+    (tmp_path / "out.json").write_text('{"d": 0.103}\n')
+    run_cli("run", "out.json", "--run-id", "late", cwd=tmp_path)
+    run_cli("claim", "d = 0.103", "--run-id", "late", "--confirmatory", "--anyway",
+            cwd=tmp_path)
+
+    lp = tmp_path / ".results" / "ledger.jsonl"
+    lines = lp.read_text().splitlines()
+    lp.write_text("\n".join(lines[:-1] + [lines[-1].replace(
+        '"after_outcomes_seen":true', '"after_outcomes_seen":false')]) + "\n")
+
+    v = run_cli("verify", cwd=tmp_path)
+    assert v.returncode != 0
+    assert "CHAIN EDITED" in v.stdout, v.stdout
