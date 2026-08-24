@@ -55,7 +55,7 @@ reusable once taken.
 
 ## Layout
 
-```
+```text
 packages/        the four distributions, each with its own pyproject, src and tests
 plugins/         Claude Code plugins, published as a marketplace from this repository
 docs/            SPEC.md — the evidence contract

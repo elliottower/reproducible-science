@@ -16,7 +16,7 @@ citations init
 citations verify --claims claims/
 ```
 
-```
+```text
 2,940 quotes
 
   found         2,940
@@ -71,7 +71,7 @@ identifier resolves to?
 citations audit --bib paper/references.bib
 ```
 
-```
+```text
 75 entries
 
   checked          62
@@ -99,7 +99,7 @@ reproducible from what was fetched rather than from the network.
 
 ## Where the library lives
 
-```
+```text
 $CITATIONS_HOME             if set
 ./.citations/ walking up    this project's own, the way git finds .git
 the shared library          if you made one with citations init --user

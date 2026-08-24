@@ -5,7 +5,7 @@ point is that new ones stop scattering, not that fifty files get moved and re-ve
 
 ## The layout
 
-```
+```text
 experiments/
     <CRITERION_or_ID>_<short name>/
         PREREG.md        frozen before anything ran

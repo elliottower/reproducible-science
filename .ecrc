@@ -1,0 +1,10 @@
+{
+  "Exclude": [
+    "^packages/repro/tests/conformance/cases/",
+    "^paper/prior_art/",
+    "uv\\.lock$"
+  ],
+  "Disable": {
+    "Indentation": true
+  }
+}

@@ -315,7 +315,7 @@ Append only. Never edit above the line.
 The last column is what distinguishes an amendment from a deviation, so you do not have to
 decide which word to use: `nothing run`, `no results seen`, `results not opened`, `results seen`.
 
-```
+```text
 2026-08-24  created                              nothing run
 2026-08-24  sample drawn and frozen              nothing run
 2026-08-24  revised after external review        nothing run
@@ -422,7 +422,7 @@ Consequences, fixed here:
 Two variables, because retrieval describes the repository and addressability describes the
 value.
 
-```
+```text
 retrieval_status:   retrieved | absent | inaccessible | unsupported_format
 value_status:       addressable | present_unaddressable | absent_from_retrieved_artifacts
                   | not_assessable

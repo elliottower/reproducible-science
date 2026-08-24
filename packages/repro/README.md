@@ -16,7 +16,7 @@ This installs `repro` and its three dependencies: [`prereg`](https://pypi.org/pr
 repro init my_experiment
 ```
 
-```
+```text
 initializing my_experiment
   wrote my_experiment/PREREG.md
   wrote my_experiment/.results/ledger.jsonl
@@ -26,7 +26,7 @@ initializing my_experiment
 
 This creates:
 
-```
+```text
 my_experiment/
     PREREG.md           the plan (OSF headings)
     CLAUDE.md           tells Claude Code about the tools

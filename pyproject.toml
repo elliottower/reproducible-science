@@ -1,119 +1,152 @@
+[build-system]
+build-backend = "hatchling.build"
+requires = [ "hatchling" ]
+
 # Workspace root. Holds no package: the distributions live under `packages/`, each with its
 # own pyproject, tests and public API, so `pip install citations` never drags in a
 # preregistration tool. What is centralized here is the lockfile, the development
 # environment, and the tooling configuration.
-
 [project]
 name = "repro-science"
 version = "0.1.0"
 description = "The reproducible-science suite: repro, citations, results, and prereg"
 readme = "README.md"
 license = "MIT"
+authors = [ { name = "Elliot Tower", email = "elliot@elliottower.ai" } ]
 requires-python = ">=3.10"
-authors = [{ name = "Elliot Tower", email = "elliot@elliottower.ai" }]
-dependencies = [
-    "reproducible-science>=0.3.0",
-    "citations>=0.2.0",
-    "results-cli>=0.3.0",
-    "prereg>=0.2.0",
+classifiers = [
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
 ]
-
-[project.urls]
-Homepage = "https://github.com/elliottower/reproducible-science"
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[tool.hatch.build.targets.wheel]
-# Metadata only: the code lives in the four packages this depends on.
-bypass-selection = true
-
-[tool.uv.sources]
-reproducible-science = { workspace = true }
-citations = { workspace = true }
-"results-cli" = { workspace = true }
-prereg = { workspace = true }
-
-[tool.uv.workspace]
-members = ["packages/*"]
+dependencies = [
+  "citations>=0.2",
+  "prereg>=0.2",
+  "reproducible-science>=0.3",
+  "results-cli>=0.3",
+]
+urls.Homepage = "https://github.com/elliottower/reproducible-science"
 
 [dependency-groups]
 # Fast enough to run on every commit.
 dev = [
-    "pytest>=8",
-    "pytest-randomly>=3.15",
-    "pytest-timeout>=2.3",
-    "pytest-xdist>=3.6",
-    "coverage>=7.6",
-    "ruff>=0.14",
-    "pre-commit>=4",
-    "adduce>=0.1.2",
-    "numpy>=2.2.6",
+  "adduce>=0.1.2",
+  "coverage>=7.6",
+  "numpy>=2.2.6",
+  "pre-commit>=4",
+  "pytest>=8",
+  "pytest-randomly>=3.15",
+  "pytest-timeout>=2.3",
+  "pytest-xdist>=3.6",
+  "ruff>=0.14",
 ]
-
-# Type checking. Separate because adopting it is a ratchet, not a switch.
-types = ["pyrefly>=1.0"]
-
 # The deep pass: slow, or noisy enough that it advises rather than blocks.
 audit = [
-    "vulture>=2.14",
-    "deptry>=0.20",
-    "complexipy>=2",
-    "griffe>=1.5",
-    "pip-audit>=2.7",
-    "hypothesis>=6.100",
-    "check-wheel-contents>=0.6",
-    "twine>=5",
+  "check-wheel-contents>=0.6",
+  "complexipy>=2",
+  "deptry>=0.20",
+  "griffe>=1.5",
+  "hypothesis>=6.100",
+  "import-linter>=2.13",
+  "pip-audit>=2.7",
+  "twine>=5",
+  "vulture>=2.14",
 ]
+# Type checking. Separate because adopting it is a ratchet, not a switch.
+types = [ "pyrefly>=1" ]
 
-[tool.pytest.ini_options]
-testpaths = ["packages"]
-markers = [
-    "corpus: reads repositories outside this one, and may fetch them",
-]
-# importlib import mode: three packages each have tests/test_cli.py, and the default mode
-# derives a module name from the path relative to rootdir, so they collide. This is the fix
-# that does not require scattering __init__.py through the test trees.
-addopts = "-m 'not corpus' --import-mode=importlib"
-consider_namespace_packages = true
+[tool.hatch]
+# Metadata only: the code lives in the four packages this depends on.
+build.targets.wheel.bypass-selection = true
+
+[tool.uv]
+sources.citations = { workspace = true }
+sources.prereg = { workspace = true }
+sources.reproducible-science = { workspace = true }
+sources.results-cli = { workspace = true }
+workspace.members = [ "packages/*" ]
 
 [tool.ruff]
-line-length = 100
 target-version = "py310"
-extend-exclude = ["packages/*/tests/conformance/cases"]
-
-[tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP", "B", "C4", "RUF"]
-ignore = [
-    "E501",    # line length is enforced by the formatter, which knows when it cannot wrap
-    "RUF001",  # the prose uses en dashes and typographic quotes deliberately
-    "RUF002",
-    "RUF003",
+line-length = 100
+extend-exclude = [ "packages/*/tests/conformance/cases" ]
+format.docstring-code-format = false
+lint.select = [ "B", "C4", "E", "F", "I", "RUF", "UP", "W" ]
+lint.ignore = [
+  "E501",   # line length is enforced by the formatter, which knows when it cannot wrap
+  "RUF001", # the prose uses en dashes and typographic quotes deliberately
+  "RUF002",
+  "RUF003",
 ]
-
-[tool.ruff.lint.per-file-ignores]
-"packages/*/tests/*" = ["B011"]  # bare assert False is fine in a test
-
-[tool.ruff.format]
-docstring-code-format = false
-
-[tool.pyrefly]
-# Invoked with explicit paths (see the Makefile): the default excludes site-packages, and an
-# editable workspace install maps these same directories into it.
-project_includes = [
-    "packages/repro/src",
-    "packages/citations/src",
-    "packages/results/src",
-    "packages/prereg/src",
-]
-
-[tool.vulture]
-min_confidence = 100
-paths = ["packages", "scripts"]
+lint.per-file-ignores."packages/*/tests/*" = [ "B011" ]  # bare assert False is fine in a test
 
 [tool.codespell]
 # `unparseable` is the spelling used throughout, and the rest are author surnames in the
 # sampling frame. Listed rather than skipping whole files, which would hide real typos.
 ignore-words-list = "unparseable,ue,copie,buis,smae,nd,ist,fo"
 skip = "uv.lock,experiments/*/frame.json,paper/prior_art/*,.git"
+
+[tool.vulture]
+paths = [ "packages", "scripts" ]
+min_confidence = 100
+
+[tool.pyrefly]
+# Invoked with explicit paths (see the Makefile): the default excludes site-packages, and an
+# editable workspace install maps these same directories into it.
+project_includes = [
+  "packages/citations/src",
+  "packages/prereg/src",
+  "packages/repro/src",
+  "packages/results/src",
+]
+
+[tool.pytest]
+ini_options.testpaths = [ "packages" ]
+ini_options.consider_namespace_packages = true
+# importlib import mode: three packages each have tests/test_cli.py, and the default mode
+# derives a module name from the path relative to rootdir, so they collide. This is the fix
+# that does not require scattering __init__.py through the test trees.
+ini_options.addopts = "-m 'not corpus' --import-mode=importlib"
+ini_options.markers = [
+  "corpus: reads repositories outside this one, and may fetch them",
+]
+
+# Architecture, enforced. The rule the monorepo exists to keep is that the three tools stay
+# usable without the verifier: `pip install citations` must not drag in an evidence engine.
+[tool.importlinter]
+root_packages = [ "repro", "citations", "results", "prereg" ]
+include_external_packages = false
+
+[[tool.importlinter.contracts]]
+name = "The three tools do not depend on the verifier"
+type = "forbidden"
+source_modules = [ "citations", "results", "prereg" ]
+forbidden_modules = [ "repro" ]
+
+[[tool.importlinter.contracts]]
+name = "The verifier's core does not import its integrations"
+type = "forbidden"
+source_modules = [
+  "repro.models",
+  "repro.resolve",
+  "repro.verify",
+  "repro.policy",
+  "repro.regenerate",
+]
+forbidden_modules = [ "repro.integrations" ]
+
+[[tool.importlinter.contracts]]
+name = "The verifier is layered"
+type = "layers"
+layers = [
+  "repro.cli",
+  "repro.renderers.sarif",
+  "repro.policy",
+  "repro.verify",
+  "repro.resolve",
+  "repro.models",
+  "repro.exceptions",
+]

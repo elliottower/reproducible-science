@@ -19,7 +19,7 @@ prereg log "tolerance now derived from fixtures" --access "no results seen"
 prereg check
 ```
 
-```
+```text
 unchanged    V16_reliability_ceilings/PREREG.md
 ```
 
@@ -36,7 +36,7 @@ unchanged    V16_reliability_ceilings/PREREG.md
 
 ## One file, one rule
 
-```
+```text
 V16_reliability_ceilings/
     PREREG.md      the plan, then a line, then an append-only log
     tests/  results/
@@ -49,7 +49,7 @@ fails the check. Appending to the log does not.
 
 ## The log
 
-```
+```text
 2026-08-11  frozen at 9894e148e429              nothing run
 2026-08-13  tolerance now from fixtures         no results seen
 2026-08-14  ran                                 results not opened

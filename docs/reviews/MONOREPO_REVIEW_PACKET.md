@@ -6,7 +6,7 @@ and fixed before this packet. What I want is the sixth I have not found.
 
 ## What it looks like now
 
-```
+```text
 reproducible-science/
 ├── pyproject.toml          workspace root — no [project] table, members + shared tooling only
 ├── uv.lock                 the only lockfile

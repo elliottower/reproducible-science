@@ -1,78 +1,73 @@
 [build-system]
-requires = ["hatchling"]
 build-backend = "hatchling.build"
+requires = [ "hatchling" ]
 
 [project]
 name = "reproducible-science"
 version = "0.3.0"
 description = "One contract for verifying declared evidence assertions against pinned artifacts"
 readme = "README.md"
+keywords = [ "citations", "open science", "preregistration", "provenance", "reproducibility" ]
 license = "MIT"
+authors = [ { name = "Elliot Tower", email = "elliot@elliottower.ai" } ]
 requires-python = ">=3.10"
-authors = [{ name = "Elliot Tower", email = "elliot@elliottower.ai" }]
-keywords = ["reproducibility", "preregistration", "citations", "provenance", "open science"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3",
-    "Topic :: Scientific/Engineering",
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Scientific/Engineering",
 ]
 dependencies = [
-    "pydantic>=2.0",
-    "PyYAML>=6.0",
-    # Floors, not bare names: without them a fresh install resolves whatever is oldest on
-    # PyPI, which is not the combination the tests exercise.
-    "prereg>=0.2.0",
-    "citations>=0.2.0",
-    "results-cli>=0.3.0",
+  "citations>=0.2",
+  # Floors, not bare names: without them a fresh install resolves whatever is oldest on
+  # PyPI, which is not the combination the tests exercise.
+  "prereg>=0.2",
+  "pydantic>=2",
+  "pyyaml>=6",
+  "results-cli>=0.3",
 ]
-
-[project.scripts]
-repro = "repro.cli:main"
-
-# Resolved from the workspace during development and from PyPI once published, so a
-# cross-package change is one commit rather than a release dance.
-[tool.uv.sources]
-citations = { workspace = true }
-prereg = { workspace = true }
-results-cli = { workspace = true }
-
-[project.urls]
-Homepage = "https://github.com/elliottower/reproducible-science"
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/repro"]
-
-[tool.pytest.ini_options]
-markers = [
-    "corpus: reads repositories outside this one, and may fetch them",
-]
-addopts = "-m 'not corpus'"
-
-[project.optional-dependencies]
 # Only needed to run the rule inside `adduce check`. repro itself never imports adduce.
-adduce = ["adduce>=0.1.2"]
-arrays = [
-    "numpy>=2.2.6",
+optional-dependencies.adduce = [ "adduce>=0.1.2" ]
+optional-dependencies.arrays = [
+  "numpy>=2.2.6",
 ]
-
+urls.Homepage = "https://github.com/elliottower/reproducible-science"
+scripts.repro = "repro.cli:main"
 # adduce discovers this at check time; declaring it costs nothing when adduce is absent.
-[project.entry-points."adduce.rules"]
-repro = "repro.integrations.adduce"
+entry-points."adduce.rules".repro = "repro.integrations.adduce"
 
 [dependency-groups]
 dev = [
-    "adduce>=0.1.2",
-    "numpy>=2.2.6",
-    "pytest>=9.1.1",
+  "adduce>=0.1.2",
+  "numpy>=2.2.6",
+  "pytest>=9.1.1",
 ]
 
-[tool.deptry.per_rule_ignores]
-# invoked as subprocesses by `repro init`, so no import graph can see it. Named
-# here rather than silenced globally: a genuinely unused dependency should still be reported.
-DEP002 = ["prereg", "results-cli"]
+[tool.hatch]
+build.targets.wheel.packages = [ "src/repro" ]
+
+[tool.uv]
+# Resolved from the workspace during development and from PyPI once published, so a
+# cross-package change is one commit rather than a release dance.
+sources.citations = { workspace = true }
+sources.prereg = { workspace = true }
+sources.results-cli = { workspace = true }
 
 [tool.deptry]
+# invoked as subprocesses by `repro init`, so no import graph can see it. Named
+# here rather than silenced globally: a genuinely unused dependency should still be reported.
+per_rule_ignores.DEP002 = [ "prereg", "results-cli" ]
 # Without this every intra-package import reads as a transitive dependency on itself.
-known_first_party = ["repro"]
+known_first_party = [ "repro" ]
+
+[tool.pytest]
+ini_options.addopts = "-m 'not corpus'"
+ini_options.markers = [
+  "corpus: reads repositories outside this one, and may fetch them",
+]

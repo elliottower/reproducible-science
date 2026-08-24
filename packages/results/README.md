@@ -21,7 +21,7 @@ results claim "ICC = 0.42" --run-id exp_001 --confirmatory --location "Table 2"
 results verify --files
 ```
 
-```
+```text
 chain intact: 5 events
 
   access       1
@@ -55,7 +55,7 @@ all checks passed.
 A number in a manuscript names a claim. The claim names a run. The run names its outputs. The
 outputs were hashed when they were recorded. The inputs were hashed before the run started.
 
-```
+```text
 manuscript  →  claim  →  run  →  output file  →  sha256
                                   input files  →  sha256
 ```

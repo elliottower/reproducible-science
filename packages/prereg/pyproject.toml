@@ -1,24 +1,30 @@
+[build-system]
+build-backend = "hatchling.build"
+requires = [ "hatchling" ]
+
 [project]
 name = "prereg"
 version = "0.2.0"
 description = "Freeze a plan before you run it, and record what changed after"
 readme = "README.md"
-requires-python = ">=3.10"
+keywords = [ "open science", "osf", "preregistration", "reproducibility" ]
 license = { text = "MIT" }
-authors = [{ name = "Elliot Tower", email = "elliot@elliottower.ai" }]
-keywords = ["preregistration", "reproducibility", "open science", "osf"]
+authors = [ { name = "Elliot Tower", email = "elliot@elliottower.ai" } ]
+requires-python = ">=3.10"
+classifiers = [
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
+]
 dependencies = []  # stdlib only
+scripts.prereg = "prereg.cli:main"
 
-[project.scripts]
-prereg = "prereg.cli:main"
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/prereg"]
+[tool.hatch]
+build.targets.wheel.packages = [ "src/prereg" ]
 
 [tool.deptry]
 # Without this every intra-package import reads as a transitive dependency on itself.
-known_first_party = ["prereg"]
+known_first_party = [ "prereg" ]
