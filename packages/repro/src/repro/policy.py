@@ -8,6 +8,7 @@ one project's standard everyone's.
 A policy maps each outcome to a severity and returns the violations, so the same report can be
 assessed under several standards without being recomputed.
 """
+
 from __future__ import annotations
 
 import enum
@@ -107,87 +108,145 @@ class Policy(BaseModel):
 
         for artifact in report.artifacts:
             if artifact.validity is Validity.ARTIFACT_ABSENT:
-                violations.append(Violation(
-                    severity=self.artifact_absent, rule="artifact.absent",
-                    subject=artifact.artifact_id, detail="nothing at the declared path"))
+                violations.append(
+                    Violation(
+                        severity=self.artifact_absent,
+                        rule="artifact.absent",
+                        subject=artifact.artifact_id,
+                        detail="nothing at the declared path",
+                    )
+                )
             elif artifact.validity is Validity.BROKEN_PIN:
-                violations.append(Violation(
-                    severity=self.broken_pin, rule="artifact.pin", subject=artifact.artifact_id,
-                    detail=f"pinned {(artifact.expected or '')[:12]}, "
-                           f"found {(artifact.actual or '')[:12]}"))
+                violations.append(
+                    Violation(
+                        severity=self.broken_pin,
+                        rule="artifact.pin",
+                        subject=artifact.artifact_id,
+                        detail=f"pinned {(artifact.expected or '')[:12]}, "
+                        f"found {(artifact.actual or '')[:12]}",
+                    )
+                )
             elif artifact.validity is Validity.UNPINNED_ARTIFACT:
-                violations.append(Violation(
-                    severity=self.unpinned_artifact, rule="artifact.unpinned",
-                    subject=artifact.artifact_id, detail="no digest recorded"))
+                violations.append(
+                    Violation(
+                        severity=self.unpinned_artifact,
+                        rule="artifact.unpinned",
+                        subject=artifact.artifact_id,
+                        detail="no digest recorded",
+                    )
+                )
 
         for regeneration in report.regenerations:
             if regeneration.state is Regeneration.DIVERGED:
-                violations.append(Violation(
-                    severity=self.regeneration_diverged, rule="artifact.regeneration",
-                    subject=regeneration.artifact_id,
-                    detail=regeneration.detail or regeneration.reason.value))
+                violations.append(
+                    Violation(
+                        severity=self.regeneration_diverged,
+                        rule="artifact.regeneration",
+                        subject=regeneration.artifact_id,
+                        detail=regeneration.detail or regeneration.reason.value,
+                    )
+                )
             elif regeneration.state is Regeneration.UNCHECKED:
-                violations.append(Violation(
-                    severity=self.regeneration_unchecked,
-                    rule=f"artifact.regeneration_unchecked.{regeneration.reason.value}",
-                    subject=regeneration.artifact_id,
-                    detail=regeneration.detail or regeneration.reason.value))
+                violations.append(
+                    Violation(
+                        severity=self.regeneration_unchecked,
+                        rule=f"artifact.regeneration_unchecked.{regeneration.reason.value}",
+                        subject=regeneration.artifact_id,
+                        detail=regeneration.detail or regeneration.reason.value,
+                    )
+                )
 
         checked = 0
         for claim in report.claims:
             table = self.confirmatory_outcomes if claim.confirmatory else self.outcomes
             if claim.availability is Availability.NOT_OFFERED:
-                severity = table.get(Outcome.NOT_OFFERED, self.outcomes.get(
-                    Outcome.NOT_OFFERED, Severity.IGNORE))
+                severity = table.get(
+                    Outcome.NOT_OFFERED, self.outcomes.get(Outcome.NOT_OFFERED, Severity.IGNORE)
+                )
                 if severity is not Severity.IGNORE:
-                    violations.append(Violation(
-                        severity=severity, rule="claim.no_evidence", subject=claim.claim_id,
-                        detail="claim offers no evidence"))
+                    violations.append(
+                        Violation(
+                            severity=severity,
+                            rule="claim.no_evidence",
+                            subject=claim.claim_id,
+                            detail="claim offers no evidence",
+                        )
+                    )
                 continue
             if claim.ordering is Ordering.VIOLATED:
-                violations.append(Violation(
-                    severity=self.ordering_violated, rule="claim.ordering_violated",
-                    subject=claim.claim_id, detail=claim.ordering_detail))
+                violations.append(
+                    Violation(
+                        severity=self.ordering_violated,
+                        rule="claim.ordering_violated",
+                        subject=claim.claim_id,
+                        detail=claim.ordering_detail,
+                    )
+                )
             elif claim.ordering is Ordering.UNCHECKED:
-                violations.append(Violation(
-                    severity=self.ordering_unchecked,
-                    rule=f"claim.ordering_unchecked.{claim.ordering_reason.value}",
-                    subject=claim.claim_id, detail=claim.ordering_detail))
-            elif (self.minimum_registration_authority is not None
-                  and claim.registration_authority is not None
-                  and claim.registration_authority.rank
-                  < self.minimum_registration_authority.rank):
-                violations.append(Violation(
-                    severity=self.weak_registration_authority,
-                    rule="claim.registration_authority", subject=claim.claim_id,
-                    detail=f"registration is {claim.registration_authority.value}; "
-                           f"{self.minimum_registration_authority.value} or better required"))
+                violations.append(
+                    Violation(
+                        severity=self.ordering_unchecked,
+                        rule=f"claim.ordering_unchecked.{claim.ordering_reason.value}",
+                        subject=claim.claim_id,
+                        detail=claim.ordering_detail,
+                    )
+                )
+            elif (
+                self.minimum_registration_authority is not None
+                and claim.registration_authority is not None
+                and claim.registration_authority.rank < self.minimum_registration_authority.rank
+            ):
+                violations.append(
+                    Violation(
+                        severity=self.weak_registration_authority,
+                        rule="claim.registration_authority",
+                        subject=claim.claim_id,
+                        detail=f"registration is {claim.registration_authority.value}; "
+                        f"{self.minimum_registration_authority.value} or better required",
+                    )
+                )
 
             for decision in claim.decisions:
                 checked += 1
-                severity = table.get(decision.outcome,
-                                     self.outcomes.get(decision.outcome, Severity.IGNORE))
+                severity = table.get(
+                    decision.outcome, self.outcomes.get(decision.outcome, Severity.IGNORE)
+                )
                 if severity is not Severity.IGNORE:
-                    violations.append(Violation(
-                        severity=severity, rule=f"evidence.{decision.outcome.value}",
-                        subject=f"{claim.claim_id}/{decision.kind}",
-                        detail=decision.detail or decision.reason.value))
+                    violations.append(
+                        Violation(
+                            severity=severity,
+                            rule=f"evidence.{decision.outcome.value}",
+                            subject=f"{claim.claim_id}/{decision.kind}",
+                            detail=decision.detail or decision.reason.value,
+                        )
+                    )
 
         if self.require_one_check and checked == 0:
-            violations.append(Violation(
-                severity=Severity.ERROR, rule="report.empty", subject=report.project,
-                detail="no evidence assertion was evaluated"))
+            violations.append(
+                Violation(
+                    severity=Severity.ERROR,
+                    rule="report.empty",
+                    subject=report.project,
+                    detail="no evidence assertion was evaluated",
+                )
+            )
 
         return Assessment(
-            policy=self.name, violations=tuple(violations),
-            passed=not any(v.severity is Severity.ERROR for v in violations))
+            policy=self.name,
+            violations=tuple(violations),
+            passed=not any(v.severity is Severity.ERROR for v in violations),
+        )
 
 
 EXPLORATORY = Policy(
     name="exploratory",
-    outcomes={Outcome.MISMATCH: Severity.ERROR, Outcome.ERROR: Severity.ERROR,
-              Outcome.NOT_FOUND: Severity.WARNING, Outcome.UNCHECKED: Severity.WARNING,
-              Outcome.NOT_OFFERED: Severity.IGNORE},
+    outcomes={
+        Outcome.MISMATCH: Severity.ERROR,
+        Outcome.ERROR: Severity.ERROR,
+        Outcome.NOT_FOUND: Severity.WARNING,
+        Outcome.UNCHECKED: Severity.WARNING,
+        Outcome.NOT_OFFERED: Severity.IGNORE,
+    },
     unpinned_artifact=Severity.IGNORE,
     # A draft may point at a file the analysis has not written yet.
     artifact_absent=Severity.WARNING,
@@ -196,13 +255,20 @@ EXPLORATORY = Policy(
 
 PUBLICATION = Policy(
     name="publication",
-    outcomes={Outcome.MISMATCH: Severity.ERROR, Outcome.ERROR: Severity.ERROR,
-              Outcome.NOT_FOUND: Severity.ERROR, Outcome.UNCHECKED: Severity.WARNING,
-              Outcome.NOT_OFFERED: Severity.WARNING},
-    confirmatory_outcomes={Outcome.MISMATCH: Severity.ERROR, Outcome.ERROR: Severity.ERROR,
-                           Outcome.NOT_FOUND: Severity.ERROR,
-                           Outcome.UNCHECKED: Severity.ERROR,
-                           Outcome.NOT_OFFERED: Severity.ERROR},
+    outcomes={
+        Outcome.MISMATCH: Severity.ERROR,
+        Outcome.ERROR: Severity.ERROR,
+        Outcome.NOT_FOUND: Severity.ERROR,
+        Outcome.UNCHECKED: Severity.WARNING,
+        Outcome.NOT_OFFERED: Severity.WARNING,
+    },
+    confirmatory_outcomes={
+        Outcome.MISMATCH: Severity.ERROR,
+        Outcome.ERROR: Severity.ERROR,
+        Outcome.NOT_FOUND: Severity.ERROR,
+        Outcome.UNCHECKED: Severity.ERROR,
+        Outcome.NOT_OFFERED: Severity.ERROR,
+    },
 )
 
 STRICT = Policy(

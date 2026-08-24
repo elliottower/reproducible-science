@@ -4,6 +4,7 @@ Before anchoring, truncating the file to any line boundary left a valid chain, a
 entirely verified clean. A hash chain proves each line follows the previous one; it says
 nothing about whether the last line is the last line ever written.
 """
+
 from __future__ import annotations
 
 import json
@@ -78,9 +79,17 @@ def test_a_corrupt_line_names_itself(chain):
 
 def test_appending_without_updating_the_anchor_reads_as_extended(chain):
     with chain.open("a") as f:
-        f.write(L.canonical({"event": "sneaked", "seq": 5,
-                             "prev_hash": L.sha256_of_str(chain.read_text().splitlines()[-1]),
-                             "timestamp": L.now_iso()}) + "\n")
+        f.write(
+            L.canonical(
+                {
+                    "event": "sneaked",
+                    "seq": 5,
+                    "prev_hash": L.sha256_of_str(chain.read_text().splitlines()[-1]),
+                    "timestamp": L.now_iso(),
+                }
+            )
+            + "\n"
+        )
     status, _ = L.verify(chain)
     assert status is L.ChainStatus.EXTENDED
 

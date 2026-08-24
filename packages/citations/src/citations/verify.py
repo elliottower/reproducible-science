@@ -29,6 +29,7 @@ The warnings -- is the quote well formed? A quote can be `found` and still carry
 same signal as a passage that was never there -- so an extraction that failed for an
 infrastructure reason says which one, rather than reporting the document as unreadable.
 """
+
 from __future__ import annotations
 
 import functools
@@ -63,7 +64,7 @@ class Result:
     """`state` is the measurement; `warnings` are notes about the quote itself."""
 
     state: State
-    detail: str = ""                 # why, when unchecked or not found
+    detail: str = ""  # why, when unchecked or not found
     warnings: list[str] = field(default_factory=list)
     page_found: int | None = None
 
@@ -121,7 +122,7 @@ def fold(s: str) -> str:
     s = s.replace("’", "'").replace("‘", "'")
     s = s.replace("“", '"').replace("”", '"')
     s = s.replace("—", "-").replace("–", "-").replace("−", "-")
-    s = re.sub(r"-\s*\n\s*", "", s)      # de-hyphenate across a line break
+    s = re.sub(r"-\s*\n\s*", "", s)  # de-hyphenate across a line break
     return " ".join(s.split()).lower()
 
 
@@ -152,8 +153,7 @@ def extract(pdf: pathlib.Path, page: int | None = None) -> str:
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
     except FileNotFoundError as e:
-        raise SourceUnreadableError(
-            pdf, "pdftotext is not on PATH -- install poppler-utils") from e
+        raise SourceUnreadableError(pdf, "pdftotext is not on PATH -- install poppler-utils") from e
     except subprocess.TimeoutExpired as e:
         raise SourceUnreadableError(pdf, "pdftotext timed out after 120s") from e
     except OSError as e:
@@ -161,8 +161,8 @@ def extract(pdf: pathlib.Path, page: int | None = None) -> str:
     if proc.returncode != 0:
         detail = (proc.stderr or "").strip().splitlines()
         raise SourceUnreadableError(
-            pdf, f"pdftotext exited {proc.returncode}"
-                 + (f": {detail[-1]}" if detail else ""))
+            pdf, f"pdftotext exited {proc.returncode}" + (f": {detail[-1]}" if detail else "")
+        )
     return proc.stdout
 
 
@@ -198,7 +198,8 @@ def check_one(quote: str, artifact: pathlib.Path | None, page: int | None = None
     warn: list[str] = []
     text = quote.strip()
     if len(text) < MIN_QUOTE_CHARS or text.endswith(
-            (",", " and", " or", " but", " the", " a", " of", " for", " with")):
+        (",", " and", " or", " but", " the", " a", " of", " for", " with")
+    ):
         warn.append("short")
 
     if artifact is None or not artifact.exists():
@@ -226,8 +227,11 @@ def check_one(quote: str, artifact: pathlib.Path | None, page: int | None = None
     if skeleton(quote) and skeleton(quote) in skeleton(full):
         warn.append("normalized")
         return Result("found", "", warn)
-    return Result("not found", "read the source: a broken extraction reads the same as a "
-                               "passage that was never there", warn)
+    return Result(
+        "not found",
+        "read the source: a broken extraction reads the same as a passage that was never there",
+        warn,
+    )
 
 
 def _on_page(artifact: pathlib.Path, folded_quote: str, page: int) -> bool:
@@ -266,9 +270,9 @@ def is_paginated(artifact: pathlib.Path) -> bool:
     return artifact.suffix.lower() not in TEXT_SUFFIXES
 
 
-def _find_page(artifact: pathlib.Path,
-               folded_quote: str,
-               limit: int = PAGE_SCAN_LIMIT) -> tuple[int | None, bool]:
+def _find_page(
+    artifact: pathlib.Path, folded_quote: str, limit: int = PAGE_SCAN_LIMIT
+) -> tuple[int | None, bool]:
     """Which page holds the quote, and whether the scan hit its limit without deciding.
 
     The second element exists so a caller can tell "searched the whole document and it is not
@@ -287,7 +291,7 @@ def _find_page(artifact: pathlib.Path,
         except SourceUnreadableError:
             return None, False
         if not text:
-            return None, False           # ran off the end of the document
+            return None, False  # ran off the end of the document
         if folded_quote in fold(text):
             return p, False
-    return None, True                    # still going when the limit ran out
+    return None, True  # still going when the limit ran out

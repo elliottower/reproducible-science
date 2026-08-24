@@ -10,6 +10,7 @@ An entry that cannot be obtained is reported as skipped with its name. A corpus 
 silently skipped everything would report nothing and look like a clean pass, which is the
 failure this package exists to prevent.
 """
+
 from __future__ import annotations
 
 import pathlib
@@ -59,15 +60,16 @@ def test_corpus_entry_is_at_its_pinned_revision(entry):
     if status.state is EntryState.ABSENT:
         pytest.skip(f"{status.name} could not be obtained")
     assert status.state is EntryState.MEASURED, (
-        f"{status.name}: expected {status.expected_commit[:12]}, "
-        f"found {status.actual_commit[:12]}")
+        f"{status.name}: expected {status.expected_commit[:12]}, found {status.actual_commit[:12]}"
+    )
     assert not status.artifacts_differing, status.artifacts_differing
     assert not status.artifacts_missing, status.artifacts_missing
     assert status.usable
 
 
-@pytest.mark.parametrize("entry", [e for e in corpus_entries() if e.get("manifest")],
-                         ids=lambda e: e["name"])
+@pytest.mark.parametrize(
+    "entry", [e for e in corpus_entries() if e.get("manifest")], ids=lambda e: e["name"]
+)
 def test_corpus_entry_verifies_to_its_recorded_counts(entry):
     """A project audited at a pinned revision still produces what it produced."""
     corpus = _load("corpus.yaml", Corpus)
@@ -77,7 +79,8 @@ def test_corpus_entry_verifies_to_its_recorded_counts(entry):
         pytest.skip(f"{item.name} could not be obtained")
     report = _manifest_against(HERE / item.manifest, root)
     assert report.counts == item.expected, (
-        f"{item.name}: recorded {item.expected}, got {report.counts}")
+        f"{item.name}: recorded {item.expected}, got {report.counts}"
+    )
 
 
 @pytest.mark.parametrize("finding", findings(), ids=lambda f: f["name"])
@@ -107,8 +110,9 @@ def test_a_dirty_working_tree_is_not_the_pinned_revision(tmp_path):
     prefers a clean copy where one can be fetched."""
     repo = tmp_path / "repo"
     repo.mkdir()
-    run = lambda *a: subprocess.run(["git", *a], cwd=repo, capture_output=True, check=True,
-                                    timeout=30)
+    run = lambda *a: subprocess.run(
+        ["git", *a], cwd=repo, capture_output=True, check=True, timeout=30
+    )
     run("init", "-q")
     run("config", "user.email", "t@t")
     run("config", "user.name", "t")
@@ -120,12 +124,14 @@ def test_a_dirty_working_tree_is_not_the_pinned_revision(tmp_path):
     (repo / "x.txt").write_text("one\n")
     run("add", "x.txt")
     run("commit", "-qm", "one")
-    commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo,
-                            capture_output=True, text=True).stdout.strip()
+    commit = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True
+    ).stdout.strip()
 
     entry = CorpusEntry(name="t", commit=commit, local_path=str(repo))
     assert _is_pinned_revision(entry, repo), "a clean tree at the pinned commit is the revision"
 
     (repo / "x.txt").write_text("two\n")
     assert not _is_pinned_revision(entry, repo), (
-        "the commit is unchanged and the bytes are not; that is not the pinned revision")
+        "the commit is unchanged and the bytes are not; that is not the pinned revision"
+    )

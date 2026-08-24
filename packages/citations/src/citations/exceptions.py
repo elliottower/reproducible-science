@@ -9,6 +9,7 @@ The hierarchy is shallow on purpose. A caller that wants to handle everything ca
 `CitationsError`; a caller that wants to distinguish "your library is missing" from "your
 claims file is malformed" catches the specific one.
 """
+
 from __future__ import annotations
 
 import pathlib
@@ -27,7 +28,8 @@ class LibraryNotFoundError(CitationsError):
             "no library here.\n"
             "    citations init            make one in this directory\n"
             "    citations init --user     make one shared across all your projects\n"
-            "    CITATIONS_HOME=<path>     use one that already exists")
+            "    CITATIONS_HOME=<path>     use one that already exists"
+        )
 
 
 class ClaimFileError(CitationsError):
@@ -71,4 +73,5 @@ class PinBrokenError(CitationsError):
         self.actual = actual
         super().__init__(
             f"{path}: pinned sha256 {expected[:16]}... but the file on disk is "
-            f"{actual[:16]}...  the source changed after it was pinned")
+            f"{actual[:16]}...  the source changed after it was pinned"
+        )

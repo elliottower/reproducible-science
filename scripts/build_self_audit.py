@@ -11,6 +11,7 @@ Regenerate after `generate_figures.py`, then verify:
     uv run python scripts/build_self_audit.py
     repro verify paper/repro.yaml --policy strict
 """
+
 from __future__ import annotations
 
 import pathlib
@@ -25,46 +26,86 @@ FIGURES = ROOT / "paper" / "figures.json"
 
 # (id, sentence stated in the manuscript, printed value, pointer into figures.json)
 CLAIMS = [
-    ("corpus-assertions", "quotation assertions | 5,686", "5686",
-     "/quotation_corpus/assertions"),
+    ("corpus-assertions", "quotation assertions | 5,686", "5686", "/quotation_corpus/assertions"),
     ("corpus-manuscripts", "manuscripts | 17", "17", "/quotation_corpus/manuscripts"),
-    ("corpus-declared", "source files declared | 366", "366",
-     "/quotation_corpus/declaration_files"),
+    (
+        "corpus-declared",
+        "source files declared | 366",
+        "366",
+        "/quotation_corpus/declaration_files",
+    ),
     ("corpus-pinned", "sources with a matching pin | 355", "355", "/quotation_corpus/pins/ok"),
     ("corpus-unpinned", "sources carrying no pin | 9", "9", "/quotation_corpus/pins/unpinned"),
-    ("corpus-missing", "sources named and not present | 1", "1",
-     "/quotation_corpus/pins/missing"),
-    ("corpus-unparseable", "declaration files that do not parse | 1", "1",
-     "/quotation_corpus/unparseable_files"),
-    ("resolver-written", "resolver wrote 172 identifiers", "172",
-     "/resolver_identifiers/written"),
+    ("corpus-missing", "sources named and not present | 1", "1", "/quotation_corpus/pins/missing"),
+    (
+        "corpus-unparseable",
+        "declaration files that do not parse | 1",
+        "1",
+        "/quotation_corpus/unparseable_files",
+    ),
+    ("resolver-written", "resolver wrote 172 identifiers", "172", "/resolver_identifiers/written"),
     ("resolver-checkable", "145 are checkable", "145", "/resolver_identifiers/checkable"),
-    ("resolver-absent", "12\nname a work whose first author does not appear", "12",
-     "/resolver_identifiers/first_author_absent"),
+    (
+        "resolver-absent",
+        "12\nname a work whose first author does not appear",
+        "12",
+        "/resolver_identifiers/first_author_absent",
+    ),
     ("resolver-rate", "8.3%", "8.3", "/resolver_identifiers/absent_rate"),
     ("conformance-fixtures", "Eighteen fixtures", "18", "/conformance/fixtures"),
-    ("atlas-assertions", "atlas, Table 2 and text | 39", "39",
-     "/metric_corpus/direction-instability-atlas/assertions"),
-    ("atlas-verified", "| 39 | 39 | 0 |", "39",
-     "/metric_corpus/direction-instability-atlas/verified"),
-    ("rna-assertions", "RNA structure-awareness, Table 5 | 10", "10",
-     "/metric_corpus/rna-table5-mean-ps/assertions"),
-    ("rna-mismatch", "nine of the ten table rows", "9",
-     "/metric_corpus/rna-table5-mean-ps/mismatch"),
+    (
+        "atlas-assertions",
+        "atlas, Table 2 and text | 39",
+        "39",
+        "/metric_corpus/direction-instability-atlas/assertions",
+    ),
+    (
+        "atlas-verified",
+        "| 39 | 39 | 0 |",
+        "39",
+        "/metric_corpus/direction-instability-atlas/verified",
+    ),
+    (
+        "rna-assertions",
+        "RNA structure-awareness, Table 5 | 10",
+        "10",
+        "/metric_corpus/rna-table5-mean-ps/assertions",
+    ),
+    (
+        "rna-mismatch",
+        "nine of the ten table rows",
+        "9",
+        "/metric_corpus/rna-table5-mean-ps/mismatch",
+    ),
 ]
 
 artifacts = [
     # Paths are relative to the manifest, which lives beside them in paper/.
-    {"id": "manuscript", "path": PAPER.name, "media_type": "text/markdown",
-     "digest": {"algorithm": "sha256", "value": Digest.of_file(PAPER).value}},
-    {"id": "figures", "path": FIGURES.name, "media_type": "application/json",
-     "digest": {"algorithm": "sha256", "value": Digest.of_file(FIGURES).value}},
+    {
+        "id": "manuscript",
+        "path": PAPER.name,
+        "media_type": "text/markdown",
+        "digest": {"algorithm": "sha256", "value": Digest.of_file(PAPER).value},
+    },
+    {
+        "id": "figures",
+        "path": FIGURES.name,
+        "media_type": "application/json",
+        "digest": {"algorithm": "sha256", "value": Digest.of_file(FIGURES).value},
+    },
 ]
 
 claims = []
 for cid, sentence, printed, pointer in CLAIMS:
-    evidence = [{"kind": "metric", "artifact": "figures", "name": cid,
-                 "reported": printed, "pointer": pointer}]
+    evidence = [
+        {
+            "kind": "metric",
+            "artifact": "figures",
+            "name": cid,
+            "reported": printed,
+            "pointer": pointer,
+        }
+    ]
     # A sentence spanning a line break cannot be quoted verbatim against the source; those
     # carry the metric assertion only rather than a quotation that would always fail.
     if "\n" not in sentence:
@@ -74,19 +115,32 @@ for cid, sentence, printed, pointer in CLAIMS:
     # alternatives, so there was nothing for a plan to fix in advance. Exhaustiveness and
     # determinism are what make them trustworthy, and re-running this script is what
     # establishes both.
-    claims.append({"id": cid,
-                   "registration": "not_applicable",
-                   "registration_note": "exhaustive deterministic count, produced by "
-                                        "scripts/build_self_audit.py over pinned inputs",
-                   "where": "Section 6",
-                   "text": f"The manuscript states {printed} for {cid}.",
-                   "evidence": evidence})
+    claims.append(
+        {
+            "id": cid,
+            "registration": "not_applicable",
+            "registration_note": "exhaustive deterministic count, produced by "
+            "scripts/build_self_audit.py over pinned inputs",
+            "where": "Section 6",
+            "text": f"The manuscript states {printed} for {cid}.",
+            "evidence": evidence,
+        }
+    )
 
 prov = of_tree(ROOT, generated_by="scripts/build_self_audit.py")
 out = ROOT / "paper" / "repro.yaml"
-out.write_text(yaml.safe_dump(
-    {"schema_version": "repro/1", "project": "reproducible-science (self-audit)",
-     "provenance": prov.model_dump(), "artifacts": artifacts, "claims": claims},
-    sort_keys=False, width=110))
+out.write_text(
+    yaml.safe_dump(
+        {
+            "schema_version": "repro/1",
+            "project": "reproducible-science (self-audit)",
+            "provenance": prov.model_dump(),
+            "artifacts": artifacts,
+            "claims": claims,
+        },
+        sort_keys=False,
+        width=110,
+    )
+)
 print(f"  wrote {out}: {len(claims)} claims over {len(artifacts)} artifacts")
 print(f"  provenance: {prov.commit[:12]}{' (dirty)' if prov.dirty else ''}")

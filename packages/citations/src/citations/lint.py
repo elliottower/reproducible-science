@@ -15,6 +15,7 @@ map it.
     citations lint             # report
     citations lint --json      # machine-readable
 """
+
 from __future__ import annotations
 
 import argparse
@@ -33,8 +34,19 @@ from citations.models import Record, load_record
 
 #: Venue words that decide which BibTeX entry type a record projects to, and therefore which
 #: fields papis will demand of it.
-PROCEEDINGS_WORDS = ("proceedings", "conference", "workshop", "symposium", "neurips",
-                     "icml", "iclr", "acl", "emnlp", "aaai", "ijcai")
+PROCEEDINGS_WORDS = (
+    "proceedings",
+    "conference",
+    "workshop",
+    "symposium",
+    "neurips",
+    "icml",
+    "iclr",
+    "acl",
+    "emnlp",
+    "aaai",
+    "ijcai",
+)
 PUBLISHER_WORDS = ("press", "publisher", "wiley", "springer", "mifflin", "mcnally", "routledge")
 
 
@@ -68,7 +80,7 @@ def project(rec: Record) -> dict:
     }
     year = rec.year.strip()
     if year.isdigit():
-        doc["year"] = int(year)          # papis wants an int; ours are strings from BibTeX
+        doc["year"] = int(year)  # papis wants an int; ours are strings from BibTeX
 
     venue = rec.venue.strip()
     lowered = venue.lower()
@@ -116,7 +128,8 @@ def main(argv: list[str] | None = None) -> int:
             d = lib / rec.slug
             d.mkdir(exist_ok=True)
             (d / "info.yaml").write_text(
-                yaml.safe_dump(project(rec), sort_keys=False, allow_unicode=True))
+                yaml.safe_dump(project(rec), sort_keys=False, allow_unicode=True)
+            )
 
         # papis reads its config from the platform location under HOME, not from an env var,
         # so the sandboxed HOME has to contain one. Getting this wrong makes papis fail to
@@ -127,7 +140,8 @@ def main(argv: list[str] | None = None) -> int:
         (cfg / "config").write_text(f"[lint]\ndir = {lib}\n")
         proc = subprocess.run(
             [str(papis), "-l", "lint", "doctor", "--all", "--all-checks"],
-            capture_output=True, text=True,
+            capture_output=True,
+            text=True,
             env={"HOME": tmp, "PATH": "/usr/bin:/bin"},
         )
         out = proc.stdout
@@ -140,8 +154,7 @@ def main(argv: list[str] | None = None) -> int:
     for line in out.splitlines():
         parts = line.split("\t")
         if len(parts) >= 3:
-            issues.append({"check": parts[0], "key": parts[1],
-                           "slug": pathlib.Path(parts[2]).name})
+            issues.append({"check": parts[0], "key": parts[1], "slug": pathlib.Path(parts[2]).name})
 
     if a.json:
         print(json.dumps(issues, indent=1))

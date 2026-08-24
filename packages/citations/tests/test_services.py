@@ -4,6 +4,7 @@ Four hand-written lookups drifted: the arXiv one never checked the year, so it w
 paper from any year with a close enough title. The rule lives in one place now, and a service
 supplies only candidates.
 """
+
 from __future__ import annotations
 
 from citations.models import Record
@@ -13,15 +14,25 @@ from citations.text import surname
 
 
 def rec(**kw) -> Record:
-    base = dict(slug="s", title="Attention Is All You Need", authors=["Vaswani, Ashish"],
-                year="2017", venue="Advances in Neural Information Processing Systems")
+    base = dict(
+        slug="s",
+        title="Attention Is All You Need",
+        authors=["Vaswani, Ashish"],
+        year="2017",
+        venue="Advances in Neural Information Processing Systems",
+    )
     base.update(kw)
     return Record(**base)
 
 
 def cand(**kw) -> Candidate:
-    base = dict(title="Attention Is All You Need", surnames=frozenset({"vaswani"}),
-                year=2017, venue="", identifier=("arxiv", "1706.03762"))
+    base = dict(
+        title="Attention Is All You Need",
+        surnames=frozenset({"vaswani"}),
+        year=2017,
+        venue="",
+        identifier=("arxiv", "1706.03762"),
+    )
     base.update(kw)
     return Candidate(**base)
 
@@ -29,8 +40,12 @@ def cand(**kw) -> Candidate:
 def test_a_near_identical_title_by_other_authors_is_rejected():
     # Crossref really returns "Is Attention All You Need?" for this query, at 0.88 similarity
     # against a 0.87 threshold, by different people, in a different year. Title alone accepts it.
-    impostor = cand(title="Is Attention All You Need?", surnames=frozenset({"smith"}),
-                    year=2025, identifier=("doi", "10.9999/wrong"))
+    impostor = cand(
+        title="Is Attention All You Need?",
+        surnames=frozenset({"smith"}),
+        year=2025,
+        identifier=("doi", "10.9999/wrong"),
+    )
     assert match(rec(), [impostor]) is None
 
 
@@ -54,8 +69,10 @@ def test_an_unknown_year_on_either_side_is_not_a_mismatch():
 
 def test_the_venue_breaks_a_tie_toward_the_version_we_cite():
     preprint = cand(venue="arXiv", identifier=("arxiv", "1706.03762"))
-    published = cand(venue="Advances in Neural Information Processing Systems",
-                     identifier=("doi", "10.5555/3295222"))
+    published = cand(
+        venue="Advances in Neural Information Processing Systems",
+        identifier=("doi", "10.5555/3295222"),
+    )
     assert match(rec(), [preprint, published])[0] == "doi"
 
 

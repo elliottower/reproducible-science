@@ -4,6 +4,7 @@ Each test here corresponds to a case that once produced a misleading report: an 
 limit surfacing as a backend defect, a broken selector blamed on the table, and a file that
 does not exist described as authoritative.
 """
+
 from __future__ import annotations
 
 import decimal
@@ -39,6 +40,7 @@ def write_json(tmp_path, payload: str):
 
 
 # -- an arithmetic limit is not a defect ----------------------------------------------------
+
 
 @pytest.mark.parametrize("stored", ["1E+30", "-1E+30", "1234567890123456789012345678901.5"])
 def test_a_value_too_large_to_round_to_printed_precision_disagrees(stored):
@@ -76,8 +78,7 @@ TABLE = "model,accuracy\nresnet,0.91\nvit,0.88\n"
 
 
 def cell(**kw) -> TableCellEvidence:
-    return TableCellEvidence(artifact="a", name="acc", reported="0.91",
-                             column="accuracy", **kw)
+    return TableCellEvidence(artifact="a", name="acc", reported="0.91", column="accuracy", **kw)
 
 
 def test_a_selector_naming_a_column_the_table_lacks_is_reported_as_the_selector(tmp_path):
@@ -107,12 +108,19 @@ def test_the_two_are_distinguishable(tmp_path):
 
 # -- a file that does not exist is not the authoritative version of itself ------------------
 
+
 def absent_manifest(tmp_path) -> Manifest:
     return Manifest(
         project="p",
-        artifacts=(ArtifactRef(id="a", path=tmp_path / "never_written.json",
-                               digest=Digest(algorithm="sha256", value="0" * 64)),),
-        claims=(Claim(id="c", text="t", evidence=(metric("3.20"),)),))
+        artifacts=(
+            ArtifactRef(
+                id="a",
+                path=tmp_path / "never_written.json",
+                digest=Digest(algorithm="sha256", value="0" * 64),
+            ),
+        ),
+        claims=(Claim(id="c", text="t", evidence=(metric("3.20"),)),),
+    )
 
 
 def test_an_absent_artifact_is_not_authoritative(tmp_path):
@@ -141,4 +149,5 @@ def test_strict_agrees_and_exploratory_only_warns(tmp_path):
     assert STRICT.assess(report).passed is False
     exploratory = EXPLORATORY.assess(report)
     assert any(v.rule == "artifact.absent" for v in exploratory.warnings), (
-        "a draft may name a file the analysis has not written yet, but it is still reported")
+        "a draft may name a file the analysis has not written yet, but it is still reported"
+    )

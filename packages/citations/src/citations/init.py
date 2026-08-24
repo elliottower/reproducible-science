@@ -8,6 +8,7 @@ an untracked library throws that away.
 
 No remote is configured, and this tool never pushes.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -44,8 +45,9 @@ This holds verbatim passages from the sources you cite. Publishing it republishe
 
 
 def _in_git_repo(d: pathlib.Path) -> bool:
-    r = subprocess.run(["git", "rev-parse", "--is-inside-work-tree"],
-                       cwd=d, capture_output=True, text=True)
+    r = subprocess.run(
+        ["git", "rev-parse", "--is-inside-work-tree"], cwd=d, capture_output=True, text=True
+    )
     return r.returncode == 0 and r.stdout.strip() == "true"
 
 
@@ -59,18 +61,21 @@ def make(target: pathlib.Path, git: bool | None = None) -> tuple[pathlib.Path, s
 
     tracked = _in_git_repo(target)
     if git is False or tracked:
-        note = ("tracked by the repository above" if tracked
-                else "not tracked — run `git init` here to keep a history of changes")
+        note = (
+            "tracked by the repository above"
+            if tracked
+            else "not tracked — run `git init` here to keep a history of changes"
+        )
         return target, note
     subprocess.run(["git", "init", "--quiet"], cwd=target, capture_output=True)
     return target, "git initialised, no remote"
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(prog="citations init",
-                                 description=__doc__.split("\n")[0])
-    ap.add_argument("--user", action="store_true",
-                    help="make the shared library instead of one here")
+    ap = argparse.ArgumentParser(prog="citations init", description=__doc__.split("\n")[0])
+    ap.add_argument(
+        "--user", action="store_true", help="make the shared library instead of one here"
+    )
     ap.add_argument("--path", help="make it at this path")
     ap.add_argument("--no-git", action="store_true", help="do not initialise a repository")
     a = ap.parse_args(argv)

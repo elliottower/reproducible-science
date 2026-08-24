@@ -27,6 +27,7 @@ truncated list looks complete.
 Responses are cached, so a re-run is offline and the report is reproducible from what was
 fetched.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -56,8 +57,13 @@ DELAY = 0.34
 
 #: Errors that mean a request did not complete, as distinct from a registry that answered and
 #: had nothing. `HTTPError` subclasses `URLError` and is caught first where the code matters.
-NETWORK_ERRORS = (urllib.error.URLError, socket.timeout, TimeoutError, ConnectionError,
-                  UnicodeDecodeError)
+NETWORK_ERRORS = (
+    urllib.error.URLError,
+    socket.timeout,
+    TimeoutError,
+    ConnectionError,
+    UnicodeDecodeError,
+)
 
 BIB_ENTRY = re.compile(r"@(\w+)\s*\{\s*([^,\s]+)\s*,(.*?)\n\}", re.DOTALL)
 BIB_FIELD = re.compile(r"(\w+)\s*=\s*[{\"](.*?)[}\"]\s*,?\s*(?=\n\s*\w+\s*=|\Z)", re.DOTALL)
@@ -94,7 +100,8 @@ def disagreement(mine: Person, theirs: Person) -> str | None:
     # Hölscher-Obermaier is `holscher obermaier` in one record and `hoelscher obermaier` in
     # the other. Both spell one name, so the comparison is on every form each can take.
     same_family = ours_family == their_family or bool(
-        variants(" ".join(ours_family)) & variants(" ".join(their_family)))
+        variants(" ".join(ours_family)) & variants(" ".join(their_family))
+    )
     if not same_family:
         # A particle filed under the given name in one record and the family name in the
         # other is one name written two ways: Del Tredici, Kelly against Tredici, Kelly Del.
@@ -118,6 +125,7 @@ def disagreement(mine: Person, theirs: Person) -> str | None:
 
 
 # --------------------------------------------------------------------------------- shapes
+
 
 class Entry(BaseModel):
     """One thing to check: what we wrote down, and what identifies it."""
@@ -219,16 +227,24 @@ class AuditReport(BaseModel):
 
 # --------------------------------------------------------------------------------- entries
 
+
 def entries_from_bib(path: pathlib.Path) -> list[Entry]:
     out = []
     for _kind, key, body in BIB_ENTRY.findall(path.read_text()):
         f = {name.lower(): " ".join(value.split()) for name, value in BIB_FIELD.findall(body)}
-        out.append(Entry(
-            key=key, title=f.get("title", ""),
-            authors=[a for a in re.split(r"\s+and\s+", f.get("author", "")) if a],
-            year=f.get("year", ""), venue=f.get("journal") or f.get("booktitle", ""),
-            volume=f.get("volume", ""), pages=f.get("pages", ""),
-            doi=f.get("doi", ""), pmid=f.get("pmid", "")))
+        out.append(
+            Entry(
+                key=key,
+                title=f.get("title", ""),
+                authors=[a for a in re.split(r"\s+and\s+", f.get("author", "")) if a],
+                year=f.get("year", ""),
+                venue=f.get("journal") or f.get("booktitle", ""),
+                volume=f.get("volume", ""),
+                pages=f.get("pages", ""),
+                doi=f.get("doi", ""),
+                pmid=f.get("pmid", ""),
+            )
+        )
     return sorted(out, key=lambda e: e.key)
 
 
@@ -239,15 +255,25 @@ def entries_from_library(only: str | None) -> list[Entry]:
         if only and only not in rec.cited_by:
             continue
         extra = rec.model_extra or {}
-        out.append(Entry(
-            key=rec.slug, title=rec.title, authors=rec.authors, year=rec.year,
-            venue=rec.venue, volume=str(extra.get("volume") or ""),
-            pages=str(extra.get("pages") or ""), doi=rec.doi,
-            pmid=str(extra.get("pmid") or ""), et_al=rec.et_al))
+        out.append(
+            Entry(
+                key=rec.slug,
+                title=rec.title,
+                authors=rec.authors,
+                year=rec.year,
+                venue=rec.venue,
+                volume=str(extra.get("volume") or ""),
+                pages=str(extra.get("pages") or ""),
+                doi=rec.doi,
+                pmid=str(extra.get("pmid") or ""),
+                et_al=rec.et_al,
+            )
+        )
     return out
 
 
 # --------------------------------------------------------------------------------- sources
+
 
 def fetch(url: str, cache: pathlib.Path, name: str) -> str | None:
     """A cached registry response, or None when the request did not complete."""
@@ -268,8 +294,11 @@ def fetch(url: str, cache: pathlib.Path, name: str) -> str | None:
 
 
 def from_crossref(doi: str, cache: pathlib.Path) -> RegistryRecord | None:
-    body = fetch(f"https://api.crossref.org/works/{urllib.parse.quote(doi, safe='')}",
-                 cache, f"crossref_{re.sub(r'[^A-Za-z0-9]', '_', doi)}.json")
+    body = fetch(
+        f"https://api.crossref.org/works/{urllib.parse.quote(doi, safe='')}",
+        cache,
+        f"crossref_{re.sub(r'[^A-Za-z0-9]', '_', doi)}.json",
+    )
     if not body:
         return None
     try:
@@ -288,8 +317,12 @@ def from_crossref(doi: str, cache: pathlib.Path) -> RegistryRecord | None:
         years=years,
         volume=str(m.get("volume") or ""),
         pages=str(m.get("page") or m.get("article-number") or ""),
-        authors=[(tokens(a.get("family", "")), tokens(a.get("given", "")))
-                 for a in m.get("author", []) if a.get("family")])
+        authors=[
+            (tokens(a.get("family", "")), tokens(a.get("given", "")))
+            for a in m.get("author", [])
+            if a.get("family")
+        ],
+    )
 
 
 #: DOI prefixes registered with DataCite rather than Crossref. Crossref answers 404 for these,
@@ -309,8 +342,11 @@ def from_datacite(doi: str, cache: pathlib.Path) -> RegistryRecord | None:
     did not resolve, which is a false accusation against a correct bibliography -- the checker
     asked the wrong registry.
     """
-    body = fetch(f"https://api.datacite.org/dois/{urllib.parse.quote(doi, safe='')}",
-                 cache, f"datacite_{re.sub(r'[^A-Za-z0-9]', '_', doi)}.json")
+    body = fetch(
+        f"https://api.datacite.org/dois/{urllib.parse.quote(doi, safe='')}",
+        cache,
+        f"datacite_{re.sub(r'[^A-Za-z0-9]', '_', doi)}.json",
+    )
     if not body:
         return None
     try:
@@ -333,8 +369,11 @@ def from_datacite(doi: str, cache: pathlib.Path) -> RegistryRecord | None:
             name = (c.get("name") or "").strip()
             if not name:
                 continue
-            family, given = ((x.strip() for x in name.split(",", 1)) if "," in name
-                             else (name.split()[-1], " ".join(name.split()[:-1])))
+            family, given = (
+                (x.strip() for x in name.split(",", 1))
+                if "," in name
+                else (name.split()[-1], " ".join(name.split()[:-1]))
+            )
         authors.append((tokens(family), tokens(given)))
 
     return RegistryRecord(
@@ -344,13 +383,17 @@ def from_datacite(doi: str, cache: pathlib.Path) -> RegistryRecord | None:
         years=[str(year)] if year else [],
         volume=str((attrs.get("container") or {}).get("volume") or ""),
         pages="",
-        authors=authors)
+        authors=authors,
+    )
 
 
 def from_pubmed(pmid: str, cache: pathlib.Path) -> RegistryRecord | None:
-    body = fetch("https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
-                 f"?db=pubmed&id={urllib.parse.quote(pmid)}&retmode=xml",
-                 cache, f"pubmed_{pmid}.xml")
+    body = fetch(
+        "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
+        f"?db=pubmed&id={urllib.parse.quote(pmid)}&retmode=xml",
+        cache,
+        f"pubmed_{pmid}.xml",
+    )
     if not body:
         return None
     try:
@@ -365,16 +408,24 @@ def from_pubmed(pmid: str, cache: pathlib.Path) -> RegistryRecord | None:
     return RegistryRecord(
         source="pubmed",
         title="".join(title.itertext()) if title is not None else "",
-        venue=((journal.findtext("ISOAbbreviation") or journal.findtext("Title") or "")
-               if journal is not None else ""),
+        venue=(
+            (journal.findtext("ISOAbbreviation") or journal.findtext("Title") or "")
+            if journal is not None
+            else ""
+        ),
         years=[year] if year else [],
         volume=(journal.findtext(".//Volume") or "") if journal is not None else "",
         pages=art.findtext(".//MedlinePgn") or "",
-        authors=[(tokens(a.findtext("LastName")), tokens(a.findtext("ForeName") or ""))
-                 for a in art.findall(".//Author") if a.findtext("LastName")])
+        authors=[
+            (tokens(a.findtext("LastName")), tokens(a.findtext("ForeName") or ""))
+            for a in art.findall(".//Author")
+            if a.findtext("LastName")
+        ],
+    )
 
 
 # ------------------------------------------------------------------------------ comparison
+
 
 def compare(entry: Entry, record: RegistryRecord) -> list[str]:
     """Every field of `entry` that disagrees with `record`, as one message each."""
@@ -384,15 +435,13 @@ def compare(entry: Entry, record: RegistryRecord) -> list[str]:
     their_title = fold(record.title.rstrip("."))
     if our_title and their_title and our_title != their_title:
         if their_title.startswith(our_title) or our_title.startswith(their_title):
-            problems.append("title (one is a prefix of the other): registry has "
-                            f"{record.title!r}")
+            problems.append(f"title (one is a prefix of the other): registry has {record.title!r}")
         else:
             problems.append(f"title: ours {entry.title!r} vs registry {record.title!r}")
 
     years = [y for y in record.years if y]
     if entry.year and years and entry.year not in years:
-        problems.append(f"year: ours {entry.year} vs registry "
-                        f"{'/'.join(dict.fromkeys(years))}")
+        problems.append(f"year: ours {entry.year} vs registry {'/'.join(dict.fromkeys(years))}")
 
     if entry.volume and record.volume and entry.volume != record.volume:
         problems.append(f"volume: ours {entry.volume} vs registry {record.volume}")
@@ -413,14 +462,17 @@ def compare(entry: Entry, record: RegistryRecord) -> list[str]:
             if said:
                 problems.append(f"author {i} {said}")
         if len(mine) < len(yours) and not truncated:
-            problems.append(f"author list stops at {len(mine)} of {len(yours)} with no "
-                            "'and others' marker, so it reads as complete")
+            problems.append(
+                f"author list stops at {len(mine)} of {len(yours)} with no "
+                "'and others' marker, so it reads as complete"
+            )
         if len(mine) > len(yours):
             problems.append(f"author list has {len(mine)} names, registry has {len(yours)}")
     return problems
 
 
 # ------------------------------------------------------------------------------------- run
+
 
 def audit(entries: list[Entry], cache: pathlib.Path, where: str = "") -> AuditReport:
     """Check every entry against the registry its own identifier points at."""
@@ -445,8 +497,12 @@ def audit(entries: list[Entry], cache: pathlib.Path, where: str = "") -> AuditRe
             continue
         problems = compare(e, record)
         report.entries[e.key] = EntryAudit(
-            status="mismatch" if problems else "ok", checked_against=record.source,
-            doi=e.doi, pmid=e.pmid, problems=problems)
+            status="mismatch" if problems else "ok",
+            checked_against=record.source,
+            doi=e.doi,
+            pmid=e.pmid,
+            problems=problems,
+        )
     return report
 
 
@@ -474,11 +530,15 @@ def render(report: AuditReport, quiet: bool) -> int:
     print(f"  agree       {report.checked - len(mismatched):>7,}")
     print(f"  disagree    {len(mismatched):>7,}")
     if report.unresolved:
-        print(f"  unresolved  {len(report.unresolved):>7,}   the identifier did not fetch; "
-              "no measurement was made")
+        print(
+            f"  unresolved  {len(report.unresolved):>7,}   the identifier did not fetch; "
+            "no measurement was made"
+        )
     if report.unidentified:
-        print(f"  no id       {len(report.unidentified):>7,}   nothing can check these until "
-              "they have a DOI or PMID")
+        print(
+            f"  no id       {len(report.unidentified):>7,}   nothing can check these until "
+            "they have a DOI or PMID"
+        )
 
     if mismatched:
         kinds: collections.Counter = collections.Counter()
@@ -501,8 +561,7 @@ def render(report: AuditReport, quiet: bool) -> int:
         print(f"{len(mismatched)} disagree with the record their own identifier resolves to.")
         print("a wrong author list on a right DOI is invisible to every other check.")
     elif report.unresolved:
-        print(f"nothing disagreed. {len(report.unresolved)} unresolved — "
-              "no measurement for those.")
+        print(f"nothing disagreed. {len(report.unresolved)} unresolved — no measurement for those.")
     else:
         print("every checked entry matches its registry record.")
     return 1 if (mismatched or report.unresolved) else 0
@@ -512,8 +571,9 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="citations audit", description=__doc__.split("\n")[0])
     ap.add_argument("--bib", help="a BibTeX file, instead of the library's records")
     ap.add_argument("--only", help="restrict to records cited by this paper")
-    ap.add_argument("--cache", help="where fetched payloads live "
-                                    "(default: .audit-cache beside what is audited)")
+    ap.add_argument(
+        "--cache", help="where fetched payloads live (default: .audit-cache beside what is audited)"
+    )
     ap.add_argument("--json", dest="json_out", help="write the full report here")
     ap.add_argument("--strict", action="store_true", help="exit 1 on any disagreement")
     ap.add_argument("--quiet", action="store_true", help="counts only")

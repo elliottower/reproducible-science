@@ -5,6 +5,7 @@ artifact is still the one the record pinned was never checked: 355 sources in th
 a sha256 and nothing compared it to the file on disk. A source edited after being pinned passes
 every quotation check in the library.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -57,6 +58,7 @@ def test_a_run_that_checked_nothing_is_not_a_pass():
 
 
 # --- an extraction that failed is not a document that is empty ---------------------------------
+
 
 def test_a_missing_extractor_raises_rather_than_reporting_no_text(tmp_path, monkeypatch):
     # Returning "" here makes every PDF quote `unchecked` and the summary read "nothing

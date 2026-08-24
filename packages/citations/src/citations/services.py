@@ -11,6 +11,7 @@ title. Here the rule lives in `match()` and a service supplies only `Candidate`s
 
 Adding a service is a `Service(...)` literal: build a URL, turn a payload into candidates.
 """
+
 from __future__ import annotations
 
 import re
@@ -82,6 +83,7 @@ class Service:
 # Crossref
 # --------------------------------------------------------------------------------------------
 
+
 def _crossref_url(rec: Record) -> str:
     q = urllib.parse.urlencode({"query.bibliographic": rec.title, "rows": 8})
     return f"https://api.crossref.org/works?{q}"
@@ -93,9 +95,10 @@ def _crossref_candidates(payload) -> list[Candidate]:
         doi = item.get("DOI")
         yield Candidate(
             title=(item.get("title") or [""])[0],
-            surnames=frozenset().union(*(surname_variants(a.get("family", ""))
-                                         for a in item.get("author", []))
-                                       or [frozenset()]),
+            surnames=frozenset().union(
+                *(surname_variants(a.get("family", "")) for a in item.get("author", []))
+                or [frozenset()]
+            ),
             year=parts[0] if parts else None,
             venue=(item.get("container-title") or [""])[0],
             identifier=("doi", doi) if doi else None,
@@ -106,22 +109,30 @@ def _crossref_candidates(payload) -> list[Candidate]:
 # Semantic Scholar -- indexes preprints and workshop papers Crossref has never seen
 # --------------------------------------------------------------------------------------------
 
+
 def _s2_url(rec: Record) -> str:
-    q = urllib.parse.urlencode({"query": rec.title[:250], "limit": 6,
-                                "fields": "title,externalIds,authors,year,venue"})
+    q = urllib.parse.urlencode(
+        {"query": rec.title[:250], "limit": 6, "fields": "title,externalIds,authors,year,venue"}
+    )
     return f"https://api.semanticscholar.org/graph/v1/paper/search?{q}"
 
 
 def _s2_candidates(payload) -> list[Candidate]:
     for item in (payload or {}).get("data") or []:
         ext = item.get("externalIds") or {}
-        ident = (("doi", ext["DOI"]) if ext.get("DOI")
-                 else ("arxiv", ext["ArXiv"]) if ext.get("ArXiv") else None)
+        ident = (
+            ("doi", ext["DOI"])
+            if ext.get("DOI")
+            else ("arxiv", ext["ArXiv"])
+            if ext.get("ArXiv")
+            else None
+        )
         yield Candidate(
             title=item.get("title") or "",
-            surnames=frozenset().union(*(surname_variants(a.get("name", ""))
-                                         for a in (item.get("authors") or []))
-                                       or [frozenset()]),
+            surnames=frozenset().union(
+                *(surname_variants(a.get("name", "")) for a in (item.get("authors") or []))
+                or [frozenset()]
+            ),
             year=item.get("year"),
             venue=item.get("venue") or "",
             identifier=ident,
@@ -132,9 +143,11 @@ def _s2_candidates(payload) -> list[Candidate]:
 # OpenAlex -- books, reports and preprints Crossref does not carry
 # --------------------------------------------------------------------------------------------
 
+
 def _openalex_url(rec: Record) -> str:
-    q = urllib.parse.urlencode({"filter": f"title.search:{rec.title}", "per-page": 5,
-                                "mailto": "elliot@elliottower.ai"})
+    q = urllib.parse.urlencode(
+        {"filter": f"title.search:{rec.title}", "per-page": 5, "mailto": "elliot@elliottower.ai"}
+    )
     return f"https://api.openalex.org/works?{q}"
 
 
@@ -150,12 +163,16 @@ def _openalex_candidates(payload) -> list[Candidate]:
             ident = ("openalex", oid) if oid else None
         yield Candidate(
             title=work.get("display_name") or "",
-            surnames=frozenset().union(*(
-                surname_variants((a.get("author") or {}).get("display_name", ""))
-                for a in (work.get("authorships") or [])) or [frozenset()]),
+            surnames=frozenset().union(
+                *(
+                    surname_variants((a.get("author") or {}).get("display_name", ""))
+                    for a in (work.get("authorships") or [])
+                )
+                or [frozenset()]
+            ),
             year=work.get("publication_year"),
-            venue=((work.get("primary_location") or {}).get("source") or {}).get(
-                "display_name") or "",
+            venue=((work.get("primary_location") or {}).get("source") or {}).get("display_name")
+            or "",
             identifier=ident,
         )
 
@@ -184,8 +201,9 @@ def _arxiv_candidates(payload) -> list[Candidate]:
         ym = _PUBLISHED.search(entry)
         yield Candidate(
             title=" ".join(tm.group(1).split()),
-            surnames=frozenset().union(*(surname_variants(n) for n in _NAME.findall(entry))
-                                       or [frozenset()]),
+            surnames=frozenset().union(
+                *(surname_variants(n) for n in _NAME.findall(entry)) or [frozenset()]
+            ),
             # The year was not checked here before, so an arXiv lookup would accept a paper
             # from any year whose title was close enough. It is checked now, like every other
             # service, because the rule lives in one place.
@@ -198,8 +216,7 @@ def _arxiv_candidates(payload) -> list[Candidate]:
 #: Tried in this order for each record. The refusal threshold is this tuple's length, so
 #: adding a service cannot leave a stale literal behind.
 SERVICES: tuple[Service, ...] = (
-    Service("semanticscholar", _s2_url, _s2_candidates,
-            needs_key="SEMANTIC_SCHOLAR_API_KEY"),
+    Service("semanticscholar", _s2_url, _s2_candidates, needs_key="SEMANTIC_SCHOLAR_API_KEY"),
     Service("crossref", _crossref_url, _crossref_candidates),
     Service("openalex", _openalex_url, _openalex_candidates),
     Service("arxiv", _arxiv_url, _arxiv_candidates, json=False),

@@ -3,6 +3,7 @@
 These are the executable form of SPEC.md §9. A change that makes one of these differ is a
 change to the contract, and has to be argued for rather than absorbed.
 """
+
 from __future__ import annotations
 
 import json
@@ -36,7 +37,8 @@ def test_every_decision_names_what_produced_it(case):
         assert decision.claim_digest, "a decision must name the claim revision it evaluated"
         assert decision.backend and decision.backend_version, (
             "a decision that does not say which backend produced it cannot be compared "
-            "with a later one")
+            "with a later one"
+        )
 
 
 def test_an_absent_pointer_is_not_a_mismatch():

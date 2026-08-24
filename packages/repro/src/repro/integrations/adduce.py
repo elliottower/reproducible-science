@@ -11,6 +11,7 @@ A quotation is present or absent; a set of them is partially verified. That is t
 between a rule that summarizes many items and a check on one proposition, and it is why the
 aggregate lives in this adapter rather than in the verification engine.
 """
+
 from __future__ import annotations
 
 import json
@@ -83,10 +84,12 @@ class ReproEvidenceRule(Rule):
             # yield, which is how a repository with test fixtures gets scored on a fixture.
             listed = ", ".join(found[:4])
             return self.finding(
-                Status.UNKNOWN, 1.0,
+                Status.UNKNOWN,
+                1.0,
                 f"{len(found)} manifests found and none at the repository root: {listed}. "
                 f"Which one describes this project is not something this rule should guess.",
-                remediation=f"Put the project's manifest at {MANIFEST} in the root.")
+                remediation=f"Put the project's manifest at {MANIFEST} in the root.",
+            )
         manifest = root / found[0]
 
         try:
@@ -94,8 +97,12 @@ class ReproEvidenceRule(Rule):
         except ReproError as e:
             # A verifier that could not run has found nothing about this repository. Reporting
             # it as a failure would blame the repository for a missing toolchain.
-            return self.finding(Status.UNKNOWN, 1.0, f"{MANIFEST} could not be verified: {e}",
-                                remediation="Install repro's extraction dependencies.")
+            return self.finding(
+                Status.UNKNOWN,
+                1.0,
+                f"{MANIFEST} could not be verified: {e}",
+                remediation="Install repro's extraction dependencies.",
+            )
 
         counts = report.counts
         total = sum(counts.values())
@@ -107,8 +114,9 @@ class ReproEvidenceRule(Rule):
             # Nothing was declared, so nothing failed to verify. This precedes the artifact
             # checks: a rule about whether declared assertions hold has no finding to report
             # when a manifest declares none, whatever state its artifacts are in.
-            return self.finding(Status.NOT_APPLICABLE, 1.0,
-                                f"{MANIFEST} declares no evidence assertions.")
+            return self.finding(
+                Status.NOT_APPLICABLE, 1.0, f"{MANIFEST} declares no evidence assertions."
+            )
 
         sidecar = self._write_sidecar(root, report)
         locations = [Location(path=str(manifest.relative_to(root)))]
@@ -118,35 +126,47 @@ class ReproEvidenceRule(Rule):
         detail = ", ".join(f"{n} {k}" for k, n in sorted(counts.items()))
         if broken:
             return self.finding(
-                Status.FAIL, 1.0,
+                Status.FAIL,
+                1.0,
                 f"{len(broken)} pinned artifact(s) changed since being declared: "
                 f"{', '.join(broken[:3])}. {total} assertions checked ({detail}).",
                 remediation="Re-run the analysis, or re-pin the artifacts deliberately.",
-                locations=locations)
+                locations=locations,
+            )
         if absent:
             return self.finding(
-                Status.FAIL, 1.0,
+                Status.FAIL,
+                1.0,
                 f"{len(absent)} declared artifact(s) are not present: "
                 f"{', '.join(absent[:3])}. {total} assertions checked ({detail}).",
                 remediation="Produce the artifacts, or drop the assertions that name them.",
-                locations=locations)
+                locations=locations,
+            )
         # Confidence is 1.0 throughout: a byte comparison against a hashed artifact is not a
         # signal a rule is more or less sure of. Reporting anything lower would invite the
         # number to be read as strength of evidence, which it is not.
         if verified == total:
-            return self.finding(Status.PASS, 1.0,
-                                f"All {total} declared evidence assertions verify.",
-                                locations=locations)
+            return self.finding(
+                Status.PASS,
+                1.0,
+                f"All {total} declared evidence assertions verify.",
+                locations=locations,
+            )
         if verified == 0:
-            return self.finding(Status.FAIL, 1.0,
-                                f"No declared evidence assertion verifies ({detail}).",
-                                remediation=f"Run `repro verify` and see {SIDECAR}.",
-                                locations=locations)
+            return self.finding(
+                Status.FAIL,
+                1.0,
+                f"No declared evidence assertion verifies ({detail}).",
+                remediation=f"Run `repro verify` and see {SIDECAR}.",
+                locations=locations,
+            )
         return self.finding(
-            Status.PARTIAL, 1.0,
+            Status.PARTIAL,
+            1.0,
             f"{verified} of {total} declared evidence assertions verify ({detail}).",
             remediation=f"Per-assertion outcomes are in {SIDECAR}.",
-            locations=locations)
+            locations=locations,
+        )
 
     @staticmethod
     def _write_sidecar(root: pathlib.Path, report) -> pathlib.Path | None:

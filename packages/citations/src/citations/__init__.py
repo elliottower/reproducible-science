@@ -18,6 +18,7 @@ Nothing in this package calls `sys.exit` or raises `SystemExit`; failures raise
 `CitationsError`, so importing it into another program -- an agent skill, a test, a notebook
 -- cannot take the host process down.
 """
+
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _version
 
@@ -58,16 +59,35 @@ except PackageNotFoundError:  # a source tree with nothing installed
 
 __all__ = [
     # errors
-    "CitationsError", "ClaimFileError", "LibraryNotFoundError", "PinBrokenError",
+    "CitationsError",
+    "ClaimFileError",
+    "LibraryNotFoundError",
+    "PinBrokenError",
     "SourceUnreadableError",
     # shapes on disk
-    "Claim", "ClaimFile", "ClaimSource", "CitedBy", "Quote", "Record",
-    "load_claim_file", "load_record",
+    "Claim",
+    "ClaimFile",
+    "ClaimSource",
+    "CitedBy",
+    "Quote",
+    "Record",
+    "load_claim_file",
+    "load_record",
     # library configuration
-    "LibraryConfig", "PaperConfig",
+    "LibraryConfig",
+    "PaperConfig",
     # checking
-    "Pin", "Report", "Result", "check_one", "check_pin", "extract", "is_paginated", "sha256",
+    "Pin",
+    "Report",
+    "Result",
+    "check_one",
+    "check_pin",
+    "extract",
+    "is_paginated",
+    "sha256",
     # identifier lookup
-    "SERVICES", "Candidate", "Service",
+    "SERVICES",
+    "Candidate",
+    "Service",
     "__version__",
 ]

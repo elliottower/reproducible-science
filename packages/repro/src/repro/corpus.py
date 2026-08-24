@@ -18,6 +18,7 @@ clones this repository can reproduce the figures rather than take them on trust.
 partial clone at the pinned commit, cached between runs, and skipped entirely under
 `REPRO_OFFLINE`. An entry with no remote is usable only where it already exists.
 """
+
 from __future__ import annotations
 
 import enum
@@ -90,8 +91,11 @@ class EntryStatus(BaseModel):
     @property
     def usable(self) -> bool:
         """Whether figures measured from this entry can be reported as current."""
-        return (self.state is EntryState.MEASURED
-                and not self.artifacts_differing and not self.artifacts_missing)
+        return (
+            self.state is EntryState.MEASURED
+            and not self.artifacts_differing
+            and not self.artifacts_missing
+        )
 
 
 DEFAULT_CACHE = pathlib.Path.home() / ".cache" / "repro" / "corpus"
@@ -105,8 +109,9 @@ def offline() -> bool:
     return bool(os.environ.get("REPRO_OFFLINE"))
 
 
-def locate(entry: CorpusEntry, base: pathlib.Path,
-           cache: pathlib.Path = DEFAULT_CACHE) -> pathlib.Path | None:
+def locate(
+    entry: CorpusEntry, base: pathlib.Path, cache: pathlib.Path = DEFAULT_CACHE
+) -> pathlib.Path | None:
     """Where the repository already is on this machine, without fetching anything.
 
     Separate from `ensure` because looking and fetching are different operations: a run with
@@ -121,8 +126,9 @@ def locate(entry: CorpusEntry, base: pathlib.Path,
     return cached if (cached / ".git").is_dir() else None
 
 
-def ensure(entry: CorpusEntry, base: pathlib.Path,
-           cache: pathlib.Path = DEFAULT_CACHE) -> pathlib.Path | None:
+def ensure(
+    entry: CorpusEntry, base: pathlib.Path, cache: pathlib.Path = DEFAULT_CACHE
+) -> pathlib.Path | None:
     """The repository on disk at the pinned commit, fetching it if it is not already here.
 
     Returns None when the entry cannot be obtained: no remote and not present locally, or
@@ -145,8 +151,10 @@ def ensure(entry: CorpusEntry, base: pathlib.Path,
     try:
         if not (dest / ".git").is_dir():
             dest.parent.mkdir(parents=True, exist_ok=True)
-            _git(["clone", "--filter=blob:none", "--no-checkout",
-                  entry.repository, str(dest)], cwd=dest.parent)
+            _git(
+                ["clone", "--filter=blob:none", "--no-checkout", entry.repository, str(dest)],
+                cwd=dest.parent,
+            )
         if entry.commit:
             # Fetch the exact commit rather than a branch: a branch moves, and the point of
             # the entry is that these figures were measured at one revision.
@@ -186,8 +194,7 @@ def _at_commit(root: pathlib.Path, commit: str) -> bool:
 
 def _git(args: list[str], cwd: pathlib.Path) -> str:
     try:
-        proc = subprocess.run(["git", *args], cwd=cwd, capture_output=True,
-                              text=True, timeout=600)
+        proc = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, timeout=600)
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as e:
         raise FetchError(str(e)) from e
     if proc.returncode != 0:
@@ -209,8 +216,9 @@ class Corpus(BaseModel):
     def _one(entry: CorpusEntry, base: pathlib.Path, fetch: bool = True) -> EntryStatus:
         root = ensure(entry, base) if fetch else locate(entry, base)
         if root is None or not root.is_dir():
-            return EntryStatus(name=entry.name, state=EntryState.ABSENT,
-                               expected_commit=entry.commit)
+            return EntryStatus(
+                name=entry.name, state=EntryState.ABSENT, expected_commit=entry.commit
+            )
         prov = of_tree(root)
         matching, differing, missing = 0, [], []
         for pin in entry.artifacts:
@@ -221,12 +229,17 @@ class Corpus(BaseModel):
                 matching += 1
             else:
                 differing.append(pin.path)
-        state = (EntryState.MEASURED if prov.commit == entry.commit
-                 else EntryState.DRIFTED)
+        state = EntryState.MEASURED if prov.commit == entry.commit else EntryState.DRIFTED
         return EntryStatus(
-            name=entry.name, state=state, expected_commit=entry.commit,
-            actual_commit=prov.commit, dirty=prov.dirty, artifacts_matching=matching,
-            artifacts_differing=tuple(differing), artifacts_missing=tuple(missing))
+            name=entry.name,
+            state=state,
+            expected_commit=entry.commit,
+            actual_commit=prov.commit,
+            dirty=prov.dirty,
+            artifacts_matching=matching,
+            artifacts_differing=tuple(differing),
+            artifacts_missing=tuple(missing),
+        )
 
 
 __all__ = [
@@ -244,6 +257,7 @@ __all__ = [
 
 
 # ------------------------------------------------------------------------------- regressions
+
 
 class FindingState(enum.StrEnum):
     """Where a recorded finding stands."""

@@ -249,8 +249,7 @@ class Backend(Protocol):
     kind: str
     version: str
 
-    def check(self, claim: Claim, evidence: Evidence,
-              path: pathlib.Path) -> Decision: ...
+    def check(self, claim: Claim, evidence: Evidence, path: pathlib.Path) -> Decision: ...
 ```
 
 Every decision names the backend and its version, because the same inputs can receive
@@ -278,8 +277,8 @@ a submission is not. Folding that judgment into the engine makes one project's s
 everyone's.
 
 ```python
-report  = verify(manifest)              # facts
-verdict = PUBLICATION.assess(report)    # judgment
+report = verify(manifest)  # facts
+verdict = PUBLICATION.assess(report)  # judgment
 ```
 
 A `Policy` maps each outcome to `error`, `warning`, or `ignore`, with a separate map applied

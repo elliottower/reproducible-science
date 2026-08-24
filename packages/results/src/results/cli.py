@@ -1,12 +1,13 @@
 """Seal a run, record what it produced, and verify the chain.
 
-    results init              start tracking results here
-    results seal <file>...    hash inputs before a run (prereg, script, data)
-    results access <note>     record a data-access event (what you looked at, when)
-    results run <file>...     record outputs after a run completes
-    results claim <text>      bind a manuscript claim to a run's output
-    results verify            check the ledger chain and every hash it names
+results init              start tracking results here
+results seal <file>...    hash inputs before a run (prereg, script, data)
+results access <note>     record a data-access event (what you looked at, when)
+results run <file>...     record outputs after a run completes
+results claim <text>      bind a manuscript claim to a run's output
+results verify            check the ledger chain and every hash it names
 """
+
 from __future__ import annotations
 
 import argparse
@@ -54,15 +55,19 @@ def record_path(p: pathlib.Path, root: pathlib.Path) -> str:
 
 def first_outcomes_seen(events: list[dict]) -> str | None:
     """Timestamp of the earliest 'outcomes seen' access event, if there is one."""
-    stamps = [e["timestamp"] for e in events
-              if e.get("event") == "access" and e.get("level") == "outcomes seen"]
+    stamps = [
+        e["timestamp"]
+        for e in events
+        if e.get("event") == "access" and e.get("level") == "outcomes seen"
+    ]
     return min(stamps) if stamps else None
 
 
 def first_run_timestamp(events: list[dict], run_id: str) -> str | None:
     """Timestamp of the earliest run recorded under this id."""
-    stamps = [e["timestamp"] for e in events
-              if e.get("event") == "run" and e.get("run_id") == run_id]
+    stamps = [
+        e["timestamp"] for e in events if e.get("event") == "run" and e.get("run_id") == run_id
+    ]
     return min(stamps) if stamps else None
 
 
@@ -92,11 +97,14 @@ def cmd_seal(a) -> int:
             return 1
         digest = ledger.sha256_of_file(p)
         sealed.append({"path": record_path(p, root), "sha256": digest})
-    ledger.append_event(lp, {
-        "event": "seal",
-        "role": a.role,
-        "files": sealed,
-    })
+    ledger.append_event(
+        lp,
+        {
+            "event": "seal",
+            "role": a.role,
+            "files": sealed,
+        },
+    )
     print(f"sealed {len(sealed)} file(s) as {a.role}")
     for s in sealed:
         print(f"  {s['sha256'][:16]}…  {s['path']}")
@@ -109,11 +117,14 @@ def cmd_access(a) -> int:
     if a.level not in ACCESS_LEVELS:
         print(f"level must be one of: {', '.join(ACCESS_LEVELS)}")
         return 1
-    ledger.append_event(lp, {
-        "event": "access",
-        "level": a.level,
-        "note": a.note,
-    })
+    ledger.append_event(
+        lp,
+        {
+            "event": "access",
+            "level": a.level,
+            "note": a.note,
+        },
+    )
     print(f"recorded: {a.level} — {a.note}")
     if a.level == "outcomes seen":
         print("\nany analysis registered after this is retrospective, not confirmatory.")
@@ -137,12 +148,15 @@ def cmd_run(a) -> int:
             return 1
         digest = ledger.sha256_of_file(p)
         outputs.append({"path": record_path(p, root), "sha256": digest})
-    ledger.append_event(lp, {
-        "event": "run",
-        "run_id": a.run_id,
-        "outputs": outputs,
-        "note": a.note or "",
-    })
+    ledger.append_event(
+        lp,
+        {
+            "event": "run",
+            "run_id": a.run_id,
+            "outputs": outputs,
+            "note": a.note or "",
+        },
+    )
     print(f"run {a.run_id}: {len(outputs)} output(s)")
     for o in outputs:
         print(f"  {o['sha256'][:16]}…  {o['path']}")
@@ -169,29 +183,33 @@ def cmd_claim(a) -> int:
                 retrospective = seen
 
     if retrospective and not a.anyway:
-        print(f"refusing: outcomes were seen at {retrospective[:19]}, and run "
-              f"'{a.run_id}' was recorded after that.")
+        print(
+            f"refusing: outcomes were seen at {retrospective[:19]}, and run "
+            f"'{a.run_id}' was recorded after that."
+        )
         print("a claim from a run that postdates seeing the outcomes is retrospective.")
         print("drop --confirmatory, or pass --anyway to record it as confirmatory")
         print("with the ordering noted permanently in the ledger.")
         return 1
 
-    ledger.append_event(lp, {
-        "event": "claim",
-        "claim": a.text,
-        "run_id": a.run_id,
-        "confirmatory": a.confirmatory,
-        "after_outcomes_seen": bool(retrospective),
-        "location": a.location or "",
-    })
+    ledger.append_event(
+        lp,
+        {
+            "event": "claim",
+            "claim": a.text,
+            "run_id": a.run_id,
+            "confirmatory": a.confirmatory,
+            "after_outcomes_seen": bool(retrospective),
+            "location": a.location or "",
+        },
+    )
     status = "confirmatory" if a.confirmatory else "exploratory"
     print(f"claim ({status}): {a.text[:72]}")
     print(f"  backed by run: {a.run_id}")
     if a.location:
         print(f"  appears in: {a.location}")
     if retrospective:
-        print(f"  recorded after outcomes were seen at {retrospective[:19]}; "
-              f"verify will report it")
+        print(f"  recorded after outcomes were seen at {retrospective[:19]}; verify will report it")
     return 0
 
 
@@ -205,8 +223,11 @@ def cmd_reanchor(a) -> int:
     root = require_root()
     lp = ledger_path(root)
     status, _ = ledger.verify(lp)
-    if status in (ledger.ChainStatus.EDITED, ledger.ChainStatus.CORRUPT,
-                  ledger.ChainStatus.REORDERED):
+    if status in (
+        ledger.ChainStatus.EDITED,
+        ledger.ChainStatus.CORRUPT,
+        ledger.ChainStatus.REORDERED,
+    ):
         print(f"refusing to anchor a chain reported as {status.value}.")
         print("re-anchoring would record the damage as authoritative.")
         return 1
@@ -290,8 +311,9 @@ def cmd_verify(a) -> int:
     contested = []
     if claims:
         for c in claims:
-            run_events = [e for e in events
-                          if e.get("event") == "run" and e.get("run_id") == c.get("run_id")]
+            run_events = [
+                e for e in events if e.get("event") == "run" and e.get("run_id") == c.get("run_id")
+            ]
             if not run_events:
                 unlinked.append(c)
         if unlinked:
@@ -303,11 +325,17 @@ def cmd_verify(a) -> int:
         # ledger written by an older version, or edited by hand, is still caught.
         seen = first_outcomes_seen(events)
         if seen is not None:
-            contested = [c for c in claims if c.get("confirmatory")
-                         and (first_run_timestamp(events, c.get("run_id")) or "") > seen]
+            contested = [
+                c
+                for c in claims
+                if c.get("confirmatory")
+                and (first_run_timestamp(events, c.get("run_id")) or "") > seen
+            ]
         if contested:
-            print(f"\n{len(contested)} confirmatory claim(s) rest on runs recorded "
-                  f"after outcomes were seen:")
+            print(
+                f"\n{len(contested)} confirmatory claim(s) rest on runs recorded "
+                f"after outcomes were seen:"
+            )
             for c in contested:
                 print(f"  {c['claim'][:60]}  (run: {c.get('run_id')})")
             print("  these are retrospective; describe them as such in the manuscript.")
@@ -342,14 +370,14 @@ def main() -> int:
 
     s = sub.add_parser("seal", help="hash inputs before a run")
     s.add_argument("files", nargs="+")
-    s.add_argument("--role", default="input",
-                   help="what these files are: input, prereg, script, data")
+    s.add_argument(
+        "--role", default="input", help="what these files are: input, prereg, script, data"
+    )
     s.set_defaults(fn=cmd_seal)
 
     ac = sub.add_parser("access", help="record a data-access event")
     ac.add_argument("note", help="what was accessed and why")
-    ac.add_argument("--level", default="metadata only",
-                    help=f"one of: {', '.join(ACCESS_LEVELS)}")
+    ac.add_argument("--level", default="metadata only", help=f"one of: {', '.join(ACCESS_LEVELS)}")
     ac.set_defaults(fn=cmd_access)
 
     r = sub.add_parser("run", help="record outputs after a run")
@@ -361,21 +389,27 @@ def main() -> int:
     cl = sub.add_parser("claim", help="bind a manuscript claim to a run")
     cl.add_argument("text", help="the claim, as it appears in the manuscript")
     cl.add_argument("--run-id", required=True, help="which run backs this claim")
-    cl.add_argument("--confirmatory", action="store_true",
-                    help="mark as confirmatory (default: exploratory)")
-    cl.add_argument("--anyway", action="store_true",
-                    help="record a confirmatory claim whose run postdates seeing the "
-                         "outcomes; the ledger and verify both report the ordering")
+    cl.add_argument(
+        "--confirmatory", action="store_true", help="mark as confirmatory (default: exploratory)"
+    )
+    cl.add_argument(
+        "--anyway",
+        action="store_true",
+        help="record a confirmatory claim whose run postdates seeing the "
+        "outcomes; the ledger and verify both report the ordering",
+    )
     cl.add_argument("--location", help="where in the manuscript: Table 2, Section 4.1, etc.")
     cl.set_defaults(fn=cmd_claim)
 
     v = sub.add_parser("verify", help="check the ledger and every hash it names")
-    v.add_argument("--files", action="store_true",
-                   help="also check that sealed/output files still match their hashes")
+    v.add_argument(
+        "--files",
+        action="store_true",
+        help="also check that sealed/output files still match their hashes",
+    )
     v.set_defaults(fn=cmd_verify)
 
-    ra = sub.add_parser("reanchor",
-                        help="record the ledger's current length as authoritative")
+    ra = sub.add_parser("reanchor", help="record the ledger's current length as authoritative")
     ra.set_defaults(fn=cmd_reanchor)
 
     a = ap.parse_args()

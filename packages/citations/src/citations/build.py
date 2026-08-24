@@ -17,6 +17,7 @@ two different keys across two of these repos, so the key cannot identify anythin
     python build.py --scan       # report what each paper contributes, write nothing
     python build.py              # write records/
 """
+
 from __future__ import annotations
 
 import argparse
@@ -37,13 +38,34 @@ FIELD = re.compile(r"(\w+)\s*=\s*[{\"](.*?)[}\"]\s*,?\s*$", re.S)
 # LaTeX accents resolved to the character rather than deleted. Stripping backslashes turns
 # Kram\'{a}r into Kram'ar and J\'anos into J'anos, which is how a bibliography ends up
 # misspelling people's names.
-ACCENT = {"'": "\u0301", "`": "\u0300", '"': "\u0308", "^": "\u0302", "~": "\u0303",
-          "=": "\u0304", ".": "\u0307", "u": "\u0306", "v": "\u030c", "H": "\u030b",
-          "c": "\u0327", "k": "\u0328", "r": "\u030a"}
-LIGATURE = [(r"\\ss\b", "\u00df"), (r"\\o\b", "\u00f8"), (r"\\O\b", "\u00d8"),
-            (r"\\ae\b", "\u00e6"), (r"\\AE\b", "\u00c6"), (r"\\aa\b", "\u00e5"),
-            (r"\\AA\b", "\u00c5"), (r"\\l\b", "\u0142"), (r"\\L\b", "\u0141"),
-            (r"\\i\b", "i"), (r"\\j\b", "j")]
+ACCENT = {
+    "'": "\u0301",
+    "`": "\u0300",
+    '"': "\u0308",
+    "^": "\u0302",
+    "~": "\u0303",
+    "=": "\u0304",
+    ".": "\u0307",
+    "u": "\u0306",
+    "v": "\u030c",
+    "H": "\u030b",
+    "c": "\u0327",
+    "k": "\u0328",
+    "r": "\u030a",
+}
+LIGATURE = [
+    (r"\\ss\b", "\u00df"),
+    (r"\\o\b", "\u00f8"),
+    (r"\\O\b", "\u00d8"),
+    (r"\\ae\b", "\u00e6"),
+    (r"\\AE\b", "\u00c6"),
+    (r"\\aa\b", "\u00e5"),
+    (r"\\AA\b", "\u00c5"),
+    (r"\\l\b", "\u0142"),
+    (r"\\L\b", "\u0141"),
+    (r"\\i\b", "i"),
+    (r"\\j\b", "j"),
+]
 
 
 def clean(s: str) -> str:
@@ -64,7 +86,10 @@ def clean(s: str) -> str:
     return " ".join(s.split())
 
 
-CORPORATE = re.compile(r"\b(Administration|Task Force|Committee|Council|Organization|Organisation|Association|Institute|Society|Collaboration|Consortium|Agency|Commission|Academy|Department|Bureau|Office of)\b", re.I)
+CORPORATE = re.compile(
+    r"\b(Administration|Task Force|Committee|Council|Organization|Organisation|Association|Institute|Society|Collaboration|Consortium|Agency|Commission|Academy|Department|Bureau|Office of)\b",
+    re.I,
+)
 
 
 def split_authors(raw: str) -> tuple[list[str], bool]:
@@ -100,15 +125,17 @@ def slug_for(rec: dict) -> str:
         return "doi-" + re.sub(r"[^a-z0-9]+", "-", rec["doi"].lower()).strip("-")
     if rec.get("arxiv"):
         return "arxiv-" + rec["arxiv"].replace(".", "-")
-    base = re.sub(r"[^a-z0-9]+", "", (rec.get("title", "") + (rec.get("authors") or [""])[0]).lower())
+    base = re.sub(
+        r"[^a-z0-9]+", "", (rec.get("title", "") + (rec.get("authors") or [""])[0]).lower()
+    )
     return "t-" + hashlib.sha256(base.encode()).hexdigest()[:16]
 
 
 # 0704.0001 is the modern form; cs/0501001 and math.GT/0309136 are the pre-2007 one.
 ARXIV_ID = r"(\d{4}\.\d{4,5}|[a-z-]+(?:\.[a-z]{2})?/\d{7})"
 ARXIV_PATTERNS = (
-    rf"arxiv\.org/(?:abs|pdf)/{ARXIV_ID}",   # https://arxiv.org/abs/2211.00593
-    rf"arxiv[:\s]+{ARXIV_ID}",               # arXiv:2211.00593, "arXiv preprint arXiv:..."
+    rf"arxiv\.org/(?:abs|pdf)/{ARXIV_ID}",  # https://arxiv.org/abs/2211.00593
+    rf"arxiv[:\s]+{ARXIV_ID}",  # arXiv:2211.00593, "arXiv preprint arXiv:..."
 )
 
 
@@ -132,8 +159,9 @@ def arxiv_from_fields(f: dict) -> str:
     ep = (f.get("eprint") or "").strip()
     if re.fullmatch(ARXIV_ID, ep, re.I):
         return ep.lower()
-    return arxiv_of(ep, f.get("note", ""), f.get("url", ""),
-                    f.get("journal", ""), f.get("howpublished", ""))
+    return arxiv_of(
+        ep, f.get("note", ""), f.get("url", ""), f.get("journal", ""), f.get("howpublished", "")
+    )
 
 
 def parse_bib(path: pathlib.Path) -> dict[str, dict]:
@@ -147,10 +175,13 @@ def parse_bib(path: pathlib.Path) -> dict[str, dict]:
                 f[fm.group(1).lower()] = clean(fm.group(2))
         au, truncated = split_authors(f.get("author", ""))
         out[key] = {
-            "title": f.get("title", ""), "authors": au, "et_al": truncated,
+            "title": f.get("title", ""),
+            "authors": au,
+            "et_al": truncated,
             "year": f.get("year", ""),
             "venue": f.get("booktitle") or f.get("journal") or f.get("howpublished", ""),
-            "doi": f.get("doi", ""), "url": f.get("url", ""),
+            "doi": f.get("doi", ""),
+            "url": f.get("url", ""),
             "arxiv": arxiv_from_fields(f),
         }
     return out
@@ -166,7 +197,7 @@ def parse_bibitem(path: pathlib.Path) -> dict[str, dict]:
         if not km:
             continue
         key = km.group(1).strip()
-        rest = ch[km.end():]
+        rest = ch[km.end() :]
         blocks = [clean(b) for b in re.split(r"\\newblock", rest)]
         authors_raw = blocks[0] if blocks else ""
         title = blocks[1] if len(blocks) > 1 else ""
@@ -186,16 +217,21 @@ def parse_bibitem(path: pathlib.Path) -> dict[str, dict]:
         au = [x for x in au if x.lower().rstrip(".") != "others"]
         url = re.search(r"\\url\{([^}]*)\}", ch)
         out[key] = {
-            "title": title.rstrip("."), "authors": au, "et_al": truncated,
+            "title": title.rstrip("."),
+            "authors": au,
+            "et_al": truncated,
             "year": ym.group(0) if ym else "",
-            "venue": venue, "doi": "", "url": url.group(1) if url else "",
+            "venue": venue,
+            "doi": "",
+            "url": url.group(1) if url else "",
             "arxiv": arxiv_of(venue, ch),
         }
     return out
 
 
-def contributions(cfg: config.LibraryConfig,
-                  library: pathlib.Path) -> tuple[dict[str, dict[str, dict]], list[str]]:
+def contributions(
+    cfg: config.LibraryConfig, library: pathlib.Path
+) -> tuple[dict[str, dict[str, dict]], list[str]]:
     """What each paper contributes, and which configured paths were not there.
 
     A missing bibliography is returned rather than skipped. A paper contributing zero entries
@@ -214,8 +250,7 @@ def contributions(cfg: config.LibraryConfig,
         else:
             got[name] = {}
             named = bib or bibitem
-            missing.append(f"{name}: {named}" if named
-                           else f"{name}: no bib or bibitem configured")
+            missing.append(f"{name}: {named}" if named else f"{name}: no bib or bibitem configured")
     return got, missing
 
 
@@ -233,7 +268,7 @@ def enrich_from_claims(entries: dict[str, dict], claims_dir: pathlib.Path) -> in
         try:
             cf = load_claim_file(p)
         except ClaimFileError:
-            continue                      # reported by `verify`; not this command's business
+            continue  # reported by `verify`; not this command's business
         e = entries.get(cf.source.citation)
         if not e:
             continue
@@ -372,13 +407,23 @@ def main(argv: list[str] | None = None) -> int:
                     if extra.get(k) and not e.get(k):
                         e[k] = extra[k]
                 s = slug_for(e)
-            rec = merged.setdefault(s, {
-                "slug": s, "title": e["title"], "authors": e["authors"], "year": e["year"],
-                "venue": e["venue"], "doi": e.get("doi", ""), "arxiv": e.get("arxiv", ""),
-                "et_al": e.get("et_al", False),
-                "url": e.get("url", ""), "sha256": e.get("sha256", ""),
-                "local": e.get("local", ""), "cited_by": {},
-            })
+            rec = merged.setdefault(
+                s,
+                {
+                    "slug": s,
+                    "title": e["title"],
+                    "authors": e["authors"],
+                    "year": e["year"],
+                    "venue": e["venue"],
+                    "doi": e.get("doi", ""),
+                    "arxiv": e.get("arxiv", ""),
+                    "et_al": e.get("et_al", False),
+                    "url": e.get("url", ""),
+                    "sha256": e.get("sha256", ""),
+                    "local": e.get("local", ""),
+                    "cited_by": {},
+                },
+            )
             for k in ("doi", "arxiv", "url", "sha256", "venue", "local"):
                 if e.get(k) and not rec.get(k):
                     rec[k] = e[k]
@@ -388,8 +433,9 @@ def main(argv: list[str] | None = None) -> int:
 
     kept = carry_forward(merged)
     shared = {s: r for s, r in merged.items() if len(r["cited_by"]) > 1}
-    divergent = {s: r for s, r in shared.items()
-                 if len({c["key"] for c in r["cited_by"].values()}) > 1}
+    divergent = {
+        s: r for s, r in shared.items() if len({c["key"] for c in r["cited_by"].values()}) > 1
+    }
     print(f"\n  distinct works            {len(merged):>4}")
     print(f"  cited by 2+ papers        {len(shared):>4}")
     print(f"  ...under divergent keys   {len(divergent):>4}")
@@ -411,9 +457,13 @@ def main(argv: list[str] | None = None) -> int:
             print(f"    {slug:<44}{field}={val}")
         print(f"  {len(losing)} in total. Records are generated, so these are dropped on write.")
         print(f"  Put them in the citing .bib, or in {enrichment.name} keyed by slug to fill the")
-        print("  field -- note that enrichment cannot re-slug a record, only a .bib identifier can.")
+        print(
+            "  field -- note that enrichment cannot re-slug a record, only a .bib identifier can."
+        )
     if stale:
-        print(f"\n  {len(stale)} record file(s) no longer produced by any bibliography (superseded);")
+        print(
+            f"\n  {len(stale)} record file(s) no longer produced by any bibliography (superseded);"
+        )
         print("  they remain on disk and are not deleted.")
 
     if not a.scan:
@@ -421,7 +471,8 @@ def main(argv: list[str] | None = None) -> int:
         records.mkdir(parents=True, exist_ok=True)
         for s, r in merged.items():
             (records / f"{s}.yaml").write_text(
-                yaml.safe_dump(r, sort_keys=False, allow_unicode=True, width=100))
+                yaml.safe_dump(r, sort_keys=False, allow_unicode=True, width=100)
+            )
         print(f"\n  wrote {len(merged)} records")
     return 0
 
