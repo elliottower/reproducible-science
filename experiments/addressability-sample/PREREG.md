@@ -7,7 +7,7 @@ question that does not apply is answered **N/A** with the reason, never deleted.
 
 Frozen alongside this file: `CODEBOOK.md` (`f2670fb6bdff8ca2`) for the operational rules,
 `frame.json` (`5ee293dbc5ca1463`) for the drawn sample, and `docs/SPEC.md` §3.5
-(`5cce41d2f71e882a`) for the locator grammar. Digests are sha256, first 16 hex.
+(`29041ef972a62650`) for the locator grammar. Digests are sha256, first 16 hex.
 
 ## Research questions or hypotheses
 
