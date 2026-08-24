@@ -431,6 +431,13 @@ def _resolve_array(locator: ArrayLocator, path: pathlib.Path) -> Found:
     value = array[locator.index]
     if value.ndim:
         return _no(Resolution.NOT_SCALAR, f"index resolves to a {value.ndim}-d slice")
+    if value.dtype.kind == "V":
+        # `ndim` does not settle this. The rank guard above forces a full index, so every
+        # element is 0-d -- including one of a structured or subarray dtype, which indexes to
+        # a `numpy.void` holding several fields. That stringified as `(0.91, 0.02)` and was
+        # returned as one resolved value, against the invariant this adapter exists to hold.
+        held = ", ".join(value.dtype.names) if value.dtype.names else f"{value.itemsize} bytes"
+        return _no(Resolution.NOT_SCALAR, f"index resolves to a record holding {held}")
     return _ok(str(value), str(array.dtype), f"{locator.array or path.stem}{list(locator.index)}")
 
 
