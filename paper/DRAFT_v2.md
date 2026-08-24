@@ -146,10 +146,12 @@ tool outside this contract.
 
 ### 6.1 Conformance
 
-Eighteen fixtures: one per row of the outcome table, plus escaping, undeclared-artifact,
-unpinned, and the five table-addressing cases, each carrying canonical expected output.
-Assertions over them include
-including that an absent pointer yields `extraction=absent` and never `comparison=mismatch`,
+Nineteen fixtures: one per row of the outcome table, plus escaping, undeclared-artifact,
+unpinned, broken-pin, and the five table-addressing cases. Each records its canonical
+expected output as an (outcome, reason, artifact validity) triple, so a case cannot pass by
+reaching the right verdict for the wrong cause.
+Assertions over them include that an absent pointer yields `extraction=absent` and never
+`comparison=mismatch`,
 and that an injected `TypeError` yields `error` and never `unchecked`. Conformance is
 executable rather than interpretive.
 

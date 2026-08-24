@@ -52,7 +52,7 @@ CLAIMS = [
         "/resolver_identifiers/first_author_absent",
     ),
     ("resolver-rate", "8.3%", "8.3", "/resolver_identifiers/absent_rate"),
-    ("conformance-fixtures", "Eighteen fixtures", "18", "/conformance/fixtures"),
+    ("conformance-fixtures", "Nineteen fixtures", "19", "/conformance/fixtures"),
     (
         "atlas-assertions",
         "atlas, Table 2 and text | 39",
