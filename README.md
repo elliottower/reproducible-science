@@ -41,9 +41,9 @@ Each package has its own workflow under `.github/workflows/`, which runs the who
 tests before building that one distribution.
 
 PyPI trusted publishing is bound to a repository *and* a workflow filename, so a package
-released from here for the first time needs its publisher reconfigured on PyPI — repository
-`elliottower/reproducible-science`, workflow `publish-<package>.yml` — before the tag is
-pushed. An upload from an unrecognized workflow is rejected, and a version number is never
+released from here for the first time needs its publisher reconfigured on PyPI — repository `elliottower/reproducible-science`, workflow `publish-<package>.yml`,
+environment `release` — before the tag is pushed. The workflow filename is what PyPI matches,
+not the distribution name, so `results-cli` is published by `publish-results.yml`. An upload from an unrecognized workflow is rejected, and a version number is never
 reusable once taken.
 
 ## Layout
