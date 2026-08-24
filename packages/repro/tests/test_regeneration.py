@@ -106,8 +106,26 @@ def test_a_command_producing_something_else_has_diverged(tmp_path):
     assert state(manifest).reason is RegenerationReason.INPUT_CHANGED
 
 
-def test_an_output_that_no_longer_matches_is_reported(tmp_path):
-    """The pinned output digest is stale while the code and inputs are unchanged."""
+NONDETERMINISTIC = """
+import json, pathlib, random
+data = json.loads(pathlib.Path("inputs.json").read_text())
+pathlib.Path("figures.json").write_text(
+    json.dumps({"total": sum(data["xs"]), "nonce": random.random()}, indent=2))
+"""
+
+
+def test_an_output_the_command_no_longer_produces_has_diverged(tmp_path):
+    """Inputs match their digests and the record agrees with the artifact; the command simply
+    does not produce that file any more. This is the case the check exists for."""
+    result = state(project(tmp_path, script=NONDETERMINISTIC))
+    assert result.state is Regeneration.DIVERGED
+    assert result.reason is RegenerationReason.OUTPUT_DIFFERS
+    assert result.actual is not None
+
+
+def test_a_record_expecting_something_other_than_the_artifact_is_refused(tmp_path):
+    """A record could otherwise declare its own answer: the command writes a number, the
+    record expects that number, and the artifact the claims were read from says another."""
     manifest = project(tmp_path)
     stale = manifest.model_copy(
         update={
@@ -123,9 +141,26 @@ def test_an_output_that_no_longer_matches_is_reported(tmp_path):
         }
     )
     result = state(stale)
-    assert result.state is Regeneration.DIVERGED
-    assert result.reason is RegenerationReason.OUTPUT_DIFFERS
-    assert result.actual is not None
+    assert result.state is Regeneration.UNCHECKED
+    assert result.reason is RegenerationReason.OUTPUT_NOT_THE_ARTIFACT
+
+
+def test_an_output_copied_in_as_its_own_input_is_refused(tmp_path):
+    """Otherwise `true` reproduces it: the file is already at the expected path."""
+    manifest = project(tmp_path)
+    record = manifest.regenerations[0]
+    circular = manifest.model_copy(
+        update={
+            "regenerations": (
+                record.model_copy(
+                    update={"command": ("true",), "inputs": (*record.inputs, record.output)}
+                ),
+            )
+        }
+    )
+    result = state(circular)
+    assert result.state is Regeneration.UNCHECKED
+    assert result.reason is RegenerationReason.OUTPUT_IS_ALSO_AN_INPUT
 
 
 # -- the sandbox is the point ----------------------------------------------------------------
@@ -170,21 +205,8 @@ def test_a_project_can_require_it(tmp_path):
 
 
 def test_divergence_fails_the_policy(tmp_path):
-    manifest = project(tmp_path)
-    stale = manifest.model_copy(
-        update={
-            "regenerations": (
-                manifest.regenerations[0].model_copy(
-                    update={
-                        "output": RunOutput(
-                            artifact="figures", digest=Digest(algorithm="sha256", value="0" * 64)
-                        )
-                    }
-                ),
-            )
-        }
-    )
-    assessment = PUBLICATION.assess(verify(stale, regenerate=True))
+    manifest = project(tmp_path, script=NONDETERMINISTIC)
+    assessment = PUBLICATION.assess(verify(manifest, regenerate=True))
     assert assessment.passed is False
     assert any(v.rule == "artifact.regeneration" for v in assessment.errors)
 
@@ -292,3 +314,85 @@ def test_a_missing_runner_is_unchecked(tmp_path):
 def test_an_empty_command_is_refused():
     with pytest.raises(ValueError, match="command is empty"):
         RegenerationRecord(id="r", command=(), output=RunOutput(artifact="a"))
+
+
+# -- the sandbox has to actually contain things ---------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "relative",
+    [
+        "figures.json",
+        "../victim/planted.txt",
+        "../../../etc/passwd",
+    ],
+)
+def test_every_declared_path_lands_inside_the_sandbox(tmp_path, relative):
+    """`Path.relative_to` is lexical, so an absolute artifact path containing `..` produced a
+    relative path that climbed back out, and `sandbox / that` was not inside the sandbox at
+    all -- on the write side before the command even ran, and on the read side by resolving
+    the output to the real pre-existing artifact."""
+    from repro.regenerate import _inside
+
+    root = tmp_path / "project"
+    root.mkdir()
+    sandbox = tmp_path / "sandbox"
+    sandbox.mkdir()
+    target = _inside(sandbox, root / relative, root)
+    assert target is not None
+    assert str(target).startswith(str(sandbox.resolve()) + "/"), (
+        f"{relative} escaped the sandbox to {target}"
+    )
+
+
+def test_two_inputs_sharing_a_basename_do_not_overwrite_each_other(tmp_path):
+    """The second silently replaced the first, and the command then read a file that was never
+    digest-matched to the input it stood for."""
+    import sys
+
+    root = tmp_path / "project"
+    root.mkdir()
+    (root / "make.py").write_text("import pathlib; pathlib.Path('out.json').write_text('{}')\n")
+    (root / "out.json").write_text("{}")
+    manifest_path = root / "repro.yaml"
+    manifest_path.write_text("")
+
+    one = tmp_path / "a" / "shared.txt"
+    two = tmp_path / "b" / "shared.txt"
+    for path, body in ((one, "first"), (two, "second")):
+        path.parent.mkdir(parents=True)
+        path.write_text(body)
+
+    manifest = Manifest(
+        project="p",
+        path=manifest_path,
+        artifacts=(
+            ArtifactRef(id="make", path=root / "make.py", digest=Digest.of_file(root / "make.py")),
+            ArtifactRef(id="out", path=root / "out.json", digest=Digest.of_file(root / "out.json")),
+            ArtifactRef(id="one", path=one, digest=Digest.of_file(one)),
+            ArtifactRef(id="two", path=two, digest=Digest.of_file(two)),
+        ),
+        regenerations=(
+            RegenerationRecord(
+                id="r",
+                command=(sys.executable, "make.py"),
+                inputs=(
+                    RunOutput(artifact="make", digest=Digest.of_file(root / "make.py")),
+                    RunOutput(artifact="one", digest=Digest.of_file(one)),
+                    RunOutput(artifact="two", digest=Digest.of_file(two)),
+                ),
+                output=RunOutput(artifact="out", digest=Digest.of_file(root / "out.json")),
+                timeout_seconds=30,
+            ),
+        ),
+        claims=(
+            Claim(
+                id="c",
+                text="t",
+                evidence=(MetricEvidence(artifact="out", name="m", reported="1", pointer="/x"),),
+            ),
+        ),
+    )
+    result = verify(manifest, regenerate=True).regenerations[0]
+    assert result.state is Regeneration.UNCHECKED
+    assert "collide" in result.detail
