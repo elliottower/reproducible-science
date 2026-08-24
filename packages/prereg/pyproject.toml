@@ -10,10 +10,9 @@ readme = "README.md"
 keywords = [ "open science", "osf", "preregistration", "reproducibility" ]
 license = { text = "MIT" }
 authors = [ { name = "Elliot Tower", email = "elliot@elliottower.ai" } ]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 classifiers = [
   "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",

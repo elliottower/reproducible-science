@@ -92,7 +92,7 @@ def sha256_of_str(s: str) -> str:
 
 
 def now_iso() -> str:
-    return datetime.datetime.now(datetime.timezone.utc).isoformat()
+    return datetime.datetime.now(datetime.UTC).isoformat()
 
 
 def canonical(event: dict) -> str:
