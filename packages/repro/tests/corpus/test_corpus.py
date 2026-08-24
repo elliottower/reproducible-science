@@ -95,13 +95,25 @@ def test_recorded_finding_still_reproduces(finding):
 
 
 def test_every_entry_that_cannot_be_reproduced_elsewhere_is_named():
-    # An entry with no remote reproduces only where the repository already exists. That is a
-    # legitimate state for a project not yet published, and it is reported rather than left to
-    # be discovered by someone whose run silently skips it.
+    """An entry with no remote reproduces only where the repository already exists.
+
+    That is a legitimate state for a project not yet published, and it has to be *named*
+    rather than left for someone whose run silently skips it to discover. The earlier version
+    of this test skipped when there was something to report and otherwise did nothing, so its
+    body contained no assertion on any path.
+    """
     corpus = _load("regressions.yaml", RegressionCorpus)
-    without = corpus.without_remote
+    without = set(corpus.without_remote)
+    assert without <= {f.name for f in corpus.findings}, (
+        "without_remote names an entry the corpus does not hold"
+    )
+    for finding in corpus.findings:
+        assert (finding.name in without) is finding.needs_remote, (
+            f"{finding.name}: without_remote disagrees with the entry's own repository field"
+        )
+        assert bool(finding.repository) is not finding.needs_remote
     if without:
-        pytest.skip(f"no public remote recorded for: {', '.join(without)}")
+        print(f"no public remote recorded for: {', '.join(sorted(without))}")
 
 
 def test_a_dirty_working_tree_is_not_the_pinned_revision(tmp_path):
