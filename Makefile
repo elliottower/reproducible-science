@@ -14,7 +14,7 @@
 PY := uv run
 PKG_SRC := packages/repro/src packages/citations/src packages/results/src packages/prereg/src
 
-.PHONY: help format check test qa qa-all release-check types drift deps wheels audit hooks
+.PHONY: help format check test qa qa-all release-check types drift deps wheels imports notes check-lowest hooks
 
 help:
 	@grep -E '^#   make' Makefile | sed 's/^#   //'
@@ -38,7 +38,7 @@ test:
 # ---- rung 4: a pull request --------------------------------------------------------------
 # `types` is advisory here, not blocking: there are 32 outstanding type errors, and adopting
 # a checker on an existing codebase is a ratchet. Drop the `-` once the count reaches zero.
-qa: check test drift deps wheels
+qa: check test drift deps imports wheels
 	-$(MAKE) types
 
 types:
@@ -50,17 +50,28 @@ drift:
 deps:
 	$(PY) python scripts/check_deps.py
 
+imports:
+	$(PY) lint-imports
+
+notes:
+	$(PY) towncrier check --compare-with origin/main || true
+
 wheels:
 	$(PY) python scripts/check_wheels.py
 
 # ---- rung 5: the deep pass ---------------------------------------------------------------
 # Advisory tools are marked with `-` so one noisy report does not stop the rest.
-qa-all: qa
+qa-all: qa check-lowest
 	$(PY) pytest -q -m corpus
 	$(PY) vulture
 	-$(PY) complexipy packages --max-complexity 25
 	-$(PY) pip-audit --skip-editable
 	-$(PY) python scripts/check_drift.py
+
+# Resolve every declared dependency at its floor. The workspace always installs the newest
+# thing available, so a floor that is too low is invisible until a user hits it.
+check-lowest:
+	uv run --resolution lowest-direct --all-packages --group dev pytest -q
 
 # ---- rung 6: a release -------------------------------------------------------------------
 release-check: qa

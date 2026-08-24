@@ -1,0 +1,40 @@
+name: Bug
+description: Something behaves differently from what it says it does
+labels: [bug]
+body:
+  - type: dropdown
+    id: package
+    attributes:
+      label: Package
+      options: [repro, citations, results, prereg, "the workspace itself", "not sure"]
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected, and what happened
+      description: >
+        For a verification result, the outcome matters more than the message: say whether you
+        expected verified, mismatch, not_found or unchecked, and which you got.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: >
+        A manifest and an artifact are usually enough. Reduce them if you can — a fixture that
+        fails is more useful than a repository that does.
+      render: shell
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: "`repro --version`, or the commit"
+    validations:
+      required: true

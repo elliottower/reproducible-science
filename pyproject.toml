@@ -1,11 +1,12 @@
-[build-system]
-build-backend = "hatchling.build"
-requires = [ "hatchling" ]
-
 # Workspace root. Holds no package: the distributions live under `packages/`, each with its
 # own pyproject, tests and public API, so `pip install citations` never drags in a
 # preregistration tool. What is centralized here is the lockfile, the development
 # environment, and the tooling configuration.
+
+[build-system]
+build-backend = "hatchling.build"
+requires = [ "hatchling" ]
+
 [project]
 name = "repro-science"
 version = "0.1.0"
@@ -52,6 +53,7 @@ audit = [
   "hypothesis>=6.100",
   "import-linter>=2.13",
   "pip-audit>=2.7",
+  "towncrier>=25.8",
   "twine>=5",
   "vulture>=2.14",
 ]
@@ -81,27 +83,13 @@ lint.ignore = [
   "RUF002",
   "RUF003",
 ]
-lint.per-file-ignores."packages/*/tests/*" = [ "B011" ]  # bare assert False is fine in a test
+lint.per-file-ignores."packages/*/tests/*" = [ "B011" ] # bare assert False is fine in a test
 
 [tool.codespell]
 # `unparseable` is the spelling used throughout, and the rest are author surnames in the
 # sampling frame. Listed rather than skipping whole files, which would hide real typos.
 ignore-words-list = "unparseable,ue,copie,buis,smae,nd,ist,fo"
 skip = "uv.lock,experiments/*/frame.json,paper/prior_art/*,.git"
-
-[tool.vulture]
-paths = [ "packages", "scripts" ]
-min_confidence = 100
-
-[tool.pyrefly]
-# Invoked with explicit paths (see the Makefile): the default excludes site-packages, and an
-# editable workspace install maps these same directories into it.
-project_includes = [
-  "packages/citations/src",
-  "packages/prereg/src",
-  "packages/repro/src",
-  "packages/results/src",
-]
 
 [tool.pytest]
 ini_options.testpaths = [ "packages" ]
@@ -114,8 +102,49 @@ ini_options.markers = [
   "corpus: reads repositories outside this one, and may fetch them",
 ]
 
+[tool.coverage]
+run.source = [ "packages/citations/src", "packages/prereg/src", "packages/repro/src", "packages/results/src" ]
+run.omit = [ "*/tests/*" ]
+run.branch = true
+report.exclude_also = [
+  "\\.\\.\\.",
+  "if TYPE_CHECKING:",
+  "raise NotImplementedError",
+]
+
+# Release notes are per package, because the packages release separately. A fragment is named
+# for its pull request and its kind: changes/repro/128.added.md
+
+[tool.towncrier]
+directory = "changes"
+filename = "CHANGELOG.md"
+title_format = "## {version} — {project_date}"
+issue_format = "[#{issue}](https://github.com/elliottower/reproducible-science/pull/{issue})"
+type = [
+  { directory = "added", name = "Added", showcontent = true },
+  { directory = "changed", name = "Changed", showcontent = true },
+  { directory = "fixed", name = "Fixed", showcontent = true },
+  { directory = "removed", name = "Removed", showcontent = true },
+  { directory = "deprecated", name = "Deprecated", showcontent = true },
+]
+
 # Architecture, enforced. The rule the monorepo exists to keep is that the three tools stay
 # usable without the verifier: `pip install citations` must not drag in an evidence engine.
+
+[tool.pyrefly]
+# Invoked with explicit paths (see the Makefile): the default excludes site-packages, and an
+# editable workspace install maps these same directories into it.
+project_includes = [
+  "packages/citations/src",
+  "packages/prereg/src",
+  "packages/repro/src",
+  "packages/results/src",
+]
+
+[tool.vulture]
+paths = [ "packages", "scripts" ]
+min_confidence = 100
+
 [tool.importlinter]
 root_packages = [ "repro", "citations", "results", "prereg" ]
 include_external_packages = false
