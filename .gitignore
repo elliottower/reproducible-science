@@ -12,3 +12,9 @@ dist/
 # quotations against them; not redistributable, and this repository is public.
 paper/prior_art/reference/
 paper/prior_art/.audit-cache/
+
+# coverage byproducts
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
