@@ -35,6 +35,7 @@ _KIND = {
 }
 
 _LEVEL = {Severity.ERROR: "error", Severity.WARNING: "warning", Severity.IGNORE: "note"}
+_SEVERITY_ORDER = {"note": 0, "warning": 1, "error": 2}
 
 
 def _rules() -> list[dict[str, Any]]:
@@ -104,7 +105,13 @@ def to_sarif(
     by_subject: dict[str, str] = {}
     if assessment is not None:
         for violation in assessment.violations:
-            by_subject[violation.subject] = _LEVEL[violation.severity]
+            # Last-write-wins on a key two decisions can share: `claim_id/kind` is not
+            # unique across a claim's evidence, so an error-level mismatch rendered at the
+            # warning level of a `not_found` beside it. Keep the gravest.
+            existing = by_subject.get(violation.subject)
+            level = _LEVEL[violation.severity]
+            if existing is None or _SEVERITY_ORDER[level] > _SEVERITY_ORDER[existing]:
+                by_subject[violation.subject] = level
 
     artifacts = [
         {

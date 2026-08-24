@@ -337,3 +337,63 @@ def test_a_bare_artifact_id_in_outputs_parses_and_is_reported_unlinked():
     record = RunRecord(id="r", outputs=("results",))
     assert record.outputs[0].artifact == "results"
     assert record.outputs[0].digest is None
+
+
+# -- every artifact a claim rests on needs its own run --------------------------------------
+
+
+def test_a_run_for_one_artifact_does_not_order_a_claim_that_cites_two(tmp_path):
+    """Taking the runs producing *any* named artifact meant a run record for one incidental
+    file turned an unregistered result into an ordered one, while the artifact carrying the
+    number had no run at all."""
+    results = tmp_path / "results.json"
+    results.write_text(RESULTS)
+    extra = tmp_path / "extra.json"
+    extra.write_text(json.dumps({"y": 1.0}))
+    plan = tmp_path / "PREREG.md"
+    plan.write_text("# plan\n")
+
+    manifest = Manifest(
+        project="p",
+        artifacts=(
+            ArtifactRef(id="results", path=results, digest=Digest.of_file(results)),
+            ArtifactRef(id="extra", path=extra, digest=Digest.of_file(extra)),
+            ArtifactRef(id="plan", path=plan, digest=Digest.of_file(plan)),
+        ),
+        runs=(
+            RunRecord(
+                id="r1",
+                registered_plan="plan",
+                outputs=(RunOutput(artifact="results", digest=Digest.of_file(results)),),
+                registered_at=REGISTERED,
+                started_at=AFTER,
+            ),
+        ),
+        claims=(
+            Claim(
+                id="c",
+                text="t",
+                registration=Registration.CONFIRMATORY,
+                evidence=(
+                    MetricEvidence(artifact="results", name="x", reported="3.2", pointer="/x"),
+                    MetricEvidence(artifact="extra", name="y", reported="1.0", pointer="/y"),
+                ),
+            ),
+        ),
+    )
+    claim = verify(manifest).claims[0]
+    assert claim.ordering is Ordering.UNCHECKED
+    assert claim.ordering_reason is OrderingReason.NO_RUN_RECORD
+    assert "extra" in claim.ordering_detail
+
+
+def test_an_undeclared_plan_is_not_a_pinned_plan(tmp_path):
+    """Declaring the plan and leaving it unpinned reported `unchecked`, while not declaring it
+    at all reported `ordered` -- so the more transparent manifest scored strictly worse."""
+    manifest = build(
+        tmp_path, pin_plan=False, runs=[run(tmp_path, registered_at=REGISTERED, started_at=AFTER)]
+    )
+    ordering, reason, detail = check(manifest)
+    assert ordering is Ordering.UNCHECKED
+    assert reason is OrderingReason.REGISTERED_PLAN_UNPINNED
+    assert "nothing pins" in detail

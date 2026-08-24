@@ -18,7 +18,14 @@ import tempfile
 import yaml
 from pydantic import BaseModel, ConfigDict
 
-from repro.corpus import DEFAULT_CACHE, CorpusEntry, FindingState, Regression, ensure
+from repro.corpus import (
+    DEFAULT_CACHE,
+    CorpusEntry,
+    FindingState,
+    Regression,
+    _is_pinned_revision,
+    ensure,
+)
 from repro.manifest import load
 from repro.models import VerificationReport
 from repro.verify import verify
@@ -80,6 +87,20 @@ def _at(
         cache,
     )
     if root is None:
+        return RevisionResult(commit=revision.commit, available=False, expected=revision.expected)
+    # `ensure` returns an existing checkout unchanged where an entry has no remote, or under
+    # REPRO_OFFLINE. Nothing then re-checked which revision it was at, so counts measured at
+    # whatever HEAD happened to be were reported under the pinned commit -- and a finding
+    # could be called fixed on the strength of a revision never checked out.
+    if not _is_pinned_revision(
+        CorpusEntry(
+            name=entry.name,
+            repository=entry.repository,
+            commit=revision.commit,
+            local_path=entry.local_path,
+        ),
+        root,
+    ):
         return RevisionResult(commit=revision.commit, available=False, expected=revision.expected)
     manifest = corpus_dir / revision.manifest
     if not manifest.is_file():

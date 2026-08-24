@@ -90,9 +90,16 @@ class EntryStatus(BaseModel):
 
     @property
     def usable(self) -> bool:
-        """Whether figures measured from this entry can be reported as current."""
+        """Whether this entry can stand behind a number.
+
+        `_is_pinned_revision` documents that a dirty tree holds bytes that exist only on that
+        machine, and this ignored it: an entry at the pinned commit with uncommitted edits to
+        the analysis code reported as usable, so anything the entry does not pin could differ
+        from the named revision while the corpus called it reproducible.
+        """
         return (
             self.state is EntryState.MEASURED
+            and not self.dirty
             and not self.artifacts_differing
             and not self.artifacts_missing
         )
