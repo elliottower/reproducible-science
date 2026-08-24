@@ -221,6 +221,12 @@ def _first_problem(e: ValidationError) -> str:
 
 
 __all__ = [
-    "Quote", "ClaimSource", "Claim", "ClaimFile", "CitedBy", "Record",
-    "load_claim_file", "load_record",
+    "CitedBy",
+    "Claim",
+    "ClaimFile",
+    "ClaimSource",
+    "Quote",
+    "Record",
+    "load_claim_file",
+    "load_record",
 ]

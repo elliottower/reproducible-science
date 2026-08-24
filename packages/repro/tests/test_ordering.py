@@ -11,7 +11,6 @@ import json
 
 import pytest
 from pydantic import ValidationError
-
 from repro.models import (
     ArtifactRef,
     Claim,

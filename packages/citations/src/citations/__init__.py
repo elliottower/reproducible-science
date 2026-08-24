@@ -18,6 +18,10 @@ Nothing in this package calls `sys.exit` or raises `SystemExit`; failures raise
 `CitationsError`, so importing it into another program -- an agent skill, a test, a notebook
 -- cannot take the host process down.
 """
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _version
+
+from citations.config import LibraryConfig, PaperConfig
 from citations.exceptions import (
     CitationsError,
     ClaimFileError,
@@ -25,12 +29,11 @@ from citations.exceptions import (
     PinBrokenError,
     SourceUnreadableError,
 )
-from citations.config import LibraryConfig, PaperConfig
 from citations.models import (
+    CitedBy,
     Claim,
     ClaimFile,
     ClaimSource,
-    CitedBy,
     Quote,
     Record,
     load_claim_file,
@@ -47,8 +50,6 @@ from citations.verify import (
     is_paginated,
     sha256,
 )
-
-from importlib.metadata import PackageNotFoundError, version as _version
 
 try:
     __version__ = _version("citations")

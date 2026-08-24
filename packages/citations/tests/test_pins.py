@@ -8,7 +8,6 @@ every quotation check in the library.
 from __future__ import annotations
 
 import pytest
-
 from citations import verify as V
 from citations.exceptions import SourceUnreadableError
 

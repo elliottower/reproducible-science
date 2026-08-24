@@ -9,7 +9,6 @@ import json
 import pathlib
 
 import pytest
-
 from repro import load, verify
 from repro.models import Availability, Outcome
 
@@ -50,8 +49,8 @@ def test_an_absent_pointer_is_not_a_mismatch():
 
 
 def test_a_backend_defect_is_an_error_and_never_an_abstention():
-    from repro.verify import MetricBackend
     from repro.models import Outcome as O
+    from repro.verify import MetricBackend
 
     class Broken(MetricBackend):
         def check(self, claim, evidence, path):

@@ -3,8 +3,6 @@ from __future__ import annotations
 import subprocess
 import sys
 
-import pytest
-
 
 def run_repro(*args: str, cwd=None) -> subprocess.CompletedProcess:
     return subprocess.run(
@@ -29,7 +27,8 @@ def test_no_args_prints_help():
 
 
 def test_init_creates_directory(tmp_path):
-    r = run_repro("init", "my_exp", "--directory", str(tmp_path / "my_exp"))
+    result = run_repro("init", "my_exp", "--directory", str(tmp_path / "my_exp"))
+    assert result.returncode == 0, result.stderr
     assert (tmp_path / "my_exp").is_dir()
     assert (tmp_path / "my_exp" / "CLAUDE.md").exists()
     assert (tmp_path / "my_exp" / "claims").is_dir()

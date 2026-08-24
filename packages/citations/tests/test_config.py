@@ -5,7 +5,6 @@ It was a dict of absolute paths inside build.py, so the package worked on one ma
 from __future__ import annotations
 
 import pytest
-
 from citations import config
 from citations.config import LibraryConfig, PaperConfig
 from citations.exceptions import ClaimFileError

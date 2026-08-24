@@ -10,10 +10,13 @@ import json
 import sqlite3
 
 import pytest
-
+from repro.exceptions import ArtifactUnreadableError
 from repro.models import (
     ArrayLocator,
+    ArtifactRef,
     Claim,
+    Digest,
+    Manifest,
     Outcome,
     Reason,
     SqliteLocator,
@@ -23,8 +26,6 @@ from repro.models import (
     ValueEvidence,
     Warning_,
 )
-from repro.exceptions import ArtifactUnreadableError
-from repro.models import ArtifactRef, Digest, Manifest
 from repro.resolve import Resolution, resolve
 from repro.verify import ValueBackend, verify
 

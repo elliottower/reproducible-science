@@ -15,13 +15,13 @@ from __future__ import annotations
 
 import re
 import urllib.parse
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
-from typing import Callable, Iterable
 
 from pydantic import BaseModel, ConfigDict
 
 from citations.models import Record
-from citations.text import fold as norm, surname, surname_variants
+from citations.text import surname_variants
 
 
 class Candidate(BaseModel):

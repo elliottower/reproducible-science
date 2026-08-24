@@ -5,7 +5,6 @@ import subprocess
 import sys
 
 import pytest
-
 from prereg import cli
 
 
@@ -66,9 +65,9 @@ def test_freezing_twice_is_refused(repo):
 def test_freeze_refuses_uncommitted_changes(tmp_path):
     subprocess.run(["git", "init", "-q"], cwd=tmp_path)
     run(["new", "study"], tmp_path)
-    r = run(["freeze"], tmp_path / "study")
-    assert r.returncode == 1
-    assert "Commit first" in r.stdout
+    result = run(["freeze"], tmp_path / "study")
+    assert result.returncode == 1
+    assert "Commit first" in result.stdout
 
 
 def test_an_unknown_access_value_is_refused(repo):
@@ -215,7 +214,7 @@ def test_a_log_note_cannot_break_out_of_the_fence(repo):
 def test_freezing_without_a_commit_says_so(tmp_path):
     subprocess.run(["git", "init", "-q"], cwd=tmp_path)
     run(["new", "study"], tmp_path)
-    r = run(["freeze"], tmp_path / "study")
+    run(["freeze"], tmp_path / "study")
     assert "(not in a git repository)" not in (tmp_path / "study" / "PREREG.md").read_text(), \
         "wrote a placeholder where a commit should be"
 

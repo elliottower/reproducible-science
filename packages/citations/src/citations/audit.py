@@ -31,13 +31,11 @@ from __future__ import annotations
 
 import argparse
 import collections
-import html
 import json
 import pathlib
 import re
 import socket
 import time
-import unicodedata
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -48,7 +46,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from citations import paths
 from citations.exceptions import CitationsError
 from citations.models import load_record
-from citations.text import fold, surname, surname_variants, tokens, variants
+from citations.text import fold, tokens, variants
 
 UA = "citations/1.0 (mailto:elliot@elliottower.ai)"
 
@@ -110,7 +108,7 @@ def disagreement(mine: Person, theirs: Person) -> str | None:
     # whole given name to initials instead would make Andrew J. S. and Alastair J. S. agree,
     # which is the error this command exists to catch. A side that carries a middle name the
     # other omits is not a disagreement about the parts both of them name.
-    for our_part, their_part in zip(mg, yg):
+    for our_part, their_part in zip(mg, yg, strict=False):
         if len(our_part) == 1 or len(their_part) == 1:
             if our_part[0] != their_part[0]:
                 return f"given name: ours {' '.join(mg)!r} vs registry {' '.join(yg)!r}"
@@ -410,7 +408,7 @@ def compare(entry: Entry, record: RegistryRecord) -> list[str]:
     truncated = truncated or entry.et_al
     yours = record.authors
     if mine and yours:
-        for i, (ours, theirs) in enumerate(zip(mine, yours), start=1):
+        for i, (ours, theirs) in enumerate(zip(mine, yours, strict=False), start=1):
             said = disagreement(ours, theirs)
             if said:
                 problems.append(f"author {i} {said}")

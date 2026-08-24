@@ -17,11 +17,15 @@ import subprocess
 
 import pytest
 import yaml
-
-from repro.corpus import Corpus, CorpusEntry, EntryState, RegressionCorpus, ensure, \
-    _is_pinned_revision
-from repro.regression import _manifest_against
-from repro.regression import FindingState, run
+from repro.corpus import (
+    Corpus,
+    CorpusEntry,
+    EntryState,
+    RegressionCorpus,
+    _is_pinned_revision,
+    ensure,
+)
+from repro.regression import FindingState, _manifest_against, run
 
 HERE = pathlib.Path(__file__).parent
 pytestmark = pytest.mark.corpus

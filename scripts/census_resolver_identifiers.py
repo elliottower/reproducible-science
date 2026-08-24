@@ -1,5 +1,10 @@
 """Exact denominators for every number the paper states about the resolver study."""
-import pathlib, re, sys, yaml
+import pathlib
+import re
+import sys
+
+import yaml
+
 sys.path.insert(0, str(pathlib.Path.home() / "Documents/GitHub/citations/src"))
 from citations.audit import from_crossref
 from citations.text import surname_variants

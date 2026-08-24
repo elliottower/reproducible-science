@@ -5,7 +5,9 @@ comparison happens at the precision the table prints. The pointers address the v
 pipeline stored. Nothing here decides whether a disagreement is the table's fault or the
 pipeline's; it reports that they differ.
 """
-import json, pathlib, sys
+import json
+import pathlib
+
 from repro import Digest
 
 R = pathlib.Path.home() / "Documents/GitHub/rna-sa-public"
@@ -43,6 +45,7 @@ for model, reported in REPORTED.items():
                       "reported": reported, "pointer": "/results/mean_best_ps"}]})
 
 import yaml
+
 (R / "repro.yaml").write_text(yaml.safe_dump(
     {"schema_version": "repro/1", "project": "rna-structure-awareness",
      "artifacts": artifacts, "claims": claims}, sort_keys=False, width=110))

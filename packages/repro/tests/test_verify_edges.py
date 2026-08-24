@@ -10,7 +10,6 @@ import decimal
 import json
 
 import pytest
-
 from repro.models import (
     ArtifactRef,
     Claim,

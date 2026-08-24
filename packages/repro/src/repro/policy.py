@@ -215,5 +215,13 @@ STRICT = Policy(
 
 PROFILES = {p.name: p for p in (EXPLORATORY, PUBLICATION, STRICT)}
 
-__all__ = ["Severity", "Violation", "Assessment", "Policy",
-           "EXPLORATORY", "PUBLICATION", "STRICT", "PROFILES"]
+__all__ = [
+    "EXPLORATORY",
+    "PROFILES",
+    "PUBLICATION",
+    "STRICT",
+    "Assessment",
+    "Policy",
+    "Severity",
+    "Violation",
+]

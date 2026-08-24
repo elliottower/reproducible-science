@@ -16,7 +16,6 @@ from __future__ import annotations
 import pathlib
 
 import yaml
-
 from repro import Digest
 from repro.provenance import of_tree
 
