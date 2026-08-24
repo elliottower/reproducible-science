@@ -48,7 +48,12 @@ from citations.verify import (
     sha256,
 )
 
-__version__ = "0.2.0"
+from importlib.metadata import PackageNotFoundError, version as _version
+
+try:
+    __version__ = _version("citations")
+except PackageNotFoundError:  # a source tree with nothing installed
+    __version__ = "0+unknown"
 
 __all__ = [
     # errors

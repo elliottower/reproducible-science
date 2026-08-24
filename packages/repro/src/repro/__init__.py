@@ -63,7 +63,12 @@ from repro.verify import (
     verify,
 )
 
-__version__ = "0.3.0"
+from importlib.metadata import PackageNotFoundError, version as _version
+
+try:
+    __version__ = _version("reproducible-science")
+except PackageNotFoundError:  # a source tree with nothing installed
+    __version__ = "0+unknown"
 
 __all__ = [
     "ReproError", "ManifestError", "ArtifactMissingError", "ArtifactUnreadableError",

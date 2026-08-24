@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --all-packages
+      - run: uv run pytest
+
+  wheels:
+    # The workspace resolves the four packages from source, so `pytest` never exercises the
+    # combination a user installs. This builds the artifacts and installs them outside the
+    # workspace, which is where a sibling API drifting without a version bump shows up.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --all-packages
+      - run: uv run python scripts/check_wheels.py
