@@ -13,11 +13,13 @@ failure this package exists to prevent.
 from __future__ import annotations
 
 import pathlib
+import subprocess
 
 import pytest
 import yaml
 
-from repro.corpus import Corpus, EntryState, RegressionCorpus, ensure
+from repro.corpus import Corpus, CorpusEntry, EntryState, RegressionCorpus, ensure, \
+    _is_pinned_revision
 from repro.regression import _manifest_against
 from repro.regression import FindingState, run
 
@@ -99,16 +101,18 @@ def test_a_dirty_working_tree_is_not_the_pinned_revision(tmp_path):
     """A checkout at the right commit with uncommitted edits holds bytes only that machine
     has. Verifying against them produces a result nobody else can reproduce, so `ensure`
     prefers a clean copy where one can be fetched."""
-    import subprocess
-
-    from repro.corpus import CorpusEntry, _is_pinned_revision
-
     repo = tmp_path / "repo"
     repo.mkdir()
-    run = lambda *a: subprocess.run(["git", *a], cwd=repo, capture_output=True, check=True)
+    run = lambda *a: subprocess.run(["git", *a], cwd=repo, capture_output=True, check=True,
+                                    timeout=30)
     run("init", "-q")
     run("config", "user.email", "t@t")
     run("config", "user.name", "t")
+    # A throwaway fixture must not inherit the machine's signing config: where commits are
+    # signed through an external agent, `git commit` blocks on it and the test fails for a
+    # reason that has nothing to do with what it checks.
+    run("config", "commit.gpgsign", "false")
+    run("config", "tag.gpgsign", "false")
     (repo / "x.txt").write_text("one\n")
     run("add", "x.txt")
     run("commit", "-qm", "one")

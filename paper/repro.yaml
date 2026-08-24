@@ -2,7 +2,7 @@ schema_version: repro/1
 project: reproducible-science (self-audit)
 provenance:
   repository: https://github.com/elliottower/reproducible-science.git
-  commit: bdc801e662474df9f82eb4b406b8c6fe2e15ef41
+  commit: a5d6d03dc274c8bcea7b255035ea0b10d6282144
   dirty: true
   generated_by: scripts/build_self_audit.py
 artifacts:
@@ -11,7 +11,7 @@ artifacts:
   media_type: text/markdown
   digest:
     algorithm: sha256
-    value: fdc6203e9dafb93d4154076cc47e0423c2527d4aa2446f54ef9411e48a58a072
+    value: e7da0a23cb7a76e8bfe2d5b2051795917208a37452769d2eaef98ed6108a9fda
 - id: figures
   path: figures.json
   media_type: application/json
@@ -20,7 +20,8 @@ artifacts:
     value: 3da1a0b62a4f2c0935a93ef8a09b9f4140b9a9d136874469ce8d7237b49b6d92
 claims:
 - id: corpus-assertions
-  confirmatory: true
+  registration: not_applicable
+  registration_note: exhaustive deterministic count, produced by scripts/build_self_audit.py over pinned inputs
   where: Section 6
   text: The manuscript states 5686 for corpus-assertions.
   evidence:
@@ -33,7 +34,8 @@ claims:
     reported: '5686'
     pointer: /quotation_corpus/assertions
 - id: corpus-manuscripts
-  confirmatory: true
+  registration: not_applicable
+  registration_note: exhaustive deterministic count, produced by scripts/build_self_audit.py over pinned inputs
   where: Section 6
   text: The manuscript states 17 for corpus-manuscripts.
   evidence:
@@ -46,7 +48,8 @@ claims:
     reported: '17'
     pointer: /quotation_corpus/manuscripts
 - id: corpus-declared
-  confirmatory: true
+  registration: not_applicable
+  registration_note: exhaustive deterministic count, produced by scripts/build_self_audit.py over pinned inputs
   where: Section 6
   text: The manuscript states 366 for corpus-declared.
   evidence:
@@ -59,7 +62,8 @@ claims:
     reported: '366'
     pointer: /quotation_corpus/declaration_files
 - id: corpus-pinned
-  confirmatory: true
+  registration: not_applicable
+  registration_note: exhaustive deterministic count, produced by scripts/build_self_audit.py over pinned inputs
   where: Section 6
   text: The manuscript states 355 for corpus-pinned.
   evidence:
@@ -72,7 +76,8 @@ claims:
     reported: '355'
     pointer: /quotation_corpus/pins/ok
 - id: corpus-unpinned
-  confirmatory: true
+  registration: not_applicable
+  registration_note: exhaustive deterministic count, produced by scripts/build_self_audit.py over pinned inputs
   where: Section 6
   text: The manuscript states 9 for corpus-unpinned.
   evidence:
@@ -85,7 +90,8 @@ claims:
     reported: '9'
     pointer: /quotation_corpus/pins/unpinned
 - id: corpus-missing
-  confirmatory: true
+  registration: not_applicable
+  registration_note: exhaustive deterministic count, produced by scripts/build_self_audit.py over pinned inputs
   where: Section 6
   text: The manuscript states 1 for corpus-missing.
   evidence:
@@ -98,7 +104,8 @@ claims:
     reported: '1'
     pointer: /quotation_corpus/pins/missing
 - id: corpus-unparseable
-  confirmatory: true
+  registration: not_applicable
+  registration_note: exhaustive deterministic count, produced by scripts/build_self_audit.py over pinned inputs
   where: Section 6
   text: The manuscript states 1 for corpus-unparseable.
   evidence:
@@ -111,7 +118,8 @@ claims:
     reported: '1'
     pointer: /quotation_corpus/unparseable_files
 - id: resolver-written
-  confirmatory: true
+  registration: not_applicable
+  registration_note: exhaustive deterministic count, produced by scripts/build_self_audit.py over pinned inputs
   where: Section 6
   text: The manuscript states 172 for resolver-written.
   evidence:
@@ -124,7 +132,8 @@ claims:
     reported: '172'
     pointer: /resolver_identifiers/written
 - id: resolver-checkable
-  confirmatory: true
+  registration: not_applicable
+  registration_note: exhaustive deterministic count, produced by scripts/build_self_audit.py over pinned inputs
   where: Section 6
   text: The manuscript states 145 for resolver-checkable.
   evidence:
@@ -137,7 +146,8 @@ claims:
     reported: '145'
     pointer: /resolver_identifiers/checkable
 - id: resolver-absent
-  confirmatory: true
+  registration: not_applicable
+  registration_note: exhaustive deterministic count, produced by scripts/build_self_audit.py over pinned inputs
   where: Section 6
   text: The manuscript states 12 for resolver-absent.
   evidence:
@@ -147,7 +157,8 @@ claims:
     reported: '12'
     pointer: /resolver_identifiers/first_author_absent
 - id: resolver-rate
-  confirmatory: true
+  registration: not_applicable
+  registration_note: exhaustive deterministic count, produced by scripts/build_self_audit.py over pinned inputs
   where: Section 6
   text: The manuscript states 8.3 for resolver-rate.
   evidence:
@@ -160,7 +171,8 @@ claims:
     reported: '8.3'
     pointer: /resolver_identifiers/absent_rate
 - id: conformance-fixtures
-  confirmatory: true
+  registration: not_applicable
+  registration_note: exhaustive deterministic count, produced by scripts/build_self_audit.py over pinned inputs
   where: Section 6
   text: The manuscript states 18 for conformance-fixtures.
   evidence:
@@ -173,7 +185,8 @@ claims:
     reported: '18'
     pointer: /conformance/fixtures
 - id: atlas-assertions
-  confirmatory: true
+  registration: not_applicable
+  registration_note: exhaustive deterministic count, produced by scripts/build_self_audit.py over pinned inputs
   where: Section 6
   text: The manuscript states 39 for atlas-assertions.
   evidence:
@@ -186,7 +199,8 @@ claims:
     reported: '39'
     pointer: /metric_corpus/direction-instability-atlas/assertions
 - id: atlas-verified
-  confirmatory: true
+  registration: not_applicable
+  registration_note: exhaustive deterministic count, produced by scripts/build_self_audit.py over pinned inputs
   where: Section 6
   text: The manuscript states 39 for atlas-verified.
   evidence:
@@ -199,7 +213,8 @@ claims:
     reported: '39'
     pointer: /metric_corpus/direction-instability-atlas/verified
 - id: rna-assertions
-  confirmatory: true
+  registration: not_applicable
+  registration_note: exhaustive deterministic count, produced by scripts/build_self_audit.py over pinned inputs
   where: Section 6
   text: The manuscript states 10 for rna-assertions.
   evidence:
@@ -212,7 +227,8 @@ claims:
     reported: '10'
     pointer: /metric_corpus/rna-table5-mean-ps/assertions
 - id: rna-mismatch
-  confirmatory: true
+  registration: not_applicable
+  registration_note: exhaustive deterministic count, produced by scripts/build_self_audit.py over pinned inputs
   where: Section 6
   text: The manuscript states 9 for rna-mismatch.
   evidence:

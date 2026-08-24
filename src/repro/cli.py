@@ -18,7 +18,7 @@ from pathlib import Path
 from repro import __version__
 from repro.exceptions import ReproError
 from repro.manifest import DEFAULT_NAME, find, load
-from repro.models import Availability, Outcome, Validity
+from repro.models import Availability, Ordering, Outcome, Regeneration, Validity
 from repro.policy import PROFILES
 from repro.renderers import to_sarif
 from repro.verify import verify as run_verify
@@ -92,7 +92,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
         print(f"    {DEFAULT_NAME}:\n      artifacts: [...]\n      claims: [...]")
         return 2
 
-    report = run_verify(load(path))
+    report = run_verify(load(path), regenerate=getattr(args, "regenerate", False))
     policy = PROFILES[args.policy]
     assessment = policy.assess(report)
 
@@ -109,9 +109,21 @@ def cmd_verify(args: argparse.Namespace) -> int:
         if artifact.validity is Validity.BROKEN_PIN:
             print(f"  BROKEN PIN  {artifact.artifact_id}: pinned "
                   f"{(artifact.expected or '')[:12]}, found {(artifact.actual or '')[:12]}")
+        elif artifact.validity is Validity.ARTIFACT_ABSENT:
+            print(f"  ABSENT      {artifact.artifact_id}: nothing at the declared path")
         elif artifact.validity is Validity.UNPINNED_ARTIFACT:
             print(f"  unpinned    {artifact.artifact_id}")
     if any(a.validity is not Validity.AUTHORITATIVE for a in report.artifacts):
+        print()
+
+    for state in report.regenerations:
+        if state.state is Regeneration.REPRODUCED:
+            print(f"  reproduced  {state.artifact_id}")
+        elif state.state is Regeneration.DIVERGED:
+            print(f"  DIVERGED    {state.artifact_id}: {state.detail[:48]}")
+        elif state.reason.value != "not_requested":
+            print(f"  regen?      {state.artifact_id}: {state.reason.value}")
+    if report.regenerations:
         print()
 
     for claim in report.claims:
@@ -119,6 +131,11 @@ def cmd_verify(args: argparse.Namespace) -> int:
             print(f"  {SYMBOL[Outcome.NOT_OFFERED]}  {claim.claim_id:<12} "
                   f"{'-':<8} no evidence offered")
             continue
+        if claim.ordering is Ordering.VIOLATED:
+            print(f"  ORDER       {claim.claim_id:<12} {claim.ordering_detail[:52]}")
+        elif claim.ordering is Ordering.UNCHECKED:
+            print(f"  order?      {claim.claim_id:<12} "
+                  f"{claim.ordering_reason.value}: {claim.ordering_detail[:38]}")
         for d in claim.decisions:
             mark = "" if d.is_authoritative else f"  <{d.validity.value}>"
             note = f"  [{','.join(w.value for w in d.warnings)}]" if d.warnings else ""
@@ -149,6 +166,9 @@ def main(argv: list[str] | None = None) -> int:
     p_verify.add_argument("manifest", nargs="?", help=f"path to {DEFAULT_NAME}")
     p_verify.add_argument("--policy", choices=sorted(PROFILES), default="publication")
     p_verify.add_argument("--format", choices=("text", "json", "sarif"), default="text")
+    p_verify.add_argument(
+        "--regenerate", action="store_true",
+        help="run declared regeneration commands in a sandbox (executes them)")
     p_verify.set_defaults(func=cmd_verify)
 
     args = parser.parse_args(argv)

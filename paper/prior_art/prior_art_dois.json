@@ -1,0 +1,239 @@
+{
+  "moreau2011opm": {
+    "doi": "10.1016/j.future.2010.07.005",
+    "title": "The Open Provenance Model core specification (v1.1)",
+    "authors": [
+      "Moreau, Luc",
+      "Clifford, Ben",
+      "Freire, Juliana",
+      "Futrelle, Joe",
+      "Gil, Yolanda",
+      "Groth, Paul",
+      "Kwasnikowska, Natalia",
+      "Miles, Simon",
+      "Missier, Paolo",
+      "Myers, Jim",
+      "Plale, Beth",
+      "Simmhan, Yogesh",
+      "Stephan, Eric",
+      "den Bussche, Jan Van"
+    ],
+    "year": "2011",
+    "venue": "Future Generation Computer Systems",
+    "url": "https://doi.org/10.1016/j.future.2010.07.005",
+    "type": "journal-article"
+  },
+  "ciccarese2013pav": {
+    "doi": "10.1186/2041-1480-4-37",
+    "title": "PAV ontology: provenance, authoring and versioning",
+    "authors": [
+      "Ciccarese, Paolo",
+      "Soiland-Reyes, Stian",
+      "Belhajjame, Khalid",
+      "Gray, Alasdair JG",
+      "Goble, Carole",
+      "Clark, Tim"
+    ],
+    "year": "2013",
+    "venue": "Journal of Biomedical Semantics",
+    "url": "https://doi.org/10.1186/2041-1480-4-37",
+    "type": "journal-article",
+    "local": "reference/ciccarese2013pav.pdf",
+    "bytes": 4139089
+  },
+  "kuhn2016nanopub": {
+    "doi": "10.7717/peerj-cs.78",
+    "title": "Decentralized provenance-aware publishing with nanopublications",
+    "authors": [
+      "Kuhn, Tobias",
+      "Chichester, Christine",
+      "Krauthammer, Michael",
+      "Queralt-Rosinach, N\u00faria",
+      "Verborgh, Ruben",
+      "Giannakopoulos, George",
+      "Ngonga Ngomo, Axel-Cyrille",
+      "Viglianti, Raffaele",
+      "Dumontier, Michel"
+    ],
+    "year": "2016",
+    "venue": "PeerJ Computer Science",
+    "url": "https://doi.org/10.7717/peerj-cs.78",
+    "type": "journal-article"
+  },
+  "newman2024sigstore": {
+    "doi": "10.1145/3548606.3560596",
+    "title": "Sigstore",
+    "authors": [
+      "Newman, Zachary",
+      "Meyers, John Speed",
+      "Torres-Arias, Santiago"
+    ],
+    "year": "2022",
+    "venue": "Proceedings of the 2022 ACM SIGSAC Conference on Computer and Communications Security",
+    "url": "https://doi.org/10.1145/3548606.3560596",
+    "type": "proceedings-article"
+  },
+  "wadden2020scifact": {
+    "doi": "10.18653/v1/2020.emnlp-main.609",
+    "title": "Fact or Fiction: Verifying Scientific Claims",
+    "authors": [
+      "Wadden, David",
+      "Lin, Shanchuan",
+      "Lo, Kyle",
+      "Wang, Lucy Lu",
+      "van Zuylen, Madeleine",
+      "Cohan, Arman",
+      "Hajishirzi, Hannaneh"
+    ],
+    "year": "2020",
+    "venue": "Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)",
+    "url": "https://doi.org/10.18653/v1/2020.emnlp-main.609",
+    "type": "proceedings-article",
+    "local": "reference/wadden2020scifact.pdf",
+    "bytes": 4114861
+  },
+  "thorne2018fever": {
+    "doi": "10.18653/v1/n18-1074",
+    "title": "FEVER: a Large-scale Dataset for Fact Extraction and VERification",
+    "authors": [
+      "Thorne, James",
+      "Vlachos, Andreas",
+      "Christodoulopoulos, Christos",
+      "Mittal, Arpit"
+    ],
+    "year": "2018",
+    "venue": "Proceedings of the 2018 Conference of the North American Chapter of\n          the Association for Computational Linguistics: Human Language\n          Technologies, Volume 1 (Long Papers)",
+    "url": "https://doi.org/10.18653/v1/n18-1074",
+    "type": "proceedings-article",
+    "local": "reference/thorne2018fever.pdf",
+    "bytes": 460896
+  },
+  "clinifact2025": {
+    "doi": "10.1038/s41597-025-04417-x",
+    "title": "A dataset for evaluating clinical research claims in large language models",
+    "authors": [
+      "Zhang, Boya",
+      "Bornet, Alban",
+      "Yazdani, Anthony",
+      "Khlebnikov, Philipp",
+      "Milutinovic, Marija",
+      "Rouhizadeh, Hossein",
+      "Amini, Poorya",
+      "Teodoro, Douglas"
+    ],
+    "year": "2025",
+    "venue": "Scientific Data",
+    "url": "https://doi.org/10.1038/s41597-025-04417-x",
+    "type": "journal-article",
+    "local": "reference/clinifact2025.pdf",
+    "bytes": 1878009
+  },
+  "huber2020aiida": {
+    "doi": "10.1038/s41597-020-00638-4",
+    "title": "AiiDA 1.0, a scalable computational infrastructure for automated reproducible workflows and data provenance",
+    "authors": [
+      "Huber, Sebastiaan P.",
+      "Zoupanos, Spyros",
+      "Uhrin, Martin",
+      "Talirz, Leopold",
+      "Kahle, Leonid",
+      "H\u00e4uselmann, Rico",
+      "Gresch, Dominik",
+      "M\u00fcller, Tiziano",
+      "Yakutovich, Aliaksandr V.",
+      "Andersen, Casper W.",
+      "Ramirez, Francisco F.",
+      "Adorf, Carl S.",
+      "Gargiulo, Fernando",
+      "Kumbhar, Snehal",
+      "Passaro, Elsa",
+      "Johnston, Conrad",
+      "Merkys, Andrius",
+      "Cepellotti, Andrea",
+      "Mounet, Nicolas",
+      "Marzari, Nicola",
+      "Kozinsky, Boris",
+      "Pizzi, Giovanni"
+    ],
+    "year": "2020",
+    "venue": "Scientific Data",
+    "url": "https://doi.org/10.1038/s41597-020-00638-4",
+    "type": "journal-article",
+    "local": "reference/huber2020aiida.pdf",
+    "bytes": 1850817
+  },
+  "love2020tximeta": {
+    "doi": "10.1371/journal.pcbi.1007664",
+    "title": "Tximeta: Reference sequence checksums for provenance identification in RNA-seq",
+    "authors": [
+      "Love, Michael I.",
+      "Soneson, Charlotte",
+      "Hickey, Peter F.",
+      "Johnson, Lisa K.",
+      "Pierce, N. Tessa",
+      "Shepherd, Lori",
+      "Morgan, Martin",
+      "Patro, Rob"
+    ],
+    "year": "2020",
+    "venue": "PLOS Computational Biology",
+    "url": "https://doi.org/10.1371/journal.pcbi.1007664",
+    "type": "journal-article",
+    "local": "reference/love2020tximeta.pdf",
+    "bytes": 763116
+  },
+  "soilandreyes2022rocrate": {
+    "doi": "10.3233/ds-210053",
+    "title": "Packaging research artefacts with RO-Crate",
+    "authors": [
+      "Soiland-Reyes, Stian",
+      "Sefton, Peter",
+      "Crosas, Merc\u00e8",
+      "Castro, Leyla Jael",
+      "Coppens, Frederik",
+      "Fern\u00e1ndez, Jos\u00e9 M.",
+      "Garijo, Daniel",
+      "Gr\u00fcning, Bj\u00f6rn",
+      "La Rosa, Marco",
+      "Leo, Simone",
+      "\u00d3 Carrag\u00e1in, Eoghan",
+      "Portier, Marc",
+      "Trisovic, Ana",
+      "RO-Crate Community",
+      "Groth, Paul",
+      "Goble, Carole"
+    ],
+    "year": "2022",
+    "venue": "Data Science",
+    "url": "https://doi.org/10.3233/ds-210053",
+    "type": "journal-article"
+  },
+  "leone2024wrroc": {
+    "doi": "10.1371/journal.pone.0309210",
+    "title": "Recording provenance of workflow runs with RO-Crate",
+    "authors": [
+      "Leo, Simone",
+      "Crusoe, Michael R.",
+      "Rodr\u00edguez-Navas, Laura",
+      "Sirvent, Ra\u00fcl",
+      "Kanitz, Alexander",
+      "De Geest, Paul",
+      "Wittner, Rudolf",
+      "Pireddu, Luca",
+      "Garijo, Daniel",
+      "Fern\u00e1ndez, Jos\u00e9 M.",
+      "Colonnelli, Iacopo",
+      "Gallo, Matej",
+      "Ohta, Tazro",
+      "Suetake, Hirotaka",
+      "Capella-Gutierrez, Salvador",
+      "de Wit, Renske",
+      "Kinoshita, Bruno P.",
+      "Soiland-Reyes, Stian"
+    ],
+    "year": "2024",
+    "venue": "PLOS ONE",
+    "url": "https://doi.org/10.1371/journal.pone.0309210",
+    "type": "journal-article"
+  }
+}

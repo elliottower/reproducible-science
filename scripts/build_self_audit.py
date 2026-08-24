@@ -70,7 +70,16 @@ for cid, sentence, printed, pointer in CLAIMS:
     # carry the metric assertion only rather than a quotation that would always fail.
     if "\n" not in sentence:
         evidence.insert(0, {"kind": "quote", "artifact": "manuscript", "text": sentence})
-    claims.append({"id": cid, "confirmatory": True, "where": "Section 6",
+    # Registration does not apply. Each of these is the output of a checker run over a
+    # declared corpus, reporting every result it produced; no outcome was selected from
+    # alternatives, so there was nothing for a plan to fix in advance. Exhaustiveness and
+    # determinism are what make them trustworthy, and re-running this script is what
+    # establishes both.
+    claims.append({"id": cid,
+                   "registration": "not_applicable",
+                   "registration_note": "exhaustive deterministic count, produced by "
+                                        "scripts/build_self_audit.py over pinned inputs",
+                   "where": "Section 6",
                    "text": f"The manuscript states {printed} for {cid}.",
                    "evidence": evidence})
 

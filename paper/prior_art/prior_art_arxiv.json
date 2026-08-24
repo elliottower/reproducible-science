@@ -1,0 +1,61 @@
+{
+  "kim2026ledger": {
+    "arxiv": "2608.18398",
+    "title": "LEDGER: Claim-to-Evidence Trace Graphs for Auditing LLM Agents",
+    "authors": [
+      "Kim, Daehong",
+      "Miao, Haichao",
+      "Liu, Shusen"
+    ],
+    "year": "2026",
+    "doi": "10.48550/arXiv.2608.18398",
+    "url": "https://arxiv.org/abs/2608.18398",
+    "local": "reference/kim2026ledger.pdf",
+    "bytes": 5043344
+  },
+  "ding2026verificationgap": {
+    "arxiv": "2608.05179",
+    "title": "Autonomous Research Agents: A Survey of AI Scientists and the Verification Gap",
+    "authors": [
+      "Ding, Tianyu",
+      "Nannapaneni, Aditya",
+      "Liu, Bingfan",
+      "Zhang, Ling"
+    ],
+    "year": "2026",
+    "doi": "10.48550/arXiv.2608.05179",
+    "url": "https://arxiv.org/abs/2608.05179",
+    "local": "reference/ding2026verificationgap.pdf",
+    "bytes": 2569689
+  },
+  "thomas2026phacking": {
+    "arxiv": "2606.27687",
+    "title": "Mitigating LLM-based p-Hacking by Preregistering for the Next LLM",
+    "authors": [
+      "Thomas, Maria",
+      "Gligoric, Kristina",
+      "Shah, Nihar B."
+    ],
+    "year": "2026",
+    "doi": "10.48550/arXiv.2606.27687",
+    "url": "https://arxiv.org/abs/2606.27687",
+    "local": "reference/thomas2026phacking.pdf",
+    "bytes": 647930
+  },
+  "samuel2026reproscore": {
+    "arxiv": "2605.13275",
+    "title": "ReproScore: Separating Readiness from Outcome in Research Software Reproducibility Assessment",
+    "authors": [
+      "Samuel, Sheeba",
+      "Mietchen, Daniel",
+      "Kim, Jungsan",
+      "Ahmed, Waqas",
+      "Gaedke, Martin"
+    ],
+    "year": "2026",
+    "doi": "10.48550/arXiv.2605.13275",
+    "url": "https://arxiv.org/abs/2605.13275",
+    "local": "reference/samuel2026reproscore.pdf",
+    "bytes": 674120
+  }
+}

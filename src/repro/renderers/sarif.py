@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from repro.models import Outcome, Validity, VerificationReport
+from repro.models import Ordering, Outcome, Validity, VerificationReport
 from repro.policy import Assessment, Severity
 
 SCHEMA = "https://json.schemastore.org/sarif-2.1.0.json"
@@ -49,6 +49,26 @@ def _rules() -> list[dict[str, Any]]:
         (Outcome.UNCHECKED, "No comparison was made."),
         (Outcome.ERROR, "A verifier failed."),
         (Outcome.NOT_OFFERED, "The claim offers no evidence."),
+    ]] + [{
+        # Artifact-level results carry these ids. A ruleId with no matching rule object is
+        # what a strict SARIF consumer rejects, so they are declared beside the outcomes.
+        "id": f"repro/{validity.value}",
+        "name": validity.value.replace("_", " ").title().replace(" ", ""),
+        "shortDescription": {"text": text},
+        "defaultConfiguration": {"level": "error"},
+    } for validity, text in [
+        (Validity.BROKEN_PIN, "The file read is not the file that was pinned."),
+        (Validity.ARTIFACT_ABSENT, "Nothing exists at the declared path."),
+    ]] + [{
+        "id": f"repro/ordering_{ordering.value}",
+        "name": f"Ordering{ordering.value.title()}",
+        "shortDescription": {"text": text},
+        "defaultConfiguration": {"level": level},
+    } for ordering, text, level in [
+        (Ordering.VIOLATED,
+         "A confirmatory run started before the plan it names was registered.", "error"),
+        (Ordering.UNCHECKED,
+         "A confirmatory claim's ordering could not be established.", "warning"),
     ]]
 
 
@@ -116,16 +136,40 @@ def to_sarif(report: VerificationReport, assessment: Assessment | None = None,
                 entry["properties"]["nonAuthoritative"] = True
             results.append(entry)
 
+    for claim in report.claims:
+        if claim.ordering is Ordering.VIOLATED:
+            kind, level = "fail", "error"
+        elif claim.ordering is Ordering.UNCHECKED:
+            # Nothing is asserted either way, which is `notApplicable` rather than a
+            # low-severity failure -- the same distinction the outcome kinds preserve.
+            kind, level = "notApplicable", "warning"
+        else:
+            continue
+        results.append({
+            "ruleId": f"repro/ordering_{claim.ordering.value}",
+            "kind": kind, "level": by_subject.get(claim.claim_id, level),
+            "message": {"text": f"{claim.claim_id}: {claim.ordering_detail}"},
+            "properties": {"claimDigest": claim.claim_digest,
+                           "orderingReason": claim.ordering_reason.value,
+                           **({"registrationAuthority": claim.registration_authority.value}
+                              if claim.registration_authority else {})},
+        })
+
     for state in report.artifacts:
         if state.validity is Validity.BROKEN_PIN:
-            results.append({
-                "ruleId": "repro/broken_pin", "kind": "fail", "level": "error",
-                "message": {"text": f"{state.artifact_id}: pinned {(state.expected or '')[:12]}, "
-                                    f"found {(state.actual or '')[:12]}"},
-                "locations": [{"physicalLocation": {
-                    "artifactLocation": {"uri": state.artifact_id,
-                                         "index": index[state.artifact_id]}}}],
-            })
+            message = (f"{state.artifact_id}: pinned {(state.expected or '')[:12]}, "
+                       f"found {(state.actual or '')[:12]}")
+        elif state.validity is Validity.ARTIFACT_ABSENT:
+            message = f"{state.artifact_id}: nothing at the declared path"
+        else:
+            continue
+        results.append({
+            "ruleId": f"repro/{state.validity.value}", "kind": "fail", "level": "error",
+            "message": {"text": message},
+            "locations": [{"physicalLocation": {
+                "artifactLocation": {"uri": state.artifact_id,
+                                     "index": index[state.artifact_id]}}}],
+        })
 
     return {
         "$schema": SCHEMA,
