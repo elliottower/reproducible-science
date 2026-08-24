@@ -247,7 +247,6 @@ def verify(ledger: pathlib.Path) -> tuple[ChainStatus, list[str]]:
         detail = "ledger is empty"
         if anchor and anchor.get("count"):
             detail += f"; the anchor records {anchor['count']} events"
-            return ChainStatus.TRUNCATED, [detail]
         return ChainStatus.TRUNCATED, [detail]
 
     prev, status = ZERO, ChainStatus.INTACT

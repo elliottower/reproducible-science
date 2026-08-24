@@ -49,7 +49,11 @@ def test_chain_verification_catches_tampering(tmp_path):
 
     ok, problems = ledger.verify_chain(lp)
     assert not ok
-    assert len(problems) >= 1
+    # `len(problems) >= 1` said nothing about which line, so a report naming the wrong event
+    # satisfied it. The edited line is the second, and the break shows on the third, whose
+    # prev_hash no longer matches.
+    assert any("line 3" in p for p in problems), problems
+    assert ledger.verify(lp)[0] is ledger.ChainStatus.EDITED
 
 
 def test_sha256_of_file_is_deterministic(tmp_path):

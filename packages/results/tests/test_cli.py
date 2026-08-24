@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 
@@ -323,3 +324,156 @@ def test_verify_catches_the_same_edit_before_recomputing_anything(tmp_path):
     v = run_cli("verify", cwd=tmp_path)
     assert v.returncode != 0
     assert "CHAIN EDITED" in v.stdout, v.stdout
+
+
+# -- what `verify --files` says about a path that is no longer what was sealed ---------------
+
+
+def seal_one(tmp_path, body="a,b\n1,2\n"):
+    run_cli("init", cwd=tmp_path)
+    path = tmp_path / "data.csv"
+    path.write_text(body)
+    run_cli("seal", "data.csv", "--role", "input", cwd=tmp_path)
+    return path
+
+
+def test_a_sealed_file_that_has_been_deleted_is_not_ok(tmp_path):
+    """Only negative assertions covered this -- `"MISSING" not in stdout` on a healthy run.
+
+    A sealed input that is gone is the ordinary shape of an unreproducible result, and it read
+    as a pass.
+    """
+    seal_one(tmp_path).unlink()
+    v = run_cli("verify", "--files", cwd=tmp_path)
+    assert v.returncode == 1, v.stdout
+    assert "MISSING" in v.stdout and "data.csv" in v.stdout
+    assert "changed or missing" in v.stdout
+
+
+def test_a_sealed_file_that_was_edited_is_reported_as_changed(tmp_path):
+    path = seal_one(tmp_path)
+    path.write_text("a,b\n9,9\n")
+    v = run_cli("verify", "--files", cwd=tmp_path)
+    assert v.returncode == 1
+    assert "CHANGED" in v.stdout
+
+
+def test_a_path_sealed_under_two_hashes_is_reported_even_when_it_matches_one(tmp_path):
+    """Seal, edit, seal again: the file on disk matches the second seal.
+
+    Keyed by path, the later seal replaced the earlier one and the run read as clean, so
+    "seal your inputs before the run" was not what the command checked.
+    """
+    path = seal_one(tmp_path)
+    path.write_text("a,b\n9,9\n")
+    run_cli("seal", "data.csv", "--role", "input", cwd=tmp_path)
+    v = run_cli("verify", "--files", cwd=tmp_path)
+    assert v.returncode == 1, v.stdout
+    assert "RESEALED" in v.stdout
+    assert "2 different hashes" in v.stdout
+
+
+def test_an_untouched_sealed_file_still_passes(tmp_path):
+    # The control for the three above.
+    seal_one(tmp_path)
+    v = run_cli("verify", "--files", cwd=tmp_path)
+    assert v.returncode == 0, v.stdout
+    assert "all checks passed" in v.stdout
+
+
+# -- the reanchor command's own refusals -----------------------------------------------------
+
+
+def test_reanchor_refuses_a_truncated_chain(tmp_path):
+    """Deleting trailing events and re-anchoring was a two-command path to a clean report.
+
+    Truncation is the cheapest tampering there is: no line has to be forged, so the hash chain
+    stays perfect and only the anchor's count disagrees.
+    """
+    run_cli("init", cwd=tmp_path)
+    (tmp_path / "out.json").write_text('{"d": 0.1}\n')
+    run_cli("run", "out.json", "--run-id", "r1", cwd=tmp_path)
+    run_cli("claim", "d = 0.1", "--run-id", "r1", cwd=tmp_path)
+
+    lp = tmp_path / ".results" / "ledger.jsonl"
+    lines = lp.read_text().splitlines()
+    lp.write_text("\n".join(lines[:-1]) + "\n")
+
+    r = run_cli("reanchor", cwd=tmp_path)
+    assert r.returncode == 1, r.stdout
+    assert "truncated" in r.stdout
+    assert ledger.verify(lp)[0] is ledger.ChainStatus.TRUNCATED, "the anchor must not have moved"
+
+
+def test_reanchor_repairs_a_ledger_that_was_never_anchored(tmp_path):
+    # The control: reanchor has to remain usable for what it exists to do.
+    run_cli("init", cwd=tmp_path)
+    lp = tmp_path / ".results" / "ledger.jsonl"
+    ledger.anchor_path(lp).unlink()
+    r = run_cli("reanchor", cwd=tmp_path)
+    assert r.returncode == 0, r.stdout
+    assert ledger.verify(lp)[0] is ledger.ChainStatus.INTACT
+
+
+# -- a claim that names a run the ledger does not hold ----------------------------------------
+
+
+def test_verify_reports_a_claim_whose_run_is_not_in_the_ledger(tmp_path):
+    run_cli("init", cwd=tmp_path)
+    (tmp_path / "out.json").write_text('{"d": 0.1}\n')
+    run_cli("run", "out.json", "--run-id", "r1", cwd=tmp_path)
+    run_cli("claim", "d = 0.1", "--run-id", "r1", cwd=tmp_path)
+
+    # Drop the run event and rebuild the chain, so the ledger verifies and the only fault left
+    # is that the claim rests on a run nothing recorded.
+    lp = tmp_path / ".results" / "ledger.jsonl"
+    events = [
+        e
+        for e in (json.loads(line) for line in lp.read_text().splitlines())
+        if e.get("event") != "run"
+    ]
+    prev = ledger.ZERO
+    lines = []
+    for i, event in enumerate(events):
+        line = ledger.canonical({**event, "seq": i, "prev_hash": prev})
+        lines.append(line)
+        prev = ledger.sha256_of_str(line)
+    lp.write_text("\n".join(lines) + "\n")
+    ledger.write_anchor(lp, len(lines), prev)
+    assert ledger.verify(lp)[0] is ledger.ChainStatus.INTACT
+
+    v = run_cli("verify", cwd=tmp_path)
+    assert v.returncode == 1, v.stdout
+    assert "names runs it does not contain" in v.stdout
+    assert "r1" in v.stdout
+
+
+def test_a_second_run_under_one_id_is_dated_by_the_later_one(tmp_path):
+    """`--anyway` allows two runs under one id, and a claim rests on the most recent.
+
+    Taking the earliest let a run performed after the outcomes were seen inherit the first
+    run's timestamp, so the confirmatory guard passed on a retrospective analysis.
+    """
+    run_cli("init", cwd=tmp_path)
+    (tmp_path / "out.json").write_text('{"d": 0.1}\n')
+    run_cli("run", "out.json", "--run-id", "r1", cwd=tmp_path)
+    run_cli("access", "read the outcomes", "--level", "outcomes seen", cwd=tmp_path)
+    replay = run_cli("run", "out.json", "--run-id", "r1", "--anyway", cwd=tmp_path)
+    assert replay.returncode == 0, replay.stdout
+
+    refused = run_cli("claim", "d = 0.1", "--run-id", "r1", "--confirmatory", cwd=tmp_path)
+    assert refused.returncode == 1, refused.stdout
+    assert "after that" in refused.stdout
+
+    run_cli("claim", "d = 0.1", "--run-id", "r1", "--confirmatory", "--anyway", cwd=tmp_path)
+    v = run_cli("verify", cwd=tmp_path)
+    assert "after outcomes were seen" in v.stdout
+
+
+def test_a_duplicate_run_id_is_refused_without_anyway(tmp_path):
+    run_cli("init", cwd=tmp_path)
+    (tmp_path / "out.json").write_text('{"d": 0.1}\n')
+    run_cli("run", "out.json", "--run-id", "r1", cwd=tmp_path)
+    r = run_cli("run", "out.json", "--run-id", "r1", cwd=tmp_path)
+    assert r.returncode == 1
+    assert "already exists" in r.stdout
