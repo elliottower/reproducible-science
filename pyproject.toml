@@ -14,10 +14,9 @@ description = "The reproducible-science suite: repro, citations, results, and pr
 readme = "README.md"
 license = "MIT"
 authors = [ { name = "Elliot Tower", email = "elliot@elliottower.ai" } ]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 classifiers = [
   "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
@@ -72,7 +71,7 @@ sources.results-cli = { workspace = true }
 workspace.members = [ "packages/*" ]
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py311"
 line-length = 100
 extend-exclude = [ "packages/*/tests/conformance/cases" ]
 format.docstring-code-format = false

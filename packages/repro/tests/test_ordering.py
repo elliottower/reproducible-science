@@ -28,7 +28,7 @@ from repro.models import (
 from repro.policy import EXPLORATORY, PUBLICATION, STRICT, Policy, Severity
 from repro.verify import verify
 
-UTC = datetime.timezone.utc
+UTC = datetime.UTC
 REGISTERED = datetime.datetime(2026, 8, 1, 14, 0, tzinfo=UTC)
 AFTER = datetime.datetime(2026, 8, 3, 9, 12, tzinfo=UTC)
 BEFORE = datetime.datetime(2026, 7, 20, 9, 12, tzinfo=UTC)

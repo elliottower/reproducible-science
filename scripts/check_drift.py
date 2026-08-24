@@ -19,6 +19,7 @@ Mutates the working tree by design: it runs the generators. Run it on a clean tr
 from __future__ import annotations
 
 import json
+import os
 import pathlib
 import subprocess
 import sys
@@ -35,14 +36,37 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 #: `provenance.commit` records HEAD, so it changes after every commit and would make this
 #: check permanently red while saying nothing about whether the artifact is stale. Naming
 #: the field keeps the comparison exact everywhere else, which dropping the check would not.
-GENERATED: tuple[tuple[str, tuple[str, ...], tuple[str, ...]], ...] = (
-    ("paper/figures.json", ("python", "scripts/generate_figures.py"), ()),
+#: (committed file, command, volatile fields, external inputs it needs)
+#:
+#: The last element names inputs that live outside this repository. `figures.json` counts a
+#: quotation corpus that spans seventeen manuscripts and a shared citations library, so it is
+#: reproducible on a machine that has them and nowhere else. Where they are absent the file is
+#: reported as unverifiable rather than skipped quietly -- an unchecked artifact that prints
+#: nothing is the failure this script exists to prevent.
+GENERATED: tuple[tuple[str, tuple[str, ...], tuple[str, ...], tuple[str, ...]], ...] = (
+    (
+        "paper/figures.json",
+        ("python", "scripts/generate_figures.py"),
+        (),
+        ("$CITATIONS_HOME/enrichment.yaml",),
+    ),
     (
         "paper/repro.yaml",
         ("python", "scripts/build_self_audit.py"),
         ("provenance.commit", "provenance.dirty"),
+        (),
     ),
 )
+
+
+def available(requires: tuple[str, ...]) -> list[str]:
+    """External inputs that are not present, expanded from the environment."""
+    missing = []
+    for raw in requires:
+        expanded = pathlib.Path(os.path.expandvars(raw)).expanduser()
+        if "$" in str(expanded) or not expanded.exists():
+            missing.append(raw)
+    return missing
 
 
 def load(text: str, name: str) -> object:
@@ -88,14 +112,20 @@ def dirty(paths: list[str]) -> list[str]:
 
 
 def main() -> int:
-    already = dirty([path for path, _, _ in GENERATED])
+    already = dirty([path for path, _, _, _ in GENERATED])
     if already:
         print("  refusing to run: these are already modified, so drift cannot be attributed")
         for path in already:
             print(f"    {path}")
         return 2
 
-    for _, command, _ in GENERATED:
+    unverifiable = []
+    for path, command, _, requires in GENERATED:
+        missing = available(requires)
+        if missing:
+            unverifiable.append((path, missing))
+            print(f"  SKIP {path}: needs {', '.join(missing)}, not present here")
+            continue
         built = subprocess.run(command, cwd=ROOT, capture_output=True, text=True)
         if built.returncode != 0:
             print(f"  FAIL {' '.join(command)} exited {built.returncode}")
@@ -103,24 +133,27 @@ def main() -> int:
             return 1
         print(f"  ran {' '.join(command)}")
 
-    drifted = dirty([path for path, _, _ in GENERATED])
+    drifted = dirty([path for path, _, _, _ in GENERATED])
 
     # A file differing only in a volatile field is not stale. Restore it so the tree is left
     # as it was found, and say which fields were ignored rather than ignoring them silently.
     volatile_only = [
         path
-        for path, _, volatile in GENERATED
+        for path, _, volatile, _ in GENERATED
         if path in drifted and only_volatile_changed(path, volatile)
     ]
     if volatile_only:
         subprocess.run(["git", "checkout", "--", *volatile_only], cwd=ROOT, capture_output=True)
         for restored in volatile_only:
-            fields = next(v for p, _, v in GENERATED if p == restored)
+            fields = next(v for p, _, v, _ in GENERATED if p == restored)
             print(f"  {restored}: unchanged except {', '.join(fields)} (restored)")
         drifted = [path for path in drifted if path not in volatile_only]
 
     if not drifted:
-        print(f"  {len(GENERATED)} derived artifacts reproduce exactly")
+        checked = len(GENERATED) - len(unverifiable)
+        print(f"  {checked} of {len(GENERATED)} derived artifacts reproduce exactly")
+        if unverifiable:
+            print(f"  {len(unverifiable)} could not be checked here for want of external inputs")
         return 0
 
     print("\n  DRIFT: committed derived artifacts are not what their generators produce")
