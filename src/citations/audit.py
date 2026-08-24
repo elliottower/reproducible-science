@@ -294,6 +294,61 @@ def from_crossref(doi: str, cache: pathlib.Path) -> RegistryRecord | None:
                  for a in m.get("author", []) if a.get("family")])
 
 
+#: DOI prefixes registered with DataCite rather than Crossref. Crossref answers 404 for these,
+#: which reads as an entry whose identifier does not resolve when the identifier is fine.
+DATACITE_PREFIXES = ("10.48550/", "10.5281/", "10.5061/", "10.6084/", "10.17605/", "10.7910/")
+
+
+def is_datacite(doi: str) -> bool:
+    return doi.strip().lower().startswith(DATACITE_PREFIXES)
+
+
+def from_datacite(doi: str, cache: pathlib.Path) -> RegistryRecord | None:
+    """The DataCite record for a DOI, in the shape `compare` reads.
+
+    arXiv preprints (10.48550), Zenodo deposits (10.5281), Dryad, figshare and OSF register
+    with DataCite. Consulting only Crossref reports every one of them as an identifier that
+    did not resolve, which is a false accusation against a correct bibliography -- the checker
+    asked the wrong registry.
+    """
+    body = fetch(f"https://api.datacite.org/dois/{urllib.parse.quote(doi, safe='')}",
+                 cache, f"datacite_{re.sub(r'[^A-Za-z0-9]', '_', doi)}.json")
+    if not body:
+        return None
+    try:
+        attrs = json.loads(body)["data"]["attributes"]
+    except (json.JSONDecodeError, KeyError, TypeError):
+        return None
+
+    titles = attrs.get("titles") or []
+    year = attrs.get("publicationYear")
+    container = (attrs.get("container") or {}).get("title") or attrs.get("publisher") or ""
+    if isinstance(container, dict):
+        container = container.get("name", "")
+
+    authors = []
+    for c in attrs.get("creators") or []:
+        family = c.get("familyName")
+        given = c.get("givenName") or ""
+        if not family:
+            # DataCite often carries only `name`, as "Family, Given" or "Given Family".
+            name = (c.get("name") or "").strip()
+            if not name:
+                continue
+            family, given = ((x.strip() for x in name.split(",", 1)) if "," in name
+                             else (name.split()[-1], " ".join(name.split()[:-1])))
+        authors.append((tokens(family), tokens(given)))
+
+    return RegistryRecord(
+        source="datacite",
+        title=(titles[0].get("title", "") if titles else ""),
+        venue=str(container),
+        years=[str(year)] if year else [],
+        volume=str((attrs.get("container") or {}).get("volume") or ""),
+        pages="",
+        authors=authors)
+
+
 def from_pubmed(pmid: str, cache: pathlib.Path) -> RegistryRecord | None:
     body = fetch("https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
                  f"?db=pubmed&id={urllib.parse.quote(pmid)}&retmode=xml",
@@ -376,7 +431,15 @@ def audit(entries: list[Entry], cache: pathlib.Path, where: str = "") -> AuditRe
         if not e.identified:
             report.entries[e.key] = EntryAudit(status="no identifier")
             continue
-        record = from_crossref(e.doi, cache) if e.doi else None
+        # Ask the registry the DOI is actually registered with. Asking Crossref about an
+        # arXiv or Zenodo DOI returns 404, which is a fact about the registry rather than
+        # about the entry.
+        if e.doi and is_datacite(e.doi):
+            record = from_datacite(e.doi, cache)
+        elif e.doi:
+            record = from_crossref(e.doi, cache) or from_datacite(e.doi, cache)
+        else:
+            record = None
         if record is None and e.pmid:
             record = from_pubmed(e.pmid, cache)
         if record is None:
