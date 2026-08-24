@@ -615,6 +615,8 @@ class Reason(enum.StrEnum):
     """No adapter addresses this format. Reported rather than approximated: falling back to
     searching the file for the printed number would find it wherever it appears and call
     that verification."""
+    WRONG_PAGE = "wrong_page"
+    """The passage occurs in the artifact, on a different page than the one asserted."""
     VALUE_NOT_NUMERIC = "value_not_numeric"
     EXTRACTOR_MISSING = "extractor_missing"
     ARTIFACT_MISSING = "artifact_missing"
@@ -853,6 +855,26 @@ class Manifest(BaseModel):
 
     path: pathlib.Path | None = Field(default=None, exclude=True)
 
+    @model_validator(mode="after")
+    def _ids_are_unique(self):
+        """Two artifacts with one id is not a manifest with a duplicate; it is a manifest that
+        says two different things about the same name.
+
+        The engine keys its state by id, so a duplicate silently kept the last declaration and
+        dropped the rest -- including, in the case that matters, a broken pin, which then
+        disappeared from the report entirely and left `strict` passing with no violations.
+        Claims are checked the same way for the same reason.
+        """
+        for label, items in (("artifact", self.artifacts), ("claim", self.claims)):
+            seen: set[str] = set()
+            for item in items:
+                if item.id in seen:
+                    raise ValueError(
+                        f"duplicate {label} id {item.id!r}: one id must name one thing"
+                    )
+                seen.add(item.id)
+        return self
+
     def artifact(self, artifact_id: str) -> ArtifactRef | None:
         return next((a for a in self.artifacts if a.id == artifact_id), None)
 
@@ -875,6 +897,8 @@ class ArtifactState(BaseModel):
     expected: str | None = None
     actual: str | None = None
     exists: bool = True
+    detail: str = ""
+    """Why, where the state needs one -- a path that exists and cannot be read."""
 
 
 class ClaimAssessment(BaseModel):

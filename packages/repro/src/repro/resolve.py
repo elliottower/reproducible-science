@@ -120,6 +120,21 @@ def resolve_pointer(document: object, pointer: str) -> object:
     return node
 
 
+def _no_duplicate_json_keys(pairs: list[tuple[str, object]]) -> dict:
+    """`json.loads` keeps the last of a duplicated key, exactly as PyYAML does.
+
+    The YAML path has rejected this from the start; JSON did not, so one artifact could hold
+    two values for one quantity and resolve to whichever came last. That is the finding this
+    repository's own regression corpus records against someone else's paper.
+    """
+    seen: dict[str, object] = {}
+    for key, value in pairs:
+        if key in seen:
+            raise ValueError(f"duplicate key {key!r}")
+        seen[key] = value
+    return seen
+
+
 class _StrictYaml(yaml.SafeLoader):
     """SafeLoader that refuses duplicate mapping keys.
 
@@ -152,9 +167,11 @@ def _load_tree(path: pathlib.Path) -> object:
         raise ArtifactUnreadableError(path, str(e)) from e
     if fmt == "json":
         try:
-            return json.loads(text)
+            return json.loads(text, object_pairs_hook=_no_duplicate_json_keys)
         except json.JSONDecodeError as e:
             raise ArtifactUnreadableError(path, f"not valid JSON: {e}") from e
+        except ValueError as e:  # raised by the hook below
+            raise ArtifactUnreadableError(path, str(e)) from e
     try:
         return yaml.load(text, Loader=_StrictYaml)
     except yaml.YAMLError as e:
@@ -235,6 +252,16 @@ def _table_common(path: pathlib.Path, delimiter: str, column: str) -> tuple:
             f"a table locator addresses delimited text; {path.name} is {path.suffix}",
         )
     header, rows = read_table(path, delimiter)
+    repeated = sorted({name for name in header if header.count(name) > 1})
+    if repeated:
+        # `csv.DictReader` keeps the last field of a repeated header, so one of the columns is
+        # unreachable and a predicate naming it reports a present row as absent. Neither is a
+        # fact about the data.
+        return None, _no(
+            Resolution.SELECTOR_INVALID,
+            f"{path.name} repeats the column name {', '.join(repr(c) for c in repeated)}; "
+            f"a repeated header makes one of them unaddressable",
+        )
     if column not in header:
         return None, _no(
             Resolution.COLUMN_ABSENT,
@@ -388,6 +415,14 @@ def _resolve_array(locator: ArrayLocator, path: pathlib.Path) -> Found:
         return _no(
             Resolution.SELECTOR_INVALID,
             f"array has {array.ndim} dimensions; index gives {len(locator.index)}",
+        )
+    if any(i < 0 for i in locator.index):
+        # A negative index resolves from the end in Python, so `-1` silently addressed the
+        # last element and `-99` raised out of the adapter as a backend defect. Neither is an
+        # address; the same condition on the upper side is a clean `absent`.
+        return _no(
+            Resolution.SELECTOR_INVALID,
+            f"index {locator.index} is negative; an address is not relative to the end",
         )
     if any(i >= n for i, n in zip(locator.index, array.shape, strict=True)):
         return _no(

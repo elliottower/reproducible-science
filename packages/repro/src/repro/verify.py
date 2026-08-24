@@ -119,6 +119,11 @@ class QuoteBackend:
             raise BackendUnavailableError("quote", result.detail or "no text extracted")
 
         extraction, comparison, reason = _QUOTE_STATE[result.state]
+        if Warning_.WRONG_PAGE in warnings:
+            # `page` is documented as verified when present, and the passage is not on the
+            # page the manifest asserts. Reporting `match` with a warning made the assertion
+            # unenforceable: no policy reads decision warnings, so it graded as verified.
+            comparison, reason = ComparisonStatus.MISMATCH, Reason.WRONG_PAGE
         return Decision(
             **base,
             execution=ExecutionStatus.COMPLETED,
@@ -164,14 +169,22 @@ def compare_decimal(
     if evidence.mode is ComparisonMode.PRINTED_PRECISION:
         # Round the stored value to the precision the manuscript printed. A paper reporting
         # 3.2 is not contradicted by a file holding 3.20001; a paper reporting 3.20000 is.
-        try:
-            return stored.quantize(reported, rounding=decimal.ROUND_HALF_EVEN) == reported
-        except decimal.InvalidOperation:
-            # Expressing the stored value at the printed precision would take more digits
-            # than the arithmetic context carries, which happens only when the two differ by
-            # more orders of magnitude than the printed value has digits. They disagree, and
-            # saying so is the answer; raising here would report a defect instead.
-            return False
+        # `quantize` raises whenever the *result* needs more digits than the context carries,
+        # which is not only the case where the two values differ wildly: two identical
+        # thirty-digit integers also exceed the default precision of 28, and were reported as
+        # a mismatch. That is a defect in the arithmetic emitted as a contradicted manuscript,
+        # which is the one thing this package must never do. Size the context to the operands.
+        with decimal.localcontext() as context:
+            context.prec = max(
+                context.prec,
+                len(stored.as_tuple().digits) + abs(int(reported.as_tuple().exponent)) + 2,
+            )
+            try:
+                return stored.quantize(reported, rounding=decimal.ROUND_HALF_EVEN) == reported
+            except decimal.InvalidOperation:
+                # Genuinely beyond reach: the two differ by more orders of magnitude than any
+                # precision reconciles. They disagree, and saying so is the answer.
+                return False
     delta = abs(stored - reported)
     if evidence.mode is ComparisonMode.ABSOLUTE:
         return delta <= evidence.tolerance_value
@@ -316,13 +329,25 @@ def _artifact_state(artifact: ArtifactRef, path: pathlib.Path) -> ArtifactState:
             exists=False,
             expected=artifact.digest.value if artifact.digest else None,
         )
+    # A path that exists but cannot be hashed -- a directory, a mode-000 file, a dangling
+    # symlink -- is a fact about that artifact. Raising suppressed the report for every other
+    # claim in the manifest because of one bad path.
+    try:
+        actual = Digest.of_file(path).value
+    except OSError as e:
+        return ArtifactState(
+            artifact_id=artifact.id,
+            validity=Validity.ARTIFACT_ABSENT,
+            expected=artifact.digest.value if artifact.digest else None,
+            exists=False,
+            detail=f"cannot be read: {e.strerror or e}",
+        )
     if not artifact.is_pinned or artifact.digest is None:
         return ArtifactState(
             artifact_id=artifact.id,
             validity=Validity.UNPINNED_ARTIFACT,
-            actual=Digest.of_file(path).value,
+            actual=actual,
         )
-    actual = Digest.of_file(path).value
     if actual != artifact.digest.value:
         return ArtifactState(
             artifact_id=artifact.id,
