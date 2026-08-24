@@ -1,6 +1,8 @@
 """Seal a run, record what it produced, and verify the chain."""
 from __future__ import annotations
-from importlib.metadata import PackageNotFoundError, version as _version
+
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _version
 
 try:
     __version__ = _version("results-cli")

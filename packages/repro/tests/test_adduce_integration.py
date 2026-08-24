@@ -8,12 +8,11 @@ import yaml
 
 pytest.importorskip("adduce", reason="install the adduce extra to exercise the rule")
 
-from adduce.evidence import collect  # noqa: E402
-from adduce.model import scan_repository  # noqa: E402
-from adduce.rules import Status  # noqa: E402
-
-from repro.integrations.adduce import ReproEvidenceRule, candidates  # noqa: E402
-from repro.models import VerificationReport  # noqa: E402
+from adduce.evidence import collect
+from adduce.model import scan_repository
+from adduce.rules import Status
+from repro.integrations.adduce import ReproEvidenceRule, candidates
+from repro.models import VerificationReport
 
 RULE = ReproEvidenceRule()
 

@@ -364,7 +364,7 @@ def _resolve_array(locator: ArrayLocator, path: pathlib.Path) -> Found:
     if len(locator.index) != array.ndim:
         return _no(Resolution.SELECTOR_INVALID,
                    f"array has {array.ndim} dimensions; index gives {len(locator.index)}")
-    if any(i >= n for i, n in zip(locator.index, array.shape)):
+    if any(i >= n for i, n in zip(locator.index, array.shape, strict=True)):
         return _no(Resolution.ABSENT,
                    f"index {locator.index} is outside shape {tuple(array.shape)}")
     value = array[locator.index]

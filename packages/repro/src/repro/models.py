@@ -37,8 +37,8 @@ from __future__ import annotations
 
 import decimal
 import enum
-import json
 import hashlib
+import json
 import pathlib
 from typing import Annotated, Literal
 
@@ -65,7 +65,7 @@ class Digest(BaseModel):
         return f"{self.algorithm}:{self.value}"
 
     @classmethod
-    def of_file(cls, path: pathlib.Path) -> "Digest":
+    def of_file(cls, path: pathlib.Path) -> Digest:
         h = hashlib.sha256()
         with path.open("rb") as fh:
             for block in iter(lambda: fh.read(1 << 20), b""):
@@ -73,7 +73,7 @@ class Digest(BaseModel):
         return cls(value=h.hexdigest())
 
     @classmethod
-    def of_text(cls, text: str) -> "Digest":
+    def of_text(cls, text: str) -> Digest:
         return cls(value=hashlib.sha256(text.encode("utf-8")).hexdigest())
 
 
@@ -748,7 +748,7 @@ class RunRecord(BaseModel):
 
     outputs: tuple[RunOutput, ...] = ()
 
-    def output(self, artifact_id: str) -> "RunOutput | None":
+    def output(self, artifact_id: str) -> RunOutput | None:
         return next((o for o in self.outputs if o.artifact == artifact_id), None)
 
 
@@ -926,14 +926,45 @@ class VerificationReport(BaseModel):
 
 __all__ = [
     "SCHEMA_VERSION",
-    "Digest", "ArtifactRef", "ArtifactState", "Provenance",
-    "Evidence", "QuoteEvidence", "MetricEvidence", "TableCellEvidence", "ComparisonMode",
-    "Claim", "Availability", "Manifest",
-    "ExecutionStatus", "ExtractionStatus", "ComparisonStatus",
-    "ValueEvidence", "Locator", "TreeLocator", "TableLocator", "TablePositionLocator", "ArrayLocator",
-    "SqliteLocator", "ValueLocator", "PredicateValue",
-    "Outcome", "Validity", "Reason", "Warning_", "Ordering", "OrderingReason", "RegistrationAuthority", "RunRecord", "RunOutput",
-    "Registration", "Regeneration", "RegenerationReason",
-    "RegenerationRecord", "RegenerationState",
-    "Decision", "ClaimAssessment", "VerificationReport",
+    "ArrayLocator",
+    "ArtifactRef",
+    "ArtifactState",
+    "Availability",
+    "Claim",
+    "ClaimAssessment",
+    "ComparisonMode",
+    "ComparisonStatus",
+    "Decision",
+    "Digest",
+    "Evidence",
+    "ExecutionStatus",
+    "ExtractionStatus",
+    "Locator",
+    "Manifest",
+    "MetricEvidence",
+    "Ordering",
+    "OrderingReason",
+    "Outcome",
+    "PredicateValue",
+    "Provenance",
+    "QuoteEvidence",
+    "Reason",
+    "Regeneration",
+    "RegenerationReason",
+    "RegenerationRecord",
+    "RegenerationState",
+    "Registration",
+    "RegistrationAuthority",
+    "RunOutput",
+    "RunRecord",
+    "SqliteLocator",
+    "TableCellEvidence",
+    "TableLocator",
+    "TablePositionLocator",
+    "TreeLocator",
+    "Validity",
+    "ValueEvidence",
+    "ValueLocator",
+    "VerificationReport",
+    "Warning_",
 ]

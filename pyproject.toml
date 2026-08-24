@@ -23,3 +23,23 @@ markers = [
 # that does not require scattering __init__.py through the test trees.
 addopts = "-m 'not corpus' --import-mode=importlib"
 consider_namespace_packages = true
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+extend-exclude = ["packages/*/tests/conformance/cases"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "C4", "RUF"]
+ignore = [
+    "E501",    # line length is enforced by the formatter, which knows when it cannot wrap
+    "RUF001",  # the prose uses en dashes and typographic quotes deliberately
+    "RUF002",
+    "RUF003",
+]
+
+[tool.ruff.lint.per-file-ignores]
+"packages/*/tests/*" = ["B011"]  # bare assert False is fine in a test
+
+[tool.ruff.format]
+docstring-code-format = false

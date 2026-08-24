@@ -8,7 +8,8 @@ from __future__ import annotations
 
 from citations.models import Record
 from citations.resolve import match
-from citations.services import SERVICES, Candidate, surname
+from citations.services import SERVICES, Candidate
+from citations.text import surname
 
 
 def rec(**kw) -> Record:

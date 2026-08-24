@@ -16,7 +16,8 @@ import collections
 import importlib
 import pathlib
 
-from citations import paths, verify as V
+from citations import paths
+from citations import verify as V
 from citations.exceptions import CitationsError, ClaimFileError
 from citations.models import ClaimFile, load_claim_file, load_record
 

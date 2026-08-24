@@ -81,5 +81,12 @@ def surname_variants(author: str) -> frozenset[str]:
     return variants(author.split(",")[0] if "," in author else author.split()[-1])
 
 
-__all__ = ["fold", "expand", "variants", "tokens", "surname", "surname_variants",
-           "EXPANSIONS"]
+__all__ = [
+    "EXPANSIONS",
+    "expand",
+    "fold",
+    "surname",
+    "surname_variants",
+    "tokens",
+    "variants",
+]

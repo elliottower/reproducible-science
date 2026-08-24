@@ -11,7 +11,6 @@ import pathlib
 import shutil
 
 import yaml
-
 from repro import Digest
 
 HERE = pathlib.Path(__file__).parent

@@ -166,7 +166,7 @@ def cmd_new(a) -> int:
     (d / PREREG).write_text(template.render(title, today()))
     print(f"created {d}/")
     print(f"  {PREREG}   the plan, in OSF's headings")
-    print(f"  tests/  results/")
+    print("  tests/  results/")
     print("\nfill it in, then `prereg freeze`. Never edit above the log line afterwards.")
     return 0
 

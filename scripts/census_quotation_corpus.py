@@ -1,9 +1,12 @@
 """Exact quotation-corpus figures, regenerated."""
-import collections, pathlib, sys
+import collections
+import pathlib
+import sys
+
 sys.path.insert(0, str(pathlib.Path.home() / "Documents/GitHub/citations/src"))
-from citations.models import load_claim_file
-from citations.exceptions import ClaimFileError
 from citations import verify as V
+from citations.exceptions import ClaimFileError
+from citations.models import load_claim_file
 
 gh = pathlib.Path.home() / "Documents/GitHub"
 files = sorted(gh.glob("*/claims/*.yaml"))

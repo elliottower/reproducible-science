@@ -6,10 +6,10 @@ manuscript's own tables need.
 from __future__ import annotations
 
 import pytest
-
 from repro import Claim, TableCellEvidence, read_table
 from repro.exceptions import ArtifactUnreadableError
-from repro.verify import TableBackend, sniff_delimiter
+from repro.resolve import sniff_delimiter
+from repro.verify import TableBackend
 
 TABLE = """model,accuracy,n,note
 LASSO-Cox,0.6478999999999999,120,baseline

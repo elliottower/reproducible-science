@@ -25,12 +25,9 @@ from repro.exceptions import (
     BackendUnavailableError,
     UnknownEvidenceKindError,
 )
-from repro.regenerate import check_all
-from repro.resolve import Resolution, read_table, resolve, resolve_pointer, sniff_delimiter
 from repro.models import (
     ArtifactRef,
     ArtifactState,
-    Availability,
     Claim,
     ClaimAssessment,
     ComparisonMode,
@@ -44,15 +41,17 @@ from repro.models import (
     MetricEvidence,
     Ordering,
     OrderingReason,
-    RegistrationAuthority,
     QuoteEvidence,
     Reason,
+    RegistrationAuthority,
     TableCellEvidence,
-    ValueEvidence,
     Validity,
+    ValueEvidence,
     VerificationReport,
     Warning_,
 )
+from repro.regenerate import check_all
+from repro.resolve import Resolution, resolve
 
 
 class Backend(Protocol):
@@ -64,7 +63,7 @@ class Backend(Protocol):
     def check(self, claim: Claim, evidence: Evidence, path: pathlib.Path) -> Decision: ...
 
 
-def _base(claim: Claim, evidence: Evidence, backend: "Backend") -> dict:
+def _base(claim: Claim, evidence: Evidence, backend: Backend) -> dict:
     return {
         "claim_id": claim.id,
         "claim_digest": claim.digest.value,
@@ -147,7 +146,7 @@ _ABSENT_REASON = {
 
 
 def compare_decimal(stored: decimal.Decimal,
-                    evidence: "MetricEvidence | TableCellEvidence | ValueEvidence") -> bool:
+                    evidence: MetricEvidence | TableCellEvidence | ValueEvidence) -> bool:
     """Does the stored value agree with the reported one, under the declared mode?"""
     reported = evidence.value
     if not stored.is_finite():
@@ -445,7 +444,7 @@ def _check(claim: Claim, evidence: Evidence, manifest: Manifest,
     except ArtifactUnreadableError as e:
         decision = Decision(**base, **unchecked, reason=Reason.ARTIFACT_UNREADABLE,
                             detail=e.detail)
-    except Exception as e:  # noqa: BLE001 - deliberate, see below
+    except Exception as e:
         # A defect in a backend is a defect, not an abstention. Recording it as `unchecked`
         # would make a TypeError indistinguishable from a missing extractor, which is the
         # confusion this package exists to prevent.

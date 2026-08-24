@@ -1,14 +1,11 @@
 """The command must never report success on a run that examined nothing."""
 from __future__ import annotations
 
-import pathlib
 import subprocess
 import sys
 
 import pytest
 import yaml
-
-from citations import cli as C
 from citations.models import load_claim_file
 
 

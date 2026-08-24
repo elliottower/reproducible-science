@@ -16,7 +16,6 @@ import sys
 
 from results import ledger
 
-
 RESULTS_DIR = ".results"
 
 

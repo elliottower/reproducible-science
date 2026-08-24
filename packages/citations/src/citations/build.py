@@ -28,8 +28,8 @@ import unicodedata
 import yaml
 
 from citations import config, paths
-from citations.models import load_claim_file
 from citations.exceptions import ClaimFileError
+from citations.models import load_claim_file
 
 FIELD = re.compile(r"(\w+)\s*=\s*[{\"](.*?)[}\"]\s*,?\s*$", re.S)
 
@@ -53,8 +53,8 @@ def clean(s: str) -> str:
     # \'{a}, \'a and {\'a} all mean the same character
     for mark, comb in ACCENT.items():
         m = re.escape(mark)
-        s = re.sub(rf"\\{m}\s*\{{(\w)\}}", lambda g: g.group(1) + comb, s)
-        s = re.sub(rf"\\{m}\s*(\w)", lambda g: g.group(1) + comb, s)
+        s = re.sub(rf"\\{m}\s*\{{(\w)\}}", lambda g, comb=comb: g.group(1) + comb, s)
+        s = re.sub(rf"\\{m}\s*(\w)", lambda g, comb=comb: g.group(1) + comb, s)
     s = unicodedata.normalize("NFC", s)
     s = re.sub(r"[{}]", "", s).replace("\\&", "&").replace("--", "-")
     s = re.sub(r"\\[a-zA-Z]+", "", s).replace("\\", "")

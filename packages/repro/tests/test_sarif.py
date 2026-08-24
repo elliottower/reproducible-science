@@ -9,12 +9,10 @@ from __future__ import annotations
 
 import pathlib
 
-import pytest
-
 from repro import load, to_sarif, verify
+from repro.exceptions import BackendUnavailableError
 from repro.models import Outcome
 from repro.policy import EXPLORATORY, STRICT
-from repro.exceptions import BackendUnavailableError
 from repro.verify import DEFAULT_BACKENDS, MetricBackend, QuoteBackend
 
 CASES = pathlib.Path(__file__).parent / "conformance" / "cases"
@@ -98,7 +96,8 @@ def test_a_policy_raises_the_level_without_changing_the_kind():
 
 
 def test_a_broken_pin_appears_as_its_own_result(tmp_path):
-    import shutil, pathlib
+    import pathlib
+    import shutil
 
     src = pathlib.Path(CASES) / "value_match"
     d = tmp_path / "case"

@@ -4,7 +4,6 @@ it was not. These pin the ways that can happen.
 from __future__ import annotations
 
 import pytest
-
 from citations import verify as V
 
 

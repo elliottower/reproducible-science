@@ -105,7 +105,7 @@ def offline() -> bool:
     return bool(os.environ.get("REPRO_OFFLINE"))
 
 
-def locate(entry: "CorpusEntry", base: pathlib.Path,
+def locate(entry: CorpusEntry, base: pathlib.Path,
            cache: pathlib.Path = DEFAULT_CACHE) -> pathlib.Path | None:
     """Where the repository already is on this machine, without fetching anything.
 
@@ -121,7 +121,7 @@ def locate(entry: "CorpusEntry", base: pathlib.Path,
     return cached if (cached / ".git").is_dir() else None
 
 
-def ensure(entry: "CorpusEntry", base: pathlib.Path,
+def ensure(entry: CorpusEntry, base: pathlib.Path,
            cache: pathlib.Path = DEFAULT_CACHE) -> pathlib.Path | None:
     """The repository on disk at the pinned commit, fetching it if it is not already here.
 
@@ -159,7 +159,7 @@ def ensure(entry: "CorpusEntry", base: pathlib.Path,
     return dest
 
 
-def _is_pinned_revision(entry: "CorpusEntry", root: pathlib.Path) -> bool:
+def _is_pinned_revision(entry: CorpusEntry, root: pathlib.Path) -> bool:
     """Whether this checkout is the revision the entry pins, with nothing uncommitted.
 
     Dirtiness counts. A tree at the right commit with edited files holds bytes that exist
@@ -229,8 +229,18 @@ class Corpus(BaseModel):
             artifacts_differing=tuple(differing), artifacts_missing=tuple(missing))
 
 
-__all__ = ["EntryState", "ArtifactPin", "CorpusEntry", "EntryStatus", "Corpus",
-           "locate", "ensure", "offline", "FetchError", "DEFAULT_CACHE"]
+__all__ = [
+    "DEFAULT_CACHE",
+    "ArtifactPin",
+    "Corpus",
+    "CorpusEntry",
+    "EntryState",
+    "EntryStatus",
+    "FetchError",
+    "ensure",
+    "locate",
+    "offline",
+]
 
 
 # ------------------------------------------------------------------------------- regressions
@@ -301,4 +311,4 @@ class RegressionCorpus(BaseModel):
         return tuple(f.name for f in self.findings if f.needs_remote)
 
 
-__all__ += ["FindingState", "Revision", "Regression", "RegressionCorpus"]
+__all__ += ["FindingState", "Regression", "RegressionCorpus", "Revision"]

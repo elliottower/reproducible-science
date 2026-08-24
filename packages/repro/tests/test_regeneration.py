@@ -9,7 +9,6 @@ import json
 import sys
 
 import pytest
-
 from repro.models import (
     ArtifactRef,
     Claim,
@@ -21,7 +20,7 @@ from repro.models import (
     RegenerationRecord,
     RunOutput,
 )
-from repro.policy import PUBLICATION, Policy, Severity
+from repro.policy import PUBLICATION, Severity
 from repro.verify import verify
 
 SCRIPT = """

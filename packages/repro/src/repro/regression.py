@@ -111,4 +111,4 @@ def run(entry: Regression, corpus_dir: pathlib.Path,
         detail=f"expected {after.expected} at {after.commit[:12]}, got {after.counts}")
 
 
-__all__ = ["RevisionResult", "FindingResult", "run"]
+__all__ = ["FindingResult", "RevisionResult", "run"]

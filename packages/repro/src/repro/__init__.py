@@ -17,6 +17,9 @@ draft and not in a submission, and one project's standard should not be everyone
 
 Nothing here prints, exits, or reads global state.
 """
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _version
+
 from repro.exceptions import (
     ArtifactMissingError,
     ArtifactUnreadableError,
@@ -51,19 +54,18 @@ from repro.models import (
     VerificationReport,
     Warning_,
 )
-from repro.renderers import to_sarif
 from repro.policy import EXPLORATORY, PROFILES, PUBLICATION, STRICT, Assessment, Policy, Severity
+from repro.renderers import to_sarif
+from repro.resolve import Resolution, read_table, resolve, resolve_pointer, sniff_delimiter
 from repro.verify import (
     DEFAULT_BACKENDS,
     Backend,
     MetricBackend,
     QuoteBackend,
     TableBackend,
-    read_table,
+    ValueBackend,
     verify,
 )
-
-from importlib.metadata import PackageNotFoundError, version as _version
 
 try:
     __version__ = _version("reproducible-science")
@@ -71,17 +73,57 @@ except PackageNotFoundError:  # a source tree with nothing installed
     __version__ = "0+unknown"
 
 __all__ = [
-    "ReproError", "ManifestError", "ArtifactMissingError", "ArtifactUnreadableError",
-    "DigestMismatchError", "BackendUnavailableError", "UnknownEvidenceKindError",
-    "SCHEMA_VERSION", "Digest", "ArtifactRef", "ArtifactState",
-    "Evidence", "QuoteEvidence", "MetricEvidence", "TableCellEvidence", "ComparisonMode",
-    "Claim", "Availability", "Manifest",
-    "ExecutionStatus", "ExtractionStatus", "ComparisonStatus",
-    "Outcome", "Validity", "Reason", "Warning_",
-    "Decision", "ClaimAssessment", "VerificationReport",
-    "load", "find", "DEFAULT_NAME",
-    "verify", "Backend", "QuoteBackend", "MetricBackend", "TableBackend",
-    "read_table", "DEFAULT_BACKENDS",
-    "Policy", "Assessment", "Severity", "to_sarif", "EXPLORATORY", "PUBLICATION", "STRICT", "PROFILES",
+    "DEFAULT_BACKENDS",
+    "DEFAULT_NAME",
+    "EXPLORATORY",
+    "PROFILES",
+    "PUBLICATION",
+    "SCHEMA_VERSION",
+    "STRICT",
+    "ArtifactMissingError",
+    "ArtifactRef",
+    "ArtifactState",
+    "ArtifactUnreadableError",
+    "Assessment",
+    "Availability",
+    "Backend",
+    "BackendUnavailableError",
+    "Claim",
+    "ClaimAssessment",
+    "ComparisonMode",
+    "ComparisonStatus",
+    "Decision",
+    "Digest",
+    "DigestMismatchError",
+    "Evidence",
+    "ExecutionStatus",
+    "ExtractionStatus",
+    "Manifest",
+    "ManifestError",
+    "MetricBackend",
+    "MetricEvidence",
+    "Outcome",
+    "Policy",
+    "QuoteBackend",
+    "QuoteEvidence",
+    "Reason",
+    "ReproError",
+    "Severity",
+    "TableBackend",
+    "TableCellEvidence",
+    "UnknownEvidenceKindError",
+    "Validity",
+    "VerificationReport",
+    "Warning_",
     "__version__",
+    "find",
+    "load",
+    "read_table",
+    "resolve",
+    "resolve_pointer",
+    "sniff_delimiter",
+    "Resolution",
+    "ValueBackend",
+    "to_sarif",
+    "verify",
 ]

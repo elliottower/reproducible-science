@@ -17,7 +17,6 @@ import subprocess
 import sys
 
 import yaml
-
 from citations import verify as CV
 from citations.audit import from_crossref, from_datacite, is_datacite
 from citations.exceptions import ClaimFileError

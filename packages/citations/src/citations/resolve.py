@@ -33,8 +33,9 @@ import yaml
 
 from citations import paths
 from citations.models import Record, load_record
-from citations.services import SERVICES, Candidate, Service
-from citations.text import fold as norm, surname_variants
+from citations.services import SERVICES, Service
+from citations.text import fold as norm
+from citations.text import surname_variants
 
 UA = "citations/1.0 (mailto:elliot@elliottower.ai)"
 
