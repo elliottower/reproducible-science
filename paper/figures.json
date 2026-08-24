@@ -1,7 +1,7 @@
 {
   "conformance": {
     "fixtures": 18,
-    "tests_passing": 349
+    "tests_passing": 365
   },
   "metric_corpus": {
     "direction-instability-atlas": {
