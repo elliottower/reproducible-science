@@ -1,0 +1,10 @@
+pdfs/
+*.pyc
+__pycache__/
+.DS_Store
+.venv/
+papis_test/
+pdfs/
+
+# secrets
+.env

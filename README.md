@@ -1,101 +1,68 @@
 # reproducible-science
 
-Scaffold reproducible science workflows in one command.
+Four tools for binding what a paper says to what its artifacts contain, developed together and
+released separately.
 
-## Install
+| package | install | what it does |
+|---|---|---|
+| [`repro`](packages/repro) | `pip install reproducible-science` | verifies declared evidence assertions — quotations, reported values, table cells — against hash-pinned artifacts |
+| [`citations`](packages/citations) | `pip install citations` | checks that quotations resolve in the sources they cite |
+| [`results`](packages/results) | `pip install results-cli` | seals inputs, records outputs, binds manuscript claims to runs |
+| [`prereg`](packages/prereg) | `pip install prereg` | freezes a plan before running, and records what changed after |
 
-```bash
-pip install reproducible-science
+Each is an independent distribution with its own public API, so installing citation
+verification never drags in a preregistration tool. They live in one repository because a
+change that crosses two of them should be one commit, not a release dance.
+
+## Working on them
+
+A [uv workspace](https://docs.astral.sh/uv/concepts/projects/workspaces/): one lockfile, one
+environment, and local resolution between the packages.
+
+```console
+uv sync --all-packages     # every package, editable, in one environment
+uv run pytest              # every package's tests
+uv run pytest packages/citations
+uv run pytest -m corpus    # tests that read repositories outside this one
 ```
 
-This installs `repro` and its three dependencies: [`prereg`](https://pypi.org/project/prereg/), [`citations`](https://pypi.org/project/citations/), [`results-cli`](https://pypi.org/project/results-cli/).
+`uv.lock` at the root is the only lockfile. A package added under `packages/` joins the
+workspace automatically.
 
-## Quick start
+## Releasing
 
-```bash
-repro init my_experiment
+One package at a time, named by the tag:
+
+```console
+git tag citations-v0.2.0 && git push --tags
 ```
 
+Each package has its own workflow under `.github/workflows/`, which runs the whole workspace's
+tests before building that one distribution.
+
+PyPI trusted publishing is bound to a repository *and* a workflow filename, so a package
+released from here for the first time needs its publisher reconfigured on PyPI — repository `elliottower/reproducible-science`, workflow `publish-<package>.yml`,
+environment `release` — before the tag is pushed. The workflow filename is what PyPI matches,
+not the distribution name, so `results-cli` is published by `publish-results.yml`. An upload from an unrecognized workflow is rejected, and a version number is never
+reusable once taken.
+
+## Layout
+
 ```
-initializing my_experiment
-  wrote my_experiment/PREREG.md
-  wrote my_experiment/.results/ledger.jsonl
-  wrote my_experiment/.citations/
-  wrote my_experiment/CLAUDE.md
+packages/        the four distributions, each with its own pyproject, src and tests
+plugins/         Claude Code plugins, published as a marketplace from this repository
+docs/            SPEC.md — the evidence contract
+paper/           the manuscript, and its own self-audit manifest
+experiments/     preregistrations and their frozen codebooks
+scripts/         figure and manifest generation
 ```
-
-This creates:
-
-```
-my_experiment/
-    PREREG.md           the plan (OSF headings)
-    CLAUDE.md           tells Claude Code about the tools
-    .results/           results ledger
-    .citations/         citation library
-    claims/             claim files for citation verification
-    data/               raw data
-    scripts/            analysis scripts
-    figures/            output figures
-```
-
-## Verify everything at once
-
-```bash
-cd my_experiment
-repro verify
-```
-
-Runs `prereg check`, `results verify --files`, and `citations verify --claims claims/` in sequence.
-
-## The workflow
-
-```bash
-prereg freeze                         # lock the plan
-results seal PREREG.md analysis.py    # hash inputs
-results access "read metadata" --level "metadata only"
-
-# run the computation
-
-results run output.json --run-id exp_001
-results claim "ICC = 0.42" --run-id exp_001 --confirmatory --location "Table 2"
-repro verify                          # check everything
-```
-
-## What's included
-
-| Tool | CLI | PyPI | What it does |
-|------|-----|------|-------------|
-| prereg | `prereg` | [`prereg`](https://pypi.org/project/prereg/) | Freeze a plan before running, record what changed after |
-| citations | `citations` | [`citations`](https://pypi.org/project/citations/) | Verify quotations resolve in pinned source artifacts |
-| results | `results` | [`results-cli`](https://pypi.org/project/results-cli/) | Seal inputs, record outputs, bind claims to runs, verify the chain |
-
-## Inside adduce
-
-[adduce](https://github.com/QHarshil/adduce) scores a repository for reproducibility across
-categories. Installing the extra registers one rule with it, so a repository that declares a
-`repro.yaml` has its evidence assertions checked as part of `adduce check`:
-
-```bash
-pip install "reproducible-science[adduce]"
-adduce check .
-```
-
-The rule reports an aggregate — every assertion holding is a pass, some holding is partial, a
-pinned artifact having changed is a failure naming it — and writes the full per-assertion
-report to `.adduce/repro-report.json`, since one finding cannot carry thousands of outcomes.
-A repository with no manifest is out of scope rather than failing, and a verifier that cannot
-run reports `UNKNOWN`: a missing toolchain is not the repository's fault.
-
-adduce is not a dependency of this package, and this package is not a dependency of adduce.
 
 ## Claude Code
 
-This repo is also a Claude Code plugin marketplace bundling all three tools:
+This repository is also a plugin marketplace:
 
-```bash
+```console
 /plugin marketplace add elliottower/reproducible-science
 ```
-
-Or install them individually: [`elliottower/prereg`](https://github.com/elliottower/prereg), [`elliottower/citations`](https://github.com/elliottower/citations), [`elliottower/results`](https://github.com/elliottower/results).
 
 MIT licensed.

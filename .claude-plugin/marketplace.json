@@ -4,23 +4,23 @@
     "name": "Elliot Tower"
   },
   "metadata": {
-    "description": "Preregistration, citation verification, and results provenance for reproducible science",
+    "description": "Preregistration, citation verification, evidence verification, and results provenance for reproducible science",
     "version": "0.1.0"
   },
   "plugins": [
     {
       "name": "prereg",
-      "source": "./plugins/prereg",
+      "source": "./packages/prereg/plugin",
       "strict": false
     },
     {
       "name": "citations",
-      "source": "./plugins/citations",
+      "source": "./packages/citations/plugin",
       "strict": false
     },
     {
       "name": "results",
-      "source": "./plugins/results",
+      "source": "./packages/results/plugin",
       "strict": false
     }
   ]
