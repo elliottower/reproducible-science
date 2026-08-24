@@ -156,7 +156,12 @@ def test_freeze_refuses_a_plan_with_no_status_line(repo):
     )
     r = run(["freeze"], repo)
     assert r.returncode != 0, "reported a freeze it did not perform"
-    assert "not frozen" not in run(["check"], repo).stdout or r.returncode != 0
+    # A refusal has to leave the plan unfrozen. The earlier form of this assertion was
+    # `"not frozen" not in ... or r.returncode != 0`, whose right operand the line above had
+    # already proven true, so it could not fail whatever `check` printed.
+    check = run(["check"], repo)
+    assert "not frozen" in check.stdout
+    assert check.returncode == 2
 
 
 def test_a_status_marker_in_the_body_cannot_hide_from_the_hash(repo):
@@ -263,12 +268,21 @@ def test_a_log_note_cannot_break_out_of_the_fence(repo):
 
 
 def test_freezing_without_a_commit_says_so(tmp_path):
+    """`git()` returns "" on any non-zero exit, so a repository with no commit read as clean.
+
+    Reaching the guard needs `--force`: an uncommitted plan is always dirty, and the dirty
+    check returns first. The earlier version of this test asserted a literal the source never
+    emits, on a run that stopped one guard earlier.
+    """
     subprocess.run(["git", "init", "-q"], cwd=tmp_path)
     run(["new", "study"], tmp_path)
-    run(["freeze"], tmp_path / "study")
-    assert "(not in a git repository)" not in (tmp_path / "study" / "PREREG.md").read_text(), (
-        "wrote a placeholder where a commit should be"
-    )
+    plan = tmp_path / "study"
+    r = run(["freeze", "--force", "--access", "nothing run"], plan)
+    assert r.returncode == 1, r.stdout
+    assert "not in a git repository with a commit" in r.stdout
+    text = (plan / "PREREG.md").read_text()
+    assert "**Plan sha256:**" not in text, "a refused freeze must not write a digest"
+    assert "DRAFT" in text
 
 
 def test_check_at_a_root_fails_if_any_plan_below_it_changed(tmp_path):
@@ -341,3 +355,125 @@ def test_check_reports_a_tampered_log(repo):
     result = run(["check"], repo)
     assert result.returncode != 0
     assert "log" in result.stdout.lower()
+
+
+def test_content_hidden_behind_a_marker_after_freezing_is_reported(repo):
+    """`freeze` refuses a plan that hides content behind a marker line; `check` did not.
+
+    `plan_of` skips marker-prefixed lines so the hash cannot cover itself, which means a line
+    inserted *after* the freeze sits in the plan uncovered. `**Frozen:** we will also accept
+    p<0.10` is a commitment the reader sees and the digest does not.
+    """
+    run(["freeze"], repo)
+    assert run(["check"], repo).returncode == 0
+
+    path = repo / "PREREG.md"
+    before = cli.sha256_of(cli.plan_of(path.read_text()))
+    # Exactly one line, and no blank line around it: `plan_of` drops the marker line but joins
+    # what remains, so an inserted blank would move the digest and the hash would catch it
+    # instead. The point is the case the hash cannot see.
+    path.write_text(
+        path.read_text().replace(
+            "## Randomization", "**Frozen:** we will also accept p<0.10\n## Randomization", 1
+        )
+    )
+    assert cli.sha256_of(cli.plan_of(path.read_text())) == before, (
+        "the digest must be blind to this, or the test is not exercising the hidden-content check"
+    )
+
+    r = run(["check"], repo)
+    assert r.returncode != 0, "a commitment added after the freeze reported as unchanged"
+    assert "UNCOVERED" in r.stdout
+    assert "p<0.10" in r.stdout
+
+
+def test_check_at_a_root_fails_if_any_plan_below_it_was_never_frozen(tmp_path):
+    """The single-plan branch returns 2 for an unfrozen plan; the root branch returned 0.
+
+    Whether an unfrozen registration passed CI therefore depended on which directory the
+    command ran from.
+    """
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path)
+    for name in ("frozen", "never"):
+        run(["new", name], tmp_path)
+    subprocess.run(["git", "add", "-A"], cwd=tmp_path)
+    subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "init"],
+        cwd=tmp_path,
+    )
+    run(["freeze"], tmp_path / "frozen")
+
+    r = run(["check"], tmp_path)
+    assert r.returncode != 0, "a root check passed with an unfrozen plan below it"
+    assert "1 not frozen" in r.stdout
+    assert run(["check"], tmp_path / "never").returncode == 2, "the two branches must agree"
+
+
+def test_a_root_check_passes_when_every_plan_below_it_is_frozen(tmp_path):
+    # The control: the root branch has to stay usable, not merely strict.
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path)
+    for name in ("a", "b"):
+        run(["new", name], tmp_path)
+    subprocess.run(["git", "add", "-A"], cwd=tmp_path)
+    subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "init"],
+        cwd=tmp_path,
+    )
+    for name in ("a", "b"):
+        run(["freeze"], tmp_path / name)
+    assert run(["check"], tmp_path).returncode == 0
+
+
+def test_replacing_the_last_log_entry_is_caught_by_the_anchor(repo):
+    """Chaining cannot see the end of the log rewritten, because the chain is rebuilt with it.
+
+    Only the anchor's head witnesses which entry is last. Deleting one changes the count and
+    is caught there; substituting one keeps the count, so the head is the only thing that
+    disagrees.
+    """
+    run(["freeze"], repo)
+    run(["log", "saw the outcome table", "--access", "results seen"], repo)
+    run(["log", "adjusted the threshold", "--access", "results seen"], repo)
+    path = repo / "PREREG.md"
+    assert cli.log_problems(path.read_text()) == []
+
+    lines = path.read_text().splitlines()
+    entries = cli.log_lines(path.read_text())
+    previous = ""
+    for entry in entries[:-1]:
+        body, _, recorded = entry.rpartition(cli.LOG_MARK)
+        previous = recorded.strip() if body else cli.chain_value(previous, entry)
+
+    original = entries[-1]
+    body = original.rpartition(cli.LOG_MARK)[0].replace("adjusted the threshold", "no change made")
+    forged = f"{body}{cli.LOG_MARK} {cli.chain_value(previous, body)}"
+    path.write_text("\n".join(ln.replace(original, forged) for ln in lines) + "\n")
+
+    problems = cli.log_problems(path.read_text())
+    assert problems, "a rewritten last entry chained cleanly and nothing else looked at it"
+    assert any("not the one recorded" in p for p in problems), problems
+    assert run(["check"], repo).returncode != 0
+
+
+def test_a_forced_refreeze_after_results_were_seen_must_say_what_was_seen(repo):
+    """`nothing run` was written unconditionally, so a rewrite forced after a `results seen`
+    entry logged itself as an amendment directly beneath the line saying otherwise."""
+    run(["freeze"], repo)
+    run(["log", "saw the outcome table", "--access", "results seen"], repo)
+
+    before = cli.log_lines((repo / "PREREG.md").read_text())
+    assert before[-1].endswith("results seen") or "results seen" in before[-1]
+
+    r = run(["freeze", "--force"], repo)
+    assert r.returncode == 1, r.stdout
+    assert "cannot describe itself" in r.stdout
+    # The refusal has to leave the log alone. Writing `nothing run` blind put an amendment
+    # claiming nothing had been run directly beneath the entry recording that the outcomes
+    # had been examined.
+    assert cli.log_lines((repo / "PREREG.md").read_text()) == before
+
+    ok = run(["freeze", "--force", "--access", "results seen"], repo)
+    assert ok.returncode == 0, ok.stdout
+    after = cli.log_lines((repo / "PREREG.md").read_text())
+    assert len(after) == len(before) + 1
+    assert "results seen" in after[-1] and "nothing run" not in after[-1]
