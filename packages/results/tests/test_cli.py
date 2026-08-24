@@ -72,14 +72,24 @@ def test_run_records_outputs(tmp_path):
     assert runs[0]["run_id"] == "run_001"
 
 
-def test_run_warns_on_duplicate_id(tmp_path):
+def test_run_refuses_a_duplicate_id(tmp_path):
+    """A warning was not enough. Both the claim-time refusal and `verify`'s contested list
+    resolve an id to a single timestamp, so two runs sharing an id let a confirmatory claim
+    rest on the earlier of them -- and typing the same id twice was the whole attack."""
     run_cli("init", cwd=tmp_path)
-    (tmp_path / "out1.json").write_text('{"a": 1}\n')
-    (tmp_path / "out2.json").write_text('{"a": 2}\n')
-    run_cli("run", "out1.json", "--run-id", "exp_001", cwd=tmp_path)
-    r = run_cli("run", "out2.json", "--run-id", "exp_001", cwd=tmp_path)
-    assert r.returncode == 0
+    (tmp_path / "out.csv").write_text("a\n")
+    run_cli("run", "out.csv", "--run-id", "exp1", cwd=tmp_path)
+    r = run_cli("run", "out.csv", "--run-id", "exp1", cwd=tmp_path)
+    assert r.returncode == 1
     assert "already exists" in r.stdout
+
+
+def test_run_records_a_duplicate_id_when_told_to(tmp_path):
+    run_cli("init", cwd=tmp_path)
+    (tmp_path / "out.csv").write_text("a\n")
+    run_cli("run", "out.csv", "--run-id", "exp1", cwd=tmp_path)
+    r = run_cli("run", "out.csv", "--run-id", "exp1", "--anyway", cwd=tmp_path)
+    assert r.returncode == 0
 
 
 def test_claim_requires_existing_run(tmp_path):

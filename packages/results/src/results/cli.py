@@ -64,11 +64,18 @@ def first_outcomes_seen(events: list[dict]) -> str | None:
 
 
 def first_run_timestamp(events: list[dict], run_id: str) -> str | None:
-    """Timestamp of the earliest run recorded under this id."""
+    """Timestamp of the *latest* run recorded under this id.
+
+    It once returned the earliest, so a second run recorded under an id that already existed
+    inherited the first one's timestamp: a run performed after the outcomes were seen was
+    ordered by when the id was first used, and the confirmatory guard passed. Duplicate ids
+    are refused now, and this takes the latest regardless -- what a claim rests on is the most
+    recent run under the id.
+    """
     stamps = [
         e["timestamp"] for e in events if e.get("event") == "run" and e.get("run_id") == run_id
     ]
-    return min(stamps) if stamps else None
+    return max(stamps) if stamps else None
 
 
 def cmd_init(a) -> int:
@@ -137,9 +144,14 @@ def cmd_run(a) -> int:
     lp = ledger_path(root)
     existing = ledger.read_ledger(lp)
     existing_ids = {e["run_id"] for e in existing if e.get("event") == "run"}
-    if a.run_id in existing_ids:
-        print(f"warning: run id '{a.run_id}' already exists in the ledger.")
-        print("the new run will be recorded alongside the old one.")
+    if a.run_id in existing_ids and not getattr(a, "anyway", False):
+        # A warning was not enough: both the claim-time refusal and `verify`'s contested list
+        # resolve an id to one timestamp, so two runs sharing an id let a claim rest on the
+        # earlier of them. Typing the same id twice defeated the confirmatory guard.
+        print(f"run id '{a.run_id}' already exists in the ledger.")
+        print("one run id names one run: choose another, or pass --anyway to record both")
+        print("and accept that a claim naming this id is ordered by the later run.")
+        return 1
     outputs = []
     for name in a.files:
         p = pathlib.Path(name).resolve()
@@ -227,6 +239,10 @@ def cmd_reanchor(a) -> int:
         ledger.ChainStatus.EDITED,
         ledger.ChainStatus.CORRUPT,
         ledger.ChainStatus.REORDERED,
+        # `TRUNCATED` was missing, so deleting trailing events -- a failed run, a claim --
+        # and then re-anchoring was a two-command path to a clean bill of health. It is the
+        # status this guard most needs to cover, since truncation is the cheapest tampering.
+        ledger.ChainStatus.TRUNCATED,
     ):
         print(f"refusing to anchor a chain reported as {status.value}.")
         print("re-anchoring would record the damage as authoritative.")
@@ -277,25 +293,37 @@ def cmd_verify(a) -> int:
     drift = 0
     if a.files:
         print("\nfile hashes:")
-        file_hashes = {}
+        # Keyed by path, the last seal of a path silently replaced every earlier one, so
+        # "seal your inputs before a run" was not what this checked. Keep them all, and report
+        # a path recorded under more than one hash.
+        file_hashes: dict[str, list[str]] = {}
         for e in events:
             for f in e.get("files", []) + e.get("outputs", []):
-                file_hashes[f["path"]] = f["sha256"]
+                recorded = file_hashes.setdefault(f["path"], [])
+                if f["sha256"] not in recorded:
+                    recorded.append(f["sha256"])
         base = root.parent
-        for path, expected in sorted(file_hashes.items()):
+        for path, recorded in sorted(file_hashes.items()):
             p = base / path
             if not p.exists():
                 print(f"  MISSING    {path}")
                 drift += 1
-            else:
-                actual = ledger.sha256_of_file(p)
-                if actual == expected:
-                    print(f"  ok         {path}")
-                else:
-                    print(f"  CHANGED    {path}")
-                    print(f"    sealed   {expected[:16]}…")
-                    print(f"    now      {actual[:16]}…")
+                continue
+            actual = ledger.sha256_of_file(p)
+            if actual in recorded:
+                if len(recorded) > 1:
+                    # The file on disk matches one recorded hash and the ledger holds others,
+                    # so the path was sealed, changed, and sealed again.
+                    print(f"  RESEALED   {path}")
+                    print(f"    recorded {len(recorded)} different hashes for this path")
                     drift += 1
+                else:
+                    print(f"  ok         {path}")
+            else:
+                print(f"  CHANGED    {path}")
+                print(f"    sealed   {recorded[-1][:16]}…")
+                print(f"    now      {actual[:16]}…")
+                drift += 1
         if drift:
             print(f"\n{drift} file(s) changed or missing since they were recorded.")
             return 1
@@ -384,6 +412,12 @@ def main() -> int:
     r.add_argument("files", nargs="+")
     r.add_argument("--run-id", required=True, help="a name for this run")
     r.add_argument("--note", help="what this run computed")
+    r.add_argument(
+        "--anyway",
+        action="store_true",
+        help="record a second run under an id that already exists; a claim naming that id "
+        "is then ordered by the later run",
+    )
     r.set_defaults(fn=cmd_run)
 
     cl = sub.add_parser("claim", help="bind a manuscript claim to a run")

@@ -427,8 +427,11 @@ def _ordering(
                 f"plan {run.registered_plan} is not the document that was "
                 f"pinned, so its timestamp attests to nothing",
             )
-        if False:
-            pass
+        if state.validity is not Validity.AUTHORITATIVE:
+            return unchecked(
+                OrderingReason.REGISTERED_PLAN_UNPINNED,
+                f"plan {run.registered_plan} is declared but {state.validity.value}",
+            )
 
     # Each output must be bound to the bytes actually read, not merely to a path.
     for run in runs:
