@@ -11,7 +11,7 @@ import pathlib
 
 import pytest
 from repro import load, verify
-from repro.models import Availability, Outcome
+from repro.models import Availability, Outcome, Validity
 
 CASES = sorted((pathlib.Path(__file__).parent / "cases").iterdir())
 
@@ -63,3 +63,23 @@ def test_a_backend_defect_is_an_error_and_never_an_abstention():
     decision = report.decisions[0]
     assert decision.execution.value == "failed"
     assert decision.outcome is O.ERROR, "a TypeError must not read as unchecked"
+
+
+@pytest.mark.parametrize("case", CASES, ids=lambda c: c.name)
+def test_a_fixture_artifact_is_the_one_its_manifest_pinned(case):
+    """Every fixture's pins hold, except where breaking one is the point of the case.
+
+    Without this the suite checks outcomes and never validity, so a formatting tool that
+    rewrites a fixture -- appending a trailing newline is enough -- breaks every pin in the
+    corpus while all the outcome assertions keep passing. That is not hypothetical: it
+    happened the first time the pre-commit hooks ran here.
+    """
+    deliberately_broken = {"broken_pin", "unpinned_artifact", "artifact_missing"}
+    if case.name in deliberately_broken:
+        pytest.skip(f"{case.name} exists to exercise a non-authoritative artifact")
+    report = verify(load(case / "repro.yaml"))
+    for state in report.artifacts:
+        assert state.validity is Validity.AUTHORITATIVE, (
+            f"{case.name}/{state.artifact_id}: pinned {(state.expected or '')[:12]}, "
+            f"found {(state.actual or '')[:12]} — the fixture's bytes have changed"
+        )
