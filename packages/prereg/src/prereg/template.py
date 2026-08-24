@@ -9,16 +9,21 @@ without being rewritten. Two of them do the real work:
 A heading that does not apply is answered N/A with a reason, never deleted. A deleted heading
 and an inapplicable one look identical in a file and very different to a reader.
 """
+
 from __future__ import annotations
 
 # Verbatim from the OSF Preregistration schema, in order.
 QUESTIONS = [
     ("Research questions or hypotheses", "What is being asked, and what would count as an answer."),
-    ("Foreknowledge of data or evidence",
-     "What have you already seen? Pilot runs, exploratory results, anything from a related "
-     "study. If nothing, say so."),
-    ("Explanation of foreknowledge and managing unintended influences",
-     "How the answer above does or does not constrain the predictions below."),
+    (
+        "Foreknowledge of data or evidence",
+        "What have you already seen? Pilot runs, exploratory results, anything from a related "
+        "study. If nothing, say so.",
+    ),
+    (
+        "Explanation of foreknowledge and managing unintended influences",
+        "How the answer above does or does not constrain the predictions below.",
+    ),
     ("Study type", "Experimental, observational, meta-analytic."),
     ("Intention for causal interpretation", "Or N/A if no causal claim is intended."),
     ("Blinding of experimental treatments", ""),
@@ -38,8 +43,10 @@ QUESTIONS = [
     ("Statistical models", ""),
     ("Statistical models - File upload", ""),
     ("Transformations", ""),
-    ("Inference criteria",
-     "The decision rule, as a commitment, before the number exists. A threshold, not a hope."),
+    (
+        "Inference criteria",
+        "The decision rule, as a commitment, before the number exists. A threshold, not a hope.",
+    ),
     ("Data inclusion and exclusion", ""),
     ("Missing data", ""),
     ("Other planned analysis", "Anything beyond the above is exploratory and labelled so."),

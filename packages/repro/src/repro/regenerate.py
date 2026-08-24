@@ -16,6 +16,7 @@ never reproduces byte for byte, so a record names those fields as `volatile` and
 removed before hashing. Naming them keeps the comparison exact everywhere else, where
 loosening the whole comparison would not.
 """
+
 from __future__ import annotations
 
 import json
@@ -39,12 +40,17 @@ from repro.resolve import resolve_pointer
 _MISSING = object()
 
 
-def _unchecked(record: RegenerationRecord, reason: RegenerationReason,
-               detail: str) -> RegenerationState:
-    return RegenerationState(regeneration_id=record.id, artifact_id=record.output.artifact,
-                             state=Regeneration.UNCHECKED, reason=reason, detail=detail,
-                             expected=record.output.digest.value if record.output.digest
-                             else None)
+def _unchecked(
+    record: RegenerationRecord, reason: RegenerationReason, detail: str
+) -> RegenerationState:
+    return RegenerationState(
+        regeneration_id=record.id,
+        artifact_id=record.output.artifact,
+        state=Regeneration.UNCHECKED,
+        reason=reason,
+        detail=detail,
+        expected=record.output.digest.value if record.output.digest else None,
+    )
 
 
 def _drop(document: object, pointer: str) -> object:
@@ -77,40 +83,58 @@ def canonical_digest(path: pathlib.Path, volatile: tuple[str, ...]) -> Digest:
         return Digest.of_file(path)
     for pointer in volatile:
         document = _drop(document, pointer)
-    return Digest.of_text(json.dumps(document, sort_keys=True, separators=(",", ":"),
-                                     ensure_ascii=False))
+    return Digest.of_text(
+        json.dumps(document, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    )
 
 
-def check(record: RegenerationRecord, manifest: Manifest,
-          states: dict[str, ArtifactState]) -> RegenerationState:
+def check(
+    record: RegenerationRecord, manifest: Manifest, states: dict[str, ArtifactState]
+) -> RegenerationState:
     """Run one regeneration record in a sandbox and compare what it produced."""
     if record.output.digest is None:
-        return _unchecked(record, RegenerationReason.INPUT_UNPINNED,
-                          "the record names no expected digest for its output")
+        return _unchecked(
+            record,
+            RegenerationReason.INPUT_UNPINNED,
+            "the record names no expected digest for its output",
+        )
 
     files: dict[str, pathlib.Path] = {}
     for wanted in (*record.inputs, record.output):
         artifact = manifest.artifact(wanted.artifact)
         if artifact is None:
-            return _unchecked(record, RegenerationReason.INPUT_MISSING,
-                              f"manifest declares no artifact {wanted.artifact!r}")
+            return _unchecked(
+                record,
+                RegenerationReason.INPUT_MISSING,
+                f"manifest declares no artifact {wanted.artifact!r}",
+            )
         files[wanted.artifact] = manifest.resolve(artifact)
 
     for wanted in record.inputs:
         state = states.get(wanted.artifact)
         if state is None or not state.exists:
-            return _unchecked(record, RegenerationReason.INPUT_MISSING,
-                              f"input {wanted.artifact} is not present")
+            return _unchecked(
+                record, RegenerationReason.INPUT_MISSING, f"input {wanted.artifact} is not present"
+            )
         if state.validity is Validity.BROKEN_PIN:
-            return _unchecked(record, RegenerationReason.INPUT_CHANGED,
-                              f"input {wanted.artifact} is not the file that was pinned")
+            return _unchecked(
+                record,
+                RegenerationReason.INPUT_CHANGED,
+                f"input {wanted.artifact} is not the file that was pinned",
+            )
         if wanted.digest is None:
-            return _unchecked(record, RegenerationReason.INPUT_UNPINNED,
-                              f"input {wanted.artifact} carries no digest in the record")
+            return _unchecked(
+                record,
+                RegenerationReason.INPUT_UNPINNED,
+                f"input {wanted.artifact} carries no digest in the record",
+            )
         if state.actual != wanted.digest.value:
-            return _unchecked(record, RegenerationReason.INPUT_CHANGED,
-                              f"input {wanted.artifact} holds {(state.actual or '')[:12]}, "
-                              f"the record names {wanted.digest.value[:12]}")
+            return _unchecked(
+                record,
+                RegenerationReason.INPUT_CHANGED,
+                f"input {wanted.artifact} holds {(state.actual or '')[:12]}, "
+                f"the record names {wanted.digest.value[:12]}",
+            )
 
     root = manifest.path.parent if manifest.path else pathlib.Path.cwd()
     with tempfile.TemporaryDirectory(prefix="repro-regen-") as scratch:
@@ -125,23 +149,37 @@ def check(record: RegenerationRecord, manifest: Manifest,
             shutil.copy2(source, target)
 
         try:
-            completed = subprocess.run(record.command, cwd=sandbox, capture_output=True,
-                                       text=True, timeout=record.timeout_seconds,
-                                       check=False)
+            completed = subprocess.run(
+                record.command,
+                cwd=sandbox,
+                capture_output=True,
+                text=True,
+                timeout=record.timeout_seconds,
+                check=False,
+            )
         except FileNotFoundError as e:
-            return _unchecked(record, RegenerationReason.RUNNER_UNAVAILABLE,
-                              f"{record.command[0]} is not on PATH: {e}")
+            return _unchecked(
+                record,
+                RegenerationReason.RUNNER_UNAVAILABLE,
+                f"{record.command[0]} is not on PATH: {e}",
+            )
         except subprocess.TimeoutExpired:
-            return _unchecked(record, RegenerationReason.COMMAND_TIMED_OUT,
-                              f"exceeded {record.timeout_seconds:g}s")
+            return _unchecked(
+                record,
+                RegenerationReason.COMMAND_TIMED_OUT,
+                f"exceeded {record.timeout_seconds:g}s",
+            )
 
         if completed.returncode != 0:
             tail = (completed.stderr or completed.stdout or "").strip().splitlines()
             return RegenerationState(
-                regeneration_id=record.id, artifact_id=record.output.artifact,
-                state=Regeneration.DIVERGED, reason=RegenerationReason.COMMAND_FAILED,
+                regeneration_id=record.id,
+                artifact_id=record.output.artifact,
+                state=Regeneration.DIVERGED,
+                reason=RegenerationReason.COMMAND_FAILED,
                 expected=record.output.digest.value,
-                detail=f"exit {completed.returncode}: {tail[-1] if tail else 'no output'}")
+                detail=f"exit {completed.returncode}: {tail[-1] if tail else 'no output'}",
+            )
 
         source = files[record.output.artifact]
         try:
@@ -150,11 +188,13 @@ def check(record: RegenerationRecord, manifest: Manifest,
             produced = sandbox / source.name
         if not produced.is_file():
             return RegenerationState(
-                regeneration_id=record.id, artifact_id=record.output.artifact,
+                regeneration_id=record.id,
+                artifact_id=record.output.artifact,
                 state=Regeneration.DIVERGED,
                 reason=RegenerationReason.OUTPUT_NOT_PRODUCED,
                 expected=record.output.digest.value,
-                detail=f"the command wrote nothing to {produced.name}")
+                detail=f"the command wrote nothing to {produced.name}",
+            )
 
         actual = canonical_digest(produced, record.volatile)
 
@@ -163,20 +203,31 @@ def check(record: RegenerationRecord, manifest: Manifest,
     expected = record.output.digest.value
     matched = actual.value == expected
     return RegenerationState(
-        regeneration_id=record.id, artifact_id=record.output.artifact,
+        regeneration_id=record.id,
+        artifact_id=record.output.artifact,
         state=Regeneration.REPRODUCED if matched else Regeneration.DIVERGED,
-        reason=(RegenerationReason.OUTPUT_MATCHES if matched
-                else RegenerationReason.OUTPUT_DIFFERS),
-        expected=expected, actual=actual.value,
-        detail=("" if matched else
-                f"produced {actual.value[:12]}, the manifest pins {expected[:12]}"))
+        reason=(
+            RegenerationReason.OUTPUT_MATCHES if matched else RegenerationReason.OUTPUT_DIFFERS
+        ),
+        expected=expected,
+        actual=actual.value,
+        detail=(
+            "" if matched else f"produced {actual.value[:12]}, the manifest pins {expected[:12]}"
+        ),
+    )
 
 
-def check_all(manifest: Manifest, states: dict[str, ArtifactState],
-              enabled: bool) -> tuple[RegenerationState, ...]:
+def check_all(
+    manifest: Manifest, states: dict[str, ArtifactState], enabled: bool
+) -> tuple[RegenerationState, ...]:
     """Every declared regeneration, or an `unchecked` state per record when not enabled."""
     if not enabled:
-        return tuple(_unchecked(record, RegenerationReason.NOT_REQUESTED,
-                                "regeneration runs only when explicitly enabled")
-                     for record in manifest.regenerations)
+        return tuple(
+            _unchecked(
+                record,
+                RegenerationReason.NOT_REQUESTED,
+                "regeneration runs only when explicitly enabled",
+            )
+            for record in manifest.regenerations
+        )
     return tuple(check(record, manifest, states) for record in manifest.regenerations)

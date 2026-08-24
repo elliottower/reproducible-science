@@ -17,6 +17,7 @@ draft and not in a submission, and one project's standard should not be everyone
 
 Nothing here prints, exits, or reads global state.
 """
+
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _version
 

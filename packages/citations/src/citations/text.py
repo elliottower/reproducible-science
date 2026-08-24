@@ -14,6 +14,7 @@ Crossref carries one, a BibTeX file often carries the other, and no single norma
 matches both. `variants()` returns every form a name might be written in, and two names agree
 when their variant sets intersect.
 """
+
 from __future__ import annotations
 
 import html
@@ -22,8 +23,19 @@ import unicodedata
 
 #: Letters that expand to two in German transliteration. Applied before combining marks are
 #: stripped, so both readings survive.
-EXPANSIONS = {"ä": "ae", "ö": "oe", "ü": "ue", "Ä": "ae", "Ö": "oe", "Ü": "ue",
-              "ß": "ss", "æ": "ae", "œ": "oe", "å": "aa", "ø": "oe"}
+EXPANSIONS = {
+    "ä": "ae",
+    "ö": "oe",
+    "ü": "ue",
+    "Ä": "ae",
+    "Ö": "oe",
+    "Ü": "ue",
+    "ß": "ss",
+    "æ": "ae",
+    "œ": "oe",
+    "å": "aa",
+    "ø": "oe",
+}
 
 
 def _strip_markup(text: str) -> str:

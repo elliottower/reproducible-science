@@ -5,6 +5,7 @@ does it still resolve, is the quotation pinned to it real. The failure these pin
 that passes all of that -- a correct DOI carrying an author list belonging to nobody on the
 paper. It resolves, the link is live, the quotations are genuine, and the reference is wrong.
 """
+
 from __future__ import annotations
 
 from citations import audit as A
@@ -20,38 +21,54 @@ def names(*pairs):
 
 # --- the failure the command exists for ------------------------------------------------------
 
-REAL = record(title="Genome-wide association study of circulating interleukin 6 levels",
-              years=["2012"], volume="21", pages="5056-5065",
-              authors=names(("Naitza", "Silvia"), ("Porcu", "Eleonora"), ("Steri", "Maristella")))
+REAL = record(
+    title="Genome-wide association study of circulating interleukin 6 levels",
+    years=["2012"],
+    volume="21",
+    pages="5056-5065",
+    authors=names(("Naitza", "Silvia"), ("Porcu", "Eleonora"), ("Steri", "Maristella")),
+)
 
 
 def test_a_fabricated_author_list_on_a_correct_doi_is_caught():
-    entry = A.Entry(key="interleukin2012", title=REAL.title,
-                    authors=["Chen, Wei", "Zhang, Li", "Kumar, Rajesh"],
-                    year="2012", volume="21", pages="5056--5065",
-                    doi="10.1093/hmg/dds213")
+    entry = A.Entry(
+        key="interleukin2012",
+        title=REAL.title,
+        authors=["Chen, Wei", "Zhang, Li", "Kumar, Rajesh"],
+        year="2012",
+        volume="21",
+        pages="5056--5065",
+        doi="10.1093/hmg/dds213",
+    )
     problems = A.compare(entry, REAL)
     assert problems, "every field but the names agreed, which is how this survives a DOI check"
     assert all("surname" in p for p in problems)
 
 
 def test_the_same_entry_with_the_real_names_is_clean():
-    entry = A.Entry(key="interleukin2012", title=REAL.title,
-                    authors=["Naitza, Silvia", "Porcu, Eleonora", "Steri, Maristella"],
-                    year="2012", volume="21", pages="5056--5065",
-                    doi="10.1093/hmg/dds213")
+    entry = A.Entry(
+        key="interleukin2012",
+        title=REAL.title,
+        authors=["Naitza, Silvia", "Porcu, Eleonora", "Steri, Maristella"],
+        year="2012",
+        volume="21",
+        pages="5056--5065",
+        doi="10.1093/hmg/dds213",
+    )
     assert A.compare(entry, REAL) == []
 
 
 def test_resolving_and_matching_are_different_questions():
     """The entry has an identifier and the identifier fetched. Neither makes it correct."""
-    entry = A.Entry(key="k", title=REAL.title, authors=["Chen, Wei"], year="2012",
-                    doi="10.1093/hmg/dds213")
+    entry = A.Entry(
+        key="k", title=REAL.title, authors=["Chen, Wei"], year="2012", doi="10.1093/hmg/dds213"
+    )
     assert entry.identified
     assert A.compare(entry, REAL)
 
 
 # --- truncation, which looks like completeness -------------------------------------------------
+
 
 def test_a_list_that_stops_early_with_no_marker_is_flagged():
     src = record(authors=names(("Smith", "A"), ("Jones", "B"), ("Patel", "C"), ("Wu", "D")))
@@ -72,6 +89,7 @@ def test_more_names_than_the_registry_has_is_flagged():
 
 
 # --- what is not a disagreement ----------------------------------------------------------------
+
 
 def test_a_bibtex_accent_matches_the_unicode_it_encodes():
     # The accent is a backslash-punctuation pair. Left in, it splits the name in two once
@@ -104,11 +122,14 @@ def test_an_initial_the_registry_does_not_have_is_still_reported():
 
 def test_two_first_names_sharing_an_initial_are_not_the_same_person():
     """Reducing a whole given name to initials would make these agree. They are two people."""
-    for mine, theirs in [("Andrew J. S.", "Alastair J. S."),
-                         ("Shannon C.", "Suzanne C."),
-                         ("Madeline", "Madhuri")]:
-        said = A.disagreement((A.tokens("Burgess"), A.tokens(mine)),
-                              (A.tokens("Burgess"), A.tokens(theirs)))
+    for mine, theirs in [
+        ("Andrew J. S.", "Alastair J. S."),
+        ("Shannon C.", "Suzanne C."),
+        ("Madeline", "Madhuri"),
+    ]:
+        said = A.disagreement(
+            (A.tokens("Burgess"), A.tokens(mine)), (A.tokens("Burgess"), A.tokens(theirs))
+        )
         assert said and "given name" in said, f"{mine} vs {theirs} passed"
 
 
@@ -171,13 +192,18 @@ def test_an_online_first_year_is_accepted_against_either_date():
 
 def test_an_abbreviated_end_page_is_not_a_page_mismatch():
     # PubMed writes 1214-24 for 1214-1224, so only the start page is comparable.
-    assert A.compare(A.Entry(key="k", pages="1214--1224", doi="10/x"),
-                     record(pages="1214-24")) == []
+    assert (
+        A.compare(A.Entry(key="k", pages="1214--1224", doi="10/x"), record(pages="1214-24")) == []
+    )
 
 
 def test_a_different_start_page_is_a_page_mismatch():
-    assert any("pages" in p for p in
-               A.compare(A.Entry(key="k", pages="1214--1224", doi="10/x"), record(pages="2114-24")))
+    assert any(
+        "pages" in p
+        for p in A.compare(
+            A.Entry(key="k", pages="1214--1224", doi="10/x"), record(pages="2114-24")
+        )
+    )
 
 
 def test_markup_a_registry_deposited_in_the_title_is_not_a_title_mismatch():
@@ -201,6 +227,7 @@ def test_a_field_absent_on_either_side_is_not_a_disagreement():
 
 
 # --- a subtitle-only title is a different report from a wrong one -------------------------------
+
 
 def test_a_title_the_registry_continues_is_reported_as_a_prefix():
     src = record(title="Low-density lipoproteins cause disease. 1. Evidence from genetics")
@@ -256,7 +283,8 @@ def test_an_entry_with_no_identifier_is_not_reported_as_matching(tmp_path):
     entries = [e for e in A.entries_from_bib(f) if e.key == "rothman2008"]
     report = A.audit(entries, tmp_path / "cache")
     assert report.entries["rothman2008"].status == "no identifier", (
-        "nothing checked it, so it is neither clean nor dirty")
+        "nothing checked it, so it is neither clean nor dirty"
+    )
 
 
 def test_an_identifier_that_did_not_fetch_is_not_reported_as_matching(tmp_path, monkeypatch):
@@ -269,13 +297,16 @@ def test_an_identifier_that_did_not_fetch_is_not_reported_as_matching(tmp_path, 
 
 def test_a_cached_response_is_reused_rather_than_refetched(tmp_path, monkeypatch):
     """The cache is what makes a report reproducible from what was fetched, not from the network."""
+
     def refuse(*a, **kw):
         raise AssertionError("went to the network with a cached payload present")
+
     monkeypatch.setattr(A.urllib.request, "urlopen", refuse)
     cache = tmp_path / "cache"
     cache.mkdir()
     (cache / "crossref_10_1234_x.json").write_text(
-        '{"message": {"title": ["A title"], "author": [{"family": "Smith", "given": "Ann"}]}}')
+        '{"message": {"title": ["A title"], "author": [{"family": "Smith", "given": "Ann"}]}}'
+    )
     got = A.from_crossref("10.1234/x", cache)
     assert got.title == "A title"
     assert got.authors == [(("smith",), ("ann",))]
@@ -283,13 +314,15 @@ def test_a_cached_response_is_reused_rather_than_refetched(tmp_path, monkeypatch
 
 # --- exit codes ---------------------------------------------------------------------------------
 
+
 def test_a_run_with_nothing_to_check_is_not_a_pass(capsys):
     assert A.render(A.AuditReport(where="library /nowhere"), quiet=False) == 2
 
 
 def test_a_clean_run_exits_zero(capsys):
-    rep = A.AuditReport(where="library /x", entries={
-        "a": A.EntryAudit(status="ok", checked_against="crossref")})
+    rep = A.AuditReport(
+        where="library /x", entries={"a": A.EntryAudit(status="ok", checked_against="crossref")}
+    )
     assert A.render(rep, quiet=False) == 0
     assert rep.ok
 
@@ -303,9 +336,12 @@ def test_an_unresolved_entry_keeps_the_run_from_passing(capsys):
 def test_a_library_record_marked_et_al_is_not_reported_as_truncated():
     # A bibliography writes "and others"; a library record sets et_al. A check that
     # reads only the first calls every correctly-marked record incomplete.
-    src = A.RegistryRecord(source="crossref", title="T", years=["2020"],
-                           authors=[(("smith",), ("ann",)), (("jones",), ("bo",)),
-                                    (("khan",), ("li",))])
+    src = A.RegistryRecord(
+        source="crossref",
+        title="T",
+        years=["2020"],
+        authors=[(("smith",), ("ann",)), (("jones",), ("bo",)), (("khan",), ("li",))],
+    )
     short = A.Entry(key="k", title="T", authors=["Smith, Ann"], year="2020", et_al=True)
     assert not [p for p in A.compare(short, src) if "stops at" in p]
 

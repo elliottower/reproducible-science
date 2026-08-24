@@ -9,6 +9,7 @@ is often recorded about a project that has not adopted this tool. Artifact paths
 manifest are relative to the repository root, and are resolved to absolute paths against the
 checkout before verification, so nothing is written into the project being audited.
 """
+
 from __future__ import annotations
 
 import pathlib
@@ -63,52 +64,87 @@ def _manifest_against(manifest_path: pathlib.Path, root: pathlib.Path) -> Verifi
         return verify(load(tmp))
 
 
-def _at(entry: Regression, revision, corpus_dir: pathlib.Path,
-        cache: pathlib.Path) -> RevisionResult:
+def _at(
+    entry: Regression, revision, corpus_dir: pathlib.Path, cache: pathlib.Path
+) -> RevisionResult:
     if revision is None or not revision.commit:
         return RevisionResult(commit="", available=False)
-    root = ensure(CorpusEntry(name=entry.name, repository=entry.repository,
-                              commit=revision.commit, local_path=entry.local_path),
-                  corpus_dir, cache)
+    root = ensure(
+        CorpusEntry(
+            name=entry.name,
+            repository=entry.repository,
+            commit=revision.commit,
+            local_path=entry.local_path,
+        ),
+        corpus_dir,
+        cache,
+    )
     if root is None:
-        return RevisionResult(commit=revision.commit, available=False,
-                              expected=revision.expected)
+        return RevisionResult(commit=revision.commit, available=False, expected=revision.expected)
     manifest = corpus_dir / revision.manifest
     if not manifest.is_file():
-        return RevisionResult(commit=revision.commit, available=False,
-                              expected=revision.expected)
+        return RevisionResult(commit=revision.commit, available=False, expected=revision.expected)
     report = _manifest_against(manifest, root)
-    return RevisionResult(commit=revision.commit, available=True,
-                          counts=report.counts, expected=revision.expected)
+    return RevisionResult(
+        commit=revision.commit, available=True, counts=report.counts, expected=revision.expected
+    )
 
 
-def run(entry: Regression, corpus_dir: pathlib.Path,
-        cache: pathlib.Path = DEFAULT_CACHE) -> FindingResult:
+def run(
+    entry: Regression, corpus_dir: pathlib.Path, cache: pathlib.Path = DEFAULT_CACHE
+) -> FindingResult:
     """Check a recorded finding at the revisions it names."""
     before = _at(entry, entry.before, corpus_dir, cache)
     after = _at(entry, entry.after, corpus_dir, cache) if entry.after else None
 
     if not before.available:
-        return FindingResult(name=entry.name, state=FindingState.UNAVAILABLE, before=before,
-                             after=after, detail="the revision that showed it is unavailable")
+        return FindingResult(
+            name=entry.name,
+            state=FindingState.UNAVAILABLE,
+            before=before,
+            after=after,
+            detail="the revision that showed it is unavailable",
+        )
     if not before.matches_expected:
         # The finding no longer reproduces where it was recorded. That is not a pass: either
         # it was fixed without an `after` being recorded, or the entry is wrong.
         return FindingResult(
-            name=entry.name, state=FindingState.UNREPRODUCED, before=before, after=after,
-            detail=f"expected {before.expected} at {before.commit[:12]}, got {before.counts}")
+            name=entry.name,
+            state=FindingState.UNREPRODUCED,
+            before=before,
+            after=after,
+            detail=f"expected {before.expected} at {before.commit[:12]}, got {before.counts}",
+        )
     if after is None:
-        return FindingResult(name=entry.name, state=FindingState.OPEN, before=before,
-                             detail="reproduced; no revision recorded as fixing it")
+        return FindingResult(
+            name=entry.name,
+            state=FindingState.OPEN,
+            before=before,
+            detail="reproduced; no revision recorded as fixing it",
+        )
     if not after.available:
-        return FindingResult(name=entry.name, state=FindingState.UNAVAILABLE, before=before,
-                             after=after, detail="the revision that fixed it is unavailable")
+        return FindingResult(
+            name=entry.name,
+            state=FindingState.UNAVAILABLE,
+            before=before,
+            after=after,
+            detail="the revision that fixed it is unavailable",
+        )
     if after.matches_expected:
-        return FindingResult(name=entry.name, state=FindingState.FIXED, before=before,
-                             after=after, detail="reproduced at before, absent at after")
+        return FindingResult(
+            name=entry.name,
+            state=FindingState.FIXED,
+            before=before,
+            after=after,
+            detail="reproduced at before, absent at after",
+        )
     return FindingResult(
-        name=entry.name, state=FindingState.UNREPRODUCED, before=before, after=after,
-        detail=f"expected {after.expected} at {after.commit[:12]}, got {after.counts}")
+        name=entry.name,
+        state=FindingState.UNREPRODUCED,
+        before=before,
+        after=after,
+        detail=f"expected {after.expected} at {after.commit[:12]}, got {after.counts}",
+    )
 
 
 __all__ = ["FindingResult", "RevisionResult", "run"]

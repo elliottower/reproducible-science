@@ -10,6 +10,7 @@ a **scientific** outcome is a value in the report. A missing PDF extractor raise
 that is genuinely absent from its source does not. Collapsing those two is how a tool ends up
 reporting that nothing failed because nothing ran.
 """
+
 from __future__ import annotations
 
 import pathlib
@@ -45,7 +46,8 @@ class DigestMismatchError(ReproError):
         self.expected = expected
         self.actual = actual
         super().__init__(
-            f"artifact {artifact_id!r}: pinned {expected[:16]}... but found {actual[:16]}...")
+            f"artifact {artifact_id!r}: pinned {expected[:16]}... but found {actual[:16]}..."
+        )
 
 
 class BackendUnavailableError(ReproError):

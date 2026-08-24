@@ -4,14 +4,19 @@ There were two folding implementations. `audit.fold` resolved Kästner to `kastn
 `services.norm` deleted the accented letter and produced `kstner`. The second gated identifier
 lookup, so a correct paper was rejected for any author with an accent in their surname.
 """
+
 from __future__ import annotations
 
 from citations.text import expand, fold, surname, surname_variants, tokens, variants
 
 
 def test_an_accent_resolves_to_its_letter_rather_than_vanishing():
-    for accented, plain in [("Kästner", "kastner"), ("Munafò", "munafo"),
-                            ("Alchourrón", "alchourron"), ("Räuker", "rauker")]:
+    for accented, plain in [
+        ("Kästner", "kastner"),
+        ("Munafò", "munafo"),
+        ("Alchourrón", "alchourron"),
+        ("Räuker", "rauker"),
+    ]:
         assert fold(accented) == plain
 
 
@@ -23,7 +28,9 @@ def test_the_german_expansion_is_also_produced():
 
 def test_both_spellings_of_one_name_share_a_variant():
     # A record writes Hölscher-Obermaier; Crossref deposits Hoelscher-Obermaier.
-    assert surname_variants("Hölscher-Obermaier, Jason") & surname_variants("Hoelscher-Obermaier, J")
+    assert surname_variants("Hölscher-Obermaier, Jason") & surname_variants(
+        "Hoelscher-Obermaier, J"
+    )
 
 
 def test_two_different_names_share_no_variant():
@@ -37,8 +44,9 @@ def test_a_latex_accent_matches_the_unicode_it_encodes():
 
 def test_markup_a_registry_deposited_is_not_part_of_the_title():
     # Crossref stores italics as tags and sometimes escapes them twice.
-    assert fold("Effect of statins on &amp;lt;i&amp;gt;LDLR&amp;lt;/i&amp;gt; expression") == \
-           fold("Effect of statins on LDLR expression")
+    assert fold("Effect of statins on &amp;lt;i&amp;gt;LDLR&amp;lt;/i&amp;gt; expression") == fold(
+        "Effect of statins on LDLR expression"
+    )
 
 
 def test_a_surname_is_read_out_of_either_name_order():

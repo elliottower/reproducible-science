@@ -1,4 +1,5 @@
 """Exact quotation-corpus figures, regenerated."""
+
 import collections
 import pathlib
 import sys

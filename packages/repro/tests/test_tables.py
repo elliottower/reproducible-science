@@ -3,6 +3,7 @@
 Most published result artifacts are tables rather than JSON, so this is the variant a
 manuscript's own tables need.
 """
+
 from __future__ import annotations
 
 import pytest

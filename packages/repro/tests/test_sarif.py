@@ -5,6 +5,7 @@ where a reviewer already looks. The property worth testing is that the three-sta
 survives the translation: SARIF splits `kind` from `level`, so a check that could not run can
 stay `notApplicable` instead of becoming a low-severity failure.
 """
+
 from __future__ import annotations
 
 import pathlib
@@ -68,7 +69,8 @@ def test_artifacts_carry_their_digest():
     artifacts = s["runs"][0]["artifacts"]
     assert artifacts
     assert all("sha-256" in a.get("hashes", {}) for a in artifacts), (
-        "the digests a report was computed against travel with it")
+        "the digests a report was computed against travel with it"
+    )
 
 
 def test_a_result_fingerprints_the_claim_and_the_bytes():
@@ -133,19 +135,31 @@ def test_every_rule_a_result_names_is_declared_by_the_driver(tmp_path):
         project="p",
         artifacts=(
             ArtifactRef(id="good", path=good, digest=Digest.of_file(good)),
-            ArtifactRef(id="moved", path=moved,
-                        digest=Digest(algorithm="sha256", value="0" * 64)),
-            ArtifactRef(id="gone", path=pathlib.Path(tmp_path / "gone.json"),
-                        digest=Digest(algorithm="sha256", value="1" * 64)),
+            ArtifactRef(id="moved", path=moved, digest=Digest(algorithm="sha256", value="0" * 64)),
+            ArtifactRef(
+                id="gone",
+                path=pathlib.Path(tmp_path / "gone.json"),
+                digest=Digest(algorithm="sha256", value="1" * 64),
+            ),
         ),
         claims=(
-            Claim(id="ok", text="t", evidence=(
-                MetricEvidence(artifact="good", name="x", reported="3.2", pointer="/x"),)),
-            Claim(id="bad", text="t", evidence=(
-                MetricEvidence(artifact="good", name="y", reported="1.1", pointer="/y"),)),
-            Claim(id="absent", text="t", evidence=(
-                MetricEvidence(artifact="gone", name="z", reported="1.0", pointer="/z"),)),
-        ))
+            Claim(
+                id="ok",
+                text="t",
+                evidence=(MetricEvidence(artifact="good", name="x", reported="3.2", pointer="/x"),),
+            ),
+            Claim(
+                id="bad",
+                text="t",
+                evidence=(MetricEvidence(artifact="good", name="y", reported="1.1", pointer="/y"),),
+            ),
+            Claim(
+                id="absent",
+                text="t",
+                evidence=(MetricEvidence(artifact="gone", name="z", reported="1.0", pointer="/z"),),
+            ),
+        ),
+    )
     run = to_sarif(verify(manifest))["runs"][0]
     declared = {rule["id"] for rule in run["tool"]["driver"]["rules"]}
     used = {result["ruleId"] for result in run["results"]}

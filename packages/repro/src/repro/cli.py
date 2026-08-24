@@ -8,6 +8,7 @@ A renderer over the library and nothing more. `verify` calls `repro.verify()` an
 by importing the package. `main` returns an exit code; the process boundary is the only place
 that exits.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -100,15 +101,24 @@ def cmd_verify(args: argparse.Namespace) -> int:
         print(json.dumps(to_sarif(report, assessment, version=__version__), indent=2))
         return 0 if assessment.passed else 1
     if args.format == "json":
-        print(json.dumps({"report": report.model_dump(mode="json"),
-                          "assessment": assessment.model_dump(mode="json")}, indent=2))
+        print(
+            json.dumps(
+                {
+                    "report": report.model_dump(mode="json"),
+                    "assessment": assessment.model_dump(mode="json"),
+                },
+                indent=2,
+            )
+        )
         return 0 if assessment.passed else 1
 
     print(f"{path}\n")
     for artifact in report.artifacts:
         if artifact.validity is Validity.BROKEN_PIN:
-            print(f"  BROKEN PIN  {artifact.artifact_id}: pinned "
-                  f"{(artifact.expected or '')[:12]}, found {(artifact.actual or '')[:12]}")
+            print(
+                f"  BROKEN PIN  {artifact.artifact_id}: pinned "
+                f"{(artifact.expected or '')[:12]}, found {(artifact.actual or '')[:12]}"
+            )
         elif artifact.validity is Validity.ARTIFACT_ABSENT:
             print(f"  ABSENT      {artifact.artifact_id}: nothing at the declared path")
         elif artifact.validity is Validity.UNPINNED_ARTIFACT:
@@ -128,24 +138,31 @@ def cmd_verify(args: argparse.Namespace) -> int:
 
     for claim in report.claims:
         if claim.availability is Availability.NOT_OFFERED:
-            print(f"  {SYMBOL[Outcome.NOT_OFFERED]}  {claim.claim_id:<12} "
-                  f"{'-':<8} no evidence offered")
+            print(
+                f"  {SYMBOL[Outcome.NOT_OFFERED]}  {claim.claim_id:<12} "
+                f"{'-':<8} no evidence offered"
+            )
             continue
         if claim.ordering is Ordering.VIOLATED:
             print(f"  ORDER       {claim.claim_id:<12} {claim.ordering_detail[:52]}")
         elif claim.ordering is Ordering.UNCHECKED:
-            print(f"  order?      {claim.claim_id:<12} "
-                  f"{claim.ordering_reason.value}: {claim.ordering_detail[:38]}")
+            print(
+                f"  order?      {claim.claim_id:<12} "
+                f"{claim.ordering_reason.value}: {claim.ordering_detail[:38]}"
+            )
         for d in claim.decisions:
             mark = "" if d.is_authoritative else f"  <{d.validity.value}>"
             note = f"  [{','.join(w.value for w in d.warnings)}]" if d.warnings else ""
-            print(f"  {SYMBOL[d.outcome]}  {d.claim_id:<12} {d.kind:<8} "
-                  f"{d.detail[:52]}{note}{mark}")
+            print(
+                f"  {SYMBOL[d.outcome]}  {d.claim_id:<12} {d.kind:<8} {d.detail[:52]}{note}{mark}"
+            )
 
     counts = report.counts
     print(f"\n  {', '.join(f'{v} {k}' for k, v in sorted(counts.items()))}")
-    print(f"  policy {policy.name}: {'passed' if assessment.passed else 'FAILED'}"
-          f"  ({len(assessment.errors)} errors, {len(assessment.warnings)} warnings)")
+    print(
+        f"  policy {policy.name}: {'passed' if assessment.passed else 'FAILED'}"
+        f"  ({len(assessment.errors)} errors, {len(assessment.warnings)} warnings)"
+    )
     for v in assessment.errors[:10]:
         print(f"    error   {v.rule:<26} {v.subject}: {v.detail[:44]}")
     return 0 if assessment.passed else 1
@@ -153,7 +170,8 @@ def cmd_verify(args: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="repro", description="Verify declared evidence assertions against pinned artifacts")
+        prog="repro", description="Verify declared evidence assertions against pinned artifacts"
+    )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     sub = parser.add_subparsers(dest="command")
 
@@ -167,8 +185,10 @@ def main(argv: list[str] | None = None) -> int:
     p_verify.add_argument("--policy", choices=sorted(PROFILES), default="publication")
     p_verify.add_argument("--format", choices=("text", "json", "sarif"), default="text")
     p_verify.add_argument(
-        "--regenerate", action="store_true",
-        help="run declared regeneration commands in a sandbox (executes them)")
+        "--regenerate",
+        action="store_true",
+        help="run declared regeneration commands in a sandbox (executes them)",
+    )
     p_verify.set_defaults(func=cmd_verify)
 
     args = parser.parse_args(argv)

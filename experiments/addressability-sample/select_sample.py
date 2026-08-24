@@ -7,6 +7,7 @@ depends on nothing but the seed and the frame, so anyone can reproduce the draw.
 Run before any article is opened. Writes the ordered frame and the selected identifiers so
 both are frozen alongside the registration.
 """
+
 from __future__ import annotations
 
 import hashlib
@@ -28,22 +29,23 @@ def field(block: str, name: str) -> str:
 
 
 def entries(bibliography: str) -> list[dict]:
-    blocks = [b for b in re.split(r'\n(?=@\w+\s*\{)', bibliography)
-              if b.lstrip().startswith("@")]
+    blocks = [b for b in re.split(r"\n(?=@\w+\s*\{)", bibliography) if b.lstrip().startswith("@")]
     out = []
     for block in blocks:
         if field(block, "type").lower() not in RESEARCH_TYPES:
             continue
-        out.append({
-            "key": re.search(r'@\w+\s*\{\s*([^,]+)', block).group(1).strip(),
-            "doi": field(block, "doi"),
-            "type": field(block, "type"),
-            "year": field(block, "year"),
-            "domain": field(block, "domain"),
-            "code_swh": field(block, "code_swh"),
-            "code_url": field(block, "code_url"),
-            "code_doi": field(block, "code_doi"),
-        })
+        out.append(
+            {
+                "key": re.search(r"@\w+\s*\{\s*([^,]+)", block).group(1).strip(),
+                "doi": field(block, "doi"),
+                "type": field(block, "type"),
+                "year": field(block, "year"),
+                "domain": field(block, "domain"),
+                "code_swh": field(block, "code_swh"),
+                "code_url": field(block, "code_url"),
+                "code_doi": field(block, "code_doi"),
+            }
+        )
     return out
 
 

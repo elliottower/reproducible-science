@@ -15,6 +15,7 @@ Paths may be absolute, may use `~`, or may be relative to the library. A configu
 does not exist is reported rather than skipped: a bibliography that quietly contributes nothing
 looks exactly like a paper that cites nothing.
 """
+
 from __future__ import annotations
 
 import pathlib
@@ -90,12 +91,16 @@ def save(cfg: LibraryConfig, library: pathlib.Path | None = None) -> pathlib.Pat
     """Write `papers.yaml`, with a header saying what it is."""
     library = library or paths.home()
     p = config_path(library)
-    body = {"papers": {
-        name: {k: str(v) for k, v in paper.model_dump(exclude_none=True).items()}
-        for name, paper in cfg.papers.items()}}
+    body = {
+        "papers": {
+            name: {k: str(v) for k, v in paper.model_dump(exclude_none=True).items()}
+            for name, paper in cfg.papers.items()
+        }
+    }
     p.write_text(
         "# Papers that cite into this library, and where their bibliographies live.\n"
         "# Paths may be absolute, use ~, or be relative to this directory.\n"
         "# `citations build` reads this; nothing writes to it automatically.\n"
-        + yaml.safe_dump(body, sort_keys=True, allow_unicode=True, width=100))
+        + yaml.safe_dump(body, sort_keys=True, allow_unicode=True, width=100)
+    )
     return p

@@ -10,6 +10,7 @@ the one the tests ran against.
 Builds every package, installs the four wheels into a throwaway environment with third-party
 dependencies resolved from PyPI, and runs the manifest the repository audits itself with.
 """
+
 from __future__ import annotations
 
 import pathlib
@@ -39,28 +40,36 @@ def main() -> int:
 
         run("uv", "venv", "--python", "3.13", str(venv))
         python = venv / "bin" / "python"
-        install = run("uv", "pip", "install", "--python", str(python),
-                      *[str(w) for w in found])
+        install = run("uv", "pip", "install", "--python", str(python), *[str(w) for w in found])
         if install.returncode:
             print(f"  FAIL install\n{install.stderr}")
             return 1
 
         # Nothing may resolve from the workspace: the point is to test the artifacts.
-        versions = run(str(python), "-c",
-                       "import importlib.metadata as m;"
-                       f"print(' '.join(f'{{d}}={{m.version(d)}}' for d in {DISTS!r}))")
+        versions = run(
+            str(python),
+            "-c",
+            "import importlib.metadata as m;"
+            f"print(' '.join(f'{{d}}={{m.version(d)}}' for d in {DISTS!r}))",
+        )
         print(f"  installed {versions.stdout.strip()}")
 
-        smoke = run(str(venv / "bin" / "repro"), "verify",
-                    str(ROOT / "paper" / "repro.yaml"), "--policy", "strict")
+        smoke = run(
+            str(venv / "bin" / "repro"),
+            "verify",
+            str(ROOT / "paper" / "repro.yaml"),
+            "--policy",
+            "strict",
+        )
         tail = [ln for ln in smoke.stdout.splitlines() if ln.strip()][-1:] or [""]
         print(f"  repro verify --policy strict -> exit {smoke.returncode}: {tail[0].strip()}")
         if smoke.returncode != 0:
             print(smoke.stdout[-2000:])
             return 1
 
-        quote = run(str(python), "-c",
-                    "from citations.verify import check_one; print('quote backend: ok')")
+        quote = run(
+            str(python), "-c", "from citations.verify import check_one; print('quote backend: ok')"
+        )
         if quote.returncode:
             print(f"  FAIL quote backend\n{quote.stderr}")
             return 1

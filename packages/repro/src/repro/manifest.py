@@ -4,6 +4,7 @@ Validation happens once, here, at the edge. A malformed file names itself and th
 fault rather than raising a `KeyError` from inside the engine, because the person who has to
 fix it is looking at the file, not at the traceback.
 """
+
 from __future__ import annotations
 
 import pathlib
@@ -28,8 +29,9 @@ def load(path: pathlib.Path | str) -> Manifest:
     except OSError as e:
         raise ManifestError(path, f"could not be read: {e}") from e
     if not isinstance(raw, dict):
-        raise ManifestError(path, f"expected a mapping at the top level, "
-                                  f"found {type(raw).__name__}")
+        raise ManifestError(
+            path, f"expected a mapping at the top level, found {type(raw).__name__}"
+        )
     # `path` is set at construction because a Manifest is frozen: where it was read from is
     # part of what it is, and an object that can be repointed afterwards resolves relative
     # artifact paths against whichever directory was assigned last.

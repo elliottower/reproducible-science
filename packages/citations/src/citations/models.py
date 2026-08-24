@@ -17,6 +17,7 @@ Unknown fields are kept, not rejected. Records carry per-project metadata this p
 opinion about, and 365 claims files predate these models; validation exists to catch a missing
 required field, not to refuse a file for carrying an extra one.
 """
+
 from __future__ import annotations
 
 import pathlib
@@ -188,7 +189,9 @@ def _load_yaml(path: pathlib.Path) -> dict[str, Any]:
     except OSError as e:
         raise ClaimFileError(path, f"could not be read: {e}") from e
     if not isinstance(raw, dict):
-        raise ClaimFileError(path, f"expected a mapping at the top level, found {type(raw).__name__}")
+        raise ClaimFileError(
+            path, f"expected a mapping at the top level, found {type(raw).__name__}"
+        )
     return raw
 
 

@@ -1,4 +1,5 @@
 """Seal a run, record what it produced, and verify the chain."""
+
 from __future__ import annotations
 
 from importlib.metadata import PackageNotFoundError

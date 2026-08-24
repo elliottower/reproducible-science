@@ -33,6 +33,7 @@ not there, and no comparison was possible. A missing extractor is
 cannot be the result of checking evidence, because there is none to pass to a backend. It
 lives on the claim.
 """
+
 from __future__ import annotations
 
 import decimal
@@ -50,6 +51,7 @@ _SHA256_HEX = r"^[a-f0-9]{64}$"
 
 
 # --------------------------------------------------------------------------------- artifacts
+
 
 class Digest(BaseModel):
     """A content address."""
@@ -99,6 +101,7 @@ class ArtifactRef(BaseModel):
 
 # ---------------------------------------------------------------------------------- evidence
 
+
 class _EvidenceBase(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -142,8 +145,9 @@ class Locator(BaseModel):
         it was addressed. Changing a selector changes the digest even where the file does
         not.
         """
-        return json.dumps(self.model_dump(mode="json"), sort_keys=True,
-                          separators=(",", ":"), ensure_ascii=False)
+        return json.dumps(
+            self.model_dump(mode="json"), sort_keys=True, separators=(",", ":"), ensure_ascii=False
+        )
 
     @property
     def digest(self) -> Digest:
@@ -168,8 +172,10 @@ class TableLocator(Locator):
     @model_validator(mode="after")
     def _predicate_must_select(self):
         if not self.where:
-            raise ValueError("a table locator needs a `where` predicate; to address by "
-                             "position use kind: table_position")
+            raise ValueError(
+                "a table locator needs a `where` predicate; to address by "
+                "position use kind: table_position"
+            )
         return self
 
 
@@ -213,7 +219,8 @@ class SqliteLocator(Locator):
 
 ValueLocator = Annotated[
     TreeLocator | TableLocator | TablePositionLocator | ArrayLocator | SqliteLocator,
-    Field(discriminator="kind")]
+    Field(discriminator="kind"),
+]
 
 
 class QuoteEvidence(_EvidenceBase):
@@ -333,10 +340,8 @@ class TableCellEvidence(_EvidenceBase):
     def locator(self) -> TableLocator | TablePositionLocator:
         """`table` is sugar for one of the two table locators."""
         if self.row is not None:
-            return TablePositionLocator(column=self.column, row=self.row,
-                                        delimiter=self.delimiter)
-        return TableLocator(column=self.column, where=dict(self.where),
-                            delimiter=self.delimiter)
+            return TablePositionLocator(column=self.column, row=self.row, delimiter=self.delimiter)
+        return TableLocator(column=self.column, where=dict(self.where), delimiter=self.delimiter)
 
 
 class ValueEvidence(_EvidenceBase):
@@ -370,8 +375,9 @@ class ValueEvidence(_EvidenceBase):
         return decimal.Decimal(self.tolerance)
 
 
-Evidence = Annotated[QuoteEvidence | MetricEvidence | TableCellEvidence | ValueEvidence,
-                     Field(discriminator="kind")]
+Evidence = Annotated[
+    QuoteEvidence | MetricEvidence | TableCellEvidence | ValueEvidence, Field(discriminator="kind")
+]
 """Every kind of evidence, discriminated on `kind`.
 
 `protocol` was a third variant and is not one. Its integrity check is the artifact pin, which
@@ -383,6 +389,7 @@ unimplemented, and is not smuggled in as a third evidence kind in the meantime.
 
 
 # ------------------------------------------------------------------------------------ claims
+
 
 class Availability(enum.StrEnum):
     """Whether a claim offers anything to check. A property of the claim, not of a check."""
@@ -435,8 +442,9 @@ class Claim(BaseModel):
         if isinstance(data, dict) and "confirmatory" in data:
             data = dict(data)
             flag = data.pop("confirmatory")
-            data.setdefault("registration", Registration.CONFIRMATORY if flag
-                            else Registration.EXPLORATORY)
+            data.setdefault(
+                "registration", Registration.CONFIRMATORY if flag else Registration.EXPLORATORY
+            )
         return data
 
     @model_validator(mode="after")
@@ -444,7 +452,8 @@ class Claim(BaseModel):
         if self.registration is Registration.NOT_APPLICABLE and not self.registration_note:
             raise ValueError(
                 f"claim {self.id!r}: registration 'not_applicable' needs a registration_note "
-                f"saying why no plan could have fixed this outcome")
+                f"saying why no plan could have fixed this outcome"
+            )
         return self
 
     @property
@@ -466,6 +475,7 @@ class Claim(BaseModel):
 
 
 # ---------------------------------------------------------------------------------- outcomes
+
 
 class ExecutionStatus(enum.StrEnum):
     COMPLETED = "completed"
@@ -681,6 +691,7 @@ class Decision(BaseModel):
 
 # ---------------------------------------------------------------------------------- manifest
 
+
 class Provenance(BaseModel):
     """Where a manifest's artifacts came from.
 
@@ -852,6 +863,7 @@ class Manifest(BaseModel):
 
 
 # ------------------------------------------------------------------------------------ report
+
 
 class ArtifactState(BaseModel):
     """What was found at each artifact's path, before any evidence was read."""

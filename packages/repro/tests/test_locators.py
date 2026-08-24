@@ -4,6 +4,7 @@ A locator resolves to exactly one scalar. Zero is absent, two or more is ambiguo
 container is not a value. No adapter takes the first match, and none falls back to searching
 a file for the printed number.
 """
+
 from __future__ import annotations
 
 import json
@@ -42,6 +43,7 @@ def check(locator, path, reported="3.2"):
 
 # -- the shared invariant -------------------------------------------------------------------
 
+
 def test_a_pointer_onto_a_container_is_not_a_value(tmp_path):
     path = tmp_path / "r.json"
     path.write_text(json.dumps({"group": {"x": 1}}))
@@ -65,6 +67,7 @@ def test_a_locator_needs_a_predicate():
 
 # -- trees: JSON and restricted YAML --------------------------------------------------------
 
+
 def test_a_pointer_resolves_in_yaml(tmp_path):
     path = tmp_path / "r.yaml"
     path.write_text("metrics:\n  accuracy: 3.2\n")
@@ -87,8 +90,8 @@ def test_the_engine_reports_an_unreadable_artifact_as_unchecked(tmp_path):
     manifest = Manifest(
         project="p",
         artifacts=(ArtifactRef(id="a", path=path, digest=Digest.of_file(path)),),
-        claims=(Claim(id="c", text="t", evidence=(evidence(
-            TreeLocator(pointer="/accuracy")),)),))
+        claims=(Claim(id="c", text="t", evidence=(evidence(TreeLocator(pointer="/accuracy")),)),),
+    )
     decision = verify(manifest).claims[0].decisions[0]
     assert decision.outcome is Outcome.UNCHECKED
     assert decision.reason is Reason.ARTIFACT_UNREADABLE
@@ -111,6 +114,7 @@ def test_a_tree_locator_declines_a_format_it_does_not_address(tmp_path):
 
 
 # -- tables ---------------------------------------------------------------------------------
+
 
 def test_a_positional_address_is_warned_about(tmp_path):
     """Sorting or inserting a row changes what row 1 means."""
@@ -140,35 +144,45 @@ def test_a_predicate_value_is_compared_as_text_and_never_coerced(tmp_path):
     """For an identifier column, `001` and `1` are different rows."""
     path = tmp_path / "t.csv"
     path.write_text("id,accuracy\n001,0.91\n1,3.2\n")
-    assert check(TableLocator(column="accuracy", where={"id": "001"}), path,
-                 "0.91").outcome is Outcome.VERIFIED
-    assert check(TableLocator(column="accuracy", where={"id": 1}), path,
-                 "3.2").outcome is Outcome.VERIFIED
+    assert (
+        check(TableLocator(column="accuracy", where={"id": "001"}), path, "0.91").outcome
+        is Outcome.VERIFIED
+    )
+    assert (
+        check(TableLocator(column="accuracy", where={"id": 1}), path, "3.2").outcome
+        is Outcome.VERIFIED
+    )
 
 
 # -- sqlite ---------------------------------------------------------------------------------
+
 
 @pytest.fixture
 def database(tmp_path):
     path = tmp_path / "results.sqlite"
     connection = sqlite3.connect(path)
     connection.execute("CREATE TABLE runs (model TEXT, seed INTEGER, accuracy REAL)")
-    connection.executemany("INSERT INTO runs VALUES (?,?,?)",
-                           [("resnet", 1, 3.2), ("resnet", 2, 0.88), ("vit", 1, 0.75)])
+    connection.executemany(
+        "INSERT INTO runs VALUES (?,?,?)",
+        [("resnet", 1, 3.2), ("resnet", 2, 0.88), ("vit", 1, 0.75)],
+    )
     connection.commit()
     connection.close()
     return path
 
 
 def test_a_row_is_addressed_by_key(database):
-    decision = check(SqliteLocator(table="runs", column="accuracy",
-                                   where={"model": "resnet", "seed": 1}), database)
+    decision = check(
+        SqliteLocator(table="runs", column="accuracy", where={"model": "resnet", "seed": 1}),
+        database,
+    )
     assert decision.outcome is Outcome.VERIFIED
 
 
 def test_a_predicate_matching_two_rows_in_a_database_is_ambiguous(database):
-    decision = check(SqliteLocator(table="runs", column="accuracy",
-                                   where={"model": "resnet"}), database)
+    decision = check(
+        SqliteLocator(table="runs", column="accuracy", where={"model": "resnet"}), database
+    )
     assert decision.reason is Reason.ROW_AMBIGUOUS
 
 
@@ -179,16 +193,17 @@ def test_a_column_the_table_lacks_is_the_selector_and_not_the_data(database):
 
 
 def test_a_table_the_database_lacks(database):
-    decision = check(SqliteLocator(table="nope", column="accuracy", where={"seed": 1}),
-                     database)
+    decision = check(SqliteLocator(table="nope", column="accuracy", where={"seed": 1}), database)
     assert decision.reason is Reason.ROW_SELECTOR_INVALID
     assert "runs" in decision.detail
 
 
 def test_an_identifier_cannot_smuggle_sql(database):
     """Identifiers are checked against the schema before being quoted; values are bound."""
-    decision = check(SqliteLocator(table='runs" ; DROP TABLE runs --', column="accuracy",
-                                   where={"seed": 1}), database)
+    decision = check(
+        SqliteLocator(table='runs" ; DROP TABLE runs --', column="accuracy", where={"seed": 1}),
+        database,
+    )
     assert decision.reason is Reason.ROW_SELECTOR_INVALID
     connection = sqlite3.connect(database)
     assert connection.execute("SELECT count(*) FROM runs").fetchone()[0] == 3
@@ -196,6 +211,7 @@ def test_an_identifier_cannot_smuggle_sql(database):
 
 
 # -- formats with no adapter ----------------------------------------------------------------
+
 
 @pytest.mark.parametrize("name", ["r.h5", "r.parquet", "r.xlsx", "r.nc"])
 def test_a_format_with_no_adapter_is_declined_rather_than_guessed(tmp_path, name):
@@ -215,6 +231,7 @@ def test_an_unsupported_format_never_reports_a_value_present(tmp_path):
 
 
 # -- the locator is bound into the decision -------------------------------------------------
+
 
 def test_a_decision_records_how_the_value_was_addressed(tmp_path):
     path = tmp_path / "r.json"
@@ -236,13 +253,20 @@ def test_the_canonical_form_is_key_ordered():
 
 def test_the_shorthand_kinds_resolve_through_the_same_locators():
     from repro.models import MetricEvidence, TableCellEvidence
-    assert MetricEvidence(artifact="a", name="m", reported="1",
-                          pointer="/x").locator == TreeLocator(pointer="/x")
-    assert TableCellEvidence(artifact="a", name="m", reported="1", column="c",
-                             where={"k": "v"}).locator.kind == "table"
+
+    assert MetricEvidence(
+        artifact="a", name="m", reported="1", pointer="/x"
+    ).locator == TreeLocator(pointer="/x")
+    assert (
+        TableCellEvidence(
+            artifact="a", name="m", reported="1", column="c", where={"k": "v"}
+        ).locator.kind
+        == "table"
+    )
 
 
 # -- arrays, where numpy is installed --------------------------------------------------------
+
 
 def test_an_array_element_is_addressed_by_index(tmp_path):
     numpy = pytest.importorskip("numpy")

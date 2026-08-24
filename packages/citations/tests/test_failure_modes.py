@@ -1,6 +1,7 @@
 """A verification tool fails in one direction that matters: saying a passage was checked when
 it was not. These pin the ways that can happen.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -24,8 +25,10 @@ def pinned(tmp_path, monkeypatch):
             if page is not None:
                 return (per_page or {}).get(page, "")
             return text
+
         monkeypatch.setattr(V, "extract", stub)
         return p
+
     return make
 
 
@@ -33,6 +36,7 @@ LONG = "a passage long enough that it carries its own qualifiers without truncat
 
 
 # --- an unreadable source is never a pass ----------------------------------------------------
+
 
 def test_absent_file_is_unchecked(tmp_path):
     assert V.check_one(LONG, tmp_path / "absent.pdf").state == "unchecked"
@@ -56,8 +60,10 @@ def test_unchecked_carries_the_reason(tmp_path, pinned):
 
 # --- a truncated quote is found, and flagged -------------------------------------------------
 
-SOURCE = ("We trained 50 refits each for 2, 4, and 8 layered variants and 5 refits each "
-          "for 12 layered (GPT2-small) architectures.")
+SOURCE = (
+    "We trained 50 refits each for 2, 4, and 8 layered variants and 5 refits each "
+    "for 12 layered (GPT2-small) architectures."
+)
 
 
 def test_truncated_quote_is_found_but_warned(pinned):
@@ -67,8 +73,11 @@ def test_truncated_quote_is_found_but_warned(pinned):
 
 
 def test_quoting_through_the_qualifier_is_clean(pinned):
-    r = V.check_one("We trained 50 refits each for 2, 4, and 8 layered variants and 5 refits "
-                    "each for 12 layered", pinned(SOURCE))
+    r = V.check_one(
+        "We trained 50 refits each for 2, 4, and 8 layered variants and 5 refits "
+        "each for 12 layered",
+        pinned(SOURCE),
+    )
     assert r.state == "found"
     assert r.warnings == []
 
@@ -81,9 +90,12 @@ def test_ending_mid_clause_warns_even_when_long(pinned):
 
 # --- normalization is a note on how it matched, not a different outcome ----------------------
 
+
 def test_punctuation_difference_still_counts_as_found(pinned):
-    r = V.check_one("the model attends to the subject token , not the indirect object",
-                    pinned("the model attends to the subject token, not the indirect object"))
+    r = V.check_one(
+        "the model attends to the subject token , not the indirect object",
+        pinned("the model attends to the subject token, not the indirect object"),
+    )
     assert r.state == "found"
 
 
@@ -92,8 +104,10 @@ def test_normalized_match_cannot_distinguish_a_sign():
 
 
 def test_smart_quotes_and_dashes_are_not_a_miss(pinned):
-    r = V.check_one("the model's behaviour - measured by logit difference - holds",
-                    pinned("the model’s behaviour — measured by logit difference — holds"))
+    r = V.check_one(
+        "the model's behaviour - measured by logit difference - holds",
+        pinned("the model’s behaviour — measured by logit difference — holds"),
+    )
     assert r.state == "found"
 
 
@@ -105,8 +119,10 @@ def test_glyph_codes_from_a_figure_do_not_hide_the_passage(pinned):
     # pdftotext emits a figure's embedded font as raw UTF-16 glyph codes. They land mid-page and
     # must not swallow the surrounding prose.
     junk = "\x00$\x00F\x00F\x00X\x00U\x00D\x00F"
-    r = V.check_one("ranks first in Language, eighth in Vision",
-                    pinned(f"we observe that CKA {junk} ranks first in Language, eighth in Vision"))
+    r = V.check_one(
+        "ranks first in Language, eighth in Vision",
+        pinned(f"we observe that CKA {junk} ranks first in Language, eighth in Vision"),
+    )
     assert r.state == "found"
 
 
@@ -122,6 +138,7 @@ def test_page_break_still_reads_as_whitespace():
 
 # --- a page claim that is wrong does not make the passage absent -----------------------------
 
+
 def test_right_passage_wrong_page_is_found_and_warned(pinned):
     art = pinned(LONG, per_page={1: "something else entirely on page one"})
     r = V.check_one(LONG, art, page=1)
@@ -131,21 +148,25 @@ def test_right_passage_wrong_page_is_found_and_warned(pinned):
 
 # --- what counts as failure ------------------------------------------------------------------
 
+
 def test_a_run_that_measured_nothing_is_not_a_pass():
     assert V.Report().ok is False
 
 
 def test_only_not_found_is_a_failure():
     rep = V.Report(checked=3)
-    rep.problems = [("s", "t", V.Result("unchecked")),
-                    ("s", "t", V.Result("found", warnings=["short"])),
-                    ("s", "t", V.Result("found", warnings=["normalized"]))]
+    rep.problems = [
+        ("s", "t", V.Result("unchecked")),
+        ("s", "t", V.Result("found", warnings=["short"])),
+        ("s", "t", V.Result("found", warnings=["normalized"])),
+    ]
     assert rep.ok, "unchecked and warned are reported, not failed"
     rep.problems.append(("s", "t", V.Result("not found")))
     assert not rep.ok
 
 
 # --- identity is content, never a filename ---------------------------------------------------
+
 
 def test_same_bytes_different_names_hash_alike(tmp_path):
     a, b = tmp_path / "PREREGISTRATION.md", tmp_path / "PREREG_PRIMARY.md"
@@ -156,13 +177,15 @@ def test_same_bytes_different_names_hash_alike(tmp_path):
 
 def test_same_name_different_bytes_hash_apart(tmp_path):
     a, b = tmp_path / "x" / "paper.pdf", tmp_path / "y" / "paper.pdf"
-    a.parent.mkdir(); b.parent.mkdir()
+    a.parent.mkdir()
+    b.parent.mkdir()
     a.write_bytes(b"Chughtai, Chan, Nanda 2023 - group operations")
     b.write_bytes(b"Chughtai, Cooney, Nanda 2024 - factual recall")
     assert V.sha256(a) != V.sha256(b)
 
 
 # --- a quote can be genuinely present and still misstate the source ----------------------------
+
 
 def _src(tmp_path, text):
     f = tmp_path / "src.txt"
@@ -205,8 +228,10 @@ def test_a_quote_that_lands_cleanly_somewhere_is_not_flagged(tmp_path):
 
 def test_truncation_is_independent_of_length(tmp_path):
     """A long quote ending one digit early is the convincing version, and `short` will not fire."""
-    body = ("We describe a procedure that was applied to every held-out example without "
-            "exception, and the resulting accuracy was 0.87")
+    body = (
+        "We describe a procedure that was applied to every held-out example without "
+        "exception, and the resulting accuracy was 0.87"
+    )
     f = _src(tmp_path, body + "4 across all folds.")
     r = V.check_one(body, f, None)
     assert "short" not in r.warnings, "quote is long enough that `short` says nothing"

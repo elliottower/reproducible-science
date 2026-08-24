@@ -2,6 +2,7 @@
 
 It was a dict of absolute paths inside build.py, so the package worked on one machine.
 """
+
 from __future__ import annotations
 
 import pytest
@@ -15,8 +16,9 @@ def test_a_library_with_no_config_reads_as_no_papers(tmp_path):
 
 
 def test_a_config_round_trips(tmp_path):
-    cfg = LibraryConfig(papers={
-        "my-paper": PaperConfig(bib=tmp_path / "refs.bib", claims=tmp_path / "claims")})
+    cfg = LibraryConfig(
+        papers={"my-paper": PaperConfig(bib=tmp_path / "refs.bib", claims=tmp_path / "claims")}
+    )
     config.save(cfg, tmp_path)
     back = config.load(tmp_path)
     assert set(back.papers) == {"my-paper"}

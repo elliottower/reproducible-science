@@ -17,6 +17,7 @@ line boundary and the remainder is a valid chain. Recording the length and head 
 separately turns truncation from undetectable into detected, and turns silent deletion of the
 whole ledger into a reported error rather than a clean run.
 """
+
 from __future__ import annotations
 
 import datetime
@@ -49,8 +50,9 @@ class NoLedgerRootError(ResultsError):
 
     def __init__(self, directory: str = "") -> None:
         self.directory = directory
-        super().__init__(f"no .results/ in {directory or 'this directory'} or above; "
-                         "`results init` makes one")
+        super().__init__(
+            f"no .results/ in {directory or 'this directory'} or above; `results init` makes one"
+        )
 
 
 class ChainError(ResultsError):
@@ -105,6 +107,7 @@ def canonical(event: dict) -> str:
 
 # ---------------------------------------------------------------------------------- reading
 
+
 def _lines(ledger: pathlib.Path) -> list[str]:
     return [ln.strip() for ln in ledger.read_text(encoding="utf-8").splitlines() if ln.strip()]
 
@@ -132,6 +135,7 @@ def read_ledger(ledger: pathlib.Path) -> list[dict]:
 
 # ---------------------------------------------------------------------------------- anchor
 
+
 def anchor_path(ledger: pathlib.Path) -> pathlib.Path:
     return ledger.with_name(ANCHOR)
 
@@ -153,8 +157,7 @@ def write_anchor(ledger: pathlib.Path, count: int, head: str) -> dict:
     behind the ledger -- reported as `extended`, which is recoverable -- rather than ahead of
     it, which would report a complete ledger as truncated.
     """
-    anchor = {"canon_version": CANON_VERSION, "count": count, "head": head,
-              "updated": now_iso()}
+    anchor = {"canon_version": CANON_VERSION, "count": count, "head": head, "updated": now_iso()}
     _atomic_write(anchor_path(ledger), json.dumps(anchor, indent=2, sort_keys=True) + "\n")
     return anchor
 
@@ -174,14 +177,17 @@ def _atomic_write(path: pathlib.Path, text: str) -> None:
 
 # --------------------------------------------------------------------------------- writing
 
+
 def append_event(ledger: pathlib.Path, event: dict) -> dict:
     """Write one event and advance the anchor. Returns a new event; the argument is not
     mutated, so the object a caller holds cannot drift from the line on disk."""
     lines = _lines(ledger) if ledger.exists() else []
-    record = {**event,
-              "seq": len(lines),
-              "timestamp": now_iso(),
-              "prev_hash": sha256_of_str(lines[-1]) if lines else ZERO}
+    record = {
+        **event,
+        "seq": len(lines),
+        "timestamp": now_iso(),
+        "prev_hash": sha256_of_str(lines[-1]) if lines else ZERO,
+    }
     line = canonical(record)
     # Append then anchor: a crash between them under-counts, which verification reports as
     # `extended` and a re-anchor repairs. The reverse would report a whole ledger as truncated.
@@ -194,6 +200,7 @@ def append_event(ledger: pathlib.Path, event: dict) -> dict:
 
 
 # ------------------------------------------------------------------------------ verifying
+
 
 def verify(ledger: pathlib.Path) -> tuple[ChainStatus, list[str]]:
     """What the chain is, and every problem found.
@@ -227,7 +234,8 @@ def verify(ledger: pathlib.Path) -> tuple[ChainStatus, list[str]]:
             status = ChainStatus.CORRUPT
         elif ev["prev_hash"] != prev:
             problems.append(
-                f"line {i + 1}: prev_hash expected {prev[:16]}…, got {str(ev['prev_hash'])[:16]}…")
+                f"line {i + 1}: prev_hash expected {prev[:16]}…, got {str(ev['prev_hash'])[:16]}…"
+            )
             if status is ChainStatus.INTACT:
                 status = ChainStatus.EDITED
         if "seq" in ev and ev["seq"] != i:
@@ -237,21 +245,24 @@ def verify(ledger: pathlib.Path) -> tuple[ChainStatus, list[str]]:
         prev = sha256_of_str(raw)
 
     if anchor is None:
-        problems.append("no anchor: the chain is internally consistent and its length is "
-                        "unattested, so truncation cannot be ruled out")
+        problems.append(
+            "no anchor: the chain is internally consistent and its length is "
+            "unattested, so truncation cannot be ruled out"
+        )
         return (ChainStatus.NO_ANCHOR if status is ChainStatus.INTACT else status), problems
 
     if anchor.get("canon_version") != CANON_VERSION:
-        problems.append(f"anchor written under canon_version {anchor.get('canon_version')}, "
-                        f"this is {CANON_VERSION}")
+        problems.append(
+            f"anchor written under canon_version {anchor.get('canon_version')}, "
+            f"this is {CANON_VERSION}"
+        )
     count, head = anchor.get("count"), anchor.get("head")
     if isinstance(count, int) and count != len(lines):
         problems.append(f"anchor records {count} events, ledger holds {len(lines)}")
         if status is ChainStatus.INTACT:
             status = ChainStatus.TRUNCATED if len(lines) < count else ChainStatus.EXTENDED
     elif head and head != prev:
-        problems.append(f"anchor head {str(head)[:16]}… does not match the last line "
-                        f"{prev[:16]}…")
+        problems.append(f"anchor head {str(head)[:16]}… does not match the last line {prev[:16]}…")
         if status is ChainStatus.INTACT:
             status = ChainStatus.EDITED
 

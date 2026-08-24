@@ -7,6 +7,7 @@
 
 One file per experiment, one rule: never edit above the line, only append below it.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -51,8 +52,11 @@ def plan_of(text: str) -> str:
     """
     i = text.find(MARK)
     plan = text if i < 0 else text[:i]
-    keep = [ln for ln in plan.splitlines()
-            if not ln.startswith(("**Status:**", "**Plan sha256:**", "**Frozen:**"))]
+    keep = [
+        ln
+        for ln in plan.splitlines()
+        if not ln.startswith(("**Status:**", "**Plan sha256:**", "**Frozen:**"))
+    ]
     return "\n".join(keep).strip() + "\n"
 
 
@@ -75,18 +79,23 @@ def unhashed_content(text: str) -> list[str]:
     if text.count(MARK) > 1:
         problems.append(
             "the log marker (`---` then `## Log`) appears more than once. Hashing stops at the "
-            "first, so the plan after it would not be covered.")
+            "first, so the plan after it would not be covered."
+        )
     i = text.find(MARK)
     plan = text if i < 0 else text[:i]
     m = STATUS_BLOCK.search(plan)
-    body = (plan[:m.start()] + plan[m.end():]) if m else plan
-    stray = [ln for ln in body.splitlines()
-             if ln.startswith(("**Status:**", "**Plan sha256:**", "**Frozen:**"))]
+    body = (plan[: m.start()] + plan[m.end() :]) if m else plan
+    stray = [
+        ln
+        for ln in body.splitlines()
+        if ln.startswith(("**Status:**", "**Plan sha256:**", "**Frozen:**"))
+    ]
     if stray:
         problems.append(
             "these lines sit outside the status block and are skipped when hashing, so they "
             "could be edited after freezing without `check` noticing:\n      "
-            + "\n      ".join(stray[:5]))
+            + "\n      ".join(stray[:5])
+        )
     return problems
 
 
@@ -130,12 +139,12 @@ def rewrite_status(text: str, commit: str, digest: str, date: str) -> str:
     if m is None:
         return text
     note = status_note(m.group(0))
-    block = (f"**Status:** FROZEN at `{commit[:12]}`\n"
-             f"**Plan sha256:** `{digest}`\n"
-             f"**Frozen:** {date}")
+    block = (
+        f"**Status:** FROZEN at `{commit[:12]}`\n**Plan sha256:** `{digest}`\n**Frozen:** {date}"
+    )
     if note:
         block += f"\n{note}"
-    return text[:m.start()] + block + text[m.end():]
+    return text[: m.start()] + block + text[m.end() :]
 
 
 def append(path: pathlib.Path, date: str, event: str, access: str) -> None:
@@ -190,8 +199,10 @@ def cmd_freeze(a) -> int:
         print(f"{path} has content the freeze would not cover:\n")
         for p in problems:
             print(f"  - {p}")
-        print("\nA freeze that leaves part of the plan editable is worse than none, because it"
-              "\nreads as registered. Fix these and freeze again.")
+        print(
+            "\nA freeze that leaves part of the plan editable is worse than none, because it"
+            "\nreads as registered. Fix these and freeze again."
+        )
         return 1
 
     repo = path.parent
@@ -294,7 +305,9 @@ def cmd_check(a) -> int:
     if path is not None:
         rc = check_one(path)
         if rc == 1:
-            print("\nThe plan was edited after freezing. Restore it and record the change in the log.")
+            print(
+                "\nThe plan was edited after freezing. Restore it and record the change in the log."
+            )
         elif rc == 2:
             print("\nNothing to check against yet. `prereg freeze` records the hash.")
         return rc
@@ -306,8 +319,10 @@ def cmd_check(a) -> int:
 
     codes = [check_one(f) for f in found]
     changed = codes.count(1)
-    print(f"\n{len(found)} plans: {codes.count(0)} unchanged, {changed} changed, "
-          f"{codes.count(2)} not frozen")
+    print(
+        f"\n{len(found)} plans: {codes.count(0)} unchanged, {changed} changed, "
+        f"{codes.count(2)} not frozen"
+    )
     if changed:
         print("A changed plan was edited after freezing. Restore it and record the change.")
     return 1 if changed else 0
@@ -329,8 +344,7 @@ def main() -> int:
 
     lg = sub.add_parser("log", help="append a line")
     lg.add_argument("note")
-    lg.add_argument("--access", default="no results seen",
-                    help=f"one of: {', '.join(ACCESS)}")
+    lg.add_argument("--access", default="no results seen", help=f"one of: {', '.join(ACCESS)}")
     lg.set_defaults(fn=cmd_log)
 
     s = sub.add_parser("setup", help="save OSF token to .env")

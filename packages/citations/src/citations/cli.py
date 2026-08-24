@@ -1,14 +1,15 @@
 """The `citations` command.
 
-    citations init              make a library here
-    citations verify            do my quotations resolve in the sources I pinned?
-    citations audit             does the metadata match the record the identifier resolves to?
-    citations resolve           backfill missing identifiers
-    citations build             rebuild records from the papers' bibliographies
-    citations lint              BibTeX correctness, via papis doctor
-    citations link              point pdfs/ at wherever the papers keep the artifacts
-    citations bib               emit a .bib for the works a paper cites
+citations init              make a library here
+citations verify            do my quotations resolve in the sources I pinned?
+citations audit             does the metadata match the record the identifier resolves to?
+citations resolve           backfill missing identifiers
+citations build             rebuild records from the papers' bibliographies
+citations lint              BibTeX correctness, via papis doctor
+citations link              point pdfs/ at wherever the papers keep the artifacts
+citations bib               emit a .bib for the works a paper cites
 """
+
 from __future__ import annotations
 
 import argparse
@@ -22,13 +23,21 @@ from citations.exceptions import CitationsError, ClaimFileError
 from citations.models import ClaimFile, load_claim_file, load_record
 
 RESULTS = ["found", "not found", "unchecked"]
-WARNINGS = {"truncated": "stops mid-word or mid-number — the source continues it",
-            "short": "the source may qualify this in the next clause",
-            "normalized": "matched after ignoring punctuation and spacing",
-            "page": "found, but not on the page recorded"}
+WARNINGS = {
+    "truncated": "stops mid-word or mid-number — the source continues it",
+    "short": "the source may qualify this in the next clause",
+    "normalized": "matched after ignoring punctuation and spacing",
+    "page": "found, but not on the page recorded",
+}
 
-DELEGATED = {"init": "init", "audit": "audit", "resolve": "resolve",
-             "build": "build", "lint": "lint", "link": "link_pdfs"}
+DELEGATED = {
+    "init": "init",
+    "audit": "audit",
+    "resolve": "resolve",
+    "build": "build",
+    "lint": "lint",
+    "link": "link_pdfs",
+}
 
 
 def _records() -> list:
@@ -76,8 +85,8 @@ def cmd_verify(a) -> int:
 
     lib, origin = paths.find_with_origin()
     source = f"library {lib}" + (
-        "  (user-level: no .citations/ in this directory or above it)"
-        if origin == "user" else "")
+        "  (user-level: no .citations/ in this directory or above it)" if origin == "user" else ""
+    )
     for rec in _records():
         if a.only and a.only not in rec.cited_by:
             continue
@@ -119,10 +128,14 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
             continue
         why = ""
         if s == "unchecked":
-            reasons = collections.Counter(r.detail for _, _, r in rep.problems
-                                          if r.state == "unchecked")
-            why = ("   " + " · ".join(f"{c:,} {d}" for d, c in reasons.most_common())
-                   if len(reasons) > 1 else f"   {reasons.most_common(1)[0][0]}")
+            reasons = collections.Counter(
+                r.detail for _, _, r in rep.problems if r.state == "unchecked"
+            )
+            why = (
+                "   " + " · ".join(f"{c:,} {d}" for d, c in reasons.most_common())
+                if len(reasons) > 1
+                else f"   {reasons.most_common(1)[0][0]}"
+            )
         print(f"  {s:<12}{n:>7,}{why}")
 
     warns = collections.Counter(w for _, _, r in rep.problems for w in r.warnings)
@@ -135,8 +148,10 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
     # that source describes a document the record does not describe, so it changes how the
     # numbers above should be read.
     if rep.broken_pins:
-        print(f"\n{len(rep.broken_pins)} source{'s' if len(rep.broken_pins) > 1 else ''} "
-              f"changed since being pinned")
+        print(
+            f"\n{len(rep.broken_pins)} source{'s' if len(rep.broken_pins) > 1 else ''} "
+            f"changed since being pinned"
+        )
         for name, pin in rep.broken_pins[:10]:
             print(f"  {name[:38]:<40}pinned {pin.expected[:12]}  on disk {pin.actual[:12]}")
         if len(rep.broken_pins) > 10:
@@ -156,8 +171,9 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
     elif rep.broken_pins:
         print("every quote resolved, but against a source that is not the one pinned.")
     elif counts.get("unchecked"):
-        print(f"nothing failed. {counts['unchecked']} unchecked — no measurement was made "
-              f"for those.")
+        print(
+            f"nothing failed. {counts['unchecked']} unchecked — no measurement was made for those."
+        )
     else:
         print("all found.")
     return 0 if rep.ok or not a.strict else 1
@@ -185,12 +201,14 @@ def main(argv: list[str] | None = None) -> int:
     v.add_argument("--quiet", action="store_true")
     v.set_defaults(fn=cmd_verify)
 
-    for name, helptext in [("init", "make a library here"),
-                           ("audit", "does the stored metadata match the registry record?"),
-                           ("resolve", "backfill missing identifiers"),
-                           ("build", "rebuild records from the papers' bibliographies"),
-                           ("lint", "BibTeX correctness, via papis doctor"),
-                           ("link", "point pdfs/ at the papers' artifacts")]:
+    for name, helptext in [
+        ("init", "make a library here"),
+        ("audit", "does the stored metadata match the registry record?"),
+        ("resolve", "backfill missing identifiers"),
+        ("build", "rebuild records from the papers' bibliographies"),
+        ("lint", "BibTeX correctness, via papis doctor"),
+        ("link", "point pdfs/ at the papers' artifacts"),
+    ]:
         p = sub.add_parser(name, help=helptext, add_help=False)
         p.set_defaults(fn=None, delegate=DELEGATED[name])
 

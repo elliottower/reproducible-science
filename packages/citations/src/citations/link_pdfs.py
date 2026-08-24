@@ -16,6 +16,7 @@ the current one wins. `--store` overrides discovery entirely.
     citations link             # build pdfs/, report coverage
     citations link --verify    # confirm each link resolves and matches its recorded sha256
 """
+
 from __future__ import annotations
 
 import argparse
@@ -35,8 +36,11 @@ def discover_stores(library: pathlib.Path) -> list[pathlib.Path]:
     a total.
     """
     parent = library.resolve().parent
-    stores = [p / "reference" for p in sorted(parent.iterdir())
-              if p.is_dir() and (p / "reference").is_dir()]
+    stores = [
+        p / "reference"
+        for p in sorted(parent.iterdir())
+        if p.is_dir() and (p / "reference").is_dir()
+    ]
     # A `-NEW` repository supersedes its predecessor, and first store wins on a name
     # collision, so the current one has to be seen first.
     return sorted(stores, key=lambda s: ("-NEW" not in s.parent.name, s.parent.name))
@@ -55,10 +59,18 @@ def index(stores: list[pathlib.Path]) -> dict[str, pathlib.Path]:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="citations link", description=__doc__.split("\n")[0])
-    ap.add_argument("--verify", action="store_true",
-                    help="also confirm each linked file matches its recorded sha256")
-    ap.add_argument("--store", action="append", default=[], metavar="DIR",
-                    help="a directory of PDFs; repeatable. Overrides discovery")
+    ap.add_argument(
+        "--verify",
+        action="store_true",
+        help="also confirm each linked file matches its recorded sha256",
+    )
+    ap.add_argument(
+        "--store",
+        action="append",
+        default=[],
+        metavar="DIR",
+        help="a directory of PDFs; repeatable. Overrides discovery",
+    )
     a = ap.parse_args(argv)
 
     try:
@@ -67,8 +79,11 @@ def main(argv: list[str] | None = None) -> int:
         print(str(e))
         return 2
 
-    stores = ([pathlib.Path(s).expanduser().resolve() for s in a.store]
-              if a.store else discover_stores(library))
+    stores = (
+        [pathlib.Path(s).expanduser().resolve() for s in a.store]
+        if a.store
+        else discover_stores(library)
+    )
     have = index(stores)
 
     # A run that found no artifacts cannot link any, and reporting `linked 0` as success is

@@ -25,15 +25,38 @@ def metric_manifest(project: str, results: dict, reported: dict) -> str:
     """One JSON artifact and one metric assertion per key of `reported`."""
     body = results_json(results)
     return yaml.safe_dump(
-        {"schema_version": "repro/1", "project": project,
-         "artifacts": [{"id": "res", "path": "results.json",
-                        "digest": {"algorithm": "sha256",
-                                   "value": hashlib.sha256(body.encode()).hexdigest()}}],
-         "claims": [{"id": f"c{i}", "text": f"claim {i}",
-                     "evidence": [{"kind": "metric", "artifact": "res", "name": name,
-                                   "reported": value, "pointer": f"/{name}"}]}
-                    for i, (name, value) in enumerate(reported.items())]},
-        sort_keys=False)
+        {
+            "schema_version": "repro/1",
+            "project": project,
+            "artifacts": [
+                {
+                    "id": "res",
+                    "path": "results.json",
+                    "digest": {
+                        "algorithm": "sha256",
+                        "value": hashlib.sha256(body.encode()).hexdigest(),
+                    },
+                }
+            ],
+            "claims": [
+                {
+                    "id": f"c{i}",
+                    "text": f"claim {i}",
+                    "evidence": [
+                        {
+                            "kind": "metric",
+                            "artifact": "res",
+                            "name": name,
+                            "reported": value,
+                            "pointer": f"/{name}",
+                        }
+                    ],
+                }
+                for i, (name, value) in enumerate(reported.items())
+            ],
+        },
+        sort_keys=False,
+    )
 
 
 GOOD = metric_manifest("p", {"a": 1.0}, {"a": "1.0"})
@@ -43,6 +66,7 @@ DATA = results_json({"a": 1.0})
 @pytest.fixture
 def build(tmp_path):
     """Materialize a repository from a path -> content mapping and scan it as adduce does."""
+
     def _build(files: dict[str, str]):
         for relative, content in files.items():
             target = tmp_path / relative
@@ -50,21 +74,31 @@ def build(tmp_path):
             target.write_text(content, encoding="utf-8")
         repo = scan_repository(tmp_path)
         return repo, collect(repo)
+
     return _build
 
 
 def two_assertions(reported: dict, data: dict | None = None) -> dict[str, str]:
     """A root manifest asserting `reported`, beside results holding `data`."""
     values = {"a": 1.0, "b": 2.0} if data is None else data
-    return {"repro.yaml": metric_manifest("p", {"a": 1.0, "b": 2.0}, reported),
-            "results.json": results_json(values)}
+    return {
+        "repro.yaml": metric_manifest("p", {"a": 1.0, "b": 2.0}, reported),
+        "results.json": results_json(values),
+    }
 
 
 # -- which manifest describes the project ---------------------------------------------------
 
+
 def test_root_manifest_is_authoritative_over_a_nested_one(build):
-    repo, _ = build({"repro.yaml": GOOD, "results.json": DATA,
-                     "paper/repro.yaml": GOOD, "analysis/repro.yaml": GOOD})
+    repo, _ = build(
+        {
+            "repro.yaml": GOOD,
+            "results.json": DATA,
+            "paper/repro.yaml": GOOD,
+            "analysis/repro.yaml": GOOD,
+        }
+    )
     assert candidates(repo) == ["repro.yaml"]
 
 
@@ -74,22 +108,37 @@ def test_the_one_project_manifest_is_found_wherever_it_sits(build):
 
 
 def test_manifests_under_a_fixture_directory_do_not_describe_the_project(build):
-    repo, _ = build({"tests/conformance/value_match/repro.yaml": GOOD,
-                     "tests/conformance/value_match/results.json": DATA,
-                     "examples/demo/repro.yaml": GOOD})
+    repo, _ = build(
+        {
+            "tests/conformance/value_match/repro.yaml": GOOD,
+            "tests/conformance/value_match/results.json": DATA,
+            "examples/demo/repro.yaml": GOOD,
+        }
+    )
     assert candidates(repo) == []
     assert RULE.applies_to(repo) is False
 
 
 def test_a_project_manifest_beside_fixtures_is_still_found(build):
-    repo, _ = build({"paper/repro.yaml": GOOD, "paper/results.json": DATA,
-                     "tests/conformance/a/repro.yaml": GOOD})
+    repo, _ = build(
+        {
+            "paper/repro.yaml": GOOD,
+            "paper/results.json": DATA,
+            "tests/conformance/a/repro.yaml": GOOD,
+        }
+    )
     assert candidates(repo) == ["paper/repro.yaml"]
 
 
 def test_several_project_manifests_are_reported_rather_than_chosen(build):
-    repo, ev = build({"paper/repro.yaml": GOOD, "paper/results.json": DATA,
-                      "analysis/repro.yaml": GOOD, "analysis/results.json": DATA})
+    repo, ev = build(
+        {
+            "paper/repro.yaml": GOOD,
+            "paper/results.json": DATA,
+            "analysis/repro.yaml": GOOD,
+            "analysis/results.json": DATA,
+        }
+    )
     assert candidates(repo) == ["analysis/repro.yaml", "paper/repro.yaml"]
     finding = RULE.evaluate(ev)
     assert finding.status is Status.UNKNOWN
@@ -98,8 +147,7 @@ def test_several_project_manifests_are_reported_rather_than_chosen(build):
 
 
 def test_a_file_merely_ending_in_the_manifest_name_is_not_one(build):
-    repo, _ = build({"other-repro.yaml": GOOD, "docs/my_repro.yaml": GOOD,
-                     "repro.yaml.bak": GOOD})
+    repo, _ = build({"other-repro.yaml": GOOD, "docs/my_repro.yaml": GOOD, "repro.yaml.bak": GOOD})
     assert candidates(repo) == []
 
 
@@ -109,6 +157,7 @@ def test_a_repository_declaring_nothing_is_out_of_scope_not_failing(build):
 
 
 # -- what the rule reports ------------------------------------------------------------------
+
 
 def test_every_assertion_holding_is_a_pass(build):
     finding = RULE.evaluate(build(two_assertions({"a": "1.0", "b": "2.0"}))[1])
@@ -158,13 +207,12 @@ def test_an_unreadable_manifest_does_not_blame_the_repository(build):
 def test_the_sidecar_holds_an_outcome_for_every_assertion(build, tmp_path):
     RULE.evaluate(build(two_assertions({"a": "1.0", "b": "9.9"}))[1])
     report = VerificationReport.model_validate_json(
-        (tmp_path / ".adduce" / "repro-report.json").read_text())
+        (tmp_path / ".adduce" / "repro-report.json").read_text()
+    )
     assert sum(len(c.decisions) for c in report.claims) == 2
-    assert {d.outcome.value for c in report.claims for d in c.decisions} == {
-        "verified", "mismatch"}
+    assert {d.outcome.value for c in report.claims for d in c.decisions} == {"verified", "mismatch"}
 
 
 def test_the_finding_points_at_the_manifest_and_the_full_report(build):
     finding = RULE.evaluate(build(two_assertions({"a": "1.0", "b": "9.9"}))[1])
-    assert {loc.path for loc in finding.locations} == {
-        "repro.yaml", ".adduce/repro-report.json"}
+    assert {loc.path for loc in finding.locations} == {"repro.yaml", ".adduce/repro-report.json"}

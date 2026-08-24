@@ -18,6 +18,7 @@ them on the next build.
     citations resolve --paper mechanistic-reference
     citations resolve --verify         # re-check that every stored link still resolves
 """
+
 from __future__ import annotations
 
 import argparse
@@ -48,8 +49,14 @@ VENUE_WEIGHT = 1.5
 
 #: Errors that mean the request did not complete. `HTTPError` subclasses `URLError`, so it is
 #: caught ahead of these wherever the status code carries information.
-NETWORK_ERRORS = (urllib.error.URLError, socket.timeout, TimeoutError, ConnectionError,
-                  json.JSONDecodeError, UnicodeDecodeError)
+NETWORK_ERRORS = (
+    urllib.error.URLError,
+    socket.timeout,
+    TimeoutError,
+    ConnectionError,
+    json.JSONDecodeError,
+    UnicodeDecodeError,
+)
 
 #: Status codes that mean "ask again later" rather than "no such work".
 RETRY_CODES = (429, 503, 504)
@@ -62,6 +69,7 @@ class Throttled(Exception):
 # --------------------------------------------------------------------------------------------
 # Transport
 # --------------------------------------------------------------------------------------------
+
 
 def fetch(url: str, timeout: int = 25, headers: dict | None = None):
     """An open response. The caller closes it.
@@ -103,6 +111,7 @@ def get(url: str, as_json: bool, tries: int = 4, headers: dict | None = None):
 # --------------------------------------------------------------------------------------------
 # The one matching rule
 # --------------------------------------------------------------------------------------------
+
 
 def close(a: str, b: str) -> float:
     return difflib.SequenceMatcher(None, norm(a), norm(b)).ratio()
@@ -162,6 +171,7 @@ def search(service: Service, rec: Record) -> tuple[str, str] | None:
 # The overlay
 # --------------------------------------------------------------------------------------------
 
+
 def load_overlay() -> dict:
     enrichment = paths.enrichment()
     if not enrichment.exists():
@@ -174,17 +184,21 @@ def save_overlay(overlay: dict) -> None:
         "# Facts resolved after the bibliographies were written, keyed by record slug.\n"
         "# Regenerating records/ does not touch this file; build.py applies it as an overlay.\n"
         "# Identifiers were accepted only on title, first-author surname and year together.\n"
-        + yaml.safe_dump(overlay, sort_keys=True, allow_unicode=True))
+        + yaml.safe_dump(overlay, sort_keys=True, allow_unicode=True)
+    )
 
 
-URL_FOR = {"doi": "https://doi.org/{}",
-           "arxiv": "https://arxiv.org/abs/{}",
-           "openalex": "https://openalex.org/{}"}
+URL_FOR = {
+    "doi": "https://doi.org/{}",
+    "arxiv": "https://arxiv.org/abs/{}",
+    "openalex": "https://openalex.org/{}",
+}
 
 
 # --------------------------------------------------------------------------------------------
 # Commands
 # --------------------------------------------------------------------------------------------
+
 
 def verify() -> int:
     """Every stored link still resolves. A dead link is worse than a missing one."""
@@ -202,7 +216,7 @@ def verify() -> int:
                 if resp.status >= 400:
                     bad.append((rec.slug, url, resp.status))
         except urllib.error.HTTPError as e:
-            if e.code in (403, 429):        # blocked or throttled, not absent
+            if e.code in (403, 429):  # blocked or throttled, not absent
                 continue
             bad.append((rec.slug, url, e.code))
         except NETWORK_ERRORS as e:
@@ -234,7 +248,7 @@ def main(argv: list[str] | None = None) -> int:
             continue
         todo.append(rec)
     if a.limit:
-        todo = todo[:a.limit]
+        todo = todo[: a.limit]
     print(f"  {len(todo)} records without an identifier\n")
 
     overlay = load_overlay()
@@ -258,8 +272,10 @@ def main(argv: list[str] | None = None) -> int:
             consecutive_blocks += 1
             print(f"  BLOCKED {rec.title[:60] or '?'}")
             if consecutive_blocks >= 4:
-                print(f"\n  every service refusing -- stopping rather than grinding; "
-                      f"{found} saved. Re-run later to continue.")
+                print(
+                    f"\n  every service refusing -- stopping rather than grinding; "
+                    f"{found} saved. Re-run later to continue."
+                )
                 break
             time.sleep(20)
             continue
@@ -276,10 +292,12 @@ def main(argv: list[str] | None = None) -> int:
             entry = overlay.setdefault(rec.slug, {})
             entry["url"] = URL_FOR[kind].format(ident)
             entry[kind] = ident
-            save_overlay(overlay)      # after each hit: a killed run keeps what it found
+            save_overlay(overlay)  # after each hit: a killed run keeps what it found
 
-    print(f"\n  resolved {found} of {len(todo)}"
-          + (f", {blocked} blocked and not retried" if blocked else ""))
+    print(
+        f"\n  resolved {found} of {len(todo)}"
+        + (f", {blocked} blocked and not retried" if blocked else "")
+    )
     return 0
 
 

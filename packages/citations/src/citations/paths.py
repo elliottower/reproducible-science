@@ -11,6 +11,7 @@ Project-local is the default because it is the least surprising: run the tool in
 and it works on that paper, with no hidden global state and no wondering which library was
 just written to.
 """
+
 from __future__ import annotations
 
 import os
@@ -46,7 +47,7 @@ def find_with_origin(start: pathlib.Path | None = None) -> tuple[pathlib.Path | 
     for d in [here, *here.parents]:
         if (d / DIRNAME).is_dir():
             return d / DIRNAME, "project"
-        if (d / "records").is_dir():      # a library that is itself the directory
+        if (d / "records").is_dir():  # a library that is itself the directory
             return d, "project"
 
     user = user_library()

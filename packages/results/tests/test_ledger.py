@@ -1,4 +1,5 @@
 """Tests for the append-only hash-chained ledger."""
+
 from __future__ import annotations
 
 import json

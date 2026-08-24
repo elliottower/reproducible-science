@@ -1,4 +1,5 @@
 """Freeze a plan before you run it, and record what changed after."""
+
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _version
 

@@ -175,6 +175,7 @@ def setup_token(directory: Path | None = None) -> Path:
     gitignore = target / ".gitignore"
 
     import getpass
+
     token = getpass.getpass("OSF personal token (from https://osf.io/settings/tokens): ")
     token = token.strip()
     if not token:
