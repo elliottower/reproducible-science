@@ -1,7 +1,7 @@
 # reproducible-science
 
 Four tools for binding what a paper says to what its artifacts contain, developed together and
-released separately.
+released together.
 
 | package | install | what it does |
 |---|---|---|
@@ -38,20 +38,29 @@ workspace automatically.
 
 ## Releasing
 
-One package at a time, named by the tag:
+Every package carries the same version and ships on the same day, from one tag:
 
 ```console
-git tag citations-v0.2.0 && git push --tags
+git tag -a v0.2.0 -m "Release all packages at 0.2.0" && git push origin v0.2.0
 ```
 
-Each package has its own workflow under `.github/workflows/`, which runs the whole workspace's
-tests before building that one distribution.
+That tag triggers all four workflows under `.github/workflows/`, each of which runs the whole
+workspace's tests before building its own distribution. Per-package tags
+(`citations-v*`, `prereg-v*`, `results-v*`, `repro-v*`) still publish one distribution each,
+for repairing a partial release rather than for ordinary use.
+
+`scripts/versions.py` sets every version and rewrites the sibling ranges; `make versions`
+fails if they drift, and runs in CI.
 
 PyPI trusted publishing is bound to a repository *and* a workflow filename, so a package
-released from here for the first time needs its publisher reconfigured on PyPI — repository `elliottower/reproducible-science`, workflow `publish-<package>.yml`,
-environment `release` — before the tag is pushed. The workflow filename is what PyPI matches,
-not the distribution name, so `results-cli` is published by `publish-results.yml`. An upload from an unrecognized workflow is rejected, and a version number is never
-reusable once taken.
+released from here for the first time needs its publisher reconfigured on PyPI — repository
+`elliottower/reproducible-science`, workflow `publish-<package>.yml`, environment `release` —
+before the tag is pushed. The workflow filename is what PyPI matches, not the distribution
+name, so `results-cli` is published by `publish-results.yml`. An upload from an unrecognized
+workflow is rejected, and a version number is never reusable once taken.
+
+The full procedure, and what each check is defending against, is in
+[docs/RELEASING.md](docs/RELEASING.md).
 
 ## Layout
 
