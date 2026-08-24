@@ -1,5 +1,11 @@
 {
   "outcomes": [
     "not_found"
-  ]
+  ],
+  "reasons": [
+    "pointer_absent"
+  ],
+  "artifacts": {
+    "res": "authoritative"
+  }
 }

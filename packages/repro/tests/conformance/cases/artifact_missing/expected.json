@@ -1,5 +1,11 @@
 {
   "outcomes": [
     "unchecked"
-  ]
+  ],
+  "reasons": [
+    "artifact_missing"
+  ],
+  "artifacts": {
+    "src": "artifact_absent"
+  }
 }

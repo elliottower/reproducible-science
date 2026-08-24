@@ -1,5 +1,11 @@
 {
   "outcomes": [
     "not_found"
-  ]
+  ],
+  "reasons": [
+    "selector_not_scalar"
+  ],
+  "artifacts": {
+    "res": "authoritative"
+  }
 }

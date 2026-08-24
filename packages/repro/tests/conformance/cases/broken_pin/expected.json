@@ -1,11 +1,11 @@
 {
   "outcomes": [
-    "not_found"
+    "verified"
   ],
   "reasons": [
-    "row_ambiguous"
+    "passage_present"
   ],
   "artifacts": {
-    "tab": "authoritative"
+    "src": "broken_pin"
   }
 }

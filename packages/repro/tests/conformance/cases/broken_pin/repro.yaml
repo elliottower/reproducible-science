@@ -1,0 +1,15 @@
+schema_version: repro/1
+project: broken_pin
+artifacts:
+- id: src
+  path: source.txt
+  digest:
+    algorithm: sha256
+    value: deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef
+claims:
+- id: c
+  text: t
+  evidence:
+  - kind: quote
+    artifact: src
+    text: matches the Haar expectation
