@@ -13,7 +13,6 @@ from __future__ import annotations
 import argparse
 import pathlib
 import subprocess
-import sys
 
 from citations import paths
 
@@ -67,14 +66,14 @@ def make(target: pathlib.Path, git: bool | None = None) -> tuple[pathlib.Path, s
     return target, "git initialised, no remote"
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="citations init",
                                  description=__doc__.split("\n")[0])
     ap.add_argument("--user", action="store_true",
                     help="make the shared library instead of one here")
     ap.add_argument("--path", help="make it at this path")
     ap.add_argument("--no-git", action="store_true", help="do not initialise a repository")
-    a = ap.parse_args()
+    a = ap.parse_args(argv)
 
     if a.path:
         target = pathlib.Path(a.path).expanduser()
@@ -98,4 +97,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

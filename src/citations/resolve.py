@@ -1,9 +1,12 @@
 """Find a fetchable identifier for records that have none, and persist it.
 
-Crossref first, then arXiv. A match is accepted only when the returned title is close to ours
-AND the first author's surname appears in the returned author list AND, where we know the year,
-it agrees within a year. Title alone is how you end up citing a different paper by an author
-with the same surname, which this project has done five times.
+Each service in `services.py` is asked in turn until one answers with a work that matches.
+A match is accepted only when the returned title is close to ours AND the first author's
+surname appears in the returned author list AND, where we know the year, it agrees within a
+year. Title alone is how you end up citing a different paper by an author with the same
+surname, which this project has done five times -- and the guard still earns its place: a
+Crossref search for "Attention Is All You Need" returns "Is Attention All You Need?" at 0.88
+similarity, above the threshold, by different authors, in a different year.
 
 Where a work exists in several versions, the venue is used to prefer the one we cite -- the
 journal article rather than the working paper, the original rather than a reprint.
@@ -11,9 +14,9 @@ journal article rather than the working paper, the original rather than a reprin
 Results go to enrichment.yaml, not into records/, because records/ is generated and would lose
 them on the next build.
 
-    python resolve.py --check          # report, write nothing
-    python resolve.py --paper mechanistic-reference
-    python resolve.py --verify         # re-check that every stored link still resolves
+    citations resolve --check          # report, write nothing
+    citations resolve --paper mechanistic-reference
+    citations resolve --verify         # re-check that every stored link still resolves
 """
 from __future__ import annotations
 
@@ -21,78 +24,91 @@ import argparse
 import difflib
 import json
 import os
-import pathlib
-import re
-import sys
+import socket
 import time
 import urllib.error
-import urllib.parse
 import urllib.request
 
 import yaml
 
-from citations.paths import home as _home
+from citations import paths
+from citations.models import Record, load_record
+from citations.services import SERVICES, Candidate, Service
+from citations.text import fold as norm, surname_variants
 
-# The library, not the package directory. Reading the latter finds an empty records/ and
-# reports that nothing needs resolving, which is indistinguishable from being finished.
-ROOT = _home()
-RECORDS = ROOT / "records"
-ENRICHMENT = ROOT / "enrichment.yaml"
 UA = "citations/1.0 (mailto:elliot@elliottower.ai)"
+
+#: How close two titles must be, after normalization, before anything else is considered.
 TITLE_MIN = 0.87
 
+#: A matching venue is worth this much against title similarity when choosing between several
+#: acceptable candidates. High enough that the journal version beats the preprint.
+VENUE_WEIGHT = 1.5
 
-def norm(s: str) -> str:
-    return re.sub(r"[^a-z0-9 ]", "", (s or "").lower()).strip()
+#: Errors that mean the request did not complete. `HTTPError` subclasses `URLError`, so it is
+#: caught ahead of these wherever the status code carries information.
+NETWORK_ERRORS = (urllib.error.URLError, socket.timeout, TimeoutError, ConnectionError,
+                  json.JSONDecodeError, UnicodeDecodeError)
 
-
-def close(a: str, b: str) -> float:
-    return difflib.SequenceMatcher(None, norm(a), norm(b)).ratio()
-
-
-def surname(author: str) -> str:
-    if not author:
-        return ""
-    return norm(author.split(",")[0] if "," in author else author.split()[-1])
-
-
-def fetch(url: str, timeout: int = 25, headers: dict | None = None):
-    req = urllib.request.Request(url, headers={"User-Agent": UA, **(headers or {})})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return r
+#: Status codes that mean "ask again later" rather than "no such work".
+RETRY_CODES = (429, 503, 504)
 
 
 class Throttled(Exception):
     """The service refused to answer. Distinct from answering that it has nothing."""
 
 
-def get_json(url: str, tries: int = 4, headers: dict | None = None) -> dict | None:
-    """None means the service answered and had nothing. Throttled means it did not answer.
+# --------------------------------------------------------------------------------------------
+# Transport
+# --------------------------------------------------------------------------------------------
 
-    Collapsing those two into None is how a batch of sixty lookups reported sixty works as
-    unfindable when the real answer was that Crossref had started rate-limiting after the
-    first few. A resolver that cannot tell "absent" from "I was blocked" will confidently
-    delete information.
+def fetch(url: str, timeout: int = 25, headers: dict | None = None):
+    """An open response. The caller closes it.
+
+    Closing it here -- which a `with` block around the `urlopen` does -- returns a response
+    whose `read()` yields zero bytes. Every decode then fails, every failure is retried, and
+    the resolver concludes that every service refused it.
+    """
+    req = urllib.request.Request(url, headers={"User-Agent": UA, **(headers or {})})
+    return urllib.request.urlopen(req, timeout=timeout)
+
+
+def get(url: str, as_json: bool, tries: int = 4, headers: dict | None = None):
+    """The payload, or None when the service answered and had nothing.
+
+    Raises `Throttled` when it did not answer. Collapsing those two into None is how a batch of
+    sixty lookups reported sixty works as unfindable when the real answer was that Crossref had
+    started rate-limiting after the first few. A resolver that cannot tell "absent" from "I was
+    blocked" will confidently delete information.
     """
     delay = 2.0
-    for attempt in range(tries):
+    for _ in range(tries):
         try:
             with fetch(url, headers=headers) as r:
-                return json.loads(r.read().decode())
+                body = r.read().decode()
+            return json.loads(body) if as_json else body
         except urllib.error.HTTPError as e:
-            if e.code in (429, 503, 504):
+            if e.code in RETRY_CODES:
                 time.sleep(delay)
                 delay *= 2
                 continue
             return None
-        except Exception:
+        except NETWORK_ERRORS:
             time.sleep(delay)
             delay *= 2
-            continue
     raise Throttled(url)
 
 
+# --------------------------------------------------------------------------------------------
+# The one matching rule
+# --------------------------------------------------------------------------------------------
+
+def close(a: str, b: str) -> float:
+    return difflib.SequenceMatcher(None, norm(a), norm(b)).ratio()
+
+
 def year_ok(ours: str, theirs: int | None) -> bool:
+    """Unknown on either side is not a mismatch. A year apart is a preprint and its paper."""
     if not ours or not theirs:
         return True
     try:
@@ -101,159 +117,81 @@ def year_ok(ours: str, theirs: int | None) -> bool:
         return True
 
 
-def try_crossref(rec: dict) -> tuple[str, str] | None:
-    title, venue = rec.get("title", ""), rec.get("venue", "")
-    first = (rec.get("authors") or [""])[0]
-    q = urllib.parse.urlencode({"query.bibliographic": title, "rows": 8})
-    d = get_json(f"https://api.crossref.org/works?{q}")
-    if not d:
-        return None
-    best = None
-    for it in d.get("message", {}).get("items", []):
-        t = (it.get("title") or [""])[0]
-        ts = close(t, title)
-        if ts < TITLE_MIN:
-            continue
-        fams = {norm(a.get("family", "")) for a in it.get("author", [])}
-        if first and surname(first) not in fams:
-            continue
-        parts = ((it.get("issued") or {}).get("date-parts") or [[None]])[0]
-        if not year_ok(rec.get("year", ""), parts[0] if parts else None):
-            continue
-        container = (it.get("container-title") or [""])[0]
-        vs = close(container, venue) if (venue and container) else 0.0
-        score = ts + 1.5 * vs
-        if best is None or score > best[0]:
-            best = (score, it.get("DOI"))
-    return ("doi", best[1]) if best else None
+def match(rec: Record, candidates) -> tuple[str, str] | None:
+    """The best acceptable candidate's identifier, or None if none is acceptable.
 
-
-def try_semanticscholar(rec: dict) -> tuple[str, str] | None:
-    """Semantic Scholar, which indexes preprints and workshop papers Crossref has never seen.
-
-    Anonymous requests are rate limited hard enough to look like an empty index; an empty
-    result from a 429 is not a finding. Set SEMANTIC_SCHOLAR_API_KEY to get a usable quota.
+    Acceptability and ranking are separate. A candidate that fails any guard is out regardless
+    of how well it scores; among those that pass, the venue decides which version of the same
+    work to take.
     """
-    title, venue = rec.get("title", ""), rec.get("venue", "")
-    first = (rec.get("authors") or [""])[0]
-    q = urllib.parse.urlencode({"query": title[:250], "limit": 6,
-                                "fields": "title,externalIds,authors,year,venue"})
-    key = os.environ.get("SEMANTIC_SCHOLAR_API_KEY", "")
-    d = get_json(f"https://api.semanticscholar.org/graph/v1/paper/search?{q}",
-                 headers={"x-api-key": key} if key else None)
-    if not d:
-        return None
-    best = None
-    for it in d.get("data") or []:
-        t = it.get("title") or ""
-        ts = close(t, title)
-        if ts < TITLE_MIN:
+    first = rec.authors[0] if rec.authors else ""
+    want = surname_variants(first)
+    best: tuple[float, tuple[str, str]] | None = None
+
+    for c in candidates:
+        if c.identifier is None:
             continue
-        fams = {surname(a.get("name", "")) for a in (it.get("authors") or [])}
-        if first and surname(first) not in fams:
+        title_score = close(c.title, rec.title)
+        if title_score < TITLE_MIN:
             continue
-        if not year_ok(rec.get("year", ""), it.get("year")):
+        if want and not (want & c.surnames):
             continue
-        ext = it.get("externalIds") or {}
-        ident = ("doi", ext["DOI"]) if ext.get("DOI") else (("arxiv", ext["ArXiv"]) if ext.get("ArXiv") else None)
-        if not ident:
+        if not year_ok(rec.year, c.year):
             continue
-        vs = close(it.get("venue") or "", venue) if venue else 0.0
-        score = ts + 1.5 * vs
+        venue_score = close(c.venue, rec.venue) if (rec.venue and c.venue) else 0.0
+        score = title_score + VENUE_WEIGHT * venue_score
         if best is None or score > best[0]:
-            best = (score, ident)
+            best = (score, c.identifier)
     return best[1] if best else None
 
 
-def try_arxiv(rec: dict) -> tuple[str, str] | None:
-    title = rec.get("title", "")
-    first = (rec.get("authors") or [""])[0]
-    q = urllib.parse.urlencode({"search_query": f'ti:"{title}"', "max_results": 4})
-    # raise rather than return None: a refused request is not an empty result, and treating
-    # it as one is how three throttled services got reported as "nothing found"
-    delay = 3.0
-    xml = None
-    for _ in range(3):
-        try:
-            with fetch(f"https://export.arxiv.org/api/query?{q}") as r:
-                xml = r.read().decode()
-            break
-        except Exception:
-            time.sleep(delay)
-            delay *= 2
-    if xml is None:
-        raise Throttled("arxiv")
-    for entry in re.findall(r"<entry>(.*?)</entry>", xml, re.S):
-        tm = re.search(r"<title>(.*?)</title>", entry, re.S)
-        im = re.search(r"<id>(.*?)</id>", entry)
-        if not (tm and im):
-            continue
-        t = " ".join(tm.group(1).split())
-        if close(t, title) < TITLE_MIN:
-            continue
-        fams = {surname(n) for n in re.findall(r"<name>(.*?)</name>", entry)}
-        if first and surname(first) not in fams:
-            continue
-        return ("arxiv", re.sub(r"v\d+$", "", im.group(1).split("/abs/")[-1]))
-    return None
-
-
-def try_openalex(rec: dict) -> tuple[str, str] | None:
-    """OpenAlex, which indexes books, reports and preprints that Crossref does not.
-
-    It also carries a DOI for most arXiv preprints under the 10.48550 prefix, so a work with
-    no publisher DOI still gets a resolvable identifier.
-    """
-    title = rec.get("title", "")
-    first = (rec.get("authors") or [""])[0]
-    q = urllib.parse.urlencode({"filter": f"title.search:{title}", "per-page": 5,
-                                "mailto": "elliot@elliottower.ai"})
-    d = get_json(f"https://api.openalex.org/works?{q}")
-    if not d:
+def search(service: Service, rec: Record) -> tuple[str, str] | None:
+    """Ask one service about one record. Raises `Throttled` if it refused."""
+    headers = None
+    if service.needs_key:
+        key = os.environ.get(service.needs_key, "")
+        headers = {"x-api-key": key} if key else None
+    payload = get(service.url(rec), as_json=service.json, headers=headers)
+    if payload is None:
         return None
-    for w in d.get("results", []):
-        t = w.get("display_name") or ""
-        if close(t, title) < TITLE_MIN:
-            continue
-        fams = {surname((a.get("author") or {}).get("display_name", ""))
-                for a in (w.get("authorships") or [])}
-        if first and surname(first) not in fams:
-            continue
-        if not year_ok(rec.get("year", ""), w.get("publication_year")):
-            continue
-        doi = (w.get("doi") or "").replace("https://doi.org/", "")
-        if doi.startswith("10.48550/arxiv."):
-            return ("arxiv", doi.split("arxiv.")[-1])
-        if doi:
-            return ("doi", doi)
-        oid = (w.get("id") or "").rsplit("/", 1)[-1]
-        if oid:
-            return ("openalex", oid)
-    return None
+    return match(rec, service.candidates(payload))
 
+
+# --------------------------------------------------------------------------------------------
+# The overlay
+# --------------------------------------------------------------------------------------------
 
 def load_overlay() -> dict:
-    if not ENRICHMENT.exists():
+    enrichment = paths.enrichment()
+    if not enrichment.exists():
         return {}
-    text = ENRICHMENT.read_text()
-    return yaml.safe_load(text) or {}
+    return yaml.safe_load(enrichment.read_text()) or {}
 
 
 def save_overlay(overlay: dict) -> None:
-    ENRICHMENT.write_text(
+    paths.enrichment().write_text(
         "# Facts resolved after the bibliographies were written, keyed by record slug.\n"
         "# Regenerating records/ does not touch this file; build.py applies it as an overlay.\n"
         "# Identifiers were accepted only on title, first-author surname and year together.\n"
         + yaml.safe_dump(overlay, sort_keys=True, allow_unicode=True))
 
 
+URL_FOR = {"doi": "https://doi.org/{}",
+           "arxiv": "https://arxiv.org/abs/{}",
+           "openalex": "https://openalex.org/{}"}
+
+
+# --------------------------------------------------------------------------------------------
+# Commands
+# --------------------------------------------------------------------------------------------
+
 def verify() -> int:
     """Every stored link still resolves. A dead link is worse than a missing one."""
-    bad = []
+    bad: list[tuple[str, str, object]] = []
     checked = 0
-    for p in sorted(RECORDS.glob("*.yaml")):
-        r = yaml.safe_load(p.read_text()) or {}
-        url = r.get("url") or (f"https://doi.org/{r['doi']}" if r.get("doi") else None)
+    for p in sorted(paths.records().glob("*.yaml")):
+        rec = load_record(p)
+        url = rec.url or (f"https://doi.org/{rec.doi}" if rec.doi else None)
         if not url:
             continue
         checked += 1
@@ -261,13 +199,13 @@ def verify() -> int:
             req = urllib.request.Request(url, headers={"User-Agent": UA}, method="HEAD")
             with urllib.request.urlopen(req, timeout=20) as resp:
                 if resp.status >= 400:
-                    bad.append((r["slug"], url, resp.status))
+                    bad.append((rec.slug, url, resp.status))
         except urllib.error.HTTPError as e:
             if e.code in (403, 429):        # blocked or throttled, not absent
                 continue
-            bad.append((r["slug"], url, e.code))
-        except Exception as e:
-            bad.append((r["slug"], url, type(e).__name__))
+            bad.append((rec.slug, url, e.code))
+        except NETWORK_ERRORS as e:
+            bad.append((rec.slug, url, type(e).__name__))
         time.sleep(0.15)
     print(f"  checked {checked} links, {len(bad)} did not resolve")
     for slug, url, why in bad[:30]:
@@ -275,67 +213,67 @@ def verify() -> int:
     return 1 if bad else 0
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--check", action="store_true")
-    ap.add_argument("--verify", action="store_true")
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(prog="citations resolve", description=__doc__.split("\n")[0])
+    ap.add_argument("--check", action="store_true", help="report, write nothing")
+    ap.add_argument("--verify", action="store_true", help="re-check every stored link")
     ap.add_argument("--paper", help="only records this paper cites")
     ap.add_argument("--limit", type=int, default=0)
-    a = ap.parse_args()
+    a = ap.parse_args(argv)
 
     if a.verify:
         return verify()
 
-    todo = []
-    for p in sorted(RECORDS.glob("*.yaml")):
-        r = yaml.safe_load(p.read_text()) or {}
-        if r.get("url") or r.get("doi") or r.get("arxiv"):
+    todo: list[Record] = []
+    for p in sorted(paths.records().glob("*.yaml")):
+        rec = load_record(p)
+        if rec.url or rec.doi or rec.arxiv:
             continue
-        if a.paper and a.paper not in (r.get("cited_by") or {}):
+        if a.paper and a.paper not in rec.cited_by:
             continue
-        todo.append(r)
+        todo.append(rec)
     if a.limit:
         todo = todo[:a.limit]
     print(f"  {len(todo)} records without an identifier\n")
 
     overlay = load_overlay()
     found = blocked = consecutive_blocks = 0
-    for r in todo:
+    for rec in todo:
         # Each service is tried independently: one of them rate-limiting must not stop the
-        # others from answering. A record only counts as blocked if every service refused,
+        # others from answering. A record only counts as blocked when every service refused,
         # which is different from every service having nothing.
         hit, refused = None, 0
-        for service in (try_semanticscholar, try_crossref, try_openalex, try_arxiv):
+        for service in SERVICES:
             try:
-                hit = service(r)
+                hit = search(service, rec)
             except Throttled:
                 refused += 1
             time.sleep(1.5)
             if hit:
                 break
-        if not hit and refused == 3:
+
+        if not hit and refused == len(SERVICES):
             blocked += 1
             consecutive_blocks += 1
-            print(f"  BLOCKED {(r.get('title') or '?')[:60]}")
+            print(f"  BLOCKED {rec.title[:60] or '?'}")
             if consecutive_blocks >= 4:
                 print(f"\n  every service refusing -- stopping rather than grinding; "
                       f"{found} saved. Re-run later to continue.")
                 break
             time.sleep(20)
             continue
+
         consecutive_blocks = 0
         if not hit:
-            print(f"  ---     {(r.get('title') or '?')[:60]}")
+            print(f"  ---     {rec.title[:60] or '?'}")
             continue
+
         kind, ident = hit
-        url = {"doi": f"https://doi.org/{ident}",
-               "arxiv": f"https://arxiv.org/abs/{ident}",
-               "openalex": f"https://openalex.org/{ident}"}[kind]
         found += 1
-        print(f"  {kind:<6} {ident:<34}{(r.get('title') or '')[:40]}")
+        print(f"  {kind:<6} {ident:<34}{rec.title[:40]}")
         if not a.check:
-            entry = overlay.setdefault(r["slug"], {})
-            entry["url"] = url
+            entry = overlay.setdefault(rec.slug, {})
+            entry["url"] = URL_FOR[kind].format(ident)
             entry[kind] = ident
             save_overlay(overlay)      # after each hit: a killed run keeps what it found
 
@@ -345,4 +283,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

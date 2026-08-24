@@ -2,6 +2,7 @@
 
     citations init              make a library here
     citations verify            do my quotations resolve in the sources I pinned?
+    citations audit             does the metadata match the record the identifier resolves to?
     citations resolve           backfill missing identifiers
     citations build             rebuild records from the papers' bibliographies
     citations lint              BibTeX correctness, via papis doctor
@@ -12,12 +13,12 @@ from __future__ import annotations
 
 import argparse
 import collections
+import importlib
 import pathlib
-import sys
-
-import yaml
 
 from citations import paths, verify as V
+from citations.exceptions import CitationsError, ClaimFileError
+from citations.models import ClaimFile, load_claim_file, load_record
 
 RESULTS = ["found", "not found", "unchecked"]
 WARNINGS = {"truncated": "stops mid-word or mid-number — the source continues it",
@@ -25,23 +26,28 @@ WARNINGS = {"truncated": "stops mid-word or mid-number — the source continues 
             "normalized": "matched after ignoring punctuation and spacing",
             "page": "found, but not on the page recorded"}
 
-
-def _records() -> list[dict]:
-    d = paths.records()
-    return [yaml.safe_load(p.read_text()) or {} for p in sorted(d.glob("*.yaml"))]
+DELEGATED = {"init": "init", "audit": "audit", "resolve": "resolve",
+             "build": "build", "lint": "lint", "link": "link_pdfs"}
 
 
-def _quotes_from_claims(root: pathlib.Path):
-    """A paper's claims/ holds the extraction: source, sha256 and the quotations taken from it."""
+def _records() -> list:
+    """Every record in the governing library, validated."""
+    return [load_record(p) for p in sorted(paths.records().glob("*.yaml"))]
+
+
+def _claim_files(root: pathlib.Path) -> list[ClaimFile]:
+    """Every claims file under `root`, validated.
+
+    A file that cannot be parsed is reported and skipped rather than ending the run: one
+    malformed file should not hide the state of the other three hundred.
+    """
+    out: list[ClaimFile] = []
     for p in sorted(root.glob("*.yaml")):
-        r = yaml.safe_load(p.read_text()) or {}
-        src = r.get("source") or {}
-        art = src.get("local")
-        # Papers name this block either way. Reading only one spelling makes the command find
-        # nothing and report it, which is indistinguishable from a paper that has no quotes yet.
-        for cid, ev in (r.get("evidence") or r.get("claims") or {}).items():
-            for q in (ev.get("quotes") or []):
-                yield p.stem, cid, (q.get("exact") or q.get("text") or ""), art, q.get("page")
+        try:
+            out.append(load_claim_file(p))
+        except ClaimFileError as e:
+            print(f"  skipped  {p.name}: {e.detail.splitlines()[0]}")
+    return out
 
 
 def cmd_verify(a) -> int:
@@ -50,15 +56,20 @@ def cmd_verify(a) -> int:
 
     if a.claims:
         root = pathlib.Path(a.claims).expanduser().resolve()
-        base = root.parent
-        for claim, cid, text, art, page in _quotes_from_claims(root):
-            if not text:
-                continue
-            rep.checked += 1
-            r = V.check_one(text, (base / art) if art else None, page)
-            counts[r.state] += 1
-            if r.state != "found" or r.warnings:
-                rep.problems.append((f"{claim}:{cid}", text[:58], r))
+        for cf in _claim_files(root):
+            artifact = cf.artifact()
+            pin = V.check_pin(artifact, cf.source.sha256)
+            if pin.state == "broken":
+                rep.broken_pins.append((cf.name, pin))
+            for cid, claim in cf.claims.items():
+                for q in claim.quotes:
+                    if not q.text:
+                        continue
+                    rep.checked += 1
+                    r = V.check_one(q.text, artifact, q.page)
+                    counts[r.state] += 1
+                    if r.state != "found" or r.warnings:
+                        rep.problems.append((f"{cf.name}:{cid}", q.text[:58], r))
         rep.counts = dict(counts)
         return _report(rep, counts, a, f"claims  {root}")
 
@@ -67,24 +78,26 @@ def cmd_verify(a) -> int:
         "  (user-level: no .citations/ in this directory or above it)"
         if origin == "user" else "")
     for rec in _records():
-        if a.only and a.only not in (rec.get("cited_by") or {}):
+        if a.only and a.only not in rec.cited_by:
             continue
-        art = rec.get("local")
-        artifact = (paths.home() / art) if art else None
-        for q in rec.get("quotes") or []:
-            text = q.get("text") or q.get("exact") or ""
-            if not text:
+        artifact = (paths.home() / rec.local) if rec.local else None
+        if rec.quotes:
+            pin = V.check_pin(artifact, rec.sha256)
+            if pin.state == "broken":
+                rep.broken_pins.append((rec.slug, pin))
+        for q in rec.quotes:
+            if not q.text:
                 continue
             rep.checked += 1
-            r = V.check_one(text, artifact, q.get("page"))
+            r = V.check_one(q.text, artifact, q.page)
             counts[r.state] += 1
             if r.state != "found" or r.warnings:
-                rep.problems.append((rec["slug"], text[:58], r))
+                rep.problems.append((rec.slug, q.text[:58], r))
     rep.counts = dict(counts)
     return _report(rep, counts, a, source)
 
 
-def _report(rep, counts, a, source: str = "") -> int:
+def _report(rep: V.Report, counts, a, source: str = "") -> int:
     # What was checked, before how it went. A clean run against the wrong library reads exactly
     # like a clean run against the right one, and the path is the only thing that separates them.
     if source:
@@ -95,7 +108,6 @@ def _report(rep, counts, a, source: str = "") -> int:
         print("    citations verify --claims <path>")
         return 2
 
-    sources = len({s for s, _, _ in rep.problems}) or "?"
     print(f"{rep.checked:,} quotes\n")
     for s in RESULTS:
         n = counts.get(s, 0)
@@ -118,6 +130,17 @@ def _report(rep, counts, a, source: str = "") -> int:
         for w, n in warns.most_common():
             print(f"  {n:>7,}  {w} — {WARNINGS.get(w, '')}")
 
+    # A broken pin is reported before the quotation failures. Every result computed against
+    # that source describes a document the record does not describe, so it changes how the
+    # numbers above should be read.
+    if rep.broken_pins:
+        print(f"\n{len(rep.broken_pins)} source{'s' if len(rep.broken_pins) > 1 else ''} "
+              f"changed since being pinned")
+        for name, pin in rep.broken_pins[:10]:
+            print(f"  {name[:38]:<40}pinned {pin.expected[:12]}  on disk {pin.actual[:12]}")
+        if len(rep.broken_pins) > 10:
+            print(f"  ... and {len(rep.broken_pins) - 10} more")
+
     bad = [(s, q, r) for s, q, r in rep.problems if r.state == "not found"]
     if bad and not a.quiet:
         print()
@@ -129,6 +152,8 @@ def _report(rep, counts, a, source: str = "") -> int:
     print()
     if bad:
         print(f"{len(bad)} not found. read the source before concluding anything.")
+    elif rep.broken_pins:
+        print("every quote resolved, but against a source that is not the one pinned.")
     elif counts.get("unchecked"):
         print(f"nothing failed. {counts['unchecked']} unchecked — no measurement was made "
               f"for those.")
@@ -137,14 +162,17 @@ def _report(rep, counts, a, source: str = "") -> int:
     return 0 if rep.ok or not a.strict else 1
 
 
-def _delegate(module: str, name: str, argv: list[str]) -> int:
-    import importlib
-    m = importlib.import_module(f"citations.{module}")
-    sys.argv = [f"citations {name}"] + argv
-    return m.main()
+def _delegate(module: str, argv: list[str]) -> int:
+    """Hand the remaining arguments to a subcommand's own parser.
+
+    `argv` is passed, never assigned to `sys.argv`: a function whose behavior depends on a
+    global cannot be called twice, tested without monkeypatching, or run from anything that is
+    not a terminal.
+    """
+    return importlib.import_module(f"citations.{module}").main(argv)
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="citations", description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="cmd")
 
@@ -157,22 +185,26 @@ def main() -> int:
     v.set_defaults(fn=cmd_verify)
 
     for name, helptext in [("init", "make a library here"),
+                           ("audit", "does the stored metadata match the registry record?"),
                            ("resolve", "backfill missing identifiers"),
                            ("build", "rebuild records from the papers' bibliographies"),
                            ("lint", "BibTeX correctness, via papis doctor"),
                            ("link", "point pdfs/ at the papers' artifacts")]:
         p = sub.add_parser(name, help=helptext, add_help=False)
-        p.set_defaults(fn=None, delegate={"link": "link_pdfs"}.get(name, name),
-                       shown=name)
+        p.set_defaults(fn=None, delegate=DELEGATED[name])
 
-    args, rest = ap.parse_known_args()
+    args, rest = ap.parse_known_args(argv)
     if not args.cmd:
         ap.print_help()
         return 0
-    if getattr(args, "fn", None):
-        return args.fn(args)
-    return _delegate(args.delegate, args.shown, rest)
+    try:
+        if getattr(args, "fn", None):
+            return args.fn(args)
+        return _delegate(args.delegate, rest)
+    except CitationsError as e:
+        print(str(e))
+        return 2
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

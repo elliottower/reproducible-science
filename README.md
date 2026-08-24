@@ -35,6 +35,7 @@ all found.
 |---------|-------------|
 | `citations init` | Create a library here |
 | `citations verify` | Do the quotations resolve in their sources? |
+| `citations audit` | Does the stored metadata match the record the identifier resolves to? |
 | `citations resolve` | Backfill missing DOIs and arXiv ids |
 | `citations build` | Rebuild records from bibliographies |
 | `citations lint` | BibTeX correctness, via papis |
@@ -59,6 +60,42 @@ unchecked, for CI.
 
 `not found` means read the source. A mirror-reversed scan or a two-column extraction produces
 the same signal as a passage that was never there.
+
+## Audit output
+
+`verify` asks whether a quotation is in the source. `audit` asks a different question: does the
+author list, year, volume and page range stored beside an identifier match the record that
+identifier resolves to?
+
+```bash
+citations audit --bib paper/references.bib
+```
+
+```
+75 entries
+
+  checked          62
+  agree            36
+  disagree         26
+  no id            13   nothing can check these until they have a DOI or PMID
+
+26 disagree with the record their own identifier resolves to.
+a wrong author list on a right DOI is invisible to every other check.
+```
+
+That run is real. Four of those entries carried an author list belonging to nobody on the
+cited paper, one PMID resolved to an unrelated article in another field, and four author lists
+stopped early with no `and others` marker. Every one of them resolved. A DOI checker, a link
+checker and `citations verify` all pass them, because the DOI does point at the right paper —
+it is the names beside it that belong to someone else.
+
+Disagreements a registry causes rather than the bibliography are not reported: an online-first
+year against a print year, a deposited initial against a printed given name, PubMed's
+abbreviated end page, a BibTeX accent against the Unicode it encodes, and markup a publisher
+deposited inside a title. What survives is a disagreement about the work.
+
+Fetched payloads are cached beside the file audited, so a re-run is offline and the report is
+reproducible from what was fetched rather than from the network.
 
 ## Where the library lives
 

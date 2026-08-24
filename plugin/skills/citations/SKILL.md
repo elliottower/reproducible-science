@@ -1,6 +1,6 @@
 ---
 name: citations
-description: Verify that quotations resolve in the sources they cite, and manage a library of verified quotations. Use before quoting a paper, when adding a citation, when asked to check whether a quote is real, or when a bibliography needs DOIs backfilled. Requires the `citations` CLI (`uv tool install citations`).
+description: Verify that quotations resolve in the sources they cite, and manage a library of verified quotations. Use before quoting a paper, when adding a citation, when asked to check whether a quote is real, when a bibliography needs DOIs backfilled, or when checking whether the authors and years in a reference list match the records their identifiers resolve to. Requires the `citations` CLI (`uv tool install citations`).
 ---
 
 # citations
@@ -21,6 +21,8 @@ artifact; if it is not, check it before using it.
 citations verify                    # do the quotations resolve in their sources?
 citations verify --claims <dir>     # check a paper's claims/ directory
 citations verify --strict           # exit 1 on failure, for CI
+citations audit                     # does the stored metadata match the registry record?
+citations audit --bib refs.bib      # check a BibTeX file directly
 citations resolve                   # backfill missing DOIs and arXiv ids
 citations init                      # create a library here
 citations lint                      # BibTeX correctness
@@ -62,15 +64,33 @@ different set of records and still report `all found`.
 `"We trained 50"` resolves against a sentence that continues `"...and 5 refits each for 12
 layered"`. Quote through the qualifiers; never end a pin mid-clause.
 
+## A resolving identifier says nothing about the metadata beside it
+
+`verify` checks quotations. `audit` checks the reference itself: do the authors, year, volume
+and pages stored beside a DOI match the record that DOI resolves to?
+
+The failure is a real DOI carrying an invented author list. It resolves, the link is live, and
+the quotations pinned to it are genuine, because the DOI does point at the right paper — the
+names written beside it belong to someone else. A DOI checker passes it, a link checker passes
+it, and `citations verify` passes it. Found in one 75-entry bibliography: four author lists
+belonging to nobody on the cited paper, one PMID resolving to an unrelated article in another
+field, and four lists stopping early with no `and others` marker, which is invisible because a
+truncated list looks complete.
+
+Never write an author list from memory. If a reference was assembled without reading the
+record, run `citations audit` before it ships.
+
 ## When to reach for this
 
 - Before writing any sentence that quotes a paper
 - When adding a citation, to pin the artifact and its sha256
 - When asked whether a quotation is real
 - When a bibliography has entries with no DOI or arXiv id — `citations resolve`
-- In CI, as `citations verify --strict`
+- Before a bibliography ships, and after any reference was written out by hand — `citations audit`
+- In CI, as `citations verify --strict` and `citations audit --strict`
 
 ## What it will not do
 
 It cannot catch misinterpretation. A real, resolving quotation attached to a claim it does not
-support passes every check here. Verification is not comprehension.
+support passes every check here, and `audit` compares a reference against a registry rather
+than against the paper it is cited for. Verification is not comprehension.
