@@ -70,4 +70,5 @@ known_first_party = [ "repro" ]
 ini_options.addopts = "-m 'not corpus'"
 ini_options.markers = [
   "corpus: reads repositories outside this one, and may fetch them",
+  "integration: exercises a third-party library that is not a runtime dependency",
 ]
