@@ -26,3 +26,12 @@ packages = ["src/citations"]
 dev = [
     "pytest>=9.1.1",
 ]
+
+[tool.deptry.per_rule_ignores]
+# invoked as a subprocess by `citations lint`, so no import graph can see it. Named
+# here rather than silenced globally: a genuinely unused dependency should still be reported.
+DEP002 = ["papis"]
+
+[tool.deptry]
+# Without this every intra-package import reads as a transitive dependency on itself.
+known_first_party = ["citations"]

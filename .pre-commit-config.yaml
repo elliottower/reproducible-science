@@ -1,0 +1,102 @@
+# Three tiers. Commit hooks stay under about ten seconds; anything slower runs on push or in
+# CI, because a commit that takes three minutes is a commit people bypass.
+#
+#     uv run pre-commit install --hook-type pre-commit --hook-type pre-push
+#
+# `prek` is a faster drop-in and reads this same file if you prefer it.
+
+default_install_hook_types: [pre-commit, pre-push]
+default_stages: [pre-commit]
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-ast
+      - id: check-case-conflict     # macOS hides case-only collisions that break on Linux
+      - id: check-json
+      - id: check-toml
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+      - id: check-merge-conflict
+      - id: check-symlinks
+      - id: destroyed-symlinks
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+      - id: check-executables-have-shebangs
+      - id: check-shebang-scripts-are-executable
+      - id: debug-statements
+      - id: detect-private-key
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: trailing-whitespace
+      - id: forbid-submodules
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.14.4
+    hooks:
+      # check before format: a lint fix can leave code the formatter still wants to rewrap.
+      - id: ruff-check
+        args: [--fix]
+      - id: ruff-format
+
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.1
+    hooks:
+      - id: codespell
+        additional_dependencies: [tomli]
+        exclude: ^(uv\.lock|packages/[^/]+/tests/conformance/cases/|paper/prior_art/)
+
+  - repo: https://github.com/abravalheri/validate-pyproject
+    rev: v0.24.1
+    hooks:
+      - id: validate-pyproject
+        files: ^(pyproject\.toml|packages/[^/]+/pyproject\.toml)$
+
+  - repo: local
+    hooks:
+      - id: uv-lock-current
+        name: uv.lock matches the manifests
+        entry: uv lock --check
+        language: system
+        pass_filenames: false
+        files: ^(pyproject\.toml|packages/[^/]+/pyproject\.toml|uv\.lock)$
+
+      # The repository's own product, applied to itself. Runs only when the manuscript or the
+      # engine changes, which is when a number can go stale.
+      - id: repro-verify
+        name: declared evidence assertions verify
+        entry: uv run repro verify paper/repro.yaml --policy strict
+        language: system
+        pass_filenames: false
+        files: ^(paper/|packages/repro/src/)
+
+      # ---- pre-push: slower, repository-wide -------------------------------------------
+      - id: pytest
+        name: the whole workspace's tests
+        entry: uv run pytest -q -x
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: drift
+        name: committed derived artifacts reproduce
+        entry: uv run python scripts/check_drift.py
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: vulture
+        name: dead code
+        entry: uv run vulture
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: deptry
+        name: declared dependencies match imports
+        entry: uv run python scripts/check_deps.py
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
