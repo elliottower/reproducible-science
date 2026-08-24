@@ -43,7 +43,7 @@ CLAIMS = [
     ("resolver-absent", "12\nname a work whose first author does not appear", "12",
      "/resolver_identifiers/first_author_absent"),
     ("resolver-rate", "8.3%", "8.3", "/resolver_identifiers/absent_rate"),
-    ("conformance-fixtures", "Thirteen fixtures", "13", "/conformance/fixtures"),
+    ("conformance-fixtures", "Eighteen fixtures", "18", "/conformance/fixtures"),
     ("atlas-assertions", "atlas, Table 2 and text | 39", "39",
      "/metric_corpus/direction-instability-atlas/assertions"),
     ("atlas-verified", "| 39 | 39 | 0 |", "39",

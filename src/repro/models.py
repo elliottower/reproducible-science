@@ -167,7 +167,56 @@ class MetricEvidence(_EvidenceBase):
         return decimal.Decimal(self.tolerance)
 
 
-Evidence = Annotated[QuoteEvidence | MetricEvidence, Field(discriminator="kind")]
+class TableCellEvidence(_EvidenceBase):
+    """Assertion: this table holds this value in this cell.
+
+    Most published result artifacts are delimited tables rather than JSON, so addressing a
+    cell is what a manuscript's own tables usually need. A cell is named by its column and by
+    one of two ways of picking the row.
+    """
+
+    kind: Literal["table"] = "table"
+
+    name: str
+    reported: str
+    """The value exactly as the manuscript prints it, as a string. See `MetricEvidence`."""
+
+    column: str
+    """Header name of the column holding the value."""
+
+    row: int | None = None
+    """Zero-based index among data rows, excluding the header."""
+
+    where: dict[str, str] = Field(default_factory=dict)
+    """Select the row whose named columns hold these values: `{"model": "LASSO-Cox"}`.
+
+    Preferred over `row`, because a row index silently addresses a different cell when a table
+    is reordered or a row is inserted, and a table that has been reordered is exactly the case
+    a checker exists to notice. A selector matching no rows, or more than one, is reported
+    rather than resolved."""
+
+    delimiter: str = ""
+    """Override the delimiter. Empty means infer it from the file's suffix and contents."""
+
+    mode: ComparisonMode = ComparisonMode.PRINTED_PRECISION
+    tolerance: str = "0"
+
+    @property
+    def value(self) -> decimal.Decimal:
+        return decimal.Decimal(self.reported)
+
+    @property
+    def tolerance_value(self) -> decimal.Decimal:
+        return decimal.Decimal(self.tolerance)
+
+    @property
+    def addresses_one_row(self) -> bool:
+        """Exactly one row selector must be given."""
+        return (self.row is None) != (not self.where)
+
+
+Evidence = Annotated[QuoteEvidence | MetricEvidence | TableCellEvidence,
+                     Field(discriminator="kind")]
 """Every kind of evidence, discriminated on `kind`.
 
 `protocol` was a third variant and is not one. Its integrity check is the artifact pin, which
@@ -275,6 +324,10 @@ class Reason(enum.StrEnum):
     PASSAGE_ABSENT = "passage_absent"
     VALUE_MISMATCH = "value_mismatch"
     POINTER_ABSENT = "pointer_absent"
+    COLUMN_ABSENT = "column_absent"
+    ROW_ABSENT = "row_absent"
+    ROW_AMBIGUOUS = "row_ambiguous"
+    ROW_SELECTOR_INVALID = "row_selector_invalid"
     VALUE_NOT_NUMERIC = "value_not_numeric"
     EXTRACTOR_MISSING = "extractor_missing"
     ARTIFACT_MISSING = "artifact_missing"
@@ -458,7 +511,7 @@ class VerificationReport(BaseModel):
 __all__ = [
     "SCHEMA_VERSION",
     "Digest", "ArtifactRef", "ArtifactState", "Provenance",
-    "Evidence", "QuoteEvidence", "MetricEvidence", "ComparisonMode",
+    "Evidence", "QuoteEvidence", "MetricEvidence", "TableCellEvidence", "ComparisonMode",
     "Claim", "Availability", "Manifest",
     "ExecutionStatus", "ExtractionStatus", "ComparisonStatus",
     "Outcome", "Validity", "Reason", "Warning_",

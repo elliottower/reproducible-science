@@ -1,0 +1,7 @@
+{
+  "delta": 3.2,
+  "label": "primary",
+  "nested": {
+    "a/b": 7
+  }
+}

@@ -1,0 +1,4 @@
+model,accuracy,n
+LASSO-Cox,0.6478999999999999,120
+CoxMLP,0.641,120
+CoxMLP,0.700,64

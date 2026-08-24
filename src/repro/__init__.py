@@ -45,12 +45,21 @@ from repro.models import (
     Outcome,
     QuoteEvidence,
     Reason,
+    TableCellEvidence,
     Validity,
     VerificationReport,
     Warning_,
 )
 from repro.policy import EXPLORATORY, PROFILES, PUBLICATION, STRICT, Assessment, Policy, Severity
-from repro.verify import DEFAULT_BACKENDS, Backend, MetricBackend, QuoteBackend, verify
+from repro.verify import (
+    DEFAULT_BACKENDS,
+    Backend,
+    MetricBackend,
+    QuoteBackend,
+    TableBackend,
+    read_table,
+    verify,
+)
 
 __version__ = "0.3.0"
 
@@ -58,13 +67,14 @@ __all__ = [
     "ReproError", "ManifestError", "ArtifactMissingError", "ArtifactUnreadableError",
     "DigestMismatchError", "BackendUnavailableError", "UnknownEvidenceKindError",
     "SCHEMA_VERSION", "Digest", "ArtifactRef", "ArtifactState",
-    "Evidence", "QuoteEvidence", "MetricEvidence", "ComparisonMode",
+    "Evidence", "QuoteEvidence", "MetricEvidence", "TableCellEvidence", "ComparisonMode",
     "Claim", "Availability", "Manifest",
     "ExecutionStatus", "ExtractionStatus", "ComparisonStatus",
     "Outcome", "Validity", "Reason", "Warning_",
     "Decision", "ClaimAssessment", "VerificationReport",
     "load", "find", "DEFAULT_NAME",
-    "verify", "Backend", "QuoteBackend", "MetricBackend", "DEFAULT_BACKENDS",
+    "verify", "Backend", "QuoteBackend", "MetricBackend", "TableBackend",
+    "read_table", "DEFAULT_BACKENDS",
     "Policy", "Assessment", "Severity", "EXPLORATORY", "PUBLICATION", "STRICT", "PROFILES",
     "__version__",
 ]

@@ -1,0 +1,19 @@
+schema_version: repro/1
+project: table_row_ambiguous
+artifacts:
+- id: tab
+  path: table.csv
+  digest:
+    algorithm: sha256
+    value: f739639bb5fc22ca31ad3517829d735f438b49a58249ee3eeed1c423aa637ada
+claims:
+- id: c
+  text: t
+  evidence:
+  - kind: table
+    artifact: tab
+    name: m
+    reported: '0.641'
+    column: accuracy
+    where:
+      model: CoxMLP

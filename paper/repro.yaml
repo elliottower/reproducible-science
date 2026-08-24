@@ -2,7 +2,7 @@ schema_version: repro/1
 project: reproducible-science (self-audit)
 provenance:
   repository: https://github.com/elliottower/reproducible-science.git
-  commit: f505bdc493a326d3c950fa924523bc791d7149e8
+  commit: bdc801e662474df9f82eb4b406b8c6fe2e15ef41
   dirty: true
   generated_by: scripts/build_self_audit.py
 artifacts:
@@ -11,13 +11,13 @@ artifacts:
   media_type: text/markdown
   digest:
     algorithm: sha256
-    value: b974e92084e843236e3fae840f5e331f575c31394520f360512162452c92cdd2
+    value: fdc6203e9dafb93d4154076cc47e0423c2527d4aa2446f54ef9411e48a58a072
 - id: figures
   path: figures.json
   media_type: application/json
   digest:
     algorithm: sha256
-    value: e1f9a69da374b38386b45f41a6c5a774f68c1de23b16ae7deb36aa55d3495fbd
+    value: 3da1a0b62a4f2c0935a93ef8a09b9f4140b9a9d136874469ce8d7237b49b6d92
 claims:
 - id: corpus-assertions
   confirmatory: true
@@ -162,15 +162,15 @@ claims:
 - id: conformance-fixtures
   confirmatory: true
   where: Section 6
-  text: The manuscript states 13 for conformance-fixtures.
+  text: The manuscript states 18 for conformance-fixtures.
   evidence:
   - kind: quote
     artifact: manuscript
-    text: Thirteen fixtures
+    text: Eighteen fixtures
   - kind: metric
     artifact: figures
     name: conformance-fixtures
-    reported: '13'
+    reported: '18'
     pointer: /conformance/fixtures
 - id: atlas-assertions
   confirmatory: true
