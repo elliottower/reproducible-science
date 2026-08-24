@@ -18,7 +18,7 @@ classifiers = [
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
 ]
-dependencies = [ "platformdirs>=3", "pydantic>=2", "pyyaml>=6" ]
+dependencies = [ "platformdirs>=3", "pydantic>=2.9", "pyyaml>=6.0.2" ]
 optional-dependencies.lint = [ "papis>=0.15" ]
 scripts.citations = "citations.cli:main"
 
