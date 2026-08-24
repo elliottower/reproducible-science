@@ -417,7 +417,7 @@ def from_pubmed(pmid: str, cache: pathlib.Path) -> RegistryRecord | None:
         volume=(journal.findtext(".//Volume") or "") if journal is not None else "",
         pages=art.findtext(".//MedlinePgn") or "",
         authors=[
-            (tokens(a.findtext("LastName")), tokens(a.findtext("ForeName") or ""))
+            (tokens(a.findtext("LastName") or ""), tokens(a.findtext("ForeName") or ""))
             for a in art.findall(".//Author")
             if a.findtext("LastName")
         ],

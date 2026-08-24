@@ -180,6 +180,13 @@ repos:
         pass_filenames: false
         stages: [pre-push]
 
+      - id: types
+        name: type checks
+        entry: uv run pyrefly check packages/repro/src packages/citations/src packages/results/src packages/prereg/src
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
       - id: import-linter
         name: package dependency direction
         entry: uv run lint-imports

@@ -28,6 +28,8 @@ import io
 import json
 import pathlib
 import sqlite3
+from collections.abc import Callable
+from typing import Any
 
 import yaml
 from pydantic import BaseModel, ConfigDict
@@ -195,7 +197,7 @@ def sniff_delimiter(path: pathlib.Path, sample: str) -> str:
         return known
     header = sample.splitlines()[0] if sample.splitlines() else ""
     counts = {d: header.count(d) for d in (",", "\t", ";", "|")}
-    best = max(counts, key=counts.get)
+    best = max(counts, key=lambda delimiter: counts[delimiter])
     return best if counts[best] else ","
 
 
@@ -412,7 +414,10 @@ UNSUPPORTED = {
     ".feather": "Feather",
 }
 
-_ADAPTERS = {
+#: Keyed by `Locator.kind`, which is what makes the dispatch below sound: each adapter takes
+#: the one variant whose discriminator selects it. The annotation is deliberately loose,
+#: because a mapping cannot express "the value whose parameter type matches this key".
+_ADAPTERS: dict[str, Callable[[Any, pathlib.Path], Found]] = {
     "tree": _resolve_tree,
     "table": _resolve_table,
     "table_position": _resolve_table_position,

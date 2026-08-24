@@ -36,10 +36,7 @@ test:
 	$(PY) pytest -q
 
 # ---- rung 4: a pull request --------------------------------------------------------------
-# `types` is advisory here, not blocking: there are 32 outstanding type errors, and adopting
-# a checker on an existing codebase is a ratchet. Drop the `-` once the count reaches zero.
-qa: check test drift deps imports wheels
-	-$(MAKE) types
+qa: check test types drift deps imports wheels
 
 types:
 	$(PY) pyrefly check $(PKG_SRC)

@@ -227,7 +227,7 @@ class ValueBackend:
                 warnings=warnings,
             )
 
-        if resolution is not Resolution.RESOLVED:
+        if resolution is not Resolution.RESOLVED or extracted is None:
             extraction, reason = _RESOLUTION_STATE[resolution]
             return Decision(
                 **base,
@@ -316,7 +316,7 @@ def _artifact_state(artifact: ArtifactRef, path: pathlib.Path) -> ArtifactState:
             exists=False,
             expected=artifact.digest.value if artifact.digest else None,
         )
-    if not artifact.is_pinned:
+    if not artifact.is_pinned or artifact.digest is None:
         return ArtifactState(
             artifact_id=artifact.id,
             validity=Validity.UNPINNED_ARTIFACT,
@@ -412,7 +412,7 @@ def _ordering(
     for run in runs:
         for artifact_id in sorted(produced & {o.artifact for o in run.outputs}):
             output = run.output(artifact_id)
-            if output.digest is None:
+            if output is None or output.digest is None:
                 return unchecked(
                     OrderingReason.RUN_OUTPUT_UNLINKED,
                     f"run {run.id} names {artifact_id} but records no digest "
@@ -426,14 +426,23 @@ def _ordering(
                     f"produced {output.digest.value[:12]}",
                 )
 
-    inverted = [r for r in runs if r.started_at < r.registered_at]
+    # Every run is dated by this point -- the guard above returned otherwise -- but binding
+    # the timestamps is what makes that legible, to a reader and to a type checker.
+    dated = [
+        (r, r.registered_at, r.started_at)
+        for r in runs
+        if r.registered_at is not None and r.started_at is not None
+    ]
+    inverted = [
+        (r, registered, started) for r, registered, started in dated if started < registered
+    ]
     if inverted:
-        run = inverted[0]
+        run, registered_at, started_at = inverted[0]
         return (
             Ordering.VIOLATED,
             OrderingReason.RUN_PRECEDES_REGISTRATION,
-            f"run {run.id} started {run.started_at.isoformat()}, before "
-            f"{run.registered_plan} was registered {run.registered_at.isoformat()}",
+            f"run {run.id} started {started_at.isoformat()}, before "
+            f"{run.registered_plan} was registered {registered_at.isoformat()}",
             authority,
         )
 
