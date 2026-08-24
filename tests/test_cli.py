@@ -15,9 +15,11 @@ def run_repro(*args: str, cwd=None) -> subprocess.CompletedProcess:
     )
 
 
-def test_version():
+def test_version_reports_the_installed_package_version():
+    import repro
+
     r = run_repro("--version")
-    assert "0.1.0" in r.stdout + r.stderr
+    assert repro.__version__ in r.stdout + r.stderr
 
 
 def test_no_args_prints_help():

@@ -1,0 +1,12 @@
+schema_version: repro/1
+project: artifact_missing
+artifacts:
+- id: src
+  path: gone.txt
+claims:
+- id: c
+  text: t
+  evidence:
+  - kind: quote
+    artifact: src
+    text: anything at all here

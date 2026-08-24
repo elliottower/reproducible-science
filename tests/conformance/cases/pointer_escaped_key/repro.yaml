@@ -1,0 +1,17 @@
+schema_version: repro/1
+project: pointer_escaped_key
+artifacts:
+- id: res
+  path: results.json
+  digest:
+    algorithm: sha256
+    value: fd5415d6b5f95524d4b98f8507bae62fc946a034f6e2679f0f9c01de59939ec5
+claims:
+- id: c
+  text: t
+  evidence:
+  - kind: metric
+    artifact: res
+    name: m
+    reported: '7'
+    pointer: /nested/a~1b

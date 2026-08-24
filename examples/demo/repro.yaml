@@ -1,0 +1,79 @@
+schema_version: repro/1
+project: demo
+artifacts:
+- id: paper-source
+  path: source.txt
+  media_type: text/plain
+  digest:
+    algorithm: sha256
+    value: 686e85e11181f257ddafecab7393514b3b5c4caf9efe30010f0a8c612157b9bc
+- id: results
+  path: results.json
+  media_type: application/json
+  digest:
+    algorithm: sha256
+    value: 02bc2d3ee0dc202c93c8e5b882487dd15ffac282ab1da11d3d38127418632bdd
+- id: plan
+  path: PREREG.md
+  media_type: text/markdown
+  digest:
+    algorithm: sha256
+    value: bbf2a82d42f7766a329e79ce17c21a30123de8dcfe4eef30d98121be9ee03b9f
+- id: unpinned-notes
+  path: source.txt
+claims:
+- id: c1
+  text: Model A exceeded Model B by 3.2 percentage points.
+  where: Abstract
+  confirmatory: true
+  evidence:
+  - kind: quote
+    artifact: paper-source
+    text: Model A exceeded Model B by 3.2 percentage points
+  - kind: metric
+    artifact: results
+    name: delta
+    reported: '3.2'
+    pointer: /comparisons/primary/delta
+- id: c2
+  text: The registered plan states H1.
+  where: Methods
+  confirmatory: true
+  evidence:
+  - kind: quote
+    artifact: plan
+    text: Model A exceeds Model B on held-out accuracy
+- id: c3
+  text: The effect held across all twenty seeds.
+  where: Section 4
+  evidence:
+  - kind: quote
+    artifact: paper-source
+    text: The direction replicates across all twenty seeds
+  - kind: metric
+    artifact: results
+    name: delta
+    reported: '9.9'
+    pointer: /comparisons/primary/delta
+- id: c4
+  text: Performance improved substantially overall.
+  where: Discussion
+  evidence: []
+- id: c5
+  text: The secondary comparison used 1000 bootstrap draws.
+  where: Section 5
+  evidence:
+  - kind: metric
+    artifact: results
+    name: bootstrap_n
+    reported: '1000'
+    pointer: /comparisons/secondary/bootstrap_n
+- id: c6
+  text: Model A reached 0.912 accuracy.
+  where: Table 1
+  evidence:
+  - kind: metric
+    artifact: results
+    name: acc_a
+    reported: '0.91'
+    pointer: /accuracy/model_a

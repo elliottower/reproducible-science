@@ -1,0 +1,7 @@
+{
+  "comparisons": {
+    "primary": {"delta": 3.2, "n": 12},
+    "secondary": {"delta": 0.4, "n": 12}
+  },
+  "accuracy": {"model_a": 0.912, "model_b": 0.880}
+}

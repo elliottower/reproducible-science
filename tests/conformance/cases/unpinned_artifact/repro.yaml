@@ -1,0 +1,12 @@
+schema_version: repro/1
+project: unpinned_artifact
+artifacts:
+- id: src
+  path: source.txt
+claims:
+- id: c
+  text: t
+  evidence:
+  - kind: quote
+    artifact: src
+    text: matches the Haar expectation
