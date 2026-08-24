@@ -67,6 +67,26 @@ refactors and dependency bumps need no note.
 `Co-Authored-By` trailers naming a model are rewritten to `Assisted-by` by a commit-msg hook.
 The disclosure stays; the authorship claim does not. Human co-authors are left alone.
 
+## Keeping tooling current
+
+Dependabot proposes grouped updates monthly, with a seven-day cooldown so a release is never
+proposed in the window a compromised version is most likely to still be live.
+
+GitHub Actions are pinned by commit SHA with the version in a comment, because a tag can be
+moved onto different code after it was reviewed. Dependabot updates the SHA and the comment
+together; to bump one by hand, resolve the SHA deliberately rather than writing a tag:
+
+```console
+gh api repos/actions/checkout/commits/v7 --jq .sha
+```
+
+Two things Dependabot does not cover:
+
+```console
+prek autoupdate            # the pre-commit hook revisions
+uv lock --upgrade          # the locked dependencies, beyond the grouped updates
+```
+
 ## Releases
 
 Tags are per package: `citations-v0.2.0` publishes citations and nothing else. Leaf packages
