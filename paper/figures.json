@@ -3,6 +3,28 @@
     "fixtures": 13,
     "tests_passing": 33
   },
+  "metric_corpus": {
+    "direction-instability-atlas": {
+      "assertions": 39,
+      "available": true,
+      "commit": "305debba799d",
+      "verified": 39
+    },
+    "rna-fm-duplicate-stored-value": {
+      "assertions": 2,
+      "available": true,
+      "commit": "14a302a33607",
+      "mismatch": 1,
+      "verified": 1
+    },
+    "rna-table5-mean-ps": {
+      "assertions": 10,
+      "available": true,
+      "commit": "a41c56493493",
+      "mismatch": 9,
+      "verified": 1
+    }
+  },
   "quotation_corpus": {
     "assertions": 5686,
     "declaration_files": 366,
@@ -23,5 +45,9 @@
     "no_authors": 6,
     "no_record": 21,
     "written": 172
+  },
+  "self_audit": {
+    "assertions": 31,
+    "available": true
   }
 }

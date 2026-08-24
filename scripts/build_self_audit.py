@@ -44,6 +44,14 @@ CLAIMS = [
      "/resolver_identifiers/first_author_absent"),
     ("resolver-rate", "8.3%", "8.3", "/resolver_identifiers/absent_rate"),
     ("conformance-fixtures", "Thirteen fixtures", "13", "/conformance/fixtures"),
+    ("atlas-assertions", "atlas, Table 2 and text | 39", "39",
+     "/metric_corpus/direction-instability-atlas/assertions"),
+    ("atlas-verified", "| 39 | 39 | 0 |", "39",
+     "/metric_corpus/direction-instability-atlas/verified"),
+    ("rna-assertions", "RNA structure-awareness, Table 5 | 10", "10",
+     "/metric_corpus/rna-table5-mean-ps/assertions"),
+    ("rna-mismatch", "nine of the ten table rows", "9",
+     "/metric_corpus/rna-table5-mean-ps/mismatch"),
 ]
 
 artifacts = [
