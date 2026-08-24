@@ -6,8 +6,9 @@
 
 A quotation cited in a manuscript and a number reported in it make the same kind of assertion:
 that a particular value can be extracted from a particular artifact. We specify that assertion
-as a typed contract with two variants, verify both through one engine against content-addressed
-artifacts, and report the outcome as three orthogonal stages — whether the check executed,
+as a typed contract with three variants — a quotation in a source, a value at a location in a
+machine-readable file, a cell in a table — verify all three through one engine against
+content-addressed artifacts, and report the outcome as three orthogonal stages — whether the check executed,
 whether the value was located, and whether it matched. Separating those stages distinguishes a
 value that disagrees, a value the artifact is silent on, and a check that never ran, three
 cases a two-state report has to collapse and whose remedies differ. The engine returns facts
@@ -38,8 +39,8 @@ evidence and claim is the subject of FEVER [Thorne et al. 2018] and SciFact [Wad
 outcomes are `match` and `mismatch`, which name what a byte comparison found, rather than
 `supported` and `refuted`, which name a semantic relation this method does not establish.
 
-**Contributions.** (1) An evidence contract with two implemented variants, `quote` and
-`metric`, sharing one engine and one report. (2) A three-stage outcome model — execution,
+**Contributions.** (1) An evidence contract with three implemented variants — `quote`,
+`metric` and `table` — sharing one engine and one report. (2) A three-stage outcome model — execution,
 extraction, comparison — distinguishing disagreement, absence, and non-execution, with the
 flattened single-field view derived from the stages rather than assigned. (3) Separation of
 facts from verdict, with three policy profiles over identical reports. (4) An executable
@@ -81,6 +82,18 @@ claim and appears in the flattened view for display only.
 |---|---|---|---|
 | `quote` | this passage occurs in this artifact | page, optionally | verbatim after normalization that preserves which words appear |
 | `metric` | this artifact holds this value here | RFC 6901 JSON Pointer | decimal, at the precision the manuscript printed |
+| `table` | this table holds this value in this cell | column plus a row selector | decimal, at the precision the manuscript printed |
+
+A table cell is addressed by column and by a selector over key columns rather than by row
+index, because an index silently addresses a different cell when a table is reordered, and a
+reordered table is what a checker exists to notice. A selector matching more than one row is
+reported rather than resolved to the first, which would restore the dependence on order that
+the selector removes.
+
+The `table` variant exists because most published result artifacts are delimited tables. A
+survey of candidate audit targets found result files in `.csv` far more often than in any
+structured format, so a contract that reads only JSON can address the reported values of very
+few published papers.
 
 Two specification decisions carry more weight than their size suggests.
 
@@ -133,8 +146,9 @@ tool outside this contract.
 
 ### 6.1 Conformance
 
-Thirteen fixtures, one per row of the outcome table plus escaping, undeclared-artifact, and
-unpinned cases, each carrying canonical expected output. Twenty-eight assertions over them,
+Eighteen fixtures: one per row of the outcome table, plus escaping, undeclared-artifact,
+unpinned, and the five table-addressing cases, each carrying canonical expected output.
+Assertions over them include
 including that an absent pointer yields `extraction=absent` and never `comparison=mismatch`,
 and that an injected `TypeError` yields `error` and never `unchecked`. Conformance is
 executable rather than interpretive.

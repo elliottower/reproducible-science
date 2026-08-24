@@ -16,7 +16,9 @@ it adds on top of the backends is the part that has to be uniform:
 """
 from __future__ import annotations
 
+import csv
 import decimal
+import io
 import json
 import pathlib
 from typing import Protocol
@@ -43,6 +45,7 @@ from repro.models import (
     MetricEvidence,
     QuoteEvidence,
     Reason,
+    TableCellEvidence,
     Validity,
     VerificationReport,
     Warning_,
@@ -152,7 +155,8 @@ def resolve_pointer(document: object, pointer: str) -> object:
     return node
 
 
-def compare_decimal(stored: decimal.Decimal, evidence: MetricEvidence) -> bool:
+def compare_decimal(stored: decimal.Decimal,
+                    evidence: "MetricEvidence | TableCellEvidence") -> bool:
     """Does the stored value agree with the reported one, under the declared mode?"""
     reported = evidence.value
     if evidence.mode is ComparisonMode.PRINTED_PRECISION:
@@ -216,7 +220,116 @@ class MetricBackend:
                     f"{path.name} holds {stored}"))
 
 
-DEFAULT_BACKENDS: tuple[Backend, ...] = (QuoteBackend(), MetricBackend())
+# ------------------------------------------------------------------------------------ tables
+
+#: Delimiters tried when a file's suffix does not settle it, most specific first.
+_DELIMITERS = {".csv": ",", ".tsv": "\t", ".psv": "|"}
+
+
+def sniff_delimiter(path: pathlib.Path, sample: str) -> str:
+    """The delimiter for a table, from its suffix or from the header line.
+
+    Suffix first, because a `.tsv` whose header happens to contain commas is still tab
+    separated and sniffing it would split every row in the wrong place.
+    """
+    if (known := _DELIMITERS.get(path.suffix.lower())):
+        return known
+    header = sample.splitlines()[0] if sample.splitlines() else ""
+    counts = {d: header.count(d) for d in (",", "\t", ";", "|")}
+    best = max(counts, key=counts.get)
+    return best if counts[best] else ","
+
+
+def read_table(path: pathlib.Path, delimiter: str = "") -> tuple[list[str], list[dict]]:
+    """Header and rows. Raises `ArtifactUnreadableError` when the file is not a table."""
+    try:
+        text = path.read_text(encoding="utf-8-sig")
+    except (OSError, UnicodeDecodeError) as e:
+        raise ArtifactUnreadableError(path, str(e)) from e
+    if not text.strip():
+        raise ArtifactUnreadableError(path, "file is empty")
+    reader = csv.DictReader(io.StringIO(text),
+                            delimiter=delimiter or sniff_delimiter(path, text))
+    rows = list(reader)
+    if reader.fieldnames is None:
+        raise ArtifactUnreadableError(path, "no header row")
+    return list(reader.fieldnames), rows
+
+
+def select_row(rows: list[dict], evidence: TableCellEvidence) -> tuple[list[int], str]:
+    """Indices of the rows the evidence addresses, and how it addressed them."""
+    if evidence.row is not None:
+        return ([evidence.row] if 0 <= evidence.row < len(rows) else []), f"row {evidence.row}"
+    matched = [i for i, r in enumerate(rows)
+               if all((r.get(k) or "").strip() == v.strip() for k, v in evidence.where.items())]
+    described = ", ".join(f"{k}={v!r}" for k, v in evidence.where.items())
+    return matched, described
+
+
+class TableBackend:
+    """Assertion: this table holds this value in this cell.
+
+    Delimited tables are what most published result artifacts actually are, so this is the
+    variant a manuscript's own tables usually need.
+    """
+
+    kind = "table"
+    version = "1"
+
+    def check(self, claim: Claim, evidence: Evidence, path: pathlib.Path) -> Decision:
+        if not isinstance(evidence, TableCellEvidence):
+            raise TypeError(f"TableBackend received {type(evidence).__name__}")
+        base = _base(claim, evidence, self)
+        completed = {"execution": ExecutionStatus.COMPLETED}
+        no_compare = {"comparison": ComparisonStatus.NOT_APPLICABLE}
+
+        if not evidence.addresses_one_row:
+            # Both or neither given. A manifest that does not say which row it means is
+            # malformed rather than a table that disagrees.
+            return Decision(**base, **completed, **no_compare,
+                            extraction=ExtractionStatus.INVALID,
+                            reason=Reason.ROW_SELECTOR_INVALID,
+                            detail="give exactly one of `row` or `where`")
+
+        header, rows = read_table(path, evidence.delimiter)
+        if evidence.column not in header:
+            return Decision(**base, **completed, **no_compare,
+                            extraction=ExtractionStatus.ABSENT, reason=Reason.COLUMN_ABSENT,
+                            detail=f"{path.name} has no column {evidence.column!r}; "
+                                   f"columns are {', '.join(header[:8])}")
+
+        matched, described = select_row(rows, evidence)
+        if not matched:
+            return Decision(**base, **completed, **no_compare,
+                            extraction=ExtractionStatus.ABSENT, reason=Reason.ROW_ABSENT,
+                            detail=f"no row in {path.name} where {described}")
+        if len(matched) > 1:
+            # Resolving to the first would make the check depend on row order, which is what
+            # a selector exists to avoid.
+            return Decision(**base, **completed, **no_compare,
+                            extraction=ExtractionStatus.INVALID, reason=Reason.ROW_AMBIGUOUS,
+                            detail=f"{len(matched)} rows in {path.name} where {described}")
+
+        cell = (rows[matched[0]].get(evidence.column) or "").strip()
+        try:
+            stored = decimal.Decimal(cell)
+        except (decimal.InvalidOperation, ValueError):
+            return Decision(**base, **completed, **no_compare,
+                            extraction=ExtractionStatus.INVALID,
+                            reason=Reason.VALUE_NOT_NUMERIC,
+                            detail=f"{evidence.column} at {described} holds {cell!r}")
+
+        agrees = compare_decimal(stored, evidence)
+        return Decision(
+            **base, **completed, extraction=ExtractionStatus.EXTRACTED,
+            comparison=ComparisonStatus.MATCH if agrees else ComparisonStatus.MISMATCH,
+            reason=Reason.VALUE_MATCH if agrees else Reason.VALUE_MISMATCH,
+            detail=(f"{evidence.column} at {described} = {stored}" if agrees else
+                    f"{evidence.name}: manuscript prints {evidence.reported}, "
+                    f"{path.name} holds {stored} at {described}"))
+
+
+DEFAULT_BACKENDS: tuple[Backend, ...] = (QuoteBackend(), MetricBackend(), TableBackend())
 
 
 # ------------------------------------------------------------------------------------ engine

@@ -107,7 +107,47 @@ Specifying an escape grammar for a new selector language is work already done.
 | `absolute` | \|stored − reported\| ≤ tolerance |
 | `relative` | \|stored − reported\| ≤ tolerance × \|reported\| |
 
-### 3.3 Kinds that are not here
+### 3.3 `table`
+
+```yaml
+kind: table
+artifact: results-csv
+name: c-index
+reported: "0.648"
+column: accuracy
+where: {model: VAECox}      # or: row: 2
+delimiter: ""               # inferred from suffix, then from the header
+mode: printed_precision
+tolerance: "0"
+```
+
+Assertion: this table holds this value in this cell.
+
+Most published result artifacts are delimited tables rather than JSON, so this is the variant
+a manuscript's own tables usually need.
+
+A cell is named by its column and by exactly one of two row selectors. `where` selects the row
+whose named columns hold the given values; `row` is a zero-based index among data rows.
+**`where` is preferred**, because a row index silently addresses a different cell when a table
+is reordered or a row inserted, and a reordered table is precisely the case a checker exists to
+notice.
+
+| situation | reported |
+|---|---|
+| `where` matches no rows | `extraction=absent`, reason `row_absent` |
+| `where` matches more than one | `extraction=invalid`, reason `row_ambiguous` |
+| the column is not in the header | `extraction=absent`, reason `column_absent`, listing the columns that are |
+| both `row` and `where`, or neither | `extraction=invalid`, reason `row_selector_invalid` |
+| the cell holds no number | `extraction=invalid`, reason `value_not_numeric` |
+
+An ambiguous selector is reported rather than resolved to the first match, since resolving it
+would make the answer depend on row order.
+
+The delimiter comes from the file suffix where one is known, and from the header line
+otherwise. Suffix first: a `.tsv` whose header contains commas is still tab separated, and
+sniffing it would split every row in the wrong place.
+
+### 3.4 Kinds that are not here
 
 `protocol` was specified as a third kind and is not one. Its integrity check is the artifact
 pin, which every artifact already carries; its content check — that a registered document
@@ -270,5 +310,6 @@ An implementation conforms when:
 8. The engine returns facts and computes no verdict.
 9. No library entry point prints, exits, or mutates global state.
 
-Conformance is executable: `tests/conformance/` holds one fixture per row of the table in §4,
+Conformance is executable: `tests/conformance/` holds eighteen fixtures, one per row of the
+table in §4 plus the escaping, undeclared-artifact, unpinned and table-addressing cases,
 each with canonical expected JSON.
