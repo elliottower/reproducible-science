@@ -8,6 +8,16 @@
 default_install_hook_types: [pre-commit, pre-push]
 default_stages: [pre-commit]
 
+# Conformance fixtures are pinned by digest: their exact bytes are the fixture. A hook that
+# appends a trailing newline breaks every pin in the corpus, which is not hypothetical -- it
+# happened the first time these hooks ran here.
+exclude: |
+  (?x)^(
+    packages/repro/tests/conformance/cases/.*|
+    packages/repro/examples/.*|
+    uv\.lock
+  )$
+
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
@@ -46,7 +56,6 @@ repos:
     hooks:
       - id: codespell
         additional_dependencies: [tomli]
-        exclude: ^(uv\.lock|packages/[^/]+/tests/conformance/cases/|paper/prior_art/)
 
   - repo: https://github.com/abravalheri/validate-pyproject
     rev: v0.24.1

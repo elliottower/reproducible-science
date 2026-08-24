@@ -73,7 +73,7 @@ def _fetch_schema(token: str) -> dict[str, str]:
     resp = _request("GET", f"/schemas/registrations/{SCHEMA_ID}/", token)
     blocks = resp["data"]["attributes"]["schema"]["blocks"]
     mapping = {}
-    for i, block in enumerate(blocks):
+    for _i, block in enumerate(blocks):
         if block.get("block_type") in ("question-label", "section-heading"):
             continue
         display = block.get("display_text", "")

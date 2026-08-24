@@ -14,7 +14,11 @@ lib = pathlib.Path.home() / "Documents/GitHub/citations-library"
 cache, records = lib / ".audit-cache", lib / "records"
 enrich = yaml.safe_load((lib / "enrichment.yaml").read_text()) or {}
 
-slug = lambda doi: "doi-" + re.sub(r"[^a-z0-9]+", "-", doi.lower()).strip("-")
+
+def slug(doi):
+    return "doi-" + re.sub(r"[^a-z0-9]+", "-", doi.lower()).strip("-")
+
+
 written = [
     (k, v["doi"])
     for k, v in enrich.items()
@@ -23,7 +27,7 @@ written = [
 
 no_record = no_authors = unresolved = agreed = 0
 mismatched = []
-for key, doi in written:
+for _key, doi in written:
     f = records / f"{slug(doi)}.yaml"
     if not f.exists():
         no_record += 1

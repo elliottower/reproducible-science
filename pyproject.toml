@@ -3,6 +3,38 @@
 # preregistration tool. What is centralized here is the lockfile, the development
 # environment, and the tooling configuration.
 
+[project]
+name = "repro-science"
+version = "0.1.0"
+description = "The reproducible-science suite: repro, citations, results, and prereg"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [{ name = "Elliot Tower", email = "elliot@elliottower.ai" }]
+dependencies = [
+    "reproducible-science>=0.3.0",
+    "citations>=0.2.0",
+    "results-cli>=0.3.0",
+    "prereg>=0.2.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/elliottower/reproducible-science"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+# Metadata only: the code lives in the four packages this depends on.
+bypass-selection = true
+
+[tool.uv.sources]
+reproducible-science = { workspace = true }
+citations = { workspace = true }
+"results-cli" = { workspace = true }
+prereg = { workspace = true }
+
 [tool.uv.workspace]
 members = ["packages/*"]
 
@@ -43,7 +75,7 @@ markers = [
 # importlib import mode: three packages each have tests/test_cli.py, and the default mode
 # derives a module name from the path relative to rootdir, so they collide. This is the fix
 # that does not require scattering __init__.py through the test trees.
-addopts = "-m 'not corpus' --import-mode=importlib -p no:randomly"
+addopts = "-m 'not corpus' --import-mode=importlib"
 consider_namespace_packages = true
 
 [tool.ruff]
@@ -79,3 +111,9 @@ project_includes = [
 [tool.vulture]
 min_confidence = 100
 paths = ["packages", "scripts"]
+
+[tool.codespell]
+# `unparseable` is the spelling used throughout, and the rest are author surnames in the
+# sampling frame. Listed rather than skipping whole files, which would hide real typos.
+ignore-words-list = "unparseable,ue,copie,buis,smae,nd,ist,fo"
+skip = "uv.lock,experiments/*/frame.json,paper/prior_art/*,.git"

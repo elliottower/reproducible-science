@@ -6,22 +6,69 @@ on:
   pull_request:
   workflow_dispatch:
 
-jobs:
-  tests:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - run: uv sync --all-packages
-      - run: uv run pytest
+permissions:
+  contents: read
 
-  wheels:
-    # The workspace resolves the four packages from source, so `pytest` never exercises the
-    # combination a user installs. This builds the artifacts and installs them outside the
-    # workspace, which is where a sibling API drifting without a version bump shows up.
+jobs:
+  quality:
+    name: lint, format, manifests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v5
-      - run: uv sync --all-packages
+      - run: uv sync --all-packages --group dev
+      - run: uv run ruff check --output-format=github .
+      - run: uv run ruff format --check .
+      - run: uv lock --check
+
+  tests:
+    name: tests (py${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --all-packages --group dev --python ${{ matrix.python }}
+      - run: uv run pytest -q
+
+  scientific-integrity:
+    # The jobs above check the code. This one checks the claims: that the manuscript's numbers
+    # still match their artifacts, and that every committed derived file is what its generator
+    # produces. The second is here because a generator once dropped a section in silence while
+    # the tests stayed green.
+    name: evidence and derived artifacts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --all-packages --group dev
+      - run: uv run repro verify paper/repro.yaml --policy strict
+      - run: uv run python scripts/check_drift.py
+      - run: uv run pytest -q -m corpus
+
+  packaging:
+    # The workspace resolves the four packages from source, so `pytest` never exercises the
+    # combination a user installs.
+    name: dependencies and wheels
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --all-packages --group dev --group audit
+      - run: uv run python scripts/check_deps.py
       - run: uv run python scripts/check_wheels.py
+      - run: uv run vulture
+
+  types:
+    # Advisory while the outstanding errors are worked down; not a required check yet.
+    name: types (advisory)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --all-packages --group dev --group types
+      - run: uv run pyrefly check packages/repro/src packages/citations/src packages/results/src packages/prereg/src

@@ -241,15 +241,15 @@ def to_sarif(
                         "name": "repro",
                         "version": version,
                         "informationUri": "https://github.com/elliottower/reproducible-science",
-                        "rules": _rules()
-                        + [
+                        "rules": [
+                            *_rules(),
                             {
                                 "id": "repro/broken_pin",
                                 "shortDescription": {
                                     "text": "The file read is not the file that was pinned."
                                 },
                                 "defaultConfiguration": {"level": "error"},
-                            }
+                            },
                         ],
                     }
                 },

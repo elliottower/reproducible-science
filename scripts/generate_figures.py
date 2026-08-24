@@ -56,7 +56,10 @@ def quotation_corpus() -> dict:
 
 def resolver_identifiers() -> dict:
     enrich = yaml.safe_load((LIB / "enrichment.yaml").read_text()) or {}
-    slug = lambda doi: "doi-" + re.sub(r"[^a-z0-9]+", "-", doi.lower()).strip("-")
+
+    def slug(doi):
+        return "doi-" + re.sub(r"[^a-z0-9]+", "-", doi.lower()).strip("-")
+
     written = [
         (k, v["doi"])
         for k, v in enrich.items()

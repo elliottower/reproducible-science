@@ -58,36 +58,36 @@ except PackageNotFoundError:  # a source tree with nothing installed
     __version__ = "0+unknown"
 
 __all__ = [
+    # identifier lookup
+    "SERVICES",
+    "Candidate",
     # errors
     "CitationsError",
-    "ClaimFileError",
-    "LibraryNotFoundError",
-    "PinBrokenError",
-    "SourceUnreadableError",
+    "CitedBy",
     # shapes on disk
     "Claim",
     "ClaimFile",
+    "ClaimFileError",
     "ClaimSource",
-    "CitedBy",
-    "Quote",
-    "Record",
-    "load_claim_file",
-    "load_record",
     # library configuration
     "LibraryConfig",
+    "LibraryNotFoundError",
     "PaperConfig",
     # checking
     "Pin",
+    "PinBrokenError",
+    "Quote",
+    "Record",
     "Report",
     "Result",
+    "Service",
+    "SourceUnreadableError",
+    "__version__",
     "check_one",
     "check_pin",
     "extract",
     "is_paginated",
+    "load_claim_file",
+    "load_record",
     "sha256",
-    # identifier lookup
-    "SERVICES",
-    "Candidate",
-    "Service",
-    "__version__",
 ]

@@ -14,25 +14,25 @@ from citations.text import surname
 
 
 def rec(**kw) -> Record:
-    base = dict(
-        slug="s",
-        title="Attention Is All You Need",
-        authors=["Vaswani, Ashish"],
-        year="2017",
-        venue="Advances in Neural Information Processing Systems",
-    )
+    base = {
+        "slug": "s",
+        "title": "Attention Is All You Need",
+        "authors": ["Vaswani, Ashish"],
+        "year": "2017",
+        "venue": "Advances in Neural Information Processing Systems",
+    }
     base.update(kw)
     return Record(**base)
 
 
 def cand(**kw) -> Candidate:
-    base = dict(
-        title="Attention Is All You Need",
-        surnames=frozenset({"vaswani"}),
-        year=2017,
-        venue="",
-        identifier=("arxiv", "1706.03762"),
-    )
+    base = {
+        "title": "Attention Is All You Need",
+        "surnames": frozenset({"vaswani"}),
+        "year": 2017,
+        "venue": "",
+        "identifier": ("arxiv", "1706.03762"),
+    }
     base.update(kw)
     return Candidate(**base)
 

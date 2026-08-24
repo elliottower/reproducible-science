@@ -95,7 +95,7 @@ def main() -> int:
             print(f"    {path}")
         return 2
 
-    for path, command, _ in GENERATED:
+    for _, command, _ in GENERATED:
         built = subprocess.run(command, cwd=ROOT, capture_output=True, text=True)
         if built.returncode != 0:
             print(f"  FAIL {' '.join(command)} exited {built.returncode}")
@@ -114,9 +114,9 @@ def main() -> int:
     ]
     if volatile_only:
         subprocess.run(["git", "checkout", "--", *volatile_only], cwd=ROOT, capture_output=True)
-        for path in volatile_only:
-            fields = next(v for p, _, v in GENERATED if p == path)
-            print(f"  {path}: unchanged except {', '.join(fields)} (restored)")
+        for restored in volatile_only:
+            fields = next(v for p, _, v in GENERATED if p == restored)
+            print(f"  {restored}: unchanged except {', '.join(fields)} (restored)")
         drifted = [path for path in drifted if path not in volatile_only]
 
     if not drifted:

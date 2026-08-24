@@ -160,7 +160,7 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
     bad = [(s, q, r) for s, q, r in rep.problems if r.state == "not found"]
     if bad and not a.quiet:
         print()
-        for slug, text, r in bad[:20]:
+        for slug, text, _r in bad[:20]:
             print(f"  not found  {slug[:30]:<32}{text[:44]}")
         if len(bad) > 20:
             print(f"             ... and {len(bad) - 20} more")
