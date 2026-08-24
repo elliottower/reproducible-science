@@ -1,60 +1,25 @@
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+# Workspace root. Holds no package: the distributions live under `packages/`, each with its
+# own pyproject, tests and public API, so `pip install citations` never drags in a
+# preregistration tool. What is centralized here is the lockfile, the development
+# environment, and the tooling configuration.
 
-[project]
-name = "reproducible-science"
-version = "0.3.0"
-description = "One contract for verifying declared evidence assertions against pinned artifacts"
-readme = "README.md"
-license = "MIT"
-requires-python = ">=3.10"
-authors = [{ name = "Elliot Tower", email = "elliot@elliottower.ai" }]
-keywords = ["reproducibility", "preregistration", "citations", "provenance", "open science"]
-classifiers = [
-    "Development Status :: 3 - Alpha",
-    "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3",
-    "Topic :: Scientific/Engineering",
-]
-dependencies = [
-    "pydantic>=2.0",
-    "PyYAML>=6.0",
-    "prereg",
-    "citations",
-    "results-cli",
-]
-
-[project.scripts]
-repro = "repro.cli:main"
-
-[project.urls]
-Homepage = "https://github.com/elliottower/reproducible-science"
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/repro"]
-
-[tool.pytest.ini_options]
-markers = [
-    "corpus: reads repositories outside this one, and may fetch them",
-]
-addopts = "-m 'not corpus'"
-
-[project.optional-dependencies]
-# Only needed to run the rule inside `adduce check`. repro itself never imports adduce.
-adduce = ["adduce>=0.1.2"]
-arrays = [
-    "numpy>=2.2.6",
-]
-
-# adduce discovers this at check time; declaring it costs nothing when adduce is absent.
-[project.entry-points."adduce.rules"]
-repro = "repro.integrations.adduce"
+[tool.uv.workspace]
+members = ["packages/*"]
 
 [dependency-groups]
 dev = [
+    "pytest>=8",
     "adduce>=0.1.2",
     "numpy>=2.2.6",
-    "pytest>=9.1.1",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["packages"]
+markers = [
+    "corpus: reads repositories outside this one, and may fetch them",
+]
+# importlib import mode: three packages each have tests/test_cli.py, and the default mode
+# derives a module name from the path relative to rootdir, so they collide. This is the fix
+# that does not require scattering __init__.py through the test trees.
+addopts = "-m 'not corpus' --import-mode=importlib"
+consider_namespace_packages = true

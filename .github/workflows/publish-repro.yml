@@ -1,0 +1,32 @@
+# Releases are per package. The tag names which one, so publishing citations never ships a
+# preregistration tool. Trusted publishing on PyPI is bound to this repository AND this
+# workflow filename: a package moved here needs its publisher reconfigured before the first
+# release, or the upload is rejected.
+name: Publish reproducible-science
+
+on:
+  push:
+    tags: ["repro-v*"]
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+      contents: read
+    defaults:
+      run:
+        working-directory: packages/repro
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+      - run: uv sync --all-packages
+        working-directory: .
+      - run: uv run pytest
+        working-directory: .
+      - run: uv build --package reproducible-science --out-dir dist
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: packages/repro/dist

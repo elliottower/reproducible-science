@@ -7,15 +7,17 @@ stay `notApplicable` instead of becoming a low-severity failure.
 """
 from __future__ import annotations
 
+import pathlib
+
 import pytest
 
 from repro import load, to_sarif, verify
 from repro.models import Outcome
 from repro.policy import EXPLORATORY, STRICT
-from repro.verify import DEFAULT_BACKENDS, MetricBackend, QuoteBackend
 from repro.exceptions import BackendUnavailableError
+from repro.verify import DEFAULT_BACKENDS, MetricBackend, QuoteBackend
 
-CASES = "tests/conformance/cases"
+CASES = pathlib.Path(__file__).parent / "conformance" / "cases"
 
 
 def report_for(case, backends=DEFAULT_BACKENDS):
