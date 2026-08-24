@@ -83,7 +83,8 @@ Compared with `decimal.Decimal` at the precision the article printed, rounding h
 Consequences, fixed here:
 
 - `1.2e-3` and `0.0012` agree; exponent notation is not a difference.
-- `3.2` in the article is satisfied by `3.2001` stored; `3.20` is not.
+- `3.2` in the article is satisfied by `3.2001` stored, and so is `3.20`: the stored value
+  is rounded to the precision the article printed, and `3.2001` rounds to both.
 - A stored proportion against a printed percentage agrees only where the artifact states its
   unit in the file or its documentation. Where the unit must be inferred, the value is
   `present_unaddressable`, not a mismatch.

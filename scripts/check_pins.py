@@ -25,6 +25,13 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 #: readable in prose, long enough that a collision is not the explanation for a match.
 CITED = re.compile(r"`([0-9a-f]{16,64})`")
 
+#: A digest cited immediately after a filename: ``` `CODEBOOK.md` (`1d8aeb…`) ```.
+#:
+#: Checking only that each digest matches *some* file is too weak, and demonstrably so: two
+#: pins were once swapped between the documents they named and this script still reported
+#: every one as resolving. A pin is a statement about a particular file.
+NAMED = re.compile(r"`([\w./-]+\.\w+)`[^`\n]{0,80}?`([0-9a-f]{16,64})`")
+
 
 #: Where a cited digest may live. Anything a registration pins has to be reachable from here.
 def candidates(experiment: pathlib.Path) -> list[pathlib.Path]:
@@ -51,6 +58,17 @@ def main() -> int:
             print(f"  {prereg.parent.name}: cites no digests")
             continue
         available = {p: digest(p) for p in candidates(prereg.parent)}
+        for name, value in NAMED.findall(prereg.read_text()):
+            target = next((p for p in available if p.name == pathlib.Path(name).name), None)
+            if target is None:
+                continue
+            if not available[target].startswith(value):
+                failed = True
+                print(
+                    f"  WRONG {prereg.parent.name}  {value[:16]}  is cited for {name}, "
+                    f"which hashes to {available[target][:16]}"
+                )
+
         for value in cited:
             match = next((p for p, d in available.items() if d.startswith(value)), None)
             if match:

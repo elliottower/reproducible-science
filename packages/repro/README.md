@@ -18,7 +18,7 @@ repro init my_experiment
 
 ```text
 initializing my_experiment
-  wrote my_experiment/PREREG.md
+  wrote my_experiment/my_experiment/PREREG.md
   wrote my_experiment/.results/ledger.jsonl
   wrote my_experiment/.citations/
   wrote my_experiment/CLAUDE.md
@@ -45,7 +45,7 @@ cd my_experiment
 repro verify
 ```
 
-Runs `prereg check`, `results verify --files`, and `citations verify --claims claims/` in sequence.
+Reads `repro.yaml` and checks every declared evidence assertion against the artifact it names. It spawns nothing: `prereg`, `results` and `citations` are separate commands.
 
 ## The workflow
 

@@ -57,7 +57,7 @@ reusable once taken.
 
 ```text
 packages/        the four distributions, each with its own pyproject, src and tests
-plugins/         Claude Code plugins, published as a marketplace from this repository
+packages/*/plugin/   Claude Code plugins, published as a marketplace from this repository
 docs/            SPEC.md — the evidence contract
 paper/           the manuscript, and its own self-audit manifest
 experiments/     preregistrations and their frozen codebooks
