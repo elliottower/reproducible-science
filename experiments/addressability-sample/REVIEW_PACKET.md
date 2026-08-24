@@ -1,3 +1,109 @@
+# Review request: a census of whether published numbers are checkable
+
+I am about to freeze the preregistration appended below and then run it. Nothing has been run:
+no article opened, no repository cloned, no manifest written. I want the design attacked before
+it is frozen, because after freezing the commitments bind.
+
+Two things to review: whether the **design answers the question it poses**, and whether the
+**preregistration is specific enough to bind me**.
+
+## The question
+
+Published papers report numbers. Most computational papers now release code and data. Nobody
+appears to have measured the step in between: whether a released artifact holds a paper's
+printed numbers *at a position a reader can name*.
+
+I distinguish two rates:
+
+- **Coverage** — is a printed number locatable at an addressable position in a released file?
+  Addressable means an RFC 6901 JSON Pointer into a structured file, or a column plus a row
+  selector in a delimited table.
+- **Agreement** — where it is locatable, does the stored value equal the printed one at the
+  precision the paper printed?
+
+Availability has been measured many times. Addressability, as far as I can tell, has not.
+
+## The frame, verified
+
+`_bibliography/published.bib` on the `sources` branch of `ReScience/rescience.github.io`,
+sha256 `9b2c637135f5828c2b6213fef5f90155cb0c0350997846c28e1a17552a7e58e4`.
+
+| quantity | count |
+|---|---|
+| entries | 223 |
+| replications / reproductions / editorials / letters | 197 / 18 / 7 / 1 |
+| research articles (replications + reproductions) | 215 |
+| carrying `code_url` or `code_doi` | 214 |
+| carrying `code_swh` (Software Heritage) | 160 |
+| carrying a data link | 29 |
+| distinct domains | 39 |
+
+Sample: **n = 60**, drawn without replacement by a seeded permutation, seed `20260824`
+recorded before drawing. Up to ten reported values per article, so at most 600 values.
+
+## Hypotheses
+
+| | claim | holds when |
+|---|---|---|
+| H1 | Fewer than 25% of articles have any value at an addressable position | coverage < 0.25, upper Wilson bound < 0.40 |
+| H2 | Among addressable values, ≥ 90% agree at printed precision | agreement ≥ 0.90, lower Wilson bound ≥ 0.80 |
+| H3 | Derived values mismatch at ≥ 2× the rate of stored-directly values | ratio ≥ 2, ≥ 5 mismatches in each class |
+| H4 | Delimited tables outnumber structured files ≥ 2:1 | table artifacts ≥ 2 × structured-file artifacts |
+| H5 | Among articles with a retrievable machine-readable result file, < 50% of values are addressable | addressability < 0.50 |
+
+H5 carries the design: all but one article links code, so H1 alone is consistent with
+artifacts that were never released. H5 locates the failure at addressing, not release.
+
+H2 is the registered outcome that *strengthens* the articles examined — agreement ≥ 0.90 makes
+H1 a documentation gap rather than an error rate.
+
+## Foreknowledge
+
+I built the verification engine and have run it on my own work: a quotation corpus of 5,686
+assertions over 366 sources across 17 manuscripts (355 match their pin, 9 unpinned, 1 absent),
+and two manuscripts audited at the value level — one agreeing on all 39 values it prints, one
+disagreeing on 9 of 10 table rows. Both are mine; neither is in this frame. Seven of those nine
+disagreements were third-significant-figure differences that decimal comparison at printed
+precision resolves, which is why H2's threshold sits at 0.90 rather than the midpoint.
+
+## Weaknesses I already see — please go past these
+
+1. **How the ten values per article are chosen is not specified.** Abstract-first, Results-first,
+   and table-first sampling would give different coverage rates. This is the largest hole and I
+   intend to fix it before freezing. I do not know which rule is least biased.
+2. **One coder, no reliability statistic.** 600 values coded on a 4-level addressability scheme
+   plus a primary/derived split, by the person who built the tool and knows the hypotheses.
+3. **"Addressable" is partly a property of my instrument.** A critic will say I measured the
+   fraction of papers compatible with my pointer model, not the fraction whose numbers are
+   checkable. I think JSON Pointer plus column+row is general, but I have not argued it.
+4. **H4 is design-motivated.** It predicts the format my table backend exists to read.
+5. **The retrievability gate (void if fewer than 40 of 60 retrievable) is probably slack**, since
+   214 of 215 link code. A gate that cannot bind is not a gate.
+6. **60 articles over 39 domains** means the by-domain analysis will be uninterpretable.
+7. **ReScience C is a peculiar genre.** I claim its coverage bounds from above what a journal
+   without a reproduction premise would show. That is an assumption, not a fact, and its articles
+   report comparisons against prior work, which may structure their numbers unusually.
+
+## What I want from you
+
+1. **Has addressability been measured before?** Not code/data availability — I know that
+   literature. I mean whether a released artifact holds a paper's printed values at a nameable
+   position. If this exists, the study is redundant and I want to know now.
+2. **Anchor H1's 25%.** It is currently a guess. Is there a published rate — from artifact
+   evaluation, badging, or a reproduction study — that a threshold should be reasoned from?
+3. **Fix weakness 1 for me.** What is the least biased rule for selecting up to ten reported
+   values from an article? Is there prior practice?
+4. **Is one coder defensible here**, and if not, what is the minimum acceptable — a second coder
+   on a subsample, a published codebook, something else?
+5. **Does the bounds-from-above argument for ReScience C survive?** Or does its genre break it?
+6. **Is anything here unfalsifiable or trivially satisfiable?** I would rather find that now.
+
+Do not be polite about it. If the design does not answer the question, say so.
+
+---
+
+# The preregistration, verbatim
+
 # What fraction of published computational papers make their reported numbers checkable against a released artifact?
 
 **Status:** DRAFT — not frozen.

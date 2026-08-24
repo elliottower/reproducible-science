@@ -41,7 +41,20 @@ markers = [
 ]
 addopts = "-m 'not corpus'"
 
+[project.optional-dependencies]
+# Only needed to run the rule inside `adduce check`. repro itself never imports adduce.
+adduce = ["adduce>=0.1.2"]
+arrays = [
+    "numpy>=2.2.6",
+]
+
+# adduce discovers this at check time; declaring it costs nothing when adduce is absent.
+[project.entry-points."adduce.rules"]
+repro = "repro.integrations.adduce"
+
 [dependency-groups]
 dev = [
+    "adduce>=0.1.2",
+    "numpy>=2.2.6",
     "pytest>=9.1.1",
 ]

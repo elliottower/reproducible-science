@@ -16,10 +16,7 @@ it adds on top of the backends is the part that has to be uniform:
 """
 from __future__ import annotations
 
-import csv
 import decimal
-import io
-import json
 import pathlib
 from typing import Protocol
 
@@ -28,6 +25,8 @@ from repro.exceptions import (
     BackendUnavailableError,
     UnknownEvidenceKindError,
 )
+from repro.regenerate import check_all
+from repro.resolve import Resolution, read_table, resolve, resolve_pointer, sniff_delimiter
 from repro.models import (
     ArtifactRef,
     ArtifactState,
@@ -43,9 +42,13 @@ from repro.models import (
     ExtractionStatus,
     Manifest,
     MetricEvidence,
+    Ordering,
+    OrderingReason,
+    RegistrationAuthority,
     QuoteEvidence,
     Reason,
     TableCellEvidence,
+    ValueEvidence,
     Validity,
     VerificationReport,
     Warning_,
@@ -121,169 +124,72 @@ class QuoteBackend:
                         warnings=warnings)
 
 
-# ----------------------------------------------------------------------------------- metrics
+# ------------------------------------------------------------------------------- values
 
-_MISSING = object()
+#: How a resolution maps onto the extraction stage and a reason. `format_unsupported` is not
+#: here: a format with no adapter means the check never ran, which is an execution fact.
+_RESOLUTION_STATE = {
+    Resolution.ABSENT: (ExtractionStatus.ABSENT, None),
+    Resolution.COLUMN_ABSENT: (ExtractionStatus.ABSENT, Reason.COLUMN_ABSENT),
+    Resolution.AMBIGUOUS: (ExtractionStatus.INVALID, Reason.ROW_AMBIGUOUS),
+    Resolution.NOT_SCALAR: (ExtractionStatus.INVALID, Reason.SELECTOR_NOT_SCALAR),
+    Resolution.SELECTOR_INVALID: (ExtractionStatus.INVALID, Reason.ROW_SELECTOR_INVALID),
+}
 
-
-def resolve_pointer(document: object, pointer: str) -> object:
-    """RFC 6901 JSON Pointer resolution. Returns `_MISSING` when the pointer does not resolve.
-
-    `~1` is a literal `/` and `~0` a literal `~`, unescaped in that order, so a key containing
-    a slash is addressable and a key containing a period is unremarkable.
-    """
-    if pointer == "":
-        return document
-    if not pointer.startswith("/"):
-        raise ValueError(f"JSON Pointer must start with '/': {pointer!r}")
-    node = document
-    for raw in pointer[1:].split("/"):
-        token = raw.replace("~1", "/").replace("~0", "~")
-        if isinstance(node, dict):
-            if token not in node:
-                return _MISSING
-            node = node[token]
-        elif isinstance(node, list):
-            if not token.isdigit():
-                return _MISSING
-            index = int(token)
-            if index >= len(node):
-                return _MISSING
-            node = node[index]
-        else:
-            return _MISSING
-    return node
+#: Which "not there" reason fits each addressing scheme.
+_ABSENT_REASON = {
+    "tree": Reason.POINTER_ABSENT,
+    "table": Reason.ROW_ABSENT,
+    "table_position": Reason.ROW_ABSENT,
+    "sqlite": Reason.ROW_ABSENT,
+    "array": Reason.POINTER_ABSENT,
+}
 
 
 def compare_decimal(stored: decimal.Decimal,
-                    evidence: "MetricEvidence | TableCellEvidence") -> bool:
+                    evidence: "MetricEvidence | TableCellEvidence | ValueEvidence") -> bool:
     """Does the stored value agree with the reported one, under the declared mode?"""
     reported = evidence.value
+    if not stored.is_finite():
+        # NaN and the infinities parse out of JSON but cannot equal a printed decimal. The
+        # backend flags them before reaching here; this keeps the function total.
+        return False
     if evidence.mode is ComparisonMode.PRINTED_PRECISION:
         # Round the stored value to the precision the manuscript printed. A paper reporting
         # 3.2 is not contradicted by a file holding 3.20001; a paper reporting 3.20000 is.
-        return stored.quantize(reported, rounding=decimal.ROUND_HALF_EVEN) == reported
+        try:
+            return stored.quantize(reported, rounding=decimal.ROUND_HALF_EVEN) == reported
+        except decimal.InvalidOperation:
+            # Expressing the stored value at the printed precision would take more digits
+            # than the arithmetic context carries, which happens only when the two differ by
+            # more orders of magnitude than the printed value has digits. They disagree, and
+            # saying so is the answer; raising here would report a defect instead.
+            return False
     delta = abs(stored - reported)
     if evidence.mode is ComparisonMode.ABSOLUTE:
         return delta <= evidence.tolerance_value
     return delta <= evidence.tolerance_value * abs(reported)
 
 
-class MetricBackend:
-    """Assertion: this artifact holds this value at this location."""
+class ValueBackend:
+    """Assertion: this artifact holds this value at this locator.
 
-    kind = "metric"
-    version = "1"
-
-    def check(self, claim: Claim, evidence: Evidence, path: pathlib.Path) -> Decision:
-        if not isinstance(evidence, MetricEvidence):
-            raise TypeError(f"MetricBackend received {type(evidence).__name__}")
-        base = _base(claim, evidence, self)
-        try:
-            document = json.loads(path.read_text())
-        except json.JSONDecodeError as e:
-            raise ArtifactUnreadableError(path, f"not valid JSON: {e}") from e
-        except OSError as e:
-            raise ArtifactUnreadableError(path, str(e)) from e
-
-        node = resolve_pointer(document, evidence.pointer)
-        if node is _MISSING:
-            # The artifact was read and is silent here. Silence is not contradiction.
-            return Decision(**base, execution=ExecutionStatus.COMPLETED,
-                            extraction=ExtractionStatus.ABSENT,
-                            comparison=ComparisonStatus.NOT_APPLICABLE,
-                            reason=Reason.POINTER_ABSENT,
-                            detail=f"{evidence.pointer} does not resolve in {path.name}")
-        if isinstance(node, bool) or not isinstance(node, (int, float, str)):
-            return Decision(**base, execution=ExecutionStatus.COMPLETED,
-                            extraction=ExtractionStatus.INVALID,
-                            comparison=ComparisonStatus.NOT_APPLICABLE,
-                            reason=Reason.VALUE_NOT_NUMERIC,
-                            detail=f"{evidence.pointer} holds {type(node).__name__}")
-        try:
-            stored = decimal.Decimal(str(node))
-        except decimal.InvalidOperation:
-            return Decision(**base, execution=ExecutionStatus.COMPLETED,
-                            extraction=ExtractionStatus.INVALID,
-                            comparison=ComparisonStatus.NOT_APPLICABLE,
-                            reason=Reason.VALUE_NOT_NUMERIC,
-                            detail=f"{evidence.pointer} holds {node!r}")
-
-        agrees = compare_decimal(stored, evidence)
-        return Decision(
-            **base, execution=ExecutionStatus.COMPLETED,
-            extraction=ExtractionStatus.EXTRACTED,
-            comparison=ComparisonStatus.MATCH if agrees else ComparisonStatus.MISMATCH,
-            reason=Reason.VALUE_MATCH if agrees else Reason.VALUE_MISMATCH,
-            detail=(f"{evidence.pointer} = {stored}" if agrees else
-                    f"{evidence.name}: manuscript prints {evidence.reported}, "
-                    f"{path.name} holds {stored}"))
-
-
-# ------------------------------------------------------------------------------------ tables
-
-#: Delimiters tried when a file's suffix does not settle it, most specific first.
-_DELIMITERS = {".csv": ",", ".tsv": "\t", ".psv": "|"}
-
-
-def sniff_delimiter(path: pathlib.Path, sample: str) -> str:
-    """The delimiter for a table, from its suffix or from the header line.
-
-    Suffix first, because a `.tsv` whose header happens to contain commas is still tab
-    separated and sniffing it would split every row in the wrong place.
-    """
-    if (known := _DELIMITERS.get(path.suffix.lower())):
-        return known
-    header = sample.splitlines()[0] if sample.splitlines() else ""
-    counts = {d: header.count(d) for d in (",", "\t", ";", "|")}
-    best = max(counts, key=counts.get)
-    return best if counts[best] else ","
-
-
-def read_table(path: pathlib.Path, delimiter: str = "") -> tuple[list[str], list[dict]]:
-    """Header and rows. Raises `ArtifactUnreadableError` when the file is not a table."""
-    try:
-        text = path.read_text(encoding="utf-8-sig")
-    except (OSError, UnicodeDecodeError) as e:
-        raise ArtifactUnreadableError(path, str(e)) from e
-    if not text.strip():
-        raise ArtifactUnreadableError(path, "file is empty")
-    reader = csv.DictReader(io.StringIO(text),
-                            delimiter=delimiter or sniff_delimiter(path, text))
-    rows = list(reader)
-    if reader.fieldnames is None:
-        raise ArtifactUnreadableError(path, "no header row")
-    return list(reader.fieldnames), rows
-
-
-def select_row(rows: list[dict], evidence: TableCellEvidence) -> tuple[list[int], str]:
-    """Indices of the rows the evidence addresses, and how it addressed them."""
-    if evidence.row is not None:
-        return ([evidence.row] if 0 <= evidence.row < len(rows) else []), f"row {evidence.row}"
-    matched = [i for i, r in enumerate(rows)
-               if all((r.get(k) or "").strip() == v.strip() for k, v in evidence.where.items())]
-    described = ", ".join(f"{k}={v!r}" for k, v in evidence.where.items())
-    return matched, described
-
-
-class TableBackend:
-    """Assertion: this table holds this value in this cell.
-
-    Delimited tables are what most published result artifacts actually are, so this is the
-    variant a manuscript's own tables usually need.
+    One implementation for every numeric kind. `metric` and `table` are shorthands that
+    expose a locator, so the addressing rules and the invariant -- exactly one scalar -- do
+    not depend on which spelling a manifest used.
     """
 
-    kind = "table"
-    version = "1"
+    kind = "value"
+    version = "2"
 
     def check(self, claim: Claim, evidence: Evidence, path: pathlib.Path) -> Decision:
-        if not isinstance(evidence, TableCellEvidence):
-            raise TypeError(f"TableBackend received {type(evidence).__name__}")
+        if not isinstance(evidence, (MetricEvidence, TableCellEvidence, ValueEvidence)):
+            raise TypeError(f"{type(self).__name__} received {type(evidence).__name__}")
         base = _base(claim, evidence, self)
         completed = {"execution": ExecutionStatus.COMPLETED}
         no_compare = {"comparison": ComparisonStatus.NOT_APPLICABLE}
 
-        if not evidence.addresses_one_row:
+        if isinstance(evidence, TableCellEvidence) and not evidence.addresses_one_row:
             # Both or neither given. A manifest that does not say which row it means is
             # malformed rather than a table that disagrees.
             return Decision(**base, **completed, **no_compare,
@@ -291,55 +197,82 @@ class TableBackend:
                             reason=Reason.ROW_SELECTOR_INVALID,
                             detail="give exactly one of `row` or `where`")
 
-        header, rows = read_table(path, evidence.delimiter)
-        if evidence.column not in header:
-            return Decision(**base, **completed, **no_compare,
-                            extraction=ExtractionStatus.ABSENT, reason=Reason.COLUMN_ABSENT,
-                            detail=f"{path.name} has no column {evidence.column!r}; "
-                                   f"columns are {', '.join(header[:8])}")
+        locator = evidence.locator
+        base["locator_digest"] = locator.digest.value
+        warnings = ((Warning_.POSITIONAL_ADDRESS,)
+                    if locator.kind == "table_position" else ())
 
-        matched, described = select_row(rows, evidence)
-        if not matched:
-            return Decision(**base, **completed, **no_compare,
-                            extraction=ExtractionStatus.ABSENT, reason=Reason.ROW_ABSENT,
-                            detail=f"no row in {path.name} where {described}")
-        if len(matched) > 1:
-            # Resolving to the first would make the check depend on row order, which is what
-            # a selector exists to avoid.
-            return Decision(**base, **completed, **no_compare,
-                            extraction=ExtractionStatus.INVALID, reason=Reason.ROW_AMBIGUOUS,
-                            detail=f"{len(matched)} rows in {path.name} where {described}")
+        resolution, extracted, detail = resolve(locator, path)
 
-        cell = (rows[matched[0]].get(evidence.column) or "").strip()
+        if resolution is Resolution.FORMAT_UNSUPPORTED:
+            # The check did not run. Reporting it as a missing value would say something
+            # about the artifact that was never looked into.
+            return Decision(**base, execution=ExecutionStatus.UNAVAILABLE,
+                            extraction=ExtractionStatus.NOT_ATTEMPTED, **no_compare,
+                            reason=Reason.FORMAT_UNSUPPORTED, detail=detail,
+                            warnings=warnings)
+
+        if resolution is not Resolution.RESOLVED:
+            extraction, reason = _RESOLUTION_STATE[resolution]
+            return Decision(**base, **completed, **no_compare, extraction=extraction,
+                            reason=reason or _ABSENT_REASON[locator.kind], detail=detail,
+                            warnings=warnings)
+
         try:
-            stored = decimal.Decimal(cell)
+            stored = decimal.Decimal(extracted.raw)
         except (decimal.InvalidOperation, ValueError):
             return Decision(**base, **completed, **no_compare,
                             extraction=ExtractionStatus.INVALID,
                             reason=Reason.VALUE_NOT_NUMERIC,
-                            detail=f"{evidence.column} at {described} holds {cell!r}")
+                            detail=f"{' '.join(extracted.trace)} holds {extracted.raw!r}",
+                            warnings=warnings)
+        if not stored.is_finite():
+            # `json.loads` accepts NaN, Infinity and -Infinity by default, so a result file
+            # can carry one. It is not a quantity a printed value can agree with.
+            return Decision(**base, **completed, **no_compare,
+                            extraction=ExtractionStatus.INVALID,
+                            reason=Reason.VALUE_NOT_NUMERIC,
+                            detail=f"{' '.join(extracted.trace)} holds {stored}",
+                            warnings=warnings)
 
         agrees = compare_decimal(stored, evidence)
+        where = " ".join(extracted.trace) or locator.kind
         return Decision(
             **base, **completed, extraction=ExtractionStatus.EXTRACTED,
             comparison=ComparisonStatus.MATCH if agrees else ComparisonStatus.MISMATCH,
             reason=Reason.VALUE_MATCH if agrees else Reason.VALUE_MISMATCH,
-            detail=(f"{evidence.column} at {described} = {stored}" if agrees else
+            detail=(f"{where} = {stored}" if agrees else
                     f"{evidence.name}: manuscript prints {evidence.reported}, "
-                    f"{path.name} holds {stored} at {described}"))
+                    f"{path.name} holds {stored} at {where}"),
+            warnings=warnings)
 
 
-DEFAULT_BACKENDS: tuple[Backend, ...] = (QuoteBackend(), MetricBackend(), TableBackend())
+class MetricBackend(ValueBackend):
+    """`kind: metric` -- a JSON Pointer into a structured file."""
+
+    kind = "metric"
+
+
+class TableBackend(ValueBackend):
+    """`kind: table` -- a column plus a row selector in a delimited file."""
+
+    kind = "table"
+
+
+DEFAULT_BACKENDS: tuple[Backend, ...] = (QuoteBackend(), MetricBackend(), TableBackend(),
+                                         ValueBackend())
 
 
 # ------------------------------------------------------------------------------------ engine
 
 def _artifact_state(artifact: ArtifactRef, path: pathlib.Path) -> ArtifactState:
     if not path.exists():
-        return ArtifactState(artifact_id=artifact.id, validity=Validity.UNPINNED_ARTIFACT
-                             if not artifact.is_pinned else Validity.AUTHORITATIVE,
-                             exists=False, expected=artifact.digest.value
-                             if artifact.digest else None)
+        # Not authoritative, whether or not it was pinned: there are no bytes to be the
+        # declared ones. Calling it authoritative made every decision against it claim to
+        # describe a file that was never read.
+        return ArtifactState(artifact_id=artifact.id, validity=Validity.ARTIFACT_ABSENT,
+                             exists=False,
+                             expected=artifact.digest.value if artifact.digest else None)
     if not artifact.is_pinned:
         return ArtifactState(artifact_id=artifact.id, validity=Validity.UNPINNED_ARTIFACT,
                              actual=Digest.of_file(path).value)
@@ -351,12 +284,103 @@ def _artifact_state(artifact: ArtifactRef, path: pathlib.Path) -> ArtifactState:
                          expected=artifact.digest.value, actual=actual)
 
 
+def _ordering(claim: Claim, manifest: Manifest,
+              states: dict[str, ArtifactState]) -> tuple[Ordering, OrderingReason, str,
+                                                          RegistrationAuthority | None]:
+    """Did the runs producing this claim's evidence start after its plan was registered?
+
+    Returns an outcome, the reason it was reached, a human-readable detail, and the weakest
+    registration authority among the runs that applied. Every condition that stops the check
+    yields `unchecked` with its own reason rather than a verdict: an absent record is not
+    evidence that a result predates its plan, and reporting it as one would manufacture a
+    finding out of a gap.
+    """
+    if not claim.confirmatory:
+        return Ordering.NOT_APPLICABLE, OrderingReason.NOT_CONFIRMATORY, "", None
+
+    produced = {e.artifact for e in claim.evidence}
+    runs = [r for r in manifest.runs if produced & {o.artifact for o in r.outputs}]
+    if not runs:
+        return (Ordering.UNCHECKED, OrderingReason.NO_RUN_RECORD,
+                f"no run record produces {', '.join(sorted(produced))}", None)
+
+    authority = min((r.registration_authority for r in runs), key=lambda a: a.rank)
+
+    def unchecked(reason: OrderingReason, detail: str):
+        return Ordering.UNCHECKED, reason, detail, authority
+
+    # More than one run claiming the same artifact with different registrations does not say
+    # which one produced the bytes being checked.
+    for artifact_id in sorted(produced):
+        claimants = [r for r in runs if r.output(artifact_id) is not None]
+        if len({(r.registered_plan, r.registered_at) for r in claimants}) > 1:
+            return unchecked(OrderingReason.AMBIGUOUS_PRODUCING_RUN,
+                             f"{len(claimants)} runs claim to produce {artifact_id}")
+
+    without_plan = sorted({r.id for r in runs if not r.registered_plan})
+    if without_plan:
+        return unchecked(OrderingReason.NO_REGISTERED_PLAN,
+                         f"run {', '.join(without_plan)} names no registered plan")
+
+    undated = sorted({r.id for r in runs
+                      if r.registered_at is None or r.started_at is None})
+    if undated:
+        return unchecked(OrderingReason.TIMESTAMP_MISSING,
+                         f"run {', '.join(undated)} records no registration or start time")
+
+    # The plan document, where it is a declared artifact, must be the one that was pinned.
+    for run in runs:
+        state = states.get(run.registered_plan)
+        if state is None:
+            continue
+        if state.validity is Validity.BROKEN_PIN:
+            return unchecked(OrderingReason.REGISTERED_PLAN_CHANGED,
+                             f"plan {run.registered_plan} is not the document that was "
+                             f"pinned, so its timestamp attests to nothing")
+        if state.validity is not Validity.AUTHORITATIVE:
+            return unchecked(OrderingReason.REGISTERED_PLAN_UNPINNED,
+                             f"plan {run.registered_plan} is declared but "
+                             f"{state.validity.value}")
+
+    # Each output must be bound to the bytes actually read, not merely to a path.
+    for run in runs:
+        for artifact_id in sorted(produced & {o.artifact for o in run.outputs}):
+            output = run.output(artifact_id)
+            if output.digest is None:
+                return unchecked(OrderingReason.RUN_OUTPUT_UNLINKED,
+                                 f"run {run.id} names {artifact_id} but records no digest "
+                                 f"for it, so any later file at that path would qualify")
+            actual = states[artifact_id].actual if artifact_id in states else None
+            if actual is not None and actual != output.digest.value:
+                return unchecked(OrderingReason.RUN_OUTPUT_CHANGED,
+                                 f"{artifact_id} holds {actual[:12]}, but run {run.id} "
+                                 f"produced {output.digest.value[:12]}")
+
+    inverted = [r for r in runs if r.started_at < r.registered_at]
+    if inverted:
+        run = inverted[0]
+        return (Ordering.VIOLATED, OrderingReason.RUN_PRECEDES_REGISTRATION,
+                f"run {run.id} started {run.started_at.isoformat()}, before "
+                f"{run.registered_plan} was registered {run.registered_at.isoformat()}",
+                authority)
+
+    pinned = sum(1 for r in runs if r.registered_plan in states)
+    detail = (f"{len(runs)} run(s) started after registration"
+              + (f", {pinned} against a pinned plan" if pinned else "")
+              + f"; authority {authority.value}")
+    return Ordering.ORDERED, OrderingReason.RUN_FOLLOWS_REGISTRATION, detail, authority
+
+
 def verify(manifest: Manifest,
-           backends: tuple[Backend, ...] = DEFAULT_BACKENDS) -> VerificationReport:
+           backends: tuple[Backend, ...] = DEFAULT_BACKENDS,
+           regenerate: bool = False) -> VerificationReport:
     """Check every evidence assertion in a manifest and report what was found.
 
     Returns facts. No verdict: see `repro.policy` for whether a given set of facts is
     acceptable, which depends on what the project is for.
+
+    `regenerate` runs any declared regeneration commands in a sandbox. Off by default,
+    because verifying a manifest should never execute what the manifest names.
     """
     registry: dict[str, Backend] = {b.kind: b for b in backends}
 
@@ -372,15 +396,21 @@ def verify(manifest: Manifest,
         decisions = tuple(
             _check(claim, evidence, manifest, paths, states, registry)
             for evidence in claim.evidence)
+        ordering, ordering_reason, ordering_detail, authority = _ordering(
+            claim, manifest, states)
         assessments.append(ClaimAssessment(
             claim_id=claim.id, claim_digest=claim.digest.value,
-            confirmatory=claim.confirmatory, availability=claim.availability,
+            confirmatory=claim.confirmatory, registration=claim.registration,
+            registration_note=claim.registration_note, availability=claim.availability,
+            ordering=ordering, ordering_reason=ordering_reason,
+            ordering_detail=ordering_detail, registration_authority=authority,
             decisions=decisions))
 
     return VerificationReport(
         project=manifest.project,
         manifest_digest=Digest.of_text(manifest.model_dump_json()).value,
-        artifacts=tuple(states.values()), claims=tuple(assessments))
+        artifacts=tuple(states.values()), claims=tuple(assessments),
+        regenerations=check_all(manifest, states, regenerate))
 
 
 def _check(claim: Claim, evidence: Evidence, manifest: Manifest,

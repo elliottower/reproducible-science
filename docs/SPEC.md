@@ -155,6 +155,44 @@ states a given hypothesis — is a `quote` against the plan. What remains distin
 protocol is temporal: whether a confirmatory run postdates its registration. That requires a
 run record, is unimplemented (§7), and is not smuggled in as a third kind in the meantime.
 
+## 3.5 Locators
+
+A locator says where a value sits. JSON Pointer works because JSON has one tree data model and
+a pointer resolves to at most one value; it says nothing about table keys, multidimensional
+indices, or database rows. Rather than extend one syntax to cover every file, the contract is
+a discriminated union whose variants address each format the way that format already addresses
+itself.
+
+| kind | addresses | identity |
+|---|---|---|
+| `tree` | JSON, and YAML restricted to a JSON-compatible tree | RFC 6901 pointer |
+| `table` | CSV, TSV, PSV | column plus a predicate matching exactly one row |
+| `table_position` | the same, by row index | column plus position, carrying a warning |
+| `sqlite` | a database file | table, column, and a predicate matching one row |
+| `array` | `.npy`, `.npz` | array name plus a multidimensional index |
+
+Every variant enforces one invariant: a locator resolves to **exactly one scalar**. Zero is
+absent, two or more is ambiguous, a container is not a value, and no backend takes the first
+match. A format with no adapter — HDF5, NetCDF, Parquet, XLSX — reports `format_unsupported`
+and stops. No backend falls back to searching a file for the printed number, which would find
+it wherever it appears and call that verification.
+
+Predicates are typed key-value mappings, not a string expression language: a string predicate
+needs a parser, coercion rules, and an escaping grammar, and every implementation would
+disagree about the edges. In a delimited file, predicate values are compared as text and never
+coerced, so `"001"` and `1` address different rows. YAML is read with duplicate mapping keys
+rejected, since a file that resolves one way with nothing said about the other is not
+addressable.
+
+`metric` and `table` evidence remain as shorthand for the two commonest locators and resolve
+through the same adapters, so a manifest never chooses between a convenient spelling and a
+supported one.
+
+Locators are canonicalized — sorted keys, no whitespace, no coercion — and hashed. A decision
+records that digest beside the artifact digest, so it binds how a value was addressed as well
+as what was read: a selector edited after the fact changes the record even where the file does
+not.
+
 ## 4. Outcomes
 
 A check must execute, extract, and compare. Each stage fails differently, and the report
@@ -258,10 +296,10 @@ Every policy requires at least one assertion to have been evaluated. A run that 
 nothing is not a pass, and without that condition a project with no evidence anywhere
 satisfies every other condition trivially.
 
-## 7. Ordering (specified, not implemented)
+## 7. Ordering
 
 A confirmatory claim asserts a preregistered outcome. Whether the run producing its evidence
-postdates the registration is checkable against a run record:
+postdates the registration is checked against a run record:
 
 ```yaml
 runs:
@@ -272,13 +310,34 @@ runs:
     outputs: [results]
 ```
 
-Nothing in the current release reports on ordering. A manifest carrying `runs` is accepted and
-ignored.
+Both timestamps must carry an offset. A naive timestamp compared against an aware one is
+either a crash or a silently wrong ordering, so a manifest cannot express one.
 
-Two limits will remain after it is implemented. The registration timestamp is self-recorded,
-so the check establishes internal consistency and not that a registration is contemporaneous
-with what it claims; an external timestamp authority closes that and is out of scope. And the
-check reads a declared run record rather than observing execution.
+A claim declares one of three registration states. `confirmatory`: it reports a preregistered
+outcome, and the ordering check applies. `exploratory`: a plan could have fixed the outcome and
+did not — the default, since a claim that says nothing about registration is exploratory rather
+than exempt. `not_applicable`: no outcome was selected from alternatives, so registration has
+nothing to bind, which is the case for an exhaustive deterministic measurement that reports
+every result it produced. `not_applicable` requires a reason, on the same convention a
+preregistration uses for an inapplicable heading, because a state that can be entered silently
+is a way for any claim to opt out of being graded. A manifest written with `confirmatory: true`
+or `false` still parses; `false` becomes `exploratory`, never `not_applicable`, since the
+boolean never carried that distinction.
+
+Each confirmatory claim reports one of four ordering states. `ordered`: every run producing its
+evidence started after registration. `inverted`: a run started first. `undeclared`: no run
+covers its artifacts, a timestamp is missing, or the plan is a declared artifact whose pin is
+broken. `not_applicable`: the claim is not confirmatory. A claim with no run record is
+`undeclared` and never `inverted` — an absent record is not evidence that a result predates
+its plan.
+
+Where `registered_plan` names a declared artifact, that document is pinned, so a plan edited
+after the fact to match results breaks its pin and the ordering reverts to `undeclared`.
+
+Two limits are structural. The registration timestamp is self-recorded, so the check
+establishes internal consistency and not that a registration is contemporaneous with what it
+claims; an external timestamp authority closes that and is out of scope. And the check reads
+a declared run record rather than observing execution.
 
 ## 7.5 Output formats
 
@@ -293,6 +352,49 @@ cannot express that difference, and it is the one this document exists to preser
 
 A policy raises a result's `level` and never changes its `kind`: what happened does not depend
 on what a project considers acceptable.
+
+## 7.6 Regeneration
+
+Ordering asks whether a confirmatory run followed its plan. That question has no meaning for a
+measurement no plan could have registered: an exhaustive count over a declared corpus selects
+no outcome, so nothing was there for a registration to fix. What can be asked of such a number
+is whether it is still the output of the code that claims to produce it.
+
+```yaml
+regenerations:
+  - id: figures
+    command: [python, scripts/build_figures.py]
+    inputs:
+      - {artifact: corpus, digest: {algorithm: sha256, value: ...}}
+      - {artifact: script, digest: {algorithm: sha256, value: ...}}
+    output: {artifact: figures, digest: {algorithm: sha256, value: ...}}
+    volatile: ["/generated_at"]
+```
+
+The declared inputs are copied into an empty directory and the command runs there, so nothing
+in the working tree is written to, and a command needing a file the manifest never declared
+fails. That makes the record a claim about sufficiency and not only about provenance.
+
+Three states. `reproduced`: the command produced the pinned artifact. `diverged`: it produced
+something else, produced nothing, or exited non-zero. `unchecked`: it was not requested, an
+input has moved since the record was written, or the runner is absent. An input that changed
+yields `unchecked` rather than `diverged`, because different inputs producing a different
+output is not a failure to reproduce.
+
+Comparison is exact but canonical. An output carrying a timestamp or an absolute path never
+reproduces byte for byte, so a record names those fields as `volatile` JSON Pointers and they
+are removed before hashing; where a record names them, the digest it pins is the canonical one.
+Naming the fields keeps the comparison exact everywhere else, which loosening the whole
+comparison would not.
+
+Regeneration is off by default and runs only under `repro verify --regenerate`. Verifying a
+manifest should never execute what the manifest names. Commands are argv, never shell strings:
+a shell string needs quoting rules, brings a shell's expansion with it, and turns a manifest
+into something that can run anything.
+
+Regeneration is orthogonal to registration. A `not_applicable` claim need not declare one —
+methods statements and externally sourced facts are inapplicable without being script-generated
+— and a confirmatory claim may declare both.
 
 ## 8. What this composes with
 

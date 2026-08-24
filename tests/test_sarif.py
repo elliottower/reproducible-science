@@ -112,3 +112,41 @@ def test_a_claim_with_no_evidence_is_informational():
     s = to_sarif(report_for("no_evidence_offered"))
     r = results(s)[0]
     assert r["kind"] == "informational" and r["level"] == "note"
+
+
+def test_every_rule_a_result_names_is_declared_by_the_driver(tmp_path):
+    """A ruleId with no matching rule object is what a strict SARIF consumer rejects, and it
+    is invisible in a report that otherwise looks well formed."""
+    import pathlib
+
+    from repro.models import ArtifactRef, Claim, Digest, Manifest, MetricEvidence
+    from repro.verify import verify
+
+    # An absent artifact and a broken pin are the two artifact-level results; a mismatch and
+    # a verified assertion cover the outcome-level ones.
+    good = tmp_path / "good.json"
+    good.write_text('{"x": 3.2, "y": 9.9}')
+    moved = tmp_path / "moved.json"
+    moved.write_text('{"x": 1.0}')
+    manifest = Manifest(
+        project="p",
+        artifacts=(
+            ArtifactRef(id="good", path=good, digest=Digest.of_file(good)),
+            ArtifactRef(id="moved", path=moved,
+                        digest=Digest(algorithm="sha256", value="0" * 64)),
+            ArtifactRef(id="gone", path=pathlib.Path(tmp_path / "gone.json"),
+                        digest=Digest(algorithm="sha256", value="1" * 64)),
+        ),
+        claims=(
+            Claim(id="ok", text="t", evidence=(
+                MetricEvidence(artifact="good", name="x", reported="3.2", pointer="/x"),)),
+            Claim(id="bad", text="t", evidence=(
+                MetricEvidence(artifact="good", name="y", reported="1.1", pointer="/y"),)),
+            Claim(id="absent", text="t", evidence=(
+                MetricEvidence(artifact="gone", name="z", reported="1.0", pointer="/z"),)),
+        ))
+    run = to_sarif(verify(manifest))["runs"][0]
+    declared = {rule["id"] for rule in run["tool"]["driver"]["rules"]}
+    used = {result["ruleId"] for result in run["results"]}
+    assert used, "the fixture should produce results"
+    assert used <= declared, f"undeclared rule ids: {sorted(used - declared)}"

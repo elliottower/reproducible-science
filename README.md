@@ -69,6 +69,25 @@ repro verify                          # check everything
 | citations | `citations` | [`citations`](https://pypi.org/project/citations/) | Verify quotations resolve in pinned source artifacts |
 | results | `results` | [`results-cli`](https://pypi.org/project/results-cli/) | Seal inputs, record outputs, bind claims to runs, verify the chain |
 
+## Inside adduce
+
+[adduce](https://github.com/QHarshil/adduce) scores a repository for reproducibility across
+categories. Installing the extra registers one rule with it, so a repository that declares a
+`repro.yaml` has its evidence assertions checked as part of `adduce check`:
+
+```bash
+pip install "reproducible-science[adduce]"
+adduce check .
+```
+
+The rule reports an aggregate — every assertion holding is a pass, some holding is partial, a
+pinned artifact having changed is a failure naming it — and writes the full per-assertion
+report to `.adduce/repro-report.json`, since one finding cannot carry thousands of outcomes.
+A repository with no manifest is out of scope rather than failing, and a verifier that cannot
+run reports `UNKNOWN`: a missing toolchain is not the repository's fault.
+
+adduce is not a dependency of this package, and this package is not a dependency of adduce.
+
 ## Claude Code
 
 This repo is also a Claude Code plugin marketplace bundling all three tools:

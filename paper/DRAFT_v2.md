@@ -109,8 +109,8 @@ specifies the escaping.
 **A kind we removed.** `protocol` was specified as a third variant. Its integrity check is the
 artifact pin, which every artifact carries; its content check — that a registered document
 states a given hypothesis — is a `quote` against the plan. What remains distinct is temporal:
-whether a confirmatory run postdates its registration. That needs a run record, is
-unimplemented, and is not carried as a third kind in the meantime.
+whether a confirmatory run postdates its registration. That reads a run record rather than an
+artifact, so it is a property of a claim and not a fourth kind of evidence.
 
 ## 4. Pins, Validity, and Defects
 

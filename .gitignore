@@ -7,3 +7,8 @@ dist/
 
 # adduce writes its report and the repro sidecar here
 .adduce/
+
+# Publisher PDFs for the prior-art dig. Kept locally so `citations verify` can resolve
+# quotations against them; not redistributable, and this repository is public.
+paper/prior_art/reference/
+paper/prior_art/.audit-cache/
