@@ -344,6 +344,31 @@ class Decision(BaseModel):
 
 # ---------------------------------------------------------------------------------- manifest
 
+class Provenance(BaseModel):
+    """Where a manifest's artifacts came from.
+
+    Recorded, never verified. The pin is the artifact's digest: a commit identifies a tree,
+    and a tree does not establish that the file on disk today is the file that was in it.
+    A reader who wants these exact bytes uses the commit to fetch them and the digest to
+    confirm they arrived.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    repository: str = ""
+    """Remote URL, or a local path where there is no remote."""
+
+    commit: str = ""
+    """Full SHA of the revision the artifacts were read from."""
+
+    dirty: bool = False
+    """Whether the working tree had uncommitted changes when the manifest was written. A
+    manifest built from a dirty tree names a commit that does not contain what was read."""
+
+    generated_by: str = ""
+    """The script that wrote this manifest, so the figures can be regenerated."""
+
+
 class Manifest(BaseModel):
     """One project: its artifacts and its claims."""
 
@@ -351,6 +376,7 @@ class Manifest(BaseModel):
 
     schema_version: str = SCHEMA_VERSION
     project: str = ""
+    provenance: Provenance | None = None
     artifacts: tuple[ArtifactRef, ...] = ()
     claims: tuple[Claim, ...] = ()
 
@@ -431,7 +457,7 @@ class VerificationReport(BaseModel):
 
 __all__ = [
     "SCHEMA_VERSION",
-    "Digest", "ArtifactRef", "ArtifactState",
+    "Digest", "ArtifactRef", "ArtifactState", "Provenance",
     "Evidence", "QuoteEvidence", "MetricEvidence", "ComparisonMode",
     "Claim", "Availability", "Manifest",
     "ExecutionStatus", "ExtractionStatus", "ComparisonStatus",

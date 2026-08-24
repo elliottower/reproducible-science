@@ -1,0 +1,187 @@
+schema_version: repro/1
+project: reproducible-science (self-audit)
+provenance:
+  repository: https://github.com/elliottower/reproducible-science.git
+  commit: 3c4d06a2ce7cba5b64886eebd55003b095ccfdd6
+  dirty: true
+  generated_by: scripts/build_self_audit.py
+artifacts:
+- id: manuscript
+  path: DRAFT_v2.md
+  media_type: text/markdown
+  digest:
+    algorithm: sha256
+    value: 43fc745cd4a21eaf4756ffd87903df5c0228523edf91a8a0b701d7fc1a8b6812
+- id: figures
+  path: figures.json
+  media_type: application/json
+  digest:
+    algorithm: sha256
+    value: 8a30f5cbc3634e97bd7ceb7155ba9a2676c8ec1f51f0ffd60cf061d76616a874
+claims:
+- id: corpus-assertions
+  confirmatory: true
+  where: Section 6
+  text: The manuscript states 5686 for corpus-assertions.
+  evidence:
+  - kind: quote
+    artifact: manuscript
+    text: quotation assertions | 5,686
+  - kind: metric
+    artifact: figures
+    name: corpus-assertions
+    reported: '5686'
+    pointer: /quotation_corpus/assertions
+- id: corpus-manuscripts
+  confirmatory: true
+  where: Section 6
+  text: The manuscript states 17 for corpus-manuscripts.
+  evidence:
+  - kind: quote
+    artifact: manuscript
+    text: manuscripts | 17
+  - kind: metric
+    artifact: figures
+    name: corpus-manuscripts
+    reported: '17'
+    pointer: /quotation_corpus/manuscripts
+- id: corpus-declared
+  confirmatory: true
+  where: Section 6
+  text: The manuscript states 366 for corpus-declared.
+  evidence:
+  - kind: quote
+    artifact: manuscript
+    text: source files declared | 366
+  - kind: metric
+    artifact: figures
+    name: corpus-declared
+    reported: '366'
+    pointer: /quotation_corpus/declaration_files
+- id: corpus-pinned
+  confirmatory: true
+  where: Section 6
+  text: The manuscript states 355 for corpus-pinned.
+  evidence:
+  - kind: quote
+    artifact: manuscript
+    text: sources with a matching pin | 355
+  - kind: metric
+    artifact: figures
+    name: corpus-pinned
+    reported: '355'
+    pointer: /quotation_corpus/pins/ok
+- id: corpus-unpinned
+  confirmatory: true
+  where: Section 6
+  text: The manuscript states 9 for corpus-unpinned.
+  evidence:
+  - kind: quote
+    artifact: manuscript
+    text: sources carrying no pin | 9
+  - kind: metric
+    artifact: figures
+    name: corpus-unpinned
+    reported: '9'
+    pointer: /quotation_corpus/pins/unpinned
+- id: corpus-missing
+  confirmatory: true
+  where: Section 6
+  text: The manuscript states 1 for corpus-missing.
+  evidence:
+  - kind: quote
+    artifact: manuscript
+    text: sources named and not present | 1
+  - kind: metric
+    artifact: figures
+    name: corpus-missing
+    reported: '1'
+    pointer: /quotation_corpus/pins/missing
+- id: corpus-unparseable
+  confirmatory: true
+  where: Section 6
+  text: The manuscript states 1 for corpus-unparseable.
+  evidence:
+  - kind: quote
+    artifact: manuscript
+    text: declaration files that do not parse | 1
+  - kind: metric
+    artifact: figures
+    name: corpus-unparseable
+    reported: '1'
+    pointer: /quotation_corpus/unparseable_files
+- id: resolver-written
+  confirmatory: true
+  where: Section 6
+  text: The manuscript states 172 for resolver-written.
+  evidence:
+  - kind: quote
+    artifact: manuscript
+    text: resolver wrote 172 identifiers
+  - kind: metric
+    artifact: figures
+    name: resolver-written
+    reported: '172'
+    pointer: /resolver_identifiers/written
+- id: resolver-checkable
+  confirmatory: true
+  where: Section 6
+  text: The manuscript states 121 for resolver-checkable.
+  evidence:
+  - kind: quote
+    artifact: manuscript
+    text: 121 are checkable
+  - kind: metric
+    artifact: figures
+    name: resolver-checkable
+    reported: '121'
+    pointer: /resolver_identifiers/checkable
+- id: resolver-absent
+  confirmatory: true
+  where: Section 6
+  text: The manuscript states 12 for resolver-absent.
+  evidence:
+  - kind: metric
+    artifact: figures
+    name: resolver-absent
+    reported: '12'
+    pointer: /resolver_identifiers/first_author_absent
+- id: resolver-rate
+  confirmatory: true
+  where: Section 6
+  text: The manuscript states 9.9 for resolver-rate.
+  evidence:
+  - kind: quote
+    artifact: manuscript
+    text: 9.9%
+  - kind: metric
+    artifact: figures
+    name: resolver-rate
+    reported: '9.9'
+    pointer: /resolver_identifiers/absent_rate
+- id: resolver-unresolved
+  confirmatory: true
+  where: Section 6
+  text: The manuscript states 24 for resolver-unresolved.
+  evidence:
+  - kind: quote
+    artifact: manuscript
+    text: 24 carry a DOI that Crossref does not resolve
+  - kind: metric
+    artifact: figures
+    name: resolver-unresolved
+    reported: '24'
+    pointer: /resolver_identifiers/unresolved
+- id: conformance-fixtures
+  confirmatory: true
+  where: Section 6
+  text: The manuscript states 13 for conformance-fixtures.
+  evidence:
+  - kind: quote
+    artifact: manuscript
+    text: Thirteen fixtures
+  - kind: metric
+    artifact: figures
+    name: conformance-fixtures
+    reported: '13'
+    pointer: /conformance/fixtures
