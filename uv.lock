@@ -2355,7 +2355,7 @@ types = [{ name = "pyrefly", specifier = ">=1" }]
 
 [[package]]
 name = "reproducible-science"
-version = "0.3.0"
+version = "0.2.0"
 source = { editable = "packages/repro" }
 dependencies = [
     { name = "citations" },
@@ -2442,7 +2442,7 @@ wheels = [
 
 [[package]]
 name = "results-cli"
-version = "0.3.0"
+version = "0.2.0"
 source = { editable = "packages/results" }
 
 [package.dev-dependencies]
