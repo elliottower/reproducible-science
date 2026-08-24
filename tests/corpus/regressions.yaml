@@ -23,3 +23,20 @@ findings:
         mismatch: 9
         verified: 1
     # after: recorded once the manuscript is corrected
+
+  - name: rna-fm-duplicate-stored-value
+    summary: >-
+      The public RNA repository carries two stored mean perturbation specificity values for
+      RNA-FM, from runs a day apart and 6,500x apart in magnitude: 4.88e-05 under
+      results/audit/ and 7.45e-09 under data/gpu_results/. The working repository keeps only
+      the later one. Whichever is correct, shipping both means a reader can reproduce two
+      different numbers from the same published artifact.
+    repository: ""          # TODO: fill in when the public remote exists
+    local_path: ~/Documents/GitHub/rna-sa-public
+    before:
+      commit: 14a302a3360794ebdf67412f8b5327a2895206ca
+      manifest: manifests/rna_fm_duplicate.yaml
+      expected:
+        verified: 1
+        mismatch: 1
+    # after: recorded once one of the two files is withdrawn
