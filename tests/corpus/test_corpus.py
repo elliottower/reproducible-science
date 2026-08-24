@@ -93,3 +93,31 @@ def test_every_entry_that_cannot_be_reproduced_elsewhere_is_named():
     without = corpus.without_remote
     if without:
         pytest.skip(f"no public remote recorded for: {', '.join(without)}")
+
+
+def test_a_dirty_working_tree_is_not_the_pinned_revision(tmp_path):
+    """A checkout at the right commit with uncommitted edits holds bytes only that machine
+    has. Verifying against them produces a result nobody else can reproduce, so `ensure`
+    prefers a clean copy where one can be fetched."""
+    import subprocess
+
+    from repro.corpus import CorpusEntry, _is_pinned_revision
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    run = lambda *a: subprocess.run(["git", *a], cwd=repo, capture_output=True, check=True)
+    run("init", "-q")
+    run("config", "user.email", "t@t")
+    run("config", "user.name", "t")
+    (repo / "x.txt").write_text("one\n")
+    run("add", "x.txt")
+    run("commit", "-qm", "one")
+    commit = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo,
+                            capture_output=True, text=True).stdout.strip()
+
+    entry = CorpusEntry(name="t", commit=commit, local_path=str(repo))
+    assert _is_pinned_revision(entry, repo), "a clean tree at the pinned commit is the revision"
+
+    (repo / "x.txt").write_text("two\n")
+    assert not _is_pinned_revision(entry, repo), (
+        "the commit is unchanged and the bytes are not; that is not the pinned revision")
