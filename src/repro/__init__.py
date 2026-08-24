@@ -6,7 +6,8 @@ assertion -- and nothing beyond it. Whether the evidence *supports* the sentence
 a question about entailment, addressed elsewhere with model-based methods.
 
     from repro import load, verify
-    from repro.policy import PUBLICATION
+    from repro.renderers import to_sarif
+from repro.policy import PUBLICATION
 
     report = verify(load("repro.yaml"))       # facts
     verdict = PUBLICATION.assess(report)      # judgment
@@ -50,6 +51,7 @@ from repro.models import (
     VerificationReport,
     Warning_,
 )
+from repro.renderers import to_sarif
 from repro.policy import EXPLORATORY, PROFILES, PUBLICATION, STRICT, Assessment, Policy, Severity
 from repro.verify import (
     DEFAULT_BACKENDS,
@@ -75,6 +77,6 @@ __all__ = [
     "load", "find", "DEFAULT_NAME",
     "verify", "Backend", "QuoteBackend", "MetricBackend", "TableBackend",
     "read_table", "DEFAULT_BACKENDS",
-    "Policy", "Assessment", "Severity", "EXPLORATORY", "PUBLICATION", "STRICT", "PROFILES",
+    "Policy", "Assessment", "Severity", "to_sarif", "EXPLORATORY", "PUBLICATION", "STRICT", "PROFILES",
     "__version__",
 ]
