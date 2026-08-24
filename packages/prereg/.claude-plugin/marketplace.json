@@ -1,0 +1,17 @@
+{
+  "name": "prereg",
+  "owner": {
+    "name": "Elliot Tower"
+  },
+  "metadata": {
+    "description": "Freeze a plan before you run it, and record what changed after",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "prereg",
+      "source": "./plugin",
+      "strict": false
+    }
+  ]
+}
