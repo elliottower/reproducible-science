@@ -117,8 +117,10 @@ report.exclude_also = [
   "raise NotImplementedError",
 ]
 
-# Release notes are per package, because the packages release separately. A fragment is named
-# for its pull request and its kind: changes/repro/128.added.md
+# One changelog for the workspace, because the packages release in lockstep: every package
+# carries the same version and ships the same day, so four files would repeat one release
+# four times. Entries are scoped with a `[package]` prefix instead, following dagster.
+# A fragment is named for its pull request and its kind: changes/128.fixed.md
 
 [tool.towncrier]
 directory = "changes"
