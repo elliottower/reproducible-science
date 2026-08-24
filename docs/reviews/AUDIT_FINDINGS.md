@@ -24,9 +24,9 @@ exists, so they are not "bugs" in the ordinary sense.
 | [x] | A failed `page` assertion is reported `verified`; no policy reads decision warnings | repro/verify.py |
 | [ ] | A confirmatory claim spanning several artifacts is `ordered` when only one has a producing run | repro/verify.py |
 | [ ] | An undeclared `registered_plan` is never pin-checked, so an unpinned plan yields `ordered` — and declaring it scores worse | repro/verify.py |
-| [ ] | Reusing a `run_id` defeats the confirmatory-claim guard and `verify` reports all checks passed | results/cli.py |
-| [ ] | `reanchor` launders a truncated ledger to "chain intact" — `TRUNCATED` omitted from the refusal list | results/cli.py |
-| [ ] | An edited last line becomes permanently invisible after the next append | results/ledger.py |
+| [x] | Reusing a `run_id` defeats the confirmatory-claim guard and `verify` reports all checks passed | results/cli.py |
+| [x] | `reanchor` launders a truncated ledger to "chain intact" — `TRUNCATED` omitted from the refusal list | results/cli.py |
+| [x] | An edited last line becomes permanently invisible after the next append | results/ledger.py |
 | [ ] | The preregistration Log section is outside the hash and freely deletable | prereg/cli.py |
 | [ ] | `freeze --force` logs `nothing run` even directly after a `results seen` entry | prereg/cli.py |
 | [ ] | Marker-prefixed lines inserted after a freeze are not covered by the hash | prereg/cli.py |
@@ -43,8 +43,8 @@ exists, so they are not "bugs" in the ordinary sense.
 | [ ] | `freeze` outside a git repository reports success and records a commit-shaped string | prereg/cli.py |
 | [ ] | `check` at a repo root exits 0 when a plan was never frozen | prereg/cli.py |
 | [ ] | `--osf` drops a heading whose capitalization differs, silently | prereg/osf.py |
-| [ ] | A `canon_version` mismatch leaves the status `INTACT` and is never printed | results/ledger.py |
-| [ ] | `verify --files` keys by path, so only the most recent seal of a path is checked | results/cli.py |
+| [x] | A `canon_version` mismatch leaves the status `INTACT` and is never printed | results/ledger.py |
+| [x] | `verify --files` keys by path, so only the most recent seal of a path is checked | results/cli.py |
 | [x] | An unreadable or directory artifact path crashes the whole run instead of producing a report | repro/verify.py |
 | [x] | Negative array indices are unchecked: `-99` becomes a backend defect, `-1` silently resolves | repro/resolve.py |
 | [ ] | Policy severities collide on `claim_id/kind`, so an error-level mismatch can render as a warning | repro/renderers/sarif.py |

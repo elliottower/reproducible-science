@@ -56,7 +56,19 @@ class NoLedgerRootError(ResultsError):
 
 
 class ChainError(ResultsError):
-    """The ledger could not be read as a chain."""
+    """The ledger could not be read as a chain, or must not be written to as one.
+
+    Carries the path and the reason separately so a caller can route on either, and renders as
+    one sentence: the CLI prints `str(e)` and a reader should not be shown a tuple.
+    """
+
+    def __init__(self, ledger: pathlib.Path | str, detail: str) -> None:
+        self.ledger = pathlib.Path(ledger)
+        self.detail = detail
+        super().__init__(f"{self.ledger}: {detail}")
+
+    def __str__(self) -> str:
+        return f"{self.ledger}: {self.detail}"
 
 
 class ChainStatus(enum.StrEnum):
@@ -129,7 +141,7 @@ def read_ledger(ledger: pathlib.Path) -> list[dict]:
         try:
             events.append(json.loads(raw))
         except json.JSONDecodeError as e:
-            raise ChainError(f"{ledger}: line {i} is not valid JSON: {e}") from e
+            raise ChainError(ledger, f"line {i} is not valid JSON: {e}") from e
     return events
 
 
@@ -147,7 +159,7 @@ def read_anchor(ledger: pathlib.Path) -> dict | None:
     try:
         return json.loads(p.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as e:
-        raise ChainError(f"{p}: anchor is unreadable: {e}") from e
+        raise ChainError(p, f"anchor is unreadable: {e}") from e
 
 
 def write_anchor(ledger: pathlib.Path, count: int, head: str) -> dict:
@@ -182,6 +194,22 @@ def append_event(ledger: pathlib.Path, event: dict) -> dict:
     """Write one event and advance the anchor. Returns a new event; the argument is not
     mutated, so the object a caller holds cannot drift from the line on disk."""
     lines = _lines(ledger) if ledger.exists() else []
+
+    # The anchor is the only witness to the last line, and appending overwrites it. An edited
+    # tail was therefore reported once and then became invisible forever, because the next
+    # ordinary command re-anchored over the evidence. Refuse to build on a damaged chain.
+    #
+    # A ledger with neither events nor an anchor has no history to damage, which is the state
+    # `results init` leaves behind.
+    if lines or anchor_path(ledger).exists():
+        status, problems = verify(ledger)
+        if status not in (ChainStatus.INTACT, ChainStatus.EXTENDED, ChainStatus.NO_ANCHOR):
+            raise ChainError(
+                ledger,
+                f"refusing to append to a chain reported as {status.value}: "
+                f"{'; '.join(problems) or 'the recorded history does not verify'}",
+            )
+
     record = {
         **event,
         "seq": len(lines),
@@ -256,6 +284,10 @@ def verify(ledger: pathlib.Path) -> tuple[ChainStatus, list[str]]:
             f"anchor written under canon_version {anchor.get('canon_version')}, "
             f"this is {CANON_VERSION}"
         )
+        # A ledger written under one canonicalization rule verified silently under another,
+        # because the status stayed INTACT and `results verify` prints its problems only when
+        # the status is not. Recording the version is pointless if a mismatch still passes.
+        status = ChainStatus.CORRUPT
     count, head = anchor.get("count"), anchor.get("head")
     if isinstance(count, int) and count != len(lines):
         problems.append(f"anchor records {count} events, ledger holds {len(lines)}")
