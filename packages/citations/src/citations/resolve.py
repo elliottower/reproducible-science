@@ -138,6 +138,15 @@ def match(rec: Record, candidates) -> tuple[str, str] | None:
     want = surname_variants(first)
     best: tuple[float, tuple[str, str]] | None = None
 
+    # `want` is empty when the record lists no authors, and `year_ok` returns True for an
+    # empty year, so a record with neither was matched on title similarity alone. Those are
+    # exactly the records this function operates on -- the ones with no identifier, which are
+    # the least complete. At the 0.87 threshold, "Attention Is All You Need" matches "Is
+    # Attention All You Need?", a different paper by different authors, and the wrong arXiv id
+    # is written into the library. Refuse rather than guess.
+    if not want and not rec.year:
+        return None
+
     for c in candidates:
         if c.identifier is None:
             continue

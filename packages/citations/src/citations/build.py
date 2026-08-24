@@ -28,7 +28,7 @@ import unicodedata
 
 import yaml
 
-from citations import config, paths
+from citations import bibtex, config, paths
 from citations.exceptions import ClaimFileError
 from citations.models import load_claim_file
 
@@ -166,8 +166,7 @@ def arxiv_from_fields(f: dict) -> str:
 
 def parse_bib(path: pathlib.Path) -> dict[str, dict]:
     out = {}
-    for m in re.finditer(r"@(\w+)\s*\{([^,]+),(.*?)\n\}", path.read_text(errors="ignore"), re.S):
-        key, body = m.group(2).strip(), m.group(3)
+    for _kind, key, body in bibtex.entries(bibtex.read(path)):
         f = {}
         for line in re.split(r",\s*\n", body):
             fm = FIELD.search(line.strip())

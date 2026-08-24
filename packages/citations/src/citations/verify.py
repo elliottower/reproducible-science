@@ -94,6 +94,27 @@ class Report:
     counts: dict[str, int] = field(default_factory=dict)
     problems: list[tuple[str, str, Result]] = field(default_factory=list)
     broken_pins: list[tuple[str, Pin]] = field(default_factory=list)
+    unpinned: list[str] = field(default_factory=list)
+    """Sources with no recorded digest. Their quotations resolve against whatever is on disk."""
+    skipped: list[tuple[str, str]] = field(default_factory=list)
+    """Claims files that would not parse, so their quotations were never examined."""
+
+    @property
+    def unresolved(self) -> int:
+        """Quotations no verdict was reached on."""
+        return self.counts.get("unchecked", 0)
+
+    @property
+    def strict_ok(self) -> bool:
+        """What `--strict` means: nothing was left unresolved.
+
+        `ok` is the substantive verdict -- a quotation that is genuinely absent. It
+        deliberately ignores an unchecked quote, because a missing extractor says nothing
+        about the paper. For CI that is the wrong question: a deleted source, an unpinned
+        one, a claims file that would not parse, and a missing `pdftotext` all left a build
+        green while nothing had been verified at all.
+        """
+        return self.ok and not self.unresolved and not self.unpinned and not self.skipped
 
     @property
     def ok(self) -> bool:
