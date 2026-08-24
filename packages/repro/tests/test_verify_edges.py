@@ -151,3 +151,83 @@ def test_strict_agrees_and_exploratory_only_warns(tmp_path):
     assert any(v.rule == "artifact.absent" for v in exploratory.warnings), (
         "a draft may name a file the analysis has not written yet, but it is still reported"
     )
+
+
+# -- a file that is not the one pinned is reported by the policy, not just by the engine ----
+
+
+def broken_pin_manifest(tmp_path) -> Manifest:
+    """A real, readable file whose bytes no longer match the digest the manifest records."""
+    path = write_json(tmp_path, json.dumps({"x": 3.2}))
+    return Manifest(
+        project="p",
+        artifacts=(
+            ArtifactRef(id="a", path=path, digest=Digest(algorithm="sha256", value="de" * 32)),
+        ),
+        claims=(Claim(id="c", text="t", evidence=(metric("3.20"),)),),
+    )
+
+
+def test_a_broken_pin_fails_publication_even_though_the_value_matched(tmp_path):
+    # The engine sets BROKEN_PIN and the SARIF renderer prints it, but nothing asserted that a
+    # policy fails over it -- so a paper whose numbers all agree with a file that is provably
+    # not the pinned one passed the publication gate.
+    report = verify(broken_pin_manifest(tmp_path))
+    assert report.decisions[0].outcome is Outcome.VERIFIED, "the comparison still ran"
+    assert report.decisions[0].is_authoritative is False
+
+    assessment = PUBLICATION.assess(report)
+    assert assessment.passed is False
+    violation = next(v for v in assessment.errors if v.rule == "artifact.pin")
+    assert "de" in violation.detail and violation.subject == "a", (
+        "the violation has to name the artifact and both digests"
+    )
+
+
+def test_strict_agrees_and_exploratory_still_reports_the_broken_pin(tmp_path):
+    report = verify(broken_pin_manifest(tmp_path))
+    assert STRICT.assess(report).passed is False
+    # EXPLORATORY relaxes `unpinned`, never `broken`: a draft may not have pinned a file yet,
+    # but a pin that no longer holds is the same error at every stage.
+    assert any(v.rule == "artifact.pin" for v in EXPLORATORY.assess(report).errors)
+
+
+# -- a run that evaluated nothing is not a pass ---------------------------------------------
+
+
+def test_a_report_with_no_evidence_anywhere_fails_rather_than_passing_vacuously(tmp_path):
+    report = verify(Manifest(project="p", artifacts=(), claims=()))
+    assert report.decisions == ()
+    for policy in (EXPLORATORY, PUBLICATION, STRICT):
+        assessment = policy.assess(report)
+        assert assessment.passed is False, f"{policy.name} passed a run that checked nothing"
+        assert any(v.rule == "report.empty" for v in assessment.errors)
+
+
+def test_require_one_check_is_what_makes_that_fail(tmp_path):
+    # The negative half: the emptiness has to be why it failed, not some other condition.
+    report = verify(Manifest(project="p", artifacts=(), claims=()))
+    relaxed = PUBLICATION.model_copy(update={"require_one_check": False})
+    assert relaxed.assess(report).passed is True
+
+
+def test_a_claim_offering_no_evidence_is_reported_and_not_silently_skipped(tmp_path):
+    path = write_json(tmp_path, json.dumps({"x": 3.2}))
+    report = verify(
+        Manifest(
+            project="p",
+            artifacts=(ArtifactRef(id="a", path=path),),
+            claims=(
+                Claim(id="bare", text="asserted with nothing behind it"),
+                Claim(id="c", text="t", evidence=(metric("3.20"),)),
+            ),
+        )
+    )
+    offered = [v for v in PUBLICATION.assess(report).warnings if v.rule == "claim.no_evidence"]
+    assert [v.subject for v in offered] == ["bare"]
+    assert any(v.rule == "claim.no_evidence" for v in STRICT.assess(report).errors), (
+        "strict makes an unsupported claim an error"
+    )
+    assert not any(v.rule == "claim.no_evidence" for v in EXPLORATORY.assess(report).violations), (
+        "a draft may carry a claim it has not evidenced yet"
+    )

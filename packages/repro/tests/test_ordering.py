@@ -44,9 +44,15 @@ def build(
     runs=(),
     pin_plan=True,
     plan_moved=False,
+    plan_unpinned=False,
     results=RESULTS,
 ):
-    """A manifest with one metric claim over `results.json`, and an optional pinned plan."""
+    """A manifest with one metric claim over `results.json`, and an optional pinned plan.
+
+    The plan has four states worth separating: absent from the manifest (`pin_plan=False`),
+    declared with no digest (`plan_unpinned`), declared with a digest that no longer holds
+    (`plan_moved`), and declared and intact.
+    """
     path = tmp_path / "results.json"
     path.write_text(results)
     plan = tmp_path / "PREREG.md"
@@ -55,7 +61,9 @@ def build(
     artifacts = [ArtifactRef(id="results", path=path, digest=Digest.of_file(path))]
     if pin_plan:
         digest = Digest(algorithm="sha256", value="0" * 64) if plan_moved else Digest.of_file(plan)
-        artifacts.append(ArtifactRef(id="plan", path=plan, digest=digest))
+        artifacts.append(
+            ArtifactRef(id="plan", path=plan, digest=None if plan_unpinned else digest)
+        )
     return Manifest(
         project="p",
         artifacts=tuple(artifacts),
@@ -397,3 +405,28 @@ def test_an_undeclared_plan_is_not_a_pinned_plan(tmp_path):
     assert ordering is Ordering.UNCHECKED
     assert reason is OrderingReason.REGISTERED_PLAN_UNPINNED
     assert "nothing pins" in detail
+
+
+def test_a_declared_plan_with_no_digest_does_not_order_the_claim(tmp_path):
+    """The undeclared plan is tested above; the declared-and-unpinned one was not.
+
+    An `ordered` verdict says the plan existed before the run. A declared plan carrying no
+    digest is a path, and any document could be at that path now, so the timestamp attests to
+    nothing -- the same defect as not declaring it, reached down a different branch.
+    """
+    manifest = build(
+        tmp_path,
+        plan_unpinned=True,
+        runs=[run(tmp_path, registered_at=REGISTERED, started_at=AFTER)],
+    )
+    ordering, reason, detail = check(manifest)
+    assert ordering is Ordering.UNCHECKED, "an unpinned plan cannot establish chronology"
+    assert reason is OrderingReason.REGISTERED_PLAN_UNPINNED
+    assert "unpinned_artifact" in detail, "the report has to say which state the plan was in"
+
+
+def test_the_same_manifest_orders_once_the_plan_is_pinned(tmp_path):
+    # The control: everything else about this manifest already satisfies the ordering check,
+    # so the digest is the only thing separating `unchecked` from `ordered`.
+    manifest = build(tmp_path, runs=[run(tmp_path, registered_at=REGISTERED, started_at=AFTER)])
+    assert check(manifest)[0] is Ordering.ORDERED
