@@ -164,7 +164,15 @@ def database(tmp_path):
     connection.execute("CREATE TABLE runs (model TEXT, seed INTEGER, accuracy REAL)")
     connection.executemany(
         "INSERT INTO runs VALUES (?,?,?)",
-        [("resnet", 1, 3.2), ("resnet", 2, 0.88), ("vit", 1, 0.75)],
+        [
+            ("resnet", 1, 3.2),
+            ("resnet", 2, 0.88),
+            ("vit", 1, 0.75),
+            # sqlite columns are dynamically typed, so a REAL column holds these too. Both
+            # reach the adapter as something that is not one number.
+            ("unfinished", 1, None),
+            ("blobbed", 1, sqlite3.Binary(b"\x00\x01\x02\x03")),
+        ],
     )
     connection.commit()
     connection.close()
@@ -206,7 +214,7 @@ def test_an_identifier_cannot_smuggle_sql(database):
     )
     assert decision.reason is Reason.ROW_SELECTOR_INVALID
     connection = sqlite3.connect(database)
-    assert connection.execute("SELECT count(*) FROM runs").fetchone()[0] == 3
+    assert connection.execute("SELECT count(*) FROM runs").fetchone()[0] == 5
     connection.close()
 
 
@@ -227,7 +235,12 @@ def test_an_unsupported_format_never_reports_a_value_present(tmp_path):
     verification."""
     path = tmp_path / "r.parquet"
     path.write_bytes(b"accuracy 3.2 somewhere in here")
-    assert check(TreeLocator(pointer="/accuracy"), path).outcome is not Outcome.VERIFIED
+    decision = check(TreeLocator(pointer="/accuracy"), path)
+    # `is not VERIFIED` was satisfied by five other outcomes, including MISMATCH -- which would
+    # be a false finding about the artifact rather than a declined check.
+    assert decision.outcome is Outcome.UNCHECKED
+    assert decision.reason is Reason.FORMAT_UNSUPPORTED
+    assert "Parquet" in decision.detail
 
 
 # -- the locator is bound into the decision -------------------------------------------------
@@ -283,9 +296,85 @@ def test_an_index_of_the_wrong_rank_is_a_broken_selector(tmp_path):
     assert decision.reason is Reason.ROW_SELECTOR_INVALID
 
 
-def test_an_index_resolving_to_a_slice_is_not_a_value(tmp_path):
+def test_a_fully_indexed_cell_of_a_plain_array_is_a_value(tmp_path):
     numpy = pytest.importorskip("numpy")
     path = tmp_path / "r.npz"
     numpy.savez(path, scores=numpy.array([[1.0, 3.2]]))
-    decision = check(ArrayLocator(array="scores", index=(0, 0)), path)
-    assert decision.outcome in (Outcome.VERIFIED, Outcome.MISMATCH)
+    decision = check(ArrayLocator(array="scores", index=(0, 1)), path)
+    assert decision.outcome is Outcome.VERIFIED
+
+
+@pytest.mark.parametrize(
+    "dtype,held",
+    [([("mean", "f8"), ("sd", "f8")], "mean, sd"), ([("v", "f8", (3,))], "v")],
+)
+def test_an_index_resolving_to_a_record_is_not_a_value(tmp_path, dtype, held):
+    """The rank guard forces a full index, so every element is 0-d -- a structured element too.
+
+    Testing `ndim` therefore could never fail, and a two-field record resolved as one value
+    whose raw form was the string `(0.91, 0.02)`. A comparison against that is meaningless,
+    and it was reported as `verified` when the reported number happened to be in it.
+    """
+    numpy = pytest.importorskip("numpy")
+    path = tmp_path / "r.npy"
+    numpy.save(path, numpy.zeros((2,), dtype=numpy.dtype(dtype)))
+    decision = check(ArrayLocator(index=(0,)), path)
+    assert decision.reason is Reason.SELECTOR_NOT_SCALAR
+    assert decision.outcome is Outcome.NOT_FOUND
+    assert held in decision.detail, "the report has to name what the record holds"
+
+
+def test_a_record_is_never_reported_as_matching_a_number_inside_it(tmp_path):
+    # The failure this guards: `str(numpy.void)` is `(0.91, 0.02)`, so a comparison against
+    # the printed 0.91 could land on a record rather than on a value.
+    numpy = pytest.importorskip("numpy")
+    path = tmp_path / "r.npy"
+    numpy.save(path, numpy.array([(0.91, 0.02)], dtype=[("mean", "f8"), ("sd", "f8")]))
+    assert check(ArrayLocator(index=(0,)), path, reported="0.91").outcome is not Outcome.VERIFIED
+
+
+def test_a_null_cell_is_absent_and_not_the_string_none(database):
+    """`str(None)` is `"None"`, which is a value: it compares, and it can even match.
+
+    A run that did not finish writing its accuracy asserts nothing about the accuracy. That is
+    the same fact as a pointer that does not resolve, and it gets the same verdict.
+    """
+    decision = check(
+        SqliteLocator(table="runs", column="accuracy", where={"model": "unfinished"}), database
+    )
+    assert decision.outcome is Outcome.NOT_FOUND
+    # The reason names the addressing scheme rather than the cause, so an empty cell and an
+    # absent row share it; the detail is what separates them.
+    assert decision.reason is Reason.ROW_ABSENT
+    assert "NULL" in decision.detail
+    missing = check(
+        SqliteLocator(table="runs", column="accuracy", where={"model": "nosuchmodel"}), database
+    )
+    assert "no row" in missing.detail and "NULL" not in missing.detail
+
+
+def test_a_blob_cell_is_not_a_scalar(database):
+    decision = check(
+        SqliteLocator(table="runs", column="accuracy", where={"model": "blobbed"}), database
+    )
+    assert decision.reason is Reason.SELECTOR_NOT_SCALAR
+    assert decision.outcome is Outcome.NOT_FOUND
+
+
+def test_a_json_null_is_absent_rather_than_a_value(tmp_path):
+    # Same defect in the tree adapter: `null` is JSON for "no value recorded", and stringifying
+    # it produces `None`, which a comparison then treats as data.
+    path = tmp_path / "r.json"
+    path.write_text(json.dumps({"accuracy": None}))
+    decision = check(TreeLocator(pointer="/accuracy"), path)
+    assert decision.reason is Reason.POINTER_ABSENT
+    assert decision.outcome is Outcome.NOT_FOUND
+    assert "null" in decision.detail
+
+
+def test_a_json_null_never_verifies_against_the_word_none(tmp_path):
+    path = tmp_path / "r.json"
+    path.write_text(json.dumps({"accuracy": None}))
+    assert check(TreeLocator(pointer="/accuracy"), path, reported="None").outcome is not (
+        Outcome.VERIFIED
+    )
