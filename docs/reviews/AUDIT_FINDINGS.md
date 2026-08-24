@@ -14,14 +14,14 @@ exists, so they are not "bugs" in the ordinary sense.
 |---|---|---|
 | [x] | The normalized fallback stripped every non-alphanumeric character, so `p < 0.05` matched a source reading `p = 0.05`, and `-0.42` matched `0.42` | citations/verify.py |
 | [x] | A quotation folding to the empty string matched every source (`"" in doc`) | citations/verify.py |
-| [ ] | Duplicate artifact ids drop every declaration but the last; a broken pin vanishes from the report and `strict` passes with zero violations | repro/verify.py |
+| [x] | Duplicate artifact ids drop every declaration but the last; a broken pin vanishes from the report and `strict` passes with zero violations | repro/verify.py |
 | [ ] | Regeneration compares the produced file against the record's own declared digest, never against the pinned artifact, so a record can declare its own answer | repro/regenerate.py |
 | [ ] | A no-op command "reproduces" an output that was copied in as its own input | repro/regenerate.py |
 | [ ] | `Path.relative_to` is lexical, so an absolute artifact path containing `..` escapes the sandbox on both the read and write side | repro/regenerate.py |
-| [ ] | `compare_decimal` reports two identical values as a mismatch beyond 28 significant digits — a tool defect emitted as a contradicted manuscript | repro/verify.py |
-| [ ] | Duplicate CSV column names resolve to the last silently; a duplicated predicate column reports a present row as absent | repro/resolve.py |
-| [ ] | Duplicate JSON keys resolve last-wins, while YAML raises for exactly this | repro/resolve.py |
-| [ ] | A failed `page` assertion is reported `verified`; no policy reads decision warnings | repro/verify.py |
+| [x] | `compare_decimal` reports two identical values as a mismatch beyond 28 significant digits — a tool defect emitted as a contradicted manuscript | repro/verify.py |
+| [x] | Duplicate CSV column names resolve to the last silently; a duplicated predicate column reports a present row as absent | repro/resolve.py |
+| [x] | Duplicate JSON keys resolve last-wins, while YAML raises for exactly this | repro/resolve.py |
+| [x] | A failed `page` assertion is reported `verified`; no policy reads decision warnings | repro/verify.py |
 | [ ] | A confirmatory claim spanning several artifacts is `ordered` when only one has a producing run | repro/verify.py |
 | [ ] | An undeclared `registered_plan` is never pin-checked, so an unpinned plan yields `ordered` — and declaring it scores worse | repro/verify.py |
 | [ ] | Reusing a `run_id` defeats the confirmatory-claim guard and `verify` reports all checks passed | results/cli.py |
@@ -45,8 +45,8 @@ exists, so they are not "bugs" in the ordinary sense.
 | [ ] | `--osf` drops a heading whose capitalization differs, silently | prereg/osf.py |
 | [ ] | A `canon_version` mismatch leaves the status `INTACT` and is never printed | results/ledger.py |
 | [ ] | `verify --files` keys by path, so only the most recent seal of a path is checked | results/cli.py |
-| [ ] | An unreadable or directory artifact path crashes the whole run instead of producing a report | repro/verify.py |
-| [ ] | Negative array indices are unchecked: `-99` becomes a backend defect, `-1` silently resolves | repro/resolve.py |
+| [x] | An unreadable or directory artifact path crashes the whole run instead of producing a report | repro/verify.py |
+| [x] | Negative array indices are unchecked: `-99` becomes a backend defect, `-1` silently resolves | repro/resolve.py |
 | [ ] | Policy severities collide on `claim_id/kind`, so an error-level mismatch can render as a warning | repro/renderers/sarif.py |
 | [ ] | A regression is verified against whatever revision is checked out, and counts are labelled with the pinned commit | repro/regression.py |
 | [ ] | `EntryStatus.usable` ignores `dirty` | repro/corpus.py |
