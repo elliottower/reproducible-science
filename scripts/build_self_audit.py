@@ -39,12 +39,10 @@ CLAIMS = [
      "/quotation_corpus/unparseable_files"),
     ("resolver-written", "resolver wrote 172 identifiers", "172",
      "/resolver_identifiers/written"),
-    ("resolver-checkable", "121 are checkable", "121", "/resolver_identifiers/checkable"),
+    ("resolver-checkable", "145 are checkable", "145", "/resolver_identifiers/checkable"),
     ("resolver-absent", "12\nname a work whose first author does not appear", "12",
      "/resolver_identifiers/first_author_absent"),
-    ("resolver-rate", "9.9%", "9.9", "/resolver_identifiers/absent_rate"),
-    ("resolver-unresolved", "24 carry a DOI that Crossref does not resolve", "24",
-     "/resolver_identifiers/unresolved"),
+    ("resolver-rate", "8.3%", "8.3", "/resolver_identifiers/absent_rate"),
     ("conformance-fixtures", "Thirteen fixtures", "13", "/conformance/fixtures"),
 ]
 

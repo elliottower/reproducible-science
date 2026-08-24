@@ -16,13 +16,12 @@
     "warnings": {}
   },
   "resolver_identifiers": {
-    "absent_rate": 9.9,
-    "checkable": 121,
+    "absent_rate": 8.3,
+    "checkable": 145,
     "first_author_absent": 12,
-    "first_author_present": 109,
+    "first_author_present": 133,
     "no_authors": 6,
     "no_record": 21,
-    "unresolved": 24,
     "written": 172
   }
 }

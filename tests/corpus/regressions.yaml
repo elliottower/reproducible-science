@@ -1,0 +1,25 @@
+# Findings recorded against real projects, at the revision that showed them.
+#
+# An entry with no `after` is an open finding. It is listed rather than omitted, because a
+# corpus that shows only closed findings reports a tool that never catches anything current.
+#
+# `repository` is empty where a project has no public remote yet. Those entries reproduce only
+# where the repository already exists, which `RegressionCorpus.without_remote` reports so the
+# gap stays visible rather than becoming a silent local-only dependency.
+
+findings:
+  - name: rna-table5-mean-ps
+    summary: >-
+      Table 5 of the RNA structure-awareness manuscript reports a mean perturbation
+      specificity that disagrees with the value the pipeline stored, for 9 of the 10 models
+      with a stored result file. NT v2 is printed as 0.001 against a stored 0.0, and HyenaDNA
+      as 0.0003 against 9.73e-7.
+    repository: ""          # TODO: fill in when the public remote exists
+    local_path: ~/Documents/GitHub/rna-structure-awareness
+    before:
+      commit: a41c56493493d2192723f00436bb6b63706626f3
+      manifest: manifests/rna_table5.yaml
+      expected:
+        mismatch: 9
+        verified: 1
+    # after: recorded once the manuscript is corrected

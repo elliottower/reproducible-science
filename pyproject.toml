@@ -34,3 +34,9 @@ Homepage = "https://github.com/elliottower/reproducible-science"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/repro"]
+
+[tool.pytest.ini_options]
+markers = [
+    "corpus: reads repositories outside this one, and may fetch them",
+]
+addopts = "-m 'not corpus'"
