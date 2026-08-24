@@ -4,3 +4,6 @@ __pycache__/
 dist/
 *.egg-info/
 .DS_Store
+
+# adduce writes its report and the repro sidecar here
+.adduce/
