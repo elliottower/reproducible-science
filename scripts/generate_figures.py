@@ -25,6 +25,7 @@ from citations.models import load_claim_file
 from citations.text import surname_variants
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
+REPRO = ROOT / "packages" / "repro"
 GH = pathlib.Path.home() / "Documents/GitHub"
 LIB = GH / "citations-library"
 
@@ -83,8 +84,8 @@ def resolver_identifiers() -> dict:
 
 
 def conformance() -> dict:
-    cases = sorted((ROOT / "tests/conformance/cases").iterdir())
-    proc = subprocess.run([sys.executable, "-m", "pytest", "tests/", "-q", "--no-header"],
+    cases = sorted((REPRO / "tests/conformance/cases").iterdir())
+    proc = subprocess.run([sys.executable, "-m", "pytest", "-q", "--no-header"],
                           cwd=ROOT, capture_output=True, text=True)
     m = re.search(r"(\d+) passed", proc.stdout)
     return {"fixtures": len(cases), "tests_passing": int(m.group(1)) if m else None}
@@ -100,10 +101,15 @@ def metric_corpus() -> dict:
     from repro.corpus import Corpus, ensure
     from repro.regression import _manifest_against
 
-    here = ROOT / "tests" / "corpus"
+    here = REPRO / "tests" / "corpus"
     cp = here / "corpus.yaml"
     rp = here / "regressions.yaml"
     out: dict[str, dict] = {}
+
+    # Loud rather than silent. A missing corpus file once made this emit an empty section, so
+    # the paper's audit figures vanished from the manifest while everything still "passed".
+    if not cp.is_file():
+        raise FileNotFoundError(f"corpus manifest not found: {cp}")
 
     if cp.is_file():
         corpus = Corpus.model_validate({**(yaml.safe_load(cp.read_text()) or {}), "path": cp})

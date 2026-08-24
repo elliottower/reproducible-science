@@ -426,6 +426,6 @@ An implementation conforms when:
 8. The engine returns facts and computes no verdict.
 9. No library entry point prints, exits, or mutates global state.
 
-Conformance is executable: `tests/conformance/` holds eighteen fixtures, one per row of the
+Conformance is executable: `packages/repro/tests/conformance/` holds eighteen fixtures, one per row of the
 table in §4 plus the escaping, undeclared-artifact, unpinned and table-addressing cases,
 each with canonical expected JSON.

@@ -6,7 +6,6 @@ pipeline stored. Nothing here decides whether a disagreement is the table's faul
 pipeline's; it reports that they differ.
 """
 import json, pathlib, sys
-sys.path.insert(0, str(pathlib.Path.home() / "Documents/GitHub/reproducible-science/src"))
 from repro import Digest
 
 R = pathlib.Path.home() / "Documents/GitHub/rna-sa-public"
