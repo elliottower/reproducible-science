@@ -53,7 +53,10 @@ GENERATED: tuple[tuple[str, tuple[str, ...], tuple[str, ...], tuple[str, ...]], 
     (
         "paper/repro.yaml",
         ("python", "scripts/build_self_audit.py"),
-        ("provenance.commit", "provenance.dirty"),
+        # All three are facts about the checkout rather than about the content: the commit
+        # moves with every commit, `dirty` depends on the working tree, and the remote URL
+        # differs between a local clone and a CI checkout of the same repository.
+        ("provenance.commit", "provenance.dirty", "provenance.repository"),
         (),
     ),
 )
