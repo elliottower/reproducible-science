@@ -315,11 +315,11 @@ def test_a_cached_response_is_reused_rather_than_refetched(tmp_path, monkeypatch
 # --- exit codes ---------------------------------------------------------------------------------
 
 
-def test_a_run_with_nothing_to_check_is_not_a_pass(capsys):
+def test_a_run_with_nothing_to_check_is_not_a_pass():
     assert A.render(A.AuditReport(where="library /nowhere"), quiet=False) == 2
 
 
-def test_a_clean_run_exits_zero(capsys):
+def test_a_clean_run_exits_zero():
     rep = A.AuditReport(
         where="library /x", entries={"a": A.EntryAudit(status="ok", checked_against="crossref")}
     )
@@ -327,7 +327,7 @@ def test_a_clean_run_exits_zero(capsys):
     assert rep.ok
 
 
-def test_an_unresolved_entry_keeps_the_run_from_passing(capsys):
+def test_an_unresolved_entry_keeps_the_run_from_passing():
     rep = A.AuditReport(where="library /x", entries={"a": A.EntryAudit(status="unresolved")})
     assert A.render(rep, quiet=False) == 1
     assert not rep.ok, "no measurement was made, so it is not a pass"
