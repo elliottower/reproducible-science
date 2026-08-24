@@ -1,0 +1,9 @@
+{
+  "name": "citations",
+  "description": "Check that quotations resolve in the sources they cite, and keep a library of the ones that do",
+  "version": "0.1.0",
+  "author": { "name": "Elliot Tower", "email": "elliot@elliottower.ai" },
+  "repository": "https://github.com/elliottower/citations",
+  "license": "MIT",
+  "keywords": ["citations", "bibliography", "provenance", "reproducibility"]
+}
