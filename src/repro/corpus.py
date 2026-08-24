@@ -133,8 +133,11 @@ def ensure(entry: "CorpusEntry", base: pathlib.Path,
     cheap, and any commit remains reachable without a full copy.
     """
     found = locate(entry, base, cache)
-    if found is not None and (not entry.commit or _at_commit(found, entry.commit)):
+    if found is not None and _is_pinned_revision(entry, found):
         return found
+    # The local checkout is at another revision, or its tree is dirty. A working tree with
+    # uncommitted changes is not the revision it sits on, and verifying against it produces
+    # a result nobody else can reproduce, so prefer a clean copy where one can be fetched.
     if not entry.repository or offline():
         return found
 
@@ -154,6 +157,24 @@ def ensure(entry: "CorpusEntry", base: pathlib.Path,
     except FetchError:
         return None
     return dest
+
+
+def _is_pinned_revision(entry: "CorpusEntry", root: pathlib.Path) -> bool:
+    """Whether this checkout is the revision the entry pins, with nothing uncommitted.
+
+    Dirtiness counts. A tree at the right commit with edited files holds bytes that exist
+    only on that machine, and an entry verified against them is not reproducible.
+    """
+    if entry.commit and not _at_commit(root, entry.commit):
+        return False
+    return not _dirty(root)
+
+
+def _dirty(root: pathlib.Path) -> bool:
+    try:
+        return bool(_git(["status", "--porcelain"], root))
+    except FetchError:
+        return False
 
 
 def _at_commit(root: pathlib.Path, commit: str) -> bool:
