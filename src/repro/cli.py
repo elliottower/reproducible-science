@@ -20,6 +20,7 @@ from repro.exceptions import ReproError
 from repro.manifest import DEFAULT_NAME, find, load
 from repro.models import Availability, Outcome, Validity
 from repro.policy import PROFILES
+from repro.renderers import to_sarif
 from repro.verify import verify as run_verify
 
 CLAUDE_MD = """\
@@ -95,6 +96,9 @@ def cmd_verify(args: argparse.Namespace) -> int:
     policy = PROFILES[args.policy]
     assessment = policy.assess(report)
 
+    if args.format == "sarif":
+        print(json.dumps(to_sarif(report, assessment, version=__version__), indent=2))
+        return 0 if assessment.passed else 1
     if args.format == "json":
         print(json.dumps({"report": report.model_dump(mode="json"),
                           "assessment": assessment.model_dump(mode="json")}, indent=2))
@@ -144,7 +148,7 @@ def main(argv: list[str] | None = None) -> int:
     p_verify = sub.add_parser("verify", help="check every evidence assertion in repro.yaml")
     p_verify.add_argument("manifest", nargs="?", help=f"path to {DEFAULT_NAME}")
     p_verify.add_argument("--policy", choices=sorted(PROFILES), default="publication")
-    p_verify.add_argument("--format", choices=("text", "json"), default="text")
+    p_verify.add_argument("--format", choices=("text", "json", "sarif"), default="text")
     p_verify.set_defaults(func=cmd_verify)
 
     args = parser.parse_args(argv)

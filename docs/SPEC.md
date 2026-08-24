@@ -280,6 +280,20 @@ so the check establishes internal consistency and not that a registration is con
 with what it claims; an external timestamp authority closes that and is out of scope. And the
 check reads a declared run record rather than observing execution.
 
+## 7.5 Output formats
+
+A renderer reads a report and an assessment and produces bytes. None computes anything, so two
+renderers over one report always say the same thing.
+
+`sarif` emits SARIF 2.1.0, which GitHub renders inline on a pull request. Two parts of that
+format fit: `artifacts[].hashes` carries a sha-256 per file, so the digests a report was
+computed against travel with it; and `result.kind` is separate from `result.level`, so a check
+that could not run is `notApplicable` rather than a low-severity failure. Most report formats
+cannot express that difference, and it is the one this document exists to preserve.
+
+A policy raises a result's `level` and never changes its `kind`: what happened does not depend
+on what a project considers acceptable.
+
 ## 8. What this composes with
 
 | layer | prior art | relation |
