@@ -9,6 +9,7 @@ import pytest
 import yaml
 
 from citations import cli as C
+from citations.models import load_claim_file
 
 
 def run(args, cwd, env_home=None):
@@ -67,9 +68,10 @@ def test_claims_block_is_read_under_either_name(tmp_path):
         (tmp_path / name).write_text(
             f"source:\n  citation: x\n  local: {src}\n{block}:\n  c1:\n    quotes:\n"
             f"      - exact: 'matches the Haar expectation'\n")
-    found = list(C._quotes_from_claims(tmp_path))
-    assert len(found) == 2
-    assert {f[0] for f in found} == {"a", "b"}
+    files = [load_claim_file(tmp_path / n) for n in ("a.yaml", "b.yaml")]
+    assert [len(f.claims) for f in files] == [1, 1]
+    assert {f.name for f in files} == {"a", "b"}
+    assert all(f.claims["c1"].quotes[0].text == "matches the Haar expectation" for f in files)
 
 
 # --- which library did that clean run actually check? ------------------------------------------

@@ -23,63 +23,13 @@ import argparse
 import hashlib
 import pathlib
 import re
-import sys
 import unicodedata
 
 import yaml
 
-from citations.paths import home as _home
-
-ROOT = _home()
-RECORDS = ROOT / "records"
-ENRICHMENT = ROOT / "enrichment.yaml"   # facts resolved after a .bib was written
-GITHUB = pathlib.Path.home() / "Documents" / "GitHub"
-
-# Each paper: where its bibliography lives.
-#
-# The three mechanistic-* papers read from their -NEW repositories, which exist because those
-# were rebuilt clean for submission. The others read from their working repositories directly:
-# they are research repos where the experiments, data and pre-registrations are the substance,
-# and a stripped-down copy of one would be a different artifact, not a tidier version of it.
-PAPERS = {
-    "mechanistic-validity": {
-        "bib": GITHUB / "mechanistic-validity-NEW2" / "paper" / "references.bib",
-        "sources": GITHUB / "mechanistic-validity-NEW2" / "sources",
-        "claims": GITHUB / "mechanistic-validity-NEW2" / "claims",
-    },
-    "mechanistic-reference": {
-        "bib": GITHUB / "mechanistic-reference-NEW" / "paper" / "references.bib",
-    },
-    "epistatic-circuits": {
-        "bib": GITHUB / "epistatic-circuits" / "paper" / "references.bib",
-    },
-    "neural-geometry-reliability": {
-        "bib": GITHUB / "neural-geometry-reliability" / "paper" / "references.bib",
-    },
-    "knockout-epistasis-dynamics": {
-        "bib": GITHUB / "knockout-epistasis-dynamics" / "paper" / "refs.bib",
-    },
-    "msms-subspace-collapse": {
-        "bib": GITHUB / "msms-subspace-collapse" / "paper" / "references.bib",
-    },
-    "mechanistic-views": {
-        # v30 replaced the hand-written thebibliography block with a real .bib, so this
-        # reads structured fields instead of guessing at positional ones
-        "bib": GITHUB / "mechanistic-views-NEW" / "paper" / "references.bib",
-    },
-    "mechanistic-nosology": {
-        "bib": GITHUB / "mechanistic-nosology" / "paper" / "references.bib",
-        "claims": GITHUB / "mechanistic-nosology" / "claims",
-    },
-    "neurology-nosology": {
-        "bib": GITHUB / "neurology-nosology" / "paper" / "references.bib",
-        "claims": GITHUB / "neurology-nosology" / "claims",
-    },
-    "mechanistic-admissibility": {
-        "bib": GITHUB / "mechanistic-admissibility" / "paper" / "tex" / "mechscope_references.bib",
-        "claims": GITHUB / "mechanistic-admissibility" / "claims",
-    },
-}
+from citations import config, paths
+from citations.models import load_claim_file
+from citations.exceptions import ClaimFileError
 
 FIELD = re.compile(r"(\w+)\s*=\s*[{\"](.*?)[}\"]\s*,?\s*$", re.S)
 
@@ -244,52 +194,73 @@ def parse_bibitem(path: pathlib.Path) -> dict[str, dict]:
     return out
 
 
-def contributions() -> dict[str, dict[str, dict]]:
-    got = {}
-    for name, cfg in PAPERS.items():
-        if cfg.get("bib") and cfg["bib"].exists():
-            got[name] = parse_bib(cfg["bib"])
-        elif cfg.get("bibitem") and cfg["bibitem"].exists():
-            got[name] = parse_bibitem(cfg["bibitem"])
+def contributions(cfg: config.LibraryConfig,
+                  library: pathlib.Path) -> tuple[dict[str, dict[str, dict]], list[str]]:
+    """What each paper contributes, and which configured paths were not there.
+
+    A missing bibliography is returned rather than skipped. A paper contributing zero entries
+    because its path is wrong looks exactly like a paper that cites nothing, and the second is
+    a fact while the first is a broken config.
+    """
+    got: dict[str, dict[str, dict]] = {}
+    missing: list[str] = []
+    for name, paper in cfg.papers.items():
+        bib = paper.resolved("bib", library)
+        bibitem = paper.resolved("bibitem", library)
+        if bib and bib.exists():
+            got[name] = parse_bib(bib)
+        elif bibitem and bibitem.exists():
+            got[name] = parse_bibitem(bibitem)
         else:
             got[name] = {}
-    return got
+            named = bib or bibitem
+            missing.append(f"{name}: {named}" if named
+                           else f"{name}: no bib or bibitem configured")
+    return got, missing
 
 
-def enrich_from_claims(entries: dict[str, dict]) -> None:
-    """Pull the pinned artifact out of each audited claim record.
+def enrich_from_claims(entries: dict[str, dict], claims_dir: pathlib.Path) -> int:
+    """Pull the pinned artifact out of each claim record in one paper's claims/.
 
-    The sixteen audited papers record their source PDF and its sha256 in claims/, which is
-    where the quote gate reads it from. Those are the artifacts actually read, so they are the
-    ones worth linking.
+    A claims file records the source PDF and its sha256, which is where the quote gate reads
+    them from. Those are the artifacts actually read, so they are the ones worth linking.
+
+    Applies to every paper that configures a `claims` directory. It read one hardcoded paper
+    before, so pinned artifacts recorded by the others were never folded in.
     """
-    d = PAPERS["mechanistic-validity"].get("claims")
-    if not d or not d.exists():
-        return
-    for p in d.glob("*.yaml"):
-        r = yaml.safe_load(p.read_text()) or {}
-        s = r.get("source") or {}
-        e = entries.get(s.get("citation"))
+    filled = 0
+    for p in sorted(claims_dir.glob("*.yaml")):
+        try:
+            cf = load_claim_file(p)
+        except ClaimFileError:
+            continue                      # reported by `verify`; not this command's business
+        e = entries.get(cf.source.citation)
         if not e:
             continue
-        for k in ("local", "sha256", "url"):
-            if s.get(k) and not e.get(k):
-                e[k] = s[k]
+        for field in ("local", "sha256", "url"):
+            value = getattr(cf.source, field, None)
+            if value and not e.get(field):
+                e[field] = value
+                filled += 1
+    return filled
 
 
-def enrich_from_validity(entries: dict[str, dict]) -> None:
-    """Fold in the url/doi/sha256 already resolved in mechanistic-validity's sources/."""
-    d = PAPERS["mechanistic-validity"].get("sources")
-    if not d or not d.exists():
-        return
-    for p in d.glob("*.yaml"):
-        r = yaml.safe_load(p.read_text()) or {}
+def enrich_from_sources(entries: dict[str, dict], sources_dir: pathlib.Path) -> int:
+    """Fold in url/doi/arxiv/sha256 already resolved in a paper's own sources/."""
+    filled = 0
+    for p in sorted(sources_dir.glob("*.yaml")):
+        try:
+            r = yaml.safe_load(p.read_text()) or {}
+        except yaml.YAMLError:
+            continue
         e = entries.get(r.get("citation"))
         if not e:
             continue
         for k in ("url", "doi", "arxiv", "sha256", "local"):
             if r.get(k) and not e.get(k):
                 e[k] = r[k]
+                filled += 1
+    return filled
 
 
 def carry_forward(merged: dict) -> int:
@@ -307,9 +278,10 @@ def carry_forward(merged: dict) -> int:
     the slug the record was already filed under -- it would fill the field and leave the work
     split across two records. Everything else lands here.
     """
-    if not ENRICHMENT.exists():
+    enrichment = paths.enrichment()
+    if not enrichment.exists():
         return 0
-    overlay = yaml.safe_load(ENRICHMENT.read_text()) or {}
+    overlay = yaml.safe_load(enrichment.read_text()) or {}
     kept = 0
     for slug, extra in overlay.items():
         rec = merged.get(slug)
@@ -331,9 +303,10 @@ def audit_existing(merged: dict) -> tuple[list[tuple[str, str, str]], list[str]]
     """
     losing: list[tuple[str, str, str]] = []
     stale: list[str] = []
-    if not RECORDS.exists():
+    records = paths.records()
+    if not records.exists():
         return losing, stale
-    for p in sorted(RECORDS.glob("*.yaml")):
+    for p in sorted(records.glob("*.yaml")):
         slug = p.stem
         rec = merged.get(slug)
         if rec is None:
@@ -341,7 +314,7 @@ def audit_existing(merged: dict) -> tuple[list[tuple[str, str, str]], list[str]]
             continue
         try:
             old = yaml.safe_load(p.read_text()) or {}
-        except Exception:
+        except (yaml.YAMLError, OSError):
             continue
         for field in ("doi", "arxiv"):
             if old.get(field) and not rec.get(field):
@@ -349,18 +322,41 @@ def audit_existing(merged: dict) -> tuple[list[tuple[str, str, str]], list[str]]
     return losing, stale
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--scan", action="store_true")
-    a = ap.parse_args()
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(prog="citations build", description=__doc__.split("\n")[0])
+    ap.add_argument("--scan", action="store_true", help="report, write nothing")
+    a = ap.parse_args(argv)
 
-    got = contributions()
-    for name, entries in got.items():
-        print(f"  {name:<24}{len(entries):>4} entries")
-    enrich_from_validity(got.get("mechanistic-validity", {}))
-    enrich_from_claims(got.get("mechanistic-validity", {}))
+    library = paths.home()
+    cfg = config.load(library)
+    if not cfg.papers:
+        print(f"no papers configured in {config.config_path(library)}\n")
+        print("list the bibliographies that cite into this library:\n")
+        print("    papers:\n      my-paper:\n        bib: ~/path/to/references.bib")
+        return 2
 
-    overlay = yaml.safe_load(ENRICHMENT.read_text()) or {} if ENRICHMENT.exists() else {}
+    got, missing = contributions(cfg, library)
+    for name, entries in sorted(got.items()):
+        print(f"  {name:<28}{len(entries):>4} entries")
+    if missing:
+        # A paper contributing nothing because its path is wrong reads exactly like a paper
+        # that cites nothing, so the difference is stated rather than left to be inferred.
+        print("\n  configured but not on disk:")
+        for m in missing:
+            print(f"    {m}")
+
+    filled = 0
+    for name, paper in cfg.papers.items():
+        entries = got.get(name) or {}
+        sources = paper.resolved("sources", library)
+        if sources and sources.is_dir():
+            filled += enrich_from_sources(entries, sources)
+        claims = paper.resolved("claims", library)
+        if claims and claims.is_dir():
+            filled += enrich_from_claims(entries, claims)
+
+    enrichment = paths.enrichment()
+    overlay = (yaml.safe_load(enrichment.read_text()) or {}) if enrichment.exists() else {}
 
     merged: dict[str, dict] = {}
     for paper, entries in got.items():
@@ -400,6 +396,7 @@ def main() -> int:
     unidentified = sum(1 for r in merged.values() if r["slug"].startswith("t-"))
     print(f"  with no DOI or arXiv id   {unidentified:>4}   (joined on title, less reliable)")
     print(f"  fields carried forward    {kept:>4}   (resolved after the .bib was written)")
+    print(f"  filled from claims/sources{filled:>4}   (pinned artifacts and identifiers)")
 
     if divergent:
         print("\n  same work, different key:")
@@ -413,20 +410,21 @@ def main() -> int:
         for slug, field, val in losing[:12]:
             print(f"    {slug:<44}{field}={val}")
         print(f"  {len(losing)} in total. Records are generated, so these are dropped on write.")
-        print(f"  Put them in the citing .bib, or in {ENRICHMENT.name} keyed by slug to fill the")
+        print(f"  Put them in the citing .bib, or in {enrichment.name} keyed by slug to fill the")
         print("  field -- note that enrichment cannot re-slug a record, only a .bib identifier can.")
     if stale:
         print(f"\n  {len(stale)} record file(s) no longer produced by any bibliography (superseded);")
         print("  they remain on disk and are not deleted.")
 
     if not a.scan:
-        RECORDS.mkdir(parents=True, exist_ok=True)
+        records = paths.records()
+        records.mkdir(parents=True, exist_ok=True)
         for s, r in merged.items():
-            (RECORDS / f"{s}.yaml").write_text(
+            (records / f"{s}.yaml").write_text(
                 yaml.safe_dump(r, sort_keys=False, allow_unicode=True, width=100))
         print(f"\n  wrote {len(merged)} records")
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    raise SystemExit(main())

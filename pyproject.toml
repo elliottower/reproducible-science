@@ -7,7 +7,7 @@ requires-python = ">=3.10"
 license = { text = "MIT" }
 authors = [{ name = "Elliot Tower", email = "elliot@elliottower.ai" }]
 keywords = ["citations", "bibliography", "provenance", "reproducibility", "bibtex"]
-dependencies = ["PyYAML>=6.0", "platformdirs>=3.0"]
+dependencies = ["PyYAML>=6.0", "platformdirs>=3.0", "pydantic>=2.0"]
 
 [project.optional-dependencies]
 lint = ["papis>=0.15"]
