@@ -1,0 +1,9 @@
+{
+  "name": "prereg",
+  "description": "Freeze a plan before you run it, and record what changed after",
+  "version": "0.1.0",
+  "author": { "name": "Elliot Tower", "email": "elliot@elliottower.ai" },
+  "repository": "https://github.com/elliottower/prereg",
+  "license": "MIT",
+  "keywords": ["preregistration", "reproducibility", "provenance", "experiments"]
+}
