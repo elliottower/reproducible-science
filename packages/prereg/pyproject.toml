@@ -19,7 +19,7 @@ classifiers = [
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
 ]
-dependencies = []  # stdlib only
+dependencies = [  ] # stdlib only
 scripts.prereg = "prereg.cli:main"
 
 [tool.hatch]

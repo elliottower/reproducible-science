@@ -49,8 +49,9 @@ than to the midpoint because seven of the nine disagreements were third-signific
 differences that decimal comparison at printed precision resolves.
 
 The frame was read and the sample drawn before the hypotheses were written.
-`_bibliography/published.bib` on the `sources` branch of `ReScience/rescience.github.io`
-(sha256 `9b2c637135f5828c2b6213fef5f90155cb0c0350997846c28e1a17552a7e58e4`) holds 223 entries:
+`_bibliography/published.bib` on the `sources` branch of `ReScience/rescience.github.io`,
+vendored here as `published.bib` (sha256 `9b2c637135f5828c`) so the draw reproduces without
+network access, holds 223 entries:
 197 replications, 18 reproductions, 7 editorials, 1 letter. Of the 215 research articles, 214
 carry a non-empty `code_url` or `code_doi`, 160 a `code_swh`, and 29 a data link. All 60 drawn
 articles carry a code link, 42 carry a `code_swh`, and they span 16 domains. That reading cost

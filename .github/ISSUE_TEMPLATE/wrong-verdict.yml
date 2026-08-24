@@ -1,0 +1,38 @@
+name: Wrong verdict
+description: A check reported something the evidence does not support
+labels: [bug, verdict]
+body:
+  - type: markdown
+    attributes:
+      value: >
+        Use this when the outcome itself is wrong — evidence that is present reported absent,
+        or worse, evidence that is absent reported verified. A tool that can be made to say
+        `verified` for evidence that is not there has a defect of a different kind from a
+        crash, and it is treated as one.
+
+  - type: dropdown
+    id: direction
+    attributes:
+      label: Which way is it wrong
+      options:
+        - "reported verified, but the evidence is not there"
+        - "reported mismatch or not_found, but the evidence is there"
+        - "reported unchecked, but the check could have run"
+        - "reported an error for a condition that is a normal outcome"
+    validations:
+      required: true
+
+  - type: textarea
+    id: evidence
+    attributes:
+      label: The manifest and the artifact
+      render: yaml
+    validations:
+      required: true
+
+  - type: textarea
+    id: report
+    attributes:
+      label: What repro reported
+      description: "Output of `repro verify --format json`, if you can."
+      render: json

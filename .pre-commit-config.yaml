@@ -1,77 +1,101 @@
 # Three tiers. Commit hooks stay under about ten seconds; anything slower runs on push or in
 # CI, because a commit that takes three minutes is a commit people bypass.
 #
-#     uv run pre-commit install --hook-type pre-commit --hook-type pre-push
+#     make hooks        # or: prek install --hook-type pre-commit --hook-type pre-push
 #
-# `prek` is a faster drop-in and reads this same file if you prefer it.
+# `prek` is a faster drop-in and reads this same file; plain `pre-commit` works too.
+#
+# Order matters, and the run is arranged in four passes:
+#
+#   1. dangerous     a secret, or a file too large to want back
+#   2. parses        a formatter on a broken file wastes the round
+#   3. rewrite       formatters, which mutate and so must precede validators
+#   4. check         validators, which read the rewritten result
+#
+# Secret detection runs first on purpose: once a credential is committed, rotating it is the
+# only remedy, so it is worth failing before anything else has run.
 
 default_install_hook_types: [pre-commit, pre-push, commit-msg]
 default_stages: [pre-commit]
 
-# Conformance fixtures are pinned by digest: their exact bytes are the fixture. A hook that
-# appends a trailing newline breaks every pin in the corpus, which is not hypothetical -- it
-# happened the first time these hooks ran here.
+# Nothing here may modify a file whose bytes are pinned. Three kinds:
+#
+#   * conformance fixtures, whose exact bytes are the fixture -- a trailing newline breaks
+#     every pin in the corpus, which happened the first time these hooks ran;
+#   * registrations, codebooks and frames, where a digest has been cited and any edit
+#     invalidates it;
+#   * manuscripts pinned by paper/repro.yaml, and the quotations asserted against them.
+#
+# A formatting hook that rewrites a registration is worse than no hook: it breaks the record
+# silently, and the repair afterwards is indistinguishable from tampering.
 exclude: |
   (?x)^(
     packages/repro/tests/conformance/cases/.*|
     packages/repro/examples/.*|
+    experiments/.*/(PREREG|CODEBOOK)\.md|
+    experiments/.*/(frame\.json|published\.bib)|
+    paper/DRAFT_.*\.md|
+    paper/(figures\.json|repro\.yaml)|
+    paper/prior_art/.*|
     uv\.lock
   )$
 
 repos:
+  # ---- 1. dangerous ----------------------------------------------------------------------
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.0
+    hooks:
+      - id: gitleaks
+
+  # ---- 2. parses -------------------------------------------------------------------------
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
     hooks:
+      - id: check-added-large-files
+        args: [--maxkb=1024]
+      - id: detect-private-key
       - id: check-ast
-      - id: check-case-conflict     # macOS hides case-only collisions that break on Linux
       - id: check-json
       - id: check-toml
       - id: check-yaml
         args: [--allow-multiple-documents]
       - id: check-merge-conflict
+      - id: check-case-conflict     # macOS hides case-only collisions that break on Linux
       - id: check-symlinks
       - id: destroyed-symlinks
-      - id: check-added-large-files
-        args: [--maxkb=1024]
+      - id: forbid-submodules
       - id: check-executables-have-shebangs
       - id: check-shebang-scripts-are-executable
       - id: debug-statements
-      - id: detect-private-key
+
+  # ---- 3. rewrite ------------------------------------------------------------------------
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
       - id: end-of-file-fixer
       - id: mixed-line-ending
         args: [--fix=lf]
       - id: trailing-whitespace
-      - id: forbid-submodules
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.4
+    rev: v0.14.4
     hooks:
       # check before format: a lint fix can leave code the formatter still wants to rewrap.
       - id: ruff-check
         args: [--fix]
       - id: ruff-format
 
-  - repo: https://github.com/codespell-project/codespell
-    rev: v2.4.3
-    hooks:
-      - id: codespell
-        additional_dependencies: [tomli]
-
   - repo: https://github.com/tox-dev/pyproject-fmt
-    rev: v2.28.0
+    rev: v2.10.0
     hooks:
       - id: pyproject-fmt
 
-  - repo: https://github.com/DavidAnson/markdownlint-cli2
-    rev: v0.23.2
+  # ---- 4. check --------------------------------------------------------------------------
+  - repo: https://github.com/abravalheri/validate-pyproject
+    rev: "0.26"
     hooks:
-      - id: markdownlint-cli2
-        args: [--config, .markdownlint-cli2.yaml]
-
-  - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.30.1
-    hooks:
-      - id: gitleaks
+      - id: validate-pyproject
+        files: ^(pyproject\.toml|packages/[^/]+/pyproject\.toml)$
 
   - repo: https://github.com/python-jsonschema/check-jsonschema
     rev: 0.38.0
@@ -89,17 +113,23 @@ repos:
     hooks:
       - id: zizmor
 
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.1
+    hooks:
+      - id: codespell
+        additional_dependencies: [tomli]
+
+  - repo: https://github.com/DavidAnson/markdownlint-cli2
+    rev: v0.18.1
+    hooks:
+      - id: markdownlint-cli2
+        args: [--config, .markdownlint-cli2.yaml]
+
   - repo: https://github.com/editorconfig-checker/editorconfig-checker.python
     rev: 3.11.1
     hooks:
       - id: editorconfig-checker
         alias: ec
-
-  - repo: https://github.com/abravalheri/validate-pyproject
-    rev: "0.26"
-    hooks:
-      - id: validate-pyproject
-        files: ^(pyproject\.toml|packages/[^/]+/pyproject\.toml)$
 
   - repo: local
     hooks:
@@ -128,7 +158,7 @@ repos:
         pass_filenames: false
         files: ^(paper/|packages/repro/src/)
 
-      # ---- pre-push: slower, repository-wide -------------------------------------------
+      # ---- pre-push: slower, repository-wide ---------------------------------------------
       - id: pytest
         name: the whole workspace's tests
         entry: uv run pytest -q -x
@@ -143,6 +173,20 @@ repos:
         pass_filenames: false
         stages: [pre-push]
 
+      - id: pins
+        name: registrations still pin what they cite
+        entry: uv run python scripts/check_pins.py
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
+      - id: import-linter
+        name: package dependency direction
+        entry: uv run lint-imports
+        language: system
+        pass_filenames: false
+        stages: [pre-push]
+
       - id: vulture
         name: dead code
         entry: uv run vulture
@@ -153,13 +197,6 @@ repos:
       - id: deptry
         name: declared dependencies match imports
         entry: uv run python scripts/check_deps.py
-        language: system
-        pass_filenames: false
-        stages: [pre-push]
-
-      - id: import-linter
-        name: package dependency direction
-        entry: uv run lint-imports
         language: system
         pass_filenames: false
         stages: [pre-push]
