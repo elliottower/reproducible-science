@@ -2,9 +2,6 @@
 title: Installation
 ---
 
-
-# Installation
-
 Everything at once:
 
 ```bash

@@ -2,9 +2,6 @@
 title: Pinning
 ---
 
-
-# Pinning
-
 An artifact is addressed by path and identified by digest. The path says where to look; the
 digest says whether what you found is what was meant.
 

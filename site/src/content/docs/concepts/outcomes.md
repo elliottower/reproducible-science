@@ -2,9 +2,6 @@
 title: Outcomes and reasons
 ---
 
-
-# Outcomes and reasons
-
 A decision carries three independent fields. Collapsing them loses the distinction the tool
 exists to draw.
 

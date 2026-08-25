@@ -2,9 +2,6 @@
 title: The evidence contract
 ---
 
-
-# The evidence contract
-
 Verification runs in three stages, and each records its own result. The outcome is derived
 from all three rather than asserted.
 
