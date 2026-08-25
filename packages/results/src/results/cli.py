@@ -491,7 +491,13 @@ def cmd_verify(a) -> int:
                 if c.get("confirmatory")
                 and (first_run_timestamp(events, str(c.get("run_id") or "")) or "") > seen
             ]
-            protected = [c for c in late if c.get("frozen_at_time") and c["frozen_at_time"] < seen]
+            # The same instant comparison the claim path uses. This line held the string
+            # form of the defect after the claim path was fixed, so the claim was accepted
+            # and then reported as unprotected by the command that checks it.
+            protected = [
+                c for c in late
+                if c.get("frozen_at_time") and precedes(c["frozen_at_time"], seen)
+            ]
             contested = [c for c in late if c not in protected]
         if protected:
             print(
