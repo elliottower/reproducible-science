@@ -32,7 +32,7 @@ Locators are typed, and each format is addressed the way that format is already 
 | `array` | `.npy` / `.npz`, by name and index | `index: [0, 1]` |
 
 The pointer syntax is RFC 6901 — `/metrics/accuracy` — which JSONPath's `$.metrics.accuracy`
-resembles closely enough to catch people out. Array indices carry no leading zeros, so `/xs/0`
+resembles closely enough to be mistaken for. Array indices carry no leading zeros, so `/xs/0`
 addresses a value and `/xs/00` addresses nothing.
 
 ## Exactly one scalar
