@@ -68,6 +68,11 @@ sources.results-cli = { workspace = true }
 per_rule_ignores.DEP002 = [ "prereg", "results-cli" ]
 # Without this every intra-package import reads as a transitive dependency on itself.
 known_first_party = [ "repro" ]
+# The Claude Code plugin is not part of this distribution -- it ships through a marketplace,
+# not the wheel, and `citations-0.2.0-py3-none-any.whl` carries no plugin file. Its hooks are
+# standalone scripts that import a sibling package inside `try/except ImportError` and carry
+# a fallback for when it is absent, which is the opposite of an undeclared dependency.
+extend_exclude = [ "plugin" ]
 
 [tool.pytest]
 ini_options.addopts = "-m 'not corpus'"
