@@ -9,6 +9,11 @@
   },
   "plugins": [
     {
+      "name": "reproducible-science",
+      "source": "./plugin",
+      "strict": false
+    },
+    {
       "name": "prereg",
       "source": "./packages/prereg/plugin",
       "strict": false
