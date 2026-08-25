@@ -166,7 +166,9 @@ forbidden_modules = [ "repro" ]
 name = "The verifier's core does not import its integrations"
 type = "forbidden"
 source_modules = [
+  "repro.core",
   "repro.models",
+  "repro.adapters",
   "repro.resolve",
   "repro.verify",
   "repro.policy",
@@ -183,6 +185,8 @@ layers = [
   "repro.policy",
   "repro.verify",
   "repro.resolve",
+  "repro.adapters",
   "repro.models",
+  "repro.core",
   "repro.exceptions",
 ]
