@@ -155,6 +155,12 @@ project_includes = [
 paths = [ "packages", "scripts" ]
 min_confidence = 100
 
+# The adduce release the interop adapter was last verified against. `make interop` compares
+# this with PyPI: a newer release is a prompt, not a failure, until a release tag is cut.
+
+[tool.interop]
+adduce = "0.1.2"
+
 [tool.importlinter]
 root_packages = [ "repro", "citations", "results", "prereg", "provenance_core" ]
 include_external_packages = false

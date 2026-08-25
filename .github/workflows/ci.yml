@@ -84,8 +84,10 @@ jobs:
         with:
           persist-credentials: false
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
-      - run: uv sync --all-packages --group dev --upgrade-package adduce
-      - run: uv run pytest -q -m integration
+      - run: uv sync --all-packages --group dev
+      # Advisory here and blocking in `make release-check`: a new adduce release should not
+      # redden an unrelated pull request, and should not ship silently either.
+      - run: make interop
 
   publishable:
     name: publishable dependencies
