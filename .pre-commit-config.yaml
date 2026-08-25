@@ -28,12 +28,17 @@ default_stages: [pre-commit]
 #
 # A formatting hook that rewrites a registration is worse than no hook: it breaks the record
 # silently, and the repair afterwards is indistinguishable from tampering.
+#
+# These paths named `experiments/` until the research directories were gathered under
+# `research/`. The rename left every pinned file unprotected, and the next run reformatted
+# `published.bib`, whose digest the registration cites. Nothing was committed, but the
+# lesson is that moving a directory moves it out of this list too.
 exclude: |
   (?x)^(
     packages/repro/tests/conformance/cases/.*|
     packages/repro/examples/.*|
-    experiments/.*/(PREREG|CODEBOOK)\.md|
-    experiments/.*/(frame\.json|published\.bib)|
+    research/.*/(frame\.json|published\.bib)|
+    research/addressability/corebench/(core_train\.json|capsules\.csv)|
     paper/DRAFT_.*\.md|
     paper/(figures\.json|repro\.yaml)|
     paper/prior_art/.*|

@@ -9,9 +9,16 @@ title: Claude Code plugin
 Then install whichever tools you want:
 
 ```
+/plugin install reproducible-science@reproducible-science
+```
+
+Or one tool at a time:
+
+```
 /plugin install prereg@reproducible-science
 /plugin install citations@reproducible-science
 /plugin install results@reproducible-science
+/plugin install repro@reproducible-science
 ```
 
 ## Why use it instead of the CLI
@@ -25,23 +32,39 @@ weeks later still has a run behind it.
 
 ## What you get
 
-Each plugin installs a skill rather than a slash command. Claude reads the skill's description
-and uses it when the situation calls for it — you do not invoke it by name.
+Each plugin carries three surfaces, because each catches a different failure.
 
-| skill | when it applies |
+| surface | fires |
 |---|---|
-| `prereg` | freezing a plan before a run, and recording what changed after |
-| `citations` | quoting a paper, adding a citation, or checking whether a quote is real |
-| `results` | sealing inputs, recording outputs, binding a paper's claims to runs |
+| hook | on the tool event, whether or not anyone remembered |
+| skill | when Claude judges the situation calls for it |
+| command | when you type it |
 
-Each skill shells out to the published package of the same name, so the CLI has to be installed
-where Claude is running:
+The hooks are the part a CLI cannot do, since each fires at a moment rather than when you
+think to run something:
+
+| hook | fires when |
+|---|---|
+| frozen plan changed | a preregistration no longer matches the digest it was frozen with |
+| unverified quotation | a passage enters a manuscript that no claim file pins to a source |
+| unbound number | a number enters a manuscript that no recorded claim names |
+
+Every hook reports and never blocks, and stays silent in a project that has not opted in: no
+ledger, no claims directory and no frozen plan means nothing to check and nothing said.
+
+The commands are `/prereg-check`, `/citations-check`, `/results-check` and `/repro-check`,
+named alike so there is nothing to remember about which tool answers which question.
+
+Each skill shells out to the published package of the same name, so the CLI has to be
+installed where Claude is running:
 
 ```bash
-uv tool install citations
+uv tool install reproducible-science   # or: pip install reproducible-science
 ```
 
-A project can move between the plugin and the command line without changing anything on disk.
+A project can move between the plugin and the command line without changing anything on
+disk.
+
 
 ## Verifying
 

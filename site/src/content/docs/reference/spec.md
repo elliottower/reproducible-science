@@ -3,7 +3,7 @@ title: Specification
 description: Specification — Reproducible Science
 ---
 
-{/* Generated from docs/SPEC.md. Edit that file, not this one. */}
+<!-- Generated from docs/SPEC.md. Edit that file, not this one. -->
 
 Draft. The version marker exists so a manifest can say which revision it was written against.
 
