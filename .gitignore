@@ -35,3 +35,6 @@ notebooks/executed.ipynb
 
 # jupyter lite build state
 .jupyterlite.doit.db
+
+# arXiv LaTeX sources fetched for testing, rebuildable from resolved.json
+experiments/addressability-sample/arxiv_corpus/*/

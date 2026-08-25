@@ -266,14 +266,17 @@ def cmd_coverage(a) -> int:
     if unbound:
         # Grouped by line, since a dense abstract or a table row holds a dozen values and
         # listing each separately buries every other place a number went unbound.
-        by_line: dict[int, list[dict]] = {}
+        by_line: dict[tuple[str, int], list[dict]] = {}
         for number in unbound:
-            by_line.setdefault(number["line"], []).append(number)
+            by_line.setdefault((number.get("source", ""), number["line"]), []).append(number)
         print(f"\nbound to nothing, by line:")
-        for lineno in sorted(by_line)[: a.limit]:
-            values = ", ".join(n["printed"] for n in by_line[lineno])
-            print(f"  line {lineno:<5} {values[:64]}")
-            print(f"            {by_line[lineno][0]['context'][:72]}")
+        for key in sorted(by_line)[: a.limit]:
+            lineno = key[1]
+            entries = by_line[key]
+            values = ", ".join(n["printed"] for n in entries)
+            where = entries[0].get("source") or pathlib.Path(a.manuscript).name
+            print(f"  {where}:{lineno}  {values[:58]}")
+            print(f"      {entries[0]['context'][:74]}")
         if len(by_line) > a.limit:
             print(f"  ... and {len(by_line) - a.limit} more lines; pass --limit to see them")
         print("\nEach states a result or it does not. Bind the ones that do:")

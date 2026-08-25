@@ -44,6 +44,15 @@ LAYOUT = re.compile(
 
 COMMENT = re.compile(r"(?<!\\)%.*$", re.M)
 
+#: A section pulled in from another file. Most real submissions are a short shell of these
+#: with the body elsewhere: of twenty arXiv papers read as single files, seven reported no
+#: numbers at all and one reported a single number, because the shell was all that was read.
+INCLUDE = re.compile(r"\\(?:input|include|subfile)\s*\{([^}]+)\}")
+
+#: How deep to follow includes. Sections including subsections is ordinary; deeper than this
+#: is a cycle the visited set already guards against, or a document nobody wrote by hand.
+MAX_INCLUDE_DEPTH = 8
+
 #: A citation on the line. A number beside one is usually attributable to the work cited
 #: rather than produced here -- an odds ratio quoted from a meta-analysis, an effect size
 #: taken from the study under review. Such a value cannot be bound to a run of yours, and
@@ -89,19 +98,71 @@ def constraining_digits(printed: str) -> int:
     return max(1, len(body.strip("0") or "0"))
 
 
-def body(source: str) -> list[tuple[str, bool]]:
-    """Each line of the manuscript, with whether it carries a citation.
+def resolve_include(name: str, root: pathlib.Path,
+                    here: pathlib.Path | None = None) -> pathlib.Path | None:
+    """The file an `\\input` names, or None where it is not on disk.
 
-    Layout is stripped per line rather than over the whole document, so a line number in the
-    result always indexes the same line of the source. Citations are noted before they are
-    stripped, since a `\\cite` is what marks the numbers beside it as somebody else's.
+    LaTeX resolves an include against the directory of the *main* document, not against the
+    file doing the including. A section at `text/appendix.tex` writing
+    `\\input{text/appendix/dataset}` means `text/appendix/dataset.tex` from the root, and
+    resolving it beside the including file looks for `text/text/appendix/dataset.tex` and
+    finds nothing. That mistake cost one paper its entire appendix.
+
+    The including file's own directory is tried second, since a submission assembled from a
+    subdirectory sometimes relies on it. The extension may be omitted, so both forms are
+    tried before giving up: a missing include is not an error, because a submission may name
+    a generated file it never deposited.
     """
+    for base in (root, here):
+        if base is None:
+            continue
+        candidate = (base / name).resolve()
+        for path in (candidate, candidate.with_suffix(".tex"),
+                     candidate.parent / (candidate.name + ".tex")):
+            if path.is_file():
+                return path
+    return None
+
+
+def body(source: str, base: pathlib.Path | None = None,
+         visited: set[pathlib.Path] | None = None,
+         depth: int = 0,
+         root: pathlib.Path | None = None) -> list[tuple[str, bool, str, int]]:
+    """Every line of the manuscript and the files it pulls in.
+
+    Each entry is the line with layout stripped, whether it carries a citation, which file it
+    came from, and its line number in that file. Layout is stripped per line so a line number
+    always indexes the same line of its own source, and citations are noted before they are
+    stripped, since a `\\cite` is what marks the numbers beside it as somebody else's.
+
+    Includes are followed because most submissions are a shell: a preamble, a title, and a
+    list of `\\input` calls. Reading only the shell reports a paper as having no numbers.
+    """
+    visited = visited if visited is not None else set()
+    if root is None and base is not None:
+        root = base.parent
     source = COMMENT.sub("", source)
-    start = source.find(r"\begin{document}")
-    if start != -1:
-        source = source[start:]
-    return [(LAYOUT.sub(" ", line), bool(CITATION.search(line)))
-            for line in source.splitlines()]
+    if depth == 0:
+        start = source.find(r"\begin{document}")
+        if start != -1:
+            source = source[start:]
+
+    out: list[tuple[str, bool, str, int]] = []
+    name = "" if base is None else base.name
+    for lineno, line in enumerate(source.splitlines(), 1):
+        include = INCLUDE.search(line)
+        if include and base is not None and depth < MAX_INCLUDE_DEPTH:
+            target = resolve_include(include.group(1).strip(), root, base.parent)
+            if target is not None and target not in visited:
+                visited.add(target)
+                try:
+                    out.extend(body(target.read_text(errors="replace"), target,
+                                    visited, depth + 1, root))
+                except OSError:
+                    pass
+                continue
+        out.append((LAYOUT.sub(" ", line), bool(CITATION.search(line)), name, lineno))
+    return out
 
 
 def needs_no_claim(printed: str, line: str, at: int) -> str | None:
@@ -130,13 +191,14 @@ def numbers(path: pathlib.Path) -> list[dict]:
         raise UnreadableManuscript(f"{path}: {error}") from error
 
     found = []
-    for lineno, (line, cited) in enumerate(body(source), 1):
+    for line, cited, source_name, lineno in body(source, path):
         for match in NUMBER.finditer(line):
             printed = match.group(0)
             found.append(
                 {
                     "printed": printed,
                     "line": lineno,
+                    "source": source_name,
                     "context": line.strip()[:160],
                     "exempt": needs_no_claim(printed, line, match.start()),
                     "attributed": cited,
