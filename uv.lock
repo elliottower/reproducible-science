@@ -12,6 +12,7 @@ resolution-markers = [
 members = [
     "citations",
     "prereg",
+    "provenance-core",
     "repro-science",
     "reproducible-science",
     "results-cli",
@@ -380,6 +381,7 @@ version = "0.2.0"
 source = { editable = "packages/citations" }
 dependencies = [
     { name = "platformdirs" },
+    { name = "provenance-core" },
     { name = "pydantic" },
     { name = "pyyaml" },
 ]
@@ -398,6 +400,7 @@ dev = [
 requires-dist = [
     { name = "papis", marker = "extra == 'lint'", specifier = ">=0.15" },
     { name = "platformdirs", specifier = ">=3" },
+    { name = "provenance-core", editable = "packages/provenance-core" },
     { name = "pydantic", specifier = ">=2.9" },
     { name = "pyyaml", specifier = ">=6.0.2" },
 ]
@@ -1906,6 +1909,12 @@ wheels = [
 name = "prereg"
 version = "0.2.0"
 source = { editable = "packages/prereg" }
+dependencies = [
+    { name = "provenance-core" },
+]
+
+[package.metadata]
+requires-dist = [{ name = "provenance-core", editable = "packages/provenance-core" }]
 
 [[package]]
 name = "prompt-toolkit"
@@ -1918,6 +1927,11 @@ sdist = { url = "https://files.pythonhosted.org/packages/7d/ea/39b988c938f75cb75
 wheels = [
     { url = "https://files.pythonhosted.org/packages/54/6f/84908cad2d6aa5144abcf7b42709fe4fdb459bc640ec7ac5786e7693dabc/prompt_toolkit-3.0.53-py3-none-any.whl", hash = "sha256:01c0891d7f9237d5e339f7d3e42cdae80b7534abb1c7c0e3352efba6231492f2", size = 392288, upload-time = "2026-07-26T20:56:12.512Z" },
 ]
+
+[[package]]
+name = "provenance-core"
+version = "0.2.0"
+source = { editable = "packages/provenance-core" }
 
 [[package]]
 name = "py-serializable"
@@ -2360,6 +2374,7 @@ source = { editable = "packages/repro" }
 dependencies = [
     { name = "citations" },
     { name = "prereg" },
+    { name = "provenance-core" },
     { name = "pydantic" },
     { name = "pyyaml" },
     { name = "results-cli" },
@@ -2388,6 +2403,7 @@ requires-dist = [
     { name = "citations", editable = "packages/citations" },
     { name = "numpy", marker = "extra == 'arrays'", specifier = ">=2.2.6" },
     { name = "prereg", editable = "packages/prereg" },
+    { name = "provenance-core", editable = "packages/provenance-core" },
     { name = "pydantic", specifier = ">=2.9" },
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "results-cli", editable = "packages/results" },
@@ -2444,6 +2460,9 @@ wheels = [
 name = "results-cli"
 version = "0.2.0"
 source = { editable = "packages/results" }
+dependencies = [
+    { name = "provenance-core" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -2451,6 +2470,7 @@ dev = [
 ]
 
 [package.metadata]
+requires-dist = [{ name = "provenance-core", editable = "packages/provenance-core" }]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=9.1.1" }]

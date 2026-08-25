@@ -1,0 +1,38 @@
+# Releases are per package. The tag names which one, so publishing provenance-core never ships a
+# preregistration tool. Trusted publishing on PyPI is bound to this repository AND this
+# workflow filename: a package moved here needs its publisher reconfigured before the first
+# release, or the upload is rejected.
+name: Publish provenance-core
+
+on:
+  push:
+    tags: ["provenance-core-v*", "v*"]
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write
+      contents: read
+    defaults:
+      run:
+        working-directory: packages/provenance-core
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
+        with:
+          # No cache on a release run: a poisoned cache entry would be baked into a wheel
+          # that then gets signed and published.
+          enable-cache: false
+      - run: uv sync --all-packages
+        working-directory: .
+      - run: uv run pytest
+        working-directory: .
+      - run: uv build --package provenance-core --out-dir dist
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33  # release/v1
+        with:
+          packages-dir: packages/provenance-core/dist

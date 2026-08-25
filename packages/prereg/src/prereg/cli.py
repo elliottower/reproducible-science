@@ -12,11 +12,12 @@ from __future__ import annotations
 
 import argparse
 import datetime
-import hashlib
 import pathlib
 import re
-import subprocess
 import sys
+
+from provenance_core import sha256_of_text
+from provenance_core.gitref import try_run
 
 from prereg import osf, template
 
@@ -30,8 +31,13 @@ def today() -> str:
 
 
 def git(*args, cwd=None) -> str:
-    r = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True)
-    return r.stdout.strip() if r.returncode == 0 else ""
+    """Stdout of a git command, or "" where git could not answer.
+
+    The empty string is load-bearing here and every caller checks it: `freeze` refuses when
+    `rev-parse HEAD` comes back empty, which is how a repository with no commit is caught.
+    The shared helper raises instead, so the policy is applied here rather than assumed.
+    """
+    return try_run(*args, cwd=cwd) or ""
 
 
 def find(start: pathlib.Path | None = None) -> pathlib.Path | None:
@@ -61,7 +67,8 @@ def plan_of(text: str) -> str:
 
 
 def sha256_of(s: str) -> str:
-    return hashlib.sha256(s.encode()).hexdigest()
+    """The shared text hasher. This used a bare `.encode()`, whose default is not guaranteed."""
+    return sha256_of_text(s)
 
 
 def unhashed_content(text: str) -> list[str]:
