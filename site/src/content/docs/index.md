@@ -2,9 +2,6 @@
 title: Overview
 ---
 
-
-# Reproducible Science
-
 Four command-line tools that bind what a paper says to what its artifacts contain. Freeze a
 plan before running it, seal the inputs, record the outputs, bind every number in the
 manuscript to the run that produced it, and check that quoted passages appear in their

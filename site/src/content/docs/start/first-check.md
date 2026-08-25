@@ -2,9 +2,6 @@
 title: Your first check
 ---
 
-
-# Your first check
-
 Two files. A result, and a manifest describing what the manuscript says about it.
 
 ```json title="results.json"
