@@ -78,8 +78,12 @@ def clean(s: str) -> str:
         s = re.sub(rf"\\{m}\s*\{{(\w)\}}", lambda g, comb=comb: g.group(1) + comb, s)
         s = re.sub(rf"\\{m}\s*(\w)", lambda g, comb=comb: g.group(1) + comb, s)
     s = unicodedata.normalize("NFC", s)
-    s = re.sub(r"[{}]", "", s).replace("\\&", "&").replace("--", "-")
-    s = re.sub(r"\\[a-zA-Z]+", "", s).replace("\\", "")
+    s = s.replace("\\&", "&").replace("--", "-")
+    # Control sequences go before braces do. Stripping braces first welds a command to its
+    # argument -- \texttt{inspect\_ai} becomes \textttinspect\_ai -- and the command pattern
+    # then eats both, which deleted the argument of every markup command except \emph.
+    s = re.sub(r"\\[a-zA-Z]+", "", s)
+    s = re.sub(r"[{}]", "", s).replace("\\", "")
     # No trailing-punctuation strip here: it would take the period off an initial and turn
     # "Fisher, Ronald A." into "Fisher, Ronald A". Trailing junk from a \bibitem author line is
     # that parser's problem, handled where the sentence structure is still visible.
