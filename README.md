@@ -19,6 +19,13 @@ which traces results at the time of experimentation.
 /plugin marketplace add elliottower/reproducible-science
 ```
 
+**Required dependency:** poppler (`pdftotext`), for reading PDF sources.
+
+```bash
+brew install poppler              # macOS
+sudo apt install poppler-utils    # Debian/Ubuntu
+```
+
 ## Documentation
 
 **[elliottower.github.io/reproducible-science](https://elliottower.github.io/reproducible-science/)**
