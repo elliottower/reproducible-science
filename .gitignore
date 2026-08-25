@@ -23,8 +23,10 @@ coverage.xml
 # Local only -- this repository may go public.
 REVIEW_PACKET*.md
 
-# Development corpus: downloaded articles and shallow clones, rebuildable from frame.json
-research/addressability/dev_corpus/
+# Development corpus: the downloaded articles and shallow clones are rebuildable from
+# frame.json, but the measurements taken from them are not -- ignoring the whole directory
+# lost one 32-article run when the tree was tidied. Subdirectories only, as arxiv_corpus does.
+research/addressability/dev_corpus/*/
 # documentation site (Docusaurus)
 website/node_modules/
 website/build/
