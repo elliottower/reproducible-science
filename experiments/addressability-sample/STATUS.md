@@ -35,6 +35,27 @@ each reproduced value with the original study's, and the reproduced half confirm
 original half does not. The pattern the codebook called eligibility reappears here as a
 property of the output rather than a judgment a coder has to make.
 
+## Two verification relations wearing the same clothes
+
+A reproduction paper sets each value it produced beside the value it is reproducing, under a
+header reading `Org. Rep.` across the columns. Both look like results. Confirming one of each
+checks a different thing, and on `Obadage:2025` the two answer differently enough that any
+figure pooling them is meaningless:
+
+| relation | values | confirmed | decoy | precision |
+|---|---:|---:|---:|---:|
+| quoted from the original study | 118 | **100%** | 2.2% | 98% |
+| the authors' own results | 232 | **3%** | 1.1% | 64% |
+
+Every value the authors transcribed from the work they reproduce is in their artifact.
+Almost nothing they produced themselves is. Confirming a transcribed value checks that the
+comparison was copied correctly, which is a real check and not the one a reader assumes,
+so the two are reported as separate views and neither is discarded.
+
+The header is machine-readable, which means the eligibility judgment a codebook assigns to a
+human coder -- is this the authors' own result, or a number they are quoting? -- is
+available from the column label.
+
 ## How `absent` is separated from `unchecked`
 
 A miss is `absent` only where every machine-readable record in the artifact was read to the
@@ -50,6 +71,35 @@ The rule changes what the three articles report. Broman leaves nine records unre
 `.xls` workbooks, a zip of figures — so its misses are `unchecked`. Kim's twelve pickles are
 now read, nothing in its repository is unread, and its misses are `absent`: the paper states
 1,106 values carrying a decimal point and the repository holds 333 distinct numbers in total.
+
+## How much of a confirmation is coincidence
+
+A confirmation says a printed value occurs somewhere in the artifact. It does not say the
+artifact holds *that* value. Nobody has labelled which of a paper's numbers its data really
+contains, so there is no ground truth to score against, and the false-positive rate is
+estimated against decoys instead.
+
+A decoy is a real value with every digit shifted by a fixed amount: same digit count, same
+decimal places, same magnitude, a quantity the paper never printed. Decoys colliding with
+any number the paper does print are discarded. If a tier's real values confirm at rate `p`
+and its decoys at rate `q`, then `q / p` estimates the share of that tier's confirmations
+that are coincidence.
+
+| | index size | trivial | weak | moderate | strong |
+|---|---:|---:|---:|---:|---:|
+| Obadage:2025 | 2,108 | 7% | 76% | **96%** | — |
+| Kim:2021 | 333 | 4% | 54% | — | — |
+| Broman:2020 | 146,442 | 8% | 33% | **44%** | — |
+
+Two things follow. Matches on one- and two-digit integers carry no evidence at all: Obadage's
+trivial tier confirms at 96 per cent and its decoys at 89.6 per cent. And precision depends
+on the size of the artifact as much as on the value: four constraining digits reach 96 per
+cent against Broman's 146,000. Broman's fifteen confirmed integer counts are around half
+coincidence, which the per-tier rate shows and a pooled figure would hide.
+
+A fixed tier threshold is therefore wrong. The threshold that matters is per artifact: the
+weakest tier whose decoy rate is low enough to trust, measured on that artifact rather than
+assumed.
 
 ## Reading binary artifacts without executing them
 

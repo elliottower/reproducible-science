@@ -185,3 +185,50 @@ value stays with the equation.
 The largest single movement is `table_cell`, which did not exist before: 2,565 of 6,139
 tokens. `Kim:2021` alone holds 1,325 of them, and every one was previously in a bucket
 labelled "a flattened figure or a table row" that no downstream stage could act on.
+
+## 2026-08-25 — Blind cross-check against an independent reading
+
+An agent read `Obadage:2025` in full without access to the scan's output and reported which
+of its numbers should be checkable against the authors' artifact. Two of its findings were
+defects in the scan, and both were confirmed against the scan's own records before being
+acted on.
+
+**Hyphenated identifiers were being read as quantities.** `CIFAR-10`, `ResNet-18`,
+`DenseNet-121`, `VGG-16`, `top-1`: the digit is as much a part of the name as the letters.
+126 of 1,054 tokens in that article, and the worst possible false positives, because a
+repository that trains a ResNet-18 on CIFAR-10 writes those digits everywhere — they
+confirmed at near-certainty and carried no evidence. Now categorised `name_fragment`.
+
+**Half of every accuracy table is quoted from the paper being reproduced.** Tables 4 and 5
+set each reproduced average beside the original study's value, under a header reading
+`Org. Rep.` six times across. A value under `Org.` is checkable against Ye et al., not
+against these authors' repository, and counting it understates what the artifact settles.
+The header is machine-readable, so the eligibility judgment the codebook assigns to a human
+coder is available from the column label. Now categorised `quoted_value` and reported as its
+own group.
+
+The first attempt at column assignment ran each quoted column to the start of the next
+quoted column, swallowing the reproduced column between them, and returned 220 quoted
+values. Assigning each cell to the nearest header of either kind returns 120 — which is what
+the independent reading counted, arriving at it by reading the table.
+
+## 2026-08-25 — What `absent` means for a derived quantity
+
+Separating the quoted columns dropped Obadage's moderate-tier confirmation rate from 48 per
+cent to 5 per cent, which said the values confirming against `results/rep_values.xlsx` were
+the transcribed originals rather than the reproductions.
+
+Checked directly. Of one Table 4 row, six of six `Org.` values are in the spreadsheet and
+one of six `Rep.` values is. The missing reproduced values are not there at any precision:
+no longer stored value rounds to them and none begins with them.
+
+The spreadsheet holds 1,579 numeric cells for a 120-value table, because the paper reports
+`Rep. Avg` -- the mean of three attempts -- while the artifact stores the attempts. One of
+four averages tested is recoverable as a mean of three nearby cells; the rest are not
+recoverable by any 2- or 3-cell mean.
+
+So a reported average can be fully supported by an artifact and still match nothing in it. A
+scanner comparing printed strings cannot see the difference between that and a value the
+artifact does not support, and reporting the first as `absent` states something false. The
+current verdict set has no term for "derivable but not present", and every derived quantity
+in the corpus is currently mis-stated.

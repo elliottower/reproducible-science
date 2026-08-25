@@ -75,7 +75,16 @@ MAX_BYTES = 40_000_000
 
 NUMBER = re.compile(r"(?<![\w.])[-+]?\d[\d,]*(?:\.\d+)?(?:[eE][-+]?\d+)?(?![\w])")
 
-TRACEABLE = {"measurement", "table_cell", "parameter", "equation_content"}
+TRACEABLE = {"measurement", "table_cell", "parameter", "equation_content", "quoted_value"}
+
+#: A value printed under a column headed as another study's result. Confirming one checks
+#: that the authors transcribed the work they are comparing against, which is a real
+#: relation and not the one a reader assumes: it says nothing about whether their own run
+#: produced anything. Reported apart from the paper's own claims for that reason, and not
+#: discarded, because on one development article all 118 such values are in the artifact at
+#: 98 per cent precision while the authors' own results confirm at 3 per cent -- a
+#: difference invisible in any figure that pools them.
+QUOTED_KIND = "quoted_value"
 
 #: Tiers of match strength, weakest first. A coincidental match becomes about ten times less
 #: likely per constraining digit, so the tiers track digits rather than magnitude: finding
@@ -87,13 +96,18 @@ TIERS = ("trivial", "weak", "moderate", "strong")
 #: Named subsets a reader asks for. Each is a question about the work rather than a slice of
 #: the data: what did the paper report, and what was it configured with.
 VIEWS = {
-    "results": ("reported values carrying a decimal point",
+    "results": ("the paper's own reported values, carrying a decimal point",
                 lambda r: "." in r["printed"] and r["kind"] in ("measurement", "table_cell")),
+    "transcribed": ("values quoted from the study being reproduced; confirming one checks "
+                    "transcription, not the authors' run",
+                    lambda r: r["kind"] == QUOTED_KIND),
     "hyperparameters": ("values bound to a named symbol, and equation constants",
                         lambda r: r["kind"] in ("parameter", "equation_content")),
     "counts": ("integer quantities stated about the work",
                lambda r: "." not in r["printed"] and r["kind"] in ("measurement", "table_cell")),
-    "all": ("every traceable value", lambda r: True),
+    "own": ("every value the paper claims as its own",
+            lambda r: r["kind"] != QUOTED_KIND),
+    "all": ("every traceable value, including quoted ones", lambda r: True),
 }
 
 

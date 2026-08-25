@@ -91,6 +91,14 @@ CROSS_REF = re.compile(
     r"(?:see|according\s+to|eq\.?|equation|figure|fig\.?|table|section|appendix)\s*\(?$",
     re.I)
 
+#: A digit joined to a word by a hyphen or dash names something rather than measuring it:
+#: `CIFAR-10`, `ResNet-18`, `DenseNet-121`, `VGG-16`, `top-1`. The identifier is the whole
+#: token, and its digits are as much a part of the name as its letters. Left in, they are
+#: the single largest false-positive class in this corpus -- 126 of 1054 tokens in one
+#: article -- and they confirm against artifacts at near-certainty, because a repository
+#: training on CIFAR-10 with a ResNet-18 writes those digits everywhere.
+NAME_FRAGMENT = re.compile(r"[A-Za-z][\u2010\u2011\u2012\u2013-]$")
+
 #: A number closed up against the word it numbers, marking an item in a running list:
 #: "Influence maximization(1), Node classification(2)".
 ENUM_MARKER = re.compile(r"[a-z]\($")
@@ -193,7 +201,8 @@ def header_form(line: str) -> str:
     return re.sub(r"\s+", " ", re.sub(r"\d+", "#", line.strip()))
 
 
-def aligned_blocks(lines: list[str]) -> tuple[set[int], set[int]]:
+def aligned_blocks(
+        lines: list[str]) -> tuple[set[int], set[int], dict[int, list[tuple[int, bool]]]]:
     """Lines belonging to a table, and lines belonging to a figure, by alignment and caption.
 
     A run is consecutive non-empty lines each carrying two or more numbers. Within a run,
@@ -205,6 +214,7 @@ def aligned_blocks(lines: list[str]) -> tuple[set[int], set[int]]:
     marks = captions(lines)
     tables: set[int] = set()
     figures: set[int] = set()
+    quoted: dict[int, list[tuple[int, bool]]] = {}
     run: list[int] = []
 
     def close(run: list[int]) -> None:
@@ -229,6 +239,10 @@ def aligned_blocks(lines: list[str]) -> tuple[set[int], set[int]]:
             figures.update(run)
         else:
             tables.update(run)
+            headers = column_headers(lines, run)
+            if headers:
+                for row in run:
+                    quoted[row] = headers
 
     for i, line in enumerate(lines):
         if line.strip() and len(NUMBER.findall(line)) >= 2:
@@ -237,7 +251,44 @@ def aligned_blocks(lines: list[str]) -> tuple[set[int], set[int]]:
             close(run)
             run = []
     close(run)
-    return tables, figures
+    return tables, figures, quoted
+
+
+#: Column headers naming the work being reproduced rather than this one. A value under one
+#: of these is quoted from another paper: it is checkable against that paper and not against
+#: these authors' artifact, and counting it in the denominator understates what the artifact
+#: settles. In one development article this is 134 of 268 accuracy cells.
+QUOTED_HEADER = re.compile(r"\b(Org|Orig|Original|Paper|Reported|Prev|Ref|Theirs)\b\.?", re.I)
+
+#: Column headers naming this work.
+OWN_HEADER = re.compile(r"\b(Rep|Repro|Reproduced|Ours?|Obtained|This)\b\.?", re.I)
+
+#: How far above a table body its column headers may sit.
+HEADER_LOOKBACK = 6
+
+
+def column_headers(lines: list[str], block: list[int]) -> list[tuple[int, bool]]:
+    """Header offsets for a comparison table, each marked as quoted or as this paper's.
+
+    A comparison table sets the reproduced value beside the one it reproduces, and the
+    header says which is which. Reading the header is what separates a paper's own result
+    from a number it is quoting -- the judgment a codebook would otherwise ask a human
+    coder to make on every cell.
+
+    Both kinds are returned, sorted, so a cell can be assigned to the header immediately to
+    its left. Returning only the quoted offsets would make each quoted column run to the
+    start of the next quoted column, swallowing the reproduced column between them.
+
+    Empty unless the header carries both kinds of label: a table headed only `Original` is
+    not a comparison, and its body is not this paper's either.
+    """
+    for index in range(block[0] - 1, max(-1, block[0] - 1 - HEADER_LOOKBACK), -1):
+        line = lines[index]
+        quoted = [(m.start(), True) for m in QUOTED_HEADER.finditer(line)]
+        own = [(m.start(), False) for m in OWN_HEADER.finditer(line)]
+        if quoted and own:
+            return sorted(quoted + own)
+    return []
 
 
 def axis_dump(line: str) -> bool:
@@ -285,7 +336,8 @@ def equation_lines(lines: list[str]) -> dict[int, str]:
 
 
 def classify(printed: str, context: str, line_count: int, role: str | None,
-             line_kind: str | None) -> tuple[str, str]:
+             line_kind: str | None,
+             columns: list[tuple[int, bool]] | None = None) -> tuple[str, str]:
     """Category and reason for one numeric token.
 
     `role` is the line's position in a display equation, or None. `line_kind` is what the
@@ -320,6 +372,8 @@ def classify(printed: str, context: str, line_count: int, role: str | None,
         return "structural", "equation label"
     if ENUM_MARKER.search(before):
         return "structural", "inline enumeration marker"
+    if NAME_FRAGMENT.search(before) and not after[:1].isdigit():
+        return "name_fragment", "part of a hyphenated identifier, not a quantity"
     if CROSS_REF.search(before.rstrip()):
         return "structural", "cross-reference to an equation, figure or table"
 
@@ -329,6 +383,10 @@ def classify(printed: str, context: str, line_count: int, role: str | None,
         return "equation_content", "stated inside a display equation"
 
     if line_kind == "table":
+        if columns:
+            preceding = [(offset, is_quoted) for offset, is_quoted in columns if offset <= at]
+            if preceding and preceding[-1][1]:
+                return "quoted_value", "under a column headed as another study's result"
         return "table_cell", "cell in an aligned table row"
 
     if MATH_SYMBOL.search(window):
@@ -354,7 +412,7 @@ def scan(text: str) -> list[dict]:
     lines = text.splitlines()
     roles = equation_lines(lines)
     headers = running_headers(lines)
-    tables, figures = aligned_blocks(lines)
+    tables, figures, quoted = aligned_blocks(lines)
     records = []
     for index, line in enumerate(lines):
         stripped = line.strip()
@@ -371,7 +429,8 @@ def scan(text: str) -> list[dict]:
         line_count = len(NUMBER.findall(line))
         for match in NUMBER.finditer(line):
             printed = match.group(0)
-            kind, reason = classify(printed, line, line_count, roles.get(index), line_kind)
+            kind, reason = classify(printed, line, line_count, roles.get(index), line_kind,
+                                    quoted.get(index))
             records.append({"printed": printed, "line": index + 1,
                             "context": stripped[:160], "kind": kind, "reason": reason})
     return records
@@ -383,7 +442,10 @@ def scan(text: str) -> list[dict]:
 #: could not read, and folding it into either of the other two would publish a limit of the
 #: scanner as a property of the article.
 TRACEABLE = ("measurement", "table_cell", "parameter", "equation_content")
-UNTRACEABLE = ("bibliographic", "structural")
+
+#: Checkable, but against the paper being reproduced rather than this one's artifact.
+QUOTED = ("quoted_value",)
+UNTRACEABLE = ("bibliographic", "structural", "name_fragment")
 SEPARATE = ("figure_axis", "dense_line", "orphan", "bounded", "extraction_failed")
 
 
@@ -398,8 +460,8 @@ def main(path: str) -> int:
 
     print(f"  {path}")
     print(f"  numeric tokens: {total}\n")
-    for title, group in (("traceable", TRACEABLE), ("untraceable", UNTRACEABLE),
-                         ("reported separately", SEPARATE)):
+    for title, group in (("traceable", TRACEABLE), ("quoted from another study", QUOTED),
+                         ("untraceable", UNTRACEABLE), ("reported separately", SEPARATE)):
         subtotal = sum(counts.get(k, 0) for k in group)
         print(f"    {title:22} {subtotal:5}  ({subtotal / total:5.1%})" if total else title)
         for kind in group:
