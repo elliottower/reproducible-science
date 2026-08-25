@@ -10,7 +10,7 @@
   "plugins": [
     {
       "name": "reproducible-science",
-      "source": "./plugin",
+      "source": ".",
       "strict": false
     },
     {
