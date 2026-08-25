@@ -35,14 +35,6 @@ CI runs the same commands, so a green `make qa` locally means a green pull reque
 
 ## What the unusual checks are for
 
-**`make drift`** regenerates every committed derived artifact and fails if the tree is not
-clean. A generated file in the repository is a claim that running its generator reproduces it,
-and that claim went untested until a path moved and `generate_figures.py` wrote an empty
-section — dropping the paper's audit figures while every test stayed green.
-
-**`repro verify`** is this repository's own product applied to itself: every number the
-manuscript prints is checked against the artifact it came from.
-
 **`lint-imports`** enforces the one architectural rule the monorepo exists to keep — the three
 tools never import the verifier, so `pip install citations` does not drag in an evidence
 engine.

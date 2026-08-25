@@ -10,8 +10,6 @@ dist/
 
 # Publisher PDFs for the prior-art dig. Kept locally so `citations verify` can resolve
 # quotations against them; not redistributable, and this repository is public.
-paper/prior_art/reference/
-paper/prior_art/.audit-cache/
 
 # coverage byproducts
 .coverage
@@ -26,7 +24,6 @@ REVIEW_PACKET*.md
 # Development corpus: the downloaded articles and shallow clones are rebuildable from
 # frame.json, but the measurements taken from them are not -- ignoring the whole directory
 # lost one 32-article run when the tree was tidied. Subdirectories only, as arxiv_corpus does.
-research/addressability/dev_corpus/*/
 # documentation site (Docusaurus)
 website/node_modules/
 website/build/
@@ -39,11 +36,10 @@ notebooks/executed.ipynb
 .jupyterlite.doit.db
 
 # arXiv LaTeX sources fetched for testing, rebuildable from resolved.json
-research/addressability/arxiv_corpus/*/
 
 # CORE-Bench capsules: ~39 MB each, rebuildable from core_train.json
-research/addressability/corebench/work/
-research/addressability/corebench/diag/
 
 # CORE-Bench capsule metadata: 4.3 MB, fetched from siegelz/core-bench
-research/addressability/corebench/capsules.csv
+
+# Internal reviews are never tracked. They live in reproducible-science-internal-audits.
+docs/reviews/

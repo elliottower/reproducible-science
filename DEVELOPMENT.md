@@ -58,9 +58,8 @@ The full procedure, and what each check is defending against, is in
 packages/        the four distributions, each with its own pyproject, src and tests
 packages/*/plugin/   Claude Code plugins, published as a marketplace from this repository
 docs/            SPEC.md — the evidence contract
-paper/           the manuscript, and its own self-audit manifest
-experiments/     preregistrations and their frozen codebooks
-scripts/         figure and manifest generation
+research/        exposure, a record of what an agent read, and cross-study planning
+scripts/         the repository's own checks, one per make target
 ```
 
 ## The Claude Code plugin
