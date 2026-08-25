@@ -1,0 +1,58 @@
+name: Docs
+
+on:
+  push:
+    branches: [main]
+    paths: ["site/**", "jupyterlite/**", "docs/**", "CHANGELOG.md", "packages/*/README.md"]
+  pull_request:
+    paths: ["site/**", "jupyterlite/**"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build the documentation site
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903  # v6.0.0
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
+
+      # ~21 MB of static assets, not committed. See jupyterlite/build.sh for why.
+      - name: build the in-browser notebook
+        run: ./jupyterlite/build.sh
+
+      - run: npm ci
+        working-directory: site
+
+      # `sync` copies SPEC.md, CHANGELOG.md and the package READMEs in, so the site cannot
+      # show a version of a document the repository does not hold.
+      - run: npm run build
+        working-directory: site
+
+      - name: check what a deployment would cost
+        run: |
+          files=$(find site/dist -type f | wc -l)
+          size=$(du -sm site/dist | cut -f1)
+          biggest=$(find site/dist -type f -exec du -k {} + | sort -rn | head -1 | cut -f1)
+          echo "files: $files (Cloudflare Pages free tier allows 20,000)"
+          echo "total: ${size} MB"
+          echo "largest file: $((biggest / 1024)) MB (limit is 25 MiB)"
+          test "$files" -lt 20000 || { echo "::error::too many files for Cloudflare Pages"; exit 1; }
+          test "$((biggest / 1024))" -lt 25 || { echo "::error::a file exceeds the 25 MiB limit"; exit 1; }
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: site
+          path: site/dist
+          retention-days: 7
