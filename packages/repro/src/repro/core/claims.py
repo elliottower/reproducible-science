@@ -5,6 +5,7 @@ from __future__ import annotations
 import enum
 
 from pydantic import BaseModel, ConfigDict, model_validator
+
 from repro.core.artifacts import Digest
 from repro.core.evidence import Evidence
 
