@@ -13,7 +13,7 @@ marked withdrawn and keeps its number.
 | **Pinning and extraction** | RD-001 – RD-005 |
 | **Repository structure** | RD-006 – RD-011 |
 | **Manuscript** | RD-012 – RD-015 |
-| **Tooling** | RD-016 – RD-017 |
+| **Tooling** | RD-016 – RD-019 |
 
 ---
 
@@ -243,3 +243,39 @@ longer describes while continuing to pass its own tests.
 
 **Observed.** A checker enforcing a sixteen-criterion structure after the paper it accompanied
 had replaced that structure with six dimensions over three operations. Every test passed.
+
+### RD-018 — Documented output that no execution produced
+
+**Detected by** reading the format string that would have to emit it.
+
+A README block showing what a command prints is a claim about the program, and it is the one
+kind of claim in a repository that nothing checks. Prose gets reviewed against the code;
+output blocks get written from memory of what the command ought to say, and then survive every
+later change to what it does say.
+
+The tell is that the documented block is tidier than real output: aligned columns, a summary
+sentence in English, no warnings, no paths.
+
+**Observed.** A README documented `verified`, `MISMATCH` and `unchecked` for a verifier whose
+text output emits `ok`, `MISS` and `--`, each padded to four columns; those three words
+are the enum values and reach
+stdout only under `--format json`. The status was also in the wrong column, a column was
+missing, two unconditional lines were absent, and the summary sentence appeared nowhere in
+the package: `"of 3 assertions"`, `"assertions failed"` and `"could not be checked"` all
+returned zero matches against the source. The same block shipped inside a skill file, which
+teaches a model to expect words the program never emits.
+
+### RD-019 — A generated file with no generator
+
+**Detected by** searching for the command named in the file's own header.
+
+A file carrying `Generated from X. Edit that file, not this one.` asserts that a generator
+produces it. Where no generator exists, the header converts an ordinary copy into one nobody
+will edit, since it tells every future reader to edit the source instead --- and the source no
+longer reaches it.
+
+**Observed.** Four documentation pages carrying that header, no script anywhere producing
+them, and 24 to 58 lines of divergence from the sources they name. The repository's own drift
+checker covers two other artifacts and states the principle exactly: a stale derived artifact
+is a defect whether it went stale because a path moved, because a generator changed, or
+because someone edited the output by hand.

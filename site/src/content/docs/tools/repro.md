@@ -24,21 +24,22 @@ repro init my_experiment
 ```
 
 ```text
-initializing my_experiment
-  wrote my_experiment/my_experiment/PREREG.md
-  wrote my_experiment/.results/ledger.jsonl
-  wrote my_experiment/.citations/
-  wrote my_experiment/CLAUDE.md
+initializing /home/you/work/my_experiment
+  wrote /home/you/work/my_experiment/CLAUDE.md
+done.
 ```
 
 This creates:
 
 ```text
 my_experiment/
-    PREREG.md           the plan (OSF headings)
     CLAUDE.md           tells Claude Code about the tools
-    .results/           results ledger
-    .citations/         citation library
+    my_experiment/
+        PREREG.md       the plan (OSF headings)
+        results/        run outputs
+        tests/          tests for the analysis
+    .results/           ledger.jsonl and ledger.head
+    .citations/         citation library, itself a git repository
     claims/             claim files for citation verification
     data/               raw data
     scripts/            analysis scripts
@@ -104,7 +105,7 @@ This repository is a Claude Code plugin marketplace. One plugin carries all four
 /plugin install reproducible-science@reproducible-science
 ```
 
-It installs three skills, three commands and three hooks. The hooks are the part a CLI
+It installs four skills, four commands and three hooks. The hooks are the part a CLI
 cannot do, because each fires at a moment rather than when you remember to run something:
 
 | hook | fires when |
@@ -116,7 +117,7 @@ cannot do, because each fires at a moment rather than when you remember to run s
 Every hook reports and never blocks, and stays silent in a project that has not opted in: no
 ledger, no claims directory and no frozen plan means nothing to check and nothing said.
 
-The commands are `/prereg-check`, `/citations-check` and `/results-check`, named alike so
+The commands are `/prereg-check`, `/citations-check`, `/results-check` and `/repro-check`, named alike so
 there is nothing to remember about which tool answers which question.
 
 Each tool also ships on its own, for anyone who wants one of them:

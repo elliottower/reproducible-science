@@ -58,11 +58,21 @@ $ results seal analysis.py data.csv                # hash the inputs, before the
 $ results run output.json --run-id exp_001         # hash the outputs, after it
 $ results claim "ICC = 0.42" --run-id exp_001 --location "Table 2"
 $ repro verify
-  Table 2, "ICC = 0.42"          verified   results.json /icc = 0.42
-  Section 3, "p < 0.05"          MISMATCH   the source reads p = 0.051
-  Appendix B, "n = 60"           unchecked  results.json is not there
-  1 of 3 assertions failed, 1 could not be checked.
+repro.yaml
+
+  ok    icc          metric   /icc = 0.42
+  MISS  pvalue       metric   p: manuscript prints 0.031, results.json holds 0.051
+  GONE  n            metric   /n does not resolve in results.json
+
+  1 mismatch, 1 not_found, 1 verified
+  policy publication: FAILED  (2 errors, 0 warnings)
+    error   evidence.mismatch          pvalue/metric: p: manuscript prints 0.031, results.js
+    error   evidence.not_found         n/metric: /n does not resolve in results.json
 ```
+
+`ok` holds, `MISS` disagrees with the artifact, `GONE` names an address that no longer
+resolves. Three further outcomes appear in longer runs: `--` for a check that could not run,
+`none` for a claim offering no evidence, and `ERR` for a source that could not be read.
 
 Quotations are matched against the sources they cite, page numbers included. Reported numbers
 are compared against the value stored at an address you gave — never by searching a file for a

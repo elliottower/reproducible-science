@@ -122,7 +122,7 @@ It reports and never blocks, and stays silent in a project with no `.results/` l
 The plugin ships instructions and hooks, not binaries, so install the tool as well:
 
 ```bash
-uv tool install results        # or: pip install results
+uv tool install results-cli    # or: pip install results-cli
 ```
 
 All four tools in one plugin, with every hook, skill and command:
