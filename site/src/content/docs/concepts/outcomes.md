@@ -16,9 +16,9 @@ exists to draw.
 | `error` | the tool failed |
 | `not_offered` | the claim declared no evidence |
 
-The gap between `mismatch` and `unchecked` is the point. A contradicted number and a missing
-extractor are both failures of a build, and they are not the same fact about a paper. A tool
-that reports them identically teaches its users to ignore it.
+A contradicted number and a missing extractor are both failures of a build, and they are not
+the same fact about a paper. A tool that reports them identically teaches its users to ignore
+it.
 
 ### A missing quotation and a missing key
 
