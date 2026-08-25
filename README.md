@@ -2,13 +2,18 @@
 
 [![CI](https://img.shields.io/github/actions/workflow/status/elliottower/reproducible-science/ci.yml?branch=main&logo=github&label=CI)](https://github.com/elliottower/reproducible-science/actions?query=branch%3Amain+workflow%3ACI)
 [![docs](https://img.shields.io/badge/docs-live-blue)](https://elliottower.github.io/reproducible-science/)
-[![pypi](https://img.shields.io/pypi/v/reproducible-science?label=%20)](https://pypi.org/project/reproducible-science/)
+[![pypi](https://img.shields.io/pypi/v/reproducible-science)](https://pypi.org/project/reproducible-science/)
 [![python](https://img.shields.io/pypi/pyversions/reproducible-science)](https://pypi.org/project/reproducible-science/)
 [![license](https://img.shields.io/pypi/l/reproducible-science)](LICENSE)
 
 Command-line tools that check whether a paper's claims match its artifacts.
 
-See our [Claude Code plugin](#claude-code), which traces results at the time of experimentation.
+See our [Claude Code plugin](https://elliottower.github.io/reproducible-science/start/claude-code/),
+which traces results at the time of experimentation.
+
+```
+/plugin marketplace add elliottower/reproducible-science
+```
 
 ## Documentation
 
@@ -16,18 +21,6 @@ See our [Claude Code plugin](#claude-code), which traces results at the time of 
 
 The docs include a notebook that runs the published packages in your browser, with nothing to
 install.
-
-## Project status
-
-| | |
-|---|---|
-| Version | 0.2.0 — the evidence contract is specified and stable; the CLI surface may still change |
-| Python | 3.11, 3.12, 3.13 |
-| Formats addressed | JSON, YAML, CSV/TSV, SQLite, NumPy `.npy`/`.npz` |
-| No adapter yet | Parquet, HDF5, NetCDF, XLSX |
-
-Point a manifest at a format with no adapter and you get `format_unsupported` instead of a
-guess.
 
 ## Install
 
@@ -65,15 +58,6 @@ does not pass.
 
 Preregistration is optional — you mark a claim confirmatory, exploratory, or not applicable,
 and only the first kind needs a plan behind it.
-
-## Claude Code
-
-```
-/plugin marketplace add elliottower/reproducible-science
-```
-
-The plugin ships `prereg`, `citations` and `results` as slash commands, backed by the same
-packages.
 
 ## Contributing
 
