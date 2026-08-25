@@ -22,6 +22,11 @@
       "name": "results",
       "source": "./packages/results/plugin",
       "strict": false
+    },
+    {
+      "name": "repro",
+      "source": "./packages/repro/plugin",
+      "strict": false
     }
   ]
 }

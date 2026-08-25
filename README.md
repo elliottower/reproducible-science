@@ -1,84 +1,79 @@
 # reproducible-science
 
-Four tools for binding what a paper says to what its artifacts contain, developed together and
-released together.
+[![CI](https://img.shields.io/github/actions/workflow/status/elliottower/reproducible-science/ci.yml?branch=main&logo=github&label=CI)](https://github.com/elliottower/reproducible-science/actions?query=branch%3Amain+workflow%3ACI)
+[![docs](https://img.shields.io/badge/docs-live-blue)](https://elliottower.github.io/reproducible-science/)
+[![pypi](https://img.shields.io/pypi/v/reproducible-science)](https://pypi.org/project/reproducible-science/)
+[![python](https://img.shields.io/pypi/pyversions/reproducible-science)](https://pypi.org/project/reproducible-science/)
+[![license](https://img.shields.io/pypi/l/reproducible-science)](LICENSE)
 
-| package | install | what it does |
-|---|---|---|
-| [`repro`](packages/repro) | `pip install reproducible-science` | verifies declared evidence assertions — quotations, reported values, table cells — against hash-pinned artifacts |
-| [`citations`](packages/citations) | `pip install citations` | checks that quotations resolve in the sources they cite |
-| [`results`](packages/results) | `pip install results-cli` | seals inputs, records outputs, binds manuscript claims to runs |
-| [`prereg`](packages/prereg) | `pip install prereg` | freezes a plan before running, and records what changed after |
+Command-line tools that check whether a paper's claims match its artifacts.
 
-Each is an independent distribution with its own public API, so installing citation
-verification never drags in a preregistration tool. They live in one repository because a
-change that crosses two of them should be one commit, not a release dance.
-
-## Working on them
-
-A [uv workspace](https://docs.astral.sh/uv/concepts/projects/workspaces/): one lockfile, one
-environment, and local resolution between the packages.
-
-```console
-uv sync --all-packages     # every package, editable, in one environment
-uv run pytest              # every package's tests
-uv run pytest packages/citations
-uv run pytest -m corpus    # tests that read repositories outside this one
+```
+pip install reproducible-science
 ```
 
-```console
-uv run python scripts/check_wheels.py   # build the wheels and install them outside the workspace
+See our [Claude Code plugin](https://elliottower.github.io/reproducible-science/start/claude-code/),
+which traces results at the time of experimentation.
+
 ```
-
-That last one is the check `pytest` cannot make: the workspace resolves the four packages from
-source, so the suite never exercises the combination a user installs. CI runs it on every push.
-
-`uv.lock` at the root is the only lockfile. A package added under `packages/` joins the
-workspace automatically.
-
-## Releasing
-
-Every package carries the same version and ships on the same day, from one tag:
-
-```console
-git tag -a v0.2.0 -m "Release all packages at 0.2.0" && git push origin v0.2.0
-```
-
-That tag triggers all four workflows under `.github/workflows/`, each of which runs the whole
-workspace's tests before building its own distribution. Per-package tags
-(`citations-v*`, `prereg-v*`, `results-v*`, `repro-v*`) still publish one distribution each,
-for repairing a partial release rather than for ordinary use.
-
-`scripts/versions.py` sets every version and rewrites the sibling ranges; `make versions`
-fails if they drift, and runs in CI.
-
-PyPI trusted publishing is bound to a repository *and* a workflow filename, so a package
-released from here for the first time needs its publisher reconfigured on PyPI — repository
-`elliottower/reproducible-science`, workflow `publish-<package>.yml`, environment `release` —
-before the tag is pushed. The workflow filename is what PyPI matches, not the distribution
-name, so `results-cli` is published by `publish-results.yml`. An upload from an unrecognized
-workflow is rejected, and a version number is never reusable once taken.
-
-The full procedure, and what each check is defending against, is in
-[docs/RELEASING.md](docs/RELEASING.md).
-
-## Layout
-
-```text
-packages/        the four distributions, each with its own pyproject, src and tests
-packages/*/plugin/   Claude Code plugins, published as a marketplace from this repository
-docs/            SPEC.md — the evidence contract
-paper/           the manuscript, and its own self-audit manifest
-experiments/     preregistrations and their frozen codebooks
-scripts/         figure and manifest generation
-```
-
-## Claude Code
-
-This repository is also a plugin marketplace:
-
-```console
 /plugin marketplace add elliottower/reproducible-science
 ```
+
+**Required dependency:** poppler (`pdftotext`), for reading PDF sources.
+
+```bash
+brew install poppler              # macOS
+sudo apt install poppler-utils    # Debian/Ubuntu
+```
+
+## Documentation
+
+**[elliottower.github.io/reproducible-science](https://elliottower.github.io/reproducible-science/)**
+
+The docs include a notebook that runs the published packages in your browser, with nothing to
+install.
+
+## Install
+
+| tool | install | what it does |
+|---|---|---|
+| [`repro`](packages/repro) | `pip install reproducible-science` | verifies declared evidence — quotations, reported values, table cells — against hash-pinned artifacts |
+| [`citations`](packages/citations) | `pip install citations` | checks that quotations resolve in the sources they cite |
+| [`results`](packages/results) | `pip install results-cli` | seals inputs, records outputs, binds a paper's claims to runs |
+| [`prereg`](packages/prereg) | `pip install prereg` | freezes a plan before running, and records what changed after |
+
+`pip install reproducible-science` brings all four. Each tool is its own distribution, so
+installing one brings only that one.
+
+## Getting started
+
+Write down what your paper claims and where each claim comes from. `repro verify` checks every
+one against the file it names and tells you which ones hold.
+
+```console
+$ prereg freeze                                    # lock the plan; names a git commit
+$ results seal analysis.py data.csv                # hash the inputs, before the run
+$ results run output.json --run-id exp_001         # hash the outputs, after it
+$ results claim "ICC = 0.42" --run-id exp_001 --location "Table 2"
+$ repro verify
+  Table 2, "ICC = 0.42"          verified   results.json /icc = 0.42
+  Section 3, "p < 0.05"          MISMATCH   the source reads p = 0.051
+  Appendix B, "n = 60"           unchecked  results.json is not there
+  1 of 3 assertions failed, 1 could not be checked.
+```
+
+Quotations are matched against the sources they cite, page numbers included. Reported numbers
+are compared against the value stored at an address you gave — never by searching a file for a
+number that looks close enough. When a check cannot run at all, it reports that, and the run
+does not pass.
+
+Preregistration is optional — you mark a claim confirmatory, exploratory, or not applicable,
+and only the first kind needs a plan behind it.
+
+## Contributing
+
+[Contributing](CONTRIBUTING.md) to get started, [Development](DEVELOPMENT.md) for the workspace
+and release machinery, and [docs/SPEC.md](docs/SPEC.md) for what a decision means. Security
+issues: [SECURITY.md](SECURITY.md).
 
 MIT licensed.

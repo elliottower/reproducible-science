@@ -1,7 +1,13 @@
 # citations
 
-Check that the passages you quote actually appear in the sources you cite, and keep a library of
-the ones that do.
+[![pypi](https://img.shields.io/pypi/v/citations)](https://pypi.org/project/citations/)
+[![python](https://img.shields.io/pypi/pyversions/citations)](https://pypi.org/project/citations/)
+[![license](https://img.shields.io/pypi/l/citations)](https://github.com/elliottower/reproducible-science/blob/main/LICENSE)
+[![docs](https://img.shields.io/badge/docs-live-blue)](https://elliottower.github.io/reproducible-science/)
+
+Check that the passages you quote appear in the sources you cite.
+
+Part of [reproducible-science](https://github.com/elliottower/reproducible-science) alongside `repro`, `results` and `prereg` — see the [documentation](https://elliottower.github.io/reproducible-science/tools/citations/).
 
 ## Install
 

@@ -30,8 +30,8 @@ claims:
         reported: "0.031"
 ```
 
-The claim names evidence. The evidence names an artifact and an address inside it. The
-artifact is pinned by digest. Nothing is searched for.
+Each piece of evidence points at one artifact and one address inside it, and the artifact
+carries a digest. Every value is fetched from the place the claim says it lives.
 
 ## Registration
 
