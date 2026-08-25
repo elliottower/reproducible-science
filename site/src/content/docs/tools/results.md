@@ -1,11 +1,13 @@
 ---
-title: results
-description: results — Reproducible Science
+title: Results
+description: Results — Reproducible Science
 ---
 
-{/* Generated from packages/results/README.md. Edit that file, not this one. */}
+<!-- Generated from packages/results/README.md. Edit that file, not this one. -->
 
 Seal a run, record what it produced, and verify the chain.
+
+**[Run it in your browser](/reproducible-science/demo/results/)** — every command on this page, in a live notebook. No install.
 
 ## Install
 

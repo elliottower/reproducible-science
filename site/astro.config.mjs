@@ -72,10 +72,10 @@ export default defineConfig({
         {
           label: "Tools",
           items: [
-            { label: "prereg", link: "/tools/prereg/" },
-            { label: "citations", link: "/tools/citations/" },
-            { label: "results", link: "/tools/results/" },
-            { label: "repro", link: "/tools/repro/" },
+            { label: "Prereg", link: "/tools/prereg/", attrs: { "data-tool": "prereg" } },
+            { label: "Results", link: "/tools/results/", attrs: { "data-tool": "results" } },
+            { label: "Citations", link: "/tools/citations/", attrs: { "data-tool": "citations" } },
+            { label: "Repro", link: "/tools/repro/", attrs: { "data-tool": "repro" } },
           ],
         },
         {

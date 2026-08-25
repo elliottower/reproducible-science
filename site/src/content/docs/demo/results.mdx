@@ -4,10 +4,13 @@ description: Seal inputs, record outputs, and refuse a confirmatory claim that p
 tableOfContents: false
 ---
 
-This notebook demonstrates `results` — an append-only ledger of what you sealed before a
-run, what the run produced, and which manuscript claims rest on which run. It ends on the
-ordering guard: once you record that the outcomes were seen, a run performed afterwards can
-no longer back a confirmatory claim.
+This notebook demonstrates `results` — [see documentation](/reproducible-science/tools/results/).
+
+1. Seals the inputs, hashing them before the run rather than after.
+2. Records what the run produced, and binds a manuscript claim to it.
+3. Refuses a second run recorded under an id that already exists.
+4. Records that the outcomes were seen.
+5. Refuses to call a later run confirmatory, and reports the ordering when forced anyway.
 
 <div class="jlite">
   <iframe

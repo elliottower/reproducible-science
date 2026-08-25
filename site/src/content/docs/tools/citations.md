@@ -1,12 +1,14 @@
 ---
-title: citations
-description: citations — Reproducible Science
+title: Citations
+description: Citations — Reproducible Science
 ---
 
-{/* Generated from packages/citations/README.md. Edit that file, not this one. */}
+<!-- Generated from packages/citations/README.md. Edit that file, not this one. -->
 
 Check that the passages you quote actually appear in the sources you cite, and keep a library of
 the ones that do.
+
+**[Run it in your browser](/reproducible-science/demo/citations/)** — every command on this page, in a live notebook. No install.
 
 ## Install
 

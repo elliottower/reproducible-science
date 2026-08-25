@@ -1,11 +1,13 @@
 ---
-title: prereg
-description: prereg — Reproducible Science
+title: Prereg
+description: Prereg — Reproducible Science
 ---
 
-{/* Generated from packages/prereg/README.md. Edit that file, not this one. */}
+<!-- Generated from packages/prereg/README.md. Edit that file, not this one. -->
 
 Freeze a plan before you run it, and record what changed after.
+
+**[Run it in your browser](/reproducible-science/demo/prereg/)** — every command on this page, in a live notebook. No install.
 
 ## Install
 

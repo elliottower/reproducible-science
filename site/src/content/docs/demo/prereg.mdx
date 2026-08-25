@@ -4,9 +4,12 @@ description: Scaffold a plan in OSF's headings, and keep an append-only record o
 tableOfContents: false
 ---
 
-This notebook demonstrates `prereg` — freeze a plan before you run it, and record what
-changed after. It scaffolds a plan in OSF's 27 question titles, shows what `check` says
-before anything is frozen, and appends to the log.
+This notebook demonstrates `prereg` — [see documentation](/reproducible-science/tools/prereg/).
+
+1. Scaffolds a plan in the 27 OSF question titles.
+2. Runs `check` before anything is frozen, and gets *not frozen* rather than *unchanged*.
+3. Appends an amendment to the log, and gets a note refused for spanning two lines.
+4. Tries to freeze, and gets refused for want of a commit to anchor to.
 
 <div class="jlite">
   <iframe

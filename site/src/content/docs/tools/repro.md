@@ -1,11 +1,13 @@
 ---
-title: repro
-description: repro — Reproducible Science
+title: Repro
+description: Repro — Reproducible Science
 ---
 
-{/* Generated from packages/repro/README.md. Edit that file, not this one. */}
+<!-- Generated from packages/repro/README.md. Edit that file, not this one. -->
 
 Scaffold reproducible science workflows in one command.
+
+**[Run it in your browser](/reproducible-science/demo/end-to-end/)** — every command on this page, in a live notebook. No install.
 
 ## Install
 
