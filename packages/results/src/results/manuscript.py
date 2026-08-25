@@ -76,8 +76,27 @@ IDENTIFIER = re.compile(
 #: Constants belonging to a formula rather than to the work. A paper stating the normal
 #: quantile owes no run for it.
 CONSTANTS = frozenset(
-    {"0", "1", "2", "3", "4", "5", "10", "100", "1000", "1.96", "2.5", "97.5",
-     "0.05", "0.01", "0.001", "95", "99", "0.5", "0.95"}
+    {
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "10",
+        "100",
+        "1000",
+        "1.96",
+        "2.5",
+        "97.5",
+        "0.05",
+        "0.01",
+        "0.001",
+        "95",
+        "99",
+        "0.5",
+        "0.95",
+    }
 )
 
 #: A single digit is almost always structure -- an item count, a footnote marker, an
@@ -98,8 +117,9 @@ def constraining_digits(printed: str) -> int:
     return max(1, len(body.strip("0") or "0"))
 
 
-def resolve_include(name: str, root: pathlib.Path,
-                    here: pathlib.Path | None = None) -> pathlib.Path | None:
+def resolve_include(
+    name: str, root: pathlib.Path, here: pathlib.Path | None = None
+) -> pathlib.Path | None:
     """The file an `\\input` names, or None where it is not on disk.
 
     LaTeX resolves an include against the directory of the *main* document, not against the
@@ -117,17 +137,23 @@ def resolve_include(name: str, root: pathlib.Path,
         if base is None:
             continue
         candidate = (base / name).resolve()
-        for path in (candidate, candidate.with_suffix(".tex"),
-                     candidate.parent / (candidate.name + ".tex")):
+        for path in (
+            candidate,
+            candidate.with_suffix(".tex"),
+            candidate.parent / (candidate.name + ".tex"),
+        ):
             if path.is_file():
                 return path
     return None
 
 
-def body(source: str, base: pathlib.Path | None = None,
-         visited: set[pathlib.Path] | None = None,
-         depth: int = 0,
-         root: pathlib.Path | None = None) -> list[tuple[str, bool, str, int]]:
+def body(
+    source: str,
+    base: pathlib.Path | None = None,
+    visited: set[pathlib.Path] | None = None,
+    depth: int = 0,
+    root: pathlib.Path | None = None,
+) -> list[tuple[str, bool, str, int]]:
     """Every line of the manuscript and the files it pulls in.
 
     Each entry is the line with layout stripped, whether it carries a citation, which file it
@@ -154,13 +180,13 @@ def body(source: str, base: pathlib.Path | None = None,
         if include and base is not None and depth < MAX_INCLUDE_DEPTH:
             # `root` is set from `base` on the first call, so it is never None here;
             # naming the fallback keeps that true for a reader and for the checker.
-            target = resolve_include(include.group(1).strip(), root or base.parent,
-                                     base.parent)
+            target = resolve_include(include.group(1).strip(), root or base.parent, base.parent)
             if target is not None and target not in visited:
                 visited.add(target)
                 try:
-                    out.extend(body(target.read_text(errors="replace"), target,
-                                    visited, depth + 1, root))
+                    out.extend(
+                        body(target.read_text(errors="replace"), target, visited, depth + 1, root)
+                    )
                 except OSError:
                     pass
                 continue
