@@ -10,8 +10,7 @@ import sys
 
 import pytest
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]
-                       / "experiments" / "addressability-sample"))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from artifact_readers import read_pickle, read_rdata, unwrap  # noqa: E402
 
