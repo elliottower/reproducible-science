@@ -136,4 +136,3 @@ All four tools in one plugin, with every hook, skill and command:
 ```
 
 MIT licensed.
-

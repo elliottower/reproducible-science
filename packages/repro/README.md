@@ -127,4 +127,3 @@ uv tool install reproducible-science   # or: pip install reproducible-science
 ```
 
 MIT licensed.
-
