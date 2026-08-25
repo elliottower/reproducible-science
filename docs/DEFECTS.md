@@ -13,7 +13,7 @@ marked withdrawn and keeps its number.
 | **Pinning and extraction** | RD-001 – RD-005 |
 | **Repository structure** | RD-006 – RD-011 |
 | **Manuscript** | RD-012 – RD-015 |
-| **Tooling** | RD-016 |
+| **Tooling** | RD-016 – RD-017 |
 
 ---
 
@@ -216,6 +216,22 @@ The repair is to cite the archived identifier, which is the citable form and nam
 ---
 
 ## Tooling
+
+### RD-017 — A reporting step configured not to fail
+
+**Detected by** reading the step's own log rather than the job's conclusion.
+
+An upload or reporting action given `fail_ci_if_error: false`, or an equivalent, logs its
+error and exits zero. The job is green, the badge is absent or stale, and nothing distinguishes
+a report that was never delivered from one that was.
+
+The setting exists so that an outage in a third-party service does not block a merge. What it
+also buys is a check that reports success while measuring nothing, which is the same class of
+defect as an unassessable audit cell recorded as a pass.
+
+**Observed.** A coverage upload rejected with `{"message":"Token required because branch is
+protected"}`, in a job whose conclusion was `success`. The token had been added three minutes
+after the run started. Nothing in the job summary showed the upload had failed.
 
 ### RD-016 — A tool implementing a superseded version of the instrument
 
