@@ -19,3 +19,7 @@ pnpm-debug.log*
 
 # macOS-specific files
 .DS_Store
+
+# JupyterLite is a 69 MB / 806 file build artifact. Regenerate with:
+#   cd jupyterlite && jupyter lite build --contents demo.ipynb --output-dir ../site/public/jlite
+public/jlite/

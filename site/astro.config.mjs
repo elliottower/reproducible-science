@@ -32,7 +32,14 @@ export default defineConfig({
       },
       sidebar: [
         { label: "Overview", link: "/" },
-        { label: "Demo: Verify a claim", link: "/lab/" },
+        {
+          label: "Demo",
+          items: [
+            { label: "Verify a claim", link: "/demo/verify/" },
+            { label: "Notebook (Pyodide)", link: "/demo/notebook/" },
+            { label: "Notebook (JupyterLite)", link: "/demo/jupyterlite/" },
+          ],
+        },
         {
           label: "Get started",
           items: [
