@@ -1,0 +1,23 @@
+---
+title: Record a run
+description: Seal inputs, record outputs, and refuse a confirmatory claim that postdates the outcomes
+tableOfContents: false
+---
+
+This notebook demonstrates `results` — an append-only ledger of what you sealed before a
+run, what the run produced, and which manuscript claims rest on which run. It ends on the
+ordering guard: once you record that the outcomes were seen, a run performed afterwards can
+no longer back a confirmatory claim.
+
+<div class="jlite">
+  <iframe
+    src={`${import.meta.env.BASE_URL.replace(/\/$/, "")}/jlite/lab/index.html?path=results.ipynb`}
+    title="Record a run, in JupyterLite"
+    loading="lazy"
+  ></iframe>
+</div>
+
+## Not possible in WebAssembly
+
+`results` needs neither git nor a subprocess, so nothing here stands in for anything. Every
+command in this notebook is the one you would run locally.

@@ -1,0 +1,23 @@
+---
+title: Freeze a plan
+description: Scaffold a plan in OSF's headings, and keep an append-only record of what changed
+tableOfContents: false
+---
+
+This notebook demonstrates `prereg` — freeze a plan before you run it, and record what
+changed after. It scaffolds a plan in OSF's 27 question titles, shows what `check` says
+before anything is frozen, and appends to the log.
+
+<div class="jlite">
+  <iframe
+    src={`${import.meta.env.BASE_URL.replace(/\/$/, "")}/jlite/lab/index.html?path=prereg.ipynb`}
+    title="Freeze a plan, in JupyterLite"
+    loading="lazy"
+  ></iframe>
+</div>
+
+## Not possible in WebAssembly
+
+A freeze names the commit the plan was frozen at, and git does not exist in WebAssembly. The
+notebook ends on `prereg freeze` refusing rather than recording a freeze that names no
+commit — install locally to complete it.

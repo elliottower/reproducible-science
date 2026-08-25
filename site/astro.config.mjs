@@ -41,9 +41,17 @@ export default defineConfig({
         // demo we are showing. Its history is in this branch if it comes back.
         {
           label: "Demo",
+          // `data-tool` is spread onto the anchor by SidebarSublist and rendered as a code-styled
+          // suffix in custom.css. The label itself is escaped text, so a backtick in it would
+          // show up as a literal backtick -- this is the way to get the package name set in mono
+          // without copying Starlight's sidebar internals.
+          // Workflow order: freeze the plan, record the run, check the quotations, and verify
+          // the lot. The end-to-end notebook runs that chain, so it comes first.
           items: [
-            { label: "Verify a claim", link: "/demo/verify-a-claim/" },
-            { label: "Check a quotation", link: "/demo/check-a-quotation/" },
+            { label: "End to end", link: "/demo/end-to-end/", attrs: { "data-tool": "repro" } },
+            { label: "Freeze a plan", link: "/demo/prereg/", attrs: { "data-tool": "prereg" } },
+            { label: "Record a run", link: "/demo/results/", attrs: { "data-tool": "results" } },
+            { label: "Check a quotation", link: "/demo/citations/", attrs: { "data-tool": "citations" } },
           ],
         },
         {

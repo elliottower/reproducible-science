@@ -1,0 +1,22 @@
+---
+title: End to end
+description: Seal a run, bind a manuscript claim to it, and break each link in turn
+tableOfContents: false
+---
+
+This notebook demonstrates `repro` — one contract for checking every evidence assertion a
+manuscript declares. It seals a run with `results`, binds a claim to it, then breaks each
+link in turn and reports which kind of failure each break produces.
+
+<div class="jlite">
+  <iframe
+    src={`${import.meta.env.BASE_URL.replace(/\/$/, "")}/jlite/lab/index.html?path=end-to-end.ipynb`}
+    title="End to end, in JupyterLite"
+    loading="lazy"
+  ></iframe>
+</div>
+
+## Not possible in WebAssembly
+
+`prereg freeze` stamps a plan with the commit it was frozen at. Git is not available here, so
+that one command needs a local install.

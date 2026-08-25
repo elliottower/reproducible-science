@@ -133,3 +133,14 @@
   border-radius: 0.5rem;
   background: #fff;
 }
+
+/* Demo rows name the task; the package that runs it is set in mono after the label. Starlight
+   escapes sidebar labels, so markdown in the label is not an option -- the name travels as a
+   data attribute on the anchor and is drawn here. */
+.sidebar a[data-tool]::after {
+  content: "(" attr(data-tool) ")";
+  font-family: var(--sl-font-mono, var(--sl-font-system-mono));
+  font-size: 0.8em;
+  opacity: 0.65;
+  margin-inline-start: 0.45em;
+}

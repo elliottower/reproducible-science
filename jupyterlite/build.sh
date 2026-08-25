@@ -15,7 +15,9 @@ out="$here/../site/public/jlite"
 rm -rf "$out"
 uvx --with jupyterlite-core --with jupyterlite-pyodide-kernel --with jupyter-server \
   jupyter lite build \
-    --contents "$here/demo.ipynb" \
+    --contents "$here/end-to-end.ipynb" \
+    --contents "$here/prereg.ipynb" \
+    --contents "$here/results.ipynb" \
     --contents "$here/citations.ipynb" \
     --contents "$here/paper.pdf" \
     --output-dir "$out"
