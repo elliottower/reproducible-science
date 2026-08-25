@@ -166,12 +166,18 @@ repos:
       # ---- pre-push: slower, repository-wide ---------------------------------------------
       - id: pytest
         name: the whole workspace's tests
-        entry: uv run pytest -q -x
+        entry: uv run pytest -q -x -n auto
         language: system
         pass_filenames: false
+        types_or: [python, toml]
         stages: [pre-push]
 
       - id: drift
+        # Regenerating the figures reads every repository under ~/Documents/GitHub and calls
+        # Crossref and DataCite, which costs about two minutes. Nothing it checks can change
+        # unless a generator, a package, or the paper itself changed, so a push that touches
+        # neither skips it.
+        files: ^(scripts|packages|paper)/
         name: committed derived artifacts reproduce
         entry: uv run python scripts/check_drift.py
         language: system
