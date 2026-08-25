@@ -495,8 +495,7 @@ def cmd_verify(a) -> int:
             # form of the defect after the claim path was fixed, so the claim was accepted
             # and then reported as unprotected by the command that checks it.
             protected = [
-                c for c in late
-                if c.get("frozen_at_time") and precedes(c["frozen_at_time"], seen)
+                c for c in late if c.get("frozen_at_time") and precedes(c["frozen_at_time"], seen)
             ]
             contested = [c for c in late if c not in protected]
         if protected:
