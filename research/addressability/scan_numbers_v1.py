@@ -44,9 +44,11 @@ AFFILIATION = re.compile(r"^\s*\d\s+[A-Z][a-z]+\s+(?:University|Institute|Colleg
 CITATION = re.compile(r"\[\d+(?:\s*,\s*\d+)*\]")
 YEAR = re.compile(r"^(1[89]|20)\d\d$")
 IDENTIFIER_LINE = re.compile(
-    r"doi|https?://|arxiv|isbn|issn|swh:1:|zenodo|github\.com|openreview", re.I)
+    r"doi|https?://|arxiv|isbn|issn|swh:1:|zenodo|github\.com|openreview", re.I
+)
 DATE_LINE = re.compile(
-    r"\b(January|February|March|April|May|June|July|August|September|October|November|December)\b")
+    r"\b(January|February|March|April|May|June|July|August|September|October|November|December)\b"
+)
 PAGE_RANGE = re.compile(r"\bpp?\.\s*\d+")
 
 #: A value bound to a named symbol is a parameter of the work -- a hyperparameter, a
@@ -72,8 +74,8 @@ MANGLED = re.compile(r"[√∫∑∏⟨⟩∂∇⊕⊗◦̸⃗∈∀∃⊂⊆≠
 #: A pointer to an equation, figure or table rather than a quantity: "according to (3)",
 #: "see (2)", "in equation (2)". The parenthesised number names a location in the paper.
 CROSS_REF = re.compile(
-    r"(?:see|according\s+to|in|from|using|by|eq\.?|equation|figure|fig\.?|table)\s*\(?$",
-    re.I)
+    r"(?:see|according\s+to|in|from|using|by|eq\.?|equation|figure|fig\.?|table)\s*\(?$", re.I
+)
 
 #: A number immediately following a word with no space, numbering an item in an inline list:
 #: "Influence maximization(1), Node classification(2)".
@@ -123,8 +125,10 @@ def classify(printed: str, context: str, line_count: int) -> tuple[str, str]:
     if context.strip() == printed:
         return "structural", "line contains nothing but this number"
     if CROSS_REF.search(before.rstrip()) or (
-            before.rstrip().endswith("(") and context[at + len(printed):].startswith(")")
-            and len(printed) <= 2):
+        before.rstrip().endswith("(")
+        and context[at + len(printed) :].startswith(")")
+        and len(printed) <= 2
+    ):
         return "structural", "cross-reference to an equation, figure or table"
     if ENUM_MARKER.search(before):
         return "structural", "inline enumeration marker"
@@ -170,14 +174,22 @@ def main(path: str) -> int:
 
     print(f"  {path}")
     print(f"  numeric tokens: {total}\n")
-    for kind in ("measurement", "parameter", "dense_line", "bounded",
-                 "structural", "bibliographic", "extraction_failed"):
+    for kind in (
+        "measurement",
+        "parameter",
+        "dense_line",
+        "bounded",
+        "structural",
+        "bibliographic",
+        "extraction_failed",
+    ):
         n = counts.get(kind, 0)
-        print(f"    {kind:18} {n:5}  ({n/total:5.1%})" if total else f"    {kind:18} {n:5}")
+        print(f"    {kind:18} {n:5}  ({n / total:5.1%})" if total else f"    {kind:18} {n:5}")
 
     out = pathlib.Path(path).with_suffix(".numbers.json")
-    out.write_text(json.dumps({"source": path, "counts": counts, "records": records},
-                              indent=2) + "\n")
+    out.write_text(
+        json.dumps({"source": path, "counts": counts, "records": records}, indent=2) + "\n"
+    )
     print(f"\n  wrote {out}")
     return 0
 

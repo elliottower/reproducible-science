@@ -12,6 +12,7 @@ results verify            check the ledger chain and every hash it names
 from __future__ import annotations
 
 import argparse
+import datetime
 import os
 import pathlib
 import sys
@@ -207,7 +208,7 @@ def cmd_claim(a) -> int:
     # reaching a consequential choice. A plan committed before the exposure
     # cannot be reached by it, so the disposition is confirmatory with the
     # exposure logged, and the demotion is scoped to decisions not so protected.
-    protected = bool(retrospective and frozen_time and frozen_time < retrospective)
+    protected = bool(retrospective and frozen_time and precedes(frozen_time, retrospective))
     if protected:
         retrospective = None
 
@@ -241,12 +242,35 @@ def cmd_claim(a) -> int:
     print(f"  backed by run: {a.run_id}")
     if a.location:
         print(f"  appears in: {a.location}")
-    if protected:
+    if protected and frozen_time:
         print(f"  plan frozen at {frozen_at} on {frozen_time[:19]}, before outcomes")
         print("  were seen: confirmatory, exposure logged")
     elif retrospective:
         print(f"  recorded after outcomes were seen at {retrospective[:19]}; verify will report it")
     return 0
+
+
+def precedes(earlier: str, later: str) -> bool:
+    """Whether one ISO timestamp names an instant before another.
+
+    Both sides must be parsed. The freeze time comes from git as `%cI`, which carries the
+    committer's local offset, and the ledger writes UTC; comparing them as strings compares
+    the offsets rather than the instants. That comparison passed on a machine four hours
+    behind UTC, where the local hour is numerically smaller, and failed on a UTC runner where
+    the two agree to the second and the ordering fell to whether `+` or `Z` sorts before `.`.
+
+    An unparseable timestamp is not treated as earlier. A freeze that cannot be placed in time
+    cannot protect a claim, and guessing here would grant the protection on a malformed value.
+    """
+    try:
+        first = datetime.datetime.fromisoformat(earlier)
+        second = datetime.datetime.fromisoformat(later)
+    except (TypeError, ValueError):
+        return False
+    if (first.tzinfo is None) != (second.tzinfo is None):
+        # One naive and one aware cannot be ordered without inventing a zone for the naive one.
+        return False
+    return first < second
 
 
 def freeze_timestamp(root: pathlib.Path, ref: str) -> str | None:
@@ -262,7 +286,9 @@ def freeze_timestamp(root: pathlib.Path, ref: str) -> str | None:
     try:
         out = subprocess.run(
             ["git", "-C", str(root), "show", "-s", "--format=%cI", ref],
-            capture_output=True, text=True, timeout=15,
+            capture_output=True,
+            text=True,
+            timeout=15,
         )
     except (OSError, subprocess.SubprocessError):
         return None
@@ -292,8 +318,10 @@ def cmd_coverage(a) -> int:
     owed = bound + unbound
 
     print(f"{a.manuscript}")
-    print(f"  {claims} claim{'' if claims == 1 else 's'} in the ledger, "
-          f"naming {len(claimed)} distinct value{'' if len(claimed) == 1 else 's'}")
+    print(
+        f"  {claims} claim{'' if claims == 1 else 's'} in the ledger, "
+        f"naming {len(claimed)} distinct value{'' if len(claimed) == 1 else 's'}"
+    )
     if not owed:
         print("  no numbers in this manuscript owe a run.")
         return 0
@@ -301,10 +329,11 @@ def cmd_coverage(a) -> int:
     share = len(bound) / len(owed) if owed else 0.0
     print(f"  yours, bound to a run       {len(bound):>5}   ({share:.0%} of {len(owed)})")
     print(f"  yours, bound to nothing     {len(unbound):>5}")
-    print(f"  beside a citation           {len(attributed):>5}   "
-          f"attributable to the work cited")
-    print(f"  owing no claim              {len(found) - len(checkable):>5}   "
-          f"constants, identifiers, hyphenated names")
+    print(f"  beside a citation           {len(attributed):>5}   attributable to the work cited")
+    print(
+        f"  owing no claim              {len(found) - len(checkable):>5}   "
+        f"constants, identifiers, hyphenated names"
+    )
 
     if unbound:
         # Grouped by line, since a dense abstract or a table row holds a dozen values and
@@ -312,7 +341,7 @@ def cmd_coverage(a) -> int:
         by_line: dict[tuple[str, int], list[dict]] = {}
         for number in unbound:
             by_line.setdefault((number.get("source", ""), number["line"]), []).append(number)
-        print(f"\nbound to nothing, by line:")
+        print("\nbound to nothing, by line:")
         for key in sorted(by_line)[: a.limit]:
             lineno = key[1]
             entries = by_line[key]
@@ -462,8 +491,12 @@ def cmd_verify(a) -> int:
                 if c.get("confirmatory")
                 and (first_run_timestamp(events, str(c.get("run_id") or "")) or "") > seen
             ]
-            protected = [c for c in late
-                         if c.get("frozen_at_time") and c["frozen_at_time"] < seen]
+            # The same instant comparison the claim path uses. This line held the string
+            # form of the defect after the claim path was fixed, so the claim was accepted
+            # and then reported as unprotected by the command that checks it.
+            protected = [
+                c for c in late if c.get("frozen_at_time") and precedes(c["frozen_at_time"], seen)
+            ]
             contested = [c for c in late if c not in protected]
         if protected:
             print(
@@ -551,8 +584,8 @@ def main() -> int:
     cl.add_argument(
         "--frozen-at",
         help="a commit containing the frozen plan this claim rests on; if it "
-             "predates the exposure, the claim is confirmatory with the "
-             "exposure logged rather than retrospective",
+        "predates the exposure, the claim is confirmatory with the "
+        "exposure logged rather than retrospective",
     )
     cl.add_argument("--location", help="where in the manuscript: Table 2, Section 4.1, etc.")
     cl.set_defaults(fn=cmd_claim)
@@ -565,13 +598,16 @@ def main() -> int:
     )
     v.set_defaults(fn=cmd_verify)
 
-    cv = sub.add_parser("coverage",
-                        help="how many of a manuscript's numbers are bound to a run")
+    cv = sub.add_parser("coverage", help="how many of a manuscript's numbers are bound to a run")
     cv.add_argument("manuscript", help="the manuscript source: .tex, .md, .qmd, .rst")
-    cv.add_argument("--limit", type=int, default=25,
-                    help="how many unbound numbers to list (default: 25)")
-    cv.add_argument("--strict", action="store_true",
-                    help="exit non-zero when anything is unbound, for a pre-submission check")
+    cv.add_argument(
+        "--limit", type=int, default=25, help="how many unbound numbers to list (default: 25)"
+    )
+    cv.add_argument(
+        "--strict",
+        action="store_true",
+        help="exit non-zero when anything is unbound, for a pre-submission check",
+    )
     cv.set_defaults(fn=cmd_coverage)
 
     ra = sub.add_parser("reanchor", help="record the ledger's current length as authoritative")

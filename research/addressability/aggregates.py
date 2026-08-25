@@ -83,9 +83,11 @@ def columns(path: pathlib.Path) -> dict[str, list[float]]:
 
     header = rows[0]
     numeric_header = sum(1 for cell in header if NUMERIC.match(cell.strip()))
-    names = ([f"column {i}" for i in range(len(header))]
-             if numeric_header > len(header) / 2 else
-             [cell.strip() or f"column {i}" for i, cell in enumerate(header)])
+    names = (
+        [f"column {i}" for i in range(len(header))]
+        if numeric_header > len(header) / 2
+        else [cell.strip() or f"column {i}" for i, cell in enumerate(header)]
+    )
     body = rows if numeric_header > len(header) / 2 else rows[1:]
 
     found: dict[str, list[float]] = {}

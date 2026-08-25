@@ -75,9 +75,30 @@ PATH_TOOLS = {"Read", "Edit", "Write", "NotebookEdit", "Grep", "Glob"}
 #: these is recorded. Deliberately conservative: over-recording a path that was not read
 #: is harmless, and silently missing one is not, so anything ambiguous is recorded.
 READING_COMMANDS = {
-    "cat", "head", "tail", "less", "more", "grep", "rg", "egrep", "fgrep",
-    "awk", "sed", "sort", "uniq", "wc", "cut", "diff", "jq", "python3",
-    "python", "open", "cp", "pdftotext", "unzip", "tar",
+    "cat",
+    "head",
+    "tail",
+    "less",
+    "more",
+    "grep",
+    "rg",
+    "egrep",
+    "fgrep",
+    "awk",
+    "sed",
+    "sort",
+    "uniq",
+    "wc",
+    "cut",
+    "diff",
+    "jq",
+    "python3",
+    "python",
+    "open",
+    "cp",
+    "pdftotext",
+    "unzip",
+    "tar",
 }
 
 #: A token is path-shaped if it contains a separator, starts at home, or is a filename

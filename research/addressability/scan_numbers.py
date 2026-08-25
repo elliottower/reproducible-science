@@ -36,8 +36,7 @@ import sys
 #: Every comma must be followed by a digit. An earlier form ended in `[\d,]*`, which
 #: swallowed the comma after a number in prose: the token for `UMR 7222, Paris` was `7222,`,
 #: which then failed every rule testing whether the token is a digit string.
-NUMBER = re.compile(
-    r"(?<![\w.])[-+]?\d(?:,?\d)*(?:\.\d+)?(?:[eE][-+]?\d+)?(?![\w])")
+NUMBER = re.compile(r"(?<![\w.])[-+]?\d(?:,?\d)*(?:\.\d+)?(?:[eE][-+]?\d+)?(?![\w])")
 
 #: Document furniture: numbering that organises the paper rather than describing the work.
 SECTION_HEAD = re.compile(r"^\s*\d+(?:\.\d+)*\s+[A-Z]")
@@ -64,7 +63,9 @@ IDENTIFIER = re.compile(
     r"|\b\d{4}\.\d{4,5}(?:v\d+)?\b"
     # Archive record numbers, which appear stripped of their URL when a citation wraps.
     r"|\b(?:record|records|deposit|collections)/\d+|\bzenodo\.\d+"
-    r"|\bswh:1:[a-z]{3}:[0-9a-f]+(?:;\S*)?|\bISBN[\s-]*[\d-]+|\bISSN[\s-]*[\d-]+)", re.I)
+    r"|\bswh:1:[a-z]{3}:[0-9a-f]+(?:;\S*)?|\bISBN[\s-]*[\d-]+|\bISSN[\s-]*[\d-]+)",
+    re.I,
+)
 
 #: A number naming a product or an organisation rather than measuring anything: a processor
 #: model, a GPU, a research-unit code. The hyphenated form is caught by NAME_FRAGMENT; this
@@ -73,9 +74,12 @@ IDENTIFIER = re.compile(
 MODEL_NUMBER = re.compile(
     r"\b(?:Xeon|Gold|Silver|Platinum|Core|Ryzen|EPYC|Threadripper|Opteron"
     r"|GeForce|RTX|GTX|Tesla|Quadro|Titan|Radeon|A|V|H|P|K"
-    r"|UMR|UMS|CNRS|INSERM|EA|FR)\s*$", re.I)
+    r"|UMR|UMS|CNRS|INSERM|EA|FR)\s*$",
+    re.I,
+)
 DATE_LINE = re.compile(
-    r"\b(January|February|March|April|May|June|July|August|September|October|November|December)\b")
+    r"\b(January|February|March|April|May|June|July|August|September|October|November|December)\b"
+)
 PAGE_RANGE = re.compile(r"\bpp?\.\s*\d+")
 
 #: A value bound to a named symbol is a parameter of the work -- a hyperparameter, a
@@ -110,8 +114,8 @@ FLUSH_EXPONENT = re.compile(r"[)\]}◦^]$")
 #: included the bare prepositions, and "resulting in 360 reproduced values" was read as a
 #: cross-reference to equation 360.
 CROSS_REF = re.compile(
-    r"(?:see|according\s+to|eq\.?|equation|figure|fig\.?|table|section|appendix)\s*\(?$",
-    re.I)
+    r"(?:see|according\s+to|eq\.?|equation|figure|fig\.?|table|section|appendix)\s*\(?$", re.I
+)
 
 #: A digit joined to a word by a hyphen or dash names something rather than measuring it:
 #: `CIFAR-10`, `ResNet-18`, `DenseNet-121`, `VGG-16`, `top-1`. The identifier is the whole
@@ -224,7 +228,8 @@ def header_form(line: str) -> str:
 
 
 def aligned_blocks(
-        lines: list[str]) -> tuple[set[int], set[int], dict[int, list[tuple[int, bool]]]]:
+    lines: list[str],
+) -> tuple[set[int], set[int], dict[int, list[tuple[int, bool]]]]:
     """Lines belonging to a table, and lines belonging to a figure, by alignment and caption.
 
     A run is consecutive non-empty lines each carrying two or more numbers. Within a run,
@@ -246,11 +251,11 @@ def aligned_blocks(
         for row in run:
             for match in NUMBER.finditer(lines[row]):
                 position = match.start()
-                key = next((k for k in columns if abs(k - position) <= COLUMN_TOLERANCE),
-                           position)
+                key = next((k for k in columns if abs(k - position) <= COLUMN_TOLERANCE), position)
                 columns.setdefault(key, set()).add(row)
-        aligned = [rows for rows in columns.values()
-                   if len(rows) >= max(2, COLUMN_SUPPORT * len(run))]
+        aligned = [
+            rows for rows in columns.values() if len(rows) >= max(2, COLUMN_SUPPORT * len(run))
+        ]
         if len(aligned) < 2:
             return
         words = sum(len(WORD.findall(lines[row])) for row in run)
@@ -324,6 +329,7 @@ def axis_dump(line: str) -> bool:
     words = re.findall(r"[A-Za-z]{3,}", line)
     return len(words) <= 1
 
+
 #: An equation body reaches at most this far above its label before the block is assumed to
 #: have ended. Display equations in this corpus run one to four lines.
 EQUATION_LOOKBACK = 4
@@ -357,9 +363,14 @@ def equation_lines(lines: list[str]) -> dict[int, str]:
     return roles
 
 
-def classify(printed: str, context: str, line_count: int, role: str | None,
-             line_kind: str | None,
-             columns: list[tuple[int, bool]] | None = None) -> tuple[str, str]:
+def classify(
+    printed: str,
+    context: str,
+    line_count: int,
+    role: str | None,
+    line_kind: str | None,
+    columns: list[tuple[int, bool]] | None = None,
+) -> tuple[str, str]:
     """Category and reason for one numeric token.
 
     `role` is the line's position in a display equation, or None. `line_kind` is what the
@@ -368,8 +379,8 @@ def classify(printed: str, context: str, line_count: int, role: str | None,
     """
     at = context.find(printed)
     before = context[:at]
-    after = context[at + len(printed):]
-    window = context[max(0, at - 40):at + len(printed) + 12]
+    after = context[at + len(printed) :]
+    window = context[max(0, at - 40) : at + len(printed) + 12]
 
     if line_kind == "header":
         return "structural", "running header or footer printed by the page template"
@@ -391,8 +402,12 @@ def classify(printed: str, context: str, line_count: int, role: str | None,
         return "structural", "affiliation marker"
     if SECTION_HEAD.match(context) and context.strip().startswith(printed):
         return "structural", "section number"
-    if role == "label" and before.rstrip().endswith("(") and after.startswith(")") \
-            and context.rstrip().endswith(f"({printed})"):
+    if (
+        role == "label"
+        and before.rstrip().endswith("(")
+        and after.startswith(")")
+        and context.rstrip().endswith(f"({printed})")
+    ):
         return "structural", "equation label"
     if ENUM_MARKER.search(before):
         return "structural", "inline enumeration marker"
@@ -453,10 +468,18 @@ def scan(text: str) -> list[dict]:
         line_count = len(NUMBER.findall(line))
         for match in NUMBER.finditer(line):
             printed = match.group(0)
-            kind, reason = classify(printed, line, line_count, roles.get(index), line_kind,
-                                    quoted.get(index))
-            records.append({"printed": printed, "line": index + 1,
-                            "context": stripped[:160], "kind": kind, "reason": reason})
+            kind, reason = classify(
+                printed, line, line_count, roles.get(index), line_kind, quoted.get(index)
+            )
+            records.append(
+                {
+                    "printed": printed,
+                    "line": index + 1,
+                    "context": stripped[:160],
+                    "kind": kind,
+                    "reason": reason,
+                }
+            )
     return records
 
 
@@ -484,8 +507,12 @@ def main(path: str) -> int:
 
     print(f"  {path}")
     print(f"  numeric tokens: {total}\n")
-    for title, group in (("traceable", TRACEABLE), ("quoted from another study", QUOTED),
-                         ("untraceable", UNTRACEABLE), ("reported separately", SEPARATE)):
+    for title, group in (
+        ("traceable", TRACEABLE),
+        ("quoted from another study", QUOTED),
+        ("untraceable", UNTRACEABLE),
+        ("reported separately", SEPARATE),
+    ):
         subtotal = sum(counts.get(k, 0) for k in group)
         print(f"    {title:22} {subtotal:5}  ({subtotal / total:5.1%})" if total else title)
         for kind in group:
@@ -494,8 +521,9 @@ def main(path: str) -> int:
         print()
 
     out = pathlib.Path(path).with_suffix(".numbers.json")
-    out.write_text(json.dumps({"source": path, "counts": counts, "records": records},
-                              indent=2) + "\n")
+    out.write_text(
+        json.dumps({"source": path, "counts": counts, "records": records}, indent=2) + "\n"
+    )
     print(f"  wrote {out}")
     return 0
 

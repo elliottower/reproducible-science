@@ -34,8 +34,21 @@ from artifact_readers import COMPRESSORS, read_pickle, read_rdata, unwrap
 
 #: Files holding results the work produced. A value confirmed against one of these is
 #: confirmed against the record of a run.
-DATA = {".csv", ".tsv", ".json", ".txt", ".dat", ".out", ".log", ".yaml", ".yml", ".xml",
-        ".ipynb", ".html", ".md"}
+DATA = {
+    ".csv",
+    ".tsv",
+    ".json",
+    ".txt",
+    ".dat",
+    ".out",
+    ".log",
+    ".yaml",
+    ".yml",
+    ".xml",
+    ".ipynb",
+    ".html",
+    ".md",
+}
 
 #: Source that produces results rather than recording them. Searched, because a
 #: hyperparameter's counterpart is a call site, but a value's absence from source does not
@@ -84,15 +97,36 @@ def is_manuscript(text: str, probes: list[str]) -> bool:
         return False
     return sum(1 for probe in probes if probe in text) >= MANUSCRIPT_HITS
 
+
 #: Binary records with a reader in `artifact_readers`. Both formats here execute code when
 #: opened the ordinary way, and neither is opened the ordinary way: see that module.
-BINARY = {".pkl": read_pickle, ".pickle": read_pickle,
-          ".rds": read_rdata, ".rdata": read_rdata, ".rda": read_rdata}
+BINARY = {
+    ".pkl": read_pickle,
+    ".pickle": read_pickle,
+    ".rds": read_rdata,
+    ".rdata": read_rdata,
+    ".rda": read_rdata,
+}
 
 #: Machine-readable records with no reader here. A value missing from the corpus while one
 #: of these sits unread is `unchecked`: the artifact may hold it, and nothing asked.
-UNREAD = {".npy", ".npz", ".pt", ".pth", ".h5", ".hdf5", ".mat", ".parquet", ".feather",
-          ".xls", ".db", ".sqlite", ".zip", ".7z", ".tar"}
+UNREAD = {
+    ".npy",
+    ".npz",
+    ".pt",
+    ".pth",
+    ".h5",
+    ".hdf5",
+    ".mat",
+    ".parquet",
+    ".feather",
+    ".xls",
+    ".db",
+    ".sqlite",
+    ".zip",
+    ".7z",
+    ".tar",
+}
 
 #: Renderings of results rather than records of them. A value legible only inside a plot
 #: image is not machine-addressable, which is a true statement about the artifact rather
@@ -144,8 +178,9 @@ PROFILES = {
 }
 
 
-def trusted_tiers(records: list[dict], index: dict, printed: set[str],
-                  profile: dict) -> tuple[list[str], dict[str, float]]:
+def trusted_tiers(
+    records: list[dict], index: dict, printed: set[str], profile: dict
+) -> tuple[list[str], dict[str, float]]:
     """Tiers this profile will report on, and the decoy rate measured for each.
 
     A tier qualifies when its own decoy rate clears the profile's ceiling and every stronger
@@ -164,25 +199,35 @@ def trusted_tiers(records: list[dict], index: dict, printed: set[str],
 
     floor = TIERS.index(profile["floor"])
     ok = [t for t in TIERS if t in rates and rates[t] <= profile["max_decoy"]]
-    keep = [t for i, t in enumerate(TIERS)
-            if t in ok and i >= floor and all(x in ok for x in TIERS[i:] if x in rates)]
+    keep = [
+        t
+        for i, t in enumerate(TIERS)
+        if t in ok and i >= floor and all(x in ok for x in TIERS[i:] if x in rates)
+    ]
     return keep, rates
 
 
 #: Named subsets a reader asks for. Each is a question about the work rather than a slice of
 #: the data: what did the paper report, and what was it configured with.
 VIEWS = {
-    "results": ("the paper's own reported values, carrying a decimal point",
-                lambda r: "." in r["printed"] and r["kind"] in ("measurement", "table_cell")),
-    "transcribed": ("values quoted from the study being reproduced; confirming one checks "
-                    "transcription, not the authors' run",
-                    lambda r: r["kind"] == QUOTED_KIND),
-    "hyperparameters": ("values bound to a named symbol, and equation constants",
-                        lambda r: r["kind"] in ("parameter", "equation_content")),
-    "counts": ("integer quantities stated about the work",
-               lambda r: "." not in r["printed"] and r["kind"] in ("measurement", "table_cell")),
-    "own": ("every value the paper claims as its own",
-            lambda r: r["kind"] != QUOTED_KIND),
+    "results": (
+        "the paper's own reported values, carrying a decimal point",
+        lambda r: "." in r["printed"] and r["kind"] in ("measurement", "table_cell"),
+    ),
+    "transcribed": (
+        "values quoted from the study being reproduced; confirming one checks "
+        "transcription, not the authors' run",
+        lambda r: r["kind"] == QUOTED_KIND,
+    ),
+    "hyperparameters": (
+        "values bound to a named symbol, and equation constants",
+        lambda r: r["kind"] in ("parameter", "equation_content"),
+    ),
+    "counts": (
+        "integer quantities stated about the work",
+        lambda r: "." not in r["printed"] and r["kind"] in ("measurement", "table_cell"),
+    ),
+    "own": ("every value the paper claims as its own", lambda r: r["kind"] != QUOTED_KIND),
     "all": ("every traceable value, including quoted ones", lambda r: True),
 }
 
@@ -208,16 +253,29 @@ def strength(printed: str) -> str:
 def collect(root: pathlib.Path) -> dict[str, list[pathlib.Path]]:
     """Files under `root` grouped by what they can settle, ignoring the manuscript."""
     groups: dict[str, list[pathlib.Path]] = {
-        "data": [], "spreadsheet": [], "binary": [], "code": [], "compressed": [],
-        "unread": [], "rendered": [], "manuscript": []}
+        "data": [],
+        "spreadsheet": [],
+        "binary": [],
+        "code": [],
+        "compressed": [],
+        "unread": [],
+        "rendered": [],
+        "manuscript": [],
+    }
     for path in root.rglob("*"):
         if not path.is_file() or SKIP_DIRS & set(path.parts):
             continue
         suffix = path.suffix.lower()
-        for name, group in (("manuscript", MANUSCRIPT), ("spreadsheet", SPREADSHEET),
-                            ("binary", BINARY), ("data", DATA), ("code", CODE),
-                            ("compressed", COMPRESSORS), ("unread", UNREAD),
-                            ("rendered", RENDERED)):
+        for name, group in (
+            ("manuscript", MANUSCRIPT),
+            ("spreadsheet", SPREADSHEET),
+            ("binary", BINARY),
+            ("data", DATA),
+            ("code", CODE),
+            ("compressed", COMPRESSORS),
+            ("unread", UNREAD),
+            ("rendered", RENDERED),
+        ):
             if suffix in group:
                 groups[name].append(path)
                 break
@@ -235,8 +293,10 @@ def read_spreadsheet(path: pathlib.Path) -> str:
     try:
         with zipfile.ZipFile(path) as archive:
             for name in archive.namelist():
-                if not (name.startswith("xl/worksheets/") and name.endswith(".xml")) \
-                        and name != "xl/sharedStrings.xml":
+                if (
+                    not (name.startswith("xl/worksheets/") and name.endswith(".xml"))
+                    and name != "xl/sharedStrings.xml"
+                ):
                     continue
                 try:
                     root = ElementTree.fromstring(archive.read(name))
@@ -278,8 +338,9 @@ TRANSFORMS = (
 )
 
 
-def transformed_hit(printed: str, numeric_index: dict[float, tuple[str, int, str]]
-                    ) -> tuple[tuple[str, int, str], str] | None:
+def transformed_hit(
+    printed: str, numeric_index: dict[float, tuple[str, int, str]]
+) -> tuple[tuple[str, int, str], str] | None:
     """The first transform under which the printed value matches a stored one, if any.
 
     Comparison is at the printed precision, so `14.38` matches a stored `0.1438333` and does
@@ -299,9 +360,9 @@ def transformed_hit(printed: str, numeric_index: dict[float, tuple[str, int, str
     return None
 
 
-def build_index(paths: list[pathlib.Path], root: pathlib.Path,
-                probes: list[str] | None = None
-                ) -> tuple[dict[str, tuple[str, int, str]], list[str]]:
+def build_index(
+    paths: list[pathlib.Path], root: pathlib.Path, probes: list[str] | None = None
+) -> tuple[dict[str, tuple[str, int, str]], list[str]]:
     """Numeric strings in the artifact mapped to where each first occurs, and what went
     unread.
 
@@ -337,8 +398,11 @@ def build_index(paths: list[pathlib.Path], root: pathlib.Path,
                         for places in range(1, 7):
                             index.setdefault(f"{float(value):.{places}f}", (relative, 0, ""))
                 continue
-            text = (read_spreadsheet(path) if suffix in SPREADSHEET
-                    else path.read_text(errors="replace"))
+            text = (
+                read_spreadsheet(path)
+                if suffix in SPREADSHEET
+                else path.read_text(errors="replace")
+            )
         except OSError:
             unread.append(f"{relative} (unreadable)")
             continue
@@ -356,8 +420,7 @@ def build_index(paths: list[pathlib.Path], root: pathlib.Path,
     return index, unread
 
 
-def report(records: list[dict], title: str, note: str, show: int,
-           tiers: list[str]) -> None:
+def report(records: list[dict], title: str, note: str, show: int, tiers: list[str]) -> None:
     if not records:
         print(f"  {title}: no values\n")
         return
@@ -369,34 +432,42 @@ def report(records: list[dict], title: str, note: str, show: int,
         if not row:
             continue
         hit = sum(1 for r in row if r["verdict"] == "confirmed")
-        print(f"    {tier:10}{len(row):>8}{hit:>11}"
-              f"{sum(1 for r in row if r['verdict'] == 'absent'):>8}"
-              f"{sum(1 for r in row if r['verdict'] == 'unchecked'):>11}{hit / len(row):>8.0%}")
+        print(
+            f"    {tier:10}{len(row):>8}{hit:>11}"
+            f"{sum(1 for r in row if r['verdict'] == 'absent'):>8}"
+            f"{sum(1 for r in row if r['verdict'] == 'unchecked'):>11}{hit / len(row):>8.0%}"
+        )
 
     load = [r for r in records if r["strength"] in tiers]
     if load:
         hit = sum(1 for r in load if r["verdict"] == "confirmed")
-        print(f"\n    reported under this profile: {hit} of {len(load)} confirmed "
-              f"({hit / len(load):.0%})")
+        print(
+            f"\n    reported under this profile: {hit} of {len(load)} confirmed "
+            f"({hit / len(load):.0%})"
+        )
     else:
         print("\n    nothing in this view clears the profile")
 
     confirmed = [r for r in load if r["verdict"] == "confirmed"]
     if confirmed:
-        print(f"\n    confirmed, with the location that settles each:")
+        print("\n    confirmed, with the location that settles each:")
         for r in confirmed[:show]:
-            print(f"      {r['printed']:>10}  paper line {r['line']:<6} -> "
-                  f"{r['found_in']}:{r['found_line']}"
-                  + (f"   [{r['relation']}]" if r["relation"] != "printed exactly" else ""))
+            print(
+                f"      {r['printed']:>10}  paper line {r['line']:<6} -> "
+                f"{r['found_in']}:{r['found_line']}"
+                + (f"   [{r['relation']}]" if r["relation"] != "printed exactly" else "")
+            )
         if len(confirmed) > show:
             print(f"      ... {len(confirmed) - show} more in the written record")
 
     missing = [r for r in load if r["verdict"] != "confirmed"]
     if missing:
-        print(f"\n    not settled:")
+        print("\n    not settled:")
         for r in missing[:show]:
-            print(f"      {r['printed']:>10}  paper line {r['line']:<6} {r['verdict']:<10} "
-                  f"{r['context'][:52]}")
+            print(
+                f"      {r['printed']:>10}  paper line {r['line']:<6} {r['verdict']:<10} "
+                f"{r['context'][:52]}"
+            )
         if len(missing) > show:
             print(f"      ... {len(missing) - show} more")
     print()
@@ -406,14 +477,25 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("scan", help="the .numbers.json written by scan_numbers.py")
     parser.add_argument("repo", help="checkout of the article's pinned artifact")
-    parser.add_argument("--view", default="results", choices=sorted(VIEWS) + ["every"],
-                        help="which filtered view to print (default: results)")
+    parser.add_argument(
+        "--view",
+        default="results",
+        choices=[*sorted(VIEWS), "every"],
+        help="which filtered view to print (default: results)",
+    )
     parser.add_argument("--show", type=int, default=12, help="rows to list per section")
-    parser.add_argument("--allow-transforms", action="store_true",
-                        help="also match under a unit change; measured to destroy precision "
-                             "on the development corpus, see TRANSFORMS")
-    parser.add_argument("--profile", default="balanced", choices=sorted(PROFILES),
-                        help="how much evidence a confirmation must carry (default: balanced)")
+    parser.add_argument(
+        "--allow-transforms",
+        action="store_true",
+        help="also match under a unit change; measured to destroy precision "
+        "on the development corpus, see TRANSFORMS",
+    )
+    parser.add_argument(
+        "--profile",
+        default="balanced",
+        choices=sorted(PROFILES),
+        help="how much evidence a confirmation must carry (default: balanced)",
+    )
     args = parser.parse_args()
 
     root = pathlib.Path(args.repo)
@@ -421,8 +503,14 @@ def main() -> int:
     article = pathlib.Path(args.scan.replace(".numbers.json", ".txt"))
     probes = manuscript_probes(article.read_text(errors="replace")) if article.exists() else []
     index, partial = build_index(
-        groups["data"] + groups["spreadsheet"] + groups["binary"] + groups["compressed"]
-        + groups["code"], root, probes)
+        groups["data"]
+        + groups["spreadsheet"]
+        + groups["binary"]
+        + groups["compressed"]
+        + groups["code"],
+        root,
+        probes,
+    )
 
     # A miss is `absent` only where every machine-readable record was read to the end. One
     # unread record is enough to make every miss `unchecked`: the value may sit in it, and
@@ -432,8 +520,11 @@ def main() -> int:
     # the artifact.
     unread = partial + [str(p.relative_to(root)) for p in groups["unread"]]
 
-    records = [r for r in json.loads(pathlib.Path(args.scan).read_text())["records"]
-               if r["kind"] in TRACEABLE]
+    records = [
+        r
+        for r in json.loads(pathlib.Path(args.scan).read_text())["records"]
+        if r["kind"] in TRACEABLE
+    ]
     # Values keyed numerically as well as by string, so a transform can be tried against
     # what the artifact stores rather than against how it happens to be written.
     numeric_index: dict[float, tuple[str, int, str]] = {}
@@ -451,16 +542,16 @@ def main() -> int:
             if found:
                 location, record["relation"] = found
         record["strength"] = strength(record["printed"])
-        record["verdict"] = ("confirmed" if location
-                             else "unchecked" if unread else "absent")
-        record["found_in"], record["found_line"], record["found_context"] = (
-            location or ("", 0, ""))
+        record["verdict"] = "confirmed" if location else "unchecked" if unread else "absent"
+        record["found_in"], record["found_line"], record["found_context"] = location or ("", 0, "")
 
     print(f"\n  {args.scan}  against  {args.repo}")
-    print(f"  artifact: {len(groups['data'])} data, {len(groups['spreadsheet'])} spreadsheet, "
-          f"{len(groups['binary'])} binary (read inertly), {len(groups['code'])} code, "
-          f"{len(groups['rendered'])} rendered, {len(groups['manuscript'])} manuscript "
-          f"(excluded)")
+    print(
+        f"  artifact: {len(groups['data'])} data, {len(groups['spreadsheet'])} spreadsheet, "
+        f"{len(groups['binary'])} binary (read inertly), {len(groups['code'])} code, "
+        f"{len(groups['rendered'])} rendered, {len(groups['manuscript'])} manuscript "
+        f"(excluded)"
+    )
     print(f"  {len(index):,} distinct numeric values indexed from the artifact")
     if unread:
         print(f"  {len(unread)} record(s) NOT read, so every miss below is `unchecked`:")
@@ -474,25 +565,44 @@ def main() -> int:
 
     profile = PROFILES[args.profile]
     tiers, rates = trusted_tiers(records, index, {r["printed"] for r in records}, profile)
-    print(f"  profile `{args.profile}`: reporting {', '.join(tiers) or 'no tier'}"
-          f"  (decoy rate on this artifact: "
-          f"{', '.join(f'{t} {rates[t]:.1%}' for t in TIERS if t in rates)})\n")
+    print(
+        f"  profile `{args.profile}`: reporting {', '.join(tiers) or 'no tier'}"
+        f"  (decoy rate on this artifact: "
+        f"{', '.join(f'{t} {rates[t]:.1%}' for t in TIERS if t in rates)})\n"
+    )
 
-    for name in (sorted(VIEWS) if args.view == "every" else [args.view]):
+    for name in sorted(VIEWS) if args.view == "every" else [args.view]:
         note, keep = VIEWS[name]
         report([r for r in records if keep(r)], name, note, args.show, tiers)
 
     out = pathlib.Path(args.scan).with_suffix(".confirmed.json")
-    out.write_text(json.dumps(
-        {"scan": args.scan, "repo": args.repo,
-         "files": {k: len(v) for k, v in groups.items()},
-         "unread": unread,
-         "views": {name: {tier: {v: sum(1 for r in records if keep(r)
-                                        and r["strength"] == tier and r["verdict"] == v)
-                                 for v in ("confirmed", "absent", "unchecked")}
-                          for tier in TIERS}
-                   for name, (_, keep) in VIEWS.items()},
-         "records": records}, indent=2) + "\n")
+    out.write_text(
+        json.dumps(
+            {
+                "scan": args.scan,
+                "repo": args.repo,
+                "files": {k: len(v) for k, v in groups.items()},
+                "unread": unread,
+                "views": {
+                    name: {
+                        tier: {
+                            v: sum(
+                                1
+                                for r in records
+                                if keep(r) and r["strength"] == tier and r["verdict"] == v
+                            )
+                            for v in ("confirmed", "absent", "unchecked")
+                        }
+                        for tier in TIERS
+                    }
+                    for name, (_, keep) in VIEWS.items()
+                },
+                "records": records,
+            },
+            indent=2,
+        )
+        + "\n"
+    )
     print(f"  wrote {out}")
     return 0
 

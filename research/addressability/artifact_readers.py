@@ -31,12 +31,22 @@ import struct
 
 #: Opcodes carrying a literal number. Everything else in a pickle -- GLOBAL, REDUCE, INST,
 #: STACK_GLOBAL -- is skipped rather than resolved, which is what keeps the read inert.
-NUMERIC_OPCODES = {"BININT", "BININT1", "BININT2", "INT", "LONG", "LONG1", "LONG4",
-                   "FLOAT", "BINFLOAT"}
+NUMERIC_OPCODES = {
+    "BININT",
+    "BININT1",
+    "BININT2",
+    "INT",
+    "LONG",
+    "LONG1",
+    "LONG4",
+    "FLOAT",
+    "BINFLOAT",
+}
 
 #: A pickle or an R file is walked under a hard ceiling on how much it may yield, so a
 #: crafted or merely enormous artifact cannot exhaust memory.
 MAX_VALUES = 2_000_000
+
 
 def read_pickle(path: pathlib.Path) -> tuple[list[str], bool]:
     """Literal numbers in a pickle's opcode stream.
@@ -58,8 +68,9 @@ def read_pickle(path: pathlib.Path) -> tuple[list[str], bool]:
                 position = handle.tell()
                 for opcode, argument, _ in pickletools.genops(handle):
                     if opcode.name in NUMERIC_OPCODES and argument is not None:
-                        values.append(repr(argument) if isinstance(argument, float)
-                                      else str(argument))
+                        values.append(
+                            repr(argument) if isinstance(argument, float) else str(argument)
+                        )
                         if len(values) >= MAX_VALUES:
                             return values, False
                 if handle.tell() <= position:
@@ -82,8 +93,16 @@ INTSXP, REALSXP, STRSXP, VECSXP = 13, 14, 16, 19
 #: a reference whose index did not fit in the flags word.
 NILVALUE_SXP, GLOBALENV_SXP, UNBOUNDVALUE_SXP, MISSINGARG_SXP = 254, 253, 252, 251
 BASENAMESPACE_SXP, EMPTYENV_SXP, BASEENV_SXP, REFSXP = 250, 242, 241, 255
-ATOMIC_PSEUDO = {NILSXP, NILVALUE_SXP, GLOBALENV_SXP, UNBOUNDVALUE_SXP, MISSINGARG_SXP,
-                 BASENAMESPACE_SXP, EMPTYENV_SXP, BASEENV_SXP}
+ATOMIC_PSEUDO = {
+    NILSXP,
+    NILVALUE_SXP,
+    GLOBALENV_SXP,
+    UNBOUNDVALUE_SXP,
+    MISSINGARG_SXP,
+    BASENAMESPACE_SXP,
+    EMPTYENV_SXP,
+    BASEENV_SXP,
+}
 
 #: Types whose contents are a tag, a head and a tail rather than a length and a payload.
 PAIRLIST = {LISTSXP, 3, 4, 5, 6, 17, 18}
@@ -137,8 +156,13 @@ KNOWN_STEMS = {".rdata", ".rds", ".rda"}
 #: Single-file compressors. Each wraps one member whose own extension is what decides how
 #: to read it, so `RData.gz` is an R workspace and `coords.gz` is not something this module
 #: knows. Treating the wrapper as the format leaves the member unread.
-COMPRESSORS = {".gz": gzip.decompress, ".bz2": bz2.decompress, ".xz": lzma.decompress,
-               ".lzma": lzma.decompress, ".z": gzip.decompress}
+COMPRESSORS = {
+    ".gz": gzip.decompress,
+    ".bz2": bz2.decompress,
+    ".xz": lzma.decompress,
+    ".lzma": lzma.decompress,
+    ".z": gzip.decompress,
+}
 
 
 def unwrap(path: pathlib.Path, out_dir: pathlib.Path) -> pathlib.Path | None:

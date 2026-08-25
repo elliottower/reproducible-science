@@ -24,7 +24,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 
-from scan_numbers import NUMBER, scan  # noqa: E402
+from scan_numbers import NUMBER, scan
 
 TRACEABLE = {"measurement", "table_cell", "parameter", "equation_content"}
 
@@ -35,7 +35,9 @@ LAYOUT = re.compile(
     r"|arraystretch|tabcolsep|columnsep|baselinestretch|textwidth|linewidth|multirow"
     r"|multicolumn|cmidrule|cline|rule|label|ref|eqref|cite[a-z]*|bibitem|newcommand"
     r"|renewcommand|documentclass|usepackage|geometry|definecolor|color|rowcolor)"
-    r"\s*(?:\[[^\]]*\])?\s*(?:\{[^{}]*\})*", re.I)
+    r"\s*(?:\[[^\]]*\])?\s*(?:\{[^{}]*\})*",
+    re.I,
+)
 
 COMMENT = re.compile(r"(?<!\\)%.*$", re.M)
 
@@ -86,21 +88,28 @@ def main() -> int:
     print(f"\n  {args.manuscript}")
     print(f"  {claims} recorded claims, naming {len(bound)} distinct values")
     print(f"  {len(records)} numbers in the manuscript that an artifact could hold\n")
-    print(f"    bound to a run   {len(covered):>5}  ({len(covered) / len(records):.0%})"
-          if records else "    no numbers found")
-    print(f"    unbound          {len(records) - len(covered):>5}  "
-          f"({1 - len(covered) / len(records):.0%})\n" if records else "")
+    print(
+        f"    bound to a run   {len(covered):>5}  ({len(covered) / len(records):.0%})"
+        if records
+        else "    no numbers found"
+    )
+    print(
+        f"    unbound          {len(records) - len(covered):>5}  "
+        f"({1 - len(covered) / len(records):.0%})\n"
+        if records
+        else ""
+    )
 
     unbound = [r for r in records if not r["bound"]]
     if unbound:
-        print(f"    unbound, by where they sit:")
+        print("    unbound, by where they sit:")
         seen: dict[str, int] = {}
         for r in unbound:
             seen[r["kind"]] = seen.get(r["kind"], 0) + 1
         for kind, n in sorted(seen.items(), key=lambda kv: -kv[1]):
             print(f"      {kind:18} {n}")
         print(f"\n    first {min(args.show, len(unbound))}:")
-        for r in unbound[:args.show]:
+        for r in unbound[: args.show]:
             print(f"      {r['printed']:>10}  line {r['line']:<5} {r['context'][:76]}")
     return 0
 

@@ -29,8 +29,7 @@ import sys
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 
-from confirm_numbers import (BINARY, COMPRESSORS, MANUSCRIPT, TIERS, TRACEABLE,  # noqa: E402
-                             build_index, collect, strength)
+from confirm_numbers import TIERS, TRACEABLE, build_index, collect, strength
 
 #: Digit shifts used to build decoys. Nine per value, which is enough that a tier of any
 #: useful size has hundreds of trials behind its rate.
@@ -76,20 +75,32 @@ def main() -> int:
     root = pathlib.Path(args.repo)
     groups = collect(root)
     index, _ = build_index(
-        groups["data"] + groups["spreadsheet"] + groups["binary"] + groups["compressed"]
-        + groups["code"], root)
+        groups["data"]
+        + groups["spreadsheet"]
+        + groups["binary"]
+        + groups["compressed"]
+        + groups["code"],
+        root,
+    )
 
-    records = [r for r in json.loads(pathlib.Path(args.scan).read_text())["records"]
-               if r["kind"] in TRACEABLE]
+    records = [
+        r
+        for r in json.loads(pathlib.Path(args.scan).read_text())["records"]
+        if r["kind"] in TRACEABLE
+    ]
     for record in records:
         record["strength"] = strength(record["printed"])
     printed_anywhere = {r["printed"] for r in records}
 
     print(f"\n  {args.scan}  against  {args.repo}")
-    print(f"  {len(index):,} distinct values indexed; {len(groups['manuscript'])} "
-          f"manuscript files excluded\n")
-    print(f"    {'tier':10}{'values':>8}{'real hit':>10}{'decoys':>9}{'decoy hit':>11}"
-          f"{'precision':>11}")
+    print(
+        f"  {len(index):,} distinct values indexed; {len(groups['manuscript'])} "
+        f"manuscript files excluded\n"
+    )
+    print(
+        f"    {'tier':10}{'values':>8}{'real hit':>10}{'decoys':>9}{'decoy hit':>11}"
+        f"{'precision':>11}"
+    )
 
     overall = {"real": [0, 0], "decoy": [0, 0]}
     for tier in TIERS:
@@ -108,16 +119,24 @@ def main() -> int:
         p = real_hits / len(row)
         q = decoy_hits / len(trials) if trials else 0.0
         precision = max(0.0, 1 - q / p) if p else float("nan")
-        print(f"    {tier:10}{len(row):>8}{p:>10.0%}{len(trials):>9}{q:>11.1%}"
-              f"{precision:>11.0%}" if p else
-              f"    {tier:10}{len(row):>8}{p:>10.0%}{len(trials):>9}{q:>11.1%}{'--':>11}")
+        print(
+            f"    {tier:10}{len(row):>8}{p:>10.0%}{len(trials):>9}{q:>11.1%}{precision:>11.0%}"
+            if p
+            else f"    {tier:10}{len(row):>8}{p:>10.0%}{len(trials):>9}{q:>11.1%}{'--':>11}"
+        )
 
     p = overall["real"][0] / max(1, overall["real"][1])
     q = overall["decoy"][0] / max(1, overall["decoy"][1])
-    print(f"\n    pooled: real {p:.0%}  decoy {q:.1%}  "
-          f"=> {1 - q / p:.0%} of confirmations survive the null" if p else "")
-    print("    (pooled figure is reported for completeness; the per-tier rates are the"
-          " ones that mean anything)")
+    print(
+        f"\n    pooled: real {p:.0%}  decoy {q:.1%}  "
+        f"=> {1 - q / p:.0%} of confirmations survive the null"
+        if p
+        else ""
+    )
+    print(
+        "    (pooled figure is reported for completeness; the per-tier rates are the"
+        " ones that mean anything)"
+    )
     return 0
 
 
