@@ -1,6 +1,6 @@
 # results
 
-Seal a run, record what it produced, and verify the chain.
+Tie every number in a paper to the run that produced it, so a reader can check the claim rather than take it on trust.
 
 ## Install
 
@@ -93,17 +93,36 @@ whether it should have.
 
 ## Claude Code
 
-`plugin/` is a Claude Code plugin that tells Claude when to reach for the CLI.
+`plugin/` is a Claude Code plugin. Three surfaces, because each catches a different failure:
+the hook catches what the model does not think to do, the skill catches what you did not know
+to ask for, and the command is there for when you want the answer now.
+
+| surface | fires |
+|---|---|
+| hook | when a number enters a manuscript that no recorded claim names |
+| skill | when Claude judges the situation calls for sealing inputs, recording outputs, binding a paper's claims to runs |
+| command | when you type `/results-check` |
+
+**Why the hook.** The address is on screen while the sentence is being written and gone immediately afterward. A number recovered later has to be matched by its digits, and a value reported to two or three significant figures matches something in an artifact of any size.
+
+It reports and never blocks, and stays silent in a project with no `.results/` ledger.
 
 ```bash
 /plugin marketplace add elliottower/reproducible-science
 /plugin install results@reproducible-science
 ```
 
-For all three reproducible-science tools in one plugin (results + [prereg](https://github.com/elliottower/reproducible-science/tree/main/packages/prereg) + [citations](https://github.com/elliottower/reproducible-science/tree/main/packages/citations)):
+The plugin ships instructions and hooks, not binaries, so install the tool as well:
 
 ```bash
-/plugin marketplace add elliottower/reproducible-science
+uv tool install results        # or: pip install results
+```
+
+All four tools in one plugin, with every hook, skill and command:
+
+```bash
+/plugin install reproducible-science@reproducible-science
 ```
 
 MIT licensed.
+

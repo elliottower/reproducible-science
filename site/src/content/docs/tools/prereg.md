@@ -111,20 +111,39 @@ something existed, never when work began.
 
 ## Claude Code
 
-`plugin/` is a Claude Code plugin that tells Claude when to reach for the CLI.
+`plugin/` is a Claude Code plugin. Three surfaces, because each catches a different failure:
+the hook catches what the model does not think to do, the skill catches what you did not know
+to ask for, and the command is there for when you want the answer now.
+
+| surface | fires |
+|---|---|
+| hook | when a frozen preregistration no longer matches the digest it was frozen with |
+| skill | when Claude judges the situation calls for freezing a plan before a run, and recording what changed after |
+| command | when you type `/prereg-check` |
+
+**Why the hook.** This is the only exact check in the set. It recomputes a hash you recorded and compares two strings, so there is no threshold and no judgment. A plan rewritten around a result defeats registration entirely and no reader can detect it afterward, so the hook reports the difference and never edits the registration.
+
+It reports and never blocks, and stays silent in a project with no frozen plan.
 
 ```bash
 /plugin marketplace add elliottower/reproducible-science
 /plugin install prereg@reproducible-science
 ```
 
-For all three reproducible-science tools in one plugin (prereg + [citations](https://github.com/elliottower/reproducible-science/tree/main/packages/citations) + [results](https://github.com/elliottower/reproducible-science/tree/main/packages/results)):
+The plugin ships instructions and hooks, not binaries, so install the tool as well:
 
 ```bash
-/plugin marketplace add elliottower/reproducible-science
+uv tool install prereg        # or: pip install prereg
+```
+
+All four tools in one plugin, with every hook, skill and command:
+
+```bash
+/plugin install reproducible-science@reproducible-science
 ```
 
 MIT licensed.
+
 
 
 ## Run it in your browser

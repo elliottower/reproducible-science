@@ -139,17 +139,36 @@ So `git diff` shows what changed. A binary store cannot show you that a year mov
 
 ## Claude Code
 
-`plugin/` is a Claude Code plugin that tells Claude when to reach for the CLI.
+`plugin/` is a Claude Code plugin. Three surfaces, because each catches a different failure:
+the hook catches what the model does not think to do, the skill catches what you did not know
+to ask for, and the command is there for when you want the answer now.
+
+| surface | fires |
+|---|---|
+| hook | when a quotation enters a manuscript that no claim file pins to a source |
+| skill | when Claude judges the situation calls for quoting a paper, adding a citation, or checking whether a quote is real |
+| command | when you type `/citations-check` |
+
+**Why the hook.** A quotation is the one thing in a paper that can be checked exactly: it is in the source or it is not. Prose is where a remembered sentence drifts, and nearly right is wrong. Passages are compared with case, spacing and punctuation folded away, so a curly apostrophe or a wrapped line does not read as a passage nobody pinned.
+
+It reports and never blocks, and stays silent in a project with no `claims/` directory.
 
 ```bash
 /plugin marketplace add elliottower/reproducible-science
 /plugin install citations@reproducible-science
 ```
 
-For all three reproducible-science tools in one plugin (citations + [prereg](https://github.com/elliottower/reproducible-science/tree/main/packages/prereg) + [results](https://github.com/elliottower/reproducible-science/tree/main/packages/results)):
+The plugin ships instructions and hooks, not binaries, so install the tool as well:
 
 ```bash
-/plugin marketplace add elliottower/reproducible-science
+uv tool install citations        # or: pip install citations
+```
+
+All four tools in one plugin, with every hook, skill and command:
+
+```bash
+/plugin install reproducible-science@reproducible-science
 ```
 
 MIT licensed. `docs/` has the working practices this came out of.
+
