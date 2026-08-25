@@ -1,0 +1,26 @@
+{
+  "generated": "2026-08-25T22:13:48+00:00",
+  "probes": {
+    "fixtures_at_head": {
+      "command": [
+        "ls",
+        "-1",
+        "packages/repro/tests/conformance/cases"
+      ],
+      "exit": 0,
+      "stdout_sha256": "7f06be6c0192b77c09e378c4fae41676508ee70b5056365eb403a6731e7b72e3",
+      "value": 25
+    },
+    "fixtures_at_origin_main": {
+      "command": [
+        "git",
+        "ls-tree",
+        "--name-only",
+        "origin/main:packages/repro/tests/conformance/cases"
+      ],
+      "exit": 0,
+      "stdout_sha256": "2ef184b0141bb0ec7f932aca99274d4644f2dd20a42656231b7e795163959412",
+      "value": 19
+    }
+  }
+}

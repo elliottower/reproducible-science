@@ -1,0 +1,38 @@
+schema_version: repro/1
+project: the specification's claim about the suite beside it
+artifacts:
+- id: spec
+  path: ../../../../docs/SPEC.md
+  media_type: text/markdown
+  digest:
+    algorithm: sha256
+    value: f1b6ea591a3aa9497fb7f7286618c5c4c44252d92bff72293ec5c4c435a4d028
+- id: probe
+  path: probe.json
+  media_type: application/json
+  digest:
+    algorithm: sha256
+    value: 0ff5fb72fe64ec590bc0cf72329691301e3f2a564b9c66f45ee66817f869d442
+claims:
+- id: spec-fixture-count
+  registration: not_applicable
+  registration_note: an exhaustive count over a declared directory; no outcome was selected from alternatives, so
+    no plan could have fixed one
+  where: SPEC.md 9
+  text: The specification states the number of fixtures the conformance suite holds.
+  evidence:
+  - kind: correspondence
+    name: fixture-count
+    sides:
+    - name: stated
+      artifact: spec
+      locator:
+        kind: prose
+        before: holds
+        after: fixtures, each with canonical expected JSON
+        form: decimal
+    - name: measured
+      artifact: probe
+      locator:
+        kind: tree
+        pointer: /probes/fixtures_at_head/value

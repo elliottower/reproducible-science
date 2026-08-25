@@ -158,6 +158,15 @@ class Reason(enum.StrEnum):
     WRONG_PAGE = "wrong_page"
     """The passage occurs in the artifact, on a different page than the one asserted."""
     VALUE_NOT_NUMERIC = "value_not_numeric"
+    PASSAGE_AMBIGUOUS = "passage_ambiguous"
+    """One pair of prose anchors selected two different values, so the document states two
+    numbers where the assertion addresses one. Reported rather than resolved to the first: a
+    document contradicting itself is a finding."""
+    NUMBER_AS_WORD = "number_as_word"
+    """The locator selected an English cardinal written out, under a locator that did not ask
+    for one. Distinct from `value_not_numeric` because the fix is different: the value is
+    there and a reader would call it a number, so an author told only that no number was found
+    goes looking for a broken anchor."""
     EXTRACTOR_MISSING = "extractor_missing"
     ARTIFACT_MISSING = "artifact_missing"
     ARTIFACT_UNREADABLE = "artifact_unreadable"
@@ -175,6 +184,27 @@ class Warning_(enum.StrEnum):
     WRONG_PAGE = "wrong_page"
     POSITIONAL_ADDRESS = "positional_address"
     """Addressed by row index, which names a different cell if the table is reordered."""
+
+
+class DecisionSide(BaseModel):
+    """What one side of a two-sided assertion read, and where it read it.
+
+    `Decision` names one artifact and one locator, which is all a `metric` or a `quote` has.
+    A correspondence reads two, and recording only one would leave half the decision unbound:
+    the locator digest exists so a selector edited after the fact changes the record, and a
+    selector nothing records is a selector nothing binds.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str
+    artifact_id: str
+    artifact_digest: str | None = None
+    locator_digest: str | None = None
+    validity: Validity = Validity.AUTHORITATIVE
+    extracted: str | None = None
+    """The value read, in the representation the artifact used. `None` where this side did
+    not extract, which is why the decision reports no comparison."""
 
 
 class Decision(BaseModel):
@@ -203,6 +233,11 @@ class Decision(BaseModel):
     """The digest of the canonical locator, so a decision binds how the value was addressed
     as well as what was read. A selector edited after the fact changes this even where the
     artifact is untouched."""
+
+    sides: tuple[DecisionSide, ...] = ()
+    """The two values a `correspondence` compared, each with the artifact and locator it came
+    from. Empty for every kind that reads one artifact, which records its single artifact and
+    locator in the fields above."""
 
     backend: str = ""
     backend_version: str = ""

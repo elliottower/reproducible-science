@@ -1,0 +1,12 @@
+{
+  "outcomes": [
+    "verified"
+  ],
+  "reasons": [
+    "value_match"
+  ],
+  "artifacts": {
+    "doc": "authoritative",
+    "counts": "authoritative"
+  }
+}

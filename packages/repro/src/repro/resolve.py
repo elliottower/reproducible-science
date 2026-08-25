@@ -28,6 +28,8 @@ from typing import Any
 
 from repro.adapters.array import _resolve_array
 from repro.adapters.base import ExtractedValue, Found, Resolution, _no
+from repro.adapters.prose import CARDINALS as CARDINALS
+from repro.adapters.prose import _resolve_prose
 from repro.adapters.sqlite import _resolve_sqlite
 from repro.adapters.table import _resolve_table, _resolve_table_position, predicate_text
 from repro.adapters.table import read_table as read_table
@@ -58,6 +60,7 @@ _ADAPTERS: dict[str, Callable[[Any, pathlib.Path], Found]] = {
     "table_position": _resolve_table_position,
     "sqlite": _resolve_sqlite,
     "array": _resolve_array,
+    "prose": _resolve_prose,
 }
 
 

@@ -1,0 +1,29 @@
+# the specification's claim about the suite beside it, 2026-08-25T22:13:49+00:00
+
+$ python probe.py
+  fixtures_at_head           25
+  fixtures_at_origin_main    19
+[exit 0]
+
+$ python build.py
+  wrote docclaims.yaml: 1 claim over 2 artifacts
+[exit 0]
+
+$ repro verify docclaims.yaml --policy publication
+docclaims.yaml
+
+  ok    spec-fixture-count correspondence fixture-count: stated 25, measured 25
+
+  1 verified
+  policy publication: passed  (0 errors, 0 warnings)
+[exit 0]
+
+$ repro verify docclaims.yaml --policy publication
+docclaims.yaml
+
+  MISS  spec-fixture-count correspondence fixture-count: stated 18, measured 19
+
+  1 mismatch
+  policy publication: FAILED  (1 errors, 0 warnings)
+    error   evidence.mismatch          spec-fixture-count/correspondence: fixture-count: stated 18, measured 19
+[exit 1]

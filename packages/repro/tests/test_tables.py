@@ -29,7 +29,7 @@ def table(tmp_path):
 
 def check(table, **kw):
     ev = TableCellEvidence(artifact="t", name="metric", **kw)
-    return TableBackend().check(Claim(id="c", text="t"), ev, table)
+    return TableBackend().check(Claim(id="c", text="t"), ev, {ev.artifact: table})
 
 
 def test_a_cell_selected_by_key_column(table):

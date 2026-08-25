@@ -173,17 +173,17 @@ def to_sarif(
                     ),
                 },
             }
-            if decision.artifact_id in index:
-                entry["locations"] = [
-                    {
-                        "physicalLocation": {
-                            "artifactLocation": {
-                                "uri": decision.artifact_id,
-                                "index": index[decision.artifact_id],
-                            }
-                        }
-                    }
-                ]
+            # A correspondence reads two artifacts and names neither in `artifact_id`, so its
+            # locations come from the sides. SARIF takes a list, and a finding about two files
+            # that pointed at one of them would send a reader to the wrong half.
+            located = [s.artifact_id for s in decision.sides] or [decision.artifact_id]
+            entry["locations"] = [
+                {"physicalLocation": {"artifactLocation": {"uri": uri, "index": index[uri]}}}
+                for uri in located
+                if uri in index
+            ]
+            if not entry["locations"]:
+                del entry["locations"]
             if decision.warnings:
                 entry["properties"]["warnings"] = [w.value for w in decision.warnings]
             if decision.validity is not Validity.AUTHORITATIVE:

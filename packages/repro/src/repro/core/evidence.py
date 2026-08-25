@@ -29,6 +29,15 @@ class _EvidenceBase(BaseModel):
     """Id of the artifact this value is asserted to come from. The artifact carries the pin;
     evidence never repeats a digest, so there is one source of truth per file."""
 
+    @property
+    def artifacts(self) -> tuple[str, ...]:
+        """Every artifact this assertion reads.
+
+        One, for every kind but `correspondence`. The engine resolves pins over this rather
+        than over `artifact`, so an assertion reading two files has both of them checked.
+        """
+        return (self.artifact,)
+
 
 # --------------------------------------------------------------------------------- locators
 
@@ -137,8 +146,56 @@ class SqliteLocator(Locator):
         return self
 
 
+class NumberForm(enum.StrEnum):
+    """How the text a prose locator selects is read as a number."""
+
+    DECIMAL = "decimal"
+    """Digits, parsed with `decimal.Decimal`. The default: no conversion happens."""
+
+    CARDINAL_WORD = "cardinal_word"
+    """An English cardinal below one hundred, written out. `eighteen` is read as 18.
+
+    Declared per assertion and never inferred. Reading a word as a number is a semantic
+    decision, and the engine makes none on its own: under `decimal` a recognized cardinal is
+    refused with its own reason rather than converted."""
+
+
+class ProseLocator(Locator):
+    """The value between two literal anchors in the extracted text of a document.
+
+    Every other locator addresses a data model the format already has. Prose has none, so the
+    address is the text on either side of the value: `before` is the literal that precedes it
+    and `after` the literal that follows. That is a declared address rather than an inferred
+    one -- the author says where the value sits, and no matcher searches the document for a
+    number that looks like the right one.
+
+    A capture-group pattern was the alternative and carries what §3.5 rejects elsewhere: a
+    string expression language needs a dialect, an escaping grammar, and a backtracking bound,
+    and every implementation would disagree about the edges. A braced template (`holds {n}
+    fixtures`) needs an escaping grammar for the brace, which LaTeX sources are full of. Two
+    literal anchors need neither.
+
+    The value is the maximal run of non-whitespace characters that follows `before`, and
+    `after` must follow it immediately. A value containing a space is not addressable this
+    way, which bounds `cardinal_word` to numbers written as one word.
+    """
+
+    kind: Literal["prose"] = "prose"
+
+    before: str = Field(min_length=1)
+    """Literal text immediately preceding the value. Matched against the same normalized text
+    a quotation resolves against, so an anchor and a quote cannot disagree about the
+    document."""
+
+    after: str = ""
+    """Literal text immediately following the value. Empty means the value runs to the next
+    whitespace, which is enough where the number ends the sentence."""
+
+    form: NumberForm = NumberForm.DECIMAL
+
+
 ValueLocator = Annotated[
-    TreeLocator | TableLocator | TablePositionLocator | ArrayLocator | SqliteLocator,
+    TreeLocator | TableLocator | TablePositionLocator | ArrayLocator | SqliteLocator | ProseLocator,
     Field(discriminator="kind"),
 ]
 
@@ -295,8 +352,79 @@ class ValueEvidence(_EvidenceBase):
         return decimal.Decimal(self.tolerance)
 
 
+class CorrespondenceSide(BaseModel):
+    """One of the two values a correspondence compares."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str = Field(min_length=1)
+    """What this side is, in the author's words -- `stated`, `measured`, `table`, `figure`.
+    Carried into the decision so a report can say which side held what. The engine attaches
+    no meaning to it and ranks neither side."""
+
+    artifact: str
+    locator: ValueLocator
+
+
+class CorrespondenceEvidence(BaseModel):
+    """Assertion: these two artifacts hold the same value.
+
+    Every other kind compares an artifact against a literal written in the manifest. A
+    documentation claim compares an artifact against an artifact -- a sentence saying the
+    suite holds eighteen fixtures, against a count of the fixtures -- and expressing that with
+    a literal requires transcribing one side into the manifest, where nothing checks the
+    transcription.
+
+    Neither side is privileged. When the two disagree the decision reports both values and
+    does not say which is wrong, because nothing in a byte comparison establishes that. The
+    same discipline governs the outcome vocabulary in §0.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["correspondence"] = "correspondence"
+
+    name: str
+    sides: tuple[CorrespondenceSide, CorrespondenceSide]
+
+    mode: ComparisonMode = ComparisonMode.PRINTED_PRECISION
+    """`relative` is rejected: its tolerance is a fraction of the reported value, and with no
+    privileged side there is no value to take the fraction of."""
+
+    tolerance: str = "0"
+
+    @property
+    def artifacts(self) -> tuple[str, ...]:
+        return tuple(side.artifact for side in self.sides)
+
+    @property
+    def tolerance_value(self) -> decimal.Decimal:
+        return decimal.Decimal(self.tolerance)
+
+    @model_validator(mode="after")
+    def _sides_are_distinct(self):
+        left, right = self.sides
+        if left.name == right.name:
+            raise ValueError(
+                f"correspondence {self.name!r}: both sides are named {left.name!r}, so a "
+                f"report cannot say which held what"
+            )
+        if (left.artifact, left.locator.canonical()) == (right.artifact, right.locator.canonical()):
+            raise ValueError(
+                f"correspondence {self.name!r}: both sides address the same value in "
+                f"{left.artifact!r}, which agrees with itself whatever it holds"
+            )
+        if self.mode is ComparisonMode.RELATIVE:
+            raise ValueError(
+                f"correspondence {self.name!r}: `relative` needs a value to take a fraction "
+                f"of, and neither side is the reference; use `absolute` or `printed_precision`"
+            )
+        return self
+
+
 Evidence = Annotated[
-    QuoteEvidence | MetricEvidence | TableCellEvidence | ValueEvidence, Field(discriminator="kind")
+    QuoteEvidence | MetricEvidence | TableCellEvidence | ValueEvidence | CorrespondenceEvidence,
+    Field(discriminator="kind"),
 ]
 """Every kind of evidence, discriminated on `kind`.
 

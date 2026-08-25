@@ -1,0 +1,12 @@
+{
+  "outcomes": [
+    "mismatch"
+  ],
+  "reasons": [
+    "value_mismatch"
+  ],
+  "artifacts": {
+    "doc": "authoritative",
+    "counts": "authoritative"
+  }
+}
