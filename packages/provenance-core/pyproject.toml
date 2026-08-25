@@ -3,36 +3,28 @@ build-backend = "hatchling.build"
 requires = [ "hatchling" ]
 
 [project]
-name = "results-cli"
+name = "provenance-core"
 version = "0.2.0"
-description = "Seal a run, record what it produced, and verify the chain"
+description = "Primitives shared by the reproducible-science tools: content digests and git references"
 readme = "README.md"
-keywords = [ "open science", "provenance", "reproducibility", "results" ]
-license = { text = "MIT" }
+keywords = [ "digest", "git", "provenance", "reproducibility", "sha256" ]
+license = "MIT"
 authors = [ { name = "Elliot Tower", email = "elliot@elliottower.ai" } ]
 requires-python = ">=3.11"
 classifiers = [
+  "Intended Audience :: Science/Research",
   "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
+  "Topic :: Scientific/Engineering",
 ]
-dependencies = [ "provenance-core>=0.2,<0.3" ]
+dependencies = [  ]
 urls.Changelog = "https://github.com/elliottower/reproducible-science/blob/main/CHANGELOG.md"
 urls.Homepage = "https://github.com/elliottower/reproducible-science"
 urls.Issues = "https://github.com/elliottower/reproducible-science/issues"
-urls.Source = "https://github.com/elliottower/reproducible-science/tree/main/packages/results"
-scripts.results = "results.cli:main"
+urls.Source = "https://github.com/elliottower/reproducible-science/tree/main/packages/provenance-core"
 
-[dependency-groups]
-dev = [
-  "pytest>=9.1.1",
-]
-
-[tool.hatch]
-build.targets.wheel.packages = [ "src/results" ]
-
-[tool.deptry]
-# Without this every intra-package import reads as a transitive dependency on itself.
-known_first_party = [ "results" ]
+[tool.ruff]
+lint.isort.known-first-party = [ "provenance_core" ]

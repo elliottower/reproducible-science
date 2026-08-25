@@ -27,6 +27,7 @@ dependencies = [
   # Floors, not bare names: without them a fresh install resolves whatever is oldest on
   # PyPI, which is not the combination the tests exercise.
   "prereg>=0.2,<0.3",
+  "provenance-core>=0.2,<0.3",
   "pydantic>=2.9",
   "pyyaml>=6.0.2",
   "results-cli>=0.2,<0.3",

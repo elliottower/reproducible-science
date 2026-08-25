@@ -11,251 +11,38 @@ One file per experiment, one rule: never edit above the line, only append below 
 from __future__ import annotations
 
 import argparse
-import datetime
-import hashlib
 import pathlib
 import re
-import subprocess
 import sys
 
+from provenance_core.gitref import try_run
+
 from prereg import osf, template
-
-PREREG = "PREREG.md"
-MARK = "\n---\n\n## Log\n"
-ACCESS = ["nothing run", "no results seen", "results not opened", "results seen"]
-
-
-def today() -> str:
-    return datetime.date.today().isoformat()
+from prereg.log import (
+    ACCESS,
+    append,
+    log_problems,
+)
+from prereg.plan import (
+    PREREG,
+    STATUS_BLOCK,
+    find,
+    plan_of,
+    rewrite_status,
+    sha256_of,
+    today,
+    unhashed_content,
+)
 
 
 def git(*args, cwd=None) -> str:
-    r = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True)
-    return r.stdout.strip() if r.returncode == 0 else ""
+    """Stdout of a git command, or "" where git could not answer.
 
-
-def find(start: pathlib.Path | None = None) -> pathlib.Path | None:
-    """The PREREG.md governing this directory: here, or the nearest one above."""
-    here = (start or pathlib.Path.cwd()).resolve()
-    for d in [here, *here.parents]:
-        if (d / PREREG).is_file():
-            return d / PREREG
-    return None
-
-
-def plan_of(text: str) -> str:
-    """What the freeze hashes: the plan, minus its own status block.
-
-    The status lines carry the commit, the hash and the freeze date, and they are written into
-    the file by `freeze` itself. Including them would mean the hash covered a value derived
-    from the hash, so the check could never pass.
+    The empty string is load-bearing here and every caller checks it: `freeze` refuses when
+    `rev-parse HEAD` comes back empty, which is how a repository with no commit is caught.
+    The shared helper raises instead, so the policy is applied here rather than assumed.
     """
-    i = text.find(MARK)
-    plan = text if i < 0 else text[:i]
-    keep = [
-        ln
-        for ln in plan.splitlines()
-        if not ln.startswith(("**Status:**", "**Plan sha256:**", "**Frozen:**", "**Log:**"))
-    ]
-    return "\n".join(keep).strip() + "\n"
-
-
-def sha256_of(s: str) -> str:
-    return hashlib.sha256(s.encode()).hexdigest()
-
-
-def unhashed_content(text: str) -> list[str]:
-    """Parts of the plan the hash would not cover, which `freeze` refuses to register.
-
-    Two things are skipped when hashing, both for good reasons, and both exploitable if they
-    appear where they are not meant to. The log marker ends the hashed region, so a second one
-    in the body leaves everything after it editable without `check` noticing. Marker-prefixed
-    lines are skipped because `freeze` writes them, so one in the body is editable the same way.
-
-    Refusing is better than hashing them anyway: changing what the hash covers would invalidate
-    every plan already frozen, while refusing only affects plans not yet registered.
-    """
-    problems = []
-    if text.count(MARK) > 1:
-        problems.append(
-            "the log marker (`---` then `## Log`) appears more than once. Hashing stops at the "
-            "first, so the plan after it would not be covered."
-        )
-    i = text.find(MARK)
-    plan = text if i < 0 else text[:i]
-    m = STATUS_BLOCK.search(plan)
-    body = (plan[: m.start()] + plan[m.end() :]) if m else plan
-    stray = [
-        ln
-        for ln in body.splitlines()
-        if ln.startswith(("**Status:**", "**Plan sha256:**", "**Frozen:**"))
-    ]
-    if stray:
-        problems.append(
-            "these lines sit outside the status block and are skipped when hashing, so they "
-            "could be edited after freezing without `check` noticing:\n      "
-            + "\n      ".join(stray[:5])
-        )
-    return problems
-
-
-STATUS_BLOCK = re.compile(r"^\*\*Status:\*\*.*?(?=\n[ \t]*\n|\Z)", re.S | re.M)
-
-# A status line may carry a note after its sentence — "third version; see Log".
-# The note is plan content and has to survive a freeze; the marker and its own
-# value do not.
-STATUS_VALUES = [
-    re.compile(r"^\*\*Status:\*\*[ \t]*DRAFT[ \t]*—[ \t]*not frozen\.?"),
-    re.compile(r"^\*\*Status:\*\*[ \t]*FROZEN at `[^`]*`\.?"),
-    re.compile(r"^\*\*Plan sha256:\*\*[ \t]*`[0-9a-f]*`\.?"),
-    re.compile(r"^\*\*Frozen:\*\*[ \t]*\d{4}-\d{2}-\d{2}\.?"),
-]
-
-
-def status_note(block: str) -> str:
-    """Whatever the status block says beyond the markers' own values."""
-    out = []
-    for line in block.splitlines():
-        for rx in STATUS_VALUES:
-            stripped = rx.sub("", line, count=1)
-            if stripped != line:
-                line = stripped
-                break
-        if line.strip():
-            out.append(line.strip())
-    return " ".join(out)
-
-
-def rewrite_status(text: str, commit: str, digest: str, date: str) -> str:
-    """Replace the whole status block, draft or already frozen.
-
-    Matching only the literal draft sentence did nothing on a plan that was
-    already frozen, so `--force` printed a new hash, wrote none of it, and left
-    the plan failing its own check — silently, with a zero exit code. Matching
-    the block also stops a note written after `**Status:**` from being glued onto
-    the freeze date, which is what a prefix-only replacement did to it.
-    """
-    m = STATUS_BLOCK.search(text)
-    if m is None:
-        return text
-    note = status_note(m.group(0))
-    block = (
-        f"**Status:** FROZEN at `{commit[:12]}`\n**Plan sha256:** `{digest}`\n**Frozen:** {date}"
-    )
-    if note:
-        block += f"\n{note}"
-    return text[: m.start()] + block + text[m.end() :]
-
-
-LOG_MARK = "\u00b7"  # separates the entry from its chain value
-
-
-def log_lines(text: str) -> list[str]:
-    """The log entries, in order, without the fence."""
-    _, _, tail = text.partition(MARK)
-    inside = tail.partition("```")[2].rpartition("```")[0]
-    return [ln.rstrip() for ln in inside.splitlines() if ln.strip()]
-
-
-def chain_value(previous: str, entry: str) -> str:
-    """Each entry's link. Short, because it sits in a file people read."""
-    return sha256_of(f"{previous}\x00{entry.strip()}")[:8]
-
-
-LOG_ANCHOR = re.compile(r"^\*\*Log:\*\* (\d+) entries, head `([0-9a-f]{8})`", re.M)
-
-
-def log_head(text: str) -> tuple[int, str]:
-    """Number of entries and the chain value of the last, for the anchor line."""
-    previous, count = "", 0
-    for line in log_lines(text):
-        entry, _, recorded = line.rpartition(LOG_MARK)
-        previous = recorded.strip() if entry else chain_value(previous, line)
-        count += 1
-    return count, previous
-
-
-def set_log_anchor(text: str) -> str:
-    """Record the log's length and head beside the plan hash.
-
-    Chaining alone cannot see an entry removed from the *end*: the entries that remain still
-    follow one another. The anchor is the witness to the length, exactly as the ledger's is,
-    and it sits on a marker line the plan hash skips, so recording it cannot change the hash.
-    """
-    count, head = log_head(text)
-    line = f"**Log:** {count} entries, head `{head or '00000000'}`"
-    if LOG_ANCHOR.search(text):
-        return LOG_ANCHOR.sub(line.replace("\\", "\\\\"), text, count=1)
-    marker = re.search(r"^\*\*Plan sha256:\*\* .*$", text, re.M)
-    if marker:
-        return text[: marker.end()] + "\n" + line + text[marker.end() :]
-    return text
-
-
-def log_problems(text: str) -> list[str]:
-    """Where the log has been edited, reordered or had an entry removed.
-
-    The plan's hash deliberately stops at the log, since the log is written after freezing and
-    including it would make the hash cover itself. That left the record of deviations -- the
-    file's only account of what changed after the plan was fixed -- freely deletable with any
-    editor, while `check` still reported the plan unchanged. Chaining the entries makes a
-    removal visible without bringing them under the plan hash.
-    """
-    problems: list[str] = []
-    previous = ""
-    for i, line in enumerate(log_lines(text), start=1):
-        entry, _, recorded = line.rpartition(LOG_MARK)
-        if not entry:
-            # Written before the log was chained, or by hand. Fold it in rather than report
-            # it: the chain protects every entry from the first chained one onward, and
-            # calling a plain line tampering would flag every plan written under the old
-            # format.
-            previous = chain_value(previous, line)
-            continue
-        expected = chain_value(previous, entry)
-        if recorded.strip() != expected:
-            problems.append(
-                f"log entry {i} does not follow the one before it: an entry has been "
-                f"edited, reordered or removed"
-            )
-            return problems
-        previous = expected
-
-    anchor = LOG_ANCHOR.search(text)
-    if anchor:
-        count, head = log_head(text)
-        if int(anchor.group(1)) != count:
-            problems.append(
-                f"the log records {anchor.group(1)} entries and holds {count}: "
-                f"an entry has been removed from the end"
-            )
-        elif anchor.group(2) != (head or "00000000"):
-            problems.append("the log's last entry is not the one recorded")
-    return problems
-
-
-def append(path: pathlib.Path, date: str, event: str, access: str) -> None:
-    text = path.read_text()
-    if MARK not in text:
-        text += MARK.rstrip("\n") + "\n\n```\n```\n"
-    head, _, tail = text.partition(MARK)
-    # Two spaces, not just padding. `{event:<36}` emits nothing extra once the note passes 36
-    # characters, and the access level then runs into the note — losing the boundary of the one
-    # field that separates an amendment from a deviation.
-    entry = f"{date}  {event:<36}  {access}"
-    previous = ""
-    for existing in log_lines(text):
-        entry_text, _, recorded = existing.rpartition(LOG_MARK)
-        # An entry written before the log was chained carries no value; fold it in so the
-        # chain still covers it rather than restarting from nothing.
-        previous = recorded.strip() if entry_text else chain_value(previous, existing)
-    line = f"{entry}  {LOG_MARK}{chain_value(previous, entry)}"
-    if "```" in tail:
-        before, fence, after = tail.rpartition("```")
-        tail = before.rstrip("\n") + f"\n{line}\n" + fence + after
-    else:
-        tail = tail.rstrip("\n") + f"\n{line}\n"
-    path.write_text(set_log_anchor(head + MARK + tail))
+    return try_run(*args, cwd=cwd) or ""
 
 
 def cmd_new(a) -> int:

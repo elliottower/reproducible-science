@@ -24,8 +24,8 @@ from __future__ import annotations
 import enum
 import os
 import pathlib
-import subprocess
 
+from provenance_core.gitref import GitError, run
 from pydantic import BaseModel, ConfigDict, Field
 
 from repro.models import Digest
@@ -200,13 +200,11 @@ def _at_commit(root: pathlib.Path, commit: str) -> bool:
 
 
 def _git(args: list[str], cwd: pathlib.Path) -> str:
+    """A git command whose failure is an error. Clones need longer than the shared default."""
     try:
-        proc = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, timeout=600)
-    except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as e:
-        raise FetchError(str(e)) from e
-    if proc.returncode != 0:
-        raise FetchError((proc.stderr or "").strip()[:200])
-    return proc.stdout.strip()
+        return run(*args, cwd=cwd, timeout=600)
+    except GitError as e:
+        raise FetchError(e.detail) from e
 
 
 class Corpus(BaseModel):

@@ -11,6 +11,7 @@ import json
 from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+
 from repro.core.artifacts import Digest
 
 SCHEMA_VERSION = "repro/1"
