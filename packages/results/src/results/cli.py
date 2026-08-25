@@ -5,6 +5,7 @@ results seal <file>...    hash inputs before a run (prereg, script, data)
 results access <note>     record a data-access event (what you looked at, when)
 results run <file>...     record outputs after a run completes
 results claim <text>      bind a manuscript claim to a run's output
+results coverage <paper>  how many of a manuscript's numbers are bound to a run
 results verify            check the ledger chain and every hash it names
 """
 
@@ -15,7 +16,7 @@ import os
 import pathlib
 import sys
 
-from results import ledger
+from results import ledger, manuscript
 
 RESULTS_DIR = ".results"
 
@@ -223,6 +224,49 @@ def cmd_claim(a) -> int:
     if retrospective:
         print(f"  recorded after outcomes were seen at {retrospective[:19]}; verify will report it")
     return 0
+
+
+def cmd_coverage(a) -> int:
+    root = require_root()
+    events = ledger.read_ledger(ledger_path(root))
+    claimed = manuscript.claimed_values(events)
+    claims = sum(1 for e in events if e.get("event") == "claim")
+
+    try:
+        found = manuscript.numbers(pathlib.Path(a.manuscript))
+    except manuscript.UnreadableManuscript as error:
+        print(error)
+        return 1
+
+    owed = [n for n in found if n["exempt"] is None]
+    for number in owed:
+        number["bound"] = number["printed"] in claimed
+    bound = [n for n in owed if n["bound"]]
+    unbound = [n for n in owed if not n["bound"]]
+
+    print(f"{a.manuscript}")
+    print(f"  {claims} claim{'' if claims == 1 else 's'} in the ledger, "
+          f"naming {len(claimed)} distinct value{'' if len(claimed) == 1 else 's'}")
+    if not owed:
+        print("  no numbers in this manuscript owe a run.")
+        return 0
+
+    share = len(bound) / len(owed)
+    print(f"  {len(bound)} of {len(owed)} numbers bound to a run ({share:.0%})")
+    print(f"  {len(found) - len(owed)} more need no claim "
+          f"(constants, identifiers, hyphenated names)")
+
+    if unbound:
+        print(f"\nunbound:")
+        for number in unbound[: a.limit]:
+            print(f"  {number['printed']:>12}  line {number['line']:<5} "
+                  f"{number['context'][:70]}")
+        if len(unbound) > a.limit:
+            print(f"  ... and {len(unbound) - a.limit} more; "
+                  f"pass --limit to see them")
+        print("\nEach states a result or it does not. Bind the ones that do:")
+        print('  results claim --run-id <run> --location "<where>" "<the sentence>"')
+    return 1 if unbound and a.strict else 0
 
 
 def cmd_reanchor(a) -> int:
@@ -442,6 +486,15 @@ def main() -> int:
         help="also check that sealed/output files still match their hashes",
     )
     v.set_defaults(fn=cmd_verify)
+
+    cv = sub.add_parser("coverage",
+                        help="how many of a manuscript's numbers are bound to a run")
+    cv.add_argument("manuscript", help="the manuscript source: .tex, .md, .qmd, .rst")
+    cv.add_argument("--limit", type=int, default=25,
+                    help="how many unbound numbers to list (default: 25)")
+    cv.add_argument("--strict", action="store_true",
+                    help="exit non-zero when anything is unbound, for a pre-submission check")
+    cv.set_defaults(fn=cmd_coverage)
 
     ra = sub.add_parser("reanchor", help="record the ledger's current length as authoritative")
     ra.set_defaults(fn=cmd_reanchor)
