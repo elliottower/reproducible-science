@@ -152,7 +152,10 @@ def body(source: str, base: pathlib.Path | None = None,
     for lineno, line in enumerate(source.splitlines(), 1):
         include = INCLUDE.search(line)
         if include and base is not None and depth < MAX_INCLUDE_DEPTH:
-            target = resolve_include(include.group(1).strip(), root, base.parent)
+            # `root` is set from `base` on the first call, so it is never None here;
+            # naming the fallback keeps that true for a reader and for the checker.
+            target = resolve_include(include.group(1).strip(), root or base.parent,
+                                     base.parent)
             if target is not None and target not in visited:
                 visited.add(target)
                 try:
