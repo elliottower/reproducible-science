@@ -23,16 +23,25 @@ afterward — the inputs a run consumed, the outputs it produced, and the order 
 from inside a session, the plugin records that chain as you go, so a claim written into a paper
 weeks later still has a run behind it.
 
-## Commands
+## What you get
 
-| command | what it does |
+Each plugin installs a skill rather than a slash command. Claude reads the skill's description
+and uses it when the situation calls for it — you do not invoke it by name.
+
+| skill | when it applies |
 |---|---|
-| `/prereg` | freeze a plan before running, and record what changed after |
-| `/citations` | check that quotations resolve in the sources they cite |
-| `/results` | seal inputs, record outputs, bind a paper's claims to runs |
+| `prereg` | freezing a plan before a run, and recording what changed after |
+| `citations` | quoting a paper, adding a citation, or checking whether a quote is real |
+| `results` | sealing inputs, recording outputs, binding a paper's claims to runs |
 
-Each is backed by the published package of the same name, so a project can move between the
-plugin and the command line without changing anything on disk.
+Each skill shells out to the published package of the same name, so the CLI has to be installed
+where Claude is running:
+
+```bash
+uv tool install citations
+```
+
+A project can move between the plugin and the command line without changing anything on disk.
 
 ## Verifying
 
