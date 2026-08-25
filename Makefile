@@ -8,6 +8,7 @@
 #   make coverage      ~2m     the same tests, measured, with a floor
 #   make qa            ~3m     what a pull request must pass
 #   make qa-all        ~10m+   the deep pass; advisory tools included
+#   make interop       ~15s    is the adduce adapter still true of the latest adduce?
 #   make release-check ~2m     what a release must pass
 #
 # Everything runs through `uv run`, so contributors and CI invoke the same commands.
@@ -15,7 +16,7 @@
 PY := uv run
 PKG_SRC := packages/repro/src packages/citations/src packages/results/src packages/prereg/src
 
-.PHONY: help format check test coverage versions qa qa-all release-check types drift pins deps imports corpus dead notes check-lowest hooks
+.PHONY: help format check test coverage versions publishable interop qa qa-all release-check types drift pins deps imports corpus dead notes check-lowest hooks
 
 help:
 	@grep -E '^#   make' Makefile | sed 's/^#   //'
@@ -53,7 +54,7 @@ coverage:
 
 # ---- rung 4: a pull request --------------------------------------------------------------
 # Exactly what CI requires, so a green `make qa` really does mean a green pull request.
-qa: check test coverage types versions drift pins deps imports wheels corpus dead
+qa: check test coverage types versions publishable drift pins deps imports wheels corpus dead
 
 types:
 	$(PY) pyrefly check $(PKG_SRC)
@@ -63,6 +64,20 @@ types:
 # because nothing checked them.
 versions:
 	$(PY) python scripts/versions.py check
+
+# A workspace path resolves a sibling during development and does not survive into a wheel.
+# A published package depending on an unpublished one installs for nobody.
+publishable:
+	$(PY) python scripts/check_publishable.py
+
+# The adduce rule is a claim about someone else's package, on someone else's schedule. A new
+# release of theirs is a prompt on an ordinary push and a blocker at a release, because a
+# release is when the claim in SPEC.md and the paper goes out with a version number on it.
+interop:
+	$(PY) python scripts/check_interop.py --advisory
+
+interop-strict:
+	$(PY) python scripts/check_interop.py
 
 drift:
 	$(PY) python scripts/check_drift.py
@@ -101,7 +116,7 @@ check-lowest:
 	uv run --resolution lowest-direct --all-packages --group dev pytest -q
 
 # ---- rung 6: a release -------------------------------------------------------------------
-release-check: qa
+release-check: qa interop-strict
 	$(PY) python scripts/check_wheels.py
 	rm -rf dist && mkdir -p dist
 	for d in reproducible-science citations results-cli prereg; do uv build --package $$d --out-dir dist -q; done

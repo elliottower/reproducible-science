@@ -1,0 +1,58 @@
+---
+title: Notebook
+description: A real JupyterLab in your browser, running the published packages
+---
+
+A complete JupyterLab — file browser, kernel, editable cells — compiled to WebAssembly and
+served as static files. Every cell runs the **published package**: `pip install
+reproducible-science` gets you the same code.
+
+Nothing is uploaded, and there is no account to create. The first load fetches the runtime,
+which takes a few seconds.
+
+<div class="jlite">
+  <iframe
+    src={`${import.meta.env.BASE_URL.replace(/\/$/, "")}/jlite/lab/index.html?path=demo.ipynb`}
+    title="JupyterLite running the Reproducible Science demo"
+    loading="lazy"
+  ></iframe>
+</div>
+
+You can edit any cell and re-run it, or add your own. The notebook walks through sealing an
+input, recording a run, binding a manuscript claim to it, and then breaking each link in turn
+to see which kind of failure the tool reports.
+
+## One difference from a terminal
+
+WebAssembly has no process model, so there is no shell. `!results seal x.json` cannot work —
+it needs to spawn a process. The notebook uses a small helper instead:
+
+```python
+cli("results.cli", "seal", "results.json", "--role", "input")
+```
+
+That calls the command's entry point with the argv a shell would have handed it, so the code
+path is identical. Only the invocation differs.
+
+Two things stay out of reach for the same reason, and the notebook leaves them out rather
+than faking them:
+
+- **`prereg freeze`** requires a real git commit, and there is no git here.
+- **`citations`** against a PDF needs `pdftotext` from poppler.
+
+A demo that quietly skips the checks it cannot perform is the exact failure this tool exists
+to report. To run those, install locally:
+
+```bash
+pip install reproducible-science
+```
+
+<style>{`
+  .jlite iframe {
+    width: 100%;
+    height: 44rem;
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.5rem;
+    background: #fff;
+  }
+`}</style>

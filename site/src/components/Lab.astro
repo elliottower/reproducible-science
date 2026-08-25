@@ -1,0 +1,286 @@
+---
+// No framework island: the whole thing is one TypeScript module and a form. Astro compiles
+// the script, so the contract implementation is type-checked with the rest of the site.
+---
+
+<div class="lab">
+  <p class="note">Everything below runs in your browser. Nothing is uploaded.</p>
+
+  <div class="grid">
+    <section class="panel">
+      <h3>Artifact</h3>
+      <p class="caption">results.json</p>
+      <textarea id="artifact" rows="9" spellcheck="false"></textarea>
+      <div class="pins">
+        <button id="pin" type="button">Pin this artifact</button>
+        <button id="corrupt" type="button" disabled>Corrupt the pin</button>
+        <button id="unpin" type="button" disabled>Unpin</button>
+      </div>
+      <code id="digest" class="digest">no digest recorded</code>
+    </section>
+
+    <section class="panel">
+      <h3>Evidence</h3>
+      <p class="caption">what the manuscript claims</p>
+      <label>
+        <span>JSON Pointer (RFC 6901)</span>
+        <input id="pointer" spellcheck="false" />
+      </label>
+      <label>
+        <span>Value printed in the paper</span>
+        <input id="reported" spellcheck="false" />
+      </label>
+      <button id="reset" type="button">Reset to the baseline</button>
+    </section>
+  </div>
+
+  <div id="decision" class="decision"></div>
+
+  <h3>Break it</h3>
+  <div id="mutations" class="mutations"></div>
+</div>
+
+<script>
+  import { verify, sha256Hex } from "../contract/verify";
+
+  const BASELINE = `{
+  "primary": {
+    "p": 0.031,
+    "n": 147
+  }
+}`;
+
+  const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
+  const artifact = $<HTMLTextAreaElement>("artifact");
+  const pointer = $<HTMLInputElement>("pointer");
+  const reported = $<HTMLInputElement>("reported");
+  const digest = $<HTMLElement>("digest");
+  const decision = $<HTMLElement>("decision");
+  let pinned = "";
+
+  /** Parse, edit, re-serialize. Returns null when the artifact will not parse. */
+  function edited(text: string, edit: (doc: any) => void): string | null {
+    let doc: any;
+    try { doc = JSON.parse(text); } catch { return null; }
+    edit(doc);
+    return JSON.stringify(doc, null, 2);
+  }
+
+  /** The container holding the pointer's last token, creating objects along the way. */
+  function parentOf(doc: any, ptr: string) {
+    const tokens = ptr.slice(1).split("/").map((t) => t.replace(/~1/g, "/").replace(/~0/g, "~"));
+    const key = tokens.pop();
+    if (key === undefined) return null;
+    let node = doc;
+    for (const token of tokens) {
+      if (node[token] === undefined || node[token] === null || typeof node[token] !== "object") {
+        node[token] = {};
+      }
+      node = node[token];
+    }
+    return { holder: node, key };
+  }
+
+  // Each button starts from the baseline and applies exactly one change, so every one of
+  // them always produces its own case. Chaining them instead meant a second click often had
+  // nothing left to act on -- once the key was deleted, "set it to null" silently did
+  // nothing -- and a button that appears dead is worse than no button.
+  const MUTATIONS: [string, string, () => void][] = [
+    ["Change the stored value", "the artifact was read and disagrees", () => {
+      base();
+      const next = edited(artifact.value, (doc) => {
+        const at = parentOf(doc, pointer.value);
+        if (at) at.holder[at.key] = 0.051;
+      });
+      if (next) artifact.value = next;
+    }],
+    ["Delete the addressed key", "nothing was compared, so nothing disagreed", () => {
+      base();
+      const next = edited(artifact.value, (doc) => {
+        const at = parentOf(doc, pointer.value);
+        if (at) delete at.holder[at.key];
+      });
+      if (next) artifact.value = next;
+    }],
+    ["Set the value to null", "null is an absent value, not a value", () => {
+      base();
+      const next = edited(artifact.value, (doc) => {
+        const at = parentOf(doc, pointer.value);
+        if (at) at.holder[at.key] = null;
+      });
+      if (next) artifact.value = next;
+    }],
+    ["Address a container", "a section is not a value", () => {
+      base();
+      pointer.value = "/primary";
+    }],
+    ["Address nothing at all", "silence is not contradiction", () => {
+      base();
+      pointer.value = "/primary/q";
+    }],
+    ["Pin it, then edit it", "every number agrees, with a document nobody pinned", () => {
+      base();
+      void sha256Hex(artifact.value).then((d) => {
+        setPinned(d);
+        const next = edited(artifact.value, (doc) => {
+          const at = parentOf(doc, pointer.value);
+          if (at) at.holder[at.key] = Number(reported.value);
+        });
+        // same value, different bytes: JSON.stringify re-serialises, so the digest moves
+        if (next) artifact.value = next + "\n";
+        void run();
+      });
+    }],
+  ];
+
+  async function run() {
+    const d = await verify({
+      artifact: artifact.value,
+      pointer: pointer.value,
+      reported: reported.value,
+      pinned: pinned || undefined,
+    });
+    decision.className = `decision ${d.outcome}`;
+    decision.innerHTML = `
+      <div class="verdict">
+        <strong>${d.outcome.replace("_", " ").toUpperCase()}</strong>
+        <span class="codes">reason <code>${d.reason}</code> · validity <code>${d.validity}</code></span>
+      </div>
+      <p class="detail">${d.detail}</p>
+      <ol class="trace">${d.trace.map((l) => `<li>${l}</li>`).join("")}</ol>`;
+  }
+
+  function setPinned(value: string) {
+    pinned = value;
+    digest.textContent = value ? `sha256 ${value.slice(0, 32)}…` : "no digest recorded";
+    $<HTMLButtonElement>("corrupt").disabled = !value;
+    $<HTMLButtonElement>("unpin").disabled = !value;
+    void run();
+  }
+
+  /** The starting point, without touching the pin. */
+  function base() {
+    artifact.value = BASELINE;
+    pointer.value = "/primary/p";
+    reported.value = "0.031";
+  }
+
+  function reset() {
+    base();
+    setPinned("");
+  }
+
+  const list = $<HTMLElement>("mutations");
+  for (const [label, hint, apply] of MUTATIONS) {
+    const b = document.createElement("button");
+    b.className = "mutation";
+    b.type = "button";
+    b.innerHTML = `<strong>${label}</strong><span>${hint}</span>`;
+    b.addEventListener("click", () => { apply(); void run(); });
+    list.append(b);
+  }
+
+  for (const el of [artifact, pointer, reported]) el.addEventListener("input", () => void run());
+  $("pin").addEventListener("click", async () => setPinned(await sha256Hex(artifact.value)));
+  $("corrupt").addEventListener("click", () => setPinned("de".repeat(32)));
+  $("unpin").addEventListener("click", () => setPinned(""));
+  $("reset").addEventListener("click", reset);
+  reset();
+</script>
+
+<style is:global>
+  .lab { margin: 1.75rem 0 2rem; }
+  .lab .note { color: var(--sl-color-gray-2); font-size: 0.9rem; margin: 0 0 1.25rem; }
+
+  .lab .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; align-items: start; }
+  @media (max-width: 50rem) { .lab .grid { grid-template-columns: 1fr; } }
+
+  .lab .panel {
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.625rem;
+    padding: 1.1rem 1.2rem 1.2rem;
+    background: var(--sl-color-gray-6);
+  }
+  .lab .panel h3 { margin: 0 0 0.15rem; font-size: 1rem; }
+  .lab .caption { color: var(--sl-color-gray-2); font-size: 0.85rem; margin: 0 0 0.85rem; }
+
+  .lab textarea, .lab input {
+    width: 100%; box-sizing: border-box;
+    font-family: var(--sl-font-system-mono); font-size: 0.85rem; line-height: 1.6;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid var(--sl-color-gray-5); border-radius: 0.4375rem;
+    background: var(--sl-color-bg); color: var(--sl-color-white); resize: vertical;
+  }
+  .lab textarea:focus, .lab input:focus { outline: none; border-color: var(--sl-color-accent); }
+  .lab label { display: block; margin-bottom: 0.9rem; }
+  .lab label span {
+    display: block; font-size: 0.8rem; color: var(--sl-color-gray-2); margin-bottom: 0.3rem;
+  }
+
+  .lab .pins { display: flex; gap: 0.4rem; margin-top: 0.75rem; flex-wrap: wrap; }
+  .lab button {
+    font-size: 0.8rem; padding: 0.4rem 0.75rem; border-radius: 0.4375rem; cursor: pointer;
+    border: 1px solid var(--sl-color-gray-4); background: var(--sl-color-bg);
+    color: var(--sl-color-white); font-family: var(--sl-font); line-height: 1.4;
+  }
+  .lab button:hover:not(:disabled) {
+    border-color: var(--sl-color-accent); color: var(--sl-color-accent-high);
+  }
+  .lab button:disabled {
+    cursor: not-allowed; color: var(--sl-color-gray-3);
+    border-color: var(--sl-color-gray-5); background: transparent;
+  }
+  /* The digest reads as a value, so it gets the same treatment inline code does. */
+  .lab .digest {
+    display: inline-block; margin-top: 0.75rem; padding: 0.25rem 0.5rem;
+    font-family: var(--sl-font-system-mono); font-size: 0.78rem;
+    background: var(--sl-color-gray-5); border-radius: 0.25rem;
+    color: var(--sl-color-white); word-break: break-all;
+  }
+
+  .lab .decision {
+    border: 1px solid var(--sl-color-gray-5); border-left-width: 4px;
+    border-radius: 0.625rem; padding: 1rem 1.25rem; margin: 1.5rem 0;
+    background: var(--sl-color-gray-6);
+  }
+  .lab .decision.verified { border-left-color: #15803d; }
+  .lab .decision.mismatch { border-left-color: #b45309; }
+  .lab .decision.not_found, .lab .decision.unchecked { border-left-color: var(--sl-color-gray-3); }
+  .lab .decision.error { border-left-color: #b91c1c; }
+
+  .lab .verdict { display: flex; gap: 0.9rem; align-items: baseline; flex-wrap: wrap; }
+  .lab .verdict strong { font-size: 1rem; letter-spacing: 0.06em; color: var(--sl-color-white); }
+  .lab .codes { font-size: 0.82rem; color: var(--sl-color-gray-2); }
+  .lab .codes code {
+    font-family: var(--sl-font-system-mono); font-size: 0.95em;
+    background: var(--sl-color-gray-5); padding: 0.1rem 0.35rem; border-radius: 0.25rem;
+    color: var(--sl-color-white);
+  }
+  /* Keep the three pin controls on one row rather than orphaning "Unpin". */
+  /* One row, equal heights: "Pin this artifact" was taller because the others wrapped. */
+  .lab .pins { flex-wrap: nowrap; align-items: stretch; }
+  .lab .pins button { white-space: nowrap; flex: 1 1 0; text-align: center; }
+  .lab .detail { margin: 0.6rem 0 0.8rem; }
+  .lab .trace {
+    font-family: var(--sl-font-system-mono); font-size: 0.8rem; line-height: 1.8;
+    color: var(--sl-color-white); margin: 0; padding-left: 1.2rem;
+  }
+  .lab .trace li { color: var(--sl-color-white); }
+
+  .lab > h3 { margin: 1.75rem 0 0.85rem; font-size: 1.1rem; }
+  .lab .mutations {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 0.6rem;
+  }
+  /* Equal heights regardless of hint length: a two-line hint made one card taller. */
+  .lab .mutations { grid-auto-rows: 1fr; }
+  .lab .mutation {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 0.25rem;
+    height: 100%; justify-content: flex-start;
+    text-align: left; padding: 0.8rem 0.95rem; line-height: 1.5;
+    border-radius: 0.5625rem; background: var(--sl-color-gray-6);
+    border-color: var(--sl-color-gray-5);
+  }
+  .lab .mutation:hover { background: var(--sl-color-gray-5); border-color: var(--sl-color-accent); }
+  .lab .mutation strong { font-size: 0.88rem; color: var(--sl-color-white); }
+  .lab .mutation span { font-size: 0.82rem; color: var(--sl-color-gray-2); font-weight: 400; }
+</style>

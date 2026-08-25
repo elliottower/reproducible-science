@@ -66,6 +66,7 @@ build.targets.wheel.bypass-selection = true
 [tool.uv]
 sources.citations = { workspace = true }
 sources.prereg = { workspace = true }
+sources.provenance-core = { workspace = true }
 sources.reproducible-science = { workspace = true }
 sources.results-cli = { workspace = true }
 workspace.members = [ "packages/*" ]
@@ -73,7 +74,9 @@ workspace.members = [ "packages/*" ]
 [tool.ruff]
 target-version = "py311"
 line-length = 100
-extend-exclude = [ "packages/*/tests/conformance/cases" ]
+# `site/` is a JavaScript project: nothing under it is ruff's to police, and a stray file
+# there must not be able to fail the Python gate.
+extend-exclude = [ "packages/*/tests/conformance/cases", "site" ]
 format.docstring-code-format = false
 lint.select = [ "B", "C4", "E", "F", "I", "RUF", "UP", "W" ]
 lint.ignore = [
@@ -152,9 +155,21 @@ project_includes = [
 paths = [ "packages", "scripts" ]
 min_confidence = 100
 
+# The adduce release the interop adapter was last verified against. `make interop` compares
+# this with PyPI: a newer release is a prompt, not a failure, until a release tag is cut.
+
+[tool.interop]
+adduce = "0.1.2"
+
 [tool.importlinter]
-root_packages = [ "repro", "citations", "results", "prereg" ]
+root_packages = [ "repro", "citations", "results", "prereg", "provenance_core" ]
 include_external_packages = false
+
+[[tool.importlinter.contracts]]
+name = "The shared primitives depend on nothing of ours"
+type = "forbidden"
+source_modules = [ "provenance_core" ]
+forbidden_modules = [ "repro", "citations", "results", "prereg" ]
 
 [[tool.importlinter.contracts]]
 name = "The three tools do not depend on the verifier"
@@ -166,7 +181,9 @@ forbidden_modules = [ "repro" ]
 name = "The verifier's core does not import its integrations"
 type = "forbidden"
 source_modules = [
+  "repro.core",
   "repro.models",
+  "repro.adapters",
   "repro.resolve",
   "repro.verify",
   "repro.policy",
@@ -183,6 +200,8 @@ layers = [
   "repro.policy",
   "repro.verify",
   "repro.resolve",
+  "repro.adapters",
   "repro.models",
+  "repro.core",
   "repro.exceptions",
 ]

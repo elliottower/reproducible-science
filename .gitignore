@@ -25,3 +25,13 @@ REVIEW_PACKET*.md
 
 # Development corpus: downloaded articles and shallow clones, rebuildable from frame.json
 experiments/addressability-sample/dev_corpus/
+# documentation site (Docusaurus)
+website/node_modules/
+website/build/
+website/.docusaurus/
+
+# nbconvert output from verifying the demo notebook runs
+notebooks/executed.ipynb
+
+# jupyter lite build state
+.jupyterlite.doit.db

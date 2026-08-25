@@ -18,7 +18,7 @@ classifiers = [
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
 ]
-dependencies = [ "platformdirs>=3", "pydantic>=2.9", "pyyaml>=6.0.2" ]
+dependencies = [ "platformdirs>=3", "provenance-core>=0.2,<0.3", "pydantic>=2.9", "pyyaml>=6.0.2" ]
 optional-dependencies.lint = [ "papis>=0.15" ]
 urls.Changelog = "https://github.com/elliottower/reproducible-science/blob/main/CHANGELOG.md"
 urls.Homepage = "https://github.com/elliottower/reproducible-science"

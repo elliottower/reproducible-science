@@ -18,7 +18,9 @@ classifiers = [
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
 ]
-dependencies = [  ] # stdlib only
+# One dependency, itself dependency-free: the digest and git helpers this shares with
+# the other tools. Everything else is stdlib.
+dependencies = [ "provenance-core>=0.2,<0.3" ]
 urls.Changelog = "https://github.com/elliottower/reproducible-science/blob/main/CHANGELOG.md"
 urls.Homepage = "https://github.com/elliottower/reproducible-science"
 urls.Issues = "https://github.com/elliottower/reproducible-science/issues"
