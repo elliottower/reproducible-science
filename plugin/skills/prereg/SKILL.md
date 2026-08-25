@@ -91,7 +91,7 @@ frozen bad design is still a bad design, registered.
 
 ## Where this sits
 
-Four tools guard four moments, and each is useless without the others. A frozen plan over
+Four tools guard four moments, and each is weak without the others. A frozen plan over
 unsealed inputs proves nothing; a sealed run whose numbers never reach the manuscript proves
 nothing either.
 
@@ -99,10 +99,14 @@ nothing either.
 |---|---|---|
 | before you run | `prereg freeze` | the plan cannot be rewritten around the result |
 | before you compute | `results seal` | the inputs are what you say they were |
-| after a run | `results run` | the outputs are recorded, hashed |
+| after a run | `results run` | the outputs are recorded and hashed |
 | writing a number | `results claim` | the number names the run behind it |
-| writing a quotation | `citations` claim file | the passage is in the source |
-| before submitting | `/prereg-check`, `/results-check`, `/citations-check` | nothing drifted |
+| writing a quotation | a `claims/` entry | the passage is in the source |
+| before submitting | `prereg check`, `results verify`, `citations verify` | nothing drifted |
 
-Each plugin ships a hook that speaks when its moment passes unrecorded, and a `-check`
-command for when you want the answer now.
+Every tool named here is installed by `uv tool install reproducible-science`, so the commands
+above are available whatever plugins are present.
+
+Each tool also ships its own plugin, adding a hook that speaks when its moment passes
+unrecorded and a `-check` command. Those commands exist only where the matching plugin is
+installed; the CLI calls in the table always work.

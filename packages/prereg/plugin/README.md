@@ -1,7 +1,27 @@
-# The Claude Code plugin
+# The `prereg` Claude Code plugin
 
-Tells Claude the `prereg` CLI exists and when to reach for it. The CLI does the work; this adds
-nothing the CLI cannot do.
+Is the plan still the plan that was registered?
+
+Three surfaces, because each catches a different failure. The hook catches what the model
+does not think to do, the skill catches what the author did not know to ask for, and the
+command is there for when you want the answer now.
+
+| | |
+|---|---|
+| **hook** `hooks/frozen_plan_changed.py` | fires when a frozen preregistration no longer matches the digest it was frozen with |
+| **skill** `skills/prereg/SKILL.md` | fires when Claude judges the tool relevant |
+| **command** `/prereg-check` | fires when you type it |
+
+## Why the hook
+
+This is the only exact check in the set. It recomputes a hash the author recorded and compares two strings, so there is no threshold and no judgment. It is also the one whose failure matters most: a plan rewritten around a result defeats registration entirely, and no reader can detect it afterward. The hook reports the difference and never edits the registration.
+
+It reports and never blocks, exits zero on every failure path, and stays silent in a project
+with no frozen plan — nothing to check means nothing said.
+
+## What the skill changes
+
+Claude freezes a plan before running rather than after seeing the outcome, and records amendments and deviations in the log instead of editing the plan in place.
 
 ## Install
 
@@ -10,22 +30,21 @@ nothing the CLI cannot do.
 /plugin install prereg@reproducible-science
 ```
 
-The plugin ships instructions, not binaries. Install the tool too:
+The plugin ships instructions and hooks, not binaries. Install the tool as well:
 
 ```bash
 uv tool install prereg
 ```
 
-For development against a checkout:
+Against a checkout:
 
 ```bash
-/plugin marketplace add ~/Documents/GitHub/prereg
+/plugin marketplace add ~/Documents/GitHub/reproducible-science
 /plugin install prereg@reproducible-science
 ```
 
-## What it changes
+## The other three
 
-Claude will freeze a plan before running it rather than after, commit the PREREG.md on its own so
-the freeze is not contaminated by a code change, and log a change to a frozen plan instead of
-editing it quietly. It will also stop writing `**Status:** FROZEN` headers by hand, which produce a
-document that reads as registered and cannot be verified.
+`prereg`, `citations`, `results` and `repro` are one lifecycle, and each plugin ships
+separately so you can take only what you use. `reproducible-science@reproducible-science`
+installs all of them at once.
