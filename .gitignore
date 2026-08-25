@@ -24,7 +24,7 @@ coverage.xml
 REVIEW_PACKET*.md
 
 # Development corpus: downloaded articles and shallow clones, rebuildable from frame.json
-experiments/addressability-sample/dev_corpus/
+research/addressability/dev_corpus/
 # documentation site (Docusaurus)
 website/node_modules/
 website/build/
@@ -37,4 +37,11 @@ notebooks/executed.ipynb
 .jupyterlite.doit.db
 
 # arXiv LaTeX sources fetched for testing, rebuildable from resolved.json
-experiments/addressability-sample/arxiv_corpus/*/
+research/addressability/arxiv_corpus/*/
+
+# CORE-Bench capsules: ~39 MB each, rebuildable from core_train.json
+research/addressability/corebench/work/
+research/addressability/corebench/diag/
+
+# CORE-Bench capsule metadata: 4.3 MB, fetched from siegelz/core-bench
+research/addressability/corebench/capsules.csv

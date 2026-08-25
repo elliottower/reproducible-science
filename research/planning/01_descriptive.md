@@ -7,7 +7,7 @@ published articles can be named at a position in a released artifact.
 
 ## Status
 
-**This is already designed and preregistered.** `experiments/addressability-sample/`
+**This is already designed and preregistered.** `research/addressability/`
 holds `PREREG.md`, `CODEBOOK.md`, a frozen `frame.json`, a vendored `published.bib`, and
 `select_sample.py`. It has been through one external review round. Every log line reads
 `nothing run`.

@@ -6,7 +6,7 @@ produces a study that cannot fail cleanly.
 
 | # | Position | Subject | Artifact | Status |
 |---|---|---|---|---|
-| 1 | [Descriptive](01_descriptive.md) | the literature | `experiments/addressability-sample/` | **preregistered, draft, nothing run** |
+| 1 | [Descriptive](01_descriptive.md) | the literature | `research/addressability/` | **preregistered, draft, nothing run** |
 | 2 | [Diagnostic](02_diagnostic.md) | claim-auditing systems | HAL trace analysis | data in hand, unregistered |
 | 3 | [Instrument](03_instrument.md) | the specification | conformance suite + 2nd implementation | partially built |
 | 4 | [Normative](04_normative.md) | practice | position paper + LessWrong post | argued, unwritten |
