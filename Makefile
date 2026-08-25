@@ -16,7 +16,7 @@
 PY := uv run
 PKG_SRC := packages/repro/src packages/citations/src packages/results/src packages/prereg/src
 
-.PHONY: help format check test coverage versions publishable interop qa qa-all release-check types drift pins deps imports corpus dead notes check-lowest hooks
+.PHONY: help format check test coverage versions publishable interop qa qa-all release-check types deps imports dead notes check-lowest hooks
 
 help:
 	@grep -E '^#   make' Makefile | sed 's/^#   //'
@@ -31,7 +31,6 @@ check:
 	$(PY) ruff check .
 	$(PY) ruff format --check .
 	uv lock --check
-	$(PY) repro verify paper/repro.yaml --policy strict
 
 # ---- rung 3: tests -----------------------------------------------------------------------
 test:
@@ -55,7 +54,7 @@ coverage:
 
 # ---- rung 4: a pull request --------------------------------------------------------------
 # Exactly what CI requires, so a green `make qa` really does mean a green pull request.
-qa: check test coverage types versions publishable drift pins deps imports wheels corpus dead
+qa: check test coverage types versions publishable deps imports wheels dead
 
 types:
 	$(PY) pyrefly check $(PKG_SRC)
@@ -80,15 +79,6 @@ interop:
 interop-strict:
 	$(PY) python scripts/check_interop.py
 
-drift:
-	$(PY) python scripts/check_drift.py
-
-pins:
-	$(PY) python scripts/check_pins.py
-
-corpus:
-	$(PY) pytest -q -m corpus
-
 dead:
 	$(PY) vulture
 
@@ -109,7 +99,6 @@ wheels:
 qa-all: qa check-lowest
 	-$(PY) complexipy packages --max-complexity 25
 	-$(PY) pip-audit --skip-editable
-	-$(PY) python scripts/check_drift.py
 
 # Resolve every declared dependency at its floor. The workspace always installs the newest
 # thing available, so a floor that is too low is invisible until a user hits it.

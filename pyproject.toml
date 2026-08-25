@@ -91,7 +91,7 @@ lint.per-file-ignores."packages/*/tests/*" = [ "B011" ] # bare assert False is f
 # `unparseable` is the spelling used throughout, and the rest are author surnames in the
 # sampling frame. Listed rather than skipping whole files, which would hide real typos.
 ignore-words-list = "unparseable,ue,copie,buis,smae,nd,ist,fo"
-skip = "uv.lock,experiments/*/frame.json,paper/prior_art/*,.git"
+skip = "uv.lock,.git"
 
 [tool.pytest]
 ini_options.testpaths = [ "packages" ]
@@ -99,9 +99,8 @@ ini_options.consider_namespace_packages = true
 # importlib import mode: three packages each have tests/test_cli.py, and the default mode
 # derives a module name from the path relative to rootdir, so they collide. This is the fix
 # that does not require scattering __init__.py through the test trees.
-ini_options.addopts = "-m 'not corpus' --import-mode=importlib"
+ini_options.addopts = "--import-mode=importlib"
 ini_options.markers = [
-  "corpus: reads repositories outside this one, and may fetch them",
   "integration: exercises a third-party library that is not a runtime dependency",
 ]
 

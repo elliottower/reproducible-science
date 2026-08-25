@@ -1,14 +1,18 @@
-# Figure-generating scripts
+# Repository checks
 
-Every number in `paper/DRAFT_v2.md` is produced by a script here or by the conformance suite.
-A figure without a script that regenerates it does not go in the paper.
+Each script backs a `make` target and a CI job. None of them reads anything outside this
+repository.
 
-| script | figures it produces | section |
+| script | checks | make target |
 |---|---|---|
-| `census_quotation_corpus.py` | assertions, manuscripts, pin states, unparseable files | §6.2 |
-| `generate_figures.py` | resolver-written identifiers and the checkable denominator, via Crossref and DataCite | §6.6 |
-| `census_resolver_identifiers.py` | superseded: consults Crossref only, and produced the withdrawn denominator | — |
-| `../packages/repro/tests/conformance/` | fixture count and assertion count | §6.1 |
+| `versions.py` | one version across every package, failing when they drift | `versions` |
+| `check_publishable.py` | every cross-package dependency is publishable, not merely resolvable from the workspace | `publishable` |
+| `check_wheels.py` | the built wheels install and work together outside the workspace | `wheels` |
+| `check_deps.py` | declared dependencies match what the code imports, one package at a time | `deps` |
+| `check_interop.py` | the adduce integration still holds for the adduce people install | `interop` |
+| `commit_msg_attribution.py` | AI co-authorship trailers are rewritten as disclosure | commit-msg hook |
+| `coverage_hook` | subprocess coverage measurement, since most suites drive a CLI | `coverage` |
 
-Both census scripts read the citation library at `$CITATIONS_HOME` and are therefore specific
-to that corpus. They print counts and write nothing.
+The scripts that produced the manuscript's figures moved to `reproducible-science-paper`, and
+the addressability corpus to `reproducible-science-evaluations`. Both read repositories other
+than this one, which is why a push here no longer waits on a filesystem scan.
