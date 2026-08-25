@@ -53,8 +53,36 @@ Four levels, in order of exposure:
 | `structure seen` | data shape and distributions, but not the target variable |
 | `outcomes seen` | the dependent variable was observed |
 
-An analysis registered after `outcomes seen` is retrospective, not confirmatory. The level is
-recorded, not judged — log the honest one even when it is the damaging one.
+The level is recorded, not judged — log the honest one even when it is the damaging one.
+
+## Exposure is not contamination
+
+**What threatens a confirmatory reading is propagation, not exposure.** A context reading a
+result is evidence that contamination was possible. Contamination is outcome information
+reaching a consequential choice: selecting an analysis, changing an exclusion, editing the
+code that computes the result, or abandoning an arm after a null.
+
+| situation | disposition |
+|---|---|
+| plan frozen before execution, no premature exposure | confirmatory |
+| results seen *after* every consequential choice was frozen | **confirmatory, exposure logged** |
+| exposed context then changed the analysis or chose follow-up work | exploratory, for the affected decisions |
+| a null caused an arm to be dropped | exploratory — continuation was data-contingent |
+| a human saw results and then exercised discretion | exploratory unless those choices were already fixed |
+
+Row two is the one that gets mishandled. A plan committed to git before the exposure cannot
+be reached by it, so `results claim --confirmatory --frozen-at <commit>` records the claim
+as confirmatory with the exposure logged. `verify` reports it separately from contested
+claims. Without a freeze reference the tool refuses, because it cannot tell the two apart.
+
+**Demote the affected decisions, never the study.** Blanket demotion is a category error, and
+it is why exposures get hidden rather than logged: if disclosure costs everything, nobody
+discloses. Scope the demotion to the choices the exposure could actually have reached.
+
+**The boundary.** If outcome information reaches a human who then exercises relevant
+discretion, non-propagation cannot be *demonstrated* — not because it occurred, but because
+no infrastructure can show it did not. Those decisions do not get the protection available to
+isolated computational contexts.
 
 ## Reading `results verify`
 
