@@ -5,7 +5,7 @@ requires = [ "hatchling" ]
 [project]
 name = "prereg"
 version = "0.2.0"
-description = "Freeze a plan before you run it, and record what changed after"
+description = "Preregister your plan to prevent p-hacking and unfalsifiable post-hoc analysis"
 readme = "README.md"
 keywords = [ "open science", "osf", "preregistration", "reproducibility" ]
 license = { text = "MIT" }

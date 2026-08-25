@@ -1,6 +1,6 @@
 # prereg
 
-Freeze a plan before you run it, and record what changed after.
+Preregister your plan to prevent p-hacking and unfalsifiable post-hoc analysis.
 
 ## Install
 

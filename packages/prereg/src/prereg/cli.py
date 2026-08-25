@@ -1,4 +1,4 @@
-"""Freeze a plan before you run it, and record what changed after.
+"""Preregister your plan to prevent p-hacking and unfalsifiable post-hoc analysis.
 
     prereg new <name>     scaffold the plan, in OSF's headings
     prereg freeze         record the commit and hash, append to the log

@@ -5,7 +5,7 @@ description: Prereg — Reproducible Science
 
 <!-- Generated from packages/prereg/README.md. Edit that file, not this one. -->
 
-Freeze a plan before you run it, and record what changed after.
+Preregister your plan to prevent p-hacking and unfalsifiable post-hoc analysis.
 
 **[Run it in your browser](#run-it)** — every command on this page, in a live notebook at the bottom. No install.
 
