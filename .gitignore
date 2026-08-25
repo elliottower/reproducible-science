@@ -18,3 +18,8 @@ paper/prior_art/.audit-cache/
 .coverage.*
 htmlcov/
 coverage.xml
+
+# documentation site (Docusaurus)
+website/node_modules/
+website/build/
+website/.docusaurus/
