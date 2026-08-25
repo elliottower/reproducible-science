@@ -1,0 +1,28 @@
+---
+title: Verify a claim
+description: Run the evidence contract over an artifact, in your browser
+---
+
+import Lab from "../../components/Lab.astro";
+
+A manuscript prints a number. An artifact holds one. This runs the evidence contract over
+both and reports what it established — and, just as importantly, what it could not.
+
+<Lab />
+
+## What just happened
+
+The verdict carries three independent fields, and collapsing them would lose the distinction
+the tool exists to draw:
+
+- **Outcome** — what the check concluded. `mismatch` means the artifact was read and
+  disagrees. `not_found` means nothing was compared, so nothing disagreed.
+- **Reason** — why, as one of nineteen machine-readable codes.
+- **Validity** — whether the decision describes the artifact that was declared. Every number
+  can agree and the report still fail, because they agreed with a document nobody pinned.
+
+This page runs an independent TypeScript implementation of the same contract the Python
+package implements, over the same rules: [RFC 6901](https://datatracker.ietf.org/doc/html/rfc6901)
+pointer resolution, comparison at the precision the manuscript printed, and validity tracked
+separately from the comparison. Two implementations agreeing is what makes the
+[specification](/reproducible-science/reference/spec/) a specification.
