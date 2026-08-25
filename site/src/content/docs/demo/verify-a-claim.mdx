@@ -1,16 +1,14 @@
 ---
 title: Verify a claim
 description: Seal a run, bind a manuscript claim to it, and break each link in turn
+tableOfContents: false
 ---
 
-A number in a manuscript names a claim. The claim names a run. The run names its outputs,
-hashed when they were recorded.
-
-This notebook walks that chain forward and then breaks it — a contradicted number, an address
-that resolves to nothing, an artifact edited after it was pinned, a deleted ledger entry —
-and shows which kind of failure each one produces.
-
-Every cell runs the published package. Nothing is uploaded and there is no account to create.
+A manuscript prints a number. The claim it belongs to names a run, and the run names its
+outputs by the hashes they had when they were recorded. This notebook walks that chain and
+then breaks it in four ways — a contradicted number, an address that resolves to nothing, an
+artifact edited after it was pinned, a deleted ledger entry — and reports what each break
+produces. Every cell runs the published package, and nothing leaves the browser.
 
 <div class="jlite">
   <iframe
@@ -20,19 +18,7 @@ Every cell runs the published package. Nothing is uploaded and there is no accou
   ></iframe>
 </div>
 
-You can edit any cell and re-run it, or add your own.
-
 ## Not possible in WebAssembly
 
-`prereg freeze` records the commit a plan was frozen at. Git does not exist in WebAssembly,
-so the command cannot run here.
-
-<style>{`
-  .jlite iframe {
-    width: 100%;
-    height: 44rem;
-    border: 1px solid var(--sl-color-gray-5);
-    border-radius: 0.5rem;
-    background: #fff;
-  }
-`}</style>
+`prereg freeze` stamps a plan with the commit it was frozen at. Git is not available here, so
+that one command needs a local install.

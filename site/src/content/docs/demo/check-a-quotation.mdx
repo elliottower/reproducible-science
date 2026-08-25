@@ -1,13 +1,13 @@
 ---
 title: Check a quotation
 description: Read a source and report whether the passage is in it
+tableOfContents: false
 ---
 
-A paper quotes something. `citations` reads the source and reports whether the passage is
-there — and whether the file it read is the file the record pinned.
-
-This notebook runs a quotation that resolves, one that does not, a source edited after it was
-pinned, and a passage claimed on the wrong page. It covers a text source and a PDF.
+A paper quotes a source. `citations` reads that source and reports whether the passage is in
+it, and whether the file it read is the file the record pinned. This notebook runs a quotation
+that resolves, one that does not, a source edited after it was pinned, and a passage claimed
+on the wrong page, against a text file and a PDF.
 
 <div class="jlite">
   <iframe
@@ -17,18 +17,8 @@ pinned, and a passage claimed on the wrong page. It covers a text source and a P
   ></iframe>
 </div>
 
-## PDFs
+## Not possible in WebAssembly
 
-The published package reads a PDF by calling `pdftotext`, which is a binary. This notebook
-substitutes a pure-Python extractor for that one function; every other part of the package is
-the published code.
-
-<style>{`
-  .jlite iframe {
-    width: 100%;
-    height: 44rem;
-    border: 1px solid var(--sl-color-gray-5);
-    border-radius: 0.5rem;
-    background: #fff;
-  }
-`}</style>
+`citations` reads PDFs by calling `pdftotext`, a compiled binary with no WebAssembly build.
+The notebook swaps a pure-Python extractor into that one function; the rest is the published
+code.

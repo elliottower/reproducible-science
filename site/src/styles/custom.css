@@ -92,8 +92,44 @@
   letter-spacing: 0.04em;
 }
 
-/* Starlight sizes in-page headings close to the page title, so an h2 mid-article reads as a
-   second title. Step them down: the title stays the largest thing on the page. */
-.sl-markdown-content h2 { font-size: 1.35rem; margin-top: 2.5rem; }
-.sl-markdown-content h3 { font-size: 1.1rem; margin-top: 1.75rem; }
-.sl-markdown-content h4 { font-size: 1rem; }
+/* Starlight's scale puts an in-page h2 at 35px on desktop, against a 42px page title, so a
+   section heading mid-article reads as a second title. These are the same tokens the anchor
+   link wrapper reads, so overriding them keeps the heading and its `#` link the same size --
+   restyling `.sl-markdown-content h2` alone does not. */
+:root {
+  --sl-text-h2: 1.375rem;
+  --sl-text-h3: 1.125rem;
+  --sl-text-h4: 1rem;
+}
+@media (min-width: 50em) {
+  :root {
+    --sl-text-h2: 1.5rem;
+    --sl-text-h3: 1.1875rem;
+    --sl-text-h4: 1rem;
+  }
+}
+.sl-markdown-content h2 { margin-top: 2.5rem; }
+.sl-markdown-content h3 { margin-top: 1.75rem; }
+
+/* The notebook embed, shared by both demo pages. A full JupyterLite -- file browser, toolbar,
+   cell gutters -- inside the 45rem prose measure is unusably narrow, and the demo pages set
+   `tableOfContents: false`, so the width the right rail would take is free.
+   Widen the column rather than pulling the iframe out of it with negative margins: Starlight
+   centers the content panel with its own math over this variable, so the panel stays inside
+   the viewport at every width. A hand-computed margin does not -- the first version of this
+   overflowed by 18px at 1280. Prose is held to its measure separately. */
+@media (min-width: 72rem) {
+  :root:has(.jlite) {
+    --sl-content-width: 56rem;
+  }
+  .sl-markdown-content > :not(.jlite) {
+    max-width: 45rem;
+  }
+}
+.jlite iframe {
+  width: 100%;
+  height: 44rem;
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 0.5rem;
+  background: #fff;
+}
