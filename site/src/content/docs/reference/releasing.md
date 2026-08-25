@@ -149,7 +149,26 @@ Looking for: scratch directories, `.DS_Store`, coverage data, caches, credential
 notes. Untracked directories at the repository root cannot reach a wheel, because every
 package builds from `packages/*/src/` — but confirm rather than assume.
 
-## 9. Tag and publish
+## 9. Confirm the third-party interop claim still holds
+
+```bash
+make interop-strict
+```
+
+`repro` publishes a rule that adduce discovers through an entry point, and `docs/SPEC.md` and
+the paper both claim the two interoperate. Nothing here imports adduce at runtime, so their
+releases cannot break an install -- they can only falsify the claim, silently.
+
+`[tool.interop] adduce = "..."` records the version the adapter was verified against. On an
+ordinary push `make interop` reports and never fails, because a third party's release should
+not redden a pull request its author cannot fix. At a release it blocks, because that is when
+the claim goes out with a version number on it.
+
+A newer adduce that still passes is a prompt: move the recorded version forward. One that
+fails is a choice between capping the dependency and saying which version the adapter targets,
+or fixing the adapter. Shipping neither leaves a false claim in the specification.
+
+## 10. Tag and publish
 
 ```bash
 git tag -a vX.Y.Z -m "Release all packages at X.Y.Z"
@@ -160,7 +179,7 @@ git push origin vX.Y.Z
 Annotated, so the tag carries an author and a date. Confirm it points at the audited commit
 before pushing.
 
-## 10. Confirm the release landed
+## 11. Confirm the release landed
 
 Watch all four workflow runs to completion, then confirm each distribution reports the new
 version on PyPI and installs from PyPI — not from `dist/` — in a clean environment.
@@ -181,3 +200,4 @@ Each entry is something that happened, not something imagined.
 | A trusted publisher still bound to an old repository | step 6 |
 | A partially published release with versions consumed | step 6, checking all four first |
 | A fix present in source and absent from the wheel | step 8 |
+| An interop claim falsified by someone else's release | step 9 |

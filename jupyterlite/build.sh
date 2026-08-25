@@ -14,7 +14,11 @@ out="$here/../site/public/jlite"
 
 rm -rf "$out"
 uvx --with jupyterlite-core --with jupyterlite-pyodide-kernel --with jupyter-server \
-  jupyter lite build --contents "$here/demo.ipynb" --output-dir "$out"
+  jupyter lite build \
+    --contents "$here/demo.ipynb" \
+    --contents "$here/citations.ipynb" \
+    --contents "$here/paper.pdf" \
+    --output-dir "$out"
 
 before=$(du -sh "$out" | cut -f1)
 find "$out" -name '*.map' -delete
