@@ -3,7 +3,7 @@
 Builds a corpus of quotations checked against a pinned source, so later work quotes from the
 corpus rather than from memory.
 
-Three orthogonal things, kept apart.
+Four orthogonal things, kept apart.
 
 The pin -- is this the document that was pinned? Checked once per artifact:
 
@@ -12,11 +12,12 @@ The pin -- is this the document that was pinned? Checked once per artifact:
     unpinned     no sha256 was recorded, so nothing can be checked
     missing      the file named by the record is not on disk
 
-The result -- did the passage appear? Exhaustive, three outcomes:
+The result -- did the passage appear? Exhaustive, four outcomes:
 
-    found        the passage is in the source
-    not found    the source was read and the passage is not in it
-    unchecked    the source could not be read, so no measurement was made
+    found          the passage is in the source
+    not found      the source was read and the passage is not in it
+    indeterminate  readers that both read the source disagree about whether it is in it
+    unchecked      no reader could read the source, so no measurement was made
 
 The warnings -- is the quote well formed? A quote can be `found` and still carry one:
 
@@ -24,6 +25,20 @@ The warnings -- is the quote well formed? A quote can be `found` and still carry
     truncated    every occurrence stops mid-word or mid-number
     normalized   matched only after ignoring punctuation and spacing
     page         found, but not on the page the record claims
+
+The reader -- what turned the bytes into text? Recorded on every result. A pin establishes
+that the file has not changed and establishes nothing about the extraction, so a decision that
+does not name the program that read the document cannot be compared with a later one taken
+with something else. `pdftotext -layout` is preferred; a pure-Python reader stands in where it
+is absent, and the substitution is recorded rather than made silently. See `readers.py`.
+
+`indeterminate` is not a milder `not found`. `not found` says the source was read and the
+passage is not in it, which is an accusation against the manuscript. `indeterminate` says the
+readers on this machine do not settle what text the document holds, which accuses nothing and
+asks for a better reader. Against the three-stage model in `docs/SPEC.md` the two sit in
+different stages: `not found` is `extraction=extracted, comparison=mismatch`, while
+`indeterminate` is `extraction=invalid, comparison=not_applicable` -- the readers ran, and
+what they produced does not determine a text to compare against.
 
 `unchecked` means read the source. A mirror-reversed scan or a broken extraction produces the
 same signal as a passage that was never there -- so an extraction that failed for an
@@ -35,13 +50,13 @@ from __future__ import annotations
 import functools
 import pathlib
 import re
-import subprocess
 import unicodedata
 from dataclasses import dataclass, field
 from typing import Literal
 
 from provenance_core import sha256_of_file
 
+from citations import readers
 from citations.exceptions import SourceUnreadableError
 
 # Long enough to carry its own qualifiers. "We trained 50" resolves against a sentence that
@@ -56,7 +71,11 @@ PAGE_SCAN_LIMIT = 200
 #: returns nothing, which would read as an unreadable source.
 TEXT_SUFFIXES = (".txt", ".md", ".tei", ".xml", ".html", ".htm", ".rst")
 
-State = Literal["found", "not found", "unchecked"]
+#: The reader recorded for a source read straight off disk. A `.txt` or `.tei` needs no
+#: extractor, so naming one would claim a program ran that did not.
+PLAIN_TEXT = "text"
+
+State = Literal["found", "not found", "indeterminate", "unchecked"]
 PinState = Literal["ok", "broken", "unpinned", "missing"]
 
 
@@ -65,9 +84,26 @@ class Result:
     """`state` is the measurement; `warnings` are notes about the quote itself."""
 
     state: State
-    detail: str = ""  # why, when unchecked or not found
+    detail: str = ""  # why, when unchecked, not found, or indeterminate
     warnings: list[str] = field(default_factory=list)
     page_found: int | None = None
+
+    reader: str = ""
+    """What turned the source into text. Empty only where nothing was read."""
+
+    fallback: bool = False
+    """Whether the preferred reader produced this text. A substitution is recorded, never
+    silent: a `not found` taken with pypdf is a different record from one taken with poppler,
+    and a report that cannot tell them apart cannot be compared with a later run."""
+
+    fallback_reason: str = ""
+    """Why the preferred reader did not produce it -- not installed, or failed on this file."""
+
+    agreement: dict[str, State] = field(default_factory=dict)
+    """Each reader's own verdict, when more than one was consulted. Empty on a single-reader
+    check, which is the default: an empty mapping means agreement was never measured, not
+    that the readers agreed. Availability and agreement are different questions and this
+    field answers only the second."""
 
 
 @dataclass
@@ -100,10 +136,25 @@ class Report:
     skipped: list[tuple[str, str]] = field(default_factory=list)
     """Claims files that would not parse, so their quotations were never examined."""
 
+    readers_used: dict[str, int] = field(default_factory=dict)
+    """How many quotations each reader answered. A report that does not say what read its
+    sources cannot be compared with one taken on another machine, where a different reader
+    may have been the one installed."""
+
+    fallback_reasons: dict[str, str] = field(default_factory=dict)
+    """Why the preferred reader did not answer, for each reader that stood in for it. A
+    fallback appears here whether it was taken because poppler was absent or because poppler
+    failed, so no substitution is invisible in the report."""
+
     @property
     def unresolved(self) -> int:
-        """Quotations no verdict was reached on."""
-        return self.counts.get("unchecked", 0)
+        """Quotations no verdict was reached on.
+
+        `indeterminate` counts here and not among the failures. Readers disagreeing about a
+        passage leaves the question open in exactly the way an absent extractor does; what it
+        does not do is assert that the passage is missing.
+        """
+        return self.counts.get("unchecked", 0) + self.counts.get("indeterminate", 0)
 
     @property
     def strict_ok(self) -> bool:
@@ -119,10 +170,16 @@ class Report:
 
     @property
     def ok(self) -> bool:
-        """Only `not found` and a broken pin are failures. Unchecked is neither.
+        """Only `not found` and a broken pin are failures. Unchecked and indeterminate are not.
 
         A run that measured nothing is not a pass, decided here so no caller can report
         success on an empty run.
+
+        `indeterminate` is deliberately not a failure. Two readers disagreeing about a passage
+        says the document is not determinate under the readers on this machine; treating that
+        as a quotation failure would fail a manuscript for a property of the reader, which is
+        the error the outcome exists to prevent. `--strict` still refuses it, through
+        `unresolved`, because nothing was established either way.
         """
         if self.checked == 0:
             return False
@@ -167,44 +224,41 @@ def skeleton(s: str) -> str:
 
 
 @functools.lru_cache(maxsize=64)
-def extract(pdf: pathlib.Path, page: int | None = None) -> str:
-    """Text of a source. Cached, so N quotes against one file is one extraction.
+def reading(pdf: pathlib.Path, page: int | None = None, reader: str | None = None):
+    """Text of a source, and what produced it. Cached, so N quotes against one file is one read.
 
-    Raises `SourceUnreadableError` when the extraction toolchain is at fault -- a missing
-    `pdftotext`, a timeout, a permission error -- rather than returning empty text. An empty
-    return means the document genuinely holds no extractable text on that page, which is a
-    different fact and gets a different message.
+    Raises `SourceUnreadableError` when the toolchain is at fault -- no reader installed, a
+    timeout, a permission error, a parser that could not open the file -- rather than
+    returning empty text. An empty return means the document genuinely holds no extractable
+    text on that page, which is a different fact and gets a different message.
     """
     if pdf.suffix.lower() in TEXT_SUFFIXES:
         try:
-            return pdf.read_text(errors="replace")
+            return readers.Extraction(pdf.read_text(errors="replace"), PLAIN_TEXT, "")
         except OSError as e:
             raise SourceUnreadableError(pdf, f"could not be read: {e}") from e
+    return readers.read(pdf, page, reader)
 
-    cmd = ["pdftotext", "-layout"]
-    if page:
-        cmd += ["-f", str(page), "-l", str(page)]
-    cmd += [str(pdf), "-"]
-    try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-    except FileNotFoundError as e:
-        raise SourceUnreadableError(pdf, "pdftotext is not on PATH -- install poppler-utils") from e
-    except subprocess.TimeoutExpired as e:
-        raise SourceUnreadableError(pdf, "pdftotext timed out after 120s") from e
-    except OSError as e:
-        raise SourceUnreadableError(pdf, f"pdftotext could not be run: {e}") from e
-    if proc.returncode != 0:
-        detail = (proc.stderr or "").strip().splitlines()
-        raise SourceUnreadableError(
-            pdf, f"pdftotext exited {proc.returncode}" + (f": {detail[-1]}" if detail else "")
-        )
-    return proc.stdout
+
+def extract(pdf: pathlib.Path, page: int | None = None, reader: str | None = None) -> str:
+    """Just the text. `reading` is the same call carrying what produced it."""
+    return reading(pdf, page, reader).text
 
 
 @functools.lru_cache(maxsize=256)
 def sha256(p: pathlib.Path) -> str:
     """Hash of a file on disk. The implementation is shared; this keeps the local name."""
     return sha256_of_file(p)
+
+
+def clear_caches() -> None:
+    """Forget every memoized read, fold and digest.
+
+    One call rather than five, because a caller that clears four of them and forgets the
+    fifth gets a stale answer that looks like a fresh one.
+    """
+    for cached in (reading, fold, skeleton, sha256):
+        cached.cache_clear()
 
 
 def check_pin(artifact: pathlib.Path | None, expected: str | None) -> Pin:
@@ -225,7 +279,20 @@ def check_pin(artifact: pathlib.Path | None, expected: str | None) -> Pin:
     return Pin("ok" if actual == expected else "broken", expected, actual)
 
 
-def check_one(quote: str, artifact: pathlib.Path | None, page: int | None = None) -> Result:
+def check_one(
+    quote: str,
+    artifact: pathlib.Path | None,
+    page: int | None = None,
+    triangulate: bool = False,
+) -> Result:
+    """Does this passage appear in this source?
+
+    One reader by default. `triangulate` asks every installed reader instead and reports
+    `indeterminate` where they disagree, which costs one extraction per reader and is why it
+    is not the default. Triangulation over a machine carrying one reader measures nothing and
+    says so: `agreement` names the readers consulted, and one reader never establishes
+    agreement.
+    """
     warn: list[str] = []
     text = quote.strip()
     if len(text) < MIN_QUOTE_CHARS or text.endswith(
@@ -236,12 +303,32 @@ def check_one(quote: str, artifact: pathlib.Path | None, page: int | None = None
     if artifact is None or not artifact.exists():
         return Result("unchecked", "file not found", warn)
 
+    if triangulate:
+        return _triangulate(quote, artifact, page, warn)
+
     try:
-        full = extract(artifact)
+        got = reading(artifact)
     except SourceUnreadableError as e:
         return Result("unchecked", e.detail, warn)
+    result = _against(quote, got.text, artifact, page, warn, got.reader)
+    result.reader = got.reader
+    result.fallback = got.fallback
+    result.fallback_reason = got.fallback_reason
+    return result
+
+
+def _against(
+    quote: str,
+    full: str,
+    artifact: pathlib.Path,
+    page: int | None,
+    warn: list[str],
+    reader: str,
+) -> Result:
+    """The verdict on one passage against one reader's text."""
     if not full.strip():
-        return Result("unchecked", "no text extracted", warn)
+        return Result("unchecked", "no text extracted", list(warn))
+    warn = list(warn)
 
     q, doc = fold(quote), fold(full)
     if not q:
@@ -250,9 +337,9 @@ def check_one(quote: str, artifact: pathlib.Path | None, page: int | None = None
     if q in doc:
         if _cuts_a_token(q, doc):
             warn.append("truncated")
-        if page and not _on_page(artifact, q, page):
+        if page and not _on_page(artifact, q, page, reader):
             warn.append("page")
-            found_at, capped = _find_page(artifact, q)
+            found_at, capped = _find_page(artifact, q, reader=reader)
             detail = f"not on page {page}"
             if found_at is None and capped:
                 detail += f"; searched the first {PAGE_SCAN_LIMIT} pages"
@@ -268,12 +355,72 @@ def check_one(quote: str, artifact: pathlib.Path | None, page: int | None = None
     )
 
 
-def _on_page(artifact: pathlib.Path, folded_quote: str, page: int) -> bool:
-    """Is the quote on the page the record claims? An unreadable page is not a match."""
+def _triangulate(quote: str, artifact: pathlib.Path, page: int | None, warn: list[str]) -> Result:
+    """Ask every installed reader, and report disagreement as disagreement.
+
+    A reader that could not open the file contributes no verdict rather than a `not found`:
+    "this reader failed" and "this reader read it and the passage is not there" are the two
+    facts the outcome model exists to keep apart, and pooling them here would smuggle the
+    first into the second one level down.
+    """
+    verdicts: dict[str, Result] = {}
+    reasons: list[str] = []
+    for name in readers.available():
+        try:
+            got = reading(artifact, None, name)
+        except SourceUnreadableError as e:
+            reasons.append(f"{name}: {e.detail}")
+            continue
+        result = _against(quote, got.text, artifact, page, warn, name)
+        if result.state == "unchecked":
+            reasons.append(f"{name}: {result.detail}")
+            continue
+        verdicts[name] = result
+
+    if not verdicts:
+        return Result("unchecked", "; ".join(reasons) or readers.NO_READER, list(warn))
+
+    agreement = {name: r.state for name, r in verdicts.items()}
+    # The preferred reader that reached a verdict carries the warnings and the page finding:
+    # they describe the text, and merging warnings from readings that disagree about the text
+    # would attribute to one document what two extractions said.
+    lead = next(name for name in readers.PREFERRED if name in verdicts)
+    result = verdicts[lead]
+    result.reader = lead
+    result.fallback = lead != readers.PREFERRED[0]
+    result.agreement = agreement
+
+    if len(set(agreement.values())) > 1:
+        said = ", ".join(f"{name} {state}" for name, state in agreement.items())
+        return Result(
+            "indeterminate",
+            f"readers disagree ({said}); the document is not determinate under these readers",
+            list(warn),
+            reader=lead,
+            fallback=result.fallback,
+            agreement=agreement,
+        )
+    return result
+
+
+def _on_page(
+    artifact: pathlib.Path, folded_quote: str, page: int, reader: str | None = None
+) -> bool:
+    """Is the quote on the page the record claims? An unreadable page is not a match.
+
+    Read with the same reader that found the passage. Asking a second reader which page it is
+    on would report the disagreement between two extractions as a page number the record got
+    wrong.
+    """
     try:
-        return folded_quote in fold(extract(artifact, page))
+        return folded_quote in fold(extract(artifact, page, _extractor(reader)))
     except SourceUnreadableError:
         return False
+
+
+def _extractor(reader: str | None) -> str | None:
+    """The reader name to pass on, or None where the source needed no extractor."""
+    return None if reader in (None, "", PLAIN_TEXT) else reader
 
 
 def _cuts_a_token(q: str, doc: str) -> bool:
@@ -305,7 +452,10 @@ def is_paginated(artifact: pathlib.Path) -> bool:
 
 
 def _find_page(
-    artifact: pathlib.Path, folded_quote: str, limit: int = PAGE_SCAN_LIMIT
+    artifact: pathlib.Path,
+    folded_quote: str,
+    limit: int = PAGE_SCAN_LIMIT,
+    reader: str | None = None,
 ) -> tuple[int | None, bool]:
     """Which page holds the quote, and whether the scan hit its limit without deciding.
 
@@ -321,7 +471,7 @@ def _find_page(
         return None, False
     for p in range(1, limit + 1):
         try:
-            text = extract(artifact, p)
+            text = extract(artifact, p, _extractor(reader))
         except SourceUnreadableError:
             return None, False
         if not text:

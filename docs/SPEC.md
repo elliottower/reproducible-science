@@ -213,6 +213,7 @@ how a file silent on a value becomes one that contradicts it.
 | passage absent from a readable source | completed | extracted | mismatch | `mismatch` |
 | pointer does not resolve | completed | absent | n/a | `not_found` |
 | value is not a number | completed | invalid | n/a | `not_found` |
+| independent readers disagree | completed | invalid | n/a | `not_found` |
 | extractor not installed | unavailable | not_attempted | n/a | `unchecked` |
 | artifact missing or unparseable | unavailable | not_attempted | n/a | `unchecked` |
 | backend defect | failed | not_attempted | n/a | `error` |
@@ -224,6 +225,22 @@ from what the stages say.
 that the value differs from what the manuscript reports; it asserts nothing. That is
 `extraction=absent`, flattening to `not_found`, distinct from both a value that disagrees and
 a check that could not run.
+
+**A reader is not the document.** A pin establishes that a file's bytes have not changed. It
+establishes nothing about whether the program that read them produced the right text, and a
+mangled extraction reads exactly like a passage that was never written: a two-column layout
+flattened in the wrong order yields a confident `not found` against a manuscript that quotes
+its source correctly. Where two independent extractors disagree about whether a passage is
+present, the document is not determinate under the readers available, which is
+`extraction=invalid` — the same stage as a cell holding no number, and for the same reason.
+There was nothing well formed to compare. It is emphatically not `comparison=mismatch`, which
+asserts that the source contradicts the manuscript.
+
+Disagreement is therefore a property of the reading, not a milder verdict about the passage,
+and every decision names the reader and version that produced the text it was checked against.
+A backend that substitutes one extractor for another records the substitution: two decisions
+that disagree because they were taken with different readers are otherwise indistinguishable
+from two decisions that disagree about the document.
 
 **Availability is a claim-level fact, not an outcome.** Whether a claim offers evidence cannot
 be the result of checking evidence, because there is none to pass to a backend. `Claim`

@@ -9,6 +9,7 @@ every quotation check in the library.
 from __future__ import annotations
 
 import pytest
+from citations import readers as R
 from citations import verify as V
 from citations.exceptions import SourceUnreadableError
 
@@ -27,7 +28,7 @@ def test_an_untouched_artifact_matches_its_pin(tmp_path):
 def test_one_changed_byte_breaks_the_pin(tmp_path):
     p = artifact(tmp_path)
     pinned = V.sha256(p)
-    V.sha256.cache_clear()
+    V.clear_caches()
     p.write_text(p.read_text().replace("Haar", "Poisson"))
     pin = V.check_pin(p, pinned)
     assert pin.state == "broken"
@@ -69,8 +70,8 @@ def test_a_missing_extractor_raises_rather_than_reporting_no_text(tmp_path, monk
     def no_such_binary(*a, **kw):
         raise FileNotFoundError("pdftotext")
 
-    monkeypatch.setattr(V.subprocess, "run", no_such_binary)
-    V.extract.cache_clear()
+    monkeypatch.setattr(R.subprocess, "run", no_such_binary)
+    V.clear_caches()
     with pytest.raises(SourceUnreadableError) as e:
         V.extract(pdf)
     assert "PATH" in str(e.value)
@@ -83,8 +84,8 @@ def test_a_failed_extraction_surfaces_its_reason_in_the_result(tmp_path, monkeyp
     def no_such_binary(*a, **kw):
         raise FileNotFoundError("pdftotext")
 
-    monkeypatch.setattr(V.subprocess, "run", no_such_binary)
-    V.extract.cache_clear()
+    monkeypatch.setattr(R.subprocess, "run", no_such_binary)
+    V.clear_caches()
     r = V.check_one("a passage long enough to clear the minimum quote length here", pdf)
     assert r.state == "unchecked"
     assert "pdftotext" in r.detail, "the reason has to reach the report, not just the log"

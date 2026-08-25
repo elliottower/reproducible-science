@@ -30,11 +30,14 @@ which traces results at the time of experimentation.
 /plugin marketplace add elliottower/reproducible-science
 ```
 
-**Required dependency:** poppler (`pdftotext`), for reading PDF sources.
+**Recommended:** poppler (`pdftotext`), for reading PDF sources. `citations` falls back to a
+pure-Python reader without it, so `pip install` is enough; poppler reproduces column geometry,
+which the pure-Python readers do not, and every result records which reader produced it.
 
 ```bash
-brew install poppler              # macOS
-sudo apt install poppler-utils    # Debian/Ubuntu
+brew install poppler                  # macOS
+sudo apt install poppler-utils        # Debian/Ubuntu
+pip install "citations[pdf]"          # no system package available
 ```
 
 ## Documentation

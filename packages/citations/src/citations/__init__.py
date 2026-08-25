@@ -40,6 +40,8 @@ from citations.models import (
     load_claim_file,
     load_record,
 )
+from citations.readers import Extraction
+from citations.readers import available as available_readers
 from citations.services import SERVICES, Candidate, Service
 from citations.verify import (
     Pin,
@@ -47,8 +49,10 @@ from citations.verify import (
     Result,
     check_one,
     check_pin,
+    clear_caches,
     extract,
     is_paginated,
+    reading,
     sha256,
 )
 
@@ -69,6 +73,8 @@ __all__ = [
     "ClaimFile",
     "ClaimFileError",
     "ClaimSource",
+    # what read the source
+    "Extraction",
     # library configuration
     "LibraryConfig",
     "LibraryNotFoundError",
@@ -83,11 +89,14 @@ __all__ = [
     "Service",
     "SourceUnreadableError",
     "__version__",
+    "available_readers",
     "check_one",
     "check_pin",
+    "clear_caches",
     "extract",
     "is_paginated",
     "load_claim_file",
     "load_record",
+    "reading",
     "sha256",
 ]

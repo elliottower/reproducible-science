@@ -49,23 +49,53 @@ all found.
 
 ## Verify output
 
-Three results, and they are exhaustive:
+Four results, and they are exhaustive:
 
 | Result | Meaning |
 |--------|---------|
 | `found` | The passage is in the source |
 | `not found` | The source was read and the passage is not in it |
-| `unchecked` | The source could not be read, so no measurement was made |
+| `indeterminate` | Independent readers disagree about whether it is in it |
+| `unchecked` | No reader could read the source, so no measurement was made |
 
 Warnings are separate, because a passage can be found and still worth a second look. A quote
 can be short enough that the next clause changes its meaning — `"We trained 50"` appears
 verbatim in a paper whose sentence continues `"...and 5 refits each for 12 layered"`.
 
-`unchecked` is neither a pass nor a failure. Only `not found` fails; `--strict` also fails on
-unchecked, for CI.
+`unchecked` and `indeterminate` are neither a pass nor a failure. Only `not found` fails;
+`--strict` also fails on both of the others, for CI.
 
 `not found` means read the source. A mirror-reversed scan or a two-column extraction produces
 the same signal as a passage that was never there.
+
+## Reading PDFs
+
+Every result records which reader produced the text it was checked against, because a pin
+establishes that the file has not changed and establishes nothing about the extraction.
+
+| Reader | Engine | Install |
+|--------|--------|---------|
+| poppler | `pdftotext -layout`, run as a subprocess | `brew install poppler` · `apt install poppler-utils` |
+| pdfplumber | pdfminer.six plus its own layout layer | `pip install "citations[pdfplumber]"` |
+| pypdf | its own content-stream parser | `pip install "citations[pypdf]"` |
+
+Poppler is preferred and recommended: `-layout` reproduces column geometry, and the
+pure-Python readers drop inter-word spaces often enough that a passage resolves only after
+whitespace-insensitive matching. Where it is absent, or fails on a document, the chain falls
+through to whichever reader is installed and records the substitution as a fallback — so
+`pip install citations` alone is enough to check a PDF, and no result is quietly attributed to
+a reader that did not produce it.
+
+```bash
+citations verify --claims claims/ --triangulate
+```
+
+`--triangulate` asks every installed reader instead of one. Where they disagree the result is
+`indeterminate`, never `not found`: two readers disagreeing says the document is not
+determinate under the readers on this machine, which accuses nothing, while `not found`
+asserts the manuscript quoted a passage its source does not contain. Triangulation is opt-in
+because it costs one extraction per reader, and a run with only one reader installed reports
+that no agreement was established rather than that the readers concurred.
 
 ## Audit output
 

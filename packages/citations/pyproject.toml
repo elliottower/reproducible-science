@@ -19,7 +19,14 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
 ]
 dependencies = [ "platformdirs>=3", "provenance-core>=0.2,<0.3", "pydantic>=2.9", "pyyaml>=6.0.2" ]
+# Pure-Python PDF readers. Optional because poppler reads a PDF better and most machines
+# that verify quotations already have it; required on a machine where installing a system
+# package is not on offer, which is the case `pip install citations` has to serve.
+# Deliberately not PyMuPDF: it is AGPL and would relicense this package.
 optional-dependencies.lint = [ "papis>=0.15" ]
+optional-dependencies.pdf = [ "pdfplumber>=0.11.4", "pypdf>=5.1" ]
+optional-dependencies.pdfplumber = [ "pdfplumber>=0.11.4" ]
+optional-dependencies.pypdf = [ "pypdf>=5.1" ]
 urls.Changelog = "https://github.com/elliottower/reproducible-science/blob/main/CHANGELOG.md"
 urls.Homepage = "https://github.com/elliottower/reproducible-science"
 urls.Issues = "https://github.com/elliottower/reproducible-science/issues"
@@ -38,5 +45,9 @@ build.targets.wheel.packages = [ "src/citations" ]
 # invoked as a subprocess by `citations lint`, so no import graph can see it. Named
 # here rather than silenced globally: a genuinely unused dependency should still be reported.
 per_rule_ignores.DEP002 = [ "papis" ]
+# The optional readers are imported under try/except in `readers.py`, which deptry reads as a
+# dependency the code never uses. Removing either one would make `pip install citations`
+# unable to read a PDF without a system binary.
+per_rule_ignores.DEP004 = [ "pdfplumber", "pypdf" ]
 # Without this every intra-package import reads as a transitive dependency on itself.
 known_first_party = [ "citations" ]
