@@ -94,3 +94,21 @@ record, run `citations audit` before it ships.
 It cannot catch misinterpretation. A real, resolving quotation attached to a claim it does not
 support passes every check here, and `audit` compares a reference against a registry rather
 than against the paper it is cited for. Verification is not comprehension.
+
+## Where this sits
+
+Four tools guard four moments, and each is useless without the others. A frozen plan over
+unsealed inputs proves nothing; a sealed run whose numbers never reach the manuscript proves
+nothing either.
+
+| moment | tool | what it fixes |
+|---|---|---|
+| before you run | `prereg freeze` | the plan cannot be rewritten around the result |
+| before you compute | `results seal` | the inputs are what you say they were |
+| after a run | `results run` | the outputs are recorded, hashed |
+| writing a number | `results claim` | the number names the run behind it |
+| writing a quotation | `citations` claim file | the passage is in the source |
+| before submitting | `/prereg-check`, `/results-check`, `/citations-check` | nothing drifted |
+
+Each plugin ships a hook that speaks when its moment passes unrecorded, and a `-check`
+command for when you want the answer now.
