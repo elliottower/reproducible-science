@@ -23,3 +23,9 @@ coverage.xml
 website/node_modules/
 website/build/
 website/.docusaurus/
+
+# nbconvert output from verifying the demo notebook runs
+notebooks/executed.ipynb
+
+# jupyter lite build state
+.jupyterlite.doit.db

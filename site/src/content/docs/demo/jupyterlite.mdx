@@ -12,7 +12,7 @@ which takes a few seconds.
 
 <div class="jlite">
   <iframe
-    src="/jlite/lab/index.html?path=demo.ipynb"
+    src={`${import.meta.env.BASE_URL.replace(/\/$/, "")}/jlite/lab/index.html?path=demo.ipynb`}
     title="JupyterLite running the Reproducible Science demo"
     loading="lazy"
   ></iframe>
