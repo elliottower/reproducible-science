@@ -91,3 +91,9 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
+
+/* Starlight sizes in-page headings close to the page title, so an h2 mid-article reads as a
+   second title. Step them down: the title stays the largest thing on the page. */
+.sl-markdown-content h2 { font-size: 1.35rem; margin-top: 2.5rem; }
+.sl-markdown-content h3 { font-size: 1.1rem; margin-top: 1.75rem; }
+.sl-markdown-content h4 { font-size: 1rem; }

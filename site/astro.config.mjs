@@ -39,7 +39,13 @@ export default defineConfig({
         // `demo/verify` is the TypeScript evidence-contract implementation. It still builds
         // and still passes the conformance cases; it is unlisted while the notebook is the
         // demo we are showing. Its history is in this branch if it comes back.
-        { label: "Demo", link: "/demo/jupyterlite/" },
+        {
+          label: "Demo",
+          items: [
+            { label: "Verify a claim", link: "/demo/verify-a-claim/" },
+            { label: "Check a quotation", link: "/demo/check-a-quotation/" },
+          ],
+        },
         {
           label: "Get started",
           items: [

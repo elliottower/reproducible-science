@@ -1,0 +1,34 @@
+---
+title: Check a quotation
+description: Read a source and report whether the passage is in it
+---
+
+A paper quotes something. `citations` reads the source and reports whether the passage is
+there — and whether the file it read is the file the record pinned.
+
+This notebook runs a quotation that resolves, one that does not, a source edited after it was
+pinned, and a passage claimed on the wrong page. It covers a text source and a PDF.
+
+<div class="jlite">
+  <iframe
+    src={`${import.meta.env.BASE_URL.replace(/\/$/, "")}/jlite/lab/index.html?path=citations.ipynb`}
+    title="Check a quotation, in JupyterLite"
+    loading="lazy"
+  ></iframe>
+</div>
+
+## PDFs
+
+The published package reads a PDF by calling `pdftotext`, which is a binary. This notebook
+substitutes a pure-Python extractor for that one function; every other part of the package is
+the published code.
+
+<style>{`
+  .jlite iframe {
+    width: 100%;
+    height: 44rem;
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.5rem;
+    background: #fff;
+  }
+`}</style>
