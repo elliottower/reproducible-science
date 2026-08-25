@@ -11,6 +11,23 @@ export default defineConfig({
   base: "/reproducible-science",
   integrations: [
     starlight({
+      head: [
+        {
+          tag: "script",
+          content: `
+            document.addEventListener("click", (e) => {
+              const button = e.target.closest(".nb-start");
+              if (!button) return;
+              const box = button.closest(".nb-embed");
+              const frame = document.createElement("iframe");
+              frame.src = "/reproducible-science/jlite/lab/index.html?path=" +
+                encodeURIComponent(box.dataset.nb);
+              frame.title = "Live notebook";
+              box.replaceChildren(frame);
+            });
+          `,
+        },
+      ],
       title: "Reproducible Science",
       description:
         "Freeze a plan before running it, bind every number in a paper to the run that produced it, and check that quoted passages appear in their sources.",
@@ -39,21 +56,9 @@ export default defineConfig({
         // `demo/verify` is the TypeScript evidence-contract implementation. It still builds
         // and still passes the conformance cases; it is unlisted while the notebook is the
         // demo we are showing. Its history is in this branch if it comes back.
-        {
-          label: "Demo",
-          // `data-tool` is spread onto the anchor by SidebarSublist and rendered as a code-styled
-          // suffix in custom.css. The label itself is escaped text, so a backtick in it would
-          // show up as a literal backtick -- this is the way to get the package name set in mono
-          // without copying Starlight's sidebar internals.
-          // Workflow order: freeze the plan, record the run, check the quotations, and verify
-          // the lot. The end-to-end notebook runs that chain, so it comes first.
-          items: [
-            { label: "End to end", link: "/demo/end-to-end/", attrs: { "data-tool": "repro" } },
-            { label: "Freeze a plan", link: "/demo/prereg/", attrs: { "data-tool": "prereg" } },
-            { label: "Record a run", link: "/demo/results/", attrs: { "data-tool": "results" } },
-            { label: "Check a quotation", link: "/demo/citations/", attrs: { "data-tool": "citations" } },
-          ],
-        },
+        // One page per tool, and each tool page carries its own notebook. What is left here is
+        // the only demo that is not about a single tool.
+        { label: "Live demo", link: "/demo/end-to-end/", attrs: { "data-tool": "repro" } },
         {
           label: "Get started",
           items: [

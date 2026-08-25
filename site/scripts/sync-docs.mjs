@@ -30,6 +30,20 @@ function afterSlogan(body, line) {
   return `${body.slice(0, end)}\n\n${line}${body.slice(end)}`;
 }
 
+/** A notebook the reader can start. Raw HTML because these pages are Markdown, not MDX.
+ *  The iframe is created on click -- an iframe carrying a src boots Pyodide on every visit,
+ *  including the ones where nobody wanted the notebook. */
+function embed(notebook) {
+  if (!notebook) return "";
+  return (
+    `\n\n## Run it in your browser\n\n` +
+    `<div class="nb-embed" id="run-it" data-nb="${notebook}.ipynb">\n` +
+    `  <button class="nb-start" type="button">Start the notebook</button>\n` +
+    `  <p>Runs here, in this tab. Nothing is installed and nothing is uploaded.</p>\n` +
+    `</div>\n`
+  );
+}
+
 let written = 0;
 for (const [source, target, title, demo] of SYNCED) {
   let body;
@@ -44,8 +58,8 @@ for (const [source, target, title, demo] of SYNCED) {
   if (demo) {
     body = afterSlogan(
       body,
-      `**[Run it in your browser](/reproducible-science/demo/${demo}/)** — every command on this page, ` +
-        `in a live notebook. No install.`,
+      `**[Run it in your browser](#run-it)** — every command on this page, in a live notebook ` +
+        `at the bottom. No install.`,
     );
   }
   const out = join(DOCS, target);
@@ -53,7 +67,7 @@ for (const [source, target, title, demo] of SYNCED) {
   writeFileSync(
     out,
     `---\ntitle: ${title}\ndescription: ${title} — Reproducible Science\n---\n\n` +
-      `<!-- Generated from ${source}. Edit that file, not this one. -->\n\n${body}`,
+      `<!-- Generated from ${source}. Edit that file, not this one. -->\n\n${body}${embed(demo)}`,
   );
   written += 1;
   console.log(`  ${source}  ->  ${target}`);

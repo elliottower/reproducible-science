@@ -7,7 +7,7 @@ description: Prereg — Reproducible Science
 
 Freeze a plan before you run it, and record what changed after.
 
-**[Run it in your browser](/reproducible-science/demo/prereg/)** — every command on this page, in a live notebook. No install.
+**[Run it in your browser](#run-it)** — every command on this page, in a live notebook at the bottom. No install.
 
 ## Install
 
@@ -125,3 +125,11 @@ For all three reproducible-science tools in one plugin (prereg + [citations](htt
 ```
 
 MIT licensed.
+
+
+## Run it in your browser
+
+<div class="nb-embed" id="run-it" data-nb="prereg.ipynb">
+  <button class="nb-start" type="button">Start the notebook</button>
+  <p>Runs here, in this tab. Nothing is installed and nothing is uploaded.</p>
+</div>

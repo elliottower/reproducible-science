@@ -7,7 +7,7 @@ description: Repro — Reproducible Science
 
 Scaffold reproducible science workflows in one command.
 
-**[Run it in your browser](/reproducible-science/demo/end-to-end/)** — every command on this page, in a live notebook. No install.
+**[Run it in your browser](#run-it)** — every command on this page, in a live notebook at the bottom. No install.
 
 ## Install
 
@@ -106,3 +106,11 @@ This repo is also a Claude Code plugin marketplace bundling all three tools:
 Or install them individually: [`prereg`](https://github.com/elliottower/reproducible-science/tree/main/packages/prereg), [`citations`](https://github.com/elliottower/reproducible-science/tree/main/packages/citations), [`results`](https://github.com/elliottower/reproducible-science/tree/main/packages/results).
 
 MIT licensed.
+
+
+## Run it in your browser
+
+<div class="nb-embed" id="run-it" data-nb="end-to-end.ipynb">
+  <button class="nb-start" type="button">Start the notebook</button>
+  <p>Runs here, in this tab. Nothing is installed and nothing is uploaded.</p>
+</div>

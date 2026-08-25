@@ -8,7 +8,7 @@ description: Citations — Reproducible Science
 Check that the passages you quote actually appear in the sources you cite, and keep a library of
 the ones that do.
 
-**[Run it in your browser](/reproducible-science/demo/citations/)** — every command on this page, in a live notebook. No install.
+**[Run it in your browser](#run-it)** — every command on this page, in a live notebook at the bottom. No install.
 
 ## Install
 
@@ -160,3 +160,11 @@ For all three reproducible-science tools in one plugin (citations + [prereg](htt
 ```
 
 MIT licensed. `docs/` has the working practices this came out of.
+
+
+## Run it in your browser
+
+<div class="nb-embed" id="run-it" data-nb="citations.ipynb">
+  <button class="nb-start" type="button">Start the notebook</button>
+  <p>Runs here, in this tab. Nothing is installed and nothing is uploaded.</p>
+</div>
