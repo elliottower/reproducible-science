@@ -60,6 +60,15 @@ def test_every_decision_names_what_produced_it(case):
             "a decision that does not say which backend produced it cannot be compared "
             "with a later one"
         )
+        assert decision.tool and decision.tool_version, (
+            "the backend's protocol version identifies an interface; the program that read "
+            "the artifact is a separate fact, and an upgraded extractor moves it while the "
+            "protocol version stays where it was"
+        )
+        assert decision.extraction_digest, (
+            "a version string catches drift that announces itself, and a digest over what "
+            "the extractor produced catches the rest; a field that disappears records neither"
+        )
 
 
 def test_an_absent_pointer_is_not_a_mismatch():

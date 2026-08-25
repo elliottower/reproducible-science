@@ -13,6 +13,9 @@ it adds on top of the backends is the part that has to be uniform:
     `execution=failed`, which flattens to `error` and never to `unchecked`. Letting a
     `TypeError` become an abstention is the same failure this package exists to prevent, one
     level up.
+  * **Every decision names the toolchain that read the bytes**, and the digest of what that
+    toolchain produced. See `repro.toolchain` for why the backend's protocol version is not
+    that.
 """
 
 from __future__ import annotations
@@ -53,6 +56,12 @@ from repro.models import (
 )
 from repro.regenerate import check_all
 from repro.resolve import Resolution, resolve
+from repro.toolchain import UNKNOWN, binary_version, distribution_version
+
+#: The distribution that ships `repro.adapters`, which is what reads a JSON pointer, a
+#: delimited cell, a SQLite row or an array element. Its name on PyPI, because that is what
+#: `importlib.metadata` answers to.
+ADAPTER_DISTRIBUTION = "reproducible-science"
 
 
 class Backend(Protocol):
@@ -60,11 +69,27 @@ class Backend(Protocol):
 
     kind: str
     version: str
+    """The protocol version of this interface, written by hand."""
+    tool: str
+    """What performs the extraction: a binary's name, or an installed distribution's."""
+
+    @property
+    def tool_version(self) -> str:
+        """The version `tool` reports, or `toolchain.UNKNOWN`."""
+        ...
 
     def check(self, claim: Claim, evidence: Evidence, path: pathlib.Path) -> Decision: ...
 
 
-def _base(claim: Claim, evidence: Evidence, backend: Backend) -> dict:
+def _base(
+    claim: Claim, evidence: Evidence, backend: Backend, extraction_digest: str = UNKNOWN
+) -> dict:
+    """The fields every decision carries, whichever stage it stopped at.
+
+    `extraction_digest` defaults to `unknown` rather than to an empty string: a decision the
+    engine produced was one an extraction was sought for, and the empty value is reserved for
+    a decision no backend produced.
+    """
     return {
         "claim_id": claim.id,
         "claim_digest": claim.digest.value,
@@ -72,6 +97,9 @@ def _base(claim: Claim, evidence: Evidence, backend: Backend) -> dict:
         "artifact_id": evidence.artifact,
         "backend": backend.kind,
         "backend_version": backend.version,
+        "tool": backend.tool,
+        "tool_version": backend.tool_version,
+        "extraction_digest": extraction_digest,
     }
 
 
@@ -100,17 +128,24 @@ class QuoteBackend:
 
     kind = "quote"
     version = "1"
+    tool = "pdftotext"
+
+    @property
+    def tool_version(self) -> str:
+        return binary_version(self.tool)
 
     def check(self, claim: Claim, evidence: Evidence, path: pathlib.Path) -> Decision:
         if not isinstance(evidence, QuoteEvidence):
             raise TypeError(f"QuoteBackend received {type(evidence).__name__}")
         try:
-            from citations.verify import check_one
+            # Imported here rather than at module scope so an absent `citations` reports as a
+            # backend that could not run, which is what the caller can act on.
+            from citations.exceptions import SourceUnreadableError
+            from citations.verify import check_one, extract
         except ImportError as e:
             raise BackendUnavailableError("quote", f"citations is not installed: {e}") from e
 
         result = check_one(evidence.text, path, evidence.page)
-        base = _base(claim, evidence, self)
         warnings = tuple(_QUOTE_WARNINGS[w] for w in result.warnings if w in _QUOTE_WARNINGS)
 
         if result.state == "unchecked":
@@ -118,6 +153,16 @@ class QuoteBackend:
             # passage is the reason the three stages are separate.
             raise BackendUnavailableError("quote", result.detail or "no text extracted")
 
+        try:
+            # `extract` memoizes per file, so this is the text `check_one` has just read
+            # rather than a second run of `pdftotext`. It is the whole document: a digest over
+            # the matched passage alone would be silent on an extractor that changed how it
+            # reads every other page.
+            extraction_digest = Digest.of_text(extract(path)).value
+        except SourceUnreadableError:
+            extraction_digest = UNKNOWN
+
+        base = _base(claim, evidence, self, extraction_digest)
         extraction, comparison, reason = _QUOTE_STATE[result.state]
         if Warning_.WRONG_PAGE in warnings:
             # `page` is documented as verified when present, and the passage is not on the
@@ -201,6 +246,11 @@ class ValueBackend:
 
     kind = "value"
     version = "2"
+    tool = ADAPTER_DISTRIBUTION
+
+    @property
+    def tool_version(self) -> str:
+        return distribution_version(self.tool)
 
     def check(self, claim: Claim, evidence: Evidence, path: pathlib.Path) -> Decision:
         if not isinstance(evidence, (MetricEvidence, TableCellEvidence, ValueEvidence)):
@@ -251,6 +301,11 @@ class ValueBackend:
                 detail=detail,
                 warnings=warnings,
             )
+
+        # The adapter produced a value, so there is an extraction to hash. Recorded before the
+        # comparison, and for a value that turns out not to be numeric: what the extractor
+        # read is a fact about the extractor whatever the comparison then makes of it.
+        base["extraction_digest"] = Digest.of_text(extracted.raw).value
 
         try:
             stored = decimal.Decimal(extracted.raw)
@@ -556,14 +611,7 @@ def _check(
     if backend is None:
         raise UnknownEvidenceKindError(evidence.kind, tuple(registry))
 
-    base = {
-        "claim_id": claim.id,
-        "claim_digest": claim.digest.value,
-        "kind": evidence.kind,
-        "artifact_id": evidence.artifact,
-        "backend": backend.kind,
-        "backend_version": backend.version,
-    }
+    base = _base(claim, evidence, backend)
     unchecked = {
         "execution": ExecutionStatus.UNAVAILABLE,
         "extraction": ExtractionStatus.NOT_ATTEMPTED,

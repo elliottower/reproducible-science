@@ -249,12 +249,39 @@ class Backend(Protocol):
     kind: str
     version: str
 
+    tool: str
+
+    @property
+    def tool_version(self) -> str: ...
+
     def check(self, claim: Claim, evidence: Evidence, path: pathlib.Path) -> Decision: ...
 ```
 
 Every decision names the backend and its version, because the same inputs can receive
 different decisions after a backend upgrade and a stored decision that does not say which
 backend produced it cannot be compared with a later one.
+
+### 5.1 The extraction toolchain
+
+`version` is the protocol version of the interface, written by hand. The program that turns
+bytes into text or values is named separately, in `tool` and `tool_version`: the `pdftotext`
+binary for a quotation, the installed distribution supplying the format adapters for a value.
+Content addressing establishes that the bytes did not change and establishes nothing about how
+they were read, so a `pdftotext` upgrade that resolves a ligature differently changes an
+extracted passage with every digest in the manifest intact. A binary reports its version as it
+prints it; a distribution reports `importlib.metadata`. A tool that cannot be interrogated is
+recorded as `unknown`, never omitted: a field that disappears makes an uninterrogated
+toolchain indistinguishable from an absent one.
+
+`extraction_digest` records the sha256 of what the extractor produced — the whole extracted
+text for a quotation, the extracted value for a number. The version string catches drift that
+announces itself; the digest catches drift from any cause, including a rebuilt binary
+reporting the same version and an environment that changes an encoding path. `unknown` where
+the extraction produced nothing to hash. It establishes stability and not correctness: a first
+extraction that reads a column wrong hashes perfectly and stays wrong.
+
+Both are provenance. Whether a changed tool version or a changed extraction invalidates a
+stored decision the way a changed artifact does is a policy question, and §6 decides policy.
 
 Exceptions are not interchangeable:
 
@@ -433,10 +460,13 @@ An implementation conforms when:
 3. A backend defect yields `execution=failed`, never `unavailable`.
 4. A pointer that does not resolve yields `extraction=absent`, never `comparison=mismatch`.
 5. `reported` is compared as a decimal at its printed precision, never as a binary float.
-6. Every decision names the claim digest, artifact digest, backend, and backend version.
-7. A broken pin marks every decision against that artifact non-authoritative.
-8. The engine returns facts and computes no verdict.
-9. No library entry point prints, exits, or mutates global state.
+6. Every decision names the claim digest, artifact digest, backend, backend version,
+   extraction toolchain, that toolchain's version, and the digest of what it produced.
+7. A version or digest that was sought and not obtained is recorded as `unknown`, never
+   omitted, so it stays distinguishable from one that was never sought.
+8. A broken pin marks every decision against that artifact non-authoritative.
+9. The engine returns facts and computes no verdict.
+10. No library entry point prints, exits, or mutates global state.
 
 Conformance is executable: `packages/repro/tests/conformance/` holds eighteen fixtures, each
 with canonical expected JSON. They cover `verified`, `mismatch`, `not_found`, `unchecked` and
