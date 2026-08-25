@@ -1,6 +1,13 @@
 # prereg
 
-Preregister your plan to prevent p-hacking and unfalsifiable post-hoc analysis.
+[![pypi](https://img.shields.io/pypi/v/prereg)](https://pypi.org/project/prereg/)
+[![python](https://img.shields.io/pypi/pyversions/prereg)](https://pypi.org/project/prereg/)
+[![license](https://img.shields.io/pypi/l/prereg)](https://github.com/elliottower/reproducible-science/blob/main/LICENSE)
+[![docs](https://img.shields.io/badge/docs-live-blue)](https://elliottower.github.io/reproducible-science/)
+
+Freeze a plan before you run it, and record what changed after.
+
+Part of [reproducible-science](https://github.com/elliottower/reproducible-science) alongside `repro`, `citations` and `results` — see the [documentation](https://elliottower.github.io/reproducible-science/tools/prereg/).
 
 ## Install
 

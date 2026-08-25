@@ -1,6 +1,13 @@
 # results
 
-Tie every number in a paper to the run that produced it, so a reader can check the claim rather than take it on trust.
+[![pypi](https://img.shields.io/pypi/v/results-cli)](https://pypi.org/project/results-cli/)
+[![python](https://img.shields.io/pypi/pyversions/results-cli)](https://pypi.org/project/results-cli/)
+[![license](https://img.shields.io/pypi/l/results-cli)](https://github.com/elliottower/reproducible-science/blob/main/LICENSE)
+[![docs](https://img.shields.io/badge/docs-live-blue)](https://elliottower.github.io/reproducible-science/)
+
+Seal inputs, record outputs, and bind a paper's claims to the runs behind them.
+
+Part of [reproducible-science](https://github.com/elliottower/reproducible-science) alongside `repro`, `citations` and `prereg` — see the [documentation](https://elliottower.github.io/reproducible-science/tools/results/).
 
 ## Install
 

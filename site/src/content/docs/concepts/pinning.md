@@ -31,9 +31,9 @@ Locators are typed, and each format is addressed the way that format is already 
 | `sqlite` | a table, column and key predicate | |
 | `array` | `.npy` / `.npz`, by name and index | `index: [0, 1]` |
 
-Note the pointer syntax: `/metrics/accuracy`, not `$.metrics.accuracy`. RFC 6901, not JSONPath.
-Array indices carry no leading zeros, so `/xs/0` addresses a value and `/xs/00` addresses
-nothing.
+The pointer syntax is RFC 6901 — `/metrics/accuracy` — which JSONPath's `$.metrics.accuracy`
+resembles closely enough to catch people out. Array indices carry no leading zeros, so `/xs/0`
+addresses a value and `/xs/00` addresses nothing.
 
 ## Exactly one scalar
 
@@ -47,6 +47,5 @@ a container -> not scalar
 ```
 
 No adapter takes the first match, and none falls back to searching a file for the printed
-number. A search would find the number wherever it appeared and call that verification, which
-is the failure the whole package exists to prevent. A format with no adapter reports
-`format_unsupported` and stops.
+number: a search finds that number wherever it appears, including places that have nothing to
+do with the claim. A format with no adapter reports `format_unsupported` and stops.
