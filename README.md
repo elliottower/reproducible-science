@@ -1,10 +1,11 @@
 # reproducible-science
 
+[![CI](https://img.shields.io/github/actions/workflow/status/elliottower/reproducible-science/ci.yml?branch=main&logo=github&label=CI)](https://github.com/elliottower/reproducible-science/actions?query=branch%3Amain+workflow%3ACI)
+[![coverage](https://img.shields.io/codecov/c/github/elliottower/reproducible-science?logo=codecov&logoColor=white)](https://codecov.io/gh/elliottower/reproducible-science)
 [![pypi](https://img.shields.io/pypi/v/reproducible-science)](https://pypi.org/project/reproducible-science/)
 [![python](https://img.shields.io/pypi/pyversions/reproducible-science)](https://pypi.org/project/reproducible-science/)
 [![license](https://img.shields.io/pypi/l/reproducible-science)](LICENSE)
-[![CI](https://img.shields.io/github/actions/workflow/status/elliottower/reproducible-science/ci.yml?branch=main&logo=github&label=CI)](https://github.com/elliottower/reproducible-science/actions?query=branch%3Amain+workflow%3ACI)
-[![docs](https://img.shields.io/badge/docs-live-blue)](https://elliottower.github.io/reproducible-science/)
+[![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://github.com/pre-commit/pre-commit)
 [![DOI](https://zenodo.org/badge/1337959942.svg)](https://doi.org/10.5281/zenodo.22100272)
 
 Command-line tools that check whether a paper's claims match its artifacts.
