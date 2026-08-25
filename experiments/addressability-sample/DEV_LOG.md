@@ -232,3 +232,70 @@ scanner comparing printed strings cannot see the difference between that and a v
 artifact does not support, and reporting the first as `absent` states something false. The
 current verdict set has no term for "derivable but not present", and every derived quantity
 in the corpus is currently mis-stated.
+
+## 2026-08-25 — The unit transform, and why matching stops here
+
+Reading the ten articles' confirmations by hand rather than trusting the decoy estimate
+turned up a defect the estimate could not see, and then a limit no fix reaches.
+
+**Reproduced values were being called absent while sitting in the artifact.** Opening
+`results/rep_values.xlsx` as a labelled grid instead of a flat list of values shows sheet
+`rep_averaged_t1` storing the original study's numbers as percent strings (`14.12%`) beside
+the reproduction's as fractions (`0.1438333`). The paper prints `14.38`. Counted across the
+article: 3 per cent of the authors' own reported values appear literally, and 49 per cent
+appear once a factor of one hundred is allowed.
+
+**Allowing that factor destroys the measurement.** With the transform on, the moderate tier
+confirms 95 per cent of real values and 90.9 per cent of shape-matched decoys. At the strong
+tier it confirms decoys more often than real values. Restricting the search to the results
+file alone leaves precision at 7 per cent.
+
+Both statements are true together. The spreadsheet holds 1,702 floating-point values in the
+same range; rounding them to the two decimals a paper prints covers nearly every two-decimal
+value in that range, so a fabricated number matches as readily as a real one. The values are
+there and this instrument cannot show it.
+
+That is not a defect to fix. Four constraining digits against a dense artifact carry no
+information, and no transform, tolerance or reader recovers what the printed number does not
+contain. What separates a real match from a coincidence is the address -- which sheet, which
+row, which column -- and a published paper does not carry addresses. Recovering one after
+the fact is guessing; recording one while writing costs nothing.
+
+The transform stays behind `--allow-transforms`, with its measured cost stated.
+
+## 2026-08-25 — The decoy null violated its own assumption
+
+Outside review identified the decoy method as target-decoy competition, the standard
+false-discovery-rate estimator in shotgun proteomics, and named the assumption it rests on:
+an incorrect match must be as likely against a decoy as against a target.
+
+The decoys here violated it. Shifting every digit of a real value produces a leading-digit
+distribution flat at 11 per cent, while the reported values in one article run 19 per cent on
+1 and 25 per cent on 9 — accuracies clustered in the nineties with a Benford-like tail. Total
+variation distance 0.24. Magnitude survived the shift, since digit count is preserved;
+leading digit did not.
+
+The direction of the error is the unflattering one. An artifact drawn from the same domain is
+dense where the real values are dense, so flat decoys land where it is sparse, match too
+rarely, and every precision figure computed from them reads high.
+
+Holding the first significant digit fixed and shifting the rest brings the distance to 0.01.
+Recomputed:
+
+| | reported before | corrected |
+|---|---:|---:|
+| Obadage:2025, four-digit values | 96% | 94% |
+| Broman:2020, four-digit values | 44% | 0% |
+| Kim:2021, three-digit values | 54% | 0% |
+
+Broman's fifteen confirmed integer counts are coincidence entire: targets confirm at 94 per
+cent, decoys at 93.8. The correction removes the marginal cases and leaves the one strong
+result standing, which is the behaviour a working null should have.
+
+`q/p` is a false discovery rate. It was described here as a false positive rate, which has a
+different denominator.
+
+Two further corrections to vocabulary, recorded so the invented terms are not reused. The
+bound derived here as N/10^d is the u-probability of the Fellegi-Sunter record linkage
+framework. The address reframe is blocking: a key assembled from several fields so that only
+records sharing it are compared.

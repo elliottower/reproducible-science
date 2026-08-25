@@ -38,22 +38,29 @@ SHIFTS = range(1, 10)
 
 
 def decoys(printed: str) -> list[str]:
-    """Same shape, different quantity.
+    """Same shape and same leading significant digit, different quantity.
 
-    Every digit moves by the same amount modulo ten. A leading digit that would become zero
-    is left alone, so a three-digit value stays three digits and the tier does not change.
+    Target-decoy competition rests on the Equal Chance Assumption: an incorrect match must be
+    as likely against a decoy as against a real value. Shifting every digit violates it.
+    Reported values are not uniform over leading digits -- one article's run 19 per cent on 1
+    and 25 per cent on 9, being accuracies clustered in the nineties on a Benford-like tail --
+    while every-digit decoys come out flat at 11 per cent each, a total variation distance of
+    0.24. An artifact drawn from the same domain is dense where the real values are dense, so
+    flat decoys land where it is sparse, match too rarely, and every precision figure computed
+    from them reads high.
+
+    Holding the first significant digit fixed and moving the rest preserves leading digit,
+    magnitude and digit count, and changes only the information the match actually turns on.
     """
     out = []
+    first = next((i for i, c in enumerate(printed) if c.isdigit() and c != "0"), None)
     for shift in SHIFTS:
         digits = []
         for index, character in enumerate(printed):
-            if not character.isdigit():
+            if not character.isdigit() or index <= (first if first is not None else -1):
                 digits.append(character)
                 continue
-            moved = (int(character) + shift) % 10
-            if index == 0 and moved == 0 and printed[0] != "0":
-                moved = int(character)
-            digits.append(str(moved))
+            digits.append(str((int(character) + shift) % 10))
         candidate = "".join(digits)
         if candidate != printed and strength(candidate) == strength(printed):
             out.append(candidate)

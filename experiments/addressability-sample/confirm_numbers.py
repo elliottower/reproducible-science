@@ -250,6 +250,55 @@ def read_spreadsheet(path: pathlib.Path) -> str:
     return "\n".join(parts)
 
 
+#: Transforms tried between a printed value and a stored one, each named so a confirmation
+#: says which relation settled it. A paper prints `14.38` and its artifact stores
+#: `0.1438333`: the same measurement in a different unit at a different precision. Matching
+#: strings alone reported 3 per cent of one article's own results as present when 49 per
+#: cent are there.
+#:
+#: Off by default, because measurement says it manufactures agreement rather than finding
+#: it. On `Obadage:2025`, whose spreadsheet stores reproduced accuracies as fractions, the
+#: unit transform takes the moderate tier from 5 per cent confirmed to 95 per cent -- and
+#: takes shape-matched decoys from 1.8 per cent to 90.9 per cent. At the strong tier it
+#: confirms decoys more often than real values. Restricting the search to the results file
+#: alone leaves precision at 7 per cent.
+#:
+#: The values really are there; the transform is not wrong about that. It cannot demonstrate
+#: it. That spreadsheet holds 1,702 floating-point values in the same range, so rounding
+#: them to the two decimals a paper prints covers nearly every two-decimal value, and a
+#: fabricated number matches as readily as a real one. Four constraining digits against a
+#: dense artifact carry no information, whatever transform is applied.
+#:
+#: Kept, and enabled only by `--allow-transforms`, so the option is available with its cost
+#: stated rather than discovered.
+TRANSFORMS = (
+    ("printed exactly", lambda v: v),
+    ("stored as a fraction of one", lambda v: v / 100),
+    ("stored as a percentage", lambda v: v * 100),
+)
+
+
+def transformed_hit(printed: str, numeric_index: dict[float, tuple[str, int, str]]
+                    ) -> tuple[tuple[str, int, str], str] | None:
+    """The first transform under which the printed value matches a stored one, if any.
+
+    Comparison is at the printed precision, so `14.38` matches a stored `0.1438333` and does
+    not match a stored `0.1439`. Rounding an artifact down to the paper's precision is what
+    the paper itself did; inventing precision the paper never printed is not.
+    """
+    try:
+        value = float(printed.replace(",", ""))
+    except ValueError:
+        return None
+    places = len(printed.split(".")[1]) if "." in printed else 0
+    for name, apply in TRANSFORMS:
+        target = f"{apply(value):.{places}f}"
+        for stored, location in numeric_index.items():
+            if f"{stored:.{places}f}" == target:
+                return location, name
+    return None
+
+
 def build_index(paths: list[pathlib.Path], root: pathlib.Path,
                 probes: list[str] | None = None
                 ) -> tuple[dict[str, tuple[str, int, str]], list[str]]:
@@ -337,7 +386,8 @@ def report(records: list[dict], title: str, note: str, show: int,
         print(f"\n    confirmed, with the location that settles each:")
         for r in confirmed[:show]:
             print(f"      {r['printed']:>10}  paper line {r['line']:<6} -> "
-                  f"{r['found_in']}:{r['found_line']}")
+                  f"{r['found_in']}:{r['found_line']}"
+                  + (f"   [{r['relation']}]" if r["relation"] != "printed exactly" else ""))
         if len(confirmed) > show:
             print(f"      ... {len(confirmed) - show} more in the written record")
 
@@ -359,6 +409,9 @@ def main() -> int:
     parser.add_argument("--view", default="results", choices=sorted(VIEWS) + ["every"],
                         help="which filtered view to print (default: results)")
     parser.add_argument("--show", type=int, default=12, help="rows to list per section")
+    parser.add_argument("--allow-transforms", action="store_true",
+                        help="also match under a unit change; measured to destroy precision "
+                             "on the development corpus, see TRANSFORMS")
     parser.add_argument("--profile", default="balanced", choices=sorted(PROFILES),
                         help="how much evidence a confirmation must carry (default: balanced)")
     args = parser.parse_args()
@@ -381,8 +434,22 @@ def main() -> int:
 
     records = [r for r in json.loads(pathlib.Path(args.scan).read_text())["records"]
                if r["kind"] in TRACEABLE]
+    # Values keyed numerically as well as by string, so a transform can be tried against
+    # what the artifact stores rather than against how it happens to be written.
+    numeric_index: dict[float, tuple[str, int, str]] = {}
+    for key, location in index.items():
+        try:
+            numeric_index.setdefault(float(key.replace(",", "")), location)
+        except ValueError:
+            continue
+
     for record in records:
         location = index.get(record["printed"])
+        record["relation"] = "printed exactly" if location else ""
+        if location is None and args.allow_transforms:
+            found = transformed_hit(record["printed"], numeric_index)
+            if found:
+                location, record["relation"] = found
         record["strength"] = strength(record["printed"])
         record["verdict"] = ("confirmed" if location
                              else "unchecked" if unread else "absent")
