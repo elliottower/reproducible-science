@@ -8,6 +8,10 @@
 
 Command-line tools that check whether a paper's claims match its artifacts.
 
+```
+pip install reproducible-science
+```
+
 See our [Claude Code plugin](https://elliottower.github.io/reproducible-science/start/claude-code/),
 which traces results at the time of experimentation.
 
