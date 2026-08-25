@@ -38,7 +38,12 @@ def run(
     """
     try:
         proc = subprocess.run(
-            ["git", *args], cwd=cwd, capture_output=True, text=True, timeout=timeout
+            ["git", *args],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,  # the return code is inspected below and becomes a typed error
         )
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError) as e:
         raise GitError(args, str(e)) from e

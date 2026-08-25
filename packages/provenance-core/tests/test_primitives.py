@@ -69,7 +69,11 @@ def test_run_raises_where_try_run_returns_none(tmp_path):
 
 def test_commit_names_head(repo):
     head = subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=repo, capture_output=True, text=True
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
     ).stdout.strip()
     assert gitref.commit(repo) == head
     assert gitref.at_commit(repo, head)
