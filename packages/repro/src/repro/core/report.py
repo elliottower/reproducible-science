@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict
+
 from repro.core.claims import Availability, Registration
 from repro.core.manifest import RegenerationState
 from repro.core.outcomes import (

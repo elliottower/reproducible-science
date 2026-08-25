@@ -22,15 +22,20 @@ from __future__ import annotations
 
 import datetime
 import enum
-import hashlib
 import json
 import os
 import pathlib
 import tempfile
 
+# Re-exported under the names this module has always used: `ledger.sha256_of_file` and
+# `ledger.ZERO` are its surface, and callers should not have to know where they moved.
+from provenance_core import ZERO as ZERO
+from provenance_core import sha256_of_file as sha256_of_file
+from provenance_core import sha256_of_text
+
 LEDGER = "ledger.jsonl"
 ANCHOR = "ledger.head"
-ZERO = "0" * 64
+
 
 #: Bumped when the canonical serialization changes. Recorded in the anchor so a ledger written
 #: under one rule is not silently verified under another.
@@ -91,16 +96,9 @@ class ChainStatus(enum.StrEnum):
     """No ledger. Not a pass -- there is nothing to verify."""
 
 
-def sha256_of_file(path: pathlib.Path) -> str:
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(1 << 16), b""):
-            h.update(chunk)
-    return h.hexdigest()
-
-
 def sha256_of_str(s: str) -> str:
-    return hashlib.sha256(s.encode("utf-8")).hexdigest()
+    """The shared text hasher, under the name this module has always used."""
+    return sha256_of_text(s)
 
 
 def now_iso() -> str:

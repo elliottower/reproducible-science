@@ -19,7 +19,10 @@ import subprocess
 import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-DISTS = ("citations", "prereg", "results-cli", "reproducible-science")
+#: Every distribution a release ships. `provenance-core` is first because the others
+#: declare it: a check that installs the four without it proves only that a broken
+#: release resolves against a directory it will not have on PyPI.
+DISTS = ("provenance-core", "citations", "prereg", "results-cli", "reproducible-science")
 
 
 def run(*command: str, cwd: pathlib.Path | None = None) -> subprocess.CompletedProcess:

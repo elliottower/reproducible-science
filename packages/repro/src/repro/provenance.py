@@ -12,18 +12,15 @@ contain what was read.
 from __future__ import annotations
 
 import pathlib
-import subprocess
+
+from provenance_core.gitref import try_run
 
 from repro.models import Provenance
 
 
 def _git(args: list[str], cwd: pathlib.Path) -> str | None:
     """Run one git command, or None when git is absent or the directory is not a repository."""
-    try:
-        proc = subprocess.run(["git", *args], cwd=cwd, capture_output=True, text=True, timeout=20)
-    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
-        return None
-    return proc.stdout.strip() if proc.returncode == 0 else None
+    return try_run(*args, cwd=cwd)
 
 
 def of_tree(path: pathlib.Path, generated_by: str = "") -> Provenance:

@@ -33,13 +33,14 @@ infrastructure reason says which one, rather than reporting the document as unre
 from __future__ import annotations
 
 import functools
-import hashlib
 import pathlib
 import re
 import subprocess
 import unicodedata
 from dataclasses import dataclass, field
 from typing import Literal
+
+from provenance_core import sha256_of_file
 
 from citations.exceptions import SourceUnreadableError
 
@@ -202,12 +203,8 @@ def extract(pdf: pathlib.Path, page: int | None = None) -> str:
 
 @functools.lru_cache(maxsize=256)
 def sha256(p: pathlib.Path) -> str:
-    """Hash of a file on disk, streamed so a large PDF is not held in memory."""
-    h = hashlib.sha256()
-    with p.open("rb") as fh:
-        for block in iter(lambda: fh.read(1 << 20), b""):
-            h.update(block)
-    return h.hexdigest()
+    """Hash of a file on disk. The implementation is shared; this keeps the local name."""
+    return sha256_of_file(p)
 
 
 def check_pin(artifact: pathlib.Path | None, expected: str | None) -> Pin:

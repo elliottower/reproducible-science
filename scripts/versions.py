@@ -30,6 +30,7 @@ PACKAGES = {
     "prereg": PROJECT_ROOT / "packages" / "prereg" / "pyproject.toml",
     "results-cli": PROJECT_ROOT / "packages" / "results" / "pyproject.toml",
     "reproducible-science": PROJECT_ROOT / "packages" / "repro" / "pyproject.toml",
+    "provenance-core": PROJECT_ROOT / "packages" / "provenance-core" / "pyproject.toml",
 }
 
 VERSION_LINE = re.compile(r'^version = "([^"]+)"$', re.M)

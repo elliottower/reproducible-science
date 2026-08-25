@@ -8,6 +8,7 @@ import enum
 import pathlib
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+
 from repro.core.artifacts import ArtifactRef, Digest
 from repro.core.claims import Claim
 from repro.core.outcomes import RegistrationAuthority
