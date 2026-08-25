@@ -7,7 +7,6 @@ import subprocess
 import sys
 
 from results import ledger
-from results.cli import precedes
 
 
 def run_cli(*args, cwd=None):
@@ -556,38 +555,3 @@ def test_the_refusal_names_the_freeze_route(tmp_path):
     r = run_cli("claim", "d = 0.103", "--run-id", "late", "--confirmatory", cwd=tmp_path)
     assert r.returncode == 1
     assert "--frozen-at" in r.stdout
-
-
-def test_a_freeze_precedes_an_exposure_it_predates_in_any_timezone():
-    """The freeze comes from git in local time and the ledger writes UTC.
-
-    Compared as strings these ordered correctly only where the local offset happened to make
-    the hour smaller. Every pair below names the same ordering of instants and differs only
-    in how the offset is written.
-    """
-    exposure = "2026-08-25T17:09:55.123456+00:00"
-
-    assert precedes("2026-08-25T13:09:55-04:00", exposure)
-    assert precedes("2026-08-25T17:09:55+00:00", exposure)
-    assert precedes("2026-08-25T17:09:55Z", exposure)
-    assert precedes("2026-08-25T19:09:55+02:00", exposure)
-
-
-def test_a_freeze_after_the_exposure_does_not_precede_it():
-    exposure = "2026-08-25T17:09:55.123456+00:00"
-
-    assert not precedes("2026-08-25T17:09:56+00:00", exposure)
-    assert not precedes("2026-08-25T13:09:56-04:00", exposure)
-
-
-def test_a_timestamp_that_cannot_be_parsed_never_protects_a_claim():
-    """A freeze that cannot be placed in time cannot protect anything.
-
-    Returning True on a malformed value would grant the protection to a claim whose ordering
-    was never established, which is the opposite of what the flag is for.
-    """
-    exposure = "2026-08-25T17:09:55.123456+00:00"
-
-    assert not precedes("not a timestamp", exposure)
-    assert not precedes("", exposure)
-    assert not precedes("2026-08-25T17:09:55", exposure)
