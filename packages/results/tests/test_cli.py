@@ -477,3 +477,65 @@ def test_a_duplicate_run_id_is_refused_without_anyway(tmp_path):
     r = run_cli("run", "out.json", "--run-id", "r1", cwd=tmp_path)
     assert r.returncode == 1
     assert "already exists" in r.stdout
+
+
+def a_repo_with_a_frozen_plan(tmp_path, plan="plan.md"):
+    """A git repository whose first commit contains the plan, committed before anything ran."""
+    for args in (["init", "-q"], ["config", "user.email", "t@t"],
+                 ["config", "user.name", "t"]):
+        subprocess.run(["git", *args], cwd=tmp_path, capture_output=True)
+    (tmp_path / plan).write_text("H1. the effect is positive.\n")
+    subprocess.run(["git", "add", plan], cwd=tmp_path, capture_output=True)
+    subprocess.run(["git", "commit", "-q", "-m", "freeze the plan"],
+                   cwd=tmp_path, capture_output=True)
+    sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=tmp_path,
+                         capture_output=True, text=True).stdout.strip()
+    return sha
+
+
+def test_a_plan_frozen_before_the_exposure_is_confirmatory(tmp_path):
+    sha = a_repo_with_a_frozen_plan(tmp_path)
+    run_cli("init", cwd=tmp_path)
+    run_cli("access", "read the outcomes", "--level", "outcomes seen", cwd=tmp_path)
+    (tmp_path / "out.json").write_text('{"d": 0.103}\n')
+    run_cli("run", "out.json", "--run-id", "late", cwd=tmp_path)
+
+    r = run_cli("claim", "d = 0.103", "--run-id", "late", "--confirmatory",
+                "--frozen-at", sha, cwd=tmp_path)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "confirmatory, exposure logged" in r.stdout
+
+    claim = [e for e in ledger.read_ledger(tmp_path / ".results" / "ledger.jsonl")
+             if e["event"] == "claim"][0]
+    assert claim["confirmatory"] is True
+    assert claim["after_outcomes_seen"] is False
+    assert claim["frozen_at"] == sha
+
+    v = run_cli("verify", cwd=tmp_path)
+    assert "frozen before outcomes were seen" in v.stdout
+    assert "no freeze reference" not in v.stdout
+
+
+def test_a_freeze_that_does_not_resolve_is_refused(tmp_path):
+    a_repo_with_a_frozen_plan(tmp_path)
+    run_cli("init", cwd=tmp_path)
+    run_cli("access", "read the outcomes", "--level", "outcomes seen", cwd=tmp_path)
+    (tmp_path / "out.json").write_text('{"d": 0.103}\n')
+    run_cli("run", "out.json", "--run-id", "late", cwd=tmp_path)
+
+    r = run_cli("claim", "d = 0.103", "--run-id", "late", "--confirmatory",
+                "--frozen-at", "deadbeef", cwd=tmp_path)
+    assert r.returncode == 1
+    assert "cannot resolve" in r.stdout
+    assert not [e for e in ledger.read_ledger(tmp_path / ".results" / "ledger.jsonl")
+                if e["event"] == "claim"]
+
+
+def test_the_refusal_names_the_freeze_route(tmp_path):
+    run_cli("init", cwd=tmp_path)
+    run_cli("access", "read the outcomes", "--level", "outcomes seen", cwd=tmp_path)
+    (tmp_path / "out.json").write_text('{"d": 0.103}\n')
+    run_cli("run", "out.json", "--run-id", "late", cwd=tmp_path)
+    r = run_cli("claim", "d = 0.103", "--run-id", "late", "--confirmatory", cwd=tmp_path)
+    assert r.returncode == 1
+    assert "--frozen-at" in r.stdout

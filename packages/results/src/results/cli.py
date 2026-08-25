@@ -188,6 +188,13 @@ def cmd_claim(a) -> int:
         return 1
 
     retrospective = None
+    frozen_at = getattr(a, "frozen_at", None)
+    frozen_time = freeze_timestamp(root, frozen_at) if frozen_at else None
+    if frozen_at and frozen_time is None:
+        print(f"cannot resolve --frozen-at '{frozen_at}': not a commit in this repository.")
+        print("a freeze reference must name a commit that contains the frozen plan.")
+        return 1
+
     if a.confirmatory:
         seen = first_outcomes_seen(events)
         if seen is not None:
@@ -195,14 +202,25 @@ def cmd_claim(a) -> int:
             if recorded is None or recorded > seen:
                 retrospective = seen
 
+    # Exposure is evidence of possible contamination, not contamination. What
+    # threatens a confirmatory reading is propagation: outcome information
+    # reaching a consequential choice. A plan committed before the exposure
+    # cannot be reached by it, so the disposition is confirmatory with the
+    # exposure logged, and the demotion is scoped to decisions not so protected.
+    protected = bool(retrospective and frozen_time and frozen_time < retrospective)
+    if protected:
+        retrospective = None
+
     if retrospective and not a.anyway:
         print(
             f"refusing: outcomes were seen at {retrospective[:19]}, and run "
             f"'{a.run_id}' was recorded after that."
         )
-        print("a claim from a run that postdates seeing the outcomes is retrospective.")
-        print("drop --confirmatory, or pass --anyway to record it as confirmatory")
-        print("with the ordering noted permanently in the ledger.")
+        print("a claim from a run that postdates seeing the outcomes is retrospective,")
+        print("unless the choices it rests on were fixed before the exposure.")
+        print("if a commit contains the frozen plan, pass --frozen-at <commit>;")
+        print("otherwise drop --confirmatory, or pass --anyway to record it as")
+        print("confirmatory with the ordering noted permanently in the ledger.")
         return 1
 
     ledger.append_event(
@@ -213,6 +231,8 @@ def cmd_claim(a) -> int:
             "run_id": a.run_id,
             "confirmatory": a.confirmatory,
             "after_outcomes_seen": bool(retrospective),
+            "frozen_at": frozen_at or "",
+            "frozen_at_time": frozen_time or "",
             "location": a.location or "",
         },
     )
@@ -221,9 +241,32 @@ def cmd_claim(a) -> int:
     print(f"  backed by run: {a.run_id}")
     if a.location:
         print(f"  appears in: {a.location}")
-    if retrospective:
+    if protected:
+        print(f"  plan frozen at {frozen_at} on {frozen_time[:19]}, before outcomes")
+        print("  were seen: confirmatory, exposure logged")
+    elif retrospective:
         print(f"  recorded after outcomes were seen at {retrospective[:19]}; verify will report it")
     return 0
+
+
+def freeze_timestamp(root: pathlib.Path, ref: str) -> str | None:
+    """When the plan named by `ref` was fixed, as an ISO timestamp.
+
+    A freeze reference is a git commit containing the frozen plan. Its commit
+    date is the moment the plan stopped being editable, which is the fact that
+    matters: a plan already committed cannot be reached by anything a context
+    reads afterwards.
+    """
+    import subprocess
+
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(root), "show", "-s", "--format=%cI", ref],
+            capture_output=True, text=True, timeout=15,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    return out.stdout.strip() or None if out.returncode == 0 else None
 
 
 def cmd_coverage(a) -> int:
@@ -396,6 +439,7 @@ def cmd_verify(a) -> int:
     claims = [e for e in events if e.get("event") == "claim"]
     unlinked = []
     contested = []
+    protected = []
     if claims:
         for c in claims:
             run_events = [
@@ -412,20 +456,33 @@ def cmd_verify(a) -> int:
         # ledger written by an older version, or edited by hand, is still caught.
         seen = first_outcomes_seen(events)
         if seen is not None:
-            contested = [
+            late = [
                 c
                 for c in claims
                 if c.get("confirmatory")
                 and (first_run_timestamp(events, str(c.get("run_id") or "")) or "") > seen
             ]
+            protected = [c for c in late
+                         if c.get("frozen_at_time") and c["frozen_at_time"] < seen]
+            contested = [c for c in late if c not in protected]
+        if protected:
+            print(
+                f"\n{len(protected)} confirmatory claim(s) rest on plans frozen "
+                f"before outcomes were seen:"
+            )
+            for c in protected:
+                print(f"  {c['claim'][:56]}  (frozen at {c.get('frozen_at')})")
+            print("  confirmatory, exposure logged: a committed plan cannot be")
+            print("  reached by an exposure that follows it.")
         if contested:
             print(
                 f"\n{len(contested)} confirmatory claim(s) rest on runs recorded "
-                f"after outcomes were seen:"
+                f"after outcomes were seen, with no freeze reference:"
             )
             for c in contested:
                 print(f"  {c['claim'][:60]}  (run: {c.get('run_id')})")
-            print("  these are retrospective; describe them as such in the manuscript.")
+            print("  these are retrospective unless a commit fixed the choices they")
+            print("  rest on; if one did, re-record with --frozen-at.")
 
     print()
     if unlinked:
@@ -490,6 +547,12 @@ def main() -> int:
         action="store_true",
         help="record a confirmatory claim whose run postdates seeing the "
         "outcomes; the ledger and verify both report the ordering",
+    )
+    cl.add_argument(
+        "--frozen-at",
+        help="a commit containing the frozen plan this claim rests on; if it "
+             "predates the exposure, the claim is confirmatory with the "
+             "exposure logged rather than retrospective",
     )
     cl.add_argument("--location", help="where in the manuscript: Table 2, Section 4.1, etc.")
     cl.set_defaults(fn=cmd_claim)
