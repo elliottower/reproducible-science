@@ -1,0 +1,160 @@
+---
+title: citations
+description: citations — Reproducible Science
+---
+
+{/* Generated from packages/citations/README.md. Edit that file, not this one. */}
+
+Check that the passages you quote actually appear in the sources you cite, and keep a library of
+the ones that do.
+
+## Install
+
+```bash
+pip install citations
+```
+
+## Quick start
+
+```bash
+citations init
+citations verify --claims claims/
+```
+
+```text
+2,940 quotes
+
+  found         2,940
+  not found         0
+
+warnings
+      213  short — the source may qualify this in the next clause
+      155  normalized — matched after ignoring punctuation and spacing
+
+all found.
+```
+
+## Commands
+
+| Command | What it does |
+|---------|-------------|
+| `citations init` | Create a library here |
+| `citations verify` | Do the quotations resolve in their sources? |
+| `citations audit` | Does the stored metadata match the record the identifier resolves to? |
+| `citations resolve` | Backfill missing DOIs and arXiv ids |
+| `citations build` | Rebuild records from bibliographies |
+| `citations lint` | BibTeX correctness, via papis |
+| `citations link` | Point pdfs/ at the papers' artifacts |
+
+## Verify output
+
+Three results, and they are exhaustive:
+
+| Result | Meaning |
+|--------|---------|
+| `found` | The passage is in the source |
+| `not found` | The source was read and the passage is not in it |
+| `unchecked` | The source could not be read, so no measurement was made |
+
+Warnings are separate, because a passage can be found and still worth a second look. A quote
+can be short enough that the next clause changes its meaning — `"We trained 50"` appears
+verbatim in a paper whose sentence continues `"...and 5 refits each for 12 layered"`.
+
+`unchecked` is neither a pass nor a failure. Only `not found` fails; `--strict` also fails on
+unchecked, for CI.
+
+`not found` means read the source. A mirror-reversed scan or a two-column extraction produces
+the same signal as a passage that was never there.
+
+## Audit output
+
+`verify` asks whether a quotation is in the source. `audit` asks a different question: does the
+author list, year, volume and page range stored beside an identifier match the record that
+identifier resolves to?
+
+```bash
+citations audit --bib paper/references.bib
+```
+
+```text
+75 entries
+
+  checked          62
+  agree            36
+  disagree         26
+  no id            13   nothing can check these until they have a DOI or PMID
+
+26 disagree with the record their own identifier resolves to.
+a wrong author list on a right DOI is invisible to every other check.
+```
+
+That run is real. Four of those entries carried an author list belonging to nobody on the
+cited paper, one PMID resolved to an unrelated article in another field, and four author lists
+stopped early with no `and others` marker. Every one of them resolved. A DOI checker, a link
+checker and `citations verify` all pass them, because the DOI does point at the right paper —
+it is the names beside it that belong to someone else.
+
+Disagreements a registry causes rather than the bibliography are not reported: an online-first
+year against a print year, a deposited initial against a printed given name, PubMed's
+abbreviated end page, a BibTeX accent against the Unicode it encodes, and markup a publisher
+deposited inside a title. What survives is a disagreement about the work.
+
+Fetched payloads are cached beside the file audited, so a re-run is offline and the report is
+reproducible from what was fetched rather than from the network.
+
+## Where the library lives
+
+```text
+$CITATIONS_HOME             if set
+./.citations/ walking up    this project's own, the way git finds .git
+the shared library          if you made one with citations init --user
+none of those               it tells you to run citations init
+```
+
+Project-local by default, so running the tool inside a paper works on that paper and there is
+no hidden global state.
+
+## What a claim file looks like
+
+One file per source, in the paper's `claims/` directory. `citations verify --claims claims`
+reads all of them.
+
+```yaml
+source:
+  citation: schiffman2026             # the bibkey
+  local: reference/schiffman2026.pdf  # what gets read
+  sha256: 3f9a…                       # which bytes were read
+  extract_cmd: pdftotext
+
+claims:
+  orthogonal-cores:
+    statement: 'Cores meeting equivalent causal criteria sit at principal angles of 75-90 degrees.'
+    quotes:
+      - exact: 'and principal angles ranged'
+        section: 'body'
+```
+
+`statement` is yours; `exact` is theirs. The tool checks the second only, so a `statement` that
+overreaches its quote is for review to catch — the command cannot.
+
+## Records are YAML
+
+So `git diff` shows what changed. A binary store cannot show you that a year moved from 2021 to
+2022 — a real discrepancy this found between two of one author's own papers.
+
+## Claude Code
+
+`plugin/` is a Claude Code plugin that tells Claude when to reach for the CLI.
+
+```bash
+/plugin marketplace add elliottower/reproducible-science
+/plugin install citations@reproducible-science
+```
+
+For all three reproducible-science tools in one plugin (citations + [prereg](https://github.com/elliottower/reproducible-science/tree/main/packages/prereg) + [results](https://github.com/elliottower/reproducible-science/tree/main/packages/results)):
+
+```bash
+/plugin marketplace add elliottower/reproducible-science
+```
+
+MIT licensed. `docs/` has the working practices this came out of.

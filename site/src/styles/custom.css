@@ -1,0 +1,52 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+
+/* Starlight's defaults, with the font and accent from the mechanistic-views theme. No
+   content-width override: these pages are ordinary prose, not wide tables. */
+
+:root {
+  --sl-font: "Inter", system-ui, sans-serif;
+  --sl-color-accent-low: #2e1065;
+  --sl-color-accent: #7c3aed;
+  --sl-color-accent-high: #c4b5fd;
+}
+
+:root[data-theme="light"] {
+  --sl-color-accent-low: #ede9fe;
+  --sl-color-accent: #7c3aed;
+  --sl-color-accent-high: #4c1d95;
+}
+
+/* Tighter heading spacing */
+.sl-markdown-content h2 { margin-top: 2.5rem; }
+.sl-markdown-content h3 { margin-top: 1.75rem; }
+
+.sl-badge.success { --sl-color-bg-badge: #16a34a; }
+.sl-badge.caution { --sl-color-bg-badge: #d97706; }
+.sl-badge.danger  { --sl-color-bg-badge: #dc2626; }
+.sl-badge.note    { --sl-color-bg-badge: #7c3aed; }
+
+/* Starlight sets badges in the monospace face, which reads as a code token rather than a
+   label. Body font, normal weight. */
+.sl-badge {
+  font-family: var(--sl-font);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  text-transform: none;
+}
+
+/* Starlight sets standalone top-level sidebar links in a heavier face than the items nested
+   under a group, so "Overview" and "Demo: Verify a claim" read as a different typeface from
+   "Installation". One font, one weight, one size for every link in the sidebar. */
+.sidebar-content > ul > li > a,
+.sidebar-content a[href] {
+  font-size: var(--sl-text-sm);
+  font-weight: 400;
+}
+.sidebar-content a[aria-current="page"] { font-weight: 600; }
+/* Group headings stay distinct -- they are labels, not links. */
+.sidebar-content > ul > li > details > summary,
+.sidebar-content > ul > li > .large {
+  font-size: var(--sl-text-sm);
+  font-weight: 600;
+}
