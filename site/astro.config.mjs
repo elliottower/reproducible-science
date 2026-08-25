@@ -3,7 +3,11 @@ import starlight from "@astrojs/starlight";
 import { defineConfig } from "astro/config";
 
 export default defineConfig({
-  site: "https://mechanisticresearch.org",
+  // GitHub Pages, matching mechanistic-views. Nobody looks twice at a github.io docs URL,
+  // and it needs no DNS. A domain can be pointed here later with a Cloudflare-proxied CNAME,
+  // which is what makes analytics count requests server-side instead of relying on a beacon
+  // an ad blocker can drop. Changing that is this one line plus a rebuild.
+  site: "https://elliottower.github.io",
   base: "/reproducible-science",
   integrations: [
     starlight({

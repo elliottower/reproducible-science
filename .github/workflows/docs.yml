@@ -8,12 +8,20 @@ on:
     paths: ["site/**", "jupyterlite/**"]
   workflow_dispatch:
 
+# Pages needs these; nothing else in this workflow writes anything.
 permissions:
   contents: read
+  pages: write
+  id-token: write
+
+# One deployment at a time, and let a newer push win rather than queueing behind an old one.
+concurrency:
+  group: pages
+  cancel-in-progress: true
 
 jobs:
   build:
-    name: build the documentation site
+    name: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -28,7 +36,7 @@ jobs:
 
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
 
-      # ~21 MB of static assets, not committed. See jupyterlite/build.sh for why.
+      # ~21 MB of static assets, not committed. See jupyterlite/build.sh.
       - name: build the in-browser notebook
         run: ./jupyterlite/build.sh
 
@@ -40,19 +48,29 @@ jobs:
       - run: npm run build
         working-directory: site
 
-      - name: check what a deployment would cost
+      - name: check the deployment budget
         run: |
           files=$(find site/dist -type f | wc -l)
-          size=$(du -sm site/dist | cut -f1)
-          biggest=$(find site/dist -type f -exec du -k {} + | sort -rn | head -1 | cut -f1)
-          echo "files: $files (Cloudflare Pages free tier allows 20,000)"
-          echo "total: ${size} MB"
-          echo "largest file: $((biggest / 1024)) MB (limit is 25 MiB)"
-          test "$files" -lt 20000 || { echo "::error::too many files for Cloudflare Pages"; exit 1; }
-          test "$((biggest / 1024))" -lt 25 || { echo "::error::a file exceeds the 25 MiB limit"; exit 1; }
+          biggest_kb=$(find site/dist -type f -exec du -k {} + | sort -rn | head -1 | cut -f1)
+          echo "files: $files   total: $(du -sm site/dist | cut -f1) MB   largest: $((biggest_kb / 1024)) MB"
+          # GitHub Pages allows 1 GB per site. These bounds are far tighter and exist to catch
+          # a build that has started shipping something it should not -- the JupyterLite output
+          # arrived at 69 MB before its source maps were stripped.
+          test "$files" -lt 20000 || { echo "::error::$files files is more than any static host wants"; exit 1; }
+          test "$biggest_kb" -lt 102400 || { echo "::error::a single file exceeds 100 MB"; exit 1; }
 
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa  # v3.0.1
         with:
-          name: site
           path: site/dist
-          retention-days: 7
+
+  deploy:
+    name: deploy
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e  # v4.0.5
