@@ -6,9 +6,9 @@
 [![python](https://img.shields.io/pypi/pyversions/reproducible-science)](https://pypi.org/project/reproducible-science/)
 [![license](https://img.shields.io/pypi/l/reproducible-science)](LICENSE)
 
-Command-line tools that check whether a manuscript's claims match its artifacts.
+Command-line tools that check whether a paper's claims match its artifacts.
 
-A [Claude Code plugin](#claude-code) runs the same checks without leaving your editor.
+See our [Claude Code plugin](#claude-code), which traces results at the time of experimentation.
 
 ## Documentation
 
@@ -35,7 +35,7 @@ guess.
 |---|---|---|
 | [`repro`](packages/repro) | `pip install reproducible-science` | verifies declared evidence — quotations, reported values, table cells — against hash-pinned artifacts |
 | [`citations`](packages/citations) | `pip install citations` | checks that quotations resolve in the sources they cite |
-| [`results`](packages/results) | `pip install results-cli` | seals inputs, records outputs, binds manuscript claims to runs |
+| [`results`](packages/results) | `pip install results-cli` | seals inputs, records outputs, binds a paper's claims to runs |
 | [`prereg`](packages/prereg) | `pip install prereg` | freezes a plan before running, and records what changed after |
 
 `pip install reproducible-science` brings all four. Each tool is its own distribution, so
@@ -77,8 +77,8 @@ packages.
 
 ## Contributing
 
-[Contributing](CONTRIBUTING.md) to get started, [Development](DEVELOPMENT.md) for the
-workspace and release machinery, and [docs/SPEC.md](docs/SPEC.md) for what a decision means.
-Security issues: [SECURITY.md](SECURITY.md).
+[Contributing](CONTRIBUTING.md) to get started, [Development](DEVELOPMENT.md) for the workspace
+and release machinery, and [docs/SPEC.md](docs/SPEC.md) for what a decision means. Security
+issues: [SECURITY.md](SECURITY.md).
 
 MIT licensed.
