@@ -1,0 +1,44 @@
+---
+title: Notebook (JupyterLite)
+description: A full JupyterLab in the browser, running the real packages
+---
+
+A complete JupyterLab — file browser, kernel, cell execution, the lot — compiled to
+WebAssembly and served as static files. Same Pyodide runtime underneath as the
+[lighter notebook](/reproducible-science/demo/notebook/), with the whole IDE around it.
+
+<div class="jlite">
+  <iframe
+    src="/reproducible-science/jlite/lab/index.html?path=demo.ipynb"
+    title="JupyterLite"
+    loading="lazy"
+    allow="cross-origin-isolated"
+  ></iframe>
+</div>
+
+## The tradeoff
+
+| | this page | [the lighter notebook](/reproducible-science/demo/notebook/) |
+|---|---|---|
+| Download | **~69 MB** of static assets | ~10 MB, the Pyodide runtime only |
+| Interface | full JupyterLab, editable, add your own cells | fixed cells with Run buttons |
+| Styling | its own theme, inside an iframe | inherits this site |
+| First paint | slow | fast; Python loads on first Run |
+
+Both run the same published wheels and hit the same wall: no shell, so `!results seal` does
+not work and a CLI is called through its entry point instead; and no process model, so
+`prereg freeze` — which needs a real git commit — is out of reach either way.
+
+The full IDE earns its size if a reader should be able to **write their own cells** against
+their own data. If the point is to walk someone through a fixed argument, it is 60 MB spent
+on a file browser nobody opens.
+
+<style>{`
+  .jlite iframe {
+    width: 100%;
+    height: 42rem;
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.5rem;
+    background: #fff;
+  }
+`}</style>

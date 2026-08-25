@@ -1,0 +1,27 @@
+---
+title: Notebook (Pyodide)
+description: Run the real command-line tools in your browser, cell by cell
+---
+
+import Notebook from "../../../components/Notebook.astro";
+
+Each cell runs the **published package** — `pip install reproducible-science` gets you the same
+code. Python is compiled to WebAssembly and loaded into this page, so nothing is uploaded and
+there is no account to create.
+
+The first run fetches the Python runtime, about 10 MB, once.
+
+<Notebook />
+
+## What this can and cannot do
+
+WASM has no process model, which decides the boundary:
+
+- **`results` runs completely** — the ledger, the hash chain, the anchor, the tamper checks.
+  It shells out to nothing.
+- **`repro verify` runs** for tree, table and array locators.
+- **`prereg freeze` does not run.** It requires a real git commit, and there is no git here.
+- **`citations` against a PDF does not run.** It needs `pdftotext`.
+
+Rather than fake those, they are left out. A demo that quietly skips the checks it cannot
+perform is the exact failure the tool exists to report.
