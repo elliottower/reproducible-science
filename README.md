@@ -19,9 +19,9 @@ its artifacts.**
 
 ---
 
-`repro verify` reads a manifest of claims, resolves each one to a typed address in a
-hash-pinned artifact, and compares. A quotation is checked against the source it cites; a
-reported number against the file that holds it.
+`repro verify` reads a manifest of claims and resolves each one to a typed address in a
+hash-pinned artifact. A quotation is checked against the source it cites. A reported number
+is checked against the file that holds it.
 
 ```console
 $ repro verify
@@ -31,7 +31,7 @@ $ repro verify
   1 of 3 assertions failed, 1 could not be checked.
 ```
 
-A check that could not run reports `unchecked`. It is never counted as a pass.
+A check that could not run reports `unchecked`, which no policy accepts as a pass.
 
 ## The toolkit
 
@@ -44,8 +44,9 @@ A check that could not run reports `unchecked`. It is never counted as a pass.
 - **[`prereg`](packages/prereg)** — freezes a plan before running and records what changed
   after. `pip install prereg`
 
-Installing one never drags in the others. Preregistration is optional: a claim is confirmatory,
-exploratory, or not applicable, and only the first needs a plan.
+Each is an independent distribution, so installing one brings only that one. Preregistration
+is optional: a claim is confirmatory, exploratory, or not applicable, and only the first needs
+a plan.
 
 ## Getting started
 
@@ -67,9 +68,8 @@ published packages with nothing installed.
 
 ## What it addresses
 
-JSON, YAML, CSV/TSV, SQLite, and NumPy `.npy`/`.npz`. Parquet, HDF5, NetCDF and XLSX report
-`format_unsupported` and stop, because addressing them by guesswork would report a result
-nobody checked.
+JSON, YAML, CSV/TSV, SQLite, and NumPy `.npy`/`.npz`. Parquet, HDF5, NetCDF and XLSX have no
+adapter and report `format_unsupported`.
 
 ## Resources
 

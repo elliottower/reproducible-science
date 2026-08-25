@@ -19,8 +19,9 @@ uv run pytest -m corpus    # tests that read repositories outside this one
 uv run python scripts/check_wheels.py   # build the wheels and install them outside the workspace
 ```
 
-That last one is the check `pytest` cannot make: the workspace resolves the four packages from
-source, so the suite never exercises the combination a user installs. CI runs it on every push.
+The workspace resolves the packages from source, so `pytest` alone never exercises the
+combination a user installs. `check_wheels.py` builds them and installs them outside the
+workspace. CI runs it on every push.
 
 `uv.lock` at the root is the only lockfile. A package added under `packages/` joins the
 workspace automatically.
@@ -35,8 +36,8 @@ git tag -a v0.2.0 -m "Release all packages at 0.2.0" && git push origin v0.2.0
 
 That tag triggers all four workflows under `.github/workflows/`, each of which runs the whole
 workspace's tests before building its own distribution. Per-package tags
-(`citations-v*`, `prereg-v*`, `results-v*`, `repro-v*`) still publish one distribution each,
-for repairing a partial release rather than for ordinary use.
+(`citations-v*`, `prereg-v*`, `results-v*`, `repro-v*`) publish one distribution each, which
+is how a partial release gets repaired.
 
 `scripts/versions.py` sets every version and rewrites the sibling ranges; `make versions`
 fails if they drift, and runs in CI.
@@ -44,9 +45,9 @@ fails if they drift, and runs in CI.
 PyPI trusted publishing is bound to a repository *and* a workflow filename, so a package
 released from here for the first time needs its publisher reconfigured on PyPI — repository
 `elliottower/reproducible-science`, workflow `publish-<package>.yml`, environment `release` —
-before the tag is pushed. The workflow filename is what PyPI matches, not the distribution
-name, so `results-cli` is published by `publish-results.yml`. An upload from an unrecognized
-workflow is rejected, and a version number is never reusable once taken.
+before the tag is pushed. PyPI matches on the workflow filename, so `results-cli` is
+published by `publish-results.yml`. An upload from an unrecognized workflow is rejected, and a
+version number is never reusable once taken.
 
 The full procedure, and what each check is defending against, is in
 [docs/RELEASING.md](docs/RELEASING.md).
@@ -75,6 +76,6 @@ MIT licensed.
 ## provenance-core
 
 A fifth workspace package, `provenance-core`, holds primitives the four tools share: content
-digests and git references. It has no CLI and nobody installs it directly; it is published
-because the tools that depend on it are published separately, and a workspace path does not
-survive into a wheel.
+digests and git references. It has no CLI and nobody installs it directly. It is published
+anyway, because the tools that depend on it are published separately, and a workspace path
+does not survive into a wheel.
