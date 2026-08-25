@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Preregistration, citation verification, evidence verification, and results provenance for reproducible science",
-    "version": "0.1.0"
+    "version": "0.2.0"
   },
   "plugins": [
     {

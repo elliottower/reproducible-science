@@ -2,8 +2,16 @@
   "name": "results",
   "description": "Seal a run's inputs, record what it produced, bind claims to outputs, and verify the chain",
   "version": "0.1.0",
-  "author": { "name": "Elliot Tower", "email": "elliot@elliottower.ai" },
-  "repository": "https://github.com/elliottower/results",
+  "author": {
+    "name": "Elliot Tower",
+    "email": "elliot@elliottower.ai"
+  },
+  "repository": "https://github.com/elliottower/reproducible-science/tree/main/packages/results",
   "license": "MIT",
-  "keywords": ["results", "provenance", "reproducibility", "open science"]
+  "keywords": [
+    "results",
+    "provenance",
+    "reproducibility",
+    "open science"
+  ]
 }

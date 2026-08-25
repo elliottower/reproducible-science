@@ -96,11 +96,11 @@ whether it should have.
 `plugin/` is a Claude Code plugin that tells Claude when to reach for the CLI.
 
 ```bash
-/plugin marketplace add elliottower/results
-/plugin install results@results
+/plugin marketplace add elliottower/reproducible-science
+/plugin install results@reproducible-science
 ```
 
-For all three reproducible-science tools in one plugin (results + [prereg](https://github.com/elliottower/prereg) + [citations](https://github.com/elliottower/citations)):
+For all three reproducible-science tools in one plugin (results + [prereg](https://github.com/elliottower/reproducible-science/tree/main/packages/prereg) + [citations](https://github.com/elliottower/reproducible-science/tree/main/packages/citations)):
 
 ```bash
 /plugin marketplace add elliottower/reproducible-science

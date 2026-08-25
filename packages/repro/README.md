@@ -96,6 +96,6 @@ This repo is also a Claude Code plugin marketplace bundling all three tools:
 /plugin marketplace add elliottower/reproducible-science
 ```
 
-Or install them individually: [`elliottower/prereg`](https://github.com/elliottower/prereg), [`elliottower/citations`](https://github.com/elliottower/citations), [`elliottower/results`](https://github.com/elliottower/results).
+Or install them individually: [`prereg`](https://github.com/elliottower/reproducible-science/tree/main/packages/prereg), [`citations`](https://github.com/elliottower/reproducible-science/tree/main/packages/citations), [`results`](https://github.com/elliottower/reproducible-science/tree/main/packages/results).
 
 MIT licensed.

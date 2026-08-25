@@ -36,7 +36,10 @@ optional-dependencies.adduce = [ "adduce>=0.1.2" ]
 optional-dependencies.arrays = [
   "numpy>=2.2.6",
 ]
+urls.Changelog = "https://github.com/elliottower/reproducible-science/blob/main/CHANGELOG.md"
 urls.Homepage = "https://github.com/elliottower/reproducible-science"
+urls.Issues = "https://github.com/elliottower/reproducible-science/issues"
+urls.Source = "https://github.com/elliottower/reproducible-science/tree/main/packages/repro"
 scripts.repro = "repro.cli:main"
 # adduce discovers this at check time; declaring it costs nothing when adduce is absent.
 entry-points."adduce.rules".repro = "repro.integrations.adduce"

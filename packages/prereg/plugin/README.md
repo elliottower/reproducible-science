@@ -6,8 +6,8 @@ nothing the CLI cannot do.
 ## Install
 
 ```bash
-/plugin marketplace add elliottower/prereg
-/plugin install prereg@prereg
+/plugin marketplace add elliottower/reproducible-science
+/plugin install prereg@reproducible-science
 ```
 
 The plugin ships instructions, not binaries. Install the tool too:
@@ -20,7 +20,7 @@ For development against a checkout:
 
 ```bash
 /plugin marketplace add ~/Documents/GitHub/prereg
-/plugin install prereg@prereg
+/plugin install prereg@reproducible-science
 ```
 
 ## What it changes
