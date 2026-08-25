@@ -57,18 +57,24 @@ def main() -> int:
         )
         print(f"  installed {versions.stdout.strip()}")
 
-        smoke = run(
-            str(venv / "bin" / "repro"),
-            "verify",
-            str(ROOT / "paper" / "repro.yaml"),
-            "--policy",
-            "strict",
-        )
-        tail = [ln for ln in smoke.stdout.splitlines() if ln.strip()][-1:] or [""]
-        print(f"  repro verify --policy strict -> exit {smoke.returncode}: {tail[0].strip()}")
-        if smoke.returncode != 0:
-            print(smoke.stdout[-2000:])
-            return 1
+        # One clean fixture per contract variant, so the installed engine is exercised on a
+        # quote, a metric and a table rather than on whichever one a single manifest happens
+        # to carry. These five cases are the conformance suite's passing ones; the rest assert
+        # failures and would exit non-zero by design.
+        cases = ROOT / "packages" / "repro" / "tests" / "conformance" / "cases"
+        for case in ("passage_present", "value_match", "table_cell_match"):
+            smoke = run(
+                str(venv / "bin" / "repro"),
+                "verify",
+                str(cases / case / "repro.yaml"),
+                "--policy",
+                "strict",
+            )
+            tail = [ln for ln in smoke.stdout.splitlines() if ln.strip()][-1:] or [""]
+            print(f"  repro verify {case} -> exit {smoke.returncode}: {tail[0].strip()}")
+            if smoke.returncode != 0:
+                print(smoke.stdout[-2000:])
+                return 1
 
         quote = run(
             str(python), "-c", "from citations.verify import check_one; print('quote backend: ok')"

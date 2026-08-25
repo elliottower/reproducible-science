@@ -77,18 +77,7 @@ Two rules, both learned the same way:
 - **Check afterwards.** `gh release list` beside `versions.py check`. A tag with no release
   fails silently and stays failed until someone opens Zenodo.
 
-## 3. Regenerate derived artifacts, in order
-
-```bash
-uv run python scripts/generate_figures.py
-uv run python scripts/build_self_audit.py
-```
-
-Order matters: the self-audit manifest pins `paper/figures.json` by digest, so figures are
-generated first. Reversing it produces a manifest pinning a file that no longer exists in
-that form, and `repro verify --policy strict` fails on its own repository.
-
-## 4. Run the full pre-flight
+## 3. Run the full pre-flight
 
 ```bash
 make release-check
@@ -98,7 +87,7 @@ This is `make qa` plus wheel building, `twine check` and `check-wheel-contents`.
 0. `make qa` includes the drift check, which fails while regenerated artifacts are
 uncommitted — commit them and re-run.
 
-## 5. Push and wait for CI
+## 4. Push and wait for CI
 
 ```bash
 git push origin main
@@ -109,7 +98,7 @@ gh run view <id> --json jobs -q '.jobs[] | "\(.conclusion)  \(.name)"'
 Read the per-job list rather than the overall conclusion. The tag builds from this commit, so
 a red `main` produces a bad release.
 
-## 6. Confirm trusted publishing before tagging
+## 5. Confirm trusted publishing before tagging
 
 **This is the step that has no local equivalent and cannot be verified from a checkout.**
 
@@ -130,7 +119,7 @@ the version, so a wholly failed release is recoverable — but a *partial* one i
 packages upload and two are rejected, re-pushing the tag retries the successful two and fails
 on `File already exists`, and the only way forward is a new version.
 
-## 7. Verify the version is unclaimed
+## 6. Verify the version is unclaimed
 
 ```bash
 git tag -l vX.Y.Z                                  # local
@@ -139,7 +128,7 @@ git ls-remote --tags origin refs/tags/vX.Y.Z       # remote
 
 And on PyPI, for each of the four distributions, that `X.Y.Z` is absent from `releases`.
 
-## 8. Check the artifacts, not the source tree
+## 7. Check the artifacts, not the source tree
 
 ```bash
 uv run --isolated --no-project \
@@ -165,7 +154,7 @@ Looking for: scratch directories, `.DS_Store`, coverage data, caches, credential
 notes. Untracked directories at the repository root cannot reach a wheel, because every
 package builds from `packages/*/src/` — but confirm rather than assume.
 
-## 9. Confirm the third-party interop claim still holds
+## 8. Confirm the third-party interop claim still holds
 
 ```bash
 make interop-strict
@@ -184,7 +173,7 @@ A newer adduce that still passes is a prompt: move the recorded version forward.
 fails is a choice between capping the dependency and saying which version the adapter targets,
 or fixing the adapter. Shipping neither leaves a false claim in the specification.
 
-## 10. Tag and publish
+## 9. Tag and publish
 
 ```bash
 git tag -a vX.Y.Z -m "Release all packages at X.Y.Z"
@@ -195,7 +184,7 @@ git push origin vX.Y.Z
 Annotated, so the tag carries an author and a date. Confirm it points at the audited commit
 before pushing.
 
-## 11. Confirm the release landed
+## 10. Confirm the release landed
 
 Watch all four workflow runs to completion, then confirm each distribution reports the new
 version on PyPI and installs from PyPI — not from `dist/` — in a clean environment.
@@ -212,8 +201,7 @@ Each entry is something that happened, not something imagined.
 | Declared dependency floors that cannot be installed | step 1, and CI's lowest-direct resolution |
 | Version numbers drifting apart across packages | step 1, `versions.py check` |
 | A changelog entry asserting a fix that was never a defect | step 2, tracing each claim to a commit |
-| A self-audit manifest pinning a stale digest | step 3, generator ordering |
-| A trusted publisher still bound to an old repository | step 6 |
+| A trusted publisher still bound to an old repository | step 5 |
 | A partially published release with versions consumed | step 6, checking all four first |
-| A fix present in source and absent from the wheel | step 8 |
-| An interop claim falsified by someone else's release | step 9 |
+| A fix present in source and absent from the wheel | step 7 |
+| An interop claim falsified by someone else's release | step 8 |

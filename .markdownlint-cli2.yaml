@@ -11,11 +11,7 @@ config:
 ignores:
   - "**/node_modules/**"
   - ".venv/**"
-  - "paper/prior_art/**"
   - "packages/*/tests/conformance/cases/**"
-  # The manuscripts are pinned by digest from paper/repro.yaml. A linter that rewrites one
-  # breaks its pin and every quotation asserted against it, for a byline email.
-  - "paper/DRAFT_*.md"
   # site/src/content/docs/{reference,tools}/ is written by sync-docs.mjs from the
   # canonical Markdown elsewhere in this repository. Linting a generated copy reports
   # the same defect twice, in a file that cannot be edited to fix it.
