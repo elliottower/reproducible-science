@@ -62,3 +62,32 @@
   border-top-right-radius: 0.375rem;
   border-top: 1px solid var(--sl-color-gray-5);
 }
+
+/* Starlight's Previous/Next are large two-line cards that take more vertical space than the
+   last section of most pages. Compact them to a single line each. */
+.pagination-links { gap: 0.75rem; }
+.pagination-links a {
+  padding: 0.6rem 0.9rem;
+  border-radius: 0.4375rem;
+  box-shadow: none;
+  border: 1px solid var(--sl-color-gray-5);
+}
+.pagination-links a:hover { border-color: var(--sl-color-accent); }
+.pagination-links svg { display: none; }
+.pagination-links span[set\:html] { font-size: var(--sl-text-sm); }
+.pagination-links a > span {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+.pagination-links a .link-title {
+  font-size: var(--sl-text-base);
+  font-weight: 500;
+  color: var(--sl-color-white);
+}
+.pagination-links a > span > span:first-child {
+  font-size: var(--sl-text-xs);
+  color: var(--sl-color-gray-3);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}

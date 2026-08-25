@@ -29,9 +29,16 @@ pip install "reproducible-science[arrays]"
 
 Quotation checking against PDFs needs `pdftotext` from poppler:
 
+On macOS:
+
 ```bash
-brew install poppler          # macOS
-apt install poppler-utils     # Debian/Ubuntu
+brew install poppler
+```
+
+On Debian or Ubuntu:
+
+```bash
+sudo apt install poppler-utils
 ```
 
 Without it, a PDF quotation is reported `unchecked` with the reason `extractor_missing`. It is
