@@ -34,14 +34,20 @@ cli("results.cli", "seal", "results.json", "--role", "input")
 That calls the command's entry point with the argv a shell would have handed it, so the code
 path is identical. Only the invocation differs.
 
-Two things stay out of reach for the same reason, and the notebook leaves them out rather
-than faking them:
+## Checking quotations
 
-- **`prereg freeze`** requires a real git commit, and there is no git here.
-- **`citations`** against a PDF needs `pdftotext` from poppler.
+A [second notebook](/reproducible-science/jlite/lab/index.html?path=citations.ipynb) runs
+`citations` over a text source and a PDF: a quotation that resolves, one that does not, a
+source edited after it was pinned, and a passage claimed on the wrong page.
 
-A demo that quietly skips the checks it cannot perform is the exact failure this tool exists
-to report. To run those, install locally:
+The published package reads PDFs by calling `pdftotext`, which is a binary. That notebook
+substitutes a pure-Python extractor for that one function; every other part of the package is
+the published code.
+
+## Not possible in WebAssembly
+
+`prereg freeze` records the commit a plan was frozen at. Git does not exist in WebAssembly,
+so the command cannot run here. Install locally to use it:
 
 ```bash
 pip install reproducible-science
