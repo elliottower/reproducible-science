@@ -20,6 +20,18 @@ The gap between `mismatch` and `unchecked` is the point. A contradicted number a
 extractor are both failures of a build, and they are not the same fact about a paper. A tool
 that reports them identically teaches its users to ignore it.
 
+### A missing quotation and a missing key
+
+An absent quotation is a `mismatch`. An absent key is `not_found`. What separates them is what
+the extraction stage found.
+
+Text pulled out of a source is the source's own words. Comparing a quotation against them and
+not finding it is a comparison that ran and failed, so it is reported as one. A JSON key that
+does not resolve extracted nothing to compare against, so no comparison happened at all.
+
+A source the extractor could not read is a third case, `unchecked` with reason
+`extractor_missing`. A missing tool is a fact about your machine, not about the paper.
+
 ## Reason — why
 
 Nineteen machine-readable codes, so a tool can route by cause:
