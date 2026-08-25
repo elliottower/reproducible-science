@@ -7,6 +7,7 @@ import subprocess
 import sys
 
 from results import ledger
+from results.cli import precedes
 
 
 def run_cli(*args, cwd=None):
@@ -481,15 +482,16 @@ def test_a_duplicate_run_id_is_refused_without_anyway(tmp_path):
 
 def a_repo_with_a_frozen_plan(tmp_path, plan="plan.md"):
     """A git repository whose first commit contains the plan, committed before anything ran."""
-    for args in (["init", "-q"], ["config", "user.email", "t@t"],
-                 ["config", "user.name", "t"]):
+    for args in (["init", "-q"], ["config", "user.email", "t@t"], ["config", "user.name", "t"]):
         subprocess.run(["git", *args], cwd=tmp_path, capture_output=True)
     (tmp_path / plan).write_text("H1. the effect is positive.\n")
     subprocess.run(["git", "add", plan], cwd=tmp_path, capture_output=True)
-    subprocess.run(["git", "commit", "-q", "-m", "freeze the plan"],
-                   cwd=tmp_path, capture_output=True)
-    sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=tmp_path,
-                         capture_output=True, text=True).stdout.strip()
+    subprocess.run(
+        ["git", "commit", "-q", "-m", "freeze the plan"], cwd=tmp_path, capture_output=True
+    )
+    sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=tmp_path, capture_output=True, text=True
+    ).stdout.strip()
     return sha
 
 
@@ -500,13 +502,17 @@ def test_a_plan_frozen_before_the_exposure_is_confirmatory(tmp_path):
     (tmp_path / "out.json").write_text('{"d": 0.103}\n')
     run_cli("run", "out.json", "--run-id", "late", cwd=tmp_path)
 
-    r = run_cli("claim", "d = 0.103", "--run-id", "late", "--confirmatory",
-                "--frozen-at", sha, cwd=tmp_path)
+    r = run_cli(
+        "claim", "d = 0.103", "--run-id", "late", "--confirmatory", "--frozen-at", sha, cwd=tmp_path
+    )
     assert r.returncode == 0, r.stdout + r.stderr
     assert "confirmatory, exposure logged" in r.stdout
 
-    claim = [e for e in ledger.read_ledger(tmp_path / ".results" / "ledger.jsonl")
-             if e["event"] == "claim"][0]
+    claim = next(
+        e
+        for e in ledger.read_ledger(tmp_path / ".results" / "ledger.jsonl")
+        if e["event"] == "claim"
+    )
     assert claim["confirmatory"] is True
     assert claim["after_outcomes_seen"] is False
     assert claim["frozen_at"] == sha
@@ -523,12 +529,23 @@ def test_a_freeze_that_does_not_resolve_is_refused(tmp_path):
     (tmp_path / "out.json").write_text('{"d": 0.103}\n')
     run_cli("run", "out.json", "--run-id", "late", cwd=tmp_path)
 
-    r = run_cli("claim", "d = 0.103", "--run-id", "late", "--confirmatory",
-                "--frozen-at", "deadbeef", cwd=tmp_path)
+    r = run_cli(
+        "claim",
+        "d = 0.103",
+        "--run-id",
+        "late",
+        "--confirmatory",
+        "--frozen-at",
+        "deadbeef",
+        cwd=tmp_path,
+    )
     assert r.returncode == 1
     assert "cannot resolve" in r.stdout
-    assert not [e for e in ledger.read_ledger(tmp_path / ".results" / "ledger.jsonl")
-                if e["event"] == "claim"]
+    assert not [
+        e
+        for e in ledger.read_ledger(tmp_path / ".results" / "ledger.jsonl")
+        if e["event"] == "claim"
+    ]
 
 
 def test_the_refusal_names_the_freeze_route(tmp_path):
@@ -539,3 +556,38 @@ def test_the_refusal_names_the_freeze_route(tmp_path):
     r = run_cli("claim", "d = 0.103", "--run-id", "late", "--confirmatory", cwd=tmp_path)
     assert r.returncode == 1
     assert "--frozen-at" in r.stdout
+
+
+def test_a_freeze_precedes_an_exposure_it_predates_in_any_timezone():
+    """The freeze comes from git in local time and the ledger writes UTC.
+
+    Compared as strings these ordered correctly only where the local offset happened to make
+    the hour smaller. Every pair below names the same ordering of instants and differs only
+    in how the offset is written.
+    """
+    exposure = "2026-08-25T17:09:55.123456+00:00"
+
+    assert precedes("2026-08-25T13:09:55-04:00", exposure)
+    assert precedes("2026-08-25T17:09:55+00:00", exposure)
+    assert precedes("2026-08-25T17:09:55Z", exposure)
+    assert precedes("2026-08-25T19:09:55+02:00", exposure)
+
+
+def test_a_freeze_after_the_exposure_does_not_precede_it():
+    exposure = "2026-08-25T17:09:55.123456+00:00"
+
+    assert not precedes("2026-08-25T17:09:56+00:00", exposure)
+    assert not precedes("2026-08-25T13:09:56-04:00", exposure)
+
+
+def test_a_timestamp_that_cannot_be_parsed_never_protects_a_claim():
+    """A freeze that cannot be placed in time cannot protect anything.
+
+    Returning True on a malformed value would grant the protection to a claim whose ordering
+    was never established, which is the opposite of what the flag is for.
+    """
+    exposure = "2026-08-25T17:09:55.123456+00:00"
+
+    assert not precedes("not a timestamp", exposure)
+    assert not precedes("", exposure)
+    assert not precedes("2026-08-25T17:09:55", exposure)

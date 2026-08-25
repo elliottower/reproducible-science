@@ -29,7 +29,7 @@ import urllib.request
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 
-from confirm_numbers import build_index, collect, strength  # noqa: E402
+from confirm_numbers import build_index, collect, strength
 
 HERE = pathlib.Path(__file__).parent
 CORPUS = HERE / "corebench"
@@ -61,8 +61,9 @@ CONTEXT = context()
 
 def download(capsule_id: str, into: pathlib.Path) -> bool:
     """Fetch and unpack one capsule, or report that it could not be had."""
-    request = urllib.request.Request(CAPSULE_URL.format(capsule_id=capsule_id),
-                                     headers={"User-Agent": USER_AGENT})
+    request = urllib.request.Request(
+        CAPSULE_URL.format(capsule_id=capsule_id), headers={"User-Agent": USER_AGENT}
+    )
     try:
         with urllib.request.urlopen(request, timeout=600, context=CONTEXT) as response:
             payload = response.read()
@@ -103,8 +104,13 @@ def look_for(value: float, index: dict) -> dict | None:
 def measure(task: dict, capsule: pathlib.Path) -> dict:
     groups = collect(capsule)
     index, unread = build_index(
-        groups["data"] + groups["spreadsheet"] + groups["binary"] + groups["compressed"]
-        + groups["code"], capsule)
+        groups["data"]
+        + groups["spreadsheet"]
+        + groups["binary"]
+        + groups["compressed"]
+        + groups["code"],
+        capsule,
+    )
 
     answers = []
     for entry in task.get("results", []):
@@ -112,13 +118,15 @@ def measure(task: dict, capsule: pathlib.Path) -> dict:
             if not isinstance(value, (int, float)):
                 continue
             hit = look_for(float(value), index)
-            answers.append({
-                "question": question[:160],
-                "value": value,
-                "found": hit is not None,
-                **(hit or {}),
-                "strength": strength(repr(float(value))),
-            })
+            answers.append(
+                {
+                    "question": question[:160],
+                    "value": value,
+                    "found": hit is not None,
+                    **(hit or {}),
+                    "strength": strength(repr(float(value))),
+                }
+            )
     return {
         "capsule_id": task["capsule_id"],
         "doi": task.get("capsule_doi", ""),
@@ -139,8 +147,7 @@ def main() -> int:
     tasks = json.loads(TASKS.read_text())
     done = set()
     if RESULTS.exists():
-        done = {json.loads(line)["capsule_id"]
-                for line in RESULTS.read_text().splitlines() if line}
+        done = {json.loads(line)["capsule_id"] for line in RESULTS.read_text().splitlines() if line}
 
     added = 0
     for task in tasks:
@@ -160,9 +167,12 @@ def main() -> int:
         added += 1
         found = sum(1 for a in record.get("answers", []) if a["found"])
         total = len(record.get("answers", []))
-        print(f"  [{added:2}/{args.limit}] {task['capsule_id']}  {record['status']:<14}"
-              f"  {found}/{total} found  index {record.get('index_size', 0):>7}"
-              f"  {time.time() - started:.0f}s", flush=True)
+        print(
+            f"  [{added:2}/{args.limit}] {task['capsule_id']}  {record['status']:<14}"
+            f"  {found}/{total} found  index {record.get('index_size', 0):>7}"
+            f"  {time.time() - started:.0f}s",
+            flush=True,
+        )
     return 0
 
 
