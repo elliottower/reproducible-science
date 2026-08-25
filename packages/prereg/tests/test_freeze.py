@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import re
 import subprocess
 import sys
 
 import pytest
-from prereg import cli
+from prereg import log, plan, template
 
 
 def run(args, cwd):
@@ -30,7 +31,7 @@ def repo(tmp_path):
 def test_new_uses_the_osf_headings(tmp_path):
     run(["new", "study"], tmp_path)
     text = (tmp_path / "study" / "PREREG.md").read_text()
-    for q, _ in cli.template.QUESTIONS:
+    for q, _ in template.QUESTIONS:
         assert f"## {q}" in text
 
 
@@ -126,7 +127,7 @@ def test_status_note_survives_the_freeze_intact(repo):
     run(["freeze"], repo)
     text = p.read_text()
     frozen_line = next(ln for ln in text.splitlines() if ln.startswith("**Frozen:**"))
-    assert frozen_line.strip().endswith(cli.today()), (
+    assert frozen_line.strip().endswith(plan.today()), (
         f"note was glued onto the freeze date: {frozen_line!r}"
     )
     assert "Third version; see Log." in text
@@ -136,10 +137,10 @@ def test_status_note_survives_the_freeze_intact(repo):
 def test_refreezing_an_unedited_plan_is_idempotent(repo):
     run(["freeze"], repo)
     first = (repo / "PREREG.md").read_text()
-    digest = cli.re.search(r"`([0-9a-f]{64})`", first).group(1)
+    digest = re.search(r"`([0-9a-f]{64})`", first).group(1)
     run(["freeze", "--force", "--access", "nothing run"], repo)
     second = (repo / "PREREG.md").read_text()
-    assert cli.re.search(r"`([0-9a-f]{64})`", second).group(1) == digest
+    assert re.search(r"`([0-9a-f]{64})`", second).group(1) == digest
     assert run(["check"], repo).returncode == 0
 
 
@@ -263,7 +264,7 @@ def test_a_log_note_cannot_break_out_of_the_fence(repo):
     run(["freeze"], repo)
     run(["log", "see ``` and then some", "--access", "no results seen"], repo)
     text = (repo / "PREREG.md").read_text()
-    _, _, tail = text.partition(cli.MARK)
+    _, _, tail = text.partition(plan.MARK)
     assert tail.count("```") == 2, f"fence count is {tail.count('```')}, log structure broken"
 
 
@@ -310,7 +311,7 @@ def test_a_long_note_still_separates_from_its_access_level(repo):
     note = "restricting the target to {0,1} and {0,1,2} because its value set is integers"
     run(["log", note, "--access", "no results seen"], repo)
     line = next(ln for ln in (repo / "PREREG.md").read_text().splitlines() if note in ln)
-    entry = line.rpartition(cli.LOG_MARK)[0] or line
+    entry = line.rpartition(log.LOG_MARK)[0] or line
     assert entry.rstrip().endswith("no results seen")
     assert not line.endswith(note + "no results seen"), "access level glued to the note"
     assert "  no results seen" in line
@@ -327,11 +328,11 @@ def test_deleting_a_log_entry_is_visible(repo):
     run(["log", "saw the outcome table", "--access", "results seen"], repo)
     run(["log", "adjusted the threshold", "--access", "results seen"], repo)
     path = repo / "PREREG.md"
-    assert cli.log_problems(path.read_text()) == []
+    assert log.log_problems(path.read_text()) == []
 
     kept = [ln for ln in path.read_text().splitlines() if "saw the outcome table" not in ln]
     path.write_text("\n".join(kept) + "\n")
-    problems = cli.log_problems(path.read_text())
+    problems = log.log_problems(path.read_text())
     assert problems, "an entry was removed and nothing reported it"
     assert "removed" in problems[0]
 
@@ -343,7 +344,7 @@ def test_editing_a_log_entry_is_visible(repo):
     path.write_text(
         path.read_text().replace("results seen on the held-out split", "nothing was examined")
     )
-    assert cli.log_problems(path.read_text())
+    assert log.log_problems(path.read_text())
 
 
 def test_check_reports_a_tampered_log(repo):
@@ -368,7 +369,7 @@ def test_content_hidden_behind_a_marker_after_freezing_is_reported(repo):
     assert run(["check"], repo).returncode == 0
 
     path = repo / "PREREG.md"
-    before = cli.sha256_of(cli.plan_of(path.read_text()))
+    before = plan.sha256_of(plan.plan_of(path.read_text()))
     # Exactly one line, and no blank line around it: `plan_of` drops the marker line but joins
     # what remains, so an inserted blank would move the digest and the hash would catch it
     # instead. The point is the case the hash cannot see.
@@ -377,7 +378,7 @@ def test_content_hidden_behind_a_marker_after_freezing_is_reported(repo):
             "## Randomization", "**Frozen:** we will also accept p<0.10\n## Randomization", 1
         )
     )
-    assert cli.sha256_of(cli.plan_of(path.read_text())) == before, (
+    assert plan.sha256_of(plan.plan_of(path.read_text())) == before, (
         "the digest must be blind to this, or the test is not exercising the hidden-content check"
     )
 
@@ -435,21 +436,21 @@ def test_replacing_the_last_log_entry_is_caught_by_the_anchor(repo):
     run(["log", "saw the outcome table", "--access", "results seen"], repo)
     run(["log", "adjusted the threshold", "--access", "results seen"], repo)
     path = repo / "PREREG.md"
-    assert cli.log_problems(path.read_text()) == []
+    assert log.log_problems(path.read_text()) == []
 
     lines = path.read_text().splitlines()
-    entries = cli.log_lines(path.read_text())
+    entries = log.log_lines(path.read_text())
     previous = ""
     for entry in entries[:-1]:
-        body, _, recorded = entry.rpartition(cli.LOG_MARK)
-        previous = recorded.strip() if body else cli.chain_value(previous, entry)
+        body, _, recorded = entry.rpartition(log.LOG_MARK)
+        previous = recorded.strip() if body else log.chain_value(previous, entry)
 
     original = entries[-1]
-    body = original.rpartition(cli.LOG_MARK)[0].replace("adjusted the threshold", "no change made")
-    forged = f"{body}{cli.LOG_MARK} {cli.chain_value(previous, body)}"
+    body = original.rpartition(log.LOG_MARK)[0].replace("adjusted the threshold", "no change made")
+    forged = f"{body}{log.LOG_MARK} {log.chain_value(previous, body)}"
     path.write_text("\n".join(ln.replace(original, forged) for ln in lines) + "\n")
 
-    problems = cli.log_problems(path.read_text())
+    problems = log.log_problems(path.read_text())
     assert problems, "a rewritten last entry chained cleanly and nothing else looked at it"
     assert any("not the one recorded" in p for p in problems), problems
     assert run(["check"], repo).returncode != 0
@@ -461,7 +462,7 @@ def test_a_forced_refreeze_after_results_were_seen_must_say_what_was_seen(repo):
     run(["freeze"], repo)
     run(["log", "saw the outcome table", "--access", "results seen"], repo)
 
-    before = cli.log_lines((repo / "PREREG.md").read_text())
+    before = log.log_lines((repo / "PREREG.md").read_text())
     assert before[-1].endswith("results seen") or "results seen" in before[-1]
 
     r = run(["freeze", "--force"], repo)
@@ -470,10 +471,10 @@ def test_a_forced_refreeze_after_results_were_seen_must_say_what_was_seen(repo):
     # The refusal has to leave the log alone. Writing `nothing run` blind put an amendment
     # claiming nothing had been run directly beneath the entry recording that the outcomes
     # had been examined.
-    assert cli.log_lines((repo / "PREREG.md").read_text()) == before
+    assert log.log_lines((repo / "PREREG.md").read_text()) == before
 
     ok = run(["freeze", "--force", "--access", "results seen"], repo)
     assert ok.returncode == 0, ok.stdout
-    after = cli.log_lines((repo / "PREREG.md").read_text())
+    after = log.log_lines((repo / "PREREG.md").read_text())
     assert len(after) == len(before) + 1
     assert "results seen" in after[-1] and "nothing run" not in after[-1]
