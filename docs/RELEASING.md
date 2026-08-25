@@ -56,6 +56,27 @@ git log --oneline -S "<the symbol the entry describes>" -- <path>
 Anything that cannot be traced to a commit that changed behavior is cut. A changelog entry
 asserting a fix that was never a defect is the same failure the tools exist to prevent.
 
+## The GitHub Release, which Zenodo needs
+
+Pushing the tag publishes to PyPI. It does not archive anything.
+
+Zenodo watches for the GitHub **Release** event, so a tag that was published and never
+released is invisible to it: no archive, no DOI, nothing citable. `v0.2.0` shipped four
+packages to PyPI and sat unarchived for a day because only `v0.1.0` had ever been turned
+into a Release.
+
+```bash
+gh release create vX.Y.Z --title vX.Y.Z --notes "<one short paragraph>"
+```
+
+Two rules, both learned the same way:
+
+- **Release the tag, never the branch.** `gh release create` defaults to the current commit,
+  so a release named `vX.Y.Z` cut from a later `main` archives code the published packages do
+  not contain. Name the tag explicitly.
+- **Check afterwards.** `gh release list` beside `versions.py check`. A tag with no release
+  fails silently and stays failed until someone opens Zenodo.
+
 ## 3. Regenerate derived artifacts, in order
 
 ```bash
