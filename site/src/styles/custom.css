@@ -50,3 +50,15 @@
   font-size: var(--sl-text-sm);
   font-weight: 600;
 }
+
+/* Expressive Code frames a `bash` block as a terminal window: an empty caption bar with
+   three dots. It costs a line of vertical space on every shell sample and imitates a
+   window that is not there. The block keeps its border; the chrome goes. */
+.expressive-code .frame.is-terminal .header {
+  display: none;
+}
+.expressive-code .frame.is-terminal pre {
+  border-top-left-radius: 0.375rem;
+  border-top-right-radius: 0.375rem;
+  border-top: 1px solid var(--sl-color-gray-5);
+}
