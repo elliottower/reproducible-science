@@ -142,11 +142,11 @@ So `git diff` shows what changed. A binary store cannot show you that a year mov
 `plugin/` is a Claude Code plugin that tells Claude when to reach for the CLI.
 
 ```bash
-/plugin marketplace add elliottower/citations
-/plugin install citations@citations
+/plugin marketplace add elliottower/reproducible-science
+/plugin install citations@reproducible-science
 ```
 
-For all three reproducible-science tools in one plugin (citations + [prereg](https://github.com/elliottower/prereg) + [results](https://github.com/elliottower/results)):
+For all three reproducible-science tools in one plugin (citations + [prereg](https://github.com/elliottower/reproducible-science/tree/main/packages/prereg) + [results](https://github.com/elliottower/reproducible-science/tree/main/packages/results)):
 
 ```bash
 /plugin marketplace add elliottower/reproducible-science

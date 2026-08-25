@@ -6,8 +6,8 @@ adds nothing the CLI cannot do.
 ## Install
 
 ```bash
-/plugin marketplace add elliottower/results
-/plugin install results@results
+/plugin marketplace add elliottower/reproducible-science
+/plugin install results@reproducible-science
 ```
 
 The plugin ships instructions, not binaries. Install the tool too:
@@ -20,7 +20,7 @@ For development against a checkout:
 
 ```bash
 /plugin marketplace add ~/Documents/GitHub/results
-/plugin install results@results
+/plugin install results@reproducible-science
 ```
 
 ## What it changes

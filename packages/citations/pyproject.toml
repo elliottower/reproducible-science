@@ -20,6 +20,10 @@ classifiers = [
 ]
 dependencies = [ "platformdirs>=3", "pydantic>=2.9", "pyyaml>=6.0.2" ]
 optional-dependencies.lint = [ "papis>=0.15" ]
+urls.Changelog = "https://github.com/elliottower/reproducible-science/blob/main/CHANGELOG.md"
+urls.Homepage = "https://github.com/elliottower/reproducible-science"
+urls.Issues = "https://github.com/elliottower/reproducible-science/issues"
+urls.Source = "https://github.com/elliottower/reproducible-science/tree/main/packages/citations"
 scripts.citations = "citations.cli:main"
 
 [dependency-groups]

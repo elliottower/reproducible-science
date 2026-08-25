@@ -19,6 +19,10 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
 ]
 dependencies = [  ]
+urls.Changelog = "https://github.com/elliottower/reproducible-science/blob/main/CHANGELOG.md"
+urls.Homepage = "https://github.com/elliottower/reproducible-science"
+urls.Issues = "https://github.com/elliottower/reproducible-science/issues"
+urls.Source = "https://github.com/elliottower/reproducible-science/tree/main/packages/results"
 scripts.results = "results.cli:main"
 
 [dependency-groups]

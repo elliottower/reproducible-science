@@ -107,11 +107,11 @@ something existed, never when work began.
 `plugin/` is a Claude Code plugin that tells Claude when to reach for the CLI.
 
 ```bash
-/plugin marketplace add elliottower/prereg
-/plugin install prereg@prereg
+/plugin marketplace add elliottower/reproducible-science
+/plugin install prereg@reproducible-science
 ```
 
-For all three reproducible-science tools in one plugin (prereg + [citations](https://github.com/elliottower/citations) + [results](https://github.com/elliottower/results)):
+For all three reproducible-science tools in one plugin (prereg + [citations](https://github.com/elliottower/reproducible-science/tree/main/packages/citations) + [results](https://github.com/elliottower/reproducible-science/tree/main/packages/results)):
 
 ```bash
 /plugin marketplace add elliottower/reproducible-science

@@ -19,6 +19,10 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
 ]
 dependencies = [  ] # stdlib only
+urls.Changelog = "https://github.com/elliottower/reproducible-science/blob/main/CHANGELOG.md"
+urls.Homepage = "https://github.com/elliottower/reproducible-science"
+urls.Issues = "https://github.com/elliottower/reproducible-science/issues"
+urls.Source = "https://github.com/elliottower/reproducible-science/tree/main/packages/prereg"
 scripts.prereg = "prereg.cli:main"
 
 [tool.hatch]
