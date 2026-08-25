@@ -2,7 +2,7 @@ schema_version: repro/1
 project: reproducible-science (self-audit)
 provenance:
   repository: https://github.com/elliottower/reproducible-science.git
-  commit: 88b552e897405805b89e9c60dbd0626823a4e366
+  commit: 53fc466af148f20f7e07a119b14423390500dd26
   dirty: true
   generated_by: scripts/build_self_audit.py
 artifacts:
