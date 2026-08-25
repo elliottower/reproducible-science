@@ -12,7 +12,7 @@ import pytest
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
-from artifact_readers import read_pickle, read_rdata, unwrap  # noqa: E402
+from artifact_readers import read_pickle, read_rdata, unwrap
 
 
 class _Payload:
@@ -37,8 +37,9 @@ def test_read_pickle_does_not_execute_reduce(tmp_path):
 
 def test_read_pickle_recovers_literals_past_a_hostile_reduce(tmp_path):
     hostile = tmp_path / "mixed.pkl"
-    hostile.write_bytes(pickle.dumps(_Payload(tmp_path / "unused"))
-                        + pickle.dumps([0.9489, 1234.5]))
+    hostile.write_bytes(
+        pickle.dumps(_Payload(tmp_path / "unused")) + pickle.dumps([0.9489, 1234.5])
+    )
 
     values, complete = read_pickle(hostile)
 
@@ -82,9 +83,13 @@ def test_read_rdata_reports_incomplete_rather_than_inventing_values(tmp_path):
 
 def test_read_rdata_recovers_a_real_vector(tmp_path):
     # REALSXP, length 3, three big-endian doubles.
-    stream = (b"X\n" + struct.pack(">iii", 2, 0x030601, 0x030500)
-              + struct.pack(">i", 14) + struct.pack(">i", 3)
-              + struct.pack(">3d", 0.9489, 94.872, -1.5))
+    stream = (
+        b"X\n"
+        + struct.pack(">iii", 2, 0x030601, 0x030500)
+        + struct.pack(">i", 14)
+        + struct.pack(">i", 3)
+        + struct.pack(">3d", 0.9489, 94.872, -1.5)
+    )
     path = tmp_path / "vector.rds"
     path.write_bytes(stream)
 
@@ -95,8 +100,13 @@ def test_read_rdata_recovers_a_real_vector(tmp_path):
 
 
 def test_read_rdata_reads_through_each_supported_compressor(tmp_path):
-    stream = (b"X\n" + struct.pack(">iii", 2, 0x030601, 0x030500)
-              + struct.pack(">i", 14) + struct.pack(">i", 1) + struct.pack(">d", 42.125))
+    stream = (
+        b"X\n"
+        + struct.pack(">iii", 2, 0x030601, 0x030500)
+        + struct.pack(">i", 14)
+        + struct.pack(">i", 1)
+        + struct.pack(">d", 42.125)
+    )
     path = tmp_path / "compressed.rds"
     path.write_bytes(gzip.compress(stream))
 
@@ -107,8 +117,13 @@ def test_read_rdata_reads_through_each_supported_compressor(tmp_path):
 
 
 def test_unwrap_dispatches_on_a_stem_that_names_a_format(tmp_path):
-    inner = (b"X\n" + struct.pack(">iii", 2, 0x030601, 0x030500)
-             + struct.pack(">i", 14) + struct.pack(">i", 1) + struct.pack(">d", 7.5))
+    inner = (
+        b"X\n"
+        + struct.pack(">iii", 2, 0x030601, 0x030500)
+        + struct.pack(">i", 14)
+        + struct.pack(">i", 1)
+        + struct.pack(">d", 7.5)
+    )
     wrapper = tmp_path / "RData.gz"
     wrapper.write_bytes(gzip.compress(inner))
 

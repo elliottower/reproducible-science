@@ -24,10 +24,16 @@ import urllib.request
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 
-from confirm_numbers import (BINARY, COMPRESSORS, TIERS, TRACEABLE,  # noqa: E402
-                             build_index, collect, manuscript_probes, strength)
-from precision_check import decoys  # noqa: E402
-from scan_numbers import scan  # noqa: E402
+from confirm_numbers import (
+    TIERS,
+    TRACEABLE,
+    build_index,
+    collect,
+    manuscript_probes,
+    strength,
+)
+from precision_check import decoys
+from scan_numbers import scan
 
 HERE = pathlib.Path(__file__).parent
 FRAME = HERE / "frame.json"
@@ -79,8 +85,7 @@ def article_text(entry: dict, into: pathlib.Path) -> pathlib.Path | None:
         return None
     pdf = into / "article.pdf"
     pdf.write_bytes(payload)
-    result = subprocess.run(["pdftotext", "-layout", str(pdf), str(target)],
-                            capture_output=True)
+    result = subprocess.run(["pdftotext", "-layout", str(pdf), str(target)], capture_output=True)
     pdf.unlink(missing_ok=True)
     return target if result.returncode == 0 and target.exists() else None
 
@@ -101,8 +106,18 @@ def clone(entry: dict, into: pathlib.Path) -> tuple[pathlib.Path | None, str]:
     if size > MAX_REPO_KB:
         return None, f"repository is {size // 1000} MB"
     result = subprocess.run(
-        ["git", "clone", "--depth", "1", "-q", f"https://github.com/{owner}/{repo}.git",
-         str(target)], capture_output=True, timeout=600)
+        [
+            "git",
+            "clone",
+            "--depth",
+            "1",
+            "-q",
+            f"https://github.com/{owner}/{repo}.git",
+            str(target),
+        ],
+        capture_output=True,
+        timeout=600,
+    )
     if result.returncode != 0:
         shutil.rmtree(target, ignore_errors=True)
         return None, "clone failed"
@@ -119,8 +134,14 @@ def measure(text_path: pathlib.Path, repo: pathlib.Path) -> dict:
 
     groups = collect(repo)
     index, partial = build_index(
-        groups["data"] + groups["spreadsheet"] + groups["binary"] + groups["compressed"]
-        + groups["code"], repo, manuscript_probes(article))
+        groups["data"]
+        + groups["spreadsheet"]
+        + groups["binary"]
+        + groups["compressed"]
+        + groups["code"],
+        repo,
+        manuscript_probes(article),
+    )
     unread = partial + [str(p.relative_to(repo)) for p in groups["unread"]]
 
     traceable = [r for r in records if r["kind"] in TRACEABLE]
@@ -140,12 +161,20 @@ def measure(text_path: pathlib.Path, repo: pathlib.Path) -> dict:
             "decoy_hits": sum(1 for d in trials if d in index),
         }
 
-    settled = [{"printed": r["printed"], "kind": r["kind"], "line": r["line"],
-                "context": r["context"][:110], "strength": strength(r["printed"]),
-                "found_in": index[r["printed"]][0], "found_line": index[r["printed"]][1],
-                "found_context": index[r["printed"]][2]}
-               for r in traceable
-               if r["printed"] in index and strength(r["printed"]) in ("moderate", "strong")]
+    settled = [
+        {
+            "printed": r["printed"],
+            "kind": r["kind"],
+            "line": r["line"],
+            "context": r["context"][:110],
+            "strength": strength(r["printed"]),
+            "found_in": index[r["printed"]][0],
+            "found_line": index[r["printed"]][1],
+            "found_context": index[r["printed"]][2],
+        }
+        for r in traceable
+        if r["printed"] in index and strength(r["printed"]) in ("moderate", "strong")
+    ]
 
     return {
         "confirmations": settled,
@@ -174,10 +203,14 @@ def main() -> int:
 
     frame = json.loads(FRAME.read_text())
     sampled = set(frame["selected"])
-    candidates = [e for e in frame["ordered_frame"]
-                  if e["key"] not in sampled and e["key"] not in done
-                  and "github.com" in (e.get("code_url") or "")
-                  and (not wanted or e["key"] in wanted)]
+    candidates = [
+        e
+        for e in frame["ordered_frame"]
+        if e["key"] not in sampled
+        and e["key"] not in done
+        and "github.com" in (e.get("code_url") or "")
+        and (not wanted or e["key"] in wanted)
+    ]
 
     added = 0
     for entry in candidates:
@@ -195,8 +228,12 @@ def main() -> int:
             if repo is None:
                 record = {"key": key, "status": reason}
             else:
-                record = {"key": key, "status": "measured", "year": entry.get("year", ""),
-                          **measure(text_path, repo)}
+                record = {
+                    "key": key,
+                    "status": "measured",
+                    "year": entry.get("year", ""),
+                    **measure(text_path, repo),
+                }
                 # The checkout is the bulk of the disk cost and nothing downstream needs it
                 # once the index has been reduced to counts.
                 shutil.rmtree(repo, ignore_errors=True)
@@ -204,10 +241,15 @@ def main() -> int:
         with results.open("a") as handle:
             handle.write(json.dumps(record) + "\n")
         added += 1
-        print(f"  [{added:2}/{args.limit}] {key:<22} {record['status']}"
-              + (f"  {record.get('numeric_tokens', '')} tokens,"
-                 f" index {record.get('index_size', '')}"
-                 if record["status"] == "measured" else ""), flush=True)
+        print(
+            f"  [{added:2}/{args.limit}] {key:<22} {record['status']}"
+            + (
+                f"  {record.get('numeric_tokens', '')} tokens, index {record.get('index_size', '')}"
+                if record["status"] == "measured"
+                else ""
+            ),
+            flush=True,
+        )
     return 0
 
 

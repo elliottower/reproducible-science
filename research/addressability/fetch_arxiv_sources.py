@@ -91,8 +91,8 @@ def resolve(title: str) -> dict | None:
     title returns papers that cite it as well as the paper itself.
     """
     query = urllib.parse.urlencode(
-        {"search_query": f'ti:"{title}"', "max_results": 5,
-         "sortBy": "relevance"})
+        {"search_query": f'ti:"{title}"', "max_results": 5, "sortBy": "relevance"}
+    )
     payload = get(f"http://export.arxiv.org/api/query?{query}")
     if not payload:
         return None
@@ -108,8 +108,11 @@ def resolve(title: str) -> dict | None:
         found = (entry.findtext(f"{ATOM}title") or "").strip()
         if normal(found).startswith(normal(title)[:48]):
             identifier = (entry.findtext(f"{ATOM}id") or "").rsplit("/", 1)[-1]
-            return {"title": found, "arxiv_id": identifier,
-                    "published": (entry.findtext(f"{ATOM}published") or "")[:10]}
+            return {
+                "title": found,
+                "arxiv_id": identifier,
+                "published": (entry.findtext(f"{ATOM}published") or "")[:10],
+            }
     return None
 
 

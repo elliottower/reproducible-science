@@ -29,8 +29,21 @@ import zipfile
 
 #: Files holding results the work produced. A printed value confirmed against one of these
 #: is confirmed against the record of a run.
-DATA = {".csv", ".tsv", ".json", ".txt", ".dat", ".out", ".log", ".yaml", ".yml", ".xml",
-        ".ipynb", ".html", ".md"}
+DATA = {
+    ".csv",
+    ".tsv",
+    ".json",
+    ".txt",
+    ".dat",
+    ".out",
+    ".log",
+    ".yaml",
+    ".yml",
+    ".xml",
+    ".ipynb",
+    ".html",
+    ".md",
+}
 
 #: Source that produces results rather than recording them. Searched, because a
 #: hyperparameter's counterpart is a call site, but its absence does not make a value
@@ -52,9 +65,33 @@ SPREADSHEET = {".xlsx", ".xlsm"}
 
 #: Files that hold results in a form this stage cannot read. Their presence is what makes a
 #: verdict `unchecked` rather than `absent`: the artifact may well contain the value.
-OPAQUE = {".pkl", ".pickle", ".npy", ".npz", ".pt", ".pth", ".h5", ".hdf5", ".mat",
-          ".rds", ".rdata", ".parquet", ".feather", ".xls", ".db", ".sqlite",
-          ".png", ".jpg", ".jpeg", ".pdf", ".eps", ".ps", ".svg", ".gz", ".zip"}
+OPAQUE = {
+    ".pkl",
+    ".pickle",
+    ".npy",
+    ".npz",
+    ".pt",
+    ".pth",
+    ".h5",
+    ".hdf5",
+    ".mat",
+    ".rds",
+    ".rdata",
+    ".parquet",
+    ".feather",
+    ".xls",
+    ".db",
+    ".sqlite",
+    ".png",
+    ".jpg",
+    ".jpeg",
+    ".pdf",
+    ".eps",
+    ".ps",
+    ".svg",
+    ".gz",
+    ".zip",
+}
 
 #: Directories that hold the tool's own inputs rather than the work's outputs.
 SKIP_DIRS = {".git", "node_modules", "__pycache__", ".ipynb_checkpoints", "venv", ".venv"}
@@ -101,8 +138,13 @@ def strength(printed: str) -> str:
 
 def collect(root: pathlib.Path) -> dict[str, list[pathlib.Path]]:
     """Files under `root` grouped by what they can settle, ignoring the manuscript."""
-    groups: dict[str, list[pathlib.Path]] = {"data": [], "code": [], "opaque": [],
-                                             "manuscript": [], "spreadsheet": []}
+    groups: dict[str, list[pathlib.Path]] = {
+        "data": [],
+        "code": [],
+        "opaque": [],
+        "manuscript": [],
+        "spreadsheet": [],
+    }
     for path in root.rglob("*"):
         if not path.is_file() or SKIP_DIRS & set(path.parts):
             continue
@@ -197,49 +239,76 @@ def main() -> int:
         record["verdict"] = verdict(record["printed"], text, searchable)
         record["strength"] = strength(record["printed"])
 
-    counts = {name: sum(1 for r in traceable if r["verdict"] == name)
-              for name in ("confirmed", "absent", "unchecked")}
+    counts = {
+        name: sum(1 for r in traceable if r["verdict"] == name)
+        for name in ("confirmed", "absent", "unchecked")
+    }
 
     print(f"  {args.scan}")
-    print(f"  artifact: {len(groups['data'])} data, {len(groups['spreadsheet'])} spreadsheet, "
-          f"{len(groups['code'])} code, {len(groups['opaque'])} opaque, "
-          f"{len(groups['manuscript'])} manuscript (excluded); "
-          f"{len(text):,} characters searched\n")
+    print(
+        f"  artifact: {len(groups['data'])} data, {len(groups['spreadsheet'])} spreadsheet, "
+        f"{len(groups['code'])} code, {len(groups['opaque'])} opaque, "
+        f"{len(groups['manuscript'])} manuscript (excluded); "
+        f"{len(text):,} characters searched\n"
+    )
     print(f"  traceable values: {len(traceable)}\n")
-    print(f"    {'tier':10}{'values':>8}{'confirmed':>11}{'absent':>8}{'unchecked':>11}"
-          f"{'rate':>8}   example")
+    print(
+        f"    {'tier':10}{'values':>8}{'confirmed':>11}{'absent':>8}{'unchecked':>11}"
+        f"{'rate':>8}   example"
+    )
     for tier in TIERS:
         row = [r for r in traceable if r["strength"] == tier]
         if not row:
             continue
         hit = sum(1 for r in row if r["verdict"] == "confirmed")
         sample = next((r["printed"] for r in row if r["verdict"] == "confirmed"), "-")
-        print(f"    {tier:10}{len(row):>8}{hit:>11}"
-              f"{sum(1 for r in row if r['verdict'] == 'absent'):>8}"
-              f"{sum(1 for r in row if r['verdict'] == 'unchecked'):>11}"
-              f"{hit / len(row):>8.0%}   {sample}")
+        print(
+            f"    {tier:10}{len(row):>8}{hit:>11}"
+            f"{sum(1 for r in row if r['verdict'] == 'absent'):>8}"
+            f"{sum(1 for r in row if r['verdict'] == 'unchecked'):>11}"
+            f"{hit / len(row):>8.0%}   {sample}"
+        )
 
     load = [r for r in traceable if r["strength"] in ("moderate", "strong")]
     hit = sum(1 for r in load if r["verdict"] == "confirmed")
-    print(f"\n    load-bearing (4+ digits): {hit} of {len(load)} confirmed"
-          f"{f' ({hit / len(load):.0%})' if load else ''}\n")
+    print(
+        f"\n    load-bearing (4+ digits): {hit} of {len(load)} confirmed"
+        f"{f' ({hit / len(load):.0%})' if load else ''}\n"
+    )
 
     for kind in sorted({r["kind"] for r in load}):
         row = [r for r in load if r["kind"] == kind]
-        print(f"    {kind:18} {len(row):5}   " + "  ".join(
-            f"{name} {sum(1 for r in row if r['verdict'] == name)}"
-            for name in ("confirmed", "absent", "unchecked")))
+        print(
+            f"    {kind:18} {len(row):5}   "
+            + "  ".join(
+                f"{name} {sum(1 for r in row if r['verdict'] == name)}"
+                for name in ("confirmed", "absent", "unchecked")
+            )
+        )
 
     out = pathlib.Path(args.scan).with_suffix(".confirmed.json")
-    out.write_text(json.dumps(
-        {"scan": args.scan, "repo": args.repo,
-         "files": {k: len(v) for k, v in groups.items()},
-         "counts": counts,
-         "by_tier": {tier: {name: sum(1 for r in traceable if r["strength"] == tier
-                                      and r["verdict"] == name)
-                            for name in ("confirmed", "absent", "unchecked")}
-                     for tier in TIERS},
-         "records": traceable}, indent=2) + "\n")
+    out.write_text(
+        json.dumps(
+            {
+                "scan": args.scan,
+                "repo": args.repo,
+                "files": {k: len(v) for k, v in groups.items()},
+                "counts": counts,
+                "by_tier": {
+                    tier: {
+                        name: sum(
+                            1 for r in traceable if r["strength"] == tier and r["verdict"] == name
+                        )
+                        for name in ("confirmed", "absent", "unchecked")
+                    }
+                    for tier in TIERS
+                },
+                "records": traceable,
+            },
+            indent=2,
+        )
+        + "\n"
+    )
     print(f"\n  wrote {out}")
     return 0
 
