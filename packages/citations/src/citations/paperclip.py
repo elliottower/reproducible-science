@@ -29,14 +29,22 @@ quotations, and it is not worth hiding.
 
 ## Why a partial document is refused
 
-`cat --full` truncates, and on the larger of two caps it says so and on the smaller it does not.
-A 1,626-line paper came back as a contiguous, well-formed, error-free 829 lines with nothing to
-mark the cut. Pinning that would put half a paper on disk under the name of a whole one, and
-every quotation from the back half would be reported `not found` -- a checker inventing
-misquotations out of a transfer limit. So the length Paperclip declares for the file is read
-first, from `ls`, and a body that does not run from `L1` to that line contiguously is refused as
-`unavailable`. Refusing a document that might be complete costs an `unchecked`; accepting one
-that is not costs a false accusation against a paper.
+Paperclip cuts its own output at 250,000 characters. The cut lands mid-sentence and the body
+carries `[output truncated at 250000 chars]` after it, so a long paper arrives as a prefix: one
+4,960-line article delivered 2,179 of its 2,485 lines that way. Pinning a prefix would put part
+of a paper on disk under the name of the whole one, and every quotation past the cut would be
+reported `not found` -- a checker manufacturing misquotations out of a transfer limit.
+
+So the file's last line number is read first, with `tail -n 1`, and a body that does not run
+from `L1` to that line contiguously is refused as `unavailable`. Both the marker and the extent
+are checked: the marker proves a truncation happened, and the extent would catch one that did
+not announce itself. Refusing a document that might be whole costs an `unchecked`; accepting
+one that is not costs a false accusation against a paper.
+
+The extent comes from `tail -n 1` and never from `ls`, whose printed `(N lines)` counts
+something else for a PubMed Central document -- 1,626 against a file ending at L829, 4,960
+against one ending at L2485. For bioRxiv the two agree, which is what makes believing `ls` easy
+and wrong: it refuses whole PMC documents as though they had been cut.
 
 ## Talking to it
 
@@ -92,8 +100,12 @@ TOOL = "paperclip"
 #: no honest quotation of the paper could match it.
 GUTTER = re.compile(r"^L(\d+): ?(.*)$")
 
-#: `content.lines  (1626 lines)` inside an `ls` listing -- the document's declared length.
-DECLARED_LINES = re.compile(r"content\.lines\s+\((\d+)\s+lines\)")
+#: `content.lines  (1626 lines)` inside an `ls` listing. **Not the length of the file** and not
+#: used as one: for a PubMed Central document it over-reports, and by a lot -- PMC7254001 lists
+#: 1626 against a file whose last line is L829, and PMC8371605 lists 4960 against L2485. For
+#: bioRxiv the two agree, which is what makes the disagreement easy to miss. The extent comes
+#: from `tail -n 1` on the file itself instead; this pattern is kept only to read the listing.
+LISTED_LINES = re.compile(r"content\.lines\s+\((\d+)\s+lines\)")
 
 #: A trailing `[23ms]` or `[1.7s]` is appended to every response and is not part of the file.
 TIMING = re.compile(r"^\[\d+(?:\.\d+)?m?s\]$")
@@ -101,8 +113,9 @@ TIMING = re.compile(r"^\[\d+(?:\.\d+)?m?s\]$")
 #: `[exit 1]` accompanies a failed command. Its absence means the command succeeded.
 EXIT = re.compile(r"^\[exit (\d+)\]$")
 
-#: Emitted when the larger transfer cap is hit. The smaller cap is silent, which is why the
-#: declared length is checked rather than this marker.
+#: Paperclip appends this when it cuts its own output, which it does at exactly 250,000
+#: characters of body, mid-line. It is checked alongside the extent rather than instead of it:
+#: the marker proves a truncation happened, and the extent catches one that did not say so.
 TRUNCATED = re.compile(r"^\[output truncated")
 
 #: Document ids as they appear in a listing, one per result line. Three spellings are in use and
@@ -315,14 +328,26 @@ def failure(lines: list[str]) -> str:
     return ""
 
 
-def declared_length(listing: str) -> int:
-    """How many lines Paperclip says `content.lines` runs to, from a directory listing.
+def listed_length(listing: str) -> int:
+    """The line count an `ls` listing prints for `content.lines`.
 
-    Zero when the listing does not say. A fetch cannot be checked for completeness without it,
-    so zero is treated as "cannot tell" rather than as "empty".
+    Read for reporting only. It is not the file's extent -- see `LISTED_LINES` -- and using it
+    as one refuses whole PubMed Central documents as incomplete.
     """
-    found = DECLARED_LINES.search(listing)
+    found = LISTED_LINES.search(listing)
     return int(found.group(1)) if found else 0
+
+
+def last_line_number(tail: str) -> int:
+    """The number of the file's final line, from `tail -n 1` on the file itself.
+
+    This is the extent a fetched body has to reach. It comes from the same command surface
+    serving the body, so the two count the same thing, which `ls` does not.
+
+    Zero when the answer carries no numbered line, which is "cannot tell" and not "empty".
+    """
+    numbered = [int(m.group(1)) for m in (GUTTER.match(line) for line in tail.splitlines()) if m]
+    return numbered[-1] if numbered else 0
 
 
 def document_ids(listing: str) -> list[str]:
@@ -330,18 +355,18 @@ def document_ids(listing: str) -> list[str]:
     return DOCUMENT_ID.findall(listing)
 
 
-def plain_text(lines: list[str], declared: int) -> str:
+def plain_text(lines: list[str], extent: int) -> str:
     """The document's text, with the gutter removed, or a refusal if it is not all there.
 
-    Raises `PaperclipResponseError` unless the body runs from `L1` to `declared` with no gap.
-    The check is against the declared length rather than against a truncation marker because
-    the smaller of the two transfer caps emits no marker: a half-document arrives contiguous,
-    well formed and silent.
+    Raises `PaperclipResponseError` unless the body runs from `L1` to `extent` with no gap,
+    where `extent` is the file's last line number from `tail -n 1`. Paperclip cuts its own
+    output at 250,000 characters and says so, so the marker is checked too -- the marker
+    proves a truncation happened and the extent catches one that did not announce itself.
     """
     numbered = [(int(m.group(1)), m.group(2)) for m in map(GUTTER.match, lines) if m]
     if any(TRUNCATED.match(line.strip()) for line in lines):
         raise PaperclipResponseError(
-            f"Paperclip truncated the document at {len(numbered)} of {declared} lines"
+            f"Paperclip truncated the document at {len(numbered)} of {extent} lines"
         )
     if not numbered:
         raise PaperclipResponseError("Paperclip returned no line-numbered content")
@@ -350,10 +375,10 @@ def plain_text(lines: list[str], declared: int) -> str:
         raise PaperclipResponseError(
             f"Paperclip returned lines {got[0]}-{got[-1]} with gaps; the document is not whole"
         )
-    if declared and len(got) != declared:
+    if extent and len(got) != extent:
         raise PaperclipResponseError(
-            f"Paperclip returned {len(got)} of the {declared} lines it declares for this "
-            "document; a partial document is not pinned"
+            f"Paperclip returned {len(got)} lines of a document whose last line is L{extent}; "
+            "a partial document is not pinned"
         )
     return "\n".join(text for _, text in numbered) + "\n"
 
@@ -453,15 +478,19 @@ class HttpClient:
         if not document_id:
             return Document(identifier=identifier)
 
-        listing, status = body(self.command(f"ls /papers/{document_id}/"))
-        problem = failure(listing)
+        path = f"/papers/{document_id}/content.lines"
+
+        # The last line first, so there is something to hold the body against. `ls` prints a
+        # count too and it is a different number: for a PubMed Central document it over-reports
+        # by a factor of two, and believing it refuses complete documents as truncated.
+        tail, status = body(self.command(f"tail -n 1 {path}"))
+        problem = failure(tail)
         if status or problem:
             if any(marker in problem.lower() for marker in ABSENT):
-                return Document(identifier=identifier, document_id=document_id)
-            raise PaperclipUnavailableError(problem or f"ls exited {status}")
-        declared = declared_length("\n".join(listing))
+                return Document(identifier=identifier, document_id=document_id, path=path)
+            raise PaperclipUnavailableError(problem or f"tail exited {status}")
+        extent = last_line_number("\n".join(tail))
 
-        path = f"/papers/{document_id}/content.lines"
         content, status = body(self.command(f"cat --full {path}"))
         problem = failure(content)
         if status or problem:
@@ -469,13 +498,13 @@ class HttpClient:
                 return Document(identifier=identifier, document_id=document_id, path=path)
             raise PaperclipUnavailableError(problem or f"cat exited {status}")
 
-        text = plain_text(content, declared)
+        text = plain_text(content, extent)
         return Document(
             identifier=identifier,
             document_id=document_id,
             path=path,
             text=text,
-            lines=declared or text.count("\n"),
+            lines=extent or text.count("\n"),
         )
 
     def rest(self, path: str, params: dict | None = None) -> dict:
@@ -704,10 +733,11 @@ __all__ = [
     "RepoPaper",
     "Resolution",
     "body",
-    "declared_length",
     "default_client",
     "document_ids",
     "failure",
+    "last_line_number",
+    "listed_length",
     "papers_from_status",
     "plain_text",
     "provenance_of",

@@ -2,7 +2,7 @@
 
 Three ways this integration could quietly corrupt a report, and they are what these pin:
 
-    a partial document pinned as a whole one, so real quotations read `not found`
+    a prefix of a document pinned as a whole one, so real quotations read `not found`
     a source that could not be fetched reported as a source that contradicts a quote
     a line range from a remote parse treated as an address a result is computed from
 
@@ -92,19 +92,20 @@ def test_gutter_is_removed_from_the_text_that_gets_hashed():
     assert paperclip.plain_text(["L1: first", "L2: second"], 2) == "first\nsecond\n"
 
 
-def test_a_silently_truncated_document_is_refused():
-    # The real case: `ls` declares 1626 lines and `cat --full` returns a contiguous, well
-    # formed, error-free 829 of them with no marker at all. Pinning it puts half a paper on
-    # disk under the name of a whole one, and every quotation from the back half reads
-    # `not found` -- a checker manufacturing misquotations out of a transfer limit.
+def test_paperclips_own_truncation_is_refused():
+    # Paperclip cuts at 250,000 characters, mid-sentence, and appends this marker. One
+    # 2,485-line article arrives as 2,179 lines that way. Pinning the prefix would report
+    # every quotation past the cut as `not found`.
     with pytest.raises(paperclip.PaperclipResponseError) as e:
-        paperclip.plain_text(content(829), declared=1626)
+        paperclip.plain_text([*content(2179), "", "[output truncated at 250000 chars]"], 2485)
+    assert "2179" in str(e.value)
+
+
+def test_a_short_body_is_refused_even_with_no_marker():
+    # The marker is Paperclip saying so. The extent is what would catch a cut that did not.
+    with pytest.raises(paperclip.PaperclipResponseError) as e:
+        paperclip.plain_text(content(829), extent=1626)
     assert "829" in str(e.value) and "1626" in str(e.value)
-
-
-def test_a_marked_truncation_is_refused_too():
-    with pytest.raises(paperclip.PaperclipResponseError):
-        paperclip.plain_text([*content(2179), "", "[output truncated at 250000 chars]"], 4960)
 
 
 def test_a_document_with_a_hole_in_it_is_refused():
@@ -114,13 +115,13 @@ def test_a_document_with_a_hole_in_it_is_refused():
 
 def test_a_whole_document_is_accepted():
     # The negative half: a refusal that can never be lifted would be turned off.
-    assert paperclip.plain_text(content(3), declared=3) == "line 1\nline 2\nline 3\n"
+    assert paperclip.plain_text(content(3), extent=3) == "line 1\nline 2\nline 3\n"
 
 
-def test_a_declared_length_of_zero_does_not_block_a_contiguous_document():
-    # `ls` not saying how long the file is means the completeness check cannot run, which is
+def test_an_unknown_extent_does_not_block_a_contiguous_document():
+    # Nothing saying how long the file is means the completeness check cannot run, which is
     # different from the file being empty.
-    assert paperclip.plain_text(content(2), declared=0) == "line 1\nline 2\n"
+    assert paperclip.plain_text(content(2), extent=0) == "line 1\nline 2\n"
 
 
 # --- response furniture is not content ---------------------------------------------------------
@@ -138,8 +139,13 @@ def test_a_failed_command_reports_its_status_and_reason():
     assert paperclip.failure(lines) == "vsh: cat: Slab service unavailable"
 
 
-def test_the_declared_length_is_read_out_of_a_listing():
-    assert paperclip.declared_length(LISTING) == 1626
+def test_the_extent_is_the_files_last_line_and_not_what_ls_prints():
+    # `ls` prints 1626 for PMC7254001; `tail -n 1` on the same file answers L829, and 829 is
+    # what `cat --full` delivers. Believing `ls` refuses a whole document as truncated, and
+    # for bioRxiv the two numbers agree, which is what makes the mistake easy to keep.
+    assert paperclip.listed_length(LISTING) == 1626
+    assert paperclip.last_line_number("L829: the final line of the file\n[30ms]") == 829
+    assert paperclip.last_line_number("[30ms]") == 0
 
 
 def test_every_spelling_of_a_document_id_is_recognized():
@@ -503,28 +509,46 @@ def http(outputs, status: int = 200) -> paperclip.HttpClient:
     return paperclip.HttpClient("secret-key", session=FakeSession(outputs, status))
 
 
-def test_the_client_asks_for_the_declared_length_before_reading_the_document():
+def test_the_client_learns_the_extent_before_it_judges_the_body():
     session = FakeSession(
         {
             "lookup": LOOKUP,
-            "ls": "meta.json  content.lines  (2 lines)\n[10ms]",
+            "tail -n 1": "L2: second line\n[10ms]",
             "cat --full": "L1: first line\nL2: second line\n[30ms]",
         }
     )
     doc = paperclip.HttpClient("k", session=session).fetch("10.1101/2025.10.22.681631")
     commands = [r["json"]["params"]["arguments"]["command"] for r in session.requests]
-    assert commands[1].startswith("ls "), "the length has to be known before the body is judged"
+    assert commands[1].startswith("tail -n 1 "), "the extent comes from the file, not from `ls`"
+    assert not any(c.startswith("ls ") for c in commands), "`ls` counts something else"
     assert commands[2].startswith("cat --full "), "plain `cat` is a preview, not the document"
     assert doc.text == "first line\nsecond line\n"
     assert doc.document_id == "22c1bebd-6dc0-1014-8e0e-900874d71cd6"
 
 
-def test_the_client_refuses_a_short_body_rather_than_returning_it():
+def test_a_pmc_document_whose_listing_over_reports_is_still_pinned():
+    # The regression this cost: `ls` says 1626, the file ends at L829, and `cat --full`
+    # delivers all 829. Reading the extent from `ls` reported a complete document as
+    # truncated and refused every PubMed Central paper in a bibliography.
+    session = FakeSession(
+        {
+            "lookup": LOOKUP,
+            "ls": "meta.json  content.lines  (1626 lines)\n[10ms]",
+            "tail -n 1": "L829: the last line\n[10ms]",
+            "cat --full": "\n".join(content(829)) + "\n[30ms]",
+        }
+    )
+    doc = paperclip.HttpClient("k", session=session).fetch("10.1101/x")
+    assert doc.lines == 829
+    assert doc.text.count("\n") == 829
+
+
+def test_the_client_refuses_a_truncated_body_rather_than_returning_it():
     client = http(
         {
             "lookup": LOOKUP,
-            "ls": "content.lines  (1626 lines)\n[10ms]",
-            "cat --full": "\n".join(content(829)) + "\n[30ms]",
+            "tail -n 1": "L2485: the last line\n[10ms]",
+            "cat --full": "\n".join(content(2179)) + "\n[output truncated at 250000 chars]\n[30ms]",
         }
     )
     with pytest.raises(paperclip.PaperclipResponseError):
@@ -537,9 +561,7 @@ def test_a_document_paperclip_has_never_heard_of_comes_back_empty():
 
 
 def test_a_document_id_is_used_directly_without_a_lookup():
-    session = FakeSession(
-        {"ls": "content.lines  (1 lines)\n[1ms]", "cat --full": "L1: only\n[1ms]"}
-    )
+    session = FakeSession({"tail -n 1": "L1: only\n[1ms]", "cat --full": "L1: only\n[1ms]"})
     paperclip.HttpClient("k", session=session).fetch("PMC8371605")
     commands = [r["json"]["params"]["arguments"]["command"] for r in session.requests]
     assert not any(c.startswith("lookup") for c in commands)

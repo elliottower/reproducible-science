@@ -125,7 +125,7 @@ citations resolve --via paperclip 10.1101/2025.10.22.681631 10.1038/s41586-021-0
 
 ```text
   pinned      10.1101/2025.10.22.681631               d9f585e2faad
-  unavailable 10.1038/s41586-021-03819-2              Paperclip truncated the document at 2179 of 4960 lines
+  unavailable 10.1038/s41586-021-03819-2              Paperclip truncated the document at 2179 of 2485 lines
 
   pinned 1 of 2
   1 without a pinned copy; quotations against those read `unchecked`.
@@ -146,12 +146,17 @@ Full text is open access only, so a bibliography of Elsevier and Springer articl
 mostly to `unchecked`. That is the true account of what can be checked, and the extra being
 uninstalled produces the same `unchecked` rather than an error.
 
-A document that arrives incomplete is refused rather than pinned. `cat --full` truncates at two
-caps and announces only the larger: a 1,626-line paper came back as a contiguous, well-formed,
-error-free 829 lines with no marker. Pinning that would put half a paper on disk under the name
-of a whole one, and every quotation from the back half would read `not found` — a checker
-inventing misquotations out of a transfer limit. So the length Paperclip declares for the file
-is read first, and a body that does not run to it is `unavailable`.
+A document that arrives incomplete is refused rather than pinned. Paperclip cuts its own output
+at 250,000 characters — mid-sentence, with `[output truncated at 250000 chars]` appended — so a
+2,485-line article arrives as its first 2,179 lines. Pinning a prefix would put part of a paper
+on disk under the name of the whole one, and every quotation past the cut would read `not found`,
+a checker manufacturing misquotations out of a transfer limit. So the file's last line number is
+read first with `tail -n 1`, and a body that does not run to it is `unavailable`.
+
+That extent comes from the file and never from `ls`, whose printed `(N lines)` counts something
+else for a PubMed Central document: 1,626 against a file whose last line is L829. For bioRxiv the
+two agree, so taking the listing at its word looks right until it silently refuses every PMC
+paper in a bibliography as truncated.
 
 ### Importing a paper repo
 
