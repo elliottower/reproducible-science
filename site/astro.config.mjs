@@ -36,8 +36,7 @@ export default defineConfig({
           label: "Demo",
           items: [
             { label: "Verify a claim", link: "/demo/verify/" },
-            { label: "Notebook (Pyodide)", link: "/demo/notebook/" },
-            { label: "Notebook (JupyterLite)", link: "/demo/jupyterlite/" },
+            { label: "Notebook", link: "/demo/jupyterlite/" },
           ],
         },
         {
