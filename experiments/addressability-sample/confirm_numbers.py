@@ -53,6 +53,37 @@ SPREADSHEET = {".xlsx", ".xlsm"}
 #: and 98 per cent. Excluded outright rather than down-weighted.
 MANUSCRIPT = {".tex", ".bib", ".bbl", ".cls", ".sty", ".rtf", ".docx", ".odt"}
 
+#: Distinctive lines lifted from the article and looked for in each candidate file. A
+#: repository that carries its own manuscript is matching the paper against itself, and an
+#: extension list loses to the next format that does it -- one development article ships its
+#: paper as `article/draft.md`, which no list of document extensions would catch. Content
+#: settles it in any format.
+MANUSCRIPT_PROBES = 14
+
+#: Probes a file must contain verbatim before it counts as a copy of the manuscript. Three
+#: long sentences shared with the paper is not a coincidence, and is not what a results file
+#: looks like.
+MANUSCRIPT_HITS = 3
+
+
+def manuscript_probes(article: str) -> list[str]:
+    """Long, distinctive lines from across the article, for detecting a copy of it.
+
+    Drawn at even intervals so a repository holding only one section is still caught, and
+    restricted to lines long enough that sharing one verbatim means something.
+    """
+    lines = [line.strip() for line in article.splitlines() if 60 <= len(line.strip()) <= 200]
+    if not lines:
+        return []
+    step = max(1, len(lines) // MANUSCRIPT_PROBES)
+    return lines[::step][:MANUSCRIPT_PROBES]
+
+
+def is_manuscript(text: str, probes: list[str]) -> bool:
+    if not probes:
+        return False
+    return sum(1 for probe in probes if probe in text) >= MANUSCRIPT_HITS
+
 #: Binary records with a reader in `artifact_readers`. Both formats here execute code when
 #: opened the ordinary way, and neither is opened the ordinary way: see that module.
 BINARY = {".pkl": read_pickle, ".pickle": read_pickle,
@@ -92,6 +123,51 @@ QUOTED_KIND = "quoted_value"
 #: reported per tier and never pooled, since one percentage over both measures mostly how
 #: many small integers the paper happened to print.
 TIERS = ("trivial", "weak", "moderate", "strong")
+
+#: How much evidence a confirmation must carry before it is reported as one. The tiers are a
+#: property of the value; a profile is a decision about which tiers this reader will act on,
+#: and the right answer differs by use. A reader auditing their own draft wants everything
+#: worth a second look; a reader making a claim about someone else's paper wants only what
+#: survives a null.
+#:
+#:   strict    only values with five or more constraining digits, and only from an artifact
+#:             where shape-matched decoys never land. Nothing here should need a second
+#:             opinion.
+#:   balanced  the weakest tier whose decoy rate on this artifact stays under five per cent,
+#:             and every stronger tier with it.
+#:   lenient   every tier, each labelled with its own decoy rate, so a reader can discount
+#:             rather than be told what to ignore.
+PROFILES = {
+    "strict": {"floor": "strong", "max_decoy": 0.01},
+    "balanced": {"floor": "weak", "max_decoy": 0.05},
+    "lenient": {"floor": "trivial", "max_decoy": 1.0},
+}
+
+
+def trusted_tiers(records: list[dict], index: dict, printed: set[str],
+                  profile: dict) -> tuple[list[str], dict[str, float]]:
+    """Tiers this profile will report on, and the decoy rate measured for each.
+
+    A tier qualifies when its own decoy rate clears the profile's ceiling and every stronger
+    tier does too. Evidence has to be monotonic: reporting four-digit matches while
+    withholding five-digit ones would be incoherent.
+    """
+    from precision_check import decoys
+
+    rates: dict[str, float] = {}
+    for tier in TIERS:
+        row = [r for r in records if r["strength"] == tier]
+        if not row:
+            continue
+        trials = [d for r in row for d in decoys(r["printed"]) if d not in printed]
+        rates[tier] = (sum(1 for d in trials if d in index) / len(trials)) if trials else 0.0
+
+    floor = TIERS.index(profile["floor"])
+    ok = [t for t in TIERS if t in rates and rates[t] <= profile["max_decoy"]]
+    keep = [t for i, t in enumerate(TIERS)
+            if t in ok and i >= floor and all(x in ok for x in TIERS[i:] if x in rates)]
+    return keep, rates
+
 
 #: Named subsets a reader asks for. Each is a question about the work rather than a slice of
 #: the data: what did the paper report, and what was it configured with.
@@ -174,8 +250,9 @@ def read_spreadsheet(path: pathlib.Path) -> str:
     return "\n".join(parts)
 
 
-def build_index(paths: list[pathlib.Path],
-                root: pathlib.Path) -> tuple[dict[str, tuple[str, int]], list[str]]:
+def build_index(paths: list[pathlib.Path], root: pathlib.Path,
+                probes: list[str] | None = None
+                ) -> tuple[dict[str, tuple[str, int, str]], list[str]]:
     """Numeric strings in the artifact mapped to where each first occurs, and what went
     unread.
 
@@ -183,7 +260,7 @@ def build_index(paths: list[pathlib.Path],
     verdict into a receipt. The second return value names every file that was skipped or
     only partly parsed, which is what separates `absent` from `unchecked` downstream.
     """
-    index: dict[str, tuple[str, int]] = {}
+    index: dict[str, tuple[str, int, str]] = {}
     unread: list[str] = []
     scratch = tempfile.mkdtemp(prefix="artifact-unwrap-")
     for path in paths:
@@ -204,26 +281,34 @@ def build_index(paths: list[pathlib.Path],
                 if not complete:
                     unread.append(f"{relative} (parsed as far as it was understood)")
                 for value in values:
-                    index.setdefault(value, (relative, 0))
+                    index.setdefault(value, (relative, 0, ""))
                     if "." in value:
                         # A double round-trips through repr with full precision; the printed
                         # form in a paper is shorter, so index the trimmed forms too.
                         for places in range(1, 7):
-                            index.setdefault(f"{float(value):.{places}f}", (relative, 0))
+                            index.setdefault(f"{float(value):.{places}f}", (relative, 0, ""))
                 continue
             text = (read_spreadsheet(path) if suffix in SPREADSHEET
                     else path.read_text(errors="replace"))
         except OSError:
             unread.append(f"{relative} (unreadable)")
             continue
+        if probes and is_manuscript(text, probes):
+            # The paper itself, under whatever name the repository gave it. Indexing it
+            # would confirm that the paper equals itself.
+            continue
         for lineno, line in enumerate(text.splitlines(), 1):
             for match in NUMBER.finditer(line):
-                index.setdefault(match.group(0), (relative, lineno))
+                # The surrounding text is what a reader needs to judge whether the artifact
+                # means the same thing by this number as the paper does. A file and a line
+                # number establish that a string occurs; they do not establish a match.
+                index.setdefault(match.group(0), (relative, lineno, line.strip()[:110]))
     shutil.rmtree(scratch, ignore_errors=True)
     return index, unread
 
 
-def report(records: list[dict], title: str, note: str, show: int) -> None:
+def report(records: list[dict], title: str, note: str, show: int,
+           tiers: list[str]) -> None:
     if not records:
         print(f"  {title}: no values\n")
         return
@@ -239,11 +324,13 @@ def report(records: list[dict], title: str, note: str, show: int) -> None:
               f"{sum(1 for r in row if r['verdict'] == 'absent'):>8}"
               f"{sum(1 for r in row if r['verdict'] == 'unchecked'):>11}{hit / len(row):>8.0%}")
 
-    load = [r for r in records if r["strength"] in ("moderate", "strong")]
+    load = [r for r in records if r["strength"] in tiers]
     if load:
         hit = sum(1 for r in load if r["verdict"] == "confirmed")
-        print(f"\n    load-bearing (4+ constraining digits): {hit} of {len(load)} "
-              f"confirmed ({hit / len(load):.0%})")
+        print(f"\n    reported under this profile: {hit} of {len(load)} confirmed "
+              f"({hit / len(load):.0%})")
+    else:
+        print("\n    nothing in this view clears the profile")
 
     confirmed = [r for r in load if r["verdict"] == "confirmed"]
     if confirmed:
@@ -272,13 +359,17 @@ def main() -> int:
     parser.add_argument("--view", default="results", choices=sorted(VIEWS) + ["every"],
                         help="which filtered view to print (default: results)")
     parser.add_argument("--show", type=int, default=12, help="rows to list per section")
+    parser.add_argument("--profile", default="balanced", choices=sorted(PROFILES),
+                        help="how much evidence a confirmation must carry (default: balanced)")
     args = parser.parse_args()
 
     root = pathlib.Path(args.repo)
     groups = collect(root)
+    article = pathlib.Path(args.scan.replace(".numbers.json", ".txt"))
+    probes = manuscript_probes(article.read_text(errors="replace")) if article.exists() else []
     index, partial = build_index(
         groups["data"] + groups["spreadsheet"] + groups["binary"] + groups["compressed"]
-        + groups["code"], root)
+        + groups["code"], root, probes)
 
     # A miss is `absent` only where every machine-readable record was read to the end. One
     # unread record is enough to make every miss `unchecked`: the value may sit in it, and
@@ -295,7 +386,8 @@ def main() -> int:
         record["strength"] = strength(record["printed"])
         record["verdict"] = ("confirmed" if location
                              else "unchecked" if unread else "absent")
-        record["found_in"], record["found_line"] = location or ("", 0)
+        record["found_in"], record["found_line"], record["found_context"] = (
+            location or ("", 0, ""))
 
     print(f"\n  {args.scan}  against  {args.repo}")
     print(f"  artifact: {len(groups['data'])} data, {len(groups['spreadsheet'])} spreadsheet, "
@@ -313,9 +405,15 @@ def main() -> int:
         print("  every machine-readable record was read to the end")
     print()
 
+    profile = PROFILES[args.profile]
+    tiers, rates = trusted_tiers(records, index, {r["printed"] for r in records}, profile)
+    print(f"  profile `{args.profile}`: reporting {', '.join(tiers) or 'no tier'}"
+          f"  (decoy rate on this artifact: "
+          f"{', '.join(f'{t} {rates[t]:.1%}' for t in TIERS if t in rates)})\n")
+
     for name in (sorted(VIEWS) if args.view == "every" else [args.view]):
         note, keep = VIEWS[name]
-        report([r for r in records if keep(r)], name, note, args.show)
+        report([r for r in records if keep(r)], name, note, args.show, tiers)
 
     out = pathlib.Path(args.scan).with_suffix(".confirmed.json")
     out.write_text(json.dumps(

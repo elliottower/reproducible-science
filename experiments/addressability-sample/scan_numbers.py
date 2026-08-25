@@ -33,7 +33,11 @@ import sys
 #: A numeric token: optional sign, digits with optional thousands separators, optional
 #: decimal, optional exponent. Percent and unit suffixes are captured separately so the
 #: printed string stays verbatim.
-NUMBER = re.compile(r"(?<![\w.])[-+]?\d[\d,]*(?:\.\d+)?(?:[eE][-+]?\d+)?(?![\w])")
+#: Every comma must be followed by a digit. An earlier form ended in `[\d,]*`, which
+#: swallowed the comma after a number in prose: the token for `UMR 7222, Paris` was `7222,`,
+#: which then failed every rule testing whether the token is a digit string.
+NUMBER = re.compile(
+    r"(?<![\w.])[-+]?\d(?:,?\d)*(?:\.\d+)?(?:[eE][-+]?\d+)?(?![\w])")
 
 #: Document furniture: numbering that organises the paper rather than describing the work.
 SECTION_HEAD = re.compile(r"^\s*\d+(?:\.\d+)*\s+[A-Z]")
@@ -50,8 +54,26 @@ YEAR = re.compile(r"^(1[89]|20)\d\d$")
 #: A sentence may cite a dataset URL and then state a measurement; scoping the rule to the
 #: line would bury the measurement inside the citation.
 IDENTIFIER = re.compile(
-    r"(?:https?://\S+|www\.\S+|\b10\.\d{4,}/\S+|\bdoi:\S+|\barXiv:\S+"
+    r"(?:https?://\S+|www\.\S+"
+    # A label and its payload may be separated by a space. `arXiv:\S+` misses
+    # `arXiv: 1312.6114`, which is how every reference in this corpus prints it, and the
+    # identifier was then read as a hyperparameter and confirmed against a README linking
+    # the same paper.
+    r"|\b10\.\d{4,}/\S+|\bdoi:\s*\S+|\barXiv:\s*\S+"
+    # The bare arXiv form, for a reference that gives the identifier without its label.
+    r"|\b\d{4}\.\d{4,5}(?:v\d+)?\b"
+    # Archive record numbers, which appear stripped of their URL when a citation wraps.
+    r"|\b(?:record|records|deposit|collections)/\d+|\bzenodo\.\d+"
     r"|\bswh:1:[a-z]{3}:[0-9a-f]+(?:;\S*)?|\bISBN[\s-]*[\d-]+|\bISSN[\s-]*[\d-]+)", re.I)
+
+#: A number naming a product or an organisation rather than measuring anything: a processor
+#: model, a GPU, a research-unit code. The hyphenated form is caught by NAME_FRAGMENT; this
+#: is the same phenomenon written with a space, and it confirms against artifacts readily
+#: because a repository records the hardware it ran on.
+MODEL_NUMBER = re.compile(
+    r"\b(?:Xeon|Gold|Silver|Platinum|Core|Ryzen|EPYC|Threadripper|Opteron"
+    r"|GeForce|RTX|GTX|Tesla|Quadro|Titan|Radeon|A|V|H|P|K"
+    r"|UMR|UMS|CNRS|INSERM|EA|FR)\s*$", re.I)
 DATE_LINE = re.compile(
     r"\b(January|February|March|April|May|June|July|August|September|October|November|December)\b")
 PAGE_RANGE = re.compile(r"\bpp?\.\s*\d+")
@@ -362,6 +384,8 @@ def classify(printed: str, context: str, line_count: int, role: str | None,
         return "bibliographic", "bracketed reference index"
     if PAGE_RANGE.search(window):
         return "bibliographic", "page number"
+    if MODEL_NUMBER.search(before) and printed.isdigit():
+        return "name_fragment", "product model or organisation code, not a quantity"
 
     if AFFILIATION.match(context):
         return "structural", "affiliation marker"

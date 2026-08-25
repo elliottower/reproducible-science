@@ -25,7 +25,7 @@ import urllib.request
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 
 from confirm_numbers import (BINARY, COMPRESSORS, TIERS, TRACEABLE,  # noqa: E402
-                             build_index, collect, strength)
+                             build_index, collect, manuscript_probes, strength)
 from precision_check import decoys  # noqa: E402
 from scan_numbers import scan  # noqa: E402
 
@@ -111,7 +111,8 @@ def clone(entry: dict, into: pathlib.Path) -> tuple[pathlib.Path | None, str]:
 
 def measure(text_path: pathlib.Path, repo: pathlib.Path) -> dict:
     """Categories, verdicts and the decoy rate for one article."""
-    records = scan(text_path.read_text(errors="replace"))
+    article = text_path.read_text(errors="replace")
+    records = scan(article)
     categories: dict[str, int] = {}
     for record in records:
         categories[record["kind"]] = categories.get(record["kind"], 0) + 1
@@ -119,7 +120,7 @@ def measure(text_path: pathlib.Path, repo: pathlib.Path) -> dict:
     groups = collect(repo)
     index, partial = build_index(
         groups["data"] + groups["spreadsheet"] + groups["binary"] + groups["compressed"]
-        + groups["code"], repo)
+        + groups["code"], repo, manuscript_probes(article))
     unread = partial + [str(p.relative_to(repo)) for p in groups["unread"]]
 
     traceable = [r for r in records if r["kind"] in TRACEABLE]
@@ -139,7 +140,15 @@ def measure(text_path: pathlib.Path, repo: pathlib.Path) -> dict:
             "decoy_hits": sum(1 for d in trials if d in index),
         }
 
+    settled = [{"printed": r["printed"], "kind": r["kind"], "line": r["line"],
+                "context": r["context"][:110], "strength": strength(r["printed"]),
+                "found_in": index[r["printed"]][0], "found_line": index[r["printed"]][1],
+                "found_context": index[r["printed"]][2]}
+               for r in traceable
+               if r["printed"] in index and strength(r["printed"]) in ("moderate", "strong")]
+
     return {
+        "confirmations": settled,
         "numeric_tokens": len(records),
         "categories": categories,
         "files": {k: len(v) for k, v in groups.items()},
@@ -152,18 +161,23 @@ def measure(text_path: pathlib.Path, repo: pathlib.Path) -> dict:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--limit", type=int, default=20, help="articles to add this run")
+    parser.add_argument("--only", default="", help="comma-separated keys to run, ignoring done")
+    parser.add_argument("--out", default="results.jsonl", help="file to append to")
     args = parser.parse_args()
 
     CORPUS.mkdir(exist_ok=True)
+    results = CORPUS / args.out
+    wanted = {k for k in args.only.split(",") if k}
     done = set()
-    if RESULTS.exists():
-        done = {json.loads(line)["key"] for line in RESULTS.read_text().splitlines() if line}
+    if results.exists() and not wanted:
+        done = {json.loads(line)["key"] for line in results.read_text().splitlines() if line}
 
     frame = json.loads(FRAME.read_text())
     sampled = set(frame["selected"])
     candidates = [e for e in frame["ordered_frame"]
                   if e["key"] not in sampled and e["key"] not in done
-                  and "github.com" in (e.get("code_url") or "")]
+                  and "github.com" in (e.get("code_url") or "")
+                  and (not wanted or e["key"] in wanted)]
 
     added = 0
     for entry in candidates:
@@ -187,7 +201,7 @@ def main() -> int:
                 # once the index has been reduced to counts.
                 shutil.rmtree(repo, ignore_errors=True)
 
-        with RESULTS.open("a") as handle:
+        with results.open("a") as handle:
             handle.write(json.dumps(record) + "\n")
         added += 1
         print(f"  [{added:2}/{args.limit}] {key:<22} {record['status']}"
