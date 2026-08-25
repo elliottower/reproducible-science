@@ -1,9 +1,9 @@
 ---
 description: Has the registered plan changed since it was frozen?
-argument-hint: [preregistration-file]
 ---
 
-Run `prereg check $1`, defaulting to the preregistration nearest this repository's root.
+Run `prereg check`. It takes no argument: it checks the plan governing the working
+directory, or every plan below it at a repository root.
 Say which file you used.
 
 Report:

@@ -2,23 +2,22 @@
 title: Claude Code plugin
 ---
 
-```
+```text
 /plugin marketplace add elliottower/reproducible-science
 ```
 
 Then install whichever tools you want:
 
-```
+```text
 /plugin install reproducible-science@reproducible-science
 ```
 
 Or one tool at a time:
 
-```
+```text
 /plugin install prereg@reproducible-science
 /plugin install citations@reproducible-science
 /plugin install results@reproducible-science
-/plugin install repro@reproducible-science
 ```
 
 ## Why use it instead of the CLI
@@ -64,7 +63,6 @@ uv tool install reproducible-science   # or: pip install reproducible-science
 
 A project can move between the plugin and the command line without changing anything on
 disk.
-
 
 ## Verifying
 

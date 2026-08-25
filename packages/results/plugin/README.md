@@ -33,7 +33,7 @@ Claude seals a run's inputs before computing, records the outputs after, and bin
 The plugin ships instructions and hooks, not binaries. Install the tool as well:
 
 ```bash
-uv tool install results
+uv tool install results-cli
 ```
 
 Against a checkout:

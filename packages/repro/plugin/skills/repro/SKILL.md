@@ -43,15 +43,27 @@ claims:
 
 ## Reading the output
 
-```
-Table 2, "ICC = 0.42"      verified   results.json /icc = 0.42
-Section 3, "p < 0.05"      MISMATCH   the source reads p = 0.051
-Appendix B, "n = 60"       unchecked  results.json is not there
+```text
+repro.yaml
+
+  ok    icc          metric   /icc = 0.42
+  MISS  pvalue       metric   p: manuscript prints 0.031, results.json holds 0.051
+  GONE  n            metric   /n does not resolve in results.json
+
+  1 mismatch, 1 not_found, 1 verified
+  policy publication: FAILED  (2 errors, 0 warnings)
 ```
 
-Three outcomes carry different weight. `mismatch` says the artifact was read and disagrees.
-`unchecked` says no comparison happened — a missing file, an extractor that is not installed.
-Reporting the second as a pass is the failure this exists to catch, so it never does.
+The first column is the outcome, the second the claim id, the third the kind of evidence.
+Six outcomes exist: `ok` verified, `MISS` mismatch, `GONE` the address no longer resolves,
+`--` the check could not run, `none` the claim offered no evidence, `ERR` the source could
+not be read. The enum names — `verified`, `mismatch`, `unchecked` — appear under
+`--format json`, never in the text output.
+
+The distinction that matters is between `MISS` and `--`. `MISS` says the artifact was read
+and disagrees. `--` says no comparison happened, from a missing file or an extractor that is
+not installed. Reporting the second as a pass is the failure this exists to catch, so it
+never does.
 
 A fourth field, validity, says whether the bytes read are the bytes pinned. Every number can
 agree and the run still fail, because they agreed with a document nobody pinned.
