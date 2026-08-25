@@ -390,6 +390,9 @@ dependencies = [
 lint = [
     { name = "papis" },
 ]
+paperclip = [
+    { name = "requests" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -403,8 +406,9 @@ requires-dist = [
     { name = "provenance-core", editable = "packages/provenance-core" },
     { name = "pydantic", specifier = ">=2.9" },
     { name = "pyyaml", specifier = ">=6.0.2" },
+    { name = "requests", marker = "extra == 'paperclip'", specifier = ">=2.31" },
 ]
-provides-extras = ["lint"]
+provides-extras = ["lint", "paperclip"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=9.1.1" }]
@@ -2331,6 +2335,7 @@ dev = [
 ]
 types = [
     { name = "pyrefly" },
+    { name = "requests" },
 ]
 
 [package.metadata]
@@ -2365,7 +2370,10 @@ dev = [
     { name = "pytest-xdist", specifier = ">=3.6" },
     { name = "ruff", specifier = ">=0.14" },
 ]
-types = [{ name = "pyrefly", specifier = ">=1" }]
+types = [
+    { name = "pyrefly", specifier = ">=1" },
+    { name = "requests", specifier = ">=2.31" },
+]
 
 [[package]]
 name = "reproducible-science"

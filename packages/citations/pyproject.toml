@@ -20,6 +20,11 @@ classifiers = [
 ]
 dependencies = [ "platformdirs>=3", "provenance-core>=0.2,<0.3", "pydantic>=2.9", "pyyaml>=6.0.2" ]
 optional-dependencies.lint = [ "papis>=0.15" ]
+# Paperclip's own client is distributed as a wheel at a URL rather than through an index, and a
+# direct reference cannot appear in metadata uploaded to PyPI. So this extra installs the HTTP
+# layer and `citations.paperclip` speaks Paperclip's endpoint itself. Without the extra the
+# resolver reports `unavailable` and its sources come out `unchecked`; it never fails a citation.
+optional-dependencies.paperclip = [ "requests>=2.31" ]
 urls.Changelog = "https://github.com/elliottower/reproducible-science/blob/main/CHANGELOG.md"
 urls.Homepage = "https://github.com/elliottower/reproducible-science"
 urls.Issues = "https://github.com/elliottower/reproducible-science/issues"
@@ -38,5 +43,7 @@ build.targets.wheel.packages = [ "src/citations" ]
 # invoked as a subprocess by `citations lint`, so no import graph can see it. Named
 # here rather than silenced globally: a genuinely unused dependency should still be reported.
 per_rule_ignores.DEP002 = [ "papis" ]
+# Imported under a guard in `citations.paperclip` and installed only by the `paperclip` extra.
+per_rule_ignores.DEP003 = [ "requests" ]
 # Without this every intra-package import reads as a transitive dependency on itself.
 known_first_party = [ "citations" ]

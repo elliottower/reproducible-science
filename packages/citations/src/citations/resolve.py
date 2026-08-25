@@ -17,6 +17,15 @@ them on the next build.
     citations resolve --check          # report, write nothing
     citations resolve --paper mechanistic-reference
     citations resolve --verify         # re-check that every stored link still resolves
+
+`--via paperclip` answers a different question. The commands above find an identifier for a
+work; that one fetches the work's full text through Paperclip, writes it to `sources/paperclip/`
+and pins the bytes by sha256 in a claims file. Verification afterwards reads the local copy, so
+Paperclip is never asked whether a quotation matches. An identifier it does not index is
+recorded as a source with no pinned copy, whose quotations read `unchecked` -- never as a
+quotation that failed.
+
+    citations resolve --via paperclip 10.1101/2025.10.22.681631 --claims paper/claims
 """
 
 from __future__ import annotations
@@ -25,6 +34,7 @@ import argparse
 import difflib
 import json
 import os
+import pathlib
 import socket
 import time
 import urllib.error
@@ -32,7 +42,7 @@ import urllib.request
 
 import yaml
 
-from citations import paths
+from citations import paperclip, paths
 from citations.models import Record, load_record
 from citations.services import SERVICES, Service
 from citations.text import fold as norm
@@ -237,13 +247,52 @@ def verify() -> int:
     return 1 if bad else 0
 
 
+def via_paperclip(identifiers: list[str], claims_dir: pathlib.Path, check: bool) -> int:
+    """Pin each identifier's full text, and say what could not be pinned.
+
+    Every identifier is attempted. One that Paperclip cannot answer for does not end the run:
+    an unresolvable reference is a thing bibliographies contain, and stopping on the first one
+    would leave the rest of a list unresolved for a reason that has nothing to do with them.
+    """
+    counts: dict[str, int] = {"pinned": 0, "unresolved": 0, "unavailable": 0}
+    for identifier in identifiers:
+        slug = paperclip.slug_for(identifier)
+        resolution = paperclip.resolve_document(identifier, claims_dir.parent / paperclip.SOURCES)
+        counts[resolution.state] = counts.get(resolution.state, 0) + 1
+        detail = resolution.digest[:12] if resolution.checkable else resolution.detail
+        print(f"  {resolution.state:<12}{identifier[:38]:<40}{detail[:60]}")
+        if check or not resolution.checkable:
+            continue
+        source = paperclip.source_block(resolution, local=f"{paperclip.SOURCES}/{slug}.txt")
+        paperclip.write_claim_file(claims_dir / f"{slug}.yaml", source, {})
+
+    print(f"\n  pinned {counts['pinned']} of {len(identifiers)}")
+    left = counts["unresolved"] + counts["unavailable"]
+    if left:
+        print(f"  {left} without a pinned copy; quotations against those read `unchecked`.")
+    if check:
+        print("  --check: nothing written.")
+    elif counts["pinned"]:
+        print(f"  written to {claims_dir}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="citations resolve", description=__doc__.split("\n")[0])
+    ap.add_argument("identifiers", nargs="*", help="DOIs to fetch, with --via")
+    ap.add_argument("--via", choices=["paperclip"], help="fetch full text through this service")
+    ap.add_argument("--claims", default="claims", help="where the claim files go, with --via")
     ap.add_argument("--check", action="store_true", help="report, write nothing")
     ap.add_argument("--verify", action="store_true", help="re-check every stored link")
     ap.add_argument("--paper", help="only records this paper cites")
     ap.add_argument("--limit", type=int, default=0)
     a = ap.parse_args(argv)
+
+    if a.via:
+        if not a.identifiers:
+            print("  name at least one identifier:  citations resolve --via paperclip <doi>")
+            return 2
+        return via_paperclip(a.identifiers, pathlib.Path(a.claims).expanduser().resolve(), a.check)
 
     if a.verify:
         return verify()
