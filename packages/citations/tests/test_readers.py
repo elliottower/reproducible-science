@@ -243,6 +243,63 @@ def test_naming_a_reader_never_falls_through_to_another(pdf, monkeypatch):
         R.read(pdf, reader="poppler")
 
 
+# --- the seam other packages stand in for -----------------------------------------------------
+
+
+def test_replacing_extract_replaces_the_text_the_default_check_sees(pdf, monkeypatch):
+    """`repro`'s quote backend calls `check_one`, and its regression suite replaces `extract`
+    with a two-argument stub. Routing the default check around `extract` left those tests
+    measuring 42 bytes of stand-in PDF: every reader failed on it, the decision became
+    `unchecked` instead of `mismatch`, and `publication` warns on unchecked rather than
+    failing -- so a wrong-page misquote passed an assessment it had been failing."""
+    monkeypatch.setattr(V, "extract", lambda path, page=None: PASSAGE)
+    r = V.check_one(PASSAGE, pdf)
+    assert r.state == "found"
+    assert r.reader == V.SUBSTITUTED, "the text did not come from a reader, and says so"
+
+
+def test_extract_takes_the_two_arguments_an_existing_stub_supplies(pdf, monkeypatch):
+    # A third positional parameter would raise TypeError inside every stub already written
+    # against this function, which is a break no test of this package would have caught.
+    calls = []
+    monkeypatch.setattr(V, "extract", lambda path, page=None: calls.append(page) or PASSAGE)
+    V.check_one(PASSAGE, pdf, page=3)
+    assert calls, "the check never called extract"
+    assert set(calls) <= {None, 3}
+
+
+def test_a_per_page_stub_still_decides_the_page_warning(pdf, monkeypatch):
+    # The wrong-page check reads each page through the same seam. Reading page 1 with a real
+    # reader while the document text came from a stub compares two different documents.
+    monkeypatch.setattr(
+        V, "extract", lambda path, page=None: PASSAGE if page in (None, 2) else OTHER
+    )
+    assert "page" not in V.check_one(PASSAGE, pdf, page=2).warnings
+    r = V.check_one(PASSAGE, pdf, page=1)
+    assert r.state == "found"
+    assert "page" in r.warnings
+
+
+# --- one reader cannot disagree with itself ---------------------------------------------------
+
+
+def test_a_lone_reader_can_never_produce_indeterminate(pdf, monkeypatch):
+    # `indeterminate` is reached by comparing readers. With one reader there is nothing to
+    # compare, and an empty or single-entry agreement must not read as disagreement -- that
+    # would stop a one-reader machine verifying anything at all.
+    stub_readers(monkeypatch, {"pypdf": PASSAGE})
+    for triangulate in (False, True):
+        assert V.check_one(PASSAGE, pdf, triangulate=triangulate).state == "found"
+        assert V.check_one(OTHER, pdf, triangulate=triangulate).state == "not found"
+
+
+def test_an_empty_agreement_is_not_disagreement(pdf, monkeypatch):
+    stub_readers(monkeypatch, {"poppler": PASSAGE, "pypdf": PASSAGE})
+    r = V.check_one(PASSAGE, pdf)
+    assert r.agreement == {}
+    assert r.state == "found", "no comparison was made, so there was nothing to disagree about"
+
+
 # --- the real readers, on a real PDF ----------------------------------------------------------
 
 

@@ -61,9 +61,25 @@ def test_a_run_that_checked_nothing_is_not_a_pass():
 # --- an extraction that failed is not a document that is empty ---------------------------------
 
 
+def only_poppler(monkeypatch):
+    """Pin the machine to one reader, the way this suite assumed before there were three.
+
+    Both describe an extractor that is selected and then fails when it is run -- a broken
+    install, a permissions error -- so poppler is made selectable here rather than left to
+    `shutil.which`. Otherwise the two tests answer differently on a machine with poppler and a
+    machine without, and CI has neither poppler nor a reason to say so. What they pin is the
+    same either way: an extractor that failed raises and never returns empty text, and its
+    reason reaches the caller.
+    """
+    poppler = R.Reader("poppler", R._read_poppler, lambda: True, lambda: "test")
+    monkeypatch.setattr(R, "READERS", {"poppler": poppler})
+    monkeypatch.setattr(R, "PREFERRED", ("poppler",))
+
+
 def test_a_missing_extractor_raises_rather_than_reporting_no_text(tmp_path, monkeypatch):
     # Returning "" here makes every PDF quote `unchecked` and the summary read "nothing
     # failed", so a missing binary is indistinguishable from an unreadable document.
+    only_poppler(monkeypatch)
     pdf = tmp_path / "paper.pdf"
     pdf.write_bytes(b"%PDF-1.4 not really a pdf")
 
@@ -78,6 +94,7 @@ def test_a_missing_extractor_raises_rather_than_reporting_no_text(tmp_path, monk
 
 
 def test_a_failed_extraction_surfaces_its_reason_in_the_result(tmp_path, monkeypatch):
+    only_poppler(monkeypatch)
     pdf = tmp_path / "paper.pdf"
     pdf.write_bytes(b"%PDF-1.4")
 
@@ -89,6 +106,19 @@ def test_a_failed_extraction_surfaces_its_reason_in_the_result(tmp_path, monkeyp
     r = V.check_one("a passage long enough to clear the minimum quote length here", pdf)
     assert r.state == "unchecked"
     assert "pdftotext" in r.detail, "the reason has to reach the report, not just the log"
+
+
+def test_every_reader_failing_names_each_one_in_the_reason(tmp_path, monkeypatch):
+    # The case the two above cannot reach now that a chain exists: no reader answered, and the
+    # report has to say what each of them did rather than naming only the first.
+    pdf = tmp_path / "paper.pdf"
+    pdf.write_bytes(b"%PDF-1.4 not really a pdf")
+    V.clear_caches()
+    r = V.check_one("a passage long enough to clear the minimum quote length here", pdf)
+    assert r.state == "unchecked"
+    named = {"poppler": "pdftotext", "pdfplumber": "pdfplumber", "pypdf": "pypdf"}
+    for name in R.available():
+        assert named[name] in r.detail
 
 
 def test_a_page_scan_that_hits_its_limit_says_so_rather_than_reporting_absence(tmp_path):

@@ -53,6 +53,7 @@ from citations.verify import (
     extract,
     is_paginated,
     reading,
+    reading_with,
     sha256,
 )
 
@@ -98,5 +99,6 @@ __all__ = [
     "load_claim_file",
     "load_record",
     "reading",
+    "reading_with",
     "sha256",
 ]

@@ -47,6 +47,7 @@ infrastructure reason says which one, rather than reporting the document as unre
 
 from __future__ import annotations
 
+import dataclasses
 import functools
 import pathlib
 import re
@@ -74,6 +75,11 @@ TEXT_SUFFIXES = (".txt", ".md", ".tei", ".xml", ".html", ".htm", ".rst")
 #: The reader recorded for a source read straight off disk. A `.txt` or `.tei` needs no
 #: extractor, so naming one would claim a program ran that did not.
 PLAIN_TEXT = "text"
+
+#: The reader recorded when `extract` was replaced by a caller. Naming the substitution keeps
+#: the promise the rest of this module makes: a result says what produced the text it was
+#: checked against, and "a stub did" is an answer where inventing a reader name is not.
+SUBSTITUTED = "substituted"
 
 State = Literal["found", "not found", "indeterminate", "unchecked"]
 PinState = Literal["ok", "broken", "unpinned", "missing"]
@@ -224,8 +230,8 @@ def skeleton(s: str) -> str:
 
 
 @functools.lru_cache(maxsize=64)
-def reading(pdf: pathlib.Path, page: int | None = None, reader: str | None = None):
-    """Text of a source, and what produced it. Cached, so N quotes against one file is one read.
+def _read(pdf: pathlib.Path, page: int | None = None, reader: str | None = None):
+    """The extraction itself, and what produced it. Cached: N quotes against one file is one read.
 
     Raises `SourceUnreadableError` when the toolchain is at fault -- no reader installed, a
     timeout, a permission error, a parser that could not open the file -- rather than
@@ -240,9 +246,49 @@ def reading(pdf: pathlib.Path, page: int | None = None, reader: str | None = Non
     return readers.read(pdf, page, reader)
 
 
-def extract(pdf: pathlib.Path, page: int | None = None, reader: str | None = None) -> str:
-    """Just the text. `reading` is the same call carrying what produced it."""
-    return reading(pdf, page, reader).text
+@functools.lru_cache(maxsize=64)
+def extract(pdf: pathlib.Path, page: int | None = None) -> str:
+    """Text of a source, and the one seam the default check reads through.
+
+    Exported, and stood in for by callers outside this package: `repro`'s quote backend calls
+    `check_one`, and its regression suite replaces this function with a two-argument stub so a
+    test can fix what the document says on each page. The signature is that shape for that
+    reason, and the reader-specific read lives in `reading_with` rather than in a third
+    parameter no existing stub accepts.
+
+    A reader chain that went around this function would leave those stubs measuring the
+    stand-in bytes on disk, every reader would fail on them, and a wrong-page misquote would
+    grade `unchecked` instead of `mismatch` -- which `publication` warns on rather than fails.
+    """
+    return _read(pdf, page).text
+
+
+def reading(pdf: pathlib.Path, page: int | None = None):
+    """Text and what produced it, with the text taken from `extract`.
+
+    `extract` is called first, so a source nothing can read raises there and never reaches the
+    provenance lookup. Reaching the fallback below therefore means one thing: `extract`
+    returned text the reader chain did not produce, because a caller replaced it. That text is
+    the caller's and the provenance is not this module's to invent, so the reader is named
+    `substituted` rather than guessed at.
+    """
+    text = extract(pdf, page)
+    try:
+        got = _read(pdf, page)
+    except SourceUnreadableError:
+        return readers.Extraction(text, SUBSTITUTED, "")
+    return dataclasses.replace(got, text=text)
+
+
+def reading_with(pdf: pathlib.Path, page: int | None = None, *, reader: str):
+    """One named reader's own reading of a source. Triangulation, and nothing else.
+
+    This reads the file rather than going through `extract`, because the question it answers
+    is what a particular reader makes of the bytes. A caller that replaced `extract` has said
+    what the document contains, which is an answer to a different question, and routing it
+    here would make three readers agree by construction.
+    """
+    return _read(pdf, page, reader)
 
 
 @functools.lru_cache(maxsize=256)
@@ -257,7 +303,7 @@ def clear_caches() -> None:
     One call rather than five, because a caller that clears four of them and forgets the
     fifth gets a stale answer that looks like a fresh one.
     """
-    for cached in (reading, fold, skeleton, sha256):
+    for cached in (_read, extract, fold, skeleton, sha256):
         cached.cache_clear()
 
 
@@ -367,7 +413,7 @@ def _triangulate(quote: str, artifact: pathlib.Path, page: int | None, warn: lis
     reasons: list[str] = []
     for name in readers.available():
         try:
-            got = reading(artifact, None, name)
+            got = reading_with(artifact, reader=name)
         except SourceUnreadableError as e:
             reasons.append(f"{name}: {e.detail}")
             continue
@@ -413,14 +459,23 @@ def _on_page(
     wrong.
     """
     try:
-        return folded_quote in fold(extract(artifact, page, _extractor(reader)))
+        return folded_quote in fold(_page_text(artifact, page, reader))
     except SourceUnreadableError:
         return False
 
 
-def _extractor(reader: str | None) -> str | None:
-    """The reader name to pass on, or None where the source needed no extractor."""
-    return None if reader in (None, "", PLAIN_TEXT) else reader
+def _page_text(artifact: pathlib.Path, page: int, reader: str | None) -> str:
+    """One page's text, from whatever produced the document's text.
+
+    The default path goes back through `extract`, so a caller that replaced it fixes what each
+    page says as well as what the document says -- which is what a per-page stub is for, and
+    what the wrong-page check depends on. Triangulation names its reader instead: asking a
+    second reader which page a passage is on would report a disagreement between two
+    extractions as a page number the record got wrong.
+    """
+    if reader in (None, "", PLAIN_TEXT, SUBSTITUTED):
+        return extract(artifact, page)
+    return reading_with(artifact, page, reader=reader).text
 
 
 def _cuts_a_token(q: str, doc: str) -> bool:
@@ -471,7 +526,7 @@ def _find_page(
         return None, False
     for p in range(1, limit + 1):
         try:
-            text = extract(artifact, p, _extractor(reader))
+            text = _page_text(artifact, p, reader)
         except SourceUnreadableError:
             return None, False
         if not text:

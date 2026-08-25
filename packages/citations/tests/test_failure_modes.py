@@ -5,7 +5,6 @@ it was not. These pin the ways that can happen.
 from __future__ import annotations
 
 import pytest
-from citations import readers as R
 from citations import verify as V
 
 
@@ -20,12 +19,12 @@ def pinned(tmp_path, monkeypatch):
         p = tmp_path / "source.pdf"
         p.write_bytes(b"%PDF-1.4")
 
-        def stub(pdf, page=None, reader=None):
+        def stub(pdf, page=None):
             if page is not None:
-                return R.Extraction((per_page or {}).get(page, ""), "poppler", "test")
-            return R.Extraction(text, "poppler", "test")
+                return (per_page or {}).get(page, "")
+            return text
 
-        monkeypatch.setattr(V, "reading", stub)
+        monkeypatch.setattr(V, "extract", stub)
         return p
 
     return make
