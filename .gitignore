@@ -18,3 +18,7 @@ paper/prior_art/.audit-cache/
 .coverage.*
 htmlcov/
 coverage.xml
+
+# Internal review packets: simulated-referee rounds and self-critique.
+# Local only -- this repository may go public.
+REVIEW_PACKET*.md
