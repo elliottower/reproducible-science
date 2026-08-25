@@ -19,9 +19,12 @@ its artifacts.**
 
 ---
 
-`repro verify` reads a manifest of claims and resolves each one to a typed address in a
-hash-pinned artifact. A quotation is checked against the source it cites. A reported number
-is checked against the file that holds it.
+Write down what your paper claims and where each claim comes from. `repro verify` checks
+every one against the file it names and tells you which ones hold.
+
+Quotations are matched against the sources they cite, page numbers included. Reported numbers
+are compared against the value stored at an address you gave — never by searching a file for a
+number that looks close enough.
 
 ```console
 $ repro verify
@@ -31,7 +34,8 @@ $ repro verify
   1 of 3 assertions failed, 1 could not be checked.
 ```
 
-A check that could not run reports `unchecked`, which no policy accepts as a pass.
+When a check cannot run at all — a missing file, a PDF with no extractable text — it reports
+that, and the run does not pass.
 
 ## The toolkit
 
@@ -44,9 +48,9 @@ A check that could not run reports `unchecked`, which no policy accepts as a pas
 - **[`prereg`](packages/prereg)** — freezes a plan before running and records what changed
   after. `pip install prereg`
 
-Each is an independent distribution, so installing one brings only that one. Preregistration
-is optional: a claim is confirmatory, exploratory, or not applicable, and only the first needs
-a plan.
+Each tool is its own distribution, so installing one brings only that one. Preregistration is
+optional — you mark a claim confirmatory, exploratory, or not applicable, and only the first
+kind needs a plan behind it.
 
 ## Getting started
 
@@ -68,8 +72,9 @@ published packages with nothing installed.
 
 ## What it addresses
 
-JSON, YAML, CSV/TSV, SQLite, and NumPy `.npy`/`.npz`. Parquet, HDF5, NetCDF and XLSX have no
-adapter and report `format_unsupported`.
+Values can be addressed inside JSON, YAML, CSV/TSV, SQLite, and NumPy `.npy`/`.npz` files.
+Parquet, HDF5, NetCDF and XLSX aren't supported yet — point a manifest at one and you get
+`format_unsupported` instead of a guess.
 
 ## Resources
 
