@@ -1,0 +1,33 @@
+{
+  "title": "reproducible-science: preregistration, citation verification, and results provenance",
+  "upload_type": "software",
+  "description": "Four command-line tools and one Claude Code plugin for keeping a paper's claims tied to what backs them. prereg freezes an analysis plan against a commit and a content hash before a run. results seals a run's inputs, records its outputs, and binds each number in a manuscript to the run behind it. citations checks that quoted passages appear in the sources they cite. repro verifies declared evidence assertions against pinned artifacts, reporting execution, extraction and comparison separately so that a value which disagrees, a value that is absent, and a check that never ran are three different answers.",
+  "creators": [
+    {
+      "name": "Tower, Elliot",
+      "orcid": "0000-0001-7004-8884"
+    }
+  ],
+  "license": "MIT",
+  "access_right": "open",
+  "keywords": [
+    "reproducibility",
+    "preregistration",
+    "provenance",
+    "research integrity",
+    "open science",
+    "evidence verification"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/elliottower/reproducible-science",
+      "relation": "isSupplementTo",
+      "scheme": "url"
+    },
+    {
+      "identifier": "https://elliottower.github.io/reproducible-science/",
+      "relation": "isDocumentedBy",
+      "scheme": "url"
+    }
+  ]
+}

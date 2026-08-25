@@ -50,6 +50,7 @@ coverage:
 	@rm -f .coverage .coverage.*
 	$(COV_ENV) $(PY) coverage run -m pytest -q -p no:randomly
 	COVERAGE_FILE=$(CURDIR)/.coverage $(PY) coverage combine
+	COVERAGE_FILE=$(CURDIR)/.coverage $(PY) coverage xml -o coverage.xml
 	COVERAGE_FILE=$(CURDIR)/.coverage $(PY) coverage report --fail-under=70
 
 # ---- rung 4: a pull request --------------------------------------------------------------

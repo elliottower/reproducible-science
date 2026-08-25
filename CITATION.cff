@@ -1,0 +1,31 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "reproducible-science: preregistration, citation verification, and results provenance"
+authors:
+  - family-names: Tower
+    given-names: Elliot
+    email: elliot@elliottower.ai
+    orcid: "https://orcid.org/0000-0001-7004-8884"
+type: software
+license: MIT
+doi: "10.5281/zenodo.22100272"
+repository-code: "https://github.com/elliottower/reproducible-science"
+url: "https://elliottower.github.io/reproducible-science/"
+abstract: >-
+  Four command-line tools and one Claude Code plugin for keeping a paper's
+  claims tied to what backs them. prereg freezes an analysis plan against a
+  commit and a content hash before a run. results seals a run's inputs,
+  records its outputs, and binds each number in a manuscript to the run
+  behind it. citations checks that quoted passages appear in the sources
+  they cite. repro verifies declared evidence assertions against pinned
+  artifacts, reporting execution, extraction and comparison separately so
+  that a value which disagrees, a value that is absent, and a check that
+  never ran are three different answers.
+keywords:
+  - reproducibility
+  - preregistration
+  - provenance
+  - research integrity
+  - open science
+version: "0.2.0"
+date-released: "2026-08-25"
