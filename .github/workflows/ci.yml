@@ -87,6 +87,17 @@ jobs:
       - run: uv sync --all-packages --group dev --upgrade-package adduce
       - run: uv run pytest -q -m integration
 
+  publishable:
+    name: publishable dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
+      # A workspace path resolves a sibling in development and does not survive into a wheel.
+      - run: make publishable
+
   versions:
     name: lockstep versions
     runs-on: ubuntu-latest

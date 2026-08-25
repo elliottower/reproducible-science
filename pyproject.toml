@@ -66,6 +66,7 @@ build.targets.wheel.bypass-selection = true
 [tool.uv]
 sources.citations = { workspace = true }
 sources.prereg = { workspace = true }
+sources.provenance-core = { workspace = true }
 sources.reproducible-science = { workspace = true }
 sources.results-cli = { workspace = true }
 workspace.members = [ "packages/*" ]
@@ -153,8 +154,14 @@ paths = [ "packages", "scripts" ]
 min_confidence = 100
 
 [tool.importlinter]
-root_packages = [ "repro", "citations", "results", "prereg" ]
+root_packages = [ "repro", "citations", "results", "prereg", "provenance_core" ]
 include_external_packages = false
+
+[[tool.importlinter.contracts]]
+name = "The shared primitives depend on nothing of ours"
+type = "forbidden"
+source_modules = [ "provenance_core" ]
+forbidden_modules = [ "repro", "citations", "results", "prereg" ]
 
 [[tool.importlinter.contracts]]
 name = "The three tools do not depend on the verifier"

@@ -2,7 +2,7 @@ schema_version: repro/1
 project: reproducible-science (self-audit)
 provenance:
   repository: https://github.com/elliottower/reproducible-science.git
-  commit: a3357f732ad9b8d6f17f95745129552c192132b4
+  commit: 88b552e897405805b89e9c60dbd0626823a4e366
   dirty: true
   generated_by: scripts/build_self_audit.py
 artifacts:
@@ -17,7 +17,7 @@ artifacts:
   media_type: application/json
   digest:
     algorithm: sha256
-    value: f9e72cf576bc111e515fce27a98ba7f611758dcccbc7c9097ea70e16266d62d4
+    value: fe3b97631a542afa011c395dcc8fd907452036a939f17803c205712b66d70912
 claims:
 - id: corpus-assertions
   registration: not_applicable
