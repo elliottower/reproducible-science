@@ -1,4 +1,4 @@
-"""Resolve a pinned snapshot for each sampled article, per CODEBOOK.md §4.
+"""Resolve a pinned snapshot for each article in the frame.
 
 Stage two of three. Reads the frozen sample from `frame.json`, resolves each article to the
 highest-priority snapshot that exists, and records which tier answered. Downloads nothing:

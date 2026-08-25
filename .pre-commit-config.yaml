@@ -37,7 +37,6 @@ exclude: |
   (?x)^(
     packages/repro/tests/conformance/cases/.*|
     packages/repro/examples/.*|
-    research/.*/(PREREG|CODEBOOK)\.md|
     research/.*/(frame\.json|published\.bib)|
     research/addressability/corebench/(core_train\.json|capsules\.csv)|
     paper/DRAFT_.*\.md|
