@@ -50,6 +50,10 @@ def quotation_provenance(records: list[dict[str, Any]]) -> dict[str, Any]:
 
     A document's claim files name the repository that pinned it, so the corpus describes
     itself: no separate list can fall out of date with what was measured.
+
+    The counts are before deduplication, and are labelled so. Two repositories here hold the
+    same claims file against their own copy of one PDF, so a per-repository total that had
+    been deduplicated would attribute a shared check to whichever repository was read first.
     """
     by_repo: dict[str, dict[str, Any]] = {}
     for record in records:
@@ -73,9 +77,42 @@ def quotation_provenance(records: list[dict[str, Any]]) -> dict[str, Any]:
         repo: {
             "claim_files": len(v["claim_files"]),
             "documents": len(v["documents"]),
-            "passage_checks": v["checks"],
+            "passage_checks_before_deduplication": v["checks"],
         }
         for repo, v in sorted(by_repo.items())
+    }
+
+
+def sampled_balance(records: list[dict[str, Any]]) -> dict[str, Any]:
+    """Whether the sampled corpus drew evenly from the three readers, which it must.
+
+    The design rests on symmetry: a passage drawn from reader A favours reader A, so every
+    reader supplies an equal share and the bias cancels. Two thresholds break that. Passages
+    are drawn from lines of at least 120 characters, and each reader breaks lines its own way
+    -- pdfplumber emits one visual line per line and rarely reaches that length, while poppler
+    reconstructs the page and often exceeds it. And the gutter filter that keeps a two-column
+    splice out of the sample removes nearly every poppler line in a two-column paper.
+
+    So the draw is reported rather than assumed. An uneven one means the corpus measures which
+    reader writes long lines, and its numbers do not bear on the decision.
+    """
+    drawn: dict[str, int] = {}
+    silent = 0
+    for record in records:
+        if record["corpus"] != "sampled":
+            continue
+        if not record["checks"]:
+            silent += 1
+        for check in record["checks"]:
+            reader = check.get("drawn_from", "?")
+            drawn[reader] = drawn.get(reader, 0) + 1
+    total = sum(drawn.values())
+    even = total and min(drawn.values()) / max(drawn.values()) > 0.5
+    return {
+        "passages_drawn_from": drawn,
+        "documents_contributing_nothing": silent,
+        "draw_is_even": bool(even),
+        "bears_on_the_decision": bool(even),
     }
 
 
@@ -102,17 +139,101 @@ def verdict(quotations: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def per_document(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """One row per document: how it was read, how long it took, and how the checks came out.
+
+    No passage text. The shards hold every quotation this corpus checked, and those
+    quotations belong to publishers who did not license their redistribution — the same
+    reason `paper/prior_art/reference/` is not in this repository. A row carries the counts,
+    which is what any later run needs to compare itself against.
+    """
+    rows = []
+    for record in records:
+        outcomes = {
+            name: {
+                "found": sum(
+                    1 for c in record["checks"] if c["outcomes"][name].startswith("found")
+                ),
+                "found_only_after_normalization": sum(
+                    1 for c in record["checks"] if c["outcomes"][name] == "found_normalized"
+                ),
+                "not_found": sum(1 for c in record["checks"] if c["outcomes"][name] == "not_found"),
+            }
+            for name in ("poppler", "pdfplumber", "pypdf")
+        }
+        rows.append(
+            {
+                "corpus": record["corpus"],
+                "name": record["name"],
+                "sha256": record["sha256"],
+                "bytes": record["bytes"],
+                "checks": len(record["checks"]),
+                "readings": record["readings"],
+                "outcomes": outcomes,
+            }
+        )
+    return rows
+
+
+def reader_cost(records: list[dict[str, Any]]) -> dict[str, Any]:
+    """What each reader cost in wall-clock seconds per document.
+
+    The median is what a person waits for on an ordinary paper; the worst case is what decides
+    whether a reader can be left unbounded. Only poppler runs in a subprocess and can be given
+    a timeout — a call already inside a Python parser cannot be interrupted without abandoning
+    the thread still executing it — so its worst case is the one the package can cap.
+    """
+    out = {}
+    for name in ("poppler", "pdfplumber", "pypdf"):
+        times = sorted(r["readings"][name]["seconds"] for r in records)
+        if not times:
+            continue
+        out[name] = {
+            "documents": len(times),
+            "median_seconds": round(times[len(times) // 2], 2),
+            "total_seconds": round(sum(times), 1),
+            "worst_seconds": round(times[-1], 1),
+            "worst_document": max(records, key=lambda r: r["readings"][name]["seconds"])["name"],
+        }
+    return out
+
+
+def worked_examples(causes: dict[str, Any], limit: int) -> list[dict[str, Any]]:
+    """A bounded set of divergences, one per document, quoted in full.
+
+    A rate with no example behind it cannot be checked and cannot be acted on, so the cause
+    of each class is shown rather than named. Bounded and one per document, because the point
+    is to make the mechanism legible and not to republish the corpus.
+    """
+    seen: set[str] = set()
+    out = []
+    for row in sorted(causes.get("divergences", []), key=lambda r: -r["passage_characters"]):
+        if row["pdf"] in seen or len(out) >= limit:
+            continue
+        seen.add(row["pdf"])
+        out.append(row)
+    return out
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--quotations-shard", type=pathlib.Path, required=True)
     parser.add_argument("--sampled-shard", type=pathlib.Path, required=True)
     parser.add_argument("--fetch-log", type=pathlib.Path)
     parser.add_argument("--corebench-probe", type=pathlib.Path)
+    parser.add_argument("--causes", type=pathlib.Path, help="output of characterize.py")
+    parser.add_argument("--examples", type=int, default=12)
     parser.add_argument("--out", type=pathlib.Path, required=True)
     args = parser.parse_args()
 
     records = load(args.quotations_shard) + load(args.sampled_shard)
     results = summarize(records)
+    causes = json.loads(args.causes.read_text()) if args.causes else {}
+    # The summary keeps its counts; the passages behind them do not travel into a public
+    # repository beyond the worked examples.
+    for corpus in results:
+        results[corpus].pop("divergences", None)
+
     report = {
         "question": DECISION_CRITERION["question"],
         "decision_criterion": DECISION_CRITERION,
@@ -123,12 +244,16 @@ def main() -> None:
         ),
         "rescience_fetch": fetch_summary(args.fetch_log) if args.fetch_log else {},
         "verdict": verdict(results["quotations"]),
+        "sampled_corpus_balance": sampled_balance(records),
         "results": results,
-        "documents": records,
+        "reader_cost": reader_cost(records),
+        "divergence_causes": causes.get("counts", {}),
+        "worked_examples": worked_examples(causes, args.examples),
+        "documents": per_document(records),
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(report, indent=1))
-    print(json.dumps({k: report[k] for k in ("verdict", "rescience_fetch")}, indent=1))
+    print(json.dumps({k: report[k] for k in ("verdict", "divergence_causes")}, indent=1))
 
 
 if __name__ == "__main__":

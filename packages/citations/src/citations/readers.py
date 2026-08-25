@@ -60,8 +60,8 @@ except ImportError:  # pragma: no cover
 #: It bounds poppler only. The pure-Python readers run in this process, and a call already
 #: inside a parser cannot be interrupted without abandoning the thread still executing it, so
 #: no timeout is claimed for them rather than one being faked. That is a real cost of dropping
-#: poppler: measured over 193 documents in `research/pdf-readers/`, pdfplumber's median read
-#: is 18x poppler's and its worst is 71 seconds against poppler's 2.4.
+#: poppler: over the 236 documents measured in `research/pdf-readers/`, pdfplumber's median
+#: read is 18x poppler's, and on one paper it took 589 seconds where poppler took 6.
 SUBPROCESS_TIMEOUT_SECONDS = 120
 
 #: Preference order. Poppler first: `-layout` reproduces column geometry, which is what keeps

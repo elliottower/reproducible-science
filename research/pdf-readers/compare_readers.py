@@ -387,7 +387,7 @@ def measure_document(
     for passage in passages:
         outcomes = {name: check(passage["text"], r.text) for name, r in readings.items()}
         record = {**passage, "outcomes": outcomes}
-        if _diverges(outcomes):
+        if diverges(outcomes):
             record["diagnosis"] = _diagnose_divergence(passage["text"], outcomes, readings)
             record["excerpts"] = {
                 name: _excerpt(passage["text"], r.text) for name, r in readings.items()
@@ -412,7 +412,7 @@ def measure_document(
     }
 
 
-def _diverges(outcomes: dict[str, str]) -> bool:
+def diverges(outcomes: dict[str, str]) -> bool:
     """Do the readers that opened the document disagree about whether the passage is there?"""
     verdicts = {found(o) for o in outcomes.values() if o not in ("unchecked", "empty")}
     return len(verdicts) > 1
@@ -563,7 +563,7 @@ def summarize(records: list[dict[str, Any]]) -> dict[str, Any]:
             for name in READERS
             if not r["readings"][name]["opened"]
         ]
-        three_way = sum(1 for _, c in checks if not _diverges(c["outcomes"]))
+        three_way = sum(1 for _, c in checks if not diverges(c["outcomes"]))
         pairwise: dict[str, dict[str, int]] = {}
         for a, b in (("poppler", "pdfplumber"), ("poppler", "pypdf"), ("pdfplumber", "pypdf")):
             agree = dissent_a = dissent_b = comparable = 0
@@ -635,7 +635,7 @@ def summarize(records: list[dict[str, Any]]) -> dict[str, Any]:
                     "excerpts": c.get("excerpts"),
                 }
                 for r, c in checks
-                if _diverges(c["outcomes"])
+                if diverges(c["outcomes"])
             ],
         }
     return out

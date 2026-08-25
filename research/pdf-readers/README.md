@@ -55,11 +55,26 @@ uv run python research/pdf-readers/compare_readers.py \
     --out research/pdf-readers/results.json
 ```
 
-`compare_readers.py` appends one line per document to `results.jsonl` before starting the next,
-so an interrupted run resumes rather than restarts. `report.py` reads those lines and assembles
-`results.json`; it computes the summary and measures nothing itself, so no number in the report
-lacks a document behind it.
+```bash
+uv run python research/pdf-readers/characterize.py \
+    --shard /tmp/quotations.jsonl --shard /tmp/sampled.jsonl --out /tmp/causes.json
 
-The corpora are not in this repository. Publisher PDFs are not redistributable, and the
-ReScience articles are rebuildable from the frame; the paths above are arguments for that
-reason.
+uv run python research/pdf-readers/report.py \
+    --quotations-shard /tmp/quotations.jsonl --sampled-shard /tmp/sampled.jsonl \
+    --causes /tmp/causes.json --out research/pdf-readers/results.json
+```
+
+`compare_readers.py` appends one line per document to a `.jsonl` shard before starting the
+next, so an interrupted run resumes rather than restarts. `characterize.py` re-reads each
+document a divergence was found in and records what the reader that missed the passage did
+with it instead. `report.py` assembles `results.json` from both and measures nothing itself,
+so no number in the report lacks a document behind it.
+
+`results.json` carries statistics, one row per document, and twelve worked examples. It does
+not carry the 1,792 quotations the corpus checked: those belong to publishers who did not
+license their redistribution, which is the same reason `paper/prior_art/reference/` is not in
+this repository. The shards, which do carry them, stay outside the repository.
+
+The corpora themselves are not here either. The ReScience articles are rebuildable from the
+frame, and the claims corpora live in the repositories that wrote them, which is why both are
+arguments rather than paths.
