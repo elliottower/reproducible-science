@@ -1,0 +1,17 @@
+{
+  "name": "repro",
+  "description": "Check that every claim in a paper resolves in the artifact it names",
+  "version": "0.2.0",
+  "author": {
+    "name": "Elliot Tower",
+    "email": "elliot@elliottower.ai"
+  },
+  "repository": "https://github.com/elliottower/reproducible-science/tree/main/packages/repro",
+  "license": "MIT",
+  "keywords": [
+    "reproducibility",
+    "provenance",
+    "verification",
+    "open science"
+  ]
+}
