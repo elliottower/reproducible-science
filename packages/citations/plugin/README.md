@@ -1,7 +1,27 @@
-# The Claude Code plugin
+# The `citations` Claude Code plugin
 
-Tells Claude the `citations` CLI exists and when to reach for it. The CLI does the work; this
-adds nothing the CLI cannot do.
+Does each quotation in the manuscript appear in the source it cites?
+
+Three surfaces, because each catches a different failure. The hook catches what the model
+does not think to do, the skill catches what the author did not know to ask for, and the
+command is there for when you want the answer now.
+
+| | |
+|---|---|
+| **hook** `hooks/unverified_quotations.py` | fires when a passage enters a manuscript that no claim file pins to a source |
+| **skill** `skills/citations/SKILL.md` | fires when Claude judges the tool relevant |
+| **command** `/citations-check` | fires when you type it |
+
+## Why the hook
+
+A quotation is the one thing in a paper that can be checked exactly: it is in the source or it is not. Prose is where a remembered sentence drifts, and nearly right is wrong. The check is cheap while the source is open and impossible once the paper is finished.
+
+It reports and never blocks, exits zero on every failure path, and stays silent in a project
+with no `claims/` directory — nothing to check means nothing said.
+
+## What the skill changes
+
+Claude looks a source up before quoting it rather than producing text that sounds like what the paper says, pins quotations to artifacts by sha256, and reports `unchecked` where a source could not be read rather than calling the passage missing.
 
 ## Install
 
@@ -10,21 +30,21 @@ adds nothing the CLI cannot do.
 /plugin install citations@reproducible-science
 ```
 
-The plugin ships instructions, not binaries. Install the tool too:
+The plugin ships instructions and hooks, not binaries. Install the tool as well:
 
 ```bash
 uv tool install citations
 ```
 
-For development against a checkout:
+Against a checkout:
 
 ```bash
-/plugin marketplace add ~/Documents/GitHub/citations
+/plugin marketplace add ~/Documents/GitHub/reproducible-science
 /plugin install citations@reproducible-science
 ```
 
-## What it changes
+## The other three
 
-Claude will look up a source before quoting it rather than generating text that sounds like what
-a paper says. It will pin quotations to artifacts with sha256 hashes, run `citations verify` to
-check them, and flag truncated quotes that stop mid-number.
+`prereg`, `citations`, `results` and `repro` are one lifecycle, and each plugin ships
+separately so you can take only what you use. `reproducible-science@reproducible-science`
+installs all of them at once.

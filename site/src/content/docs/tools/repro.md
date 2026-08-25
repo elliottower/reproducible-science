@@ -1,11 +1,13 @@
 ---
-title: repro
-description: repro — Reproducible Science
+title: Repro
+description: Repro — Reproducible Science
 ---
 
-{/* Generated from packages/repro/README.md. Edit that file, not this one. */}
+<!-- Generated from packages/repro/README.md. Edit that file, not this one. -->
 
-Scaffold reproducible science workflows in one command.
+Declare what evidence stands behind each claim in a paper, and check that it still does.
+
+**[Run it in your browser](#run-it)** — every command on this page, in a live notebook at the bottom. No install.
 
 ## Install
 
@@ -95,12 +97,49 @@ adduce is not a dependency of this package, and this package is not a dependency
 
 ## Claude Code
 
-This repo is also a Claude Code plugin marketplace bundling all three tools:
+This repository is a Claude Code plugin marketplace. One plugin carries all four tools:
 
 ```bash
 /plugin marketplace add elliottower/reproducible-science
+/plugin install reproducible-science@reproducible-science
 ```
 
-Or install them individually: [`prereg`](https://github.com/elliottower/reproducible-science/tree/main/packages/prereg), [`citations`](https://github.com/elliottower/reproducible-science/tree/main/packages/citations), [`results`](https://github.com/elliottower/reproducible-science/tree/main/packages/results).
+It installs three skills, three commands and three hooks. The hooks are the part a CLI
+cannot do, because each fires at a moment rather than when you remember to run something:
+
+| hook | fires when |
+|---|---|
+| frozen plan changed | a preregistration no longer matches the digest it was frozen with |
+| unverified quotation | a passage enters a manuscript that no claim file pins to a source |
+| unbound number | a number enters a manuscript that no recorded claim names |
+
+Every hook reports and never blocks, and stays silent in a project that has not opted in: no
+ledger, no claims directory and no frozen plan means nothing to check and nothing said.
+
+The commands are `/prereg-check`, `/citations-check` and `/results-check`, named alike so
+there is nothing to remember about which tool answers which question.
+
+Each tool also ships on its own, for anyone who wants one of them:
+
+```bash
+/plugin install prereg@reproducible-science
+/plugin install citations@reproducible-science
+/plugin install results@reproducible-science
+```
+
+The plugin ships instructions and hooks, not binaries, so install the tools as well:
+
+```bash
+uv tool install reproducible-science   # or: pip install reproducible-science
+```
 
 MIT licensed.
+
+
+
+## Run it in your browser
+
+<div class="nb-embed" id="run-it" data-nb="end-to-end.ipynb">
+  <button class="nb-start" type="button">Start the notebook</button>
+  <p>Runs here, in this tab. Nothing is installed and nothing is uploaded.</p>
+</div>

@@ -1,17 +1,19 @@
 {
-  "name": "repro",
-  "description": "Check that every claim in a paper resolves in the artifact it names",
+  "name": "reproducible-science",
+  "description": "Freeze a plan before running, seal a run's inputs, bind every number and quotation in a manuscript to what backs it, and check that each still resolves before submitting. Bundles prereg, citations, results and repro.",
   "version": "0.2.0",
   "author": {
     "name": "Elliot Tower",
     "email": "elliot@elliottower.ai"
   },
-  "repository": "https://github.com/elliottower/reproducible-science/tree/main/packages/repro",
+  "repository": "https://github.com/elliottower/reproducible-science",
   "license": "MIT",
   "keywords": [
     "reproducibility",
+    "preregistration",
+    "citations",
     "provenance",
-    "verification",
-    "open science"
+    "open science",
+    "research integrity"
   ]
 }

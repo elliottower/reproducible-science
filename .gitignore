@@ -19,6 +19,14 @@ paper/prior_art/.audit-cache/
 htmlcov/
 coverage.xml
 
+# Internal review packets: simulated-referee rounds and self-critique.
+# Local only -- this repository may go public.
+REVIEW_PACKET*.md
+
+# Development corpus: the downloaded articles and shallow clones are rebuildable from
+# frame.json, but the measurements taken from them are not -- ignoring the whole directory
+# lost one 32-article run when the tree was tidied. Subdirectories only, as arxiv_corpus does.
+research/addressability/dev_corpus/*/
 # documentation site (Docusaurus)
 website/node_modules/
 website/build/
@@ -29,3 +37,13 @@ notebooks/executed.ipynb
 
 # jupyter lite build state
 .jupyterlite.doit.db
+
+# arXiv LaTeX sources fetched for testing, rebuildable from resolved.json
+research/addressability/arxiv_corpus/*/
+
+# CORE-Bench capsules: ~39 MB each, rebuildable from core_train.json
+research/addressability/corebench/work/
+research/addressability/corebench/diag/
+
+# CORE-Bench capsule metadata: 4.3 MB, fetched from siegelz/core-bench
+research/addressability/corebench/capsules.csv

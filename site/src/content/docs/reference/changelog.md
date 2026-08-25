@@ -3,7 +3,7 @@ title: Changelog
 description: Changelog — Reproducible Science
 ---
 
-{/* Generated from CHANGELOG.md. Edit that file, not this one. */}
+<!-- Generated from CHANGELOG.md. Edit that file, not this one. -->
 
 Every package in this workspace carries the same version and is released on the same day, so
 one file covers all four. Entries are scoped with a `[package]` prefix; unprefixed entries

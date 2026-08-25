@@ -3,7 +3,7 @@ title: Releasing
 description: Releasing — Reproducible Science
 ---
 
-{/* Generated from docs/RELEASING.md. Edit that file, not this one. */}
+<!-- Generated from docs/RELEASING.md. Edit that file, not this one. -->
 
 Every package in this workspace carries the same version and is published on the same day
 from one tag. This file is the procedure, and the reason each step exists is recorded beside
