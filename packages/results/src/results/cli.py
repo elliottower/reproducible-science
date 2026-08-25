@@ -238,11 +238,15 @@ def cmd_coverage(a) -> int:
         print(error)
         return 1
 
-    owed = [n for n in found if n["exempt"] is None]
-    for number in owed:
+    checkable = [n for n in found if n["exempt"] is None]
+    for number in checkable:
         number["bound"] = number["printed"] in claimed
-    bound = [n for n in owed if n["bound"]]
-    unbound = [n for n in owed if not n["bound"]]
+    bound = [n for n in checkable if n["bound"]]
+    # A number beside a citation belongs to the work cited. Counting it as unbound would
+    # report someone else's figure as an omission of yours.
+    attributed = [n for n in checkable if not n["bound"] and n["attributed"]]
+    unbound = [n for n in checkable if not n["bound"] and not n["attributed"]]
+    owed = bound + unbound
 
     print(f"{a.manuscript}")
     print(f"  {claims} claim{'' if claims == 1 else 's'} in the ledger, "
@@ -251,19 +255,27 @@ def cmd_coverage(a) -> int:
         print("  no numbers in this manuscript owe a run.")
         return 0
 
-    share = len(bound) / len(owed)
-    print(f"  {len(bound)} of {len(owed)} numbers bound to a run ({share:.0%})")
-    print(f"  {len(found) - len(owed)} more need no claim "
-          f"(constants, identifiers, hyphenated names)")
+    share = len(bound) / len(owed) if owed else 0.0
+    print(f"  yours, bound to a run       {len(bound):>5}   ({share:.0%} of {len(owed)})")
+    print(f"  yours, bound to nothing     {len(unbound):>5}")
+    print(f"  beside a citation           {len(attributed):>5}   "
+          f"attributable to the work cited")
+    print(f"  owing no claim              {len(found) - len(checkable):>5}   "
+          f"constants, identifiers, hyphenated names")
 
     if unbound:
-        print(f"\nunbound:")
-        for number in unbound[: a.limit]:
-            print(f"  {number['printed']:>12}  line {number['line']:<5} "
-                  f"{number['context'][:70]}")
-        if len(unbound) > a.limit:
-            print(f"  ... and {len(unbound) - a.limit} more; "
-                  f"pass --limit to see them")
+        # Grouped by line, since a dense abstract or a table row holds a dozen values and
+        # listing each separately buries every other place a number went unbound.
+        by_line: dict[int, list[dict]] = {}
+        for number in unbound:
+            by_line.setdefault(number["line"], []).append(number)
+        print(f"\nbound to nothing, by line:")
+        for lineno in sorted(by_line)[: a.limit]:
+            values = ", ".join(n["printed"] for n in by_line[lineno])
+            print(f"  line {lineno:<5} {values[:64]}")
+            print(f"            {by_line[lineno][0]['context'][:72]}")
+        if len(by_line) > a.limit:
+            print(f"  ... and {len(by_line) - a.limit} more lines; pass --limit to see them")
         print("\nEach states a result or it does not. Bind the ones that do:")
         print('  results claim --run-id <run> --location "<where>" "<the sentence>"')
     return 1 if unbound and a.strict else 0

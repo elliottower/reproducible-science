@@ -2,6 +2,7 @@
 
 import json
 import pathlib
+import re
 import subprocess
 import sys
 
@@ -22,6 +23,20 @@ def tracked_repo(tmp_path, claims=()):
         "\n".join(json.dumps(line) for line in lines) + "\n"
     )
     return tmp_path
+
+
+def summary(out):
+    """The counts from the report, so a test does not depend on column widths."""
+    def count(label):
+        match = re.search(rf"^\s*{re.escape(label)}\s+(\d+)", out, re.M)
+        return int(match.group(1)) if match else None
+
+    return {
+        "bound": count("yours, bound to a run"),
+        "unbound": count("yours, bound to nothing"),
+        "cited": count("beside a citation"),
+        "exempt": count("owing no claim"),
+    }
 
 
 def fire(payload):
@@ -46,9 +61,31 @@ def test_coverage_counts_bound_against_owed(tmp_path, monkeypatch, capsys):
     code = cli.main()
 
     out = capsys.readouterr().out
-    assert "1 of 2" in out
+    assert summary(out)["bound"] == 1
+    assert summary(out)["unbound"] == 1
     assert "43.21" in out
     assert code == 0
+
+
+def test_coverage_attributes_a_number_beside_a_citation(tmp_path, monkeypatch, capsys):
+    root = tracked_repo(tmp_path)
+    paper = root / "paper.tex"
+    paper.write_text(
+        "\\begin{document}\n"
+        "we measured 43.21 ourselves\n"
+        "an earlier trial reported 55.44 \\cite{smith2019}\n"
+        "\\end{document}\n"
+    )
+    monkeypatch.chdir(root)
+    monkeypatch.setattr(sys, "argv", ["results", "coverage", str(paper)])
+    cli.main()
+
+    out = capsys.readouterr().out
+    counts = summary(out)
+    assert counts["cited"] == 1, "the value beside the citation is attributed, not unbound"
+    assert counts["unbound"] == 1
+    assert "43.21" in out
+    assert "55.44" not in out, "a cited number is not reported as your omission"
 
 
 def test_coverage_strict_exits_nonzero_while_anything_is_unbound(tmp_path, monkeypatch, capsys):

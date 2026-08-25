@@ -44,6 +44,15 @@ LAYOUT = re.compile(
 
 COMMENT = re.compile(r"(?<!\\)%.*$", re.M)
 
+#: A citation on the line. A number beside one is usually attributable to the work cited
+#: rather than produced here -- an odds ratio quoted from a meta-analysis, an effect size
+#: taken from the study under review. Such a value cannot be bound to a run of yours, and
+#: counting it as unbound reports someone else's number as your omission.
+#:
+#: Reported as its own group rather than discarded, because the signal is good and not
+#: exact: a sentence can cite a source and still state a count of your own.
+CITATION = re.compile(r"\\(?:cite[a-z]*|autocite|footcite|parencite)\s*[\[\{]", re.I)
+
 #: A digit joined to a word by a hyphen names something rather than measuring it: `CIFAR-10`,
 #: `ResNet-18`, `top-1`. The digits belong to the name.
 NAME_FRAGMENT = re.compile(r"[A-Za-z][‐‑‒–-]$")
@@ -80,13 +89,19 @@ def constraining_digits(printed: str) -> int:
     return max(1, len(body.strip("0") or "0"))
 
 
-def body(source: str) -> str:
-    """The manuscript's prose and tables, with comments, preamble and layout removed."""
+def body(source: str) -> list[tuple[str, bool]]:
+    """Each line of the manuscript, with whether it carries a citation.
+
+    Layout is stripped per line rather than over the whole document, so a line number in the
+    result always indexes the same line of the source. Citations are noted before they are
+    stripped, since a `\\cite` is what marks the numbers beside it as somebody else's.
+    """
     source = COMMENT.sub("", source)
     start = source.find(r"\begin{document}")
     if start != -1:
         source = source[start:]
-    return LAYOUT.sub(" ", source)
+    return [(LAYOUT.sub(" ", line), bool(CITATION.search(line)))
+            for line in source.splitlines()]
 
 
 def needs_no_claim(printed: str, line: str, at: int) -> str | None:
@@ -115,16 +130,16 @@ def numbers(path: pathlib.Path) -> list[dict]:
         raise UnreadableManuscript(f"{path}: {error}") from error
 
     found = []
-    for lineno, line in enumerate(body(source).splitlines(), 1):
+    for lineno, (line, cited) in enumerate(body(source), 1):
         for match in NUMBER.finditer(line):
             printed = match.group(0)
-            exempt = needs_no_claim(printed, line, match.start())
             found.append(
                 {
                     "printed": printed,
                     "line": lineno,
                     "context": line.strip()[:160],
-                    "exempt": exempt,
+                    "exempt": needs_no_claim(printed, line, match.start()),
+                    "attributed": cited,
                 }
             )
     return found
