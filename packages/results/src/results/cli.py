@@ -5,6 +5,7 @@ results seal <file>...    hash inputs before a run (prereg, script, data)
 results access <note>     record a data-access event (what you looked at, when)
 results run <file>...     record outputs after a run completes
 results claim <text>      bind a manuscript claim to a run's output
+results coverage <paper>  how many of a manuscript's numbers are bound to a run
 results verify            check the ledger chain and every hash it names
 """
 
@@ -15,7 +16,7 @@ import os
 import pathlib
 import sys
 
-from results import ledger
+from results import ledger, manuscript
 
 RESULTS_DIR = ".results"
 
@@ -223,6 +224,64 @@ def cmd_claim(a) -> int:
     if retrospective:
         print(f"  recorded after outcomes were seen at {retrospective[:19]}; verify will report it")
     return 0
+
+
+def cmd_coverage(a) -> int:
+    root = require_root()
+    events = ledger.read_ledger(ledger_path(root))
+    claimed = manuscript.claimed_values(events)
+    claims = sum(1 for e in events if e.get("event") == "claim")
+
+    try:
+        found = manuscript.numbers(pathlib.Path(a.manuscript))
+    except manuscript.UnreadableManuscript as error:
+        print(error)
+        return 1
+
+    checkable = [n for n in found if n["exempt"] is None]
+    for number in checkable:
+        number["bound"] = number["printed"] in claimed
+    bound = [n for n in checkable if n["bound"]]
+    # A number beside a citation belongs to the work cited. Counting it as unbound would
+    # report someone else's figure as an omission of yours.
+    attributed = [n for n in checkable if not n["bound"] and n["attributed"]]
+    unbound = [n for n in checkable if not n["bound"] and not n["attributed"]]
+    owed = bound + unbound
+
+    print(f"{a.manuscript}")
+    print(f"  {claims} claim{'' if claims == 1 else 's'} in the ledger, "
+          f"naming {len(claimed)} distinct value{'' if len(claimed) == 1 else 's'}")
+    if not owed:
+        print("  no numbers in this manuscript owe a run.")
+        return 0
+
+    share = len(bound) / len(owed) if owed else 0.0
+    print(f"  yours, bound to a run       {len(bound):>5}   ({share:.0%} of {len(owed)})")
+    print(f"  yours, bound to nothing     {len(unbound):>5}")
+    print(f"  beside a citation           {len(attributed):>5}   "
+          f"attributable to the work cited")
+    print(f"  owing no claim              {len(found) - len(checkable):>5}   "
+          f"constants, identifiers, hyphenated names")
+
+    if unbound:
+        # Grouped by line, since a dense abstract or a table row holds a dozen values and
+        # listing each separately buries every other place a number went unbound.
+        by_line: dict[tuple[str, int], list[dict]] = {}
+        for number in unbound:
+            by_line.setdefault((number.get("source", ""), number["line"]), []).append(number)
+        print(f"\nbound to nothing, by line:")
+        for key in sorted(by_line)[: a.limit]:
+            lineno = key[1]
+            entries = by_line[key]
+            values = ", ".join(n["printed"] for n in entries)
+            where = entries[0].get("source") or pathlib.Path(a.manuscript).name
+            print(f"  {where}:{lineno}  {values[:58]}")
+            print(f"      {entries[0]['context'][:74]}")
+        if len(by_line) > a.limit:
+            print(f"  ... and {len(by_line) - a.limit} more lines; pass --limit to see them")
+        print("\nEach states a result or it does not. Bind the ones that do:")
+        print('  results claim --run-id <run> --location "<where>" "<the sentence>"')
+    return 1 if unbound and a.strict else 0
 
 
 def cmd_reanchor(a) -> int:
@@ -442,6 +501,15 @@ def main() -> int:
         help="also check that sealed/output files still match their hashes",
     )
     v.set_defaults(fn=cmd_verify)
+
+    cv = sub.add_parser("coverage",
+                        help="how many of a manuscript's numbers are bound to a run")
+    cv.add_argument("manuscript", help="the manuscript source: .tex, .md, .qmd, .rst")
+    cv.add_argument("--limit", type=int, default=25,
+                    help="how many unbound numbers to list (default: 25)")
+    cv.add_argument("--strict", action="store_true",
+                    help="exit non-zero when anything is unbound, for a pre-submission check")
+    cv.set_defaults(fn=cmd_coverage)
 
     ra = sub.add_parser("reanchor", help="record the ledger's current length as authoritative")
     ra.set_defaults(fn=cmd_reanchor)

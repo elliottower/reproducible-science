@@ -1,6 +1,6 @@
 ---
 name: results
-description: Seal a run's inputs before computing, record outputs after, bind manuscript claims to specific runs, and verify the hash chain. Use before launching any computation whose output will appear in a paper, after a run completes, when a number in a manuscript needs tracing to its source, or when asked whether results are still what they were. Requires the `results` CLI (`uv tool install results-cli`).
+description: Seal a run's inputs before computing, record outputs after, bind manuscript claims to specific runs, and verify the hash chain. Use before launching any computation whose output will appear in a paper, after a run completes, while writing a sentence that states a number, when a number in a manuscript needs tracing to its source, before submitting a draft, or when asked whether results are still what they were. Requires the `results` CLI (`uv tool install results-cli`).
 ---
 
 # results
@@ -26,6 +26,7 @@ results access <note> [--level ...]     # record a data-access event
 results run <file>... --run-id <id>     # record outputs after a run
 results claim <text> --run-id <id>      # bind a manuscript claim to a run
 results verify [--files]                # check the chain and every hash it names
+results coverage <manuscript>           # which of a paper's numbers are bound
 ```
 
 ## The workflow, in order
@@ -84,13 +85,44 @@ This is the whole chain: manuscript → claim → run → output file → hash. 
 is exploratory. The distinction is recorded, not enforced — the access timeline is what makes it
 verifiable.
 
+## Binding while writing
+
+**When a number enters a manuscript, record what produced it before moving on.**
+
+The address is on screen while the sentence is being written and gone immediately afterward.
+Recovering it later is measurably hard: matching a printed value against an artifact by its
+digits fails once the artifact is dense, and on one development repository a four-digit value
+confirms at 94 per cent while a fabricated value of the same shape confirms at 93.8 per cent.
+The values are genuinely there and the match shows nothing. What separates a match from a
+coincidence is the address, and a finished paper carries none.
+
+The plugin's hook watches edits to manuscript files in repositories that have run
+`results init`. When an edit introduces a number no claim names, it says which. Answer it by
+recording the claim, or by noting once that the value needs none.
+
+A value needs no claim when it is a constant of a formula, a number quoted from another
+paper, or a parameter fixed by choice rather than produced by computation. Say so once for
+the document rather than each time it comes up.
+
+## Auditing a draft
+
+```bash
+results coverage paper/paper_v23.tex        # what is bound, and what is not
+results coverage paper.tex --strict         # non-zero exit if anything is unbound
+```
+
+Run it before submitting. On a real manuscript with 21 recorded claims it reported 27 per
+cent of the numbers bound, and among the unbound were sample-size denominators and interval
+bounds — the class of number whose errors survive review.
+
 ## When to reach for this
 
 - Before launching any computation whose output will be reported
 - After a run completes, to record what it produced
 - When a number in a manuscript needs tracing to its source run
 - When asked whether results are still what they were
-- In CI, as `results verify --files`
+- In CI, as `results verify --files` and `results coverage <paper> --strict`
+- Before submitting, to see which numbers nothing backs
 
 ## What it will not do
 
