@@ -1,0 +1,49 @@
+name: Attribution
+
+# A commit-msg hook cannot reach a squash merge: GitHub composes that message
+# server-side from the branch's commits. On 2026-08-25 a model reached this
+# repository's contributor graph that way. This check is the layer that covers it,
+# and it also catches a commit made with the hook bypassed.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  trailers:
+    name: no AI co-authorship trailers
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: every commit in this pull request
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          range="${BASE:-HEAD~1}..${HEAD:-HEAD}"
+          bad=0
+          for c in $(git rev-list "$range"); do
+            # Case-insensitive: git and GitHub accept any casing, and a case-sensitive
+            # check is what let `Co-authored-by:` through in the first place.
+            if git log -1 --format=%B "$c" | grep -qiE \
+              '^[[:space:]]*(co-authored-by:[[:space:]]*.*(claude|anthropic|gpt-[0-9]|chatgpt|openai|copilot|codex|gemini|cursor|devin)|(claude|assisted-by|generated-with|ai-assisted)[-a-z]*:)'
+            then
+              echo "::error::$(git log -1 --format='%h %s' "$c") carries an AI attribution trailer"
+              git log -1 --format=%B "$c" | grep -inE \
+                '^[[:space:]]*(co-authored-by:|claude|assisted-by:|generated-with|ai-assisted)' | sed 's/^/    /'
+              bad=$((bad + 1))
+            fi
+          done
+          if [ "$bad" -ne 0 ]; then
+            echo "::error::$bad commit(s) carry an AI attribution trailer."
+            echo "Rewrite them before merging. A human Co-Authored-By line is fine and is not matched."
+            exit 1
+          fi
+          echo "checked $(git rev-list --count "$range") commit(s): clean"
