@@ -252,7 +252,7 @@ def main() -> None:
         "documents": per_document(records),
     }
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(report, indent=1))
+    args.out.write_text(json.dumps(report, indent=1) + "\n")
     print(json.dumps({k: report[k] for k in ("verdict", "divergence_causes")}, indent=1))
 
 
