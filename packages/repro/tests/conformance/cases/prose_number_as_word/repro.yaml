@@ -1,0 +1,26 @@
+schema_version: repro/1
+project: prose_number_as_word
+artifacts:
+- id: doc
+  path: doc.md
+  digest:
+    algorithm: sha256
+    value: 35b20c668aafdc3418ca5ff4843cb275d647454758e2a33121b40f15ad0d47e5
+- id: counts
+  path: counts.json
+  digest:
+    algorithm: sha256
+    value: 7b42a57cb389f8e3230a5a9ba90dc9acc86b023161bba410dd42413d13d2e5d7
+claims:
+- id: c
+  text: t
+  evidence:
+  - kind: value
+    artifact: doc
+    name: m
+    reported: '18'
+    locator:
+      kind: prose
+      before: suite holds
+      after: fixtures
+      form: decimal

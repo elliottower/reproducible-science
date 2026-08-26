@@ -1,0 +1,12 @@
+{
+  "outcomes": [
+    "not_found"
+  ],
+  "reasons": [
+    "number_as_word"
+  ],
+  "artifacts": {
+    "doc": "authoritative",
+    "counts": "authoritative"
+  }
+}

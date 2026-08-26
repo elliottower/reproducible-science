@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import decimal
 import pathlib
+from collections.abc import Mapping
 from typing import Protocol
 
 from repro.exceptions import (
@@ -36,7 +37,9 @@ from repro.models import (
     ClaimAssessment,
     ComparisonMode,
     ComparisonStatus,
+    CorrespondenceEvidence,
     Decision,
+    DecisionSide,
     Digest,
     Evidence,
     ExecutionStatus,
@@ -65,7 +68,13 @@ ADAPTER_DISTRIBUTION = "reproducible-science"
 
 
 class Backend(Protocol):
-    """Evaluates one kind of evidence assertion against one artifact."""
+    """Evaluates one kind of evidence assertion against the artifacts it names.
+
+    `paths` holds one entry per artifact the assertion reads, keyed by id. Every kind but
+    `correspondence` reads one, and takes it with `paths[evidence.artifact]`. A mapping rather
+    than a path because an assertion whose two sides are both artifacts has no single file to
+    be handed, and giving it one would make the engine pick a side.
+    """
 
     kind: str
     version: str
@@ -78,7 +87,20 @@ class Backend(Protocol):
         """The version `tool` reports, or `toolchain.UNKNOWN`."""
         ...
 
-    def check(self, claim: Claim, evidence: Evidence, path: pathlib.Path) -> Decision: ...
+    def check(
+        self, claim: Claim, evidence: Evidence, paths: Mapping[str, pathlib.Path]
+    ) -> Decision: ...
+
+
+#: Weakest first. A decision over two artifacts is no more authoritative than the worse of
+#: them, and taking the better one would report a comparison against a file that moved as
+#: though the declared bytes had been read.
+_VALIDITY_RANK = {
+    Validity.ARTIFACT_ABSENT: 0,
+    Validity.BROKEN_PIN: 1,
+    Validity.UNPINNED_ARTIFACT: 2,
+    Validity.AUTHORITATIVE: 3,
+}
 
 
 def _base(
@@ -90,11 +112,15 @@ def _base(
     engine produced was one an extraction was sought for, and the empty value is reserved for
     a decision no backend produced.
     """
+    named = evidence.artifacts
     return {
         "claim_id": claim.id,
         "claim_digest": claim.digest.value,
         "kind": evidence.kind,
-        "artifact_id": evidence.artifact,
+        # Left empty where an assertion reads two files: `artifact_id` is singular, and
+        # filling it with one of them would name a side the engine does not rank. The two are
+        # recorded in `sides`.
+        "artifact_id": named[0] if len(named) == 1 else "",
         "backend": backend.kind,
         "backend_version": backend.version,
         "tool": backend.tool,
@@ -134,7 +160,9 @@ class QuoteBackend:
     def tool_version(self) -> str:
         return binary_version(self.tool)
 
-    def check(self, claim: Claim, evidence: Evidence, path: pathlib.Path) -> Decision:
+    def check(
+        self, claim: Claim, evidence: Evidence, paths: Mapping[str, pathlib.Path]
+    ) -> Decision:
         if not isinstance(evidence, QuoteEvidence):
             raise TypeError(f"QuoteBackend received {type(evidence).__name__}")
         try:
@@ -145,6 +173,7 @@ class QuoteBackend:
         except ImportError as e:
             raise BackendUnavailableError("quote", f"citations is not installed: {e}") from e
 
+        path = paths[evidence.artifact]
         result = check_one(evidence.text, path, evidence.page)
         warnings = tuple(_QUOTE_WARNINGS[w] for w in result.warnings if w in _QUOTE_WARNINGS)
 
@@ -190,6 +219,8 @@ _RESOLUTION_STATE = {
     Resolution.AMBIGUOUS: (ExtractionStatus.INVALID, Reason.ROW_AMBIGUOUS),
     Resolution.NOT_SCALAR: (ExtractionStatus.INVALID, Reason.SELECTOR_NOT_SCALAR),
     Resolution.SELECTOR_INVALID: (ExtractionStatus.INVALID, Reason.ROW_SELECTOR_INVALID),
+    Resolution.NUMBER_AS_WORD: (ExtractionStatus.INVALID, Reason.NUMBER_AS_WORD),
+    Resolution.PASSAGE_AMBIGUOUS: (ExtractionStatus.INVALID, Reason.PASSAGE_AMBIGUOUS),
 }
 
 #: Which "not there" reason fits each addressing scheme.
@@ -199,6 +230,7 @@ _ABSENT_REASON = {
     "table_position": Reason.ROW_ABSENT,
     "sqlite": Reason.ROW_ABSENT,
     "array": Reason.POINTER_ABSENT,
+    "prose": Reason.PASSAGE_ABSENT,
 }
 
 
@@ -206,12 +238,45 @@ def compare_decimal(
     stored: decimal.Decimal, evidence: MetricEvidence | TableCellEvidence | ValueEvidence
 ) -> bool:
     """Does the stored value agree with the reported one, under the declared mode?"""
-    reported = evidence.value
+    return _agree(stored, evidence.value, evidence.mode, evidence.tolerance_value)
+
+
+def _exponent(value: decimal.Decimal) -> int:
+    """The power of ten a finite decimal's last digit sits at.
+
+    `Decimal.as_tuple().exponent` is `int | Literal["n", "N", "F"]`: the strings tag NaN and
+    the infinities, which have no precision for a comparison to be coarser or finer than.
+    Every backend refuses a non-finite value with `value_not_numeric` before comparing, so
+    reaching this with one is a defect in a backend rather than a fact about an artifact, and
+    §5 says a defect is an `error` and never a scientific outcome. Raising is how it becomes
+    one. Returning a number instead would compare two values at a precision nothing chose.
+    """
+    exponent = value.as_tuple().exponent
+    if not isinstance(exponent, int):
+        raise ValueError(
+            f"{value} has no exponent: a non-finite value is refused before any comparison, "
+            f"so reaching the comparison with one is a defect"
+        )
+    return exponent
+
+
+def _agree(
+    stored: decimal.Decimal,
+    reported: decimal.Decimal,
+    mode: ComparisonMode,
+    tolerance: decimal.Decimal,
+) -> bool:
+    """Do two decimals agree under one mode? The arithmetic, with no evidence attached.
+
+    Split out because a correspondence has two extracted values and no `reported` field to
+    read a mode off, and duplicating the `printed_precision` rounding rule is how two
+    spellings of the same comparison come to disagree.
+    """
     if not stored.is_finite():
         # NaN and the infinities parse out of JSON but cannot equal a printed decimal. The
         # backend flags them before reaching here; this keeps the function total.
         return False
-    if evidence.mode is ComparisonMode.PRINTED_PRECISION:
+    if mode is ComparisonMode.PRINTED_PRECISION:
         # Round the stored value to the precision the manuscript printed. A paper reporting
         # 3.2 is not contradicted by a file holding 3.20001; a paper reporting 3.20000 is.
         # `quantize` raises whenever the *result* needs more digits than the context carries,
@@ -231,9 +296,9 @@ def compare_decimal(
                 # precision reconciles. They disagree, and saying so is the answer.
                 return False
     delta = abs(stored - reported)
-    if evidence.mode is ComparisonMode.ABSOLUTE:
-        return delta <= evidence.tolerance_value
-    return delta <= evidence.tolerance_value * abs(reported)
+    if mode is ComparisonMode.ABSOLUTE:
+        return delta <= tolerance
+    return delta <= tolerance * abs(reported)
 
 
 class ValueBackend:
@@ -252,9 +317,12 @@ class ValueBackend:
     def tool_version(self) -> str:
         return distribution_version(self.tool)
 
-    def check(self, claim: Claim, evidence: Evidence, path: pathlib.Path) -> Decision:
+    def check(
+        self, claim: Claim, evidence: Evidence, paths: Mapping[str, pathlib.Path]
+    ) -> Decision:
         if not isinstance(evidence, (MetricEvidence, TableCellEvidence, ValueEvidence)):
             raise TypeError(f"{type(self).__name__} received {type(evidence).__name__}")
+        path = paths[evidence.artifact]
         base = _base(claim, evidence, self)
         completed = {"execution": ExecutionStatus.COMPLETED}
         no_compare = {"comparison": ComparisonStatus.NOT_APPLICABLE}
@@ -362,11 +430,147 @@ class TableBackend(ValueBackend):
     kind = "table"
 
 
+# --------------------------------------------------------------------------- correspondences
+
+
+class CorrespondenceBackend:
+    """Assertion: two artifacts hold the same value.
+
+    Two extractions precede one comparison, and the stages report that faithfully. A side that
+    does not extract makes the comparison impossible rather than false: a document that never
+    states the number does not contradict the file holding it, and reporting that as a
+    disagreement would manufacture a finding out of a gap. The decision carries the failing
+    side's own reason, so `pointer_absent` and `number_as_word` stay distinguishable.
+
+    When both sides extract and disagree, the decision reports both values and names neither
+    as wrong. Which of a specification and a test suite is in error is not something a byte
+    comparison establishes.
+    """
+
+    kind = "correspondence"
+    version = "1"
+    #: The format adapters are this distribution, as they are for `ValueBackend`. The
+    #: declaration is an approximation for one case: a `prose` side over a paginated source
+    #: reaches `citations.verify.extract`, which runs the same `pdftotext` that `QuoteBackend`
+    #: declares, and `Decision.tool` is one field where such an assertion has two extractors.
+    #: `DecisionSide.extraction_digest` is what catches a change in either of them, since it
+    #: moves whenever what a side read moves, whatever did the reading. Naming the tool per
+    #: side needs the adapters to report which one they used, which this revision does not
+    #: define.
+    tool = ADAPTER_DISTRIBUTION
+
+    @property
+    def tool_version(self) -> str:
+        return distribution_version(self.tool)
+
+    def check(
+        self, claim: Claim, evidence: Evidence, paths: Mapping[str, pathlib.Path]
+    ) -> Decision:
+        if not isinstance(evidence, CorrespondenceEvidence):
+            raise TypeError(f"CorrespondenceBackend received {type(evidence).__name__}")
+        base = _base(claim, evidence, self)
+        no_compare = {"comparison": ComparisonStatus.NOT_APPLICABLE}
+
+        readings = [(side, *resolve(side.locator, paths[side.artifact])) for side in evidence.sides]
+        base["sides"] = tuple(
+            DecisionSide(
+                name=side.name,
+                artifact_id=side.artifact,
+                locator_digest=side.locator.digest.value,
+                extracted=extracted.raw if extracted is not None else None,
+                # Hashed per side before any comparison, and for a value that turns out not
+                # to be numeric: what an extractor read is a fact about the extractor whatever
+                # the comparison then makes of it.
+                extraction_digest=(
+                    Digest.of_text(extracted.raw).value if extracted is not None else UNKNOWN
+                ),
+            )
+            for side, _, extracted, _ in readings
+        )
+        # The decision-level field covers both extractions, in the order the manifest declares
+        # the sides, so it moves whenever either side's extraction moves. Which of the two
+        # moved is on the sides; leaving this `unknown` would say the extraction was sought
+        # and not obtained, and it was sought twice.
+        base["extraction_digest"] = Digest.of_text(
+            "\x00".join(s.extraction_digest for s in base["sides"])
+        ).value
+
+        unsupported = [(s, d) for s, r, _, d in readings if r is Resolution.FORMAT_UNSUPPORTED]
+        if unsupported:
+            side, detail = unsupported[0]
+            return Decision(
+                **base,
+                execution=ExecutionStatus.UNAVAILABLE,
+                extraction=ExtractionStatus.NOT_ATTEMPTED,
+                **no_compare,
+                reason=Reason.FORMAT_UNSUPPORTED,
+                detail=f"{side.name}: {detail}",
+            )
+
+        completed = {"execution": ExecutionStatus.COMPLETED}
+        unresolved = [
+            (s, r, d) for s, r, e, d in readings if r is not Resolution.RESOLVED or e is None
+        ]
+        if unresolved:
+            # Reported in the order the manifest declares the sides, which is a fact about the
+            # manifest and not a ranking. Every failing side appears in the detail.
+            side, resolution, _ = unresolved[0]
+            extraction, reason = _RESOLUTION_STATE[resolution]
+            return Decision(
+                **base,
+                **completed,
+                **no_compare,
+                extraction=extraction,
+                reason=reason or _ABSENT_REASON[side.locator.kind],
+                detail="; ".join(f"{s.name} ({s.artifact}): {d}" for s, _, d in unresolved),
+            )
+
+        numbers: list[decimal.Decimal] = []
+        for side, _, extracted, _ in readings:
+            raw = extracted.raw if extracted is not None else ""
+            try:
+                number = decimal.Decimal(raw)
+            except (decimal.InvalidOperation, ValueError):
+                number = decimal.Decimal("NaN")
+            if not number.is_finite():
+                return Decision(
+                    **base,
+                    **completed,
+                    **no_compare,
+                    extraction=ExtractionStatus.INVALID,
+                    reason=Reason.VALUE_NOT_NUMERIC,
+                    detail=f"{side.name} ({side.artifact}) holds {raw!r}",
+                )
+            numbers.append(number)
+
+        left, right = evidence.sides
+        a, b = numbers
+        # `printed_precision` compares at the coarser of the two precisions, so a document
+        # printing 0.65 agrees with a file holding 0.6478 and the answer does not depend on
+        # which side the manifest wrote first. A larger exponent is the coarser value.
+        coarse, fine = (a, b) if _exponent(a) >= _exponent(b) else (b, a)
+        agrees = _agree(fine, coarse, evidence.mode, evidence.tolerance_value)
+        return Decision(
+            **base,
+            **completed,
+            extraction=ExtractionStatus.EXTRACTED,
+            comparison=ComparisonStatus.MATCH if agrees else ComparisonStatus.MISMATCH,
+            reason=Reason.VALUE_MATCH if agrees else Reason.VALUE_MISMATCH,
+            detail=f"{evidence.name}: {left.name} {a}, {right.name} {b}",
+            warnings=(
+                (Warning_.POSITIONAL_ADDRESS,)
+                if any(side.locator.kind == "table_position" for side in evidence.sides)
+                else ()
+            ),
+        )
+
+
 DEFAULT_BACKENDS: tuple[Backend, ...] = (
     QuoteBackend(),
     MetricBackend(),
     TableBackend(),
     ValueBackend(),
+    CorrespondenceBackend(),
 )
 
 
@@ -432,7 +636,7 @@ def _ordering(
     if not claim.confirmatory:
         return Ordering.NOT_APPLICABLE, OrderingReason.NOT_CONFIRMATORY, "", None
 
-    produced = {e.artifact for e in claim.evidence}
+    produced = {a for e in claim.evidence for a in e.artifacts}
     runs = [r for r in manifest.runs if produced & {o.artifact for o in r.outputs}]
     covered = {o.artifact for r in runs for o in r.outputs}
     uncovered = sorted(produced - covered)
@@ -618,27 +822,30 @@ def _check(
         "comparison": ComparisonStatus.NOT_APPLICABLE,
     }
 
-    artifact = manifest.artifact(evidence.artifact)
-    if artifact is None:
+    # Every artifact the assertion names, not only the first. An assertion reading two files
+    # is unchecked if either is undeclared or absent, and no more authoritative than the worse
+    # of the two pins.
+    named = evidence.artifacts
+    undeclared = [a for a in named if manifest.artifact(a) is None]
+    if undeclared:
         return Decision(
             **base,
             **unchecked,
             reason=Reason.ARTIFACT_UNDECLARED,
-            detail=f"manifest declares no artifact {evidence.artifact!r}",
+            detail=f"manifest declares no artifact {', '.join(repr(a) for a in undeclared)}",
         )
-    path = paths[artifact.id]
-    state = states[artifact.id]
-    if not state.exists:
+    missing = [a for a in named if not states[a].exists]
+    if missing:
         return Decision(
             **base,
             **unchecked,
             reason=Reason.ARTIFACT_MISSING,
-            detail=f"{path} does not exist",
-            validity=state.validity,
+            detail="; ".join(f"{paths[a]} does not exist" for a in missing),
+            validity=min((states[a].validity for a in missing), key=_VALIDITY_RANK.__getitem__),
         )
 
     try:
-        decision = backend.check(claim, evidence, path)
+        decision = backend.check(claim, evidence, {a: paths[a] for a in named})
     except BackendUnavailableError as e:
         decision = Decision(**base, **unchecked, reason=Reason.EXTRACTOR_MISSING, detail=e.detail)
     except ArtifactUnreadableError as e:
@@ -656,9 +863,21 @@ def _check(
             detail=f"{type(e).__name__}: {e}",
         )
 
+    validity = min((states[a].validity for a in named), key=_VALIDITY_RANK.__getitem__)
     return decision.model_copy(
         update={
-            "validity": state.validity,
-            "artifact_digest": state.actual,
+            "validity": validity,
+            "artifact_digest": states[named[0]].actual if len(named) == 1 else None,
+            # The backend knows which locator addressed which side; only the engine knows what
+            # was at each path. Filling the digests here keeps both in one record.
+            "sides": tuple(
+                side.model_copy(
+                    update={
+                        "artifact_digest": states[side.artifact_id].actual,
+                        "validity": states[side.artifact_id].validity,
+                    }
+                )
+                for side in decision.sides
+            ),
         }
     )

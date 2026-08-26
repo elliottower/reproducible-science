@@ -72,7 +72,10 @@ known_first_party = [ "repro" ]
 # not the wheel, and `citations-0.2.0-py3-none-any.whl` carries no plugin file. Its hooks are
 # standalone scripts that import a sibling package inside `try/except ImportError` and carry
 # a fallback for when it is absent, which is the opposite of an undeclared dependency.
-extend_exclude = [ "plugin" ]
+# `examples/` ships in neither: its scripts import each other by module name because they sit
+# in one directory and are run from it, which reads as an undeclared dependency of a wheel
+# that does not contain them.
+extend_exclude = [ "examples", "plugin" ]
 
 [tool.pytest]
 ini_options.addopts = "-m 'not corpus'"

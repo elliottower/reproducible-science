@@ -1,0 +1,32 @@
+schema_version: repro/1
+project: correspondence_match
+artifacts:
+- id: doc
+  path: doc.md
+  digest:
+    algorithm: sha256
+    value: 35b20c668aafdc3418ca5ff4843cb275d647454758e2a33121b40f15ad0d47e5
+- id: counts
+  path: counts.json
+  digest:
+    algorithm: sha256
+    value: 7b42a57cb389f8e3230a5a9ba90dc9acc86b023161bba410dd42413d13d2e5d7
+claims:
+- id: c
+  text: t
+  evidence:
+  - kind: correspondence
+    name: fixture-count
+    sides:
+    - name: stated
+      artifact: doc
+      locator:
+        kind: prose
+        before: Improvement reached
+        after: percentage points
+        form: decimal
+    - name: measured
+      artifact: counts
+      locator:
+        kind: tree
+        pointer: /improvement

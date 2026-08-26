@@ -49,7 +49,7 @@ def test_a_value_too_large_to_round_to_printed_precision_disagrees(stored):
 
 def test_a_huge_stored_value_is_a_mismatch_and_not_an_engine_error(tmp_path):
     path = write_json(tmp_path, json.dumps({"x": 1e30}))
-    decision = MetricBackend().check(CLAIM, metric("3.20"), path)
+    decision = MetricBackend().check(CLAIM, metric("3.20"), {"a": path})
     assert decision.outcome is Outcome.MISMATCH
     assert decision.reason is Reason.VALUE_MISMATCH
 
@@ -57,14 +57,14 @@ def test_a_huge_stored_value_is_a_mismatch_and_not_an_engine_error(tmp_path):
 @pytest.mark.parametrize("literal", ["NaN", "Infinity", "-Infinity"])
 def test_a_non_finite_stored_value_is_not_a_quantity_to_compare(tmp_path, literal):
     path = write_json(tmp_path, f'{{"x": {literal}}}')
-    decision = MetricBackend().check(CLAIM, metric("3.20"), path)
+    decision = MetricBackend().check(CLAIM, metric("3.20"), {"a": path})
     assert decision.reason is Reason.VALUE_NOT_NUMERIC
     assert decision.outcome is Outcome.NOT_FOUND
 
 
 def test_rounding_to_printed_precision_still_holds_where_it_can(tmp_path):
     path = write_json(tmp_path, json.dumps({"x": 3.2001}))
-    assert MetricBackend().check(CLAIM, metric("3.20"), path).outcome is Outcome.VERIFIED
+    assert MetricBackend().check(CLAIM, metric("3.20"), {"a": path}).outcome is Outcome.VERIFIED
 
 
 def test_a_tolerance_comparison_survives_a_non_finite_value():
@@ -84,7 +84,7 @@ def cell(**kw) -> TableCellEvidence:
 def test_a_selector_naming_a_column_the_table_lacks_is_reported_as_the_selector(tmp_path):
     path = tmp_path / "t.csv"
     path.write_text(TABLE)
-    decision = TableBackend().check(CLAIM, cell(where={"nosuchcolumn": "resnet"}), path)
+    decision = TableBackend().check(CLAIM, cell(where={"nosuchcolumn": "resnet"}), {"a": path})
     assert decision.reason is Reason.ROW_SELECTOR_INVALID
     assert "nosuchcolumn" in decision.detail
     assert "accuracy" in decision.detail, "the columns that do exist should be named"
@@ -93,7 +93,7 @@ def test_a_selector_naming_a_column_the_table_lacks_is_reported_as_the_selector(
 def test_a_selector_on_a_real_column_with_no_matching_row_is_an_absent_row(tmp_path):
     path = tmp_path / "t.csv"
     path.write_text(TABLE)
-    decision = TableBackend().check(CLAIM, cell(where={"model": "nothere"}), path)
+    decision = TableBackend().check(CLAIM, cell(where={"model": "nothere"}), {"a": path})
     assert decision.reason is Reason.ROW_ABSENT
 
 
@@ -101,8 +101,8 @@ def test_the_two_are_distinguishable(tmp_path):
     path = tmp_path / "t.csv"
     path.write_text(TABLE)
     backend = TableBackend()
-    bad_column = backend.check(CLAIM, cell(where={"nope": "resnet"}), path).reason
-    bad_value = backend.check(CLAIM, cell(where={"model": "nope"}), path).reason
+    bad_column = backend.check(CLAIM, cell(where={"nope": "resnet"}), {"a": path}).reason
+    bad_value = backend.check(CLAIM, cell(where={"model": "nope"}), {"a": path}).reason
     assert bad_column is not bad_value
 
 

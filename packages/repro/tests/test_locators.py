@@ -38,7 +38,8 @@ def evidence(locator, reported="3.2") -> ValueEvidence:
 
 
 def check(locator, path, reported="3.2"):
-    return ValueBackend().check(CLAIM, evidence(locator, reported), path)
+    ev = evidence(locator, reported)
+    return ValueBackend().check(CLAIM, ev, {ev.artifact: path})
 
 
 # -- the shared invariant -------------------------------------------------------------------

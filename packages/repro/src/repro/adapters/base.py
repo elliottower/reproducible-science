@@ -44,6 +44,12 @@ class Resolution(enum.StrEnum):
     SELECTOR_INVALID = "selector_invalid"
     """The locator names a column, field or array the artifact does not have. The manifest is
     wrong, which is a different fact from the artifact lacking the value."""
+    PASSAGE_AMBIGUOUS = "passage_ambiguous"
+    """One pair of anchors selected two different values in one document. A table reports an
+    ambiguous row for the same reason, in the vocabulary a table has."""
+    NUMBER_AS_WORD = "number_as_word"
+    """The locator selected an English cardinal written out. The value is there and is not a
+    decimal, and converting it is a semantic decision the manifest has to ask for."""
     FORMAT_UNSUPPORTED = "format_unsupported"
 
 

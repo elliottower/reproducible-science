@@ -47,7 +47,7 @@ def test_a_check_that_could_not_run_is_notApplicable_and_not_a_failure():
     # The distinction the whole package exists to preserve. A missing extractor is not a
     # low-severity failure; it is a check that did not happen.
     class NoExtractor(QuoteBackend):
-        def check(self, claim, evidence, path):
+        def check(self, claim, evidence, paths):
             raise BackendUnavailableError("quote", "pdftotext is not on PATH")
 
     s = to_sarif(report_for("passage_present", backends=(NoExtractor(), MetricBackend())))

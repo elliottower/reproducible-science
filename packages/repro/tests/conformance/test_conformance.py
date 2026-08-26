@@ -44,9 +44,10 @@ def test_fixture_produces_its_recorded_outcomes(case):
 def test_fixture_produces_its_recorded_reasons(case):
     """The outcome alone cannot tell a defect in the tool from a fact about the manuscript.
 
-    Four cases share the outcome `unchecked` and three share `not_found`; only the reason
-    separates "the manifest never declared this artifact" from "the file is not there", or an
-    absent column from an ambiguous row. Asserting outcomes and never reasons let those swap.
+    Three cases share the outcome `unchecked` and eight share `not_found`; only the reason
+    separates "the manifest never declared this artifact" from "the file is not there", an
+    absent column from an ambiguous row, or an ambiguous pair of prose anchors from a number
+    written as a word. Asserting outcomes and never reasons let those swap.
     """
     expected = json.loads((case / "expected.json").read_text())["reasons"]
     assert reasons_of(verify(load(case / "repro.yaml"))) == expected
@@ -85,7 +86,7 @@ def test_a_backend_defect_is_an_error_and_never_an_abstention():
     from repro.verify import MetricBackend
 
     class Broken(MetricBackend):
-        def check(self, claim, evidence, path):
+        def check(self, claim, evidence, paths):
             raise TypeError("a defect, not a scientific finding")
 
     case = CASES[[c.name for c in CASES].index("value_match")]

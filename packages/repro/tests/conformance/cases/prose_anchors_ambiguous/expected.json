@@ -1,0 +1,12 @@
+{
+  "outcomes": [
+    "not_found"
+  ],
+  "reasons": [
+    "passage_ambiguous"
+  ],
+  "artifacts": {
+    "doc": "authoritative",
+    "counts": "authoritative"
+  }
+}

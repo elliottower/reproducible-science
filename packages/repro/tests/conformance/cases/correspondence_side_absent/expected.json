@@ -1,0 +1,12 @@
+{
+  "outcomes": [
+    "not_found"
+  ],
+  "reasons": [
+    "pointer_absent"
+  ],
+  "artifacts": {
+    "doc": "authoritative",
+    "counts": "authoritative"
+  }
+}
