@@ -161,3 +161,88 @@ def test_git_acts_on_cwd_even_when_the_environment_names_another_index(tmp_path)
     git("git", "reset", "-q", "--hard", cwd=outer)
     git("git", "add", "f.txt", cwd=inner)
     assert git("git", "status", "--short", cwd=outer).stdout.strip() == ""
+
+
+# -- cwd names the repository, and outranks an environment that names another ------------------
+
+
+@pytest.fixture
+def elsewhere(tmp_path_factory):
+    """A second repository with one commit, to be named by the environment and not obeyed."""
+    d = tmp_path_factory.mktemp("elsewhere")
+    git("git", "init", "-q", cwd=d)
+    (d / "other.txt").write_text("other\n")
+    git("git", "add", "other.txt", cwd=d)
+    git(
+        "git",
+        "-c",
+        "user.email=t@t",
+        "-c",
+        "user.name=t",
+        "commit",
+        "-q",
+        "-m",
+        "o",
+        cwd=d,
+    )
+    return d
+
+
+@pytest.mark.parametrize("var", ["GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE"])
+def test_the_commit_named_is_the_one_in_cwd_not_the_one_in_the_environment(
+    repo, elsewhere, monkeypatch, var
+):
+    # Every git hook exports GIT_DIR, and pre-commit exports GIT_INDEX_FILE while it stashes.
+    # Under either, `of_tree(path)` used to record the invoking repository's commit as the
+    # provenance of `path` -- a provenance record naming a repository nobody asked about.
+    target = elsewhere / ".git" if var != "GIT_WORK_TREE" else elsewhere
+    monkeypatch.setenv(
+        var, str(target / "index" if var == "GIT_INDEX_FILE" else target)
+    )
+    mine = git("git", "rev-parse", "HEAD", cwd=repo).stdout.strip()
+    theirs = git("git", "rev-parse", "HEAD", cwd=elsewhere).stdout.strip()
+    assert mine != theirs
+    assert gitref.commit(repo) == mine
+
+
+def test_a_directory_outside_any_repository_is_still_outside_one(
+    tmp_path, elsewhere, monkeypatch
+):
+    monkeypatch.setenv("GIT_DIR", str(elsewhere / ".git"))
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    assert gitref.commit(plain) is None
+    with pytest.raises(gitref.GitError):
+        gitref.run("rev-parse", "HEAD", cwd=plain)
+
+
+def test_a_clean_tree_reads_clean_while_the_environment_names_a_dirty_one(
+    repo, elsewhere, monkeypatch
+):
+    (elsewhere / "scratch.txt").write_text("uncommitted\n")
+    monkeypatch.setenv("GIT_DIR", str(elsewhere / ".git"))
+    monkeypatch.setenv("GIT_WORK_TREE", str(elsewhere))
+    assert gitref.is_dirty(elsewhere)
+    assert not gitref.is_dirty(repo)
+
+
+def test_a_caller_that_names_no_directory_still_inherits_the_environment(
+    elsewhere, monkeypatch
+):
+    # The other half of the rule. `cwd=None` means "wherever we are", so an inherited GIT_DIR
+    # is the answer rather than an override, and dropping it would break a caller inside a hook
+    # that meant the hook's repository.
+    monkeypatch.setenv("GIT_DIR", str(elsewhere / ".git"))
+    monkeypatch.setenv("GIT_WORK_TREE", str(elsewhere))
+    theirs = git("git", "rev-parse", "HEAD", cwd=elsewhere).stdout.strip()
+    assert gitref.commit() == theirs
+
+
+def test_a_variable_that_configures_git_rather_than_relocating_it_survives(
+    repo, monkeypatch
+):
+    # The list is narrow on purpose: dropping every GIT_* would take GIT_SSH_COMMAND and the
+    # identity variables with it, which a caller that set them meant.
+    monkeypatch.setenv("GIT_AUTHOR_NAME", "Someone Named")
+    assert "GIT_AUTHOR_NAME" not in gitref.REDIRECTS
+    assert gitref.run("var", "GIT_AUTHOR_IDENT", cwd=repo).startswith("Someone Named")

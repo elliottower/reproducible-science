@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import datetime
-import os
 import random
 import subprocess
 
+from provenance_core.gitref import clean_env
 from results.timeline import (
     first_outcomes_seen,
     first_run_timestamp,
@@ -165,7 +165,9 @@ def test_a_claim_event_naming_a_run_id_is_not_itself_a_run():
 
 def a_repo_committed_at(tmp_path, when):
     """A repository whose one commit carries `when` as its committer date, offset and all."""
-    env = {**os.environ, "GIT_COMMITTER_DATE": when, "GIT_AUTHOR_DATE": when}
+    # `clean_env` keeps the date variables and drops the ones that would send these
+    # commands at whatever repository invoked the suite.
+    env = clean_env(GIT_COMMITTER_DATE=when, GIT_AUTHOR_DATE=when)
     for args in (["init", "-q"], ["config", "user.email", "t@t"], ["config", "user.name", "t"]):
         subprocess.run(["git", *args], cwd=tmp_path, capture_output=True, env=env)
     (tmp_path / "plan.md").write_text("H1. the effect is positive.\n")
@@ -175,7 +177,7 @@ def a_repo_committed_at(tmp_path, when):
     )
     (tmp_path / ".results").mkdir()
     return subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=tmp_path, capture_output=True, text=True
+        ["git", "rev-parse", "HEAD"], cwd=tmp_path, capture_output=True, text=True, env=env
     ).stdout.strip()
 
 

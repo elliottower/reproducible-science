@@ -6,6 +6,7 @@ import json
 import subprocess
 import sys
 
+from provenance_core.gitref import clean_env
 from results import ledger
 
 
@@ -482,14 +483,17 @@ def test_a_duplicate_run_id_is_refused_without_anyway(tmp_path):
 def a_repo_with_a_frozen_plan(tmp_path, plan="plan.md"):
     """A git repository whose first commit contains the plan, committed before anything ran."""
     for args in (["init", "-q"], ["config", "user.email", "t@t"], ["config", "user.name", "t"]):
-        subprocess.run(["git", *args], cwd=tmp_path, capture_output=True)
+        subprocess.run(["git", *args], cwd=tmp_path, capture_output=True, env=clean_env())
     (tmp_path / plan).write_text("H1. the effect is positive.\n")
-    subprocess.run(["git", "add", plan], cwd=tmp_path, capture_output=True)
+    subprocess.run(["git", "add", plan], cwd=tmp_path, capture_output=True, env=clean_env())
     subprocess.run(
-        ["git", "commit", "-q", "-m", "freeze the plan"], cwd=tmp_path, capture_output=True
+        ["git", "commit", "-q", "-m", "freeze the plan"],
+        cwd=tmp_path,
+        capture_output=True,
+        env=clean_env(),
     )
     sha = subprocess.run(
-        ["git", "rev-parse", "HEAD"], cwd=tmp_path, capture_output=True, text=True
+        ["git", "rev-parse", "HEAD"], cwd=tmp_path, capture_output=True, text=True, env=clean_env()
     ).stdout.strip()
     return sha
 

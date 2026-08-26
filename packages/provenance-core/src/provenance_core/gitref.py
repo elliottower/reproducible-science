@@ -12,11 +12,56 @@ policy its copy happened to have.
 
 from __future__ import annotations
 
+import os
 import pathlib
 import subprocess
 
 #: Long enough for a fetch over a slow link, short enough that a hung command is not forever.
 DEFAULT_TIMEOUT = 30
+
+#: Environment variables that decide which repository git acts on, overriding `cwd`.
+#:
+#: Git resolves its repository from the environment first and the working directory second, so
+#: `cwd` alone does not name a repository. Every git hook exports `GIT_DIR`, and `pre-commit`
+#: exports `GIT_INDEX_FILE` while it stashes, which is enough to make `of_tree(path)` report the
+#: commit and dirty state of whatever repository invoked it rather than of `path`.
+#:
+#: Only the redirecting variables are dropped. `GIT_SSH_COMMAND`, `GIT_CONFIG_GLOBAL`,
+#: `GIT_AUTHOR_DATE` and the rest configure how git behaves once it knows where it is, and a
+#: caller that set them meant them.
+REDIRECTS = (
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_COMMON_DIR",
+    "GIT_INDEX_FILE",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_NAMESPACE",
+    "GIT_PREFIX",
+    "GIT_CEILING_DIRECTORIES",
+    "GIT_DISCOVERY_ACROSS_FILESYSTEM",
+)
+
+
+def clean_env(**overrides: str) -> dict[str, str]:
+    """This process's environment with `REDIRECTS` dropped, plus any overrides.
+
+    Exported because callers that run git themselves need the same guarantee and would
+    otherwise each keep their own copy of the list. `GIT_COMMITTER_DATE` and the other
+    variables that configure git rather than relocate it survive, so a caller can still set
+    them: `clean_env(GIT_COMMITTER_DATE=when)`.
+    """
+    return {**{k: v for k, v in os.environ.items() if k not in REDIRECTS}, **overrides}
+
+
+def _env(cwd: pathlib.Path | None) -> dict[str, str] | None:
+    """The environment to run git in, given the directory the caller named.
+
+    Naming a directory means that directory. Where `cwd` is None the caller has said "wherever
+    we are", and an inherited `GIT_DIR` is then the answer rather than an override, so the
+    environment is passed through untouched.
+    """
+    return None if cwd is None else clean_env()
 
 
 class GitError(Exception):
@@ -40,6 +85,7 @@ def run(
         proc = subprocess.run(
             ["git", *args],
             cwd=cwd,
+            env=_env(cwd),
             capture_output=True,
             text=True,
             timeout=timeout,
@@ -97,8 +143,10 @@ def at_commit(cwd: pathlib.Path, expected: str) -> bool:
 
 __all__ = [
     "DEFAULT_TIMEOUT",
+    "REDIRECTS",
     "GitError",
     "at_commit",
+    "clean_env",
     "commit",
     "is_dirty",
     "run",
