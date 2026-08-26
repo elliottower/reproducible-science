@@ -46,26 +46,71 @@ all found.
 | `citations build` | Rebuild records from bibliographies |
 | `citations lint` | BibTeX correctness, via papis |
 | `citations link` | Point pdfs/ at the papers' artifacts |
+| `citations import-paperclip` | Turn a Paperclip paper repo into pinned claim files |
 
 ## Verify output
 
-Three results, and they are exhaustive:
+Four results, and they are exhaustive:
 
 | Result | Meaning |
 |--------|---------|
 | `found` | The passage is in the source |
 | `not found` | The source was read and the passage is not in it |
-| `unchecked` | The source could not be read, so no measurement was made |
+| `indeterminate` | Independent readers disagree about whether it is in it |
+| `unchecked` | No reader could read the source, so no measurement was made |
 
 Warnings are separate, because a passage can be found and still worth a second look. A quote
 can be short enough that the next clause changes its meaning — `"We trained 50"` appears
 verbatim in a paper whose sentence continues `"...and 5 refits each for 12 layered"`.
 
-`unchecked` is neither a pass nor a failure. Only `not found` fails; `--strict` also fails on
-unchecked, for CI.
+`unchecked` and `indeterminate` are neither a pass nor a failure. Only `not found` fails;
+`--strict` also fails on both of the others, for CI.
 
 `not found` means read the source. A mirror-reversed scan or a two-column extraction produces
 the same signal as a passage that was never there.
+
+## Reading PDFs
+
+Every result records which extractor produced the text it was checked against, because a pin
+establishes that the file has not changed and establishes nothing about the reading of it.
+
+| Extractor | Engine | Install |
+|-----------|--------|---------|
+| `pdftotext -layout` | poppler, page geometry | `brew install poppler` · `apt install poppler-utils` |
+| `pdftotext` | the same binary, poppler's reading order | (as above) |
+| pypdf | its own content-stream parser | `pip install "citations[pypdf]"` |
+| pdfplumber | pdfminer.six plus its own layout layer | `pip install "citations[pdfplumber]"` |
+
+Poppler is preferred and recommended. Where it is absent, or fails on a document, the chain
+falls through to whichever pure-Python reader is installed and records the substitution as a
+fallback — so `pip install citations` alone is enough to check a PDF, and no result is quietly
+attributed to an extractor that did not produce it. pypdf comes before pdfplumber because it
+agreed with poppler on more of a 1,792-check corpus and read a document in a third of the
+time; the measurement is in `research/pdf-readers/`.
+
+The two poppler modes are one binary with one flag between them, and they fail in opposite
+directions: `-layout` preserves visual position and breaks a sentence spanning two columns,
+while reading order preserves the sentence and misplaces the subscripts beside it. Over 1,593
+passage checks, reading order resolved 59 that `-layout` missed and missed 29 it resolved.
+Neither is right in general, so `-layout` reads a document by default and both are consulted
+under `--triangulate`, where a disagreement between them is reported rather than resolved.
+
+A source that declares `extract_cmd` does not enter that chain. Its author has named the
+program that produces the text they quote, so it runs or the check is `unchecked` with its
+reason — falling through would run a PDF reader over a source the author just said is not a
+PDF, and record an extractor nobody asked for.
+
+```bash
+citations verify --claims claims/ --triangulate
+```
+
+`--triangulate` asks every installed reader instead of one. Where they disagree the result is
+`indeterminate`, never `not found`: two extractors disagreeing says the document is not
+determinate under the readers on this machine, which accuses nothing, while `not found`
+asserts the manuscript quoted a passage its source does not contain. Triangulation is opt-in
+because it costs one extraction per reader; it does not apply to a source that declares a
+command, and a run that triangulated nothing says so rather than reporting the readers as
+having concurred.
 
 ## Audit output
 
@@ -102,6 +147,92 @@ deposited inside a title. What survives is a disagreement about the work.
 
 Fetched payloads are cached beside the file audited, so a re-run is offline and the report is
 reproducible from what was fetched rather than from the network.
+
+## Full text through Paperclip
+
+`citations resolve --via paperclip` fetches a source's full text from
+[Paperclip](https://paperclip.gxl.ai), writes it to `sources/paperclip/`, and pins those bytes by
+sha256 in a claims file.
+
+```bash
+pip install 'citations[paperclip]'
+export PAPERCLIP_API_KEY=...
+citations resolve --via paperclip 10.1101/2025.10.22.681631 10.1038/s41586-021-03819-2
+```
+
+```text
+  pinned      10.1101/2025.10.22.681631               d9f585e2faad
+  unavailable 10.1038/s41586-021-03819-2              Paperclip truncated the document at 2179 of 2485 lines
+
+  pinned 1 of 2
+  1 without a pinned copy; quotations against those read `unchecked`.
+```
+
+**Paperclip is never in the verification path.** It is asked once, for bytes. Afterwards
+`citations verify` reads the local file and nothing else, so a check runs with no network, no
+account, and no dependence on the service still serving the same corpus. A remote answer that a
+passage is in a paper is an answer nobody can re-derive.
+
+| Outcome | Meaning | What `verify` then reports |
+|---|---|---|
+| `pinned` | the whole document arrived and carries a digest | `found` or `not found` |
+| `unresolved` | Paperclip indexes no full text for the identifier | `unchecked` |
+| `unavailable` | the extra is absent, no key is set, or the answer was not the whole document | `unchecked` |
+
+Full text is open access only, so a bibliography of Elsevier and Springer articles resolves
+mostly to `unchecked`. That is the true account of what can be checked, and the extra being
+uninstalled produces the same `unchecked` rather than an error.
+
+A document that arrives incomplete is refused rather than pinned. Paperclip cuts its own output
+at 250,000 characters — mid-sentence, with `[output truncated at 250000 chars]` appended — so a
+2,485-line article arrives as its first 2,179 lines. Pinning a prefix would put part of a paper
+on disk under the name of the whole one, and every quotation past the cut would read `not found`,
+a checker manufacturing misquotations out of a transfer limit. So the file's last line number is
+read first with `tail -n 1`, and a body that does not run to it is `unavailable`.
+
+That extent comes from the file and never from `ls`, whose printed `(N lines)` counts something
+else for a PubMed Central document: 1,626 against a file whose last line is L829. For bioRxiv the
+two agree, so taking the listing at its word looks right until it silently refuses every PMC
+paper in a bibliography as truncated.
+
+### Importing a paper repo
+
+`citations import-paperclip <repo>` reads a Paperclip repo and writes one claim file per paper,
+each source resolved and pinned.
+
+```bash
+citations import-paperclip my-review --claims paper/claims
+```
+
+A committed claim becomes a `statement`, because that is what it is: the sentence whoever
+committed it wrote, not a passage from the paper. Putting it under `quotes` would have the tool
+search the source for a sentence nobody says is in it. The quotes list comes out empty, for the
+author to fill in against the pinned text.
+
+A `--lines L45-L52` range becomes the claim's `hint`, recorded and never verified. It addresses
+Paperclip's parse of a PDF, which is remote and can be re-run with every line renumbered, so it
+says where to start reading and cannot say what a passage is. It is never written to `page`,
+which is the locator `verify` checks.
+
+```yaml
+source:
+  local: sources/paperclip/10-1101-2025-10-22-681631.txt
+  sha256: d9f585e2faad2d878878fe5c5490babe9b9986e90642c7545fb4e72ef7a21653
+  extract_cmd: none
+  paperclip:
+    identifier: 10.1101/2025.10.22.681631
+    document: 22c1bebd-6dc0-1014-8e0e-900874d71cd6
+    path: /papers/22c1bebd-6dc0-1014-8e0e-900874d71cd6/content.lines
+    lines: 79
+    service_version: 0.7.38
+    fetched: '2026-08-25T19:34:02+00:00'
+
+claims:
+  c-9c1a2f6b04:
+    statement: 'Features are polysemantic.'
+    hint: 'L45-L52'
+    quotes: []
+```
 
 ## Where the library lives
 

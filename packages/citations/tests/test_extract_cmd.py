@@ -7,6 +7,7 @@ report says when nothing did, are as much the subject here as whether the passag
 from __future__ import annotations
 
 import pathlib
+import re
 import subprocess
 
 import pytest
@@ -276,4 +277,6 @@ def test_the_same_run_without_consent_establishes_nothing_and_strict_says_so(
     out = capsys.readouterr().out
     assert code == 1
     assert "unchecked" in out and "does not allow" in out
-    assert "not found         0" in out, "a refused command is not a passage that is absent"
+    # Matched loosely on the padding: the outcome column widens when an outcome is added, and
+    # what this pins is the count beside the label, not the spacing between them.
+    assert re.search(r"not found\s+0\b", out), "a refused command is not a passage that is absent"

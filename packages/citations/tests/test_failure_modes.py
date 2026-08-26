@@ -10,9 +10,7 @@ from citations import verify as V
 
 @pytest.fixture(autouse=True)
 def _no_cache():
-    for f in (V.extract, V.fold, V.skeleton):
-        if hasattr(f, "cache_clear"):
-            f.cache_clear()
+    V.clear_caches()
 
 
 @pytest.fixture

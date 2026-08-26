@@ -17,7 +17,8 @@ from __future__ import annotations
 
 import datetime
 import pathlib
-import subprocess
+
+from provenance_core.gitref import try_run
 
 
 def first_outcomes_seen(events: list[dict]) -> str | None:
@@ -76,13 +77,7 @@ def freeze_timestamp(root: pathlib.Path, ref: str) -> str | None:
     matters: a plan already committed cannot be reached by anything a context
     reads afterwards.
     """
-    try:
-        out = subprocess.run(
-            ["git", "-C", str(root), "show", "-s", "--format=%cI", ref],
-            capture_output=True,
-            text=True,
-            timeout=15,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    return out.stdout.strip() or None if out.returncode == 0 else None
+    # Through `gitref` rather than a `git -C` of its own, because `-C` is a directory change
+    # and `GIT_DIR` outranks it. Read from inside a git hook, a direct call answers with the
+    # invoking repository's HEAD, so a freeze in one repository is timed by a commit in another.
+    return try_run("show", "-s", "--format=%cI", ref, cwd=root, timeout=15)

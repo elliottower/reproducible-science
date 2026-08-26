@@ -12,11 +12,12 @@ The pin -- is this the document that was pinned? Checked once per artifact:
     unpinned     no sha256 was recorded, so nothing can be checked
     missing      the file named by the record is not on disk
 
-The result -- did the passage appear? Exhaustive, three outcomes:
+The result -- did the passage appear? Exhaustive, four outcomes:
 
-    found        the passage is in the source
-    not found    the source was read and the passage is not in it
-    unchecked    the source could not be read, so no measurement was made
+    found          the passage is in the source
+    not found      the source was read and the passage is not in it
+    indeterminate  extractors that both read the source disagree about whether it is in it
+    unchecked      nothing could read the source, so no measurement was made
 
 The warnings -- is the quote well formed? A quote can be `found` and still carry one:
 
@@ -30,7 +31,25 @@ what it produced. A pin says the bytes did not change and says nothing about how
 read: two extractors over one PDF produce two texts and one pin, so a decision that does not
 name the program behind it cannot be compared with a later one. A source declaring
 `extract_cmd` is read by the command it names, a `TEXT_SUFFIXES` source straight off disk, and
-everything else by `pdftotext -layout`.
+everything else by `pdftotext -layout` or, where poppler is absent or fails on the document, by
+whichever pure-Python reader is installed. That substitution is recorded on the result as a
+fallback and its reason: `pip install citations` should be able to check a PDF, and a result
+that quietly rests on a different extractor than the one it names is worse than no result.
+
+A declared command does not join that chain. An author naming a renderer has said which
+program produces the text they quote, so it runs or the check is `unchecked` with its reason;
+falling through to a PDF reader would run one over a source whose author just said is not a
+PDF, and record an extractor nobody asked for.
+
+`indeterminate` is not a milder `not found`. `not found` says the source was read and the
+passage is not in it, which is an accusation against the manuscript. `indeterminate` says the
+extractors on this machine do not settle what text the document holds, which accuses nothing
+and asks for a better reader. Against the three-stage model in `docs/SPEC.md` the two sit in
+different stages: `not found` is `extraction=extracted, comparison=mismatch`, while
+`indeterminate` is `extraction=invalid, comparison=not_applicable` -- the extractors ran, and
+what they produced does not determine a text to compare against. It is reached only under
+`--triangulate`, which asks every installed reader instead of one; a single extractor cannot
+disagree with itself, and a declared command is a single extractor.
 
 `unchecked` means read the source. A mirror-reversed scan or a broken extraction produces the
 same signal as a passage that was never there -- so an extraction that failed for an
@@ -69,6 +88,7 @@ import hashlib
 import pathlib
 import re
 import shlex
+import shutil
 import subprocess
 import unicodedata
 from dataclasses import dataclass, field
@@ -76,6 +96,7 @@ from typing import Literal
 
 from provenance_core import sha256_of_file
 
+from citations import readers
 from citations.exceptions import SourceUnreadableError
 
 # Long enough to carry its own qualifiers. "We trained 50" resolves against a sentence that
@@ -94,8 +115,23 @@ TEXT_SUFFIXES = (".txt", ".md", ".tei", ".xml", ".html", ".htm", ".rst")
 #: claim one ran.
 PLAIN_TEXT = "text"
 
-#: What reads a source that declares no `extract_cmd` and is not plain text.
+#: What reads a source that declares no `extract_cmd` and is not plain text, where poppler is
+#: installed and can read it. Also the name the report gives that reading.
 DEFAULT_EXTRACTOR = "pdftotext -layout"
+
+#: The same binary with `-layout` removed, so it emits poppler's reading order rather than the
+#: page's geometry. Not in the chain: `-layout` always reads a PDF poppler can open, so nothing
+#: would ever reach this. It is a triangulation participant, because the two modes fail in
+#: opposite directions -- `-layout` preserves visual position and breaks a sentence spanning
+#: two columns, reading order preserves the sentence and misplaces the subscripts beside it.
+#: Measured over 1,593 passage checks in `research/pdf-readers/`: reading order resolved 59 the
+#: layout mode missed and missed 29 it resolved, so neither is preferred and both are read.
+READING_ORDER = "pdftotext"
+
+#: Recorded as the extractor when a caller replaced `extract`. Naming the substitution keeps
+#: the promise the rest of this module makes: a result says what produced the text it was
+#: checked against, and "a stub did" is an answer where inventing an extractor name is not.
+SUBSTITUTED = "substituted"
 
 #: How long any extractor gets before the source is reported unreadable rather than waited on.
 EXTRACT_TIMEOUT = 120
@@ -107,7 +143,7 @@ EXTRACT_TIMEOUT = 120
 #: arriving from elsewhere does not.
 DEFAULT_EXTRACTORS = frozenset({"pdftotext", "detex"})
 
-State = Literal["found", "not found", "unchecked"]
+State = Literal["found", "not found", "indeterminate", "unchecked"]
 PinState = Literal["ok", "broken", "unpinned", "missing"]
 
 
@@ -129,6 +165,20 @@ class Result:
     """sha256 of the text the extractor produced. The artifact's pin establishes that the
     bytes did not change; this establishes that the reading of them did not, which a pin
     cannot -- two extractors over one PDF produce two texts under one pin."""
+
+    fallback: bool = False
+    """Whether something other than `pdftotext -layout` produced this text on a source that
+    declared no command. A substitution is recorded, never silent: a `not found` taken with
+    pypdf is a different record from one taken with poppler."""
+
+    fallback_reason: str = ""
+    """Why poppler did not produce it -- not installed, or failed on this file."""
+
+    agreement: dict[str, State] = field(default_factory=dict)
+    """Each extractor's own verdict, when more than one was consulted. Empty on the default
+    single-extractor check: an empty mapping means agreement was never measured, not that the
+    extractors agreed. Availability and agreement are different questions and this field
+    answers only the second."""
 
 
 @dataclass
@@ -164,10 +214,26 @@ class Report:
     """How many quotations each extractor answered. A report that does not say what read its
     sources cannot be compared with one taken where a different renderer was declared."""
 
+    fallback_reasons: dict[str, str] = field(default_factory=dict)
+    """Why poppler did not answer, for each extractor that stood in for it. A fallback appears
+    here whether it was taken because poppler was absent or because poppler failed, so no
+    substitution is invisible in the report."""
+
+    triangulated: int = 0
+    """Quotations more than one extractor was asked about. Counted rather than inferred from
+    `--triangulate`: a run can ask for triangulation and get none, where every source declares
+    a command or only one reader is installed, and reporting the request as the result would
+    claim an agreement nothing measured."""
+
     @property
     def unresolved(self) -> int:
-        """Quotations no verdict was reached on."""
-        return self.counts.get("unchecked", 0)
+        """Quotations no verdict was reached on.
+
+        `indeterminate` counts here and not among the failures. Extractors disagreeing about a
+        passage leaves the question open in exactly the way an absent one does; what it does
+        not do is assert that the passage is missing.
+        """
+        return self.counts.get("unchecked", 0) + self.counts.get("indeterminate", 0)
 
     @property
     def strict_ok(self) -> bool:
@@ -183,10 +249,15 @@ class Report:
 
     @property
     def ok(self) -> bool:
-        """Only `not found` and a broken pin are failures. Unchecked is neither.
+        """Only `not found` and a broken pin are failures. Unchecked and indeterminate are not.
 
         A run that measured nothing is not a pass, decided here so no caller can report
         success on an empty run.
+
+        `indeterminate` is deliberately not a failure. Two extractors disagreeing about a
+        passage says the document is not determinate under the readers on this machine;
+        treating that as a quotation failure would fail a manuscript for a property of the
+        reader. `--strict` still refuses it, through `unresolved`.
         """
         if self.checked == 0:
             return False
@@ -287,6 +358,86 @@ def _run(source: pathlib.Path, argv: list[str], missing: str = "", hint: str = "
     return proc.stdout
 
 
+def _hint(pdf: pathlib.Path) -> str:
+    """What to say when a PDF reader was pointed at something that is not a PDF.
+
+    A `.tex` handed to one answers `Syntax Error: Couldn't read xref table`, which reads as a
+    damaged document rather than as the wrong tool pointed at an intact one.
+    """
+    if pdf.suffix.lower() in ("", ".pdf"):
+        return ""
+    return f"  ({pdf.suffix} is not a PDF: declare extract_cmd to name the renderer)"
+
+
+def _poppler(pdf: pathlib.Path, page: int | None, layout: bool = True) -> str:
+    """`pdftotext` over a source, or one page of it, with or without `-layout`."""
+    cmd = ["pdftotext", "-layout"] if layout else ["pdftotext"]
+    if page:
+        cmd += ["-f", str(page), "-l", str(page)]
+    cmd += [str(pdf), "-"]
+    return _run(pdf, cmd, "pdftotext is not on PATH -- install poppler-utils")
+
+
+def _chain(pdf: pathlib.Path, page: int | None) -> readers.Extraction:
+    """The first extractor that reads this source, and what it took to get there.
+
+    Poppler is attempted rather than looked up on PATH first. The two answers agree wherever
+    it matters -- an absent binary raises `FileNotFoundError` when run -- and attempting it
+    keeps one code path, so a caller that replaced `subprocess.run` sees the extractor it
+    replaced rather than a chain that decided in advance not to call it.
+
+    A reader that is not installed contributes its reason without being run, because its
+    absence is an import-time fact and no attempt could tell us more. Every reason is kept:
+    "nothing could read this" is only useful with what each of them said.
+    """
+    reasons: list[str] = []
+    try:
+        return readers.Extraction(_poppler(pdf, page), DEFAULT_EXTRACTOR)
+    except SourceUnreadableError as e:
+        reasons.append(e.detail)
+    for name in readers.PREFERRED:
+        try:
+            text = readers.READERS[name].read(pdf, page)
+        except SourceUnreadableError as e:
+            reasons.append(e.detail)
+            continue
+        return readers.Extraction(text, name, fallback=True, fallback_reason="; ".join(reasons))
+    raise SourceUnreadableError(pdf, "; ".join(reasons) + _hint(pdf))
+
+
+#: What produced each extraction, keyed exactly as `extract` is keyed and holding no text.
+#: `reading` reads it back to name the extractor without extracting a second time, and an
+#: entry that is not here means `extract` was replaced by a caller -- the one case where the
+#: text did not come from an extractor this module ran. Cleared with the cache beside it.
+_PROVENANCE: dict[tuple, tuple[str, bool, str]] = {}
+
+
+def _extract(
+    pdf: pathlib.Path,
+    page: int | None,
+    extract_cmd: str | None,
+    allowed: frozenset[str],
+) -> readers.Extraction:
+    """The extraction itself, and what produced it.
+
+    A declared `extract_cmd` takes precedence over both other paths, including reading a
+    `TEXT_SUFFIXES` file directly: an author names a renderer because the bytes on disk are
+    not the text they quote. It renders the whole document at once, so `page` does not reach
+    it, `allowed` decides which programs this run will run, and it never falls through to the
+    chain -- a named renderer that failed is a fact to report, not a reason to run something
+    else and record its name instead.
+    """
+    if extract_cmd:
+        argv = _argv(pdf, extract_cmd, allowed)
+        return readers.Extraction(_run(pdf, argv), _extractor_name(pdf, extract_cmd))
+    if pdf.suffix.lower() in TEXT_SUFFIXES:
+        try:
+            return readers.Extraction(pdf.read_text(errors="replace"), PLAIN_TEXT)
+        except OSError as e:
+            raise SourceUnreadableError(pdf, f"could not be read: {e}") from e
+    return _chain(pdf, page)
+
+
 @functools.lru_cache(maxsize=64)
 def extract(
     pdf: pathlib.Path,
@@ -294,38 +445,82 @@ def extract(
     extract_cmd: str | None = None,
     allowed: frozenset[str] = DEFAULT_EXTRACTORS,
 ) -> str:
-    """Text of a source. Cached, so N quotes against one file is one extraction.
+    """Text of a source, and the one seam every comparison reads through. Cached, so N quotes
+    against one file is one extraction.
 
-    A declared `extract_cmd` takes precedence over both other paths, including reading a
-    `TEXT_SUFFIXES` file directly: an author names a renderer because the bytes on disk are
-    not the text they quote. It renders the whole document at once, so `page` does not reach
-    it, and `allowed` decides which programs this run will run.
+    Exported, and stood in for by callers outside this package: `repro`'s quote backend calls
+    `check_one`, and its regression suite replaces this function so a test can fix what a
+    document says on each page. Everything that compares a passage against a document takes
+    its text from here for that reason -- an extractor chain that went around it would leave
+    those stubs measuring the stand-in bytes on disk, and a wrong-page misquote would grade
+    `unchecked` rather than `mismatch`, which `publication` warns on rather than fails.
 
     Raises `SourceUnreadableError` when the extraction toolchain is at fault -- a missing or
-    refused command, a timeout, a permission error -- rather than returning empty text. An
-    empty return means the document genuinely holds no extractable text on that page, which is
-    a different fact and gets a different message.
+    refused command, a timeout, a permission error, nothing installed that can read a PDF --
+    rather than returning empty text. An empty return means the document genuinely holds no
+    extractable text on that page, which is a different fact and gets a different message.
     """
-    if extract_cmd:
-        return _run(pdf, _argv(pdf, extract_cmd, allowed))
-    if pdf.suffix.lower() in TEXT_SUFFIXES:
-        try:
-            return pdf.read_text(errors="replace")
-        except OSError as e:
-            raise SourceUnreadableError(pdf, f"could not be read: {e}") from e
-
-    cmd = ["pdftotext", "-layout"]
-    if page:
-        cmd += ["-f", str(page), "-l", str(page)]
-    cmd += [str(pdf), "-"]
-    # A `.tex` handed to a PDF reader answers `Syntax Error: Couldn't read xref table`, which
-    # reads as a damaged document rather than as the wrong tool pointed at an intact one.
-    hint = (
-        ""
-        if pdf.suffix.lower() in ("", ".pdf")
-        else f"  ({pdf.suffix} is not a PDF: declare extract_cmd to name the renderer)"
+    got = _extract(pdf, page, extract_cmd, allowed)
+    _PROVENANCE[(pdf, page, extract_cmd, allowed)] = (
+        got.extractor,
+        got.fallback,
+        got.fallback_reason,
     )
-    return _run(pdf, cmd, "pdftotext is not on PATH -- install poppler-utils", hint)
+    return got.text
+
+
+def reading(
+    pdf: pathlib.Path,
+    page: int | None = None,
+    extract_cmd: str | None = None,
+    allowed: frozenset[str] = DEFAULT_EXTRACTORS,
+) -> readers.Extraction:
+    """Text and what produced it, with the text taken from `extract`.
+
+    The provenance is read back from the table `extract` writes, so naming the extractor costs
+    no second extraction. An entry that is not there means `extract` returned text no
+    extractor here produced, because a caller replaced it; that text is the caller's and the
+    provenance is not this module's to invent, so it is named `substituted` rather than
+    guessed at.
+    """
+    text = extract(pdf, None, extract_cmd, allowed) if extract_cmd else extract(pdf, page)
+    known = _PROVENANCE.get((pdf, None if extract_cmd else page, extract_cmd, allowed))
+    if known is None:
+        return readers.Extraction(text, SUBSTITUTED)
+    extractor, fallback, reason = known
+    return readers.Extraction(text, extractor, fallback, reason)
+
+
+@functools.lru_cache(maxsize=64)
+def reading_with(
+    pdf: pathlib.Path, page: int | None = None, *, extractor: str
+) -> readers.Extraction:
+    """One named extractor's own reading of a source. Triangulation, and nothing else.
+
+    Cached like `extract`, since triangulating N quotations over one document must be one
+    extraction per extractor rather than N. This reads the file rather than going through
+    `extract`, because the question it answers is what a particular extractor makes of the
+    bytes: a caller that replaced `extract` has said what the document contains, which is an
+    answer to a different question, and routing it here would make every extractor agree by
+    construction.
+    """
+    if extractor in (DEFAULT_EXTRACTOR, READING_ORDER):
+        layout = extractor == DEFAULT_EXTRACTOR
+        return readers.Extraction(_poppler(pdf, page, layout), extractor)
+    if extractor in readers.READERS:
+        return readers.Extraction(readers.READERS[extractor].read(pdf, page), extractor)
+    raise SourceUnreadableError(pdf, f"no such extractor: {extractor}")
+
+
+def available_extractors() -> list[str]:
+    """Which extractors this machine can ask about a PDF, in preference order.
+
+    Used to decide who triangulation consults and what the report says it consulted. The chain
+    does not use it: the chain attempts poppler and finds out, while this has to answer without
+    running anything.
+    """
+    poppler = [DEFAULT_EXTRACTOR, READING_ORDER] if shutil.which("pdftotext") else []
+    return poppler + readers.available()
 
 
 @functools.lru_cache(maxsize=64)
@@ -345,6 +540,17 @@ def _extractor_name(artifact: pathlib.Path, extract_cmd: str | None) -> str:
 def sha256(p: pathlib.Path) -> str:
     """Hash of a file on disk. The implementation is shared; this keeps the local name."""
     return sha256_of_file(p)
+
+
+def clear_caches() -> None:
+    """Forget every memoized extraction, folding and digest.
+
+    One call rather than five, because a caller that clears four of them and forgets the fifth
+    gets a stale answer that looks like a fresh one.
+    """
+    for cached in (extract, reading_with, fold, skeleton, _digest, sha256):
+        cached.cache_clear()
+    _PROVENANCE.clear()
 
 
 def check_pin(artifact: pathlib.Path | None, expected: str | None) -> Pin:
@@ -371,6 +577,7 @@ def check_one(
     page: int | None = None,
     extract_cmd: str | None = None,
     allowed: frozenset[str] = DEFAULT_EXTRACTORS,
+    triangulate: bool = False,
 ) -> Result:
     """Does this passage appear in this source, and what read the source to decide?
 
@@ -378,6 +585,12 @@ def check_one(
     this run will run, which the caller decides rather than the file. A command that is
     refused, missing, failing or silent yields `unchecked` carrying the reason -- none of
     those makes the passage absent.
+
+    One extractor by default. `triangulate` asks every installed reader instead and reports
+    `indeterminate` where they disagree, which costs one extraction per reader and is why it
+    is not the default. It does not apply to a source that declares a command: there is one
+    declared extractor, nothing to disagree with, and `agreement` stays empty rather than
+    claiming a comparison nothing performed.
     """
     warn: list[str] = []
     text = quote.strip()
@@ -389,30 +602,95 @@ def check_one(
     if artifact is None or not artifact.exists():
         return Result("unchecked", "file not found", warn)
 
-    # Called with the arguments it has always taken where nothing is declared. `extract` is
-    # exported, and a caller that wraps or substitutes it wrote against the two-argument shape;
-    # a source with no `extract_cmd` must not start reaching them for a new one.
+    if triangulate and not extract_cmd and is_paginated(artifact):
+        return _triangulate(quote, artifact, page, warn)
+
+    # `extract` is called with the arguments it has always taken where nothing is declared. It
+    # is exported, and a caller that wraps or substitutes it wrote against the two-argument
+    # shape; a source with no `extract_cmd` must not start reaching them for a new one.
     try:
-        full = extract(artifact, None, extract_cmd, allowed) if extract_cmd else extract(artifact)
+        got = reading(artifact, None, extract_cmd, allowed) if extract_cmd else reading(artifact)
     except SourceUnreadableError as e:
         return Result("unchecked", e.detail, warn)
-    if not full.strip():
+    if not got.text.strip():
         return Result("unchecked", "no text extracted", warn)
 
     # A declared extractor renders the whole document at once, so there is no page to ask it
     # about: the position a `.txt` source is already in. Asking `pdftotext` for the page
     # instead would run a PDF reader over a source whose author said it is not one.
     paginated = extract_cmd is None and is_paginated(artifact)
-    result = _verdict(quote, full, artifact, page if paginated else None, warn)
-    result.extractor = _extractor_name(artifact, extract_cmd)
-    result.extraction_digest = _digest(full)
+    result = _verdict(quote, got.text, artifact, page if paginated else None, warn, got.extractor)
+    result.extractor = got.extractor
+    result.extraction_digest = _digest(got.text)
+    result.fallback = got.fallback
+    result.fallback_reason = got.fallback_reason
+    return result
+
+
+def _triangulate(quote: str, artifact: pathlib.Path, page: int | None, warn: list[str]) -> Result:
+    """Ask every installed extractor, and report disagreement as disagreement.
+
+    An extractor that could not open the file contributes no verdict rather than a `not
+    found`: "this reader failed" and "this reader read it and the passage is not there" are
+    the two facts the outcome model exists to keep apart, and pooling them here would smuggle
+    the first into the second one level down.
+
+    The two poppler modes are one binary and are not independent of each other, so their
+    agreeing is weaker evidence than poppler agreeing with pypdf. What they are here for is
+    that they disagree in opposite directions, and a disagreement between them is the case
+    `indeterminate` exists to report rather than to resolve.
+    """
+    verdicts: dict[str, Result] = {}
+    reasons: list[str] = []
+    for name in available_extractors():
+        try:
+            got = reading_with(artifact, extractor=name)
+        except SourceUnreadableError as e:
+            reasons.append(e.detail)
+            continue
+        if not got.text.strip():
+            reasons.append(f"{name}: no text extracted")
+            continue
+        verdicts[name] = _verdict(quote, got.text, artifact, page, warn, name)
+        verdicts[name].extraction_digest = _digest(got.text)
+
+    if not verdicts:
+        return Result("unchecked", "; ".join(reasons) + _hint(artifact), list(warn))
+
+    agreement = {name: r.state for name, r in verdicts.items()}
+    # The preferred extractor that reached a verdict carries the warnings and the page
+    # finding: they describe the text, and merging warnings from readings that disagree about
+    # the text would attribute to one document what two extractions said.
+    lead = next(name for name in available_extractors() if name in verdicts)
+    result = verdicts[lead]
+    result.extractor = lead
+    result.fallback = lead != DEFAULT_EXTRACTOR
+    result.agreement = agreement
+
+    if len(set(agreement.values())) > 1:
+        said = ", ".join(f"{name} {state}" for name, state in agreement.items())
+        return Result(
+            "indeterminate",
+            f"extractors disagree ({said}); the document is not determinate under them",
+            list(warn),
+            extractor=lead,
+            extraction_digest=result.extraction_digest,
+            fallback=result.fallback,
+            agreement=agreement,
+        )
     return result
 
 
 def _verdict(
-    quote: str, full: str, artifact: pathlib.Path, page: int | None, warn: list[str]
+    quote: str,
+    full: str,
+    artifact: pathlib.Path,
+    page: int | None,
+    warn: list[str],
+    extractor: str = "",
 ) -> Result:
     """The verdict on one passage, against the text an extractor produced."""
+    warn = list(warn)
     q, doc = fold(quote), fold(full)
     if not q:
         # `"" in doc` is True. A quotation that folds away entirely is not a quotation.
@@ -420,9 +698,9 @@ def _verdict(
     if q in doc:
         if _cuts_a_token(q, doc):
             warn.append("truncated")
-        if page and not _on_page(artifact, q, page):
+        if page and not _on_page(artifact, q, page, extractor):
             warn.append("page")
-            found_at, capped = _find_page(artifact, q)
+            found_at, capped = _find_page(artifact, q, reader=extractor)
             detail = f"not on page {page}"
             if found_at is None and capped:
                 detail += f"; searched the first {PAGE_SCAN_LIMIT} pages"
@@ -438,12 +716,29 @@ def _verdict(
     )
 
 
-def _on_page(artifact: pathlib.Path, folded_quote: str, page: int) -> bool:
-    """Is the quote on the page the record claims? An unreadable page is not a match."""
+def _on_page(artifact: pathlib.Path, folded_quote: str, page: int, extractor: str = "") -> bool:
+    """Is the quote on the page the record claims? An unreadable page is not a match.
+
+    Read with the extractor that produced the document's text. Asking a second one which page
+    a passage is on would report the disagreement between two extractions as a page number the
+    record got wrong.
+    """
     try:
-        return folded_quote in fold(extract(artifact, page))
+        return folded_quote in fold(_page_text(artifact, page, extractor))
     except SourceUnreadableError:
         return False
+
+
+def _page_text(artifact: pathlib.Path, page: int, extractor: str) -> str:
+    """One page's text, from whatever produced the document's text.
+
+    The default path goes back through `extract`, so a caller that replaced it fixes what each
+    page says as well as what the document says -- which is what a per-page stub is for, and
+    what the wrong-page check depends on.
+    """
+    if extractor in ("", PLAIN_TEXT, SUBSTITUTED, DEFAULT_EXTRACTOR):
+        return extract(artifact, page)
+    return reading_with(artifact, page, extractor=extractor).text
 
 
 def _cuts_a_token(q: str, doc: str) -> bool:
@@ -475,7 +770,10 @@ def is_paginated(artifact: pathlib.Path) -> bool:
 
 
 def _find_page(
-    artifact: pathlib.Path, folded_quote: str, limit: int = PAGE_SCAN_LIMIT
+    artifact: pathlib.Path,
+    folded_quote: str,
+    limit: int = PAGE_SCAN_LIMIT,
+    reader: str = "",
 ) -> tuple[int | None, bool]:
     """Which page holds the quote, and whether the scan hit its limit without deciding.
 
@@ -491,7 +789,7 @@ def _find_page(
         return None, False
     for p in range(1, limit + 1):
         try:
-            text = extract(artifact, p)
+            text = _page_text(artifact, p, reader)
         except SourceUnreadableError:
             return None, False
         if not text:

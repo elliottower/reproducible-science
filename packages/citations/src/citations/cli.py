@@ -8,6 +8,7 @@ citations build             rebuild records from the papers' bibliographies
 citations lint              BibTeX correctness, via papis doctor
 citations link              point pdfs/ at wherever the papers keep the artifacts
 citations bib               emit a .bib for the works a paper cites
+citations import-paperclip  turn a Paperclip paper repo into pinned claim files
 """
 
 from __future__ import annotations
@@ -22,7 +23,12 @@ from citations import verify as V
 from citations.exceptions import CitationsError, ClaimFileError
 from citations.models import ClaimFile, load_claim_file, load_record
 
-RESULTS = ["found", "not found", "unchecked"]
+RESULTS = ["found", "not found", "indeterminate", "unchecked"]
+
+#: Width of the outcome column, computed so adding an outcome does not silently ragged the
+#: table. `indeterminate` is the longest, and naming an outcome for what it means rather than
+#: for what fits is why this is derived instead of written down.
+OUTCOME_WIDTH = max(len(r) for r in RESULTS) + 1
 WARNINGS = {
     "truncated": "stops mid-word or mid-number — the source continues it",
     "short": "the source may qualify this in the next clause",
@@ -37,6 +43,7 @@ DELEGATED = {
     "build": "build",
     "lint": "lint",
     "link": "link_pdfs",
+    "import-paperclip": "import_paperclip",
 }
 
 
@@ -63,6 +70,22 @@ def _claim_files(root: pathlib.Path, skipped=None) -> list[ClaimFile]:
     return out
 
 
+def _record_extractor(rep: V.Report, extractors, r: V.Result) -> None:
+    """Note what read this source, why it was not the preferred extractor, and whether more
+    than one was asked.
+
+    Kept on the report rather than printed as it happens: a substitution that only ever
+    appeared in a log line is one no later run can compare itself against.
+    """
+    if not r.extractor:
+        return
+    extractors[r.extractor] += 1
+    if len(r.agreement) > 1:
+        rep.triangulated += 1
+    if r.fallback and r.extractor not in rep.fallback_reasons:
+        rep.fallback_reasons[r.extractor] = r.fallback_reason or "pdftotext did not answer"
+
+
 def cmd_verify(a) -> int:
     rep = V.Report()
     counts: collections.Counter = collections.Counter()
@@ -85,10 +108,11 @@ def cmd_verify(a) -> int:
                     if not q.text:
                         continue
                     rep.checked += 1
-                    r = V.check_one(q.text, artifact, q.page, cf.source.extract_cmd, allowed)
+                    r = V.check_one(
+                        q.text, artifact, q.page, cf.source.extract_cmd, allowed, a.triangulate
+                    )
                     counts[r.state] += 1
-                    if r.extractor:
-                        extractors[r.extractor] += 1
+                    _record_extractor(rep, extractors, r)
                     if r.state != "found" or r.warnings:
                         rep.problems.append((f"{cf.name}:{cid}", q.text[:58], r))
         rep.counts = dict(counts)
@@ -113,10 +137,9 @@ def cmd_verify(a) -> int:
             if not q.text:
                 continue
             rep.checked += 1
-            r = V.check_one(q.text, artifact, q.page, None, allowed)
+            r = V.check_one(q.text, artifact, q.page, None, allowed, a.triangulate)
             counts[r.state] += 1
-            if r.extractor:
-                extractors[r.extractor] += 1
+            _record_extractor(rep, extractors, r)
             if r.state != "found" or r.warnings:
                 rep.problems.append((rec.slug, q.text[:58], r))
     rep.counts = dict(counts)
@@ -139,21 +162,21 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
     for s in RESULTS:
         n = counts.get(s, 0)
         if not n and s == "not found":
-            print(f"  {s:<12}{n:>7}")
+            print(f"  {s:<{OUTCOME_WIDTH}}{n:>7}")
             continue
         if not n:
             continue
         why = ""
-        if s == "unchecked":
-            reasons = collections.Counter(
-                r.detail for _, _, r in rep.problems if r.state == "unchecked"
-            )
+        if s in ("unchecked", "indeterminate"):
+            # Untruncated: the reason is the only thing that says what to fix, and the one
+            # that matters most -- "which this run does not allow" -- is at the end of it.
+            reasons = collections.Counter(r.detail for _, _, r in rep.problems if r.state == s)
             why = (
                 "   " + " · ".join(f"{c:,} {d}" for d, c in reasons.most_common())
                 if len(reasons) > 1
                 else f"   {reasons.most_common(1)[0][0]}"
             )
-        print(f"  {s:<12}{n:>7,}{why}")
+        print(f"  {s:<{OUTCOME_WIDTH}}{n:>7,}{why}")
 
     # Which extractor a verdict rests on, before the verdicts. A `found` taken through a
     # declared renderer and one taken through `pdftotext` are different records, and a report
@@ -161,7 +184,18 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
     if rep.extractors:
         print("\nread by")
         for name, n in sorted(rep.extractors.items(), key=lambda kv: (-kv[1], kv[0])):
-            print(f"  {n:>7,}  {name}")
+            why = rep.fallback_reasons.get(name, "")
+            print(f"  {n:>7,}  {name}" + (f"   fallback: {why[:50]}" if why else ""))
+    if a.triangulate:
+        # What was triangulated, not what was asked for. A source that declares a command has
+        # one extractor and a machine may have one reader, and reporting the request as the
+        # result would claim an agreement nothing measured.
+        consulted = V.available_extractors()
+        print(
+            f"\ntriangulated  {rep.triangulated:,} of {rep.checked:,} over {', '.join(consulted)}"
+            if rep.triangulated
+            else "\ntriangulation established nothing: every source was read by one extractor."
+        )
 
     warns = collections.Counter(w for _, _, r in rep.problems for w in r.warnings)
     if warns:
@@ -195,6 +229,11 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
         print(f"{len(bad)} not found. read the source before concluding anything.")
     elif rep.broken_pins:
         print("every quote resolved, but against a source that is not the one pinned.")
+    elif counts.get("indeterminate"):
+        print(
+            f"nothing failed. {counts['indeterminate']} indeterminate — the extractors here "
+            "disagree about those passages, which is not the same as their being absent."
+        )
     elif counts.get("unchecked"):
         print(
             f"nothing failed. {counts['unchecked']} unchecked — no measurement was made for those."
@@ -237,6 +276,11 @@ def main(argv: list[str] | None = None) -> int:
         help="let a claims file's extract_cmd run this program, named exactly as it writes it "
         f"(allowed unasked: {', '.join(sorted(V.DEFAULT_EXTRACTORS))})",
     )
+    v.add_argument(
+        "--triangulate",
+        action="store_true",
+        help="ask every installed reader; report disagreement as indeterminate",
+    )
     v.add_argument("--verbose", action="store_true", help="also list loose matches")
     v.add_argument("--quiet", action="store_true")
     v.set_defaults(fn=cmd_verify)
@@ -248,6 +292,7 @@ def main(argv: list[str] | None = None) -> int:
         ("build", "rebuild records from the papers' bibliographies"),
         ("lint", "BibTeX correctness, via papis doctor"),
         ("link", "point pdfs/ at the papers' artifacts"),
+        ("import-paperclip", "turn a Paperclip paper repo into pinned claim files"),
     ]:
         p = sub.add_parser(name, help=helptext, add_help=False)
         p.set_defaults(fn=None, delegate=DELEGATED[name])
