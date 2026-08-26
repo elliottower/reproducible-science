@@ -177,8 +177,22 @@ class Document(BaseModel):
     text: str = ""
     """The full text, with the line-number gutter removed."""
 
+    extent_verified: bool = False
+    """Whether the body was held against the document's own reported last line.
+
+    False when Paperclip did not report one, and false on a document nobody fetched. The other
+    guards still ran where there was a body to run them over -- the truncation marker, and
+    contiguity from `L1` -- but the one that catches a cut carrying no marker could not, and
+    `lines` below is then counted from what arrived rather than confirmed.
+
+    Defaulting to false rather than true is the same rule the rest of this package runs on: a
+    check that did not happen does not report as one that passed. Only `fetch`, which holds the
+    body against the extent, is in a position to say otherwise, so only `fetch` sets it.
+    """
+
     lines: int = 0
-    """How many lines it ran to, checked against the length Paperclip declared for the file."""
+    """How many lines it ran to, checked against the length Paperclip declared for the file
+    where it declared one."""
 
     corpus_version: str = ""
     """The corpus build this text came out of. Paperclip publishes no corpus build identifier
@@ -203,6 +217,15 @@ class Provenance(BaseModel):
 
     path: str = ""
     """The virtual-filesystem path within that document."""
+
+    extent_verified: bool = False
+    """Whether the fetched body was held against the document's own reported last line. False
+    means the completeness check could not run, so `lines` below was counted from what arrived
+    rather than confirmed against what the source said it should be. A reader comparing two
+    fetches needs to know which of those two numbers they are looking at.
+
+    False is the default so that a record written before this field existed, or by anything
+    that does not set it, reads as unverified rather than claiming a check nothing performed."""
 
     lines: int = 0
     """The document's length in Paperclip's own parse, at the time it was fetched. Recorded
@@ -504,6 +527,7 @@ class HttpClient:
             document_id=document_id,
             path=path,
             text=text,
+            extent_verified=bool(extent),
             lines=extent or text.count("\n"),
         )
 
@@ -644,6 +668,7 @@ def resolve_document(
         identifier=identifier,
         document=doc.document_id,
         path=doc.path,
+        extent_verified=doc.extent_verified,
         lines=doc.lines,
         corpus_version=doc.corpus_version,
         service_version=getattr(client, "service_version", lambda: "")(),
