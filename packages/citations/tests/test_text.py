@@ -60,3 +60,18 @@ def test_empty_input_produces_no_variants():
 
 def test_a_hyphenated_name_is_two_tokens_and_an_accent_is_none():
     assert tokens("Glade-Bender") == tokens("Glade Bender") == ("glade", "bender")
+
+
+def test_a_unicode_hyphen_matches_the_ascii_one():
+    # U+2010 HYPHEN is visually identical to `-` and publishers emit it. A source reading
+    # `patients‐in‐waiting` did not match a quotation typed with the ASCII hyphen, so a
+    # passage the document contains was reported absent.
+    from citations.verify import fold
+
+    assert fold("patients‐in‐waiting") == fold("patients-in-waiting")
+
+
+def test_the_dash_family_all_fold_to_one_character():
+    from citations.verify import fold
+
+    assert {fold(f"a{d}b") for d in ("-", "‐", "–", "—", "−")} == {"a-b"}

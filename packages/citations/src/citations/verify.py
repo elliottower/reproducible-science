@@ -304,7 +304,11 @@ def fold(s: str) -> str:
     s = re.sub(r"[\x00-\x08\x0b\x0e-\x1f\x7f]", " ", s)
     s = s.replace("’", "'").replace("‘", "'")
     s = s.replace("“", '"').replace("”", '"')
-    s = s.replace("—", "-").replace("–", "-").replace("−", "-")
+    # Em dash, en dash, minus sign, and U+2010 HYPHEN. The last is the one that gets missed:
+    # it is visually identical to the ASCII hyphen and publishers emit it, so a source reading
+    # `patients\u2010in\u2010waiting` did not match a quotation typed with the ASCII one, and the
+    # passage read as absent from a document that contains it.
+    s = s.replace("—", "-").replace("–", "-").replace("−", "-").replace("‐", "-")
     s = re.sub(r"-\s*\n\s*", "", s)  # de-hyphenate across a line break
     return " ".join(s.split()).lower()
 
