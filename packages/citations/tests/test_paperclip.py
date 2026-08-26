@@ -596,3 +596,57 @@ def test_a_version_endpoint_that_will_not_answer_does_not_sink_the_fetch(tmp_pat
 def test_a_slug_is_a_filename_and_keeps_the_identifier_legible():
     assert paperclip.slug_for("10.1038/s41586-021-03819-2") == "10-1038-s41586-021-03819-2"
     assert paperclip.slug_for("  ") == "unidentified"
+
+
+def test_a_document_nobody_measured_does_not_claim_the_measurement():
+    # The completeness check cannot run without a declared last line, and a reader of the claims
+    # file has to be able to tell that from a fetch where it ran and passed. `lines` cannot carry
+    # it: the field holds a number either way.
+    assert paperclip.Document(identifier="x", text="a\n", lines=1).extent_verified is False
+
+
+def test_an_extent_paperclip_never_reported_is_recorded_as_unverified():
+    # `tail -n 1` printing only a timing line declares no last line, so there was nothing to
+    # hold the body against. The document is still pinned -- refusing it would drop every
+    # source Paperclip cannot measure -- and the record says which guarantee it carries.
+    session = FakeSession(
+        {
+            "lookup": LOOKUP,
+            "tail -n 1": "[10ms]",
+            "cat --full": "\n".join(content(3)) + "\n[30ms]",
+        }
+    )
+    doc = paperclip.HttpClient("k", session=session).fetch("10.1101/x")
+    assert doc.text == "line 1\nline 2\nline 3\n"
+    assert doc.extent_verified is False
+    assert doc.lines == 3, "counted from what arrived, since nothing declared a length"
+
+
+def test_a_body_held_against_a_declared_extent_is_recorded_as_verified():
+    # The half that can fail in the other direction: a check that never reports success is
+    # indistinguishable from one that never runs.
+    session = FakeSession(
+        {
+            "lookup": LOOKUP,
+            "tail -n 1": "L3: line 3\n[10ms]",
+            "cat --full": "\n".join(content(3)) + "\n[30ms]",
+        }
+    )
+    doc = paperclip.HttpClient("k", session=session).fetch("10.1101/x")
+    assert doc.extent_verified is True
+    assert doc.lines == 3
+
+
+def test_whether_the_extent_was_checked_reaches_the_written_provenance(tmp_path):
+    # The field is only worth having if it survives to the claims file a later reader opens.
+    unmeasured = paperclip.Document(
+        identifier="10.1101/x",
+        document_id="doc-1",
+        path="/papers/doc-1/content.lines",
+        text=PASSAGE + "\n",
+        lines=1,
+    )
+    r = paperclip.resolve_document("10.1101/x", tmp_path, client=FakeClient(unmeasured))
+    path = tmp_path / "claims" / "x.yaml"
+    paperclip.write_claim_file(path, paperclip.source_block(r, local="s/x.txt"), {})
+    assert paperclip.provenance_of(load_claim_file(path).source).extent_verified is False
