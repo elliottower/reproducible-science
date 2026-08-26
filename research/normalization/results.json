@@ -1,0 +1,160 @@
+{
+ "question": "Can the matcher reconcile one printed word's encodings without loosening?",
+ "encodings": {
+  "precomposed": "na\u00efve",
+  "combining": "nai\u0308ve",
+  "spacing accent, dotless i": "na\u00a8\u0131ve",
+  "spacing accent, dotted i": "na\u00a8ive"
+ },
+ "reconciles": {
+  "today": {
+   "distinct_forms": 3,
+   "folds_to": [
+    "na \u0308ive",
+    "na \u0308\u0131ve",
+    "na\u00efve"
+   ]
+  },
+  "broad": {
+   "distinct_forms": 1,
+   "folds_to": [
+    "naive"
+   ]
+  },
+  "narrow": {
+   "distinct_forms": 1,
+   "folds_to": [
+    "na\u00efve"
+   ]
+  }
+ },
+ "conflates": {
+  "today": [
+   {
+    "a": "r\u00e9sum\u00e9",
+    "b": "resume",
+    "equal": false,
+    "equal_today": false
+   },
+   {
+    "a": "K\u00e4stner",
+    "b": "Kastner",
+    "equal": false,
+    "equal_today": false
+   },
+   {
+    "a": "na\u00efve",
+    "b": "naive",
+    "equal": false,
+    "equal_today": false
+   },
+   {
+    "a": "Cohen\u00b4s kappa",
+    "b": "Cohens kappa",
+    "equal": false,
+    "equal_today": false
+   },
+   {
+    "a": "p < 0.05",
+    "b": "p = 0.05",
+    "equal": false,
+    "equal_today": false
+   },
+   {
+    "a": "-0.42",
+    "b": "0.42",
+    "equal": false,
+    "equal_today": false
+   }
+  ],
+  "broad": [
+   {
+    "a": "r\u00e9sum\u00e9",
+    "b": "resume",
+    "equal": true,
+    "equal_today": false
+   },
+   {
+    "a": "K\u00e4stner",
+    "b": "Kastner",
+    "equal": true,
+    "equal_today": false
+   },
+   {
+    "a": "na\u00efve",
+    "b": "naive",
+    "equal": true,
+    "equal_today": false
+   },
+   {
+    "a": "Cohen\u00b4s kappa",
+    "b": "Cohens kappa",
+    "equal": true,
+    "equal_today": false
+   },
+   {
+    "a": "p < 0.05",
+    "b": "p = 0.05",
+    "equal": false,
+    "equal_today": false
+   },
+   {
+    "a": "-0.42",
+    "b": "0.42",
+    "equal": false,
+    "equal_today": false
+   }
+  ],
+  "narrow": [
+   {
+    "a": "r\u00e9sum\u00e9",
+    "b": "resume",
+    "equal": false,
+    "equal_today": false
+   },
+   {
+    "a": "K\u00e4stner",
+    "b": "Kastner",
+    "equal": false,
+    "equal_today": false
+   },
+   {
+    "a": "na\u00efve",
+    "b": "naive",
+    "equal": false,
+    "equal_today": false
+   },
+   {
+    "a": "Cohen\u00b4s kappa",
+    "b": "Cohens kappa",
+    "equal": false,
+    "equal_today": false
+   },
+   {
+    "a": "p < 0.05",
+    "b": "p = 0.05",
+    "equal": false,
+    "equal_today": false
+   },
+   {
+    "a": "-0.42",
+    "b": "0.42",
+    "equal": false,
+    "equal_today": false
+   }
+  ]
+ },
+ "over_corpus": {
+  "documents": 324,
+  "passage_checks": 3250,
+  "newly_resolved": {
+   "broad": 0,
+   "narrow": 0
+  },
+  "newly_unresolved": {
+   "broad": 0,
+   "narrow": 0
+  },
+  "changes": []
+ }
+}

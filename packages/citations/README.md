@@ -50,23 +50,67 @@ all found.
 
 ## Verify output
 
-Three results, and they are exhaustive:
+Four results, and they are exhaustive:
 
 | Result | Meaning |
 |--------|---------|
 | `found` | The passage is in the source |
 | `not found` | The source was read and the passage is not in it |
-| `unchecked` | The source could not be read, so no measurement was made |
+| `indeterminate` | Independent readers disagree about whether it is in it |
+| `unchecked` | No reader could read the source, so no measurement was made |
 
 Warnings are separate, because a passage can be found and still worth a second look. A quote
 can be short enough that the next clause changes its meaning — `"We trained 50"` appears
 verbatim in a paper whose sentence continues `"...and 5 refits each for 12 layered"`.
 
-`unchecked` is neither a pass nor a failure. Only `not found` fails; `--strict` also fails on
-unchecked, for CI.
+`unchecked` and `indeterminate` are neither a pass nor a failure. Only `not found` fails;
+`--strict` also fails on both of the others, for CI.
 
 `not found` means read the source. A mirror-reversed scan or a two-column extraction produces
 the same signal as a passage that was never there.
+
+## Reading PDFs
+
+Every result records which extractor produced the text it was checked against, because a pin
+establishes that the file has not changed and establishes nothing about the reading of it.
+
+| Extractor | Engine | Install |
+|-----------|--------|---------|
+| `pdftotext -layout` | poppler, page geometry | `brew install poppler` · `apt install poppler-utils` |
+| `pdftotext` | the same binary, poppler's reading order | (as above) |
+| pypdf | its own content-stream parser | `pip install "citations[pypdf]"` |
+| pdfplumber | pdfminer.six plus its own layout layer | `pip install "citations[pdfplumber]"` |
+
+Poppler is preferred and recommended. Where it is absent, or fails on a document, the chain
+falls through to whichever pure-Python reader is installed and records the substitution as a
+fallback — so `pip install citations` alone is enough to check a PDF, and no result is quietly
+attributed to an extractor that did not produce it. pypdf comes before pdfplumber because it
+agreed with poppler on more of a 1,792-check corpus and read a document in a third of the
+time; the measurement is in `research/pdf-readers/`.
+
+The two poppler modes are one binary with one flag between them, and they fail in opposite
+directions: `-layout` preserves visual position and breaks a sentence spanning two columns,
+while reading order preserves the sentence and misplaces the subscripts beside it. Over 1,593
+passage checks, reading order resolved 59 that `-layout` missed and missed 29 it resolved.
+Neither is right in general, so `-layout` reads a document by default and both are consulted
+under `--triangulate`, where a disagreement between them is reported rather than resolved.
+
+A source that declares `extract_cmd` does not enter that chain. Its author has named the
+program that produces the text they quote, so it runs or the check is `unchecked` with its
+reason — falling through would run a PDF reader over a source the author just said is not a
+PDF, and record an extractor nobody asked for.
+
+```bash
+citations verify --claims claims/ --triangulate
+```
+
+`--triangulate` asks every installed reader instead of one. Where they disagree the result is
+`indeterminate`, never `not found`: two extractors disagreeing says the document is not
+determinate under the readers on this machine, which accuses nothing, while `not found`
+asserts the manuscript quoted a passage its source does not contain. Triangulation is opt-in
+because it costs one extraction per reader; it does not apply to a source that declares a
+command, and a run that triangulated nothing says so rather than reporting the readers as
+having concurred.
 
 ## Audit output
 
