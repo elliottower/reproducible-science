@@ -41,12 +41,46 @@ all found.
 |---------|-------------|
 | `citations init` | Create a library here |
 | `citations verify` | Do the quotations resolve in their sources? |
+| `citations coverage` | Is every quotation in my manuscript pinned at all? |
 | `citations audit` | Does the stored metadata match the record the identifier resolves to? |
 | `citations resolve` | Backfill missing DOIs and arXiv ids |
 | `citations build` | Rebuild records from bibliographies |
 | `citations lint` | BibTeX correctness, via papis |
 | `citations link` | Point pdfs/ at the papers' artifacts |
 | `citations import-paperclip` | Turn a Paperclip paper repo into pinned claim files |
+
+## Coverage: the manuscript side
+
+`verify` reads the claims files. It takes no manuscript, so a quotation added to the paper and
+never pinned has no record, is checked by nothing, and leaves the report clean. `coverage` reads
+the manuscript instead and asks whether each `` ``...'' `` is a span of something pinned.
+
+```console
+citations coverage paper/draft.tex --claims claims
+```
+
+```text
+  covered           82
+  uncovered          0
+  unresolvable       1
+
+  unresolvable  nosology_v6.tex:675
+    ``Loci moved''
+    under 12 characters once folded
+```
+
+Three outcomes, not two. A quotation too short to tell from noise is undecided, not a defect --
+"loci moved" appears in a great many documents and its appearing in one establishes nothing.
+`--strict` fails on the undecided ones as well.
+
+`--attribute` goes further and checks each quotation against the artifact of a source cited near
+it, which catches a passage credited to the wrong paper. Every key in the neighbourhood is
+offered, because the nearest is often not the source: *the same document restricts* leaves the
+real one several sentences back. It reports a misattribution only when every neighbouring source
+could be read; if one would not open, the passage may belong to it and the question is undecided.
+
+An ellipsis is omitted text: `` ``the model ... performs well'' `` requires both fragments and
+requires nothing about what sits between them.
 
 ## Verify output
 
