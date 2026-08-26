@@ -66,6 +66,10 @@ def _claim_files(root: pathlib.Path, skipped=None) -> list[ClaimFile]:
 def cmd_verify(a) -> int:
     rep = V.Report()
     counts: collections.Counter = collections.Counter()
+    extractors: collections.Counter = collections.Counter()
+    # Consent to run a program comes from whoever invokes the command, never from the file
+    # being checked. See the trust model in `verify.py`.
+    allowed = V.DEFAULT_EXTRACTORS | frozenset(a.allow_extractor or ())
 
     if a.claims:
         root = pathlib.Path(a.claims).expanduser().resolve()
@@ -81,11 +85,14 @@ def cmd_verify(a) -> int:
                     if not q.text:
                         continue
                     rep.checked += 1
-                    r = V.check_one(q.text, artifact, q.page)
+                    r = V.check_one(q.text, artifact, q.page, cf.source.extract_cmd, allowed)
                     counts[r.state] += 1
+                    if r.extractor:
+                        extractors[r.extractor] += 1
                     if r.state != "found" or r.warnings:
                         rep.problems.append((f"{cf.name}:{cid}", q.text[:58], r))
         rep.counts = dict(counts)
+        rep.extractors = dict(extractors)
         return _report(rep, counts, a, f"claims  {root}")
 
     lib, origin = paths.find_with_origin()
@@ -106,11 +113,14 @@ def cmd_verify(a) -> int:
             if not q.text:
                 continue
             rep.checked += 1
-            r = V.check_one(q.text, artifact, q.page)
+            r = V.check_one(q.text, artifact, q.page, None, allowed)
             counts[r.state] += 1
+            if r.extractor:
+                extractors[r.extractor] += 1
             if r.state != "found" or r.warnings:
                 rep.problems.append((rec.slug, q.text[:58], r))
     rep.counts = dict(counts)
+    rep.extractors = dict(extractors)
     return _report(rep, counts, a, source)
 
 
@@ -144,6 +154,14 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
                 else f"   {reasons.most_common(1)[0][0]}"
             )
         print(f"  {s:<12}{n:>7,}{why}")
+
+    # Which extractor a verdict rests on, before the verdicts. A `found` taken through a
+    # declared renderer and one taken through `pdftotext` are different records, and a report
+    # that does not separate them cannot be compared with a later run.
+    if rep.extractors:
+        print("\nread by")
+        for name, n in sorted(rep.extractors.items(), key=lambda kv: (-kv[1], kv[0])):
+            print(f"  {n:>7,}  {name}")
 
     warns = collections.Counter(w for _, _, r in rep.problems for w in r.warnings)
     if warns:
@@ -212,6 +230,13 @@ def main(argv: list[str] | None = None) -> int:
     v.add_argument("--claims", help="a paper's claims/ directory, where quotations live")
     v.add_argument("--only", help="restrict to records cited by this paper")
     v.add_argument("--strict", action="store_true", help="exit 1 on any failure, for CI")
+    v.add_argument(
+        "--allow-extractor",
+        action="append",
+        metavar="NAME",
+        help="let a claims file's extract_cmd run this program, named exactly as it writes it "
+        f"(allowed unasked: {', '.join(sorted(V.DEFAULT_EXTRACTORS))})",
+    )
     v.add_argument("--verbose", action="store_true", help="also list loose matches")
     v.add_argument("--quiet", action="store_true")
     v.set_defaults(fn=cmd_verify)

