@@ -439,6 +439,9 @@ dependencies = [
 lint = [
     { name = "papis" },
 ]
+paperclip = [
+    { name = "requests" },
+]
 pdf = [
     { name = "pdfplumber" },
     { name = "pypdf" },
@@ -466,8 +469,9 @@ requires-dist = [
     { name = "pypdf", marker = "extra == 'pdf'", specifier = ">=5.1" },
     { name = "pypdf", marker = "extra == 'pypdf'", specifier = ">=5.1" },
     { name = "pyyaml", specifier = ">=6.0.2" },
+    { name = "requests", marker = "extra == 'paperclip'", specifier = ">=2.31" },
 ]
-provides-extras = ["lint", "pdf", "pdfplumber", "pypdf"]
+provides-extras = ["lint", "pdf", "pdfplumber", "pypdf", "paperclip"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=9.1.1" }]
@@ -2560,6 +2564,7 @@ dev = [
 ]
 types = [
     { name = "pyrefly" },
+    { name = "requests" },
 ]
 
 [package.metadata]
@@ -2596,7 +2601,10 @@ dev = [
     { name = "pytest-xdist", specifier = ">=3.6" },
     { name = "ruff", specifier = ">=0.14" },
 ]
-types = [{ name = "pyrefly", specifier = ">=1" }]
+types = [
+    { name = "pyrefly", specifier = ">=1" },
+    { name = "requests", specifier = ">=2.31" },
+]
 
 [[package]]
 name = "reproducible-science"

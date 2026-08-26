@@ -101,6 +101,16 @@ class Claim(_Base):
     notes: str | None = None
     """Why this claim matters, or what qualifies it."""
 
+    hint: str | None = None
+    """Where an upstream index said the support sits -- a line range, a paragraph number.
+
+    Recorded and never verified. The index it addresses is not the artifact that is pinned: a
+    remote parse of a PDF can be re-run and renumber every line, so a range taken from one is
+    somewhere to start reading and not an address a result may be computed from. What is
+    verified is `quotes`, matched against the pinned bytes. `Quote.page` is the locator that
+    is checked, and a line number must never be written into it -- doing so would turn a hint
+    into a verified address, and the page it names would be a page nobody looked at."""
+
 
 class ClaimFile(_Base):
     """One `claims/*.yaml`: a pinned source and the claims drawn from it."""

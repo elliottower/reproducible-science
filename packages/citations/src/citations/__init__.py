@@ -40,8 +40,14 @@ from citations.models import (
     load_claim_file,
     load_record,
 )
+from citations.paperclip import (
+    Document,
+    PaperclipUnavailableError,
+    Provenance,
+    Resolution,
+    resolve_document,
+)
 from citations.readers import Extraction
-from citations.readers import available as available_readers
 from citations.services import SERVICES, Candidate, Service
 from citations.verify import (
     Pin,
@@ -75,6 +81,8 @@ __all__ = [
     "ClaimFile",
     "ClaimFileError",
     "ClaimSource",
+    # a source fetched through Paperclip and pinned locally
+    "Document",
     # what read the source
     "Extraction",
     # library configuration
@@ -82,17 +90,19 @@ __all__ = [
     "LibraryNotFoundError",
     "PaperConfig",
     # checking
+    "PaperclipUnavailableError",
     "Pin",
     "PinBrokenError",
+    "Provenance",
     "Quote",
     "Record",
     "Report",
+    "Resolution",
     "Result",
     "Service",
     "SourceUnreadableError",
     "__version__",
     "available_extractors",
-    "available_readers",
     "check_one",
     "check_pin",
     "clear_caches",
@@ -102,5 +112,6 @@ __all__ = [
     "load_record",
     "reading",
     "reading_with",
+    "resolve_document",
     "sha256",
 ]

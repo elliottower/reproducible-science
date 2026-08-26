@@ -61,7 +61,10 @@ audit = [
   "vulture>=2.14",
 ]
 # Type checking. Separate because adopting it is a ratchet, not a switch.
-types = [ "pyrefly>=1" ]
+# `requests` is here because `citations[paperclip]` imports it under a guard: a checker that
+# cannot resolve the module reports the guard itself as the error and hides anything real
+# behind it.
+types = [ "pyrefly>=1", "requests>=2.31" ]
 
 [tool.hatch]
 # Metadata only: the code lives in the four packages this depends on.
