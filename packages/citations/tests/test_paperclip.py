@@ -596,3 +596,12 @@ def test_a_version_endpoint_that_will_not_answer_does_not_sink_the_fetch(tmp_pat
 def test_a_slug_is_a_filename_and_keeps_the_identifier_legible():
     assert paperclip.slug_for("10.1038/s41586-021-03819-2") == "10-1038-s41586-021-03819-2"
     assert paperclip.slug_for("  ") == "unidentified"
+
+
+def test_an_unverified_extent_is_recorded_rather_than_inferred():
+    # The completeness check cannot run without a declared last line, and a reader of the claims
+    # file has to be able to tell that from a fetch where it ran and passed. `lines` cannot carry
+    # that: it holds a number either way.
+    doc = paperclip.Document(identifier="x", text="a\nb\n", lines=2, extent_verified=False)
+    assert doc.extent_verified is False
+    assert paperclip.Document(identifier="x", text="a\n", lines=1).extent_verified is True

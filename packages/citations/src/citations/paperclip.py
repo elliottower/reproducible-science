@@ -177,8 +177,17 @@ class Document(BaseModel):
     text: str = ""
     """The full text, with the line-number gutter removed."""
 
+    extent_verified: bool = True
+    """Whether the body was held against the document's own reported last line.
+
+    False when Paperclip did not report one. The other guards still ran -- the truncation
+    marker, and contiguity from `L1` -- but the one that catches a cut carrying no marker could
+    not, and `lines` below is then counted from what arrived rather than confirmed.
+    """
+
     lines: int = 0
-    """How many lines it ran to, checked against the length Paperclip declared for the file."""
+    """How many lines it ran to, checked against the length Paperclip declared for the file
+    where it declared one."""
 
     corpus_version: str = ""
     """The corpus build this text came out of. Paperclip publishes no corpus build identifier
@@ -203,6 +212,12 @@ class Provenance(BaseModel):
 
     path: str = ""
     """The virtual-filesystem path within that document."""
+
+    extent_verified: bool = True
+    """Whether the fetched body was held against the document's own reported last line. False
+    means the completeness check could not run, so `lines` below was counted from what arrived
+    rather than confirmed against what the source said it should be. A reader comparing two
+    fetches needs to know which of those two numbers they are looking at."""
 
     lines: int = 0
     """The document's length in Paperclip's own parse, at the time it was fetched. Recorded
@@ -504,6 +519,7 @@ class HttpClient:
             document_id=document_id,
             path=path,
             text=text,
+            extent_verified=bool(extent),
             lines=extent or text.count("\n"),
         )
 
@@ -644,6 +660,7 @@ def resolve_document(
         identifier=identifier,
         document=doc.document_id,
         path=doc.path,
+        extent_verified=doc.extent_verified,
         lines=doc.lines,
         corpus_version=doc.corpus_version,
         service_version=getattr(client, "service_version", lambda: "")(),
