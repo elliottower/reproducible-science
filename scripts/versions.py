@@ -67,7 +67,40 @@ def series(version: str) -> str:
     return f">={major}.{minor},<{major}.{int(minor) + 1}"
 
 
-DEPENDENCIES_BLOCK = re.compile(r"^dependencies = \[(.*?)^\]", re.M | re.S)
+#: The start of the dependencies array. Its end is found by balancing brackets rather than by
+#: a pattern, because the array is written both ways in this workspace:
+#:
+#:     dependencies = [ "provenance-core>=0.3,<0.4" ]      # prereg, results, citations
+#:     dependencies = [                                     # repro
+#:       "citations>=0.3,<0.4",
+#:     ]
+#:
+#: A pattern ending at `^]` matches neither the first form nor, when one is followed by an
+#: unrelated multi-line array, only the intended text: it ran from `dependencies = [` past the
+#: closing bracket to the `]` of `classifiers`, and in `prereg`, which has no later array, it
+#: did not match at all. `bump` therefore left prereg pinned to the previous series while every
+#: other package moved, and `check` could not see the disagreement because it reads the same
+#: way. The wheels refused to install together, which is where it was caught.
+DEPENDENCIES_START = re.compile(r"^dependencies = \[", re.M)
+
+
+def dependencies_span(text: str) -> tuple[int, int] | None:
+    """The offsets of the dependencies array's body, or None where there is no array.
+
+    Returned as offsets rather than a match so the read and the write paths agree on exactly
+    which characters are the array.
+    """
+    start = DEPENDENCIES_START.search(text)
+    if not start:
+        return None
+    depth, i = 1, start.end()
+    while i < len(text) and depth:
+        if text[i] == "[":
+            depth += 1
+        elif text[i] == "]":
+            depth -= 1
+        i += 1
+    return (start.end(), i - 1) if depth == 0 else None
 
 
 def cross_refs(text: str) -> dict[str, str]:
@@ -77,10 +110,10 @@ def cross_refs(text: str) -> dict[str, str]:
     "provenance" as bare strings, and matching the whole file read those as unpinned
     dependencies -- a false report that would have taught the reader to ignore this check.
     """
-    block = DEPENDENCIES_BLOCK.search(text)
-    if not block:
+    span = dependencies_span(text)
+    if span is None:
         return {}
-    body = block.group(1)
+    body = text[span[0] : span[1]]
     found = {}
     for name in PACKAGES:
         m = re.search(rf'"{re.escape(name)}((?:[><=!~][^"]*)?)"', body)
@@ -135,15 +168,13 @@ def bump(version: str, realign: bool = False) -> list[str]:
         # "prereg" also appears in `keywords` and in deptry's DEP002 ignore list, and
         # rewriting those turned a keyword into "citations>=0.3,<0.4" and silently disabled
         # the ignore rule. `make deps` caught it; a narrower substitution stops it happening.
-        def repin(match: re.Match[str], name: str = name) -> str:
-            body = match.group(1)
+        if (span := dependencies_span(text)) is not None:
+            body = text[span[0] : span[1]]
             for dep in PACKAGES:
                 if dep == name:
                     continue
                 body = re.sub(rf'"{re.escape(dep)}(?:[><=!~][^"]*)?"', f'"{dep}{want}"', body)
-            return f"dependencies = [{body}]"
-
-        text = DEPENDENCIES_BLOCK.sub(repin, text, count=1)
+            text = text[: span[0]] + body + text[span[1] :]
         if text != original:
             path.write_text(text)
             touched.append(str(path.relative_to(PROJECT_ROOT)))

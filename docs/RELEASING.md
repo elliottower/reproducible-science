@@ -9,12 +9,13 @@ happened.
 
 | | |
 |---|---|
-| Distributions | `citations`, `prereg`, `results-cli`, `reproducible-science` |
-| Version | one number, identical across all four |
+| Distributions | `citations`, `prereg`, `results-cli`, `reproducible-science`, `provenance-core` |
+| Version | one number, identical across all five |
 | Trigger | a single annotated tag `vX.Y.Z` |
-| Result | four workflow runs, four PyPI uploads |
+| Result | five workflow runs, five PyPI uploads |
 
-Per-package tags (`citations-v*`, `prereg-v*`, `results-v*`, `repro-v*`) still work and still
+Per-package tags (`citations-v*`, `prereg-v*`, `results-v*`, `repro-v*`, `provenance-core-v*`)
+still work and still
 publish one distribution each. They exist for a repair — republishing one package after a
 partial failure — and not for an ordinary release.
 
@@ -25,7 +26,7 @@ uv run python scripts/versions.py bump X.Y.Z
 uv run python scripts/versions.py check
 ```
 
-`bump` writes the version into all four manifests and rewrites the sibling dependency ranges
+`bump` writes the version into all five manifests and rewrites the sibling dependency ranges
 to `>=X.Y,<X.(Y+1)`. It refuses a version below one already declared, because PyPI rejects a
 version that goes backwards and never permits reuse of one that goes forwards. A first
 lockstep release, where the highest declared version was never published, passes `--realign`
@@ -110,11 +111,12 @@ https://pypi.org/manage/project/citations/settings/publishing/             publi
 https://pypi.org/manage/project/prereg/settings/publishing/                publish-prereg.yml
 https://pypi.org/manage/project/results-cli/settings/publishing/           publish-results.yml
 https://pypi.org/manage/project/reproducible-science/settings/publishing/  publish-repro.yml
+https://pypi.org/manage/project/provenance-core/settings/publishing/      publish-provenance-core.yml
 ```
 
 Each needs repository `elliottower/reproducible-science` and environment `release`.
 
-Check all four before tagging, not after the first failure. A rejected upload does not consume
+Check all five before tagging, not after the first failure. A rejected upload does not consume
 the version, so a wholly failed release is recoverable — but a *partial* one is not: if two
 packages upload and two are rejected, re-pushing the tag retries the successful two and fails
 on `File already exists`, and the only way forward is a new version.
@@ -126,7 +128,7 @@ git tag -l vX.Y.Z                                  # local
 git ls-remote --tags origin refs/tags/vX.Y.Z       # remote
 ```
 
-And on PyPI, for each of the four distributions, that `X.Y.Z` is absent from `releases`.
+And on PyPI, for each of the five distributions, that `X.Y.Z` is absent from `releases`.
 
 ## 7. Check the artifacts, not the source tree
 
@@ -136,10 +138,11 @@ uv run --isolated --no-project \
   --with dist/prereg-X.Y.Z-py3-none-any.whl \
   --with dist/results_cli-X.Y.Z-py3-none-any.whl \
   --with dist/reproducible_science-X.Y.Z-py3-none-any.whl \
-  python -c "import citations, prereg, results, repro"
+  --with dist/provenance_core-X.Y.Z-py3-none-any.whl \
+  python -c "import citations, prereg, results, repro, provenance_core"
 ```
 
-Install all four together in a clean environment, invoke each console script, and re-run the
+Install all five together in a clean environment, invoke each console script, and re-run the
 release's headline regression against the installed wheel rather than against `src/`. A fix
 that is present in the working tree and absent from the artifact is the failure mode this
 catches, and it is invisible to every test that imports from source.
@@ -186,7 +189,7 @@ before pushing.
 
 ## 10. Confirm the release landed
 
-Watch all four workflow runs to completion, then confirm each distribution reports the new
+Watch all five workflow runs to completion, then confirm each distribution reports the new
 version on PyPI and installs from PyPI — not from `dist/` — in a clean environment.
 
 Only then archive or update anything downstream. A standalone repository that has been
@@ -202,6 +205,6 @@ Each entry is something that happened, not something imagined.
 | Version numbers drifting apart across packages | step 1, `versions.py check` |
 | A changelog entry asserting a fix that was never a defect | step 2, tracing each claim to a commit |
 | A trusted publisher still bound to an old repository | step 5 |
-| A partially published release with versions consumed | step 6, checking all four first |
+| A partially published release with versions consumed | step 6, checking all five first |
 | A fix present in source and absent from the wheel | step 7 |
 | An interop claim falsified by someone else's release | step 8 |
