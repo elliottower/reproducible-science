@@ -13,7 +13,7 @@ import json
 import pathlib
 from typing import Any
 
-from compare_readers import DECISION_CRITERION, reader_versions, summarize
+from compare_readers import DECISION_CRITERION, READERS, reader_versions, summarize
 
 
 def load(shard: pathlib.Path) -> list[dict[str, Any]]:
@@ -159,7 +159,7 @@ def per_document(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 ),
                 "not_found": sum(1 for c in record["checks"] if c["outcomes"][name] == "not_found"),
             }
-            for name in ("poppler", "pdfplumber", "pypdf")
+            for name in READERS
         }
         rows.append(
             {
@@ -184,7 +184,7 @@ def reader_cost(records: list[dict[str, Any]]) -> dict[str, Any]:
     the thread still executing it — so its worst case is the one the package can cap.
     """
     out = {}
-    for name in ("poppler", "pdfplumber", "pypdf"):
+    for name in READERS:
         times = sorted(r["readings"][name]["seconds"] for r in records)
         if not times:
             continue

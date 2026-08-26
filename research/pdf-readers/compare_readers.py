@@ -12,11 +12,19 @@ outcome of `citations verify` changes: for each quotation in the corpus, is the 
 `found` under poppler, under pdfplumber, and under pypdf, after the normalization
 `citations.verify` already applies.
 
-Three readers, three independent pipelines:
+Four readers, three independent pipelines:
 
-    poppler      pdftotext -layout, a subprocess; GPL, shelled out, never linked
-    pdfplumber   pdfminer.six character extraction plus its own layout layer; MIT
-    pypdf        its own content-stream parser; BSD
+    poppler-layout   pdftotext -layout, a subprocess; GPL, shelled out, never linked
+    poppler-flow     the same binary with the flag removed, so it emits reading order
+                     rather than page geometry
+    pdfplumber       pdfminer.six character extraction plus its own layout layer; MIT
+    pypdf            its own content-stream parser; BSD
+
+The two poppler modes are one pipeline and are not independent of each other, so they are
+never counted as two agreeing readers. They are here because they disagree in opposite
+directions: `-layout` preserves visual position, which breaks a sentence that spans two
+columns; reading order preserves the sentence and misplaces the subscripts that sat beside
+it. A comparison of one against the other measures which failure a corpus is exposed to.
 
 `pdfminer.six` is deliberately not a fourth reader. pdfplumber is built on it and shares its
 character extraction, so the two cannot disagree about which characters are on a page, and
@@ -41,6 +49,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import itertools
 import json
 import pathlib
 import random
@@ -75,6 +84,20 @@ DECISION_CRITERION = {
         "poppler_only: poppler found the passage and the pure-Python reader did not",
         "python_only: the pure-Python reader found the passage and poppler did not",
     ],
+    "second_question": "Does poppler's reading order beat -layout on real quotations?",
+    "second_question_stated_before": (
+        "a parallel investigation reported that a claims file of 160 stitched passages "
+        "verifies 50 under -layout and 139 under reading order, and that reading order is the "
+        "only available reader that reconstructs a sentence spanning two columns. This run "
+        "asks the same question on this corpus. Reading order replaces -layout as the "
+        "preferred mode if it resolves strictly more passage checks with no check it loses; "
+        "if each resolves checks the other misses, neither is preferred and both are read."
+    ),
+    "same_pipeline_pairs_are_not_two_readers": (
+        "poppler-layout and poppler-flow are one binary with one flag between them, so a "
+        "check they both answer is one pipeline answering twice. Their pair is a mode "
+        "comparison and is never counted as two readers agreeing."
+    ),
     "pooling_forbidden": (
         "the two directions are never pooled into one disagreement rate; a pure-Python "
         "reader that is sometimes better matters as much as the reverse"
@@ -127,27 +150,40 @@ class Reading:
         return self.text is not None
 
 
-def read_poppler(pdf: pathlib.Path) -> Reading:
+def _poppler(pdf: pathlib.Path, name: str, flags: list[str]) -> Reading:
     started = time.monotonic()
     try:
         proc = subprocess.run(
-            ["pdftotext", "-layout", str(pdf), "-"], capture_output=True, text=True, timeout=300
+            ["pdftotext", *flags, str(pdf), "-"], capture_output=True, text=True, timeout=300
         )
     except FileNotFoundError:
-        return Reading("poppler", None, "pdftotext is not on PATH", time.monotonic() - started)
+        return Reading(name, None, "pdftotext is not on PATH", time.monotonic() - started)
     except subprocess.TimeoutExpired:
-        return Reading("poppler", None, "timed out after 300s", time.monotonic() - started)
+        return Reading(name, None, "timed out after 300s", time.monotonic() - started)
     except OSError as e:
-        return Reading("poppler", None, f"could not be run: {e}", time.monotonic() - started)
+        return Reading(name, None, f"could not be run: {e}", time.monotonic() - started)
     if proc.returncode != 0:
         detail = (proc.stderr or "").strip().splitlines()
         return Reading(
-            "poppler",
+            name,
             None,
             f"exited {proc.returncode}" + (f": {detail[-1]}" if detail else ""),
             time.monotonic() - started,
         )
-    return Reading("poppler", proc.stdout, None, time.monotonic() - started)
+    return Reading(name, proc.stdout, None, time.monotonic() - started)
+
+
+def read_poppler_layout(pdf: pathlib.Path) -> Reading:
+    return _poppler(pdf, "poppler-layout", ["-layout"])
+
+
+def read_poppler_flow(pdf: pathlib.Path) -> Reading:
+    """The same binary with `-layout` removed: poppler's own reading order.
+
+    One flag, one pipeline, and the opposite failure mode. Worth measuring separately for that
+    reason and never counted as a reader independent of `-layout`.
+    """
+    return _poppler(pdf, "poppler-flow", [])
 
 
 def read_pdfplumber(pdf: pathlib.Path) -> Reading:
@@ -176,8 +212,22 @@ def read_pypdf(pdf: pathlib.Path) -> Reading:
     return Reading("pypdf", "\n".join(pages), None, time.monotonic() - started)
 
 
-READERS = {"poppler": read_poppler, "pdfplumber": read_pdfplumber, "pypdf": read_pypdf}
-PYTHON_READERS = ("pdfplumber", "pypdf")
+READERS = {
+    "poppler-layout": read_poppler_layout,
+    "poppler-flow": read_poppler_flow,
+    "pdfplumber": read_pdfplumber,
+    "pypdf": read_pypdf,
+}
+
+#: The two poppler modes are the same binary, so a check they both answer is one pipeline
+#: answering twice. Pairs drawn from within a group are reported as a mode comparison and
+#: never as two readers agreeing.
+PIPELINES = {
+    "poppler-layout": "poppler",
+    "poppler-flow": "poppler",
+    "pdfplumber": "pdfminer",
+    "pypdf": "pypdf",
+}
 
 
 def reader_versions() -> dict[str, str]:
@@ -193,7 +243,7 @@ def reader_versions() -> dict[str, str]:
     except (OSError, subprocess.SubprocessError):
         poppler = "absent"
     return {
-        "poppler": poppler,
+        "poppler (both modes)": poppler,
         "pdfplumber": pdfplumber.__version__,
         "pypdf": pypdf.__version__,
         "pdfminer.six": getattr(pdfminer, "__version__", "unknown"),
@@ -565,7 +615,7 @@ def summarize(records: list[dict[str, Any]]) -> dict[str, Any]:
         ]
         three_way = sum(1 for _, c in checks if not diverges(c["outcomes"]))
         pairwise: dict[str, dict[str, int]] = {}
-        for a, b in (("poppler", "pdfplumber"), ("poppler", "pypdf"), ("pdfplumber", "pypdf")):
+        for a, b in itertools.combinations(READERS, 2):
             agree = dissent_a = dissent_b = comparable = 0
             for _, c in checks:
                 oa, ob = c["outcomes"][a], c["outcomes"][b]
@@ -579,6 +629,7 @@ def summarize(records: list[dict[str, Any]]) -> dict[str, Any]:
                 else:
                     dissent_b += 1
             pairwise[f"{a} vs {b}"] = {
+                "same_pipeline": PIPELINES[a] == PIPELINES[b],
                 "comparable_checks": comparable,
                 "agree": agree,
                 "agreement_rate": round(agree / comparable, 5) if comparable else None,

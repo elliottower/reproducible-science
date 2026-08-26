@@ -34,7 +34,7 @@ from typing import Any
 from citations import readers
 from citations import verify as V
 from citations.exceptions import SourceUnreadableError
-from compare_readers import distinct, diverges
+from compare_readers import READERS, distinct, diverges
 
 CID = re.compile(r"\(cid:\d+\)")
 MATH = re.compile(r"[Ͱ-Ͽ←-⋿⨀-⫿±×÷]")
@@ -116,7 +116,7 @@ def main() -> None:
     for record, check in divergent:
         path = pathlib.Path(record["pdf"])
         texts = {}
-        for name in ("poppler", "pdfplumber", "pypdf"):
+        for name in READERS:
             key = (str(path), name)
             if key not in cache:
                 try:
