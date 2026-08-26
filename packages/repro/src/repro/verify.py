@@ -430,6 +430,14 @@ class CorrespondenceBackend:
 
     kind = "correspondence"
     version = "1"
+    #: Both sides are read through this package's adapters, as `ValueBackend` is, so the
+    #: toolchain is the distribution rather than an external binary. A side read by a
+    #: declared extractor would need its own entry; none is defined in this revision.
+    tool = ADAPTER_DISTRIBUTION
+
+    @property
+    def tool_version(self) -> str:
+        return distribution_version(self.tool)
 
     def check(
         self, claim: Claim, evidence: Evidence, paths: Mapping[str, pathlib.Path]
