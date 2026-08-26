@@ -141,11 +141,13 @@ repos:
         pass_filenames: false
         files: ^(pyproject\.toml|packages/[^/]+/pyproject\.toml|uv\.lock)$
 
-      # `Co-Authored-By` is GitHub's credit convention and the wrong claim for a model;
-      # deleting the line instead would hide that a commit had assistance. Rewritten, not
-      # removed. Human co-authors are untouched.
+      # `Co-Authored-By` is GitHub's credit convention and the wrong claim for a model, so
+      # the trailer goes, along with `Assisted-by:` and `Claude-Session:`. Disclosure belongs
+      # in a paper's acknowledgements and this repository's documentation, where a reader
+      # looks for it. Human co-authors are untouched. The `Attribution` workflow rejects the
+      # same set on a pull request, and `test_attribution_agreement.py` holds the two together.
       - id: commit-attribution
-        name: AI co-authorship becomes disclosure
+        name: no AI attribution trailers
         entry: uv run python scripts/commit_msg_attribution.py
         language: system
         stages: [commit-msg]
