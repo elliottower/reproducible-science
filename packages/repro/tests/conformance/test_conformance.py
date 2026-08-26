@@ -86,7 +86,7 @@ def test_a_backend_defect_is_an_error_and_never_an_abstention():
     from repro.verify import MetricBackend
 
     class Broken(MetricBackend):
-        def check(self, claim, evidence, path):
+        def check(self, claim, evidence, paths):
             raise TypeError("a defect, not a scientific finding")
 
     case = CASES[[c.name for c in CASES].index("value_match")]
