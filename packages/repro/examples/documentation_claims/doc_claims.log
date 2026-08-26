@@ -1,8 +1,8 @@
-# the specification's claim about the suite beside it, 2026-08-25T22:13:49+00:00
+# the specification's claim about the suite beside it, 2026-08-26T03:47:59+00:00
 
 $ python probe.py
+  fixtures_at_baseline       19
   fixtures_at_head           25
-  fixtures_at_origin_main    19
 [exit 0]
 
 $ python build.py

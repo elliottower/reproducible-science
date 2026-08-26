@@ -1,11 +1,11 @@
 {
-  "generated": "2026-08-25T22:13:49+00:00",
+  "generated": "2026-08-26T03:47:59+00:00",
   "manifest": {
     "artifacts": [
       {
         "digest": {
           "algorithm": "sha256",
-          "value": "f1b6ea591a3aa9497fb7f7286618c5c4c44252d92bff72293ec5c4c435a4d028"
+          "value": "bec5f9118962e2e5a81d3e540ddfdb25b58d8de0f69210da821cbb269a5a429e"
         },
         "id": "spec",
         "media_type": "text/markdown",
@@ -14,7 +14,7 @@
       {
         "digest": {
           "algorithm": "sha256",
-          "value": "0ff5fb72fe64ec590bc0cf72329691301e3f2a564b9c66f45ee66817f869d442"
+          "value": "e4f260372f46c7edc98d54608793af0e7d71ed194b0edf50acfddb328871f38d"
         },
         "id": "probe",
         "media_type": "application/json",
@@ -60,6 +60,17 @@
     "schema_version": "repro/1"
   },
   "probes": {
+    "fixtures_at_baseline": {
+      "command": [
+        "git",
+        "ls-tree",
+        "--name-only",
+        "2b4756b2c3fa14022772c4510d126ecd70b4e968:packages/repro/tests/conformance/cases"
+      ],
+      "exit": 0,
+      "stdout_sha256": "2ef184b0141bb0ec7f932aca99274d4644f2dd20a42656231b7e795163959412",
+      "value": 19
+    },
     "fixtures_at_head": {
       "command": [
         "ls",
@@ -69,17 +80,6 @@
       "exit": 0,
       "stdout_sha256": "7f06be6c0192b77c09e378c4fae41676508ee70b5056365eb403a6731e7b72e3",
       "value": 25
-    },
-    "fixtures_at_origin_main": {
-      "command": [
-        "git",
-        "ls-tree",
-        "--name-only",
-        "origin/main:packages/repro/tests/conformance/cases"
-      ],
-      "exit": 0,
-      "stdout_sha256": "2ef184b0141bb0ec7f932aca99274d4644f2dd20a42656231b7e795163959412",
-      "value": 19
     }
   },
   "steps": {
@@ -94,8 +94,8 @@
       "command": "python probe.py",
       "exit": 0,
       "name": "probe",
-      "note": "counts the fixtures at HEAD and at origin/main",
-      "output": "  fixtures_at_head           25\n  fixtures_at_origin_main    19"
+      "note": "counts the fixtures at HEAD and at the baseline revision",
+      "output": "  fixtures_at_baseline       19\n  fixtures_at_head           25"
     },
     "verify": {
       "command": "repro verify docclaims.yaml --policy publication",
@@ -104,10 +104,10 @@
       "note": "what the specification says, against what the command returned",
       "output": "docclaims.yaml\n\n  ok    spec-fixture-count correspondence fixture-count: stated 25, measured 25\n\n  1 verified\n  policy publication: passed  (0 errors, 0 warnings)"
     },
-    "verify.at_origin_main": {
+    "verify.at_baseline": {
       "command": "repro verify docclaims.yaml --policy publication",
       "exit": 1,
-      "name": "verify.at_origin_main",
+      "name": "verify.at_baseline",
       "note": "the specification said eighteen and the suite held nineteen; neither number is in the manifest",
       "output": "docclaims.yaml\n\n  MISS  spec-fixture-count correspondence fixture-count: stated 18, measured 19\n\n  1 mismatch\n  policy publication: FAILED  (1 errors, 0 warnings)\n    error   evidence.mismatch          spec-fixture-count/correspondence: fixture-count: stated 18, measured 19"
     }

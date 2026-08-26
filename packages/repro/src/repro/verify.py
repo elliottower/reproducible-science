@@ -241,6 +241,25 @@ def compare_decimal(
     return _agree(stored, evidence.value, evidence.mode, evidence.tolerance_value)
 
 
+def _exponent(value: decimal.Decimal) -> int:
+    """The power of ten a finite decimal's last digit sits at.
+
+    `Decimal.as_tuple().exponent` is `int | Literal["n", "N", "F"]`: the strings tag NaN and
+    the infinities, which have no precision for a comparison to be coarser or finer than.
+    Every backend refuses a non-finite value with `value_not_numeric` before comparing, so
+    reaching this with one is a defect in a backend rather than a fact about an artifact, and
+    §5 says a defect is an `error` and never a scientific outcome. Raising is how it becomes
+    one. Returning a number instead would compare two values at a precision nothing chose.
+    """
+    exponent = value.as_tuple().exponent
+    if not isinstance(exponent, int):
+        raise ValueError(
+            f"{value} has no exponent: a non-finite value is refused before any comparison, "
+            f"so reaching the comparison with one is a defect"
+        )
+    return exponent
+
+
 def _agree(
     stored: decimal.Decimal,
     reported: decimal.Decimal,
@@ -430,9 +449,14 @@ class CorrespondenceBackend:
 
     kind = "correspondence"
     version = "1"
-    #: Both sides are read through this package's adapters, as `ValueBackend` is, so the
-    #: toolchain is the distribution rather than an external binary. A side read by a
-    #: declared extractor would need its own entry; none is defined in this revision.
+    #: The format adapters are this distribution, as they are for `ValueBackend`. The
+    #: declaration is an approximation for one case: a `prose` side over a paginated source
+    #: reaches `citations.verify.extract`, which runs the same `pdftotext` that `QuoteBackend`
+    #: declares, and `Decision.tool` is one field where such an assertion has two extractors.
+    #: `DecisionSide.extraction_digest` is what catches a change in either of them, since it
+    #: moves whenever what a side read moves, whatever did the reading. Naming the tool per
+    #: side needs the adapters to report which one they used, which this revision does not
+    #: define.
     tool = ADAPTER_DISTRIBUTION
 
     @property
@@ -454,9 +478,22 @@ class CorrespondenceBackend:
                 artifact_id=side.artifact,
                 locator_digest=side.locator.digest.value,
                 extracted=extracted.raw if extracted is not None else None,
+                # Hashed per side before any comparison, and for a value that turns out not
+                # to be numeric: what an extractor read is a fact about the extractor whatever
+                # the comparison then makes of it.
+                extraction_digest=(
+                    Digest.of_text(extracted.raw).value if extracted is not None else UNKNOWN
+                ),
             )
             for side, _, extracted, _ in readings
         )
+        # The decision-level field covers both extractions, in the order the manifest declares
+        # the sides, so it moves whenever either side's extraction moves. Which of the two
+        # moved is on the sides; leaving this `unknown` would say the extraction was sought
+        # and not obtained, and it was sought twice.
+        base["extraction_digest"] = Digest.of_text(
+            "\x00".join(s.extraction_digest for s in base["sides"])
+        ).value
 
         unsupported = [(s, d) for s, r, _, d in readings if r is Resolution.FORMAT_UNSUPPORTED]
         if unsupported:
@@ -511,7 +548,7 @@ class CorrespondenceBackend:
         # `printed_precision` compares at the coarser of the two precisions, so a document
         # printing 0.65 agrees with a file holding 0.6478 and the answer does not depend on
         # which side the manifest wrote first. A larger exponent is the coarser value.
-        coarse, fine = (a, b) if a.as_tuple().exponent >= b.as_tuple().exponent else (b, a)
+        coarse, fine = (a, b) if _exponent(a) >= _exponent(b) else (b, a)
         agrees = _agree(fine, coarse, evidence.mode, evidence.tolerance_value)
         return Decision(
             **base,

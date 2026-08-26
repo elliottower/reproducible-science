@@ -7,9 +7,10 @@ Two runs, because a check that only ever passes is not evidence that it can fail
 that only ever fails is not evidence that it can pass:
 
   * against the working tree, where the sentence and the count agree;
-  * against `origin/main`, where the specification says *eighteen* and the suite held nineteen
-    case directories. Both sides are read at that revision, so the disagreement stays
-    reproducible after the working tree is corrected.
+  * against a pinned revision, where the specification says *eighteen* and the suite held
+    nineteen case directories. Both sides are read at that revision, so the disagreement stays
+    reproducible after the working tree is corrected -- and after `main` is corrected too,
+    which reading it off a moving branch would not survive.
 
 Neither manifest contains either number. The second run is the reason the kind exists: with a
 `metric` the same claim needs `reported: "18"` in the manifest, and rewriting that field to the
@@ -67,8 +68,8 @@ def called(name: str, entry_point, note: str = "") -> dict:
     }
 
 
-def at_origin_main(scratch: pathlib.Path) -> pathlib.Path:
-    """The same claim, over the specification and the count as they were at `origin/main`.
+def at_baseline(scratch: pathlib.Path) -> pathlib.Path:
+    """The same claim, over the specification and the count as they were at the baseline.
 
     The sentence is read out of the blob rather than copied into this file, and the count comes
     from `git ls-tree` over the same revision, so both sides of the historical claim are read
@@ -77,7 +78,7 @@ def at_origin_main(scratch: pathlib.Path) -> pathlib.Path:
     spec = scratch / "SPEC.md"
     spec.write_bytes(
         subprocess.run(
-            ["git", "show", "origin/main:docs/SPEC.md"],
+            ["git", "show", f"{probe_commands.BASELINE}:docs/SPEC.md"],
             cwd=ROOT,
             capture_output=True,
             check=True,
@@ -86,8 +87,8 @@ def at_origin_main(scratch: pathlib.Path) -> pathlib.Path:
     probe = scratch / "probe.json"
     probe.write_text(json.dumps(json.loads((HERE / "probe.json").read_text()), indent=2) + "\n")
 
-    document = build_manifest.manifest(spec, "/probes/fixtures_at_origin_main/value")
-    document["project"] = "the same claim, at origin/main"
+    document = build_manifest.manifest(spec, "/probes/fixtures_at_baseline/value")
+    document["project"] = f"the same claim, at {probe_commands.BASELINE[:12]}"
     for artifact in document["artifacts"]:
         artifact["path"] = os.path.relpath(scratch / pathlib.Path(artifact["path"]).name, scratch)
         artifact["digest"]["value"] = build_manifest.Digest.of_file(
@@ -106,7 +107,9 @@ def at_origin_main(scratch: pathlib.Path) -> pathlib.Path:
 
 def main() -> int:
     steps = [
-        called("probe", probe_commands.main, "counts the fixtures at HEAD and at origin/main"),
+        called(
+            "probe", probe_commands.main, "counts the fixtures at HEAD and at the baseline revision"
+        ),
         called("build", build_manifest.main, "pins the specification and the probe output"),
         step(
             "verify",
@@ -120,8 +123,8 @@ def main() -> int:
         scratch = pathlib.Path(name)
         steps.append(
             step(
-                "verify.at_origin_main",
-                [*VERIFY, at_origin_main(scratch).name, "--policy", "publication"],
+                "verify.at_baseline",
+                [*VERIFY, at_baseline(scratch).name, "--policy", "publication"],
                 scratch,
                 "the specification said eighteen and the suite held nineteen; neither number "
                 "is in the manifest",

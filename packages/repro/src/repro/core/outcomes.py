@@ -206,6 +206,14 @@ class DecisionSide(BaseModel):
     """The value read, in the representation the artifact used. `None` where this side did
     not extract, which is why the decision reports no comparison."""
 
+    extraction_digest: str = ""
+    """sha256 of what this side's extractor produced. `unknown` where the side produced
+    nothing to hash.
+
+    Per side rather than per decision because the decision-level digest covers both
+    extractions at once and so cannot say which of the two moved, and a correspondence exists
+    to be told which of two artifacts changed."""
+
 
 class Decision(BaseModel):
     """The outcome of evaluating one evidence assertion. Frozen: a decision that can be

@@ -183,7 +183,9 @@ whether a specification or a suite is in error. `relative` is rejected for the s
 tolerance is a fraction of the reported value, and there is no reported value to take a fraction
 of. `printed_precision` compares at the coarser of the two precisions, so a sentence printing
 one decimal agrees with a file holding four, and the outcome does not depend on which side the
-manifest wrote first.
+manifest wrote first. NaN and the infinities have no precision for either side to be coarser
+than, so a non-finite value on either side is `value_not_numeric` before any comparison, as it
+is for a one-sided assertion.
 
 **What it cannot establish.** Three limits, in decreasing order of how often they bite.
 
@@ -404,6 +406,16 @@ reporting the same version and an environment that changes an encoding path. `un
 the extraction produced nothing to hash. It establishes stability and not correctness: a first
 extraction that reads a column wrong hashes perfectly and stays wrong.
 
+A `correspondence` extracts twice, so it records a digest per side and one over both, in the
+order the manifest declares the sides. The decision-level digest moves whenever either side's
+extraction moves; which of the two moved is on the side. Leaving it `unknown` would say the
+extraction was sought and not obtained, and it was sought twice. `tool` stays one field, which
+is an approximation where the two sides are read by different programs: a `prose` side over a
+paginated source reaches the same `pdftotext` a quotation does. The per-side extraction digest
+is what catches a change in either program, since it moves whenever what a side read moves,
+whatever did the reading. Naming a tool per side needs the adapters to report which one they
+used, and this revision does not define that.
+
 Both are provenance. Whether a changed tool version or a changed extraction invalidates a
 stored decision the way a changed artifact does is a policy question, and §6 decides policy.
 
@@ -585,7 +597,9 @@ An implementation conforms when:
 4. A pointer that does not resolve yields `extraction=absent`, never `comparison=mismatch`.
 5. `reported` is compared as a decimal at its printed precision, never as a binary float.
 6. Every decision names the claim digest, artifact digest, backend, backend version,
-   extraction toolchain, that toolchain's version, and the digest of what it produced.
+   extraction toolchain, that toolchain's version, and the digest of what it produced. A
+   decision over two artifacts names the artifact digest, the locator digest and the
+   extraction digest of each side, since one field cannot hold two.
 7. A version or digest that was sought and not obtained is recorded as `unknown`, never
    omitted, so it stays distinguishable from one that was never sought.
 8. A broken pin marks every decision against that artifact non-authoritative.

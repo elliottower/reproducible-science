@@ -6,13 +6,13 @@ artifacts:
   media_type: text/markdown
   digest:
     algorithm: sha256
-    value: f1b6ea591a3aa9497fb7f7286618c5c4c44252d92bff72293ec5c4c435a4d028
+    value: bec5f9118962e2e5a81d3e540ddfdb25b58d8de0f69210da821cbb269a5a429e
 - id: probe
   path: probe.json
   media_type: application/json
   digest:
     algorithm: sha256
-    value: 0ff5fb72fe64ec590bc0cf72329691301e3f2a564b9c66f45ee66817f869d442
+    value: e4f260372f46c7edc98d54608793af0e7d71ed194b0edf50acfddb328871f38d
 claims:
 - id: spec-fixture-count
   registration: not_applicable

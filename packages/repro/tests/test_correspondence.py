@@ -8,6 +8,8 @@ what the engine must refuse to conclude.
 
 from __future__ import annotations
 
+import decimal
+import importlib
 import json
 
 import pytest
@@ -18,6 +20,7 @@ from repro.models import (
     ComparisonStatus,
     CorrespondenceEvidence,
     CorrespondenceSide,
+    Digest,
     ExtractionStatus,
     NumberForm,
     Outcome,
@@ -26,7 +29,8 @@ from repro.models import (
     TreeLocator,
     Validity,
 )
-from repro.verify import verify
+from repro.toolchain import UNKNOWN
+from repro.verify import _exponent, verify
 
 DOC = "The conformance suite holds eighteen fixtures, each with canonical expected JSON.\n"
 COUNTS = {"fixtures": 19}
@@ -391,3 +395,88 @@ def test_a_side_is_frozen():
     side = CorrespondenceSide(name="s", artifact="doc", locator=TreeLocator(pointer="/x"))
     with pytest.raises(ValidationError):
         side.name = "other"
+
+
+# -- a value with no precision to compare ---------------------------------------------------
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+def test_a_non_finite_side_is_refused_before_any_comparison(tmp_path, value):
+    """`json.loads` accepts NaN and the infinities, so a count file can carry one.
+
+    None of them has a precision, so neither is coarser or finer than the other side and
+    there is nothing for `printed_precision` to round to. The value was located and is not of
+    the type the assertion requires, which is what `value_not_numeric` names.
+    """
+    decision = only(project(tmp_path, counts={"fixtures": value}))
+    assert decision.reason is Reason.VALUE_NOT_NUMERIC
+    assert decision.extraction is ExtractionStatus.INVALID
+    assert decision.comparison is ComparisonStatus.NOT_APPLICABLE
+    assert decision.outcome is Outcome.NOT_FOUND
+    assert "measured" in decision.detail, "the refusal has to say which side held it"
+
+
+@pytest.mark.parametrize("literal", ["NaN", "Infinity", "-Infinity"])
+def test_reaching_the_comparison_with_a_non_finite_value_is_a_defect(literal):
+    """The guard above is what makes `_exponent` unreachable with one of these.
+
+    A future edit that drops the guard must not silently compare two values at a precision
+    nothing chose. `Decimal.as_tuple().exponent` is a tagged union whose string arms mean
+    "not a number", and reading one as an exponent is the arithmetic defect this raises on.
+    Per §5 a defect reaches the report as `error`, never as an abstention.
+    """
+    with pytest.raises(ValueError, match="no exponent"):
+        _exponent(decimal.Decimal(literal))
+
+
+def test_a_defect_in_the_comparison_reaches_the_report_as_an_error(tmp_path, monkeypatch):
+    """The raise has to arrive as `error`, not as two artifacts that disagree.
+
+    Letting an arithmetic defect read as a mismatch would report a contradicted document on
+    the strength of a bug, which is the one thing this package must never do.
+    """
+    path = project(tmp_path)
+    assert only(path).outcome is Outcome.MISMATCH
+
+    def defective(_value):
+        raise ValueError("no exponent: a defect standing in for a dropped guard")
+
+    # `repro.verify` as an attribute of `repro` is the exported function, not the module,
+    # so the module is fetched by name.
+    monkeypatch.setattr(importlib.import_module("repro.verify"), "_exponent", defective)
+    decision = only(path)
+    assert decision.execution.value == "failed"
+    assert decision.reason is Reason.BACKEND_DEFECT
+    assert decision.outcome is Outcome.ERROR
+
+
+# -- what each side's extractor produced ----------------------------------------------------
+
+
+def test_each_side_records_what_its_own_extractor_produced(tmp_path):
+    """One digest per side, because a decision-level digest cannot say which of two moved."""
+    decision = only(project(tmp_path))
+    digests = {s.name: s.extraction_digest for s in decision.sides}
+    assert digests["stated"] == Digest.of_text("18").value
+    assert digests["measured"] == Digest.of_text("19").value
+
+
+def test_a_side_that_extracted_nothing_has_nothing_to_hash(tmp_path):
+    decision = only(project(tmp_path, counts={"other": 19}))
+    by_name = {s.name: s for s in decision.sides}
+    assert by_name["stated"].extraction_digest == Digest.of_text("18").value
+    assert by_name["measured"].extraction_digest == UNKNOWN
+    assert by_name["measured"].extracted is None
+
+
+def test_the_decision_digest_moves_when_either_side_moves(tmp_path):
+    """It covers both extractions, so it is never `unknown`: both were sought."""
+    before = only(project(tmp_path))
+    assert before.extraction_digest not in ("", UNKNOWN)
+
+    moved_right = only(project(tmp_path, counts={"fixtures": 20}))
+    moved_left = only(project(tmp_path, doc=DOC.replace("eighteen", "seventeen")))
+    assert (
+        len({before.extraction_digest, moved_right.extraction_digest, moved_left.extraction_digest})
+        == 3
+    )

@@ -1,4 +1,4 @@
-"""Count the conformance fixtures, at the working tree and at `origin/main`.
+"""Count the conformance fixtures, at the working tree and at a pinned baseline revision.
 
 A documentation claim is settled by a command, and this runs the commands. Each record keeps
 the argv, the exit status, a digest of the standard output, and the single number read out of
@@ -28,6 +28,12 @@ OUT = HERE / "probe.json"
 
 CASES = "packages/repro/tests/conformance/cases"
 
+#: The revision whose specification says *eighteen* where the suite held nineteen case
+#: directories. A literal commit rather than `origin/main`, because `main` is where this gets
+#: corrected: reading the defect off a moving branch would demonstrate a check that passes,
+#: and a check that only ever passes is not evidence that it can fail.
+BASELINE = "2b4756b2c3fa14022772c4510d126ecd70b4e968"
+
 
 def run(argv: list[str], cwd: pathlib.Path) -> tuple[int, str]:
     proc = subprocess.run(argv, cwd=cwd, capture_output=True, text=True, timeout=120)
@@ -55,7 +61,7 @@ def main() -> int:
         ("fixtures_at_head", ["ls", "-1", CASES]),
         # What it held at the revision whose specification says eighteen. `ls-tree` on the
         # directory lists its entries, one per fixture.
-        ("fixtures_at_origin_main", ["git", "ls-tree", "--name-only", f"origin/main:{CASES}"]),
+        ("fixtures_at_baseline", ["git", "ls-tree", "--name-only", f"{BASELINE}:{CASES}"]),
     ):
         code, stdout = run(argv, root)
         probes[name] = {
@@ -69,6 +75,7 @@ def main() -> int:
         json.dumps(
             {
                 "generated": datetime.now(UTC).isoformat(timespec="seconds"),
+                "revision": BASELINE,
                 "probes": probes,
             },
             indent=2,

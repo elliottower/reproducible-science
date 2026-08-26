@@ -169,7 +169,7 @@ class ProseLocator(Locator):
     one -- the author says where the value sits, and no matcher searches the document for a
     number that looks like the right one.
 
-    A capture-group pattern was the alternative and carries what §3.5 rejects elsewhere: a
+    A capture-group pattern was the alternative and carries what §3.6 rejects elsewhere: a
     string expression language needs a dialect, an escaping grammar, and a backtracking bound,
     and every implementation would disagree about the edges. A braced template (`holds {n}
     fixtures`) needs an escaping grammar for the brace, which LaTeX sources are full of. Two
