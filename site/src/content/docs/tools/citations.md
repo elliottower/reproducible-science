@@ -76,7 +76,8 @@ establishes that the file has not changed and establishes nothing about the read
 
 | Extractor | Engine | Install |
 |-----------|--------|---------|
-| `pdftotext -layout` | poppler, run as a subprocess | `brew install poppler` · `apt install poppler-utils` |
+| `pdftotext -layout` | poppler, page geometry | `brew install poppler` · `apt install poppler-utils` |
+| `pdftotext` | the same binary, poppler's reading order | (as above) |
 | pypdf | its own content-stream parser | `pip install "citations[pypdf]"` |
 | pdfplumber | pdfminer.six plus its own layout layer | `pip install "citations[pdfplumber]"` |
 
@@ -86,6 +87,13 @@ fallback — so `pip install citations` alone is enough to check a PDF, and no r
 attributed to an extractor that did not produce it. pypdf comes before pdfplumber because it
 agreed with poppler on more of a 1,792-check corpus and read a document in a third of the
 time; the measurement is in `research/pdf-readers/`.
+
+The two poppler modes are one binary with one flag between them, and they fail in opposite
+directions: `-layout` preserves visual position and breaks a sentence spanning two columns,
+while reading order preserves the sentence and misplaces the subscripts beside it. Over 1,593
+passage checks, reading order resolved 59 that `-layout` missed and missed 29 it resolved.
+Neither is right in general, so `-layout` reads a document by default and both are consulted
+under `--triangulate`, where a disagreement between them is reported rather than resolved.
 
 A source that declares `extract_cmd` does not enter that chain. Its author has named the
 program that produces the text they quote, so it runs or the check is `unchecked` with its

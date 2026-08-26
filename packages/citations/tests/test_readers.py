@@ -11,6 +11,7 @@ a reader its author did not name.
 from __future__ import annotations
 
 import pathlib
+import shutil
 import zlib
 
 import pytest
@@ -59,22 +60,28 @@ def answer(value):
     return read
 
 
-def stub_extractors(monkeypatch, poppler=None, pure=None):
+ABSENT = SourceUnreadableError(pathlib.Path("x"), "pdftotext is not on PATH")
+
+
+def stub_extractors(monkeypatch, poppler=None, flow=None, pure=None):
     """Replace the extractors with ones that answer from the arguments.
 
     `poppler=None` means the binary is not there at all; an exception means it is there and
     failed on this document. Those are different facts and every test below turns on the
     difference between one of them and "read it, and the passage is not in it".
+
+    `flow` is poppler's reading order -- the same binary with `-layout` removed. It defaults to
+    whatever `-layout` answered, since one document usually reads the same both ways; a test
+    passes it separately to make the two modes disagree.
     """
     pure = pure or {}
-    if poppler is None:
-        monkeypatch.setattr(
-            V,
-            "_poppler",
-            answer(SourceUnreadableError(pathlib.Path("x"), "pdftotext is not on PATH")),
-        )
-    else:
-        monkeypatch.setattr(V, "_poppler", answer(poppler))
+    layout_answer = ABSENT if poppler is None else poppler
+    flow_answer = layout_answer if flow is None else flow
+
+    def poppler_read(path, page=None, layout=True):
+        return answer(layout_answer if layout else flow_answer)(path, page)
+
+    monkeypatch.setattr(V, "_poppler", poppler_read)
     monkeypatch.setattr(
         R, "READERS", {n: R.Reader(n, answer(v), lambda: True) for n, v in pure.items()}
     )
@@ -93,7 +100,12 @@ def test_extractors_that_disagree_are_indeterminate_and_never_not_found(pdf, mon
     r = V.check_one(PASSAGE, pdf, triangulate=True)
     assert r.state == "indeterminate"
     assert r.state != "not found"
-    assert r.agreement == {POPPLER: "found", "pypdf": "not found", "pdfplumber": "not found"}
+    assert r.agreement == {
+        POPPLER: "found",
+        V.READING_ORDER: "found",
+        "pypdf": "not found",
+        "pdfplumber": "not found",
+    }
 
 
 def test_the_disagreement_names_which_extractor_said_what(pdf, monkeypatch):
@@ -113,7 +125,7 @@ def test_extractors_that_agree_the_passage_is_present_say_found(pdf, monkeypatch
     stub_extractors(monkeypatch, poppler=PASSAGE, pure={"pypdf": PASSAGE, "pdfplumber": PASSAGE})
     r = V.check_one(PASSAGE, pdf, triangulate=True)
     assert r.state == "found"
-    assert len(r.agreement) == 3
+    assert len(r.agreement) == 4
 
 
 def test_an_extractor_that_could_not_open_the_file_casts_no_vote(pdf, monkeypatch):
@@ -126,7 +138,30 @@ def test_an_extractor_that_could_not_open_the_file_casts_no_vote(pdf, monkeypatc
     )
     r = V.check_one(PASSAGE, pdf, triangulate=True)
     assert r.state == "found"
-    assert set(r.agreement) == {POPPLER, "pypdf"}
+    assert set(r.agreement) == {POPPLER, V.READING_ORDER, "pypdf"}
+
+
+def test_the_two_poppler_modes_disagreeing_is_reported_rather_than_resolved(pdf, monkeypatch):
+    """Measured, not hypothetical: over 1,593 passage checks in `research/pdf-readers/`,
+    reading order resolved 59 passages `-layout` missed and missed 29 it resolved. A sentence
+    spanning two columns is the first case and a subscript beside it is the second, so
+    consulting either mode alone hides whichever failure the document has. Neither is right in
+    general, which is why this is `indeterminate` rather than a preference between them."""
+    stub_extractors(monkeypatch, poppler=OTHER, flow=PASSAGE, pure={"pypdf": PASSAGE})
+    r = V.check_one(PASSAGE, pdf, triangulate=True)
+    assert r.state == "indeterminate"
+    assert r.agreement[POPPLER] == "not found"
+    assert r.agreement[V.READING_ORDER] == "found"
+
+
+def test_the_default_check_reads_one_poppler_mode_and_names_which(pdf, monkeypatch):
+    # Reading order is a triangulation participant, not a second chance on the default path:
+    # one extraction per document, and a `Result.extractor` that does not depend on which
+    # mode happened to answer.
+    stub_extractors(monkeypatch, poppler=OTHER, flow=PASSAGE, pure={"pypdf": PASSAGE})
+    r = V.check_one(PASSAGE, pdf)
+    assert r.state == "not found"
+    assert r.extractor == POPPLER
 
 
 def test_indeterminate_is_not_a_quotation_failure_but_is_not_a_strict_pass():
@@ -416,3 +451,19 @@ def test_an_extraction_names_the_extractor_that_produced_it(tmp_path):
     source = one_page_pdf(tmp_path / "prose.pdf", PROSE)
     for name in V.available_extractors():
         assert V.reading_with(source, extractor=name).extractor == name
+
+
+@pytest.mark.integration
+def test_the_two_poppler_modes_are_both_consulted_and_are_not_the_same_reading(tmp_path):
+    # One binary and one flag between them, and they fail in opposite directions: `-layout`
+    # breaks a sentence that spans two columns, reading order misplaces the subscripts beside
+    # it. Consulting only one hides whichever failure that document has.
+    if shutil.which("pdftotext") is None:
+        pytest.skip("poppler is not installed")
+    assert {V.DEFAULT_EXTRACTOR, V.READING_ORDER} <= set(V.available_extractors())
+    source = one_page_pdf(tmp_path / "prose.pdf", PROSE)
+    layout = V.reading_with(source, extractor=V.DEFAULT_EXTRACTOR)
+    flow = V.reading_with(source, extractor=V.READING_ORDER)
+    assert layout.extractor != flow.extractor
+    assert PROSE[0].lower() in V.fold(layout.text)
+    assert PROSE[0].lower() in V.fold(flow.text)

@@ -31,9 +31,7 @@ import pathlib
 import re
 from typing import Any
 
-from citations import readers
 from citations import verify as V
-from citations.exceptions import SourceUnreadableError
 from compare_readers import READERS, distinct, diverges
 
 CID = re.compile(r"\(cid:\d+\)")
@@ -119,10 +117,9 @@ def main() -> None:
         for name in READERS:
             key = (str(path), name)
             if key not in cache:
-                try:
-                    cache[key] = readers.read(path, reader=name).text
-                except SourceUnreadableError:
-                    cache[key] = None
+                # The comparison's own readers, not the package's: this measures the four
+                # pipelines as they were measured, and the package ships only some of them.
+                cache[key] = READERS[name](path).text
             texts[name] = cache[key]
 
         agreeing = next(

@@ -119,6 +119,15 @@ PLAIN_TEXT = "text"
 #: installed and can read it. Also the name the report gives that reading.
 DEFAULT_EXTRACTOR = "pdftotext -layout"
 
+#: The same binary with `-layout` removed, so it emits poppler's reading order rather than the
+#: page's geometry. Not in the chain: `-layout` always reads a PDF poppler can open, so nothing
+#: would ever reach this. It is a triangulation participant, because the two modes fail in
+#: opposite directions -- `-layout` preserves visual position and breaks a sentence spanning
+#: two columns, reading order preserves the sentence and misplaces the subscripts beside it.
+#: Measured over 1,593 passage checks in `research/pdf-readers/`: reading order resolved 59 the
+#: layout mode missed and missed 29 it resolved, so neither is preferred and both are read.
+READING_ORDER = "pdftotext"
+
 #: Recorded as the extractor when a caller replaced `extract`. Naming the substitution keeps
 #: the promise the rest of this module makes: a result says what produced the text it was
 #: checked against, and "a stub did" is an answer where inventing an extractor name is not.
@@ -360,9 +369,9 @@ def _hint(pdf: pathlib.Path) -> str:
     return f"  ({pdf.suffix} is not a PDF: declare extract_cmd to name the renderer)"
 
 
-def _poppler(pdf: pathlib.Path, page: int | None) -> str:
-    """`pdftotext -layout` over a source, or one page of it."""
-    cmd = ["pdftotext", "-layout"]
+def _poppler(pdf: pathlib.Path, page: int | None, layout: bool = True) -> str:
+    """`pdftotext` over a source, or one page of it, with or without `-layout`."""
+    cmd = ["pdftotext", "-layout"] if layout else ["pdftotext"]
     if page:
         cmd += ["-f", str(page), "-l", str(page)]
     cmd += [str(pdf), "-"]
@@ -495,8 +504,9 @@ def reading_with(
     answer to a different question, and routing it here would make every extractor agree by
     construction.
     """
-    if extractor == DEFAULT_EXTRACTOR:
-        return readers.Extraction(_poppler(pdf, page), DEFAULT_EXTRACTOR)
+    if extractor in (DEFAULT_EXTRACTOR, READING_ORDER):
+        layout = extractor == DEFAULT_EXTRACTOR
+        return readers.Extraction(_poppler(pdf, page, layout), extractor)
     if extractor in readers.READERS:
         return readers.Extraction(readers.READERS[extractor].read(pdf, page), extractor)
     raise SourceUnreadableError(pdf, f"no such extractor: {extractor}")
@@ -509,7 +519,7 @@ def available_extractors() -> list[str]:
     does not use it: the chain attempts poppler and finds out, while this has to answer without
     running anything.
     """
-    poppler = [DEFAULT_EXTRACTOR] if shutil.which("pdftotext") else []
+    poppler = [DEFAULT_EXTRACTOR, READING_ORDER] if shutil.which("pdftotext") else []
     return poppler + readers.available()
 
 
@@ -624,6 +634,11 @@ def _triangulate(quote: str, artifact: pathlib.Path, page: int | None, warn: lis
     found`: "this reader failed" and "this reader read it and the passage is not there" are
     the two facts the outcome model exists to keep apart, and pooling them here would smuggle
     the first into the second one level down.
+
+    The two poppler modes are one binary and are not independent of each other, so their
+    agreeing is weaker evidence than poppler agreeing with pypdf. What they are here for is
+    that they disagree in opposite directions, and a disagreement between them is the case
+    `indeterminate` exists to report rather than to resolve.
     """
     verdicts: dict[str, Result] = {}
     reasons: list[str] = []
