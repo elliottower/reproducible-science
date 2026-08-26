@@ -133,6 +133,32 @@ READING_ORDER = "pdftotext"
 #: checked against, and "a stub did" is an answer where inventing an extractor name is not.
 SUBSTITUTED = "substituted"
 
+#: The word a claims file uses to say "this source needs no extractor".
+#: `paperclip.source_block` writes it for a pinned text artifact, on the reasoning that naming
+#: an extractor would claim a step that never ran -- and `_argv` then read it as a program
+#: called `none` and refused it, so every source the resolver wrote came back `unchecked`,
+#: advising the reader to `--allow-extractor none` and run a program that does not exist.
+NO_EXTRACTOR = "none"
+
+
+def declared_extractor(extract_cmd: str | None) -> str | None:
+    """The command a source declares, or None where it declares that it needs none.
+
+    Applied wherever an `extract_cmd` arrives from a file, so the rest of the module sees one
+    representation of "no extractor" rather than several.
+
+    Matched on the first word, because authors write the reason beside it -- `none -- Markdown
+    is read directly` is in this project's own claim set, and reading that as a command named
+    `none` is how it was found. Nothing is guessed from the rest of the line: a value whose
+    first word is anything else is a command, and is run or refused as one. A real program
+    named `none` would be read as this declaration instead, which is the one case this trades
+    away and it does not occur.
+    """
+    if extract_cmd is None or not (words := extract_cmd.split()):
+        return None
+    return None if words[0].strip().lower() == NO_EXTRACTOR else extract_cmd
+
+
 #: How long any extractor gets before the source is reported unreadable rather than waited on.
 EXTRACT_TIMEOUT = 120
 
@@ -460,7 +486,7 @@ def extract(
     rather than returning empty text. An empty return means the document genuinely holds no
     extractable text on that page, which is a different fact and gets a different message.
     """
-    got = _extract(pdf, page, extract_cmd, allowed)
+    got = _extract(pdf, page, declared_extractor(extract_cmd), allowed)
     _PROVENANCE[(pdf, page, extract_cmd, allowed)] = (
         got.extractor,
         got.fallback,
@@ -483,6 +509,7 @@ def reading(
     provenance is not this module's to invent, so it is named `substituted` rather than
     guessed at.
     """
+    extract_cmd = declared_extractor(extract_cmd)
     text = extract(pdf, None, extract_cmd, allowed) if extract_cmd else extract(pdf, page)
     known = _PROVENANCE.get((pdf, None if extract_cmd else page, extract_cmd, allowed))
     if known is None:
@@ -531,7 +558,7 @@ def _digest(text: str) -> str:
 
 def _extractor_name(artifact: pathlib.Path, extract_cmd: str | None) -> str:
     """What `extract` reads this source with, as the report names it."""
-    if extract_cmd:
+    if extract_cmd := declared_extractor(extract_cmd):
         return " ".join(extract_cmd.split())
     return PLAIN_TEXT if artifact.suffix.lower() in TEXT_SUFFIXES else DEFAULT_EXTRACTOR
 
@@ -592,6 +619,7 @@ def check_one(
     declared extractor, nothing to disagree with, and `agreement` stays empty rather than
     claiming a comparison nothing performed.
     """
+    extract_cmd = declared_extractor(extract_cmd)
     warn: list[str] = []
     text = quote.strip()
     if len(text) < MIN_QUOTE_CHARS or text.endswith(

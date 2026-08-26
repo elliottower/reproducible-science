@@ -280,3 +280,50 @@ def test_the_same_run_without_consent_establishes_nothing_and_strict_says_so(
     # Matched loosely on the padding: the outcome column widens when an outcome is added, and
     # what this pins is the count beside the label, not the spacing between them.
     assert re.search(r"not found\s+0\b", out), "a refused command is not a passage that is absent"
+
+
+# -- "no extractor" is a declaration, not a program named none -----------------------------------
+
+
+@pytest.mark.parametrize(
+    "declared",
+    [
+        "none",
+        "None",
+        " none ",
+        "NONE",
+        "",
+        "none — Markdown is read directly",
+        "none -- read directly",
+    ],
+)
+def test_a_source_declaring_no_extractor_is_read_off_disk(declared, tmp_path):
+    # `paperclip.source_block` writes `none` for a pinned text artifact, because naming an
+    # extractor would claim a step that never ran. `_argv` read it as a program called `none`
+    # and refused it, so every source the resolver wrote came back `unchecked`.
+    src = tmp_path / "s.txt"
+    src.write_text("the model performs well on every held-out split\n")
+    V.clear_caches()
+    assert V.declared_extractor(declared) is None
+    got = V.check_one("performs well on every held-out split", src, extract_cmd=declared)
+    assert got.state == "found"
+    assert got.extractor == V.PLAIN_TEXT
+
+
+def test_a_real_command_is_still_declared(tmp_path):
+    assert V.declared_extractor("pdftotext -layout") == "pdftotext -layout"
+    assert V.declared_extractor(None) is None
+
+
+def test_a_command_that_merely_starts_with_the_letters_none_is_still_a_command():
+    # Matched on the first word, not a prefix: `nonesuch` is a program.
+    assert V.declared_extractor("nonesuch --render") == "nonesuch --render"
+
+
+def test_a_source_declaring_no_extractor_names_no_program_in_the_report(tmp_path):
+    # The point of writing `none` is that the report should not claim an extractor ran.
+    src = tmp_path / "s.txt"
+    src.write_text("the model performs well on every held-out split\n")
+    V.clear_caches()
+    got = V.check_one("performs well on every held-out split", src, extract_cmd="none")
+    assert "none" not in got.extractor
