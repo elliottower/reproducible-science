@@ -4,7 +4,7 @@ requires = [ "hatchling" ]
 
 [project]
 name = "citations"
-version = "0.2.0"
+version = "0.3.0"
 description = "A library of quotations checked against the sources they came from"
 readme = "README.md"
 keywords = [ "bibliography", "bibtex", "citations", "provenance", "reproducibility" ]
@@ -18,7 +18,7 @@ classifiers = [
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
 ]
-dependencies = [ "platformdirs>=3", "provenance-core>=0.2,<0.3", "pydantic>=2.9", "pyyaml>=6.0.2" ]
+dependencies = [ "platformdirs>=3", "provenance-core>=0.3,<0.4", "pydantic>=2.9", "pyyaml>=6.0.2" ]
 optional-dependencies.lint = [ "papis>=0.15" ]
 # Paperclip's own client is distributed as a wheel at a URL rather than through an index, and a
 # direct reference cannot appear in metadata uploaded to PyPI. So this extra installs the HTTP

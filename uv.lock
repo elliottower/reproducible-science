@@ -426,7 +426,7 @@ wheels = [
 
 [[package]]
 name = "citations"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "packages/citations" }
 dependencies = [
     { name = "platformdirs" },
@@ -471,7 +471,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "requests", marker = "extra == 'paperclip'", specifier = ">=2.31" },
 ]
-provides-extras = ["lint", "pdf", "pdfplumber", "pypdf", "paperclip"]
+provides-extras = ["lint", "paperclip", "pdf", "pdfplumber", "pypdf"]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=9.1.1" }]
@@ -2100,7 +2100,7 @@ wheels = [
 
 [[package]]
 name = "prereg"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "packages/prereg" }
 dependencies = [
     { name = "provenance-core" },
@@ -2123,7 +2123,7 @@ wheels = [
 
 [[package]]
 name = "provenance-core"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "packages/provenance-core" }
 
 [[package]]
@@ -2608,7 +2608,7 @@ types = [
 
 [[package]]
 name = "reproducible-science"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "packages/repro" }
 dependencies = [
     { name = "citations" },
@@ -2697,7 +2697,7 @@ wheels = [
 
 [[package]]
 name = "results-cli"
-version = "0.2.0"
+version = "0.3.0"
 source = { editable = "packages/results" }
 dependencies = [
     { name = "provenance-core" },

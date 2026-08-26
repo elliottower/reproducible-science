@@ -136,10 +136,13 @@ directory = "changes"
 filename = "CHANGELOG.md"
 title_format = "## {version} — {project_date}"
 issue_format = "[#{issue}](https://github.com/elliottower/reproducible-science/pull/{issue})"
+# Corrections first, then changes in behaviour, then additions. `docs/RELEASING.md` says a
+# reader deciding whether to upgrade needs to know which of their past results are affected
+# before they read about new features; the order was the reverse of what that file documents.
 type = [
-  { directory = "added", name = "Added", showcontent = true },
-  { directory = "changed", name = "Changed", showcontent = true },
   { directory = "fixed", name = "Fixed", showcontent = true },
+  { directory = "changed", name = "Changed", showcontent = true },
+  { directory = "added", name = "Added", showcontent = true },
   { directory = "removed", name = "Removed", showcontent = true },
   { directory = "deprecated", name = "Deprecated", showcontent = true },
 ]

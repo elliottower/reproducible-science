@@ -109,7 +109,10 @@ check-lowest:
 release-check: qa interop-strict
 	$(PY) python scripts/check_wheels.py
 	rm -rf dist && mkdir -p dist
-	for d in reproducible-science citations results-cli prereg; do uv build --package $$d --out-dir dist -q; done
+# provenance-core included: every other package declares it, so a release that omits it
+# leaves the other four uninstallable from PyPI. It was absent here while its publish
+# workflow shipped it, so twine and check-wheel-contents never saw the artifact.
+	for d in reproducible-science citations results-cli prereg provenance-core; do uv build --package $$d --out-dir dist -q; done
 	$(PY) twine check dist/*
 	$(PY) check-wheel-contents dist/*.whl
 
