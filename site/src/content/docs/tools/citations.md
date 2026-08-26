@@ -71,32 +71,38 @@ the same signal as a passage that was never there.
 
 ## Reading PDFs
 
-Every result records which reader produced the text it was checked against, because a pin
-establishes that the file has not changed and establishes nothing about the extraction.
+Every result records which extractor produced the text it was checked against, because a pin
+establishes that the file has not changed and establishes nothing about the reading of it.
 
-| Reader | Engine | Install |
-|--------|--------|---------|
-| poppler | `pdftotext -layout`, run as a subprocess | `brew install poppler` · `apt install poppler-utils` |
-| pdfplumber | pdfminer.six plus its own layout layer | `pip install "citations[pdfplumber]"` |
+| Extractor | Engine | Install |
+|-----------|--------|---------|
+| `pdftotext -layout` | poppler, run as a subprocess | `brew install poppler` · `apt install poppler-utils` |
 | pypdf | its own content-stream parser | `pip install "citations[pypdf]"` |
+| pdfplumber | pdfminer.six plus its own layout layer | `pip install "citations[pdfplumber]"` |
 
-Poppler is preferred and recommended: `-layout` reproduces column geometry, and the
-pure-Python readers drop inter-word spaces often enough that a passage resolves only after
-whitespace-insensitive matching. Where it is absent, or fails on a document, the chain falls
-through to whichever reader is installed and records the substitution as a fallback — so
-`pip install citations` alone is enough to check a PDF, and no result is quietly attributed to
-a reader that did not produce it.
+Poppler is preferred and recommended. Where it is absent, or fails on a document, the chain
+falls through to whichever pure-Python reader is installed and records the substitution as a
+fallback — so `pip install citations` alone is enough to check a PDF, and no result is quietly
+attributed to an extractor that did not produce it. pypdf comes before pdfplumber because it
+agreed with poppler on more of a 1,792-check corpus and read a document in a third of the
+time; the measurement is in `research/pdf-readers/`.
+
+A source that declares `extract_cmd` does not enter that chain. Its author has named the
+program that produces the text they quote, so it runs or the check is `unchecked` with its
+reason — falling through would run a PDF reader over a source the author just said is not a
+PDF, and record an extractor nobody asked for.
 
 ```bash
 citations verify --claims claims/ --triangulate
 ```
 
 `--triangulate` asks every installed reader instead of one. Where they disagree the result is
-`indeterminate`, never `not found`: two readers disagreeing says the document is not
+`indeterminate`, never `not found`: two extractors disagreeing says the document is not
 determinate under the readers on this machine, which accuses nothing, while `not found`
 asserts the manuscript quoted a passage its source does not contain. Triangulation is opt-in
-because it costs one extraction per reader, and a run with only one reader installed reports
-that no agreement was established rather than that the readers concurred.
+because it costs one extraction per reader; it does not apply to a source that declares a
+command, and a run that triangulated nothing says so rather than reporting the readers as
+having concurred.
 
 ## Audit output
 

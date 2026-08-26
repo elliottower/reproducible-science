@@ -156,6 +156,11 @@ def to_sarif(
                     "reason": decision.reason.value,
                     "validity": decision.validity.value,
                     "backend": f"{decision.backend}/{decision.backend_version}",
+                    # The toolchain that read the bytes, kept apart from the backend's
+                    # protocol version: a renderer that showed only the latter would repeat
+                    # in the output the gap the fields exist to close.
+                    "extractor": f"{decision.tool}/{decision.tool_version}",
+                    "extractionDigest": decision.extraction_digest,
                 },
                 # A fingerprint over the claim and the bytes read, so a result is the same
                 # result across runs and a different one when either changes.

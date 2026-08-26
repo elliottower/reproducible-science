@@ -23,6 +23,11 @@ from citations.exceptions import CitationsError, ClaimFileError
 from citations.models import ClaimFile, load_claim_file, load_record
 
 RESULTS = ["found", "not found", "indeterminate", "unchecked"]
+
+#: Width of the outcome column, computed so adding an outcome does not silently ragged the
+#: table. `indeterminate` is the longest, and naming an outcome for what it means rather than
+#: for what fits is why this is derived instead of written down.
+OUTCOME_WIDTH = max(len(r) for r in RESULTS) + 1
 WARNINGS = {
     "truncated": "stops mid-word or mid-number — the source continues it",
     "short": "the source may qualify this in the next clause",
@@ -63,22 +68,29 @@ def _claim_files(root: pathlib.Path, skipped=None) -> list[ClaimFile]:
     return out
 
 
-def _record_reader(rep: V.Report, r: V.Result) -> None:
-    """Note what read this source, and why it was not the preferred reader.
+def _record_extractor(rep: V.Report, extractors, r: V.Result) -> None:
+    """Note what read this source, why it was not the preferred extractor, and whether more
+    than one was asked.
 
     Kept on the report rather than printed as it happens: a substitution that only ever
-    appeared in a log line is a substitution no later run can compare itself against.
+    appeared in a log line is one no later run can compare itself against.
     """
-    if not r.reader:
+    if not r.extractor:
         return
-    rep.readers_used[r.reader] = rep.readers_used.get(r.reader, 0) + 1
-    if r.fallback and r.reader not in rep.fallback_reasons:
-        rep.fallback_reasons[r.reader] = r.fallback_reason or "the preferred reader did not answer"
+    extractors[r.extractor] += 1
+    if len(r.agreement) > 1:
+        rep.triangulated += 1
+    if r.fallback and r.extractor not in rep.fallback_reasons:
+        rep.fallback_reasons[r.extractor] = r.fallback_reason or "pdftotext did not answer"
 
 
 def cmd_verify(a) -> int:
     rep = V.Report()
     counts: collections.Counter = collections.Counter()
+    extractors: collections.Counter = collections.Counter()
+    # Consent to run a program comes from whoever invokes the command, never from the file
+    # being checked. See the trust model in `verify.py`.
+    allowed = V.DEFAULT_EXTRACTORS | frozenset(a.allow_extractor or ())
 
     if a.claims:
         root = pathlib.Path(a.claims).expanduser().resolve()
@@ -94,12 +106,15 @@ def cmd_verify(a) -> int:
                     if not q.text:
                         continue
                     rep.checked += 1
-                    r = V.check_one(q.text, artifact, q.page, triangulate=a.triangulate)
+                    r = V.check_one(
+                        q.text, artifact, q.page, cf.source.extract_cmd, allowed, a.triangulate
+                    )
                     counts[r.state] += 1
-                    _record_reader(rep, r)
+                    _record_extractor(rep, extractors, r)
                     if r.state != "found" or r.warnings:
                         rep.problems.append((f"{cf.name}:{cid}", q.text[:58], r))
         rep.counts = dict(counts)
+        rep.extractors = dict(extractors)
         return _report(rep, counts, a, f"claims  {root}")
 
     lib, origin = paths.find_with_origin()
@@ -120,12 +135,13 @@ def cmd_verify(a) -> int:
             if not q.text:
                 continue
             rep.checked += 1
-            r = V.check_one(q.text, artifact, q.page, triangulate=a.triangulate)
+            r = V.check_one(q.text, artifact, q.page, None, allowed, a.triangulate)
             counts[r.state] += 1
-            _record_reader(rep, r)
+            _record_extractor(rep, extractors, r)
             if r.state != "found" or r.warnings:
                 rep.problems.append((rec.slug, q.text[:58], r))
     rep.counts = dict(counts)
+    rep.extractors = dict(extractors)
     return _report(rep, counts, a, source)
 
 
@@ -144,36 +160,39 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
     for s in RESULTS:
         n = counts.get(s, 0)
         if not n and s == "not found":
-            print(f"  {s:<12}{n:>7}")
+            print(f"  {s:<{OUTCOME_WIDTH}}{n:>7}")
             continue
         if not n:
             continue
         why = ""
         if s in ("unchecked", "indeterminate"):
+            # Untruncated: the reason is the only thing that says what to fix, and the one
+            # that matters most -- "which this run does not allow" -- is at the end of it.
             reasons = collections.Counter(r.detail for _, _, r in rep.problems if r.state == s)
             why = (
-                "   " + " · ".join(f"{c:,} {d[:60]}" for d, c in reasons.most_common(3))
+                "   " + " · ".join(f"{c:,} {d}" for d, c in reasons.most_common())
                 if len(reasons) > 1
-                else f"   {reasons.most_common(1)[0][0][:70]}"
+                else f"   {reasons.most_common(1)[0][0]}"
             )
-        print(f"  {s:<14}{n:>7,}{why}")
+        print(f"  {s:<{OUTCOME_WIDTH}}{n:>7,}{why}")
 
-    # What read the sources, before what it found in them. The same quotation checked with
-    # pypdf and with poppler is two records, and a report that does not name the reader cannot
-    # say which one it is.
-    if rep.readers_used:
+    # Which extractor a verdict rests on, before the verdicts. A `found` taken through a
+    # declared renderer and one taken through `pdftotext` are different records, and a report
+    # that does not separate them cannot be compared with a later run.
+    if rep.extractors:
         print("\nread by")
-        for name, n in sorted(rep.readers_used.items(), key=lambda kv: -kv[1]):
-            note = rep.fallback_reasons.get(name, "")
-            print(f"  {n:>7,}  {name}" + (f"   fallback: {note[:52]}" if note else ""))
+        for name, n in sorted(rep.extractors.items(), key=lambda kv: (-kv[1], kv[0])):
+            why = rep.fallback_reasons.get(name, "")
+            print(f"  {n:>7,}  {name}" + (f"   fallback: {why[:50]}" if why else ""))
     if a.triangulate:
-        consulted = V.readers.available()
+        # What was triangulated, not what was asked for. A source that declares a command has
+        # one extractor and a machine may have one reader, and reporting the request as the
+        # result would claim an agreement nothing measured.
+        consulted = V.available_extractors()
         print(
-            f"\ntriangulated over {len(consulted)}: {', '.join(consulted)}"
-            if len(consulted) > 1
-            else "\ntriangulation asked for, and only one reader is installed: "
-            f"{', '.join(consulted) or 'none'}. nothing was compared, so no agreement "
-            "was established."
+            f"\ntriangulated  {rep.triangulated:,} of {rep.checked:,} over {', '.join(consulted)}"
+            if rep.triangulated
+            else "\ntriangulation established nothing: every source was read by one extractor."
         )
 
     warns = collections.Counter(w for _, _, r in rep.problems for w in r.warnings)
@@ -210,8 +229,8 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
         print("every quote resolved, but against a source that is not the one pinned.")
     elif counts.get("indeterminate"):
         print(
-            f"nothing failed. {counts['indeterminate']} indeterminate — the readers on this "
-            "machine disagree about those passages, which is not the same as their being absent."
+            f"nothing failed. {counts['indeterminate']} indeterminate — the extractors here "
+            "disagree about those passages, which is not the same as their being absent."
         )
     elif counts.get("unchecked"):
         print(
@@ -248,6 +267,13 @@ def main(argv: list[str] | None = None) -> int:
     v.add_argument("--claims", help="a paper's claims/ directory, where quotations live")
     v.add_argument("--only", help="restrict to records cited by this paper")
     v.add_argument("--strict", action="store_true", help="exit 1 on any failure, for CI")
+    v.add_argument(
+        "--allow-extractor",
+        action="append",
+        metavar="NAME",
+        help="let a claims file's extract_cmd run this program, named exactly as it writes it "
+        f"(allowed unasked: {', '.join(sorted(V.DEFAULT_EXTRACTORS))})",
+    )
     v.add_argument(
         "--triangulate",
         action="store_true",

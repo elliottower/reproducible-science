@@ -19,7 +19,7 @@ def pinned(tmp_path, monkeypatch):
         p = tmp_path / "source.pdf"
         p.write_bytes(b"%PDF-1.4")
 
-        def stub(pdf, page=None):
+        def stub(pdf, page=None, extract_cmd=None, allowed=None):
             if page is not None:
                 return (per_page or {}).get(page, "")
             return text

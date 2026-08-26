@@ -1,10 +1,11 @@
 """A single extractor is an unverifiable oracle.
 
-The pin establishes that the bytes did not change. Nothing establishes that the reader turned
-those bytes into the right text, and a mangled extraction produces a confident `not found`
-that accuses a manuscript of misquoting a source it quotes correctly. These pin the two
-properties that follow: readers disagreeing must never surface as a quotation failure, and a
-reader standing in for the preferred one must never do so silently.
+The pin establishes that the bytes did not change. Nothing establishes that the extractor
+turned them into the right text, and a mangled extraction produces a confident `not found`
+that accuses a manuscript of misquoting a source it quotes correctly. These pin the properties
+that follow: extractors disagreeing must never surface as a quotation failure, one standing in
+for another must never do so silently, and a declared command must not be quietly replaced by
+a reader its author did not name.
 """
 
 from __future__ import annotations
@@ -19,11 +20,25 @@ from citations.exceptions import SourceUnreadableError
 
 PASSAGE = "the measured angle matches the Haar expectation for this ensemble of unitaries"
 OTHER = "an entirely different sentence about something else that is nowhere near the first"
+POPPLER = V.DEFAULT_EXTRACTOR
 
 
 @pytest.fixture(autouse=True)
 def _no_cache():
     V.clear_caches()
+
+
+@pytest.fixture
+def renderer(tmp_path):
+    """A script standing in for a declared renderer, as `test_extract_cmd.py` uses one."""
+
+    def make(name: str, body: str) -> pathlib.Path:
+        script = tmp_path / name
+        script.write_text(f"#!/bin/sh\n{body}\n")
+        script.chmod(0o755)
+        return script
+
+    return make
 
 
 @pytest.fixture
@@ -33,74 +48,85 @@ def pdf(tmp_path):
     return p
 
 
-def stub_readers(monkeypatch, texts: dict[str, str | Exception]):
-    """Replace the reader registry with readers that answer from `texts`.
+def answer(value):
+    """A reader that returns `value`, or raises it when it is an exception."""
 
-    A value that is an exception is raised, so "this reader could not open the file" and "this
-    reader read it and the passage is not there" are expressible separately -- which is the
-    distinction every test below turns on.
+    def read(path, page=None):
+        if isinstance(value, Exception):
+            raise value
+        return value
+
+    return read
+
+
+def stub_extractors(monkeypatch, poppler=None, pure=None):
+    """Replace the extractors with ones that answer from the arguments.
+
+    `poppler=None` means the binary is not there at all; an exception means it is there and
+    failed on this document. Those are different facts and every test below turns on the
+    difference between one of them and "read it, and the passage is not in it".
     """
+    pure = pure or {}
+    if poppler is None:
+        monkeypatch.setattr(
+            V,
+            "_poppler",
+            answer(SourceUnreadableError(pathlib.Path("x"), "pdftotext is not on PATH")),
+        )
+    else:
+        monkeypatch.setattr(V, "_poppler", answer(poppler))
+    monkeypatch.setattr(
+        R, "READERS", {n: R.Reader(n, answer(v), lambda: True) for n, v in pure.items()}
+    )
+    monkeypatch.setattr(R, "PREFERRED", tuple(pure))
+    monkeypatch.setattr(V.shutil, "which", lambda name: None if poppler is None else f"/x/{name}")
 
-    def make(name, answer):
-        def read(path, page=None):
-            if isinstance(answer, Exception):
-                raise answer
-            return answer
 
-        return R.Reader(name, read, lambda: True, lambda: "stub")
-
-    monkeypatch.setattr(R, "READERS", {n: make(n, a) for n, a in texts.items()})
-    monkeypatch.setattr(R, "PREFERRED", tuple(texts))
+# --- disagreement is not a mismatch -------------------------------------------------------------
 
 
-# --- disagreement is not a mismatch -----------------------------------------------------------
-
-
-def test_readers_that_disagree_are_indeterminate_and_never_not_found(pdf, monkeypatch):
+def test_extractors_that_disagree_are_indeterminate_and_never_not_found(pdf, monkeypatch):
     # The whole point. `not found` says the source was read and the passage is not in it,
-    # which is an accusation against the manuscript; two readers disagreeing says the readers
-    # do not settle it, which accuses nothing.
-    stub_readers(monkeypatch, {"poppler": PASSAGE, "pdfplumber": OTHER, "pypdf": OTHER})
+    # which is an accusation against the manuscript; two extractors disagreeing says they do
+    # not settle it, which accuses nothing.
+    stub_extractors(monkeypatch, poppler=PASSAGE, pure={"pypdf": OTHER, "pdfplumber": OTHER})
     r = V.check_one(PASSAGE, pdf, triangulate=True)
     assert r.state == "indeterminate"
     assert r.state != "not found"
-    assert r.agreement == {"poppler": "found", "pdfplumber": "not found", "pypdf": "not found"}
+    assert r.agreement == {POPPLER: "found", "pypdf": "not found", "pdfplumber": "not found"}
 
 
-def test_the_disagreement_names_which_reader_said_what(pdf, monkeypatch):
-    stub_readers(monkeypatch, {"poppler": PASSAGE, "pypdf": OTHER})
+def test_the_disagreement_names_which_extractor_said_what(pdf, monkeypatch):
+    stub_extractors(monkeypatch, poppler=PASSAGE, pure={"pypdf": OTHER})
     r = V.check_one(PASSAGE, pdf, triangulate=True)
-    assert "poppler found" in r.detail and "pypdf not found" in r.detail
+    assert f"{POPPLER} found" in r.detail and "pypdf not found" in r.detail
 
 
-def test_readers_that_agree_the_passage_is_absent_still_say_not_found(pdf, monkeypatch):
+def test_extractors_that_agree_the_passage_is_absent_still_say_not_found(pdf, monkeypatch):
     # Triangulation must not turn every negative into an abstention, or it would be a way of
     # never failing a quotation.
-    stub_readers(monkeypatch, {"poppler": OTHER, "pdfplumber": OTHER, "pypdf": OTHER})
+    stub_extractors(monkeypatch, poppler=OTHER, pure={"pypdf": OTHER, "pdfplumber": OTHER})
     assert V.check_one(PASSAGE, pdf, triangulate=True).state == "not found"
 
 
-def test_readers_that_agree_the_passage_is_present_say_found(pdf, monkeypatch):
-    stub_readers(monkeypatch, {"poppler": PASSAGE, "pdfplumber": PASSAGE, "pypdf": PASSAGE})
+def test_extractors_that_agree_the_passage_is_present_say_found(pdf, monkeypatch):
+    stub_extractors(monkeypatch, poppler=PASSAGE, pure={"pypdf": PASSAGE, "pdfplumber": PASSAGE})
     r = V.check_one(PASSAGE, pdf, triangulate=True)
     assert r.state == "found"
     assert len(r.agreement) == 3
 
 
-def test_a_reader_that_could_not_open_the_file_casts_no_vote(pdf, monkeypatch):
+def test_an_extractor_that_could_not_open_the_file_casts_no_vote(pdf, monkeypatch):
     # A failure to open is not a verdict of absence. Counting it as one would make an
     # uninstallable parser look like a disagreement about the document.
-    stub_readers(
+    stub_extractors(
         monkeypatch,
-        {
-            "poppler": PASSAGE,
-            "pdfplumber": SourceUnreadableError(pdf, "pdfplumber could not read it"),
-            "pypdf": PASSAGE,
-        },
+        poppler=PASSAGE,
+        pure={"pypdf": PASSAGE, "pdfplumber": SourceUnreadableError(pdf, "could not read it")},
     )
     r = V.check_one(PASSAGE, pdf, triangulate=True)
     assert r.state == "found"
-    assert set(r.agreement) == {"poppler", "pypdf"}
+    assert set(r.agreement) == {POPPLER, "pypdf"}
 
 
 def test_indeterminate_is_not_a_quotation_failure_but_is_not_a_strict_pass():
@@ -110,108 +136,137 @@ def test_indeterminate_is_not_a_quotation_failure_but_is_not_a_strict_pass():
     assert rep.unresolved == 1
 
 
-# --- availability is not agreement ------------------------------------------------------------
+# --- availability is not agreement ---------------------------------------------------------------
 
 
-def test_triangulating_with_one_reader_establishes_no_agreement(pdf, monkeypatch):
-    # A fallback answers "something could read it". Triangulation answers "do readers agree".
-    # One reader answers the first and cannot answer the second, and the result must not read
-    # as three readers concurring.
-    stub_readers(monkeypatch, {"pypdf": PASSAGE})
+def test_triangulating_with_one_extractor_establishes_no_agreement(pdf, monkeypatch):
+    # A fallback answers "something could read it". Triangulation answers "do they agree".
+    # One extractor answers the first and cannot answer the second.
+    stub_extractors(monkeypatch, poppler=None, pure={"pypdf": PASSAGE})
     r = V.check_one(PASSAGE, pdf, triangulate=True)
     assert r.state == "found"
-    assert list(r.agreement) == ["pypdf"], "one reader is not a consensus"
+    assert list(r.agreement) == ["pypdf"], "one extractor is not a consensus"
 
 
-def test_a_single_reader_check_records_no_agreement_at_all(pdf, monkeypatch):
+def test_a_lone_extractor_can_never_produce_indeterminate(pdf, monkeypatch):
+    # `indeterminate` is reached by comparing extractors. With one there is nothing to
+    # compare, and a single-entry agreement must not read as disagreement -- that would stop a
+    # one-reader machine verifying anything at all.
+    stub_extractors(monkeypatch, poppler=None, pure={"pypdf": PASSAGE})
+    for triangulate in (False, True):
+        assert V.check_one(PASSAGE, pdf, triangulate=triangulate).state == "found"
+        assert V.check_one(OTHER, pdf, triangulate=triangulate).state == "not found"
+
+
+def test_a_single_extractor_check_records_no_agreement_at_all(pdf, monkeypatch):
     # An empty mapping means agreement was never measured. Were it to default to "everyone
     # agreed", every default check would claim a triangulation it never performed.
-    stub_readers(monkeypatch, {"poppler": PASSAGE, "pypdf": OTHER})
+    stub_extractors(monkeypatch, poppler=PASSAGE, pure={"pypdf": OTHER})
     r = V.check_one(PASSAGE, pdf)
     assert r.state == "found"
     assert r.agreement == {}
 
 
-# --- a fallback is never silent ---------------------------------------------------------------
+# --- a declared command is the author naming the extractor ---------------------------------------
 
 
-def test_the_reader_is_recorded_on_every_result(pdf, monkeypatch):
-    stub_readers(monkeypatch, {"poppler": PASSAGE})
-    assert V.check_one(PASSAGE, pdf).reader == "poppler"
+def test_a_declared_command_is_never_triangulated(tmp_path, renderer):
+    # One declared extractor, nothing to disagree with. Asking the readers as well would
+    # compare a renderer's output against a PDF reader's over a source whose author said is
+    # not a PDF, and report the difference as the document being indeterminate.
+    source = tmp_path / "manuscript.tex"
+    source.write_text("irrelevant")
+    script = renderer("render", f"printf '%s\\n' {PASSAGE!r}")
+    r = V.check_one(PASSAGE, source, None, str(script), frozenset({str(script)}), triangulate=True)
+    assert r.state == "found"
+    assert r.agreement == {}
+    assert r.extractor == str(script)
 
 
-def test_standing_in_for_an_absent_preferred_reader_is_recorded_as_a_fallback(pdf, monkeypatch):
-    def missing(path, page=None):  # pragma: no cover - never called; poppler is absent
-        raise AssertionError("an unavailable reader must not be asked to read")
+def test_a_declared_command_that_fails_does_not_fall_through_to_a_reader(tmp_path, monkeypatch):
+    # Falling through would run a PDF reader over a source the author said is not one, and
+    # record an extractor nobody asked for on a result the author cannot account for.
+    source = tmp_path / "manuscript.tex"
+    source.write_text("irrelevant")
+    stub_extractors(monkeypatch, poppler=PASSAGE, pure={"pypdf": PASSAGE})
+    missing = "no-such-renderer-4d91b2"
+    r = V.check_one(PASSAGE, source, None, missing, frozenset({missing}))
+    assert r.state == "unchecked"
+    assert r.extractor == "", "nothing read it, so nothing is named"
+    assert "PATH" in r.detail
 
-    monkeypatch.setattr(
-        R,
-        "READERS",
-        {
-            "poppler": R.Reader("poppler", missing, lambda: False, lambda: "absent"),
-            "pypdf": R.Reader("pypdf", lambda p, page=None: PASSAGE, lambda: True, lambda: "stub"),
-        },
-    )
-    monkeypatch.setattr(R, "PREFERRED", ("poppler", "pypdf"))
+
+# --- a fallback is never silent -------------------------------------------------------------------
+
+
+def test_the_extractor_is_recorded_on_every_result(pdf, monkeypatch):
+    stub_extractors(monkeypatch, poppler=PASSAGE)
+    assert V.check_one(PASSAGE, pdf).extractor == POPPLER
+
+
+def test_standing_in_for_an_absent_poppler_is_recorded_as_a_fallback(pdf, monkeypatch):
+    stub_extractors(monkeypatch, poppler=None, pure={"pypdf": PASSAGE})
     r = V.check_one(PASSAGE, pdf)
     assert r.state == "found"
-    assert r.reader == "pypdf"
+    assert r.extractor == "pypdf"
     assert r.fallback is True
-    assert "poppler is not installed" in r.fallback_reason
+    assert "PATH" in r.fallback_reason
 
 
-def test_standing_in_for_a_preferred_reader_that_failed_is_also_recorded(pdf, monkeypatch):
+def test_standing_in_for_a_poppler_that_failed_is_also_recorded(pdf, monkeypatch):
     # Installed-and-broken is a different fact from absent, and both are substitutions. A
     # report that shows one and hides the other cannot be compared with a later run.
-    stub_readers(
+    stub_extractors(
         monkeypatch,
-        {"poppler": SourceUnreadableError(pdf, "pdftotext exited 1"), "pypdf": PASSAGE},
+        poppler=SourceUnreadableError(pdf, "pdftotext exited 1"),
+        pure={"pypdf": PASSAGE},
     )
     r = V.check_one(PASSAGE, pdf)
-    assert r.reader == "pypdf"
+    assert r.extractor == "pypdf"
     assert r.fallback is True
     assert "pdftotext exited 1" in r.fallback_reason
 
 
-def test_the_preferred_reader_answering_is_not_a_fallback(pdf, monkeypatch):
-    stub_readers(monkeypatch, {"poppler": PASSAGE, "pypdf": PASSAGE})
+def test_poppler_answering_is_not_a_fallback(pdf, monkeypatch):
+    stub_extractors(monkeypatch, poppler=PASSAGE, pure={"pypdf": PASSAGE})
     r = V.check_one(PASSAGE, pdf)
-    assert r.reader == "poppler"
+    assert r.extractor == POPPLER
     assert r.fallback is False
     assert r.fallback_reason == ""
 
 
 def test_a_fallback_reaches_the_report_rather_than_only_the_result(pdf, monkeypatch):
+    import collections
+
     from citations import cli
 
-    stub_readers(
-        monkeypatch, {"poppler": SourceUnreadableError(pdf, "no such binary"), "pypdf": PASSAGE}
+    stub_extractors(
+        monkeypatch, poppler=SourceUnreadableError(pdf, "no such binary"), pure={"pypdf": PASSAGE}
     )
     rep = V.Report()
-    cli._record_reader(rep, V.check_one(PASSAGE, pdf))
-    assert rep.readers_used == {"pypdf": 1}
+    counted: collections.Counter = collections.Counter()
+    cli._record_extractor(rep, counted, V.check_one(PASSAGE, pdf))
+    assert counted == {"pypdf": 1}
     assert "no such binary" in rep.fallback_reasons["pypdf"]
 
 
-# --- unchecked only where nothing could read it -----------------------------------------------
+# --- unchecked only where nothing could read it ----------------------------------------------------
 
 
-def test_unchecked_only_when_no_reader_is_available(pdf, monkeypatch):
-    monkeypatch.setattr(R, "READERS", {})
-    monkeypatch.setattr(R, "PREFERRED", ())
+def test_unchecked_only_when_nothing_can_read_the_source(pdf, monkeypatch):
+    stub_extractors(monkeypatch, poppler=None, pure={})
     r = V.check_one(PASSAGE, pdf)
     assert r.state == "unchecked"
-    assert "pip install" in r.detail and "poppler" in r.detail
+    assert "PATH" in r.detail
 
 
 def test_a_missing_extra_is_reported_and_never_raised(pdf, monkeypatch):
     # The failure mode this replaces is a traceback out of `citations verify` on a machine
     # where an optional dependency is not installed.
     monkeypatch.setattr(R, "pdfplumber", None)
+    monkeypatch.setattr(V, "_poppler", answer(SourceUnreadableError(pdf, "pdftotext absent")))
     monkeypatch.setattr(
-        R,
-        "READERS",
-        {"pdfplumber": R.Reader("pdfplumber", R._read_pdfplumber, lambda: True, lambda: "absent")},
+        R, "READERS", {"pdfplumber": R.Reader("pdfplumber", R._read_pdfplumber, lambda: True)}
     )
     monkeypatch.setattr(R, "PREFERRED", ("pdfplumber",))
     r = V.check_one(PASSAGE, pdf)
@@ -219,60 +274,51 @@ def test_a_missing_extra_is_reported_and_never_raised(pdf, monkeypatch):
     assert "pdfplumber is not installed" in r.detail
 
 
-def test_every_reader_failing_is_unchecked_not_not_found(pdf, monkeypatch):
-    stub_readers(
+def test_every_extractor_failing_is_unchecked_not_not_found(pdf, monkeypatch):
+    stub_extractors(
         monkeypatch,
-        {
-            "poppler": SourceUnreadableError(pdf, "pdftotext exited 1"),
-            "pypdf": SourceUnreadableError(pdf, "pypdf could not read it"),
-        },
+        poppler=SourceUnreadableError(pdf, "pdftotext exited 1"),
+        pure={"pypdf": SourceUnreadableError(pdf, "pypdf could not read it")},
     )
     r = V.check_one(PASSAGE, pdf, triangulate=True)
     assert r.state == "unchecked"
     assert "pdftotext" in r.detail and "pypdf" in r.detail
 
 
-def test_naming_a_reader_never_falls_through_to_another(pdf, monkeypatch):
-    # A caller naming one reader is comparing it with a second. Substituting silently would
-    # make two readers look like one and turn a disagreement into an agreement.
-    stub_readers(
+def test_naming_an_extractor_never_falls_through_to_another(pdf, monkeypatch):
+    # A caller naming one extractor is comparing it with a second. Substituting silently would
+    # make two look like one and turn a disagreement into an agreement.
+    stub_extractors(
         monkeypatch,
-        {"poppler": SourceUnreadableError(pdf, "pdftotext exited 1"), "pypdf": PASSAGE},
+        poppler=SourceUnreadableError(pdf, "pdftotext exited 1"),
+        pure={"pypdf": PASSAGE},
     )
     with pytest.raises(SourceUnreadableError):
-        R.read(pdf, reader="poppler")
+        V.reading_with(pdf, extractor=POPPLER)
 
 
-# --- the seam other packages stand in for -----------------------------------------------------
+# --- the seam other packages stand in for ------------------------------------------------------
 
 
 def test_replacing_extract_replaces_the_text_the_default_check_sees(pdf, monkeypatch):
-    """`repro`'s quote backend calls `check_one`, and its regression suite replaces `extract`
-    with a two-argument stub. Routing the default check around `extract` left those tests
-    measuring 42 bytes of stand-in PDF: every reader failed on it, the decision became
-    `unchecked` instead of `mismatch`, and `publication` warns on unchecked rather than
-    failing -- so a wrong-page misquote passed an assessment it had been failing."""
-    monkeypatch.setattr(V, "extract", lambda path, page=None: PASSAGE)
+    """`repro`'s quote backend calls `check_one`, and its regression suite replaces `extract`.
+    Routing the default check around it left those tests measuring 42 bytes of stand-in PDF:
+    every extractor failed on it, the decision became `unchecked` instead of `mismatch`, and
+    `publication` warns on unchecked rather than failing -- so a wrong-page misquote passed an
+    assessment it had been failing."""
+    monkeypatch.setattr(V, "extract", lambda path, page=None, cmd=None, allowed=None: PASSAGE)
     r = V.check_one(PASSAGE, pdf)
     assert r.state == "found"
-    assert r.reader == V.SUBSTITUTED, "the text did not come from a reader, and says so"
-
-
-def test_extract_takes_the_two_arguments_an_existing_stub_supplies(pdf, monkeypatch):
-    # A third positional parameter would raise TypeError inside every stub already written
-    # against this function, which is a break no test of this package would have caught.
-    calls = []
-    monkeypatch.setattr(V, "extract", lambda path, page=None: calls.append(page) or PASSAGE)
-    V.check_one(PASSAGE, pdf, page=3)
-    assert calls, "the check never called extract"
-    assert set(calls) <= {None, 3}
+    assert r.extractor == V.SUBSTITUTED, "the text did not come from an extractor, and says so"
 
 
 def test_a_per_page_stub_still_decides_the_page_warning(pdf, monkeypatch):
     # The wrong-page check reads each page through the same seam. Reading page 1 with a real
-    # reader while the document text came from a stub compares two different documents.
+    # extractor while the document text came from a stub compares two different documents.
     monkeypatch.setattr(
-        V, "extract", lambda path, page=None: PASSAGE if page in (None, 2) else OTHER
+        V,
+        "extract",
+        lambda path, page=None, cmd=None, allowed=None: PASSAGE if page in (None, 2) else OTHER,
     )
     assert "page" not in V.check_one(PASSAGE, pdf, page=2).warnings
     r = V.check_one(PASSAGE, pdf, page=1)
@@ -280,24 +326,14 @@ def test_a_per_page_stub_still_decides_the_page_warning(pdf, monkeypatch):
     assert "page" in r.warnings
 
 
-# --- one reader cannot disagree with itself ---------------------------------------------------
-
-
-def test_a_lone_reader_can_never_produce_indeterminate(pdf, monkeypatch):
-    # `indeterminate` is reached by comparing readers. With one reader there is nothing to
-    # compare, and an empty or single-entry agreement must not read as disagreement -- that
-    # would stop a one-reader machine verifying anything at all.
-    stub_readers(monkeypatch, {"pypdf": PASSAGE})
-    for triangulate in (False, True):
-        assert V.check_one(PASSAGE, pdf, triangulate=triangulate).state == "found"
-        assert V.check_one(OTHER, pdf, triangulate=triangulate).state == "not found"
-
-
-def test_an_empty_agreement_is_not_disagreement(pdf, monkeypatch):
-    stub_readers(monkeypatch, {"poppler": PASSAGE, "pypdf": PASSAGE})
-    r = V.check_one(PASSAGE, pdf)
-    assert r.agreement == {}
-    assert r.state == "found", "no comparison was made, so there was nothing to disagree about"
+def test_clearing_extract_clears_the_extraction_behind_it(pdf, monkeypatch):
+    # Two caches, one cleared, and the other goes on answering with the reading it took
+    # before the source changed.
+    stub_extractors(monkeypatch, poppler=PASSAGE)
+    assert V.check_one(PASSAGE, pdf).state == "found"
+    V.extract.cache_clear()
+    monkeypatch.setattr(V, "_poppler", answer(OTHER))
+    assert V.check_one(PASSAGE, pdf).state == "not found"
 
 
 # --- the real readers, on a real PDF ----------------------------------------------------------
@@ -307,8 +343,8 @@ def one_page_pdf(path: pathlib.Path, lines: list[str]) -> pathlib.Path:
     """A minimal single-page PDF carrying `lines` as Helvetica text.
 
     Built here rather than committed as a fixture so the bytes are visible to anyone reading
-    the test: a binary fixture would make "all three readers agree" a claim about a file
-    nobody can inspect.
+    the test: a binary fixture would make "every reader agrees" a claim about a file nobody
+    can inspect.
     """
     body = ["BT", "/F1 11 Tf", "72 720 Td", "14 TL"]
     for line in lines:
@@ -350,36 +386,33 @@ PROSE = [
 
 
 @pytest.mark.integration
-def test_every_installed_reader_opens_a_well_formed_pdf(tmp_path):
+def test_every_installed_extractor_opens_a_well_formed_pdf(tmp_path):
     source = one_page_pdf(tmp_path / "prose.pdf", PROSE)
-    for name in R.available():
-        assert R.read(source, reader=name).text.strip(), f"{name} extracted nothing"
+    for name in V.available_extractors():
+        assert V.reading_with(source, extractor=name).text.strip(), f"{name} extracted nothing"
 
 
 @pytest.mark.integration
-def test_the_installed_readers_agree_on_a_passage_that_is_there(tmp_path):
+def test_the_installed_extractors_agree_on_a_passage_that_is_there(tmp_path):
     source = one_page_pdf(tmp_path / "prose.pdf", PROSE)
-    if len(R.available()) < 2:
-        pytest.skip("triangulation needs two readers")
+    if len(V.available_extractors()) < 2:
+        pytest.skip("triangulation needs two extractors")
     r = V.check_one(PROSE[0], source, triangulate=True)
     assert r.state == "found"
     assert len(set(r.agreement.values())) == 1
 
 
 @pytest.mark.integration
-def test_the_installed_readers_agree_on_a_passage_that_is_not_there(tmp_path):
+def test_the_installed_extractors_agree_on_a_passage_that_is_not_there(tmp_path):
     source = one_page_pdf(tmp_path / "prose.pdf", PROSE)
-    if len(R.available()) < 2:
-        pytest.skip("triangulation needs two readers")
+    if len(V.available_extractors()) < 2:
+        pytest.skip("triangulation needs two extractors")
     absent = "a sentence that appears nowhere in this document at any point whatsoever"
-    r = V.check_one(absent, source, triangulate=True)
-    assert r.state == "not found"
+    assert V.check_one(absent, source, triangulate=True).state == "not found"
 
 
 @pytest.mark.integration
-def test_a_reader_names_itself_and_its_version(tmp_path):
+def test_an_extraction_names_the_extractor_that_produced_it(tmp_path):
     source = one_page_pdf(tmp_path / "prose.pdf", PROSE)
-    for name in R.available():
-        got = R.read(source, reader=name)
-        assert got.reader == name
-        assert got.version and got.version != "unknown"
+    for name in V.available_extractors():
+        assert V.reading_with(source, extractor=name).extractor == name

@@ -31,8 +31,8 @@ which traces results at the time of experimentation.
 ```
 
 **Recommended:** poppler (`pdftotext`), for reading PDF sources. `citations` falls back to a
-pure-Python reader without it, so `pip install` is enough; poppler reproduces column geometry,
-which the pure-Python readers do not, and every result records which reader produced it.
+pure-Python reader without it, so `pip install` is enough; poppler resolves more passages than
+either fallback on a measured corpus, and every result records which extractor produced it.
 
 ```bash
 brew install poppler                  # macOS
