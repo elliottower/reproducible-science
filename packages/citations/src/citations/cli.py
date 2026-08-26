@@ -2,6 +2,7 @@
 
 citations init              make a library here
 citations verify            do my quotations resolve in the sources I pinned?
+citations coverage          is every quotation in my manuscript pinned at all?
 citations audit             does the metadata match the record the identifier resolves to?
 citations resolve           backfill missing identifiers
 citations build             rebuild records from the papers' bibliographies
@@ -18,6 +19,7 @@ import collections
 import importlib
 import pathlib
 
+from citations import coverage as C
 from citations import paths
 from citations import verify as V
 from citations.exceptions import CitationsError, ClaimFileError
@@ -84,6 +86,73 @@ def _record_extractor(rep: V.Report, extractors, r: V.Result) -> None:
         rep.triangulated += 1
     if r.fallback and r.extractor not in rep.fallback_reasons:
         rep.fallback_reasons[r.extractor] = r.fallback_reason or "pdftotext did not answer"
+
+
+COVERAGE = ["covered", "uncovered", "unresolvable"]
+COVERAGE_WIDTH = max(len(s) for s in COVERAGE) + 1
+
+
+def cmd_coverage(a) -> int:
+    """Every quotation in the manuscript, against what is pinned."""
+    manuscript = pathlib.Path(a.manuscript)
+    if not manuscript.is_file():
+        print(f"no manuscript at {manuscript}")
+        return 2
+    claims_dir = pathlib.Path(a.claims)
+    if not claims_dir.is_dir():
+        print(f"no claims directory at {claims_dir}")
+        return 2
+
+    quotes = C.quotations(manuscript.read_text(errors="replace"))
+    print(f"manuscript  {manuscript}")
+    print(f"claims      {claims_dir}")
+    print()
+    if not quotes:
+        # Not a pass. A manuscript with no ``...'' may quote nothing, or may quote with a
+        # convention this does not read, and the two are worth telling apart by eye.
+        print("no ``...'' quotations found. nothing was checked.")
+        return 1 if a.strict else 0
+
+    skipped: list = []
+    files = _claim_files(claims_dir, skipped)
+    allowed = V.DEFAULT_EXTRACTORS | frozenset(a.allow_extractor or ())
+
+    if a.attribute:
+        by_key, missing = C.artifacts_by_key(files, claims_dir, allowed)
+        findings = [C.attribute(q, by_key, missing) for q in quotes]
+    else:
+        pool = C.pinned_spans(files)
+        findings = [C.cover(q, pool) for q in quotes]
+
+    counts: collections.Counter = collections.Counter(f.status for f in findings)
+    for status in COVERAGE:
+        n = counts.get(status, 0)
+        if n or status != "unresolvable":
+            print(f"  {status:<{COVERAGE_WIDTH}}{n:>7,}")
+
+    problems = [f for f in findings if f.status != "covered"]
+    if problems:
+        print()
+        for f in problems:
+            head = "UNCOVERED" if f.status == "uncovered" else "unresolvable"
+            print(f"  {head}  {manuscript.name}:{f.quotation.line}")
+            print(f"    ``{f.quotation.raw.strip()[:96]}''")
+            print(f"    {f.detail}")
+
+    print()
+    uncovered = counts.get("uncovered", 0)
+    unresolvable = counts.get("unresolvable", 0)
+    if uncovered:
+        print(f"{uncovered} quotation(s) the manuscript makes and nothing pins.")
+        print("pin them, or stop quoting them. an unpinned quotation is not checked by anything.")
+    elif unresolvable:
+        print(f"nothing uncovered. {unresolvable} could not be decided; see the reasons above.")
+    else:
+        print(f"every quotation is {'attributed' if a.attribute else 'covered'}.")
+
+    if a.strict:
+        return 1 if (uncovered or unresolvable) else 0
+    return 1 if uncovered else 0
 
 
 def cmd_verify(a) -> int:
@@ -281,6 +350,25 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="ask every installed reader; report disagreement as indeterminate",
     )
+    c = sub.add_parser("coverage", help="is every quotation in my manuscript pinned at all?")
+    c.add_argument("manuscript", help="the .tex the paper is written in")
+    c.add_argument("--claims", default="claims", help="where the claim files live")
+    c.add_argument(
+        "--attribute",
+        action="store_true",
+        help="also check each quotation against the artifact of a source cited near it",
+    )
+    c.add_argument(
+        "--allow-extractor",
+        action="append",
+        metavar="PROGRAM",
+        help="let a claims file's extract_cmd run this program, for --attribute",
+    )
+    c.add_argument(
+        "--strict", action="store_true", help="also fail on a quotation that could not be decided"
+    )
+    c.set_defaults(fn=cmd_coverage)
+
     v.add_argument("--verbose", action="store_true", help="also list loose matches")
     v.add_argument("--quiet", action="store_true")
     v.set_defaults(fn=cmd_verify)
