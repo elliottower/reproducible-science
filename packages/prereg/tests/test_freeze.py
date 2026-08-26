@@ -8,20 +8,36 @@ import sys
 
 import pytest
 from prereg import log, plan, template
+from provenance_core.gitref import clean_env
+
+
+def _run(*args, **kw):
+    """`subprocess.run` with the variables that would send git somewhere other than `cwd` dropped.
+
+    `git add -A` under an inherited `GIT_INDEX_FILE` stages into the *outer* worktree's index,
+    leaving every tracked file there staged as deleted -- a wrecked checkout produced by a
+    passing test. `pre-commit` exports that variable while it stashes, so the pre-push run of
+    this suite is where it happens, and under `pytest -n auto` the workers race on the one index.
+
+    `clean_env` is the library's own, rather than a list repeated here. A copy would be a
+    second artifact holding the same fact, free to drift from the one the code enforces.
+    """
+    kw.setdefault("env", clean_env())
+    return subprocess.run(*args, **kw)
 
 
 def run(args, cwd):
-    return subprocess.run(
+    return _run(
         [sys.executable, "-m", "prereg.cli", *args], cwd=cwd, capture_output=True, text=True
     )
 
 
 @pytest.fixture
 def repo(tmp_path):
-    subprocess.run(["git", "init", "-q"], cwd=tmp_path)
+    _run(["git", "init", "-q"], cwd=tmp_path)
     run(["new", "study"], tmp_path)
-    subprocess.run(["git", "add", "-A"], cwd=tmp_path)
-    subprocess.run(
+    _run(["git", "add", "-A"], cwd=tmp_path)
+    _run(
         ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "init"],
         cwd=tmp_path,
     )
@@ -68,7 +84,7 @@ def test_freezing_twice_is_refused(repo):
 
 
 def test_freeze_refuses_uncommitted_changes(tmp_path):
-    subprocess.run(["git", "init", "-q"], cwd=tmp_path)
+    _run(["git", "init", "-q"], cwd=tmp_path)
     run(["new", "study"], tmp_path)
     result = run(["freeze"], tmp_path / "study")
     assert result.returncode == 1
@@ -102,8 +118,8 @@ def test_force_refreeze_rewrites_the_header_it_prints(repo):
     run(["freeze"], repo)
     p = repo / "PREREG.md"
     p.write_text(p.read_text().replace("## Randomization", "## Randomization\n\nBy seed."))
-    subprocess.run(["git", "add", "-A"], cwd=repo)
-    subprocess.run(
+    _run(["git", "add", "-A"], cwd=repo)
+    _run(
         ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "edit"], cwd=repo
     )
     r = run(["freeze", "--force", "--access", "nothing run"], repo)
@@ -120,8 +136,8 @@ def test_status_note_survives_the_freeze_intact(repo):
             "**Status:** DRAFT — not frozen. Third version; see Log.",
         )
     )
-    subprocess.run(["git", "add", "-A"], cwd=repo)
-    subprocess.run(
+    _run(["git", "add", "-A"], cwd=repo)
+    _run(
         ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "note"], cwd=repo
     )
     run(["freeze"], repo)
@@ -150,8 +166,8 @@ def test_refreezing_an_unedited_plan_is_idempotent(repo):
 def test_freeze_refuses_a_plan_with_no_status_line(repo):
     p = repo / "PREREG.md"
     p.write_text(p.read_text().replace("**Status:** DRAFT — not frozen.", ""))
-    subprocess.run(["git", "add", "-A"], cwd=repo)
-    subprocess.run(
+    _run(["git", "add", "-A"], cwd=repo)
+    _run(
         ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "no status"],
         cwd=repo,
     )
@@ -174,8 +190,8 @@ def test_a_status_marker_in_the_body_cannot_hide_from_the_hash(repo):
             "## Randomization", "## Randomization\n\n**Frozen:** whatever the author likes\n"
         )
     )
-    subprocess.run(["git", "add", "-A"], cwd=repo)
-    subprocess.run(
+    _run(["git", "add", "-A"], cwd=repo)
+    _run(
         [
             "git",
             "-c",
@@ -206,8 +222,8 @@ def test_a_log_marker_in_the_body_cannot_truncate_the_hash(repo):
             "## Randomization\n\nSeeds 0-4.\n\n---\n\n## Log\n\n## Sample size\n\nn=300 per arm.\n",
         )
     )
-    subprocess.run(["git", "add", "-A"], cwd=repo)
-    subprocess.run(
+    _run(["git", "add", "-A"], cwd=repo)
+    _run(
         [
             "git",
             "-c",
@@ -275,7 +291,7 @@ def test_freezing_without_a_commit_says_so(tmp_path):
     check returns first. The earlier version of this test asserted a literal the source never
     emits, on a run that stopped one guard earlier.
     """
-    subprocess.run(["git", "init", "-q"], cwd=tmp_path)
+    _run(["git", "init", "-q"], cwd=tmp_path)
     run(["new", "study"], tmp_path)
     plan = tmp_path / "study"
     r = run(["freeze", "--force", "--access", "nothing run"], plan)
@@ -287,11 +303,11 @@ def test_freezing_without_a_commit_says_so(tmp_path):
 
 
 def test_check_at_a_root_fails_if_any_plan_below_it_changed(tmp_path):
-    subprocess.run(["git", "init", "-q"], cwd=tmp_path)
+    _run(["git", "init", "-q"], cwd=tmp_path)
     for name in ("good", "bad"):
         run(["new", name], tmp_path)
-    subprocess.run(["git", "add", "-A"], cwd=tmp_path)
-    subprocess.run(
+    _run(["git", "add", "-A"], cwd=tmp_path)
+    _run(
         ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "init"],
         cwd=tmp_path,
     )
@@ -394,11 +410,11 @@ def test_check_at_a_root_fails_if_any_plan_below_it_was_never_frozen(tmp_path):
     Whether an unfrozen registration passed CI therefore depended on which directory the
     command ran from.
     """
-    subprocess.run(["git", "init", "-q"], cwd=tmp_path)
+    _run(["git", "init", "-q"], cwd=tmp_path)
     for name in ("frozen", "never"):
         run(["new", name], tmp_path)
-    subprocess.run(["git", "add", "-A"], cwd=tmp_path)
-    subprocess.run(
+    _run(["git", "add", "-A"], cwd=tmp_path)
+    _run(
         ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "init"],
         cwd=tmp_path,
     )
@@ -412,11 +428,11 @@ def test_check_at_a_root_fails_if_any_plan_below_it_was_never_frozen(tmp_path):
 
 def test_a_root_check_passes_when_every_plan_below_it_is_frozen(tmp_path):
     # The control: the root branch has to stay usable, not merely strict.
-    subprocess.run(["git", "init", "-q"], cwd=tmp_path)
+    _run(["git", "init", "-q"], cwd=tmp_path)
     for name in ("a", "b"):
         run(["new", name], tmp_path)
-    subprocess.run(["git", "add", "-A"], cwd=tmp_path)
-    subprocess.run(
+    _run(["git", "add", "-A"], cwd=tmp_path)
+    _run(
         ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "init"],
         cwd=tmp_path,
     )
