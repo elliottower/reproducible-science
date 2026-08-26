@@ -1,0 +1,20 @@
+# Coverage is enforced by `make coverage`, which fails under 70% in CI. Codecov is here for the
+# badge and the history, not to gate a pull request -- a second opinion on a number the build
+# already refuses to pass without.
+comment: false
+
+coverage:
+  status:
+    # Neither check blocks. The floor lives in one place, and two systems disagreeing about
+    # whether the same number is acceptable is the failure this repository keeps finding
+    # elsewhere.
+    project:
+      default:
+        informational: true
+    patch:
+      default:
+        informational: true
+
+# An upload that does not arrive is not a coverage regression.
+codecov:
+  require_ci_to_pass: false
