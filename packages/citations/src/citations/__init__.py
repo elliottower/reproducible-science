@@ -40,6 +40,13 @@ from citations.models import (
     load_claim_file,
     load_record,
 )
+from citations.paperclip import (
+    Document,
+    PaperclipUnavailableError,
+    Provenance,
+    Resolution,
+    resolve_document,
+)
 from citations.services import SERVICES, Candidate, Service
 from citations.verify import (
     Pin,
@@ -69,16 +76,21 @@ __all__ = [
     "ClaimFile",
     "ClaimFileError",
     "ClaimSource",
+    # a source fetched through Paperclip and pinned locally
+    "Document",
     # library configuration
     "LibraryConfig",
     "LibraryNotFoundError",
     "PaperConfig",
     # checking
+    "PaperclipUnavailableError",
     "Pin",
     "PinBrokenError",
+    "Provenance",
     "Quote",
     "Record",
     "Report",
+    "Resolution",
     "Result",
     "Service",
     "SourceUnreadableError",
@@ -89,5 +101,6 @@ __all__ = [
     "is_paginated",
     "load_claim_file",
     "load_record",
+    "resolve_document",
     "sha256",
 ]

@@ -8,6 +8,7 @@ citations build             rebuild records from the papers' bibliographies
 citations lint              BibTeX correctness, via papis doctor
 citations link              point pdfs/ at wherever the papers keep the artifacts
 citations bib               emit a .bib for the works a paper cites
+citations import-paperclip  turn a Paperclip paper repo into pinned claim files
 """
 
 from __future__ import annotations
@@ -37,6 +38,7 @@ DELEGATED = {
     "build": "build",
     "lint": "lint",
     "link": "link_pdfs",
+    "import-paperclip": "import_paperclip",
 }
 
 
@@ -248,6 +250,7 @@ def main(argv: list[str] | None = None) -> int:
         ("build", "rebuild records from the papers' bibliographies"),
         ("lint", "BibTeX correctness, via papis doctor"),
         ("link", "point pdfs/ at the papers' artifacts"),
+        ("import-paperclip", "turn a Paperclip paper repo into pinned claim files"),
     ]:
         p = sub.add_parser(name, help=helptext, add_help=False)
         p.set_defaults(fn=None, delegate=DELEGATED[name])

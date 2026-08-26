@@ -5,10 +5,16 @@ description: Citations — Reproducible Science
 
 <!-- Generated from packages/citations/README.md. Edit that file, not this one. -->
 
-Check that the passages you quote actually appear in the sources you cite, and keep a library of
-the ones that do.
+[![pypi](https://img.shields.io/pypi/v/citations)](https://pypi.org/project/citations/)
+[![python](https://img.shields.io/pypi/pyversions/citations)](https://pypi.org/project/citations/)
+[![license](https://img.shields.io/pypi/l/citations)](https://github.com/elliottower/reproducible-science/blob/main/LICENSE)
+[![docs](https://img.shields.io/badge/docs-live-blue)](https://elliottower.github.io/reproducible-science/)
 
 **[Run it in your browser](#run-it)** — every command on this page, in a live notebook at the bottom. No install.
+
+Check that the passages you quote appear in the sources you cite.
+
+Part of [reproducible-science](https://github.com/elliottower/reproducible-science) alongside `repro`, `results` and `prereg` — see the [documentation](https://elliottower.github.io/reproducible-science/tools/citations/).
 
 ## Install
 
@@ -47,6 +53,7 @@ all found.
 | `citations build` | Rebuild records from bibliographies |
 | `citations lint` | BibTeX correctness, via papis |
 | `citations link` | Point pdfs/ at the papers' artifacts |
+| `citations import-paperclip` | Turn a Paperclip paper repo into pinned claim files |
 
 ## Verify output
 
@@ -103,6 +110,92 @@ deposited inside a title. What survives is a disagreement about the work.
 
 Fetched payloads are cached beside the file audited, so a re-run is offline and the report is
 reproducible from what was fetched rather than from the network.
+
+## Full text through Paperclip
+
+`citations resolve --via paperclip` fetches a source's full text from
+[Paperclip](https://paperclip.gxl.ai), writes it to `sources/paperclip/`, and pins those bytes by
+sha256 in a claims file.
+
+```bash
+pip install 'citations[paperclip]'
+export PAPERCLIP_API_KEY=...
+citations resolve --via paperclip 10.1101/2025.10.22.681631 10.1038/s41586-021-03819-2
+```
+
+```text
+  pinned      10.1101/2025.10.22.681631               d9f585e2faad
+  unavailable 10.1038/s41586-021-03819-2              Paperclip truncated the document at 2179 of 2485 lines
+
+  pinned 1 of 2
+  1 without a pinned copy; quotations against those read `unchecked`.
+```
+
+**Paperclip is never in the verification path.** It is asked once, for bytes. Afterwards
+`citations verify` reads the local file and nothing else, so a check runs with no network, no
+account, and no dependence on the service still serving the same corpus. A remote answer that a
+passage is in a paper is an answer nobody can re-derive.
+
+| Outcome | Meaning | What `verify` then reports |
+|---|---|---|
+| `pinned` | the whole document arrived and carries a digest | `found` or `not found` |
+| `unresolved` | Paperclip indexes no full text for the identifier | `unchecked` |
+| `unavailable` | the extra is absent, no key is set, or the answer was not the whole document | `unchecked` |
+
+Full text is open access only, so a bibliography of Elsevier and Springer articles resolves
+mostly to `unchecked`. That is the true account of what can be checked, and the extra being
+uninstalled produces the same `unchecked` rather than an error.
+
+A document that arrives incomplete is refused rather than pinned. Paperclip cuts its own output
+at 250,000 characters — mid-sentence, with `[output truncated at 250000 chars]` appended — so a
+2,485-line article arrives as its first 2,179 lines. Pinning a prefix would put part of a paper
+on disk under the name of the whole one, and every quotation past the cut would read `not found`,
+a checker manufacturing misquotations out of a transfer limit. So the file's last line number is
+read first with `tail -n 1`, and a body that does not run to it is `unavailable`.
+
+That extent comes from the file and never from `ls`, whose printed `(N lines)` counts something
+else for a PubMed Central document: 1,626 against a file whose last line is L829. For bioRxiv the
+two agree, so taking the listing at its word looks right until it silently refuses every PMC
+paper in a bibliography as truncated.
+
+### Importing a paper repo
+
+`citations import-paperclip <repo>` reads a Paperclip repo and writes one claim file per paper,
+each source resolved and pinned.
+
+```bash
+citations import-paperclip my-review --claims paper/claims
+```
+
+A committed claim becomes a `statement`, because that is what it is: the sentence whoever
+committed it wrote, not a passage from the paper. Putting it under `quotes` would have the tool
+search the source for a sentence nobody says is in it. The quotes list comes out empty, for the
+author to fill in against the pinned text.
+
+A `--lines L45-L52` range becomes the claim's `hint`, recorded and never verified. It addresses
+Paperclip's parse of a PDF, which is remote and can be re-run with every line renumbered, so it
+says where to start reading and cannot say what a passage is. It is never written to `page`,
+which is the locator `verify` checks.
+
+```yaml
+source:
+  local: sources/paperclip/10-1101-2025-10-22-681631.txt
+  sha256: d9f585e2faad2d878878fe5c5490babe9b9986e90642c7545fb4e72ef7a21653
+  extract_cmd: none
+  paperclip:
+    identifier: 10.1101/2025.10.22.681631
+    document: 22c1bebd-6dc0-1014-8e0e-900874d71cd6
+    path: /papers/22c1bebd-6dc0-1014-8e0e-900874d71cd6/content.lines
+    lines: 79
+    service_version: 0.7.38
+    fetched: '2026-08-25T19:34:02+00:00'
+
+claims:
+  c-9c1a2f6b04:
+    statement: 'Features are polysemantic.'
+    hint: 'L45-L52'
+    quotes: []
+```
 
 ## Where the library lives
 
@@ -178,7 +271,6 @@ All four tools in one plugin, with every hook, skill and command:
 ```
 
 MIT licensed. `docs/` has the working practices this came out of.
-
 
 
 ## Run it in your browser
