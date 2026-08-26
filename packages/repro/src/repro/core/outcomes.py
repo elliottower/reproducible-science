@@ -206,9 +206,31 @@ class Decision(BaseModel):
 
     backend: str = ""
     backend_version: str = ""
-    """Named because the same inputs can receive different decisions after a backend upgrade,
-    and a stored decision that does not say which backend produced it cannot be compared with
-    a later one."""
+    """The protocol version of the backend's interface. Named because the same inputs can
+    receive different decisions after a backend upgrade, and a stored decision that does not
+    say which backend produced it cannot be compared with a later one. It says nothing about
+    the program that read the artifact; `tool_version` does."""
+
+    tool: str = ""
+    """What performs the extraction: `pdftotext` for a quotation, the distribution supplying
+    the format adapters for a value. A separate field from `backend_version` because the two
+    move independently -- an extractor upgraded under a backend that did not change reads a
+    ligature or a column differently while the protocol version stays where it was."""
+
+    tool_version: str = ""
+    """The version `tool` reports, as it reports it, or `unknown` where it could not be
+    interrogated. Empty only on a decision no backend produced: a version that was sought and
+    not obtained has to be distinguishable from one that was never sought."""
+
+    extraction_digest: str = ""
+    """sha256 of what the extractor produced -- the whole extracted text for a quotation, the
+    extracted value for a number. `tool_version` catches drift that announces itself; this
+    catches drift from any cause, including a rebuilt binary reporting the same version and an
+    environment that changes an encoding path. `unknown` where the extraction produced nothing
+    to hash, empty only on a decision no backend produced.
+
+    Recorded and not enforced. Whether a changed extraction invalidates a stored decision the
+    way a changed artifact does is a policy question, and `repro.policy` decides policy."""
 
     warnings: tuple[Warning_, ...] = ()
 
