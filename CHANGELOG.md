@@ -1,8 +1,38 @@
-# Changelog
+## 0.3.1 — 2026-08-26
 
-Every package in this workspace carries the same version and is released on the same day, so
-one file covers all four. Entries are scoped with a `[package]` prefix; unprefixed entries
-apply to the workspace as a whole.
+Four corrections to `citations`, all of them defects introduced by the `extract_cmd` support
+that shipped hours earlier in 0.3.0. Each was found by running the new code over real claim
+sets, and each made a source unverifiable rather than merely awkward.
+
+### Fixed
+
+- **[citations] A source declaring that it needs no extractor was refused as a program named
+  `none`.** `paperclip.source_block` writes `extract_cmd: none` for a pinned text artifact,
+  because naming an extractor would claim a step that never ran; `verify` then read that as a
+  command, refused it, and advised `--allow-extractor none` — running a program that does not
+  exist. Every source written by `citations resolve --via paperclip` and `citations
+  import-paperclip` came back `unchecked` in 0.3.0. The declaration is now recognized, and
+  matched on its first word so the reason an author writes beside it (`none -- Markdown is read
+  directly`) is read as the declaration rather than as a command. ([#24](https://github.com/elliottower/reproducible-science/pull/24))
+- **[citations] A passage separated by U+2010 HYPHEN read as absent from a document containing
+  it.** `fold` normalized the em dash, the en dash and the minus sign but not U+2010, which is
+  visually identical to the ASCII hyphen and is what publishers emit: a source reading
+  `patients‐in‐waiting` did not match a quotation typed with the ASCII hyphen, and the result was
+  `not found` — an accusation against the manuscript — for a quotation that is verbatim correct. ([#24](https://github.com/elliottower/reproducible-science/pull/24))
+- **[citations] An extractor that wrote to the file it was given damaged the artifact silently.**
+  A declared `extract_cmd` is an arbitrary program handed a path, and nothing stopped it writing
+  where it read: a renderer whose output filename matched its input overwrote the bytes the pin
+  names, and the pin then failed against a file the checker itself had damaged. `verify` reads
+  and never writes, so the artifact's digest is now taken before and after a declared command
+  runs and a change is reported as a defect in the command. ([#24](https://github.com/elliottower/reproducible-science/pull/24))
+- **[citations] A declared command that printed nothing reported `no text extracted`,** which is
+  what a document holding no text also reports — the two facts the three-outcome model exists to
+  keep apart, given one message. An empty stdout from a command that exited 0 now says so, and
+  where the command is `pdftotext` without a trailing `-` it names that: `pdftotext FILE` writes
+  `FILE.txt` and prints nothing, which is how ten sources in one claim set read as textless. #
+  Changelog Every package in this workspace carries the same version and is released on the same
+  day, so one file covers all four. Entries are scoped with a `[package]` prefix; unprefixed
+  entries apply to the workspace as a whole. ([#24](https://github.com/elliottower/reproducible-science/pull/24))
 
 ## 0.3.0 — 2026-08-26
 

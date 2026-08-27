@@ -4,7 +4,7 @@ requires = [ "hatchling" ]
 
 [project]
 name = "reproducible-science"
-version = "0.3.0"
+version = "0.3.1"
 description = "One contract for verifying declared evidence assertions against pinned artifacts"
 readme = "README.md"
 keywords = [ "citations", "open science", "preregistration", "provenance", "reproducibility" ]
