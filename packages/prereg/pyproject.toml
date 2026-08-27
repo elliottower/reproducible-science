@@ -4,7 +4,7 @@ requires = [ "hatchling" ]
 
 [project]
 name = "prereg"
-version = "0.3.0"
+version = "0.3.1"
 description = "Preregister your plan to prevent p-hacking and unfalsifiable post-hoc analysis"
 readme = "README.md"
 keywords = [ "open science", "osf", "preregistration", "reproducibility" ]
