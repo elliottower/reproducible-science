@@ -371,6 +371,15 @@ def _run(source: pathlib.Path, argv: list[str], missing: str = "", hint: str = "
     which is a fact about the document and carries a different message.
     """
     program = argv[0]
+    # The bytes before the command runs. A declared extractor is an arbitrary program given a
+    # path, and nothing stops it writing where it read: a renderer whose output filename
+    # matched its input overwrote the artifact it was pointed at, and the pin then failed
+    # against a file the checker itself had damaged. Recovering it needed version control.
+    # `verify` reads and never writes, so an extractor that writes is a defect to report.
+    # `sha256_of_file` and not the memoized `sha256` beside it: the point is to read the
+    # bytes twice and compare, and a cache keyed on the path returns the first answer both
+    # times, which would make this check incapable of failing.
+    before = sha256_of_file(source) if source.is_file() else ""
     try:
         proc = subprocess.run(argv, capture_output=True, text=True, timeout=EXTRACT_TIMEOUT)
     except FileNotFoundError as e:
@@ -379,12 +388,33 @@ def _run(source: pathlib.Path, argv: list[str], missing: str = "", hint: str = "
         raise SourceUnreadableError(source, f"{program} timed out after {EXTRACT_TIMEOUT}s") from e
     except OSError as e:
         raise SourceUnreadableError(source, f"{program} could not be run: {e}") from e
+    if before and (after := sha256_of_file(source)) != before:
+        raise SourceUnreadableError(
+            source,
+            f"{program} modified the artifact it was given ({before[:12]} -> {after[:12]}). "
+            f"An extractor reads; one that writes has damaged the bytes the pin names, and "
+            f"the file on disk is no longer the one that was checked. Restore it before "
+            f"re-running. A command whose output path collides with its input does this: "
+            f"give the output a distinct name, or write to stdout.",
+        )
     if proc.returncode != 0:
         said = (proc.stderr or "").strip().splitlines()
         raise SourceUnreadableError(
             source,
             f"{program} exited {proc.returncode}" + (f": {said[-1]}" if said else "") + hint,
         )
+    if not proc.stdout.strip():
+        # An empty stdout from a *declared* command is not the same fact as a document with no
+        # text, and the two carried one message. `pdftotext FILE` writes FILE.txt and prints
+        # nothing; a reader told "no text extracted" goes looking at the document.
+        advice = (
+            "  (pdftotext writes to a file unless the last argument is `-`: "
+            "declare `pdftotext -layout {} -`)"
+            if pathlib.Path(program).name == "pdftotext" and "-" not in argv[1:]
+            else "  (the command ran and exited 0; its output goes to stdout, "
+            "so a command that writes a file prints nothing here)"
+        )
+        raise SourceUnreadableError(source, f"{program} printed nothing" + advice + hint)
     return proc.stdout
 
 
