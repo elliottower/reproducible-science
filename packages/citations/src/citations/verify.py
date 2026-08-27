@@ -133,6 +133,32 @@ READING_ORDER = "pdftotext"
 #: checked against, and "a stub did" is an answer where inventing an extractor name is not.
 SUBSTITUTED = "substituted"
 
+#: The word a claims file uses to say "this source needs no extractor".
+#: `paperclip.source_block` writes it for a pinned text artifact, on the reasoning that naming
+#: an extractor would claim a step that never ran -- and `_argv` then read it as a program
+#: called `none` and refused it, so every source the resolver wrote came back `unchecked`,
+#: advising the reader to `--allow-extractor none` and run a program that does not exist.
+NO_EXTRACTOR = "none"
+
+
+def declared_extractor(extract_cmd: str | None) -> str | None:
+    """The command a source declares, or None where it declares that it needs none.
+
+    Applied wherever an `extract_cmd` arrives from a file, so the rest of the module sees one
+    representation of "no extractor" rather than several.
+
+    Matched on the first word, because authors write the reason beside it -- `none -- Markdown
+    is read directly` is in this project's own claim set, and reading that as a command named
+    `none` is how it was found. Nothing is guessed from the rest of the line: a value whose
+    first word is anything else is a command, and is run or refused as one. A real program
+    named `none` would be read as this declaration instead, which is the one case this trades
+    away and it does not occur.
+    """
+    if extract_cmd is None or not (words := extract_cmd.split()):
+        return None
+    return None if words[0].strip().lower() == NO_EXTRACTOR else extract_cmd
+
+
 #: How long any extractor gets before the source is reported unreadable rather than waited on.
 EXTRACT_TIMEOUT = 120
 
@@ -278,7 +304,11 @@ def fold(s: str) -> str:
     s = re.sub(r"[\x00-\x08\x0b\x0e-\x1f\x7f]", " ", s)
     s = s.replace("’", "'").replace("‘", "'")
     s = s.replace("“", '"').replace("”", '"')
-    s = s.replace("—", "-").replace("–", "-").replace("−", "-")
+    # Em dash, en dash, minus sign, and U+2010 HYPHEN. The last is the one that gets missed:
+    # it is visually identical to the ASCII hyphen and publishers emit it, so a source reading
+    # `patients\u2010in\u2010waiting` did not match a quotation typed with the ASCII one, and the
+    # passage read as absent from a document that contains it.
+    s = s.replace("—", "-").replace("–", "-").replace("−", "-").replace("‐", "-")
     s = re.sub(r"-\s*\n\s*", "", s)  # de-hyphenate across a line break
     return " ".join(s.split()).lower()
 
@@ -341,6 +371,15 @@ def _run(source: pathlib.Path, argv: list[str], missing: str = "", hint: str = "
     which is a fact about the document and carries a different message.
     """
     program = argv[0]
+    # The bytes before the command runs. A declared extractor is an arbitrary program given a
+    # path, and nothing stops it writing where it read: a renderer whose output filename
+    # matched its input overwrote the artifact it was pointed at, and the pin then failed
+    # against a file the checker itself had damaged. Recovering it needed version control.
+    # `verify` reads and never writes, so an extractor that writes is a defect to report.
+    # `sha256_of_file` and not the memoized `sha256` beside it: the point is to read the
+    # bytes twice and compare, and a cache keyed on the path returns the first answer both
+    # times, which would make this check incapable of failing.
+    before = sha256_of_file(source) if source.is_file() else ""
     try:
         proc = subprocess.run(argv, capture_output=True, text=True, timeout=EXTRACT_TIMEOUT)
     except FileNotFoundError as e:
@@ -349,12 +388,33 @@ def _run(source: pathlib.Path, argv: list[str], missing: str = "", hint: str = "
         raise SourceUnreadableError(source, f"{program} timed out after {EXTRACT_TIMEOUT}s") from e
     except OSError as e:
         raise SourceUnreadableError(source, f"{program} could not be run: {e}") from e
+    if before and (after := sha256_of_file(source)) != before:
+        raise SourceUnreadableError(
+            source,
+            f"{program} modified the artifact it was given ({before[:12]} -> {after[:12]}). "
+            f"An extractor reads; one that writes has damaged the bytes the pin names, and "
+            f"the file on disk is no longer the one that was checked. Restore it before "
+            f"re-running. A command whose output path collides with its input does this: "
+            f"give the output a distinct name, or write to stdout.",
+        )
     if proc.returncode != 0:
         said = (proc.stderr or "").strip().splitlines()
         raise SourceUnreadableError(
             source,
             f"{program} exited {proc.returncode}" + (f": {said[-1]}" if said else "") + hint,
         )
+    if not proc.stdout.strip():
+        # An empty stdout from a *declared* command is not the same fact as a document with no
+        # text, and the two carried one message. `pdftotext FILE` writes FILE.txt and prints
+        # nothing; a reader told "no text extracted" goes looking at the document.
+        advice = (
+            "  (pdftotext writes to a file unless the last argument is `-`: "
+            "declare `pdftotext -layout {} -`)"
+            if pathlib.Path(program).name == "pdftotext" and "-" not in argv[1:]
+            else "  (the command ran and exited 0; its output goes to stdout, "
+            "so a command that writes a file prints nothing here)"
+        )
+        raise SourceUnreadableError(source, f"{program} printed nothing" + advice + hint)
     return proc.stdout
 
 
@@ -460,7 +520,7 @@ def extract(
     rather than returning empty text. An empty return means the document genuinely holds no
     extractable text on that page, which is a different fact and gets a different message.
     """
-    got = _extract(pdf, page, extract_cmd, allowed)
+    got = _extract(pdf, page, declared_extractor(extract_cmd), allowed)
     _PROVENANCE[(pdf, page, extract_cmd, allowed)] = (
         got.extractor,
         got.fallback,
@@ -483,6 +543,7 @@ def reading(
     provenance is not this module's to invent, so it is named `substituted` rather than
     guessed at.
     """
+    extract_cmd = declared_extractor(extract_cmd)
     text = extract(pdf, None, extract_cmd, allowed) if extract_cmd else extract(pdf, page)
     known = _PROVENANCE.get((pdf, None if extract_cmd else page, extract_cmd, allowed))
     if known is None:
@@ -531,7 +592,7 @@ def _digest(text: str) -> str:
 
 def _extractor_name(artifact: pathlib.Path, extract_cmd: str | None) -> str:
     """What `extract` reads this source with, as the report names it."""
-    if extract_cmd:
+    if extract_cmd := declared_extractor(extract_cmd):
         return " ".join(extract_cmd.split())
     return PLAIN_TEXT if artifact.suffix.lower() in TEXT_SUFFIXES else DEFAULT_EXTRACTOR
 
@@ -592,6 +653,7 @@ def check_one(
     declared extractor, nothing to disagree with, and `agreement` stays empty rather than
     claiming a comparison nothing performed.
     """
+    extract_cmd = declared_extractor(extract_cmd)
     warn: list[str] = []
     text = quote.strip()
     if len(text) < MIN_QUOTE_CHARS or text.endswith(

@@ -135,7 +135,10 @@ def test_a_command_that_prints_nothing_is_unchecked(manuscript, renderer):
     script = renderer("render", "exit 0")
     result = V.check_one(PASSAGE, manuscript, None, str(script), frozenset({str(script)}))
     assert result.state == "unchecked"
-    assert result.detail == "no text extracted"
+    # The command succeeding and printing nothing is a fact about the command. It read
+    # `no text extracted`, which is what a document holding no text also reads, and the two
+    # are the distinction this module exists to keep apart.
+    assert "printed nothing" in result.detail
 
 
 def test_a_command_that_times_out_is_unchecked(manuscript, monkeypatch):
@@ -280,3 +283,145 @@ def test_the_same_run_without_consent_establishes_nothing_and_strict_says_so(
     # Matched loosely on the padding: the outcome column widens when an outcome is added, and
     # what this pins is the count beside the label, not the spacing between them.
     assert re.search(r"not found\s+0\b", out), "a refused command is not a passage that is absent"
+
+
+# -- "no extractor" is a declaration, not a program named none -----------------------------------
+
+
+@pytest.mark.parametrize(
+    "declared",
+    [
+        "none",
+        "None",
+        " none ",
+        "NONE",
+        "",
+        "none — Markdown is read directly",
+        "none -- read directly",
+    ],
+)
+def test_a_source_declaring_no_extractor_is_read_off_disk(declared, tmp_path):
+    # `paperclip.source_block` writes `none` for a pinned text artifact, because naming an
+    # extractor would claim a step that never ran. `_argv` read it as a program called `none`
+    # and refused it, so every source the resolver wrote came back `unchecked`.
+    src = tmp_path / "s.txt"
+    src.write_text("the model performs well on every held-out split\n")
+    V.clear_caches()
+    assert V.declared_extractor(declared) is None
+    got = V.check_one("performs well on every held-out split", src, extract_cmd=declared)
+    assert got.state == "found"
+    assert got.extractor == V.PLAIN_TEXT
+
+
+def test_a_real_command_is_still_declared(tmp_path):
+    assert V.declared_extractor("pdftotext -layout") == "pdftotext -layout"
+    assert V.declared_extractor(None) is None
+
+
+def test_a_command_that_merely_starts_with_the_letters_none_is_still_a_command():
+    # Matched on the first word, not a prefix: `nonesuch` is a program.
+    assert V.declared_extractor("nonesuch --render") == "nonesuch --render"
+
+
+def test_a_source_declaring_no_extractor_names_no_program_in_the_report(tmp_path):
+    # The point of writing `none` is that the report should not claim an extractor ran.
+    src = tmp_path / "s.txt"
+    src.write_text("the model performs well on every held-out split\n")
+    V.clear_caches()
+    got = V.check_one("performs well on every held-out split", src, extract_cmd="none")
+    assert "none" not in got.extractor
+
+
+# -- an extractor reads; one that writes has damaged what the pin names ---------------------------
+
+
+def test_an_extractor_that_overwrites_its_own_source_is_reported(tmp_path):
+    # This happened: a renderer whose output filename matched its input was declared on the
+    # artifact it had already produced, and it overwrote the bytes the pin names. The pin then
+    # failed against a file the checker itself had damaged, and version control recovered it.
+    src = tmp_path / "s.txt"
+    src.write_text("the model performs well on every held-out split\n")
+    writer = tmp_path / "clobber.py"
+    writer.write_text(
+        "#!/usr/bin/env python3\n"
+        "import pathlib, sys\n"
+        "pathlib.Path(sys.argv[1]).write_text('something else entirely\\n')\n"
+        "print('rendered')\n"
+    )
+    writer.chmod(0o755)
+    V.clear_caches()
+    got = V.check_one(
+        "performs well",
+        src,
+        extract_cmd=f"{writer} {{}}",
+        allowed=frozenset({str(writer)}),
+    )
+    assert got.state == "unchecked"
+    assert "modified the artifact" in got.detail
+
+
+def test_an_extractor_that_only_reads_is_not_reported_as_writing(tmp_path):
+    # The other half: a check that fires on every extractor would be turned off.
+    src = tmp_path / "s.txt"
+    src.write_text("the model performs well on every held-out split\n")
+    reader = tmp_path / "cat.py"
+    reader.write_text(
+        "#!/usr/bin/env python3\nimport pathlib, sys\nprint(pathlib.Path(sys.argv[1]).read_text())\n"
+    )
+    reader.chmod(0o755)
+    V.clear_caches()
+    got = V.check_one(
+        "performs well", src, extract_cmd=f"{reader} {{}}", allowed=frozenset({str(reader)})
+    )
+    assert got.state == "found", got.detail
+
+
+# -- a command that printed nothing is not a document with no text --------------------------------
+
+
+def test_a_declared_command_that_prints_nothing_says_so(tmp_path):
+    src = tmp_path / "s.txt"
+    src.write_text("some text\n")
+    silent = tmp_path / "silent.py"
+    silent.write_text("#!/usr/bin/env python3\n")
+    silent.chmod(0o755)
+    V.clear_caches()
+    got = V.check_one(
+        "some text", src, extract_cmd=f"{silent} {{}}", allowed=frozenset({str(silent)})
+    )
+    assert got.state == "unchecked"
+    assert "printed nothing" in got.detail
+    assert "no text extracted" not in got.detail
+
+
+def test_pdftotext_without_a_trailing_dash_is_told_what_is_wrong(tmp_path, monkeypatch):
+    # `pdftotext FILE` writes FILE.txt and prints nothing. Ten sources in one claim set were
+    # declared that way and every passage read `no text extracted`, which is what a document
+    # with no text also reads. Driven through a stub rather than a real PDF: the point is
+    # which message an empty stdout produces, not whether poppler can open a fixture.
+    pdf = tmp_path / "s.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n%%EOF\n")
+
+    def silent(argv, **kw):
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(V.subprocess, "run", silent)
+    V.clear_caches()
+    got = V.check_one("anything at all here", pdf, extract_cmd="pdftotext -layout")
+    assert got.state == "unchecked"
+    assert "pdftotext -layout {} -" in got.detail
+
+
+def test_pdftotext_given_the_dash_is_not_lectured_about_it(tmp_path, monkeypatch):
+    pdf = tmp_path / "s.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n%%EOF\n")
+
+    def silent(argv, **kw):
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(V.subprocess, "run", silent)
+    V.clear_caches()
+    got = V.check_one("anything at all here", pdf, extract_cmd="pdftotext -layout {} -")
+    assert got.state == "unchecked"
+    assert "printed nothing" in got.detail
+    assert "unless the last argument" not in got.detail
