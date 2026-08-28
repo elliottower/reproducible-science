@@ -488,3 +488,43 @@ def test_a_file_that_was_already_beside_the_source_is_not_blamed_on_the_extracto
         allowed=frozenset({str(quiet)}),
     )
     assert r.state == "found"
+
+
+# --- a page assertion nobody can check is reported, not dropped -------------------------------
+
+
+def _pdf_with_pages(tmp_path, monkeypatch, text):
+    p = tmp_path / "source.pdf"
+    p.write_bytes(b"%PDF-1.4")
+    monkeypatch.setattr(V, "extract", lambda pdf, page=None, extract_cmd=None, allowed=None: text)
+    return p
+
+
+def test_a_page_under_a_declared_extractor_is_reported_as_unchecked(tmp_path, monkeypatch):
+    # 154 assertions in one audited claim were dropped in silence: page 9999 on a three-page
+    # document graded exactly as the right page did.
+    src = _pdf_with_pages(tmp_path, monkeypatch, "a passage long enough to carry its qualifiers")
+    r = V.check_one(
+        "a passage long enough to carry its qualifiers", src, page=9999, extract_cmd="detex"
+    )
+    assert r.state == "found"
+    assert "page unchecked" in r.warnings
+
+
+def test_no_page_recorded_means_no_such_warning(tmp_path, monkeypatch):
+    src = _pdf_with_pages(tmp_path, monkeypatch, "a passage long enough to carry its qualifiers")
+    r = V.check_one(
+        "a passage long enough to carry its qualifiers", src, page=None, extract_cmd="detex"
+    )
+    assert "page unchecked" not in r.warnings
+
+
+def test_a_text_source_is_not_asked_about_pages_at_all(tmp_path):
+    # `.txt` has no pages, so a page assertion there is not an unchecked one -- it is a field
+    # that does not apply, and warning about it would be noise on every plain-text source.
+    src = tmp_path / "source.txt"
+    src.write_text("a passage long enough to carry its own qualifiers without truncation")
+    r = V.check_one(
+        "a passage long enough to carry its own qualifiers without truncation", src, page=4
+    )
+    assert "page unchecked" not in r.warnings

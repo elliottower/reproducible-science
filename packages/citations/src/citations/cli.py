@@ -36,6 +36,7 @@ WARNINGS = {
     "short": "the source may qualify this in the next clause",
     "normalized": "matched after ignoring punctuation and spacing",
     "page": "found, but not on the page recorded",
+    "page unchecked": "a page is recorded and the declared extractor cannot be asked for one",
 }
 
 DELEGATED = {

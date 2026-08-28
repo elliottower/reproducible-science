@@ -817,7 +817,19 @@ def check_one(
     # A declared extractor renders the whole document at once, so there is no page to ask it
     # about: the position a `.txt` source is already in. Asking `pdftotext` for the page
     # instead would run a PDF reader over a source whose author said it is not one.
+    # A page can be checked only where this module can ask for one page on its own terms, which
+    # means no declared command: an arbitrary program has no page flag, and asking `pdftotext`
+    # for page 4 of a source whose author declared `detex` would run a PDF reader over something
+    # they just said is not a PDF.
+    #
+    # What that left was silent. A record asserting `page: 3` under a declared `pdftotext
+    # -layout` had the assertion dropped and reported nothing: 154 page assertions in one
+    # audited claim, and page 9999 on a three-page document graded exactly as page 3 did. An
+    # unverifiable assertion is a fact about the check and belongs in the report, so it is a
+    # warning now rather than an omission.
     paginated = extract_cmd is None and is_paginated(artifact)
+    if page and not paginated and is_paginated(artifact):
+        warn.append("page unchecked")
     result = _verdict(
         quote, got.text, artifact, page if paginated else None, warn, got.extractor, prefix, suffix
     )
