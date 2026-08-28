@@ -210,13 +210,15 @@ def cmd_check(args) -> int:
         crossed += len(stray)
         print("\n  claims naming a freeze that no frozen plan records:")
         for c in stray:
-            print(f"      {c.claim_id}  cites {c.ref}")
+            print(f"      {c.claim[:58]}  cites {c.ref}")
         print("      `results` checks that the reference resolves to a commit, not that a plan")
         print("      was frozen at it, so a citation like this passes every tool on its own.")
     if unplanned := crosscheck.confirmatory_without_a_plan(root):
         print("\n  confirmatory claims, and no frozen plan in this project:")
-        for cid in unplanned:
-            print(f"      {cid}")
+        for text in unplanned[:10]:
+            print(f"      {text[:70]}")
+        if len(unplanned) > 10:
+            print(f"      ... and {len(unplanned) - 10} more")
         print("      Reported, not failed: a plan frozen elsewhere or registered on OSF is a")
         print(
             "      real arrangement this cannot see. What it can say is nothing here records one."

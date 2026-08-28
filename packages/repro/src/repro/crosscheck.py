@@ -46,11 +46,18 @@ class Freeze:
         return bool(other) and self.ref[:n].lower() == other[:n].lower()
 
 
+#: The ledger field holding a claim's text. `results.record.claim` writes `claim`, and this
+#: module read `claim_id` and `id` -- neither of which it has ever written -- so every claim
+#: in a real report rendered as `?`. The tests wrote `claim_id` too, so they agreed with the
+#: reader and neither agreed with the writer.
+CLAIM_TEXT = "claim"
+
+
 @dataclass(frozen=True)
 class Citation:
     """A claim in the ledger, and the freeze reference it named."""
 
-    claim_id: str
+    claim: str
     ref: str
 
 
@@ -87,7 +94,7 @@ def cited_freezes(root: pathlib.Path) -> list[Citation]:
             continue
         ref = event.get("frozen_at")
         if event.get("event") == "claim" and ref:
-            out.append(Citation(str(event.get("claim_id") or event.get("id") or "?"), str(ref)))
+            out.append(Citation(str(event.get(CLAIM_TEXT) or "(no text recorded)"), str(ref)))
     return out
 
 
@@ -115,7 +122,7 @@ def confirmatory_without_a_plan(root: pathlib.Path) -> list[str]:
         except json.JSONDecodeError:
             continue
         if event.get("event") == "claim" and event.get("confirmatory"):
-            out.append(str(event.get("claim_id") or event.get("id") or "?"))
+            out.append(str(event.get(CLAIM_TEXT) or "(no text recorded)"))
     return out
 
 
