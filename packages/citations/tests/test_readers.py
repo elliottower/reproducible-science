@@ -500,3 +500,43 @@ def test_the_two_poppler_modes_are_both_consulted_and_are_not_the_same_reading(t
     assert layout.extractor != flow.extractor
     assert PROSE[0].lower() in V.fold(layout.text)
     assert PROSE[0].lower() in V.fold(flow.text)
+
+
+# --- a failure is an answer, and answers are cached -------------------------------------------
+
+
+def test_an_unreadable_source_is_attempted_once_not_once_per_quotation(pdf, monkeypatch):
+    # `lru_cache` stores only on a normal return, so a cache around a raising function memoized
+    # nothing: 2,210 poppler invocations for 14 artifacts, 158x the necessary work, and 95% of
+    # a 21-minute run. The failure is per-document and is not a different failure the second
+    # time it is asked for.
+    attempts = {"n": 0}
+
+    def counted(path, page=None, layout=True):
+        attempts["n"] += 1
+        raise V.SourceUnreadableError(path, "cannot be read")
+
+    monkeypatch.setattr(V, "_poppler", counted)
+    monkeypatch.setattr(R, "READERS", {})
+    monkeypatch.setattr(R, "PREFERRED", ())
+
+    for _ in range(20):
+        assert V.check_one(PASSAGE, pdf).state == "unchecked"
+    assert attempts["n"] == 1, f"one document, one attempt, got {attempts['n']}"
+
+
+def test_clearing_the_cache_allows_a_repaired_source_to_be_read_again(pdf, monkeypatch):
+    # The other half: a cached failure must not outlive the thing that caused it.
+    stub_extractors(monkeypatch, poppler=None)
+    assert V.check_one(PASSAGE, pdf).state == "unchecked"
+    V.clear_caches()
+    stub_extractors(monkeypatch, poppler=PASSAGE)
+    assert V.check_one(PASSAGE, pdf).state == "found"
+
+
+def test_a_cached_failure_reports_the_same_reason_every_time(pdf, monkeypatch):
+    stub_extractors(monkeypatch, poppler=None)
+    first = V.check_one(PASSAGE, pdf)
+    again = V.check_one(PASSAGE, pdf)
+    assert first.state == again.state == "unchecked"
+    assert first.detail == again.detail

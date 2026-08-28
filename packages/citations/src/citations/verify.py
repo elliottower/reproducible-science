@@ -537,6 +537,30 @@ def _extract(
 
 
 @functools.lru_cache(maxsize=64)
+def _extraction(
+    pdf: pathlib.Path,
+    page: int | None,
+    extract_cmd: str | None,
+    allowed: frozenset[str],
+) -> tuple[readers.Extraction | None, SourceUnreadableError | None]:
+    """One attempt at reading a source, memoized whether or not it succeeded.
+
+    `functools.lru_cache` stores a value only on a normal return, so a cache around a function
+    that raises memoizes nothing at all. `extract` raises on a source it cannot read, so every
+    quotation against an unreadable document re-ran the extractor: measured at 2,210 poppler
+    invocations for 14 unique artifacts, 158 times the work the corpus requires, and 95% of a
+    21-minute run. The failure is per-document and does not become a different failure on the
+    second quotation, so it is cached like any other answer.
+
+    Returned as a pair rather than raised here, because the raising is `extract`'s contract and
+    callers depend on it.
+    """
+    try:
+        return _extract(pdf, page, declared_extractor(extract_cmd), allowed), None
+    except SourceUnreadableError as e:
+        return None, e
+
+
 def extract(
     pdf: pathlib.Path,
     page: int | None = None,
@@ -558,7 +582,10 @@ def extract(
     rather than returning empty text. An empty return means the document genuinely holds no
     extractable text on that page, which is a different fact and gets a different message.
     """
-    got = _extract(pdf, page, declared_extractor(extract_cmd), allowed)
+    got, failed = _extraction(pdf, page, extract_cmd, allowed)
+    if failed is not None:
+        raise failed
+    assert got is not None
     _PROVENANCE[(pdf, page, extract_cmd, allowed)] = (
         got.extractor,
         got.fallback,
@@ -591,7 +618,32 @@ def reading(
 
 
 @functools.lru_cache(maxsize=64)
+def _reading_with(
+    pdf: pathlib.Path, page: int | None, extractor: str
+) -> tuple[readers.Extraction | None, SourceUnreadableError | None]:
+    """One named extractor's attempt, memoized either way. See `_extraction`.
+
+    This one matters more than it looks: `_second_opinion` reaches it on every `not found`, so
+    a document no reader can open was re-attempted by every reader once per quotation.
+    """
+    try:
+        return _reading_with_uncached(pdf, page, extractor=extractor), None
+    except SourceUnreadableError as e:
+        return None, e
+
+
 def reading_with(
+    pdf: pathlib.Path, page: int | None = None, *, extractor: str
+) -> readers.Extraction:
+    """One named extractor's own reading of a source. Triangulation, and nothing else."""
+    got, failed = _reading_with(pdf, page, extractor)
+    if failed is not None:
+        raise failed
+    assert got is not None
+    return got
+
+
+def _reading_with_uncached(
     pdf: pathlib.Path, page: int | None = None, *, extractor: str
 ) -> readers.Extraction:
     """One named extractor's own reading of a source. Triangulation, and nothing else.
@@ -609,6 +661,15 @@ def reading_with(
     if extractor in readers.READERS:
         return readers.Extraction(readers.READERS[extractor].read(pdf, page), extractor)
     raise SourceUnreadableError(pdf, f"no such extractor: {extractor}")
+
+
+#: The memoization sits under `extract` and `reading_with` now, so their `cache_clear` and
+#: `cache_info` are delegated rather than lost. Both were public: the regression suites call
+#: them, and a caller managing the cache should not have to know which function holds it.
+extract.cache_clear = _extraction.cache_clear  # type: ignore[attr-defined]
+extract.cache_info = _extraction.cache_info  # type: ignore[attr-defined]
+reading_with.cache_clear = _reading_with.cache_clear  # type: ignore[attr-defined]
+reading_with.cache_info = _reading_with.cache_info  # type: ignore[attr-defined]
 
 
 def available_extractors() -> list[str]:
@@ -647,7 +708,7 @@ def clear_caches() -> None:
     One call rather than five, because a caller that clears four of them and forgets the fifth
     gets a stale answer that looks like a fresh one.
     """
-    for cached in (extract, reading_with, fold, skeleton, _digest, sha256):
+    for cached in (_extraction, _reading_with, fold, skeleton, _digest, sha256):
         cached.cache_clear()
     _PROVENANCE.clear()
 
