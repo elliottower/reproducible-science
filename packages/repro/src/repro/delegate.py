@@ -21,10 +21,15 @@ import pathlib
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
+import yaml
+
 #: How far below the root a data directory is looked for. Three levels reaches
 #: `paper/prior_art/claims`, which is where this registry's own papers keep them, and stops
 #: well before a search becomes a crawl of the whole tree.
 MAX_DEPTH = 3
+
+#: How many files in a candidate directory are opened before giving up on it.
+MAX_PROBES = 25
 
 #: Directories a data marker is never looked for inside.
 SKIP = frozenset({"node_modules", "venv", ".venv", "site-packages", "build", "dist"})
@@ -63,6 +68,28 @@ class Tool:
     does not see, so a project with 61 pinned quotations was told no tool applied to it.
     """
 
+    file_markers: tuple[str, ...] = ()
+    """Files whose presence means the tool is used, found at the root or below it.
+
+    `prereg check` looks for a file called `PREREG.md`, at the root or anywhere under it, and
+    that file is the whole signal. Detecting on a directory name instead read a `preregs/`
+    holding two hand-written plans named `PREREG_..._V1.md` as a prereg project, and `check`
+    then failed it for having no `PREREG.md` -- a directory the tool cannot act on, reported
+    as a project whose registrations are broken.
+    """
+
+    evidence: tuple[str, ...] = ()
+    """Globs a data directory must match at least one of, and the keys such a file must carry.
+
+    `claims` is an ordinary English word. This machine has a Python package called `claims`
+    and a knowledge-graph registry whose entries are `entity_type: claim`, and both were
+    detected as citations projects and then failed for holding no quotations -- the detector
+    inventing a failure from a directory name. A citations claims file is a mapping with a
+    `source` or a `claims` block, which neither of those has.
+    """
+
+    keys: tuple[str, ...] = ()
+
     points_at: str | None = None
     """The flag that tells this tool's check where the data is, where it must be told.
 
@@ -81,28 +108,58 @@ class Tool:
 
         return importlib.import_module(self.module).main
 
+    def holds_evidence(self, directory: pathlib.Path) -> bool:
+        """Whether this directory holds something the tool can actually read."""
+        if not self.evidence:
+            return any(directory.iterdir())
+        for glob in self.evidence:
+            for path in sorted(directory.glob(glob))[:MAX_PROBES]:
+                if not self.keys:
+                    return True
+                try:
+                    loaded = yaml.safe_load(path.read_text(errors="replace"))
+                except (yaml.YAMLError, OSError):
+                    continue
+                if isinstance(loaded, dict) and any(k in loaded for k in self.keys):
+                    return True
+        return False
+
     def data_dir(self, root: pathlib.Path) -> pathlib.Path | None:
-        """The shallowest non-empty data directory, root first. None where there is none."""
+        """The shallowest data directory holding evidence, root first. None where none does."""
         for name in self.data_markers:
             here = root / name
-            if here.is_dir() and any(here.iterdir()):
+            if here.is_dir() and self.holds_evidence(here):
                 return here
         for depth in range(1, MAX_DEPTH + 1):
             for name in self.data_markers:
                 found = sorted(
                     d
                     for d in root.glob("/".join(["*"] * depth) + f"/{name}")
-                    if d.is_dir() and not _hidden(d.relative_to(root)) and any(d.iterdir())
+                    if d.is_dir() and not _hidden(d.relative_to(root)) and self.holds_evidence(d)
                 )
                 if found:
                     return found[0]
         return None
 
+    def has_file(self, root: pathlib.Path) -> bool:
+        """Whether a file this tool acts on sits at the root or within `MAX_DEPTH` of it."""
+        for depth in range(MAX_DEPTH + 1):
+            prefix = "/".join(["*"] * depth) + "/" if depth else ""
+            for name in self.file_markers:
+                if any(
+                    f.is_file() and not _hidden(f.relative_to(root))
+                    for f in root.glob(prefix + name)
+                ):
+                    return True
+        return False
+
     def used_by(self, root: pathlib.Path) -> bool:
         if self.points_at:
             return self.data_dir(root) is not None
-        return any((root / m).exists() for m in self.state_markers) or (
-            self.data_dir(root) is not None
+        return (
+            any((root / m).exists() for m in self.state_markers)
+            or self.has_file(root)
+            or self.data_dir(root) is not None
         )
 
     def argv_for(self, root: pathlib.Path) -> tuple[str, ...]:
@@ -120,7 +177,7 @@ TOOLS: tuple[Tool, ...] = (
         summary="freeze a plan before running, and record what deviated from it",
         check_argv=("check",),
         state_markers=(".prereg",),
-        data_markers=("preregistrations", "preregs"),
+        file_markers=("PREREG.md",),
     ),
     Tool(
         name="citations",
@@ -129,6 +186,8 @@ TOOLS: tuple[Tool, ...] = (
         check_argv=("verify",),
         state_markers=(".citations",),
         data_markers=("claims",),
+        evidence=("*.yaml", "*.yml"),
+        keys=("source", "claims", "evidence"),
         points_at="--claims",
     ),
     Tool(
