@@ -261,6 +261,14 @@ class Record(_Base):
     `enrichment.yaml`, keyed by slug, like every other fact resolved after the bibliographies
     were written."""
 
+    tags: list[str] = Field(default_factory=list)
+    """Tags from the library's declared vocabulary. See `citations.tags`.
+
+    Unlike `cited_by`, nothing derives these: no bibliography in the corpus carries a
+    `keywords` field, so a tag is asserted and stays asserted. `citations tags` reports any
+    that the vocabulary does not declare, which is what keeps a typo from becoming a tag.
+    """
+
     quotes: list[Quote] = Field(default_factory=list)
     """Passages taken from this work, when the record itself carries them."""
 

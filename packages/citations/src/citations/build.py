@@ -302,6 +302,42 @@ def enrich_from_sources(entries: dict[str, dict], sources_dir: pathlib.Path) -> 
     return filled
 
 
+def carry_citations(merged: dict, bibless: set[str]) -> int:
+    """Keep the citations of papers this run read no bibliography for.
+
+    Records are rewritten whole from the bibliographies, so a paper that contributed nothing
+    -- an import with no repository on this machine, a path that moved -- loses its `cited_by`
+    entry from every record some other paper also cites. The citation is not gone; the
+    bibliography that would restate it was not read.
+
+    This is the distinction `verify` already draws between `not found` and `unchecked`, one
+    level up: a source that could not be read says nothing about the passage, and a
+    bibliography that could not be read says nothing about the citation. `contributions`
+    reports these papers rather than skipping them for the same reason, and deleting their
+    records afterwards took the report back.
+
+    A paper whose bibliography *was* read keeps no such protection: dropping a key from a .bib
+    is how a citation is meant to be removed, and the entry goes with it.
+    """
+    if not bibless:
+        return 0
+    records = paths.records()
+    restored = 0
+    for slug, rec in merged.items():
+        path = records / f"{slug}.yaml"
+        if not path.exists():
+            continue
+        try:
+            old = yaml.safe_load(path.read_text()) or {}
+        except (yaml.YAMLError, OSError):
+            continue  # a record this run cannot read is one it must not act on
+        for paper, entry in (old.get("cited_by") or {}).items():
+            if paper in bibless and paper not in rec["cited_by"]:
+                rec["cited_by"][paper] = entry
+                restored += 1
+    return restored
+
+
 def carry_forward(merged: dict) -> int:
     """Apply facts resolved after the bibliographies were written.
 
@@ -436,6 +472,7 @@ def main(argv: list[str] | None = None) -> int:
             rec["cited_by"][paper] = {"key": key}
 
     kept = carry_forward(merged)
+    restored = carry_citations(merged, {m.split(":", 1)[0] for m in missing})
     shared = {s: r for s, r in merged.items() if len(r["cited_by"]) > 1}
     divergent = {
         s: r for s, r in shared.items() if len({c["key"] for c in r["cited_by"].values()}) > 1
@@ -447,6 +484,11 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  with no DOI or arXiv id   {unidentified:>4}   (joined on title, less reliable)")
     print(f"  fields carried forward    {kept:>4}   (resolved after the .bib was written)")
     print(f"  filled from claims/sources{filled:>4}   (pinned artifacts and identifiers)")
+    if restored:
+        print(
+            f"  citations kept        {restored:>8}   "
+            "(papers above whose bibliography was not read)"
+        )
 
     if divergent:
         # Naming the divergence without naming a winner leaves the reader to pick one, which

@@ -117,7 +117,7 @@ def test_a_symlink_is_skipped_and_named(tmp_path):
     outside.write_text("x\n")
     a = build(tmp_path / "a", dict(DATA))
     (a / "link.csv").symlink_to(outside)
-    digest, covered, skipped = sha256_of_tree(a)
+    _, covered, skipped = sha256_of_tree(a)
     assert "link.csv" in skipped
     assert all(rel != "link.csv" for rel, _ in covered)
 
