@@ -15,6 +15,38 @@ Part of [reproducible-science](https://github.com/elliottower/reproducible-scien
 pip install citations
 ```
 
+## When a quotation will not resolve
+
+`not found` says the source was read and the passage is not in it. That is an accusation
+against the manuscript, and it is usually wrong. Three things produce it far more often than a
+misquotation does, and `verify` now names which by reporting where the passage stopped matching:
+
+```text
+not found by any of pdftotext -layout, pdftotext, pypdf, so the passage is absent under every
+reader installed here; the first 155 characters are in the source and the rest is not
+      quoted: ...tionality, e.g. vec('king') - vec('man') + vec('woman') = vec(
+      source: ...tionality, e.g. vec('king') vec('man') + vec('woman') = vec('q
+```
+
+**A character the text layer dropped.** A minus sign, an en dash, a subscript. The quotation is
+right and the document's extraction is lossy. Repair it by splitting the quotation into two
+adjacent fragments either side of the missing character, never by truncating it to the part
+that matches -- a truncated quotation resolves and says something the source does not.
+
+**A hyphen on a line break.** `fold` removes `-\n` because a renderer inserts one when it
+splits a word, and it cannot tell that from a real hyphen that happens to fall at a line end.
+The same quotation then resolves everywhere else in the document and fails at that one
+occurrence. Split it there.
+
+**The wrong reader.** `pdftotext -layout` preserves a page's geometry, so on a two-column paper
+it interleaves the columns and shreds every sentence crossing the gutter. A block of failures
+concentrated in one document is this. `verify` consults the other readers before a `not found`
+stands and records which one answered, so this repairs itself; a tool that asks one extractor
+does not, and reports the document as missing text it contains.
+
+**A source that is not what it claims to be.** A `.pdf` that is a Cloudflare interstitial or a
+login page fails under every reader. `file` will say so in one line.
+
 ## Quick start
 
 ```bash

@@ -229,3 +229,47 @@ def test_check_one_and_resolve_in_agree_on_the_same_text(tmp_path):
         f = tmp_path / f"src{i}.txt"
         f.write_text(doc)
         assert V.resolve_in(PASSAGE, doc).state == V.check_one(PASSAGE, f, None).state, doc
+
+
+# --- a not-found says where it stopped matching ------------------------------------------------
+
+
+def test_divergence_reports_the_longest_prefix_the_source_contains():
+    doc = "The effect was measured at 0.42 across every replication we attempted here."
+    quote = "The effect was measured at -0.42 across every replication"
+    n, quoted, found = V.divergence(quote, doc)
+    assert n == len("the effect was measured at ")
+    assert "-0.42" in quoted and "0.42" in found
+
+
+def test_the_not_found_detail_names_the_point_of_divergence(tmp_path):
+    # This is the message that would have saved three manual binary searches.
+    doc = "compositionality, e.g. vec('king') vec('man') + vec('woman') = vec('queen') approximated"
+    f = tmp_path / "src.txt"
+    f.write_text(doc)
+    r = V.check_one("compositionality, e.g. vec('king') - vec('man') + vec('woman')", f, None)
+    assert r.state == "not found"
+    assert "quoted:" in r.detail and "source:" in r.detail
+    assert "adjacent fragments" in r.detail
+
+
+def test_a_passage_absent_from_the_start_gets_the_plain_message(tmp_path):
+    # Nothing matched, so there is no divergence point to report and the advice would mislead.
+    f = tmp_path / "src.txt"
+    f.write_text("This document is about something else entirely, at considerable length.")
+    r = V.check_one("a passage that appears nowhere in that document whatsoever", f, None)
+    assert r.state == "not found"
+    assert "quoted:" not in r.detail
+    assert "read the source" in r.detail
+
+
+def test_the_two_fragments_a_split_produces_both_resolve(tmp_path):
+    # The repair the message recommends, carried out: the dropped character sits between them.
+    doc = "compositionality, e.g. vec('king') vec('man') + vec('woman') = vec('queen') approximated"
+    f = tmp_path / "src.txt"
+    f.write_text(doc)
+    for fragment in (
+        "compositionality, e.g. vec('king')",
+        "vec('man') + vec('woman') = vec('queen')",
+    ):
+        assert V.resolve_in(fragment, doc).state == "found", fragment

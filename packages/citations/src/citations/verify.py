@@ -879,9 +879,11 @@ def check_one(
         if rescued is not None:
             return rescued
         consulted += [n for n in available_extractors() if n != got.extractor]
+        # Appended, not substituted. Which readers looked and where the passage stopped matching
+        # answer different questions, and the second is the one that says what to do next.
         result.detail = (
-            f"not found by any of {', '.join(dict.fromkeys(consulted))}; the passage is absent "
-            f"from this document under every reader installed here"
+            f"not found by any of {', '.join(dict.fromkeys(consulted))}, so the passage is "
+            f"absent under every reader installed here; {result.detail}"
         )
     return result
 
@@ -1083,6 +1085,53 @@ def resolve_in(quote: str, text: str, prefix: str = "", suffix: str = "") -> Mat
     return Match("not found", 0, False)
 
 
+def divergence(quote: str, text: str) -> tuple[int, str, str]:
+    """Where a quotation stops matching its source: how far it got, and what each side reads.
+
+    A bare `not found` points at the document, and the defect is nearly always one character.
+    Every instance settled by hand in this corpus had the same shape -- a minus sign the text
+    layer dropped, an en dash it dropped, a hyphen falling on a line break where `fold`'s
+    de-hyphenation removes a real one -- and finding it meant a binary search for the longest
+    prefix of the quotation the document still contains. That search belongs here, so the report
+    can do it instead of the reader.
+
+    The offset counts folded characters, which is what was compared. Both excerpts begin a
+    little before the split, so the divergence is legible rather than a bare index.
+    """
+    q, doc = fold(quote), fold(text)
+    lo, hi = 0, len(q)
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        lo, hi = (mid, hi) if q[:mid] in doc else (lo, mid - 1)
+    at = doc.find(q[:lo]) if lo else -1
+    quoted = q[max(0, lo - 28) : lo + 34]
+    found = doc[max(0, at + lo - 28) : at + lo + 34] if at >= 0 else ""
+    return lo, quoted, found
+
+
+def _not_found(quote: str, text: str) -> str:
+    """The `not found` detail, naming the point of divergence where there is one worth naming."""
+    n, quoted, found = divergence(quote, text)
+    # Worth reporting when the prefix is substantial either absolutely or relative to the
+    # quotation: a passage that matched forty characters, or half of itself, and then stopped
+    # has located a place in the document and diverged from it. A prefix shorter than both
+    # matched by coincidence -- "the results of" occurs everywhere -- and pointing at where it
+    # ran out would send a reader to a passage the quotation was never taken from.
+    if not found or (n < MIN_QUOTE_CHARS and n * 2 < len(fold(quote))):
+        return (
+            "read the source: a broken extraction reads the same as a passage that was never there"
+        )
+    return (
+        f"the first {n} characters are in the source and the rest is not\n"
+        f"      quoted: ...{quoted}\n"
+        f"      source: ...{found}\n"
+        f"      one character missing from the source's text layer -- a minus sign, an en dash, "
+        f"a hyphen on a line break -- is the usual cause, and is a defect in the extraction "
+        f"rather than in the quotation. Split the quotation into adjacent fragments either side "
+        f"of it; do not truncate it to the part that matches"
+    )
+
+
 def _ambiguous(n: int, anchored: bool) -> str:
     """Why an ambiguous verdict obtained, and what would settle it."""
     if anchored:
@@ -1125,11 +1174,7 @@ def _verdict(
     if m.state == "ambiguous":
         return Result("ambiguous", _ambiguous(m.count, bool(prefix or suffix)), warn)
     if m.state == "not found":
-        return Result(
-            "not found",
-            "read the source: a broken extraction reads the same as a passage that was never there",
-            warn,
-        )
+        return Result("not found", _not_found(quote, full), warn)
     if m.normalized:
         # The skeleton dropped the whitespace the token check reads, so neither a cut word
         # nor a page number means anything against it.
