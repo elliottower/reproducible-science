@@ -41,21 +41,37 @@ test:
 # `cli.py` modules reported 0-18% while their tests passed, and a floor on that would have
 # been a floor on a fiction. COVERAGE_FILE must be absolute because a child runs in a
 # tmp_path and would otherwise write its data where the test then deletes it.
-COV_ENV := COVERAGE_FILE=$(CURDIR)/.coverage \
+# Data files land in one directory so a matrix cell can upload it and a later job can
+# combine what every cell produced. `COV_TAG` names the cell: the base file has to differ per
+# cell or two uploads collide on download and one measurement silently replaces the other.
+COV_DIR := $(CURDIR)/coverage
+COV_TAG ?= local
+COV_ENV := COVERAGE_FILE=$(COV_DIR)/.coverage.$(COV_TAG) \
            COVERAGE_PROCESS_START=$(CURDIR)/pyproject.toml \
            PYTHONPATH=$(CURDIR)/scripts/coverage_hook
 
-coverage:
-	@rm -f .coverage .coverage.*
+# Run the suite under coverage. This is what a CI matrix cell calls, once, instead of running
+# the suite uninstrumented and then a third time under coverage in a job of its own.
+coverage-run:
+	@mkdir -p $(COV_DIR)
 	# `-n auto` because the suites spawn a great many subprocesses and the tracer runs in
 	# every one of them, which is what makes this six times slower than the same tests
 	# uninstrumented. The xdist workers are subprocesses like any other, so
-	# COVERAGE_PROCESS_START measures them and `coverage combine` below gathers them.
+	# COVERAGE_PROCESS_START measures them and `coverage combine` gathers them.
 	# Measured: 193.7s serial against 53.6s here, reporting the identical 5953/1390/1788/185.
 	$(COV_ENV) $(PY) coverage run -m pytest -q -p no:randomly -n auto
-	COVERAGE_FILE=$(CURDIR)/.coverage $(PY) coverage combine
+
+# Combine whatever is in $(COV_DIR) and enforce the floor. In CI that is every cell's upload;
+# locally it is the one run that just finished.
+coverage-report:
+	COVERAGE_FILE=$(CURDIR)/.coverage $(PY) coverage combine $(COV_DIR)
 	COVERAGE_FILE=$(CURDIR)/.coverage $(PY) coverage xml -o coverage.xml
 	COVERAGE_FILE=$(CURDIR)/.coverage $(PY) coverage report --fail-under=70
+
+coverage:
+	@rm -rf $(COV_DIR) && rm -f .coverage .coverage.*
+	@$(MAKE) coverage-run
+	@$(MAKE) coverage-report
 
 # ---- rung 4: a pull request --------------------------------------------------------------
 # Exactly what CI requires, so a green `make qa` really does mean a green pull request.
