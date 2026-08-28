@@ -1,4 +1,18 @@
-"""Lint the records with papis doctor.
+"""Lint the records with papis doctor, and a `.bib` for keys it defines twice.
+
+    citations lint                 # the records, through papis
+    citations lint --json          # machine-readable
+    citations lint --bib refs.bib  # duplicate keys, papis not required
+
+The two modes answer different questions about different artifacts. The records mode asks
+whether a record carries the fields its entry type requires, and needs papis to know what those
+are. The `--bib` mode asks whether a bibliography defines any key twice, which needs nothing but
+the file: it runs where papis is not installed, which is most continuous integration.
+
+A repeated key is worth its own check because BibTeX's response to one is non-fatal and surfaces
+somewhere else. It keeps the copy the file defines first, skips the repeat, and writes a `.bbl`
+without it, so the reference list prints an entry nobody is looking at while the corrected one
+sits in the `.bib`. See `add.py`, which refuses to write one.
 
 Papis encodes years of BibTeX edge cases -- which fields each entry type requires, which
 BibLaTeX keys are aliases, what counts as junk in an author field. Rediscovering that one
@@ -11,9 +25,6 @@ Note that papis means something different by `cited_by` -- it fetches, from Cros
 that cite a document. Ours records which of our own papers cite it. Same words, opposite
 direction, which is why the projection drops the relationship entirely rather than trying to
 map it.
-
-    citations lint             # report
-    citations lint --json      # machine-readable
 """
 
 from __future__ import annotations
@@ -29,7 +40,7 @@ from typing import Any
 
 import yaml
 
-from citations import paths
+from citations import bibtex, paths
 from citations.exceptions import CitationsError
 from citations.models import Record, load_record
 
@@ -100,10 +111,68 @@ def project(rec: Record) -> dict:
     return doc
 
 
+def bib_duplicates(files: list[pathlib.Path], as_json: bool) -> int:
+    """Every key each file defines more than once. Exit 1 if any file does.
+
+    Exits 1 under `--json` as well. A machine-readable mode that reports findings and exits 0
+    is a check that cannot fail, which is worse in continuous integration than no check: the
+    pipeline goes green while the file it examined is broken.
+    """
+    findings: list[dict[str, Any]] = []
+    entries = 0
+    for path in files:
+        if not path.is_file():
+            raise CitationsError(f"no such file: {path}")
+        text = bibtex.read(path)
+        entries += len(bibtex.key_lines(text))
+        for _folded, occurrences in sorted(bibtex.duplicate_keys(text).items()):
+            findings.append(
+                {
+                    "file": str(path),
+                    "keys": [key for key, _line in occurrences],
+                    "lines": [line for _key, line in occurrences],
+                }
+            )
+
+    if as_json:
+        print(json.dumps(findings, indent=1))
+        return 1 if findings else 0
+
+    # Findings sit under the file they were found in. Two bibliographies repeating the same key
+    # is one finding each, and a flat list of keys names neither -- copies of one bibliography
+    # in different repositories share a basename as well as their defects.
+    for path in files:
+        print(f"  bib  {path}")
+        for f in (x for x in findings if x["file"] == str(path)):
+            written = f["keys"] if len(set(f["keys"])) > 1 else [f["keys"][0]]
+            lines = ", ".join(str(line) for line in f["lines"])
+            print(f"    {' / '.join(written):<44}lines {lines}")
+    print(f"\n  {entries} entries, {len(findings)} repeated key(s)")
+    if not findings:
+        print("  no key is defined twice.")
+        return 0
+    print("\n  BibTeX keeps the copy a file defines first and skips the repeat, writing a .bbl")
+    print("  without it: an entry appended below one that is already there never reaches the")
+    print("  reference list, and the file gives no sign of which copy is being printed. Where")
+    print("  two keys differ only in case, the citation goes undefined instead. Delete one, or")
+    print("  give it another key.")
+    return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="citations lint", description=__doc__.split("\n")[0])
     ap.add_argument("--json", action="store_true")
+    ap.add_argument(
+        "--bib",
+        action="append",
+        metavar="FILE",
+        help="a bibliography to check for repeated keys, instead of the records; repeatable, "
+        "and needs no papis and no library",
+    )
     a = ap.parse_args(argv)
+
+    if a.bib:
+        return bib_duplicates([pathlib.Path(p).expanduser() for p in a.bib], a.json)
 
     papis = find_papis()
     if papis is None:

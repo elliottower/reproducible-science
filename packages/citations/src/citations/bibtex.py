@@ -45,6 +45,35 @@ def entries(text: str) -> list[tuple[str, str, str]]:
     return found
 
 
+def key_lines(text: str) -> list[tuple[str, int]]:
+    """Every entry key in the file, as written, with the 1-based line its `@` sits on.
+
+    Built from `ENTRY_START` rather than from `entries()`, so an entry whose braces never
+    balance is counted too. BibTeX reads the key off the `@type{key,` and reports a repeat at
+    that position -- `Repeated entry---line 13 of file refs.bib : @misc{alpha2026one` -- so a
+    duplicate check that skipped the entries this reader cannot close would be blind in the file
+    most likely to hold one. The difference between this count and `entries()` is also what says
+    a file has an entry that never closes.
+    """
+    return [(m.group(2), text.count("\n", 0, m.start()) + 1) for m in ENTRY_START.finditer(text)]
+
+
+def duplicate_keys(text: str) -> dict[str, list[tuple[str, int]]]:
+    """Keys defined more than once: `{folded key: [(key as written, line), ...]}`.
+
+    Case is folded because BibTeX folds it. Running BibTeX 0.99d over a file holding both
+    `beta2026two` and `Beta2026Two` reports `Repeated entry---line 19`, skips the second, and
+    writes a `.bbl` without it; `\\cite{Beta2026Two}` in the same document is a
+    `Case mismatch error` and the citation goes undefined. biblatex/biber read the two as
+    different works instead, so a case-only collision is a dropped entry under one engine and a
+    split one under the other, and neither is what the file says.
+    """
+    seen: dict[str, list[tuple[str, int]]] = {}
+    for key, line in key_lines(text):
+        seen.setdefault(key.lower(), []).append((key, line))
+    return {folded: occurrences for folded, occurrences in seen.items() if len(occurrences) > 1}
+
+
 def read(path) -> str:
     """A `.bib` as text, whatever it is encoded in.
 

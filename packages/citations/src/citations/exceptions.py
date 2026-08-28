@@ -75,3 +75,32 @@ class PinBrokenError(CitationsError):
             f"{path}: pinned sha256 {expected[:16]}... but the file on disk is "
             f"{actual[:16]}...  the source changed after it was pinned"
         )
+
+
+class BibFileError(CitationsError):
+    """A `.bib`, or the text offered as an entry for one, is not the shape `add` requires.
+
+    Carries the path so the message names the file to open. Covers both halves of one command:
+    text that is not exactly one entry, and a file that did not read back after a write as the
+    file that was written.
+    """
+
+    def __init__(self, path: pathlib.Path, detail: str) -> None:
+        self.path = path
+        self.detail = detail
+        super().__init__(f"{path}: {detail}")
+
+
+class MetadataError(CitationsError):
+    """An identifier could not be turned into the metadata a `.bib` entry needs.
+
+    Distinct from a malformed file: the bibliography is fine and the registry is the problem --
+    it holds no record for the identifier, it refused to answer, or what it returned is missing
+    something an entry cannot be written without. Writing an entry anyway is how a guessed year
+    and a shortened author list get into a bibliography.
+    """
+
+    def __init__(self, identifier: str, detail: str) -> None:
+        self.identifier = identifier
+        self.detail = detail
+        super().__init__(f"{identifier}: {detail}")

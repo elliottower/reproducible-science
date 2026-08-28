@@ -38,7 +38,7 @@ EXPANSIONS = {
 }
 
 
-def _strip_markup(text: str) -> str:
+def strip_markup(text: str) -> str:
     """Remove HTML entities, tags and LaTeX commands, leaving the words.
 
     Crossref deposits italics as tags and sometimes escapes them twice, so a stored title can
@@ -55,7 +55,7 @@ def _strip_markup(text: str) -> str:
 
 def fold(text: str) -> str:
     """Lowercase, unaccented, punctuation-free. The canonical form for comparison."""
-    text = _strip_markup(text)
+    text = strip_markup(text)
     text = unicodedata.normalize("NFKD", text)
     text = "".join(c for c in text if not unicodedata.combining(c))
     return " ".join(re.sub(r"[^a-z0-9]+", " ", text.lower()).split())
@@ -63,7 +63,7 @@ def fold(text: str) -> str:
 
 def expand(text: str) -> str:
     """The same, with umlauts and ligatures written out as the two letters they stand for."""
-    text = _strip_markup(text)
+    text = strip_markup(text)
     for char, pair in EXPANSIONS.items():
         text = text.replace(char, pair)
     return fold(text)
@@ -97,6 +97,7 @@ __all__ = [
     "EXPANSIONS",
     "expand",
     "fold",
+    "strip_markup",
     "surname",
     "surname_variants",
     "tokens",
