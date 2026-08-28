@@ -438,7 +438,9 @@ def test_a_command_that_writes_a_sibling_is_reported_not_silently_tolerated(tmp_
     src = tmp_path / "paper.pdf"
     src.write_bytes(b"%PDF-1.4 body")
     writer = tmp_path / "writes.sh"
-    writer.write_text('#!/bin/sh\ncat > "${1%.pdf}.txt" <<< "extracted"\necho text\n')
+    # POSIX only: `/bin/sh` is dash on Ubuntu and has no here-string, so `<<<` is a syntax
+    # error there and the test measured the shell rather than the check.
+    writer.write_text('#!/bin/sh\necho extracted > "${1%.pdf}.txt"\necho text\n')
     writer.chmod(0o755)
 
     r = V.check_one(
