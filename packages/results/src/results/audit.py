@@ -15,11 +15,33 @@ from __future__ import annotations
 
 import pathlib
 
-from provenance_core import sha256_of_tree
+from provenance_core import sha256_of_tree, try_run
 
 from results import ledger, manuscript
 from results.paths import ledger_path, require_root
 from results.timeline import first_outcomes_seen, first_run_timestamp, precedes
+
+
+def in_history(ledger: pathlib.Path) -> str | None:
+    """What stands between this ledger and anyone else, or None where nothing does.
+
+    A ledger is the record a claim appeals to, and one that exists only on this disk cannot
+    be appealed to at all: nobody else can read it, and nothing outside it says it once had
+    a different length. `citations` already reports a record that is not committed for the
+    same reason, and this said nothing -- three of the four ledgers on the machine that
+    prompted this are untracked, including one behind a submitted paper.
+
+    Reported, never blocking. A ledger written between commits is the ordinary state of
+    working, and refusing to verify it would be wrong far more often than right.
+    """
+    root = ledger.parent.parent
+    if not (root / ".git").exists():
+        return None
+    if try_run("ls-files", "--error-unmatch", "--", str(ledger), cwd=root) is None:
+        return "is not tracked by git"
+    if (try_run("status", "--porcelain", "--", str(ledger), cwd=root) or "").strip():
+        return "has changes that are not committed"
+    return None
 
 
 def coverage(manuscript_path: str, limit: int, strict: bool) -> int:
@@ -140,6 +162,9 @@ def verify(check_files: bool) -> int:
 
     events = ledger.read_ledger(lp)
     print(f"chain intact: {len(events)} events, anchored\n")
+
+    if state := in_history(lp):
+        print(f"  the ledger {state}. A record is evidence once it is in history.\n")
 
     counts = {}
     for e in events:

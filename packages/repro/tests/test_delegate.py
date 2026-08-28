@@ -120,3 +120,37 @@ def test_a_data_directory_is_not_looked_for_inside_a_virtualenv(tmp_path):
     buried.mkdir(parents=True)
     (buried / "a.yaml").write_text("source: {}\n")
     assert not BY_NAME["citations"].used_by(tmp_path)
+
+
+def test_a_directory_named_claims_that_holds_no_claims_is_not_a_citations_project(tmp_path):
+    """`claims` is an ordinary word. This machine has a Python package called `claims` and a
+    knowledge-graph registry whose entries are `entity_type: claim`; both were detected and
+    then failed for holding no quotations."""
+    package = tmp_path / "examples" / "claims"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("")
+    assert not BY_NAME["citations"].used_by(tmp_path)
+
+    registry = tmp_path / "registry" / "claims"
+    registry.mkdir(parents=True)
+    (registry / "CLAIM-a.yaml").write_text("id: CLAIM-a\nentity_type: claim\nrefs: []\n")
+    assert not BY_NAME["citations"].used_by(tmp_path)
+
+
+def test_a_real_claims_file_is_recognised(tmp_path):
+    """The shape every claims file in this corpus has: a pinned source and its claims."""
+    claims = tmp_path / "claims"
+    claims.mkdir()
+    (claims / "smith2020.yaml").write_text(
+        "source:\n  citation: smith2020\nclaims:\n  c1:\n    statement: A thing.\n"
+    )
+    assert BY_NAME["citations"].used_by(tmp_path)
+
+
+def test_a_preregistration_directory_needs_a_plan_in_it(tmp_path):
+    directory = tmp_path / "preregistrations"
+    directory.mkdir()
+    (directory / "notes.txt").write_text("not a plan\n")
+    assert not BY_NAME["prereg"].used_by(tmp_path)
+    (directory / "PREREG.md").write_text("# plan\n")
+    assert BY_NAME["prereg"].used_by(tmp_path)
