@@ -21,7 +21,7 @@ required field, not to refuse a file for carrying an extra one.
 from __future__ import annotations
 
 import pathlib
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 import yaml
 from pydantic import (
@@ -109,14 +109,62 @@ class ClaimSource(_Base):
         return bool(self.sha256 and self.sha256.strip())
 
 
+class Interpretation(_Base):
+    """What someone takes the quotations to mean, and who that someone is.
+
+    A quotation and a characterization of it are different objects with different truth
+    conditions, and this package can only measure the first. `verify` resolves the strings in
+    `Claim.quotes` against the pinned bytes; nothing reads `Claim.statement`, so a file whose
+    quotation is exact and whose statement overreaches passes every check.
+
+    The failure is not hypothetical. A record can pin a phrase that appears verbatim in a
+    table cell describing a risk, and state that the phrase conditions an obligation stated
+    somewhere else in the same table. The quotation resolves. The statement is wrong. What
+    separates them is that the statement belongs to a reader -- often not the source's author
+    -- and the file did not say so.
+
+    Hence `whose`, which is required. A characterization with no owner is the shape the error
+    takes: it reads as though the source made the claim, and the question of who is doing the
+    reading never gets asked. Naming the party is usually enough to expose the problem,
+    because the honest answer is frequently a different document by a different party.
+    """
+
+    says: str = ""
+    """The characterization, in whoever's words it belongs to."""
+
+    whose: str
+    """Whose reading this is: a citation key, or `ours` for the citing paper's own.
+
+    Required. This is the field the model exists for.
+    """
+
+    status: Literal["source", "ours", "third-party", "contested"] = "source"
+    """How the reading stands. `contested` says a reading is on the record and disputed, which
+    is a thing a claims file should be able to hold rather than resolve."""
+
+    contest: str | None = None
+    """What is wrong with the reading, where `status` is `contested`. Recorded, never checked."""
+
+
 class Claim(_Base):
     """One statement a paper makes, and the quotations offered in support of it."""
 
     statement: str = ""
-    """The claim in the paper's own words."""
+    """The claim in the paper's own words.
+
+    Kept for every file written before `interpretation` existed. Where both are present,
+    `interpretation.says` is the characterization and this is ignored.
+    """
+
+    interpretation: Interpretation | None = None
+    """Who reads the quotations how. Absent on older files; never verified when present."""
 
     verified: bool = False
-    """Whether the author marked this claim as checked. Not computed by this package."""
+    """Whether the author marked the *quotations* as checked. Not computed by this package.
+
+    It has never meant that the statement follows from them, and `interpretation` is where a
+    file now says so in its own structure rather than in a convention nobody can read.
+    """
 
     quotes: list[Quote] = Field(default_factory=list)
     """The passages cited in support. May be empty; an unsupported claim is a fact about
