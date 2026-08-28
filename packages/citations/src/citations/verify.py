@@ -822,6 +822,41 @@ def _occurrences(
     return n, _count(transform(prefix + quote + suffix), doc) == 1
 
 
+@dataclass(frozen=True)
+class Match:
+    """Whether a passage occurs in a text, how often, and how hard the match had to work."""
+
+    state: State
+    count: int
+    """Occurrences that count under `_count`. Zero where the passage is not there."""
+    normalized: bool
+    """Whether it resolved only on the whitespace-stripped skeleton, which is the weaker
+    match and is reported as a warning wherever a `Result` is produced."""
+
+
+def resolve_in(quote: str, text: str, prefix: str = "", suffix: str = "") -> Match:
+    """Does this passage occur in this text, and does it occur exactly once?
+
+    The verdict without a file. `check_one` reads an artifact and then decides; this decides
+    against text the caller already holds. A tool that does its own extraction needs that seam
+    in order to share these matching rules instead of reimplementing them, and reimplementing
+    them is how a second normalizer ends up folding `-0.42` and `0.42` together while the
+    first one does not.
+
+    Verbatim first, then the whitespace-stripped skeleton. Never `unchecked` or
+    `indeterminate`: both are facts about reading a source, and this one was handed a text.
+    """
+    if not fold(quote):
+        return Match("not found", 0, False)
+    n, singled = _occurrences(quote, fold(text), prefix, suffix, fold)
+    if n:
+        return Match("found" if singled else "ambiguous", n, False)
+    k, k_singled = _occurrences(quote, skeleton(text), prefix, suffix, skeleton)
+    if k:
+        return Match("found" if k_singled else "ambiguous", k, True)
+    return Match("not found", 0, False)
+
+
 def _ambiguous(n: int, anchored: bool) -> str:
     """Why an ambiguous verdict obtained, and what would settle it."""
     if anchored:
@@ -858,33 +893,31 @@ def _verdict(
         # `"" in doc` is True. A quotation that folds away entirely is not a quotation.
         return Result("not found", "the quotation is empty after normalization", warn)
 
-    anchored = bool(prefix or suffix)
-    n, singled = _occurrences(quote, doc, prefix, suffix, fold)
-    if n and not singled:
-        return Result("ambiguous", _ambiguous(n, anchored), warn)
-    if n:
-        if _cuts_a_token(q, doc):
-            warn.append("truncated")
-        if page and not _on_page(artifact, q, page, extractor):
-            warn.append("page")
-            found_at, capped = _find_page(artifact, q, reader=extractor)
-            detail = f"not on page {page}"
-            if found_at is None and capped:
-                detail += f"; searched the first {PAGE_SCAN_LIMIT} pages"
-            return Result("found", detail, warn, found_at)
-        return Result("found", "", warn)
-
-    k, k_singled = _occurrences(quote, skeleton(full), prefix, suffix, skeleton)
-    if k:
+    m = resolve_in(quote, full, prefix, suffix)
+    if m.normalized:
         warn.append("normalized")
-        if not k_singled:
-            return Result("ambiguous", _ambiguous(k, anchored), warn)
+    if m.state == "ambiguous":
+        return Result("ambiguous", _ambiguous(m.count, bool(prefix or suffix)), warn)
+    if m.state == "not found":
+        return Result(
+            "not found",
+            "read the source: a broken extraction reads the same as a passage that was never there",
+            warn,
+        )
+    if m.normalized:
+        # The skeleton dropped the whitespace the token check reads, so neither a cut word
+        # nor a page number means anything against it.
         return Result("found", "", warn)
-    return Result(
-        "not found",
-        "read the source: a broken extraction reads the same as a passage that was never there",
-        warn,
-    )
+    if _cuts_a_token(q, doc):
+        warn.append("truncated")
+    if page and not _on_page(artifact, q, page, extractor):
+        warn.append("page")
+        found_at, capped = _find_page(artifact, q, reader=extractor)
+        detail = f"not on page {page}"
+        if found_at is None and capped:
+            detail += f"; searched the first {PAGE_SCAN_LIMIT} pages"
+        return Result("found", detail, warn, found_at)
+    return Result("found", "", warn)
 
 
 def _on_page(artifact: pathlib.Path, folded_quote: str, page: int, extractor: str = "") -> bool:

@@ -1,0 +1,21 @@
+{
+  "claim": "knowledge_neurons",
+  "pdf": "reference/dai_2022_knowledge_neurons.pdf",
+  "n_quotes": 160,
+  "by_reader": {
+    "pdftotext -layout": {
+      "not found": 110,
+      "found": 50
+    },
+    "pdftotext": {
+      "found": 138,
+      "not found": 21,
+      "ambiguous": 1
+    },
+    "pypdf": {
+      "found": 157,
+      "not found": 2,
+      "ambiguous": 1
+    }
+  }
+}

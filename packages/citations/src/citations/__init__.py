@@ -50,6 +50,7 @@ from citations.paperclip import (
 from citations.readers import Extraction
 from citations.services import SERVICES, Candidate, Service
 from citations.verify import (
+    Match,
     Pin,
     Report,
     Result,
@@ -61,6 +62,7 @@ from citations.verify import (
     is_paginated,
     reading,
     reading_with,
+    resolve_in,
     sha256,
 )
 
@@ -88,6 +90,7 @@ __all__ = [
     # library configuration
     "LibraryConfig",
     "LibraryNotFoundError",
+    "Match",
     "PaperConfig",
     # checking
     "PaperclipUnavailableError",
@@ -113,5 +116,6 @@ __all__ = [
     "reading",
     "reading_with",
     "resolve_document",
+    "resolve_in",
     "sha256",
 ]

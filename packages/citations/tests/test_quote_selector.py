@@ -185,3 +185,47 @@ def test_an_anchored_quotation_resolves_through_the_claims_file(tmp_path):
     q = cf.claims["C1"].quotes[0]
     r = V.check_one(q.text, _src(tmp_path, TWICE), None, prefix=q.prefix, suffix=q.suffix)
     assert r.state == "found"
+
+
+# --- the verdict without a file ----------------------------------------------------------------
+
+
+def test_resolve_in_finds_a_unique_passage():
+    m = V.resolve_in(PASSAGE, f"Before. {PASSAGE}. After.")
+    assert (m.state, m.count, m.normalized) == ("found", 1, False)
+
+
+def test_resolve_in_reports_a_repeated_passage_as_ambiguous():
+    m = V.resolve_in(PASSAGE, TWICE)
+    assert (m.state, m.count) == ("ambiguous", 2)
+
+
+def test_resolve_in_takes_the_anchors():
+    assert V.resolve_in(PASSAGE, TWICE, prefix="In the replication ").state == "found"
+
+
+def test_resolve_in_says_when_it_needed_the_skeleton():
+    welded = f"Before. {PASSAGE.replace(' ', '')}. After."
+    m = V.resolve_in(PASSAGE, welded)
+    assert (m.state, m.normalized) == ("found", True)
+
+
+def test_resolve_in_reports_an_absent_passage():
+    m = V.resolve_in(PASSAGE, "This document is about something else entirely, at length.")
+    assert (m.state, m.count) == ("not found", 0)
+
+
+def test_resolve_in_never_returns_a_state_about_reading_a_file():
+    for text in ("", PASSAGE, TWICE, "unrelated prose of a reasonable length goes here"):
+        assert V.resolve_in(PASSAGE, text).state not in ("unchecked", "indeterminate")
+
+
+def test_check_one_and_resolve_in_agree_on_the_same_text(tmp_path):
+    """The one matcher, reached two ways: `_verdict` must not drift from `resolve_in`."""
+    docs = (f"Before. {PASSAGE}. After.", TWICE, "nothing of the sort, at some length")
+    for i, doc in enumerate(docs):
+        # A distinct path per document: `extract` memoizes on the path, so reusing one file
+        # would compare the second document against the first one's cached text.
+        f = tmp_path / f"src{i}.txt"
+        f.write_text(doc)
+        assert V.resolve_in(PASSAGE, doc).state == V.check_one(PASSAGE, f, None).state, doc
