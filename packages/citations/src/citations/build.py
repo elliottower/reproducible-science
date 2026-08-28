@@ -302,6 +302,43 @@ def enrich_from_sources(entries: dict[str, dict], sources_dir: pathlib.Path) -> 
     return filled
 
 
+#: Fields a rebuild cannot regenerate and must not delete. `local` and `sha256` are the pinned
+#: artifact -- the copy that was actually read and hashed -- and a library may pin one itself,
+#: into its own artifacts/, with no paper's claims/ to rediscover it from. Losing the pair loses
+#: the fact that anything was verified at all.
+PINNED = ("local", "sha256")
+
+
+def carry_pins(merged: dict) -> int:
+    """Keep the pinned artifact of a record the bibliographies cannot repin.
+
+    `enrich_from_claims` and `enrich_from_sources` fill these from a paper's own directories.
+    A pin the library established itself has neither, so a rebuild dropped it -- silently,
+    because `audit_existing` reported only `doi` and `arxiv`.
+
+    The same argument as `carry_citations`: a rebuild that cannot reproduce a fact has no
+    grounds to delete it. Unlike an identifier, a pin cannot simply be looked up again. It
+    names one file and its hash at one moment, and that is the whole of its evidence.
+    """
+    records = paths.records()
+    if not records.exists():
+        return 0
+    kept = 0
+    for slug, rec in merged.items():
+        path = records / f"{slug}.yaml"
+        if not path.exists():
+            continue
+        try:
+            old = yaml.safe_load(path.read_text()) or {}
+        except (yaml.YAMLError, OSError):
+            continue
+        for field in PINNED:
+            if old.get(field) and not rec.get(field):
+                rec[field] = old[field]
+                kept += 1
+    return kept
+
+
 def carry_citations(merged: dict, bibless: set[str]) -> int:
     """Keep the citations of papers this run read no bibliography for.
 
@@ -391,7 +428,9 @@ def audit_existing(merged: dict) -> tuple[list[tuple[str, str, str]], list[str]]
             old = yaml.safe_load(p.read_text()) or {}
         except (yaml.YAMLError, OSError):
             continue
-        for field in ("doi", "arxiv"):
+        # Every field a write would destroy. Reporting two of them left the other losses
+        # silent, which is the opposite of what this function is for.
+        for field in ("doi", "arxiv", "url", "venue", "local", "sha256"):
             if old.get(field) and not rec.get(field):
                 losing.append((slug, field, str(old[field])))
     return losing, stale
@@ -473,6 +512,7 @@ def main(argv: list[str] | None = None) -> int:
 
     kept = carry_forward(merged)
     restored = carry_citations(merged, {m.split(":", 1)[0] for m in missing})
+    pinned = carry_pins(merged)
     shared = {s: r for s, r in merged.items() if len(r["cited_by"]) > 1}
     divergent = {
         s: r for s, r in shared.items() if len({c["key"] for c in r["cited_by"].values()}) > 1
@@ -484,6 +524,8 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  with no DOI or arXiv id   {unidentified:>4}   (joined on title, less reliable)")
     print(f"  fields carried forward    {kept:>4}   (resolved after the .bib was written)")
     print(f"  filled from claims/sources{filled:>4}   (pinned artifacts and identifiers)")
+    if pinned:
+        print(f"  pins kept             {pinned:>8}   (artifacts no bibliography repins)")
     if restored:
         print(
             f"  citations kept        {restored:>8}   "
