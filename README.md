@@ -61,6 +61,10 @@ install.
 
 ## Getting started
 
+`repro demo` writes a small worked example, runs the sequence below over it for real, and then
+breaks it twice — so the first thing you watch the tool do is catch something, and the two
+things it catches are not the same kind of failure.
+
 Write down what your paper claims and where each claim comes from. `repro verify` checks every
 one against the file it names and tells you which ones hold.
 

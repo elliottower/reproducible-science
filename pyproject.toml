@@ -206,6 +206,9 @@ name = "The verifier is layered"
 type = "layers"
 layers = [
   "repro.cli",
+  # The walkthrough drives the same commands a user types, so it sits above everything it
+  # drives and nothing below it may reach for it.
+  "repro.demo",
   "repro.renderers.sarif",
   "repro.policy",
   "repro.verify",
