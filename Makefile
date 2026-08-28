@@ -47,7 +47,12 @@ COV_ENV := COVERAGE_FILE=$(CURDIR)/.coverage \
 
 coverage:
 	@rm -f .coverage .coverage.*
-	$(COV_ENV) $(PY) coverage run -m pytest -q -p no:randomly
+	# `-n auto` because the suites spawn a great many subprocesses and the tracer runs in
+	# every one of them, which is what makes this six times slower than the same tests
+	# uninstrumented. The xdist workers are subprocesses like any other, so
+	# COVERAGE_PROCESS_START measures them and `coverage combine` below gathers them.
+	# Measured: 193.7s serial against 53.6s here, reporting the identical 5953/1390/1788/185.
+	$(COV_ENV) $(PY) coverage run -m pytest -q -p no:randomly -n auto
 	COVERAGE_FILE=$(CURDIR)/.coverage $(PY) coverage combine
 	COVERAGE_FILE=$(CURDIR)/.coverage $(PY) coverage xml -o coverage.xml
 	COVERAGE_FILE=$(CURDIR)/.coverage $(PY) coverage report --fail-under=70
