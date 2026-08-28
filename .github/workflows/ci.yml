@@ -36,7 +36,18 @@ jobs:
           persist-credentials: false
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
       - run: uv sync --all-packages --group dev --python ${{ matrix.python }}
-      - run: uv run pytest -q
+      # Under coverage, once. The suite used to run three times a build: twice here and again
+      # in a job of its own that measured it. Measuring it where it already runs removes a
+      # whole pass, which is what pydantic does and is worth more than making the third pass
+      # faster. `COV_TAG` keeps each cell's data file distinct, or two uploads collide on
+      # download and one measurement silently replaces the other.
+      - run: make coverage-run COV_TAG=py${{ matrix.python }}
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: coverage-py${{ matrix.python }}
+          path: coverage
+          include-hidden-files: true
+          if-no-files-found: error
 
   packaging:
     # The workspace resolves the four packages from source, so `pytest` never exercises the
@@ -96,16 +107,24 @@ jobs:
   coverage:
     name: coverage
     runs-on: ubuntu-latest
+    # Every cell's data, combined once. This job runs no tests: it reports on what the matrix
+    # already measured, so a build never executes the suite for coverage alone.
+    needs: tests
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           persist-credentials: false
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d  # v10.0.1
       - run: uv sync --all-packages --group dev
-      # `make coverage` sets the three variables that make a subprocess measurable. Most of
-      # these suites drive a CLI the way a user does, and without them the CLI modules report
-      # near zero while their tests pass.
-      - run: make coverage
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          pattern: coverage-*
+          path: coverage
+          merge-multiple: true
+      # `coverage combine` over the downloaded cells, then the same --fail-under floor. The
+      # three variables that make a subprocess measurable were set where the suite ran; nothing
+      # here needs them, because nothing here runs a test.
+      - run: make coverage-report
 
       # Codecov reports the coverage change on each pull request, which the --fail-under
       # floor in `make coverage` cannot do. An upload failure is not a build failure: the
