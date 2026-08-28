@@ -120,6 +120,17 @@ PLAIN_TEXT = "text"
 #: installed and can read it. Also the name the report gives that reading.
 DEFAULT_EXTRACTOR = "pdftotext -layout"
 
+#: The obvious reader for a format, where there is one, keyed by suffix. A `.pdf` has always
+#: had this; a `.tex` did not, so a LaTeX manuscript reached `pdftotext`, answered `Syntax
+#: Error: Couldn't read xref table`, and every quotation in it graded `unchecked` until the
+#: author declared `detex` by hand. Both entries are the same rule -- the reader a format
+#: obviously wants, chosen when nothing was declared, named on the result, and overridden by
+#: declaring one. Every value here must be in `DEFAULT_EXTRACTORS`: the undeclared path is not
+#: given the caller's allowlist -- by design, so that a source declaring nothing does not begin
+#: consulting it -- so an entry naming anything else would grant consent the caller never gave.
+#: `test_the_suffix_can_only_choose_a_reader_that_runs_unasked` holds that.
+BY_SUFFIX: dict[str, str] = {".tex": "detex", ".latex": "detex"}
+
 #: The same binary with `-layout` removed, so it emits poppler's reading order rather than the
 #: page's geometry. Not in the chain: `-layout` always reads a PDF poppler can open, so nothing
 #: would ever reach this. It is a triangulation participant, because the two modes fail in
@@ -511,8 +522,10 @@ def _run(source: pathlib.Path, argv: list[str], missing: str = "", hint: str = "
 def _hint(pdf: pathlib.Path) -> str:
     """What to say when a PDF reader was pointed at something that is not a PDF.
 
-    A `.tex` handed to one answers `Syntax Error: Couldn't read xref table`, which reads as a
-    damaged document rather than as the wrong tool pointed at an intact one.
+    Any non-PDF handed to one answers `Syntax Error: Couldn't read xref table`, which reads as a
+    damaged document rather than as the wrong tool pointed at an intact one. `.tex` used to be
+    the common case and now has its own reader in `BY_SUFFIX`, so this is reached for the
+    formats that still have none.
     """
     if pdf.suffix.lower() in ("", ".pdf"):
         return ""
@@ -580,6 +593,11 @@ def _extract(
     if extract_cmd:
         argv = _argv(pdf, extract_cmd, allowed)
         return readers.Extraction(_run(pdf, argv), _extractor_name(pdf, extract_cmd))
+    if (obvious := BY_SUFFIX.get(pdf.suffix.lower())) and obvious in allowed:
+        # Chosen, not declared, so it is named on the result like any other reading. A format
+        # whose reader is refused by `allowed` falls through rather than being forced: consent
+        # to run a program comes from whoever invoked the command.
+        return readers.Extraction(_run(pdf, _argv(pdf, obvious, allowed)), obvious)
     if pdf.suffix.lower() in TEXT_SUFFIXES:
         try:
             return readers.Extraction(pdf.read_text(errors="replace"), PLAIN_TEXT)
@@ -776,6 +794,8 @@ def _extractor_name(artifact: pathlib.Path, extract_cmd: str | None) -> str:
     """What `extract` reads this source with, as the report names it."""
     if extract_cmd := declared_extractor(extract_cmd):
         return " ".join(extract_cmd.split())
+    if obvious := BY_SUFFIX.get(artifact.suffix.lower()):
+        return obvious
     return PLAIN_TEXT if artifact.suffix.lower() in TEXT_SUFFIXES else DEFAULT_EXTRACTOR
 
 
