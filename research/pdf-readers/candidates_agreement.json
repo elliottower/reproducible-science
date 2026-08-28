@@ -1,0 +1,591 @@
+{
+ "question": "Does a candidate reader fail in a different direction from the readers already installed, which is what makes it worth adding to triangulation?",
+ "decision_criterion": {
+  "unit": "one passage check: is this quotation found in this document under this reader",
+  "outcome_compared": "found / not found, after citations.verify normalization",
+  "add_to_triangulation_if": "against every installed reader the candidate resolves passage checks that reader missed, in numbers of the same order as the 59/29 split that put poppler's two modes both in the chain",
+  "do_not_add_if": "the candidate's only-found column is near zero against every installed reader, which makes it a strictly worse reader and adds nothing to a triangulation that already disagrees",
+  "same_pipeline_pairs_are_not_two_readers": "poppler-layout/poppler-flow are one binary, and pdf-extract/lopdf are one object model. Each pair is a mode comparison and is never counted as two readers agreeing.",
+  "pooling_forbidden": "the two directions are never pooled into one disagreement rate; a pure-Python reader that is sometimes better matters as much as the reverse"
+ },
+ "readers_measured": [
+  "poppler-layout",
+  "poppler-flow",
+  "pdfplumber",
+  "pypdf",
+  "pdf-extract",
+  "lopdf",
+  "pdfium"
+ ],
+ "reader_versions": {
+  "poppler (both modes)": "pdftotext version 26.04.0",
+  "pdfplumber": "0.11.10",
+  "pypdf": "6.16.2",
+  "pdfminer.six": "20260107",
+  "crate pdf-extract": "0.12.0",
+  "crate lopdf": "0.42.0, 0.44.0",
+  "pdfrs binary": "/private/tmp/claude-501/-Users-elliottower-Documents-GitHub-factorization-circuits/914b66f3-5004-41f9-a015-a12f8e4f8d15/scratchpad/pdfrs/target/release/pdfrs",
+  "rustc": "rustc 1.98.0 (88d9e12ae 2026-08-18)",
+  "pypdfium2": "5.13.0",
+  "libpdfium": "153.0.7999.0"
+ },
+ "inputs": {
+  "claims_roots": [
+   "/Users/elliottower/Documents/GitHub"
+  ],
+  "pdf_dirs": [],
+  "seed": 20260825,
+  "documents": 105,
+  "claim_files_skipped": {
+   "unpinned": 9,
+   "broken": 0,
+   "missing": 1,
+   "unparseable": 1,
+   "not_pdf": 277
+  }
+ },
+ "results": {
+  "quotations": {
+   "document_paths": 105,
+   "documents": 81,
+   "passage_checks": 1592,
+   "duplicate_checks_dropped": 2902,
+   "documents_opened": {
+    "poppler-layout": 81,
+    "poppler-flow": 81,
+    "pdfplumber": 81,
+    "pypdf": 81,
+    "pdf-extract": 79,
+    "lopdf": 81,
+    "pdfium": 81
+   },
+   "open_failures": [
+    {
+     "pdf": "nanda2023grokking.pdf",
+     "reader": "pdf-extract",
+     "error": "exited 101: note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace"
+    },
+    {
+     "pdf": "li2022othello.pdf",
+     "reader": "pdf-extract",
+     "error": "exited 101: note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace"
+    }
+   ],
+   "three_way_agreement": 992,
+   "three_way_agreement_rate": 0.62312,
+   "divergent_checks": 600,
+   "divergence_rate": 0.37688,
+   "exactly_one_reader_dissents": {
+    "poppler-layout": 0,
+    "poppler-flow": 0,
+    "pdfplumber": 0,
+    "pypdf": 0,
+    "pdf-extract": 0,
+    "lopdf": 0,
+    "pdfium": 0
+   },
+   "pairwise": {
+    "poppler-layout vs poppler-flow": {
+     "same_pipeline": true,
+     "comparable_checks": 1592,
+     "agree": 1504,
+     "agreement_rate": 0.94472,
+     "poppler-layout_only_found": 29,
+     "poppler-flow_only_found": 59
+    },
+    "poppler-layout vs pdfplumber": {
+     "same_pipeline": false,
+     "comparable_checks": 1592,
+     "agree": 1417,
+     "agreement_rate": 0.89008,
+     "poppler-layout_only_found": 165,
+     "pdfplumber_only_found": 10
+    },
+    "poppler-layout vs pypdf": {
+     "same_pipeline": false,
+     "comparable_checks": 1592,
+     "agree": 1467,
+     "agreement_rate": 0.92148,
+     "poppler-layout_only_found": 68,
+     "pypdf_only_found": 57
+    },
+    "poppler-layout vs pdf-extract": {
+     "same_pipeline": false,
+     "comparable_checks": 1425,
+     "agree": 1297,
+     "agreement_rate": 0.91018,
+     "poppler-layout_only_found": 71,
+     "pdf-extract_only_found": 57
+    },
+    "poppler-layout vs lopdf": {
+     "same_pipeline": false,
+     "comparable_checks": 1592,
+     "agree": 1189,
+     "agreement_rate": 0.74686,
+     "poppler-layout_only_found": 348,
+     "lopdf_only_found": 55
+    },
+    "poppler-layout vs pdfium": {
+     "same_pipeline": false,
+     "comparable_checks": 1592,
+     "agree": 1452,
+     "agreement_rate": 0.91206,
+     "poppler-layout_only_found": 121,
+     "pdfium_only_found": 19
+    },
+    "poppler-flow vs pdfplumber": {
+     "same_pipeline": false,
+     "comparable_checks": 1592,
+     "agree": 1365,
+     "agreement_rate": 0.85741,
+     "poppler-flow_only_found": 206,
+     "pdfplumber_only_found": 21
+    },
+    "poppler-flow vs pypdf": {
+     "same_pipeline": false,
+     "comparable_checks": 1592,
+     "agree": 1497,
+     "agreement_rate": 0.94033,
+     "poppler-flow_only_found": 68,
+     "pypdf_only_found": 27
+    },
+    "poppler-flow vs pdf-extract": {
+     "same_pipeline": false,
+     "comparable_checks": 1425,
+     "agree": 1333,
+     "agreement_rate": 0.93544,
+     "poppler-flow_only_found": 69,
+     "pdf-extract_only_found": 23
+    },
+    "poppler-flow vs lopdf": {
+     "same_pipeline": false,
+     "comparable_checks": 1592,
+     "agree": 1225,
+     "agreement_rate": 0.76947,
+     "poppler-flow_only_found": 345,
+     "lopdf_only_found": 22
+    },
+    "poppler-flow vs pdfium": {
+     "same_pipeline": false,
+     "comparable_checks": 1592,
+     "agree": 1410,
+     "agreement_rate": 0.88568,
+     "poppler-flow_only_found": 157,
+     "pdfium_only_found": 25
+    },
+    "pdfplumber vs pypdf": {
+     "same_pipeline": false,
+     "comparable_checks": 1592,
+     "agree": 1424,
+     "agreement_rate": 0.89447,
+     "pdfplumber_only_found": 12,
+     "pypdf_only_found": 156
+    },
+    "pdfplumber vs pdf-extract": {
+     "same_pipeline": false,
+     "comparable_checks": 1425,
+     "agree": 1277,
+     "agreement_rate": 0.89614,
+     "pdfplumber_only_found": 16,
+     "pdf-extract_only_found": 132
+    },
+    "pdfplumber vs lopdf": {
+     "same_pipeline": false,
+     "comparable_checks": 1592,
+     "agree": 1134,
+     "agreement_rate": 0.71231,
+     "pdfplumber_only_found": 298,
+     "lopdf_only_found": 160
+    },
+    "pdfplumber vs pdfium": {
+     "same_pipeline": false,
+     "comparable_checks": 1592,
+     "agree": 1371,
+     "agreement_rate": 0.86118,
+     "pdfplumber_only_found": 84,
+     "pdfium_only_found": 137
+    },
+    "pypdf vs pdf-extract": {
+     "same_pipeline": false,
+     "comparable_checks": 1425,
+     "agree": 1410,
+     "agreement_rate": 0.98947,
+     "pypdf_only_found": 10,
+     "pdf-extract_only_found": 5
+    },
+    "pypdf vs lopdf": {
+     "same_pipeline": false,
+     "comparable_checks": 1592,
+     "agree": 1278,
+     "agreement_rate": 0.80276,
+     "pypdf_only_found": 298,
+     "lopdf_only_found": 16
+    },
+    "pypdf vs pdfium": {
+     "same_pipeline": false,
+     "comparable_checks": 1592,
+     "agree": 1443,
+     "agreement_rate": 0.90641,
+     "pypdf_only_found": 120,
+     "pdfium_only_found": 29
+    },
+    "pdf-extract vs lopdf": {
+     "same_pipeline": true,
+     "comparable_checks": 1425,
+     "agree": 1113,
+     "agreement_rate": 0.78105,
+     "pdf-extract_only_found": 292,
+     "lopdf_only_found": 20
+    },
+    "pdf-extract vs pdfium": {
+     "same_pipeline": false,
+     "comparable_checks": 1425,
+     "agree": 1286,
+     "agreement_rate": 0.90246,
+     "pdf-extract_only_found": 110,
+     "pdfium_only_found": 29
+    },
+    "lopdf vs pdfium": {
+     "same_pipeline": false,
+     "comparable_checks": 1592,
+     "agree": 1157,
+     "agreement_rate": 0.72676,
+     "lopdf_only_found": 122,
+     "pdfium_only_found": 313
+    }
+   },
+   "by_reader": {
+    "poppler-layout": {
+     "found_verbatim": 1501,
+     "found_normalized": 25,
+     "not_found": 66,
+     "unchecked": 0
+    },
+    "poppler-flow": {
+     "found_verbatim": 1531,
+     "found_normalized": 25,
+     "not_found": 36,
+     "unchecked": 0
+    },
+    "pdfplumber": {
+     "found_verbatim": 488,
+     "found_normalized": 883,
+     "not_found": 221,
+     "unchecked": 0
+    },
+    "pypdf": {
+     "found_verbatim": 1279,
+     "found_normalized": 236,
+     "not_found": 77,
+     "unchecked": 0
+    },
+    "pdf-extract": {
+     "found_verbatim": 1248,
+     "found_normalized": 97,
+     "not_found": 80,
+     "unchecked": 167
+    },
+    "lopdf": {
+     "found_verbatim": 824,
+     "found_normalized": 409,
+     "not_found": 359,
+     "unchecked": 0
+    },
+    "pdfium": {
+     "found_verbatim": 1343,
+     "found_normalized": 81,
+     "not_found": 168,
+     "unchecked": 0
+    }
+   }
+  },
+  "sampled": {
+   "document_paths": 0,
+   "documents": 0,
+   "passage_checks": 0,
+   "duplicate_checks_dropped": 0,
+   "documents_opened": {
+    "poppler-layout": 0,
+    "poppler-flow": 0,
+    "pdfplumber": 0,
+    "pypdf": 0,
+    "pdf-extract": 0,
+    "lopdf": 0,
+    "pdfium": 0
+   },
+   "open_failures": [],
+   "three_way_agreement": 0,
+   "three_way_agreement_rate": null,
+   "divergent_checks": 0,
+   "divergence_rate": null,
+   "exactly_one_reader_dissents": {
+    "poppler-layout": 0,
+    "poppler-flow": 0,
+    "pdfplumber": 0,
+    "pypdf": 0,
+    "pdf-extract": 0,
+    "lopdf": 0,
+    "pdfium": 0
+   },
+   "pairwise": {
+    "poppler-layout vs poppler-flow": {
+     "same_pipeline": true,
+     "comparable_checks": 0,
+     "agree": 0,
+     "agreement_rate": null,
+     "poppler-layout_only_found": 0,
+     "poppler-flow_only_found": 0
+    },
+    "poppler-layout vs pdfplumber": {
+     "same_pipeline": false,
+     "comparable_checks": 0,
+     "agree": 0,
+     "agreement_rate": null,
+     "poppler-layout_only_found": 0,
+     "pdfplumber_only_found": 0
+    },
+    "poppler-layout vs pypdf": {
+     "same_pipeline": false,
+     "comparable_checks": 0,
+     "agree": 0,
+     "agreement_rate": null,
+     "poppler-layout_only_found": 0,
+     "pypdf_only_found": 0
+    },
+    "poppler-layout vs pdf-extract": {
+     "same_pipeline": false,
+     "comparable_checks": 0,
+     "agree": 0,
+     "agreement_rate": null,
+     "poppler-layout_only_found": 0,
+     "pdf-extract_only_found": 0
+    },
+    "poppler-layout vs lopdf": {
+     "same_pipeline": false,
+     "comparable_checks": 0,
+     "agree": 0,
+     "agreement_rate": null,
+     "poppler-layout_only_found": 0,
+     "lopdf_only_found": 0
+    },
+    "poppler-layout vs pdfium": {
+     "same_pipeline": false,
+     "comparable_checks": 0,
+     "agree": 0,
+     "agreement_rate": null,
+     "poppler-layout_only_found": 0,
+     "pdfium_only_found": 0
+    },
+    "poppler-flow vs pdfplumber": {
+     "same_pipeline": false,
+     "comparable_checks": 0,
+     "agree": 0,
+     "agreement_rate": null,
+     "poppler-flow_only_found": 0,
+     "pdfplumber_only_found": 0
+    },
+    "poppler-flow vs pypdf": {
+     "same_pipeline": false,
+     "comparable_checks": 0,
+     "agree": 0,
+     "agreement_rate": null,
+     "poppler-flow_only_found": 0,
+     "pypdf_only_found": 0
+    },
+    "poppler-flow vs pdf-extract": {
+     "same_pipeline": false,
+     "comparable_checks": 0,
+     "agree": 0,
+     "agreement_rate": null,
+     "poppler-flow_only_found": 0,
+     "pdf-extract_only_found": 0
+    },
+    "poppler-flow vs lopdf": {
+     "same_pipeline": false,
+     "comparable_checks": 0,
+     "agree": 0,
+     "agreement_rate": null,
+     "poppler-flow_only_found": 0,
+     "lopdf_only_found": 0
+    },
+    "poppler-flow vs pdfium": {
+     "same_pipeline": false,
+     "comparable_checks": 0,
+     "agree": 0,
+     "agreement_rate": null,
+     "poppler-flow_only_found": 0,
+     "pdfium_only_found": 0
+    },
+    "pdfplumber vs pypdf": {
+     "same_pipeline": false,
+     "comparable_checks": 0,
+     "agree": 0,
+     "agreement_rate": null,
+     "pdfplumber_only_found": 0,
+     "pypdf_only_found": 0
+    },
+    "pdfplumber vs pdf-extract": {
+     "same_pipeline": false,
+     "comparable_checks": 0,
+     "agree": 0,
+     "agreement_rate": null,
+     "pdfplumber_only_found": 0,
+     "pdf-extract_only_found": 0
+    },
+    "pdfplumber vs lopdf": {
+     "same_pipeline": false,
+     "comparable_checks": 0,
+     "agree": 0,
+     "agreement_rate": null,
+     "pdfplumber_only_found": 0,
+     "lopdf_only_found": 0
+    },
+    "pdfplumber vs pdfium": {
+     "same_pipeline": false,
+     "comparable_checks": 0,
+     "agree": 0,
+     "agreement_rate": null,
+     "pdfplumber_only_found": 0,
+     "pdfium_only_found": 0
+    },
+    "pypdf vs pdf-extract": {
+     "same_pipeline": false,
+     "comparable_checks": 0,
+     "agree": 0,
+     "agreement_rate": null,
+     "pypdf_only_found": 0,
+     "pdf-extract_only_found": 0
+    },
+    "pypdf vs lopdf": {
+     "same_pipeline": false,
+     "comparable_checks": 0,
+     "agree": 0,
+     "agreement_rate": null,
+     "pypdf_only_found": 0,
+     "lopdf_only_found": 0
+    },
+    "pypdf vs pdfium": {
+     "same_pipeline": false,
+     "comparable_checks": 0,
+     "agree": 0,
+     "agreement_rate": null,
+     "pypdf_only_found": 0,
+     "pdfium_only_found": 0
+    },
+    "pdf-extract vs lopdf": {
+     "same_pipeline": true,
+     "comparable_checks": 0,
+     "agree": 0,
+     "agreement_rate": null,
+     "pdf-extract_only_found": 0,
+     "lopdf_only_found": 0
+    },
+    "pdf-extract vs pdfium": {
+     "same_pipeline": false,
+     "comparable_checks": 0,
+     "agree": 0,
+     "agreement_rate": null,
+     "pdf-extract_only_found": 0,
+     "pdfium_only_found": 0
+    },
+    "lopdf vs pdfium": {
+     "same_pipeline": false,
+     "comparable_checks": 0,
+     "agree": 0,
+     "agreement_rate": null,
+     "lopdf_only_found": 0,
+     "pdfium_only_found": 0
+    }
+   },
+   "by_reader": {
+    "poppler-layout": {
+     "found_verbatim": 0,
+     "found_normalized": 0,
+     "not_found": 0,
+     "unchecked": 0
+    },
+    "poppler-flow": {
+     "found_verbatim": 0,
+     "found_normalized": 0,
+     "not_found": 0,
+     "unchecked": 0
+    },
+    "pdfplumber": {
+     "found_verbatim": 0,
+     "found_normalized": 0,
+     "not_found": 0,
+     "unchecked": 0
+    },
+    "pypdf": {
+     "found_verbatim": 0,
+     "found_normalized": 0,
+     "not_found": 0,
+     "unchecked": 0
+    },
+    "pdf-extract": {
+     "found_verbatim": 0,
+     "found_normalized": 0,
+     "not_found": 0,
+     "unchecked": 0
+    },
+    "lopdf": {
+     "found_verbatim": 0,
+     "found_normalized": 0,
+     "not_found": 0,
+     "unchecked": 0
+    },
+    "pdfium": {
+     "found_verbatim": 0,
+     "found_normalized": 0,
+     "not_found": 0,
+     "unchecked": 0
+    }
+   }
+  }
+ },
+ "reader_cost_seconds_per_document": {
+  "poppler-layout": {
+   "documents": 105,
+   "median_seconds": 0.33,
+   "total_seconds": 63.5,
+   "worst_seconds": 6.6
+  },
+  "poppler-flow": {
+   "documents": 105,
+   "median_seconds": 0.32,
+   "total_seconds": 61.7,
+   "worst_seconds": 6.4
+  },
+  "pdfplumber": {
+   "documents": 105,
+   "median_seconds": 6.21,
+   "total_seconds": 1445.5,
+   "worst_seconds": 222.1
+  },
+  "pypdf": {
+   "documents": 105,
+   "median_seconds": 1.96,
+   "total_seconds": 526.1,
+   "worst_seconds": 95.6
+  },
+  "pdf-extract": {
+   "documents": 105,
+   "median_seconds": 0.3,
+   "total_seconds": 65.5,
+   "worst_seconds": 9.7
+  },
+  "lopdf": {
+   "documents": 105,
+   "median_seconds": 0.1,
+   "total_seconds": 27.6,
+   "worst_seconds": 8.3
+  },
+  "pdfium": {
+   "documents": 105,
+   "median_seconds": 0.19,
+   "total_seconds": 35.3,
+   "worst_seconds": 3.1
+  }
+ },
+ "shard": "/private/tmp/claude-501/-Users-elliottower-Documents-GitHub-factorization-circuits/914b66f3-5004-41f9-a015-a12f8e4f8d15/scratchpad/candidates_agreement.jsonl"
+}

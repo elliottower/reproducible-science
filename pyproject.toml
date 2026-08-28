@@ -95,9 +95,10 @@ lint.ignore = [
 lint.per-file-ignores."packages/*/tests/*" = [ "B011" ] # bare assert False is fine in a test
 
 [tool.codespell]
-# `unparseable` is the spelling used throughout, and the rest are author surnames in the
-# sampling frame. Listed rather than skipping whole files, which would hide real typos.
-ignore-words-list = "unparseable,ue,copie,buis,smae,nd,ist,fo"
+# `unparseable` is the spelling used throughout, `inout` is a Rust crate named in
+# `research/pdf-readers/pdfrs/Cargo.lock`, and the rest are author surnames in the sampling
+# frame. Listed rather than skipping whole files, which would hide real typos.
+ignore-words-list = "unparseable,ue,copie,buis,smae,nd,ist,fo,inout"
 skip = "uv.lock,.git"
 
 [tool.pytest]

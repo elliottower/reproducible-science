@@ -1,0 +1,159 @@
+{
+ "question": "What would adding this reader change in `citations verify --triangulate`, which reports `indeterminate` on any disagreement?",
+ "installed_readers": [
+  "poppler-layout",
+  "poppler-flow",
+  "pdfplumber",
+  "pypdf"
+ ],
+ "reader_versions": {
+  "poppler (both modes)": "pdftotext version 26.04.0",
+  "pdfplumber": "0.11.10",
+  "pypdf": "6.16.2",
+  "pdfminer.six": "20260107",
+  "crate pdf-extract": "0.12.0",
+  "crate lopdf": "0.42.0, 0.44.0",
+  "pdfrs binary": "/private/tmp/claude-501/-Users-elliottower-Documents-GitHub-factorization-circuits/914b66f3-5004-41f9-a015-a12f8e4f8d15/scratchpad/pdfrs/target/release/pdfrs",
+  "rustc": "rustc 1.98.0 (88d9e12ae 2026-08-18)",
+  "pypdfium2": "5.13.0",
+  "libpdfium": "153.0.7999.0"
+ },
+ "what_the_installed_readers_do_today": {
+  "all_found": 1328,
+  "all_not_found": 7,
+  "disagree": 257,
+  "no_reader_opened_it": 0,
+  "rescue_headroom": 7
+ },
+ "corpus": "quotations",
+ "passage_checks": 1592,
+ "documents": 81,
+ "shard": "/private/tmp/claude-501/-Users-elliottower-Documents-GitHub-factorization-circuits/914b66f3-5004-41f9-a015-a12f8e4f8d15/scratchpad/candidates_agreement.jsonl",
+ "candidates": {
+  "pdf-extract": {
+   "checks_the_others_settle": 1195,
+   "settled_found": 1188,
+   "settled_not_found": 7,
+   "agreed_with_the_settled_verdict": 1190,
+   "rescued": 0,
+   "made_indeterminate": 5,
+   "could_not_read_the_document": 167,
+   "rescued_per_indeterminate": 0.0
+  },
+  "lopdf": {
+   "checks_the_others_settle": 1335,
+   "settled_found": 1328,
+   "settled_not_found": 7,
+   "agreed_with_the_settled_verdict": 1057,
+   "rescued": 3,
+   "made_indeterminate": 275,
+   "could_not_read_the_document": 0,
+   "rescued_per_indeterminate": 0.011
+  },
+  "pdfium": {
+   "checks_the_others_settle": 1335,
+   "settled_found": 1328,
+   "settled_not_found": 7,
+   "agreed_with_the_settled_verdict": 1269,
+   "rescued": 0,
+   "made_indeterminate": 66,
+   "could_not_read_the_document": 0,
+   "rescued_per_indeterminate": 0.0
+  }
+ },
+ "incumbents_scored_the_same_way": {
+  "poppler-layout": {
+   "checks_the_others_settle": 1347,
+   "settled_found": 1338,
+   "settled_not_found": 9,
+   "agreed_with_the_settled_verdict": 1335,
+   "rescued": 2,
+   "made_indeterminate": 10,
+   "could_not_read_the_document": 0,
+   "rescued_per_indeterminate": 0.2
+  },
+  "poppler-flow": {
+   "checks_the_others_settle": 1358,
+   "settled_found": 1349,
+   "settled_not_found": 9,
+   "agreed_with_the_settled_verdict": 1335,
+   "rescued": 2,
+   "made_indeterminate": 21,
+   "could_not_read_the_document": 0,
+   "rescued_per_indeterminate": 0.095
+  },
+  "pdfplumber": {
+   "checks_the_others_settle": 1438,
+   "settled_found": 1431,
+   "settled_not_found": 7,
+   "agreed_with_the_settled_verdict": 1335,
+   "rescued": 0,
+   "made_indeterminate": 103,
+   "could_not_read_the_document": 0,
+   "rescued_per_indeterminate": 0.0
+  },
+  "pypdf": {
+   "checks_the_others_settle": 1347,
+   "settled_found": 1340,
+   "settled_not_found": 7,
+   "agreed_with_the_settled_verdict": 1335,
+   "rescued": 0,
+   "made_indeterminate": 12,
+   "could_not_read_the_document": 0,
+   "rescued_per_indeterminate": 0.0
+  }
+ },
+ "rescue_overlap_between_candidates": {
+  "pdf-extract and lopdf": {
+   "rescued_by_either": 3,
+   "rescued_by_both": 0
+  },
+  "pdf-extract and pdfium": {
+   "rescued_by_either": 0,
+   "rescued_by_both": 0
+  },
+  "lopdf and pdfium": {
+   "rescued_by_either": 3,
+   "rescued_by_both": 0
+  }
+ },
+ "documents_opened": {
+  "poppler-layout": {
+   "documents": 81,
+   "opened": 81,
+   "errors": []
+  },
+  "poppler-flow": {
+   "documents": 81,
+   "opened": 81,
+   "errors": []
+  },
+  "pdfplumber": {
+   "documents": 81,
+   "opened": 81,
+   "errors": []
+  },
+  "pypdf": {
+   "documents": 81,
+   "opened": 81,
+   "errors": []
+  },
+  "pdf-extract": {
+   "documents": 81,
+   "opened": 79,
+   "errors": [
+    "exited 101: note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace"
+   ]
+  },
+  "lopdf": {
+   "documents": 81,
+   "opened": 81,
+   "errors": []
+  },
+  "pdfium": {
+   "documents": 81,
+   "opened": 81,
+   "errors": []
+  }
+ }
+}

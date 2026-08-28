@@ -1,0 +1,159 @@
+{
+  "totals": {
+    "exact": 2464,
+    "loose": 45,
+    "ambiguous": 0,
+    "fail": 3
+  },
+  "by_claim": [
+    {
+      "claim": "copy_suppression",
+      "exact": 181,
+      "loose": 2,
+      "ambiguous": 0,
+      "failures": [],
+      "passed": true
+    },
+    {
+      "claim": "docstring",
+      "exact": 148,
+      "loose": 0,
+      "ambiguous": 0,
+      "failures": [],
+      "passed": true
+    },
+    {
+      "claim": "gender",
+      "exact": 160,
+      "loose": 3,
+      "ambiguous": 0,
+      "failures": [],
+      "passed": true
+    },
+    {
+      "claim": "greater_than",
+      "exact": 132,
+      "loose": 0,
+      "ambiguous": 0,
+      "failures": [],
+      "passed": true
+    },
+    {
+      "claim": "grokking",
+      "exact": 129,
+      "loose": 0,
+      "ambiguous": 0,
+      "failures": [],
+      "passed": true
+    },
+    {
+      "claim": "induction",
+      "exact": 216,
+      "loose": 1,
+      "ambiguous": 0,
+      "failures": [],
+      "passed": true
+    },
+    {
+      "claim": "induction_broad",
+      "exact": 212,
+      "loose": 0,
+      "ambiguous": 0,
+      "failures": [],
+      "passed": true
+    },
+    {
+      "claim": "ioi",
+      "exact": 123,
+      "loose": 13,
+      "ambiguous": 0,
+      "failures": [],
+      "passed": true
+    },
+    {
+      "claim": "knowledge_neurons",
+      "exact": 160,
+      "loose": 0,
+      "ambiguous": 0,
+      "failures": [],
+      "passed": true
+    },
+    {
+      "claim": "othello",
+      "exact": 131,
+      "loose": 1,
+      "ambiguous": 0,
+      "failures": [],
+      "passed": true
+    },
+    {
+      "claim": "probing",
+      "exact": 171,
+      "loose": 1,
+      "ambiguous": 0,
+      "failures": [],
+      "passed": true
+    },
+    {
+      "claim": "refusal",
+      "exact": 166,
+      "loose": 0,
+      "ambiguous": 0,
+      "failures": [
+        {
+          "criterion": "I1",
+          "index": 5,
+          "reason": "not found",
+          "excerpt": "We speculate that our intervention, while disabling the model\u2019s natural refusal "
+        }
+      ],
+      "passed": false
+    },
+    {
+      "claim": "sae",
+      "exact": 104,
+      "loose": 5,
+      "ambiguous": 0,
+      "failures": [],
+      "passed": true
+    },
+    {
+      "claim": "successor_heads",
+      "exact": 173,
+      "loose": 18,
+      "ambiguous": 0,
+      "failures": [
+        {
+          "criterion": "C5",
+          "index": 2,
+          "reason": "not found",
+          "excerpt": "Mikolov et al. (2013)\u2019s seminal work on word embedding arithmetic showed that la"
+        }
+      ],
+      "passed": false
+    },
+    {
+      "claim": "superposition",
+      "exact": 104,
+      "loose": 1,
+      "ambiguous": 0,
+      "failures": [
+        {
+          "criterion": "C3",
+          "index": 2,
+          "reason": "not found",
+          "excerpt": "The results have been surprisingly easy to replicate -- we have reproduced (with"
+        }
+      ],
+      "passed": false
+    },
+    {
+      "claim": "workspace",
+      "exact": 154,
+      "loose": 0,
+      "ambiguous": 0,
+      "failures": [],
+      "passed": true
+    }
+  ]
+}
