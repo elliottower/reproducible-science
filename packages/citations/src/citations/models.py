@@ -248,6 +248,19 @@ class Record(_Base):
     cited_by: dict[str, CitedBy] = Field(default_factory=dict)
     """Papers citing this work, by project name."""
 
+    preferred_key: str = ""
+    """The citation key a new bibliography should use for this work.
+
+    `cited_by` records what each paper actually writes, and those diverge honestly: a key is
+    part of a paper's own source, and renaming one means editing every `\\cite` in it. So the
+    divergence is kept and this names which of them to copy forward. It is a recommendation
+    and nothing enforces it.
+
+    `slug` cannot serve: it is an identifier derived from the DOI or arXiv id, and
+    `arxiv-2301-04709` is not something anyone types into a citation. Set it in
+    `enrichment.yaml`, keyed by slug, like every other fact resolved after the bibliographies
+    were written."""
+
     quotes: list[Quote] = Field(default_factory=list)
     """Passages taken from this work, when the record itself carries them."""
 

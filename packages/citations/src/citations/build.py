@@ -449,10 +449,22 @@ def main(argv: list[str] | None = None) -> int:
     print(f"  filled from claims/sources{filled:>4}   (pinned artifacts and identifiers)")
 
     if divergent:
+        # Naming the divergence without naming a winner leaves the reader to pick one, which
+        # is how the divergence started. `preferred_key` is the answer where the library has
+        # decided; where it has not, the line says so rather than implying any key is fine.
+        undecided = sum(1 for r in divergent.values() if not r.get("preferred_key"))
         print("\n  same work, different key:")
         for r in list(divergent.values())[:12]:
             keys = ", ".join(f"{p}={c['key']}" for p, c in r["cited_by"].items())
+            pick = r.get("preferred_key")
             print(f"    {r['title'][:52]:<54}{keys}")
+            print(f"    {'':<54}use {pick}" if pick else f"    {'':<54}no preferred key set")
+        if undecided:
+            print(
+                f"\n  {undecided} of {len(divergent)} have no preferred key. Set one in "
+                f"{enrichment.name} keyed by slug:"
+            )
+            print("      <slug>:\n        preferred_key: smith2025thing")
 
     losing, stale = audit_existing(merged)
     if losing:

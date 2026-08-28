@@ -169,3 +169,31 @@ def test_a_rebuild_that_destroys_nothing_reports_nothing(tmp_path, monkeypatch):
     _library(tmp_path, monkeypatch, records={"doi-10-1-x": {"title": "A work", "doi": "10.1/x"}})
     losing, stale = audit_existing({"doi-10-1-x": {"title": "A work", "doi": "10.1/x"}})
     assert (losing, stale) == ([], [])
+
+
+def test_a_preferred_key_reaches_the_record_from_the_overlay(tmp_path, monkeypatch):
+    # `cited_by` records what each paper writes and those diverge honestly, since a key is
+    # part of a paper's own source. The overlay is where the library says which to copy
+    # forward; nothing else in the record can, because `slug` is an identifier.
+    from citations import build, paths
+
+    enrichment = tmp_path / "enrichment.yaml"
+    enrichment.write_text("arxiv-2301-04709:\n  preferred_key: geiger2025causalabstraction\n")
+    monkeypatch.setattr(paths, "enrichment", lambda: enrichment)
+
+    merged = {
+        "arxiv-2301-04709": {
+            "slug": "arxiv-2301-04709",
+            "cited_by": {"a": {"key": "geiger2024causal"}, "b": {"key": "geiger2025causal"}},
+        }
+    }
+    assert build.carry_forward(merged) == 1
+    assert merged["arxiv-2301-04709"]["preferred_key"] == "geiger2025causalabstraction"
+
+
+def test_a_record_carrying_a_preferred_key_still_validates():
+    from citations.models import Record
+
+    r = Record(slug="arxiv-2301-04709", preferred_key="geiger2025causalabstraction")
+    assert r.preferred_key == "geiger2025causalabstraction"
+    assert Record(slug="x").preferred_key == "", "a record without one is not thereby invalid"
