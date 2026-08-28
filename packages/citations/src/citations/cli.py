@@ -300,8 +300,14 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
     bad = [(s, q, r) for s, q, r in rep.problems if r.state == "not found"]
     if bad and not a.quiet:
         print()
-        for slug, text, _r in bad[:20]:
+        for slug, text, r in bad[:20]:
             print(f"  not found  {slug[:30]:<32}{text[:44]}")
+            # The detail carries where the passage stopped matching and what the source reads
+            # there, which is the only part that says what to do. Printing the row without it
+            # leaves a reader with an accusation and no way to act on it.
+            if r.detail:
+                for line in r.detail.splitlines():
+                    print(f"             {line.strip()}" if line.strip() else "")
         if len(bad) > 20:
             print(f"             ... and {len(bad) - 20} more")
 
