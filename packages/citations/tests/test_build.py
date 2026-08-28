@@ -243,3 +243,52 @@ def test_a_paper_whose_bibliography_was_read_does_not_keep_a_dropped_citation(
     merged = {"arxiv-1234-5678": {"slug": "arxiv-1234-5678", "cited_by": {}}}
     assert build.carry_citations(merged, set()) == 0
     assert merged["arxiv-1234-5678"]["cited_by"] == {}
+
+
+def test_a_pin_the_bibliographies_cannot_repin_survives_a_rebuild(tmp_path, monkeypatch):
+    # local+sha256 name the copy that was actually read and hashed. enrich_from_claims fills
+    # them from a paper's own claims/, so a pin the library established itself -- into its own
+    # artifacts/ -- had no source and was dropped, silently.
+    from citations import build, paths
+
+    records = tmp_path / "records"
+    records.mkdir()
+    (records / "arxiv-2403-10462.yaml").write_text(
+        "slug: arxiv-2403-10462\ntitle: T\nauthors: []\nyear: '2024'\n"
+        "local: artifacts/arxiv-2403-10462.pdf\nsha256: abc123\n"
+    )
+    monkeypatch.setattr(paths, "records", lambda: records)
+
+    merged = {"arxiv-2403-10462": {"slug": "arxiv-2403-10462", "cited_by": {}}}
+    assert build.carry_pins(merged) == 2
+    assert merged["arxiv-2403-10462"]["local"] == "artifacts/arxiv-2403-10462.pdf"
+    assert merged["arxiv-2403-10462"]["sha256"] == "abc123"
+
+
+def test_a_bibliography_that_repins_wins(tmp_path, monkeypatch):
+    from citations import build, paths
+
+    records = tmp_path / "records"
+    records.mkdir()
+    (records / "x.yaml").write_text("slug: x\nlocal: old.pdf\nsha256: old\n")
+    monkeypatch.setattr(paths, "records", lambda: records)
+
+    merged = {"x": {"slug": "x", "local": "new.pdf", "sha256": "new"}}
+    assert build.carry_pins(merged) == 0
+    assert merged["x"]["sha256"] == "new"
+
+
+def test_the_audit_names_every_field_a_write_destroys(tmp_path, monkeypatch):
+    # The function's own docstring is "What a write would destroy". It reported two fields.
+    from citations import build, paths
+
+    records = tmp_path / "records"
+    records.mkdir()
+    (records / "x.yaml").write_text(
+        "slug: x\ndoi: 10.1/a\narxiv: '1234.5678'\nurl: http://e\nvenue: V\n"
+        "local: a.pdf\nsha256: h\n"
+    )
+    monkeypatch.setattr(paths, "records", lambda: records)
+
+    losing, _ = build.audit_existing({"x": {"slug": "x"}})
+    assert {f for _, f, _ in losing} == {"doi", "arxiv", "url", "venue", "local", "sha256"}
