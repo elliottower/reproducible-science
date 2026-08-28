@@ -20,6 +20,8 @@ import collections
 import importlib
 import pathlib
 
+from provenance_core import hint
+
 from citations import coverage as C
 from citations import paths
 from citations import verify as V
@@ -369,6 +371,15 @@ def _delegate(module: str, argv: list[str]) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    code = _main(argv)
+    # After the work, never before it, and never instead of it: the note is about how this
+    # project could be run, and a command that has not yet said what it found should not be
+    # interrupted to say that.
+    hint.note("citations")
+    return code
+
+
+def _main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="citations", description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="cmd")
 

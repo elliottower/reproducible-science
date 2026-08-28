@@ -15,6 +15,7 @@ import pathlib
 import re
 import sys
 
+from provenance_core import hint
 from provenance_core.gitref import try_run
 
 from prereg import osf, template
@@ -245,7 +246,22 @@ def cmd_check(a) -> int:
     return 1 if (changed or codes.count(2)) else 0
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    code = _main(argv)
+    # After the work, never before it, and never instead of it: the note is about how this
+    # project could be run, and a command that has not yet said what it found should not be
+    # interrupted to say that.
+    hint.note("prereg")
+    return code
+
+
+def _main(argv: list[str] | None = None) -> int:
+    """The command. `argv` defaults to the process arguments.
+
+    Taking it explicitly is what lets a caller in the same process run this without touching
+    `sys.argv`: `repro prereg` forwards its remaining arguments here, and a test can
+    drive the command the way a user does. `citations` and `repro` already had this shape.
+    """
     ap = argparse.ArgumentParser(prog="prereg", description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="cmd")
 
@@ -275,7 +291,7 @@ def main() -> int:
     c = sub.add_parser("check", help="has the plan changed since the freeze?")
     c.set_defaults(fn=cmd_check)
 
-    a = ap.parse_args()
+    a = ap.parse_args(argv)
     if not a.cmd:
         ap.print_help()
         return 0

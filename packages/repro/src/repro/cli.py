@@ -14,10 +14,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import pathlib
 import subprocess
 from pathlib import Path
 
-from repro import __version__
+from repro import __version__, crosscheck
+from repro.delegate import BY_NAME, TOOLS
+from repro.delegate import check as delegate_check
+from repro.delegate import run as delegate_run
 from repro.demo import demo
 from repro.exceptions import ReproError
 from repro.manifest import DEFAULT_NAME, find, load
@@ -185,9 +189,65 @@ def cmd_verify(args: argparse.Namespace) -> int:
     return 0 if assessment.passed else 1
 
 
+def cmd_check(args) -> int:
+    """Run every applicable tool and report them together."""
+    root = pathlib.Path(args.directory or ".").resolve()
+    outcomes = delegate_check(root, args.only or ())
+    print(f"{root}\n")
+    for o in outcomes:
+        print(o.line)
+        if o.used and o.code != 0:
+            for line in o.output.rstrip().splitlines():
+                print(f"      {line}")
+    # The cross-tool part, which is the reason `check` exists rather than four commands. Each
+    # of these reads two tools' records and reports something neither can see alone.
+    crossed = 0
+    if stray := crosscheck.unmatched(root):
+        crossed += len(stray)
+        print("\n  claims naming a freeze that no frozen plan records:")
+        for c in stray:
+            print(f"      {c.claim_id}  cites {c.ref}")
+        print("      `results` checks that the reference resolves to a commit, not that a plan")
+        print("      was frozen at it, so a citation like this passes every tool on its own.")
+    if unplanned := crosscheck.confirmatory_without_a_plan(root):
+        print("\n  confirmatory claims, and no frozen plan in this project:")
+        for cid in unplanned:
+            print(f"      {cid}")
+        print("      Reported, not failed: a plan frozen elsewhere or registered on OSF is a")
+        print(
+            "      real arrangement this cannot see. What it can say is nothing here records one."
+        )
+
+    ran = [o for o in outcomes if o.used]
+    bad = [o for o in ran if o.code != 0]
+    if crossed and not bad:
+        print(f"\n{crossed} cross-tool problem(s); every tool passed on its own.")
+        return 1
+    print()
+    if not ran:
+        print("no tool applies to this project. `repro demo` writes one that does.")
+        return 1
+    if bad:
+        print(f"{len(bad)} of {len(ran)} failed.")
+        return 1
+    print(f"{len(ran)} of {len(ran)} passed.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        prog="repro", description="Verify declared evidence assertions against pinned artifacts"
+        prog="repro",
+        description=(
+            "Verify declared evidence assertions against pinned artifacts, and run the other "
+            "tools in this workspace over one project."
+        ),
+        epilog=(
+            "`repro citations verify` and `citations verify` are the same command. Each tool "
+            "keeps its own, installs on its own, and is not deprecated. What only exists here "
+            "is `repro check`, which runs the ones a project uses together. If you use one "
+            "tool, use it directly -- for preregistration alone this adds nothing at all."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     sub = parser.add_subparsers(dest="command")
@@ -219,8 +279,37 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_verify.set_defaults(func=cmd_verify)
 
-    args = parser.parse_args(argv)
-    if not hasattr(args, "func"):
+    p_check = sub.add_parser(
+        "check",
+        help="run every tool this project uses, in one pass",
+        description=(
+            "One pass over the project, one report, one exit code. A tool the project does "
+            "not use is named as unused and not run: reporting it as passing would be a clean "
+            "line standing for a check that never happened. This is the only command that "
+            "does not exist in the tools themselves."
+        ),
+    )
+    p_check.add_argument("directory", nargs="?", help="project root (default: .)")
+    p_check.add_argument(
+        "--only", action="append", choices=sorted(BY_NAME), help="restrict to one tool; repeatable"
+    )
+    p_check.set_defaults(func=cmd_check)
+
+    # One subcommand per tool, each forwarding its arguments untouched. `parse_known_args`
+    # below is what lets `repro citations verify --strict` reach citations with `--strict`
+    # rather than having this parser reject a flag it has never heard of.
+    for tool in TOOLS:
+        p_tool = sub.add_parser(
+            tool.name, help=f"run `{tool.name}`: {tool.summary}", add_help=False
+        )
+        p_tool.set_defaults(func=None, tool=tool.name)
+
+    args, rest = parser.parse_known_args(argv)
+    if getattr(args, "tool", None):
+        return delegate_run(BY_NAME[args.tool], rest)
+    if rest:
+        parser.error(f"unrecognized arguments: {' '.join(rest)}")
+    if not hasattr(args, "func") or args.func is None:
         parser.print_help()
         return 1
     try:

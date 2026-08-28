@@ -17,6 +17,8 @@ from __future__ import annotations
 import argparse
 import sys
 
+from provenance_core import hint
+
 from results import audit, ledger, record
 
 # Nothing below uses these. Each was reachable as `results.cli.<name>` while the logic lived in
@@ -73,7 +75,22 @@ def cmd_verify(a) -> int:
     return audit.verify(a.files)
 
 
-def main() -> int:
+def main(argv: list[str] | None = None) -> int:
+    code = _main(argv)
+    # After the work, never before it, and never instead of it: the note is about how this
+    # project could be run, and a command that has not yet said what it found should not be
+    # interrupted to say that.
+    hint.note("results")
+    return code
+
+
+def _main(argv: list[str] | None = None) -> int:
+    """The command. `argv` defaults to the process arguments.
+
+    Taking it explicitly is what lets a caller in the same process run this without touching
+    `sys.argv`: `repro results` forwards its remaining arguments here, and a test can
+    drive the command the way a user does. `citations` and `repro` already had this shape.
+    """
     ap = argparse.ArgumentParser(prog="results", description=__doc__.split("\n")[0])
     sub = ap.add_subparsers(dest="cmd")
 
@@ -147,7 +164,7 @@ def main() -> int:
     ra = sub.add_parser("reanchor", help="record the ledger's current length as authoritative")
     ra.set_defaults(fn=cmd_reanchor)
 
-    a = ap.parse_args()
+    a = ap.parse_args(argv)
     if not a.cmd:
         ap.print_help()
         return 0
