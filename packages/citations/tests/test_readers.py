@@ -154,14 +154,34 @@ def test_the_two_poppler_modes_disagreeing_is_reported_rather_than_resolved(pdf,
     assert r.agreement[V.READING_ORDER] == "found"
 
 
-def test_the_default_check_reads_one_poppler_mode_and_names_which(pdf, monkeypatch):
-    # Reading order is a triangulation participant, not a second chance on the default path:
-    # one extraction per document, and a `Result.extractor` that does not depend on which
-    # mode happened to answer.
+def test_a_passage_the_default_reader_misses_is_rescued_and_the_rescue_is_named(pdf, monkeypatch):
+    # Reading order was a triangulation participant and not a second chance, on the reasoning
+    # that the default path costs one extraction per document. Measured against a real corpus
+    # that cost 110 false accusations on a single two-column paper, where `-layout` interleaves
+    # the columns and shreds every sentence spanning the gutter. `not found` is an accusation,
+    # so it now takes more than one reader to make it -- and the reader that made it is named,
+    # because a rescued passage must not read like one the default reader found itself.
     stub_extractors(monkeypatch, poppler=OTHER, flow=PASSAGE, pure={"pypdf": PASSAGE})
     r = V.check_one(PASSAGE, pdf)
+    assert r.state == "found"
+    assert r.extractor != POPPLER
+    assert r.fallback
+    assert POPPLER in r.fallback_reason
+
+
+def test_a_passage_no_reader_finds_stays_not_found_and_says_who_looked(pdf, monkeypatch):
+    stub_extractors(monkeypatch, poppler=OTHER, flow=OTHER, pure={"pypdf": OTHER})
+    r = V.check_one(PASSAGE, pdf)
     assert r.state == "not found"
-    assert r.extractor == POPPLER
+    assert "pypdf" in r.detail and POPPLER in r.detail
+
+
+def test_the_default_path_still_reads_one_reader_when_the_passage_is_there(pdf, monkeypatch):
+    # The escalation is on the failure path alone. A passage the first reader resolves must
+    # not pay for the others.
+    stub_extractors(monkeypatch, poppler=PASSAGE, flow=PASSAGE, pure={"pypdf": PASSAGE})
+    r = V.check_one(PASSAGE, pdf)
+    assert (r.state, r.extractor, r.fallback) == ("found", POPPLER, False)
 
 
 def test_indeterminate_is_not_a_quotation_failure_but_is_not_a_strict_pass():
@@ -361,13 +381,26 @@ def test_a_per_page_stub_still_decides_the_page_warning(pdf, monkeypatch):
     assert "page" in r.warnings
 
 
-def test_clearing_extract_clears_the_extraction_behind_it(pdf, monkeypatch):
-    # Two caches, one cleared, and the other goes on answering with the reading it took
-    # before the source changed.
+def test_clearing_extract_alone_leaves_the_second_opinion_cache_stale(pdf, monkeypatch):
+    # `clear_caches` exists because clearing four of five leaves a stale answer that looks
+    # fresh. The not-found path widened that surface: it consults `reading_with`, so any
+    # check that escalated has populated a second cache the default path never touched.
+    # Clear only `extract` afterwards and the rescue is re-served from text nothing on disk
+    # holds any more.
+    stub_extractors(monkeypatch, poppler=OTHER, flow=OTHER, pure={"pypdf": PASSAGE})
+    assert V.check_one(PASSAGE, pdf).fallback, "this check must escalate to populate the cache"
+
+    V.extract.cache_clear()
+    stub_extractors(monkeypatch, poppler=OTHER, flow=OTHER, pure={"pypdf": OTHER})
+    assert V.check_one(PASSAGE, pdf).state == "found", "the stale reading_with entry answered"
+
+
+def test_clear_caches_clears_the_extraction_behind_it(pdf, monkeypatch):
+    # The documented entry point clears every one of them, which is what it is for.
     stub_extractors(monkeypatch, poppler=PASSAGE)
     assert V.check_one(PASSAGE, pdf).state == "found"
-    V.extract.cache_clear()
-    monkeypatch.setattr(V, "_poppler", answer(OTHER))
+    V.clear_caches()
+    stub_extractors(monkeypatch, poppler=OTHER)
     assert V.check_one(PASSAGE, pdf).state == "not found"
 
 

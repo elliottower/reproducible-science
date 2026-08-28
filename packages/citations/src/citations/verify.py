@@ -705,7 +705,70 @@ def check_one(
     result.extraction_digest = _digest(got.text)
     result.fallback = got.fallback
     result.fallback_reason = got.fallback_reason
+
+    # One reader saying no is not the document saying no. Only on a paginated source: the text
+    # of a `.txt` is its bytes, and there is no second way to read them.
+    if result.state == "not found" and is_paginated(artifact):
+        consulted = [got.extractor]
+        rescued = _second_opinion(
+            quote, artifact, page if paginated else None, warn, got.extractor, prefix, suffix
+        )
+        if rescued is not None:
+            return rescued
+        consulted += [n for n in available_extractors() if n != got.extractor]
+        result.detail = (
+            f"not found by any of {', '.join(dict.fromkeys(consulted))}; the passage is absent "
+            f"from this document under every reader installed here"
+        )
     return result
+
+
+def _second_opinion(
+    quote: str,
+    artifact: pathlib.Path,
+    page: int | None,
+    warn: list[str],
+    missed_by: str,
+    prefix: str = "",
+    suffix: str = "",
+) -> Result | None:
+    """Ask the other readers before reporting a passage absent. `None` if none of them finds it.
+
+    `not found` is an accusation against the manuscript -- the source was read and the passage
+    is not in it -- and one reader is not enough to make it. `-layout` preserves a page's
+    visual geometry, so on a two-column paper it interleaves the columns and shreds every
+    sentence that spans the gutter. Measured on `dai_2022_knowledge_neurons.pdf`: 110 of 160
+    quotations read as absent under `pdftotext -layout` and 157 resolve under pypdf. Nothing
+    was wrong with the quotations, and an audit reported 110 failures against a claim whose
+    source contains the text.
+
+    Detecting the column layout was the alternative and is a worse instrument: it guesses at a
+    property this measures. Asking the next reader answers the same question exactly, and only
+    on the path where the first answer was going to be an accusation.
+
+    Reached on `not found` alone. Never on `ambiguous`: a passage occurring twice is in the
+    document, and a reader that merges columns could "resolve" the ambiguity by hiding an
+    occurrence, which loses the evidence rather than settling it.
+
+    A rescued passage is recorded as a fallback naming both readers, so it never becomes
+    indistinguishable from one the declared reader found itself.
+    """
+    for name in available_extractors():
+        if name == missed_by:
+            continue
+        try:
+            got = reading_with(artifact, extractor=name)
+        except SourceUnreadableError:
+            continue
+        if not got.text.strip() or resolve_in(quote, got.text, prefix, suffix).state != "found":
+            continue
+        result = _verdict(quote, got.text, artifact, page, warn, name, prefix, suffix)
+        result.extractor = name
+        result.extraction_digest = _digest(got.text)
+        result.fallback = True
+        result.fallback_reason = f"{missed_by} did not find this passage; {name} did"
+        return result
+    return None
 
 
 def _triangulate(
