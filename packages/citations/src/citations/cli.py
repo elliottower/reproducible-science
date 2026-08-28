@@ -47,6 +47,7 @@ DELEGATED = {
     "build": "build",
     "lint": "lint",
     "add": "add",
+    "pin": "pin",
     "link": "link_pdfs",
     "import-paperclip": "import_paperclip",
 }
@@ -417,6 +418,7 @@ def main(argv: list[str] | None = None) -> int:
         ("build", "rebuild records from the papers' bibliographies"),
         ("lint", "BibTeX correctness, and repeated keys in a .bib"),
         ("add", "add one entry to a .bib, refusing a key it already has"),
+        ("pin", "write a quotation into a claims file, refusing one that does not resolve"),
         ("link", "point pdfs/ at the papers' artifacts"),
         ("import-paperclip", "turn a Paperclip paper repo into pinned claim files"),
     ]:
