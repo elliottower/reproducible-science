@@ -119,8 +119,8 @@ Poppler is preferred and recommended. Where it is absent, or fails on a document
 falls through to whichever pure-Python reader is installed and records the substitution as a
 fallback — so `pip install citations` alone is enough to check a PDF, and no result is quietly
 attributed to an extractor that did not produce it. pypdf comes before pdfplumber because it
-agreed with poppler on more of a 1,792-check corpus and read a document in a third of the
-time; the measurement is in `research/pdf-readers/`.
+agreed with poppler on more of a 1,593-check corpus -- 92.7% against 90.2% -- and read a
+document in a third of the time; the measurement is in `research/pdf-readers/`.
 
 The two poppler modes are one binary with one flag between them, and they fail in opposite
 directions: `-layout` preserves visual position and breaks a sentence spanning two columns,

@@ -108,9 +108,9 @@ READERS: dict[str, Reader] = {
     "pypdf": Reader("pypdf", _read_pypdf, lambda: pypdf is not None),
 }
 
-#: Preference order among the pure-Python readers. Measured rather than assumed: over 1,792
-#: passage checks in `research/pdf-readers/`, pypdf reproduced poppler's outcome more often
-#: than pdfplumber did and read documents in a third of the time.
+#: Preference order among the pure-Python readers. Measured rather than assumed: over 1,593
+#: passage checks in `research/pdf-readers/`, pypdf reproduced poppler's outcome on 92.7% of
+#: them against pdfplumber's 90.2%, and read documents in a third of the time.
 PREFERRED = ("pypdf", "pdfplumber")
 
 

@@ -540,3 +540,16 @@ def test_a_cached_failure_reports_the_same_reason_every_time(pdf, monkeypatch):
     again = V.check_one(PASSAGE, pdf)
     assert first.state == again.state == "unchecked"
     assert first.detail == again.detail
+
+
+def test_every_registered_reader_is_reachable():
+    """`available()` walks `PREFERRED`, so a reader only in `READERS` is never consulted.
+
+    Nothing reports that: it is installed, it can read the document, and `_chain` and
+    `_triangulate` both go through `available_extractors`, which goes through `available`. The
+    two keysets are the same today and there is no mechanism keeping them so.
+    """
+    assert set(R.PREFERRED) == set(R.READERS), (
+        f"registered but unreachable: {set(R.READERS) - set(R.PREFERRED)}; "
+        f"named but unregistered: {set(R.PREFERRED) - set(R.READERS)}"
+    )
