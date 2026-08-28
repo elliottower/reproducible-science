@@ -23,7 +23,7 @@ classifiers = [
   "Topic :: Scientific/Engineering",
 ]
 dependencies = [
-  "citations>=0.4,<0.5",
+  "citations>=0.3,<0.4",
   # Floors, not bare names: without them a fresh install resolves whatever is oldest on
   # PyPI, which is not the combination the tests exercise.
   "prereg>=0.3,<0.4",

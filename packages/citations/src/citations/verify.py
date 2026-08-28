@@ -626,6 +626,32 @@ def extract(
     return got.text
 
 
+def extract_uncached(
+    pdf: pathlib.Path,
+    page: int | None = None,
+    extract_cmd: str | None = None,
+    allowed: frozenset[str] = DEFAULT_EXTRACTORS,
+) -> str:
+    """`extract`, reading the file every time. For a caller that has just hashed the artifact.
+
+    `repro` hashes an artifact immediately before resolving a value in it, so a memoized read
+    would produce a decision whose recorded digest does not describe the text it was computed
+    from. It reached the uncached function through `extract.__wrapped__`, which existed only
+    because `extract` was itself an `lru_cache` -- and when the memoization moved underneath,
+    `getattr(extract, "__wrapped__", extract)` fell back to the cached function and silently
+    kept reading stale text. A default that turns a fresh read into a cached one, with no error
+    anywhere, is the wrong shape for the thing standing between a digest and the bytes it
+    describes. So it is a name.
+    """
+    got = _extract(pdf, page, declared_extractor(extract_cmd), allowed)
+    _PROVENANCE[(pdf, page, extract_cmd, allowed)] = (
+        got.extractor,
+        got.fallback,
+        got.fallback_reason,
+    )
+    return got.text
+
+
 def reading(
     pdf: pathlib.Path,
     page: int | None = None,
@@ -694,6 +720,11 @@ def _reading_with_uncached(
         return readers.Extraction(readers.READERS[extractor].read(pdf, page), extractor)
     raise SourceUnreadableError(pdf, f"no such extractor: {extractor}")
 
+
+#: Kept pointing at the uncached read, which is what it meant while `extract` was itself the
+#: cache. A caller using the old idiom gets the behaviour it was asking for rather than the
+#: opposite of it.
+extract.__wrapped__ = extract_uncached  # type: ignore[attr-defined]
 
 #: The memoization sits under `extract` and `reading_with` now, so their `cache_clear` and
 #: `cache_info` are delegated rather than lost. Both were public: the regression suites call
