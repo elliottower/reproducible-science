@@ -65,14 +65,29 @@ def test_a_declared_command_supplies_the_text_the_quotation_resolves_against(man
     assert result.state == "found"
 
 
-def test_the_same_source_without_a_declared_command_reaches_no_verdict(manuscript, monkeypatch):
-    def pdf_reader_on_a_tex(*a, **kw):
+def test_the_same_source_without_a_declared_command_names_the_reader_that_failed(
+    manuscript, monkeypatch
+):
+    """An undeclared `.tex` is read by `detex`, and a failure names it.
+
+    This pinned the previous rule: no reader was chosen for a `.tex`, so the source reached no
+    verdict and the report advised declaring one. A `.pdf` had a default reader and the
+    commonest manuscript format in this domain did not, though `detex` was already in
+    `DEFAULT_EXTRACTORS`. The suffix now picks it, so the advice no longer applies -- a renderer
+    *was* chosen -- and what matters instead is that the failure says which one, since a
+    decision resting on a reader has to name it.
+
+    Still `unchecked`: the stub fails every subprocess, and a reader that could not run says
+    nothing about whether the passage is in the document.
+    """
+
+    def every_reader_fails(*a, **kw):
         return subprocess.CompletedProcess(a[0], 1, "", "Syntax Error: Couldn't read xref table\n")
 
-    monkeypatch.setattr(V.subprocess, "run", pdf_reader_on_a_tex)
+    monkeypatch.setattr(V.subprocess, "run", every_reader_fails)
     result = V.check_one(PASSAGE, manuscript)
     assert result.state == "unchecked"
-    assert ".tex" in result.detail and "extract_cmd" in result.detail
+    assert "detex" in result.detail
 
 
 def test_a_declared_command_takes_precedence_over_reading_a_text_file_directly(tmp_path, renderer):
