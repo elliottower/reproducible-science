@@ -246,6 +246,26 @@ class Report:
     here whether it was taken because poppler was absent or because poppler failed, so no
     substitution is invisible in the report."""
 
+    interpretations: int = 0
+    """Claims carrying an `interpretation` block. Counted, never checked.
+
+    A characterization is not the kind of thing this package measures, and reporting the
+    count beside the quotation results is how a clean run stops reading as an endorsement of
+    them. A run that resolves every quotation has said nothing about whether any statement
+    follows from what it resolved.
+    """
+
+    foreign_readings: int = 0
+    """Interpretations whose `whose` is neither `ours` nor the source's own citation key.
+
+    These are the ones worth a reader's attention: a characterization attributed to a third
+    document is a claim about what someone else took the source to mean, and the source
+    cannot corroborate it.
+    """
+
+    contested_readings: int = 0
+    """Interpretations marked `contested`, which a file records rather than resolves."""
+
     triangulated: int = 0
     """Quotations more than one extractor was asked about. Counted rather than inferred from
     `--triangulate`: a run can ask for triangulation and get none, where every source declares

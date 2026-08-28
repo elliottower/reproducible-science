@@ -176,6 +176,13 @@ def cmd_verify(a) -> int:
             elif pin.state == "unpinned":
                 rep.unpinned.append(cf.name)
             for cid, claim in cf.claims.items():
+                if claim.interpretation is not None:
+                    rep.interpretations += 1
+                    whose = claim.interpretation.whose
+                    if whose not in {"ours", cf.source.citation}:
+                        rep.foreign_readings += 1
+                    if claim.interpretation.status == "contested":
+                        rep.contested_readings += 1
                 for q in claim.quotes:
                     if not q.text:
                         continue
@@ -277,6 +284,18 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
             if rep.triangulated
             else "\ntriangulation established nothing: every source was read by one extractor."
         )
+
+    # The second axis. Quotations are measured; characterizations are not, and a report that
+    # printed only the first would let "all found" read as an endorsement of statements
+    # nothing examined.
+    if rep.interpretations:
+        print(
+            f"\nreadings  {rep.interpretations:,} — unchecked; this package does not measure them"
+        )
+        if rep.foreign_readings:
+            print(f"  {rep.foreign_readings:>7,}  attributed to a party other than the source")
+        if rep.contested_readings:
+            print(f"  {rep.contested_readings:>7,}  contested")
 
     warns = collections.Counter(w for _, _, r in rep.problems for w in r.warnings)
     if warns:
