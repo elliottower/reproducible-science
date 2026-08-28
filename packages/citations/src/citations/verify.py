@@ -91,6 +91,7 @@ import shlex
 import shutil
 import subprocess
 import unicodedata
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -169,7 +170,7 @@ EXTRACT_TIMEOUT = 120
 #: arriving from elsewhere does not.
 DEFAULT_EXTRACTORS = frozenset({"pdftotext", "detex"})
 
-State = Literal["found", "not found", "indeterminate", "unchecked"]
+State = Literal["found", "not found", "ambiguous", "indeterminate", "unchecked"]
 PinState = Literal["ok", "broken", "unpinned", "missing"]
 
 
@@ -259,7 +260,11 @@ class Report:
         passage leaves the question open in exactly the way an absent one does; what it does
         not do is assert that the passage is missing.
         """
-        return self.counts.get("unchecked", 0) + self.counts.get("indeterminate", 0)
+        return (
+            self.counts.get("unchecked", 0)
+            + self.counts.get("indeterminate", 0)
+            + self.counts.get("ambiguous", 0)
+        )
 
     @property
     def strict_ok(self) -> bool:
@@ -309,6 +314,12 @@ def fold(s: str) -> str:
     # `patients\u2010in\u2010waiting` did not match a quotation typed with the ASCII one, and the
     # passage read as absent from a document that contains it.
     s = s.replace("—", "-").replace("–", "-").replace("−", "-").replace("‐", "-")
+    # Dotless i and dotted capital I are letters in their own right, not compatibility forms,
+    # so no normalization reaches them: NFKC and NFKD both leave `ı` exactly as it was. A PDF
+    # that renders `Krzyżosiak` through a font substituting the dotless glyph extracts a word
+    # no honest quotation of it can match, and the passage reads as absent from a document
+    # that contains it. The ligatures need no entry here -- NFKC folds `ﬁ` to `fi` already.
+    s = s.replace("ı", "i").replace("İ", "I")
     s = re.sub(r"-\s*\n\s*", "", s)  # de-hyphenate across a line break
     return " ".join(s.split()).lower()
 
@@ -639,8 +650,14 @@ def check_one(
     extract_cmd: str | None = None,
     allowed: frozenset[str] = DEFAULT_EXTRACTORS,
     triangulate: bool = False,
+    prefix: str = "",
+    suffix: str = "",
 ) -> Result:
     """Does this passage appear in this source, and what read the source to decide?
+
+    `prefix` and `suffix` are the W3C `TextQuoteSelector` neighbours, consulted only where the
+    passage occurs more than once. Both default to empty, so a caller that has never carried
+    them gets the verdict it always got on any passage that resolves uniquely.
 
     `extract_cmd` is the command the claims file declares; `allowed` is the set of programs
     this run will run, which the caller decides rather than the file. A command that is
@@ -665,7 +682,7 @@ def check_one(
         return Result("unchecked", "file not found", warn)
 
     if triangulate and not extract_cmd and is_paginated(artifact):
-        return _triangulate(quote, artifact, page, warn)
+        return _triangulate(quote, artifact, page, warn, prefix, suffix)
 
     # `extract` is called with the arguments it has always taken where nothing is declared. It
     # is exported, and a caller that wraps or substitutes it wrote against the two-argument
@@ -681,7 +698,9 @@ def check_one(
     # about: the position a `.txt` source is already in. Asking `pdftotext` for the page
     # instead would run a PDF reader over a source whose author said it is not one.
     paginated = extract_cmd is None and is_paginated(artifact)
-    result = _verdict(quote, got.text, artifact, page if paginated else None, warn, got.extractor)
+    result = _verdict(
+        quote, got.text, artifact, page if paginated else None, warn, got.extractor, prefix, suffix
+    )
     result.extractor = got.extractor
     result.extraction_digest = _digest(got.text)
     result.fallback = got.fallback
@@ -689,7 +708,14 @@ def check_one(
     return result
 
 
-def _triangulate(quote: str, artifact: pathlib.Path, page: int | None, warn: list[str]) -> Result:
+def _triangulate(
+    quote: str,
+    artifact: pathlib.Path,
+    page: int | None,
+    warn: list[str],
+    prefix: str = "",
+    suffix: str = "",
+) -> Result:
     """Ask every installed extractor, and report disagreement as disagreement.
 
     An extractor that could not open the file contributes no verdict rather than a `not
@@ -713,7 +739,7 @@ def _triangulate(quote: str, artifact: pathlib.Path, page: int | None, warn: lis
         if not got.text.strip():
             reasons.append(f"{name}: no text extracted")
             continue
-        verdicts[name] = _verdict(quote, got.text, artifact, page, warn, name)
+        verdicts[name] = _verdict(quote, got.text, artifact, page, warn, name, prefix, suffix)
         verdicts[name].extraction_digest = _digest(got.text)
 
     if not verdicts:
@@ -743,6 +769,72 @@ def _triangulate(quote: str, artifact: pathlib.Path, page: int | None, warn: lis
     return result
 
 
+def _count(needle: str, doc: str) -> int:
+    """Occurrences of `needle` in `doc` that land on a token boundary.
+
+    A passage whose last character is alphanumeric and which is followed by another is a
+    shared prefix rather than an occurrence: `the catalog` inside `the catalogue` is not the
+    document saying `the catalog` a second time. Counting those would report a passage as
+    ambiguous because some longer word happens to begin with it.
+
+    Where no occurrence lands cleanly the total is returned instead. A quotation that only
+    ever cuts a word stays `found` and keeps its `truncated` warning, which is the behaviour
+    `_cuts_a_token` exists to produce and states as its own rule: a quote that lands cleanly
+    somewhere in the document is quoting that place.
+    """
+    if not needle:
+        return 0
+    cuts_matter = needle[-1].isalnum()
+    total = clean = 0
+    at = doc.find(needle)
+    while at >= 0:
+        total += 1
+        after = at + len(needle)
+        if not cuts_matter or after >= len(doc) or not doc[after].isalnum():
+            clean += 1
+        at = doc.find(needle, at + 1)
+    return clean or total
+
+
+def _occurrences(
+    quote: str, doc: str, prefix: str, suffix: str, transform: Callable[[str], str]
+) -> tuple[int, bool]:
+    """How often the passage occurs in `doc`, and whether its anchors single one out.
+
+    `doc` arrives already transformed; the quotation and its anchors are transformed here, so
+    both sides of every comparison went through the same function.
+
+    A count, where this was a substring test. `passage in document` answers a weaker question
+    than the record asks: a quotation points at one passage, and a pointer resolving to three
+    of them has identified none of them. Where the passage repeats, the anchors are joined to
+    it and the joined form is counted instead, which is how the record says which occurrence
+    it meant. Joined and then folded, rather than folded and then joined, because folding
+    collapses the whitespace across each seam exactly as it collapsed it in the document.
+    """
+    q = transform(quote)
+    if not q:
+        return 0, False
+    n = _count(q, doc)
+    if n <= 1:
+        return n, n == 1
+    if not (prefix or suffix):
+        return n, False
+    return n, _count(transform(prefix + quote + suffix), doc) == 1
+
+
+def _ambiguous(n: int, anchored: bool) -> str:
+    """Why an ambiguous verdict obtained, and what would settle it."""
+    if anchored:
+        return (
+            f"the passage occurs {n} times and its prefix/suffix do not single one out; "
+            f"widen them until exactly one occurrence carries both"
+        )
+    return (
+        f"the passage occurs {n} times in the source, so the record does not say which of "
+        f"them it means; add `prefix`/`suffix` naming the text on either side"
+    )
+
+
 def _verdict(
     quote: str,
     full: str,
@@ -750,14 +842,27 @@ def _verdict(
     page: int | None,
     warn: list[str],
     extractor: str = "",
+    prefix: str = "",
+    suffix: str = "",
 ) -> Result:
-    """The verdict on one passage, against the text an extractor produced."""
+    """The verdict on one passage, against the text an extractor produced.
+
+    Verbatim first, then the whitespace-stripped skeleton, and a count at each level rather
+    than a membership test. A passage occurring more than once is `ambiguous` and not `found`:
+    the source contains it, and the record has not said which occurrence it is quoting, so any
+    page or section attached to it is asserted about a passage nobody identified.
+    """
     warn = list(warn)
     q, doc = fold(quote), fold(full)
     if not q:
         # `"" in doc` is True. A quotation that folds away entirely is not a quotation.
         return Result("not found", "the quotation is empty after normalization", warn)
-    if q in doc:
+
+    anchored = bool(prefix or suffix)
+    n, singled = _occurrences(quote, doc, prefix, suffix, fold)
+    if n and not singled:
+        return Result("ambiguous", _ambiguous(n, anchored), warn)
+    if n:
         if _cuts_a_token(q, doc):
             warn.append("truncated")
         if page and not _on_page(artifact, q, page, extractor):
@@ -768,8 +873,12 @@ def _verdict(
                 detail += f"; searched the first {PAGE_SCAN_LIMIT} pages"
             return Result("found", detail, warn, found_at)
         return Result("found", "", warn)
-    if skeleton(quote) and skeleton(quote) in skeleton(full):
+
+    k, k_singled = _occurrences(quote, skeleton(full), prefix, suffix, skeleton)
+    if k:
         warn.append("normalized")
+        if not k_singled:
+            return Result("ambiguous", _ambiguous(k, anchored), warn)
         return Result("found", "", warn)
     return Result(
         "not found",
