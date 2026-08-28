@@ -1,6 +1,7 @@
 """The `repro` command.
 
     repro init <name>     scaffold an experiment directory
+    repro demo            write a worked example and run the workflow over it
     repro verify          check every evidence assertion in repro.yaml
 
 A renderer over the library and nothing more. `verify` calls `repro.verify()` and
@@ -17,9 +18,17 @@ import subprocess
 from pathlib import Path
 
 from repro import __version__
+from repro.demo import demo
 from repro.exceptions import ReproError
 from repro.manifest import DEFAULT_NAME, find, load
-from repro.models import Availability, Ordering, Outcome, Regeneration, Validity
+from repro.models import (
+    Availability,
+    Ordering,
+    Outcome,
+    Regeneration,
+    RegenerationReason,
+    Validity,
+)
 from repro.policy import PROFILES
 from repro.renderers import to_sarif
 from repro.verify import verify as run_verify
@@ -85,6 +94,10 @@ def cmd_init(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_demo(args: argparse.Namespace) -> int:
+    return demo(args.directory, force=args.force)
+
+
 def cmd_verify(args: argparse.Namespace) -> int:
     path = Path(args.manifest) if args.manifest else find()
     if path is None:
@@ -126,15 +139,19 @@ def cmd_verify(args: argparse.Namespace) -> int:
     if any(a.validity is not Validity.AUTHORITATIVE for a in report.artifacts):
         print()
 
+    # Built as a list and printed once. Printing the separator whenever the manifest declares a
+    # regeneration put a blank line under a section that had printed nothing, since the
+    # ordinary state -- not requested -- is the one state this block says nothing about.
+    regenerations = []
     for state in report.regenerations:
         if state.state is Regeneration.REPRODUCED:
-            print(f"  reproduced  {state.artifact_id}")
+            regenerations.append(f"  reproduced  {state.artifact_id}")
         elif state.state is Regeneration.DIVERGED:
-            print(f"  DIVERGED    {state.artifact_id}: {state.detail[:48]}")
-        elif state.reason.value != "not_requested":
-            print(f"  regen?      {state.artifact_id}: {state.reason.value}")
-    if report.regenerations:
-        print()
+            regenerations.append(f"  DIVERGED    {state.artifact_id}: {state.detail[:48]}")
+        elif state.reason is not RegenerationReason.NOT_REQUESTED:
+            regenerations.append(f"  regen?      {state.artifact_id}: {state.reason.value}")
+    if regenerations:
+        print("\n".join(regenerations) + "\n")
 
     for claim in report.claims:
         if claim.availability is Availability.NOT_OFFERED:
@@ -179,6 +196,17 @@ def main(argv: list[str] | None = None) -> int:
     p_init.add_argument("name")
     p_init.add_argument("--directory", "-d", help="target directory (default: ./<name>)")
     p_init.set_defaults(func=cmd_init)
+
+    p_demo = sub.add_parser(
+        "demo", help="write a worked example and run the workflow over it, failures included"
+    )
+    p_demo.add_argument("directory", nargs="?", help="where to write it (default: ./repro-demo)")
+    p_demo.add_argument(
+        "--force",
+        action="store_true",
+        help="replace the demo's own files in a directory that already holds them",
+    )
+    p_demo.set_defaults(func=cmd_demo)
 
     p_verify = sub.add_parser("verify", help="check every evidence assertion in repro.yaml")
     p_verify.add_argument("manifest", nargs="?", help=f"path to {DEFAULT_NAME}")

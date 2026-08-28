@@ -16,10 +16,16 @@ that have nothing to do with the claim. Give the address; let the tool fetch it.
 ## Commands
 
 ```bash
+repro demo               # a worked example, run for real and then broken on purpose
 repro init my-paper      # scaffold repro.yaml
 repro verify             # check every assertion in it
 repro verify --policy strict
 ```
+
+`repro demo` writes `repro-demo/`, a self-contained project that verifies clean and then fails
+two different ways: a pinned file that was edited, and a number the manuscript reports that the
+run does not hold. Offline and under a second per command, so it is somewhere to try a change
+and see which check catches it.
 
 ## What a manifest says
 
