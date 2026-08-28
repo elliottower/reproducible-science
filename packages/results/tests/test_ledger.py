@@ -92,3 +92,43 @@ def test_verify_catches_inserted_line(tmp_path):
     lp.write_text("\n".join(lines) + "\n")
     ok, _problems = ledger.verify_chain(lp)
     assert not ok
+
+
+def test_a_ledger_git_does_not_track_is_reported(tmp_path):
+    """A ledger that exists only on one disk cannot be appealed to. `citations` reports an
+    uncommitted record for this reason and `results` said nothing, while three of the four
+    ledgers on the machine that prompted this were untracked."""
+    import os
+    import subprocess
+
+    from results.audit import in_history
+
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True, env=env)
+    lp = tmp_path / ".results" / "ledger.jsonl"
+    lp.parent.mkdir()
+    lp.write_text('{"event": "init"}\n')
+
+    assert in_history(lp) == "is not tracked by git"
+
+    subprocess.run(["git", "add", "-f", str(lp)], cwd=tmp_path, check=True, env=env)
+    subprocess.run(
+        ["git", "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "l"],
+        cwd=tmp_path,
+        check=True,
+        env=env,
+    )
+    assert in_history(lp) is None
+
+    lp.write_text('{"event": "init"}\n{"event": "run"}\n')
+    assert in_history(lp) == "has changes that are not committed"
+
+
+def test_a_ledger_outside_a_repository_is_not_reported(tmp_path):
+    """Not every project is a git repository, and saying nothing is the right answer there."""
+    from results.audit import in_history
+
+    lp = tmp_path / ".results" / "ledger.jsonl"
+    lp.parent.mkdir()
+    lp.write_text('{"event": "init"}\n')
+    assert in_history(lp) is None
