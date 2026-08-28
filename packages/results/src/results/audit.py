@@ -15,6 +15,8 @@ from __future__ import annotations
 
 import pathlib
 
+from provenance_core import sha256_of_tree
+
 from results import ledger, manuscript
 from results.paths import ledger_path, require_root
 from results.timeline import first_outcomes_seen, first_run_timestamp, precedes
@@ -153,9 +155,15 @@ def verify(check_files: bool) -> int:
         # "seal your inputs before a run" was not what this checked. Keep them all, and report
         # a path recorded under more than one hash.
         file_hashes: dict[str, list[str]] = {}
+        # Whether each path was sealed as a file or as a directory, so it is re-derived the way
+        # it was recorded. A tree re-hashed with `sha256_of_file` is not a mismatch to report;
+        # it is a path that cannot be read at all, and would have been an error rather than a
+        # verdict.
+        kinds: dict[str, str] = {}
         for e in events:
             for f in e.get("files", []) + e.get("outputs", []):
                 recorded = file_hashes.setdefault(f["path"], [])
+                kinds[f["path"]] = f.get("kind", "file")
                 if f["sha256"] not in recorded:
                     recorded.append(f["sha256"])
         base = root.parent
@@ -165,7 +173,23 @@ def verify(check_files: bool) -> int:
                 print(f"  MISSING    {path}")
                 drift += 1
                 continue
-            actual = ledger.sha256_of_file(p)
+            if kinds.get(path) == "tree":
+                if not p.is_dir():
+                    # Sealed as a directory and now something else. The digest cannot be
+                    # re-derived, and reporting a hash mismatch would describe a comparison
+                    # that never happened.
+                    print(f"  NOT A TREE {path}")
+                    print("    sealed as a directory; what is there now is not one")
+                    drift += 1
+                    continue
+                actual = sha256_of_tree(p)[0]
+            elif p.is_dir():
+                print(f"  NOT A FILE {path}")
+                print("    sealed as a file; what is there now is a directory")
+                drift += 1
+                continue
+            else:
+                actual = ledger.sha256_of_file(p)
             if actual in recorded:
                 if len(recorded) > 1:
                     # The file on disk matches one recorded hash and the ledger holds others,

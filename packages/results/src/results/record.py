@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import pathlib
 
+from provenance_core import sha256_of_tree
+
 from results import ledger, timeline
 from results.paths import RESULTS_DIR, ledger_path, record_path, require_root
 
@@ -41,14 +43,37 @@ def init() -> int:
 def seal(files: list[str], role: str) -> int:
     root = require_root()
     lp = ledger_path(root)
-    sealed = []
+    # A sealed entry holds a path and digest, a kind, a file count for a tree, and the names a
+    # tree digest did not cover. Declared once so writing and reading it agree.
+    sealed: list[dict[str, str | int | list[str]]] = []
     for name in files:
         p = pathlib.Path(name).resolve()
+        if p.is_dir():
+            # A dataset is a directory. Sealing it meant naming every file, and a file added
+            # afterwards was then simply absent from the record with nothing to notice -- a seal
+            # that looks complete and is not. The digest covers relative paths as well as
+            # contents, so a rename inside the tree changes it.
+            digest, covered, skipped = sha256_of_tree(p)
+            # Annotated, because the literal alone infers `dict[str, str | int]` and the
+            # skipped list below is neither.
+            entry: dict[str, str | int | list[str]] = {
+                "path": record_path(p, root),
+                "sha256": digest,
+                "kind": "tree",
+                "files": len(covered),
+            }
+            # What the digest did not cover, on the record. A seal that quietly ignored
+            # something means a different thing on the next machine, and the reader cannot see
+            # the boundary unless it is written down.
+            if skipped:
+                entry["skipped"] = skipped
+            sealed.append(entry)
+            continue
         if not p.is_file():
             print(f"not a file: {name}")
             return 1
         digest = ledger.sha256_of_file(p)
-        sealed.append({"path": record_path(p, root), "sha256": digest})
+        sealed.append({"path": record_path(p, root), "sha256": digest, "kind": "file"})
     ledger.append_event(
         lp,
         {
@@ -57,9 +82,19 @@ def seal(files: list[str], role: str) -> int:
             "files": sealed,
         },
     )
-    print(f"sealed {len(sealed)} file(s) as {role}")
-    for s in sealed:
-        print(f"  {s['sha256'][:16]}…  {s['path']}")
+    # A sealed entry's values are heterogeneous because the ledger carries them that way, so
+    # each read narrows rather than the type widening to fit the loosest use.
+    trees = [e for e in sealed if e.get("kind") == "tree"]
+    within = sum(n for e in trees if isinstance(n := e.get("files"), int))
+    what = (
+        f"{len(sealed)} file(s)"
+        if not trees
+        else f"{len(sealed) - len(trees)} file(s) and {len(trees)} tree(s) "
+        f"covering {within} file(s)"
+    )
+    print(f"sealed {what} as {role}")
+    for entry in sealed:
+        print(f"  {str(entry['sha256'])[:16]}…  {entry['path']}")
     return 0
 
 

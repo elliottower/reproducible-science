@@ -7,10 +7,11 @@ and a workspace path does not survive into a wheel.
 
 from __future__ import annotations
 
-from .digests import ZERO, sha256_of_file, sha256_of_text
+from .digests import NOISE, ZERO, sha256_of_file, sha256_of_text, sha256_of_tree
 from .gitref import GitError, at_commit, commit, is_dirty, run, try_run
 
 __all__ = [
+    "NOISE",
     "ZERO",
     "GitError",
     "at_commit",
@@ -19,5 +20,6 @@ __all__ = [
     "run",
     "sha256_of_file",
     "sha256_of_text",
+    "sha256_of_tree",
     "try_run",
 ]
