@@ -169,3 +169,49 @@ def test_a_rebuild_that_destroys_nothing_reports_nothing(tmp_path, monkeypatch):
     _library(tmp_path, monkeypatch, records={"doi-10-1-x": {"title": "A work", "doi": "10.1/x"}})
     losing, stale = audit_existing({"doi-10-1-x": {"title": "A work", "doi": "10.1/x"}})
     assert (losing, stale) == ([], [])
+
+
+def test_a_paper_whose_bibliography_is_absent_keeps_its_citations(tmp_path, monkeypatch):
+    # A record is rewritten whole from the bibliographies. A paper that contributed none --
+    # an import with no repository, a moved path -- was having its cited_by entry deleted from
+    # every record another paper also cites. The bibliography not being readable says nothing
+    # about whether the citation holds.
+    from citations import build, paths
+
+    records = tmp_path / "records"
+    records.mkdir()
+    (records / "arxiv-1234-5678.yaml").write_text(
+        "slug: arxiv-1234-5678\ntitle: T\nauthors: []\nyear: '2020'\n"
+        "cited_by:\n  an-import:\n    key: smith2020\n  a-repo:\n    key: smith2020a\n"
+    )
+    monkeypatch.setattr(paths, "records", lambda: records)
+
+    merged = {
+        "arxiv-1234-5678": {
+            "slug": "arxiv-1234-5678",
+            "cited_by": {"a-repo": {"key": "smith2020a"}},
+        }
+    }
+    restored = build.carry_citations(merged, {"an-import"})
+    assert restored == 1
+    assert merged["arxiv-1234-5678"]["cited_by"]["an-import"] == {"key": "smith2020"}
+
+
+def test_a_paper_whose_bibliography_was_read_does_not_keep_a_dropped_citation(
+    tmp_path, monkeypatch
+):
+    # Removing a key from a .bib is how a citation is removed. Only papers whose bibliography
+    # this run could not read are protected.
+    from citations import build, paths
+
+    records = tmp_path / "records"
+    records.mkdir()
+    (records / "arxiv-1234-5678.yaml").write_text(
+        "slug: arxiv-1234-5678\ntitle: T\nauthors: []\nyear: '2020'\n"
+        "cited_by:\n  a-repo:\n    key: smith2020\n"
+    )
+    monkeypatch.setattr(paths, "records", lambda: records)
+
+    merged = {"arxiv-1234-5678": {"slug": "arxiv-1234-5678", "cited_by": {}}}
+    assert build.carry_citations(merged, set()) == 0
+    assert merged["arxiv-1234-5678"]["cited_by"] == {}
