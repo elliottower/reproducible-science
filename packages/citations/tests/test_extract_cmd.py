@@ -425,3 +425,66 @@ def test_pdftotext_given_the_dash_is_not_lectured_about_it(tmp_path, monkeypatch
     assert got.state == "unchecked"
     assert "printed nothing" in got.detail
     assert "unless the last argument" not in got.detail
+
+
+# --- an extractor that writes beside the source is a defect, not an extraction ----------------
+
+
+def test_a_command_that_writes_a_sibling_is_reported_not_silently_tolerated(tmp_path):
+    # `pdftotext -layout X.pdf` with no `-` writes `X.txt` and prints nothing. Thirty-two such
+    # files accumulated in an audited repository over three weeks; the directory was gitignored
+    # so nothing complained, and a `.txt` pinned beside a same-stem PDF would have been replaced
+    # by this tool's own output.
+    src = tmp_path / "paper.pdf"
+    src.write_bytes(b"%PDF-1.4 body")
+    writer = tmp_path / "writes.sh"
+    writer.write_text('#!/bin/sh\ncat > "${1%.pdf}.txt" <<< "extracted"\necho text\n')
+    writer.chmod(0o755)
+
+    r = V.check_one(
+        "a passage long enough to carry its own qualifiers without truncation",
+        src,
+        extract_cmd=f"{writer} {{}}",
+        allowed=frozenset({str(writer)}),
+    )
+    assert r.state == "unchecked"
+    assert "paper.txt" in r.detail
+    assert "wrote" in r.detail
+
+
+def test_an_extractor_that_writes_nothing_beside_the_source_is_unaffected(tmp_path):
+    src = tmp_path / "paper.pdf"
+    src.write_bytes(b"%PDF-1.4 body")
+    quiet = tmp_path / "quiet.sh"
+    quiet.write_text(
+        '#!/bin/sh\necho "a passage long enough to carry its own qualifiers without truncation"\n'
+    )
+    quiet.chmod(0o755)
+
+    r = V.check_one(
+        "a passage long enough to carry its own qualifiers without truncation",
+        src,
+        extract_cmd=f"{quiet} {{}}",
+        allowed=frozenset({str(quiet)}),
+    )
+    assert r.state == "found"
+
+
+def test_a_file_that_was_already_beside_the_source_is_not_blamed_on_the_extractor(tmp_path):
+    # The check compares before against after. A sibling that predates the run is not a write.
+    src = tmp_path / "paper.pdf"
+    src.write_bytes(b"%PDF-1.4 body")
+    (tmp_path / "paper.txt").write_text("this was here first")
+    quiet = tmp_path / "quiet.sh"
+    quiet.write_text(
+        '#!/bin/sh\necho "a passage long enough to carry its own qualifiers without truncation"\n'
+    )
+    quiet.chmod(0o755)
+
+    r = V.check_one(
+        "a passage long enough to carry its own qualifiers without truncation",
+        src,
+        extract_cmd=f"{quiet} {{}}",
+        allowed=frozenset({str(quiet)}),
+    )
+    assert r.state == "found"

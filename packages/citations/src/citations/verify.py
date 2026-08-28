@@ -398,6 +398,22 @@ def _argv(source: pathlib.Path, declared: str, allowed: frozenset[str]) -> list[
     return [*parts, str(source)]
 
 
+def _stem_siblings(source: pathlib.Path) -> frozenset[str]:
+    """Files beside `source` sharing its stem, which is where a writing extractor puts output.
+
+    Narrowed to the stem rather than the whole directory on purpose. `pdftotext -layout X.pdf`
+    writes `X.txt`, which is the observed case; watching every name in the directory would also
+    fire when an unrelated process writes there, and this project routinely has more than one
+    session working in one tree.
+    """
+    try:
+        return frozenset(
+            q.name for q in source.parent.iterdir() if q.stem == source.stem and q != source
+        )
+    except OSError:
+        return frozenset()
+
+
 def _run(source: pathlib.Path, argv: list[str], missing: str = "", hint: str = "") -> str:
     """Run one extractor over `source` and return what it printed.
 
@@ -418,6 +434,13 @@ def _run(source: pathlib.Path, argv: list[str], missing: str = "", hint: str = "
     # bytes twice and compare, and a cache keyed on the path returns the first answer both
     # times, which would make this check incapable of failing.
     before = sha256_of_file(source) if source.is_file() else ""
+    # The same rule one level out. The hash above catches an extractor that overwrites the file
+    # it was given; it cannot see one that writes a *sibling*, and that is the common shape:
+    # `pdftotext -layout X.pdf` with no `-` writes `X.txt` and prints nothing. Thirty-two such
+    # files accumulated in one audited repository over three weeks, unnoticed because the
+    # directory is gitignored. Nothing was corrupted there, but a `.txt` pinned as a source
+    # beside a same-stem PDF would have been silently replaced by this tool's own output.
+    beside = _stem_siblings(source)
     try:
         proc = subprocess.run(argv, capture_output=True, text=True, timeout=EXTRACT_TIMEOUT)
     except FileNotFoundError as e:
@@ -434,6 +457,15 @@ def _run(source: pathlib.Path, argv: list[str], missing: str = "", hint: str = "
             f"the file on disk is no longer the one that was checked. Restore it before "
             f"re-running. A command whose output path collides with its input does this: "
             f"give the output a distinct name, or write to stdout.",
+        )
+    if left := sorted(_stem_siblings(source) - beside):
+        raise SourceUnreadableError(
+            source,
+            f"{program} wrote {', '.join(left)} beside the source. An extractor reads; one "
+            f"that writes has changed the tree it was pointed at, and a file it leaves under "
+            f"a name another record pins would replace that record's source with this tool's "
+            f"own output. Send the text to stdout instead: `{program} ... {{}} -`. The file it "
+            f"wrote is still there; nothing here deletes it.",
         )
     if proc.returncode != 0:
         said = (proc.stderr or "").strip().splitlines()
