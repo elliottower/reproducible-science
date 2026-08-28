@@ -225,3 +225,18 @@ def test_an_import_is_declared_never_inferred_from_having_no_bibliography(tmp_pa
         records={"a": {"slug": "a", "cited_by": {"vanished": {}}}},
     )
     assert status_of(survey(lib, search=tmp_path), "vanished") is Status.ORPHANED
+
+
+def test_a_paper_tagged_in_the_registry_is_not_read_as_declaring_a_path(tmp_path):
+    """`tags` sits beside `bib` in a papers.yaml entry and is a list, not a file. Checked as a
+    path it makes every tagged paper dangling."""
+    bib = tmp_path / "refs.bib"
+    bib.write_text("@misc{x}")
+    lib = library(
+        tmp_path / "lib",
+        papers={"paper": {"bib": str(bib), "tags": ["a/b"]}},
+        records={"r": {"slug": "r", "cited_by": {"paper": {}}}},
+    )
+    found = survey(lib)
+    assert status_of(found, "paper") is Status.ACTIVE
+    assert not found.projects[0].missing_paths

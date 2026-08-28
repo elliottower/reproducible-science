@@ -8,8 +8,17 @@ a `keywords` field, so a tag is something a person asserts and nothing regenerat
 That is the whole design problem. Declared metadata with no forcing function goes stale
 quietly, and free-text tags go stale fastest of all: `ai-safety` and `ai-saftey` are two tags,
 both plausible, and nothing notices. So the vocabulary is closed. `tags.yaml` names every tag
-that may be used and what it means, and a tag on a record that the vocabulary does not name is
-reported as an error rather than accepted as a new tag. A typo becomes a finding.
+that may be used and what it means, and a tag the vocabulary does not name is reported as an
+error rather than accepted as a new tag. A typo becomes a finding.
+
+The second half is where a tag is written. Tagging records directly, a project at a time, puts
+on each record exactly what `cited_by` already says -- and then stops being true, because the
+next fifty records the project cites do not get it and nothing notices. So a tag goes on the
+*paper*, in `papers.yaml`, and reaches records through `cited_by`, which `citations build`
+maintains. One line covers 377 records and cannot drift from them.
+
+A record may still carry its own `tags`, for the work whose subject is not its citing paper's
+and for the 232 records no paper cites at all. Its tags add to the ones it inherits.
 
 Hierarchy is the `/` in a name and nothing more. `ai-safety/governance` sits under `ai-safety`
 because of the separator, so a tree needs no second structure to declare and cannot disagree
@@ -27,7 +36,7 @@ from dataclasses import dataclass, field
 
 import yaml
 
-from citations import paths
+from citations import paths, projects
 from citations.exceptions import CitationsError
 
 #: The vocabulary file, at the library root beside `papers.yaml`.
@@ -122,16 +131,64 @@ def namespaces(names: set[str]) -> set[str]:
     return out - names
 
 
-def applied(library: pathlib.Path) -> dict[str, set[str]]:
-    """Which records carry each tag, by tag name, read from every record's `tags`."""
-    out: dict[str, set[str]] = {}
+def project_tags(library: pathlib.Path) -> dict[str, list[str]]:
+    """What each paper in `papers.yaml` is tagged with. The primary place a tag is written."""
+    out: dict[str, list[str]] = {}
+    for name, cfg in (projects.registry(pathlib.Path(library)) or {}).items():
+        declared = (cfg or {}).get("tags") or []
+        if isinstance(declared, str):
+            raise CitationsError(
+                f"papers.yaml: {name}: `tags` must be a list, not a string. "
+                f"Write `tags: [{declared}]`."
+            )
+        out[str(name)] = [str(t) for t in declared]
+    return out
+
+
+def record_tags(library: pathlib.Path) -> dict[str, list[str]]:
+    """What each record carries in its own `tags`, by slug. The exception, not the rule."""
+    out: dict[str, list[str]] = {}
     for record in sorted((pathlib.Path(library) / "records").glob("*.yaml")):
         try:
             loaded = yaml.safe_load(record.read_text()) or {}
         except yaml.YAMLError:
             continue
-        for tag in loaded.get("tags") or []:
-            out.setdefault(str(tag), set()).add(record.stem)
+        own = loaded.get("tags") or []
+        if own:
+            out[record.stem] = [str(t) for t in own]
+    return out
+
+
+def effective(library: pathlib.Path) -> dict[str, set[str]]:
+    """Every tag each record has, inherited from its citing papers plus its own.
+
+    A record cited by three papers inherits all three papers' tags. This is derived on every
+    read and written nowhere, which is what stops it from going stale.
+    """
+    library = pathlib.Path(library)
+    by_project = project_tags(library)
+    own = record_tags(library)
+
+    out: dict[str, set[str]] = {}
+    for record in sorted((library / "records").glob("*.yaml")):
+        try:
+            loaded = yaml.safe_load(record.read_text()) or {}
+        except yaml.YAMLError:
+            continue
+        tags = set(own.get(record.stem, ()))
+        for project in loaded.get("cited_by") or {}:
+            tags |= set(by_project.get(str(project), ()))
+        if tags:
+            out[record.stem] = tags
+    return out
+
+
+def applied(library: pathlib.Path) -> dict[str, set[str]]:
+    """Which records carry each tag, inheritance included."""
+    out: dict[str, set[str]] = {}
+    for slug, tags in effective(library).items():
+        for tag in tags:
+            out.setdefault(tag, set()).add(slug)
     return out
 
 
@@ -164,16 +221,39 @@ def survey(library: pathlib.Path) -> list[Use]:
     return out
 
 
-def undeclared(library: pathlib.Path) -> dict[str, set[str]]:
-    """Tags on records that the vocabulary does not name. The check this module exists for."""
+def undeclared_in_registry(library: pathlib.Path) -> dict[str, set[str]]:
+    """Tags `papers.yaml` puts on a paper that the vocabulary does not name, by tag."""
     known = set(vocabulary(library))
-    return {name: recs for name, recs in applied(library).items() if name not in known}
+    out: dict[str, set[str]] = {}
+    for project, tags in project_tags(library).items():
+        for tag in tags:
+            if tag not in known:
+                out.setdefault(tag, set()).add(project)
+    return out
+
+
+def undeclared_on_records(library: pathlib.Path) -> dict[str, set[str]]:
+    """Tags a record carries itself that the vocabulary does not name, by tag."""
+    known = set(vocabulary(library))
+    out: dict[str, set[str]] = {}
+    for slug, tags in record_tags(library).items():
+        for tag in tags:
+            if tag not in known:
+                out.setdefault(tag, set()).add(slug)
+    return out
+
+
+def undeclared(library: pathlib.Path) -> dict[str, set[str]]:
+    """Every tag the vocabulary does not name, wherever it is used. The check this exists for."""
+    out = {k: set(v) for k, v in undeclared_in_registry(library).items()}
+    for tag, slugs in undeclared_on_records(library).items():
+        out.setdefault(tag, set()).update(slugs)
+    return out
 
 
 def untagged(library: pathlib.Path) -> int:
-    """How many records carry no tag at all."""
-    tagged = {slug for recs in applied(library).values() for slug in recs}
-    return total_records(library) - len(tagged)
+    """How many records no tag reaches, inherited or their own."""
+    return total_records(library) - len(effective(library))
 
 
 def _selected(library: pathlib.Path, cited_by: str) -> list[pathlib.Path]:
@@ -270,15 +350,32 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     _render(uses, total_records(library))
 
+    tagged_papers = {p: t for p, t in project_tags(library).items() if t}
+    if tagged_papers:
+        print(f"\n  from {len(tagged_papers)} tagged paper(s) in papers.yaml:")
+        # Derived, so a project name longer than a written-down width cannot weld itself to
+        # its tags. `cross-design-evidence-discordance` is 33 characters and did exactly that.
+        width = max(len(p) for p in tagged_papers) + 2
+        for project, tags in sorted(tagged_papers.items()):
+            print(f"    {project:<{width}}{', '.join(sorted(tags))}")
+    own = record_tags(library)
+    if own:
+        print(f"\n  {len(own)} record(s) also carry a tag of their own")
+
     blank = untagged(library)
     if blank:
         print(f"  {blank:,} of them carry no tag")
 
-    loose = undeclared(library)
-    if not loose:
+    in_registry = undeclared_in_registry(library)
+    on_records = undeclared_on_records(library)
+    if not in_registry and not on_records:
         return 0
-    print(f"\n{len(loose)} tag(s) no vocabulary declares:")
-    for name, records in sorted(loose.items(), key=lambda kv: (-len(kv[1]), kv[0])):
-        print(f"  {name}: {len(records)} record(s)")
-    print(f"      declare it in {VOCABULARY}, or take it off with --remove")
+    total = len(set(in_registry) | set(on_records))
+    print(f"\n{total} tag(s) no vocabulary declares:")
+    for name, papers_using in sorted(in_registry.items()):
+        print(f"  {name}: on {', '.join(sorted(papers_using))} in papers.yaml")
+        print(f"      declare it in {VOCABULARY}, or correct the entry")
+    for name, slugs in sorted(on_records.items(), key=lambda kv: (-len(kv[1]), kv[0])):
+        print(f"  {name}: on {len(slugs)} record(s)")
+        print(f"      declare it in {VOCABULARY}, or take it off with --remove")
     return 1

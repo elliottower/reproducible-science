@@ -14,9 +14,13 @@ from citations.exceptions import CitationsError
 from citations.tags import (
     Kind,
     apply,
+    effective,
     namespaces,
+    project_tags,
     survey,
     undeclared,
+    undeclared_in_registry,
+    undeclared_on_records,
     untagged,
     vocabulary,
 )
@@ -238,3 +242,88 @@ def test_a_record_carrying_a_bare_namespace_is_still_a_finding(tmp_path):
         records={"a": {"slug": "a", "tags": ["ai-safety"]}},
     )
     assert set(undeclared(lib)) == {"ai-safety"}
+
+
+def test_a_record_inherits_the_tags_of_the_paper_that_cites_it(tmp_path):
+    lib = library(
+        tmp_path / "lib",
+        tags={"ai/governance": ""},
+        records={"a": {"slug": "a", "cited_by": {"consensus": {}}}},
+    )
+    (lib / "papers.yaml").write_text(
+        yaml.safe_dump({"papers": {"consensus": {"tags": ["ai/governance"]}}})
+    )
+    assert effective(lib) == {"a": {"ai/governance"}}
+
+
+def test_a_record_two_tagged_papers_cite_inherits_from_both(tmp_path):
+    lib = library(
+        tmp_path / "lib",
+        tags={"one": "", "two": ""},
+        records={"a": {"slug": "a", "cited_by": {"p": {}, "q": {}}}},
+    )
+    (lib / "papers.yaml").write_text(
+        yaml.safe_dump({"papers": {"p": {"tags": ["one"]}, "q": {"tags": ["two"]}}})
+    )
+    assert effective(lib)["a"] == {"one", "two"}
+
+
+def test_a_records_own_tag_adds_to_what_it_inherits(tmp_path):
+    """For the work whose subject is not its citing paper's."""
+    lib = library(
+        tmp_path / "lib",
+        tags={"inherited": "", "its-own": ""},
+        records={"a": {"slug": "a", "cited_by": {"p": {}}, "tags": ["its-own"]}},
+    )
+    (lib / "papers.yaml").write_text(yaml.safe_dump({"papers": {"p": {"tags": ["inherited"]}}}))
+    assert effective(lib)["a"] == {"inherited", "its-own"}
+
+
+def test_a_record_added_to_a_tagged_paper_is_tagged_with_no_command_run(tmp_path):
+    """The property the whole design is for. Tagging records a project at a time writes down
+    what cited_by already says, and then stops being true the moment the project cites
+    anything new."""
+    lib = library(
+        tmp_path / "lib", tags={"t": ""}, records={"a": {"slug": "a", "cited_by": {"p": {}}}}
+    )
+    (lib / "papers.yaml").write_text(yaml.safe_dump({"papers": {"p": {"tags": ["t"]}}}))
+    assert set(effective(lib)) == {"a"}
+
+    (lib / "records" / "b.yaml").write_text(yaml.safe_dump({"slug": "b", "cited_by": {"p": {}}}))
+    assert effective(lib)["b"] == {"t"}, "a new record inherits without anything being re-run"
+
+
+def test_a_record_no_tagged_paper_cites_inherits_nothing(tmp_path):
+    lib = library(
+        tmp_path / "lib", tags={"t": ""}, records={"a": {"slug": "a", "cited_by": {"other": {}}}}
+    )
+    (lib / "papers.yaml").write_text(yaml.safe_dump({"papers": {"p": {"tags": ["t"]}}}))
+    assert effective(lib) == {}
+
+
+def test_an_undeclared_tag_in_the_registry_is_reported_against_the_paper(tmp_path):
+    """The remedy differs by where the tag is: papers.yaml is edited, a record is --removed."""
+    lib = library(tmp_path / "lib", tags={"known": ""}, records={"a": {"slug": "a"}})
+    (lib / "papers.yaml").write_text(yaml.safe_dump({"papers": {"p": {"tags": ["typo"]}}}))
+    assert undeclared_in_registry(lib) == {"typo": {"p"}}
+    assert undeclared_on_records(lib) == {}
+
+
+def test_tags_written_as_a_string_in_the_registry_is_refused(tmp_path):
+    """`tags: ai/governance` is a plausible thing to type and iterates as characters."""
+    lib = library(tmp_path / "lib", tags={"ai/governance": ""})
+    (lib / "papers.yaml").write_text(yaml.safe_dump({"papers": {"p": {"tags": "ai/governance"}}}))
+    with pytest.raises(CitationsError, match="must be a list"):
+        project_tags(lib)
+
+
+def test_a_long_project_name_does_not_weld_itself_to_its_tags(tmp_path, capsys):
+    """`cross-design-evidence-discordance` is 33 characters and ran into its own tag list."""
+    from citations import cli
+
+    lib = library(tmp_path / "lib", tags={"t": ""}, records={"a": {"slug": "a"}})
+    (lib / "papers.yaml").write_text(
+        yaml.safe_dump({"papers": {"cross-design-evidence-discordance": {"tags": ["t"]}}})
+    )
+    cli.main(["tags", "--library", str(lib)])
+    assert "discordance  t" in capsys.readouterr().out

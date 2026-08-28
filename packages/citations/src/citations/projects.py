@@ -38,8 +38,9 @@ from citations.exceptions import CitationsError
 SIBLINGS = "siblings"
 
 #: Keys in a `papers.yaml` entry that declare something about the project rather than name a
-#: path. Excluded from the path check, which would otherwise read `archived: true` as a file.
-DECLARED = frozenset({"archived", "imported"})
+#: path. Excluded from the path check, which would otherwise read `archived: true` as a file
+#: and report the project dangling because no file is called `True`.
+DECLARED = frozenset({"archived", "imported", "tags"})
 
 
 class Status(enum.StrEnum):
