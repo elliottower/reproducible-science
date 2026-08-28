@@ -10,6 +10,7 @@ citations lint              BibTeX correctness, and repeated keys in a .bib
 citations add               add one entry to a .bib, refusing a key it already has
 citations link              point pdfs/ at wherever the papers keep the artifacts
 citations bib               emit a .bib for the works a paper cites
+citations tags              what the tag vocabulary declares, and what the records use
 citations import-paperclip  turn a Paperclip paper repo into pinned claim files
 """
 
@@ -23,7 +24,7 @@ import pathlib
 from provenance_core import hint
 
 from citations import coverage as C
-from citations import paths
+from citations import paths, projects
 from citations import verify as V
 from citations.exceptions import CitationsError, ClaimFileError
 from citations.models import ClaimFile, load_claim_file, load_record
@@ -50,6 +51,8 @@ DELEGATED = {
     "lint": "lint",
     "add": "add",
     "pin": "pin",
+    "projects": "projects",
+    "tags": "tags",
     "link": "link_pdfs",
     "import-paperclip": "import_paperclip",
 }
@@ -300,6 +303,19 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
         if rep.contested_readings:
             print(f"  {rep.contested_readings:>7,}  contested")
 
+    # A record that is not committed exists on one machine, and a verdict resting on it cannot
+    # be appealed to later. Counted and reported, never blocking: a library mid-edit is the
+    # ordinary state of working in one.
+    try:
+        pending = projects.uncommitted(paths.home())
+    except CitationsError:
+        pending = 0
+    if pending:
+        print(
+            f"\n{pending} record(s) in the library are not committed. A pin is evidence once it "
+            f"is in history."
+        )
+
     warns = collections.Counter(w for _, _, r in rep.problems for w in r.warnings)
     if warns:
         print("\nwarnings")
@@ -430,6 +446,8 @@ def _main(argv: list[str] | None = None) -> int:
         ("lint", "BibTeX correctness, and repeated keys in a .bib"),
         ("add", "add one entry to a .bib, refusing a key it already has"),
         ("pin", "write a quotation into a claims file, refusing one that does not resolve"),
+        ("projects", "which projects this library refers to, and which names are dead"),
+        ("tags", "the tag vocabulary, what uses it, and any tag nothing declares"),
         ("link", "point pdfs/ at the papers' artifacts"),
         ("import-paperclip", "turn a Paperclip paper repo into pinned claim files"),
     ]:
