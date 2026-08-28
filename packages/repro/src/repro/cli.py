@@ -3,6 +3,10 @@
     repro init <name>     scaffold an experiment directory
     repro demo            write a worked example and run the workflow over it
     repro verify          check every evidence assertion in repro.yaml
+    repro check           run every tool this project uses, in one pass
+    repro prereg          run `prereg`: freeze a plan, and record what deviated from it
+    repro citations       run `citations`: does every quotation resolve in its source?
+    repro results         run `results`: seal a run, record it, verify the chain
 
 A renderer over the library and nothing more. `verify` calls `repro.verify()` and
 `Policy.assess()`, both of which return values, so anything this prints can also be obtained

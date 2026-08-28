@@ -4,6 +4,7 @@
     prereg freeze         record the commit and hash, append to the log
     prereg log <note>     append a line without freezing
     prereg check          has anything above the line changed since the freeze?
+    prereg setup          save an OSF token to .env
 
 One file per experiment, one rule: never edit above the line, only append below it.
 """
