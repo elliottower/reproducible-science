@@ -8,8 +8,9 @@ citations resolve           backfill missing identifiers
 citations build             rebuild records from the papers' bibliographies
 citations lint              BibTeX correctness, and repeated keys in a .bib
 citations add               add one entry to a .bib, refusing a key it already has
+citations pin               write a quotation into a claims file, refusing one that does not resolve
 citations link              point pdfs/ at wherever the papers keep the artifacts
-citations bib               emit a .bib for the works a paper cites
+citations projects          which projects this library refers to, and which names are dead
 citations tags              what the tag vocabulary declares, and what the records use
 citations import-paperclip  turn a Paperclip paper repo into pinned claim files
 """

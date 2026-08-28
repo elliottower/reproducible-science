@@ -76,3 +76,47 @@ def test_markers_are_relative_names(tmp_path):
     for tool in TOOLS:
         for m in tool.markers:
             assert not pathlib.Path(m).is_absolute()
+
+
+def test_a_data_directory_with_nothing_in_it_is_not_evidence_of_use(tmp_path):
+    """An empty `preregistrations/` was read as "this project preregisters", and `prereg
+    check` then failed it for having no plan -- the detector inventing the failure."""
+    (tmp_path / "preregistrations").mkdir()
+    assert not BY_NAME["prereg"].used_by(tmp_path)
+    (tmp_path / "preregistrations" / "PREREG.md").write_text("# plan\n")
+    assert BY_NAME["prereg"].used_by(tmp_path)
+
+
+def test_claims_are_found_below_the_root_where_papers_actually_keep_them(tmp_path):
+    """This library's own registry points at `paper/prior_art/claims`. A root-only search
+    told a project with 61 pinned quotations that no tool applied to it."""
+    nested = tmp_path / "paper" / "prior_art" / "claims"
+    nested.mkdir(parents=True)
+    (nested / "a.yaml").write_text("source: {}\n")
+    assert BY_NAME["citations"].used_by(tmp_path)
+    assert BY_NAME["citations"].data_dir(tmp_path) == nested
+
+
+def test_the_check_is_told_where_the_claims_are(tmp_path):
+    """`citations verify` reports "nothing to check" and exits 2 when given no claims
+    directory, so running it without one turned every citations project into a failure."""
+    claims = tmp_path / "claims"
+    claims.mkdir()
+    (claims / "a.yaml").write_text("source: {}\n")
+    argv = BY_NAME["citations"].argv_for(tmp_path)
+    assert argv == ("verify", "--claims", str(claims))
+
+
+def test_a_tool_that_must_be_pointed_somewhere_is_unused_when_there_is_nowhere(tmp_path):
+    """A library with no claims is not a project whose quotations failed. It is one with
+    none, and running the check against it manufactures an exit 2."""
+    (tmp_path / ".citations").mkdir()
+    assert not BY_NAME["citations"].used_by(tmp_path)
+    assert BY_NAME["citations"].argv_for(tmp_path) == ("verify",)
+
+
+def test_a_data_directory_is_not_looked_for_inside_a_virtualenv(tmp_path):
+    buried = tmp_path / ".venv" / "lib" / "claims"
+    buried.mkdir(parents=True)
+    (buried / "a.yaml").write_text("source: {}\n")
+    assert not BY_NAME["citations"].used_by(tmp_path)

@@ -7,6 +7,7 @@ results run <file>...     record outputs after a run completes
 results claim <text>      bind a manuscript claim to a run's output
 results coverage <paper>  how many of a manuscript's numbers are bound to a run
 results verify            check the ledger chain and every hash it names
+results reanchor          record the ledger's current length as authoritative
 
 This module parses arguments. Each handler unpacks the namespace argparse built and calls into
 `results.record` or `results.audit`, where the command's logic and its refusals live.

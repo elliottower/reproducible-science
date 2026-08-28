@@ -21,6 +21,18 @@ import pathlib
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
+#: How far below the root a data directory is looked for. Three levels reaches
+#: `paper/prior_art/claims`, which is where this registry's own papers keep them, and stops
+#: well before a search becomes a crawl of the whole tree.
+MAX_DEPTH = 3
+
+#: Directories a data marker is never looked for inside.
+SKIP = frozenset({"node_modules", "venv", ".venv", "site-packages", "build", "dist"})
+
+
+def _hidden(rel: pathlib.Path) -> bool:
+    return any(p.startswith(".") or p in SKIP for p in rel.parts)
+
 
 #: A tool, how to reach its command, how to ask it to check a project, and how to tell
 #: whether the project uses it at all. `detect` is the part that keeps `repro check` honest:
@@ -31,8 +43,8 @@ class Tool:
     module: str
     summary: str
     check_argv: tuple[str, ...]
-    markers: tuple[str, ...]
-    """Paths whose presence means this project uses the tool. Any one is enough.
+    state_markers: tuple[str, ...]
+    """Directories the tool creates. Existence is enough: the tool made them, so it is in use.
 
     State directories only, never a data directory that happens to share the name. `results/`
     is a committed data directory in this project's own convention while `.results/` is the
@@ -40,13 +52,65 @@ class Tool:
     it for having no `.results/` -- a spurious failure invented by the detector.
     """
 
+    data_markers: tuple[str, ...] = ()
+    """Directories holding the material a check reads, found at the root or below it.
+
+    Two things separate these from state markers. They must have something in them: an empty
+    `preregistrations/` was read as "this project preregisters", and `prereg check` then failed
+    it for having no plan -- the detector inventing a failure again, one level along. And they
+    are looked for below the root, because a paper keeps its claims where its paper lives:
+    this library's own registry points at `paper/prior_art/claims`, which a root-only search
+    does not see, so a project with 61 pinned quotations was told no tool applied to it.
+    """
+
+    points_at: str | None = None
+    """The flag that tells this tool's check where the data is, where it must be told.
+
+    `citations verify` checks the claims directory it is given and reports "nothing to check"
+    otherwise, so running it without one turns every citations project into a failure. A tool
+    that must be pointed somewhere is in use only when there is somewhere to point it: a
+    library with no claims is not a project whose quotations failed, it is one with none.
+    """
+
+    @property
+    def markers(self) -> tuple[str, ...]:
+        return self.state_markers + self.data_markers
+
     def entry(self) -> Callable[[Sequence[str] | None], int]:
         import importlib
 
         return importlib.import_module(self.module).main
 
+    def data_dir(self, root: pathlib.Path) -> pathlib.Path | None:
+        """The shallowest non-empty data directory, root first. None where there is none."""
+        for name in self.data_markers:
+            here = root / name
+            if here.is_dir() and any(here.iterdir()):
+                return here
+        for depth in range(1, MAX_DEPTH + 1):
+            for name in self.data_markers:
+                found = sorted(
+                    d
+                    for d in root.glob("/".join(["*"] * depth) + f"/{name}")
+                    if d.is_dir() and not _hidden(d.relative_to(root)) and any(d.iterdir())
+                )
+                if found:
+                    return found[0]
+        return None
+
     def used_by(self, root: pathlib.Path) -> bool:
-        return any((root / m).exists() for m in self.markers)
+        if self.points_at:
+            return self.data_dir(root) is not None
+        return any((root / m).exists() for m in self.state_markers) or (
+            self.data_dir(root) is not None
+        )
+
+    def argv_for(self, root: pathlib.Path) -> tuple[str, ...]:
+        """`check_argv`, told where to look where the tool needs telling."""
+        if not self.points_at:
+            return self.check_argv
+        found = self.data_dir(root)
+        return (*self.check_argv, self.points_at, str(found)) if found else self.check_argv
 
 
 TOOLS: tuple[Tool, ...] = (
@@ -55,21 +119,24 @@ TOOLS: tuple[Tool, ...] = (
         module="prereg.cli",
         summary="freeze a plan before running, and record what deviated from it",
         check_argv=("check",),
-        markers=(".prereg", "preregistrations", "preregs"),
+        state_markers=(".prereg",),
+        data_markers=("preregistrations", "preregs"),
     ),
     Tool(
         name="citations",
         module="citations.cli",
         summary="check that every quotation resolves in the source it cites",
         check_argv=("verify",),
-        markers=(".citations", "claims"),
+        state_markers=(".citations",),
+        data_markers=("claims",),
+        points_at="--claims",
     ),
     Tool(
         name="results",
         module="results.cli",
         summary="seal a run, record what it produced, and verify the chain",
         check_argv=("verify",),
-        markers=(".results",),
+        state_markers=(".results",),
     ),
 )
 
@@ -126,6 +193,6 @@ def check(root: pathlib.Path, only: Sequence[str] = ()) -> list[Outcome]:
             contextlib.redirect_stdout(buf),
             contextlib.redirect_stderr(buf),
         ):
-            code = run(tool, tool.check_argv)
+            code = run(tool, tool.argv_for(root))
         out.append(Outcome(tool.name, True, code, buf.getvalue()))
     return out
