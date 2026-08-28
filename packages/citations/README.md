@@ -77,7 +77,8 @@ all found.
 | `citations audit` | Does the stored metadata match the record the identifier resolves to? |
 | `citations resolve` | Backfill missing DOIs and arXiv ids |
 | `citations build` | Rebuild records from bibliographies |
-| `citations lint` | BibTeX correctness, via papis |
+| `citations lint` | BibTeX correctness, and repeated keys in a `.bib` |
+| `citations add` | Add one entry to a `.bib`, refusing a key it already has |
 | `citations link` | Point pdfs/ at the papers' artifacts |
 | `citations import-paperclip` | Turn a Paperclip paper repo into pinned claim files |
 
@@ -213,6 +214,49 @@ deposited inside a title. What survives is a disagreement about the work.
 
 Fetched payloads are cached beside the file audited, so a re-run is offline and the report is
 reproducible from what was fetched rather than from the network.
+
+## Adding an entry to a bibliography
+
+Appending an entry by hand is how a duplicate key gets into a `.bib`, and BibTeX's answer to one
+is non-fatal. It reports `Repeated entry`, keeps the copy the file defines first, skips the
+second and writes a `.bbl` without it — so a corrected entry appended below an old one never
+reaches the reference list, and the build fails somewhere else entirely, in `Citation undefined`
+warnings that name nothing.
+
+```bash
+citations add refs.bib --key smith2026thing --entry-file entry.bib
+citations add refs.bib --doi 10.1145/3287560.3287596
+citations add refs.bib --arxiv 1706.03762
+```
+
+A key the file already defines exits non-zero, prints both entries side by side and writes
+nothing. Case is folded, because BibTeX folds it: `Smith2026Thing` in a file that has
+`smith2026thing` is a repeat under BibTeX and a second work under biber, and neither is what the
+file says. Where the entry is fetched, it is shown before it is written and carries every author
+the registry lists — `and others` is never written into a `.bib`, since a shortened list looks
+exactly like a complete one.
+
+```console
+$ citations add refs.bib --arxiv 1706.03762
+  fetched from  arxiv
+  authors       8, as the registry lists them
+  key           vaswani2017attention  (derived; --key names another)
+...
+  appended to refs.bib: 2 entries, now 3, vaswani2017attention in exactly one.
+```
+
+The write is read back before it is reported: the file has to parse as every entry it parsed as
+before plus this one, with the key on exactly one line, or the original bytes go back.
+
+`citations lint --bib refs.bib` asks the same question of a file already written, and needs
+neither papis nor a library, so it runs in continuous integration.
+
+```text
+  bib  refs.bib
+    sprague2024cot                              lines 374, 989
+
+  230 entries, 1 repeated key(s)
+```
 
 ## Full text through Paperclip
 

@@ -26,7 +26,14 @@ citations audit --bib refs.bib      # check a BibTeX file directly
 citations resolve                   # backfill missing DOIs and arXiv ids
 citations init                      # create a library here
 citations lint                      # BibTeX correctness
+citations lint --bib refs.bib       # keys the bibliography defines twice
+citations add refs.bib --doi <doi>  # add an entry, refusing a key it already has
 ```
+
+**Never append an entry to a `.bib` by hand.** BibTeX's answer to a repeated key is non-fatal:
+it keeps the copy defined first, skips the second, and writes a `.bbl` without it, so the entry
+just added never reaches the reference list and the build fails somewhere else, in `Citation
+undefined` warnings that name nothing. `citations add` refuses the key and changes nothing.
 
 ## Reading the output
 

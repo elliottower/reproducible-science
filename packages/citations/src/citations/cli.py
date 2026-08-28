@@ -6,7 +6,8 @@ citations coverage          is every quotation in my manuscript pinned at all?
 citations audit             does the metadata match the record the identifier resolves to?
 citations resolve           backfill missing identifiers
 citations build             rebuild records from the papers' bibliographies
-citations lint              BibTeX correctness, via papis doctor
+citations lint              BibTeX correctness, and repeated keys in a .bib
+citations add               add one entry to a .bib, refusing a key it already has
 citations link              point pdfs/ at wherever the papers keep the artifacts
 citations bib               emit a .bib for the works a paper cites
 citations import-paperclip  turn a Paperclip paper repo into pinned claim files
@@ -45,6 +46,7 @@ DELEGATED = {
     "resolve": "resolve",
     "build": "build",
     "lint": "lint",
+    "add": "add",
     "link": "link_pdfs",
     "import-paperclip": "import_paperclip",
 }
@@ -388,7 +390,8 @@ def main(argv: list[str] | None = None) -> int:
         ("audit", "does the stored metadata match the registry record?"),
         ("resolve", "backfill missing identifiers"),
         ("build", "rebuild records from the papers' bibliographies"),
-        ("lint", "BibTeX correctness, via papis doctor"),
+        ("lint", "BibTeX correctness, and repeated keys in a .bib"),
+        ("add", "add one entry to a .bib, refusing a key it already has"),
         ("link", "point pdfs/ at the papers' artifacts"),
         ("import-paperclip", "turn a Paperclip paper repo into pinned claim files"),
     ]:
