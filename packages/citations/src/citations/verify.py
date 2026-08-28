@@ -300,7 +300,15 @@ class Report:
 @functools.lru_cache(maxsize=256)
 def fold(s: str) -> str:
     """Normalize the way a PDF extractor mangles text, without changing which words appear."""
-    s = unicodedata.normalize("NFKC", s)
+    # NFKD and not NFKC, then the combining marks dropped. A renderer typesets `naïve` as a
+    # dotless i carrying a combining diaeresis, which is how LaTeX writes it, and the quotation
+    # is typed with the precomposed `ï`. Composing leaves those two different strings and the
+    # passage reads as absent: seven quotations from one paper failed on that alone. Dropping
+    # the marks makes both sides `naive`, at the cost of no longer distinguishing two words
+    # that differ only by an accent -- which is a pair that does not occur inside one document.
+    # NFKD folds the `ﬁ` and `ﬂ` ligatures the same as NFKC does.
+    s = unicodedata.normalize("NFKD", s)
+    s = "".join(c for c in s if not unicodedata.combining(c))
     # A PDF's embedded fonts can reach the extractor as raw glyph codes, arriving as control
     # characters mid-page. They become separators rather than being deleted: deleting them welds
     # the words on either side into one that appears in neither text, so a passage that is really
@@ -339,7 +347,26 @@ def skeleton(s: str) -> str:
     `0.42`: a reversed inequality and a flipped sign both reported as quoted verbatim, by the
     one check that exists to catch a misquotation.
     """
-    return re.sub(r"\s+", "", fold(s))
+    s = fold(s)
+    # A hyphen joining two word characters, at least one of them a letter, with any whitespace
+    # after it. A renderer breaks `prefix-matching` across a line, `fold` removes the break
+    # hyphen from the document, and the quotation keeps the real one, so the two can never
+    # agree while a hyphen means anything here. The trailing `\s*` is for the mirror case,
+    # where the quotation preserved the break and the document did not: `non- sparse` against
+    # `nonsparse`.
+    #
+    # The bounds are the point. Deleting every hyphen is a live defect -- it folds `-0.42`
+    # into `0.42`, so a quotation claiming the negative resolves against a source stating the
+    # positive -- and this is what stops that: a minus sign is preceded by a space or by
+    # nothing, never by a word character, so no rule here reaches one. Nor does it reach the
+    # subtraction in `vec('king') - vec('man')`, which is spaced on both sides and stays a
+    # mismatch when a document's extraction has dropped it. Requiring a letter on one side
+    # leaves `5-3` alone, where a range and a subtraction look identical.
+    s = re.sub(r"(?<=[a-z])-\s*(?=[a-z0-9])|(?<=[a-z0-9])-\s*(?=[a-z])", "", s)
+    # An underscore is a subscript the extractor has already flattened: `p_{IOI}` comes out as
+    # `pioi`, and the quotation is typed with the underscore the source no longer shows.
+    s = s.replace("_", "")
+    return re.sub(r"\s+", "", s)
 
 
 def _argv(source: pathlib.Path, declared: str, allowed: frozenset[str]) -> list[str]:
