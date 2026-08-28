@@ -178,3 +178,48 @@ def test_verify_passes_the_same_claims_when_the_pin_is_intact(tmp_path):
     r = run(["verify", "--claims", str(claims)], tmp_path)
     assert r.returncode == 0, r.stdout
     assert "changed since being pinned" not in r.stdout
+
+
+def test_every_outcome_the_checker_can_return_is_printed():
+    # `ambiguous` was added to `State` and not to `RESULTS`. The outcome table iterates
+    # RESULTS, so those quotations were counted and never printed: the table stopped summing
+    # to the quotation count above it, and the closing line fell through to "all found."
+    import typing
+
+    from citations import verify
+
+    assert set(typing.get_args(verify.State)) == set(cli_results())
+
+
+def cli_results():
+    from citations.cli import RESULTS
+
+    return RESULTS
+
+
+def test_ambiguous_alone_does_not_report_all_found(tmp_path):
+    # The passage occurs twice, so the record does not say which occurrence it pinned.
+    # Nothing failed, but nothing was established either, and the run must not read as clean.
+    src = tmp_path / "s.txt"
+    src.write_text("the angle matches the Haar expectation.\nAgain: matches the Haar expectation.")
+    (tmp_path / "a.yaml").write_text(
+        f"source:\n  citation: x\n  local: {src}\nclaims:\n  c1:\n    quotes:\n"
+        f"      - exact: 'matches the Haar expectation'\n"
+    )
+    r = run(["verify", "--claims", str(tmp_path)], tmp_path, tmp_path)
+    assert "all found." not in r.stdout, r.stdout
+    assert "ambiguous" in r.stdout, r.stdout
+
+
+def test_strict_names_the_quotations_it_fails_on(tmp_path):
+    # A count on its own says a build should fail and not what to open.
+    src = tmp_path / "s.txt"
+    src.write_text("the angle matches the Haar expectation.\nAgain: matches the Haar expectation.")
+    (tmp_path / "a.yaml").write_text(
+        f"source:\n  citation: x\n  local: {src}\nclaims:\n  c1:\n    quotes:\n"
+        f"      - exact: 'matches the Haar expectation'\n"
+    )
+    r = run(["verify", "--claims", str(tmp_path), "--strict"], tmp_path, tmp_path)
+    assert r.returncode == 1
+    assert "could not be checked at all" in r.stdout
+    assert "matches the Haar expectation" in r.stdout.split("could not be checked at all")[1]
