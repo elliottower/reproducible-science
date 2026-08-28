@@ -36,6 +36,7 @@ WARNINGS = {
     "short": "the source may qualify this in the next clause",
     "normalized": "matched after ignoring punctuation and spacing",
     "page": "found, but not on the page recorded",
+    "page unchecked": "a page is recorded and the declared extractor cannot be asked for one",
 }
 
 DELEGATED = {
@@ -178,7 +179,14 @@ def cmd_verify(a) -> int:
                         continue
                     rep.checked += 1
                     r = V.check_one(
-                        q.text, artifact, q.page, cf.source.extract_cmd, allowed, a.triangulate
+                        q.text,
+                        artifact,
+                        q.page,
+                        cf.source.extract_cmd,
+                        allowed,
+                        a.triangulate,
+                        q.prefix,
+                        q.suffix,
                     )
                     counts[r.state] += 1
                     _record_extractor(rep, extractors, r)
@@ -206,7 +214,9 @@ def cmd_verify(a) -> int:
             if not q.text:
                 continue
             rep.checked += 1
-            r = V.check_one(q.text, artifact, q.page, None, allowed, a.triangulate)
+            r = V.check_one(
+                q.text, artifact, q.page, None, allowed, a.triangulate, q.prefix, q.suffix
+            )
             counts[r.state] += 1
             _record_extractor(rep, extractors, r)
             if r.state != "found" or r.warnings:

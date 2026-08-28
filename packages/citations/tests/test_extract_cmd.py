@@ -425,3 +425,108 @@ def test_pdftotext_given_the_dash_is_not_lectured_about_it(tmp_path, monkeypatch
     assert got.state == "unchecked"
     assert "printed nothing" in got.detail
     assert "unless the last argument" not in got.detail
+
+
+# --- an extractor that writes beside the source is a defect, not an extraction ----------------
+
+
+def test_a_command_that_writes_a_sibling_is_reported_not_silently_tolerated(tmp_path):
+    # `pdftotext -layout X.pdf` with no `-` writes `X.txt` and prints nothing. Thirty-two such
+    # files accumulated in an audited repository over three weeks; the directory was gitignored
+    # so nothing complained, and a `.txt` pinned beside a same-stem PDF would have been replaced
+    # by this tool's own output.
+    src = tmp_path / "paper.pdf"
+    src.write_bytes(b"%PDF-1.4 body")
+    writer = tmp_path / "writes.sh"
+    # POSIX only: `/bin/sh` is dash on Ubuntu and has no here-string, so `<<<` is a syntax
+    # error there and the test measured the shell rather than the check.
+    writer.write_text('#!/bin/sh\necho extracted > "${1%.pdf}.txt"\necho text\n')
+    writer.chmod(0o755)
+
+    r = V.check_one(
+        "a passage long enough to carry its own qualifiers without truncation",
+        src,
+        extract_cmd=f"{writer} {{}}",
+        allowed=frozenset({str(writer)}),
+    )
+    assert r.state == "unchecked"
+    assert "paper.txt" in r.detail
+    assert "wrote" in r.detail
+
+
+def test_an_extractor_that_writes_nothing_beside_the_source_is_unaffected(tmp_path):
+    src = tmp_path / "paper.pdf"
+    src.write_bytes(b"%PDF-1.4 body")
+    quiet = tmp_path / "quiet.sh"
+    quiet.write_text(
+        '#!/bin/sh\necho "a passage long enough to carry its own qualifiers without truncation"\n'
+    )
+    quiet.chmod(0o755)
+
+    r = V.check_one(
+        "a passage long enough to carry its own qualifiers without truncation",
+        src,
+        extract_cmd=f"{quiet} {{}}",
+        allowed=frozenset({str(quiet)}),
+    )
+    assert r.state == "found"
+
+
+def test_a_file_that_was_already_beside_the_source_is_not_blamed_on_the_extractor(tmp_path):
+    # The check compares before against after. A sibling that predates the run is not a write.
+    src = tmp_path / "paper.pdf"
+    src.write_bytes(b"%PDF-1.4 body")
+    (tmp_path / "paper.txt").write_text("this was here first")
+    quiet = tmp_path / "quiet.sh"
+    quiet.write_text(
+        '#!/bin/sh\necho "a passage long enough to carry its own qualifiers without truncation"\n'
+    )
+    quiet.chmod(0o755)
+
+    r = V.check_one(
+        "a passage long enough to carry its own qualifiers without truncation",
+        src,
+        extract_cmd=f"{quiet} {{}}",
+        allowed=frozenset({str(quiet)}),
+    )
+    assert r.state == "found"
+
+
+# --- a page assertion nobody can check is reported, not dropped -------------------------------
+
+
+def _pdf_with_pages(tmp_path, monkeypatch, text):
+    p = tmp_path / "source.pdf"
+    p.write_bytes(b"%PDF-1.4")
+    monkeypatch.setattr(V, "extract", lambda pdf, page=None, extract_cmd=None, allowed=None: text)
+    return p
+
+
+def test_a_page_under_a_declared_extractor_is_reported_as_unchecked(tmp_path, monkeypatch):
+    # 154 assertions in one audited claim were dropped in silence: page 9999 on a three-page
+    # document graded exactly as the right page did.
+    src = _pdf_with_pages(tmp_path, monkeypatch, "a passage long enough to carry its qualifiers")
+    r = V.check_one(
+        "a passage long enough to carry its qualifiers", src, page=9999, extract_cmd="detex"
+    )
+    assert r.state == "found"
+    assert "page unchecked" in r.warnings
+
+
+def test_no_page_recorded_means_no_such_warning(tmp_path, monkeypatch):
+    src = _pdf_with_pages(tmp_path, monkeypatch, "a passage long enough to carry its qualifiers")
+    r = V.check_one(
+        "a passage long enough to carry its qualifiers", src, page=None, extract_cmd="detex"
+    )
+    assert "page unchecked" not in r.warnings
+
+
+def test_a_text_source_is_not_asked_about_pages_at_all(tmp_path):
+    # `.txt` has no pages, so a page assertion there is not an unchecked one -- it is a field
+    # that does not apply, and warning about it would be noise on every plain-text source.
+    src = tmp_path / "source.txt"
+    src.write_text("a passage long enough to carry its own qualifiers without truncation")
+    r = V.check_one(
+        "a passage long enough to carry its own qualifiers without truncation", src, page=4
+    )
+    assert "page unchecked" not in r.warnings

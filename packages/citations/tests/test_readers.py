@@ -154,14 +154,34 @@ def test_the_two_poppler_modes_disagreeing_is_reported_rather_than_resolved(pdf,
     assert r.agreement[V.READING_ORDER] == "found"
 
 
-def test_the_default_check_reads_one_poppler_mode_and_names_which(pdf, monkeypatch):
-    # Reading order is a triangulation participant, not a second chance on the default path:
-    # one extraction per document, and a `Result.extractor` that does not depend on which
-    # mode happened to answer.
+def test_a_passage_the_default_reader_misses_is_rescued_and_the_rescue_is_named(pdf, monkeypatch):
+    # Reading order was a triangulation participant and not a second chance, on the reasoning
+    # that the default path costs one extraction per document. Measured against a real corpus
+    # that cost 110 false accusations on a single two-column paper, where `-layout` interleaves
+    # the columns and shreds every sentence spanning the gutter. `not found` is an accusation,
+    # so it now takes more than one reader to make it -- and the reader that made it is named,
+    # because a rescued passage must not read like one the default reader found itself.
     stub_extractors(monkeypatch, poppler=OTHER, flow=PASSAGE, pure={"pypdf": PASSAGE})
     r = V.check_one(PASSAGE, pdf)
+    assert r.state == "found"
+    assert r.extractor != POPPLER
+    assert r.fallback
+    assert POPPLER in r.fallback_reason
+
+
+def test_a_passage_no_reader_finds_stays_not_found_and_says_who_looked(pdf, monkeypatch):
+    stub_extractors(monkeypatch, poppler=OTHER, flow=OTHER, pure={"pypdf": OTHER})
+    r = V.check_one(PASSAGE, pdf)
     assert r.state == "not found"
-    assert r.extractor == POPPLER
+    assert "pypdf" in r.detail and POPPLER in r.detail
+
+
+def test_the_default_path_still_reads_one_reader_when_the_passage_is_there(pdf, monkeypatch):
+    # The escalation is on the failure path alone. A passage the first reader resolves must
+    # not pay for the others.
+    stub_extractors(monkeypatch, poppler=PASSAGE, flow=PASSAGE, pure={"pypdf": PASSAGE})
+    r = V.check_one(PASSAGE, pdf)
+    assert (r.state, r.extractor, r.fallback) == ("found", POPPLER, False)
 
 
 def test_indeterminate_is_not_a_quotation_failure_but_is_not_a_strict_pass():
@@ -361,13 +381,26 @@ def test_a_per_page_stub_still_decides_the_page_warning(pdf, monkeypatch):
     assert "page" in r.warnings
 
 
-def test_clearing_extract_clears_the_extraction_behind_it(pdf, monkeypatch):
-    # Two caches, one cleared, and the other goes on answering with the reading it took
-    # before the source changed.
+def test_clearing_extract_alone_leaves_the_second_opinion_cache_stale(pdf, monkeypatch):
+    # `clear_caches` exists because clearing four of five leaves a stale answer that looks
+    # fresh. The not-found path widened that surface: it consults `reading_with`, so any
+    # check that escalated has populated a second cache the default path never touched.
+    # Clear only `extract` afterwards and the rescue is re-served from text nothing on disk
+    # holds any more.
+    stub_extractors(monkeypatch, poppler=OTHER, flow=OTHER, pure={"pypdf": PASSAGE})
+    assert V.check_one(PASSAGE, pdf).fallback, "this check must escalate to populate the cache"
+
+    V.extract.cache_clear()
+    stub_extractors(monkeypatch, poppler=OTHER, flow=OTHER, pure={"pypdf": OTHER})
+    assert V.check_one(PASSAGE, pdf).state == "found", "the stale reading_with entry answered"
+
+
+def test_clear_caches_clears_the_extraction_behind_it(pdf, monkeypatch):
+    # The documented entry point clears every one of them, which is what it is for.
     stub_extractors(monkeypatch, poppler=PASSAGE)
     assert V.check_one(PASSAGE, pdf).state == "found"
-    V.extract.cache_clear()
-    monkeypatch.setattr(V, "_poppler", answer(OTHER))
+    V.clear_caches()
+    stub_extractors(monkeypatch, poppler=OTHER)
     assert V.check_one(PASSAGE, pdf).state == "not found"
 
 
@@ -467,3 +500,56 @@ def test_the_two_poppler_modes_are_both_consulted_and_are_not_the_same_reading(t
     assert layout.extractor != flow.extractor
     assert PROSE[0].lower() in V.fold(layout.text)
     assert PROSE[0].lower() in V.fold(flow.text)
+
+
+# --- a failure is an answer, and answers are cached -------------------------------------------
+
+
+def test_an_unreadable_source_is_attempted_once_not_once_per_quotation(pdf, monkeypatch):
+    # `lru_cache` stores only on a normal return, so a cache around a raising function memoized
+    # nothing: 2,210 poppler invocations for 14 artifacts, 158x the necessary work, and 95% of
+    # a 21-minute run. The failure is per-document and is not a different failure the second
+    # time it is asked for.
+    attempts = {"n": 0}
+
+    def counted(path, page=None, layout=True):
+        attempts["n"] += 1
+        raise V.SourceUnreadableError(path, "cannot be read")
+
+    monkeypatch.setattr(V, "_poppler", counted)
+    monkeypatch.setattr(R, "READERS", {})
+    monkeypatch.setattr(R, "PREFERRED", ())
+
+    for _ in range(20):
+        assert V.check_one(PASSAGE, pdf).state == "unchecked"
+    assert attempts["n"] == 1, f"one document, one attempt, got {attempts['n']}"
+
+
+def test_clearing_the_cache_allows_a_repaired_source_to_be_read_again(pdf, monkeypatch):
+    # The other half: a cached failure must not outlive the thing that caused it.
+    stub_extractors(monkeypatch, poppler=None)
+    assert V.check_one(PASSAGE, pdf).state == "unchecked"
+    V.clear_caches()
+    stub_extractors(monkeypatch, poppler=PASSAGE)
+    assert V.check_one(PASSAGE, pdf).state == "found"
+
+
+def test_a_cached_failure_reports_the_same_reason_every_time(pdf, monkeypatch):
+    stub_extractors(monkeypatch, poppler=None)
+    first = V.check_one(PASSAGE, pdf)
+    again = V.check_one(PASSAGE, pdf)
+    assert first.state == again.state == "unchecked"
+    assert first.detail == again.detail
+
+
+def test_every_registered_reader_is_reachable():
+    """`available()` walks `PREFERRED`, so a reader only in `READERS` is never consulted.
+
+    Nothing reports that: it is installed, it can read the document, and `_chain` and
+    `_triangulate` both go through `available_extractors`, which goes through `available`. The
+    two keysets are the same today and there is no mechanism keeping them so.
+    """
+    assert set(R.PREFERRED) == set(R.READERS), (
+        f"registered but unreachable: {set(R.READERS) - set(R.PREFERRED)}; "
+        f"named but unregistered: {set(R.PREFERRED) - set(R.READERS)}"
+    )

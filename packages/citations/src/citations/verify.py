@@ -91,6 +91,7 @@ import shlex
 import shutil
 import subprocess
 import unicodedata
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -169,7 +170,7 @@ EXTRACT_TIMEOUT = 120
 #: arriving from elsewhere does not.
 DEFAULT_EXTRACTORS = frozenset({"pdftotext", "detex"})
 
-State = Literal["found", "not found", "indeterminate", "unchecked"]
+State = Literal["found", "not found", "ambiguous", "indeterminate", "unchecked"]
 PinState = Literal["ok", "broken", "unpinned", "missing"]
 
 
@@ -259,7 +260,11 @@ class Report:
         passage leaves the question open in exactly the way an absent one does; what it does
         not do is assert that the passage is missing.
         """
-        return self.counts.get("unchecked", 0) + self.counts.get("indeterminate", 0)
+        return (
+            self.counts.get("unchecked", 0)
+            + self.counts.get("indeterminate", 0)
+            + self.counts.get("ambiguous", 0)
+        )
 
     @property
     def strict_ok(self) -> bool:
@@ -295,7 +300,15 @@ class Report:
 @functools.lru_cache(maxsize=256)
 def fold(s: str) -> str:
     """Normalize the way a PDF extractor mangles text, without changing which words appear."""
-    s = unicodedata.normalize("NFKC", s)
+    # NFKD and not NFKC, then the combining marks dropped. A renderer typesets `naïve` as a
+    # dotless i carrying a combining diaeresis, which is how LaTeX writes it, and the quotation
+    # is typed with the precomposed `ï`. Composing leaves those two different strings and the
+    # passage reads as absent: seven quotations from one paper failed on that alone. Dropping
+    # the marks makes both sides `naive`, at the cost of no longer distinguishing two words
+    # that differ only by an accent -- which is a pair that does not occur inside one document.
+    # NFKD folds the `ﬁ` and `ﬂ` ligatures the same as NFKC does.
+    s = unicodedata.normalize("NFKD", s)
+    s = "".join(c for c in s if not unicodedata.combining(c))
     # A PDF's embedded fonts can reach the extractor as raw glyph codes, arriving as control
     # characters mid-page. They become separators rather than being deleted: deleting them welds
     # the words on either side into one that appears in neither text, so a passage that is really
@@ -309,6 +322,12 @@ def fold(s: str) -> str:
     # `patients\u2010in\u2010waiting` did not match a quotation typed with the ASCII one, and the
     # passage read as absent from a document that contains it.
     s = s.replace("—", "-").replace("–", "-").replace("−", "-").replace("‐", "-")
+    # Dotless i and dotted capital I are letters in their own right, not compatibility forms,
+    # so no normalization reaches them: NFKC and NFKD both leave `ı` exactly as it was. A PDF
+    # that renders `Krzyżosiak` through a font substituting the dotless glyph extracts a word
+    # no honest quotation of it can match, and the passage reads as absent from a document
+    # that contains it. The ligatures need no entry here -- NFKC folds `ﬁ` to `fi` already.
+    s = s.replace("ı", "i").replace("İ", "I")
     s = re.sub(r"-\s*\n\s*", "", s)  # de-hyphenate across a line break
     return " ".join(s.split()).lower()
 
@@ -328,7 +347,26 @@ def skeleton(s: str) -> str:
     `0.42`: a reversed inequality and a flipped sign both reported as quoted verbatim, by the
     one check that exists to catch a misquotation.
     """
-    return re.sub(r"\s+", "", fold(s))
+    s = fold(s)
+    # A hyphen joining two word characters, at least one of them a letter, with any whitespace
+    # after it. A renderer breaks `prefix-matching` across a line, `fold` removes the break
+    # hyphen from the document, and the quotation keeps the real one, so the two can never
+    # agree while a hyphen means anything here. The trailing `\s*` is for the mirror case,
+    # where the quotation preserved the break and the document did not: `non- sparse` against
+    # `nonsparse`.
+    #
+    # The bounds are the point. Deleting every hyphen is a live defect -- it folds `-0.42`
+    # into `0.42`, so a quotation claiming the negative resolves against a source stating the
+    # positive -- and this is what stops that: a minus sign is preceded by a space or by
+    # nothing, never by a word character, so no rule here reaches one. Nor does it reach the
+    # subtraction in `vec('king') - vec('man')`, which is spaced on both sides and stays a
+    # mismatch when a document's extraction has dropped it. Requiring a letter on one side
+    # leaves `5-3` alone, where a range and a subtraction look identical.
+    s = re.sub(r"(?<=[a-z])-\s*(?=[a-z0-9])|(?<=[a-z0-9])-\s*(?=[a-z])", "", s)
+    # An underscore is a subscript the extractor has already flattened: `p_{IOI}` comes out as
+    # `pioi`, and the quotation is typed with the underscore the source no longer shows.
+    s = s.replace("_", "")
+    return re.sub(r"\s+", "", s)
 
 
 def _argv(source: pathlib.Path, declared: str, allowed: frozenset[str]) -> list[str]:
@@ -360,6 +398,22 @@ def _argv(source: pathlib.Path, declared: str, allowed: frozenset[str]) -> list[
     return [*parts, str(source)]
 
 
+def _stem_siblings(source: pathlib.Path) -> frozenset[str]:
+    """Files beside `source` sharing its stem, which is where a writing extractor puts output.
+
+    Narrowed to the stem rather than the whole directory on purpose. `pdftotext -layout X.pdf`
+    writes `X.txt`, which is the observed case; watching every name in the directory would also
+    fire when an unrelated process writes there, and this project routinely has more than one
+    session working in one tree.
+    """
+    try:
+        return frozenset(
+            q.name for q in source.parent.iterdir() if q.stem == source.stem and q != source
+        )
+    except OSError:
+        return frozenset()
+
+
 def _run(source: pathlib.Path, argv: list[str], missing: str = "", hint: str = "") -> str:
     """Run one extractor over `source` and return what it printed.
 
@@ -380,6 +434,13 @@ def _run(source: pathlib.Path, argv: list[str], missing: str = "", hint: str = "
     # bytes twice and compare, and a cache keyed on the path returns the first answer both
     # times, which would make this check incapable of failing.
     before = sha256_of_file(source) if source.is_file() else ""
+    # The same rule one level out. The hash above catches an extractor that overwrites the file
+    # it was given; it cannot see one that writes a *sibling*, and that is the common shape:
+    # `pdftotext -layout X.pdf` with no `-` writes `X.txt` and prints nothing. Thirty-two such
+    # files accumulated in one audited repository over three weeks, unnoticed because the
+    # directory is gitignored. Nothing was corrupted there, but a `.txt` pinned as a source
+    # beside a same-stem PDF would have been silently replaced by this tool's own output.
+    beside = _stem_siblings(source)
     try:
         proc = subprocess.run(argv, capture_output=True, text=True, timeout=EXTRACT_TIMEOUT)
     except FileNotFoundError as e:
@@ -396,6 +457,15 @@ def _run(source: pathlib.Path, argv: list[str], missing: str = "", hint: str = "
             f"the file on disk is no longer the one that was checked. Restore it before "
             f"re-running. A command whose output path collides with its input does this: "
             f"give the output a distinct name, or write to stdout.",
+        )
+    if left := sorted(_stem_siblings(source) - beside):
+        raise SourceUnreadableError(
+            source,
+            f"{program} wrote {', '.join(left)} beside the source. An extractor reads; one "
+            f"that writes has changed the tree it was pointed at, and a file it leaves under "
+            f"a name another record pins would replace that record's source with this tool's "
+            f"own output. Send the text to stdout instead: `{program} ... {{}} -`. The file it "
+            f"wrote is still there; nothing here deletes it.",
         )
     if proc.returncode != 0:
         said = (proc.stderr or "").strip().splitlines()
@@ -499,6 +569,30 @@ def _extract(
 
 
 @functools.lru_cache(maxsize=64)
+def _extraction(
+    pdf: pathlib.Path,
+    page: int | None,
+    extract_cmd: str | None,
+    allowed: frozenset[str],
+) -> tuple[readers.Extraction | None, SourceUnreadableError | None]:
+    """One attempt at reading a source, memoized whether or not it succeeded.
+
+    `functools.lru_cache` stores a value only on a normal return, so a cache around a function
+    that raises memoizes nothing at all. `extract` raises on a source it cannot read, so every
+    quotation against an unreadable document re-ran the extractor: measured at 2,210 poppler
+    invocations for 14 unique artifacts, 158 times the work the corpus requires, and 95% of a
+    21-minute run. The failure is per-document and does not become a different failure on the
+    second quotation, so it is cached like any other answer.
+
+    Returned as a pair rather than raised here, because the raising is `extract`'s contract and
+    callers depend on it.
+    """
+    try:
+        return _extract(pdf, page, declared_extractor(extract_cmd), allowed), None
+    except SourceUnreadableError as e:
+        return None, e
+
+
 def extract(
     pdf: pathlib.Path,
     page: int | None = None,
@@ -519,6 +613,35 @@ def extract(
     refused command, a timeout, a permission error, nothing installed that can read a PDF --
     rather than returning empty text. An empty return means the document genuinely holds no
     extractable text on that page, which is a different fact and gets a different message.
+    """
+    got, failed = _extraction(pdf, page, extract_cmd, allowed)
+    if failed is not None:
+        raise failed
+    assert got is not None
+    _PROVENANCE[(pdf, page, extract_cmd, allowed)] = (
+        got.extractor,
+        got.fallback,
+        got.fallback_reason,
+    )
+    return got.text
+
+
+def extract_uncached(
+    pdf: pathlib.Path,
+    page: int | None = None,
+    extract_cmd: str | None = None,
+    allowed: frozenset[str] = DEFAULT_EXTRACTORS,
+) -> str:
+    """`extract`, reading the file every time. For a caller that has just hashed the artifact.
+
+    `repro` hashes an artifact immediately before resolving a value in it, so a memoized read
+    would produce a decision whose recorded digest does not describe the text it was computed
+    from. It reached the uncached function through `extract.__wrapped__`, which existed only
+    because `extract` was itself an `lru_cache` -- and when the memoization moved underneath,
+    `getattr(extract, "__wrapped__", extract)` fell back to the cached function and silently
+    kept reading stale text. A default that turns a fresh read into a cached one, with no error
+    anywhere, is the wrong shape for the thing standing between a digest and the bytes it
+    describes. So it is a name.
     """
     got = _extract(pdf, page, declared_extractor(extract_cmd), allowed)
     _PROVENANCE[(pdf, page, extract_cmd, allowed)] = (
@@ -553,7 +676,32 @@ def reading(
 
 
 @functools.lru_cache(maxsize=64)
+def _reading_with(
+    pdf: pathlib.Path, page: int | None, extractor: str
+) -> tuple[readers.Extraction | None, SourceUnreadableError | None]:
+    """One named extractor's attempt, memoized either way. See `_extraction`.
+
+    This one matters more than it looks: `_second_opinion` reaches it on every `not found`, so
+    a document no reader can open was re-attempted by every reader once per quotation.
+    """
+    try:
+        return _reading_with_uncached(pdf, page, extractor=extractor), None
+    except SourceUnreadableError as e:
+        return None, e
+
+
 def reading_with(
+    pdf: pathlib.Path, page: int | None = None, *, extractor: str
+) -> readers.Extraction:
+    """One named extractor's own reading of a source. Triangulation, and nothing else."""
+    got, failed = _reading_with(pdf, page, extractor)
+    if failed is not None:
+        raise failed
+    assert got is not None
+    return got
+
+
+def _reading_with_uncached(
     pdf: pathlib.Path, page: int | None = None, *, extractor: str
 ) -> readers.Extraction:
     """One named extractor's own reading of a source. Triangulation, and nothing else.
@@ -571,6 +719,20 @@ def reading_with(
     if extractor in readers.READERS:
         return readers.Extraction(readers.READERS[extractor].read(pdf, page), extractor)
     raise SourceUnreadableError(pdf, f"no such extractor: {extractor}")
+
+
+#: Kept pointing at the uncached read, which is what it meant while `extract` was itself the
+#: cache. A caller using the old idiom gets the behaviour it was asking for rather than the
+#: opposite of it.
+extract.__wrapped__ = extract_uncached  # type: ignore[attr-defined]
+
+#: The memoization sits under `extract` and `reading_with` now, so their `cache_clear` and
+#: `cache_info` are delegated rather than lost. Both were public: the regression suites call
+#: them, and a caller managing the cache should not have to know which function holds it.
+extract.cache_clear = _extraction.cache_clear  # type: ignore[attr-defined]
+extract.cache_info = _extraction.cache_info  # type: ignore[attr-defined]
+reading_with.cache_clear = _reading_with.cache_clear  # type: ignore[attr-defined]
+reading_with.cache_info = _reading_with.cache_info  # type: ignore[attr-defined]
 
 
 def available_extractors() -> list[str]:
@@ -609,7 +771,7 @@ def clear_caches() -> None:
     One call rather than five, because a caller that clears four of them and forgets the fifth
     gets a stale answer that looks like a fresh one.
     """
-    for cached in (extract, reading_with, fold, skeleton, _digest, sha256):
+    for cached in (_extraction, _reading_with, fold, skeleton, _digest, sha256):
         cached.cache_clear()
     _PROVENANCE.clear()
 
@@ -639,8 +801,14 @@ def check_one(
     extract_cmd: str | None = None,
     allowed: frozenset[str] = DEFAULT_EXTRACTORS,
     triangulate: bool = False,
+    prefix: str = "",
+    suffix: str = "",
 ) -> Result:
     """Does this passage appear in this source, and what read the source to decide?
+
+    `prefix` and `suffix` are the W3C `TextQuoteSelector` neighbours, consulted only where the
+    passage occurs more than once. Both default to empty, so a caller that has never carried
+    them gets the verdict it always got on any passage that resolves uniquely.
 
     `extract_cmd` is the command the claims file declares; `allowed` is the set of programs
     this run will run, which the caller decides rather than the file. A command that is
@@ -665,7 +833,7 @@ def check_one(
         return Result("unchecked", "file not found", warn)
 
     if triangulate and not extract_cmd and is_paginated(artifact):
-        return _triangulate(quote, artifact, page, warn)
+        return _triangulate(quote, artifact, page, warn, prefix, suffix)
 
     # `extract` is called with the arguments it has always taken where nothing is declared. It
     # is exported, and a caller that wraps or substitutes it wrote against the two-argument
@@ -680,16 +848,102 @@ def check_one(
     # A declared extractor renders the whole document at once, so there is no page to ask it
     # about: the position a `.txt` source is already in. Asking `pdftotext` for the page
     # instead would run a PDF reader over a source whose author said it is not one.
+    # A page can be checked only where this module can ask for one page on its own terms, which
+    # means no declared command: an arbitrary program has no page flag, and asking `pdftotext`
+    # for page 4 of a source whose author declared `detex` would run a PDF reader over something
+    # they just said is not a PDF.
+    #
+    # What that left was silent. A record asserting `page: 3` under a declared `pdftotext
+    # -layout` had the assertion dropped and reported nothing: 154 page assertions in one
+    # audited claim, and page 9999 on a three-page document graded exactly as page 3 did. An
+    # unverifiable assertion is a fact about the check and belongs in the report, so it is a
+    # warning now rather than an omission.
     paginated = extract_cmd is None and is_paginated(artifact)
-    result = _verdict(quote, got.text, artifact, page if paginated else None, warn, got.extractor)
+    if page and not paginated and is_paginated(artifact):
+        warn.append("page unchecked")
+    result = _verdict(
+        quote, got.text, artifact, page if paginated else None, warn, got.extractor, prefix, suffix
+    )
     result.extractor = got.extractor
     result.extraction_digest = _digest(got.text)
     result.fallback = got.fallback
     result.fallback_reason = got.fallback_reason
+
+    # One reader saying no is not the document saying no. Only on a paginated source: the text
+    # of a `.txt` is its bytes, and there is no second way to read them.
+    if result.state == "not found" and is_paginated(artifact):
+        consulted = [got.extractor]
+        rescued = _second_opinion(
+            quote, artifact, page if paginated else None, warn, got.extractor, prefix, suffix
+        )
+        if rescued is not None:
+            return rescued
+        consulted += [n for n in available_extractors() if n != got.extractor]
+        # Appended, not substituted. Which readers looked and where the passage stopped matching
+        # answer different questions, and the second is the one that says what to do next.
+        result.detail = (
+            f"not found by any of {', '.join(dict.fromkeys(consulted))}, so the passage is "
+            f"absent under every reader installed here; {result.detail}"
+        )
     return result
 
 
-def _triangulate(quote: str, artifact: pathlib.Path, page: int | None, warn: list[str]) -> Result:
+def _second_opinion(
+    quote: str,
+    artifact: pathlib.Path,
+    page: int | None,
+    warn: list[str],
+    missed_by: str,
+    prefix: str = "",
+    suffix: str = "",
+) -> Result | None:
+    """Ask the other readers before reporting a passage absent. `None` if none of them finds it.
+
+    `not found` is an accusation against the manuscript -- the source was read and the passage
+    is not in it -- and one reader is not enough to make it. `-layout` preserves a page's
+    visual geometry, so on a two-column paper it interleaves the columns and shreds every
+    sentence that spans the gutter. Measured on `dai_2022_knowledge_neurons.pdf`: 110 of 160
+    quotations read as absent under `pdftotext -layout` and 157 resolve under pypdf. Nothing
+    was wrong with the quotations, and an audit reported 110 failures against a claim whose
+    source contains the text.
+
+    Detecting the column layout was the alternative and is a worse instrument: it guesses at a
+    property this measures. Asking the next reader answers the same question exactly, and only
+    on the path where the first answer was going to be an accusation.
+
+    Reached on `not found` alone. Never on `ambiguous`: a passage occurring twice is in the
+    document, and a reader that merges columns could "resolve" the ambiguity by hiding an
+    occurrence, which loses the evidence rather than settling it.
+
+    A rescued passage is recorded as a fallback naming both readers, so it never becomes
+    indistinguishable from one the declared reader found itself.
+    """
+    for name in available_extractors():
+        if name == missed_by:
+            continue
+        try:
+            got = reading_with(artifact, extractor=name)
+        except SourceUnreadableError:
+            continue
+        if not got.text.strip() or resolve_in(quote, got.text, prefix, suffix).state != "found":
+            continue
+        result = _verdict(quote, got.text, artifact, page, warn, name, prefix, suffix)
+        result.extractor = name
+        result.extraction_digest = _digest(got.text)
+        result.fallback = True
+        result.fallback_reason = f"{missed_by} did not find this passage; {name} did"
+        return result
+    return None
+
+
+def _triangulate(
+    quote: str,
+    artifact: pathlib.Path,
+    page: int | None,
+    warn: list[str],
+    prefix: str = "",
+    suffix: str = "",
+) -> Result:
     """Ask every installed extractor, and report disagreement as disagreement.
 
     An extractor that could not open the file contributes no verdict rather than a `not
@@ -713,7 +967,7 @@ def _triangulate(quote: str, artifact: pathlib.Path, page: int | None, warn: lis
         if not got.text.strip():
             reasons.append(f"{name}: no text extracted")
             continue
-        verdicts[name] = _verdict(quote, got.text, artifact, page, warn, name)
+        verdicts[name] = _verdict(quote, got.text, artifact, page, warn, name, prefix, suffix)
         verdicts[name].extraction_digest = _digest(got.text)
 
     if not verdicts:
@@ -743,6 +997,154 @@ def _triangulate(quote: str, artifact: pathlib.Path, page: int | None, warn: lis
     return result
 
 
+def _count(needle: str, doc: str) -> int:
+    """Occurrences of `needle` in `doc` that land on a token boundary.
+
+    A passage whose last character is alphanumeric and which is followed by another is a
+    shared prefix rather than an occurrence: `the catalog` inside `the catalogue` is not the
+    document saying `the catalog` a second time. Counting those would report a passage as
+    ambiguous because some longer word happens to begin with it.
+
+    Where no occurrence lands cleanly the total is returned instead. A quotation that only
+    ever cuts a word stays `found` and keeps its `truncated` warning, which is the behaviour
+    `_cuts_a_token` exists to produce and states as its own rule: a quote that lands cleanly
+    somewhere in the document is quoting that place.
+    """
+    if not needle:
+        return 0
+    cuts_matter = needle[-1].isalnum()
+    total = clean = 0
+    at = doc.find(needle)
+    while at >= 0:
+        total += 1
+        after = at + len(needle)
+        if not cuts_matter or after >= len(doc) or not doc[after].isalnum():
+            clean += 1
+        at = doc.find(needle, at + 1)
+    return clean or total
+
+
+def _occurrences(
+    quote: str, doc: str, prefix: str, suffix: str, transform: Callable[[str], str]
+) -> tuple[int, bool]:
+    """How often the passage occurs in `doc`, and whether its anchors single one out.
+
+    `doc` arrives already transformed; the quotation and its anchors are transformed here, so
+    both sides of every comparison went through the same function.
+
+    A count, where this was a substring test. `passage in document` answers a weaker question
+    than the record asks: a quotation points at one passage, and a pointer resolving to three
+    of them has identified none of them. Where the passage repeats, the anchors are joined to
+    it and the joined form is counted instead, which is how the record says which occurrence
+    it meant. Joined and then folded, rather than folded and then joined, because folding
+    collapses the whitespace across each seam exactly as it collapsed it in the document.
+    """
+    q = transform(quote)
+    if not q:
+        return 0, False
+    n = _count(q, doc)
+    if n <= 1:
+        return n, n == 1
+    if not (prefix or suffix):
+        return n, False
+    return n, _count(transform(prefix + quote + suffix), doc) == 1
+
+
+@dataclass(frozen=True)
+class Match:
+    """Whether a passage occurs in a text, how often, and how hard the match had to work."""
+
+    state: State
+    count: int
+    """Occurrences that count under `_count`. Zero where the passage is not there."""
+    normalized: bool
+    """Whether it resolved only on the whitespace-stripped skeleton, which is the weaker
+    match and is reported as a warning wherever a `Result` is produced."""
+
+
+def resolve_in(quote: str, text: str, prefix: str = "", suffix: str = "") -> Match:
+    """Does this passage occur in this text, and does it occur exactly once?
+
+    The verdict without a file. `check_one` reads an artifact and then decides; this decides
+    against text the caller already holds. A tool that does its own extraction needs that seam
+    in order to share these matching rules instead of reimplementing them, and reimplementing
+    them is how a second normalizer ends up folding `-0.42` and `0.42` together while the
+    first one does not.
+
+    Verbatim first, then the whitespace-stripped skeleton. Never `unchecked` or
+    `indeterminate`: both are facts about reading a source, and this one was handed a text.
+    """
+    if not fold(quote):
+        return Match("not found", 0, False)
+    n, singled = _occurrences(quote, fold(text), prefix, suffix, fold)
+    if n:
+        return Match("found" if singled else "ambiguous", n, False)
+    k, k_singled = _occurrences(quote, skeleton(text), prefix, suffix, skeleton)
+    if k:
+        return Match("found" if k_singled else "ambiguous", k, True)
+    return Match("not found", 0, False)
+
+
+def divergence(quote: str, text: str) -> tuple[int, str, str]:
+    """Where a quotation stops matching its source: how far it got, and what each side reads.
+
+    A bare `not found` points at the document, and the defect is nearly always one character.
+    Every instance settled by hand in this corpus had the same shape -- a minus sign the text
+    layer dropped, an en dash it dropped, a hyphen falling on a line break where `fold`'s
+    de-hyphenation removes a real one -- and finding it meant a binary search for the longest
+    prefix of the quotation the document still contains. That search belongs here, so the report
+    can do it instead of the reader.
+
+    The offset counts folded characters, which is what was compared. Both excerpts begin a
+    little before the split, so the divergence is legible rather than a bare index.
+    """
+    q, doc = fold(quote), fold(text)
+    lo, hi = 0, len(q)
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        lo, hi = (mid, hi) if q[:mid] in doc else (lo, mid - 1)
+    at = doc.find(q[:lo]) if lo else -1
+    quoted = q[max(0, lo - 28) : lo + 34]
+    found = doc[max(0, at + lo - 28) : at + lo + 34] if at >= 0 else ""
+    return lo, quoted, found
+
+
+def _not_found(quote: str, text: str) -> str:
+    """The `not found` detail, naming the point of divergence where there is one worth naming."""
+    n, quoted, found = divergence(quote, text)
+    # Worth reporting when the prefix is substantial either absolutely or relative to the
+    # quotation: a passage that matched forty characters, or half of itself, and then stopped
+    # has located a place in the document and diverged from it. A prefix shorter than both
+    # matched by coincidence -- "the results of" occurs everywhere -- and pointing at where it
+    # ran out would send a reader to a passage the quotation was never taken from.
+    if not found or (n < MIN_QUOTE_CHARS and n * 2 < len(fold(quote))):
+        return (
+            "read the source: a broken extraction reads the same as a passage that was never there"
+        )
+    return (
+        f"the first {n} characters are in the source and the rest is not\n"
+        f"      quoted: ...{quoted}\n"
+        f"      source: ...{found}\n"
+        f"      one character missing from the source's text layer -- a minus sign, an en dash, "
+        f"a hyphen on a line break -- is the usual cause, and is a defect in the extraction "
+        f"rather than in the quotation. Split the quotation into adjacent fragments either side "
+        f"of it; do not truncate it to the part that matches"
+    )
+
+
+def _ambiguous(n: int, anchored: bool) -> str:
+    """Why an ambiguous verdict obtained, and what would settle it."""
+    if anchored:
+        return (
+            f"the passage occurs {n} times and its prefix/suffix do not single one out; "
+            f"widen them until exactly one occurrence carries both"
+        )
+    return (
+        f"the passage occurs {n} times in the source, so the record does not say which of "
+        f"them it means; add `prefix`/`suffix` naming the text on either side"
+    )
+
+
 def _verdict(
     quote: str,
     full: str,
@@ -750,32 +1152,43 @@ def _verdict(
     page: int | None,
     warn: list[str],
     extractor: str = "",
+    prefix: str = "",
+    suffix: str = "",
 ) -> Result:
-    """The verdict on one passage, against the text an extractor produced."""
+    """The verdict on one passage, against the text an extractor produced.
+
+    Verbatim first, then the whitespace-stripped skeleton, and a count at each level rather
+    than a membership test. A passage occurring more than once is `ambiguous` and not `found`:
+    the source contains it, and the record has not said which occurrence it is quoting, so any
+    page or section attached to it is asserted about a passage nobody identified.
+    """
     warn = list(warn)
     q, doc = fold(quote), fold(full)
     if not q:
         # `"" in doc` is True. A quotation that folds away entirely is not a quotation.
         return Result("not found", "the quotation is empty after normalization", warn)
-    if q in doc:
-        if _cuts_a_token(q, doc):
-            warn.append("truncated")
-        if page and not _on_page(artifact, q, page, extractor):
-            warn.append("page")
-            found_at, capped = _find_page(artifact, q, reader=extractor)
-            detail = f"not on page {page}"
-            if found_at is None and capped:
-                detail += f"; searched the first {PAGE_SCAN_LIMIT} pages"
-            return Result("found", detail, warn, found_at)
-        return Result("found", "", warn)
-    if skeleton(quote) and skeleton(quote) in skeleton(full):
+
+    m = resolve_in(quote, full, prefix, suffix)
+    if m.normalized:
         warn.append("normalized")
+    if m.state == "ambiguous":
+        return Result("ambiguous", _ambiguous(m.count, bool(prefix or suffix)), warn)
+    if m.state == "not found":
+        return Result("not found", _not_found(quote, full), warn)
+    if m.normalized:
+        # The skeleton dropped the whitespace the token check reads, so neither a cut word
+        # nor a page number means anything against it.
         return Result("found", "", warn)
-    return Result(
-        "not found",
-        "read the source: a broken extraction reads the same as a passage that was never there",
-        warn,
-    )
+    if _cuts_a_token(q, doc):
+        warn.append("truncated")
+    if page and not _on_page(artifact, q, page, extractor):
+        warn.append("page")
+        found_at, capped = _find_page(artifact, q, reader=extractor)
+        detail = f"not on page {page}"
+        if found_at is None and capped:
+            detail += f"; searched the first {PAGE_SCAN_LIMIT} pages"
+        return Result("found", detail, warn, found_at)
+    return Result("found", "", warn)
 
 
 def _on_page(artifact: pathlib.Path, folded_quote: str, page: int, extractor: str = "") -> bool:

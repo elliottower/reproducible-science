@@ -21,7 +21,7 @@ required field, not to refuse a file for carrying an extra one.
 from __future__ import annotations
 
 import pathlib
-from typing import Any
+from typing import Annotated, Any
 
 import yaml
 from pydantic import (
@@ -29,11 +29,22 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    StringConstraints,
     ValidationError,
     field_validator,
 )
 
 from citations.exceptions import ClaimFileError
+
+Verbatim = Annotated[str, StringConstraints(strip_whitespace=False)]
+"""A string kept exactly as written, against `_Base`'s `str_strip_whitespace`.
+
+For the fields where surrounding whitespace is the content. A `TextQuoteSelector` prefix is
+the text *immediately* before the passage, so its trailing space is what separates the last
+word of the prefix from the first word of the quotation. Stripped, the two weld into a word
+occurring nowhere, the anchor matches nothing, and every anchored quotation reports itself
+ambiguous -- the feature failing silently in exactly the case it was added for.
+"""
 
 
 class _Base(BaseModel):
@@ -47,6 +58,19 @@ class Quote(_Base):
 
     text: str = Field(validation_alias=AliasChoices("exact", "text"))
     """The passage as quoted. Checked verbatim against the extracted source text."""
+
+    prefix: Verbatim = ""
+    """Text immediately preceding the passage in the source, used only to disambiguate.
+
+    Together with `suffix` this is the W3C Web Annotation `TextQuoteSelector`. A passage that
+    occurs once needs neither; a passage occurring more than once is not identified by its own
+    words, and the two neighbours are what single out which occurrence the record means. Not
+    matched on its own and never required -- a quotation that resolves uniquely is checked
+    exactly as before.
+    """
+
+    suffix: Verbatim = ""
+    """Text immediately following the passage in the source. See `prefix`."""
 
     section: str | None = None
     """The section it was taken from, as the source names it. Not verified."""

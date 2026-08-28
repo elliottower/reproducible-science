@@ -1,0 +1,200 @@
+{
+ "question": "Is a Rust PDF text layer meaningfully faster than pdftotext -layout?",
+ "unit": "one document read end to end, serially, one reader at a time",
+ "corpus": {
+  "directories": [
+   "/Users/elliottower/Documents/GitHub/mechanistic-validity-NEW2/reference"
+  ],
+  "documents": 125,
+  "bytes": 407660697,
+  "page_cache_warmed_before_timing": true,
+  "bytes_read_to_warm": 407660697
+ },
+ "machine": {
+  "platform": "Darwin",
+  "release": "25.5.0",
+  "machine": "x86_64"
+ },
+ "reader_versions": {
+  "poppler (both modes)": "pdftotext version 26.04.0",
+  "pdfplumber": "0.11.10",
+  "pypdf": "6.16.2",
+  "pdfminer.six": "20260107",
+  "crate pdf-extract": "0.12.0",
+  "crate lopdf": "0.42.0, 0.44.0",
+  "pdfrs binary": "/private/tmp/claude-501/-Users-elliottower-Documents-GitHub-factorization-circuits/914b66f3-5004-41f9-a015-a12f8e4f8d15/scratchpad/pdfrs/target/release/pdfrs",
+  "rustc": "rustc 1.98.0 (88d9e12ae 2026-08-18)",
+  "pypdfium2": "5.13.0",
+  "libpdfium": "153.0.7999.0"
+ },
+ "per_reader": {
+  "poppler-layout": {
+   "documents": 125,
+   "opened": 123,
+   "failed": [
+    {
+     "pdf": "border_2019_candidate_genes.pdf",
+     "error": "exited 1: Syntax Error: Couldn't read xref table"
+    },
+    {
+     "pdf": "leamer_1983_take_con_out.pdf",
+     "error": "exited 1: Syntax Error: Couldn't read xref table"
+    }
+   ],
+   "total_seconds": 62.01,
+   "median_seconds": 0.284,
+   "p90_seconds": 0.877,
+   "worst_seconds": 6.01,
+   "worst_document": "webb_2025_emergent_symbolic.pdf",
+   "characters_produced": 15722600,
+   "times_poppler_layout": 1.0
+  },
+  "poppler-flow": {
+   "documents": 125,
+   "opened": 123,
+   "failed": [
+    {
+     "pdf": "border_2019_candidate_genes.pdf",
+     "error": "exited 1: Syntax Error: Couldn't read xref table"
+    },
+    {
+     "pdf": "leamer_1983_take_con_out.pdf",
+     "error": "exited 1: Syntax Error: Couldn't read xref table"
+    }
+   ],
+   "total_seconds": 65.25,
+   "median_seconds": 0.306,
+   "p90_seconds": 0.988,
+   "worst_seconds": 5.98,
+   "worst_document": "webb_2025_emergent_symbolic.pdf",
+   "characters_produced": 11206000,
+   "times_poppler_layout": 1.05
+  },
+  "pdfplumber": {
+   "documents": 125,
+   "opened": 123,
+   "failed": [
+    {
+     "pdf": "border_2019_candidate_genes.pdf",
+     "error": "PdfminerException: No /Root object! - Is this really a PDF?"
+    },
+    {
+     "pdf": "leamer_1983_take_con_out.pdf",
+     "error": "PdfminerException: No /Root object! - Is this really a PDF?"
+    }
+   ],
+   "total_seconds": 1688.69,
+   "median_seconds": 6.475,
+   "p90_seconds": 26.384,
+   "worst_seconds": 226.22,
+   "worst_document": "webb_2025_emergent_symbolic.pdf",
+   "characters_produced": 10781133,
+   "times_poppler_layout": 27.23
+  },
+  "pypdf": {
+   "documents": 125,
+   "opened": 123,
+   "failed": [
+    {
+     "pdf": "border_2019_candidate_genes.pdf",
+     "error": "PdfStreamError: Stream has ended unexpectedly"
+    },
+    {
+     "pdf": "leamer_1983_take_con_out.pdf",
+     "error": "PdfStreamError: Stream has ended unexpectedly"
+    }
+   ],
+   "total_seconds": 508.4,
+   "median_seconds": 1.864,
+   "p90_seconds": 9.928,
+   "worst_seconds": 49.93,
+   "worst_document": "webb_2025_emergent_symbolic.pdf",
+   "characters_produced": 11423568,
+   "times_poppler_layout": 8.2
+  },
+  "pdf-extract": {
+   "documents": 125,
+   "opened": 118,
+   "failed": [
+    {
+     "pdf": "apollo_2024_safety_cases_scheming.pdf",
+     "error": "exited 101: note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace"
+    },
+    {
+     "pdf": "border_2019_candidate_genes.pdf",
+     "error": "exited 1: pdf-extract failed: PDF error: couldn't parse input: invalid file header"
+    },
+    {
+     "pdf": "leamer_1983_take_con_out.pdf",
+     "error": "exited 1: pdf-extract failed: PDF error: couldn't parse input: invalid file header"
+    },
+    {
+     "pdf": "li_2023_othello.pdf",
+     "error": "exited 101: note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace"
+    },
+    {
+     "pdf": "miller_2024_faithfulness.pdf",
+     "error": "exited 101: note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace"
+    },
+    {
+     "pdf": "nanda_2023_grokking.pdf",
+     "error": "exited 101: note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace"
+    },
+    {
+     "pdf": "sharkey_2025_open_problems_mi.pdf",
+     "error": "exited 101: note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace"
+    }
+   ],
+   "total_seconds": 65.85,
+   "median_seconds": 0.288,
+   "p90_seconds": 1.186,
+   "worst_seconds": 4.94,
+   "worst_document": "webb_2025_emergent_symbolic.pdf",
+   "characters_produced": 10573663,
+   "times_poppler_layout": 1.06
+  },
+  "lopdf": {
+   "documents": 125,
+   "opened": 123,
+   "failed": [
+    {
+     "pdf": "border_2019_candidate_genes.pdf",
+     "error": "exited 1: lopdf load failed: couldn't parse input: invalid file header"
+    },
+    {
+     "pdf": "leamer_1983_take_con_out.pdf",
+     "error": "exited 1: lopdf load failed: couldn't parse input: invalid file header"
+    }
+   ],
+   "total_seconds": 13.27,
+   "median_seconds": 0.076,
+   "p90_seconds": 0.162,
+   "worst_seconds": 0.83,
+   "worst_document": "degrave_2021_covid_shortcuts.pdf",
+   "characters_produced": 10524873,
+   "times_poppler_layout": 0.21
+  },
+  "pdfium": {
+   "documents": 125,
+   "opened": 123,
+   "failed": [
+    {
+     "pdf": "border_2019_candidate_genes.pdf",
+     "error": "PdfiumError: Failed to load document (PDFium: Data format error)."
+    },
+    {
+     "pdf": "leamer_1983_take_con_out.pdf",
+     "error": "PdfiumError: Failed to load document (PDFium: Data format error)."
+    }
+   ],
+   "total_seconds": 38.51,
+   "median_seconds": 0.173,
+   "p90_seconds": 0.621,
+   "worst_seconds": 3.2,
+   "worst_document": "webb_2025_emergent_symbolic.pdf",
+   "characters_produced": 11341091,
+   "times_poppler_layout": 0.62
+  }
+ },
+ "shard": "candidates_speed.jsonl"
+}

@@ -69,18 +69,19 @@ def _resolve_prose(locator: ProseLocator, path: pathlib.Path) -> Found:
     # working extractor must report a check that did not run, not fail to import the package.
     try:
         from citations.exceptions import SourceUnreadableError
-        from citations.verify import extract, fold
+        from citations.verify import extract_uncached, fold
     except ImportError as e:  # pragma: no cover - citations is a declared dependency
         raise BackendUnavailableError("prose", f"citations is not installed: {e}") from e
 
     # `extract` is cached on the path, so a second verification in one process reads the text
-    # the first one extracted, whatever the file now holds. The engine hashes every artifact
+    # the first one extracted, whatever the file now holds. `extract_uncached` is the named
+    # read; this reached it through `extract.__wrapped__` until that attribute stopped existing
+    # and the `getattr` fallback quietly returned the cached function instead. The engine hashes every artifact
     # immediately before this runs, so a stale read would produce a decision whose recorded
     # artifact digest does not describe the text it was computed from. `fold` is cached on the
     # string it is given, which is content, and stays as it is.
-    uncached = getattr(extract, "__wrapped__", extract)
     try:
-        text = fold(uncached(path))
+        text = fold(extract_uncached(path))
     except SourceUnreadableError as e:
         raise ArtifactUnreadableError(path, e.detail) from e
     if not text:

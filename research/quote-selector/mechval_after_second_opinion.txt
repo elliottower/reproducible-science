@@ -1,0 +1,11 @@
+claims  /Users/elliottower/Documents/GitHub/mechanistic-validity-NEW2/claims
+
+2,512 quotes
+
+  not found           0
+  unchecked       2,512   2,364 pdftotext printed nothing  (pdftotext writes to a file unless the last argument is `-`: declare `pdftotext -layout {} -`) · 148 extract_cmd names 'cat', which this run does not allow -- pass --allow-extractor cat to run it
+
+warnings
+       43  short — the source may qualify this in the next clause
+
+nothing failed. 2512 unchecked — no measurement was made for those.

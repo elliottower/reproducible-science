@@ -1,0 +1,72 @@
+{
+ "question": "Does pdf-extract fail by returning an error, or by aborting the process?",
+ "why_it_matters": "A reader in citations.readers is called in process. lopdf and pdf-extract raise a Rust panic rather than returning Err, so a Python binding must either run them in a subprocess or wrap every call in catch_unwind; an unguarded panic across an FFI boundary is undefined behaviour, not an exception.",
+ "binary": "/private/tmp/claude-501/-Users-elliottower-Documents-GitHub-factorization-circuits/914b66f3-5004-41f9-a015-a12f8e4f8d15/scratchpad/pdfrs/target/release/pdfrs",
+ "corpus": "/Users/elliottower/Documents/GitHub/mechanistic-validity-NEW2/reference",
+ "documents_in_corpus": 125,
+ "pdf_extract_opened": 118,
+ "poppler_layout_opened": 123,
+ "failures": [
+  {
+   "document": "apollo_2024_safety_cases_scheming.pdf",
+   "exit_code": 101,
+   "panicked": true,
+   "site": "0.12.0/src/lib.rs:865:13:",
+   "message": "missing width for 88 <</Type /Font/Subtype /Type3/CIDToGIDMap /Identity/CharProcs <</g0 906 0 R/g24A 907 0 R>>/Encoding <</Type /Encoding/Differences [0 /g0 /g0 /g0 /g0 /g0 /g0 /g0 /g0 /g0 /g0 /g0 /g0 /g0 /g0 /g0 /g0 /g0 /g0 /g0 /g0 /g0 /g0 /g0 /g0 /g0 /g0 /g0 /g0 /g0 /g0 /g0 /g0 /g0 /g0 /g0 /g0 /g0",
+   "poppler_also_failed": false
+  },
+  {
+   "document": "border_2019_candidate_genes.pdf",
+   "exit_code": 1,
+   "panicked": false,
+   "site": "pdf-extract failed: PDF error: couldn't parse input: invalid file header",
+   "message": "",
+   "poppler_also_failed": true
+  },
+  {
+   "document": "leamer_1983_take_con_out.pdf",
+   "exit_code": 1,
+   "panicked": false,
+   "site": "pdf-extract failed: PDF error: couldn't parse input: invalid file header",
+   "message": "",
+   "poppler_also_failed": true
+  },
+  {
+   "document": "li_2023_othello.pdf",
+   "exit_code": 101,
+   "panicked": true,
+   "site": "0.12.0/src/lib.rs:865:13:",
+   "message": "missing width for 27 <</Type /Font/Subtype /Type3/CharProcs <</C0 192 0 R/C1 198 0 R/C10 199 0 R/C11 200 0 R/C12 201 0 R/C13 202 0 R/C14 203 0 R/C15 196 0 R/C16 193 0 R/C17 204 0 R/C2 189 0 R/C3 187 0 R/C4 190 0 R/C5 194 0 R/C6 195 0 R/C7 191 0 R/C8 197 0 R/C9 188 0 R>>/Encoding <</Type /Encoding/Di",
+   "poppler_also_failed": false
+  },
+  {
+   "document": "miller_2024_faithfulness.pdf",
+   "exit_code": 101,
+   "panicked": true,
+   "site": "0.12.0/src/lib.rs:865:13:",
+   "message": "missing width for 23 <</Type /Font/Subtype /Type3/CharProcs <</C0 300 0 R/C1 307 0 R/C10 308 0 R/C11 309 0 R/C12 310 0 R/C13 312 0 R/C14 314 0 R/C15 305 0 R/C16 301 0 R/C17 315 0 R/C18 296 0 R/C19 316 0 R/C2 297 0 R/C20 303 0 R/C21 311 0 R/C22 313 0 R/C3 295 0 R/C4 298 0 R/C5 302 0 R/C6 304 0 R/C7 2",
+   "poppler_also_failed": false
+  },
+  {
+   "document": "nanda_2023_grokking.pdf",
+   "exit_code": 101,
+   "panicked": true,
+   "site": "0.12.0/src/lib.rs:1802:81:",
+   "message": "index out of bounds: the len is 0 but the index is 0",
+   "poppler_also_failed": false
+  },
+  {
+   "document": "sharkey_2025_open_problems_mi.pdf",
+   "exit_code": 101,
+   "panicked": true,
+   "site": "0.12.0/src/lib.rs:865:13:",
+   "message": "missing width for 34 <</Type /Font/Subtype /Type3/CharProcs <</C0 482 0 R/C1 483 0 R/C10 484 0 R/C11 485 0 R/C12 486 0 R/C13 487 0 R/C14 488 0 R/C15 489 0 R/C16 490 0 R/C17 491 0 R/C18 492 0 R/C19 493 0 R/C2 494 0 R/C20 495 0 R/C21 496 0 R/C22 497 0 R/C23 498 0 R/C24 499 0 R/C25 500 0 R/C26 501 0 R/",
+   "poppler_also_failed": false
+  }
+ ],
+ "panics": 5,
+ "malformed_for_every_reader": [
+  "border_2019_candidate_genes.pdf",
+  "leamer_1983_take_con_out.pdf"
+ ]
+}

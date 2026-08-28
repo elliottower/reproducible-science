@@ -71,7 +71,7 @@ with it instead. `report.py` assembles `results.json` from both and measures not
 so no number in the report lacks a document behind it.
 
 `results.json` carries statistics, one row per document, and twelve worked examples. It does
-not carry the 1,792 quotations the corpus checked: those belong to publishers who did not
+not carry the 1,593 quotations the corpus checked: those belong to publishers who did not
 license their redistribution, which is the same reason `paper/prior_art/reference/` is not in
 this repository. The shards, which do carry them, stay outside the repository.
 
