@@ -132,3 +132,13 @@ All four tools in one plugin, with every hook, skill and command:
 ```
 
 MIT licensed.
+
+## This tool and `repro`
+
+`results` installs and runs on its own, is not deprecated, and is not going to be.
+`reproducible-science` depends on it, so `repro results ...` runs this same command with the
+same arguments and the same exit code. That is a spelling, not a feature.
+
+What only exists in the umbrella is `repro check`, which runs every tool a project uses in one
+pass, with one report and one exit code, and names the tools the project does not use rather
+than counting them as passing. If a project only records runs, use this command directly.
