@@ -154,6 +154,7 @@ def test_every_status_is_reachable(tmp_path):
             "active": {"bib": str(bib)},
             "uncited": {"bib": str(bib)},
             "dangling": {"bib": str(tmp_path / "gone.bib")},
+            "archived": {"bib": str(tmp_path / "gone.bib"), "archived": True},
         },
         records={
             "a": {"slug": "a", "cited_by": {"active": {}}},
@@ -169,3 +170,28 @@ def test_the_statuses_are_distinct_lowercase_names():
     values = [s.value for s in Status]
     assert len(set(values)) == len(values)
     assert all(v.islower() and " " not in v for v in values)
+
+
+def test_an_archived_project_is_declared_never_inferred(tmp_path):
+    """A missing path is what `dangling` means. Reading it as "retired on purpose" would
+    silence the case the survey exists to raise."""
+    lib = library(tmp_path / "lib", papers={"old": {"bib": str(tmp_path / "gone.bib")}})
+    assert status_of(survey(lib), "old") is Status.DANGLING
+
+
+def test_declaring_it_archived_stops_it_being_a_question(tmp_path):
+    lib = library(
+        tmp_path / "lib",
+        papers={"old": {"bib": str(tmp_path / "gone.bib"), "archived": True}},
+    )
+    found = survey(lib)
+    assert status_of(found, "old") is Status.ARCHIVED
+    assert not found.unresolved, "an archived project needs no decision"
+
+
+def test_archived_does_not_require_the_paths_to_be_gone(tmp_path):
+    """A project can be retired while its files are still on disk."""
+    bib = tmp_path / "refs.bib"
+    bib.write_text("@misc{x}")
+    lib = library(tmp_path / "lib", papers={"old": {"bib": str(bib), "archived": True}})
+    assert status_of(survey(lib), "old") is Status.ARCHIVED

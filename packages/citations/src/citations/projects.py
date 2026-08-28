@@ -58,6 +58,14 @@ class Status(enum.StrEnum):
     `papers.yaml` is written by hand. The fix is a registry entry, and until then `citations
     build` does not refresh this project's records."""
 
+    ARCHIVED = "archived"
+    """Registered, declared archived, and its paths may or may not still be here.
+
+    An older project whose records stay valid and whose repository nobody is maintaining. Said
+    in `papers.yaml` and never inferred: a path being absent is what `dangling` means, and
+    guessing that absence meant "retired on purpose" would silence the case the survey exists
+    to raise. Declared, this stops being a question; undeclared, it stays one."""
+
     ORPHANED = "orphaned"
     """Records name it, the registry does not, and nothing on this machine answers to the name.
 
@@ -148,10 +156,15 @@ def survey(library: pathlib.Path, search: pathlib.Path | None = None) -> Survey:
         missing = tuple(
             f"{kind}: {value}"
             for kind, value in (cfg or {}).items()
-            if not _expand(str(value), library).exists()
+            if kind != "archived" and not _expand(str(value), library).exists()
         )
         n = cited.get(name, 0)
-        status = Status.DANGLING if missing else (Status.ACTIVE if n else Status.UNCITED)
+        if (cfg or {}).get("archived"):
+            status = Status.ARCHIVED
+        elif missing:
+            status = Status.DANGLING
+        else:
+            status = Status.ACTIVE if n else Status.UNCITED
         out.append(Project(name, status, records=n, registered=True, missing_paths=missing))
 
     for name, n in sorted(cited.items()):
