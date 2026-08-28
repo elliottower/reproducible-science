@@ -4,7 +4,7 @@ requires = [ "hatchling" ]
 
 [project]
 name = "reproducible-science"
-version = "0.3.1"
+version = "0.4.0"
 description = "One contract for verifying declared evidence assertions against pinned artifacts"
 readme = "README.md"
 keywords = [ "citations", "open science", "preregistration", "provenance", "reproducibility" ]
@@ -23,14 +23,14 @@ classifiers = [
   "Topic :: Scientific/Engineering",
 ]
 dependencies = [
-  "citations>=0.3,<0.4",
+  "citations>=0.4,<0.5",
   # Floors, not bare names: without them a fresh install resolves whatever is oldest on
   # PyPI, which is not the combination the tests exercise.
-  "prereg>=0.3,<0.4",
-  "provenance-core>=0.3,<0.4",
+  "prereg>=0.4,<0.5",
+  "provenance-core>=0.4,<0.5",
   "pydantic>=2.9",
   "pyyaml>=6.0.2",
-  "results-cli>=0.3,<0.4",
+  "results-cli>=0.4,<0.5",
 ]
 # Only needed to run the rule inside `adduce check`. repro itself never imports adduce.
 optional-dependencies.adduce = [ "adduce>=0.1.2" ]

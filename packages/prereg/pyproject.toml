@@ -4,7 +4,7 @@ requires = [ "hatchling" ]
 
 [project]
 name = "prereg"
-version = "0.3.1"
+version = "0.4.0"
 description = "Preregister your plan to prevent p-hacking and unfalsifiable post-hoc analysis"
 readme = "README.md"
 keywords = [ "open science", "osf", "preregistration", "reproducibility" ]
@@ -20,7 +20,7 @@ classifiers = [
 ]
 # One dependency, itself dependency-free: the digest and git helpers this shares with
 # the other tools. Everything else is stdlib.
-dependencies = [ "provenance-core>=0.3,<0.4" ]
+dependencies = [ "provenance-core>=0.4,<0.5" ]
 urls.Changelog = "https://github.com/elliottower/reproducible-science/blob/main/CHANGELOG.md"
 urls.Homepage = "https://github.com/elliottower/reproducible-science"
 urls.Issues = "https://github.com/elliottower/reproducible-science/issues"

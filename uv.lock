@@ -426,7 +426,7 @@ wheels = [
 
 [[package]]
 name = "citations"
-version = "0.3.1"
+version = "0.4.0"
 source = { editable = "packages/citations" }
 dependencies = [
     { name = "platformdirs" },
@@ -2100,7 +2100,7 @@ wheels = [
 
 [[package]]
 name = "prereg"
-version = "0.3.1"
+version = "0.4.0"
 source = { editable = "packages/prereg" }
 dependencies = [
     { name = "provenance-core" },
@@ -2123,7 +2123,7 @@ wheels = [
 
 [[package]]
 name = "provenance-core"
-version = "0.3.1"
+version = "0.4.0"
 source = { editable = "packages/provenance-core" }
 
 [[package]]
@@ -2608,7 +2608,7 @@ types = [
 
 [[package]]
 name = "reproducible-science"
-version = "0.3.1"
+version = "0.4.0"
 source = { editable = "packages/repro" }
 dependencies = [
     { name = "citations" },
@@ -2697,7 +2697,7 @@ wheels = [
 
 [[package]]
 name = "results-cli"
-version = "0.3.1"
+version = "0.4.0"
 source = { editable = "packages/results" }
 dependencies = [
     { name = "provenance-core" },
