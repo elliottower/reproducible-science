@@ -37,6 +37,10 @@ from citations.exceptions import CitationsError
 #: the library, which is the arrangement every project in this registry actually uses.
 SIBLINGS = "siblings"
 
+#: Keys in a `papers.yaml` entry that declare something about the project rather than name a
+#: path. Excluded from the path check, which would otherwise read `archived: true` as a file.
+DECLARED = frozenset({"archived", "imported"})
+
 
 class Status(enum.StrEnum):
     """What is known about one project name, and what would settle it."""
@@ -65,6 +69,14 @@ class Status(enum.StrEnum):
     in `papers.yaml` and never inferred: a path being absent is what `dangling` means, and
     guessing that absence meant "retired on purpose" would silence the case the survey exists
     to raise. Declared, this stops being a question; undeclared, it stays one."""
+
+    IMPORTED = "imported"
+    """Registered as an import: its records came from a bibliography that is not a project here.
+
+    A reference list read out of somebody else's paper, brought in so its works have records.
+    There is no repository, no claims, and no successor, so `orphaned` -- which asks a person
+    what the name became -- has no answer and never will. Said in `papers.yaml`, for the same
+    reason `archived` is: absence is what the other statuses already mean."""
 
     ORPHANED = "orphaned"
     """Records name it, the registry does not, and nothing on this machine answers to the name.
@@ -156,10 +168,12 @@ def survey(library: pathlib.Path, search: pathlib.Path | None = None) -> Survey:
         missing = tuple(
             f"{kind}: {value}"
             for kind, value in (cfg or {}).items()
-            if kind != "archived" and not _expand(str(value), library).exists()
+            if kind not in DECLARED and not _expand(str(value), library).exists()
         )
         n = cited.get(name, 0)
-        if (cfg or {}).get("archived"):
+        if (cfg or {}).get("imported"):
+            status = Status.IMPORTED
+        elif (cfg or {}).get("archived"):
             status = Status.ARCHIVED
         elif missing:
             status = Status.DANGLING

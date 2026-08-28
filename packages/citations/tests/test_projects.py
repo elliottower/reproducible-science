@@ -140,10 +140,10 @@ def test_an_uncommitted_record_is_counted(tmp_path):
     assert uncommitted(lib) >= 1
 
 
-def test_every_status_is_reachable(tmp_path):
+def test_every_status_can_actually_happen(tmp_path):
     """A status nothing can produce is worse than no status: it is documentation that lies.
 
-    All five from one library, so the schema and the survey cannot drift apart.
+    Every one of them from a single library, so the schema and the survey cannot drift apart.
     """
     (tmp_path / "sibling").mkdir()
     bib = tmp_path / "refs.bib"
@@ -155,12 +155,14 @@ def test_every_status_is_reachable(tmp_path):
             "uncited": {"bib": str(bib)},
             "dangling": {"bib": str(tmp_path / "gone.bib")},
             "archived": {"bib": str(tmp_path / "gone.bib"), "archived": True},
+            "imported": {"imported": True},
         },
         records={
             "a": {"slug": "a", "cited_by": {"active": {}}},
             "b": {"slug": "b", "cited_by": {"dangling": {}}},
             "c": {"slug": "c", "cited_by": {"sibling": {}}},
             "d": {"slug": "d", "cited_by": {"vanished": {}}},
+            "e": {"slug": "e", "cited_by": {"imported": {}}},
         },
     )
     assert {p.status for p in survey(lib, search=tmp_path).projects} == set(Status)
@@ -195,3 +197,31 @@ def test_archived_does_not_require_the_paths_to_be_gone(tmp_path):
     bib.write_text("@misc{x}")
     lib = library(tmp_path / "lib", papers={"old": {"bib": str(bib), "archived": True}})
     assert status_of(survey(lib), "old") is Status.ARCHIVED
+
+
+def test_an_imported_bibliography_is_not_a_name_anyone_can_settle(tmp_path):
+    """384 records in this library came from the reference list of a paper nobody here wrote.
+    Read as `orphaned` they ask what the project became, and there was never a project."""
+    lib = library(
+        tmp_path / "lib",
+        papers={"consensus": {"imported": True}},
+        records={"a": {"slug": "a", "cited_by": {"consensus": {}}}},
+    )
+    found = survey(lib, search=tmp_path)
+    assert status_of(found, "consensus") is Status.IMPORTED
+    assert not found.unresolved
+
+
+def test_an_import_declaring_no_path_is_not_read_as_a_missing_one(tmp_path):
+    """`imported: true` is a flag. Checked as a path it is a file called "True"."""
+    lib = library(tmp_path / "lib", papers={"consensus": {"imported": True}})
+    assert not next(p for p in survey(lib).projects if p.name == "consensus").missing_paths
+
+
+def test_an_import_is_declared_never_inferred_from_having_no_bibliography(tmp_path):
+    lib = library(
+        tmp_path / "lib",
+        papers={},
+        records={"a": {"slug": "a", "cited_by": {"vanished": {}}}},
+    )
+    assert status_of(survey(lib, search=tmp_path), "vanished") is Status.ORPHANED
