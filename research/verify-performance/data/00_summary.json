@@ -1,12 +1,12 @@
 {
   "schema": 1,
   "experiment": "00_summary",
-  "started_utc": "2026-08-28T04:47:15Z",
+  "started_utc": "2026-08-28T05:41:30Z",
   "git": {
-    "commit": "62d138725fb264dc7838c86cbf731fa2a89f5062",
+    "commit": "7bae662962186a0e0b203043d3854ea38fc391d9",
     "branch": "quote-selector",
     "dirty": true,
-    "verify_py_sha256": "63f714497faf039318ecf0d8a6d71fbfb95949fc7138f840c2f115a49a5c51e3"
+    "verify_py_sha256": "d2c9b106bb8b5c0ab3367827ecafe1602bc1c1c0cfeb10986ff7ecfd5bcfc9a5"
   },
   "machine": {
     "os": "Darwin 25.5.0",
@@ -33,12 +33,12 @@
     "summarize.py"
   ],
   "measured": {
-    "01_baseline_profile": "current implementation, corpus as declared. PARTIAL: 15 of 16 claims files (workspace.yaml never reached).",
+    "01_baseline_profile": "current implementation, corpus as declared: 16 of 16 claims files, complete.",
     "03_matrix": "prototype, all 16 files, 13 configurations, cold/warm/workers/invalidation.",
     "04_spawn_and_page": "process spawn floor, poppler load, one-page vs whole-document cost."
   },
   "not_measured": {
-    "current implementation in a WORKING configuration": "the largest gap. Every number in 01_baseline_profile comes from the failure path. The prototype's cold run is the only working-configuration measurement, and it is a different implementation, so 11.65 s vs 1292.6 s is not a like-for-like speedup.",
+    "current implementation in a WORKING configuration": "the largest gap. Every number in 01_baseline_profile comes from the failure path -- match_calls is 0, so the matcher never ran. The prototype's cold run is the only working-configuration measurement and it is a different implementation, so 11.65 s vs 1401.1 s is NOT a like-for-like speedup and must not be quoted as one. profile_baseline.py --healthy closes this.",
     "page-map canary over the whole corpus": "one page of one document was verified byte-identical by hand; bench_pagemap.py exists and was not run.",
     "alternative reader backends": "owned by a separate study; nothing here compares readers.",
     "OS-cold timings": "clearing the macOS page cache needs `purge` and root, and no real run starts from a cleared cache. `cold` throughout means the prototype's caches are empty.",
@@ -70,7 +70,7 @@
     "subprocess_calls": 2364,
     "sha256_calls": 4728,
     "sha256_bytes": 19565428702,
-    "source": "data/01_baseline_profile.json"
+    "source": "data/01_baseline_profile.json.gz"
   },
   "defect_exception_caching": {
     "claim": "`functools.lru_cache` does not memoize a raised exception, so a source whose extraction fails is re-extracted once per quotation instead of once per document.",
@@ -88,14 +88,14 @@
       "failing extract() x5 with identical arguments": "5 subprocess invocations, CacheInfo(hits=0, misses=5, currsize=0)",
       "succeeding extract() x5 with identical arguments": "0 further invocations, CacheInfo(hits=4, misses=1, currsize=1)"
     },
-    "cost_here": "2,210 extractions where 14 unique PDF artifacts were involved: 158x more poppler invocations than the work requires, and 2,210 x 2 sha256 passes instead of 28.",
+    "cost_here": "2,364 extractions where 14 unique PDF artifacts were involved: 169x more poppler invocations than the work requires, and 4,728 sha256 passes instead of 28.",
     "interaction_with_second_opinion": "_second_opinion fires on every `not found` and asks each remaining extractor. Those readings go through `reading_with`, which is also lru_cached and also does not memoize failures, so a document no reader can read is re-attempted by every reader on every quotation."
   },
   "defect_extract_cmd": {
     "claim": "these records declare `extract_cmd: pdftotext -layout`; `citations._argv` appends the input path alone and reads stdout, while the convention the records were written for appends an input AND an output path. `pdftotext -layout FILE` therefore writes FILE.txt and prints nothing.",
     "consequence_1": "every quotation in the corpus is `unchecked`: 2,512 of 2,512 in the user's own saved run (research/quote-selector/mechval_16claims_with_selector.txt).",
     "consequence_2": "verify WRITES into the source tree. 32 sibling .txt files now sit in mechanistic-validity-NEW2/reference/, timestamped to these runs. `_run`'s tamper check hashes only the input path, so a renderer that writes a sibling is invisible to it.",
-    "source": "data/01_baseline_profile.json verdicts, and reference/*.txt mtimes"
+    "source": "data/01_baseline_profile.json.gz verdicts, and reference/*.txt mtimes"
   },
   "defect_double_hash": {
     "claim": "`_run` calls `sha256_of_file` before and after every extractor invocation to detect an extractor that writes to its input.",
@@ -219,7 +219,7 @@
     },
     "cross_validation": "2,509 found / 3 not found, and the three are refusal:I1, successor_heads:C5, superposition:C3 -- the same three, by name, that mechval's own independent gate reports in research/quote-selector/mechval_after_refactor.json, whose `loose` count of 45 also equals this run's 45 `normalized` warnings.",
     "digests_agree_where_inputs_unchanged": true,
-    "source": "data/03_matrix.json"
+    "source": "data/03_matrix.json.gz"
   },
   "page_scan_risk": {
     "on_this_corpus": "workspace.yaml is the only file carrying page locators: 154 quotations, every one with a page, and none of them off its page (0 `page` warnings in run C). So `_on_page` would fire 154 times and `_find_page` never.",
@@ -229,12 +229,12 @@
     "poppler_load_seconds": 0.024586293497122824,
     "one_page_as_fraction_of_whole_document": 0.08138918369358855,
     "latent_worst_case": "a single quotation whose recorded page is wrong costs up to PAGE_SCAN_LIMIT (200) page extractions. At the measured 50 ms that is ~10 s for one quotation, and 60% of each 50 ms is process startup and poppler loading, before the page is touched.",
-    "source": "data/04_spawn_and_page.json, data/03_matrix.json"
+    "source": "data/04_spawn_and_page.json, data/03_matrix.json.gz"
   },
   "rust_verdict": {
     "against_todays_run": {
       "removable_by_rewriting_the_python": 0.0012623482124389563,
-      "explanation": "95.07% is the poppler subprocess, 4.64% is sha256 in OpenSSL, 0.17% is libyaml. Interpreted Python is 0.13% of 1292.6 s. A Rust rewrite of the orchestration removes essentially none of today's 21 minutes."
+      "explanation": "94.50% is the poppler subprocess, 5.21% is sha256 in OpenSSL, 0.16% is libyaml. Interpreted Python is 0.126% of 1401.1 s. A Rust rewrite of the orchestration removes essentially none of today's 23 minutes."
     },
     "against_the_fixed_cold_pipeline": {
       "self_cpu_fraction": 0.28403949175490467,
@@ -246,63 +246,63 @@
       "explanation": "71% of the warm run is re-parsing 16 YAML files that did not change. That is fixed by caching the parse on (path, size, mtime_ns), not by changing language. After that the warm run is a few hundred milliseconds."
     },
     "where_a_native_core_would_actually_pay": "an in-process parallel PDF extractor, replacing the subprocess entirely: it would remove the 5.2 ms fork+exec and 29.8 ms poppler load per invocation and the text-through-a-pipe copy. That is a reader project, not an orchestration project, it competes with C++ poppler on parse speed rather than on language, and it only touches cold runs -- which, once the rendition cache exists, happen once per artifact ever.",
-    "recommendation": "no Rust for this. Fix the exception cache, extract once per artifact, cache renditions and the YAML parse. Those are measured at 1292.6 s -> 11.65 s cold -> ~2.7 s warm, in Python."
+    "recommendation": "no Rust for this. Fix the exception cache, extract once per artifact, cache renditions and the YAML parse. Those are measured at 1401.1 s -> 11.65 s cold -> 2.74 s warm, in Python."
   },
   "ranked_changes": [
     {
       "rank": 1,
       "change": "Memoize extraction failures, so a source that cannot be read is read once per document rather than once per quotation.",
-      "wall_clock_saved": "the dominant term of the 1292.6 s run. 2,210 subprocess invocations become at most 15.",
-      "measured": "data/01_baseline_profile.json totals.subprocess_seconds = 1228.8 s (95.07% of wall); per_file shows subprocess_calls == quotes in all 14 PDF files.",
+      "wall_clock_saved": "the dominant term of the 1401.1 s run. 2,364 subprocess invocations become at most 15.",
+      "measured": "data/01_baseline_profile.json.gz totals.subprocess_seconds = 1324.1 s (94.50% of wall); per_file shows subprocess_calls == quotes in every PDF-backed file.",
       "risk": "low. A cached failure must carry its reason and must not be treated as a verdict about the passage; `unchecked` already has that shape."
     },
     {
       "rank": 2,
       "change": "Make the declared-command convention unambiguous, and refuse a command that writes beside its input. `pdftotext -layout FILE` writes FILE.txt and prints nothing; `_argv` should require an explicit `{}` and `-`, or reject the form.",
       "wall_clock_saved": "not a speed change; it is the difference between 2,512 unchecked and 2,509 found. Without it every other optimization makes a broken run faster.",
-      "measured": "data/01_baseline_profile.json verdicts (2,358 unchecked over 15 files); the user's own run reports 2,512 of 2,512 unchecked. 32 stray .txt files in reference/ are the write side effect.",
+      "measured": "data/01_baseline_profile.json.gz verdicts (2,512 unchecked over 16 files), matching the user's own run at 2,512 of 2,512. 32 stray .txt files in reference/ are the write side effect.",
       "risk": "low, but it changes what existing claims files do -- they start being checked, and three of them fail."
     },
     {
       "rank": 3,
       "change": "One extraction per artifact, with page boundaries taken from the U+000C form feeds already in the output, instead of one `pdftotext` per page.",
       "wall_clock_saved": "7.7 s on this corpus (154 paged quotations x 50.2 ms), and it removes a latent ~10 s per quotation whose recorded page is wrong.",
-      "measured": "data/04_spawn_and_page.json; data/03_matrix.json run C reports page_subprocesses = 0 and reaches the same verdicts.",
+      "measured": "data/04_spawn_and_page.json; data/03_matrix.json.gz run C reports page_subprocesses = 0 and reaches the same verdicts.",
       "risk": "low, but the equivalence is load-bearing and only spot-checked: one page of one document was verified byte-identical. bench_pagemap.py checks every page of every artifact and was not run."
     },
     {
       "rank": 4,
       "change": "Content-addressed rendition cache on disk, keyed on (artifact sha256, backend, backend version, argument vector, page selection, schema).",
       "wall_clock_saved": "11.65 s cold -> 3.52 s with warm renditions and cold checks. 8.1 s, all of it poppler.",
-      "measured": "data/03_matrix.json runs C and D2. Cache is 2.51 MB for 18 renditions of 48.2 MB of artifacts (5.2%).",
+      "measured": "data/03_matrix.json.gz runs C and D2. Cache is 2.51 MB for 18 renditions of 48.2 MB of artifacts (5.2%).",
       "risk": "medium. Key completeness is the whole safety argument; case L shows a version bump invalidating all 14 renditions, case K shows a changed artifact invalidating exactly one."
     },
     {
       "rank": 5,
       "change": "Cache the YAML parse of claims files on (path, size, mtime_ns).",
       "wall_clock_saved": "1.94 s of the 2.74 s warm run -- 71% of it.",
-      "measured": "data/03_matrix.json run D timings_seconds.yaml = 1.944 s.",
+      "measured": "data/03_matrix.json.gz run D timings_seconds.yaml = 1.944 s.",
       "risk": "low. mtime is a weaker key than content; falling back to a content hash costs a read of 16 small files."
     },
     {
       "rank": 6,
       "change": "Bounded parallelism over unique (artifact, extractor) jobs.",
       "wall_clock_saved": "11.30 s -> 6.42 s at 4 workers, 1.76x. It does not scale past 4: child CPU rises from 8.07 s to 11.41 s at 8 workers, and one 12.5 MB document sets the floor.",
-      "measured": "data/03_matrix.json runs E, F, G, H, H2.",
+      "measured": "data/03_matrix.json.gz runs E, F, G, H, H2.",
       "risk": "medium. Report ordering must come from the manifest, not from completion order; single flight must be per key, since lru_cache does not prevent two threads extracting the same document."
     },
     {
       "rank": 7,
       "change": "Check-result cache, keyed on the rendition digest plus the quotation, its selectors, the page constraint and a matching-policy version.",
       "wall_clock_saved": "0.78 s (3.52 s -> 2.74 s). Small, because the matcher is cheap.",
-      "measured": "data/03_matrix.json runs D and D2.",
+      "measured": "data/03_matrix.json.gz runs D and D2.",
       "risk": "medium, and the highest of the seven relative to its payoff. A cached pass must be reported as reused, not as fresh; case M shows a policy bump invalidating all 2,512 verdicts while re-extracting nothing."
     },
     {
       "rank": 8,
       "change": "Take the artifact digest once and reuse it for the cache key and the tamper check, instead of hashing before and after every invocation.",
-      "wall_clock_saved": "60.0 s of the broken run (4.64%); under 0.2 s once extraction happens once per artifact.",
-      "measured": "data/01_baseline_profile.json totals.hash_* (4,420 calls, 15.7 GB, 38.5x the 408 MB corpus); data/03_matrix.json timings_seconds.hashing = 0.168 s.",
+      "wall_clock_saved": "73.0 s of the broken run (5.21%); under 0.2 s once extraction happens once per artifact.",
+      "measured": "data/01_baseline_profile.json.gz totals.hash_* (4,728 calls, 19.6 GB, 48.0x the corpus); data/03_matrix.json.gz timings_seconds.hashing = 0.168 s.",
       "risk": "low, and mostly subsumed by rank 1."
     }
   ]

@@ -10,6 +10,7 @@ measurement of zero are different facts and this never turns the first into the 
 
 from __future__ import annotations
 
+import gzip
 import json
 
 import _bench
@@ -18,8 +19,27 @@ NAME = "00_summary"
 
 
 def load(stem: str) -> dict:
-    p = _bench.DATA / f"{stem}.json"
-    return json.loads(p.read_text()) if p.is_file() else {}
+    """The measurement file, plain or gzipped.
+
+    Large result files get compressed in place by repository hygiene, so a summary that only
+    looks for `.json` silently reports every number as `not measured` -- which is exactly the
+    failure this file exists to prevent, one level up.
+    """
+    plain = _bench.DATA / f"{stem}.json"
+    if plain.is_file():
+        return json.loads(plain.read_text())
+    packed = _bench.DATA / f"{stem}.json.gz"
+    if packed.is_file():
+        return json.loads(gzip.decompress(packed.read_bytes()))
+    return {}
+
+
+def where(stem: str) -> str:
+    """The path a reader should open to check a number, as it actually exists on disk."""
+    for suffix in (".json", ".json.gz"):
+        if (_bench.DATA / f"{stem}{suffix}").is_file():
+            return f"data/{stem}{suffix}"
+    return f"data/{stem}.json  (ABSENT)"
 
 
 def run_of(matrix: dict, label: str) -> dict:
@@ -36,16 +56,19 @@ def main() -> int:
     wall = t.get("wall_seconds")
 
     env["measured"] = {
-        "01_baseline_profile": "current implementation, corpus as declared. PARTIAL: 15 of 16 "
-        "claims files (workspace.yaml never reached).",
+        "01_baseline_profile": "current implementation, corpus as declared: "
+        f"{base.get('files_done')} of {base.get('files_total')} claims files, "
+        f"{'complete' if not base.get('partial') else 'PARTIAL'}.",
         "03_matrix": "prototype, all 16 files, 13 configurations, cold/warm/workers/invalidation.",
         "04_spawn_and_page": "process spawn floor, poppler load, one-page vs whole-document cost.",
     }
     env["not_measured"] = {
         "current implementation in a WORKING configuration": "the largest gap. Every number in "
-        "01_baseline_profile comes from the failure path. The prototype's cold run is the only "
-        "working-configuration measurement, and it is a different implementation, so "
-        "11.65 s vs 1292.6 s is not a like-for-like speedup.",
+        "01_baseline_profile comes from the failure path -- match_calls is 0, so the matcher "
+        "never ran. The prototype's cold run is the only working-configuration measurement and "
+        "it is a different implementation, so "
+        f"{run_of(mtx, 'C').get('wall_seconds', 0):.2f} s vs {wall:.1f} s is NOT a like-for-like "
+        "speedup and must not be quoted as one. profile_baseline.py --healthy closes this.",
         "page-map canary over the whole corpus": "one page of one document was verified "
         "byte-identical by hand; bench_pagemap.py exists and was not run.",
         "alternative reader backends": "owned by a separate study; nothing here compares readers.",
@@ -80,7 +103,7 @@ def main() -> int:
         "subprocess_calls": t.get("subprocess_calls"),
         "sha256_calls": t.get("hash_calls"),
         "sha256_bytes": t.get("hash_bytes"),
-        "source": "data/01_baseline_profile.json",
+        "source": where("01_baseline_profile"),
     }
 
     env["defect_exception_caching"] = {
@@ -104,8 +127,10 @@ def main() -> int:
             "succeeding extract() x5 with identical arguments": "0 further invocations, "
             "CacheInfo(hits=4, misses=1, currsize=1)",
         },
-        "cost_here": "2,210 extractions where 14 unique PDF artifacts were involved: 158x more "
-        "poppler invocations than the work requires, and 2,210 x 2 sha256 passes instead of 28.",
+        "cost_here": f"{t.get('subprocess_calls', 0):,} extractions where 14 unique PDF "
+        f"artifacts were involved: {t.get('subprocess_calls', 0) / 14:.0f}x more poppler "
+        f"invocations than the work requires, and {t.get('hash_calls', 0):,} sha256 passes "
+        "instead of 28.",
         "interaction_with_second_opinion": "_second_opinion fires on every `not found` and asks "
         "each remaining extractor. Those readings go through `reading_with`, which is also "
         "lru_cached and also does not memoize failures, so a document no reader can read is "
@@ -122,7 +147,7 @@ def main() -> int:
         "consequence_2": "verify WRITES into the source tree. 32 sibling .txt files now sit in "
         "mechanistic-validity-NEW2/reference/, timestamped to these runs. `_run`'s tamper check "
         "hashes only the input path, so a renderer that writes a sibling is invisible to it.",
-        "source": "data/01_baseline_profile.json verdicts, and reference/*.txt mtimes",
+        "source": where("01_baseline_profile") + " verdicts, and reference/*.txt mtimes",
     }
 
     env["defect_double_hash"] = {
@@ -208,7 +233,7 @@ def main() -> int:
         "independent gate reports in research/quote-selector/mechval_after_refactor.json, whose "
         "`loose` count of 45 also equals this run's 45 `normalized` warnings.",
         "digests_agree_where_inputs_unchanged": mtx.get("digests_agree_where_inputs_unchanged"),
-        "source": "data/03_matrix.json",
+        "source": where("03_matrix"),
     }
 
     env["page_scan_risk"] = {
@@ -227,7 +252,7 @@ def main() -> int:
         "PAGE_SCAN_LIMIT (200) page extractions. At the measured 50 ms that is ~10 s for one "
         "quotation, and 60% of each 50 ms is process startup and poppler loading, before the "
         "page is touched.",
-        "source": "data/04_spawn_and_page.json, data/03_matrix.json",
+        "source": where("04_spawn_and_page") + ", " + where("03_matrix"),
     }
 
     env["rust_verdict"] = {
@@ -235,9 +260,12 @@ def main() -> int:
             "removable_by_rewriting_the_python": t.get("unaccounted_seconds", 0) / wall
             if wall
             else None,
-            "explanation": "95.07% is the poppler subprocess, 4.64% is sha256 in OpenSSL, 0.17% "
-            "is libyaml. Interpreted Python is 0.13% of 1292.6 s. A Rust rewrite of the "
-            "orchestration removes essentially none of today's 21 minutes.",
+            "explanation": f"{100 * t.get('subprocess_seconds', 0) / (wall or 1):.2f}% is the "
+            f"poppler subprocess, {100 * t.get('hash_seconds', 0) / (wall or 1):.2f}% is sha256 "
+            f"in OpenSSL, {100 * t.get('yaml_seconds', 0) / (wall or 1):.2f}% is libyaml. "
+            f"Interpreted Python is {100 * t.get('unaccounted_seconds', 0) / (wall or 1):.3f}% "
+            f"of {wall:.1f} s. A Rust rewrite of the orchestration removes essentially none of "
+            f"today's {wall / 60:.0f} minutes.",
         },
         "against_the_fixed_cold_pipeline": {
             "self_cpu_fraction": (C.get("self_cpu_seconds") or 0) / (C.get("wall_seconds") or 1),
@@ -259,9 +287,10 @@ def main() -> int:
         "project, not an orchestration project, it competes with C++ poppler on parse speed "
         "rather than on language, and it only touches cold runs -- which, once the rendition "
         "cache exists, happen once per artifact ever.",
-        "recommendation": "no Rust for this. Fix the exception cache, extract once per "
-        "artifact, cache renditions and the YAML parse. Those are measured at 1292.6 s -> "
-        "11.65 s cold -> ~2.7 s warm, in Python.",
+        "recommendation": f"no Rust for this. Fix the exception cache, extract once per "
+        f"artifact, cache renditions and the YAML parse. Those are measured at {wall:.1f} s -> "
+        f"{run_of(mtx, 'C').get('wall_seconds', 0):.2f} s cold -> "
+        f"{run_of(mtx, 'D').get('wall_seconds', 0):.2f} s warm, in Python.",
     }
 
     ranked = [
@@ -269,10 +298,12 @@ def main() -> int:
             "rank": 1,
             "change": "Memoize extraction failures, so a source that cannot be read is read "
             "once per document rather than once per quotation.",
-            "wall_clock_saved": "the dominant term of the 1292.6 s run. 2,210 subprocess "
-            "invocations become at most 15.",
-            "measured": "data/01_baseline_profile.json totals.subprocess_seconds = 1228.8 s "
-            "(95.07% of wall); per_file shows subprocess_calls == quotes in all 14 PDF files.",
+            "wall_clock_saved": f"the dominant term of the {wall:.1f} s run. "
+            f"{t.get('subprocess_calls', 0):,} subprocess invocations become at most 15.",
+            "measured": f"{where('01_baseline_profile')} totals.subprocess_seconds = "
+            f"{t.get('subprocess_seconds', 0):.1f} s "
+            f"({100 * t.get('subprocess_seconds', 0) / (wall or 1):.2f}% of wall); per_file shows "
+            "subprocess_calls == quotes in every PDF-backed file.",
             "risk": "low. A cached failure must carry its reason and must not be treated as a "
             "verdict about the passage; `unchecked` already has that shape.",
         },
@@ -284,9 +315,10 @@ def main() -> int:
             "wall_clock_saved": "not a speed change; it is the difference between 2,512 "
             "unchecked and 2,509 found. Without it every other optimization makes a broken run "
             "faster.",
-            "measured": "data/01_baseline_profile.json verdicts (2,358 unchecked over 15 files); "
-            "the user's own run reports 2,512 of 2,512 unchecked. 32 stray .txt files in "
-            "reference/ are the write side effect.",
+            "measured": f"{where('01_baseline_profile')} verdicts "
+            f"({t.get('verdicts', {}).get('unchecked', 0):,} unchecked over "
+            f"{base.get('files_done')} files), matching the user's own run at 2,512 of 2,512. "
+            "32 stray .txt files in reference/ are the write side effect.",
             "risk": "low, but it changes what existing claims files do -- they start being "
             "checked, and three of them fail.",
         },
@@ -296,7 +328,7 @@ def main() -> int:
             "form feeds already in the output, instead of one `pdftotext` per page.",
             "wall_clock_saved": "7.7 s on this corpus (154 paged quotations x 50.2 ms), and it "
             "removes a latent ~10 s per quotation whose recorded page is wrong.",
-            "measured": "data/04_spawn_and_page.json; data/03_matrix.json run C reports "
+            "measured": f"{where('04_spawn_and_page')}; {where('03_matrix')} run C reports "
             "page_subprocesses = 0 and reaches the same verdicts.",
             "risk": "low, but the equivalence is load-bearing and only spot-checked: one page of "
             "one document was verified byte-identical. bench_pagemap.py checks every page of "
@@ -308,8 +340,8 @@ def main() -> int:
             "backend, backend version, argument vector, page selection, schema).",
             "wall_clock_saved": "11.65 s cold -> 3.52 s with warm renditions and cold checks. "
             "8.1 s, all of it poppler.",
-            "measured": "data/03_matrix.json runs C and D2. Cache is 2.51 MB for 18 renditions "
-            "of 48.2 MB of artifacts (5.2%).",
+            "measured": f"{where('03_matrix')} runs C and D2. Cache is 2.51 MB for 18 "
+            "renditions of 48.2 MB of artifacts (5.2%).",
             "risk": "medium. Key completeness is the whole safety argument; case L shows a "
             "version bump invalidating all 14 renditions, case K shows a changed artifact "
             "invalidating exactly one.",
@@ -318,7 +350,7 @@ def main() -> int:
             "rank": 5,
             "change": "Cache the YAML parse of claims files on (path, size, mtime_ns).",
             "wall_clock_saved": "1.94 s of the 2.74 s warm run -- 71% of it.",
-            "measured": "data/03_matrix.json run D timings_seconds.yaml = 1.944 s.",
+            "measured": f"{where('03_matrix')} run D timings_seconds.yaml = 1.944 s.",
             "risk": "low. mtime is a weaker key than content; falling back to a content hash "
             "costs a read of 16 small files.",
         },
@@ -328,7 +360,7 @@ def main() -> int:
             "wall_clock_saved": "11.30 s -> 6.42 s at 4 workers, 1.76x. It does not scale past "
             "4: child CPU rises from 8.07 s to 11.41 s at 8 workers, and one 12.5 MB document "
             "sets the floor.",
-            "measured": "data/03_matrix.json runs E, F, G, H, H2.",
+            "measured": f"{where('03_matrix')} runs E, F, G, H, H2.",
             "risk": "medium. Report ordering must come from the manifest, not from completion "
             "order; single flight must be per key, since lru_cache does not prevent two threads "
             "extracting the same document.",
@@ -338,7 +370,7 @@ def main() -> int:
             "change": "Check-result cache, keyed on the rendition digest plus the quotation, its "
             "selectors, the page constraint and a matching-policy version.",
             "wall_clock_saved": "0.78 s (3.52 s -> 2.74 s). Small, because the matcher is cheap.",
-            "measured": "data/03_matrix.json runs D and D2.",
+            "measured": f"{where('03_matrix')} runs D and D2.",
             "risk": "medium, and the highest of the seven relative to its payoff. A cached pass "
             "must be reported as reused, not as fresh; case M shows a policy bump invalidating "
             "all 2,512 verdicts while re-extracting nothing.",
@@ -347,10 +379,14 @@ def main() -> int:
             "rank": 8,
             "change": "Take the artifact digest once and reuse it for the cache key and the "
             "tamper check, instead of hashing before and after every invocation.",
-            "wall_clock_saved": "60.0 s of the broken run (4.64%); under 0.2 s once extraction "
+            "wall_clock_saved": f"{t.get('hash_seconds', 0):.1f} s of the broken run "
+            f"({100 * t.get('hash_seconds', 0) / (wall or 1):.2f}%); under 0.2 s once extraction "
             "happens once per artifact.",
-            "measured": "data/01_baseline_profile.json totals.hash_* (4,420 calls, 15.7 GB, "
-            "38.5x the 408 MB corpus); data/03_matrix.json timings_seconds.hashing = 0.168 s.",
+            "measured": f"{where('01_baseline_profile')} totals.hash_* "
+            f"({t.get('hash_calls', 0):,} calls, {t.get('hash_bytes', 0) / 1e9:.1f} GB, "
+            f"{t.get('hash_bytes', 0) / ((base.get('corpus') or {}).get('reference_bytes') or 1):.1f}x "
+            f"the corpus); {where('03_matrix')} timings_seconds.hashing = "
+            f"{(run_of(mtx, 'C').get('timings_seconds') or {}).get('hashing', 0):.3f} s.",
             "risk": "low, and mostly subsumed by rank 1.",
         },
     ]

@@ -15,16 +15,22 @@ The two `.gz` files are compressed only for size; `gunzip -c` gives the JSON the
 
 ## What they establish
 
-**95.07% of wall clock is the poppler subprocess.** OpenSSL sha256 is 4.64%, libyaml 0.17%, and
-interpreted Python **0.13%** — which is what a rewrite in another language would be competing
-for. A faster *reader* attacks the 95%; that question is answered next door in `pdf-readers/`,
+**94.50% of wall clock is the poppler subprocess.** OpenSSL sha256 is 5.21%, libyaml 0.16%, and
+interpreted Python **0.126%** — which is what a rewrite in another language would be competing
+for. A faster *reader* attacks the 94.5%; that question is answered next door in `pdf-readers/`,
 and the answer there is that the fast readers resolve fewer passages.
 
 **`functools.lru_cache` does not memoize exceptions.** `extract` raised on an unreadable source,
 so the cache stored every reading it managed and none of the ones it could not, and a document
-no extractor could open was re-attempted once per quotation. 2,210 poppler invocations for 14
-unique artifacts, 158 times the work the corpus requires. Fixed in `a334122`; the same run is
-now 14.6 seconds.
+no extractor could open was re-attempted once per quotation. 2,364 poppler invocations for 14
+unique artifacts, 169 times the work the corpus requires, over 1401.1 s. The double hash in
+`_run` compounds it: 4,728 calls reading 19.57 GB, 48 times over a 408 MB corpus. Fixed in
+`a334122`; the same run is now 14.6 seconds.
+
+Every figure above is read out of `data/00_summary.json`, which `summarize.py` now computes
+from the profile rather than restating. An earlier version of this file quoted 2,210 calls and
+95.07% from a checkpoint written while the profiler was still running, which is how a number
+gets into prose without an artifact standing behind it.
 
 ## The caveat this directory must not be read without
 
