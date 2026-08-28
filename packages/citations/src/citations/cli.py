@@ -29,7 +29,10 @@ from citations import verify as V
 from citations.exceptions import CitationsError, ClaimFileError
 from citations.models import ClaimFile, load_claim_file, load_record
 
-RESULTS = ["found", "not found", "indeterminate", "unchecked"]
+#: Every member of `verify.State`, in reporting order. An outcome absent here is
+#: counted and never printed: the table stops summing to the number of quotations
+#: above it, and a run whose only problem is that outcome reads as clean.
+RESULTS = ["found", "not found", "ambiguous", "indeterminate", "unchecked"]
 
 #: Width of the outcome column, computed so adding an outcome does not silently ragged the
 #: table. `indeterminate` is the longest, and naming an outcome for what it means rather than
@@ -261,7 +264,7 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
         if not n:
             continue
         why = ""
-        if s in ("unchecked", "indeterminate"):
+        if s in ("unchecked", "indeterminate", "ambiguous"):
             # Untruncated: the reason is the only thing that says what to fix, and the one
             # that matters most -- "which this run does not allow" -- is at the end of it.
             reasons = collections.Counter(r.detail for _, _, r in rep.problems if r.state == s)
@@ -363,11 +366,30 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
         print(
             f"nothing failed. {counts['unchecked']} unchecked — no measurement was made for those."
         )
+    elif counts.get("ambiguous"):
+        print(
+            f"nothing failed. {counts['ambiguous']} ambiguous — those passages occur more than "
+            "once in their sources, so the record does not say which occurrence it pinned."
+        )
     else:
         print("all found.")
     if a.strict and not rep.strict_ok:
         if rep.unresolved:
             print(f"\n{rep.unresolved} quotation(s) could not be checked at all.")
+            # Which ones, and why. The count on its own says a build should fail and not
+            # what to open; the reason is already on the Result and was being discarded.
+            unresolved = [
+                (s, q, r)
+                for s, q, r in rep.problems
+                if r.state in ("unchecked", "indeterminate", "ambiguous")
+            ]
+            for slug, text, r in unresolved[:20]:
+                print(f"  {r.state:<14}{slug[:30]:<32}{text[:44]}")
+                if r.detail:
+                    for line in r.detail.splitlines():
+                        print(f"                {line.strip()}" if line.strip() else "")
+            if len(unresolved) > 20:
+                print(f"                ... and {len(unresolved) - 20} more")
         if rep.unpinned:
             print(f"{len(rep.unpinned)} source(s) carry no digest: {', '.join(rep.unpinned[:3])}")
         if rep.skipped:
