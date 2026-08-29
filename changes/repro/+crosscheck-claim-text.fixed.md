@@ -1,1 +1,0 @@
-**[reproducible-science] The cross-tool report names the claim it is about.** `results` records a claim's text under `claim`; this read `claim_id` and then `id`, neither of which it has ever written, so every claim printed as `?`. The tests wrote `claim_id` themselves, so the reader agreed with the fixtures and neither had to agree with the writer.
