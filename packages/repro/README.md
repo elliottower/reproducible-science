@@ -68,6 +68,28 @@ repro verify
 
 Reads `repro.yaml` and checks every declared evidence assertion against the artifact it names. It spawns nothing: `prereg`, `results` and `citations` are separate commands.
 
+## On every commit
+
+```yaml
+# .pre-commit-config.yaml
+repos:
+  - repo: https://github.com/elliottower/reproducible-science
+    rev: v0.4.0
+    hooks:
+      - id: repro-verify
+```
+
+`repro-verify` reads the `repro.yaml` in the repository being committed to and fails when a
+declared number no longer matches the artifact behind it. Use `repro-verify-strict` to fail on
+a check that could not run as well as one that disagreed.
+
+Verifying writes nothing. `test_read_only.py` asserts that a verification creates no files,
+modifies none, and still writes nothing when it fails, which is what makes it safe to run
+inside a commit: a verifier that could edit an artifact is one that could be made to edit an
+artifact into agreeing with the claim.
+
+This repository runs the hook on itself, against the `repro.yaml` at its root.
+
 ## The workflow
 
 ```bash

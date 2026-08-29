@@ -1,0 +1,71 @@
+# What this repository claims about itself, and what backs each claim.
+#
+# The hook in `.pre-commit-hooks.yaml` is published for other people's repositories and was
+# never run against this one, on the reasoning that it reports on a consumer's manifest. That
+# left the verifier as the one project here whose claims nothing checked. These are the
+# repository's own numbers, bound to the measurement that produced them, and `repro verify`
+# runs over them on every commit like any other consumer.
+#
+# The reader comparison is the right thing to start with: it is the only place where prose in
+# a README quotes a figure from a machine-written artifact, which is exactly the shape this
+# tool exists to hold together.
+schema_version: repro/1
+project: reproducible-science
+
+artifacts:
+- id: citations-readme
+  path: packages/citations/README.md
+  media_type: text/markdown
+  digest:
+    algorithm: sha256
+    value: 7d0e90140f242f8a1d6827934f6de029a9e8be68e3da90323e9d32d9c9b1e8d6
+- id: reader-measurement
+  path: research/pdf-readers/results.json
+  media_type: application/json
+  digest:
+    algorithm: sha256
+    value: 0426573cc07bb2fe35482783cd13f92a1b325751ad34e8f08868962c7ebc6cba
+
+claims:
+- id: reader-corpus-size
+  text: The reader comparison ran over 1,593 passage checks.
+  where: packages/citations/README.md, extractors section
+  evidence:
+  - kind: quote
+    artifact: citations-readme
+    text: a 1,593-check corpus
+  - kind: metric
+    artifact: reader-measurement
+    name: passage_checks
+    reported: '1593'
+    pointer: /verdict/passage_checks
+
+- id: pypdf-agrees-more-often-than-pdfplumber
+  text: pypdf is preferred over pdfplumber because it agreed with poppler on more of the corpus,
+    92.7 per cent against 90.2 per cent.
+  where: packages/citations/README.md, extractors section
+  evidence:
+  - kind: quote
+    artifact: citations-readme
+    text: 92.7% against 90.2%
+  - kind: metric
+    artifact: reader-measurement
+    name: pypdf agreement with poppler-layout
+    reported: '0.92655'
+    pointer: /results/quotations/pairwise/poppler-layout vs pypdf/agreement_rate
+  - kind: metric
+    artifact: reader-measurement
+    name: pdfplumber agreement with poppler-layout
+    reported: '0.90207'
+    pointer: /results/quotations/pairwise/poppler-layout vs pdfplumber/agreement_rate
+
+- id: poppler-stays
+  text: The divergence between readers was substantial enough that poppler stays and
+    triangulation is worth building.
+  where: packages/citations/README.md, extractors section
+  evidence:
+  - kind: metric
+    artifact: reader-measurement
+    name: divergent checks
+    reported: '242'
+    pointer: /verdict/divergent_checks
