@@ -18,6 +18,7 @@ where they disagree. A rule with no gate is a comment.
 from __future__ import annotations
 
 import argparse
+import datetime
 import pathlib
 import re
 
@@ -46,6 +47,14 @@ PLUGIN_MANIFESTS = (
     PROJECT_ROOT / "packages" / "repro" / "plugin" / ".claude-plugin" / "plugin.json",
 )
 
+#: The citation record, which carries the release version too and was owned by nothing. It
+#: read 0.2.0 while the distributions were at 0.4.0 -- three releases -- and the anonymized
+#: artifact drop is what surfaced it, because that is the file a reviewer cites from.
+CITATION = PROJECT_ROOT / "CITATION.cff"
+
+CFF_VERSION = re.compile(r'^(?P<head>version:\s*")(?P<version>[^"]+)(?P<tail>")', re.M)
+CFF_DATE = re.compile(r'^(?P<head>date-released:\s*")(?P<date>[^"]+)(?P<tail>")', re.M)
+
 VERSION_LINE = re.compile(r'^version = "([^"]+)"$', re.M)
 JSON_VERSION = re.compile(r'(?P<head>"version":\s*")(?P<version>[^"]+)(?P<tail>")')
 SEMVER = re.compile(r"^\d+\.\d+\.\d+([ab]\d+|rc\d+)?$")
@@ -63,6 +72,16 @@ def declared() -> dict[str, str]:
             raise VersionError(f'{path.relative_to(PROJECT_ROOT)}: no `version = "..."` line')
         out[name] = m.group(1)
     return out
+
+
+def citation_version() -> str | None:
+    """What `CITATION.cff` says the release is, or None where there is no such file."""
+    if not CITATION.exists():
+        return None
+    m = CFF_VERSION.search(CITATION.read_text())
+    if not m:
+        raise VersionError(f"{CITATION.name}: no `version:` line")
+    return m.group("version")
 
 
 def plugin_versions() -> dict[pathlib.Path, str]:
@@ -168,6 +187,10 @@ def check() -> list[str]:
                     f"but lockstep {version} wants {dep}{want}"
                 )
 
+    cited = citation_version()
+    if cited is not None and cited != version:
+        problems.append(f"CITATION.cff: version {cited}, but the release is {version}")
+
     for path, declared_version in plugin_versions().items():
         if declared_version != version:
             problems.append(
@@ -212,6 +235,18 @@ def bump(version: str, realign: bool = False) -> list[str]:
         if text != original:
             path.write_text(text)
             touched.append(str(path.relative_to(PROJECT_ROOT)))
+
+    # The citation record carries the release version and the date it went out. The version is
+    # checked; the date is written and not checked, because there is nothing to check it
+    # against -- a bump run a few days before the tag leaves it a few days early, which is a
+    # great deal better than the three releases stale it was.
+    if CITATION.exists():
+        text = original = CITATION.read_text()
+        text = CFF_VERSION.sub(rf"\g<head>{version}\g<tail>", text, count=1)
+        text = CFF_DATE.sub(rf"\g<head>{datetime.date.today().isoformat()}\g<tail>", text, count=1)
+        if text != original:
+            CITATION.write_text(text)
+            touched.append(CITATION.name)
 
     # The plugin manifests carry the same release version. Written here rather than by hand,
     # because by hand is what left them at 0.2.0 across two releases.
