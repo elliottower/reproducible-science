@@ -148,6 +148,29 @@ type = [
   { directory = "deprecated", name = "Deprecated", showcontent = true },
 ]
 
+# Fragments are filed under the package they describe. Without these, towncrier scans only
+# `changes/*.md` and every fragment in a subdirectory is invisible to it: `make notes` had
+# nothing to check while sixteen fragments sat unused and the changelog was written by hand.
+[[tool.towncrier.section]]
+name = "citations"
+path = "citations"
+
+[[tool.towncrier.section]]
+name = "prereg"
+path = "prereg"
+
+[[tool.towncrier.section]]
+name = "results-cli"
+path = "results"
+
+[[tool.towncrier.section]]
+name = "reproducible-science"
+path = "repro"
+
+[[tool.towncrier.section]]
+name = "provenance-core"
+path = "provenance-core"
+
 # Architecture, enforced. The rule the monorepo exists to keep is that the three tools stay
 # usable without the verifier: `pip install citations` must not drag in an evidence engine.
 

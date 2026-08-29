@@ -1,0 +1,1 @@
+**[citations] The command list matches the commands.** Four CLIs documented their subcommands in a module docstring that nothing compared to the parser: `citations` advertised a `bib` command that has never existed and omitted `pin` and `projects`, `prereg` omitted `setup`, `results` omitted `reanchor`, and `repro` omitted four.
