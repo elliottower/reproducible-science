@@ -8,9 +8,67 @@ on:
   push:
     tags: ["results-v*", "v*"]
   workflow_dispatch:
+  schedule:
+    # Weekly, staggered so five runs do not land in the same minute.
+    - cron: "47 6 * * 1"
 
 jobs:
+
+  # Whether PyPI will accept a release from this workflow, asked without publishing one.
+  #
+  # PyPI binds a trusted publisher to a repository, a workflow *filename* and an environment,
+  # and none of that is visible from a checkout: `docs/RELEASING.md` said to open five
+  # settings pages in a browser before tagging, which is a check nobody can run in CI and
+  # everybody skips. The exchange this job performs is the same one the publish action makes
+  # -- an OIDC claim for a short-lived upload token -- and PyPI refuses it for exactly the
+  # misconfigurations that would break a release. Minting one and throwing it away answers
+  # the question with no artifact and no upload.
+  #
+  # It runs on a schedule so a binding that breaks is found on an ordinary week rather than
+  # on release day. A release is partial and unrecoverable when some packages upload and
+  # others are rejected, so the value is in finding it early, not in finding it faster.
+  binding:
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write
+    steps:
+      - name: PyPI accepts a release of results-cli from this workflow
+        env:
+          PROJECT: results-cli
+        run: |
+          set -euo pipefail
+          claim=$(curl -sS --fail \
+            -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=pypi" | jq -r '.value')
+          # The body of a success holds an upload token. It is written to a file rather than
+          # a variable, never echoed, and deleted before this step ends.
+          code=$(curl -sS -o /tmp/mint.json -w '%{http_code}' \
+            -X POST https://pypi.org/_/oidc/mint-token \
+            -d "{\"token\": \"${claim}\"}")
+          if [ "$code" = "200" ]; then
+            rm -f /tmp/mint.json
+            echo "${PROJECT}: PyPI would accept a release from this workflow."
+            exit 0
+          fi
+          echo "PyPI refused to mint an upload token for ${PROJECT} (HTTP ${code})."
+          cat /tmp/mint.json || true
+          rm -f /tmp/mint.json
+          echo
+          echo "The trusted publisher for ${PROJECT} must name:"
+          echo "  repository   ${GITHUB_REPOSITORY}"
+          echo "  workflow     $(basename "${GITHUB_WORKFLOW_REF%%@*}")"
+          echo "  environment  release"
+          echo "https://pypi.org/manage/project/${PROJECT}/settings/publishing/"
+          exit 1
+
   publish:
+    # Only a pushed tag releases. A schedule and a manual dispatch verify the binding and
+    # publish nothing, so this must test the event as well as the ref: `github.ref` on a
+    # dispatch is the branch it was launched from, and a gate reading the ref alone would
+    # have uploaded from any branch someone ran this on by hand.
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    needs: binding
     runs-on: ubuntu-latest
     environment: release
     permissions:
