@@ -15,7 +15,7 @@ Results go to enrichment.yaml, not into records/, because records/ is generated 
 them on the next build.
 
     citations resolve --check          # report, write nothing
-    citations resolve --paper mechanistic-reference
+    citations resolve --paper my-review
     citations resolve --verify         # re-check that every stored link still resolves
 
 `--via paperclip` answers a different question. The commands above find an identifier for a

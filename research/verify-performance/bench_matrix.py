@@ -67,7 +67,7 @@ def variant_corpus(tmp: pathlib.Path, tag: str, edit_first_quote=False, edit_art
     """A corpus that differs from the real one in exactly one way.
 
     Built as a directory of copies beside a `reference/` of symlinks, so nothing under
-    `mechanistic-validity-NEW2` is touched. `ClaimFile.artifact()` resolves against the parent
+    the reference corpus is touched. `ClaimFile.artifact()` resolves against the parent
     of the claims directory, which is why the shape is reproduced rather than faked.
     """
     root = tmp / "corpora" / tag

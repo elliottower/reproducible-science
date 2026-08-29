@@ -68,7 +68,7 @@ depends on anything above it.
 
 ### Not yet examined
 
-How `mechanistic-validity`'s CLI and the decision-scope work tie in. Both are
+How the adjacent validity-coding CLI and the decision-scope work tie in. Both are
 separate repositories with their own commands, and whether they become capability
 modules, plugins, or stay independent is an open question.
 

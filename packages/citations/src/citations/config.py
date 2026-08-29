@@ -6,10 +6,10 @@ machine. It is configuration, so it lives in the library as data:
     <library>/papers.yaml
 
     papers:
-      mechanistic-validity:
-        bib: ~/Documents/GitHub/mechanistic-validity-NEW2/paper/references.bib
-        claims: ~/Documents/GitHub/mechanistic-validity-NEW2/claims
-        sources: ~/Documents/GitHub/mechanistic-validity-NEW2/sources
+      structure-audit:
+        bib: ~/papers/structure-audit/paper/references.bib
+        claims: ~/papers/structure-audit/claims
+        sources: ~/papers/structure-audit/sources
 
 Paths may be absolute, may use `~`, or may be relative to the library. A configured path that
 does not exist is reported rather than skipped: a bibliography that quietly contributes nothing
