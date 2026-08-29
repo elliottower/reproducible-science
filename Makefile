@@ -16,7 +16,7 @@
 PY := uv run
 PKG_SRC := packages/repro/src packages/citations/src packages/results/src packages/prereg/src
 
-.PHONY: help format check test coverage versions publishable interop qa qa-all release-check types deps imports dead notes check-lowest hooks publishers
+.PHONY: help format check test coverage versions publishable interop qa qa-all release-check types deps imports dead notes check-lowest hooks publishers changelog
 
 help:
 	@grep -E '^#   make' Makefile | sed 's/^#   //'
@@ -125,6 +125,11 @@ qa-all: qa check-lowest
 # thing available, so a floor that is too low is invisible until a user hits it.
 check-lowest:
 	uv run --resolution lowest-direct --all-packages --group dev pytest -q
+
+# `make changelog VERSION=0.4.0` -- towncrier, then the blank-line normalization
+# markdownlint requires. One command, because the second half is the forgettable one.
+changelog:
+	$(PY) python scripts/changelog.py $(VERSION)
 
 publishers:
 	$(PY) python scripts/check_publishers.py

@@ -41,6 +41,19 @@ install on current Python, and nothing noticed until a gate resolved the declare
 
 ## 2. Write the changelog
 
+```bash
+make changelog VERSION=X.Y.Z
+```
+
+`towncrier build` alone leaves runs of blank lines that `markdownlint` rejects, and the
+release where the second command is forgotten is the one where `make release-check` fails
+after the fragments have already been consumed. One command, so the forgettable half cannot
+be forgotten.
+
+Fragments live under `changes/<package>/`, which towncrier reads only because those
+directories are declared as sections; without that it scans `changes/*.md`, finds nothing and
+reports "No significant changes" while every fragment sits unused.
+
 One `CHANGELOG.md` at the workspace root, not one per package: lockstep means four files
 would repeat one release four times. Entries carry a `[package]` prefix. Sections are
 `Fixed`, `Added`, `Changed`, `Removed`, `Deprecated`.
