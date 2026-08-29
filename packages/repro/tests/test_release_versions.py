@@ -125,9 +125,60 @@ def test_a_bump_writes_the_citation_version_and_the_date(tmp_path, monkeypatch):
     monkeypatch.setattr(versions, "CITATION", cff)
     monkeypatch.setattr(versions, "PACKAGES", {})
     monkeypatch.setattr(versions, "PLUGIN_MANIFESTS", ())
+    monkeypatch.setattr(versions, "HOOKS", tmp_path / "absent.yaml")
+
+    # Every path `bump` writes has to be redirected, and the list grew after this test was
+    # written: adding HOOKS as a target left this test writing 9.9.9 into the repository's own
+    # `.pre-commit-hooks.yaml`, which the next commit then carried. Reading the real files back
+    # is what turns the next such omission into a failure here rather than into a commit.
+    untouched = {
+        p: p.read_bytes() for p in (ROOT / ".pre-commit-hooks.yaml", ROOT / "CITATION.cff")
+    }
 
     versions.bump("9.9.9", realign=True)
+
+    for path, before in untouched.items():
+        assert path.read_bytes() == before, f"bump wrote to {path.name} outside the test"
     written = cff.read_text()
     assert 'version: "9.9.9"' in written
     assert datetime.date.today().isoformat() in written
     assert 'title: "x"' in written, "a bump must not disturb the rest of the record"
+
+
+def test_the_published_hook_snippet_pins_the_current_release():
+    """`.pre-commit-hooks.yaml` shows people a `rev:` to copy. It read `repro-v0.3.0` against a
+    0.4.0 release, so following the documentation pinned a version behind."""
+    import re
+
+    snippet = (ROOT / ".pre-commit-hooks.yaml").read_text()
+    pinned = re.search(r"^#\s+rev:\s*v(\S+)", snippet, re.M).group(1)
+    packaged = re.search(
+        r'^version = "([^"]+)"',
+        (ROOT / "packages" / "citations" / "pyproject.toml").read_text(),
+        re.M,
+    ).group(1)
+    assert pinned == packaged
+
+
+def test_versions_check_reports_a_stale_hook_snippet(tmp_path, monkeypatch):
+    hooks = tmp_path / ".pre-commit-hooks.yaml"
+    hooks.write_text("#       rev: v0.0.1\n- id: repro-verify\n")
+    monkeypatch.setattr(versions, "HOOKS", hooks)
+    assert any(".pre-commit-hooks.yaml" in problem for problem in versions.check())
+
+    hooks.write_text(f"#       rev: v{versions.declared()['citations']}\n- id: repro-verify\n")
+    assert not any(".pre-commit-hooks.yaml" in problem for problem in versions.check())
+
+
+def test_this_repository_declares_and_verifies_its_own_claims():
+    """The hook is published for other repositories and was never run against this one, which
+    left the verifier as the only project here whose claims nothing checked."""
+    import yaml
+
+    manifest = ROOT / "repro.yaml"
+    assert manifest.is_file(), "the verifier declares no claims of its own"
+    declared = yaml.safe_load(manifest.read_text())
+    assert declared["claims"], "a manifest with no claims verifies nothing"
+
+    config = (ROOT / ".pre-commit-config.yaml").read_text()
+    assert "repro verify" in config, "the manifest exists but no hook runs it"

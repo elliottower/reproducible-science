@@ -2,12 +2,13 @@
 #
 #   repos:
 #     - repo: https://github.com/elliottower/reproducible-science
-#       rev: repro-v0.3.0
+#       rev: v0.4.0
 #       hooks:
 #         - id: repro-verify
 #
-# The hook checks a repository's own repro.yaml, so it reports on the consumer's manifest and
-# never on this one.
+# The hook checks a repository's own repro.yaml, so it reports on the consumer's manifest.
+# This repository runs it on itself as well, against the repro.yaml at its root: a verifier
+# whose own claims nothing checks is the one project it would be strange to exempt.
 
 - id: repro-verify
   name: declared evidence assertions verify
