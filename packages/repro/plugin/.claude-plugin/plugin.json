@@ -1,7 +1,7 @@
 {
   "name": "reproducible-science",
   "description": "Freeze a plan before running, seal a run's inputs, bind every number and quotation in a manuscript to what backs it, and check that each still resolves before submitting. Bundles prereg, citations, results and repro.",
-  "version": "0.2.0",
+  "version": "0.4.0",
   "author": {
     "name": "Elliot Tower",
     "email": "elliot@elliottower.ai"

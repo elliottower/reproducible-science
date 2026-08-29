@@ -33,7 +33,21 @@ PACKAGES = {
     "provenance-core": PROJECT_ROOT / "packages" / "provenance-core" / "pyproject.toml",
 }
 
+#: The Claude Code plugin manifests, which carry the same release version and were not
+#: written by anything. They sat at 0.2.0 through two releases: nothing read them, so nothing
+#: could say they were stale, and a reader comparing the plugin to PyPI found a mismatch.
+#: `site/.vscode/launch.json` also carries `"version": "0.2.0"` and is not one of these -- that
+#: is VS Code's schema version and has nothing to do with this project.
+PLUGIN_MANIFESTS = (
+    PROJECT_ROOT / ".claude-plugin" / "marketplace.json",
+    PROJECT_ROOT / "packages" / "citations" / "plugin" / ".claude-plugin" / "plugin.json",
+    PROJECT_ROOT / "packages" / "prereg" / "plugin" / ".claude-plugin" / "plugin.json",
+    PROJECT_ROOT / "packages" / "results" / "plugin" / ".claude-plugin" / "plugin.json",
+    PROJECT_ROOT / "packages" / "repro" / "plugin" / ".claude-plugin" / "plugin.json",
+)
+
 VERSION_LINE = re.compile(r'^version = "([^"]+)"$', re.M)
+JSON_VERSION = re.compile(r'(?P<head>"version":\s*")(?P<version>[^"]+)(?P<tail>")')
 SEMVER = re.compile(r"^\d+\.\d+\.\d+([ab]\d+|rc\d+)?$")
 
 
@@ -48,6 +62,19 @@ def declared() -> dict[str, str]:
         if not m:
             raise VersionError(f'{path.relative_to(PROJECT_ROOT)}: no `version = "..."` line')
         out[name] = m.group(1)
+    return out
+
+
+def plugin_versions() -> dict[pathlib.Path, str]:
+    """What each plugin manifest declares, by path."""
+    out: dict[pathlib.Path, str] = {}
+    for path in PLUGIN_MANIFESTS:
+        if not path.exists():
+            continue
+        m = JSON_VERSION.search(path.read_text())
+        if not m:
+            raise VersionError(f'{path.relative_to(PROJECT_ROOT)}: no `"version"` field')
+        out[path] = m.group("version")
     return out
 
 
@@ -140,6 +167,13 @@ def check() -> list[str]:
                     f"{path.relative_to(PROJECT_ROOT)}: depends on {dep}{spec}, "
                     f"but lockstep {version} wants {dep}{want}"
                 )
+
+    for path, declared_version in plugin_versions().items():
+        if declared_version != version:
+            problems.append(
+                f"{path.relative_to(PROJECT_ROOT)}: plugin version {declared_version}, "
+                f"but the release is {version}"
+            )
     return problems
 
 
@@ -175,6 +209,17 @@ def bump(version: str, realign: bool = False) -> list[str]:
                     continue
                 body = re.sub(rf'"{re.escape(dep)}(?:[><=!~][^"]*)?"', f'"{dep}{want}"', body)
             text = text[: span[0]] + body + text[span[1] :]
+        if text != original:
+            path.write_text(text)
+            touched.append(str(path.relative_to(PROJECT_ROOT)))
+
+    # The plugin manifests carry the same release version. Written here rather than by hand,
+    # because by hand is what left them at 0.2.0 across two releases.
+    for path in PLUGIN_MANIFESTS:
+        if not path.exists():
+            continue
+        text = original = path.read_text()
+        text = JSON_VERSION.sub(rf"\g<head>{version}\g<tail>", text, count=1)
         if text != original:
             path.write_text(text)
             touched.append(str(path.relative_to(PROJECT_ROOT)))
