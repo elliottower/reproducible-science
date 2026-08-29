@@ -88,3 +88,46 @@ def test_every_manifest_in_this_workspace_declares_the_same_sibling_series():
             if dep != name:
                 series.setdefault(spec, []).append(f"{name} -> {dep}")
     assert len(series) <= 1, f"sibling ranges disagree: {series}"
+
+
+def test_the_citation_record_carries_the_release_version():
+    """`CITATION.cff` sat at 0.2.0 while the distributions were at 0.4.0 -- three releases.
+    Nothing owned it, so nothing could say it was stale, and it is the file a reader cites
+    from. Surfaced by an anonymized artifact drop rather than by any check here."""
+    import re
+
+    cff = (ROOT / "CITATION.cff").read_text()
+    cited = re.search(r'^version:\s*"([^"]+)"', cff, re.M).group(1)
+    packaged = re.search(
+        r'^version = "([^"]+)"',
+        (ROOT / "packages" / "citations" / "pyproject.toml").read_text(),
+        re.M,
+    ).group(1)
+    assert cited == packaged
+
+
+def test_versions_check_reports_a_stale_citation_record(tmp_path, monkeypatch):
+    """The check has to fail on the defect, not merely pass on a repaired tree."""
+    cff = tmp_path / "CITATION.cff"
+    cff.write_text('version: "0.1.0"\ndate-released: "2020-01-01"\n')
+    monkeypatch.setattr(versions, "CITATION", cff)
+    assert any("CITATION.cff" in problem for problem in versions.check())
+
+    cff.write_text(f'version: "{versions.declared()["citations"]}"\ndate-released: "2020-01-01"\n')
+    assert not any("CITATION.cff" in problem for problem in versions.check())
+
+
+def test_a_bump_writes_the_citation_version_and_the_date(tmp_path, monkeypatch):
+    import datetime
+
+    cff = tmp_path / "CITATION.cff"
+    cff.write_text('title: "x"\nversion: "0.1.0"\ndate-released: "2020-01-01"\n')
+    monkeypatch.setattr(versions, "CITATION", cff)
+    monkeypatch.setattr(versions, "PACKAGES", {})
+    monkeypatch.setattr(versions, "PLUGIN_MANIFESTS", ())
+
+    versions.bump("9.9.9", realign=True)
+    written = cff.read_text()
+    assert 'version: "9.9.9"' in written
+    assert datetime.date.today().isoformat() in written
+    assert 'title: "x"' in written, "a bump must not disturb the rest of the record"
