@@ -16,7 +16,7 @@
 PY := uv run
 PKG_SRC := packages/repro/src packages/citations/src packages/results/src packages/prereg/src
 
-.PHONY: help format check test coverage versions publishable interop qa qa-all release-check types deps imports dead notes check-lowest hooks
+.PHONY: help format check test coverage versions publishable interop qa qa-all release-check types deps imports dead notes check-lowest hooks publishers
 
 help:
 	@grep -E '^#   make' Makefile | sed 's/^#   //'
@@ -126,8 +126,11 @@ qa-all: qa check-lowest
 check-lowest:
 	uv run --resolution lowest-direct --all-packages --group dev pytest -q
 
+publishers:
+	$(PY) python scripts/check_publishers.py
+
 # ---- rung 6: a release -------------------------------------------------------------------
-release-check: qa interop-strict
+release-check: qa interop-strict publishers
 	$(PY) python scripts/check_wheels.py
 	rm -rf dist && mkdir -p dist
 # provenance-core included: every other package declares it, so a release that omits it

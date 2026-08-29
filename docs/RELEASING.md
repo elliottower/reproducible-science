@@ -101,20 +101,35 @@ a red `main` produces a bad release.
 
 ## 5. Confirm trusted publishing before tagging
 
-**This is the step that has no local equivalent and cannot be verified from a checkout.**
-
-PyPI binds a trusted publisher to a repository, a workflow *filename*, and an environment. A
-package that moved between repositories keeps its old binding, and the upload is rejected.
-
-```text
-https://pypi.org/manage/project/citations/settings/publishing/             publish-citations.yml
-https://pypi.org/manage/project/prereg/settings/publishing/                publish-prereg.yml
-https://pypi.org/manage/project/results-cli/settings/publishing/           publish-results.yml
-https://pypi.org/manage/project/reproducible-science/settings/publishing/  publish-repro.yml
-https://pypi.org/manage/project/provenance-core/settings/publishing/      publish-provenance-core.yml
+```bash
+uv run python scripts/check_publishers.py
 ```
 
-Each needs repository `elliottower/reproducible-science` and environment `release`.
+PyPI binds a trusted publisher to a repository, a workflow *filename*, and an environment. A
+package that moved between repositories keeps its old binding and the upload is rejected.
+
+This used to say: open five settings pages in a browser. That is a check with no command, and
+a check with no command is one nobody runs. Each publish workflow now answers the question
+itself. Its `binding` job exchanges an OIDC claim for a short-lived upload token and throws
+the token away — the same exchange the publish action makes, refused by PyPI for exactly the
+misconfigurations that break a release, and it uploads nothing. It runs weekly, on every
+manual dispatch, and ahead of the upload on a release, so a binding that breaks is found on
+an ordinary Monday rather than on release day.
+
+`check_publishers.py` reads those runs, per workflow, by job name. A run's overall conclusion
+is not the answer: a release that published proves the binding held at the time, while a run
+with no such job proves only that the check did not exist yet, and the two must not read
+alike.
+
+To ask right now rather than read last week's answer:
+
+```bash
+gh workflow run publish-citations.yml
+gh run watch $(gh run list --workflow publish-citations.yml --limit 1 --json databaseId -q '.[0].databaseId')
+```
+
+A dispatch publishes nothing. The `publish` job requires a pushed tag, tested on the event as
+well as the ref, because `github.ref` on a dispatch is the branch it was launched from.
 
 Check all five before tagging, not after the first failure. A rejected upload does not consume
 the version, so a wholly failed release is recoverable — but a *partial* one is not: if two
