@@ -2,8 +2,6 @@
 
 A deterministic record of what an agent read, for use with preregistered analysis.
 
-`SPEC_v2.md` is the current argument; `SPEC_v1.md` is the prior version, kept as provenance. This is how to run it.
-
 ## Install
 
 Add to `~/.claude/settings.json` for every session, or `.claude/settings.json` in a

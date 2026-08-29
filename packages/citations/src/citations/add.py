@@ -3,7 +3,7 @@
 Appending an entry by hand is how a duplicate key gets into a bibliography, and BibTeX's answer
 to a duplicate is non-fatal:
 
-    Repeated entry---line 923 of file mechscope_references.bib
+    Repeated entry---line 923 of file references.bib
      : @misc{mbusa2026drivepilot
     I'm skipping whatever remains of this entry
 

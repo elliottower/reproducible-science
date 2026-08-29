@@ -129,7 +129,7 @@ def main() -> int:
         "--healthy",
         action="store_true",
         help="drop each file's declared extract_cmd, so extraction succeeds and the page and "
-        "second-opinion paths are reached. mechval's claims files declare `pdftotext -layout`, "
+        "second-opinion paths are reached. that corpus's claims files declare `pdftotext -layout`, "
         "which citations runs as `pdftotext -layout FILE` -- poppler then writes FILE.txt and "
         "prints nothing, so every quotation in the corpus is `unchecked` as it stands.",
     )

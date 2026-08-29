@@ -5,8 +5,8 @@ bibliographic facts once -- who wrote it, where it appeared, the DOI or arXiv id
 fetch it, the sha256 of the copy that was read -- and then, under `cited_by`, what each of my
 papers does with it: the citation key that paper uses, and any passages it quotes.
 
-Reading it source-first is the point. "Craver 2007: mechanistic-validity cites it as
-craver2007explaining and quotes three passages under nomological validity; mechanistic-views
+Reading it source-first is the point. "Craver 2007: one paper cites it as
+craver2007explaining and quotes three passages under nomological validity; a second
 cites the same book as craver2007 and quotes a different passage." That is invisible when each
 paper keeps its own bibliography, and it is where the duplicated reading, the divergent keys
 and the contradictory year fields all show up.

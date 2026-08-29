@@ -229,7 +229,7 @@ def main() -> int:
         },
         "verdicts": C.get("counts"),
         "cross_validation": "2,509 found / 3 not found, and the three are refusal:I1, "
-        "successor_heads:C5, superposition:C3 -- the same three, by name, that mechval's own "
+        "successor_heads:C5, superposition:C3 -- the same three, by name, that that corpus's own "
         "independent gate reports in research/quote-selector/mechval_after_refactor.json, whose "
         "`loose` count of 45 also equals this run's 45 `normalized` warnings.",
         "digests_agree_where_inputs_unchanged": mtx.get("digests_agree_where_inputs_unchanged"),

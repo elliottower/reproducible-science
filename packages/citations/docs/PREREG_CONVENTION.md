@@ -41,8 +41,8 @@ A freeze is a commit plus a content hash. Neither depends on the path.
 git show <freeze-sha>:<old/path/PREREG.md> | shasum -a 256   # resolves forever
 ```
 
-`mechanistic-validity` moved five frozen documents into per-experiment folders and re-hashed
-them afterwards; all five were byte-identical and the attestation held. Record the old path
+One project moved five frozen documents into per-experiment folders and re-hashed them
+afterwards; all five were byte-identical and the attestation held. Record the old path
 alongside the new one in the registry and nothing is lost.
 
 ## The registry
@@ -67,6 +67,6 @@ commit behind it is a registration, and the two should never be cited the same w
 
 ## Current state, for reference
 
-51 distinct pre-registration documents across seven repositories. Only `mechanistic-views-NEW`
-and `mechanistic-validity-NEW2` follow the layout above. `neural-geometry-reliability` is close,
-keeping them flat under `experiments/`. The rest are at repository roots or in `docs/`.
+51 distinct pre-registration documents across seven repositories. Two follow the layout
+above and a third is close, keeping them flat under `experiments/`. The rest are at repository
+roots or in `docs/`.

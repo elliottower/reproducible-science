@@ -67,7 +67,7 @@ def test_skeleton_never_folds_two_different_claims_together(quoted, extracted, w
 def test_the_sign_flip_that_the_bound_exists_for():
     """Deleting every hyphen is what this rule is written to avoid.
 
-    `mechanistic-validity` folded with `re.sub(r"-", "", s)`, so a quotation claiming a
+    An earlier matcher folded hyphens with `re.sub(r"-", "", s)`, so a quotation claiming a
     negative resolved against a source stating the positive -- in its primary matcher, not a
     fallback. The rule here requires a word character on the left, which a minus never has.
     """
