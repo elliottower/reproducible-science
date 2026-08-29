@@ -143,9 +143,9 @@ def main() -> int:
         "written for appends an input AND an output path. `pdftotext -layout FILE` therefore "
         "writes FILE.txt and prints nothing.",
         "consequence_1": "every quotation in the corpus is `unchecked`: 2,512 of 2,512 in the "
-        "user's own saved run (research/quote-selector/mechval_16claims_with_selector.txt).",
+        "user's own saved run (research/quote-selector/corpus_a_16claims_with_selector.txt).",
         "consequence_2": "verify WRITES into the source tree. 32 sibling .txt files now sit in "
-        "mechanistic-validity-NEW2/reference/, timestamped to these runs. `_run`'s tamper check "
+        "the reference corpus, timestamped to these runs. `_run`'s tamper check "
         "hashes only the input path, so a renderer that writes a sibling is invisible to it.",
         "source": where("01_baseline_profile") + " verdicts, and reference/*.txt mtimes",
     }
@@ -230,7 +230,7 @@ def main() -> int:
         "verdicts": C.get("counts"),
         "cross_validation": "2,509 found / 3 not found, and the three are refusal:I1, "
         "successor_heads:C5, superposition:C3 -- the same three, by name, that that corpus's own "
-        "independent gate reports in research/quote-selector/mechval_after_refactor.json, whose "
+        "independent gate reports in research/quote-selector/corpus_a_after_refactor.json, whose "
         "`loose` count of 45 also equals this run's 45 `normalized` warnings.",
         "digests_agree_where_inputs_unchanged": mtx.get("digests_agree_where_inputs_unchanged"),
         "source": where("03_matrix"),

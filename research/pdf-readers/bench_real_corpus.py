@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import collections
 import json
+import os
 import pathlib
 import subprocess
 import time
@@ -25,7 +26,7 @@ import time
 import yaml
 from citations import verify as V
 
-ROOT = pathlib.Path.home() / "Documents/GitHub/mechanistic-validity-NEW2"
+ROOT = pathlib.Path(os.environ.get("CORPUS_ROOT", "corpus"))
 PDFRS = pathlib.Path(
     "/private/tmp/claude-501/-Users-elliottower-Documents-GitHub-factorization-circuits"
     "/914b66f3-5004-41f9-a015-a12f8e4f8d15/scratchpad/pdfrs/target/release/pdfrs"

@@ -26,7 +26,7 @@ DATA = HERE / "data"
 SCHEMA = 1
 
 #: The corpus every measurement in this study runs against.
-CORPUS_ROOT = pathlib.Path("~/Documents/GitHub/mechanistic-validity-NEW2").expanduser()
+CORPUS_ROOT = pathlib.Path(os.environ.get("CORPUS_ROOT", "corpus")).expanduser()
 CLAIMS_DIR = CORPUS_ROOT / "claims"
 REFERENCE_DIR = CORPUS_ROOT / "reference"
 

@@ -46,6 +46,6 @@ been run. The 95% figure survives the caveat — a working run also spends its t
 extraction, and adds matching on top — but the absolute seconds do not.
 
 The prototype under `pipeline.py` and `rendition.py` is not proposed for merge as it stands. It
-cross-validates against the independent gate in `mechanistic-validity-NEW2`, reaching the same
+cross-validates against the independent gate in the reference corpus, reaching the same
 three failing quotations by name and the same count of normalized matches, which is the reason
 to trust its verdicts rather than only its timings.
