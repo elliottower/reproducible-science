@@ -96,6 +96,31 @@ def test_a_backend_defect_is_an_error_and_never_an_abstention():
     assert decision.outcome is O.ERROR, "a TypeError must not read as unchecked"
 
 
+def test_an_absent_extractor_is_unchecked_and_never_a_mismatch():
+    """The fourth injected fault, which had a code path and no witness.
+
+    A missing binary is a fact about the machine running the check. Recording it as a
+    mismatch accuses the manuscript of a disagreement nobody observed, and recording it as
+    verified is worse. It has to arrive as `unchecked` carrying the reason, so a reader can
+    tell an uninstalled extractor from a value that genuinely differs.
+    """
+    from repro.exceptions import BackendUnavailableError
+    from repro.models import Outcome as O
+    from repro.models import Reason as R
+    from repro.verify import MetricBackend
+
+    class Uninstalled(MetricBackend):
+        def check(self, claim, evidence, paths):
+            raise BackendUnavailableError("metric", "pdftotext is not installed")
+
+    case = CASES[[c.name for c in CASES].index("value_match")]
+    report = verify(load(case / "repro.yaml"), backends=(Uninstalled(),))
+    decision = report.decisions[0]
+    assert decision.outcome is O.UNCHECKED, "a missing toolchain must not read as a mismatch"
+    assert decision.reason is R.EXTRACTOR_MISSING
+    assert decision.comparison.value == "not_applicable", "nothing was compared"
+
+
 @pytest.mark.parametrize("case", CASES, ids=lambda c: c.name)
 def test_a_fixture_artifact_is_the_one_its_manifest_pinned(case):
     """Every fixture's pins hold, except where breaking one is the point of the case.

@@ -553,3 +553,18 @@ def test_every_registered_reader_is_reachable():
         f"registered but unreachable: {set(R.READERS) - set(R.PREFERRED)}; "
         f"named but unregistered: {set(R.PREFERRED) - set(R.READERS)}"
     )
+
+
+def test_source_code_is_read_as_text_not_handed_to_a_pdf_reader(tmp_path):
+    """A pinned .py is text, and pdftotext answers `Couldn't read xref table` on one.
+
+    Pinning a module is how a claim about another project's behaviour names its source when
+    that behaviour is absent from the project's prose. Sending it to a PDF extractor graded
+    every quotation in it `unchecked`, which reads as "we could not check" rather than
+    "nothing here needed a PDF reader".
+    """
+    src = tmp_path / "scoring.py"
+    src.write_text('"""Not-applicable and unknown findings are excluded entirely."""\n')
+    assert V._extractor_name(src, None) == V.PLAIN_TEXT
+    assert V._extractor_name(src, None) != V.DEFAULT_EXTRACTOR
+    assert "excluded entirely" in V.extract_uncached(src, None, None, frozenset())
