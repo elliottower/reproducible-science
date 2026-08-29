@@ -243,6 +243,13 @@ def test_a_variable_that_configures_git_rather_than_relocating_it_survives(
 ):
     # The list is narrow on purpose: dropping every GIT_* would take GIT_SSH_COMMAND and the
     # identity variables with it, which a caller that set them meant.
+    #
+    # Both halves are set, because `git var GIT_AUTHOR_IDENT` needs a name and an address and
+    # will take the address from anywhere it can: a global config, or failing that a synthetic
+    # `user@host`. On a developer machine it always resolves, so setting only the name passed
+    # here and failed intermittently on runners that have neither -- a test whose verdict
+    # depended on the machine rather than on the code under it.
     monkeypatch.setenv("GIT_AUTHOR_NAME", "Someone Named")
+    monkeypatch.setenv("GIT_AUTHOR_EMAIL", "someone@example.invalid")
     assert "GIT_AUTHOR_NAME" not in gitref.REDIRECTS
     assert gitref.run("var", "GIT_AUTHOR_IDENT", cwd=repo).startswith("Someone Named")
