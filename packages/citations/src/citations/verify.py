@@ -110,7 +110,7 @@ PAGE_SCAN_LIMIT = 200
 
 #: Suffixes read directly rather than through a PDF extractor. Running `pdftotext` over these
 #: returns nothing, which would read as an unreadable source.
-TEXT_SUFFIXES = (".txt", ".md", ".tei", ".xml", ".html", ".htm", ".rst")
+TEXT_SUFFIXES = (".txt", ".md", ".tei", ".xml", ".html", ".htm", ".rst", ".py")
 
 #: Recorded as the extractor for a source read straight off disk. Naming a program there would
 #: claim one ran.
