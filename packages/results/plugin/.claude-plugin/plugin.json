@@ -1,7 +1,7 @@
 {
   "name": "results",
   "description": "Seal a run's inputs, record what it produced, bind every number in a manuscript to the run behind it as it is written, and verify the chain",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "author": {
     "name": "Elliot Tower",
     "email": "elliot@elliottower.ai"
