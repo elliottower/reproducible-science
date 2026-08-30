@@ -4,7 +4,7 @@ requires = [ "hatchling" ]
 
 [project]
 name = "results-cli"
-version = "0.4.0"
+version = "0.4.1"
 description = "Seal a run, record what it produced, and verify the chain"
 readme = "README.md"
 keywords = [ "open science", "provenance", "reproducibility", "results" ]

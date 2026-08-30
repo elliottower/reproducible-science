@@ -1,3 +1,39 @@
+## 0.4.1 — 2026-08-29
+
+### citations
+
+#### Fixed
+
+- A quotation pinned to a `.py` source was graded `unchecked` rather than resolved. `.py` was
+  absent from `TEXT_SUFFIXES`, so the file went to `pdftotext`, which answered `Syntax Error:
+  Couldn't read xref table` and left every quotation in it unchecked — reported as a source the
+  reader could not open, when nothing there needed a PDF reader at all. Python sources are now
+  read directly off disk, and any claim quoting one should be re-verified. ([#54](https://github.com/elliottower/reproducible-science/pull/54))
+
+### prereg
+
+No significant changes.
+
+### results-cli
+
+No significant changes.
+
+### reproducible-science
+
+#### Added
+
+- A `PreToolUse` hook that says a registered plan was never frozen, before the analysis runs
+  instead of after it. `frozen_plan_changed.py` notices a plan edited after its freeze; nothing
+  noticed a plan carrying no freeze at all, so the mechanism engaged only for authors who had
+  already opted in. The new hook reads the command about to run, and where that command invokes
+  an analysis under a directory holding a `PREREG.md` with no `**Plan sha256:**` line, it says
+  so. It never denies the call and stays silent when there is no plan, when the plan is frozen,
+  and when the command is not a run. ([#53](https://github.com/elliottower/reproducible-science/pull/53))
+
+### provenance-core
+
+No significant changes.
+
 ## 0.4.0 — 2026-08-29
 
 ### citations
