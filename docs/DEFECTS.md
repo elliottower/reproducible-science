@@ -13,7 +13,7 @@ marked withdrawn and keeps its number.
 | **Pinning and extraction** | RD-001 – RD-005 |
 | **Repository structure** | RD-006 – RD-011 |
 | **Manuscript** | RD-012 – RD-015 |
-| **Tooling** | RD-016 – RD-019 |
+| **Tooling** | RD-016 – RD-020 |
 
 ---
 
@@ -279,3 +279,29 @@ them, and 24 to 58 lines of divergence from the sources they name. The repositor
 checker covers two other artifacts and states the principle exactly: a stale derived artifact
 is a defect whether it went stale because a path moved, because a generator changed, or
 because someone edited the output by hand.
+
+### RD-020 — A plugin registered by a manifest the runtime rejects
+
+**Detected by** asking the runtime to load the plugin, rather than by reading its manifest.
+
+A hook manifest is data a host program parses. A test that reads it, walks its structure and
+checks the scripts it names exist proves the file is self-consistent and proves nothing about
+whether the host accepts it. Both readings succeed on a file the host discards, so the suite
+stays green while the feature does not exist.
+
+The failure is silent in both directions. A hook that never registers cannot fail, because it
+never runs, and a plugin that fails to load reports so only where someone lists it. Everything
+downstream --- documentation, a changelog entry, a paper --- goes on describing behaviour that
+has never occurred.
+
+Verifying the manifest is not enough either. A manifest can validate, install, and load, and
+the hook still not fire in a session that started before it was installed. Registration and
+dispatch are separate properties and want separate checks.
+
+**Observed.** Four plugins whose `hooks.json` listed `PostToolUse` and `PreToolUse` at the top
+level, where the loader reads `hooks` and `modules` and nothing else. Every one reported
+`failed to load` and registered no hook, from the file's first commit through four releases.
+The suite's 1115 tests included one that parsed `hooks.json` and asserted every script it named
+was present and executable; it passed throughout. `claude plugin validate` reported the error in
+one line and had never been run. The defect surfaced during an unrelated cleanup of installed
+plugins, not from any check the project performs.
