@@ -127,7 +127,7 @@ This repository is a Claude Code plugin marketplace. One plugin carries all four
 /plugin install reproducible-science@reproducible-science
 ```
 
-It installs four skills, four commands and three hooks. The hooks are the part a CLI
+It installs four skills, four commands and four hooks. The hooks are the part a CLI
 cannot do, because each fires at a moment rather than when you remember to run something:
 
 | hook | fires when |

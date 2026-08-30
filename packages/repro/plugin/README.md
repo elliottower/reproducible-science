@@ -8,13 +8,14 @@ only one of them. This directory is the combined form.
 
 ## What it adds
 
-**Three hooks**, which speak when a moment passes unrecorded and are silent otherwise.
+**Four hooks**, which speak when a moment passes unrecorded and are silent otherwise.
 
 | hook | fires when |
 |---|---|
 | `frozen_plan_changed.py` | a preregistration no longer matches the digest it was frozen with |
 | `unverified_quotations.py` | a quotation enters a manuscript that no claim file pins to a source |
 | `unbound_numbers.py` | a number enters a manuscript that no recorded claim names |
+| `unfrozen_plan_before_run.py` | an analysis is about to run under a plan that was never frozen |
 
 **Three skills**, so the model reaches for the right tool without being told.
 
