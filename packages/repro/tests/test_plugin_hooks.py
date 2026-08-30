@@ -122,6 +122,73 @@ def test_no_hook_speaks_when_given_an_empty_payload(hook):
     assert run(hook, {}).stdout.strip() == ""
 
 
+QUOTES = "unverified_quotations.py"
+
+#: Forty characters is the hook's floor for calling a passage a quotation rather than a phrase.
+PASSAGE = "a printed value should name the address it came from, and searching afterwards is not provenance"
+
+
+def manuscript(tmp_path: pathlib.Path, body: str, pins: str | None = None) -> dict:
+    """A payload for a Write of `body`, in a directory whose claims pin `pins` and nothing else."""
+    if pins is not None:
+        (tmp_path / "claims").mkdir(exist_ok=True)
+        (tmp_path / "claims" / "pinned.yaml").write_text(
+            f'claims:\n  a-claim:\n    quotes:\n    - exact: "{pins}"\n'
+        )
+    draft = tmp_path / "draft.md"
+    draft.write_text(body)
+    return {
+        "tool_name": "Write",
+        "tool_input": {"file_path": str(draft), "content": body},
+        "cwd": str(tmp_path),
+    }
+
+
+def test_a_quotation_no_claim_file_pins_is_reported(tmp_path):
+    payload = manuscript(
+        tmp_path,
+        f'The source states that "{PASSAGE}".',
+        pins="something else entirely, pinned so the directory exists",
+    )
+    out = run(QUOTES, payload)
+    assert PASSAGE in out.stdout, out.stdout
+    assert "no claim file pins" in out.stdout
+
+
+def test_a_quotation_a_claim_file_pins_is_not_reported(tmp_path):
+    payload = manuscript(tmp_path, f'The source states that "{PASSAGE}".', pins=PASSAGE)
+    assert run(QUOTES, payload).stdout.strip() == ""
+
+
+def test_a_project_with_no_claims_directory_is_not_lectured(tmp_path):
+    """The condition that made this hook look broken when it was not: with nothing pinned
+    anywhere, the project never opted in and the hook has no standing to speak."""
+    payload = manuscript(tmp_path, f'The source states that "{PASSAGE}".', pins=None)
+    assert run(QUOTES, payload).stdout.strip() == ""
+
+
+def test_a_phrase_shorter_than_a_quotation_is_left_alone(tmp_path):
+    payload = manuscript(
+        tmp_path,
+        'He called it "a printed value".',
+        pins="unrelated pinned passage, long enough to count as one",
+    )
+    assert run(QUOTES, payload).stdout.strip() == ""
+
+
+def test_a_passage_broken_across_lines_still_reports_under_latex_quotes(tmp_path):
+    """The plain-quote pattern requires one line; the LaTeX form does not, and a manuscript
+    wraps. A hook that missed every wrapped quotation would be silent on most real prose."""
+    wrapped = PASSAGE.replace(" and searching", "\nand searching")
+    payload = manuscript(
+        tmp_path,
+        f"The source states ``{wrapped}''.",
+        pins="unrelated pinned passage, long enough to count as one",
+    )
+    out = run(QUOTES, payload)
+    assert "no claim file pins" in out.stdout, out.stdout
+
+
 HOOK = "unfrozen_plan_before_run.py"
 
 
