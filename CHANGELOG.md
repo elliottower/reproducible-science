@@ -1,3 +1,49 @@
+## 0.4.2 — 2026-08-29
+
+### citations
+
+#### Fixed
+
+- The plugin's hook never ran. `hooks.json` listed its event at the top level, where the loader
+  reads only `hooks` and `modules`, so the plugin reported `failed to load` and no hook was ever
+  registered — from the file's first commit through 0.4.1. The events now sit under `hooks`.
+  Anyone who installed this plugin expecting drift to be reported on every edit was not getting it.
+
+### prereg
+
+#### Fixed
+
+- The plugin's hook never ran. `hooks.json` listed its event at the top level, where the loader
+  reads only `hooks` and `modules`, so the plugin reported `failed to load` and no hook was ever
+  registered — from the file's first commit through 0.4.1. The events now sit under `hooks`.
+  Anyone who installed this plugin expecting drift to be reported on every edit was not getting it.
+
+### results-cli
+
+#### Fixed
+
+- The plugin's hook never ran. `hooks.json` listed its event at the top level, where the loader
+  reads only `hooks` and `modules`, so the plugin reported `failed to load` and no hook was ever
+  registered — from the file's first commit through 0.4.1. The events now sit under `hooks`.
+  Anyone who installed this plugin expecting drift to be reported on every edit was not getting it.
+
+### reproducible-science
+
+#### Fixed
+
+- The plugin's two hooks never ran. `hooks.json` listed `PostToolUse` and `PreToolUse` at the top
+  level, where the loader reads only `hooks` and `modules`, so the plugin reported `failed to load`
+  and neither hook was ever registered — from the file's first commit through 0.4.1. The events now
+  sit under `hooks`, and all four plugins in this workspace had the same defect.
+
+  The suite passed throughout, because `test_plugin_hooks.py` parsed `hooks.json` itself and asked
+  the runtime nothing. A test now asserts the top-level shape for all four plugins and fails on the
+  shape that shipped.
+
+### provenance-core
+
+No significant changes.
+
 ## 0.4.1 — 2026-08-29
 
 ### citations
