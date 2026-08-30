@@ -6,6 +6,10 @@ and the checks that tie them together.
 `packages/*/plugin/` hold the same material split one plugin per tool, for anyone who wants
 only one of them. This directory is the combined form.
 
+**Install this or those, never both.** A hook is dispatched once per registration, so a session
+with the bundle and `citations` both enabled runs `unverified_quotations.py` twice and prints
+its report twice. Nothing breaks and every message is doubled.
+
 ## What it adds
 
 **Four hooks**, which speak when a moment passes unrecorded and are silent otherwise.
