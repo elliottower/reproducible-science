@@ -1,7 +1,7 @@
 {
   "name": "prereg",
   "description": "Freeze a plan before you run it, and record what changed after",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "author": {
     "name": "Elliot Tower",
     "email": "elliot@elliottower.ai"

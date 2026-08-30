@@ -4,7 +4,7 @@ requires = [ "hatchling" ]
 
 [project]
 name = "provenance-core"
-version = "0.4.1"
+version = "0.4.2"
 description = "Primitives shared by the reproducible-science tools: content digests and git references"
 readme = "README.md"
 keywords = [ "digest", "git", "provenance", "reproducibility", "sha256" ]

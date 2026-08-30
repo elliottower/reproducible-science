@@ -1,13 +1,15 @@
 {
-  "PostToolUse": [
-    {
-      "matcher": "Edit|Write|MultiEdit",
-      "hooks": [
-        {
-          "type": "command",
-          "command": "${CLAUDE_PLUGIN_ROOT}/hooks/frozen_plan_changed.py"
-        }
-      ]
-    }
-  ]
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/frozen_plan_changed.py"
+          }
+        ]
+      }
+    ]
+  }
 }
