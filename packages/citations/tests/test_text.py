@@ -26,6 +26,14 @@ def test_the_german_expansion_is_also_produced():
     assert expand("Weiß") == "weiss"
 
 
+def test_a_stroked_letter_resolves_rather_than_splitting_the_name():
+    # NFKD leaves ł whole, so the fold deleted it and Kozłowski became `koz owski` -- one name
+    # in two tokens, matching nothing, which reported every Polish surname as a disagreement.
+    assert expand("Kozłowski") == "kozlowski"
+    assert variants("Kozłowski") & variants("Kozlowski")
+    assert variants("Đorđević") & variants("Dordevic")
+
+
 def test_both_spellings_of_one_name_share_a_variant():
     # A record writes Hölscher-Obermaier; Crossref deposits Hoelscher-Obermaier.
     assert surname_variants("Hölscher-Obermaier, Jason") & surname_variants(

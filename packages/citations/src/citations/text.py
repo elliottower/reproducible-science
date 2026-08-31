@@ -21,8 +21,13 @@ import html
 import re
 import unicodedata
 
-#: Letters that expand to two in German transliteration. Applied before combining marks are
-#: stripped, so both readings survive.
+#: Letters that no decomposition resolves, mapped to what a bibliography writes instead. Applied
+#: before combining marks are stripped, so both readings survive.
+#:
+#: The first group expands to two letters in German transliteration. The second carries a stroke
+#: or is a letter in its own right rather than an accented one, so NFKD leaves it whole and the
+#: fold's `[^a-z0-9]` deletes it: Kozłowski became `koz owski`, one name split into two tokens,
+#: which matches nothing and reported every Polish surname as a disagreement.
 EXPANSIONS = {
     "ä": "ae",
     "ö": "oe",
@@ -35,6 +40,19 @@ EXPANSIONS = {
     "œ": "oe",
     "å": "aa",
     "ø": "oe",
+    "ł": "l",
+    "Ł": "l",
+    "đ": "d",
+    "Đ": "d",
+    "ħ": "h",
+    "Ħ": "h",
+    "ŧ": "t",
+    "Ŧ": "t",
+    "ð": "d",
+    "Ð": "d",
+    "þ": "th",
+    "Þ": "th",
+    "ı": "i",
 }
 
 

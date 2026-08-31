@@ -6,7 +6,7 @@ citations coverage          is every quotation in my manuscript pinned at all?
 citations audit             does the metadata match the record the identifier resolves to?
 citations resolve           backfill missing identifiers
 citations build             rebuild records from the papers' bibliographies
-citations lint              BibTeX correctness, and repeated keys in a .bib
+citations lint              BibTeX correctness, repeated keys, and author lists in a .bib
 citations add               add one entry to a .bib, refusing a key it already has
 citations pin               write a quotation into a claims file, refusing one that does not resolve
 citations link              point pdfs/ at wherever the papers keep the artifacts
@@ -466,7 +466,7 @@ def _main(argv: list[str] | None = None) -> int:
         ("audit", "does the stored metadata match the registry record?"),
         ("resolve", "backfill missing identifiers"),
         ("build", "rebuild records from the papers' bibliographies"),
-        ("lint", "BibTeX correctness, and repeated keys in a .bib"),
+        ("lint", "BibTeX correctness, repeated keys, and author lists in a .bib"),
         ("add", "add one entry to a .bib, refusing a key it already has"),
         ("pin", "write a quotation into a claims file, refusing one that does not resolve"),
         ("projects", "which projects this library refers to, and which names are dead"),
