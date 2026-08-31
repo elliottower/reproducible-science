@@ -81,6 +81,13 @@ def test_identity_prefers_the_doi_then_the_arxiv_id():
     assert slug_for({"doi": "10.1038/S41588-019-0379-X"}) == "doi-10-1038-s41588-019-0379-x"
     assert slug_for({"arxiv": "2211.00593"}) == "arxiv-2211-00593"
     assert slug_for({"doi": "10.1/x", "arxiv": "2211.00593"}).startswith("doi-")
+    # An arXiv DOI is the same identifier as the eprint, and one bibliography carries the DOI
+    # where another carries only the eprint. Slugging them apart gave the library four records
+    # for one ICLR paper with its citing projects split across them.
+    assert slug_for({"doi": "10.48550/arXiv.2502.04878"}) == "arxiv-2502-04878"
+    assert slug_for({"doi": "10.48550/arxiv.2502.04878", "arxiv": "2502.04878"}) == slug_for(
+        {"arxiv": "2502.04878"}
+    )
 
 
 def test_a_work_with_neither_identifier_still_gets_a_stable_slug():

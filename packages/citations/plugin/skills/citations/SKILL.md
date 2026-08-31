@@ -87,6 +87,33 @@ truncated list looks complete.
 Never write an author list from memory. If a reference was assembled without reading the
 record, run `citations audit` before it ships.
 
+## One work, several records
+
+A record's slug is whichever identifier its bibliography entry happened to carry: the DOI,
+else the arXiv id, else a hash of title and first author. Four bibliographies describing the
+same paper four ways produce four records.
+
+That is not untidiness. `cited_by` splits across the copies, so the library under-reports who
+cites a work — it will say a project does not cite a paper the project does cite, under
+another slug. And `build` compares records, so copies that never meet are never reported as
+divergent and `preferred_key` is never offered for them.
+
+Two shapes, with different fixes:
+
+- **The same identifier written two ways.** `10.48550/arXiv.2502.04878` is an arXiv id wearing
+  a DOI; one entry carries it, another carries the bare eprint. `slug_for` resolves both to
+  `arxiv-…`, so this shape no longer splits. Records created before that are still on disk.
+- **No identifier at all**, so the slug is a title hash. No slug rule can fix this — the entry
+  has nothing to key on. Run `citations resolve` and write the identifier into the `.bib`.
+
+**Never delete a duplicate record.** `build` regenerates records from the bibliographies, so a
+deletion returns on the next run and the bibliography that caused it is untouched. Fix the
+`.bib`.
+
+`preferred_key` answers a different question: the same work cited under different *keys* by
+different papers. Set it in `enrichment.yaml`, keyed by slug, and `build` reports which
+divergences still have no answer.
+
 ## When to reach for this
 
 - Before writing any sentence that quotes a paper
