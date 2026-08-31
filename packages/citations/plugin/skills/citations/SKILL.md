@@ -106,6 +106,19 @@ Two shapes, with different fixes:
 - **No identifier at all**, so the slug is a title hash. No slug rule can fix this — the entry
   has nothing to key on. Run `citations resolve` and write the identifier into the `.bib`.
 
+`build` reports them under **same work, different slug**, with the slugs each work has and,
+where one of them carries an identifier the others lack, the exact field to add:
+
+```text
+  same work, different slug    218
+    AI auditing: The Broken Bus on the Road to AI Acc   arxiv-2401-14462, doi-10-…, t-fe6a31…
+                                                        add doi = 10.1109/satml59370.2024.00037 to the entry that omits it
+```
+
+Read the count as a property of the bibliographies, not of the library. It fell from nothing to
+218 the day the check existed; before that the library reported those works as separate and
+nothing said otherwise.
+
 **Never delete a duplicate record.** `build` regenerates records from the bibliographies, so a
 deletion returns on the next run and the bibliography that caused it is untouched. Fix the
 `.bib`.

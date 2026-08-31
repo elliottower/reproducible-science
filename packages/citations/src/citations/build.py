@@ -140,10 +140,37 @@ def slug_for(rec: dict) -> str:
         return "doi-" + re.sub(r"[^a-z0-9]+", "-", doi).strip("-")
     if rec.get("arxiv"):
         return "arxiv-" + rec["arxiv"].replace(".", "-")
-    base = re.sub(
+    return "t-" + hashlib.sha256(title_key(rec).encode()).hexdigest()[:16]
+
+
+def title_key(rec: dict) -> str:
+    """What makes two records the same work when neither slug can say so.
+
+    `slug_for` hashes this when a record has no identifier. `same_work` compares it across
+    every record, identified or not, because the duplication that matters is between a record
+    that carried a DOI and one that carried nothing: they slug differently, so no rule keyed
+    on the slug ever sees them together. One function, so the two uses cannot drift apart --
+    which is the failure that produced the arXiv-DOI split in the first place.
+    """
+    return re.sub(
         r"[^a-z0-9]+", "", (rec.get("title", "") + (rec.get("authors") or [""])[0]).lower()
     )
-    return "t-" + hashlib.sha256(base.encode()).hexdigest()[:16]
+
+
+def same_work(records: dict) -> dict:
+    """Groups of two or more slugs whose records describe one work.
+
+    Keyed by `title_key`, so it catches the case the slug cannot: an entry that named a DOI
+    and an entry that named no identifier become `doi-...` and `t-...`, and `cited_by` splits
+    between them. The library then under-reports which projects cite the work, which is how
+    this was found -- it said a paper did not cite something it cites.
+    """
+    groups: dict[str, list[str]] = {}
+    for slug, rec in records.items():
+        key = title_key(rec)
+        if key:
+            groups.setdefault(key, []).append(slug)
+    return {k: sorted(v) for k, v in groups.items() if len(v) > 1}
 
 
 # 0704.0001 is the modern form; cs/0501001 and math.GT/0309136 are the pre-2007 one.
@@ -560,6 +587,27 @@ def main(argv: list[str] | None = None) -> int:
                 f"{enrichment.name} keyed by slug:"
             )
             print("      <slug>:\n        preferred_key: smith2025thing")
+
+    doubled = same_work(merged)
+    if doubled:
+        # Reported rather than merged. The cause is upstream: one bibliography named an
+        # identifier and another named none, so the fix belongs in the .bib that is silent,
+        # where it also fixes every future build and every other library reading that file.
+        # Merging here would hide a defect in a bibliography behind a correct-looking library.
+        print(f"\n  same work, different slug   {len(doubled):>4}")
+        for slugs in list(doubled.values())[:12]:
+            identified = [s for s in slugs if not s.startswith("t-")]
+            print(f"    {merged[slugs[0]]['title'][:52]:<54}{', '.join(slugs)}")
+            if identified and len(identified) < len(slugs):
+                have = merged[identified[0]]
+                which = f"doi = {have['doi']}" if have.get("doi") else f"eprint = {have['arxiv']}"
+                print(f"    {'':<54}add {which} to the entry that omits it")
+        print(
+            f"\n  {len(doubled)} works have more than one record, so `cited_by` is split "
+            f"between them.\n  A record is generated, so deleting one returns it on the next "
+            f"build; the entry\n  in the .bib that carries no identifier is what makes the "
+            f"second slug."
+        )
 
     losing, stale = audit_existing(merged)
     if losing:

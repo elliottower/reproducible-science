@@ -19,8 +19,10 @@ from citations.build import (
     carry_forward,
     clean,
     normalize_initials,
+    same_work,
     slug_for,
     split_authors,
+    title_key,
 )
 
 
@@ -299,3 +301,29 @@ def test_the_audit_names_every_field_a_write_destroys(tmp_path, monkeypatch):
 
     losing, _ = build.audit_existing({"x": {"slug": "x"}})
     assert {f for _, f, _ in losing} == {"doi", "arxiv", "url", "venue", "local", "sha256"}
+
+
+def test_same_work_finds_a_doi_record_and_a_title_hash_record():
+    # The shape 178 of the library's 218 duplicate groups actually have: one bibliography
+    # named the DOI and another named nothing, so no rule keyed on the slug sees them together.
+    identified = {"title": "Canonical Units", "authors": ["Leask, P"], "doi": "10.1/x"}
+    silent = {"title": "Canonical Units", "authors": ["Leask, P"]}
+    records = {slug_for(identified): identified, slug_for(silent): silent}
+    assert len(records) == 2, "the two must slug differently or there is nothing to detect"
+    groups = same_work(records)
+    assert len(groups) == 1
+    assert sorted(next(iter(groups.values()))) == sorted(records)
+
+
+def test_same_work_leaves_distinct_works_alone():
+    a = {"title": "Canonical Units", "authors": ["Leask, P"], "doi": "10.1/x"}
+    b = {"title": "Something Else Entirely", "authors": ["Other, A"], "doi": "10.1/y"}
+    assert same_work({slug_for(a): a, slug_for(b): b}) == {}
+
+
+def test_title_key_is_what_slug_for_hashes():
+    """One notion of sameness. Two would drift, which is how the arXiv-DOI split happened."""
+    rec = {"title": "A Paper", "authors": ["Smith, J"]}
+    import hashlib
+
+    assert slug_for(rec) == "t-" + hashlib.sha256(title_key(rec).encode()).hexdigest()[:16]
