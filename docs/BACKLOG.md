@@ -220,6 +220,22 @@ author knows.
 **Git notes as primary storage.** Not fetched by default, which the proposal that
 raised them concedes. Fine as replication, wrong as a home.
 
+## Waiting on a second instance
+
+**`prereg freeze --brief <file>`.** Hash a constraint artifact into the freeze
+record, so the brief that bounded a blinded predictor and the freeze it constrains
+live in one record instead of split across `prereg` and `results seal`. A real
+ergonomic gain, and it does not overclaim: the record would say a named file
+existed at freeze time, which is what a hash can carry. Enforcement stays where it
+is, in how the predictor was run.
+
+Held because n=1. `knockout-epistasis-dynamics` needs it; nothing else does yet,
+and a flag shaped around one project's workflow is a guess about the second. The
+protocol is documented as a composition of shipped primitives in
+`packages/citations/docs/BEST_PRACTICES.md` under "Blinded predictions", so nobody
+is blocked in the meantime. Build it when a second project reaches for the same
+pattern and the two disagree about what the brief is.
+
 ## Smaller, recorded so they are not lost
 
 - `citations coverage` over-reports on scare quotes: the LaTeX quotation marks around a
