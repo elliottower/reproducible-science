@@ -104,7 +104,9 @@ Two shapes, with different fixes:
   a DOI; one entry carries it, another carries the bare eprint. `slug_for` resolves both to
   `arxiv-…`, so this shape no longer splits. Records created before that are still on disk.
 - **No identifier at all**, so the slug is a title hash. No slug rule can fix this — the entry
-  has nothing to key on. Run `citations resolve` and write the identifier into the `.bib`.
+  has nothing to key on. `citations resolve` looks the work up and writes what it finds into
+  `enrichment.yaml`, and `build` re-slugs the record onto its twin. Writing the identifier into
+  the `.bib` does the same and fixes it for every other library reading that file.
 
 `build` reports them under **same work, different slug**, with the slugs each work has and,
 where one of them carries an identifier the others lack, the exact field to add:
