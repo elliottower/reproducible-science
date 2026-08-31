@@ -66,7 +66,12 @@ NETWORK_ERRORS = (
     UnicodeDecodeError,
 )
 
-BIB_FIELD = re.compile(r"(\w+)\s*=\s*[{\"](.*?)[}\"]\s*,?\s*(?=\n\s*\w+\s*=|\Z)", re.DOTALL)
+#: A field runs to the next `name =`, wherever that sits. The lookahead once required a
+#: newline before it, so an entry writing several fields onto one line -- which BibTeX
+#: permits and reference managers emit -- gave the first of them a value swallowing every
+#: field after it, and the entry then disagreed with its registry record on a value nobody
+#: had typed wrong.
+BIB_FIELD = re.compile(r"(\w+)\s*=\s*[{\"](.*?)[}\"]\s*,?\s*(?=\s*\w+\s*=|\Z)", re.DOTALL)
 
 
 #: Generational suffixes are filed with the surname by some publishers and dropped by others.

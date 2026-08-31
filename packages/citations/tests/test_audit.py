@@ -277,6 +277,27 @@ def test_a_bib_entry_is_read_whole(tmp_path):
     assert e.authors == ["Naitza, Silvia", "Porcu, Eleonora", "others"]
 
 
+def test_fields_sharing_a_line_are_read_as_separate_fields(tmp_path):
+    # A style guide is not what decides this: BibTeX does not care where a field sits, and a
+    # reference manager that writes several onto one line was producing a volume that swallowed
+    # every field after it, so the entry disagreed with its own registry record on a value
+    # nobody had typed wrong.
+    f = tmp_path / "refs.bib"
+    f.write_text(
+        "@article{oneline,\n"
+        "  author  = {Ding, Peng and VanderWeele, Tyler J.},\n"
+        "  title   = {Sharp Sensitivity Bounds},\n"
+        "  volume  = {103}, number = {2}, pages = {483--490}, year = {2016},\n"
+        "  doi     = {10.1093/biomet/asw012}\n"
+        "}\n"
+    )
+    e = A.entries_from_bib(f)[0]
+    assert e.volume == "103"
+    assert e.year == "2016"
+    assert e.pages == "483--490"
+    assert e.doi == "10.1093/biomet/asw012"
+
+
 def test_an_entry_with_no_identifier_is_not_reported_as_matching(tmp_path):
     f = tmp_path / "refs.bib"
     f.write_text(BIB)
