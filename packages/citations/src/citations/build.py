@@ -124,9 +124,20 @@ def normalize_initials(name: str) -> str:
 
 
 def slug_for(rec: dict) -> str:
-    """Stable identity: DOI, else arXiv id, else a hash of normalized title+first author."""
-    if rec.get("doi"):
-        return "doi-" + re.sub(r"[^a-z0-9]+", "-", rec["doi"].lower()).strip("-")
+    """Stable identity: DOI, else arXiv id, else a hash of normalized title+first author.
+
+    An arXiv DOI is an arXiv id wearing a DOI, and a bibliography carries one or the other
+    depending on who wrote the entry. Taking the DOI branch for `10.48550/arXiv.2502.04878`
+    while another entry for the same paper carries only the eprint gives one work two slugs,
+    two records, and a `cited_by` split between them, so the library under-reports what cites
+    it and `preferred_key` never sees the divergence. `_openalex_candidates` already reads
+    these as arXiv ids; this agrees with it.
+    """
+    doi = (rec.get("doi") or "").strip().lower()
+    if doi.startswith("10.48550/arxiv."):
+        return "arxiv-" + doi.split("arxiv.")[-1].replace(".", "-")
+    if doi:
+        return "doi-" + re.sub(r"[^a-z0-9]+", "-", doi).strip("-")
     if rec.get("arxiv"):
         return "arxiv-" + rec["arxiv"].replace(".", "-")
     base = re.sub(
