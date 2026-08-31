@@ -1,0 +1,65 @@
+name: Publisher config
+
+# What a weekly run can still check, now that the `release` environment admits version tags only.
+#
+# The binding job in each publish workflow mints a real OIDC token and asks PyPI whether it would
+# accept an upload. That is the stronger check and it still exists -- but it needs the `release`
+# environment, and the environment refuses the default branch, so it cannot run on a schedule.
+# Running it means naming a tag: `gh workflow run publish-citations.yml --ref v0.4.2`.
+#
+# This checks the half that drifts without anyone noticing: the workflow filename and environment
+# that PyPI's trusted publisher is bound to. Renaming a workflow file breaks a release and nothing
+# in a checkout says so. It cannot see PyPI's side, so it proves the repository still declares what
+# the publisher expects -- not that the publisher still expects it.
+
+on:
+  schedule:
+    - cron: "7 6 * * 1"
+  workflow_dispatch:
+  pull_request:
+    paths: [".github/workflows/publish-*.yml", ".github/workflows/publisher-config.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  declared:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: every publish workflow names the release environment
+        run: |
+          set -euo pipefail
+          # Filename to PyPI project. A rename on either side breaks a release, so the mapping is
+          # written down here rather than inferred, and a missing file fails loudly.
+          declare -A EXPECTED=(
+            [publish-citations.yml]=citations
+            [publish-prereg.yml]=prereg
+            [publish-results.yml]=results-cli
+            [publish-repro.yml]=reproducible-science
+            [publish-provenance-core.yml]=provenance-core
+          )
+          fail=0
+          for file in "${!EXPECTED[@]}"; do
+            path=".github/workflows/${file}"
+            project="${EXPECTED[$file]}"
+            if [ ! -f "$path" ]; then
+              echo "::error::${file} is gone; PyPI still binds ${project} to that filename"
+              fail=1
+              continue
+            fi
+            envs=$(grep -c 'environment: release' "$path" || true)
+            if [ "$envs" -lt 2 ]; then
+              echo "::error::${file} does not name 'environment: release' on both jobs (found ${envs})"
+              fail=1
+              continue
+            fi
+            printf '  %-32s %-22s environment: release\n' "$file" "$project"
+          done
+          echo
+          echo "  Checked what this repository declares. Whether PyPI still agrees is answered by"
+          echo "  the binding job, which needs a tag:  gh workflow run <file> --ref vX.Y.Z"
+          exit $fail
