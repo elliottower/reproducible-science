@@ -605,8 +605,8 @@ def main(argv: list[str] | None = None) -> int:
         print(
             f"\n  {len(doubled)} works have more than one record, so `cited_by` is split "
             f"between them.\n  A record is generated, so deleting one returns it on the next "
-            f"build; the entry\n  in the .bib that carries no identifier is what makes the "
-            f"second slug."
+            f"build. Supply the\n  missing identifier -- in the .bib, or by `citations resolve` "
+            f"into the enrichment\n  file -- and the record re-slugs onto its twin."
         )
 
     losing, stale = audit_existing(merged)
@@ -615,10 +615,9 @@ def main(argv: list[str] | None = None) -> int:
         for slug, field, val in losing[:12]:
             print(f"    {slug:<44}{field}={val}")
         print(f"  {len(losing)} in total. Records are generated, so these are dropped on write.")
-        print(f"  Put them in the citing .bib, or in {enrichment.name} keyed by slug to fill the")
-        print(
-            "  field -- note that enrichment cannot re-slug a record, only a .bib identifier can."
-        )
+        print(f"  Put them in the citing .bib, or in {enrichment.name} keyed by slug. An")
+        print("  identifier supplied either way re-slugs the record, so a title-hash record")
+        print("  joins the twin it was split from.")
     if stale:
         print(
             f"\n  {len(stale)} record file(s) no longer produced by any bibliography (superseded);"

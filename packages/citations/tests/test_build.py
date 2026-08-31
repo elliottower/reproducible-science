@@ -327,3 +327,23 @@ def test_title_key_is_what_slug_for_hashes():
     import hashlib
 
     assert slug_for(rec) == "t-" + hashlib.sha256(title_key(rec).encode()).hexdigest()[:16]
+
+
+def test_an_enrichment_identifier_reslugs_a_title_hash_record():
+    """`build` told readers the opposite for as long as the behaviour existed.
+
+    An identifier resolved after the .bib was written has to identify the work rather than
+    decorate it: without the re-slug the record stays under its title hash and stays split
+    from the twin that carried the DOI, which is the whole defect.
+    """
+    entry = {"title": "Canonical Units", "authors": ["Leask, P"]}
+    provisional = slug_for(entry)
+    assert provisional.startswith("t-")
+    overlay = {provisional: {"doi": "10.1/x"}}
+
+    extra = overlay.get(provisional) or {}
+    for k in ("doi", "arxiv"):
+        if extra.get(k) and not entry.get(k):
+            entry[k] = extra[k]
+
+    assert slug_for(entry) == "doi-10-1-x"
