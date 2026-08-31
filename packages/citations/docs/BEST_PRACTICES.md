@@ -99,6 +99,85 @@ because the value is that someone else holds a dated copy you cannot revise.
 
 Claim the first. Never claim the second.
 
+## Blinded predictions
+
+A timestamp establishes when the plan existed, not what you had seen when you wrote it. For an
+analysis over a fixed dataset that gap is the exposure: you built the pipeline and watched it
+run, so "I wrote this before I looked" is unverifiable in principle.
+
+Where a claim rests on that ordering, generate the predictions with a predictor whose exposure is
+a fact rather than a recollection — an agent given a brief stating exactly what it may read, with
+the brief committed before the predictions exist. Such a predictor is usually worse than you are.
+What it has instead is an information constraint a stranger can check.
+
+Worth the trouble where the prediction carries evidential weight: a null reported as
+"pre-registered predictions performed at chance", a claim that an outcome was anticipated, a
+design where hindsight would have changed the analysis. Not worth it for a tolerance sweep, or
+anywhere a reader would dispute the plan's content rather than its ordering.
+
+**What the brief states.** The permitted inputs, in the negative as well as the positive:
+
+```markdown
+You have NOT seen any experimental results. Your predictions come from analyzing
+the Boolean rules (topology, feedback loops, AND-gate depth, pathway structure)
+and NOTHING ELSE.
+```
+
+The brief is committed before the predictions exist, so the constraint is frozen rather than
+described after the fact. A brief written alongside the predictions records an intention; a brief
+committed first records a constraint.
+
+**The recipe.** The primitives already ship. The ordering is what has to be right.
+
+```bash
+# the constraint, committed before any prediction is written
+git add scripts/blind_prereg_brief.md
+git commit -m "Brief constraining the blinded predictor; predictions do not exist yet"
+results seal scripts/blind_prereg_brief.md --role input
+
+# the plan, answering "Additional blinding during research or analysis" concretely
+prereg new experiments/03_composition_gap
+git add experiments/03_composition_gap/PREREG.md && git commit -m "Plan for arm 3"
+cd experiments/03_composition_gap
+prereg freeze --access "nothing run"        # names the commit; commit the freeze too
+
+# revisions append, and say what had been run when they were written
+prereg log "prediction 4: falsifier now two-sided" --access "nothing run"
+
+# outcomes bind to the freeze they answer
+results run results/gap.json --run-id gap-2026-08-14 --note "composition gap by arm"
+results claim "the composition gap does not track feedback-loop count" \
+  --run-id gap-2026-08-14 --confirmatory --frozen-at 9e070ab --location "Table 2"
+```
+
+One registration per arm, one commit each: bundling arms lets a later arm's design drift toward
+an earlier arm's result. The commit lands before the analysis script exists, and its message says
+so. Failed predictions stay in the record and get reported.
+
+Sealing the brief proves the brief existed and when. It cannot prove the predictor read only the
+brief — that lives in how the agent was run, not in a hash. Claim the first.
+
+**What blinding does not fix.**
+
+> Blinding guarantees the predictor did not see the results. It guarantees nothing about whether
+> the predictor was any good.
+
+A null reported as "pre-registered predictions performed at chance" is ambiguous between two
+different findings: the quantity is not predictable from the stated features, or the predictor
+was poor. The prediction exercise cannot separate them, and a better predictor does not resolve
+it: the ambiguity is in the design, not in the predictor.
+
+The remedy is a different test. Fit the stated features to the outcome directly and report the
+fit. Where the features carry no information in a direct regression — a cross-validated R² at or
+below zero — the null holds whatever anyone predicted, and the blinded exercise becomes
+corroboration rather than evidence. If you report a prediction-based null without that fit, its
+absence is a limitation and belongs in the limitations section.
+
+**Disclosure.** Agent involvement in authoring predictions is a provenance fact about how a
+prediction was written, not a result. Disclose it where a venue's AI-use policy requires it, in
+the same sentence that covers the rest of the assistance. The predictions rest on the named
+features they cite and stand or fall on those, not on their authorship.
+
 ## Separate what a source says from what you concluded
 
 ```text
