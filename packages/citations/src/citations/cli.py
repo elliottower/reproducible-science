@@ -358,6 +358,15 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
         print(f"{len(bad)} not found. read the source before concluding anything.")
     elif rep.broken_pins:
         print("every quote resolved, but against a source that is not the one pinned.")
+    elif rep.checked and rep.unresolved >= rep.checked:
+        # Distinct from the partial case below, and the reason this branch exists: "nothing
+        # failed" over a run that read no source at all was read as a pass, and the quotations
+        # were reported as verified. Nothing was measured, so nothing is owed that word.
+        print(
+            f"nothing was measured. all {rep.checked} quotation(s) went unresolved, so this run "
+            f"says nothing about the manuscript either way. The reasons are above; a run that "
+            f"read no source is not a run that found no fault."
+        )
     elif counts.get("indeterminate"):
         print(
             f"nothing failed. {counts['indeterminate']} indeterminate — the extractors here "
@@ -374,6 +383,10 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
         )
     else:
         print("all found.")
+    # Named where it is needed. `--strict` is what turns an unresolved quotation into a build
+    # failure, and a reader who has some has no other way to learn the flag exists.
+    if rep.ok and rep.unresolved and not a.strict:
+        print(f"  {rep.unresolved} unresolved here is not a failure; `--strict` refuses them.")
     if a.strict and not rep.strict_ok:
         if rep.unresolved:
             print(f"\n{rep.unresolved} quotation(s) could not be checked at all.")

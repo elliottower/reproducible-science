@@ -206,7 +206,7 @@ def test_a_quotation_against_an_unpinnable_source_reads_unchecked(tmp_path):
 def test_an_unchecked_source_does_not_fail_a_report_but_does_fail_strict():
     # The whole point of keeping the two apart: an unfetchable reference is unremarkable in a
     # draft and unacceptable in a submission, and only the second is `--strict`'s business.
-    report = V.Report(checked=1, counts={"unchecked": 1})
+    report = V.Report(checked=2, counts={"found": 1, "unchecked": 1})
     assert report.ok
     assert not report.strict_ok
 

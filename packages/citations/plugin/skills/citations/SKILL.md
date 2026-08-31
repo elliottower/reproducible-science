@@ -20,7 +20,7 @@ artifact; if it is not, check it before using it.
 ```bash
 citations verify                    # do the quotations resolve in their sources?
 citations verify --claims <dir>     # check a paper's claims/ directory
-citations verify --strict           # exit 1 on failure, for CI
+citations verify --strict           # also exit 1 on unchecked/indeterminate, for CI
 citations audit                     # does the stored metadata match the registry record?
 citations audit --bib refs.bib      # check a BibTeX file directly
 citations resolve                   # backfill missing DOIs and arXiv ids
@@ -56,6 +56,18 @@ Extend the quote through the end of the number or the word.
 
 **`unchecked` is not a pass.** Do not describe a claim as verified on the strength of it.
 
+**Read the counts, not the closing line.** The verdict is the block near the top:
+
+```text
+  found              35
+  not found           0
+```
+
+`found` is the only number that says a source was read. A run can print `not found 0` and a
+closing line beginning "nothing failed" while every quotation went `unchecked` — that sentence
+is about failures, and no measurement was made to fail. A run where nothing was measured now
+exits non-zero and says `nothing was measured`, but the counts are what to quote.
+
 **`not found` means read the source.** A broken extraction reads the same as a passage that
 was never there.
 
@@ -65,6 +77,27 @@ was never there.
 `$CITATIONS_HOME`, else `.citations/` found by walking up from the current directory, else the
 shared one from `citations init --user`. So the same command run one directory over can verify a
 different set of records and still report `all found`.
+
+## Declaring an extractor
+
+A source that is not plain text is read by `pdftotext -layout`. Where a source needs a
+different reader, `extract_cmd` names it — and **`{}` marks where the path goes, with a
+trailing `-` for anything that writes to a file by default**:
+
+```yaml
+source:
+  citation: arditi2024refusal
+  local: reference/arditi_2024_refusal.pdf
+  extract_cmd: pdftotext -layout {} -
+```
+
+Without the placeholders, the path is appended and `pdftotext -layout FILE` writes `FILE.txt`
+and prints nothing. Every quotation against that source grades `unchecked`. It also drops a
+`.txt` beside the source, which will silently replace another record's pinned artifact if one
+is pinned under that name.
+
+Declare `none` where a source needs no extractor — `none -- Markdown is read directly`. The
+reason may follow it on the same line.
 
 ## Quote enough text
 
