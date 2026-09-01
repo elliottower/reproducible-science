@@ -231,10 +231,9 @@ is, in how the predictor was run.
 
 Held because n=1. `knockout-epistasis-dynamics` needs it; nothing else does yet,
 and a flag shaped around one project's workflow is a guess about the second. The
-protocol is documented as a composition of shipped primitives in
-`packages/citations/docs/BEST_PRACTICES.md` under "Blinded predictions", so nobody
-is blocked in the meantime. Build it when a second project reaches for the same
-pattern and the two disagree about what the brief is.
+protocol is a composition of shipped primitives and needs no flag to follow, so
+nobody is blocked in the meantime. Build it when a second project reaches for the
+same pattern and the two disagree about what the brief is.
 
 ## Smaller, recorded so they are not lost
 
