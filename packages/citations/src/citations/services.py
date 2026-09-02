@@ -221,3 +221,106 @@ SERVICES: tuple[Service, ...] = (
     Service("openalex", _openalex_url, _openalex_candidates),
     Service("arxiv", _arxiv_url, _arxiv_candidates, json=False),
 )
+
+
+# --------------------------------------------------------------------------------------------
+# Lookup by identifier -- the reverse question
+# --------------------------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class Registry:
+    """One source that answers who wrote the work an identifier names.
+
+    `Service` above searches by title for a work whose identifier we do not have, and needs the
+    whole matching rule to decide whether what came back is the right paper. This asks the
+    reverse question and needs none of it: the identifier names one work, and the only field
+    read back is the author list, in the order the registry publishes it.
+    """
+
+    name: str
+    """Shown in output and stored beside a cached list, so a reader can see who said it."""
+
+    kinds: tuple[str, ...]
+    """Identifier kinds this registry answers for: `doi`, `arxiv`, or both."""
+
+    url: Callable[[str, str], str]
+    """`(kind, identifier)` turned into a request URL."""
+
+    authors: Callable[[object], list[str]]
+    """A decoded payload turned into author names in publication order, each written however
+    the registry writes it. An unusable payload is an empty list, which the caller reads as
+    `answered, had nothing` rather than as a work with no authors."""
+
+    json: bool = True
+    """Whether the payload is JSON. arXiv answers in Atom XML and is parsed as text."""
+
+
+def _crossref_work_url(_kind: str, identifier: str) -> str:
+    return f"https://api.crossref.org/works/{urllib.parse.quote(identifier, safe='')}"
+
+
+def _crossref_work_authors(payload) -> list[str]:
+    names = []
+    for a in ((payload or {}).get("message") or {}).get("author") or []:
+        family = (a.get("family") or "").strip()
+        if not family:
+            # A consortium is deposited with `name` and neither family nor given. Dropping it
+            # shortens the registry's list by one and reports the bibliography as carrying a
+            # name too many, which is the opposite of what is wrong.
+            group = (a.get("name") or "").strip()
+            if group:
+                names.append(group)
+            continue
+        given = (a.get("given") or "").strip()
+        names.append(f"{family}, {given}".strip().rstrip(","))
+    return names
+
+
+def _openalex_work_url(kind: str, identifier: str) -> str:
+    """OpenAlex keys works by DOI, so an arXiv id is asked as the DOI arXiv mints for it.
+
+    arXiv has minted those only since 2022, so this reaches a recent preprint and answers 404
+    for an older one. It is a fallback for when arXiv itself refuses, not a route around it.
+    """
+    doi = identifier if kind == "doi" else f"10.48550/arXiv.{identifier}"
+    q = urllib.parse.urlencode({"mailto": "elliot@elliottower.ai"})
+    return f"https://api.openalex.org/works/doi:{doi}?{q}"
+
+
+def _openalex_work_authors(payload) -> list[str]:
+    # OpenAlex stops at 100 authorships. On a work with more than that it is the one registry
+    # that cannot tell a truncated bibliography from a complete one, which is why it is asked
+    # after the registry that issued the identifier rather than before it.
+    return [
+        name
+        for a in (payload or {}).get("authorships") or []
+        if (name := ((a.get("author") or {}).get("display_name") or "").strip())
+    ]
+
+
+def _arxiv_work_url(_kind: str, identifier: str) -> str:
+    return f"https://export.arxiv.org/api/query?{urllib.parse.urlencode({'id_list': identifier})}"
+
+
+def _arxiv_work_authors(payload) -> list[str]:
+    entries = _ENTRY.findall(payload or "")
+    if len(entries) != 1:
+        # `id_list` names one work. A feed carrying none is arXiv's error document, and one
+        # carrying several answers a query this did not make; reading names out of either
+        # would compare a bibliography against the wrong paper.
+        return []
+    return [" ".join(n.split()) for n in _NAME.findall(entries[0])]
+
+
+#: Asked in this order, and the first list that comes back is used. Each identifier is put to
+#: the body that issued it before the aggregator: Crossref registers the DOIs, arXiv publishes
+#: its own metadata, and OpenAlex covers what falls between them.
+#:
+#: Semantic Scholar is not here. Its anonymous quota is low enough that a refusal is ordinary,
+#: and a refusal read as "this work has no authors" turns a check into silence.
+REGISTRIES: tuple[Registry, ...] = (
+    Registry("crossref", ("doi",), _crossref_work_url, _crossref_work_authors),
+    Registry("arxiv", ("arxiv",), _arxiv_work_url, _arxiv_work_authors, json=False),
+    Registry("openalex", ("doi", "arxiv"), _openalex_work_url, _openalex_work_authors),
+)
