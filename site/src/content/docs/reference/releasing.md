@@ -14,12 +14,13 @@ happened.
 
 | | |
 |---|---|
-| Distributions | `citations`, `prereg`, `results-cli`, `reproducible-science` |
-| Version | one number, identical across all four |
+| Distributions | `citations`, `prereg`, `results-cli`, `reproducible-science`, `provenance-core` |
+| Version | one number, identical across all five |
 | Trigger | a single annotated tag `vX.Y.Z` |
-| Result | four workflow runs, four PyPI uploads |
+| Result | five workflow runs, five PyPI uploads |
 
-Per-package tags (`citations-v*`, `prereg-v*`, `results-v*`, `repro-v*`) still work and still
+Per-package tags (`citations-v*`, `prereg-v*`, `results-v*`, `repro-v*`, `provenance-core-v*`)
+still work and still
 publish one distribution each. They exist for a repair — republishing one package after a
 partial failure — and not for an ordinary release.
 
@@ -30,7 +31,7 @@ uv run python scripts/versions.py bump X.Y.Z
 uv run python scripts/versions.py check
 ```
 
-`bump` writes the version into all four manifests and rewrites the sibling dependency ranges
+`bump` writes the version into all five manifests and rewrites the sibling dependency ranges
 to `>=X.Y,<X.(Y+1)`. It refuses a version below one already declared, because PyPI rejects a
 version that goes backwards and never permits reuse of one that goes forwards. A first
 lockstep release, where the highest declared version was never published, passes `--realign`
@@ -44,6 +45,19 @@ drifts: this repository shipped `pyyaml>=6` and `pydantic>=2` for months, both t
 install on current Python, and nothing noticed until a gate resolved the declared minimum.
 
 ## 2. Write the changelog
+
+```bash
+make changelog VERSION=X.Y.Z
+```
+
+`towncrier build` alone leaves runs of blank lines that `markdownlint` rejects, and the
+release where the second command is forgotten is the one where `make release-check` fails
+after the fragments have already been consumed. One command, so the forgettable half cannot
+be forgotten.
+
+Fragments live under `changes/<package>/`, which towncrier reads only because those
+directories are declared as sections; without that it scans `changes/*.md`, finds nothing and
+reports "No significant changes" while every fragment sits unused.
 
 One `CHANGELOG.md` at the workspace root, not one per package: lockstep means four files
 would repeat one release four times. Entries carry a `[package]` prefix. Sections are
@@ -61,18 +75,28 @@ git log --oneline -S "<the symbol the entry describes>" -- <path>
 Anything that cannot be traced to a commit that changed behavior is cut. A changelog entry
 asserting a fix that was never a defect is the same failure the tools exist to prevent.
 
-## 3. Regenerate derived artifacts, in order
+## The GitHub Release, which Zenodo needs
+
+Pushing the tag publishes to PyPI. It does not archive anything.
+
+Zenodo watches for the GitHub **Release** event, so a tag that was published and never
+released is invisible to it: no archive, no DOI, nothing citable. `v0.2.0` shipped four
+packages to PyPI and sat unarchived for a day because only `v0.1.0` had ever been turned
+into a Release.
 
 ```bash
-uv run python scripts/generate_figures.py
-uv run python scripts/build_self_audit.py
+gh release create vX.Y.Z --title vX.Y.Z --notes "<one short paragraph>"
 ```
 
-Order matters: the self-audit manifest pins `paper/figures.json` by digest, so figures are
-generated first. Reversing it produces a manifest pinning a file that no longer exists in
-that form, and `repro verify --policy strict` fails on its own repository.
+Two rules, both learned the same way:
 
-## 4. Run the full pre-flight
+- **Release the tag, never the branch.** `gh release create` defaults to the current commit,
+  so a release named `vX.Y.Z` cut from a later `main` archives code the published packages do
+  not contain. Name the tag explicitly.
+- **Check afterwards.** `gh release list` beside `versions.py check`. A tag with no release
+  fails silently and stays failed until someone opens Zenodo.
+
+## 3. Run the full pre-flight
 
 ```bash
 make release-check
@@ -82,7 +106,7 @@ This is `make qa` plus wheel building, `twine check` and `check-wheel-contents`.
 0. `make qa` includes the drift check, which fails while regenerated artifacts are
 uncommitted — commit them and re-run.
 
-## 5. Push and wait for CI
+## 4. Push and wait for CI
 
 ```bash
 git push origin main
@@ -93,37 +117,53 @@ gh run view <id> --json jobs -q '.jobs[] | "\(.conclusion)  \(.name)"'
 Read the per-job list rather than the overall conclusion. The tag builds from this commit, so
 a red `main` produces a bad release.
 
-## 6. Confirm trusted publishing before tagging
+## 5. Confirm trusted publishing before tagging
 
-**This is the step that has no local equivalent and cannot be verified from a checkout.**
-
-PyPI binds a trusted publisher to a repository, a workflow *filename*, and an environment. A
-package that moved between repositories keeps its old binding, and the upload is rejected.
-
-```text
-https://pypi.org/manage/project/citations/settings/publishing/             publish-citations.yml
-https://pypi.org/manage/project/prereg/settings/publishing/                publish-prereg.yml
-https://pypi.org/manage/project/results-cli/settings/publishing/           publish-results.yml
-https://pypi.org/manage/project/reproducible-science/settings/publishing/  publish-repro.yml
+```bash
+uv run python scripts/check_publishers.py
 ```
 
-Each needs repository `elliottower/reproducible-science` and environment `release`.
+PyPI binds a trusted publisher to a repository, a workflow *filename*, and an environment. A
+package that moved between repositories keeps its old binding and the upload is rejected.
 
-Check all four before tagging, not after the first failure. A rejected upload does not consume
+This used to say: open five settings pages in a browser. That is a check with no command, and
+a check with no command is one nobody runs. Each publish workflow now answers the question
+itself. Its `binding` job exchanges an OIDC claim for a short-lived upload token and throws
+the token away — the same exchange the publish action makes, refused by PyPI for exactly the
+misconfigurations that break a release, and it uploads nothing. It runs weekly, on every
+manual dispatch, and ahead of the upload on a release, so a binding that breaks is found on
+an ordinary Monday rather than on release day.
+
+`check_publishers.py` reads those runs, per workflow, by job name. A run's overall conclusion
+is not the answer: a release that published proves the binding held at the time, while a run
+with no such job proves only that the check did not exist yet, and the two must not read
+alike.
+
+To ask right now rather than read last week's answer:
+
+```bash
+gh workflow run publish-citations.yml
+gh run watch $(gh run list --workflow publish-citations.yml --limit 1 --json databaseId -q '.[0].databaseId')
+```
+
+A dispatch publishes nothing. The `publish` job requires a pushed tag, tested on the event as
+well as the ref, because `github.ref` on a dispatch is the branch it was launched from.
+
+Check all five before tagging, not after the first failure. A rejected upload does not consume
 the version, so a wholly failed release is recoverable — but a *partial* one is not: if two
 packages upload and two are rejected, re-pushing the tag retries the successful two and fails
 on `File already exists`, and the only way forward is a new version.
 
-## 7. Verify the version is unclaimed
+## 6. Verify the version is unclaimed
 
 ```bash
 git tag -l vX.Y.Z                                  # local
 git ls-remote --tags origin refs/tags/vX.Y.Z       # remote
 ```
 
-And on PyPI, for each of the four distributions, that `X.Y.Z` is absent from `releases`.
+And on PyPI, for each of the five distributions, that `X.Y.Z` is absent from `releases`.
 
-## 8. Check the artifacts, not the source tree
+## 7. Check the artifacts, not the source tree
 
 ```bash
 uv run --isolated --no-project \
@@ -131,10 +171,11 @@ uv run --isolated --no-project \
   --with dist/prereg-X.Y.Z-py3-none-any.whl \
   --with dist/results_cli-X.Y.Z-py3-none-any.whl \
   --with dist/reproducible_science-X.Y.Z-py3-none-any.whl \
-  python -c "import citations, prereg, results, repro"
+  --with dist/provenance_core-X.Y.Z-py3-none-any.whl \
+  python -c "import citations, prereg, results, repro, provenance_core"
 ```
 
-Install all four together in a clean environment, invoke each console script, and re-run the
+Install all five together in a clean environment, invoke each console script, and re-run the
 release's headline regression against the installed wheel rather than against `src/`. A fix
 that is present in the working tree and absent from the artifact is the failure mode this
 catches, and it is invisible to every test that imports from source.
@@ -149,7 +190,7 @@ Looking for: scratch directories, `.DS_Store`, coverage data, caches, credential
 notes. Untracked directories at the repository root cannot reach a wheel, because every
 package builds from `packages/*/src/` — but confirm rather than assume.
 
-## 9. Confirm the third-party interop claim still holds
+## 8. Confirm the third-party interop claim still holds
 
 ```bash
 make interop-strict
@@ -168,7 +209,7 @@ A newer adduce that still passes is a prompt: move the recorded version forward.
 fails is a choice between capping the dependency and saying which version the adapter targets,
 or fixing the adapter. Shipping neither leaves a false claim in the specification.
 
-## 10. Tag and publish
+## 9. Tag and publish
 
 ```bash
 git tag -a vX.Y.Z -m "Release all packages at X.Y.Z"
@@ -179,9 +220,9 @@ git push origin vX.Y.Z
 Annotated, so the tag carries an author and a date. Confirm it points at the audited commit
 before pushing.
 
-## 11. Confirm the release landed
+## 10. Confirm the release landed
 
-Watch all four workflow runs to completion, then confirm each distribution reports the new
+Watch all five workflow runs to completion, then confirm each distribution reports the new
 version on PyPI and installs from PyPI — not from `dist/` — in a clean environment.
 
 Only then archive or update anything downstream. A standalone repository that has been
@@ -196,8 +237,7 @@ Each entry is something that happened, not something imagined.
 | Declared dependency floors that cannot be installed | step 1, and CI's lowest-direct resolution |
 | Version numbers drifting apart across packages | step 1, `versions.py check` |
 | A changelog entry asserting a fix that was never a defect | step 2, tracing each claim to a commit |
-| A self-audit manifest pinning a stale digest | step 3, generator ordering |
-| A trusted publisher still bound to an old repository | step 6 |
-| A partially published release with versions consumed | step 6, checking all four first |
-| A fix present in source and absent from the wheel | step 8 |
-| An interop claim falsified by someone else's release | step 9 |
+| A trusted publisher still bound to an old repository | step 5 |
+| A partially published release with versions consumed | step 6, checking all five first |
+| A fix present in source and absent from the wheel | step 7 |
+| An interop claim falsified by someone else's release | step 8 |

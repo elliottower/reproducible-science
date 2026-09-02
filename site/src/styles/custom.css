@@ -182,3 +182,12 @@
   background: #fff;
   display: block;
 }
+
+/* Shields badges sit in a row. Starlight sets `display: block` on every image in content, so
+   the four badges at the top of each tool page stacked vertically -- which is why `license MIT`
+   and `docs live` each took a line of their own rather than sharing one. The READMEs write them
+   on consecutive lines, which GitHub and PyPI render inline, and the site did not. */
+.sl-markdown-content p img[src*="shields.io"] {
+  display: inline-block;
+  vertical-align: middle;
+}
