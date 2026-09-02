@@ -14,7 +14,12 @@ Report in this order, and keep the three kinds apart because they mean different
 2. **Passages not found.** The source was read and the passage is not in it. Quote the
    passage and name the source. This is the finding.
 3. **Passages unchecked.** The source could not be read, so nothing was measured. Never
-   report these as failures — say which source could not be read and why.
+   report these as failures, and never report them as verified — say which source could not
+   be read and why. A `pdftotext` `extract_cmd` written without `{} -` prints nothing and
+   sends every quotation against that source here.
+
+Give the `found` count when summarizing. It is the only number saying a source was read, and
+a run that measured nothing exits non-zero and says `nothing was measured`.
 
 Then the warnings on passages that were found: `short`, `truncated`, `normalized`, `page`.
 

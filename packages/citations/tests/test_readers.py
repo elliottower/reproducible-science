@@ -185,7 +185,7 @@ def test_the_default_path_still_reads_one_reader_when_the_passage_is_there(pdf, 
 
 
 def test_indeterminate_is_not_a_quotation_failure_but_is_not_a_strict_pass():
-    rep = V.Report(checked=1, counts={"indeterminate": 1})
+    rep = V.Report(checked=2, counts={"found": 1, "indeterminate": 1})
     assert rep.ok, "the passage may well be there; failing the paper for it would be the bug"
     assert not rep.strict_ok, "and nothing was established, so --strict must refuse it"
     assert rep.unresolved == 1

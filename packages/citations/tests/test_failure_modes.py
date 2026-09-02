@@ -181,6 +181,23 @@ def test_a_run_that_measured_nothing_is_not_a_pass():
     assert V.Report().ok is False
 
 
+def test_quotations_nothing_could_read_are_not_a_pass():
+    # The case this is defending against had 35 quotations and a declared `extract_cmd` that
+    # printed nothing, so every one graded `unchecked`. `checked` was 35, no source had been
+    # read, and the run exited 0 under a closing line that began "nothing failed" -- which was
+    # then reported as 35 verified quotations.
+    assert not V.Report(checked=35, counts={"unchecked": 35}).ok
+    assert not V.Report(checked=2, counts={"indeterminate": 1, "ambiguous": 1}).ok
+
+
+def test_one_measurement_is_enough_to_be_a_pass():
+    # The rule is "nothing was measured", not "anything went unresolved". A draft carrying one
+    # reference nobody has fetched keeps exiting 0; `--strict` is what refuses it.
+    rep = V.Report(checked=35, counts={"found": 1, "unchecked": 34})
+    assert rep.ok
+    assert not rep.strict_ok
+
+
 def test_only_not_found_is_a_failure():
     rep = V.Report(checked=3)
     rep.problems = [

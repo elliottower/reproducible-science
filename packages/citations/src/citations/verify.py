@@ -314,7 +314,11 @@ class Report:
         """Only `not found` and a broken pin are failures. Unchecked and indeterminate are not.
 
         A run that measured nothing is not a pass, decided here so no caller can report
-        success on an empty run.
+        success on an empty run. Two runs measure nothing. One has no quotations. The other
+        has them and could read none of its sources -- a misdeclared `extract_cmd`, a
+        `pdftotext` that is not installed, a directory of sources that moved -- and it is the
+        one that looks like work. Both are refused here, so the exit code never says a
+        corpus was established by a run that established nothing.
 
         `indeterminate` is deliberately not a failure. Two extractors disagreeing about a
         passage says the document is not determinate under the readers on this machine;
@@ -322,6 +326,8 @@ class Report:
         reader. `--strict` still refuses it, through `unresolved`.
         """
         if self.checked == 0:
+            return False
+        if self.unresolved >= self.checked:
             return False
         if self.broken_pins:
             return False

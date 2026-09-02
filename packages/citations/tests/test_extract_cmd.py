@@ -300,6 +300,23 @@ def test_the_same_run_without_consent_establishes_nothing_and_strict_says_so(
     assert re.search(r"not found\s+0\b", out), "a refused command is not a passage that is absent"
 
 
+def test_the_same_run_without_strict_also_refuses_because_nothing_was_read(
+    tmp_path, renderer, capsys
+):
+    # The test above needed `--strict` to fail. Without it the identical run exited 0 under a
+    # closing line beginning "nothing failed", and the quotations were reported as verified.
+    # A default that goes green over a corpus no reader touched is the check that cannot fail.
+    script = renderer("render", printing())
+    claims = paper(tmp_path, str(script))
+
+    code = cli.main(["verify", "--claims", str(claims)])
+
+    out = capsys.readouterr().out
+    assert code == 1
+    assert "nothing was measured" in out
+    assert "nothing failed" not in out
+
+
 # -- "no extractor" is a declaration, not a program named none -----------------------------------
 
 

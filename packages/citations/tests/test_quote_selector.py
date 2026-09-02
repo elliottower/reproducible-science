@@ -130,7 +130,9 @@ def test_ambiguous_counts_as_unresolved_so_strict_refuses_it():
 
 
 def test_ambiguous_is_not_a_failure_the_way_not_found_is():
-    rep = V.Report(checked=1, counts={"ambiguous": 1})
+    # Measured beside a resolved quote, so what this pins is that ambiguity is not a failure
+    # and not the separate rule that a run resolving none of its quotations is no pass.
+    rep = V.Report(checked=2, counts={"found": 1, "ambiguous": 1})
     assert rep.ok
 
 
