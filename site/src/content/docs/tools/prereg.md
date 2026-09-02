@@ -5,9 +5,16 @@ description: Prereg — Reproducible Science
 
 <!-- Generated from packages/prereg/README.md. Edit that file, not this one. -->
 
-Preregister your plan to prevent p-hacking and unfalsifiable post-hoc analysis.
+[![pypi](https://img.shields.io/pypi/v/prereg)](https://pypi.org/project/prereg/)
+[![python](https://img.shields.io/pypi/pyversions/prereg)](https://pypi.org/project/prereg/)
+[![license](https://img.shields.io/pypi/l/prereg)](https://github.com/elliottower/reproducible-science/blob/main/LICENSE)
+[![docs](https://img.shields.io/badge/docs-live-blue)](https://elliottower.github.io/reproducible-science/)
 
 **[Run it in your browser](#run-it)** — every command on this page, in a live notebook at the bottom. No install.
+
+Freeze a plan before you run it, and record what changed after.
+
+Part of [reproducible-science](https://github.com/elliottower/reproducible-science) alongside `repro`, `citations` and `results` — see the [documentation](https://elliottower.github.io/reproducible-science/tools/prereg/).
 
 ## Install
 
@@ -144,6 +151,15 @@ All four tools in one plugin, with every hook, skill and command:
 
 MIT licensed.
 
+## This tool and `repro`
+
+`prereg` installs and runs on its own, is not deprecated, and is not going to be.
+`reproducible-science` depends on it, so `repro prereg ...` runs this same command with the
+same arguments and the same exit code. That is a spelling, not a feature.
+
+What only exists in the umbrella is `repro check`, which runs every tool a project uses in one
+pass, with one report and one exit code, and names the tools the project does not use rather
+than counting them as passing. If a project only preregisters, the umbrella adds nothing over this command at all.
 
 
 ## Run it in your browser

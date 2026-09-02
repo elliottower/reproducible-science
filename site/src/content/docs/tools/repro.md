@@ -5,9 +5,16 @@ description: Repro — Reproducible Science
 
 <!-- Generated from packages/repro/README.md. Edit that file, not this one. -->
 
-Declare what evidence stands behind each claim in a paper, and check that it still does.
+[![pypi](https://img.shields.io/pypi/v/reproducible-science)](https://pypi.org/project/reproducible-science/)
+[![python](https://img.shields.io/pypi/pyversions/reproducible-science)](https://pypi.org/project/reproducible-science/)
+[![license](https://img.shields.io/pypi/l/reproducible-science)](https://github.com/elliottower/reproducible-science/blob/main/LICENSE)
+[![docs](https://img.shields.io/badge/docs-live-blue)](https://elliottower.github.io/reproducible-science/)
 
 **[Run it in your browser](#run-it)** — every command on this page, in a live notebook at the bottom. No install.
+
+Check whether a paper's claims match its artifacts.
+
+Part of [reproducible-science](https://github.com/elliottower/reproducible-science) alongside `citations`, `results` and `prereg` — see the [documentation](https://elliottower.github.io/reproducible-science/tools/repro/).
 
 ## Install
 
@@ -16,6 +23,16 @@ pip install reproducible-science
 ```
 
 This installs `repro` and its three dependencies: [`prereg`](https://pypi.org/project/prereg/), [`citations`](https://pypi.org/project/citations/), [`results-cli`](https://pypi.org/project/results-cli/).
+
+## Try it
+
+```bash
+repro demo
+```
+
+Writes `repro-demo/` and runs the real workflow over it: seal the inputs, record the run, bind the claim, verify the evidence. It then edits the manuscript twice and re-runs `repro verify`, so the first thing you watch the tool do is catch something. The two edits fail differently — a file that is not the file that was declared, and a number that contradicts the run — and the report says which. Both are restored, and the directory is left verifying, with a README naming three more failures to produce by hand.
+
+Offline, deterministic, and under a second per command.
 
 ## Quick start
 
@@ -28,6 +45,9 @@ initializing /home/you/work/my_experiment
   wrote /home/you/work/my_experiment/CLAUDE.md
 done.
 ```
+
+`init` spawns `prereg new`, `results init` and `citations init`, whose own output it does not
+relay; the two lines above are everything it prints itself.
 
 This creates:
 
@@ -157,7 +177,6 @@ uv tool install reproducible-science   # or: pip install reproducible-science
 ```
 
 MIT licensed.
-
 
 
 ## Run it in your browser

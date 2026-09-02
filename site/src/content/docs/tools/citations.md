@@ -22,6 +22,38 @@ Part of [reproducible-science](https://github.com/elliottower/reproducible-scien
 pip install citations
 ```
 
+## When a quotation will not resolve
+
+`not found` says the source was read and the passage is not in it. That is an accusation
+against the manuscript, and it is usually wrong. Three things produce it far more often than a
+misquotation does, and `verify` now names which by reporting where the passage stopped matching:
+
+```text
+not found by any of pdftotext -layout, pdftotext, pypdf, so the passage is absent under every
+reader installed here; the first 155 characters are in the source and the rest is not
+      quoted: ...tionality, e.g. vec('king') - vec('man') + vec('woman') = vec(
+      source: ...tionality, e.g. vec('king') vec('man') + vec('woman') = vec('q
+```
+
+**A character the text layer dropped.** A minus sign, an en dash, a subscript. The quotation is
+right and the document's extraction is lossy. Repair it by splitting the quotation into two
+adjacent fragments either side of the missing character, never by truncating it to the part
+that matches -- a truncated quotation resolves and says something the source does not.
+
+**A hyphen on a line break.** `fold` removes `-\n` because a renderer inserts one when it
+splits a word, and it cannot tell that from a real hyphen that happens to fall at a line end.
+The same quotation then resolves everywhere else in the document and fails at that one
+occurrence. Split it there.
+
+**The wrong reader.** `pdftotext -layout` preserves a page's geometry, so on a two-column paper
+it interleaves the columns and shreds every sentence crossing the gutter. A block of failures
+concentrated in one document is this. `verify` consults the other readers before a `not found`
+stands and records which one answered, so this repairs itself; a tool that asks one extractor
+does not, and reports the document as missing text it contains.
+
+**A source that is not what it claims to be.** A `.pdf` that is a Cloudflare interstitial or a
+login page fails under every reader. `file` will say so in one line.
+
 ## Quick start
 
 ```bash
@@ -52,7 +84,7 @@ all found.
 | `citations audit` | Does the stored metadata match the record the identifier resolves to? |
 | `citations resolve` | Backfill missing DOIs and arXiv ids |
 | `citations build` | Rebuild records from bibliographies |
-| `citations lint` | BibTeX correctness, and repeated keys in a `.bib` |
+| `citations lint` | BibTeX correctness, repeated keys, and author lists in a `.bib` |
 | `citations add` | Add one entry to a `.bib`, refusing a key it already has |
 | `citations link` | Point pdfs/ at the papers' artifacts |
 | `citations import-paperclip` | Turn a Paperclip paper repo into pinned claim files |
@@ -127,8 +159,8 @@ Poppler is preferred and recommended. Where it is absent, or fails on a document
 falls through to whichever pure-Python reader is installed and records the substitution as a
 fallback — so `pip install citations` alone is enough to check a PDF, and no result is quietly
 attributed to an extractor that did not produce it. pypdf comes before pdfplumber because it
-agreed with poppler on more of a 1,792-check corpus and read a document in a third of the
-time; the measurement is in `research/pdf-readers/`.
+agreed with poppler on more of a 1,593-check corpus -- 92.7% against 90.2% -- and read a
+document in a third of the time; the measurement is in `research/pdf-readers/`.
 
 The two poppler modes are one binary with one flag between them, and they fail in opposite
 directions: `-layout` preserves visual position and breaks a sentence spanning two columns,
@@ -223,15 +255,61 @@ $ citations add refs.bib --arxiv 1706.03762
 The write is read back before it is reported: the file has to parse as every entry it parsed as
 before plus this one, with the key on exactly one line, or the original bytes go back.
 
-`citations lint --bib refs.bib` asks the same question of a file already written, and needs
-neither papis nor a library, so it runs in continuous integration.
+`citations lint --bib refs.bib` asks the same question of a file already written, and reads the
+author fields while it is there. It needs no papis, no library and no network, so it runs in
+continuous integration.
 
 ```text
   bib  refs.bib
-    sprague2024cot                              lines 374, 989
+    sprague2024cot                        repeated  lines 374, 989
+    bhaskar2024finding                    bare      line 41
+      no given name for 4 of the authors: 'Bhaskar', 'Wettig', 'Friedman', 'Chen'
 
-  230 entries, 1 repeated key(s)
+  230 entries, 1 repeated key(s), 1 author list(s) with a bare family name
 ```
+
+`bare` is an author written as a family name with nothing beside it. `author = {Bhaskar and
+Wettig and Friedman and Chen}` prints as "Bhaskar, Wettig, Friedman, and Chen." in the reference
+list, and five entries in one paper's bibliography were like that on the day it was submitted.
+`citations lint --authors` passed all five: those four family names are the four
+arXiv:2406.16778 lists, in order, and family names are all that comparison reads. Nothing
+outside the file settles a missing given name, so it is checked offline beside the repeated
+keys. A braced name is not a finding — `{NASA}`, `{Open Science Collaboration}` — because braces
+are how BibTeX is told a name has no given part and is printed as written; the same braces keep
+`{U.S. Food and Drug Administration}` one author rather than two.
+
+## Author lists, against the identifier the entry already carries
+
+`citations lint --authors refs.bib` reads each entry's author list back against the registry its
+own DOI or arXiv id names. Two agents in one session attributed "Mediational E-values" to
+VanderWeele and Chiba while quoting the paper's DOI; Crossref gives Smith, Louisa H. and
+VanderWeele, Tyler J. A VanderWeele and Chiba paper does exist, on another subject in another
+journal, so the entry was two real papers written as one — every field named something that
+exists, which is why reading the reference list does not catch it.
+
+```console
+$ citations lint --authors refs.bib
+  authors  refs.bib
+  cache    .author-cache.yaml
+    vanderweele2019mediational            wrong    doi:10.1097/EDE.0000000000001064  (crossref)
+      author 1: ours 'VanderWeele, Tyler J.', registry 'Smith, Louisa H.'
+    vaswani2017attention                  marker   arxiv:1706.03762  (arxiv)
+      the list is shortened with `and others` / `et al.`; the registry lists 8
+
+  4 entries, 3 checked, 1 with no identifier, 0 that did not fetch, 3 finding(s)
+```
+
+Four kinds of finding come out of the one comparison: `wrong` for a name belonging to another
+paper, `dropped` for a list that stops early with no marker, `marker` for `and others` or
+`et al.` written into a `.bib`, and `order` for the registry's names in another sequence.
+Comparison is on family names, folded, with both spellings of an accent and with surname
+particles stripped as well as kept, so Krzyżosiak against Krzyzosiak and "de Mezer" against the
+"Mezer" OpenAlex files it under are not findings. Entries carrying no identifier are skipped and
+counted rather than passed. Resolved lists are cached in `.author-cache.yaml` beside the
+bibliography, so a second run needs no network and a pre-commit hook can call it.
+
+A list whose family names are the registry's and whose given names are absent is none of the
+four, and `--bib` reports it from the file alone.
 
 ## Full text through Paperclip
 
@@ -459,6 +537,16 @@ All four tools in one plugin, with every hook, skill and command:
 ```
 
 MIT licensed. `docs/` has the working practices this came out of.
+
+## This tool and `repro`
+
+`citations` installs and runs on its own, is not deprecated, and is not going to be.
+`reproducible-science` depends on it, so `repro citations ...` runs this same command with the
+same arguments and the same exit code. That is a spelling, not a feature.
+
+What only exists in the umbrella is `repro check`, which runs every tool a project uses in one
+pass, with one report and one exit code, and names the tools the project does not use rather
+than counting them as passing. If a project checks quotations and nothing else, use this command directly.
 
 
 ## Run it in your browser

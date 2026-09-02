@@ -31,10 +31,11 @@ This is why the outcome vocabulary is `match` and `mismatch` rather than `suppor
 |---|---|---|
 | `Digest` | yes | a content address: `sha256` and 64 lowercase hex characters |
 | `ArtifactRef` | yes | a file the manifest names, pinned or not |
-| `Evidence` | yes | an assertion about one artifact, discriminated on `kind` |
+| `Evidence` | yes | an assertion about one artifact, or two, discriminated on `kind` |
 | `Claim` | yes | a manuscript statement and the evidence offered for it |
 | `Manifest` | yes | one project's artifacts and claims |
 | `Decision` | yes | the outcome of evaluating one assertion |
+| `DecisionSide` | yes | what one side of a two-sided assertion read, and where |
 | `VerificationReport` | yes | every decision, and the state of every artifact |
 | `Assessment` | yes | a policy's verdict on a report |
 
@@ -152,7 +153,68 @@ The delimiter comes from the file suffix where one is known, and from the header
 otherwise. Suffix first: a `.tsv` whose header contains commas is still tab separated, and
 sniffing it would split every row in the wrong place.
 
-### 3.4 Kinds that are not here
+### 3.4 `correspondence`
+
+```yaml
+kind: correspondence
+name: fixture-count
+sides:
+  - name: stated
+    artifact: spec
+    locator: {kind: prose, before: "suite holds", after: "fixtures", form: cardinal_word}
+  - name: measured
+    artifact: probe
+    locator: {kind: tree, pointer: /probes/fixtures/value}
+mode: printed_precision     # or absolute
+tolerance: "0"
+```
+
+Assertion: these two artifacts hold the same value.
+
+The other three kinds compare an artifact against a literal written in the manifest. A claim a
+document makes about the code beside it has an artifact on both sides: `docs/SPEC.md` states a
+fixture count, and `ls -1 packages/repro/tests/conformance/cases` returns one. Expressing that
+with a `metric` requires transcribing one of the two into `reported`, and no assertion reads
+the transcription — rewriting every `reported` field to the value the command measured, leaving
+the quoted sentences untouched, passes a manifest whose documents are still wrong.
+
+Exactly two sides, each with a name, an artifact, and a locator. The two must not address the
+same value, since an assertion comparing a value with itself holds whatever the file contains.
+The names are the author's and the engine attaches no meaning to them.
+
+**Neither side is the reference.** A disagreement reports both values and says which artifact
+each came from; it does not say which is wrong, because nothing in a byte comparison establishes
+whether a specification or a suite is in error. `relative` is rejected for the same reason: its
+tolerance is a fraction of the reported value, and there is no reported value to take a fraction
+of. `printed_precision` compares at the coarser of the two precisions, so a sentence printing
+one decimal agrees with a file holding four, and the outcome does not depend on which side the
+manifest wrote first. NaN and the infinities have no precision for either side to be coarser
+than, so a non-finite value on either side is `value_not_numeric` before any comparison, as it
+is for a one-sided assertion.
+
+**What it cannot establish.** Three limits, in decreasing order of how often they bite.
+
+A prose claim usually carries no number. *The scanner reads the directory flat*, *the field is
+honored*, *the walk skips symlinks* are propositions about behavior, and expressing one means
+inventing a count — of matched files, of call sites — so the assertion then checks the encoding
+rather than the proposition. A correspondence reaches a documented claim only where the document
+states a quantity.
+
+The subject of such a claim is usually a repository, and a repository is not a file a manifest
+can declare: `Digest.of_file` addresses one file, so the directory a count is taken over cannot
+be pinned as an input. The measured side is therefore an artifact holding a command's output,
+pinned like any other, while the input to that command is not pinned at all. §7.6 puts declared
+inputs in an empty directory so that a command needing an undeclared file fails; a command whose
+subject cannot be declared reads it by absolute path and the record reports `reproduced` on
+grounds nothing checked. **A correspondence over a repository makes no reproducibility claim,
+and a manifest should declare no regeneration for one rather than collect a guarantee it has not
+earned.** Closing this needs an artifact identified by a digest over a directory, which this
+revision does not define.
+
+Both sides being read does not make either side right. Two artifacts agree or they do not, and a
+document and a script can agree on a number that is wrong.
+
+### 3.5 Kinds that are not here
 
 `protocol` was specified as a third kind and is not one. Its integrity check is the artifact
 pin, which every artifact already carries; its content check — that a registered document
@@ -160,7 +222,7 @@ states a given hypothesis — is a `quote` against the plan. What remains distin
 protocol is temporal: whether a confirmatory run postdates its registration. That requires a
 run record, is unimplemented (§7), and is not smuggled in as a third kind in the meantime.
 
-## 3.5 Locators
+## 3.6 Locators
 
 A locator says where a value sits. JSON Pointer works because JSON has one tree data model and
 a pointer resolves to at most one value; it says nothing about table keys, multidimensional
@@ -175,12 +237,48 @@ itself.
 | `table_position` | the same, by row index | column plus position, carrying a warning |
 | `sqlite` | a database file | table, column, and a predicate matching one row |
 | `array` | `.npy`, `.npz` | array name plus a multidimensional index |
+| `prose` | a document, as text | two literal anchors bracketing the value |
 
 Every variant enforces one invariant: a locator resolves to **exactly one scalar**. Zero is
 absent, two or more is ambiguous, a container is not a value, and no backend takes the first
 match. A format with no adapter — HDF5, NetCDF, Parquet, XLSX — reports `format_unsupported`
 and stops. No backend falls back to searching a file for the printed number, which would find
 it wherever it appears and call that verification.
+
+`prose` is the one variant addressing a format that has no addressing scheme of its own. A
+sentence is not a tree, a table, or an indexed array, so the address is the text on either side
+of the value: `before` is the literal that precedes it and `after` the literal that follows,
+and the value is the run of non-whitespace characters between them.
+
+```yaml
+locator: {kind: prose, before: "suite holds", after: "fixtures", form: cardinal_word}
+```
+
+Two alternatives were available and are worse under this document's own rules. A capture-group
+pattern is a string expression language, which §3.6 rejects for predicates: it needs a dialect,
+an escaping grammar, and a backtracking bound. A braced template — `holds {n} fixtures` — needs
+an escaping grammar for the brace, and LaTeX sources are full of braces. Two literal anchors
+need neither, and they make the author state the address rather than describe a number to
+search for.
+
+Anchors are matched against the text a `quote` resolves against, under the same normalization,
+so an anchor and a quotation over one document cannot disagree about what the document says.
+Whitespace at an anchor boundary is ignored, on the grounds that normalization collapses it
+everywhere else. An anchor pair selecting two occurrences of one value resolves to that value;
+selecting two *different* values is `passage_ambiguous`. A repeated count is ordinary prose and
+a document stating two counts is a defect, which is the distinction a `quote` cannot draw:
+a quotation is satisfied by any occurrence, so editing one of two statements of a number leaves
+the assertion satisfied by the other.
+
+`form` says how the selected text is read as a number. Under `decimal`, the default, digits are
+parsed and nothing is converted. Under `cardinal_word`, an English cardinal below one hundred
+written as one word is read as that number: `eighteen` is 18. **The conversion is declared, not
+inferred.** Under `decimal` a recognized cardinal is refused with `number_as_word` rather than
+converted, because reading a word as a number is a semantic decision and the engine makes none
+on its own. The bound is not arbitrary: the value is one run of non-whitespace characters, and
+every cardinal above ninety-nine is several words, so `one hundred and forty-five` is not
+addressable this way whatever the table holds. `form` is part of the canonical locator, so the
+decision digest binds what the manifest authorized.
 
 Predicates are typed key-value mappings, not a string expression language: a string predicate
 needs a parser, coercion rules, and an escaping grammar, and every implementation would
@@ -215,9 +313,13 @@ how a file silent on a value becomes one that contradicts it.
 | situation | execution | extraction | comparison | flattens to |
 |---|---|---|---|---|
 | passage present | completed | extracted | match | `verified` |
+| two sides agree | completed | extracted | match | `verified` |
+| two sides disagree | completed | extracted | mismatch | `mismatch` |
+| one side does not extract | completed | absent or invalid | n/a | `not_found` |
 | passage absent from a readable source | completed | extracted | mismatch | `mismatch` |
 | pointer does not resolve | completed | absent | n/a | `not_found` |
 | value is not a number | completed | invalid | n/a | `not_found` |
+| independent readers disagree | completed | invalid | n/a | `not_found` |
 | extractor not installed | unavailable | not_attempted | n/a | `unchecked` |
 | artifact missing or unparseable | unavailable | not_attempted | n/a | `unchecked` |
 | backend defect | failed | not_attempted | n/a | `error` |
@@ -230,6 +332,33 @@ that the value differs from what the manuscript reports; it asserts nothing. Tha
 `extraction=absent`, flattening to `not_found`, distinct from both a value that disagrees and
 a check that could not run.
 
+**Two extractions still make one comparison.** A `correspondence` reads a value from each
+of two artifacts before comparing them, and the stages report that as they report everything
+else. Where one side extracts and the other does not, the comparison did not happen: that is
+`extraction=absent` or `extraction=invalid` with `comparison=not_applicable`, flattening to
+`not_found`, and never `mismatch`. A results file silent on a value does not contradict a
+document stating it, and a document that never states the number does not contradict the file.
+The decision carries the failing side's own reason — `pointer_absent`, `number_as_word` — and
+names which side failed, so a gap on one side is not reported as a disagreement between two.
+The extraction stage of a two-sided assertion is the weaker of its two sides, and its validity
+is the weaker of its two artifacts.
+
+**A reader is not the document.** A pin establishes that a file's bytes have not changed. It
+establishes nothing about whether the program that read them produced the right text, and a
+mangled extraction reads exactly like a passage that was never written: a two-column layout
+flattened in the wrong order yields a confident `not found` against a manuscript that quotes
+its source correctly. Where two independent extractors disagree about whether a passage is
+present, the document is not determinate under the readers available, which is
+`extraction=invalid` — the same stage as a cell holding no number, and for the same reason.
+There was nothing well formed to compare. It is emphatically not `comparison=mismatch`, which
+asserts that the source contradicts the manuscript.
+
+Disagreement is therefore a property of the reading, not a milder verdict about the passage,
+and every decision names the reader and version that produced the text it was checked against.
+A backend that substitutes one extractor for another records the substitution: two decisions
+that disagree because they were taken with different readers are otherwise indistinguishable
+from two decisions that disagree about the document.
+
 **Availability is a claim-level fact, not an outcome.** Whether a claim offers evidence cannot
 be the result of checking evidence, because there is none to pass to a backend. `Claim`
 carries `availability: offered | not_offered`; `not_offered` appears in the flattened view for
@@ -240,7 +369,12 @@ display and is never a `Decision`.
 `Reason` is a typed field carrying why an outcome obtained: `passage_present`, `value_match`,
 `passage_absent`, `value_mismatch`, `pointer_absent`, `value_not_numeric`,
 `extractor_missing`, `artifact_missing`, `artifact_unreadable`, `artifact_undeclared`,
-`backend_defect`, `not_offered`.
+`backend_defect`, `not_offered`, and two a prose locator adds. `passage_ambiguous`: one pair of
+anchors selected two different values, so the document states two numbers where the assertion
+addresses one. `number_as_word`: the value is an English cardinal written out under a locator
+that did not ask for one. It is distinct from `value_not_numeric` because the fix differs — the
+value is there and a reader would call it a number, so an author told only that no number was
+found goes looking for a broken anchor.
 
 `Warning` is orthogonal to the outcome: `short`, `truncated`, `normalized`, `wrong_page`. A
 decision may be `verified` and carry one. `truncated` exists because *"an accuracy of 0.9"*
@@ -254,12 +388,58 @@ class Backend(Protocol):
     kind: str
     version: str
 
-    def check(self, claim: Claim, evidence: Evidence, path: pathlib.Path) -> Decision: ...
+    tool: str
+
+    @property
+    def tool_version(self) -> str: ...
+
+    def check(
+        self, claim: Claim, evidence: Evidence, paths: Mapping[str, pathlib.Path]
+    ) -> Decision: ...
 ```
+
+`paths` holds one entry per artifact the assertion names, keyed by id. Every kind but
+`correspondence` names one and takes it with `paths[evidence.artifact]`. It is a mapping rather
+than a path because an assertion whose two sides are both artifacts has no single file to be
+handed, and handing it one would make the engine choose a side before the backend has read
+either. Widening this was not additive: a backend written against the earlier signature does
+not satisfy the protocol.
 
 Every decision names the backend and its version, because the same inputs can receive
 different decisions after a backend upgrade and a stored decision that does not say which
 backend produced it cannot be compared with a later one.
+
+### 5.1 The extraction toolchain
+
+`version` is the protocol version of the interface, written by hand. The program that turns
+bytes into text or values is named separately, in `tool` and `tool_version`: the `pdftotext`
+binary for a quotation, the installed distribution supplying the format adapters for a value.
+Content addressing establishes that the bytes did not change and establishes nothing about how
+they were read, so a `pdftotext` upgrade that resolves a ligature differently changes an
+extracted passage with every digest in the manifest intact. A binary reports its version as it
+prints it; a distribution reports `importlib.metadata`. A tool that cannot be interrogated is
+recorded as `unknown`, never omitted: a field that disappears makes an uninterrogated
+toolchain indistinguishable from an absent one.
+
+`extraction_digest` records the sha256 of what the extractor produced — the whole extracted
+text for a quotation, the extracted value for a number. The version string catches drift that
+announces itself; the digest catches drift from any cause, including a rebuilt binary
+reporting the same version and an environment that changes an encoding path. `unknown` where
+the extraction produced nothing to hash. It establishes stability and not correctness: a first
+extraction that reads a column wrong hashes perfectly and stays wrong.
+
+A `correspondence` extracts twice, so it records a digest per side and one over both, in the
+order the manifest declares the sides. The decision-level digest moves whenever either side's
+extraction moves; which of the two moved is on the side. Leaving it `unknown` would say the
+extraction was sought and not obtained, and it was sought twice. `tool` stays one field, which
+is an approximation where the two sides are read by different programs: a `prose` side over a
+paginated source reaches the same `pdftotext` a quotation does. The per-side extraction digest
+is what catches a change in either program, since it moves whenever what a side read moves,
+whatever did the reading. Naming a tool per side needs the adapters to report which one they
+used, and this revision does not define that.
+
+Both are provenance. Whether a changed tool version or a changed extraction invalidates a
+stored decision the way a changed artifact does is a policy question, and §6 decides policy.
 
 Exceptions are not interchangeable:
 
@@ -425,9 +605,9 @@ methods statements and externally sourced facts are inapplicable without being s
 | repository artifact auditing | adduce | interoperates via manifest format and rule entry point |
 | agent trace graphs | LEDGER | exposes claim-support paths; returns no verdict |
 
-The contribution is §3 and §4: one contract spanning quotations and reported values, and a
-three-stage outcome that separates a value that disagrees, a value that is absent, and a check
-that never ran.
+The contribution is §3 and §4: one contract spanning quotations, reported values, and values
+read from two artifacts at once, and a three-stage outcome that separates a value that
+disagrees, a value that is absent, and a check that never ran.
 
 ## 9. Conformance
 
@@ -438,15 +618,32 @@ An implementation conforms when:
 3. A backend defect yields `execution=failed`, never `unavailable`.
 4. A pointer that does not resolve yields `extraction=absent`, never `comparison=mismatch`.
 5. `reported` is compared as a decimal at its printed precision, never as a binary float.
-6. Every decision names the claim digest, artifact digest, backend, and backend version.
-7. A broken pin marks every decision against that artifact non-authoritative.
-8. The engine returns facts and computes no verdict.
-9. No library entry point prints, exits, or mutates global state.
+6. Every decision names the claim digest, artifact digest, backend, backend version,
+   extraction toolchain, that toolchain's version, and the digest of what it produced. A
+   decision over two artifacts names the artifact digest, the locator digest and the
+   extraction digest of each side, since one field cannot hold two.
+7. A version or digest that was sought and not obtained is recorded as `unknown`, never
+   omitted, so it stays distinguishable from one that was never sought.
+8. A broken pin marks every decision against that artifact non-authoritative.
+9. The engine returns facts and computes no verdict.
+10. No library entry point prints, exits, or mutates global state.
+11. A two-sided assertion with one side unresolved yields `not_found`, never `mismatch`, and
+    carries the failing side's reason.
+12. A spelled-out number is converted only where the locator declares `cardinal_word`, and
+    refused with `number_as_word` otherwise.
 
-Conformance is executable: `packages/repro/tests/conformance/` holds eighteen fixtures, each
-with canonical expected JSON. They cover `verified`, `mismatch`, `not_found`, `unchecked` and
-`not_offered`, the pointer-escaping and undeclared-artifact cases, an unpinned artifact, and
-five table-addressing cases.
+Conformance is executable: `packages/repro/tests/conformance/` holds 25 fixtures, each with
+canonical expected JSON. They cover `verified`, `mismatch`, `not_found`, `unchecked` and
+`not_offered`, the pointer-escaping and undeclared-artifact cases, an unpinned artifact, a
+broken pin, five table-addressing cases, and six over `correspondence` and the prose locator:
+two sides agreeing, two sides disagreeing, one side that does not resolve, a spelled-out number
+refused, one pair of anchors selecting two different values, and a prose value against a
+literal.
+
+Each fixture declares its outcome, its reason, and the validity of every artifact. The outcome
+alone cannot tell a defect in the tool from a fact about the document: three cases share
+`unchecked` and eight share `not_found`, and only the reason separates an undeclared artifact
+from an absent file, or an ambiguous anchor pair from a number written as a word.
 
 Two rows of §4 have no fixture: `error`, which needs a backend defect, and the
 extractor-missing form of `unchecked`. Neither is producible from a file on disk alone, so
