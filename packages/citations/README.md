@@ -248,15 +248,28 @@ $ citations add refs.bib --arxiv 1706.03762
 The write is read back before it is reported: the file has to parse as every entry it parsed as
 before plus this one, with the key on exactly one line, or the original bytes go back.
 
-`citations lint --bib refs.bib` asks the same question of a file already written, and needs
-neither papis nor a library, so it runs in continuous integration.
+`citations lint --bib refs.bib` asks the same question of a file already written, and reads the
+author fields while it is there. It needs no papis, no library and no network, so it runs in
+continuous integration.
 
 ```text
   bib  refs.bib
-    sprague2024cot                              lines 374, 989
+    sprague2024cot                        repeated  lines 374, 989
+    bhaskar2024finding                    bare      line 41
+      no given name for 4 of the authors: 'Bhaskar', 'Wettig', 'Friedman', 'Chen'
 
-  230 entries, 1 repeated key(s)
+  230 entries, 1 repeated key(s), 1 author list(s) with a bare family name
 ```
+
+`bare` is an author written as a family name with nothing beside it. `author = {Bhaskar and
+Wettig and Friedman and Chen}` prints as "Bhaskar, Wettig, Friedman, and Chen." in the reference
+list, and five entries in one paper's bibliography were like that on the day it was submitted.
+`citations lint --authors` passed all five: those four family names are the four
+arXiv:2406.16778 lists, in order, and family names are all that comparison reads. Nothing
+outside the file settles a missing given name, so it is checked offline beside the repeated
+keys. A braced name is not a finding — `{NASA}`, `{Open Science Collaboration}` — because braces
+are how BibTeX is told a name has no given part and is printed as written; the same braces keep
+`{U.S. Food and Drug Administration}` one author rather than two.
 
 ## Author lists, against the identifier the entry already carries
 
@@ -287,6 +300,9 @@ particles stripped as well as kept, so Krzyżosiak against Krzyzosiak and "de Me
 "Mezer" OpenAlex files it under are not findings. Entries carrying no identifier are skipped and
 counted rather than passed. Resolved lists are cached in `.author-cache.yaml` beside the
 bibliography, so a second run needs no network and a pre-commit hook can call it.
+
+A list whose family names are the registry's and whose given names are absent is none of the
+four, and `--bib` reports it from the file alone.
 
 ## Full text through Paperclip
 

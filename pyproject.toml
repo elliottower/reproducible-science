@@ -99,7 +99,7 @@ lint.per-file-ignores."packages/*/tests/*" = [ "B011" ] # bare assert False is f
 # `research/pdf-readers/pdfrs/Cargo.lock`, `ede` is the journal code in the DOI
 # 10.1097/EDE.0000000000001064, and the rest are author surnames in the sampling frame.
 # Listed rather than skipping whole files, which would hide real typos.
-ignore-words-list = "unparseable,ue,copie,buis,smae,nd,ist,fo,inout,ede"
+ignore-words-list = "unparseable,ue,copie,buis,smae,nd,ist,fo,inout,ede,bui"
 skip = "uv.lock,.git"
 
 [tool.pytest]

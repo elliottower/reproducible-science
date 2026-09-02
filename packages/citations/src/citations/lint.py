@@ -2,7 +2,7 @@
 
     citations lint                     # the records, through papis
     citations lint --json              # machine-readable
-    citations lint --bib refs.bib      # duplicate keys, papis not required
+    citations lint --bib refs.bib      # repeated keys and bare family names, papis not required
     citations lint --authors refs.bib  # author lists, against each entry's own identifier
 
 The modes answer different questions about different artifacts. The records mode asks whether a
@@ -14,6 +14,20 @@ A repeated key is worth its own check because BibTeX's response to one is non-fa
 somewhere else. It keeps the copy the file defines first, skips the repeat, and writes a `.bbl`
 without it, so the reference list prints an entry nobody is looking at while the corrected one
 sits in the `.bib`. See `add.py`, which refuses to write one.
+
+`--bib` also reports an author list written as family names with no given names:
+
+    author = {Bhaskar and Wettig and Friedman and Chen}
+
+which prints as "Bhaskar, Wettig, Friedman, and Chen." in the reference list. The paper it was
+found in carried five of these into a submission. `--authors` reports none of them, because it
+compares family names and those four are the four arXiv:2406.16778 lists; the given names it
+never reads are the ones that are missing. Nothing outside the file settles this, so it sits in
+the offline mode, beside the repeated keys.
+
+A name that is one word, carries no comma and is not braced has no given part for any reference
+style to print. `{OpenAI}` and `{Open Science Collaboration}` are braced, which is how BibTeX is
+told a name is complete as written, so neither is a finding.
 
 `--authors` reads the author list back against the registry the entry's own identifier names. On
 2026-08-31 two agents, in one session, attributed "Mediational E-values" (Epidemiology
@@ -143,31 +157,176 @@ def project(rec: Record) -> dict:
     return doc
 
 
-def bib_duplicates(files: list[pathlib.Path], as_json: bool) -> int:
-    """Every key each file defines more than once. Exit 1 if any file does.
+# --------------------------------------------------------------------------------------------
+# Names, as a `.bib` writes them. Both `.bib` modes read them through here.
+# --------------------------------------------------------------------------------------------
+
+#: A shortened list, however it is written. `and others` is BibTeX's own marker and splits into
+#: a name of its own; `et al.` arrives from reference managers and from hand-editing, glued to
+#: the last name, where splitting on ` and ` never sees it.
+MARKERS = ("others", "et al")
+ET_AL = re.compile(r",?\s*\bet\.?\s*al\.?", re.IGNORECASE)
+
+#: The two separators a name is read by. Each occurs inside a braced group meaning something
+#: else, which is why `split_outside_braces` exists rather than `str.split`.
+AND = re.compile(r"\s+and\s+")
+SPACE = re.compile(r"\s+")
+
+
+def split_outside_braces(text: str, separator: re.Pattern[str]) -> list[str]:
+    """`text` cut wherever `separator` matches outside a braced group, empty pieces dropped.
+
+    BibTeX reads a braced group as one unsplittable unit, and both separators that matter here
+    occur inside one. `{President's Council of Advisors on Science and Technology}` is a single
+    author rather than two, and `P{\\u a}s{\\u a}reanu` is a single word whose spaces sit inside
+    the accent commands that spell it. Splitting brace-blind makes the first into a second
+    author reading `Technology}` and the second into three words, so a corporate author is
+    reported as a name with no given name and a real one is not reported at all.
+    """
+    parts: list[str] = []
+    depth = start = i = 0
+    while i < len(text):
+        char = text[i]
+        if char == "\\":
+            i += 2  # an escaped brace, or an accent command whose argument follows
+            continue
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+        elif depth < 1 and (match := separator.match(text, i)):
+            parts.append(text[start:i])
+            start = i = match.end()
+            continue
+        i += 1
+    parts.append(text[start:])
+    return [stripped for stripped in (p.strip() for p in parts) if stripped]
+
+
+def split_authors(field: str) -> tuple[list[str], bool]:
+    """The names a BibTeX `author` field lists, and whether it is marked as shortened."""
+    names: list[str] = []
+    marked = False
+    for part in split_outside_braces(field or "", AND):
+        if fold(part) in MARKERS:
+            marked = True
+            continue
+        trimmed = ET_AL.sub("", part).strip().strip(",").strip()
+        if trimmed != part:
+            marked = True
+        if trimmed:
+            names.append(trimmed)
+    return names, marked
+
+
+def braced(name: str) -> bool:
+    """Whether one whole name sits inside a single pair of braces.
+
+    Braces are how BibTeX is told that a name has no given part and is to be printed as
+    written: `{OpenAI}`, `{Open Science Collaboration}`, `{NASA}`. `Gon{\\c{c}}alves` is not
+    this. Its braces spell one letter, and the name around them is a family name that has lost
+    its given name.
+    """
+    if not (name.startswith("{") and name.endswith("}")):
+        return False
+    depth = 0
+    for i, char in enumerate(name):
+        if char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return i == len(name) - 1
+    return False
+
+
+def bare_family_names(field: str) -> list[str]:
+    """The names in one `author` field written as a family name with no given name.
+
+    `Bhaskar` is one. `Bhaskar, Adithya` and `Adithya Bhaskar` are not, and neither is `{NASA}`.
+    """
+    names, _marked = split_authors(field)
+    return [
+        name
+        for name in names
+        if "," not in name and len(split_outside_braces(name, SPACE)) == 1 and not braced(name)
+    ]
+
+
+# --------------------------------------------------------------------------------------------
+# --bib: what one file's own text is enough to settle
+# --------------------------------------------------------------------------------------------
+
+
+class BibFinding(BaseModel):
+    """One defect in a bibliography that the file alone establishes."""
+
+    file: str
+    kind: str
+    """`repeated` for a key the file defines more than once, `bare` for an author list written
+    as family names with no given names."""
+    keys: list[str]
+    lines: list[int]
+    names: list[str] = Field(default_factory=list)
+    """`bare` only: the names that carry no given name."""
+
+
+def numbered(lines: list[int]) -> str:
+    """One line number or several, written the way BibTeX reports a repeat."""
+    return ("lines " if len(lines) > 1 else "line ") + ", ".join(str(line) for line in lines)
+
+
+def bib_findings(path: pathlib.Path) -> tuple[int, list[BibFinding]]:
+    """`(entries, every defect)` for one bibliography.
+
+    Repeated keys first, so the report opens on the defect that costs an entry its place in the
+    reference list entirely.
+    """
+    if not path.is_file():
+        raise CitationsError(f"no such file: {path}")
+    text = bibtex.read(path)
+    keys = bibtex.key_lines(text)
+    findings = [
+        BibFinding(
+            file=str(path),
+            kind="repeated",
+            keys=[key for key, _line in occurrences],
+            lines=[line for _key, line in occurrences],
+        )
+        for _folded, occurrences in sorted(bibtex.duplicate_keys(text).items())
+    ]
+
+    # Reversed, so a key defined twice reports the line it was defined on first. Which copy
+    # BibTeX prints is the repeated-key finding's question, not this one's.
+    lines = dict(reversed(keys))
+    for _kind, key, body in bibtex.entries(text):
+        fields = {n.lower(): " ".join(v.split()) for n, v in audit.BIB_FIELD.findall(body)}
+        bare = bare_family_names(fields.get("author", ""))
+        if bare:
+            findings.append(
+                BibFinding(
+                    file=str(path), kind="bare", keys=[key], lines=[lines.get(key, 0)], names=bare
+                )
+            )
+    return len(keys), findings
+
+
+def bib_defects(files: list[pathlib.Path], as_json: bool) -> int:
+    """Every repeated key and every author list with no given names. Exit 1 if any file has one.
 
     Exits 1 under `--json` as well. A machine-readable mode that reports findings and exits 0
     is a check that cannot fail, which is worse in continuous integration than no check: the
     pipeline goes green while the file it examined is broken.
     """
-    findings: list[dict[str, Any]] = []
     entries = 0
+    findings: list[BibFinding] = []
     for path in files:
-        if not path.is_file():
-            raise CitationsError(f"no such file: {path}")
-        text = bibtex.read(path)
-        entries += len(bibtex.key_lines(text))
-        for _folded, occurrences in sorted(bibtex.duplicate_keys(text).items()):
-            findings.append(
-                {
-                    "file": str(path),
-                    "keys": [key for key, _line in occurrences],
-                    "lines": [line for _key, line in occurrences],
-                }
-            )
+        counted, found = bib_findings(path)
+        entries += counted
+        findings.extend(found)
 
     if as_json:
-        print(json.dumps(findings, indent=1))
+        print(json.dumps([f.model_dump() for f in findings], indent=1))
         return 1 if findings else 0
 
     # Findings sit under the file they were found in. Two bibliographies repeating the same key
@@ -175,19 +334,35 @@ def bib_duplicates(files: list[pathlib.Path], as_json: bool) -> int:
     # in different repositories share a basename as well as their defects.
     for path in files:
         print(f"  bib  {path}")
-        for f in (x for x in findings if x["file"] == str(path)):
-            written = f["keys"] if len(set(f["keys"])) > 1 else [f["keys"][0]]
-            lines = ", ".join(str(line) for line in f["lines"])
-            print(f"    {' / '.join(written):<44}lines {lines}")
-    print(f"\n  {entries} entries, {len(findings)} repeated key(s)")
+        for f in (x for x in findings if x.file == str(path)):
+            written = f.keys if len(set(f.keys)) > 1 else [f.keys[0]]
+            print(f"    {' / '.join(written)[:36]:<38}{f.kind:<10}{numbered(f.lines)}")
+            if f.names:
+                listed = ", ".join(repr(n) for n in f.names)
+                print(f"      no given name for {len(f.names)} of the authors: {listed}")
+
+    repeated = [f for f in findings if f.kind == "repeated"]
+    bare = [f for f in findings if f.kind == "bare"]
+    print(
+        f"\n  {entries} entries, {len(repeated)} repeated key(s), "
+        f"{len(bare)} author list(s) with a bare family name"
+    )
     if not findings:
-        print("  no key is defined twice.")
+        print("  no key is defined twice, and every author list carries given names.")
         return 0
-    print("\n  BibTeX keeps the copy a file defines first and skips the repeat, writing a .bbl")
-    print("  without it: an entry appended below one that is already there never reaches the")
-    print("  reference list, and the file gives no sign of which copy is being printed. Where")
-    print("  two keys differ only in case, the citation goes undefined instead. Delete one, or")
-    print("  give it another key.")
+    if repeated:
+        print("\n  BibTeX keeps the copy a file defines first and skips the repeat, writing a")
+        print("  .bbl without it: an entry appended below one that is already there never")
+        print("  reaches the reference list, and the file gives no sign of which copy is being")
+        print("  printed. Where two keys differ only in case, the citation goes undefined")
+        print("  instead. Delete one, or give it another key.")
+    if bare:
+        print("\n  A family name with no given name prints without one: `Bhaskar, Wettig,")
+        print("  Friedman, and Chen.` is what the reference list of a submitted paper carried.")
+        print("  `--authors` agrees with an entry like that, because the family names are the")
+        print("  ones the identifier resolves to and family names are all it compares. Write")
+        print("  each author as `Family, Given`, or brace the name where it is a mononym or an")
+        print("  institution and has no given part.")
     return 1
 
 
@@ -213,12 +388,6 @@ PARTICLES = frozenset(
     }
 )  # fmt: skip
 
-#: A shortened list, however it is written. `and others` is BibTeX's own marker and splits into
-#: a name of its own; `et al.` arrives from reference managers and from hand-editing, glued to
-#: the last name, where splitting on ` and ` never sees it.
-MARKERS = ("others", "et al")
-ET_AL = re.compile(r",?\s*\bet\.?\s*al\.?", re.IGNORECASE)
-
 #: An arXiv identifier deposited as a DOI. The prefix is DataCite's, so Crossref answers 404 for
 #: these, which reads as an identifier that did not resolve when the identifier is fine.
 ARXIV_DOI = re.compile(r"^10\.48550/arxiv\.(.+)$", re.IGNORECASE)
@@ -242,7 +411,7 @@ def family(name: str) -> str:
     """
     if "," in name:
         return name.split(",")[0].strip()
-    words = name.split()
+    words = split_outside_braces(name, SPACE)
     while words and fold(words[-1]) in audit.SUFFIXES:
         words = words[:-1]
     if not words:
@@ -295,25 +464,6 @@ def reordered(ours: list[str], theirs: list[str]) -> bool:
         else:
             return False
     return True
-
-
-def split_authors(field: str) -> tuple[list[str], bool]:
-    """The names a BibTeX `author` field lists, and whether it is marked as shortened."""
-    names: list[str] = []
-    marked = False
-    for raw in re.split(r"\s+and\s+", field or ""):
-        part = raw.strip()
-        if not part:
-            continue
-        if fold(part) in MARKERS:
-            marked = True
-            continue
-        trimmed = ET_AL.sub("", part).strip().strip(",").strip()
-        if trimmed != part:
-            marked = True
-        if trimmed:
-            names.append(trimmed)
-    return names, marked
 
 
 def identifier_of(fields: dict[str, str]) -> tuple[str, str]:
@@ -514,7 +664,7 @@ def check_authors(path: pathlib.Path) -> AuthorReport:
 def author_lists(files: list[pathlib.Path], as_json: bool) -> int:
     """Every author list that disagrees with its own identifier's registry. Exit 1 if any does.
 
-    Exits 1 under `--json` as well, for the reason `bib_duplicates` gives.
+    Exits 1 under `--json` as well, for the reason `bib_defects` gives.
     """
     reports = [check_authors(p) for p in files]
     findings = [f for r in reports for f in r.findings]
@@ -562,8 +712,9 @@ def main(argv: list[str] | None = None) -> int:
         "--bib",
         action="append",
         metavar="FILE",
-        help="a bibliography to check for repeated keys, instead of the records; repeatable, "
-        "and needs no papis and no library",
+        help="a bibliography to check for repeated keys and author lists written without "
+        "given names, instead of the records; repeatable, and needs no papis, no library "
+        "and no network",
     )
     ap.add_argument(
         "--authors",
@@ -583,7 +734,7 @@ def main(argv: list[str] | None = None) -> int:
     if a.bib or a.authors:
         code = 0
         if a.bib:
-            code |= bib_duplicates([pathlib.Path(p).expanduser() for p in a.bib], a.json)
+            code |= bib_defects([pathlib.Path(p).expanduser() for p in a.bib], a.json)
         if a.authors:
             code |= author_lists([pathlib.Path(p).expanduser() for p in a.authors], a.json)
         return code

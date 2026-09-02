@@ -270,6 +270,25 @@ def test_a_bibtex_accent_matches_the_unicode_it_encodes(tmp_path, registry):
     assert lint.check_authors(path).findings == []
 
 
+def test_a_latex_accent_holding_a_space_is_one_word_of_a_name(tmp_path, registry):
+    # `P{\u a}s{\u a}reanu` written without a given name. The spaces sit inside the breve
+    # commands that spell it, so splitting on whitespace files the author under `a}reanu`.
+    registry["10.1234/breve"] = crossref(("Pasareanu", "Corina S."))
+    path = bib(tmp_path, entry("breve", r"P{\u a}s{\u a}reanu", doi="10.1234/breve"))
+
+    assert lint.check_authors(path).findings == []
+
+
+def test_a_braced_corporate_author_is_counted_as_one_name(tmp_path, registry):
+    # Splitting on ` and ` brace-blind ends the list with a second author reading `Technology}`,
+    # so the registry's single name reads as one the bibliography has too few of.
+    registry["10.1234/pcast"] = crossref(("Council", "President's"))
+    written = "{President's Council of Advisors on Science and Technology}"
+    path = bib(tmp_path, entry("pcast", written, doi="10.1234/pcast"))
+
+    assert "extra" not in kinds(lint.check_authors(path))
+
+
 def test_a_different_person_with_the_same_particle_is_still_caught(tmp_path, registry):
     """The tolerances above must not cost the check its ability to fail."""
     registry["10.1234/other"] = crossref(("Mezer", "Anna"))
