@@ -67,7 +67,7 @@ import re
 from typing import Any, Protocol
 
 import yaml
-from provenance_core import sha256_of_file
+from provenance_core import atomic_write, exclusive_lock, sha256_of_file
 from pydantic import BaseModel, ConfigDict
 
 from citations.exceptions import CitationsError
@@ -658,7 +658,12 @@ def resolve_document(
 
     out_dir.mkdir(parents=True, exist_ok=True)
     artifact = out_dir / f"{slug_for(identifier)}.txt"
-    artifact.write_text(doc.text, encoding="utf-8")
+    # Atomically, because a re-fetch overwrites a file whose sha256 is already recorded in the
+    # claims file. A truncating write killed between emptying the file and filling it leaves a
+    # prefix of the document under that digest, and the next `citations verify` reports a hash
+    # mismatch on a source nobody tampered with -- the one accusation this package must not make
+    # by accident.
+    atomic_write(artifact, doc.text)
     # `verify.sha256` memoizes on the path, and this path was just rewritten. Hashing through
     # the shared primitive reads the file that is there rather than the one that was.
     digest = sha256_of_file(artifact)
@@ -732,14 +737,22 @@ def write_claim_file(path: pathlib.Path, source: dict, claims: dict) -> pathlib.
 
     An existing file keeps its claims: the source block is what a re-fetch knows about, and
     overwriting the block below it would delete quotations somebody wrote by hand.
+
+    `kept` is a snapshot, so the read is held under the lock with the write. Two imports of one
+    paper, or an import running while somebody saves the same file in an editor, both read the
+    claims that are there and both write their own merge: the second write erases every claim the
+    first added, and the header above it still says `citations` produced the result. Writing it
+    through a replace rather than a truncate also keeps a run killed mid-write from leaving a
+    claims file that no longer parses, which is the file every later `verify` reads.
     """
-    if path.exists():
-        existing = yaml.safe_load(path.read_text()) or {}
-        kept = existing.get("claims") or existing.get("evidence") or {}
-        claims = {**claims, **kept}
-    path.parent.mkdir(parents=True, exist_ok=True)
-    document = {"source": source, "claims": claims}
-    path.write_text(HEADER + yaml.safe_dump(document, sort_keys=False, allow_unicode=True))
+    with exclusive_lock(path):
+        if path.exists():
+            existing = yaml.safe_load(path.read_text()) or {}
+            kept = existing.get("claims") or existing.get("evidence") or {}
+            claims = {**claims, **kept}
+        path.parent.mkdir(parents=True, exist_ok=True)
+        document = {"source": source, "claims": claims}
+        atomic_write(path, HEADER + yaml.safe_dump(document, sort_keys=False, allow_unicode=True))
     return path
 
 

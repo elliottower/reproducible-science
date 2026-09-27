@@ -18,6 +18,7 @@ import json
 import pathlib
 
 from adduce.rules import Category, Location, Rule, Status
+from provenance_core import atomic_write
 
 from repro import load, verify
 from repro.exceptions import ReproError
@@ -188,7 +189,9 @@ class ReproEvidenceRule(Rule):
         out = root / SIDECAR
         try:
             out.parent.mkdir(parents=True, exist_ok=True)
-            out.write_text(json.dumps(report.model_dump(mode="json"), indent=2) + "\n")
+            # Atomically: a truncating write killed partway through leaves a sidecar that is
+            # not JSON, and the host reads it on the next run.
+            atomic_write(out, json.dumps(report.model_dump(mode="json"), indent=2) + "\n")
         except OSError:
             return None
         return out

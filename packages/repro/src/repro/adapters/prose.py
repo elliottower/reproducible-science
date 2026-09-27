@@ -11,7 +11,7 @@ would locate a number wherever one appeared and call that verification, which is
 `repro.adapters.base` exists to prevent.
 
 The text is the text a quotation resolves against: `citations.verify.extract` produces it and
-`citations.verify.fold` normalizes it, so an anchor and a `quote` assertion over the same
+`citations.verify.passage_fold` normalizes it, so an anchor and a `quote` assertion over the same
 document cannot disagree about what the document says.
 """
 
@@ -69,7 +69,7 @@ def _resolve_prose(locator: ProseLocator, path: pathlib.Path) -> Found:
     # working extractor must report a check that did not run, not fail to import the package.
     try:
         from citations.exceptions import SourceUnreadableError
-        from citations.verify import extract_uncached, fold
+        from citations.verify import extract_uncached, passage_fold
     except ImportError as e:  # pragma: no cover - citations is a declared dependency
         raise BackendUnavailableError("prose", f"citations is not installed: {e}") from e
 
@@ -81,7 +81,7 @@ def _resolve_prose(locator: ProseLocator, path: pathlib.Path) -> Found:
     # artifact digest does not describe the text it was computed from. `fold` is cached on the
     # string it is given, which is content, and stays as it is.
     try:
-        text = fold(extract_uncached(path))
+        text = passage_fold(extract_uncached(path))
     except SourceUnreadableError as e:
         raise ArtifactUnreadableError(path, e.detail) from e
     if not text:
@@ -90,7 +90,7 @@ def _resolve_prose(locator: ProseLocator, path: pathlib.Path) -> Found:
     # `fold` trims and collapses whitespace, which is what an anchor wants: the boundary
     # spaces are supplied by `_spans`, and an anchor written across a line break in the
     # manifest matches a document that wrapped it somewhere else.
-    before, after = fold(locator.before), fold(locator.after)
+    before, after = passage_fold(locator.before), passage_fold(locator.after)
     if not before:
         return _no(
             Resolution.SELECTOR_INVALID,

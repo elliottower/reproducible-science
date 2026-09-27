@@ -15,9 +15,29 @@ from __future__ import annotations
 import pathlib
 import re
 
+from provenance_core import atomic_write, exclusive_lock
+
 from prereg.plan import MARK, sha256_of
 
 ACCESS = ["nothing run", "no results seen", "results not opened", "results seen"]
+
+#: What each level means, kept beside the list so the two cannot drift. The middle pair is the one
+#: that gets guessed at, and the difference was stated only in one README example: `no results
+#: seen` is before anything has produced an output, `results not opened` is after a run finished
+#: and before anyone read it.
+ACCESS_MEANING = {
+    "nothing run": "no computation has happened for this plan",
+    "no results seen": "code has run and this plan has no outputs yet",
+    "results not opened": "the run finished and its outputs are unread",
+    "results seen": "the outputs have been looked at",
+}
+
+#: One sentence per level, for `--help` and for the message a missing `--access` prints.
+ACCESS_HELP = (
+    "what had been seen when this entry was written -- "
+    + "; ".join(f"{level!r}: {why}" for level, why in ACCESS_MEANING.items())
+    + ". An entry logged before results is an amendment, one logged after is a deviation."
+)
 
 
 LOG_MARK = "\u00b7"  # separates the entry from its chain value
@@ -108,6 +128,20 @@ def log_problems(text: str) -> list[str]:
 
 
 def append(path: pathlib.Path, date: str, event: str, access: str) -> None:
+    """Add one entry to the plan's log, chained to the entry before it.
+
+    The whole file is rewritten, so two callers that read the same text each write a file holding
+    only their own entry and the second erases the first. A lost deviation is worse than a
+    detected one: the chain covers the entries that remain, so the file that survives verifies
+    cleanly and reports nothing missing. The lock covers the read as well, since reading early is
+    what makes the second write wrong.
+    """
+    with exclusive_lock(path):
+        _append_locked(path, date, event, access)
+
+
+def _append_locked(path: pathlib.Path, date: str, event: str, access: str) -> None:
+    """The append itself. Assumes the caller holds the lock for `path`."""
     text = path.read_text()
     if MARK not in text:
         text += MARK.rstrip("\n") + "\n\n```\n```\n"
@@ -128,4 +162,6 @@ def append(path: pathlib.Path, date: str, event: str, access: str) -> None:
         tail = before.rstrip("\n") + f"\n{line}\n" + fence + after
     else:
         tail = tail.rstrip("\n") + f"\n{line}\n"
-    path.write_text(set_log_anchor(head + MARK + tail))
+    # Atomically: this file is the frozen registration, and a truncating write that dies partway
+    # through leaves the plan itself half on disk.
+    atomic_write(path, set_log_anchor(head + MARK + tail))

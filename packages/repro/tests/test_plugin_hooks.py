@@ -250,3 +250,64 @@ def test_the_hook_never_denies_the_command(tmp_path):
     emitted = json.loads(out.stdout)
     assert "permissionDecision" not in json.dumps(emitted), "the hook must never deny"
     assert emitted["hookSpecificOutput"]["hookEventName"] == "PreToolUse"
+
+
+#: `unverified_quotations.py` is shipped byte-identical by two plugins. A copy is how two answers
+#: to one question appear, which is the defect this pair was carrying: the hook folded passages
+#: with `re.sub(r"[^a-z0-9]+", " ", ...)`, the rule `citations.verify.skeleton` documents as making
+#: `p < 0.05` match `p = 0.05`. Fixing one copy and not the other leaves the bug shipped.
+DUPLICATED_HOOK = "unverified_quotations.py"
+
+
+def test_the_duplicated_hook_is_identical_in_both_plugins():
+    copies = [
+        ROOT / "packages" / package / "plugin" / "hooks" / DUPLICATED_HOOK
+        for package in ("citations", "repro")
+    ]
+    first, second = (p.read_bytes() for p in copies)
+    assert first == second
+
+
+def test_the_duplicated_hook_does_not_define_its_own_normalizer():
+    for package in ("citations", "repro"):
+        text = (ROOT / "packages" / package / "plugin" / "hooks" / DUPLICATED_HOOK).read_text()
+        # A definition, not a mention: the comment above the import quotes the rule it replaced.
+        assert "def passage_fold(" not in text and "def fold(" not in text
+        assert "from citations.verify import passage_fold" in text
+
+
+def _hook_module():
+    """The quotations hook, imported from its path so its helpers can be called directly."""
+    import importlib.util
+
+    spec = importlib.util.spec_from_file_location("_uq_hook", HOOKS / DUPLICATED_HOOK)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_a_hook_that_cannot_import_its_rule_says_so_rather_than_passing_quietly():
+    # Claude Code runs a hook under whichever `python3` is on PATH, which is frequently not the
+    # environment holding `citations`. Returning 0 in silence made that indistinguishable from a
+    # manuscript with nothing to report.
+    module = _hook_module()
+    out = module._unavailable(
+        {"a quotation long enough to count as one, forty characters"}, pathlib.Path("draft.tex")
+    )
+    assert out == 0
+
+
+def test_the_skipped_notice_names_the_count_and_the_interpreter(capsys):
+    module = _hook_module()
+    module._unavailable(
+        {"a quotation long enough to count as one, forty characters"}, pathlib.Path("draft.tex")
+    )
+    printed = json.loads(capsys.readouterr().out)
+    assert "1 quotation(s)" in printed["systemMessage"]
+    assert sys.executable in printed["systemMessage"]
+
+
+def test_nothing_is_said_when_the_edit_added_no_quotation(capsys):
+    module = _hook_module()
+    module._unavailable(set(), pathlib.Path("draft.tex"))
+    assert capsys.readouterr().out == ""

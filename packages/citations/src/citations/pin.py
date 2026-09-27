@@ -34,6 +34,7 @@ import argparse
 import pathlib
 
 import yaml
+from provenance_core import atomic_write, exclusive_lock
 
 from . import verify as V
 from .exceptions import CitationsError
@@ -91,16 +92,25 @@ def add_to(path: pathlib.Path, claim_id: str, claim: dict) -> None:
     The file is re-read and re-written as data rather than patched as text: a claims file is
     the input to a check, and a command that edited it with a regular expression would be the
     kind of tool this package exists to argue against.
+
+    The whole document is rewritten, so the read is held under the lock with the write. Two
+    `pin` calls that read the same file each write a document carrying only their own claim, the
+    second erases the first, and both print `added`: the quotation is gone and nothing says so.
+    The duplicate-id guard reads that same snapshot, so unlocked it also admits two claims under
+    one identifier -- the case it exists to refuse -- because neither caller can see the other's.
     """
-    doc = yaml.safe_load(path.read_text()) or {}
-    claims = doc.setdefault("claims", {})
-    if claim_id in claims:
-        raise PinRefused(
-            f"{path.name} already defines the claim {claim_id!r}. "
-            "Two claims under one identifier are two claims; give this one its own."
-        )
-    claims[claim_id] = claim
-    path.write_text(yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, width=100))
+    with exclusive_lock(path):
+        doc = yaml.safe_load(path.read_text()) or {}
+        claims = doc.setdefault("claims", {})
+        if claim_id in claims:
+            raise PinRefused(
+                f"{path.name} already defines the claim {claim_id!r}. "
+                "Two claims under one identifier are two claims; give this one its own."
+            )
+        claims[claim_id] = claim
+        # Atomically: a claims file is the input to every later check, and a truncating write
+        # that dies partway through leaves a document that no longer parses as one.
+        atomic_write(path, yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, width=100))
 
 
 def main(argv: list[str] | None = None) -> int:

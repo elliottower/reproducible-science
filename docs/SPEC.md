@@ -364,7 +364,10 @@ display and is never a `Decision`.
 `Reason` is a typed field carrying why an outcome obtained: `passage_present`, `value_match`,
 `passage_absent`, `value_mismatch`, `pointer_absent`, `value_not_numeric`,
 `extractor_missing`, `artifact_missing`, `artifact_unreadable`, `artifact_undeclared`,
-`backend_defect`, `not_offered`, and two a prose locator adds. `passage_ambiguous`: one pair of
+`backend_defect`, `not_offered`, `extractors_disagree`, and two a prose locator adds.
+`extractors_disagree`: two extractors that both read the artifact reach different answers about
+whether the passage is in it, which asks for a better reader rather than accusing the manuscript
+as `passage_absent` does. `passage_ambiguous`: one pair of
 anchors selected two different values, so the document states two numbers where the assertion
 addresses one. `number_as_word`: the value is an English cardinal written out under a locator
 that did not ask for one. It is distinct from `value_not_numeric` because the fix differs — the
@@ -508,11 +511,13 @@ its evidence started after registration. `violated`: a run started first. `unche
 record does not settle it. `not_applicable`: the claim is not confirmatory.
 
 An `unchecked` ordering carries a reason, because collapsing distinct conditions into one word
-loses the only information that says what to fix: `no_run_record`, `no_registered_plan`,
-`registered_plan_unpinned`, `registered_plan_changed`, `run_output_unlinked`,
-`run_output_changed`, `timestamp_missing`, `ambiguous_producing_run`. A claim with no run
-record is `unchecked` and never `violated` — an absent record is not evidence that a result
-predates its plan.
+loses the only information that says what to fix: `no_run_record`, `no_evidence_offered`,
+`no_registered_plan`, `registered_plan_unpinned`, `registered_plan_changed`,
+`run_output_unlinked`, `run_output_changed`, `timestamp_missing`, `ambiguous_producing_run`. A
+claim with no run record is `unchecked` and never `violated` — an absent record is not evidence
+that a result predates its plan. `no_evidence_offered` is separate from `no_run_record`: a claim
+that declares no evidence names no artifact, so no run could produce one, and a reader told the
+run record is missing goes looking for a run that was never owed.
 
 Every artifact a claim's evidence names must have a covering run. Taking the runs that produce
 any one of them would let a run record for an incidental artifact order a claim whose number

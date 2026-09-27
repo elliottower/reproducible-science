@@ -13,6 +13,8 @@ from __future__ import annotations
 import hashlib
 import pathlib
 
+from .locking import SIDECAR_SUFFIXES
+
 #: The prev_hash of a chain's first entry: a digest that addresses nothing.
 ZERO = "0" * 64
 
@@ -50,6 +52,12 @@ NOISE: frozenset[str] = frozenset(
     {".DS_Store", "Thumbs.db", "__pycache__", ".ipynb_checkpoints"}
 )
 
+#: Suffixes a digest must ignore rather than names. A locked write leaves a sidecar beside the
+#: record it governs, so the first `results run` inside a sealed directory added a file to it and
+#: the tree digest changed -- the artifact then reported a broken pin because the tool had written
+#: its own lock there. Matched by suffix because the name varies with the record it guards.
+NOISE_SUFFIXES: frozenset[str] = SIDECAR_SUFFIXES
+
 
 def sha256_of_tree(
     root: pathlib.Path, skip: frozenset[str] = NOISE
@@ -79,7 +87,9 @@ def sha256_of_tree(
     skipped: list[str] = []
     for path in sorted(p for p in root.rglob("*")):
         rel = path.relative_to(root).as_posix()
-        if any(part in skip for part in path.relative_to(root).parts):
+        if any(part in skip for part in path.relative_to(root).parts) or any(
+            path.name.endswith(suffix) for suffix in NOISE_SUFFIXES
+        ):
             if path.is_file():
                 skipped.append(rel)
             continue

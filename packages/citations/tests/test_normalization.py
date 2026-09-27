@@ -1,4 +1,4 @@
-"""What `fold` and `skeleton` may absorb, and what they must never absorb.
+"""What `passage_fold` and `skeleton` may absorb, and what they must never absorb.
 
 Every case here is a passage that failed in the corpus. The two directions are not
 symmetrical: absorbing too little reports a passage as absent from a document that contains
@@ -10,7 +10,7 @@ indistinguishable from no checker at all.
 from __future__ import annotations
 
 import pytest
-from citations.verify import fold, skeleton
+from citations.verify import passage_fold, skeleton
 
 
 @pytest.mark.parametrize(
@@ -31,7 +31,7 @@ from citations.verify import fold, skeleton
     ],
 )
 def test_fold_absorbs_what_a_renderer_changed(quoted, extracted):
-    assert fold(quoted) == fold(extracted)
+    assert passage_fold(quoted) == passage_fold(extracted)
 
 
 @pytest.mark.parametrize(

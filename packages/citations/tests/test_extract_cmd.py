@@ -30,7 +30,7 @@ MANUSCRIPT = (
 
 @pytest.fixture(autouse=True)
 def _no_cache():
-    for cached in (V.extract, V.fold, V.skeleton, V._digest):
+    for cached in (V.extract, V.passage_fold, V.skeleton, V._digest):
         cached.cache_clear()
 
 

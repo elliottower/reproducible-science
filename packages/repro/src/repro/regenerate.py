@@ -166,9 +166,25 @@ def check(
     # artifact the claims were actually read from, so a record could declare its own answer:
     # the command writes 0.11, the record expects 0.11, the paper's pinned file says 0.99, and
     # the report states the pinned code still produces the pinned artifact.
+    # Naming any volatile field turned this guard off entirely, so `volatile: ["/nonexistent"]`
+    # restored exactly the hole the paragraph above describes. Where a record masks volatile
+    # fields the digest it pins is canonical, so the artifact has to be canonicalized the same
+    # way before the two can be compared -- not exempted from comparison.
     output_state = states.get(record.output.artifact)
-    if output_state is not None and not record.volatile:
+    if output_state is not None:
         declared = output_state.expected or output_state.actual
+        if record.volatile:
+            pinned = manifest.artifact(record.output.artifact)
+            path = manifest.resolve(pinned) if pinned is not None else None
+            # Canonicalizing needs the pinned bytes, and the file on disk is them only while it
+            # still matches what the manifest pins. Where it does not, the raw digest on hand
+            # cannot be compared with a canonical one, and the question is left to the run below.
+            on_disk_is_pinned = output_state.expected in (None, "", output_state.actual)
+            declared = (
+                canonical_digest(path, record.volatile).value
+                if path is not None and path.is_file() and on_disk_is_pinned
+                else ""
+            )
         if declared and declared != record.output.digest.value:
             return _unchecked(
                 record,

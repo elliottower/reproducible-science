@@ -25,13 +25,12 @@ import enum
 import json
 import os
 import pathlib
-import tempfile
 
 # Re-exported under the names this module has always used: `ledger.sha256_of_file` and
 # `ledger.ZERO` are its surface, and callers should not have to know where they moved.
 from provenance_core import ZERO as ZERO
+from provenance_core import atomic_write, exclusive_lock, sha256_of_text, shared_lock
 from provenance_core import sha256_of_file as sha256_of_file
-from provenance_core import sha256_of_text
 
 LEDGER = "ledger.jsonl"
 ANCHOR = "ledger.head"
@@ -168,21 +167,8 @@ def write_anchor(ledger: pathlib.Path, count: int, head: str) -> dict:
     it, which would report a complete ledger as truncated.
     """
     anchor = {"canon_version": CANON_VERSION, "count": count, "head": head, "updated": now_iso()}
-    _atomic_write(anchor_path(ledger), json.dumps(anchor, indent=2, sort_keys=True) + "\n")
+    atomic_write(anchor_path(ledger), json.dumps(anchor, indent=2, sort_keys=True) + "\n")
     return anchor
-
-
-def _atomic_write(path: pathlib.Path, text: str) -> None:
-    fd, tmp = tempfile.mkstemp(dir=str(path.parent), prefix=path.name, suffix=".tmp")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(text)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp, path)
-    except BaseException:
-        pathlib.Path(tmp).unlink(missing_ok=True)
-        raise
 
 
 # --------------------------------------------------------------------------------- writing
@@ -190,7 +176,20 @@ def _atomic_write(path: pathlib.Path, text: str) -> None:
 
 def append_event(ledger: pathlib.Path, event: dict) -> dict:
     """Write one event and advance the anchor. Returns a new event; the argument is not
-    mutated, so the object a caller holds cannot drift from the line on disk."""
+    mutated, so the object a caller holds cannot drift from the line on disk.
+
+    An event's position and `prev_hash` come from the lines already on disk, so two callers that
+    read the same tail write two lines claiming one position. The chain then reports `edited`,
+    and `reanchor` refuses an edited chain, which leaves no way back: the damage is permanent and
+    a pipeline running two skills at once is enough to cause it. The lock covers the read as well
+    as the write, because reading early is what makes the second line wrong.
+    """
+    with exclusive_lock(ledger):
+        return _append_locked(ledger, event)
+
+
+def _append_locked(ledger: pathlib.Path, event: dict) -> dict:
+    """The append itself. Assumes the caller holds the lock for `ledger`."""
     lines = _lines(ledger) if ledger.exists() else []
 
     # The anchor is the only witness to the last line, and appending overwrites it. An edited
@@ -233,7 +232,18 @@ def verify(ledger: pathlib.Path) -> tuple[ChainStatus, list[str]]:
 
     Reports the first structural fault as the status, because a chain that was edited and then
     truncated is edited: the earlier fault explains the later one.
+
+    Read under a shared lock. An append writes its line and then its anchor, so a reader arriving
+    between the two counted one more event than the anchor records and reported `extended` -- true
+    of the bytes, wrong about the cause, and gone on a re-run. A verify that fails only while
+    something else is writing teaches people to re-run it until it passes.
     """
+    with shared_lock(ledger):
+        return _verify_locked(ledger)
+
+
+def _verify_locked(ledger: pathlib.Path) -> tuple[ChainStatus, list[str]]:
+    """The verification itself. Assumes the caller holds a lock for `ledger`."""
     if not ledger.exists():
         return ChainStatus.ABSENT, [f"{ledger} does not exist"]
 
@@ -314,6 +324,10 @@ def reanchor(ledger: pathlib.Path) -> dict:
     For a ledger written before anchoring, and for repairing an under-count after a crash.
     It cannot recover a truncated ledger: re-anchoring a shortened chain records the shortened
     chain, which is why it is a separate deliberate call and not something verification does.
+
+    Taken under the lock, so it cannot record a length that an append is in the middle of
+    changing and leave the anchor describing neither state.
     """
-    lines = _lines(ledger) if ledger.exists() else []
-    return write_anchor(ledger, len(lines), sha256_of_str(lines[-1]) if lines else ZERO)
+    with exclusive_lock(ledger):
+        lines = _lines(ledger) if ledger.exists() else []
+        return write_anchor(ledger, len(lines), sha256_of_str(lines[-1]) if lines else ZERO)

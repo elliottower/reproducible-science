@@ -42,8 +42,16 @@ class Freeze:
     ref: str
 
     def matches(self, other: str) -> bool:
-        n = min(len(self.ref), len(other), PREFIX) or PREFIX
-        return bool(other) and self.ref[:n].lower() == other[:n].lower()
+        """Do this freeze and a cited reference name the same commit?
+
+        Both sides must supply `PREFIX` characters. Comparing over the *shorter* side's length
+        let a one-character reference match anything beginning with it, so a claim citing
+        `frozen_at: "a"` was reported as pinned to a plan frozen at `a1b2c3d4e5f6` -- the
+        unmatched-claim check this module exists for then had nothing to report.
+        """
+        if len(other) < PREFIX or len(self.ref) < PREFIX:
+            return False
+        return self.ref[:PREFIX].lower() == other[:PREFIX].lower()
 
 
 #: The ledger field holding a claim's text. `results.record.claim` writes `claim`, and this

@@ -43,3 +43,9 @@ notebooks/executed.ipynb
 
 # Internal reviews are never tracked. They live in reproducible-science-internal-audits.
 docs/reviews/
+
+# Sidecars from provenance_core.locking. The suffixes are deliberately not `.lock` and `.tmp`,
+# so these patterns cannot reach `uv.lock`. They hold nothing: the kernel releases a lock when its
+# holder exits, and a leftover temp file means a write was killed.
+*.provenance-lock
+*.provenance-tmp

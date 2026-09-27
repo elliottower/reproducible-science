@@ -1,13 +1,13 @@
 """Two spellings of one name have to compare equal, and two names must not.
 
-There were two folding implementations. `audit.fold` resolved Kästner to `kastner`;
+There were two folding implementations. `audit.name_fold` resolved Kästner to `kastner`;
 `services.norm` deleted the accented letter and produced `kstner`. The second gated identifier
 lookup, so a correct paper was rejected for any author with an accent in their surname.
 """
 
 from __future__ import annotations
 
-from citations.text import expand, fold, surname, surname_variants, tokens, variants
+from citations.text import expand, name_fold, surname, surname_variants, tokens, variants
 
 
 def test_an_accent_resolves_to_its_letter_rather_than_vanishing():
@@ -17,7 +17,7 @@ def test_an_accent_resolves_to_its_letter_rather_than_vanishing():
         ("Alchourrón", "alchourron"),
         ("Räuker", "rauker"),
     ]:
-        assert fold(accented) == plain
+        assert name_fold(accented) == plain
 
 
 def test_the_german_expansion_is_also_produced():
@@ -27,7 +27,7 @@ def test_the_german_expansion_is_also_produced():
 
 
 def test_a_stroked_letter_resolves_rather_than_splitting_the_name():
-    # NFKD leaves ł whole, so the fold deleted it and Kozłowski became `koz owski` -- one name
+    # NFKD leaves ł whole, so the name_fold deleted it and Kozłowski became `koz owski` -- one name
     # in two tokens, matching nothing, which reported every Polish surname as a disagreement.
     assert expand("Kozłowski") == "kozlowski"
     assert variants("Kozłowski") & variants("Kozlowski")
@@ -52,9 +52,9 @@ def test_a_latex_accent_matches_the_unicode_it_encodes():
 
 def test_markup_a_registry_deposited_is_not_part_of_the_title():
     # Crossref stores italics as tags and sometimes escapes them twice.
-    assert fold("Effect of statins on &amp;lt;i&amp;gt;LDLR&amp;lt;/i&amp;gt; expression") == fold(
-        "Effect of statins on LDLR expression"
-    )
+    assert name_fold(
+        "Effect of statins on &amp;lt;i&amp;gt;LDLR&amp;lt;/i&amp;gt; expression"
+    ) == name_fold("Effect of statins on LDLR expression")
 
 
 def test_a_surname_is_read_out_of_either_name_order():
@@ -74,12 +74,12 @@ def test_a_unicode_hyphen_matches_the_ascii_one():
     # U+2010 HYPHEN is visually identical to `-` and publishers emit it. A source reading
     # `patients‐in‐waiting` did not match a quotation typed with the ASCII hyphen, so a
     # passage the document contains was reported absent.
-    from citations.verify import fold
+    from citations.verify import passage_fold
 
-    assert fold("patients‐in‐waiting") == fold("patients-in-waiting")
+    assert passage_fold("patients‐in‐waiting") == passage_fold("patients-in-waiting")
 
 
 def test_the_dash_family_all_fold_to_one_character():
-    from citations.verify import fold
+    from citations.verify import passage_fold
 
-    assert {fold(f"a{d}b") for d in ("-", "‐", "–", "—", "−")} == {"a-b"}
+    assert {passage_fold(f"a{d}b") for d in ("-", "‐", "–", "—", "−")} == {"a-b"}
