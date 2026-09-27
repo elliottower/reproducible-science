@@ -36,6 +36,10 @@ class EntryState(enum.StrEnum):
     MEASURED = "measured"
     DRIFTED = "drifted"
     ABSENT = "absent"
+    UNPINNED = "unpinned"
+    """No revision to compare against: the entry records no commit, or the tree is not a
+    repository. Distinct from `DRIFTED`, which means the revision is known and is the wrong one,
+    and the remedy differs -- record a commit, rather than check out another one."""
 
 
 class ArtifactPin(BaseModel):
@@ -234,7 +238,14 @@ class Corpus(BaseModel):
                 matching += 1
             else:
                 differing.append(pin.path)
-        state = EntryState.MEASURED if prov.commit == entry.commit else EntryState.DRIFTED
+        # Both sides must name a revision. `prov.commit == entry.commit` is satisfied by
+        # `"" == ""`, so an entry recording no commit, over a directory that is not a git
+        # repository, reported as present at the recorded revision and `usable` -- a pass built
+        # on two absences agreeing with each other.
+        if not entry.commit or not prov.commit:
+            state = EntryState.UNPINNED
+        else:
+            state = EntryState.MEASURED if prov.commit == entry.commit else EntryState.DRIFTED
         return EntryStatus(
             name=entry.name,
             state=state,

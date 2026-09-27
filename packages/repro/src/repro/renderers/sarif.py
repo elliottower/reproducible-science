@@ -129,11 +129,16 @@ def to_sarif(
     results: list[dict[str, Any]] = []
     for claim in report.claims:
         if not claim.decisions:
+            # Claim-level violations are keyed by `claim_id`, and this branch ignored them: a
+            # confirmatory claim offering no evidence, which the publication policy grades an
+            # error, rendered as an informational note. Code scanning shows notes and does not
+            # fail a build on them, so the gravest finding in the report was the one nobody saw.
+            level = by_subject.get(claim.claim_id, "note")
             results.append(
                 {
                     "ruleId": f"repro/{Outcome.NOT_OFFERED.value}",
-                    "kind": "informational",
-                    "level": "note",
+                    "kind": "informational" if level == "note" else "fail",
+                    "level": level,
                     "message": {"text": f"{claim.claim_id}: no evidence offered"},
                     "partialFingerprints": {"claimDigest": claim.claim_digest},
                 }

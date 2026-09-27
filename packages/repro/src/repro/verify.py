@@ -131,9 +131,33 @@ def _base(
 
 # -------------------------------------------------------------------------------- quotations
 
+#: Every state `citations.verify` can return. It answers with five, and only two were mapped, so
+#: a passage occurring twice in its source raised `KeyError: 'ambiguous'` from inside the backend
+#: and was reported as a defect in the tool rather than as an undecided quotation.
 _QUOTE_STATE = {
     "found": (ExtractionStatus.EXTRACTED, ComparisonStatus.MATCH, Reason.PASSAGE_PRESENT),
     "not found": (ExtractionStatus.EXTRACTED, ComparisonStatus.MISMATCH, Reason.PASSAGE_ABSENT),
+    "ambiguous": (
+        ExtractionStatus.INVALID,
+        ComparisonStatus.NOT_APPLICABLE,
+        Reason.PASSAGE_AMBIGUOUS,
+    ),
+    # Not `passage_ambiguous`: that says the document states two numbers where one was asserted.
+    # This says the extractors on this machine do not settle what text the document holds, which
+    # accuses nothing and asks for a better reader.
+    "indeterminate": (
+        ExtractionStatus.INVALID,
+        ComparisonStatus.NOT_APPLICABLE,
+        Reason.EXTRACTORS_DISAGREE,
+    ),
+    # Not `passage_absent`. The stages were right and the reason was not, so an author whose
+    # extractor never ran was told their quotation is missing from the source -- the "nothing ran"
+    # against "not there" collapse this package exists to keep apart.
+    "unchecked": (
+        ExtractionStatus.NOT_ATTEMPTED,
+        ComparisonStatus.NOT_APPLICABLE,
+        Reason.EXTRACTOR_MISSING,
+    ),
 }
 
 _QUOTE_WARNINGS = {
@@ -648,6 +672,18 @@ def _ordering(
             Ordering.UNCHECKED,
             OrderingReason.NO_RUN_RECORD,
             f"no run record produces {', '.join(uncovered)}",
+            None,
+        )
+
+    if not runs:
+        # A confirmatory claim offering no evidence names no artifacts, so no run produces any
+        # and `uncovered` above is empty too. `min()` then raised on an empty iterable and the
+        # traceback replaced the finding: the publication policy grades this manifest
+        # `claim.no_evidence`, which is the thing the author needs to be told.
+        return (
+            Ordering.UNCHECKED,
+            OrderingReason.NO_EVIDENCE_OFFERED,
+            "the claim offers no evidence, so there is nothing to order against a plan",
             None,
         )
 

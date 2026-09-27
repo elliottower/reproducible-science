@@ -81,6 +81,10 @@ class OrderingReason(enum.StrEnum):
     RUN_FOLLOWS_REGISTRATION = "run_follows_registration"
     RUN_PRECEDES_REGISTRATION = "run_precedes_registration"
     NO_RUN_RECORD = "no_run_record"
+    NO_EVIDENCE_OFFERED = "no_evidence_offered"
+    """The claim names no evidence, so it names no artifact and no run can produce one. Separate
+    from `no_run_record`, which sends a reader looking for a run that should exist: here nothing
+    was offered to order against, and the fix is to declare evidence."""
     NO_REGISTERED_PLAN = "no_registered_plan"
     REGISTERED_PLAN_UNPINNED = "registered_plan_unpinned"
     REGISTERED_PLAN_CHANGED = "registered_plan_changed"
@@ -167,6 +171,12 @@ class Reason(enum.StrEnum):
     for one. Distinct from `value_not_numeric` because the fix is different: the value is
     there and a reader would call it a number, so an author told only that no number was found
     goes looking for a broken anchor."""
+    EXTRACTORS_DISAGREE = "extractors_disagree"
+    """Two extractors that both read the artifact disagree about whether the passage is in it.
+    Distinct from `passage_absent`, which says the artifact was read and does not contain it --
+    an accusation against the manuscript. This one accuses nothing and asks for a better reader,
+    and it shared `passage_ambiguous` until an author was told a document contradicted itself
+    when the real answer was that two readers of it did."""
     EXTRACTOR_MISSING = "extractor_missing"
     ARTIFACT_MISSING = "artifact_missing"
     ARTIFACT_UNREADABLE = "artifact_unreadable"
