@@ -33,8 +33,9 @@ class Call:
 
 @dataclass
 class FakeOSF:
-    """Routes by (method, regex on the URL). A route's value is a dict to return, or an
-    `(status, body)` tuple to raise as an HTTP error."""
+    """Routes by (method, regex on the URL). A route's value is a dict to return, a callable
+    taking the `Call` and returning one, or an `(status, body)` tuple to raise as an HTTP
+    error."""
 
     routes: list[tuple[str, str, object]] = field(default_factory=list)
     calls: list[Call] = field(default_factory=list)
@@ -60,6 +61,8 @@ class FakeOSF:
                     raise urllib.error.HTTPError(
                         call.url, status, "error", {}, io.BytesIO(json.dumps(body).encode())
                     )
+                if callable(response):
+                    response = response(call)
                 return io.BytesIO(json.dumps(response).encode())
         raise AssertionError(f"unexpected request: {call.method} {call.url}")
 

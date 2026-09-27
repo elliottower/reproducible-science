@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 import json
 import os
 import re
@@ -289,11 +290,25 @@ def require_token() -> str:
     return token
 
 
-def create_draft(body: dict, token: str) -> tuple[str, str]:
-    """POST the draft. Returns (draft_id, url)."""
+@dataclass(frozen=True)
+class Draft:
+    id: str
+    url: str
+    node_id: str | None  # the hidden node holding the draft's files
+
+
+def create_draft(body: dict, token: str) -> Draft:
+    """POST the draft.
+
+    A draft created without `branched_from` gets a DraftNode of its own as a holding tank for
+    files, converted into the registration's node when it is registered
+    (osf/models/registrations.py, `DraftRegistration.create_from_node`; osf/models/draft_node.py).
+    The response names it under `relationships.branched_from.data`.
+    """
     resp = _request("POST", "/draft_registrations/", token, body)
-    draft_id = resp["data"]["id"]
-    return draft_id, f"https://osf.io/{draft_id}"
+    data = resp["data"]
+    branched = ((data.get("relationships") or {}).get("branched_from") or {}).get("data") or {}
+    return Draft(data["id"], f"https://osf.io/{data['id']}", branched.get("id"))
 
 
 def push_draft(plan_text: str) -> tuple[str, str]:
@@ -302,7 +317,132 @@ def push_draft(plan_text: str) -> tuple[str, str]:
     Returns (draft_id, url). Raises if token missing or API fails.
     """
     token = require_token()
-    return create_draft(build_draft(plan_text, token), token)
+    draft = create_draft(build_draft(plan_text, token), token)
+    return draft.id, draft.url
+
+
+def upload(node_id: str, name: str, content: bytes, token: str) -> str:
+    """Put a file in the draft's node, and return the sha256 OSF computed for what it received.
+
+    Files in the draft's node are archived into the registration when it is registered
+    (website/archiver/listeners.py, `after_register`). The upload link comes from the storage
+    provider rather than being built here, because it names the node's storage region
+    (api/nodes/serializers.py, `NodeStorageProviderSerializer.links.upload`). The upload itself
+    is WaterButler's: PUT the raw bytes with `kind=file&name=...`, answered with a file entity
+    whose `extra.hashes.sha256` is the digest of what arrived (developer.osf.io, "Upload New
+    File"; waterbutler/providers/osfstorage/metadata.py).
+    """
+    provider = _request("GET", f"/draft_nodes/{node_id}/files/providers/osfstorage/", token)
+    link = provider["data"]["links"]["upload"]
+    url = (
+        link
+        + ("&" if "?" in link else "?")
+        + urllib.parse.urlencode({"kind": "file", "name": name})
+    )
+    req = urllib.request.Request(url, data=content, method="PUT")
+    req.add_header("Authorization", f"Bearer {token}")
+    req.add_header("Content-Type", "application/octet-stream")
+    resp = _send(req)
+    return resp["data"]["attributes"]["extra"]["hashes"]["sha256"]
+
+
+# Registration and view-only links are pinned to the current API version. At 2.0 OSF reads
+# `draft_registration` / `registration_choice` / `lift_embargo`; from 2.19 it reads
+# `draft_registration_id` / `embargo_end_date` and refuses the old names
+# (api/registrations/serializers.py, `RegistrationCreateSerializer`; api/base/versioning.py).
+# Leaving the version unset would mean whichever of the two OSF defaults to that day.
+API_VERSION = "2.20"
+
+
+@dataclass(frozen=True)
+class Registration:
+    id: str
+    url: str
+
+
+def register(draft_id: str, embargo: datetime.date | None, token: str) -> Registration:
+    """Submit the draft as a registration: under embargo until `embargo`, or public at once.
+
+    POST /v2/registrations/ creates the registration pending approval; OSF emails every admin
+    and approves it after 48 hours unless one of them cancels (osf/models/registrations.py,
+    `require_approval` / `embargo_registration`; website/settings REGISTRATION_APPROVAL_TIME,
+    EMBARGO_PENDING_TIME). An embargo must end between about two days and four years ahead.
+    The draft must have at least one subject, or OSF refuses it (`DraftRegistration.register`).
+    """
+    end = f"{embargo.isoformat()}T00:00:00" if embargo else None
+    body = {
+        "data": {
+            "type": "registrations",
+            "attributes": {"draft_registration_id": draft_id, "embargo_end_date": end},
+        }
+    }
+    data = _request("POST", "/registrations/", token, body, version=API_VERSION)["data"]
+    url = (data.get("links") or {}).get("html") or f"https://osf.io/{data['id']}/"
+    return Registration(data["id"], url)
+
+
+@dataclass(frozen=True)
+class ViewOnlyLink:
+    id: str
+    key: str
+    url: str
+
+
+def view_only_link(
+    registration_id: str, anonymous: bool, name: str | None, token: str
+) -> ViewOnlyLink:
+    """Create a view-only link on a registration; `anonymous` hides the contributors.
+
+    POST /v2/registrations/<id>/view_only_links/ (api/registrations/views.py,
+    `RegistrationViewOnlyLinksList`, which takes `anonymous` and `name`:
+    api/nodes/serializers.py, `NodeViewOnlyLinkSerializer`). The link is the registration's page
+    with `?view_only=<key>` (website/project/views/node.py).
+    """
+    attributes: dict[str, object] = {"anonymous": anonymous}
+    if name:
+        attributes["name"] = name
+    body = {"data": {"type": "view_only_links", "attributes": attributes}}
+    path = f"/registrations/{registration_id}/view_only_links/"
+    data = _request("POST", path, token, body, version=API_VERSION)["data"]
+    key = data["attributes"]["key"]
+    return ViewOnlyLink(data["id"], key, f"https://osf.io/{registration_id}/?view_only={key}")
+
+
+# What the log records about OSF, and how it is read back. The log is the only local record of
+# which draft was made from which freeze, so `register` reads it rather than asking for an id:
+# an id typed by hand can name a draft made from a plan that has since been re-frozen.
+DRAFT_EVENT = re.compile(r"\bosf draft (\S+) of plan ([0-9a-f]{16})\b")
+REGISTRATION_EVENT = re.compile(r"\bosf registration (\S+) from draft ([^\s,]+)")
+ATTACHED_EVENT = re.compile(r"\bosf attached (.+) sha256 ([0-9a-f]{64})\b")
+
+
+def draft_event(draft_id: str, digest: str) -> str:
+    return f"osf draft {draft_id} of plan {digest[:16]}"
+
+
+def attached_event(name: str, sha256: str) -> str:
+    return f"osf attached {name} sha256 {sha256}"
+
+
+def registration_event(reg: Registration, draft_id: str, embargo: datetime.date | None) -> str:
+    choice = f"embargo until {embargo.isoformat()}" if embargo else "immediate"
+    return f"osf registration {reg.id} from draft {draft_id}, {choice}, {reg.url}"
+
+
+def link_event(link: ViewOnlyLink, registration_id: str, anonymous: bool) -> str:
+    # The key is not logged. It opens an embargoed registration to whoever holds it, and the
+    # log sits in a repository that may be public; the link id finds it again on OSF.
+    kind = "anonymous" if anonymous else "named"
+    return f"osf view-only link {link.id} on {registration_id}, {kind}"
+
+
+def last(pattern: re.Pattern[str], entries: list[str]) -> re.Match[str] | None:
+    """The last log entry matching `pattern`."""
+    for line in reversed(entries):
+        m = pattern.search(line)
+        if m:
+            return m
+    return None
 
 
 def setup_token(directory: Path | None = None) -> Path:

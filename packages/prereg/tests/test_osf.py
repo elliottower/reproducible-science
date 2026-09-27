@@ -103,7 +103,7 @@ def _template_plan(tmp_path, monkeypatch, answers: dict[str, str] | None = None,
     """The text `prereg new` writes, with `answers` put under their headings and `extra`
     inserted above the log line."""
     monkeypatch.chdir(tmp_path)
-    assert cli.main(["new", "study"]) == 0
+    assert cli._main(["new", "study"]) == 0
     text = (tmp_path / "study" / "PREREG.md").read_text()
     for heading, content in (answers or {}).items():
         text, n = re.subn(
