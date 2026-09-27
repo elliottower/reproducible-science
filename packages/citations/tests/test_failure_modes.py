@@ -140,7 +140,7 @@ def test_smart_quotes_and_dashes_are_not_a_miss(pinned):
 
 
 def test_hyphenation_across_a_line_break_is_normalized():
-    assert V.fold("inter-\npretable") == "interpretable"
+    assert V.passage_fold("inter-\npretable") == "interpretable"
 
 
 def test_glyph_codes_from_a_figure_do_not_hide_the_passage(pinned):
@@ -156,12 +156,12 @@ def test_glyph_codes_from_a_figure_do_not_hide_the_passage(pinned):
 
 def test_control_characters_separate_words_rather_than_joining_them():
     # deleting them outright would manufacture a word that is in neither text
-    assert V.fold("logit\x00difference") == "logit difference"
-    assert V.fold("a\x13b\x11c") == "a b c"
+    assert V.passage_fold("logit\x00difference") == "logit difference"
+    assert V.passage_fold("a\x13b\x11c") == "a b c"
 
 
 def test_page_break_still_reads_as_whitespace():
-    assert V.fold("end of page\x0cstart of next") == "end of page start of next"
+    assert V.passage_fold("end of page\x0cstart of next") == "end of page start of next"
 
 
 # --- a page claim that is wrong does not make the passage absent -----------------------------

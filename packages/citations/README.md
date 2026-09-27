@@ -390,6 +390,20 @@ claims:
     quotes: []
 ```
 
+## Identifying yourself to the metadata services
+
+`citations resolve`, `citations add` and `citations audit` query Crossref, OpenAlex, arXiv and
+Semantic Scholar. Set `CITATIONS_CONTACT` to an address you are willing to send them:
+
+```bash
+export CITATIONS_CONTACT=you@example.org
+```
+
+Nothing is sent without it. Crossref and OpenAlex then place the requests in their polite pool,
+which is faster and less likely to rate-limit, so a long `citations lint --authors` run over a
+large bibliography is slower with the variable unset. That is the tradeoff, not a regression: the
+alternative was shipping one person's address in every user's requests.
+
 ## Where the library lives
 
 ```text

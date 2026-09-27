@@ -43,14 +43,14 @@ import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
 
+from provenance_core import atomic_write
 from pydantic import BaseModel, ConfigDict, Field
 
 from citations import bibtex, paths
 from citations.exceptions import CitationsError
 from citations.models import load_record
-from citations.text import fold, tokens, variants
-
-UA = "citations/1.0 (mailto:elliot@elliottower.ai)"
+from citations.services import user_agent
+from citations.text import name_fold, tokens, variants
 
 #: Crossref's polite-pool rate limit is 50 requests a second; this is far under it and keeps
 #: a full-library audit from looking like a scrape.
@@ -83,7 +83,7 @@ Person = tuple[tuple[str, ...], tuple[str, ...]]
 def split_authors(names: list[str]) -> tuple[list[Person], bool]:
     """(family, given) token pairs, plus whether the list ends in an `and others` marker."""
     parts = [n.strip() for n in names if n and n.strip()]
-    truncated = bool(parts) and fold(parts[-1]) in ("others", "et al")
+    truncated = bool(parts) and name_fold(parts[-1]) in ("others", "et al")
     if truncated:
         parts = parts[:-1]
     people: list[Person] = []
@@ -319,7 +319,7 @@ def fetch(url: str, cache: pathlib.Path, name: str) -> str | None:
         # Anything else -- a bare body, a mismatched URL, a broken digest -- is not a hit.
         # Fetching again is the only way to answer the question that was asked.
 
-    req = urllib.request.Request(url, headers={"User-Agent": UA})
+    req = urllib.request.Request(url, headers={"User-Agent": user_agent()})
     time.sleep(DELAY)
     try:
         with urllib.request.urlopen(req, timeout=45) as r:
@@ -480,8 +480,8 @@ def compare(entry: Entry, record: RegistryRecord) -> list[str]:
     """Every field of `entry` that disagrees with `record`, as one message each."""
     problems = []
 
-    our_title = fold(entry.title)
-    their_title = fold(record.title.rstrip("."))
+    our_title = name_fold(entry.title)
+    their_title = name_fold(record.title.rstrip("."))
     if our_title and their_title and our_title != their_title:
         if their_title.startswith(our_title) or our_title.startswith(their_title):
             problems.append(f"title (one is a prefix of the other): registry has {record.title!r}")
@@ -650,7 +650,11 @@ def main(argv: list[str] | None = None) -> int:
     if a.json_out:
         out = pathlib.Path(a.json_out).expanduser()
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(report.model_dump_json(indent=2) + "\n")
+        # Replaced rather than truncated and refilled. A CI job reads this file rather than the
+        # printed report, and a run killed partway through the write leaves invalid JSON where the
+        # previous audit's verdicts were: the next reader gets a parse error whose cause is a
+        # killed process, not anything the bibliography did.
+        atomic_write(out, report.model_dump_json(indent=2) + "\n")
         print(f"\nwrote {out}")
     return code if a.strict else (2 if code == 2 else 0)
 

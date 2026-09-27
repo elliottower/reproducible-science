@@ -83,12 +83,13 @@ import time
 from typing import Any
 
 import yaml
+from provenance_core import atomic_write
 from pydantic import BaseModel, Field
 
 from citations import audit, bibtex, paths, resolve, services
 from citations.exceptions import CitationsError
 from citations.models import Record, load_record
-from citations.text import fold, variants
+from citations.text import name_fold, variants
 
 #: Venue words that decide which BibTeX entry type a record projects to, and therefore which
 #: fields papis will demand of it.
@@ -208,7 +209,7 @@ def split_authors(field: str) -> tuple[list[str], bool]:
     names: list[str] = []
     marked = False
     for part in split_outside_braces(field or "", AND):
-        if fold(part) in MARKERS:
+        if name_fold(part) in MARKERS:
             marked = True
             continue
         trimmed = ET_AL.sub("", part).strip().strip(",").strip()
@@ -412,12 +413,12 @@ def family(name: str) -> str:
     if "," in name:
         return name.split(",")[0].strip()
     words = split_outside_braces(name, SPACE)
-    while words and fold(words[-1]) in audit.SUFFIXES:
+    while words and name_fold(words[-1]) in audit.SUFFIXES:
         words = words[:-1]
     if not words:
         return ""
     start = len(words) - 1
-    while start > 0 and fold(words[start - 1]) in PARTICLES:
+    while start > 0 and name_fold(words[start - 1]) in PARTICLES:
         start -= 1
     return " ".join(words[start:])
 
@@ -544,12 +545,20 @@ def load_cache(path: pathlib.Path) -> dict:
 
 
 def save_cache(path: pathlib.Path, cache: dict) -> None:
-    path.write_text(
+    """Replace the cache with what this run has fetched so far.
+
+    Atomically, because this is called after every hit so that a killed run keeps what it found,
+    and a truncating write leaves a file that `load_cache` cannot parse -- which fails the next
+    run outright rather than costing it the fetches. No lock: nothing is read here, and the read
+    that fills `cache` runs once in `check_authors`, before a loop of rate-limited lookups.
+    """
+    atomic_write(
+        path,
         "# Author lists as the registries reported them, keyed by identifier, so a second\n"
         "# `citations lint --authors` needs no network and a pre-commit hook can call it.\n"
         "# Written by the tool. An edited row is believed by the next run, which makes this a\n"
         "# convenience and never evidence; delete a row to fetch it again.\n"
-        + yaml.safe_dump(cache, sort_keys=True, allow_unicode=True)
+        + yaml.safe_dump(cache, sort_keys=True, allow_unicode=True),
     )
 
 

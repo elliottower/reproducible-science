@@ -41,14 +41,13 @@ import urllib.error
 import urllib.request
 
 import yaml
+from provenance_core import atomic_write
 
 from citations import paperclip, paths
 from citations.models import Record, load_record
-from citations.services import SERVICES, Service
-from citations.text import fold as norm
+from citations.services import SERVICES, Service, user_agent
+from citations.text import name_fold as norm
 from citations.text import surname_variants
-
-UA = "citations/1.0 (mailto:elliot@elliottower.ai)"
 
 #: How close two titles must be, after normalization, before anything else is considered.
 TITLE_MIN = 0.87
@@ -88,7 +87,7 @@ def fetch(url: str, timeout: int = 25, headers: dict | None = None):
     whose `read()` yields zero bytes. Every decode then fails, every failure is retried, and
     the resolver concludes that every service refused it.
     """
-    req = urllib.request.Request(url, headers={"User-Agent": UA, **(headers or {})})
+    req = urllib.request.Request(url, headers={"User-Agent": user_agent(), **(headers or {})})
     return urllib.request.urlopen(req, timeout=timeout)
 
 
@@ -199,11 +198,20 @@ def load_overlay() -> dict:
 
 
 def save_overlay(overlay: dict) -> None:
-    paths.enrichment().write_text(
+    """Replace the overlay with what this run has resolved so far.
+
+    Atomically, because this is called after every hit so that a killed run keeps what it found,
+    and a truncating write is how such a run loses the very file the incremental save protects:
+    the process dies between the truncate and the fill, and every identifier resolved over an
+    hour of rate-limited lookups is gone. No lock: nothing is read here, `load_overlay` runs once
+    before a loop of network calls, and a hold spanning that read would hold for the whole run.
+    """
+    atomic_write(
+        paths.enrichment(),
         "# Facts resolved after the bibliographies were written, keyed by record slug.\n"
         "# Regenerating records/ does not touch this file; build.py applies it as an overlay.\n"
         "# Identifiers were accepted only on title, first-author surname and year together.\n"
-        + yaml.safe_dump(overlay, sort_keys=True, allow_unicode=True)
+        + yaml.safe_dump(overlay, sort_keys=True, allow_unicode=True),
     )
 
 
@@ -230,7 +238,7 @@ def verify() -> int:
             continue
         checked += 1
         try:
-            req = urllib.request.Request(url, headers={"User-Agent": UA}, method="HEAD")
+            req = urllib.request.Request(url, headers={"User-Agent": user_agent()}, method="HEAD")
             with urllib.request.urlopen(req, timeout=20) as resp:
                 if resp.status >= 400:
                     bad.append((rec.slug, url, resp.status))

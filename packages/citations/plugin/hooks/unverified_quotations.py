@@ -46,14 +46,16 @@ MIN_QUOTE_CHARS = 40
 MAX_CLAIM_FILES = 400
 
 
-def fold(text: str) -> str:
-    """A passage reduced to what survives retyping: case, spacing and punctuation removed.
-
-    Quotations drift in ways that do not change the words -- a curly apostrophe becomes
-    straight, a line break becomes a space, an en dash becomes a hyphen. Comparing folded
-    forms keeps those from reading as a passage nobody pinned.
-    """
-    return re.sub(r"[^a-z0-9]+", " ", text.lower()).strip()
+#: The comparison rule comes from the package this hook ships inside, never from a copy. A local
+#: `re.sub(r"[^a-z0-9]+", " ", text.lower())` stood here, which is the defect
+#: `citations.verify.skeleton` documents at length: it reduces `p < 0.05` and `p = 0.05` to the
+#: same string, and `-0.42` to `0.42`. A manuscript quotation that had drifted in exactly the way
+#: worth catching therefore read as already pinned, and the hook said nothing. Two normalizers are
+#: two answers to one question, and the weaker one won by being the one that ran here.
+try:
+    from citations.verify import passage_fold
+except ImportError:
+    passage_fold = None
 
 
 def quoted(text: str) -> set[str]:
@@ -104,9 +106,26 @@ def pinned(start: pathlib.Path) -> tuple[set[str], pathlib.Path] | None:
             for match in re.finditer(r"(?:exact|text)\s*:\s*(.+)", text):
                 value = match.group(1).strip().strip("\"'|>-").strip()
                 if len(value) >= MIN_QUOTE_CHARS:
-                    found.add(fold(value))
+                    found.add(passage_fold(value))
         return found, claims
     return None
+
+
+def _unavailable(quotations: set[str], path: pathlib.Path) -> int:
+    """Report that the check was skipped, and why, when the package is not importable here."""
+    if not quotations:
+        return 0
+    json.dump(
+        {
+            "systemMessage": (
+                f"quotation check skipped for {path.name}: {len(quotations)} quotation(s) were "
+                f"added and `citations` is not importable from {sys.executable}. Install it for "
+                f"the interpreter this hook runs under, or run `citations verify --claims <dir>`."
+            )
+        },
+        sys.stdout,
+    )
+    return 0
 
 
 def main() -> int:
@@ -122,6 +141,16 @@ def main() -> int:
     if path.suffix.lower() not in MANUSCRIPT:
         return 0
 
+    if passage_fold is None:
+        # Comparing with an approximation would report a drifted quotation as already pinned, so
+        # this does not fall back to one. It does not stay silent either: a check that could not
+        # run and says nothing is the "nothing ran, nothing reported" case the rest of this
+        # package exists to keep separate, and Claude Code runs a hook under whichever `python3`
+        # is on PATH, which is often not the environment holding `citations`. Reported only where
+        # the edit added a quotation, so it names something that went unchecked rather than
+        # commenting on every edit.
+        return _unavailable(added(payload), path)
+
     library = pinned(path.parent)
     if library is None:
         return 0
@@ -129,7 +158,7 @@ def main() -> int:
 
     # A pinned passage may be quoted in part, so a manuscript passage counts as pinned when
     # it is contained in one. The reverse would let a single word stand in for a paragraph.
-    loose = [q for q in added(payload) if not any(fold(q) in k for k in known)]
+    loose = [q for q in added(payload) if not any(passage_fold(q) in k for k in known)]
     if not loose:
         return 0
 

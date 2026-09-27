@@ -14,6 +14,7 @@ Adding a service is a `Service(...)` literal: build a URL, turn a payload into c
 
 from __future__ import annotations
 
+import os
 import re
 import urllib.parse
 from collections.abc import Callable, Iterable, Iterator
@@ -23,6 +24,31 @@ from pydantic import BaseModel, ConfigDict
 
 from citations.models import Record
 from citations.text import surname_variants
+
+#: Crossref and OpenAlex ask for a contact address and offer politeness-pool rate limits in
+#: return, so the header carries one when the operator sets it. Two modules hardcoded the
+#: author's address, which sent one person's email to every server that every user of this
+#: package queried, and named the wrong party as the operator besides.
+CONTACT_ENV = "CITATIONS_CONTACT"
+
+
+def contact() -> str:
+    """The operator's address for polite-pool requests, or empty where none is set."""
+    return os.environ.get(CONTACT_ENV, "").strip()
+
+
+def user_agent() -> str:
+    """The `User-Agent` for outbound metadata requests, with a contact only if one is set."""
+    return f"citations/1.0 (mailto:{contact()})" if contact() else "citations/1.0"
+
+
+def polite(params: dict) -> dict:
+    """`params` with a `mailto` added only where the operator set one.
+
+    OpenAlex reads `mailto` as the request's owner and routes it to the polite pool. An address
+    written in here makes every user's lookups claim to be one person's, so it is opt-in.
+    """
+    return {**params, "mailto": contact()} if contact() else params
 
 
 class Candidate(BaseModel):
@@ -145,9 +171,7 @@ def _s2_candidates(payload) -> Iterator[Candidate]:
 
 
 def _openalex_url(rec: Record) -> str:
-    q = urllib.parse.urlencode(
-        {"filter": f"title.search:{rec.title}", "per-page": 5, "mailto": "elliot@elliottower.ai"}
-    )
+    q = urllib.parse.urlencode(polite({"filter": f"title.search:{rec.title}", "per-page": 5}))
     return f"https://api.openalex.org/works?{q}"
 
 
@@ -284,8 +308,12 @@ def _openalex_work_url(kind: str, identifier: str) -> str:
     for an older one. It is a fallback for when arXiv itself refuses, not a route around it.
     """
     doi = identifier if kind == "doi" else f"10.48550/arXiv.{identifier}"
-    q = urllib.parse.urlencode({"mailto": "elliot@elliottower.ai"})
-    return f"https://api.openalex.org/works/doi:{doi}?{q}"
+    q = urllib.parse.urlencode(polite({}))
+    return (
+        f"https://api.openalex.org/works/doi:{doi}?{q}"
+        if q
+        else (f"https://api.openalex.org/works/doi:{doi}")
+    )
 
 
 def _openalex_work_authors(payload) -> list[str]:

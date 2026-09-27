@@ -174,7 +174,7 @@ def test_the_space_that_separates_prefix_from_passage_survives_validation():
     )
     q = cf.claims["C1"].quotes[0]
     assert q.prefix.endswith(" ")
-    assert V.fold(q.prefix + q.text).startswith("in the pilot the model")
+    assert V.passage_fold(q.prefix + q.text).startswith("in the pilot the model")
 
 
 def test_an_anchored_quotation_resolves_through_the_claims_file(tmp_path):

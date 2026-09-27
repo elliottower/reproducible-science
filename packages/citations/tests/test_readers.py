@@ -498,8 +498,8 @@ def test_the_two_poppler_modes_are_both_consulted_and_are_not_the_same_reading(t
     layout = V.reading_with(source, extractor=V.DEFAULT_EXTRACTOR)
     flow = V.reading_with(source, extractor=V.READING_ORDER)
     assert layout.extractor != flow.extractor
-    assert PROSE[0].lower() in V.fold(layout.text)
-    assert PROSE[0].lower() in V.fold(flow.text)
+    assert PROSE[0].lower() in V.passage_fold(layout.text)
+    assert PROSE[0].lower() in V.passage_fold(flow.text)
 
 
 # --- a failure is an answer, and answers are cached -------------------------------------------

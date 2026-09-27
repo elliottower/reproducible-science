@@ -37,11 +37,12 @@ import urllib.parse
 import xml.etree.ElementTree as ET
 from typing import Any
 
+from provenance_core import atomic_write_bytes, exclusive_lock
 from pydantic import BaseModel, ConfigDict, ValidationError, field_validator, model_validator
 
 from citations import bibtex, resolve
 from citations.exceptions import BibFileError, CitationsError, MetadataError
-from citations.text import fold, strip_markup, surname
+from citations.text import name_fold, strip_markup, surname
 
 CROSSREF = "https://api.crossref.org/works/{}"
 DATACITE = "https://api.datacite.org/dois/{}"
@@ -136,7 +137,7 @@ class Work(BaseModel):
         Nothing written from here is allowed to start that.
         """
         for name in authors:
-            if fold(name) in ("others", "et al"):
+            if name_fold(name) in ("others", "et al"):
                 raise ValueError(f"the author list ends in {name!r}, so it is not complete")
         return authors
 
@@ -398,7 +399,7 @@ def suggest_key(work: Work) -> str:
             work.doi or work.arxiv,
             "no author to build a citation key from; name the key with --key",
         )
-    words = [w for w in fold(work.title).split() if w not in STOPWORDS and len(w) > 2]
+    words = [w for w in name_fold(work.title).split() if w not in STOPWORDS and len(w) > 2]
     return f"{surname(work.authors[0])}{work.year}{words[0] if words else ''}"
 
 
@@ -473,36 +474,44 @@ def append(bib: pathlib.Path, entry: Entry) -> tuple[int, int]:
     one, and that the key occurs exactly once. On any disagreement the original bytes go back:
     the second occurrence of this defect outlived its own fix because a stale artifact from the
     broken state was still on disk, so a half-written state is never left behind.
-    """
-    original = bib.read_bytes()
-    before = bibtex.read(bib)
-    broken = unclosed(before)
-    if broken is not None:
-        raise BibFileError(
-            bib,
-            f"the entry {broken[0]} at line {broken[1]} never closes its braces, so nothing was "
-            "added. BibTeX reads that as `I was expecting a `,' or a `}'` and skips the rest "
-            "of the entry; close it first, or the next error will look like this addition "
-            "caused it",
-        )
-    signature = [(kind, key) for kind, key, _body in bibtex.entries(before)]
-    # One blank line between entries, and none introduced at the top of an empty file.
-    trailing = len(before) - len(before.rstrip("\n"))
-    lead = "" if not before.strip() else "\n" * max(0, 2 - trailing)
-    bib.write_bytes(original + (lead + entry.text).encode("utf-8"))
 
-    after = bibtex.read(bib)
-    parsed = [(kind, key) for kind, key, _body in bibtex.entries(after)]
-    occurrences = [ln for k, ln in bibtex.key_lines(after) if k.lower() == entry.key.lower()]
-    if parsed != [*signature, (entry.kind, entry.key)] or len(occurrences) != 1:
-        bib.write_bytes(original)
-        raise BibFileError(
-            bib,
-            f"did not read back as its {len(signature)} entries plus {entry.key}, and was "
-            f"restored: {entry.key} is on {len(occurrences)} line(s) of it. The file changed "
-            "between the check that said the key was free and this write",
-        )
-    return len(signature), len(parsed)
+    The read, the append, the read-back and the rollback are one unit under the file's lock,
+    because every one of them is computed from `original`. Two unlocked `add` calls each read
+    those bytes; the second's write drops the first's entry after the first has already printed
+    `appended`, and the first then fails its own read-back and restores `original` -- which
+    deletes the second's entry as well. Both entries are gone and both commands reported the
+    file as longer than it started.
+    """
+    with exclusive_lock(bib):
+        original = bib.read_bytes()
+        before = bibtex.read(bib)
+        broken = unclosed(before)
+        if broken is not None:
+            raise BibFileError(
+                bib,
+                f"the entry {broken[0]} at line {broken[1]} never closes its braces, so nothing "
+                "was added. BibTeX reads that as `I was expecting a `,' or a `}'` and skips the "
+                "rest of the entry; close it first, or the next error will look like this "
+                "addition caused it",
+            )
+        signature = [(kind, key) for kind, key, _body in bibtex.entries(before)]
+        # One blank line between entries, and none introduced at the top of an empty file.
+        trailing = len(before) - len(before.rstrip("\n"))
+        lead = "" if not before.strip() else "\n" * max(0, 2 - trailing)
+        atomic_write_bytes(bib, original + (lead + entry.text).encode("utf-8"))
+
+        after = bibtex.read(bib)
+        parsed = [(kind, key) for kind, key, _body in bibtex.entries(after)]
+        occurrences = [ln for k, ln in bibtex.key_lines(after) if k.lower() == entry.key.lower()]
+        if parsed != [*signature, (entry.kind, entry.key)] or len(occurrences) != 1:
+            atomic_write_bytes(bib, original)
+            raise BibFileError(
+                bib,
+                f"did not read back as its {len(signature)} entries plus {entry.key}, and was "
+                f"restored: {entry.key} is on {len(occurrences)} line(s) of it. The file changed "
+                "between the check that said the key was free and this write",
+            )
+        return len(signature), len(parsed)
 
 
 def side_by_side(left: str, right: str, heads: tuple[str, str]) -> str:
@@ -587,30 +596,39 @@ def main(argv: list[str] | None = None) -> int:
         if a.key and a.key != entry.key:
             raise BibFileError(source, f"--key says {a.key} and the entry itself says {entry.key}")
 
-    collision = existing_entry(bibtex.read(bib), entry.key)
-    if collision is not None:
-        found, line = collision
-        print(f"\n  {bib.name} already defines {entry.key}, at line {line}.\n")
-        print(
-            side_by_side(
-                found or "(an entry whose braces never close)",
-                entry.text,
-                (f"in the file, line {line}", "proposed"),
+    # The duplicate check reads the file and `append` writes it, so the two are held under one
+    # lock: unlocked, two `add` calls with one key both read a bibliography that does not define
+    # it yet, both decide it is free, and both append. `append` takes the same lock, which is
+    # re-entrant within a thread.
+    with exclusive_lock(bib):
+        collision = existing_entry(bibtex.read(bib), entry.key)
+        if collision is not None:
+            found, line = collision
+            print(f"\n  {bib.name} already defines {entry.key}, at line {line}.\n")
+            print(
+                side_by_side(
+                    found or "(an entry whose braces never close)",
+                    entry.text,
+                    (f"in the file, line {line}", "proposed"),
+                )
             )
-        )
-        print("\n  nothing was written. BibTeX keeps the copy a file defines first and skips the")
-        print("  repeat, so this entry would never reach the reference list while the file read")
-        print("  as though it had -- and where the two keys differ only in case, the citation")
-        print("  goes undefined instead.")
-        print("\n  cite the entry that is there, or give this one another key with --key.")
-        return 1
+            print(
+                "\n  nothing was written. BibTeX keeps the copy a file defines first and skips the"
+            )
+            print(
+                "  repeat, so this entry would never reach the reference list while the file read"
+            )
+            print("  as though it had -- and where the two keys differ only in case, the citation")
+            print("  goes undefined instead.")
+            print("\n  cite the entry that is there, or give this one another key with --key.")
+            return 1
 
-    print(f"\n{entry.text}")
-    if a.check:
-        print(f"  --check: nothing written. {entry.key} would be appended to {bib.name}.")
-        return 0
+        print(f"\n{entry.text}")
+        if a.check:
+            print(f"  --check: nothing written. {entry.key} would be appended to {bib.name}.")
+            return 0
 
-    was, now = append(bib, entry)
+        was, now = append(bib, entry)
     print(f"  appended to {bib.name}: {was} entries, now {now}, {entry.key} in exactly one.")
     return 0
 

@@ -335,7 +335,7 @@ class Report:
 
 
 @functools.lru_cache(maxsize=256)
-def fold(s: str) -> str:
+def passage_fold(s: str) -> str:
     """Normalize the way a PDF extractor mangles text, without changing which words appear."""
     # NFKD and not NFKC, then the combining marks dropped. A renderer typesets `naïve` as a
     # dotless i carrying a combining diaeresis, which is how LaTeX writes it, and the quotation
@@ -371,7 +371,7 @@ def fold(s: str) -> str:
 
 @functools.lru_cache(maxsize=256)
 def skeleton(s: str) -> str:
-    """`fold`, with whitespace removed. Nothing else.
+    """`passage_fold`, with whitespace removed. Nothing else.
 
     This is the fallback used when a verbatim match fails, so it is only ever applied to a
     passage that is provably not in the source as written. It must therefore absorb exactly
@@ -384,9 +384,9 @@ def skeleton(s: str) -> str:
     `0.42`: a reversed inequality and a flipped sign both reported as quoted verbatim, by the
     one check that exists to catch a misquotation.
     """
-    s = fold(s)
+    s = passage_fold(s)
     # A hyphen joining two word characters, at least one of them a letter, with any whitespace
-    # after it. A renderer breaks `prefix-matching` across a line, `fold` removes the break
+    # after it. A renderer breaks `prefix-matching` across a line, `passage_fold` removes the break
     # hyphen from the document, and the quotation keeps the real one, so the two can never
     # agree while a hyphen means anything here. The trailing `\s*` is for the mirror case,
     # where the quotation preserved the break and the document did not: `non- sparse` against
@@ -817,7 +817,7 @@ def clear_caches() -> None:
     One call rather than five, because a caller that clears four of them and forgets the fifth
     gets a stale answer that looks like a fresh one.
     """
-    for cached in (_extraction, _reading_with, fold, skeleton, _digest, sha256):
+    for cached in (_extraction, _reading_with, passage_fold, skeleton, _digest, sha256):
         cached.cache_clear()
     _PROVENANCE.clear()
 
@@ -1120,9 +1120,9 @@ def resolve_in(quote: str, text: str, prefix: str = "", suffix: str = "") -> Mat
     Verbatim first, then the whitespace-stripped skeleton. Never `unchecked` or
     `indeterminate`: both are facts about reading a source, and this one was handed a text.
     """
-    if not fold(quote):
+    if not passage_fold(quote):
         return Match("not found", 0, False)
-    n, singled = _occurrences(quote, fold(text), prefix, suffix, fold)
+    n, singled = _occurrences(quote, passage_fold(text), prefix, suffix, passage_fold)
     if n:
         return Match("found" if singled else "ambiguous", n, False)
     k, k_singled = _occurrences(quote, skeleton(text), prefix, suffix, skeleton)
@@ -1136,7 +1136,7 @@ def divergence(quote: str, text: str) -> tuple[int, str, str]:
 
     A bare `not found` points at the document, and the defect is nearly always one character.
     Every instance settled by hand in this corpus had the same shape -- a minus sign the text
-    layer dropped, an en dash it dropped, a hyphen falling on a line break where `fold`'s
+    layer dropped, an en dash it dropped, a hyphen falling on a line break where `passage_fold`'s
     de-hyphenation removes a real one -- and finding it meant a binary search for the longest
     prefix of the quotation the document still contains. That search belongs here, so the report
     can do it instead of the reader.
@@ -1144,7 +1144,7 @@ def divergence(quote: str, text: str) -> tuple[int, str, str]:
     The offset counts folded characters, which is what was compared. Both excerpts begin a
     little before the split, so the divergence is legible rather than a bare index.
     """
-    q, doc = fold(quote), fold(text)
+    q, doc = passage_fold(quote), passage_fold(text)
     lo, hi = 0, len(q)
     while lo < hi:
         mid = (lo + hi + 1) // 2
@@ -1163,7 +1163,7 @@ def _not_found(quote: str, text: str) -> str:
     # has located a place in the document and diverged from it. A prefix shorter than both
     # matched by coincidence -- "the results of" occurs everywhere -- and pointing at where it
     # ran out would send a reader to a passage the quotation was never taken from.
-    if not found or (n < MIN_QUOTE_CHARS and n * 2 < len(fold(quote))):
+    if not found or (n < MIN_QUOTE_CHARS and n * 2 < len(passage_fold(quote))):
         return (
             "read the source: a broken extraction reads the same as a passage that was never there"
         )
@@ -1209,7 +1209,7 @@ def _verdict(
     page or section attached to it is asserted about a passage nobody identified.
     """
     warn = list(warn)
-    q, doc = fold(quote), fold(full)
+    q, doc = passage_fold(quote), passage_fold(full)
     if not q:
         # `"" in doc` is True. A quotation that folds away entirely is not a quotation.
         return Result("not found", "the quotation is empty after normalization", warn)
@@ -1245,7 +1245,7 @@ def _on_page(artifact: pathlib.Path, folded_quote: str, page: int, extractor: st
     record got wrong.
     """
     try:
-        return folded_quote in fold(_page_text(artifact, page, extractor))
+        return folded_quote in passage_fold(_page_text(artifact, page, extractor))
     except SourceUnreadableError:
         return False
 
@@ -1315,6 +1315,6 @@ def _find_page(
             return None, False
         if not text:
             return None, False  # ran off the end of the document
-        if folded_quote in fold(text):
+        if folded_quote in passage_fold(text):
             return p, False
     return None, True  # still going when the limit ran out

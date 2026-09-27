@@ -1,6 +1,6 @@
-"""One way to fold text for comparison, used everywhere a name or title is matched.
+"""One way to name_fold text for comparison, used everywhere a name or title is matched.
 
-There were two. `audit.fold` normalized to NFKD and dropped combining marks, so Kästner became
+There were two. `audit.name_fold` normalized to NFKD and dropped combining marks, so Kästner became
 `kastner`. `services.norm` kept only `[a-z0-9 ]`, so the same name became `kstner` -- the
 accented letter deleted rather than resolved. The second gated identifier lookup, which means
 a correct paper was rejected for any author with an accent in their surname.
@@ -26,7 +26,7 @@ import unicodedata
 #:
 #: The first group expands to two letters in German transliteration. The second carries a stroke
 #: or is a letter in its own right rather than an accented one, so NFKD leaves it whole and the
-#: fold's `[^a-z0-9]` deletes it: Kozłowski became `koz owski`, one name split into two tokens,
+#: name_fold's `[^a-z0-9]` deletes it: Kozłowski became `koz owski`, one name split into two tokens,
 #: which matches nothing and reported every Polish surname as a disagreement.
 EXPANSIONS = {
     "ä": "ae",
@@ -71,7 +71,7 @@ def strip_markup(text: str) -> str:
     return text.replace("{", "").replace("}", "").replace("\\", "")
 
 
-def fold(text: str) -> str:
+def name_fold(text: str) -> str:
     """Lowercase, unaccented, punctuation-free. The canonical form for comparison."""
     text = strip_markup(text)
     text = unicodedata.normalize("NFKD", text)
@@ -84,24 +84,24 @@ def expand(text: str) -> str:
     text = strip_markup(text)
     for char, pair in EXPANSIONS.items():
         text = text.replace(char, pair)
-    return fold(text)
+    return name_fold(text)
 
 
 def variants(text: str) -> frozenset[str]:
     """Every form this text might be written in. Empty input gives an empty set."""
-    return frozenset(v for v in (fold(text), expand(text)) if v)
+    return frozenset(v for v in (name_fold(text), expand(text)) if v)
 
 
 def tokens(text: str) -> tuple[str, ...]:
     """A name as folded word tokens. A hyphenated name is two tokens, an accent is none."""
-    return tuple(fold(text).split())
+    return tuple(name_fold(text).split())
 
 
 def surname(author: str) -> str:
     """The family name out of either `Family, Given` or `Given Family`."""
     if not author:
         return ""
-    return fold(author.split(",")[0] if "," in author else author.split()[-1])
+    return name_fold(author.split(",")[0] if "," in author else author.split()[-1])
 
 
 def surname_variants(author: str) -> frozenset[str]:
@@ -114,7 +114,7 @@ def surname_variants(author: str) -> frozenset[str]:
 __all__ = [
     "EXPANSIONS",
     "expand",
-    "fold",
+    "name_fold",
     "strip_markup",
     "surname",
     "surname_variants",
