@@ -6,6 +6,8 @@ import datetime
 import json
 import os
 import re
+import stat
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -53,17 +55,61 @@ HEADING_TO_QUESTION = {
 _BY_CASEFOLD = {k.casefold(): v for k, v in HEADING_TO_QUESTION.items()}
 
 
+# How long to wait for a `.env` that is a named pipe. A secret manager that exposes one (a
+# 1Password-managed environment does) writes to it only after the person approves the read, so
+# the wait is for a human; the bound is what stops a dismissed prompt from hanging forever.
+FIFO_TIMEOUT = 60.0
+
+
+def _read_env(env: Path) -> str:
+    """The text of a `.env`, which may be a regular file or a named pipe.
+
+    A pipe blocks on open until its writer attaches, and a non-blocking open returns nothing
+    because nothing has been written yet. So the read runs in a daemon thread and is abandoned
+    after `FIFO_TIMEOUT`: the thread may stay blocked, but the command does not.
+    """
+    if not stat.S_ISFIFO(env.stat().st_mode):
+        return env.read_text()
+    box: dict[str, object] = {}
+
+    def read() -> None:
+        try:
+            box["text"] = env.read_text()
+        except OSError as e:
+            box["error"] = e
+
+    reader = threading.Thread(target=read, daemon=True)
+    reader.start()
+    reader.join(FIFO_TIMEOUT)
+    if "text" in box:
+        return str(box["text"])
+    if "error" in box:
+        raise RuntimeError(f"could not read {env}: {box['error']}")
+    raise RuntimeError(
+        f"{env} is a named pipe and nothing was written to it in {FIFO_TIMEOUT:.0f}s. The secret "
+        "manager behind it did not deliver; its approval prompt was probably dismissed."
+    )
+
+
 def _token() -> str | None:
+    """OSF_TOKEN from the environment, or from the nearest `.env` here or above that sets it.
+
+    Called only when a request is about to be made: reading a pipe-backed `.env` asks the
+    person to approve, and a command that makes no request should not ask.
+    """
     token = os.environ.get("OSF_TOKEN")
     if token:
         return token
     for p in [Path.cwd(), *Path.cwd().parents]:
         env = p / ".env"
-        if env.is_file():
-            for line in env.read_text().splitlines():
-                line = line.strip()
-                if line.startswith("OSF_TOKEN=") and not line.startswith("#"):
-                    return line.split("=", 1)[1].strip().strip("'\"")
+        # `is_file()` is False for a named pipe, so a secret manager's pipe was passed over as
+        # if there were no `.env` at all.
+        if not (env.is_file() or env.is_fifo()):
+            continue
+        for line in _read_env(env).splitlines():
+            line = line.strip()
+            if line.startswith("OSF_TOKEN=") and not line.startswith("#"):
+                return line.split("=", 1)[1].strip().strip("'\"")
     return None
 
 
@@ -72,7 +118,12 @@ class OSFError(RuntimeError):
 
 
 def _request(
-    method: str, path: str, token: str, body: dict | None = None, *, version: str | None = None
+    method: str,
+    path: str,
+    token: str | None,
+    body: dict | None = None,
+    *,
+    version: str | None = None,
 ) -> dict:
     url = path if path.startswith("https://") else f"{API}{path}"
     if version:
@@ -81,7 +132,8 @@ def _request(
         url += ("&" if "?" in url else "?") + urllib.parse.urlencode({"version": version})
     data = json.dumps(body).encode() if body else None
     req = urllib.request.Request(url, data=data, method=method)
-    req.add_header("Authorization", f"Bearer {token}")
+    if token:
+        req.add_header("Authorization", f"Bearer {token}")
     req.add_header("Content-Type", "application/vnd.api+json")
     req.add_header("Accept", "application/vnd.api+json")
     return _send(req)
@@ -110,7 +162,7 @@ class Question:
     options: tuple[str, ...]
 
 
-def _fetch_schema(token: str) -> dict[str, Question]:
+def _fetch_schema(token: str | None = None) -> dict[str, Question]:
     """Fetch the OSF Preregistration schema and return {question_title: Question}.
 
     The response keys live on the schema's `schema_blocks`, not on `attributes.schema.blocks`,
@@ -118,6 +170,9 @@ def _fetch_schema(token: str) -> dict[str, Question]:
     section with content was refused as unmapped. A question's label, its input and the input's
     options share a `schema_block_group_key`; OSF's own validator joins them the same way
     (osf/models/validators.py, `_build_question_schema`).
+
+    The schema is public, so this needs no token: a plan can be checked against it before
+    anyone is asked to release one.
     """
     blocks: list[dict] = []
     page: str | None = f"/schemas/registrations/{SCHEMA_ID}/schema_blocks/"
@@ -218,7 +273,7 @@ def _choose(heading: str, answer: str, q: Question) -> str | list[str]:
     return chosen
 
 
-def build_draft(plan_text: str, token: str) -> dict:
+def build_draft(plan_text: str, token: str | None = None) -> dict:
     """The draft-registration request body for a plan, or RuntimeError naming what cannot map.
 
     Separate from sending it so `freeze --osf` can refuse before it writes anything.

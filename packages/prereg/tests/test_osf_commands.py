@@ -11,7 +11,7 @@ import subprocess
 import sys
 
 import pytest
-from prereg import cli, confirm, log, plan
+from prereg import cli, confirm, log, osf, plan
 from provenance_core.gitref import clean_env
 
 CONTEXT = b"Shared context for every plan in this project.\n"
@@ -127,6 +127,11 @@ def _freeze_and_push(study, tty) -> int:
     return rc
 
 
+def _no_terminal(monkeypatch, tmp_path):
+    """The real `_open_tty`, pointed at a terminal that does not exist: an agent's shell."""
+    monkeypatch.setattr(confirm, "TTY", str(tmp_path / "no-such-terminal"))
+
+
 # --- freeze --osf --------------------------------------------------------------------------
 
 
@@ -148,26 +153,50 @@ def test_freeze_pushes_the_draft_and_logs_each_attachment_with_its_hash(study, t
 def test_a_wrong_phrase_sends_nothing_and_freezes_nothing(study, tty, fake_osf):
     before = _plan(study)
     tty.types("yes")
-    assert cli._main(["freeze", "--osf"]) == 1
+    assert cli._main(["freeze", "--osf", "--attach", "../CONTEXT.md"]) == 1
     assert fake_osf.writes == []
     assert _plan(study) == before, "a cancelled push must leave the plan unfrozen"
 
 
-def test_with_no_terminal_nothing_is_sent(study, monkeypatch, fake_osf, tmp_path):
-    monkeypatch.setattr(confirm, "TTY", str(tmp_path / "no-such-terminal"))
+def test_with_no_terminal_no_draft_is_pushed(study, monkeypatch, fake_osf, tmp_path):
+    _no_terminal(monkeypatch, tmp_path)
     before = _plan(study)
-    assert cli._main(["freeze", "--osf"]) == 1
+    assert cli._main(["freeze", "--osf", "--attach", "../CONTEXT.md"]) == 1
     assert fake_osf.writes == []
     assert _plan(study) == before
 
 
-def test_the_phrase_on_stdin_is_not_read(study, tty, monkeypatch, fake_osf, capsys):
+def test_the_push_phrase_on_stdin_is_not_read(study, tty, monkeypatch, fake_osf, capsys):
     """Piping the phrase is exactly what an unattended process would do."""
     monkeypatch.setattr(sys, "stdin", io.StringIO(f"{_push_phrase(study)}\n" * 5))
     tty.types("")
     assert cli._main(["freeze", "--osf"]) == 1
     assert fake_osf.writes == []
     assert "cancelled" in capsys.readouterr().out
+
+
+def test_the_token_is_read_only_after_the_push_phrase(study, tty, monkeypatch, fake_osf):
+    """Reading a pipe-backed token asks the person to approve; a cancelled command must not."""
+    reads = []
+    monkeypatch.setattr(osf, "require_token", lambda: reads.append(1) or "t")
+    tty.types("no")
+    assert cli._main(["freeze", "--osf"]) == 1
+    assert reads == []
+    [schema] = fake_osf.calls_to("GET", r"schema_blocks")
+    assert "Authorization" not in schema.headers, "the public schema is read without the token"
+
+
+def test_a_plan_that_cannot_map_is_refused_before_anyone_is_asked(study, tty, fake_osf):
+    p = study / "PREREG.md"
+    p.write_text(
+        p.read_text().replace("## Randomization", "## Decision rule\n\np<.05\n\n## Randomization")
+    )
+    _commit(study.parent, "odd heading")
+    before = _plan(study)
+    assert cli._main(["freeze", "--osf"]) == 1
+    assert tty.shown() == "", "nobody should be asked to confirm a push that cannot happen"
+    assert fake_osf.writes == []
+    assert _plan(study) == before
 
 
 def test_an_upload_osf_hashes_differently_is_not_logged_as_attached(study, tty, fake_osf):
@@ -186,9 +215,8 @@ def test_attach_without_osf_is_refused(study):
         cli._main(["freeze", "--attach", "../CONTEXT.md"])
 
 
-def test_a_missing_attachment_is_refused_before_anything_is_written(study, tty, fake_osf):
+def test_a_missing_attachment_is_refused_before_anything_is_written(study, fake_osf):
     before = _plan(study)
-    tty.types("anything")
     assert cli._main(["freeze", "--osf", "--attach", "../MISSING.md"]) == 1
     assert fake_osf.calls == []
     assert _plan(study) == before
@@ -242,6 +270,35 @@ def test_register_with_the_wrong_phrase_sends_nothing(study, tty, fake_osf):
     assert cli._main(["register", "--immediate", "--access", "nothing run"]) == 1
     assert fake_osf.calls_to("POST", r"/registrations/") == []
     assert _entries(study) == entries
+
+
+def test_register_with_no_terminal_sends_nothing(study, tty, monkeypatch, fake_osf, tmp_path):
+    assert _freeze_and_push(study, tty) == 0
+    _no_terminal(monkeypatch, tmp_path)
+    entries = _entries(study)
+    assert cli._main(["register", "--immediate", "--access", "nothing run"]) == 1
+    assert fake_osf.calls_to("POST", r"/registrations/") == []
+    assert _entries(study) == entries
+
+
+def test_register_does_not_read_the_phrase_from_stdin(study, tty, monkeypatch, fake_osf, capsys):
+    """Piping the phrase is exactly what an unattended process would do."""
+    assert _freeze_and_push(study, tty) == 0
+    monkeypatch.setattr(sys, "stdin", io.StringIO("register draft1\n" * 5))
+    tty.types("")
+    assert cli._main(["register", "--immediate", "--access", "nothing run"]) == 1
+    assert fake_osf.calls_to("POST", r"/registrations/") == []
+    assert "cancelled" in capsys.readouterr().out
+
+
+def test_register_reads_the_token_only_after_the_phrase(study, tty, monkeypatch, fake_osf):
+    """Reading a pipe-backed token asks the person to approve; a cancelled command must not."""
+    assert _freeze_and_push(study, tty) == 0
+    reads = []
+    monkeypatch.setattr(osf, "require_token", lambda: reads.append(1) or "t")
+    tty.types("no")
+    assert cli._main(["register", "--immediate", "--access", "nothing run"]) == 1
+    assert reads == []
 
 
 def test_register_refuses_a_plan_changed_since_the_freeze(study, tty, fake_osf):
@@ -339,6 +396,13 @@ def test_a_named_link_sends_anonymous_false(study, tty, fake_osf):
 def test_a_link_with_the_wrong_phrase_sends_nothing(study, tty, fake_osf):
     _registered(study, tty)
     tty.types("link reg02")
+    assert cli._main(["link", "--anonymous", "--access", "results seen"]) == 1
+    assert fake_osf.calls_to("POST", r"/view_only_links/") == []
+
+
+def test_a_link_with_no_terminal_sends_nothing(study, tty, monkeypatch, fake_osf, tmp_path):
+    _registered(study, tty)
+    _no_terminal(monkeypatch, tmp_path)
     assert cli._main(["link", "--anonymous", "--access", "results seen"]) == 1
     assert fake_osf.calls_to("POST", r"/view_only_links/") == []
 

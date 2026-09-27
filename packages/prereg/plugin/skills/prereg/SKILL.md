@@ -34,8 +34,15 @@ prereg log <note> --access <level>
 prereg check           # has anything above the log line changed since the freeze?
 ```
 
-Every OSF write asks for a typed phrase on the terminal, and refuses without one. An agent
-cannot answer it: give the person the exact command to run themselves.
+### Who must be present
+
+Every OSF write (draft push, file upload, register, link) asks for a typed phrase on the
+terminal and refuses without one. Do not try to answer it: give the person the exact command to
+run themselves. The phrase guards against accidents; it is not a security boundary, because
+anything that can read `OSF_TOKEN` can call OSF directly. The real gate is a token kept in a
+secret source that requires approval at read time, such as a 1Password-managed `.env` (a named
+pipe), where every OSF interaction first needs Touch ID or the account password. `prereg` reads
+such a pipe directly.
 
 ## Freezing, in order
 

@@ -138,30 +138,31 @@ Each entry is appended through the same chained log as `prereg log`, so `prereg 
 one removed or edited. `register` and `link` take `--access`, because the command cannot know
 what has been seen by the time it runs.
 
-### Confirmation
+### Who must be present
 
-Every write to OSF shows what it will send and asks for a phrase naming it: `push <digest>`,
-`register <draft>`, `link <registration>`. The question is asked on the terminal (`/dev/tty`),
-not stdin, so a piped answer does not count, and a process with no terminal is refused before
-any request. No flag skips it.
+Every write to OSF — pushing a draft, uploading its files, registering, creating a link — shows
+what it will send and asks for a phrase naming it: `push <digest>`, `register <draft>`,
+`link <registration>`. The phrase is read from the terminal (`/dev/tty`), never stdin, so a
+piped answer does not count, and a process with no terminal is refused before any request. No
+flag or variable skips it.
 
-This guards against an accidental or unattended write. It is not a security boundary: a
-program can open a pseudo-terminal and type the phrase, and anything that can read the token
-can call the API without `prereg`.
+This is a guard against accidents, not a security boundary. An agent that wants to write to
+OSF has to go out of its way, for instance by faking a terminal, and that is not
+insurmountable. Anything that can read `OSF_TOKEN` can also call OSF without `prereg` at all.
+
+The barrier that holds is the token. Keep it in a secret source that asks for approval each
+time it is read, such as a 1Password-managed `.env`, which is a named pipe: every OSF
+interaction then needs Touch ID or the account password first. `prereg` reads such a pipe
+directly, only when a request is about to be made and after the phrase is typed, and gives up
+after 60 seconds if nothing is delivered.
 
 ### The token
 
 Create a token at [osf.io/settings/tokens](https://osf.io/settings/tokens) with the
 `osf.full_write` scope. `prereg` reads `OSF_TOKEN` from the environment, or from a `.env` in
-this directory or above. `prereg setup` writes it to `.env` and adds `.env` to `.gitignore`.
-
-A token in a plain `.env` can be read by every process running as you, coding agents
-included, and with it they can write to OSF directly. Keep it out of files: have a secret
-manager inject `OSF_TOKEN` into the one command that needs it, with unlocking left to you.
-
-```bash
-op run --env-file=osf.env -- prereg register --embargo 2027-06-01 --access "nothing run"
-```
+this directory or above, whether a regular file or a named pipe. `prereg setup` writes it to a
+plain `.env` and adds `.env` to `.gitignore`; a plain file can be read by every process running
+as you, coding agents included.
 
 ### Changes after registering
 

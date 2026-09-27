@@ -1,7 +1,7 @@
 """A typed confirmation, asked on the controlling terminal, before anything is written to OSF.
 
-A registration cannot be deleted, an immediate one is public at once, and a view-only link is a
-URL anyone holding it can open. The question is asked on `/dev/tty` rather than stdin, so
+A registration cannot be deleted, an immediate one is public at once, a view-only link is a URL
+anyone holding it can open, and a draft carries the plan and its files off this machine. The question is asked on `/dev/tty` rather than stdin, so
 `echo "register abc12" | prereg register ...` does not answer it, and a process with no
 controlling terminal -- an agent's shell, CI, cron -- cannot be asked at all and stops there.
 There is no flag or variable that skips it.
@@ -9,7 +9,8 @@ There is no flag or variable that skips it.
 This raises the cost of an accidental write; it is not a security boundary. A program can
 allocate a pseudo-terminal and type into it, and anything that can read `OSF_TOKEN` can call the
 API without this package. What keeps an unattended process off OSF is the token not being
-readable by it.
+readable by it: kept in a secret source that asks the person at read time, such as a
+pipe-backed `.env`, which `osf._token` reads only after this confirmation.
 """
 
 from __future__ import annotations

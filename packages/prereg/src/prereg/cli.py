@@ -157,8 +157,8 @@ def _freeze_locked(a, path: pathlib.Path) -> int:
             print(f"  {level:<20} {why}")
         return 1
     # Everything that can refuse runs before anything is written, here or on OSF: a plan whose
-    # sections cannot map, a missing token, a missing attachment, or no confirmation. A refusal
-    # found after the local freeze left a frozen plan with no draft and no clean way to retry.
+    # sections cannot map, a missing attachment, no confirmation or no token. A refusal found
+    # after the local freeze left a frozen plan with no draft and no clean way to retry.
     push = None
     if a.osf:
         try:
@@ -203,6 +203,11 @@ class Push:
 def _prepare_push(path: pathlib.Path, text: str, digest: str, files: list[str]) -> Push:
     """Read the attachments, build the draft and ask for confirmation. Writes nothing.
 
+    The order is the point. The checks that can refuse run first, against OSF's public schema,
+    so a plan that cannot map is refused before anyone is asked anything. The token is read
+    last, after the phrase: reading a pipe-backed `.env` asks the person to approve, and a
+    cancelled command should not have asked.
+
     The bytes read here are the bytes uploaded and the bytes hashed, so the digest logged is of
     exactly what OSF was sent even if the file changes on disk meanwhile.
     """
@@ -213,16 +218,18 @@ def _prepare_push(path: pathlib.Path, text: str, digest: str, files: list[str]) 
     for name in names:
         if "`" in name or not name.isprintable():
             raise RuntimeError(f"{name!r} cannot be written into the log as one entry.")
-    token = osf.require_token()
-    body = osf.build_draft(text, token)
-    summary = [
-        "Creating a draft registration on OSF. Nothing is registered until `prereg register`.",
-        f"  plan    {body['data']['attributes']['title']}  ({path})",
-        f"  sha256  {digest}",
-        *(f"  file    {att.name}  sha256 {att.sha256}" for att in attachments),
-    ]
-    confirm(summary, f"push {digest[:12]}")
-    return Push(token, body, attachments)
+    body = osf.build_draft(text)
+    confirm(
+        [
+            "Creating a draft registration on OSF and uploading its files.",
+            "Nothing is registered until `prereg register`.",
+            f"  plan    {body['data']['attributes']['title']}  ({path})",
+            f"  sha256  {digest}",
+            *(f"  file    {att.name}  sha256 {att.sha256}" for att in attachments),
+        ],
+        f"push {digest[:12]}",
+    )
+    return Push(osf.require_token(), body, attachments)
 
 
 def _push(path: pathlib.Path, push: Push, digest: str, access: str) -> None:
@@ -360,7 +367,6 @@ def cmd_register(a) -> int:
         else "immediate — public as soon as it is approved"
     )
     try:
-        token = osf.require_token()
         confirm(
             [
                 "Registering on OSF. A registration cannot be deleted.",
@@ -372,7 +378,9 @@ def cmd_register(a) -> int:
             ],
             f"register {draft_id}",
         )
-        reg = osf.register(draft_id, embargo, token)
+        # After the confirmation: reading a pipe-backed token asks the person to approve, and a
+        # cancelled command should not have asked.
+        reg = osf.register(draft_id, embargo, osf.require_token())
     except (RuntimeError, NotConfirmed) as e:
         print(str(e))
         return 1
@@ -399,7 +407,6 @@ def cmd_link(a) -> int:
     reg_id = reg.group(1)
     kind = "anonymous — contributors hidden" if a.anonymous else "named — contributors shown"
     try:
-        token = osf.require_token()
         confirm(
             [
                 "Creating a view-only link. Anyone holding it can open the registration,",
@@ -410,7 +417,7 @@ def cmd_link(a) -> int:
             ],
             f"link {reg_id}",
         )
-        link = osf.view_only_link(reg_id, a.anonymous, a.name, token)
+        link = osf.view_only_link(reg_id, a.anonymous, a.name, osf.require_token())
     except (RuntimeError, NotConfirmed) as e:
         print(str(e))
         return 1

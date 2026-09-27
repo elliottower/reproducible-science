@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import os
 import re
+import threading
 
 import pytest
 from prereg import cli, osf, plan, template
@@ -205,3 +207,40 @@ def test_a_failed_schema_fetch_is_an_error_not_a_traceback(tmp_path, monkeypatch
     fake_osf.on("GET", r"schema_blocks", (401, {"errors": [{"detail": "bad token"}]}))
     with pytest.raises(RuntimeError, match=r"401.*bad token"):
         osf.push_draft(_template_plan(tmp_path, monkeypatch))
+
+
+def _fifo_env(tmp_path, monkeypatch):
+    env = tmp_path / ".env"
+    os.mkfifo(env)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("OSF_TOKEN", raising=False)
+    return env
+
+
+def test_token_from_a_named_pipe(tmp_path, monkeypatch):
+    """A secret manager's `.env` is a pipe written only when a reader attaches; `is_file()` is
+    False for one, so the token behind it was never found."""
+    env = _fifo_env(tmp_path, monkeypatch)
+
+    def deliver():
+        with open(env, "w") as w:  # blocks until `_token` opens the read end
+            w.write("OTHER=1\nOSF_TOKEN=piped_token\n")
+
+    writer = threading.Thread(target=deliver, daemon=True)
+    writer.start()
+    assert osf._token() == "piped_token"
+    writer.join(5)
+
+
+def test_a_pipe_nobody_writes_to_times_out_instead_of_hanging(tmp_path, monkeypatch):
+    _fifo_env(tmp_path, monkeypatch)
+    monkeypatch.setattr(osf, "FIFO_TIMEOUT", 0.2)
+    with pytest.raises(RuntimeError, match="did not deliver"):
+        osf._token()
+
+
+def test_a_pipe_is_not_read_when_the_environment_has_the_token(tmp_path, monkeypatch):
+    _fifo_env(tmp_path, monkeypatch)
+    monkeypatch.setenv("OSF_TOKEN", "from_env")
+    monkeypatch.setattr(osf, "FIFO_TIMEOUT", 0.2)
+    assert osf._token() == "from_env", "reading the pipe would have timed out"
