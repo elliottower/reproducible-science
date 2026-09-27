@@ -6,10 +6,14 @@ import json
 import os
 import re
 import urllib.error
+import urllib.parse
 import urllib.request
+from dataclasses import dataclass
 from pathlib import Path
 
 from provenance_core import atomic_write, exclusive_lock
+
+from prereg import template
 
 API = "https://api.osf.io/v2"
 SCHEMA_ID = "697b72f611a8e98484c6139b"
@@ -62,33 +66,84 @@ def _token() -> str | None:
     return None
 
 
-def _request(method: str, path: str, token: str, body: dict | None = None) -> dict:
-    url = f"{API}{path}"
+class OSFError(RuntimeError):
+    """An OSF request failed. The message carries the status and OSF's own error body."""
+
+
+def _request(
+    method: str, path: str, token: str, body: dict | None = None, *, version: str | None = None
+) -> dict:
+    url = path if path.startswith("https://") else f"{API}{path}"
+    if version:
+        # OSF reads the version from a query parameter as well as the Accept header
+        # (api/base/versioning.py, `get_query_param_version`). Without one it serves 2.0.
+        url += ("&" if "?" in url else "?") + urllib.parse.urlencode({"version": version})
     data = json.dumps(body).encode() if body else None
     req = urllib.request.Request(url, data=data, method=method)
     req.add_header("Authorization", f"Bearer {token}")
     req.add_header("Content-Type", "application/vnd.api+json")
     req.add_header("Accept", "application/vnd.api+json")
-    with urllib.request.urlopen(req, timeout=45) as resp:
-        return json.loads(resp.read())
+    return _send(req)
 
 
-def _fetch_schema(token: str) -> dict[str, str]:
-    """Fetch the OSF Preregistration schema and return {question_title: response_key}."""
-    resp = _request("GET", f"/schemas/registrations/{SCHEMA_ID}/", token)
-    blocks = resp["data"]["attributes"]["schema"]["blocks"]
-    mapping = {}
-    for _i, block in enumerate(blocks):
-        if block.get("block_type") in ("question-label", "section-heading"):
-            continue
-        display = block.get("display_text", "")
-        if not display:
-            continue
-        clean = re.sub(r"<[^>]+>", "", display).strip()
-        key = block.get("registration_response_key")
-        if key and clean:
-            mapping[clean] = key
-    return mapping
+def _send(req: urllib.request.Request) -> dict:
+    # Only the POST was wrapped, so a failed schema fetch escaped as a bare HTTPError and
+    # `freeze --osf` ended in a traceback. OSF explains a 400 in the body, and a caller that
+    # prints the status alone has thrown away the one line that says what to fix.
+    try:
+        with urllib.request.urlopen(req, timeout=45) as resp:
+            return json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode(errors="replace") if e.fp else str(e)
+        raise OSFError(
+            f"OSF API error ({e.code}) on {req.get_method()} {req.full_url}: {detail}"
+        ) from e
+    except urllib.error.URLError as e:
+        raise OSFError(f"could not reach OSF ({req.full_url}): {e.reason}") from e
+
+
+@dataclass(frozen=True)
+class Question:
+    key: str
+    kind: str
+    options: tuple[str, ...]
+
+
+def _fetch_schema(token: str) -> dict[str, Question]:
+    """Fetch the OSF Preregistration schema and return {question_title: Question}.
+
+    The response keys live on the schema's `schema_blocks`, not on `attributes.schema.blocks`,
+    which carries the text and no keys. Reading the latter returned an empty map, so every
+    section with content was refused as unmapped. A question's label, its input and the input's
+    options share a `schema_block_group_key`; OSF's own validator joins them the same way
+    (osf/models/validators.py, `_build_question_schema`).
+    """
+    blocks: list[dict] = []
+    page: str | None = f"/schemas/registrations/{SCHEMA_ID}/schema_blocks/"
+    while page:
+        resp = _request("GET", page, token)
+        blocks += [b["attributes"] for b in resp["data"]]
+        page = (resp.get("links") or {}).get("next")
+
+    labels: dict[str, str] = {}
+    options: dict[str, list[str]] = {}
+    inputs: dict[str, dict] = {}
+    for b in blocks:
+        group = b.get("schema_block_group_key") or ""
+        text = re.sub(r"<[^>]+>", "", b.get("display_text") or "").strip()
+        if b["block_type"] == "question-label" and text:
+            labels[group] = text
+        elif b["block_type"] == "select-input-option":
+            options.setdefault(group, []).append(b.get("display_text") or "")
+        elif b.get("registration_response_key"):
+            inputs[group] = b
+    return {
+        labels[g]: Question(
+            b["registration_response_key"], b["block_type"], tuple(options.get(g, []))
+        )
+        for g, b in inputs.items()
+        if g in labels
+    }
 
 
 def _parse_plan(text: str) -> tuple[str, dict[str, str]]:
@@ -118,22 +173,59 @@ def _parse_plan(text: str) -> tuple[str, dict[str, str]]:
     return title, sections
 
 
-def push_draft(plan_text: str) -> tuple[str, str]:
-    """Create a draft registration on OSF from a PREREG.md.
+_HINTS = {f"_{hint}_" for _, hint in template.QUESTIONS if hint}
 
-    Returns (draft_id, url). Raises if token missing or API fails.
+
+def _answer(content: str) -> str | None:
+    """The section's answer, or None where the section gives none.
+
+    A section still holding the template's italic prompt is unanswered: sending the prompt
+    would register the question as its own answer.
     """
-    token = _token()
-    if not token:
-        raise RuntimeError(
-            "no OSF token found. Set OSF_TOKEN in .env or as an environment variable.\n"
-            "Create one at https://osf.io/settings/tokens (scope: osf.full_write)."
-        )
+    text = content.strip()
+    if not text or text in _HINTS or text.rstrip() == "N/A —":
+        return None
+    return text.lstrip("_").rstrip("_").strip() or None
 
+
+def _choose(heading: str, answer: str, q: Question) -> str | list[str]:
+    """Map a select question's answer onto OSF's options, or refuse.
+
+    A select question accepts only its listed options, so prose under one is rejected by OSF
+    after the plan is already frozen locally. Each line has to name one option, by its full
+    text or by a prefix no other option shares. A select question answered `N/A` is left
+    unanswered, which OSF permits: it does not apply.
+    """
+    if answer.startswith("N/A"):
+        return [] if q.kind == "multi-select-input" else ""
+    lines = [ln.strip().lstrip("-*").strip() for ln in answer.splitlines() if ln.strip()]
+    chosen = []
+    for line in lines:
+        hits = [o for o in q.options if o.startswith(line)]
+        if len(hits) != 1:
+            raise RuntimeError(
+                f"{heading!r} is a multiple-choice question on OSF, and {line!r} "
+                f"{'matches more than one' if hits else 'is not one'} of its options. "
+                "Write one option per line, as its full text or a prefix only it has:\n  - "
+                + "\n  - ".join(o for o in q.options if o)
+            )
+        chosen.append(hits[0])
+    if q.kind == "single-select-input":
+        if len(chosen) != 1:
+            raise RuntimeError(f"{heading!r} takes exactly one option on OSF; found {len(chosen)}.")
+        return chosen[0]
+    return chosen
+
+
+def build_draft(plan_text: str, token: str) -> dict:
+    """The draft-registration request body for a plan, or RuntimeError naming what cannot map.
+
+    Separate from sending it so `freeze --osf` can refuse before it writes anything.
+    """
     title, sections = _parse_plan(plan_text)
-    schema_map = _fetch_schema(token)
+    schema = _fetch_schema(token)
 
-    responses = {}
+    responses: dict[str, str | list[str]] = {}
     dropped: list[str] = []
     for heading, content in sections.items():
         question = HEADING_TO_QUESTION.get(heading) or _BY_CASEFOLD.get(heading.casefold())
@@ -145,13 +237,18 @@ def push_draft(plan_text: str) -> tuple[str, str]:
             if heading.casefold() not in _BY_CASEFOLD:
                 dropped.append(heading)
             continue
-        key = schema_map.get(question)
-        if key and content:
-            stripped = content.lstrip("_").rstrip("_").strip()
-            if stripped and stripped != "N/A —":
-                responses[key] = stripped
-        elif content and not key:
+        answer = _answer(content)
+        q = schema.get(question)
+        if answer is None:
+            continue
+        if q is None:
             dropped.append(heading)
+        elif q.kind in ("single-select-input", "multi-select-input"):
+            choice = _choose(heading, answer, q)
+            if choice:
+                responses[q.key] = choice
+        else:
+            responses[q.key] = answer
 
     if dropped:
         # A heading that maps to nothing was skipped without a word, so a section could be
@@ -163,7 +260,7 @@ def push_draft(plan_text: str) -> tuple[str, str]:
             "template's headings, or push without --osf."
         )
 
-    body = {
+    return {
         "data": {
             "type": "draft_registrations",
             "attributes": {
@@ -181,15 +278,31 @@ def push_draft(plan_text: str) -> tuple[str, str]:
         }
     }
 
-    try:
-        resp = _request("POST", "/draft_registrations/", token, body)
-    except urllib.error.HTTPError as e:
-        detail = e.read().decode() if e.fp else str(e)
-        raise RuntimeError(f"OSF API error ({e.code}): {detail}") from e
 
+def require_token() -> str:
+    token = _token()
+    if not token:
+        raise RuntimeError(
+            "no OSF token found. Set OSF_TOKEN in .env or as an environment variable.\n"
+            "Create one at https://osf.io/settings/tokens (scope: osf.full_write)."
+        )
+    return token
+
+
+def create_draft(body: dict, token: str) -> tuple[str, str]:
+    """POST the draft. Returns (draft_id, url)."""
+    resp = _request("POST", "/draft_registrations/", token, body)
     draft_id = resp["data"]["id"]
-    url = f"https://osf.io/{draft_id}"
-    return draft_id, url
+    return draft_id, f"https://osf.io/{draft_id}"
+
+
+def push_draft(plan_text: str) -> tuple[str, str]:
+    """Create a draft registration on OSF from a PREREG.md.
+
+    Returns (draft_id, url). Raises if token missing or API fails.
+    """
+    token = require_token()
+    return create_draft(build_draft(plan_text, token), token)
 
 
 def setup_token(directory: Path | None = None) -> Path:
