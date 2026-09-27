@@ -51,6 +51,7 @@ class FakeOSF:
         return [c for c in self.calls if c.method != "GET"]
 
     def urlopen(self, req: urllib.request.Request, timeout: float | None = None):
+        del timeout  # urllib's signature; the fake never waits
         data = req.data if isinstance(req.data, bytes) or req.data is None else bytes(req.data)
         call = Call(req.get_method(), req.full_url, dict(req.header_items()), data)
         self.calls.append(call)
