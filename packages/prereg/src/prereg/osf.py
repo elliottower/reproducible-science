@@ -138,7 +138,12 @@ def push_draft(plan_text: str) -> tuple[str, str]:
     for heading, content in sections.items():
         question = HEADING_TO_QUESTION.get(heading) or _BY_CASEFOLD.get(heading.casefold())
         if not question:
-            dropped.append(heading)
+            # The four "- File upload" headings map to None on purpose: OSF answers them with
+            # files, not text, so their `N/A` has nowhere to go. Treating them as unmapped
+            # rejected every plan the template produces. Only a heading the table does not
+            # know at all is one that would silently vanish from the registration.
+            if heading.casefold() not in _BY_CASEFOLD:
+                dropped.append(heading)
             continue
         key = schema_map.get(question)
         if key and content:

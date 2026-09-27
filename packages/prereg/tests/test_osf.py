@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from prereg import osf, template
+import pytest
+from prereg import cli, osf, plan, template
 
 
 def test_parse_plan_extracts_title_and_sections():
@@ -94,3 +95,37 @@ def test_setup_token_replaces_existing_token(tmp_path, monkeypatch):
 def test_heading_map_covers_all_template_questions():
     for q, _ in template.QUESTIONS:
         assert q in osf.HEADING_TO_QUESTION, f"template question not in OSF mapping: {q}"
+
+
+def _push_template_plan(tmp_path, monkeypatch, extra: str = "") -> dict:
+    """Run `prereg new`, then push its output with the network replaced; return the body sent.
+
+    `extra` is inserted as plan content, above the log line.
+    """
+    monkeypatch.chdir(tmp_path)
+    assert cli.main(["new", "study"]) == 0
+    text = (tmp_path / "study" / "PREREG.md").read_text().replace(plan.MARK, extra + plan.MARK)
+    sent: dict = {}
+
+    def fake_request(method, path, token, body=None):
+        sent[(method, path)] = body
+        return {"data": {"id": "draft1"}}
+
+    schema = {q: f"key-{i}" for i, q in enumerate(filter(None, osf.HEADING_TO_QUESTION.values()))}
+    monkeypatch.setattr(osf, "_token", lambda: "t")
+    monkeypatch.setattr(osf, "_fetch_schema", lambda token: schema)
+    monkeypatch.setattr(osf, "_request", fake_request)
+    assert osf.push_draft(text) == ("draft1", "https://osf.io/draft1")
+    return sent[("POST", "/draft_registrations/")]
+
+
+def test_a_plan_made_by_prereg_new_is_not_rejected(tmp_path, monkeypatch):
+    """The four `- File upload` headings map to None on purpose and were rejected as unmapped,
+    so no plan the template produced could be pushed."""
+    body = _push_template_plan(tmp_path, monkeypatch)
+    assert body["data"]["type"] == "draft_registrations"
+
+
+def test_a_heading_the_table_does_not_know_is_still_rejected(tmp_path, monkeypatch):
+    with pytest.raises(RuntimeError, match="'Decision rule'"):
+        _push_template_plan(tmp_path, monkeypatch, extra="\n## Decision rule\n\np < 0.05\n")
