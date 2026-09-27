@@ -494,3 +494,34 @@ def test_a_forced_refreeze_after_results_were_seen_must_say_what_was_seen(repo):
     after = log.log_lines((repo / "PREREG.md").read_text())
     assert len(after) == len(before) + 1
     assert "results seen" in after[-1] and "nothing run" not in after[-1]
+
+
+def test_a_refused_access_value_is_told_what_the_levels_mean(repo):
+    # The four words were listed with no meanings, in the help and in this message, so the
+    # difference between `no results seen` and `results not opened` existed only in one README
+    # example. Someone guessing between them is choosing whether the entry is an amendment.
+    run(["freeze"], repo)
+    r = run(["log", "something", "--access", "probably fine"], repo)
+    assert "the run finished and its outputs are unread" in r.stdout
+
+
+def test_the_log_help_says_what_each_access_level_means(repo):
+    out = run(["log", "--help"], repo).stdout
+    assert "no computation has happened for this plan" in out
+    assert "an amendment" in out
+
+
+def test_a_new_plan_ignores_the_lock_sidecars(tmp_path):
+    # A locked write leaves `PREREG.md.provenance-lock` beside the plan. Without this the author
+    # finds an untracked file in their paper's repository with nothing saying what made it.
+    run(["new", "study"], tmp_path)
+    ignored = (tmp_path / "study" / ".gitignore").read_text()
+    assert "*.provenance-lock" in ignored
+    assert "*.provenance-tmp" in ignored
+
+
+def test_a_new_plan_does_not_overwrite_an_existing_gitignore(tmp_path):
+    (tmp_path / "study").mkdir()
+    (tmp_path / "study" / ".gitignore").write_text("mine\n")
+    run(["new", "study"], tmp_path)
+    assert (tmp_path / "study" / ".gitignore").read_text() == "mine\n"

@@ -9,6 +9,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from provenance_core import atomic_write, exclusive_lock
+
 API = "https://api.osf.io/v2"
 SCHEMA_ID = "697b72f611a8e98484c6139b"
 
@@ -198,19 +200,29 @@ def setup_token(directory: Path | None = None) -> Path:
     if not token:
         raise RuntimeError("no token provided")
 
-    if env_path.exists():
-        text = env_path.read_text()
-        lines = [ln for ln in text.splitlines() if not ln.startswith("OSF_TOKEN=")]
-        lines.append(f"OSF_TOKEN={token}")
-        env_path.write_text("\n".join(lines) + "\n")
-    else:
-        env_path.write_text(f"OSF_TOKEN={token}\n")
+    # `.env` is ignored before the token is in it. The two writes were the other way round, so a
+    # crash between them left a credential in a file git was not yet told to skip. Ordering costs
+    # nothing and the window is the whole exposure.
+    with exclusive_lock(gitignore):
+        if gitignore.exists():
+            gi = gitignore.read_text()
+            if ".env" not in gi.splitlines():
+                atomic_write(gitignore, gi.rstrip("\n") + "\n.env\n")
+        else:
+            atomic_write(gitignore, ".env\n")
 
-    if gitignore.exists():
-        gi = gitignore.read_text()
-        if ".env" not in gi.splitlines():
-            gitignore.write_text(gi.rstrip("\n") + "\n.env\n")
-    else:
-        gitignore.write_text(".env\n")
+    # Read and write under one hold: a concurrent `prereg setup` reading the same snapshot would
+    # drop whichever token was written second, and every other variable in the file with it.
+    with exclusive_lock(env_path):
+        if env_path.exists():
+            text = env_path.read_text()
+            lines = [ln for ln in text.splitlines() if not ln.startswith("OSF_TOKEN=")]
+            lines.append(f"OSF_TOKEN={token}")
+            atomic_write(env_path, "\n".join(lines) + "\n")
+        else:
+            atomic_write(env_path, f"OSF_TOKEN={token}\n")
+        # A token is not a record. `atomic_write` keeps an existing file's mode, and a new one
+        # gets the umask default, which on a shared machine is world-readable.
+        env_path.chmod(0o600)
 
     return env_path

@@ -16,12 +16,14 @@ import pathlib
 import re
 import sys
 
-from provenance_core import hint
+from provenance_core import atomic_write, exclusive_lock, hint, shared_lock
 from provenance_core.gitref import try_run
 
 from prereg import osf, template
 from prereg.log import (
     ACCESS,
+    ACCESS_HELP,
+    ACCESS_MEANING,
     append,
     log_problems,
 )
@@ -47,6 +49,17 @@ def git(*args, cwd=None) -> str:
     return try_run(*args, cwd=cwd) or ""
 
 
+#: What a plan's directory should not track. A locked write leaves a sidecar beside `PREREG.md`,
+#: and `prereg new` wrote no `.gitignore`, so it turned up in the author's repository as an
+#: untracked file with no explanation of what had created it.
+NEW_GITIGNORE = """\
+# Sidecars from provenance_core.locking. They hold nothing: the kernel releases a lock when its
+# holder exits, and a leftover temp file means a write was killed partway through.
+*.provenance-lock
+*.provenance-tmp
+"""
+
+
 def cmd_new(a) -> int:
     d = pathlib.Path(a.name)
     if (d / PREREG).exists():
@@ -56,6 +69,8 @@ def cmd_new(a) -> int:
     (d / "results").mkdir(exist_ok=True)
     title = a.title or d.name.replace("_", " ").replace("-", " ")
     (d / PREREG).write_text(template.render(title, today()))
+    if not (d / ".gitignore").exists():
+        (d / ".gitignore").write_text(NEW_GITIGNORE)
     print(f"created {d}/")
     print(f"  {PREREG}   the plan, in OSF's headings")
     print("  tests/  results/")
@@ -68,6 +83,17 @@ def cmd_freeze(a) -> int:
     if path is None:
         print(f"no {PREREG} here or above. `prereg new <name>` makes one.")
         return 2
+    # The plan is read below and written near the end of this function, and `prereg log` appends
+    # to the same file. Without a hold across both, a log entry landing between them is erased --
+    # and `set_log_anchor` runs over the stale text too, so the surviving chain and its count
+    # agree and `check` reports nothing missing. Freeze was bypassing the lock the log itself
+    # takes, which is the silent loss that chain exists to make visible.
+    with exclusive_lock(path):
+        return _freeze_locked(a, path)
+
+
+def _freeze_locked(a, path: pathlib.Path) -> int:
+    """The freeze itself. Assumes the caller holds the lock for `path`."""
     text = path.read_text()
     if STATUS_BLOCK.search(text) is None:
         print(f"{path} has no `**Status:**` line, so there is nowhere to record the freeze.")
@@ -112,7 +138,7 @@ def cmd_freeze(a) -> int:
     text = rewrite_status(text, commit, placeholder, today())
     digest = sha256_of(plan_of(text))
     text = text.replace(f"`{placeholder}`", f"`{digest}`", 1)
-    path.write_text(text)
+    atomic_write(path, text)
     # `nothing run` was unconditional, so a rewrite forced after a `results seen` entry logged
     # itself as an amendment directly beneath the line saying the outcomes had been examined.
     # The template calls that column the thing that distinguishes an amendment from a
@@ -120,8 +146,9 @@ def cmd_freeze(a) -> int:
     access = getattr(a, "access", None) or ("nothing run" if not a.force else None)
     if access is None:
         print(f"{path} is being re-frozen, and the log already records what has been seen.")
-        print("Pass --access with one of: nothing run, no results seen, results not opened,")
-        print("results seen. A forced re-freeze cannot describe itself.")
+        print("A forced re-freeze cannot describe itself. Pass --access with one of:")
+        for level, why in ACCESS_MEANING.items():
+            print(f"  {level:<20} {why}")
         return 1
     append(path, today(), f"frozen at {commit[:12]}", access)
     print(f"frozen  {path}")
@@ -147,7 +174,9 @@ def cmd_log(a) -> int:
         print(f"no {PREREG} here or above.")
         return 2
     if a.access not in ACCESS:
-        print(f"access must be one of: {', '.join(ACCESS)}")
+        print("access must be one of:")
+        for level, why in ACCESS_MEANING.items():
+            print(f"  {level:<20} {why}")
         return 1
     # The log is the tamper record, so a note is not free text. One line of it is one entry, and
     # a note carrying a newline writes a second line that reads exactly like an entry somebody
@@ -168,7 +197,11 @@ def cmd_log(a) -> int:
 
 def check_one(path: pathlib.Path) -> int:
     """0 unchanged, 1 changed, 2 not frozen."""
-    text = path.read_text()
+    # Read under a shared lock: a freeze or a log entry in flight would otherwise be read
+    # half-written and reported as `CHANGED` or `not frozen`, which is a tampering report against
+    # a plan nobody touched.
+    with shared_lock(path):
+        text = path.read_text()
     m = re.search(r"\*\*Plan sha256:\*\* `([0-9a-f]{64})`", text)
     if not m:
         print(f"not frozen   {path}")
@@ -275,15 +308,18 @@ def _main(argv: list[str] | None = None) -> int:
     f.add_argument("--force", action="store_true")
     f.add_argument(
         "--access",
-        choices=["nothing run", "no results seen", "results not opened", "results seen"],
-        help="what had been seen when this freeze was recorded; required with --force",
+        choices=ACCESS,
+        metavar="LEVEL",
+        help="required with --force. " + ACCESS_HELP,
     )
     f.add_argument("--osf", action="store_true", help="push as a draft registration to OSF")
     f.set_defaults(fn=cmd_freeze)
 
     lg = sub.add_parser("log", help="append a line")
     lg.add_argument("note")
-    lg.add_argument("--access", default="no results seen", help=f"one of: {', '.join(ACCESS)}")
+    # Validated in `cmd_log` rather than by argparse: `choices` makes an unknown level exit 2,
+    # which this CLI documents as "could not measure". A bad argument is a refusal, which is 1.
+    lg.add_argument("--access", default="no results seen", metavar="LEVEL", help=ACCESS_HELP)
     lg.set_defaults(fn=cmd_log)
 
     s = sub.add_parser("setup", help="save OSF token to .env")

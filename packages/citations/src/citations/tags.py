@@ -35,6 +35,7 @@ import pathlib
 from dataclasses import dataclass, field
 
 import yaml
+from provenance_core import atomic_write, exclusive_lock
 
 from citations import paths, projects
 from citations.exceptions import CitationsError
@@ -280,6 +281,11 @@ def apply(
 
     Removal exists for the same reason: the undo for a bulk write has to be as cheap as the
     write, or a mistaken one gets repaired by hand across 384 files.
+
+    The selection and the writes are held under the records directory's lock, the same one
+    `build` and `projects rename` take. Each record is read whole and written whole, so two bulk
+    writes reading the same 384 records each write back its own tag and the second erases the
+    first across every file, reporting 384 records changed either way.
     """
     library = pathlib.Path(library)
     known = vocabulary(library)
@@ -290,18 +296,21 @@ def apply(
         )
 
     changed: list[pathlib.Path] = []
-    for record in _selected(library, cited_by):
-        loaded = yaml.safe_load(record.read_text()) or {}
-        current = [str(t) for t in (loaded.get("tags") or [])]
-        wanted = [t for t in current if t != tag] if remove else sorted({*current, tag})
-        if wanted == current:
-            continue
-        if wanted:
-            loaded["tags"] = wanted
-        else:
-            loaded.pop("tags", None)
-        record.write_text(yaml.safe_dump(loaded, sort_keys=False, width=100, allow_unicode=True))
-        changed.append(record)
+    with exclusive_lock(library / "records"):
+        for record in _selected(library, cited_by):
+            loaded = yaml.safe_load(record.read_text()) or {}
+            current = [str(t) for t in (loaded.get("tags") or [])]
+            wanted = [t for t in current if t != tag] if remove else sorted({*current, tag})
+            if wanted == current:
+                continue
+            if wanted:
+                loaded["tags"] = wanted
+            else:
+                loaded.pop("tags", None)
+            atomic_write(
+                record, yaml.safe_dump(loaded, sort_keys=False, width=100, allow_unicode=True)
+            )
+            changed.append(record)
     return changed
 
 

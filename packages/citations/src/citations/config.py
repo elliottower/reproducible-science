@@ -21,6 +21,7 @@ from __future__ import annotations
 import pathlib
 
 import yaml
+from provenance_core import atomic_write
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from citations import paths
@@ -88,7 +89,13 @@ def load(library: pathlib.Path | None = None) -> LibraryConfig:
 
 
 def save(cfg: LibraryConfig, library: pathlib.Path | None = None) -> pathlib.Path:
-    """Write `papers.yaml`, with a header saying what it is."""
+    """Write `papers.yaml`, with a header saying what it is.
+
+    Replaced rather than truncated and refilled. `papers.yaml` is the only record of which
+    bibliographies feed the library, and a write killed between the two halves leaves a file that
+    `load` raises `not valid YAML` on: every configured paper is gone, and nothing on disk says
+    which ones there were.
+    """
     library = library or paths.home()
     p = config_path(library)
     body = {
@@ -97,10 +104,11 @@ def save(cfg: LibraryConfig, library: pathlib.Path | None = None) -> pathlib.Pat
             for name, paper in cfg.papers.items()
         }
     }
-    p.write_text(
+    atomic_write(
+        p,
         "# Papers that cite into this library, and where their bibliographies live.\n"
         "# Paths may be absolute, use ~, or be relative to this directory.\n"
         "# `citations build` reads this; nothing writes to it automatically.\n"
-        + yaml.safe_dump(body, sort_keys=True, allow_unicode=True, width=100)
+        + yaml.safe_dump(body, sort_keys=True, allow_unicode=True, width=100),
     )
     return p

@@ -28,7 +28,7 @@ import pathlib
 from dataclasses import dataclass, field
 
 import yaml
-from provenance_core import try_run
+from provenance_core import atomic_write, exclusive_lock, try_run
 
 from citations import paths
 from citations.exceptions import CitationsError
@@ -207,19 +207,29 @@ def rename(library: pathlib.Path, old: str, new: str) -> list[pathlib.Path]:
 
     A record already carrying `new` keeps it, and the `old` entry is dropped rather than
     overwriting what is there.
+
+    Held under the records directory's lock, the same one `build` and `tags` take. Every record
+    is read whole and written whole, so a rename racing a bulk tag write loses whichever change
+    was read first, and one racing a build loses itself: `carry_citations` reads the old
+    `cited_by` of a paper whose bibliography was not read and writes back the name this call had
+    removed. The directory is the unit -- a hold taken per record at the write would come after
+    the read that has already gone stale.
     """
     changed: list[pathlib.Path] = []
-    for record in sorted((library / "records").glob("*.yaml")):
-        text = record.read_text()
-        loaded = yaml.safe_load(text) or {}
-        cited = loaded.get("cited_by") or {}
-        if old not in cited:
-            continue
-        entry = cited.pop(old)
-        cited.setdefault(new, entry)
-        loaded["cited_by"] = cited
-        record.write_text(yaml.safe_dump(loaded, sort_keys=False, width=100, allow_unicode=True))
-        changed.append(record)
+    with exclusive_lock(library / "records"):
+        for record in sorted((library / "records").glob("*.yaml")):
+            text = record.read_text()
+            loaded = yaml.safe_load(text) or {}
+            cited = loaded.get("cited_by") or {}
+            if old not in cited:
+                continue
+            entry = cited.pop(old)
+            cited.setdefault(new, entry)
+            loaded["cited_by"] = cited
+            atomic_write(
+                record, yaml.safe_dump(loaded, sort_keys=False, width=100, allow_unicode=True)
+            )
+            changed.append(record)
     return changed
 
 

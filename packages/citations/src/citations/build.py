@@ -27,6 +27,7 @@ import re
 import unicodedata
 
 import yaml
+from provenance_core import atomic_write, exclusive_lock
 
 from citations import bibtex, config, paths
 from citations.exceptions import ClaimFileError
@@ -548,91 +549,106 @@ def main(argv: list[str] | None = None) -> int:
                 rec["authors"] = e["authors"]
             rec["cited_by"][paper] = {"key": key}
 
-    kept = carry_forward(merged)
-    restored = carry_citations(merged, {m.split(":", 1)[0] for m in missing})
-    pinned = carry_pins(merged)
-    shared = {s: r for s, r in merged.items() if len(r["cited_by"]) > 1}
-    divergent = {
-        s: r for s, r in shared.items() if len({c["key"] for c in r["cited_by"].values()}) > 1
-    }
-    print(f"\n  distinct works            {len(merged):>4}")
-    print(f"  cited by 2+ papers        {len(shared):>4}")
-    print(f"  ...under divergent keys   {len(divergent):>4}")
-    unidentified = sum(1 for r in merged.values() if r["slug"].startswith("t-"))
-    print(f"  with no DOI or arXiv id   {unidentified:>4}   (joined on title, less reliable)")
-    print(f"  fields carried forward    {kept:>4}   (resolved after the .bib was written)")
-    print(f"  filled from claims/sources{filled:>4}   (pinned artifacts and identifiers)")
-    if pinned:
-        print(f"  pins kept             {pinned:>8}   (artifacts no bibliography repins)")
-    if restored:
-        print(
-            f"  citations kept        {restored:>8}   "
-            "(papers above whose bibliography was not read)"
-        )
-
-    if divergent:
-        # Naming the divergence without naming a winner leaves the reader to pick one, which
-        # is how the divergence started. `preferred_key` is the answer where the library has
-        # decided; where it has not, the line says so rather than implying any key is fine.
-        undecided = sum(1 for r in divergent.values() if not r.get("preferred_key"))
-        print("\n  same work, different key:")
-        for r in list(divergent.values())[:12]:
-            keys = ", ".join(f"{p}={c['key']}" for p, c in r["cited_by"].items())
-            pick = r.get("preferred_key")
-            print(f"    {r['title'][:52]:<54}{keys}")
-            print(f"    {'':<54}use {pick}" if pick else f"    {'':<54}no preferred key set")
-        if undecided:
+    # Every record is read whole and written whole, and the reads that decide what a write
+    # keeps -- the pins, the citations of a paper whose bibliography was not read -- happen
+    # here, several steps before the write. Under one hold, so a `tags` or `projects rename`
+    # write landing in between is not silently regenerated away, and so two builds cannot
+    # interleave a read of one record with the other's write of it. The directory is the
+    # unit: a per-record hold taken at the write would come after the read it has to cover.
+    with exclusive_lock(paths.records()):
+        kept = carry_forward(merged)
+        restored = carry_citations(merged, {m.split(":", 1)[0] for m in missing})
+        pinned = carry_pins(merged)
+        shared = {s: r for s, r in merged.items() if len(r["cited_by"]) > 1}
+        divergent = {
+            s: r for s, r in shared.items() if len({c["key"] for c in r["cited_by"].values()}) > 1
+        }
+        print(f"\n  distinct works            {len(merged):>4}")
+        print(f"  cited by 2+ papers        {len(shared):>4}")
+        print(f"  ...under divergent keys   {len(divergent):>4}")
+        unidentified = sum(1 for r in merged.values() if r["slug"].startswith("t-"))
+        print(f"  with no DOI or arXiv id   {unidentified:>4}   (joined on title, less reliable)")
+        print(f"  fields carried forward    {kept:>4}   (resolved after the .bib was written)")
+        print(f"  filled from claims/sources{filled:>4}   (pinned artifacts and identifiers)")
+        if pinned:
+            print(f"  pins kept             {pinned:>8}   (artifacts no bibliography repins)")
+        if restored:
             print(
-                f"\n  {undecided} of {len(divergent)} have no preferred key. Set one in "
-                f"{enrichment.name} keyed by slug:"
+                f"  citations kept        {restored:>8}   "
+                "(papers above whose bibliography was not read)"
             )
-            print("      <slug>:\n        preferred_key: smith2025thing")
 
-    doubled = same_work(merged)
-    if doubled:
-        # Reported rather than merged. The cause is upstream: one bibliography named an
-        # identifier and another named none, so the fix belongs in the .bib that is silent,
-        # where it also fixes every future build and every other library reading that file.
-        # Merging here would hide a defect in a bibliography behind a correct-looking library.
-        print(f"\n  same work, different slug   {len(doubled):>4}")
-        for slugs in list(doubled.values())[:12]:
-            identified = [s for s in slugs if not s.startswith("t-")]
-            print(f"    {merged[slugs[0]]['title'][:52]:<54}{', '.join(slugs)}")
-            if identified and len(identified) < len(slugs):
-                have = merged[identified[0]]
-                which = f"doi = {have['doi']}" if have.get("doi") else f"eprint = {have['arxiv']}"
-                print(f"    {'':<54}add {which} to the entry that omits it")
-        print(
-            f"\n  {len(doubled)} works have more than one record, so `cited_by` is split "
-            f"between them.\n  A record is generated, so deleting one returns it on the next "
-            f"build. Supply the\n  missing identifier -- in the .bib, or by `citations resolve` "
-            f"into the enrichment\n  file -- and the record re-slugs onto its twin."
-        )
+        if divergent:
+            # Naming the divergence without naming a winner leaves the reader to pick one, which
+            # is how the divergence started. `preferred_key` is the answer where the library has
+            # decided; where it has not, the line says so rather than implying any key is fine.
+            undecided = sum(1 for r in divergent.values() if not r.get("preferred_key"))
+            print("\n  same work, different key:")
+            for r in list(divergent.values())[:12]:
+                keys = ", ".join(f"{p}={c['key']}" for p, c in r["cited_by"].items())
+                pick = r.get("preferred_key")
+                print(f"    {r['title'][:52]:<54}{keys}")
+                print(f"    {'':<54}use {pick}" if pick else f"    {'':<54}no preferred key set")
+            if undecided:
+                print(
+                    f"\n  {undecided} of {len(divergent)} have no preferred key. Set one in "
+                    f"{enrichment.name} keyed by slug:"
+                )
+                print("      <slug>:\n        preferred_key: smith2025thing")
 
-    losing, stale = audit_existing(merged)
-    if losing:
-        print("\n  identifiers on disk that this rebuild does not have:")
-        for slug, field, val in losing[:12]:
-            print(f"    {slug:<44}{field}={val}")
-        print(f"  {len(losing)} in total. Records are generated, so these are dropped on write.")
-        print(f"  Put them in the citing .bib, or in {enrichment.name} keyed by slug. An")
-        print("  identifier supplied either way re-slugs the record, so a title-hash record")
-        print("  joins the twin it was split from.")
-    if stale:
-        print(
-            f"\n  {len(stale)} record file(s) no longer produced by any bibliography (superseded);"
-        )
-        print("  they remain on disk and are not deleted.")
-
-    if not a.scan:
-        records = paths.records()
-        records.mkdir(parents=True, exist_ok=True)
-        for s, r in merged.items():
-            (records / f"{s}.yaml").write_text(
-                yaml.safe_dump(r, sort_keys=False, allow_unicode=True, width=100)
+        doubled = same_work(merged)
+        if doubled:
+            # Reported rather than merged. The cause is upstream: one bibliography named an
+            # identifier and another named none, so the fix belongs in the .bib that is silent,
+            # where it also fixes every future build and every other library reading that file.
+            # Merging here would hide a defect in a bibliography behind a correct-looking library.
+            print(f"\n  same work, different slug   {len(doubled):>4}")
+            for slugs in list(doubled.values())[:12]:
+                identified = [s for s in slugs if not s.startswith("t-")]
+                print(f"    {merged[slugs[0]]['title'][:52]:<54}{', '.join(slugs)}")
+                if identified and len(identified) < len(slugs):
+                    have = merged[identified[0]]
+                    which = (
+                        f"doi = {have['doi']}" if have.get("doi") else f"eprint = {have['arxiv']}"
+                    )
+                    print(f"    {'':<54}add {which} to the entry that omits it")
+            print(
+                f"\n  {len(doubled)} works have more than one record, so `cited_by` is split "
+                f"between them.\n  A record is generated, so deleting one returns it on the next "
+                f"build. Supply the\n  missing identifier -- in the .bib, or by `citations resolve` "
+                f"into the enrichment\n  file -- and the record re-slugs onto its twin."
             )
-        print(f"\n  wrote {len(merged)} records")
-    return 0
+
+        losing, stale = audit_existing(merged)
+        if losing:
+            print("\n  identifiers on disk that this rebuild does not have:")
+            for slug, field, val in losing[:12]:
+                print(f"    {slug:<44}{field}={val}")
+            print(
+                f"  {len(losing)} in total. Records are generated, so these are dropped on write."
+            )
+            print(f"  Put them in the citing .bib, or in {enrichment.name} keyed by slug. An")
+            print("  identifier supplied either way re-slugs the record, so a title-hash record")
+            print("  joins the twin it was split from.")
+        if stale:
+            print(
+                f"\n  {len(stale)} record file(s) no longer produced by any bibliography (superseded);"
+            )
+            print("  they remain on disk and are not deleted.")
+
+        if not a.scan:
+            records = paths.records()
+            records.mkdir(parents=True, exist_ok=True)
+            for s, r in merged.items():
+                # Atomically: a record is what every other command reads, and a truncating write
+                # interrupted partway through leaves one that parses as nothing rather than as
+                # the work it describes.
+                atomic_write(
+                    records / f"{s}.yaml",
+                    yaml.safe_dump(r, sort_keys=False, allow_unicode=True, width=100),
+                )
+            print(f"\n  wrote {len(merged)} records")
+        return 0
 
 
 if __name__ == "__main__":
