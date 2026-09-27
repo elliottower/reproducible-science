@@ -26,10 +26,16 @@ the one thing this skill exists to prevent.
 prereg new <name>      # scaffold PREREG.md in OSF's headings, plus tests/ and results/
 prereg freeze          # write the header, hash the plan, append to the log
 prereg freeze --osf    # freeze and push as a draft registration to OSF
+prereg freeze --osf --attach ../CONTEXT.md   # and register a shared file with it
+prereg register --embargo YYYY-MM-DD --access <level>   # or --immediate; irreversible
+prereg link --anonymous --access <level>     # view-only link for double-blind review
 prereg setup           # save OSF token to .env (once)
 prereg log <note> --access <level>
 prereg check           # has anything above the log line changed since the freeze?
 ```
+
+Every OSF write asks for a typed phrase on the terminal, and refuses without one. An agent
+cannot answer it: give the person the exact command to run themselves.
 
 ## Freezing, in order
 
