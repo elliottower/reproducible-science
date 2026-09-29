@@ -2,14 +2,21 @@
 
 from __future__ import annotations
 
+import datetime
 import json
 import os
 import re
+import stat
+import threading
 import urllib.error
+import urllib.parse
 import urllib.request
+from dataclasses import dataclass
 from pathlib import Path
 
 from provenance_core import atomic_write, exclusive_lock
+
+from prereg import template
 
 API = "https://api.osf.io/v2"
 SCHEMA_ID = "697b72f611a8e98484c6139b"
@@ -48,47 +55,151 @@ HEADING_TO_QUESTION = {
 _BY_CASEFOLD = {k.casefold(): v for k, v in HEADING_TO_QUESTION.items()}
 
 
+# How long to wait for a `.env` that is a named pipe. A secret manager that exposes one (a
+# 1Password-managed environment does) writes to it only after the person approves the read, so
+# the wait is for a human; the bound is what stops a dismissed prompt from hanging forever.
+FIFO_TIMEOUT = 60.0
+
+
+def _read_env(env: Path) -> str:
+    """The text of a `.env`, which may be a regular file or a named pipe.
+
+    A pipe blocks on open until its writer attaches, and a non-blocking open returns nothing
+    because nothing has been written yet. So the read runs in a daemon thread and is abandoned
+    after `FIFO_TIMEOUT`: the thread may stay blocked, but the command does not.
+    """
+    if not stat.S_ISFIFO(env.stat().st_mode):
+        return env.read_text()
+    box: dict[str, object] = {}
+
+    def read() -> None:
+        try:
+            box["text"] = env.read_text()
+        except OSError as e:
+            box["error"] = e
+
+    reader = threading.Thread(target=read, daemon=True)
+    reader.start()
+    reader.join(FIFO_TIMEOUT)
+    if "text" in box:
+        return str(box["text"])
+    if "error" in box:
+        raise RuntimeError(f"could not read {env}: {box['error']}")
+    raise RuntimeError(
+        f"{env} is a named pipe and nothing was written to it in {FIFO_TIMEOUT:.0f}s. The secret "
+        "manager behind it did not deliver; its approval prompt was probably dismissed."
+    )
+
+
 def _token() -> str | None:
+    """OSF_TOKEN from the environment, or from the nearest `.env` here or above that sets it.
+
+    Called only when a request is about to be made: reading a pipe-backed `.env` asks the
+    person to approve, and a command that makes no request should not ask.
+    """
     token = os.environ.get("OSF_TOKEN")
     if token:
         return token
     for p in [Path.cwd(), *Path.cwd().parents]:
         env = p / ".env"
-        if env.is_file():
-            for line in env.read_text().splitlines():
-                line = line.strip()
-                if line.startswith("OSF_TOKEN=") and not line.startswith("#"):
-                    return line.split("=", 1)[1].strip().strip("'\"")
+        # `is_file()` is False for a named pipe, so a secret manager's pipe was passed over as
+        # if there were no `.env` at all.
+        if not (env.is_file() or env.is_fifo()):
+            continue
+        for line in _read_env(env).splitlines():
+            line = line.strip()
+            if line.startswith("OSF_TOKEN=") and not line.startswith("#"):
+                return line.split("=", 1)[1].strip().strip("'\"")
     return None
 
 
-def _request(method: str, path: str, token: str, body: dict | None = None) -> dict:
-    url = f"{API}{path}"
+class OSFError(RuntimeError):
+    """An OSF request failed. The message carries the status and OSF's own error body."""
+
+
+def _request(
+    method: str,
+    path: str,
+    token: str | None,
+    body: dict | None = None,
+    *,
+    version: str | None = None,
+) -> dict:
+    url = path if path.startswith("https://") else f"{API}{path}"
+    if version:
+        # OSF reads the version from a query parameter as well as the Accept header
+        # (api/base/versioning.py, `get_query_param_version`). Without one it serves 2.0.
+        url += ("&" if "?" in url else "?") + urllib.parse.urlencode({"version": version})
     data = json.dumps(body).encode() if body else None
     req = urllib.request.Request(url, data=data, method=method)
-    req.add_header("Authorization", f"Bearer {token}")
+    if token:
+        req.add_header("Authorization", f"Bearer {token}")
     req.add_header("Content-Type", "application/vnd.api+json")
     req.add_header("Accept", "application/vnd.api+json")
-    with urllib.request.urlopen(req, timeout=45) as resp:
-        return json.loads(resp.read())
+    return _send(req)
 
 
-def _fetch_schema(token: str) -> dict[str, str]:
-    """Fetch the OSF Preregistration schema and return {question_title: response_key}."""
-    resp = _request("GET", f"/schemas/registrations/{SCHEMA_ID}/", token)
-    blocks = resp["data"]["attributes"]["schema"]["blocks"]
-    mapping = {}
-    for _i, block in enumerate(blocks):
-        if block.get("block_type") in ("question-label", "section-heading"):
-            continue
-        display = block.get("display_text", "")
-        if not display:
-            continue
-        clean = re.sub(r"<[^>]+>", "", display).strip()
-        key = block.get("registration_response_key")
-        if key and clean:
-            mapping[clean] = key
-    return mapping
+def _send(req: urllib.request.Request) -> dict:
+    # Only the POST was wrapped, so a failed schema fetch escaped as a bare HTTPError and
+    # `freeze --osf` ended in a traceback. OSF explains a 400 in the body, and a caller that
+    # prints the status alone has thrown away the one line that says what to fix.
+    try:
+        with urllib.request.urlopen(req, timeout=45) as resp:
+            return json.loads(resp.read())
+    except urllib.error.HTTPError as e:
+        detail = e.read().decode(errors="replace") if e.fp else str(e)
+        raise OSFError(
+            f"OSF API error ({e.code}) on {req.get_method()} {req.full_url}: {detail}"
+        ) from e
+    except urllib.error.URLError as e:
+        raise OSFError(f"could not reach OSF ({req.full_url}): {e.reason}") from e
+
+
+@dataclass(frozen=True)
+class Question:
+    key: str
+    kind: str
+    options: tuple[str, ...]
+
+
+def _fetch_schema(token: str | None = None) -> dict[str, Question]:
+    """Fetch the OSF Preregistration schema and return {question_title: Question}.
+
+    The response keys live on the schema's `schema_blocks`, not on `attributes.schema.blocks`,
+    which carries the text and no keys. Reading the latter returned an empty map, so every
+    section with content was refused as unmapped. A question's label, its input and the input's
+    options share a `schema_block_group_key`; OSF's own validator joins them the same way
+    (osf/models/validators.py, `_build_question_schema`).
+
+    The schema is public, so this needs no token: a plan can be checked against it before
+    anyone is asked to release one.
+    """
+    blocks: list[dict] = []
+    page: str | None = f"/schemas/registrations/{SCHEMA_ID}/schema_blocks/"
+    while page:
+        resp = _request("GET", page, token)
+        blocks += [b["attributes"] for b in resp["data"]]
+        page = (resp.get("links") or {}).get("next")
+
+    labels: dict[str, str] = {}
+    options: dict[str, list[str]] = {}
+    inputs: dict[str, dict] = {}
+    for b in blocks:
+        group = b.get("schema_block_group_key") or ""
+        text = re.sub(r"<[^>]+>", "", b.get("display_text") or "").strip()
+        if b["block_type"] == "question-label" and text:
+            labels[group] = text
+        elif b["block_type"] == "select-input-option":
+            options.setdefault(group, []).append(b.get("display_text") or "")
+        elif b.get("registration_response_key"):
+            inputs[group] = b
+    return {
+        labels[g]: Question(
+            b["registration_response_key"], b["block_type"], tuple(options.get(g, []))
+        )
+        for g, b in inputs.items()
+        if g in labels
+    }
 
 
 def _parse_plan(text: str) -> tuple[str, dict[str, str]]:
@@ -118,35 +229,82 @@ def _parse_plan(text: str) -> tuple[str, dict[str, str]]:
     return title, sections
 
 
-def push_draft(plan_text: str) -> tuple[str, str]:
-    """Create a draft registration on OSF from a PREREG.md.
+_HINTS = {f"_{hint}_" for _, hint in template.QUESTIONS if hint}
 
-    Returns (draft_id, url). Raises if token missing or API fails.
+
+def _answer(content: str) -> str | None:
+    """The section's answer, or None where the section gives none.
+
+    A section still holding the template's italic prompt is unanswered: sending the prompt
+    would register the question as its own answer.
     """
-    token = _token()
-    if not token:
-        raise RuntimeError(
-            "no OSF token found. Set OSF_TOKEN in .env or as an environment variable.\n"
-            "Create one at https://osf.io/settings/tokens (scope: osf.full_write)."
-        )
+    text = content.strip()
+    if not text or text in _HINTS or text.rstrip() == "N/A —":
+        return None
+    return text.lstrip("_").rstrip("_").strip() or None
 
+
+def _choose(heading: str, answer: str, q: Question) -> str | list[str]:
+    """Map a select question's answer onto OSF's options, or refuse.
+
+    A select question accepts only its listed options, so prose under one is rejected by OSF
+    after the plan is already frozen locally. Each line has to name one option, by its full
+    text or by a prefix no other option shares. A select question answered `N/A` is left
+    unanswered, which OSF permits: it does not apply.
+    """
+    if answer.startswith("N/A"):
+        return [] if q.kind == "multi-select-input" else ""
+    lines = [ln.strip().lstrip("-*").strip() for ln in answer.splitlines() if ln.strip()]
+    chosen = []
+    for line in lines:
+        hits = [o for o in q.options if o.startswith(line)]
+        if len(hits) != 1:
+            raise RuntimeError(
+                f"{heading!r} is a multiple-choice question on OSF, and {line!r} "
+                f"{'matches more than one' if hits else 'is not one'} of its options. "
+                "Write one option per line, as its full text or a prefix only it has:\n  - "
+                + "\n  - ".join(o for o in q.options if o)
+            )
+        chosen.append(hits[0])
+    if q.kind == "single-select-input":
+        if len(chosen) != 1:
+            raise RuntimeError(f"{heading!r} takes exactly one option on OSF; found {len(chosen)}.")
+        return chosen[0]
+    return chosen
+
+
+def build_draft(plan_text: str, token: str | None = None) -> dict:
+    """The draft-registration request body for a plan, or RuntimeError naming what cannot map.
+
+    Separate from sending it so `freeze --osf` can refuse before it writes anything.
+    """
     title, sections = _parse_plan(plan_text)
-    schema_map = _fetch_schema(token)
+    schema = _fetch_schema(token)
 
-    responses = {}
+    responses: dict[str, str | list[str]] = {}
     dropped: list[str] = []
     for heading, content in sections.items():
         question = HEADING_TO_QUESTION.get(heading) or _BY_CASEFOLD.get(heading.casefold())
         if not question:
-            dropped.append(heading)
+            # The four "- File upload" headings map to None on purpose: OSF answers them with
+            # files, not text, so their `N/A` has nowhere to go. Treating them as unmapped
+            # rejected every plan the template produces. Only a heading the table does not
+            # know at all is one that would silently vanish from the registration.
+            if heading.casefold() not in _BY_CASEFOLD:
+                dropped.append(heading)
             continue
-        key = schema_map.get(question)
-        if key and content:
-            stripped = content.lstrip("_").rstrip("_").strip()
-            if stripped and stripped != "N/A —":
-                responses[key] = stripped
-        elif content and not key:
+        answer = _answer(content)
+        q = schema.get(question)
+        if answer is None:
+            continue
+        if q is None:
             dropped.append(heading)
+        elif q.kind in ("single-select-input", "multi-select-input"):
+            choice = _choose(heading, answer, q)
+            if choice:
+                responses[q.key] = choice
+        else:
+            responses[q.key] = answer
 
     if dropped:
         # A heading that maps to nothing was skipped without a word, so a section could be
@@ -158,7 +316,7 @@ def push_draft(plan_text: str) -> tuple[str, str]:
             "template's headings, or push without --osf."
         )
 
-    body = {
+    return {
         "data": {
             "type": "draft_registrations",
             "attributes": {
@@ -176,15 +334,170 @@ def push_draft(plan_text: str) -> tuple[str, str]:
         }
     }
 
-    try:
-        resp = _request("POST", "/draft_registrations/", token, body)
-    except urllib.error.HTTPError as e:
-        detail = e.read().decode() if e.fp else str(e)
-        raise RuntimeError(f"OSF API error ({e.code}): {detail}") from e
 
-    draft_id = resp["data"]["id"]
-    url = f"https://osf.io/{draft_id}"
-    return draft_id, url
+def require_token() -> str:
+    token = _token()
+    if not token:
+        raise RuntimeError(
+            "no OSF token found. Set OSF_TOKEN in .env or as an environment variable.\n"
+            "Create one at https://osf.io/settings/tokens (scope: osf.full_write)."
+        )
+    return token
+
+
+@dataclass(frozen=True)
+class Draft:
+    id: str
+    url: str
+    node_id: str | None  # the hidden node holding the draft's files
+
+
+def create_draft(body: dict, token: str) -> Draft:
+    """POST the draft.
+
+    A draft created without `branched_from` gets a DraftNode of its own as a holding tank for
+    files, converted into the registration's node when it is registered
+    (osf/models/registrations.py, `DraftRegistration.create_from_node`; osf/models/draft_node.py).
+    The response names it under `relationships.branched_from.data`.
+    """
+    resp = _request("POST", "/draft_registrations/", token, body)
+    data = resp["data"]
+    branched = ((data.get("relationships") or {}).get("branched_from") or {}).get("data") or {}
+    return Draft(data["id"], f"https://osf.io/{data['id']}", branched.get("id"))
+
+
+def push_draft(plan_text: str) -> tuple[str, str]:
+    """Create a draft registration on OSF from a PREREG.md.
+
+    Returns (draft_id, url). Raises if token missing or API fails.
+    """
+    token = require_token()
+    draft = create_draft(build_draft(plan_text, token), token)
+    return draft.id, draft.url
+
+
+def upload(node_id: str, name: str, content: bytes, token: str) -> str:
+    """Put a file in the draft's node, and return the sha256 OSF computed for what it received.
+
+    Files in the draft's node are archived into the registration when it is registered
+    (website/archiver/listeners.py, `after_register`). The upload link comes from the storage
+    provider rather than being built here, because it names the node's storage region
+    (api/nodes/serializers.py, `NodeStorageProviderSerializer.links.upload`). The upload itself
+    is WaterButler's: PUT the raw bytes with `kind=file&name=...`, answered with a file entity
+    whose `extra.hashes.sha256` is the digest of what arrived (developer.osf.io, "Upload New
+    File"; waterbutler/providers/osfstorage/metadata.py).
+    """
+    provider = _request("GET", f"/draft_nodes/{node_id}/files/providers/osfstorage/", token)
+    link = provider["data"]["links"]["upload"]
+    url = (
+        link
+        + ("&" if "?" in link else "?")
+        + urllib.parse.urlencode({"kind": "file", "name": name})
+    )
+    req = urllib.request.Request(url, data=content, method="PUT")
+    req.add_header("Authorization", f"Bearer {token}")
+    req.add_header("Content-Type", "application/octet-stream")
+    resp = _send(req)
+    return resp["data"]["attributes"]["extra"]["hashes"]["sha256"]
+
+
+# Registration and view-only links are pinned to the current API version. At 2.0 OSF reads
+# `draft_registration` / `registration_choice` / `lift_embargo`; from 2.19 it reads
+# `draft_registration_id` / `embargo_end_date` and refuses the old names
+# (api/registrations/serializers.py, `RegistrationCreateSerializer`; api/base/versioning.py).
+# Leaving the version unset would mean whichever of the two OSF defaults to that day.
+API_VERSION = "2.20"
+
+
+@dataclass(frozen=True)
+class Registration:
+    id: str
+    url: str
+
+
+def register(draft_id: str, embargo: datetime.date | None, token: str) -> Registration:
+    """Submit the draft as a registration: under embargo until `embargo`, or public at once.
+
+    POST /v2/registrations/ creates the registration pending approval; OSF emails every admin
+    and approves it after 48 hours unless one of them cancels (osf/models/registrations.py,
+    `require_approval` / `embargo_registration`; website/settings REGISTRATION_APPROVAL_TIME,
+    EMBARGO_PENDING_TIME). An embargo must end between about two days and four years ahead.
+    The draft must have at least one subject, or OSF refuses it (`DraftRegistration.register`).
+    """
+    end = f"{embargo.isoformat()}T00:00:00" if embargo else None
+    body = {
+        "data": {
+            "type": "registrations",
+            "attributes": {"draft_registration_id": draft_id, "embargo_end_date": end},
+        }
+    }
+    data = _request("POST", "/registrations/", token, body, version=API_VERSION)["data"]
+    url = (data.get("links") or {}).get("html") or f"https://osf.io/{data['id']}/"
+    return Registration(data["id"], url)
+
+
+@dataclass(frozen=True)
+class ViewOnlyLink:
+    id: str
+    key: str
+    url: str
+
+
+def view_only_link(
+    registration_id: str, anonymous: bool, name: str | None, token: str
+) -> ViewOnlyLink:
+    """Create a view-only link on a registration; `anonymous` hides the contributors.
+
+    POST /v2/registrations/<id>/view_only_links/ (api/registrations/views.py,
+    `RegistrationViewOnlyLinksList`, which takes `anonymous` and `name`:
+    api/nodes/serializers.py, `NodeViewOnlyLinkSerializer`). The link is the registration's page
+    with `?view_only=<key>` (website/project/views/node.py).
+    """
+    attributes: dict[str, object] = {"anonymous": anonymous}
+    if name:
+        attributes["name"] = name
+    body = {"data": {"type": "view_only_links", "attributes": attributes}}
+    path = f"/registrations/{registration_id}/view_only_links/"
+    data = _request("POST", path, token, body, version=API_VERSION)["data"]
+    key = data["attributes"]["key"]
+    return ViewOnlyLink(data["id"], key, f"https://osf.io/{registration_id}/?view_only={key}")
+
+
+# What the log records about OSF, and how it is read back. The log is the only local record of
+# which draft was made from which freeze, so `register` reads it rather than asking for an id:
+# an id typed by hand can name a draft made from a plan that has since been re-frozen.
+DRAFT_EVENT = re.compile(r"\bosf draft (\S+) of plan ([0-9a-f]{16})\b")
+REGISTRATION_EVENT = re.compile(r"\bosf registration (\S+) from draft ([^\s,]+)")
+ATTACHED_EVENT = re.compile(r"\bosf attached (.+) sha256 ([0-9a-f]{64})\b")
+
+
+def draft_event(draft_id: str, digest: str) -> str:
+    return f"osf draft {draft_id} of plan {digest[:16]}"
+
+
+def attached_event(name: str, sha256: str) -> str:
+    return f"osf attached {name} sha256 {sha256}"
+
+
+def registration_event(reg: Registration, draft_id: str, embargo: datetime.date | None) -> str:
+    choice = f"embargo until {embargo.isoformat()}" if embargo else "immediate"
+    return f"osf registration {reg.id} from draft {draft_id}, {choice}, {reg.url}"
+
+
+def link_event(link: ViewOnlyLink, registration_id: str, anonymous: bool) -> str:
+    # The key is not logged. It opens an embargoed registration to whoever holds it, and the
+    # log sits in a repository that may be public; the link id finds it again on OSF.
+    kind = "anonymous" if anonymous else "named"
+    return f"osf view-only link {link.id} on {registration_id}, {kind}"
+
+
+def last(pattern: re.Pattern[str], entries: list[str]) -> re.Match[str] | None:
+    """The last log entry matching `pattern`."""
+    for line in reversed(entries):
+        m = pattern.search(line)
+        if m:
+            return m
+    return None
 
 
 def setup_token(directory: Path | None = None) -> Path:

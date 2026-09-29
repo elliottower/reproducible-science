@@ -26,10 +26,23 @@ the one thing this skill exists to prevent.
 prereg new <name>      # scaffold PREREG.md in OSF's headings, plus tests/ and results/
 prereg freeze          # write the header, hash the plan, append to the log
 prereg freeze --osf    # freeze and push as a draft registration to OSF
+prereg freeze --osf --attach ../CONTEXT.md   # and register a shared file with it
+prereg register --embargo YYYY-MM-DD --access <level>   # or --immediate; irreversible
+prereg link --anonymous --access <level>     # view-only link for double-blind review
 prereg setup           # save OSF token to .env (once)
 prereg log <note> --access <level>
 prereg check           # has anything above the log line changed since the freeze?
 ```
+
+### Who must be present
+
+Every OSF write (draft push, file upload, register, link) asks for a typed phrase on the
+terminal and refuses without one. Do not try to answer it: give the person the exact command to
+run themselves. The phrase guards against accidents; it is not a security boundary, because
+anything that can read `OSF_TOKEN` can call OSF directly. The real gate is a token kept in a
+secret source that requires approval at read time, such as a 1Password-managed `.env` (a named
+pipe), where every OSF interaction first needs Touch ID or the account password. `prereg` reads
+such a pipe directly.
 
 ## Freezing, in order
 

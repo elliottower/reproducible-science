@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
-from prereg import osf, template
+import os
+import re
+import threading
+
+import pytest
+from prereg import cli, osf, plan, template
 
 
 def test_parse_plan_extracts_title_and_sections():
@@ -94,3 +99,148 @@ def test_setup_token_replaces_existing_token(tmp_path, monkeypatch):
 def test_heading_map_covers_all_template_questions():
     for q, _ in template.QUESTIONS:
         assert q in osf.HEADING_TO_QUESTION, f"template question not in OSF mapping: {q}"
+
+
+def _template_plan(tmp_path, monkeypatch, answers: dict[str, str] | None = None, extra="") -> str:
+    """The text `prereg new` writes, with `answers` put under their headings and `extra`
+    inserted above the log line."""
+    monkeypatch.chdir(tmp_path)
+    assert cli._main(["new", "study"]) == 0
+    text = (tmp_path / "study" / "PREREG.md").read_text()
+    for heading, content in (answers or {}).items():
+        text, n = re.subn(
+            rf"(## {re.escape(heading)}\n).*?(?=\n## |\n---)",
+            rf"\g<1>{content}\n",
+            text,
+            count=1,
+            flags=re.S,
+        )
+        assert n == 1, heading
+    return text.replace(plan.MARK, extra + plan.MARK)
+
+
+def _pushed(fake_osf) -> dict:
+    [call] = fake_osf.calls_to("POST", r"/draft_registrations/")
+    return call.json["data"]["attributes"]["registration_responses"]
+
+
+def test_every_mapped_heading_has_a_key_in_the_live_schema(fake_osf):
+    """`_fetch_schema` read `attributes.schema.blocks`, which carries no response keys, so the
+    map came back empty and every section with content was refused as unmapped. The fixture
+    is the schema's `schema_blocks` as OSF serves them, with each 24-hex group key replaced by
+    a short alias: gitleaks reads those keys as credentials."""
+    schema = osf._fetch_schema("t")
+    for question in filter(None, osf.HEADING_TO_QUESTION.values()):
+        assert question in schema, question
+    assert schema["Inference criteria"] == osf.Question("344-77", "long-text-input", ())
+    assert schema["Foreknowledge of data or evidence"].kind == "single-select-input"
+    assert len(schema["Foreknowledge of data or evidence"].options) == 8
+
+
+def test_a_plan_made_by_prereg_new_is_not_rejected(tmp_path, monkeypatch, fake_osf):
+    """The four `- File upload` headings map to None on purpose and were rejected as unmapped,
+    so no plan the template produced could be pushed."""
+    fake_osf.on("POST", r"/draft_registrations/$", {"data": {"id": "draft1"}})
+    assert osf.push_draft(_template_plan(tmp_path, monkeypatch))[0] == "draft1"
+    # The template's italic prompts are questions, not answers; none of them is sent.
+    assert _pushed(fake_osf) == {}
+
+
+def test_a_heading_the_table_does_not_know_is_still_rejected(tmp_path, monkeypatch, fake_osf):
+    text = _template_plan(tmp_path, monkeypatch, extra="\n## Decision rule\n\np < 0.05\n")
+    with pytest.raises(RuntimeError, match="'Decision rule'"):
+        osf.push_draft(text)
+    assert fake_osf.writes == []
+
+
+def test_answers_go_under_the_schemas_own_keys(tmp_path, monkeypatch, fake_osf):
+    fake_osf.on("POST", r"/draft_registrations/$", {"data": {"id": "draft1"}})
+    text = _template_plan(
+        tmp_path,
+        monkeypatch,
+        {
+            "Inference criteria": "H1 holds if rho > 0.3.",
+            "Foreknowledge of data or evidence": "Data does not yet exist.",
+            "Study type": "- Descriptive study\n- Simulation study",
+            "Blinding of experimental treatments": "N/A — no treatment.",
+        },
+    )
+    osf.push_draft(text)
+    sent = _pushed(fake_osf)
+    assert sent["344-77"] == "H1 holds if rho > 0.3."
+    assert sent["344-4"].startswith("Data does not yet exist. No part of the data")
+    assert [s.split(":")[0] for s in sent["344-17"]] == ["Descriptive study", "Simulation study"]
+    assert "344-32" not in sent, "a select question answered N/A is left unanswered"
+
+
+def test_prose_under_a_multiple_choice_heading_is_refused_before_anything_is_sent(
+    tmp_path, monkeypatch, fake_osf
+):
+    text = _template_plan(
+        tmp_path, monkeypatch, {"Foreknowledge of data or evidence": "We ran a pilot on 20 items."}
+    )
+    with pytest.raises(RuntimeError, match="multiple-choice") as e:
+        osf.push_draft(text)
+    assert "Data does not yet exist." in str(e.value), "the refusal must list the options"
+    assert fake_osf.writes == []
+
+
+def test_an_ambiguous_prefix_is_refused(tmp_path, monkeypatch, fake_osf):
+    text = _template_plan(
+        tmp_path, monkeypatch, {"Foreknowledge of data or evidence": "Data exists but"}
+    )
+    with pytest.raises(RuntimeError, match="more than one"):
+        osf.push_draft(text)
+
+
+def test_an_http_error_carries_osfs_explanation(tmp_path, monkeypatch, fake_osf):
+    fake_osf.on(
+        "POST",
+        r"/draft_registrations/$",
+        (400, {"errors": [{"detail": "For your registration the 'Study type' field is odd"}]}),
+    )
+    with pytest.raises(osf.OSFError, match=r"\(400\).*'Study type' field is odd"):
+        osf.push_draft(_template_plan(tmp_path, monkeypatch))
+
+
+def test_a_failed_schema_fetch_is_an_error_not_a_traceback(tmp_path, monkeypatch, fake_osf):
+    fake_osf.on("GET", r"schema_blocks", (401, {"errors": [{"detail": "bad token"}]}))
+    with pytest.raises(RuntimeError, match=r"401.*bad token"):
+        osf.push_draft(_template_plan(tmp_path, monkeypatch))
+
+
+def _fifo_env(tmp_path, monkeypatch):
+    env = tmp_path / ".env"
+    os.mkfifo(env)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("OSF_TOKEN", raising=False)
+    return env
+
+
+def test_token_from_a_named_pipe(tmp_path, monkeypatch):
+    """A secret manager's `.env` is a pipe written only when a reader attaches; `is_file()` is
+    False for one, so the token behind it was never found."""
+    env = _fifo_env(tmp_path, monkeypatch)
+
+    def deliver():
+        with open(env, "w") as w:  # blocks until `_token` opens the read end
+            w.write("OTHER=1\nOSF_TOKEN=piped_token\n")
+
+    writer = threading.Thread(target=deliver, daemon=True)
+    writer.start()
+    assert osf._token() == "piped_token"
+    writer.join(5)
+
+
+def test_a_pipe_nobody_writes_to_times_out_instead_of_hanging(tmp_path, monkeypatch):
+    _fifo_env(tmp_path, monkeypatch)
+    monkeypatch.setattr(osf, "FIFO_TIMEOUT", 0.2)
+    with pytest.raises(RuntimeError, match="did not deliver"):
+        osf._token()
+
+
+def test_a_pipe_is_not_read_when_the_environment_has_the_token(tmp_path, monkeypatch):
+    _fifo_env(tmp_path, monkeypatch)
+    monkeypatch.setenv("OSF_TOKEN", "from_env")
+    monkeypatch.setattr(osf, "FIFO_TIMEOUT", 0.2)
+    assert osf._token() == "from_env", "reading the pipe would have timed out"
