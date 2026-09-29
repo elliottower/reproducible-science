@@ -25,9 +25,12 @@ the one thing this skill exists to prevent.
 ```bash
 prereg new <name>      # scaffold PREREG.md in OSF's headings, plus tests/ and results/
 prereg freeze          # write the header, hash the plan, append to the log
-prereg freeze --osf    # freeze and push as a draft registration to OSF
-prereg freeze --osf --attach ../CONTEXT.md   # and register a shared file with it
+prereg freeze --osf    # freeze and push as a draft registration to OSF (unattended)
+prereg freeze --osf --attach ../CONTEXT.md --subject "<OSF subject>" \
+  --description "<text>" --tag <tag> --category hypothesis \
+  --copyright-holder "<name>" --title-prefix "EXPT01: "   # files and Metadata page too
 prereg register --embargo YYYY-MM-DD --access <level>   # or --immediate; irreversible
+prereg register --all --immediate --access <level>      # every frozen plan below, one phrase
 prereg link --anonymous --access <level>     # view-only link for double-blind review
 prereg setup           # save OSF token to .env (once)
 prereg log <note> --access <level>
@@ -36,9 +39,16 @@ prereg check           # has anything above the log line changed since the freez
 
 ### Who must be present
 
-Every OSF write (draft push, file upload, register, link) asks for a typed phrase on the
-terminal and refuses without one. Do not try to answer it: give the person the exact command to
-run themselves. The phrase guards against accidents; it is not a security boundary, because
+A draft push needs nobody: `freeze --osf` creates the draft, uploads the attached files and fills
+its Metadata page (subjects, description, tags, category, license, title prefix) unattended. A
+draft is private and deletable. Do this part yourself, for every plan in the study.
+
+`register` and `link` cannot be undone and ask for a typed phrase on the terminal. Do not try to
+answer it, and do not call the OSF API to get around it: give the person one command, usually
+`prereg register --all --immediate --access "nothing run"` from the directory above the plans,
+which registers every frozen plan after a single phrase. Before handing it over, check each draft
+has a subject; OSF refuses to register one without. The token is read as `OSF_TOKEN` or
+`OSF_PAT`. The phrase guards against accidents; it is not a security boundary, because
 anything that can read `OSF_TOKEN` can call OSF directly. The real gate is a token kept in a
 secret source that requires approval at read time, such as a 1Password-managed `.env` (a named
 pipe), where every OSF interaction first needs Touch ID or the account password. `prereg` reads

@@ -96,10 +96,28 @@ The plan uses OSF's question titles verbatim, so `prereg freeze --osf` pushes it
 OSF as a draft registration.
 
 ```bash
-prereg freeze --osf --attach ../CONTEXT.md                  # freeze, push the draft, upload the file
+prereg freeze --osf --attach ../CONTEXT.md \
+  --subject "Artificial Intelligence and Robotics" \
+  --description "What the study compares." --tag "AI incidents" \
+  --category hypothesis --copyright-holder "A. Author" \
+  --title-prefix "EXPT01: "                                  # freeze, push the draft, fill its metadata
 prereg register --embargo 2027-06-01 --access "nothing run" # or --immediate
+prereg register --all --immediate --access "nothing run"     # every frozen plan below, one phrase
 prereg link --anonymous --name "review" --access "results seen"
 ```
+
+`freeze --osf` needs no one at the terminal. A draft is private to its author and can be deleted
+on OSF, so pushing one, uploading its files and filling its Metadata page runs unattended; an
+agent can prepare every draft of a study. What cannot be undone -- `register` and `link` -- asks
+for a typed phrase.
+
+The flags fill OSF's Metadata page: `--subject` (repeatable, OSF's subject names in full;
+OSF refuses to register a draft with none, and the push warns when none is given), `--description`,
+`--tag` (repeatable), `--category` (one of OSF's project categories), and `--copyright-holder`
+(repeatable), which sets the license, CC-BY 4.0 by default or `--license NAME`, with the current
+year. `--title-prefix` goes before the plan's own title, so five drafts read `EXPT01: …` through
+`EXPT05: …` on OSF. A subject, license or category OSF does not have is refused before anything
+is frozen.
 
 Four OSF questions are multiple choice: Foreknowledge of data or evidence, Study type, Intention
 for causal interpretation, and Blinding of experimental treatments. OSF accepts only the listed
@@ -112,7 +130,17 @@ Use it for a file several plans point at, such as a shared `CONTEXT.md`. The log
 file's sha256, and the push fails if OSF reports a different hash for what it received.
 
 `register` submits the draft the log recorded at the freeze. It refuses a plan that has changed
-since the freeze, a draft made from an earlier freeze, and a draft already registered. Choosing
+since the freeze, a draft made from an earlier freeze, and a draft already registered. With
+`--all`, or run from a directory no plan governs, it registers every frozen plan below after one
+phrase that names the list: every plan is checked first, one that cannot be registered stops
+the batch before anyone is asked, and a plan already registered is skipped, so an interrupted
+batch can be run again.
+
+A failed request is not taken as a failed registration. OSF has answered 502 while creating the
+registration, and a retry then got 403 because the draft was already registered. After an error
+other than a 400, `register` reads OSF's list of registrations for one with the draft's title
+made since the request, and retries only if there is none; a registration found that way is
+logged with `found after OSF error 502`. Choosing
 between `--embargo` and `--immediate` is required: an immediate registration is public once it
 is approved. OSF emails every admin, and the registration is approved after 48 hours unless one
 of them cancels it. By OSF's defaults an embargo ends at least two days and at most four years
@@ -140,9 +168,9 @@ what has been seen by the time it runs.
 
 ### Who must be present
 
-Every write to OSF — pushing a draft, uploading its files, registering, creating a link — shows
-what it will send and asks for a phrase naming it: `push <digest>`, `register <draft>`,
-`link <registration>`. The phrase is read from the terminal (`/dev/tty`), never stdin, so a
+Every write to OSF that cannot be undone — registering, creating a link — shows what it will
+send and asks for a phrase naming it: `register <draft>`, `register 5 plans <digest>`,
+`link <registration>`. Pushing a draft does not ask. The phrase is read from the terminal (`/dev/tty`), never stdin, so a
 piped answer does not count, and a process with no terminal is refused before any request. No
 flag or variable skips it.
 
@@ -159,8 +187,8 @@ after 60 seconds if nothing is delivered.
 ### The token
 
 Create a token at [osf.io/settings/tokens](https://osf.io/settings/tokens) with the
-`osf.full_write` scope. `prereg` reads `OSF_TOKEN` from the environment, or from a `.env` in
-this directory or above, whether a regular file or a named pipe. `prereg setup` writes it to a
+`osf.full_write` scope. `prereg` reads `OSF_TOKEN`, or `OSF_PAT`, from the environment, or from a `.env`
+in this directory or above, whether a regular file or a named pipe. `prereg setup` writes it to a
 plain `.env` and adds `.env` to `.gitignore`; a plain file can be read by every process running
 as you, coding agents included.
 
