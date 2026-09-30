@@ -244,3 +244,26 @@ def test_a_pipe_is_not_read_when_the_environment_has_the_token(tmp_path, monkeyp
     monkeypatch.setenv("OSF_TOKEN", "from_env")
     monkeypatch.setattr(osf, "FIFO_TIMEOUT", 0.2)
     assert osf._token() == "from_env", "reading the pipe would have timed out"
+
+
+def test_osf_pat_is_read_when_osf_token_is_absent(tmp_path, monkeypatch):
+    """A 1Password environment names the personal access token OSF_PAT."""
+    (tmp_path / ".env").write_text("OTHER=1\nexport OSF_PAT='pat_value'\n")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("OSF_TOKEN", raising=False)
+    monkeypatch.delenv("OSF_PAT", raising=False)
+    assert osf._token() == "pat_value"
+
+
+def test_osf_token_wins_over_osf_pat(tmp_path, monkeypatch):
+    (tmp_path / ".env").write_text("OSF_PAT=pat\nOSF_TOKEN=token\n")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("OSF_TOKEN", raising=False)
+    monkeypatch.delenv("OSF_PAT", raising=False)
+    assert osf._token() == "token"
+
+
+def test_osf_pat_from_the_environment(monkeypatch):
+    monkeypatch.delenv("OSF_TOKEN", raising=False)
+    monkeypatch.setenv("OSF_PAT", "env_pat")
+    assert osf._token() == "env_pat"

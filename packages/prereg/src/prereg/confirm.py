@@ -1,7 +1,8 @@
-"""A typed confirmation, asked on the controlling terminal, before anything is written to OSF.
+"""A typed confirmation, asked on the controlling terminal, before OSF writes that cannot be undone.
 
-A registration cannot be deleted, an immediate one is public at once, a view-only link is a URL
-anyone holding it can open, and a draft carries the plan and its files off this machine. The question is asked on `/dev/tty` rather than stdin, so
+A registration cannot be deleted, an immediate one is public at once, and a view-only link is a
+URL anyone holding it can open. A draft is not asked about: it is private to its author and can be
+deleted, so `freeze --osf` runs unattended. The question is asked on `/dev/tty` rather than stdin, so
 `echo "register abc12" | prereg register ...` does not answer it, and a process with no
 controlling terminal -- an agent's shell, CI, cron -- cannot be asked at all and stops there.
 There is no flag or variable that skips it.

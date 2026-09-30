@@ -5,7 +5,7 @@
     prereg log <note>     append a line without freezing
     prereg check          has anything above the line changed since the freeze?
     prereg setup          save an OSF token to .env
-    prereg register       submit the plan's OSF draft as a registration
+    prereg register       submit the plan's OSF draft as a registration (--all: every plan)
     prereg link           create a view-only link on the OSF registration
 
 One file per experiment, one rule: never edit above the line, only append below it.
@@ -162,8 +162,8 @@ def _freeze_locked(a, path: pathlib.Path) -> int:
     push = None
     if a.osf:
         try:
-            push = _prepare_push(path, text, digest, a.attach or [])
-        except (RuntimeError, OSError, NotConfirmed) as e:
+            push = _prepare_push(text, a.attach or [], _metadata_args(a))
+        except (RuntimeError, OSError) as e:
             print(f"{e}\nNothing was frozen and nothing was sent.")
             return 1
     atomic_write(path, text)
@@ -198,15 +198,42 @@ class Push:
     token: str
     body: dict
     attachments: list[Attachment]
+    metadata: osf.Metadata
 
 
-def _prepare_push(path: pathlib.Path, text: str, digest: str, files: list[str]) -> Push:
-    """Read the attachments, build the draft and ask for confirmation. Writes nothing.
+@dataclass(frozen=True)
+class MetadataArgs:
+    title_prefix: str
+    description: str
+    tags: list[str]
+    category: str
+    license: str
+    copyright_holders: list[str]
+    subjects: list[str]
 
-    The order is the point. The checks that can refuse run first, against OSF's public schema,
-    so a plan that cannot map is refused before anyone is asked anything. The token is read
-    last, after the phrase: reading a pipe-backed `.env` asks the person to approve, and a
-    cancelled command should not have asked.
+
+def _metadata_args(a) -> MetadataArgs:
+    return MetadataArgs(
+        title_prefix=a.title_prefix or "",
+        description=a.description or "",
+        tags=a.tag or [],
+        category=a.category or "",
+        license=a.license,
+        copyright_holders=a.copyright_holder or [],
+        subjects=a.subject or [],
+    )
+
+
+def _prepare_push(text: str, files: list[str], m: MetadataArgs) -> Push:
+    """Read the attachments, build the draft and resolve its metadata. Writes nothing.
+
+    Every check that can refuse runs here, before the local freeze: a plan that cannot map, a
+    subject or license OSF does not have, a missing attachment, no token. A refusal found after
+    the freeze left a frozen plan with no draft and no clean way to retry.
+
+    There is no typed confirmation. A draft is private to its author and can be deleted, and a
+    phrase asked five times for five plans was a cost paid on the step that risks nothing. The
+    phrase guards `register`, which cannot be undone.
 
     The bytes read here are the bytes uploaded and the bytes hashed, so the digest logged is of
     exactly what OSF was sent even if the file changes on disk meanwhile.
@@ -219,23 +246,43 @@ def _prepare_push(path: pathlib.Path, text: str, digest: str, files: list[str]) 
         if "`" in name or not name.isprintable():
             raise RuntimeError(f"{name!r} cannot be written into the log as one entry.")
     body = osf.build_draft(text)
-    confirm(
-        [
-            "Creating a draft registration on OSF and uploading its files.",
-            "Nothing is registered until `prereg register`.",
-            f"  plan    {body['data']['attributes']['title']}  ({path})",
-            f"  sha256  {digest}",
-            *(f"  file    {att.name}  sha256 {att.sha256}" for att in attachments),
-        ],
-        f"push {digest[:12]}",
+    if m.category and m.category not in osf.CATEGORIES:
+        raise RuntimeError(
+            f"{m.category!r} is not an OSF category. One of: {', '.join(osf.CATEGORIES)}."
+        )
+    token = osf.require_token()
+    title = body["data"]["attributes"]["title"]
+    holders = m.copyright_holders
+    meta = osf.Metadata(
+        # Always sent: OSF ignores the title in the POST that creates the draft, so without it
+        # here every draft pushed with no prefix came back titled "".
+        title=m.title_prefix + title,
+        description=m.description,
+        tags=tuple(m.tags),
+        category=m.category,
+        license_id=osf.find_license(m.license, token) if holders else None,
+        license_name=m.license if holders else None,
+        year=today()[:4],
+        copyright_holders=tuple(holders),
+        subject_ids=tuple(osf.find_subjects(m.subjects, token)),
+        subject_names=tuple(m.subjects),
     )
-    return Push(osf.require_token(), body, attachments)
+    return Push(token, body, attachments, meta)
 
 
 def _push(path: pathlib.Path, push: Push, digest: str, access: str) -> None:
     draft = osf.create_draft(push.body, push.token)
     append(path, today(), osf.draft_event(draft.id, digest), access)
-    print(f"\nOSF draft created: {draft.url}")
+    print(f"\nOSF draft created: https://osf.io/registries/drafts/{draft.id}/")
+    osf.set_metadata(draft.id, push.metadata, push.token)
+    meta = push.metadata
+    if meta.subject_names:
+        print(f"  subjects  {', '.join(meta.subject_names)}")
+    else:
+        print("  no subject: OSF refuses to register a draft without one. Add one on the")
+        print("  draft's Metadata page, or push with --subject.")
+    if meta.license_name:
+        print(f"  license   {meta.license_name}, {meta.year} {', '.join(meta.copyright_holders)}")
     if push.attachments and not draft.node_id:
         raise RuntimeError(
             f"OSF did not name the node holding draft {draft.id}'s files, so nothing was attached."
@@ -318,37 +365,62 @@ def check_one(path: pathlib.Path) -> int:
     return 0
 
 
-def cmd_register(a) -> int:
-    """Submit the draft made at the freeze as a registration."""
-    path = find()
-    if path is None:
-        print(f"no {PREREG} here or above.")
-        return 2
+@dataclass(frozen=True)
+class Registrable:
+    path: pathlib.Path
+    title: str
+    digest: str
+    draft_id: str
+    files: list[tuple[str, str]]
+
+
+def _registrable(path: pathlib.Path) -> Registrable | str:
+    """The draft this plan's log recorded at its freeze, or why it cannot be registered."""
     # A registration cannot be deleted, so it has to be of the plan that was frozen. `check`
     # already knows every way a plan can differ from its freeze, the log included.
     if check_one(path) != 0:
-        print("\nOnly a plan unchanged since its freeze can be registered. Nothing was sent.")
-        return 1
+        return "only a plan unchanged since its freeze can be registered"
     text = path.read_text()
     digest = re.search(r"\*\*Plan sha256:\*\* `([0-9a-f]{64})`", text)
     entries = log_lines(text)
     draft = osf.last(osf.DRAFT_EVENT, entries)
     if draft is None or digest is None:
-        print("the log records no OSF draft. `prereg freeze --osf` creates one.")
-        return 1
+        return "the log records no OSF draft. `prereg freeze --osf` creates one"
     draft_id = draft.group(1)
     if draft.group(2) != digest.group(1)[:16]:
         # The draft holds the plan as it was pushed. After a forced re-freeze the plan the
         # hash describes is not the one on OSF, and registering would register the old one.
-        print(f"OSF draft {draft_id} was made from plan {draft.group(2)}…, and the plan is now")
-        print(f"frozen as {digest.group(1)[:16]}…. Push the current freeze with")
-        print("`prereg freeze --force --osf --access ...` and register that draft.")
-        return 1
+        return (
+            f"OSF draft {draft_id} was made from plan {draft.group(2)}…, and the plan is now "
+            f"frozen as {digest.group(1)[:16]}…. Push the current freeze with "
+            "`prereg freeze --force --osf --access ...` and register that draft"
+        )
     for line in entries:
         done = osf.REGISTRATION_EVENT.search(line)
         if done and done.group(2) == draft_id:
-            print(f"OSF draft {draft_id} is already registered as {done.group(1)}.")
-            return 1
+            return f"OSF draft {draft_id} is already registered as {done.group(1)}"
+    after = entries[entries.index(draft.string) + 1 :]
+    files = [(m.group(1), m.group(2)) for m in map(osf.ATTACHED_EVENT.search, after) if m]
+    return Registrable(path, osf._parse_plan(text)[0], digest.group(1), draft_id, files)
+
+
+def cmd_register(a) -> int:
+    """Submit the drafts made at the freeze as registrations, after one typed phrase.
+
+    With `--all`, or run where no plan governs, every plan below is registered: one phrase
+    naming the whole list, so five plans are five registrations and one confirmation. Every
+    plan is checked before anyone is asked, and one that cannot be registered stops the batch,
+    except a plan already registered, which is skipped so a batch interrupted partway can be
+    run again.
+    """
+    path = None if a.all else find()
+    if path is not None:
+        paths = [path]
+    else:
+        paths = sorted(pathlib.Path.cwd().rglob(PREREG))
+        if not paths:
+            print(f"no {PREREG} here, above, or below.")
+            return 2
     embargo = None
     if a.embargo:
         try:
@@ -359,36 +431,67 @@ def cmd_register(a) -> int:
         if embargo <= datetime.date.today():
             print(f"--embargo {embargo} is not in the future.")
             return 1
-    after = entries[entries.index(draft.string) + 1 :]
-    files = [m.group(1, 2) for m in map(osf.ATTACHED_EVENT.search, after) if m]
+
+    todo: list[Registrable] = []
+    for p in paths:
+        r = _registrable(p)
+        if isinstance(r, Registrable):
+            todo.append(r)
+        elif len(paths) > 1 and "is already registered" in r:
+            print(f"skipped      {p}: {r}.")
+        else:
+            print(f"\n{p}: {r}. Nothing was sent.")
+            return 1
+    if not todo:
+        print("\nEvery plan here is already registered. Nothing was sent.")
+        return 1
+
     choice = (
         f"embargo until {embargo} — private until then, public on that date"
         if embargo
         else "immediate — public as soon as it is approved"
     )
+    lines = [
+        f"Registering {len(todo)} plan{'s' if len(todo) > 1 else ''} on OSF. "
+        "A registration cannot be deleted.",
+        f"  choice  {choice}",
+    ]
+    for r in todo:
+        lines += [
+            "",
+            f"  plan    {r.title}  ({r.path})",
+            f"  sha256  {r.digest}",
+            f"  draft   {r.draft_id}",
+            *(f"  file    {name}  sha256 {sha}" for name, sha in r.files),
+        ]
+    if len(todo) == 1:
+        phrase = f"register {todo[0].draft_id}"
+    else:
+        # A phrase that names the list: typing it confirms these drafts and no others.
+        ids = ",".join(r.draft_id for r in todo)
+        phrase = f"register {len(todo)} plans {hashlib.sha256(ids.encode()).hexdigest()[:8]}"
     try:
-        confirm(
-            [
-                "Registering on OSF. A registration cannot be deleted.",
-                f"  plan    {osf._parse_plan(text)[0]}  ({path})",
-                f"  sha256  {digest.group(1)}",
-                f"  draft   {draft_id}",
-                f"  choice  {choice}",
-                *(f"  file    {name}  sha256 {sha}" for name, sha in files),
-            ],
-            f"register {draft_id}",
-        )
+        confirm(lines, phrase)
         # After the confirmation: reading a pipe-backed token asks the person to approve, and a
         # cancelled command should not have asked.
-        reg = osf.register(draft_id, embargo, osf.require_token())
+        token = osf.require_token()
     except (RuntimeError, NotConfirmed) as e:
         print(str(e))
         return 1
-    append(path, today(), osf.registration_event(reg, draft_id, embargo), a.access)
-    print(f"registered  {reg.url}")
-    print("OSF emails every admin; it is pending until they approve or 48 hours pass.")
+    failed = 0
+    for r in todo:
+        try:
+            reg = osf.register(r.draft_id, embargo, token)
+        except RuntimeError as e:
+            print(f"\n{r.path}: {e}")
+            failed += 1
+            continue
+        append(r.path, today(), osf.registration_event(reg, r.draft_id, embargo), a.access)
+        note = "  (OSF reported an error; found registered)" if reg.recovered_from else ""
+        print(f"registered  {reg.url}  {r.path}{note}")
+    print("OSF emails every admin; each is pending until they approve or 48 hours pass.")
     print("\nCommit the log. Changes to a registration are made on OSF, not here.")
-    return 0
+    return 1 if failed else 0
 
 
 def cmd_link(a) -> int:
@@ -513,6 +616,28 @@ def _main(argv: list[str] | None = None) -> int:
         metavar="PATH",
         help="with --osf: upload this file into the draft, so it is registered with the plan",
     )
+    # The draft's Metadata page. OSF needs a subject to register; the rest is optional.
+    f.add_argument(
+        "--subject", action="append", metavar="TEXT", help="with --osf: an OSF subject, by name"
+    )
+    f.add_argument("--description", metavar="TEXT", help="with --osf: the draft's description")
+    f.add_argument("--tag", action="append", metavar="TEXT", help="with --osf: a tag")
+    f.add_argument("--category", metavar="NAME", help="with --osf: an OSF category")
+    f.add_argument(
+        "--copyright-holder",
+        action="append",
+        metavar="NAME",
+        help="with --osf: sets the license, with this holder and the current year",
+    )
+    f.add_argument(
+        "--license",
+        default=osf.DEFAULT_LICENSE,
+        metavar="NAME",
+        help=f"with --copyright-holder: an OSF license by name (default {osf.DEFAULT_LICENSE})",
+    )
+    f.add_argument(
+        "--title-prefix", metavar="TEXT", help="with --osf: put before the plan's title on OSF"
+    )
     f.set_defaults(fn=cmd_freeze)
 
     lg = sub.add_parser("log", help="append a line")
@@ -535,6 +660,9 @@ def _main(argv: list[str] | None = None) -> int:
     when.add_argument("--embargo", metavar="YYYY-MM-DD", help="private until this date")
     when.add_argument("--immediate", action="store_true", help="public once approved")
     r.add_argument("--access", required=True, choices=ACCESS, help="what had been seen")
+    r.add_argument(
+        "--all", action="store_true", help="every frozen plan below here, after one phrase"
+    )
     r.set_defaults(fn=cmd_register)
 
     lk = sub.add_parser("link", help="create a view-only link on the OSF registration")
@@ -544,8 +672,18 @@ def _main(argv: list[str] | None = None) -> int:
     lk.set_defaults(fn=cmd_link)
 
     a = ap.parse_args(argv)
-    if getattr(a, "attach", None) and not a.osf:
-        ap.error("--attach uploads into the OSF draft, so it needs --osf")
+    if a.cmd == "freeze" and not a.osf:
+        for flag in (
+            "attach",
+            "subject",
+            "description",
+            "tag",
+            "category",
+            "copyright_holder",
+            "title_prefix",
+        ):
+            if getattr(a, flag):
+                ap.error(f"--{flag.replace('_', '-')} describes the OSF draft, so it needs --osf")
     if not a.cmd:
         ap.print_help()
         return 0
