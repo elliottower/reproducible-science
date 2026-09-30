@@ -191,3 +191,11 @@
   display: inline-block;
   vertical-align: middle;
 }
+
+/* The header title at Starlight's default size reads smaller than the page headings under it.
+   Larger and bold, same color. */
+.site-title {
+  font-size: 1.45rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
