@@ -254,7 +254,9 @@ def _prepare_push(text: str, files: list[str], m: MetadataArgs) -> Push:
     title = body["data"]["attributes"]["title"]
     holders = m.copyright_holders
     meta = osf.Metadata(
-        title=m.title_prefix + title if m.title_prefix else None,
+        # Always sent: OSF ignores the title in the POST that creates the draft, so without it
+        # here every draft pushed with no prefix came back titled "".
+        title=m.title_prefix + title,
         description=m.description,
         tags=tuple(m.tags),
         category=m.category,

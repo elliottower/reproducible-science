@@ -215,6 +215,13 @@ def test_the_metadata_page_is_filled_from_the_flags(study, tty, fake_osf, capsys
     assert "no subject" not in capsys.readouterr().out
 
 
+def test_a_push_without_a_prefix_still_sends_the_plan_title(study, tty, fake_osf):
+    """OSF ignores the title in the POST that creates a draft, so only the PATCH sets it."""
+    assert _freeze_and_push(study, tty) == 0
+    [patch] = fake_osf.calls_to("PATCH", r"/draft_registrations/draft1/$")
+    assert patch.json["data"]["attributes"] == {"title": "study"}
+
+
 def test_a_push_with_no_subject_warns_that_osf_will_not_register_it(study, tty, capsys):
     assert _freeze_and_push(study, tty) == 0
     assert "OSF refuses to register a draft without one" in capsys.readouterr().out
