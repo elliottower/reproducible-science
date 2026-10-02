@@ -39,6 +39,7 @@ import dataclasses
 import datetime
 import pathlib
 import shlex
+import warnings
 import xml.etree.ElementTree as ET
 from collections.abc import Callable, Iterable
 
@@ -130,19 +131,26 @@ def _xlsx(path: pathlib.Path, sheet: str | None, keep_empty: bool) -> list[str]:
         )
     # `data_only`: the value a formula last computed, which is what the sheet shows, and never
     # the formula. `read_only`: a supplementary workbook can be tens of megabytes.
-    book = openpyxl.load_workbook(path, read_only=True, data_only=True)
-    try:
-        lines: list[str] = []
-        for name in _named(path, sheet, book.sheetnames):
-            ws = book[name]
-            # A workbook written by something other than Excel can record a used range of one
-            # cell, and a read-only sheet trusts it: every row after the first is not returned
-            # and nothing says so. Discarding the recorded range makes it read what is there.
-            ws.reset_dimensions()
-            lines += _rows(ws.iter_rows(values_only=True), keep_empty)
-        return lines
-    finally:
-        book.close()
+    #
+    # openpyxl warns, once per sheet, about workbook features it does not model -- a data
+    # validation extension, a conditional format. None of them is a cell's value, and on a
+    # publisher's workbook the warning lands in the middle of a report about quotations.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        book = openpyxl.load_workbook(path, read_only=True, data_only=True)
+        try:
+            lines: list[str] = []
+            for name in _named(path, sheet, book.sheetnames):
+                ws = book[name]
+                # A workbook written by something other than Excel can record a used range of
+                # one cell, and a read-only sheet trusts it: every row after the first is not
+                # returned and nothing says so. Discarding the recorded range makes it read
+                # what is there.
+                ws.reset_dimensions()
+                lines += _rows(ws.iter_rows(values_only=True), keep_empty)
+            return lines
+        finally:
+            book.close()
 
 
 def _xls(path: pathlib.Path, sheet: str | None, keep_empty: bool) -> list[str]:
