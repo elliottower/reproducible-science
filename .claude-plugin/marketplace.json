@@ -14,6 +14,11 @@
       "strict": false
     },
     {
+      "name": "repro-gates",
+      "source": "./packages/repro/mod",
+      "strict": false
+    },
+    {
       "name": "prereg",
       "source": "./packages/prereg/plugin",
       "strict": false

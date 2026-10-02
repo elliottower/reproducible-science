@@ -45,6 +45,7 @@ PLUGIN_MANIFESTS = (
     PROJECT_ROOT / "packages" / "prereg" / "plugin" / ".claude-plugin" / "plugin.json",
     PROJECT_ROOT / "packages" / "results" / "plugin" / ".claude-plugin" / "plugin.json",
     PROJECT_ROOT / "packages" / "repro" / "plugin" / ".claude-plugin" / "plugin.json",
+    PROJECT_ROOT / "packages" / "repro" / "mod" / ".claude-plugin" / "plugin.json",
 )
 
 #: The citation record, which carries the release version too and was owned by nothing. It
