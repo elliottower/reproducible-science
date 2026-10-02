@@ -338,7 +338,7 @@ def _artifact_text(cf: ClaimFile, claims_dir: pathlib.Path, allowed) -> str | No
     if not path.is_file():
         return None
     try:
-        return comparable(extract(path, None, cf.source.extract_cmd, allowed))
+        return comparable(extract(path, None, cf.source.reader, allowed))
     except SourceUnreadableError:
         return None
 

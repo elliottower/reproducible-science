@@ -26,6 +26,13 @@ recorded against another.
 
 `--check` resolves the passage and reports what would be written, as `citations add --check`
 does for a bibliography.
+
+Where the source names a built-in `extractor`, the first quotation pinned also records
+`extractor_version` and `derived_sha256` in the source block: the version that read the file
+and the digest of the text it produced. Nobody computes that digest by hand, and a field
+nobody fills in is a check nobody runs. A later quotation is refused where the extractor no
+longer produces that text, because the file would then hold quotations taken from two
+different readings under one digest.
 """
 
 from __future__ import annotations
@@ -36,6 +43,7 @@ import pathlib
 import yaml
 from provenance_core import atomic_write, exclusive_lock
 
+from . import extractors
 from . import verify as V
 from .exceptions import CitationsError
 from .fetch import has_location
@@ -57,7 +65,32 @@ def resolve(
     allowed: frozenset[str],
 ) -> V.Result:
     """Read the pinned source and decide whether the passage is in it."""
-    return V.check_one(quote, _artifact(cf), page, cf.source.extract_cmd, allowed)
+    return V.check_one(quote, _artifact(cf), page, cf.source.reader, allowed)
+
+
+def reading_record(cf: ClaimFile, r: V.Result) -> dict:
+    """What the source block gains from this pin: the extractor's version and its text's digest.
+
+    Empty for a source naming no built-in extractor, and for one that already records both.
+    Raises `PinRefused` where the recorded digest is not the digest of the text this passage
+    was just found in.
+    """
+    if not cf.source.extractor:
+        return {}
+    recorded = (cf.source.derived_sha256 or "").strip().lower()
+    if recorded and recorded != r.extraction_digest:
+        raise PinRefused(
+            f"{cf.source.extractor} now produces other text from this source than the text its "
+            f"quotations were pinned in (recorded {recorded[:12]}, produced "
+            f"{r.extraction_digest[:12]}). Run `citations verify` to see which quotations still "
+            f"resolve before adding another."
+        )
+    record: dict = {}
+    if cf.source.extractor_version is None:
+        record["extractor_version"] = extractors.EXTRACTORS[cf.source.extractor].version
+    if not recorded:
+        record["derived_sha256"] = r.extraction_digest
+    return record
 
 
 def entry(
@@ -87,8 +120,10 @@ def entry(
     return claim
 
 
-def add_to(path: pathlib.Path, claim_id: str, claim: dict) -> None:
+def add_to(path: pathlib.Path, claim_id: str, claim: dict, source: dict | None = None) -> None:
     """Append one claim to the file, preserving what is already there.
+
+    `source` is merged into the source block in the same write: see `reading_record`.
 
     The file is re-read and re-written as data rather than patched as text: a claims file is
     the input to a check, and a command that edited it with a regular expression would be the
@@ -109,6 +144,8 @@ def add_to(path: pathlib.Path, claim_id: str, claim: dict) -> None:
                 "Two claims under one identifier are two claims; give this one its own."
             )
         claims[claim_id] = claim
+        if source:
+            doc.setdefault("source", {}).update(source)
         # Atomically: a claims file is the input to every later check, and a truncating write
         # that dies partway through leaves a document that no longer parses as one.
         atomic_write(path, yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, width=100))
@@ -165,6 +202,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     claim = entry(a.quote, a.section, a.page, a.says, a.whose, a.status, a.contest)
+    record = reading_record(cf, r)
     if a.check:
         print(f"found     {a.quote[:60]}")
         print(f"would add {a.id} to {path.name}")
@@ -172,7 +210,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  warnings: {', '.join(r.warnings)}")
         return 0
 
-    add_to(path, a.id, claim)
+    add_to(path, a.id, claim, record)
     print(f"found     {a.quote[:60]}")
     print(f"added     {a.id} to {path.name}")
     if r.warnings:

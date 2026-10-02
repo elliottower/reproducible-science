@@ -30,9 +30,10 @@ The extractor -- what turned the source into text? Recorded on every result, wit
 what it produced. A pin says the bytes did not change and says nothing about how they were
 read: two extractors over one PDF produce two texts and one pin, so a decision that does not
 name the program behind it cannot be compared with a later one. A source declaring
-`extract_cmd` is read by the command it names, a `TEXT_SUFFIXES` source straight off disk, and
-everything else by `pdftotext -layout` or, where poppler is absent or fails on the document, by
-whichever pure-Python reader is installed. That substitution is recorded on the result as a
+`extract_cmd` is read by the command it names, a source declaring a built-in `extractor` by that
+extractor, a `TEXT_SUFFIXES` source straight off disk, a workbook or a `.docx` by the built-in
+extractor its suffix names, and everything else by `pdftotext -layout` or, where poppler is
+absent or fails on the document, by whichever pure-Python reader is installed. That substitution is recorded on the result as a
 fallback and its reason: `pip install citations` should be able to check a PDF, and a result
 that quietly rests on a different extractor than the one it names is worse than no result.
 
@@ -40,6 +41,12 @@ A declared command does not join that chain. An author naming a renderer has sai
 program produces the text they quote, so it runs or the check is `unchecked` with its reason;
 falling through to a PDF reader would run one over a source whose author just said is not a
 PDF, and record an extractor nobody asked for.
+
+The reading -- is the text the extractor produces the text that was quoted? A source may record
+`derived_sha256`, the digest of what its declared reading produced when the quotations were
+pinned. The pin cannot answer this: an extractor that changed turns the same bytes into other
+text under an unbroken pin. Checked once per source, reported beside the broken pins, and a
+failure for the same reason one of those is.
 
 `indeterminate` is not a milder `not found`. `not found` says the source was read and the
 passage is not in it, which is an accusation against the manuscript. `indeterminate` says the
@@ -97,7 +104,7 @@ from typing import Literal
 
 from provenance_core import sha256_of_file
 
-from citations import readers
+from citations import extractors, readers
 from citations.exceptions import SourceUnreadableError
 
 # Long enough to carry its own qualifiers. "We trained 50" resolves against a sentence that
@@ -244,6 +251,11 @@ class Report:
     counts: dict[str, int] = field(default_factory=dict)
     problems: list[tuple[str, str, Result]] = field(default_factory=list)
     broken_pins: list[tuple[str, Pin]] = field(default_factory=list)
+    changed_readings: list[tuple[str, Pin]] = field(default_factory=list)
+    """Sources whose declared reading no longer produces the text recorded as
+    `derived_sha256`. The bytes match their pin and the extractor turns them into other text
+    than was quoted, so every result against that source describes a reading the record
+    does not."""
     unpinned: list[str] = field(default_factory=list)
     """Sources with no recorded digest. Their quotations resolve against whatever is on disk."""
     skipped: list[tuple[str, str]] = field(default_factory=list)
@@ -311,7 +323,8 @@ class Report:
 
     @property
     def ok(self) -> bool:
-        """Only `not found` and a broken pin are failures. Unchecked and indeterminate are not.
+        """Only `not found`, a broken pin and a changed reading are failures. Unchecked and
+        indeterminate are not.
 
         A run that measured nothing is not a pass, decided here so no caller can report
         success on an empty run. Two runs measure nothing. One has no quotations. The other
@@ -329,7 +342,7 @@ class Report:
             return False
         if self.unresolved >= self.checked:
             return False
-        if self.broken_pins:
+        if self.broken_pins or self.changed_readings:
             return False
         return not any(r.state == "not found" for _, _, r in self.problems)
 
@@ -595,8 +608,14 @@ def _extract(
     it, `allowed` decides which programs this run will run, and it never falls through to the
     chain -- a named renderer that failed is a fact to report, not a reason to run something
     else and record its name instead.
+
+    A declaration naming a built-in extractor is read in this process and never reaches
+    `allowed`. The allowlist bounds which programs a claims file can make this machine run,
+    and a built-in extractor runs none: the file has named a reader this package ships.
     """
     if extract_cmd:
+        if (builtin := extractors.declared(pdf, extract_cmd)) is not None:
+            return readers.Extraction(builtin.read(pdf), builtin.name)
         argv = _argv(pdf, extract_cmd, allowed)
         return readers.Extraction(_run(pdf, argv), _extractor_name(pdf, extract_cmd))
     if (obvious := BY_SUFFIX.get(pdf.suffix.lower())) and obvious in allowed:
@@ -604,6 +623,11 @@ def _extract(
         # whose reader is refused by `allowed` falls through rather than being forced: consent
         # to run a program comes from whoever invoked the command.
         return readers.Extraction(_run(pdf, _argv(pdf, obvious, allowed)), obvious)
+    if (name := extractors.BY_SUFFIX.get(pdf.suffix.lower())) is not None:
+        # The same rule for a workbook or a `.docx`, which had no reader at all: both reached
+        # the PDF chain and every quotation in them was `unchecked`.
+        chosen = extractors.Declared(extractors.EXTRACTORS[name])
+        return readers.Extraction(chosen.read(pdf), chosen.name)
     if pdf.suffix.lower() in TEXT_SUFFIXES:
         try:
             return readers.Extraction(pdf.read_text(errors="replace"), PLAIN_TEXT)
@@ -802,6 +826,8 @@ def _extractor_name(artifact: pathlib.Path, extract_cmd: str | None) -> str:
         return " ".join(extract_cmd.split())
     if obvious := BY_SUFFIX.get(artifact.suffix.lower()):
         return obvious
+    if (name := extractors.BY_SUFFIX.get(artifact.suffix.lower())) is not None:
+        return extractors.Declared(extractors.EXTRACTORS[name]).name
     return PLAIN_TEXT if artifact.suffix.lower() in TEXT_SUFFIXES else DEFAULT_EXTRACTOR
 
 
@@ -837,6 +863,20 @@ def check_pin(artifact: pathlib.Path | None, expected: str | None) -> Pin:
     except OSError:
         return Pin("missing")
     expected = expected.strip().lower()
+    return Pin("ok" if actual == expected else "broken", expected, actual)
+
+
+def check_derived(text: str, expected: str | None) -> Pin:
+    """Is the text an extractor produced the text the quotations were pinned against?
+
+    `expected` is the source's `derived_sha256`. A source that records none is `unpinned`,
+    never `ok`, for the reason `check_pin` gives: nothing was compared. The caller supplies
+    the text, so a source no extractor could read never reaches this and is not reported as
+    a reading that changed -- its quotations are `unchecked` and say why.
+    """
+    if not (expected and expected.strip()):
+        return Pin("unpinned")
+    expected, actual = expected.strip().lower(), _digest(text)
     return Pin("ok" if actual == expected else "broken", expected, actual)
 
 
@@ -904,8 +944,13 @@ def check_one(
     # audited claim, and page 9999 on a three-page document graded exactly as page 3 did. An
     # unverifiable assertion is a fact about the check and belongs in the report, so it is a
     # warning now rather than an omission.
-    paginated = extract_cmd is None and is_paginated(artifact)
-    if page and not paginated and is_paginated(artifact):
+    #
+    # A built-in extractor has no pages either, and no second reader: a workbook's rows are
+    # what they are, and sending the PDF readers after one would name four programs that
+    # cannot open it as having looked.
+    paged = is_paginated(artifact) and not extractors.is_builtin(got.extractor)
+    paginated = extract_cmd is None and paged
+    if page and not paginated and paged:
         warn.append("page unchecked")
     result = _verdict(
         quote, got.text, artifact, page if paginated else None, warn, got.extractor, prefix, suffix
@@ -917,7 +962,7 @@ def check_one(
 
     # One reader saying no is not the document saying no. Only on a paginated source: the text
     # of a `.txt` is its bytes, and there is no second way to read them.
-    if result.state == "not found" and is_paginated(artifact):
+    if result.state == "not found" and paged:
         consulted = [got.extractor]
         rescued = _second_opinion(
             quote, artifact, page if paginated else None, warn, got.extractor, prefix, suffix
@@ -1287,7 +1332,8 @@ def _cuts_a_token(q: str, doc: str) -> bool:
 
 def is_paginated(artifact: pathlib.Path) -> bool:
     """Whether asking which page a passage is on means anything for this source."""
-    return artifact.suffix.lower() not in TEXT_SUFFIXES
+    suffix = artifact.suffix.lower()
+    return suffix not in TEXT_SUFFIXES and suffix not in extractors.BY_SUFFIX
 
 
 def _find_page(

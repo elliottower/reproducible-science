@@ -28,7 +28,7 @@ from provenance_core import hint
 from citations import coverage as C
 from citations import paths, projects
 from citations import verify as V
-from citations.exceptions import CitationsError, ClaimFileError
+from citations.exceptions import CitationsError, ClaimFileError, SourceUnreadableError
 from citations.models import ClaimFile, load_claim_file, load_record
 
 #: Every member of `verify.State`, in reporting order. An outcome absent here is
@@ -101,6 +101,24 @@ def _record_extractor(rep: V.Report, extractors, r: V.Result) -> None:
         rep.triangulated += 1
     if r.fallback and r.extractor not in rep.fallback_reasons:
         rep.fallback_reasons[r.extractor] = r.fallback_reason or "pdftotext did not answer"
+
+
+def _check_reading(rep: V.Report, cf: ClaimFile, artifact, allowed) -> None:
+    """Note a source whose extractor no longer produces the text its quotations were pinned in.
+
+    Only where the claims file records `derived_sha256` and the source could be read. A source
+    nothing could read is not a reading that changed: its quotations are `unchecked`, each
+    with the reason, and reporting it here as well would state a comparison nobody made.
+    """
+    if not cf.source.derived_sha256 or artifact is None or not artifact.is_file():
+        return
+    try:
+        text = V.extract(artifact, None, cf.source.reader, allowed)
+    except SourceUnreadableError:
+        return
+    derived = V.check_derived(text, cf.source.derived_sha256)
+    if derived.state == "broken":
+        rep.changed_readings.append((cf.name, derived))
 
 
 COVERAGE = ["covered", "uncovered", "unresolvable"]
@@ -187,6 +205,7 @@ def cmd_verify(a) -> int:
                 rep.broken_pins.append((cf.name, pin))
             elif pin.state == "unpinned":
                 rep.unpinned.append(cf.name)
+            _check_reading(rep, cf, artifact, allowed)
             for cid, claim in cf.claims.items():
                 if claim.interpretation is not None:
                     rep.interpretations += 1
@@ -203,7 +222,7 @@ def cmd_verify(a) -> int:
                         q.text,
                         artifact,
                         q.page,
-                        cf.source.extract_cmd,
+                        cf.source.reader,
                         allowed,
                         a.triangulate,
                         q.prefix,
@@ -341,6 +360,21 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
         if len(rep.broken_pins) > 10:
             print(f"  ... and {len(rep.broken_pins) - 10} more")
 
+    # The same, one step along: the bytes are the pinned ones and the extractor makes other
+    # text of them than it did when the quotations were taken.
+    if rep.changed_readings:
+        n = len(rep.changed_readings)
+        print(
+            f"\n{n} source{' no longer extracts' if n == 1 else 's no longer extract'} "
+            f"to the text that was pinned"
+        )
+        for name, derived in rep.changed_readings[:10]:
+            print(
+                f"  {name[:38]:<40}pinned {derived.expected[:12]}  extracted {derived.actual[:12]}"
+            )
+        if len(rep.changed_readings) > 10:
+            print(f"  ... and {len(rep.changed_readings) - 10} more")
+
     bad = [(s, q, r) for s, q, r in rep.problems if r.state == "not found"]
     if bad and not a.quiet:
         print()
@@ -360,6 +394,11 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
         print(f"{len(bad)} not found. read the source before concluding anything.")
     elif rep.broken_pins:
         print("every quote resolved, but against a source that is not the one pinned.")
+    elif rep.changed_readings:
+        print(
+            "every quote resolved, but in text that is not the text recorded when they were "
+            "pinned: the extractor's output changed. Read the difference, then pin again."
+        )
     elif rep.checked and rep.unresolved >= rep.checked:
         # Distinct from the partial case below, and the reason this branch exists: "nothing
         # failed" over a run that read no source at all was read as a pass, and the quotations

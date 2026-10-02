@@ -21,6 +21,7 @@ required field, not to refuse a file for carrying an extra one.
 from __future__ import annotations
 
 import pathlib
+import shlex
 from typing import Annotated, Any, Literal
 
 import yaml
@@ -32,6 +33,7 @@ from pydantic import (
     StringConstraints,
     ValidationError,
     field_validator,
+    model_validator,
 )
 
 from citations.exceptions import ClaimFileError
@@ -97,8 +99,65 @@ class ClaimSource(_Base):
     extract_cmd: str | None = None
     """The command that produced the extracted text the quotations resolve against."""
 
+    extractor: str | None = None
+    """The built-in extractor that turns the pinned file into the text the quotations resolve
+    against: `sheet-rows`, `docx-text` or `jats-text`. See `citations.extractors`.
+
+    For a source whose pinned file is the publisher's own -- a workbook, a `.docx`, an article's
+    XML -- and not a text somebody made from it. `sha256` then names bytes a reader can
+    download, and this names the reading of them. A source declares this or `extract_cmd`,
+    never both: they are two answers to one question.
+    """
+
+    extractor_version: int | None = None
+    """The version of `extractor` whose output the quotations were pinned against."""
+
+    sheet: str | None = None
+    """The one sheet `sheet-rows` reads. Absent, it reads every sheet in workbook order."""
+
+    empty_cells: Literal["drop", "keep"] | None = None
+    """Whether `sheet-rows` keeps a row's empty cells. Dropped unless this says `keep`."""
+
+    derived_sha256: str | None = None
+    """sha256 of the text the declared reading produced when the quotations were pinned.
+
+    `sha256` establishes that the bytes did not change. This establishes that the reading of
+    them did not: an extractor that now produces other text from the same bytes is no longer
+    producing the text that was quoted, and `verify` and `fetch` both say so.
+    """
+
     note: str | None = None
     """Anything a reader needs in order to interpret the quotations."""
+
+    @model_validator(mode="after")
+    def _one_reading(self) -> ClaimSource:
+        if self.extractor and self.extract_cmd:
+            raise ValueError(
+                "names both `extractor` and `extract_cmd`; a source is read one way, so keep one"
+            )
+        return self
+
+    @property
+    def reader(self) -> str | None:
+        """What this source says reads it, in the one form `verify` takes: `extract_cmd` as
+        written, or the built-in extractor with its version and options.
+
+        One string, because everything downstream -- the extraction cache, the name recorded on
+        a result, the rule that a declared reading never falls through to the PDF readers --
+        is already keyed on one. `citations.extractors.declared` reads it back.
+        """
+        if not self.extractor:
+            return self.extract_cmd
+        words = [
+            self.extractor
+            if self.extractor_version is None
+            else f"{self.extractor}@{self.extractor_version}"
+        ]
+        if self.sheet is not None:
+            words += ["--sheet", self.sheet]
+        if self.empty_cells == "keep":
+            words.append("--keep-empty")
+        return shlex.join(words)
 
     @property
     def is_pinned(self) -> bool:
