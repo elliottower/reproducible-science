@@ -80,7 +80,28 @@ all found.
 | `citations lint` | BibTeX correctness, repeated keys, and author lists in a `.bib` |
 | `citations add` | Add one entry to a `.bib`, refusing a key it already has |
 | `citations link` | Point pdfs/ at the papers' artifacts |
+| `citations fetch` | Download the sources a claims directory pins, keeping only bytes that match the pin |
 | `citations import-paperclip` | Turn a Paperclip paper repo into pinned claim files |
+
+## Fetching the sources a repository cannot ship
+
+A publisher's PDF is not the author's to redistribute, so a public repository carries each
+source's sha256 and not the source. A reader who clones it has every pin and no file, and
+`verify` answers `unchecked` for every quotation.
+
+```bash
+citations fetch --claims claims/            # fetch what is absent
+citations fetch --claims claims/ --dry-run  # say what would be asked, write nothing
+```
+
+For each absent source it tries the URL the claims file records, the arXiv PDF where the source
+names an arXiv id, and the open-access locations Europe PMC and OpenAlex list for the DOI. A
+download is installed only when its sha256 is the pinned one. Bytes that differ are reported as
+`differs` and never written: a paywall's landing page, or a PDF a publisher stamps on each
+download, would otherwise sit at the pinned path as a broken pin.
+
+A source that stays `differs` or `unavailable` can be obtained another way and placed at the
+path its claims file names. `verify` checks it against the pin like any other.
 
 ## Coverage: the manuscript side
 

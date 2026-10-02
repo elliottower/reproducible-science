@@ -10,6 +10,7 @@ citations lint              BibTeX correctness, repeated keys, and author lists 
 citations add               add one entry to a .bib, refusing a key it already has
 citations pin               write a quotation into a claims file, refusing one that does not resolve
 citations link              point pdfs/ at wherever the papers keep the artifacts
+citations fetch             download the sources a claims directory pins, keeping only matching bytes
 citations projects          which projects this library refers to, and which names are dead
 citations tags              what the tag vocabulary declares, and what the records use
 citations import-paperclip  turn a Paperclip paper repo into pinned claim files
@@ -58,6 +59,7 @@ DELEGATED = {
     "projects": "projects",
     "tags": "tags",
     "link": "link_pdfs",
+    "fetch": "fetch",
     "import-paperclip": "import_paperclip",
 }
 
@@ -485,6 +487,7 @@ def _main(argv: list[str] | None = None) -> int:
         ("projects", "which projects this library refers to, and which names are dead"),
         ("tags", "the tag vocabulary, what uses it, and any tag nothing declares"),
         ("link", "point pdfs/ at the papers' artifacts"),
+        ("fetch", "download the sources a claims directory pins, keeping only matching bytes"),
         ("import-paperclip", "turn a Paperclip paper repo into pinned claim files"),
     ]:
         p = sub.add_parser(name, help=helptext, add_help=False)
