@@ -198,3 +198,18 @@ def test_the_command_fails_while_a_pinned_source_is_missing_and_passes_once_fetc
     bodies["https://example.org/paper.pdf"] = PAPER
     assert F.main(["--claims", claims]) == 0
     assert "every pinned source is on disk and matches its pin." in capsys.readouterr().out
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://arxiv.org/abs/2309.08600",
+        "https://arxiv.org/abs/2309.08600v2",
+        "https://arxiv.org/pdf/2309.08600.pdf",
+    ],
+)
+def test_an_arxiv_page_is_asked_for_as_its_pdf_and_never_as_html(tmp_path, served, url):
+    cf = claim_file(tmp_path, url=url)
+    expected = "https://arxiv.org/pdf/" + url.rsplit("/", 1)[-1].removesuffix(".pdf")
+
+    assert F.locate(cf.source) == [("arxiv", expected)]

@@ -12,8 +12,8 @@ the pinned path with other contents is the broken pin `verify` exists to catch.
     citations fetch --claims claims/            fetch what is absent
     citations fetch --claims claims/ --dry-run  say what would be asked, write nothing
 
-Candidates, in order: the URL the claims file records, the arXiv PDF where the source names an
-arXiv id, then the open-access locations Europe PMC and OpenAlex list for the DOI.
+Candidates, in order: the arXiv PDF where the source names an arXiv id or links an arXiv page,
+the URL the claims file records, then the open-access locations Europe PMC and OpenAlex list for the DOI.
 
 Outcomes, one per source:
 
@@ -65,6 +65,7 @@ MAX_BYTES = 200 * 1024 * 1024
 
 _DOI = re.compile(r"10\.\d{4,9}/[^\s\"<>]+")
 _ARXIV_DOI = re.compile(r"^10\.48550/arxiv\.(.+)$", re.I)
+_ARXIV_URL = re.compile(r"arxiv\.org/(?:abs|pdf)/([^\s?#]+?)(?:\.pdf)?(?:[?#].*)?$", re.I)
 
 
 @dataclass(frozen=True)
@@ -91,12 +92,18 @@ def doi_of(source: ClaimSource) -> str:
 
 
 def arxiv_of(source: ClaimSource) -> str:
-    """The arXiv id a source names, from its `arxiv` field or from an arXiv-minted DOI."""
+    """The arXiv id a source names: its `arxiv` field, an arXiv-minted DOI, or an arXiv URL.
+
+    A claims file usually records the abstract page, which is where a reader is sent and is not
+    the paper. Downloading it yields HTML, which can never match a pin taken from the PDF.
+    """
     declared = str((source.model_extra or {}).get("arxiv") or "").strip()
     if declared:
         return declared
-    minted = _ARXIV_DOI.match(doi_of(source))
-    return minted.group(1) if minted else ""
+    if minted := _ARXIV_DOI.match(doi_of(source)):
+        return minted.group(1)
+    linked = _ARXIV_URL.search(source.url or "")
+    return linked.group(1) if linked else ""
 
 
 def europepmc_pdfs(payload) -> list[str]:
@@ -125,10 +132,10 @@ def locate(source: ClaimSource) -> list[tuple[str, str]]:
     candidates are still tried, and a source nobody could locate is reported `unavailable`.
     """
     found: list[tuple[str, str]] = []
-    if source.url:
-        found.append(("the claims file", source.url))
     if arxiv := arxiv_of(source):
         found.append(("arxiv", f"https://arxiv.org/pdf/{arxiv}"))
+    if source.url and not _ARXIV_URL.search(source.url):
+        found.append(("the claims file", source.url))
     if doi := doi_of(source):
         query = urllib.parse.urlencode(
             {"query": f'DOI:"{doi}"', "resultType": "core", "format": "json"}

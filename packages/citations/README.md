@@ -94,8 +94,8 @@ citations fetch --claims claims/            # fetch what is absent
 citations fetch --claims claims/ --dry-run  # say what would be asked, write nothing
 ```
 
-For each absent source it tries the URL the claims file records, the arXiv PDF where the source
-names an arXiv id, and the open-access locations Europe PMC and OpenAlex list for the DOI. A
+For each absent source it tries the arXiv PDF where the source names an arXiv id or links an
+arXiv page, the URL the claims file records, and the open-access locations Europe PMC and OpenAlex list for the DOI. A
 download is installed only when its sha256 is the pinned one. Bytes that differ are reported as
 `differs` and never written: a paywall's landing page, or a PDF a publisher stamps on each
 download, would otherwise sit at the pinned path as a broken pin.
