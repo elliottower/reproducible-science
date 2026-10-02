@@ -213,3 +213,15 @@ def test_an_arxiv_page_is_asked_for_as_its_pdf_and_never_as_html(tmp_path, serve
     expected = "https://arxiv.org/pdf/" + url.rsplit("/", 1)[-1].removesuffix(".pdf")
 
     assert F.locate(cf.source) == [("arxiv", expected)]
+
+
+def test_a_source_recording_nowhere_to_ask_is_reported_as_such(tmp_path, served):
+    _, asked = served
+    cf = claim_file(tmp_path, note="FDA guidance PDF, fda.gov/media/71147/download")
+
+    outcome = F.fetch_one(cf)
+
+    assert outcome.state == "no location"
+    assert "url" in outcome.detail and "doi" in outcome.detail
+    assert asked == []
+    assert F.main(["--claims", str(cf.path.parent)]) == 1

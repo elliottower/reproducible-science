@@ -38,6 +38,7 @@ from provenance_core import atomic_write, exclusive_lock
 
 from . import verify as V
 from .exceptions import CitationsError
+from .fetch import has_location
 from .models import ClaimFile
 
 
@@ -178,4 +179,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  warnings: {', '.join(r.warnings)}")
     if a.says is not None:
         print(f"  reading recorded as {a.whose}'s, unchecked")
+    if not has_location(cf.source):
+        # Said at the moment the source is in hand. A reader who clones the repository has the
+        # pin and not the file, and without one of these `citations fetch` has nowhere to ask.
+        print(
+            f"  {path.name} records no url, doi or arxiv id for its source: add `url:` or "
+            f"`doi:` under `source:` so `citations fetch` can retrieve it for a reader"
+        )
     return 0

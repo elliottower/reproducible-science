@@ -100,6 +100,9 @@ download is installed only when its sha256 is the pinned one. Bytes that differ 
 `differs` and never written: a paywall's landing page, or a PDF a publisher stamps on each
 download, would otherwise sit at the pinned path as a broken pin.
 
+A source whose claims file records no `url`, `doi` or arXiv id is reported as `no location`:
+there is nowhere to ask, and `citations pin` says so when a quotation is pinned against one.
+
 A source that stays `differs` or `unavailable` can be obtained another way and placed at the
 path its claims file names. `verify` checks it against the pin like any other.
 

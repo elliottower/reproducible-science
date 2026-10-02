@@ -18,7 +18,7 @@ artifacts:
   media_type: text/markdown
   digest:
     algorithm: sha256
-    value: a1bd40b0d9545a0095818e59158733677f81ce6732f08475d13629f740ae054c
+    value: 1de213fd8905457a04e912741ebcb1bebc62b17376cf9829e608f90c3880d6ca
 - id: reader-measurement
   path: research/pdf-readers/results.json
   media_type: application/json

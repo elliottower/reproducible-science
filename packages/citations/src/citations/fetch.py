@@ -21,6 +21,7 @@ Outcomes, one per source:
     fetched      downloaded, matched the pin, installed
     differs      a copy was downloaded and none matched the pin; nothing was written
     unavailable  no candidate answered with a file
+    no location  the claims file records no url, doi or arxiv id, so there was nowhere to ask
     broken       on disk and not matching the pin; left untouched
     unpinned     no sha256 is recorded, so no download could be confirmed
     no path      the claims file names no local path to install to
@@ -51,6 +52,7 @@ OUTCOMES = [
     "fetched",
     "differs",
     "unavailable",
+    "no location",
     "broken",
     "unpinned",
     "no path",
@@ -58,7 +60,7 @@ OUTCOMES = [
 ]
 
 #: Outcomes that leave a pinned source unreadable on this machine.
-MISSING = frozenset({"differs", "unavailable", "broken"})
+MISSING = frozenset({"differs", "unavailable", "no location", "broken"})
 
 #: Refuse a body larger than this. A source is a paper, and a response this size is not one.
 MAX_BYTES = 200 * 1024 * 1024
@@ -104,6 +106,14 @@ def arxiv_of(source: ClaimSource) -> str:
         return minted.group(1)
     linked = _ARXIV_URL.search(source.url or "")
     return linked.group(1) if linked else ""
+
+
+def has_location(source: ClaimSource) -> bool:
+    """Whether a reader holding only the claims file has anywhere to ask for this source.
+
+    A download address written into `note` is prose, and nothing can fetch from prose.
+    """
+    return bool(source.url or doi_of(source) or arxiv_of(source))
 
 
 def europepmc_pdfs(payload) -> list[str]:
@@ -187,6 +197,8 @@ def fetch_one(cf: ClaimFile, dry_run: bool = False) -> Outcome:
             return Outcome(cf.name, "present")
         return Outcome(cf.name, "broken", f"pinned {pinned[:12]}, on disk {on_disk[:12]}")
 
+    if not has_location(cf.source):
+        return Outcome(cf.name, "no location", "add `url:` or `doi:` to the source block")
     candidates = locate(cf.source)
     if dry_run:
         return Outcome(cf.name, "absent", f"would ask {len(candidates)} location(s)")

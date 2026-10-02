@@ -118,3 +118,14 @@ def test_what_was_already_in_the_file_survives(paper):
     doc = read(paper)
     assert set(doc["claims"]) == {"one", "two"}
     assert doc["source"]["citation"] == "woodward"
+
+
+def test_a_source_recording_nowhere_to_fetch_it_from_is_named_when_pinning(paper, capsys):
+    assert pin.main([str(paper), "--id", "domain", "--quote", PASSAGE]) == 0
+    assert "records no url, doi or arxiv id" in capsys.readouterr().out
+
+
+def test_a_source_with_a_doi_draws_no_remark_about_fetching(paper, capsys):
+    paper.write_text(paper.read_text().replace("  local:", "  doi: 10.1000/x\n  local:"))
+    assert pin.main([str(paper), "--id", "domain", "--quote", PASSAGE]) == 0
+    assert "arxiv id" not in capsys.readouterr().out
