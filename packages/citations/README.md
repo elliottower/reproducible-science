@@ -13,6 +13,8 @@ Part of [reproducible-science](https://github.com/elliottower/reproducible-scien
 
 ```bash
 pip install citations
+pip install "citations[sheets]"   # to read .xlsx and .xls sources
+pip install "citations[docx]"     # to read .docx sources
 ```
 
 ## When a quotation will not resolve
@@ -105,6 +107,14 @@ there is nowhere to ask, and `citations pin` says so when a quotation is pinned 
 
 A source that stays `differs` or `unavailable` can be obtained another way and placed at the
 path its claims file names. `verify` checks it against the pin like any other.
+
+A source that records `derived_sha256` is checked a second time once its bytes match: the
+declared extractor is run and the digest of its text compared. The two stages fail under
+different names, because they send a reader to different places. `differs` means the download
+is not the pinned file, and nothing was written. `text differs` means the file is the pinned
+one and the extractor now makes other text of it than the text the quotations were pinned in.
+`text unchecked` means the file is the pinned one and the extractor could not be run here, for
+the reason printed beside it, so the text was not compared; it is never reported as `fetched`.
 
 ## Coverage: the manuscript side
 
@@ -202,6 +212,53 @@ asserts the manuscript quoted a passage its source does not contain. Triangulati
 because it costs one extraction per reader; it does not apply to a source that declares a
 command, and a run that triangulated nothing says so rather than reporting the readers as
 having concurred.
+
+## Reading workbooks, `.docx` and article XML
+
+Three built-in extractors read the formats a supplement or an open-access article arrives in,
+so a claims file can pin the publisher's file and not a text somebody made from it:
+
+| Extractor | Reads | Produces | Install |
+|-----------|-------|----------|---------|
+| `sheet-rows` | `.xlsx`, `.xls`, `.csv` | one row per line, cells joined with `\|` | `pip install "citations[sheets]"` (`.csv` needs nothing) |
+| `docx-text` | `.docx` | body paragraphs in order, then each table one row per line | `pip install "citations[docx]"` |
+| `jats-text` | JATS XML: Europe PMC `fullTextXML`, NCBI `efetch db=pmc` | one block per line, inline markup dropped, entities decoded, table rows as cells | nothing |
+
+A workbook or a `.docx` that declares nothing is read by the extractor its suffix names. An
+`.xml` that declares nothing is still read as plain text with its markup, so quotations already
+pinned against the XML as served go on resolving; `jats-text` is for a source that names it.
+
+```yaml
+source:
+  local: sources/original/aragam2022cad_main.xml
+  sha256: 67b6…                 # the bytes Europe PMC serves
+  url: https://www.ebi.ac.uk/europepmc/webservices/rest/PMC9729111/fullTextXML
+  extractor: jats-text          # what turns them into the text quoted
+  extractor_version: 1          # which rendering of it
+  derived_sha256: 7d8f…         # the text it produced when the quotations were pinned
+```
+
+`sheet-rows` takes two more fields: `sheet: ST1` reads that sheet alone, where the default is
+every sheet in workbook order, and `empty_cells: keep` keeps a row's empty cells, where the
+default drops them. A source names `extractor` or `extract_cmd`, never both.
+
+Each extractor has a version, and the version is of its output: it changes when the same bytes
+would produce different text. A result names both, as `jats-text@1`. A claims file naming a
+version this build does not ship is `unchecked` and says which two versions are involved,
+because reading with the other one would report a verdict against text the file never pinned.
+A reader that is not installed is `unchecked` and names the install. Neither is ever `found`.
+
+`derived_sha256` is the digest of the extracted text. The pin establishes that the bytes did
+not change; this establishes that the reading of them did not. `citations pin` writes it, with
+`extractor_version`, when the first quotation is pinned, and refuses a later quotation where the
+extractor no longer produces that text. `verify` reports such a source beside the broken pins
+and fails, and `fetch` reports it as `text differs`.
+
+Read as plain text, an article's XML keeps `<italic>`, `<sup>`, `<xref>` and its character
+entities, and a quotation crossing one does not resolve. On 72 Europe PMC and NCBI articles
+whose quotations had been pinned against tag-stripped text, 194 of 314 quotations resolved in
+the XML as served and 308 resolve through `jats-text`. The other 6 are table rows quoted with
+spaces between cells, which `jats-text` renders with `|` between them.
 
 ## Audit output
 
@@ -466,8 +523,9 @@ overreaches its quote is for review to catch — the command cannot.
 ## Declaring the extractor
 
 A PDF goes through `pdftotext -layout`; `.txt`, `.md`, `.tei`, `.xml`, `.html`, `.htm` and
-`.rst` are read straight off disk. Anything else — a `.tex` manuscript, a two-column PDF whose
-columns `-layout` splices together — needs a renderer the claims file names:
+`.rst` are read straight off disk; a workbook or a `.docx` goes through a built-in extractor.
+Anything else — a `.tex` manuscript, a two-column PDF whose columns `-layout` splices
+together — needs a renderer the claims file names:
 
 ```yaml
 source:
@@ -523,6 +581,10 @@ maintainer's runner with the runner's environment in reach.
 A refused command is `unchecked` and says it was refused; a command that is not installed is
 `unchecked` and says that instead. The remedy for one is consent and for the other an install,
 and neither makes the passage absent.
+
+A built-in `extractor` is outside the allowlist. It runs in the checking process and executes
+no program, so a claims file naming one has named a reader this package ships and nothing on
+the machine.
 
 The allowlist bounds which program runs, not what an allowed program can be told to do, so a
 program that loads and runs code named on its own command line stays out of the default set.

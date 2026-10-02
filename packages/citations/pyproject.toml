@@ -19,6 +19,7 @@ classifiers = [
   "Programming Language :: Python :: 3.14",
 ]
 dependencies = [ "platformdirs>=3", "provenance-core>=0.4,<0.5", "pydantic>=2.9", "pyyaml>=6.0.2" ]
+optional-dependencies.docx = [ "python-docx>=1.1" ]
 optional-dependencies.lint = [ "papis>=0.15" ]
 # Paperclip's own client is distributed as a wheel at a URL rather than through an index, and a
 # direct reference cannot appear in metadata uploaded to PyPI. So this extra installs the HTTP
@@ -32,6 +33,11 @@ optional-dependencies.paperclip = [ "requests>=2.31" ]
 optional-dependencies.pdf = [ "pdfplumber>=0.11.4", "pypdf>=5.1" ]
 optional-dependencies.pdfplumber = [ "pdfplumber>=0.11.4" ]
 optional-dependencies.pypdf = [ "pypdf>=5.1" ]
+# Readers for the formats a supplement arrives in. Optional for the same reason the PDF readers
+# are: most claim sets pin PDFs and text, and a spreadsheet parser is not something every
+# install should carry. Without the extra the built-in extractor reports `unchecked` and names
+# the install; it never fails a quotation. All three are MIT or BSD.
+optional-dependencies.sheets = [ "openpyxl>=3.1", "xlrd>=2.0.1" ]
 urls.Changelog = "https://github.com/elliottower/reproducible-science/blob/main/CHANGELOG.md"
 urls.Homepage = "https://github.com/elliottower/reproducible-science"
 urls.Issues = "https://github.com/elliottower/reproducible-science/issues"
@@ -53,7 +59,7 @@ per_rule_ignores.DEP002 = [ "papis" ]
 # The optional readers are imported under try/except in `readers.py`, which deptry reads as a
 # dependency the code never uses. Removing either one would make `pip install citations`
 # unable to read a PDF without a system binary.
-per_rule_ignores.DEP004 = [ "pdfplumber", "pypdf" ]
+per_rule_ignores.DEP004 = [ "docx", "openpyxl", "pdfplumber", "pypdf", "xlrd" ]
 # Imported under a guard in `citations.paperclip` and installed only by the `paperclip` extra.
 per_rule_ignores.DEP003 = [ "requests" ]
 # Without this every intra-package import reads as a transitive dependency on itself.
