@@ -291,9 +291,9 @@ def _jats_text(path: pathlib.Path, sheet: str | None, keep_empty: bool) -> str:
     """A JATS article as text: one block per line, inline markup dropped, entities decoded.
 
     Read as plain text, the XML keeps its markup, and a quotation crossing `<italic>`, `<sup>`,
-    `<xref>` or a character entity does not resolve. Measured on 79 Europe PMC and NCBI
-    articles: 194 of 328 quotations resolved in the XML as served, and 115 of the 120 refused
-    ones whose XML was held resolved once the tags were stripped.
+    `<xref>` or a character entity does not resolve. Measured on 72 Europe PMC and NCBI
+    articles: 194 of 314 quotations resolved in the XML as served, and 308 resolve in this
+    text. The other 6 are table rows quoted with spaces between their cells.
 
     The whole document is read, front matter and reference list included: leaving a part out
     is a decision about what a paper may be quoted on, and that is the claims file's to make.
