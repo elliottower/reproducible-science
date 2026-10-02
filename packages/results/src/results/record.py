@@ -25,6 +25,20 @@ ACCESS_LEVELS = [
 ]
 
 
+#: Written into `.results/` so the ledger is tracked without anyone editing the project's own
+#: ignore file. The ledger and its anchor are the record a claim appeals to, and one that exists
+#: on a single disk cannot be appealed to by anyone else; only the lock sidecars are ignored.
+GITIGNORE = """\
+# Commit ledger.jsonl and ledger.head: a record is evidence once it is in history.
+# Everything in the ledger becomes public with the repository, notes included.
+
+# Lock sidecars. They hold nothing; the kernel releases a lock when its holder exits.
+*.lock
+*.provenance-lock
+*.provenance-tmp
+"""
+
+
 def init() -> int:
     d = pathlib.Path.cwd() / RESULTS_DIR
     if d.exists():
@@ -34,8 +48,10 @@ def init() -> int:
     lp = d / ledger.LEDGER
     lp.touch()
     ledger.append_event(lp, {"event": "init"})
+    (d / ".gitignore").write_text(GITIGNORE)
     print(f"created {RESULTS_DIR}/")
     print(f"  {ledger.LEDGER}   append-only event log")
+    print("  .gitignore     ignores the lock files only, so the ledger is committed")
     print("\nseal your inputs before running: `results seal prereg.md script.py data.csv`")
     return 0
 
