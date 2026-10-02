@@ -98,6 +98,11 @@ Append-only JSONL in `.results/ledger.jsonl`. Each line is hash-chained to the p
 or inserting a line breaks the chain. `git diff` shows what changed; `results verify` checks
 whether it should have.
 
+`results init` writes a `.results/.gitignore` that ignores only the lock files, so the ledger and
+its anchor are committed with the project. A ledger on one disk is a record nobody else can
+check. What is committed is public with the repository, so a run's `note` is written as a commit
+message would be.
+
 ## Claude Code
 
 `plugin/` is a Claude Code plugin. Three surfaces, because each catches a different failure:
