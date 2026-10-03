@@ -34,22 +34,25 @@ A source the extractor could not read is a third case, `unchecked` with reason
 
 ## Reason — why
 
-Twenty-two machine-readable codes, so a tool can route by cause:
+Twenty-three machine-readable codes, so a tool can route by cause:
 
 ```text
 passage_present   value_match        passage_absent      value_mismatch
 pointer_absent    column_absent      row_absent          row_ambiguous
 row_selector_invalid                 selector_not_scalar format_unsupported
 wrong_page        value_not_numeric  passage_ambiguous   number_as_word
-extractors_disagree                  extractor_missing   artifact_missing
-artifact_unreadable                  artifact_undeclared backend_defect
-not_offered
+extractors_disagree                  quotation_ambiguous extractor_missing
+artifact_missing  artifact_unreadable                    artifact_undeclared
+backend_defect    not_offered
 ```
 
 `extractors_disagree` is the one most easily collapsed into a neighbour. Two readers of the
 artifact reach different answers about whether the passage is in it, which accuses nothing and
 asks for a better reader — where `passage_absent` says the artifact was read and does not
-contain it, which accuses the manuscript.
+contain it, which accuses the manuscript. `quotation_ambiguous` and `passage_ambiguous` are the
+other pair: the first is a quoted passage occurring more than once, so the record has to say which
+occurrence it means, and the second is a document stating two different numbers where one was
+asserted.
 
 Four of those produce `unchecked` and three produce `not_found`. Without the reason,
 `artifact_undeclared` — a mistake in your manifest — is indistinguishable from
