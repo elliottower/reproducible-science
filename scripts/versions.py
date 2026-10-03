@@ -146,6 +146,11 @@ def series(version: str) -> str:
 #: way. The wheels refused to install together, which is where it was caught.
 DEPENDENCIES_START = re.compile(r"^dependencies = \[", re.M)
 
+#: An optional extras list after a sibling's name, kept through a bump. Without it the pattern
+#: matched no dependency carrying an extra, so `check` passed it unread and `bump` left its range
+#: behind the release.
+EXTRAS = r'(\[[^\]"]*\])?'
+
 
 def dependencies_span(text: str) -> tuple[int, int] | None:
     """The offsets of the dependencies array's body, or None where there is no array.
@@ -179,9 +184,10 @@ def cross_refs(text: str) -> dict[str, str]:
     body = text[span[0] : span[1]]
     found = {}
     for name in PACKAGES:
-        m = re.search(rf'"{re.escape(name)}((?:[><=!~][^"]*)?)"', body)
+        # An extra sits between the name and the range: "provenance-core[anchor]>=0.4,<0.5".
+        m = re.search(rf'"{re.escape(name)}{EXTRAS}((?:[><=!~][^"]*)?)"', body)
         if m:
-            found[name] = m.group(1)
+            found[name] = m.group(2)
     return found
 
 
@@ -254,7 +260,11 @@ def bump(version: str, realign: bool = False) -> list[str]:
             for dep in PACKAGES:
                 if dep == name:
                     continue
-                body = re.sub(rf'"{re.escape(dep)}(?:[><=!~][^"]*)?"', f'"{dep}{want}"', body)
+                body = re.sub(
+                    rf'"{re.escape(dep)}{EXTRAS}(?:[><=!~][^"]*)?"',
+                    lambda m, dep=dep: f'"{dep}{m.group(1) or ""}{want}"',
+                    body,
+                )
             text = text[: span[0]] + body + text[span[1] :]
         if text != original:
             path.write_text(text)

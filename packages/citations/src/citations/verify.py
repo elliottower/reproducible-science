@@ -178,6 +178,21 @@ def declared_extractor(extract_cmd: str | None) -> str | None:
     return None if words[0].strip().lower() == NO_EXTRACTOR else extract_cmd
 
 
+#: A declared `cat` given nothing but the source. It names no rendering, only the bytes on disk,
+#: which this module reads itself for a text file. Read here rather than run, so it needs no
+#: consent: it was refused as a program outside `DEFAULT_EXTRACTORS`, and 23 quotations on one
+#: public site were `unchecked` for asking for the file as it is. `cat -n {}` and `cat other {}`
+#: are commands, and are run or refused as any other.
+READ_AS_IS = (["cat"], ["cat", "{}"])
+
+
+def reads_as_is(extract_cmd: str | None) -> bool:
+    try:
+        return extract_cmd is not None and shlex.split(extract_cmd) in READ_AS_IS
+    except ValueError:
+        return False
+
+
 #: How long any extractor gets before the source is reported unreadable rather than waited on.
 EXTRACT_TIMEOUT = 120
 
@@ -616,6 +631,11 @@ def _extract(
     if extract_cmd:
         if (builtin := extractors.declared(pdf, extract_cmd)) is not None:
             return readers.Extraction(builtin.read(pdf), builtin.name)
+        if reads_as_is(extract_cmd):
+            try:
+                return readers.Extraction(pdf.read_text(errors="replace"), PLAIN_TEXT)
+            except OSError as e:
+                raise SourceUnreadableError(pdf, f"could not be read: {e}") from e
         argv = _argv(pdf, extract_cmd, allowed)
         return readers.Extraction(_run(pdf, argv), _extractor_name(pdf, extract_cmd))
     if (obvious := BY_SUFFIX.get(pdf.suffix.lower())) and obvious in allowed:
@@ -822,6 +842,8 @@ def _digest(text: str) -> str:
 
 def _extractor_name(artifact: pathlib.Path, extract_cmd: str | None) -> str:
     """What `extract` reads this source with, as the report names it."""
+    if reads_as_is(extract_cmd):
+        return PLAIN_TEXT
     if extract_cmd := declared_extractor(extract_cmd):
         return " ".join(extract_cmd.split())
     if obvious := BY_SUFFIX.get(artifact.suffix.lower()):

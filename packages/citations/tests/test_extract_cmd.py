@@ -345,6 +345,39 @@ def test_a_source_declaring_no_extractor_is_read_off_disk(declared, tmp_path):
     assert got.extractor == V.PLAIN_TEXT
 
 
+@pytest.mark.parametrize("declared", ["cat", "cat {}", "  cat   {}  "])
+@pytest.mark.parametrize("suffix", [".txt", ".csv", ".data"])
+def test_a_bare_cat_is_read_off_disk_without_consent_or_a_subprocess(
+    declared, suffix, tmp_path, monkeypatch
+):
+    def never(*a, **kw):
+        raise AssertionError("reading a file as it is runs no program")
+
+    monkeypatch.setattr(V.subprocess, "run", never)
+    src = tmp_path / f"s{suffix}"
+    src.write_text("the model performs well on every held-out split\n")
+    V.clear_caches()
+    got = V.check_one("performs well on every held-out split", src, extract_cmd=declared)
+    assert got.state == "found"
+    assert got.extractor == V.PLAIN_TEXT
+
+
+@pytest.mark.parametrize("declared", ["cat -n {}", "cat /etc/hosts {}", "cat {} {}"])
+def test_cat_with_anything_beyond_the_source_is_still_a_refused_command(
+    declared, tmp_path, monkeypatch
+):
+    def never(*a, **kw):
+        raise AssertionError("a refused command must not reach subprocess")
+
+    monkeypatch.setattr(V.subprocess, "run", never)
+    src = tmp_path / "s.txt"
+    src.write_text("the model performs well on every held-out split\n")
+    V.clear_caches()
+    got = V.check_one("performs well on every held-out split", src, extract_cmd=declared)
+    assert got.state == "unchecked"
+    assert "--allow-extractor cat" in got.detail
+
+
 def test_a_real_command_is_still_declared(tmp_path):
     assert V.declared_extractor("pdftotext -layout") == "pdftotext -layout"
     assert V.declared_extractor(None) is None
