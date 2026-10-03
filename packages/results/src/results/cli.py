@@ -8,6 +8,7 @@ results claim <text>      bind a manuscript claim to a run's output
 results coverage <paper>  how many of a manuscript's numbers are bound to a run
 results verify            check the ledger chain and every hash it names
 results reanchor          record the ledger's current length as authoritative
+results timestamp         date the ledger's head outside the repository, and check earlier dates
 
 This module parses arguments. Each handler unpacks the namespace argparse built and calls into
 `results.record` or `results.audit`, where the command's logic and its refusals live.
@@ -74,6 +75,10 @@ def cmd_reanchor(a) -> int:
 
 def cmd_verify(a) -> int:
     return audit.verify(a.files)
+
+
+def cmd_timestamp(a) -> int:
+    return audit.timestamp()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -164,6 +169,11 @@ def _main(argv: list[str] | None = None) -> int:
 
     ra = sub.add_parser("reanchor", help="record the ledger's current length as authoritative")
     ra.set_defaults(fn=cmd_reanchor)
+
+    ts = sub.add_parser(
+        "timestamp", help="date the ledger's head outside the repository, and check earlier dates"
+    )
+    ts.set_defaults(fn=cmd_timestamp)
 
     a = ap.parse_args(argv)
     if not a.cmd:

@@ -4,6 +4,7 @@
     prereg freeze         record the commit and hash, append to the log
     prereg log <note>     append a line without freezing
     prereg check          has anything above the line changed since the freeze?
+    prereg timestamp      complete the freeze's outside timestamp, and check it against Bitcoin
     prereg setup          save an OSF token to .env
     prereg register       submit the plan's OSF draft as a registration (--all: every plan)
     prereg link           create a view-only link on the OSF registration
@@ -21,7 +22,14 @@ import re
 import sys
 from dataclasses import dataclass
 
-from provenance_core import atomic_write, exclusive_lock, hint, shared_lock
+from provenance_core import (
+    anchor,
+    atomic_write,
+    atomic_write_bytes,
+    exclusive_lock,
+    hint,
+    shared_lock,
+)
 from provenance_core.gitref import try_run
 
 from prereg import osf, template
@@ -65,6 +73,39 @@ NEW_GITIGNORE = """\
 *.provenance-lock
 *.provenance-tmp
 """
+
+
+FROZEN_DIGEST = re.compile(r"\*\*Plan sha256:\*\* `([0-9a-f]{64})`")
+
+
+def proof_path(path: pathlib.Path) -> pathlib.Path:
+    """Where a plan's timestamp proof is kept: `PREREG.md.ots`, the name `ots` itself would use."""
+    return path.with_name(path.name + ".ots")
+
+
+def _stamp(path: pathlib.Path, digest: str) -> None:
+    """Send the freeze's digest to the calendars and keep the proof beside the plan.
+
+    A freeze that cannot be stamped is still a freeze, so a failure here is reported and never
+    undoes it. A proof of an earlier freeze is kept under its digest rather than overwritten: it
+    dates the plan as it was then, which a forced re-freeze does not make untrue.
+    """
+    proof = proof_path(path)
+    if proof.exists():
+        try:
+            anchor.status(proof.read_bytes(), digest)
+            return
+        except anchor.AnchorError:
+            earlier = anchor.proved_digest(proof.read_bytes())[:16]
+            proof.rename(path.with_name(f"{path.name}.{earlier}.ots"))
+    try:
+        atomic_write_bytes(proof, anchor.stamp(digest))
+    except anchor.AnchorError as e:
+        print(f"\nnot timestamped: {e}")
+        print("`prereg timestamp` stamps it once the calendars can be reached.")
+        return
+    print(f"  timestamp  {proof.name}, pending until Bitcoin confirms it, usually within hours")
+    print("             `prereg timestamp` then completes the proof. Commit it with the plan.")
 
 
 def cmd_new(a) -> int:
@@ -171,6 +212,8 @@ def _freeze_locked(a, path: pathlib.Path) -> int:
     print(f"frozen  {path}")
     print(f"  commit  {commit[:12]}")
     print(f"  sha256  {digest[:16]}…  (of everything above the log)")
+    if not a.no_timestamp:
+        _stamp(path, digest)
     print("\nCommit this. The freeze is only evidence once it is in history.")
 
     if push:
@@ -365,6 +408,32 @@ def check_one(path: pathlib.Path) -> int:
             print(f"  - {problem}")
         return 1
     print(f"unchanged    {path}")
+    return _report_timestamp(path, m.group(1))
+
+
+def _report_timestamp(path: pathlib.Path, digest: str) -> int:
+    """One line on the freeze's outside timestamp, read from the proof with no network.
+
+    A proof of another digest fails the check: it would otherwise lend this freeze the date of a
+    plan that is not this one. A missing proof does not fail it, because every plan frozen before
+    timestamps existed has none.
+    """
+    proof = proof_path(path)
+    if not proof.exists():
+        print("  timestamp  none. `prereg timestamp` makes one.")
+        return 0
+    try:
+        found = anchor.status(proof.read_bytes(), digest)
+    except anchor.AnchorError as e:
+        print(f"TIMESTAMP    {path}")
+        print(f"  - {proof.name}: {e}")
+        return 1
+    if found.is_complete:
+        print(f"  timestamp  Bitcoin block {found.blocks[0]}. `prereg timestamp` checks the block.")
+    else:
+        print(
+            f"  timestamp  pending at {len(found.pending)} calendars. `prereg timestamp` completes it."
+        )
     return 0
 
 
@@ -577,6 +646,53 @@ def cmd_check(a) -> int:
     return 1 if (changed or codes.count(2)) else 0
 
 
+def timestamp_one(path: pathlib.Path) -> int:
+    """Stamp, complete or check one plan's timestamp. 0 dated, 1 failed, 2 nothing to date yet."""
+    with shared_lock(path):
+        m = FROZEN_DIGEST.search(path.read_text())
+    if not m:
+        print(f"not frozen   {path}")
+        return 2
+    digest, proof = m.group(1), proof_path(path)
+    if not proof.exists():
+        try:
+            atomic_write_bytes(proof, anchor.stamp(digest))
+        except anchor.AnchorError as e:
+            print(f"NOT STAMPED  {path}\n  - {e}")
+            return 1
+        print(f"stamped      {path}\n  pending until Bitcoin confirms it, usually within hours.")
+        return 2
+    try:
+        data = anchor.upgrade(proof.read_bytes(), digest)
+        found = anchor.status(data, digest)
+        if data != proof.read_bytes():
+            atomic_write_bytes(proof, data)
+        block = anchor.confirm(data, digest) if found.is_complete else None
+    except anchor.AnchorError as e:
+        print(f"TIMESTAMP    {path}\n  - {e}")
+        return 1
+    if block is None:
+        print(
+            f"pending      {path}\n  at {len(found.pending)} calendars; try again in a few hours."
+        )
+        return 2
+    print(f"timestamped  {path}")
+    print(f"  Bitcoin block {block.height}, {block.time:%Y-%m-%d %H:%M} UTC")
+    print("  The plan existed in this form by then. Commit the proof if it changed.")
+    return 0
+
+
+def cmd_timestamp(a) -> int:
+    """Timestamp the governing plan, or every plan below when there is none, as `check` does."""
+    path = find()
+    paths = [path] if path is not None else sorted(pathlib.Path.cwd().rglob(PREREG))
+    if not paths:
+        print(f"no {PREREG} here, above, or below.")
+        return 2
+    codes = [timestamp_one(p) for p in paths]
+    return 1 if 1 in codes else (2 if 2 in codes else 0)
+
+
 def main(argv: list[str] | None = None) -> int:
     code = _main(argv)
     # After the work, never before it, and never instead of it: the note is about how this
@@ -608,6 +724,11 @@ def _main(argv: list[str] | None = None) -> int:
         choices=ACCESS,
         metavar="LEVEL",
         help="required with --force. " + ACCESS_HELP,
+    )
+    f.add_argument(
+        "--no-timestamp",
+        action="store_true",
+        help="do not send the plan's digest to the OpenTimestamps calendars",
     )
     f.add_argument("--osf", action="store_true", help="push as a draft registration to OSF")
     f.add_argument(
@@ -652,6 +773,11 @@ def _main(argv: list[str] | None = None) -> int:
 
     c = sub.add_parser("check", help="has the plan changed since the freeze?")
     c.set_defaults(fn=cmd_check)
+
+    t = sub.add_parser(
+        "timestamp", help="complete the freeze's outside timestamp and check it against Bitcoin"
+    )
+    t.set_defaults(fn=cmd_timestamp)
 
     r = sub.add_parser("register", help="submit the plan's OSF draft as a registration")
     # No default. An immediate registration is public, and a default either way decides for

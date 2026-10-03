@@ -21,6 +21,9 @@ classifiers = [
   "Topic :: Scientific/Engineering",
 ]
 dependencies = [  ]
+optional-dependencies.anchor = [
+  "opentimestamps==0.4.5",
+]
 urls.Changelog = "https://github.com/elliottower/reproducible-science/blob/main/CHANGELOG.md"
 urls.Homepage = "https://github.com/elliottower/reproducible-science"
 urls.Issues = "https://github.com/elliottower/reproducible-science/issues"
