@@ -517,9 +517,12 @@ export const register: Register = on => {
     if (!line || e.props.hasSurvey) {
       return next(e)
     }
-    const { Text } = $.ui.resolve(e)
+    const { Box, Text } = $.ui.resolve(e)
 
-    return h(Text, { dimColor: true, wrap: 'wrap' }, line)
+    // The engine draws its collapse mark, `[-]`, over the last columns of the band's first row.
+    // Unpadded, a line wrapping there lost the characters under it: `4 sealed, 0 claims` showed
+    // as `4 sealed,` then `claims`.
+    return h(Box, { paddingRight: 5 }, h(Text, { dimColor: true, wrap: 'wrap' }, line))
   })
 
   on('ui.render', { component: 'Pane', requestId: PICKER }, async ($, e) => {
