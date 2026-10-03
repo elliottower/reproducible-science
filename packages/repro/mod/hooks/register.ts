@@ -109,6 +109,26 @@ async function output($: EngineInterface, argv: string[], cwd: string, timeoutMs
 }
 
 /**
+ * Every `claims` folder in the project, relative to its root. A paper keeps its pinned quotations
+ * beside the manuscript as often as at the top (`paper/prior_art/claims`), and looking only at
+ * the top reported 63 pinned quotations as none.
+ */
+async function claimsFolders($: EngineInterface, root: string) {
+  const found = await output(
+    $,
+    ['find', '.', '-maxdepth', '4', '-type', 'd', '-name', 'claims', '-not', '-path', '*/node_modules/*', '-not', '-path', '*/.git/*'],
+    root,
+    20_000,
+  )
+
+  return (found ?? '')
+    .split('\n')
+    .map(line => line.replace(/^\.\//, '').trim())
+    .filter(line => line.length > 0)
+    .sort()
+}
+
+/**
  * What the last `status` found wrong, each in a few words. Drawn on the engine's pinned line
  * under the prompt, which is one row and spends about 28 columns on this plugin's name, so a
  * warning names the problem and `/repro-status` says what to do. The line is kept for these
@@ -198,13 +218,19 @@ async function status($: EngineInterface, root: string, withFiles: boolean) {
     wrong.push(`${plural(runs, 'run')}, no plan frozen`)
   }
 
-  if (await $.fs.exists(`${root}/claims`)) {
+  const folders = await claimsFolders($, root)
+  if (folders.length > 0) {
     const last = (await read($, quotations))[root]
     if (last) {
       fields.push(`citations: ${last}`)
     } else {
       // Counting what is pinned is one grep; checking it is minutes, and `/repro-status` does that.
-      const counted = await output($, ['grep', '-rhcE', '^[[:space:]]*-?[[:space:]]*exact:', 'claims'], root, 20_000)
+      const counted = await output(
+        $,
+        ['grep', '-rhcE', '^[[:space:]]*-?[[:space:]]*exact:', ...folders],
+        root,
+        20_000,
+      )
       const pinned = (counted ?? '').split('\n').reduce((sum, n) => sum + (Number(n) || 0), 0)
       fields.push(`citations: ${pinned.toLocaleString('en-US')} pinned, not verified`)
     }
@@ -658,20 +684,29 @@ export const register: Register = on => {
     }
     // The quotations first, so the status line computed after them carries this check's count.
     const checked: string[] = []
-    if (await $.fs.exists(`${project}/claims`)) {
-      const ran = await $.process.run(['citations', 'verify', '--claims', 'claims/'], {
+    const folders = await claimsFolders($, project)
+    const count = (text: string | undefined) => Number((text ?? '0').replace(/,/g, ''))
+    let pinned = 0
+    let found = 0
+    for (const folder of folders) {
+      const ran = await $.process.run(['citations', 'verify', '--claims', folder], {
         cwd: project,
         timeoutMs: 300_000,
       })
-      checked.push(...ran.stdout.split('\n').filter(line => /^\s+(found|not found|unchecked|ambiguous)\s/.test(line)))
-      const pinned = /^([\d,]+) quotes?$/m.exec(ran.stdout)?.[1]
-      const found = /^\s+found\s+([\d,]+)/m.exec(ran.stdout)?.[1] ?? '0'
-      if (pinned) {
-        const root = project
-        await update($, quotations, saved => ({ ...saved, [root]: `${found}/${pinned} found` }))
-      }
-    } else {
-      checked.push('no claims/ directory, so no quotations are pinned')
+      checked.push(
+        folder,
+        ...ran.stdout.split('\n').filter(line => /^\s+(found|not found|unchecked|ambiguous)\s/.test(line)),
+      )
+      pinned += count(/^([\d,]+) quotes?$/m.exec(ran.stdout)?.[1])
+      found += count(/^\s+found\s+([\d,]+)/m.exec(ran.stdout)?.[1])
+    }
+    if (pinned > 0) {
+      const root = project
+      const line = `${found.toLocaleString('en-US')}/${pinned.toLocaleString('en-US')} found`
+      await update($, quotations, saved => ({ ...saved, [root]: line }))
+    }
+    if (folders.length === 0) {
+      checked.push('no claims folder, so no quotations are pinned')
     }
     const lines = [...said, await status($, project, true), ...checked]
     lastStatus = lines[said.length] ?? lastStatus

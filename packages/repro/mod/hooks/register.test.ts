@@ -275,3 +275,15 @@ test('a check that times out marks its own field and the rest of the line still 
   expect(shown.text).toContain('study · prereg: not read (timed out) · results: 0 runs, 0 sealed, 0 claims')
   await $.command.run({ command: 'repro-status', args: 'auto' })
 })
+
+test('quotations pinned in a claims folder below the top of the project are counted', async ($, on) => {
+  project(on, { '/work/study/PREREG.md': DRAFT_PLAN }, argv =>
+    argv[0] === 'find' ? './paper/prior_art/claims\n' : argv[0] === 'grep' ? '40\n23\n' : '',
+  )
+
+  const shown = await $.command.run({ command: 'repro-status', args: 'study' })
+
+  expect(shown.text).toContain('citations: 63 pinned, not verified')
+  expect(spawned.some(call => call.includes('paper/prior_art/claims') && call.includes('grep'))).toBe(true)
+  await $.command.run({ command: 'repro-status', args: 'auto' })
+})
