@@ -522,7 +522,17 @@ export const register: Register = on => {
     // The engine draws its collapse mark, `[-]`, over the last columns of the band's first row.
     // Unpadded, a line wrapping there lost the characters under it: `4 sealed, 0 claims` showed
     // as `4 sealed,` then `claims`.
-    return h(Box, { paddingRight: 5 }, h(Text, { dimColor: true, wrap: 'wrap' }, line))
+    // One element per field, so the row breaks between fields and never inside one:
+    // `0 claims` split across two rows read as a count belonging to the field before it.
+    const fields = line.split(' · ')
+
+    return h(
+      Box,
+      { paddingRight: 5, flexDirection: 'row', flexWrap: 'wrap' },
+      ...fields.map((field, at) =>
+        h(Text, { key: `field:${at}`, dimColor: true }, at < fields.length - 1 ? `${field} · ` : field),
+      ),
+    )
   })
 
   on('ui.render', { component: 'Pane', requestId: PICKER }, async ($, e) => {
