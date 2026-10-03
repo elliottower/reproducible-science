@@ -222,7 +222,7 @@ def test_an_identifier_cannot_smuggle_sql(database):
 # -- formats with no adapter ----------------------------------------------------------------
 
 
-@pytest.mark.parametrize("name", ["r.h5", "r.parquet", "r.xlsx", "r.nc"])
+@pytest.mark.parametrize("name", ["r.mat", "r.rda", "r.RData", "r.sas7bdat"])
 def test_a_format_with_no_adapter_is_declined_rather_than_guessed(tmp_path, name):
     path = tmp_path / name
     path.write_bytes(b"\x00binary")
@@ -234,14 +234,14 @@ def test_a_format_with_no_adapter_is_declined_rather_than_guessed(tmp_path, name
 def test_an_unsupported_format_never_reports_a_value_present(tmp_path):
     """The printed number appears in the bytes; a search would find it and call that a
     verification."""
-    path = tmp_path / "r.parquet"
+    path = tmp_path / "r.mat"
     path.write_bytes(b"accuracy 3.2 somewhere in here")
     decision = check(TreeLocator(pointer="/accuracy"), path)
     # `is not VERIFIED` was satisfied by five other outcomes, including MISMATCH -- which would
     # be a false finding about the artifact rather than a declined check.
     assert decision.outcome is Outcome.UNCHECKED
     assert decision.reason is Reason.FORMAT_UNSUPPORTED
-    assert "Parquet" in decision.detail
+    assert "MATLAB" in decision.detail
 
 
 # -- the locator is bound into the decision -------------------------------------------------

@@ -35,6 +35,10 @@ urls.Homepage = "https://github.com/elliottower/reproducible-science"
 dev = [
   "adduce>=0.1.2",
   "coverage>=7.6",
+  # The optional readers `repro` resolves values through, for the same reason as the PDF readers
+  # below: a reader tested against a stub of its library is tested against nothing.
+  "h5py>=3.12",
+  "netcdf4>=1.7.2",
   "numpy>=2.2.6",
   # The optional spreadsheet and .docx readers, for the same reason as the PDF readers below.
   # `xlwt` is here only to write an `.xls` fixture: nothing else produces that format, and a
@@ -44,12 +48,15 @@ dev = [
   # against real extractions rather than only against stubs.
   "pdfplumber>=0.11.4",
   "pre-commit>=4",
+  "pyarrow>=18",
   "pypdf>=5.1",
+  "pyreadstat>=1.3.6",
   "pytest>=8",
   "pytest-randomly>=3.15",
   "pytest-timeout>=2.3",
   "pytest-xdist>=3.6",
   "python-docx>=1.1",
+  "rdata>=1",
   "ruff>=0.14",
   "xlrd>=2.0.1",
   "xlwt>=1.3",
@@ -102,13 +109,13 @@ lint.ignore = [
 lint.per-file-ignores."packages/*/tests/*" = [ "B011" ] # bare assert False is fine in a test
 
 [tool.codespell]
-# `unparseable` is the spelling used throughout, `inout` is a Rust crate named in
+# `unparseable` is the spelling used throughout, `sav` is SPSS's file suffix, `inout` is a Rust crate named in
 # `research/pdf-readers/pdfrs/Cargo.lock`, `ede` is the journal code in the DOI
 # 10.1097/EDE.0000000000001064, `trough` and `devlop` are npm packages the docs site's
 # lockfile names, `bu` is a base64 fragment in one of its integrity hashes, and the rest are
 # author surnames in the sampling frame. Listed rather than skipping whole files, which would
 # hide real typos.
-ignore-words-list = "unparseable,ue,copie,buis,smae,nd,ist,fo,inout,ede,bui,trough,devlop,bu"
+ignore-words-list = "unparseable,sav,ue,copie,buis,smae,nd,ist,fo,inout,ede,bui,trough,devlop,bu"
 skip = "uv.lock,.git"
 
 [tool.pytest]
