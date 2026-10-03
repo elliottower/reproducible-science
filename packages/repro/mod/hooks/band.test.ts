@@ -23,7 +23,8 @@ test('the band above the prompt draws the readout one field at a time', async ($
     component: 'AbovePrompt',
     props: { hasSurvey: false, isWorking: false, maxRows: 10, columns: 120 } as never,
   })
-  expect(await ui.find({ type: 'Text', text: /^study · prereg: no plan {3}$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^prereg: no plan {3}$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /study/ })).toBeUndefined()
   expect(await ui.find({ type: 'Text', text: /^results: 0 runs, 0 sealed, 0 claims/ })).toBeDefined()
   await ui.unmount()
 })

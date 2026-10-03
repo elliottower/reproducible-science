@@ -524,10 +524,12 @@ export const register: Register = on => {
     // as `4 sealed,` then `claims`.
     // One element per field, so the row breaks between fields and never inside one:
     // `0 claims` split across two rows read as a count belonging to the field before it.
-    // The project's name stays joined to the first field by its dot, as one unit, so the dot is
-    // never the last thing on a row.
-    const [name, first, ...rest] = line.split(' · ')
-    const fields = first === undefined ? [name ?? ''] : [`${name} · ${first}`, ...rest]
+    // The row leaves the project's name out: the person knows which project the session is on,
+    // and `/repro-status` names it. A line holding only a name has no field to show.
+    const fields = line.split(' · ').slice(1)
+    if (fields.length === 0) {
+      return next(e)
+    }
 
     return h(
       Box,
