@@ -14,7 +14,7 @@
       "strict": false
     },
     {
-      "name": "repro-gates",
+      "name": "repro",
       "source": "./packages/repro/mod",
       "strict": false
     },

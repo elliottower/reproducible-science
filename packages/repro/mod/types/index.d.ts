@@ -3,7 +3,7 @@ export type WorkingProject = string | null
 
 declare module 'claude-code' {
   interface PluginState {
-    'repro-gates': {
+    'repro': {
       project: WorkingProject
       /** Whether the person named that project, so the tools' paths no longer move it. */
       isPinned: boolean
@@ -11,6 +11,10 @@ declare module 'claude-code' {
       top: number
       /** How many projects the picker's window shows. */
       windowRows: number
+      /** The readout drawn in the band above the prompt. */
+      statusLine: string
+      /** The last full quotation check of each project, as `found/pinned found`, by folder. */
+      quotations: Record<string, string>
     }
   }
 }
