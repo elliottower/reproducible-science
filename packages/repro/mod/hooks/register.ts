@@ -208,6 +208,9 @@ async function status($: EngineInterface, root: string, withFiles: boolean) {
       const pinned = (counted ?? '').split('\n').reduce((sum, n) => sum + (Number(n) || 0), 0)
       fields.push(`citations: ${pinned.toLocaleString('en-US')} pinned, not verified`)
     }
+  } else {
+    // Said, so the row always holds the same three fields and a missing one is not read as fine.
+    fields.push('citations: none pinned')
   }
 
   warnings = wrong
@@ -522,20 +525,15 @@ export const register: Register = on => {
     // The engine draws its collapse mark, `[-]`, over the last columns of the band's first row.
     // Unpadded, a line wrapping there lost the characters under it: `4 sealed, 0 claims` showed
     // as `4 sealed,` then `claims`.
-    // One element per field, so the row breaks between fields and never inside one:
-    // `0 claims` split across two rows read as a count belonging to the field before it.
-    // The project's name stays joined to the first field by its dot, as one unit, so the dot is
-    // never the last thing on a row.
+    // One field per row, always: the project's name with the plans, then the runs, then the
+    // quotations. Laid side by side they read differently at every window width.
     const [name, first, ...rest] = line.split(' · ')
     const fields = first === undefined ? [name ?? ''] : [`${name} · ${first}`, ...rest]
 
     return h(
       Box,
-      { paddingRight: 5, flexDirection: 'row', flexWrap: 'wrap' },
-      ...fields.map((field, at) =>
-        // Spaces between fields, which vanish at the end of a row; a dot there was left dangling.
-        h(Text, { key: `field:${at}`, dimColor: true }, at < fields.length - 1 ? `${field}   ` : field),
-      ),
+      { paddingRight: 5, flexDirection: 'column' },
+      ...fields.map((field, at) => h(Text, { key: `field:${at}`, dimColor: true }, field)),
     )
   })
 

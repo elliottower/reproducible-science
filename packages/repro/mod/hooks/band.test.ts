@@ -1,6 +1,6 @@
 import { expect, test } from 'claude-code/testing'
 
-test('the band above the prompt draws the readout one field at a time', async ($, on) => {
+test('the band above the prompt draws one field per row', async ($, on) => {
   on('session.cwd', () => ({ value: '/work/study' }))
   on('fs.exists', (_$, e) => ({ value: e.path.startsWith('/work/study') }))
   on('fs.read', () => ({ value: '' }))
@@ -23,7 +23,7 @@ test('the band above the prompt draws the readout one field at a time', async ($
     component: 'AbovePrompt',
     props: { hasSurvey: false, isWorking: false, maxRows: 10, columns: 120 } as never,
   })
-  expect(await ui.find({ type: 'Text', text: /^study · prereg: no plan {3}$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^study · prereg: no plan$/ })).toBeDefined()
   expect(await ui.find({ type: 'Text', text: /^results: 0 runs, 0 sealed, 0 claims/ })).toBeDefined()
   await ui.unmount()
 })
