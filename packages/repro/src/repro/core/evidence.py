@@ -91,7 +91,11 @@ class TreeLocator(Locator):
 
 
 class TableLocator(Locator):
-    """A column plus a predicate that must match exactly one row."""
+    """A column plus a predicate that must match exactly one row.
+
+    Addresses delimited text, and the binary formats that hold one table and nothing else:
+    Parquet, Feather and Arrow IPC, Stata `.dta`, SPSS `.sav`, and an R data frame saved as
+    `.rds`. `delimiter` means something only to delimited text."""
 
     kind: Literal["table"] = "table"
     column: str
@@ -123,12 +127,37 @@ class TablePositionLocator(Locator):
 
 
 class ArrayLocator(Locator):
-    """A named array plus a multidimensional index, for `.npy` and `.npz`."""
+    """A named array plus a multidimensional index, for `.npy`, `.npz`, HDF5 and NetCDF."""
 
     kind: Literal["array"] = "array"
     array: str | None = None
-    """Required for `.npz`, which holds many arrays; omitted for `.npy`, which holds one."""
+    """Required for `.npz`, which holds many arrays; omitted for `.npy`, which holds one. In an
+    HDF5 or NetCDF file it is the dataset's or variable's path, `/results/accuracy`, and is
+    required for the same reason."""
     index: tuple[int, ...]
+
+
+class SheetLocator(Locator):
+    """A sheet of a workbook, a column, and a predicate that must match exactly one row.
+
+    A table locator with one more coordinate, because a workbook holds several tables and a
+    column name is unique, at best, within one of them. The first row of the sheet is the
+    header, as it is in delimited text.
+    """
+
+    kind: Literal["sheet"] = "sheet"
+    sheet: str | None = None
+    """Required where the workbook has more than one sheet. Omitted for a workbook with one,
+    which is what most exported results are; a second sheet added later turns the omission
+    into a broken selector rather than a silent read of whichever sheet comes first."""
+    column: str
+    where: dict[str, PredicateValue] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _predicate_must_select(self):
+        if not self.where:
+            raise ValueError("a sheet locator needs a `where` predicate")
+        return self
 
 
 class SqliteLocator(Locator):
@@ -195,7 +224,13 @@ class ProseLocator(Locator):
 
 
 ValueLocator = Annotated[
-    TreeLocator | TableLocator | TablePositionLocator | ArrayLocator | SqliteLocator | ProseLocator,
+    TreeLocator
+    | TableLocator
+    | TablePositionLocator
+    | ArrayLocator
+    | SheetLocator
+    | SqliteLocator
+    | ProseLocator,
     Field(discriminator="kind"),
 ]
 

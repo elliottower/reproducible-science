@@ -232,16 +232,17 @@ itself.
 | kind | addresses | identity |
 |---|---|---|
 | `tree` | JSON, and YAML restricted to a JSON-compatible tree | RFC 6901 pointer |
-| `table` | CSV, TSV, PSV | column plus a predicate matching exactly one row |
+| `table` | CSV, TSV, PSV; Parquet, Feather, Arrow; Stata, SPSS; an R data frame (`.rds`) | column plus a predicate matching exactly one row |
 | `table_position` | the same, by row index | column plus position, carrying a warning |
+| `sheet` | an Excel workbook (`.xlsx`, `.xls`) | sheet, column, and a predicate matching one row |
 | `sqlite` | a database file | table, column, and a predicate matching one row |
-| `array` | `.npy`, `.npz` | array name plus a multidimensional index |
+| `array` | `.npy`, `.npz`, HDF5, NetCDF | array name or dataset path plus a multidimensional index |
 | `prose` | a document, as text | two literal anchors bracketing the value |
 
 Every variant enforces one invariant: a locator resolves to **exactly one scalar**. Zero is
 absent, two or more is ambiguous, a container is not a value, and no backend takes the first
-match. A format with no adapter — HDF5, NetCDF, Parquet, XLSX — reports `format_unsupported`
-and stops. No backend falls back to searching a file for the printed number, which would find
+match. A format with no adapter — MATLAB, RData, SAS — reports `format_unsupported` and stops,
+as does a pickle, which no adapter opens because reading one runs code. No backend falls back to searching a file for the printed number, which would find
 it wherever it appears and call that verification.
 
 `prose` is the one variant addressing a format that has no addressing scheme of its own. A

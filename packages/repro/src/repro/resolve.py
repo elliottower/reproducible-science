@@ -2,8 +2,8 @@
 
 One contract over several formats, rather than one pointer syntax pretending every file is a
 tree. Each adapter in `repro.adapters` translates a locator into the addressing its format
-already has -- a JSON Pointer into JSON, a column and key predicate into a table, a dataset
-name and index into an array -- and every adapter enforces the same invariant:
+already has -- a JSON Pointer into JSON, a column and key predicate into a table, a sheet as
+well into a workbook, a dataset name and index into an array -- and every adapter enforces the same invariant:
 
     0 matches       -> ABSENT
     1 scalar        -> RESOLVED
@@ -30,6 +30,7 @@ from repro.adapters.array import _resolve_array
 from repro.adapters.base import ExtractedValue, Found, Resolution, _no
 from repro.adapters.prose import CARDINALS as CARDINALS
 from repro.adapters.prose import _resolve_prose
+from repro.adapters.sheet import _resolve_sheet
 from repro.adapters.sqlite import _resolve_sqlite
 from repro.adapters.table import _resolve_table, _resolve_table_position, predicate_text
 from repro.adapters.table import read_table as read_table
@@ -41,14 +42,19 @@ from repro.models import ValueLocator
 #: Formats named here have no adapter. Listing them means an unsupported artifact is reported
 #: as unsupported rather than as an unreadable one.
 UNSUPPORTED = {
-    ".h5": "HDF5",
-    ".hdf5": "HDF5",
-    ".nc": "NetCDF",
-    ".parquet": "Parquet",
-    ".xlsx": "XLSX",
-    ".xls": "XLS",
-    ".arrow": "Arrow",
-    ".feather": "Feather",
+    ".mat": "MATLAB",
+    ".rda": "RData",
+    ".rdata": "RData",
+    ".sas7bdat": "SAS",
+}
+
+#: Formats no adapter will ever open, because reading one runs code. A pickle is a program
+#: whose last instruction returns the object, and `joblib` and PyTorch checkpoints are pickles.
+NEVER_OPENED = {
+    ".pkl": "a pickle",
+    ".pickle": "a pickle",
+    ".joblib": "a joblib file, which is a pickle",
+    ".pt": "a PyTorch checkpoint, which is a pickle",
 }
 
 #: Keyed by `Locator.kind`, which is what makes the dispatch below sound: each adapter takes
@@ -60,12 +66,19 @@ _ADAPTERS: dict[str, Callable[[Any, pathlib.Path], Found]] = {
     "table_position": _resolve_table_position,
     "sqlite": _resolve_sqlite,
     "array": _resolve_array,
+    "sheet": _resolve_sheet,
     "prose": _resolve_prose,
 }
 
 
 def resolve(locator: ValueLocator, path: pathlib.Path) -> Found:
     """Resolve one locator against one artifact, to exactly one value or a reason."""
+    if program := NEVER_OPENED.get(path.suffix.lower()):
+        return _no(
+            Resolution.FORMAT_UNSUPPORTED,
+            f"{path.name} is {program}, and reading it runs whatever it was written to run; "
+            f"export the value to a format that is data",
+        )
     if named := UNSUPPORTED.get(path.suffix.lower()):
         return _no(
             Resolution.FORMAT_UNSUPPORTED,
@@ -76,6 +89,7 @@ def resolve(locator: ValueLocator, path: pathlib.Path) -> Found:
 
 
 __all__ = [
+    "NEVER_OPENED",
     "UNSUPPORTED",
     "ExtractedValue",
     "Found",

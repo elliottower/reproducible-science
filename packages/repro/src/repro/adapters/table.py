@@ -1,4 +1,9 @@
-"""CSV, TSV and PSV, addressed by column plus a row predicate."""
+"""Tables, addressed by column plus a row predicate.
+
+CSV, TSV and PSV are read here. Parquet, Feather, Stata, SPSS and R data frames are read by
+`repro.adapters.columnar` into the same header and rows, and resolved by the same code, so a
+table and its export to another format refuse and resolve the same manifests.
+"""
 
 from __future__ import annotations
 
@@ -6,7 +11,11 @@ import csv
 import io
 import pathlib
 
-from repro.adapters.base import Found, Resolution, _no, _ok
+from repro.adapters.base import Found, Resolution, _no
+from repro.adapters.cells import Cell, render
+from repro.adapters.columnar import COLUMNAR_SUFFIXES, read_columnar
+from repro.adapters.rows import resolve_row_at, resolve_rows
+from repro.adapters.sheet import WORKBOOK_SUFFIXES
 from repro.exceptions import ArtifactUnreadableError
 from repro.models import (
     PredicateValue,
@@ -62,71 +71,58 @@ def predicate_text(value: PredicateValue) -> str:
     return str(value)
 
 
-def _table_common(path: pathlib.Path, delimiter: str, column: str) -> tuple:
-    if path.suffix.lower() not in _TABLE_SUFFIXES:
-        return None, _no(
-            Resolution.FORMAT_UNSUPPORTED,
-            f"a table locator addresses delimited text; {path.name} is {path.suffix}",
-        )
+def _delimited(path: pathlib.Path, delimiter: str) -> tuple[list[str], list[dict[str, Cell]]]:
     header, rows = read_table(path, delimiter)
-    repeated = sorted({name for name in header if header.count(name) > 1})
-    if repeated:
-        # `csv.DictReader` keeps the last field of a repeated header, so one of the columns is
-        # unreachable and a predicate naming it reports a present row as absent. Neither is a
-        # fact about the data.
-        return None, _no(
-            Resolution.SELECTOR_INVALID,
-            f"{path.name} repeats the column name {', '.join(repr(c) for c in repeated)}; "
-            f"a repeated header makes one of them unaddressable",
+    # Every delimited cell is text. A short row's missing fields come back as None, which here
+    # would read as a null; they were always the empty string, and stay so. The `None` key
+    # holds a long row's surplus fields, which no header names.
+    text = [{k: (v or "").strip() for k, v in row.items() if k is not None} for row in rows]
+    return header, text
+
+
+def _load(path: pathlib.Path, delimiter: str, wanted: set[str]) -> tuple[tuple, Found | None]:
+    """A table's header and rows from whichever reader its suffix names, or why not.
+
+    `wanted` is the columns a locator names, which is all a columnar reader reads.
+    """
+    suffix = path.suffix.lower()
+    if suffix in COLUMNAR_SUFFIXES:
+        if delimiter:
+            return (), _no(
+                Resolution.SELECTOR_INVALID,
+                f"{path.name} is {suffix}, which has no delimiter to override",
+            )
+        return read_columnar(path, wanted), None
+    if suffix in WORKBOOK_SUFFIXES:
+        return (), _no(
+            Resolution.FORMAT_UNSUPPORTED,
+            f"{path.name} is a workbook, which holds several tables; address it with "
+            f"`kind: sheet`, which names the sheet",
         )
-    if column not in header:
-        return None, _no(
-            Resolution.COLUMN_ABSENT,
-            f"{path.name} has no column {column!r}; columns are {', '.join(header[:8])}",
+    if suffix not in _TABLE_SUFFIXES:
+        return (), _no(
+            Resolution.FORMAT_UNSUPPORTED,
+            f"a table locator addresses delimited text or a columnar file; "
+            f"{path.name} is {path.suffix}",
         )
-    return (header, rows), None
+    return _delimited(path, delimiter), None
 
 
 def _resolve_table(locator: TableLocator, path: pathlib.Path) -> Found:
-    loaded, failure = _table_common(path, locator.delimiter, locator.column)
+    loaded, failure = _load(path, locator.delimiter, {locator.column, *locator.where})
     if failure is not None:
         return failure
     header, rows = loaded
-
-    unknown = [k for k in locator.where if k not in header]
-    if unknown:
-        # Left to the row scan this matches nothing and reads as "no such row", blaming the
-        # table for a manifest that named a column the table never had.
-        return _no(
-            Resolution.SELECTOR_INVALID,
-            f"selector names {', '.join(repr(k) for k in unknown)}, which "
-            f"{path.name} has no column for; columns are {', '.join(header[:8])}",
-        )
-
-    wanted = {k: predicate_text(v) for k, v in locator.where.items()}
-    matched = [
-        i
-        for i, row in enumerate(rows)
-        if all((row.get(k) or "").strip() == v for k, v in wanted.items())
-    ]
-    described = ", ".join(f"{k}={v!r}" for k, v in wanted.items())
-    if not matched:
-        return _no(Resolution.ABSENT, f"no row in {path.name} where {described}")
-    if len(matched) > 1:
-        return _no(Resolution.AMBIGUOUS, f"{len(matched)} rows in {path.name} where {described}")
-    cell = (rows[matched[0]].get(locator.column) or "").strip()
-    return _ok(cell, "str", f"{locator.column} where {described}")
+    # Delimited text is matched as text, as it always was; a typed table renders the predicate
+    # in the convention its cells were rendered in, so `seed: 2` selects a stored 2.0.
+    key = render if path.suffix.lower() in COLUMNAR_SUFFIXES else predicate_text
+    wanted = {k: key(v) for k, v in locator.where.items()}
+    return resolve_rows(header, rows, locator.column, wanted, path.name)
 
 
 def _resolve_table_position(locator: TablePositionLocator, path: pathlib.Path) -> Found:
-    loaded, failure = _table_common(path, locator.delimiter, locator.column)
+    loaded, failure = _load(path, locator.delimiter, {locator.column})
     if failure is not None:
         return failure
-    _, rows = loaded
-    if locator.row >= len(rows):
-        return _no(
-            Resolution.ABSENT,
-            f"{path.name} has {len(rows)} data rows; row {locator.row} is past the end",
-        )
-    cell = (rows[locator.row].get(locator.column) or "").strip()
-    return _ok(cell, "str", f"{locator.column} at row {locator.row}")
+    header, rows = loaded
+    return resolve_row_at(header, rows, locator.column, locator.row, path.name)

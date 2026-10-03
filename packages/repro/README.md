@@ -68,6 +68,31 @@ repro verify
 
 Reads `repro.yaml` and checks every declared evidence assertion against the artifact it names. It spawns nothing: `prereg`, `results` and `citations` are separate commands.
 
+## What it reads
+
+A number is checked at an address the manifest declares, in the addressing the format already has:
+
+| format | locator | address | extra |
+|---|---|---|---|
+| JSON, YAML | `tree` | RFC 6901 pointer, `/metrics/accuracy` | |
+| CSV, TSV, PSV | `table` | column and a key predicate, `where: {model: resnet}` | |
+| Parquet, Feather, Arrow | `table` | column and a key predicate | `parquet` |
+| Stata `.dta`, SPSS `.sav` | `table` | column and a key predicate | `stata-spss` |
+| R data frame `.rds` | `table` | column and a key predicate | `rds` |
+| Excel `.xlsx`, `.xls` | `sheet` | sheet, column and a key predicate | `sheets` |
+| SQLite | `sqlite` | table, column and a key predicate | |
+| NumPy `.npy`, `.npz` | `array` | array name and index | `arrays` |
+| HDF5 `.h5`, NetCDF `.nc` | `array` | dataset path and index, `/runs/accuracy` | `hdf5`, `netcdf` |
+| PDF, text | `prose` | the literal text on either side of the value | |
+
+```bash
+pip install "reproducible-science[parquet,sheets]"
+```
+
+A predicate matching two rows is reported as ambiguous and never resolved to the first. Without the extra a format needs, its checks are `unchecked` and name the extra to install. A file that is not what its suffix says is `unchecked` as unreadable. A NetCDF value is the one a NetCDF reader reports, unpacked by its `scale_factor` and `add_offset`, and a fill value is absent.
+
+Pickles (`.pkl`, `.joblib`, `.pt`) are never opened, because reading one runs code. An `.rds` is parsed by [`rdata`](https://pypi.org/project/rdata/), which starts no R process and evaluates nothing in the file.
+
 ## On every commit
 
 ```yaml

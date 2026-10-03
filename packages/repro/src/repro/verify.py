@@ -259,6 +259,7 @@ _ABSENT_REASON = {
     "table_position": Reason.ROW_ABSENT,
     "sqlite": Reason.ROW_ABSENT,
     "array": Reason.POINTER_ABSENT,
+    "sheet": Reason.ROW_ABSENT,
     "prose": Reason.PASSAGE_ABSENT,
 }
 
