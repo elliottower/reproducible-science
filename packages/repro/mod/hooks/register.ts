@@ -524,7 +524,10 @@ export const register: Register = on => {
     // as `4 sealed,` then `claims`.
     // One element per field, so the row breaks between fields and never inside one:
     // `0 claims` split across two rows read as a count belonging to the field before it.
-    const fields = line.split(' · ')
+    // The project's name stays joined to the first field by its dot, as one unit, so the dot is
+    // never the last thing on a row.
+    const [name, first, ...rest] = line.split(' · ')
+    const fields = first === undefined ? [name ?? ''] : [`${name} · ${first}`, ...rest]
 
     return h(
       Box,
