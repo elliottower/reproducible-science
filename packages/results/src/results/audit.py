@@ -15,9 +15,9 @@ from __future__ import annotations
 
 import pathlib
 
-from provenance_core import sha256_of_tree, try_run
+from provenance_core import anchor, sha256_of_tree, try_run
 
-from results import ledger, manuscript
+from results import ledger, manuscript, stamps
 from results.paths import ledger_path, require_root
 from results.timeline import first_outcomes_seen, first_run_timestamp, precedes
 
@@ -132,6 +132,37 @@ def reanchor() -> int:
     return 0
 
 
+def timestamp() -> int:
+    """Stamp the current head, complete every pending proof, and check the complete ones."""
+    root = require_root()
+    lp = ledger_path(root)
+    try:
+        made = stamps.stamp_head(lp)
+    except anchor.AnchorError as e:
+        print(f"not timestamped: {e}")
+        return 1
+    if made is not None:
+        print(f"stamped      {made.relative_to(root.parent)}")
+    try:
+        found = stamps.complete(lp)
+    except anchor.AnchorError as e:
+        print(f"TIMESTAMP    {e}")
+        return 1
+    dated = [(s, block) for s, block in found if block is not None]
+    if dated:
+        stamp, block = max(dated, key=lambda pair: pair[0].count)
+        print(
+            f"events 1–{stamp.count} existed by Bitcoin block {block.height}, "
+            f"{block.time:%Y-%m-%d %H:%M} UTC"
+        )
+    waiting = [s for s, block in found if block is None]
+    if waiting:
+        latest = max(waiting, key=lambda s: s.count)
+        print(f"events 1–{latest.count} pending; Bitcoin usually confirms within hours.")
+    print("Commit .results/timestamps/ with the ledger.")
+    return 0
+
+
 def verify(check_files: bool) -> int:
     root = require_root()
     lp = ledger_path(root)
@@ -165,6 +196,28 @@ def verify(check_files: bool) -> int:
 
     if state := in_history(lp):
         print(f"  the ledger {state}. A record is evidence once it is in history.\n")
+
+    reading = stamps.read(lp)
+    if reading.contradictions:
+        # The chain verifies against its own anchor and not against a proof held outside it, so
+        # the chain and the anchor were rewritten together after that proof was made.
+        print("TIMESTAMP CONTRADICTS THE CHAIN — the ledger was rewritten after it was stamped")
+        for problem in reading.contradictions:
+            print(f"  {problem}")
+        return 1
+    if reading.dated:
+        print(
+            f"  events 1–{reading.dated.count} dated by Bitcoin block "
+            f"{reading.dated.status.blocks[0]}. `results timestamp` checks the block."
+        )
+    if reading.pending and (not reading.dated or reading.pending.count > reading.dated.count):
+        print(
+            f"  events 1–{reading.pending.count} stamped, pending at "
+            f"{len(reading.pending.status.pending)} calendars."
+        )
+    if not reading.dated and not reading.pending:
+        print("  no outside timestamp. `results timestamp` makes one.")
+    print()
 
     counts = {}
     for e in events:

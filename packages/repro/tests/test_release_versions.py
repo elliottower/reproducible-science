@@ -71,6 +71,29 @@ def test_a_sibling_is_read_out_of_every_form_of_the_array(text):
     assert versions.cross_refs(text).get("provenance-core") == ">=0.3,<0.4"
 
 
+WITH_EXTRA = """[project]
+name = "prereg"
+version = "0.3.0"
+dependencies = [ "provenance-core[anchor]>=0.3,<0.4" ]
+"""
+
+
+def test_a_sibling_with_an_extra_is_read_and_bumped_with_the_extra_kept(tmp_path, monkeypatch):
+    assert versions.cross_refs(WITH_EXTRA) == {"provenance-core": ">=0.3,<0.4"}
+
+    manifest = tmp_path / "pyproject.toml"
+    manifest.write_text(WITH_EXTRA)
+    monkeypatch.setattr(versions, "PACKAGES", {"prereg": manifest, "provenance-core": manifest})
+    monkeypatch.setattr(versions, "PLUGIN_MANIFESTS", ())
+    monkeypatch.setattr(versions, "HOOKS", tmp_path / "absent.yaml")
+    monkeypatch.setattr(versions, "CITATION", tmp_path / "absent.cff")
+    monkeypatch.setattr(versions, "PROJECT_ROOT", tmp_path)
+
+    versions.bump("9.9.9", realign=True)
+
+    assert '"provenance-core[anchor]>=9.9,<9.10"' in manifest.read_text()
+
+
 def test_a_sibling_named_only_in_keywords_is_not_read_as_a_dependency():
     # `keywords` legitimately lists "provenance"; reading it as an unpinned dependency would
     # report a problem that is not one, and teach the reader to ignore this check.
