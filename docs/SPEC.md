@@ -528,8 +528,10 @@ after the fact to match results breaks its pin and the ordering reverts to `unch
 
 Two limits are structural. The registration timestamp is self-recorded, so the check
 establishes internal consistency and not that a registration is contemporaneous with what it
-claims; an external timestamp authority closes that and is out of scope. And the check reads
-a declared run record rather than observing execution.
+claims. An outside timestamp closes that: `prereg timestamp` and `results timestamp` commit the
+plan's digest and the ledger's head into a Bitcoin block through OpenTimestamps, and the block's
+date bounds when each existed. This check does not read those proofs; `prereg check` and
+`results verify` do. And the check reads a declared run record rather than observing execution.
 
 ## 7.5 Output formats
 

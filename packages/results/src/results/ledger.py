@@ -3,9 +3,9 @@
 **Threat model.** The chain detects accidental damage and casual editing: a crashed write, a
 bad sync, a file opened in an editor, a line changed by hand. It does not defend against an
 adversary who can write to the directory, because such an adversary can rewrite the anchor as
-readily as the ledger. Defending against that needs an external anchor -- a git note, an
-OSF registration, a timestamp authority -- and the head digest here is what you would publish
-to one.
+readily as the ledger. Defending against that needs an external anchor, and the head digest here
+is what is published to one: `results timestamp` sends it to the OpenTimestamps calendars, and
+`results.stamps` reads the proofs back against the chain.
 
 Saying this plainly matters more than the mechanism. A hash chain is often read as proof of
 tamper-resistance when it delivers tamper-*evidence*, and only against a party who does not
@@ -127,6 +127,11 @@ def last_hash(ledger: pathlib.Path) -> str:
         return ZERO
     lines = _lines(ledger)
     return sha256_of_str(lines[-1]) if lines else ZERO
+
+
+def line_hashes(ledger: pathlib.Path) -> list[str]:
+    """The digest of each line as stored: entry `n` is the head the anchor records at `n + 1`."""
+    return [sha256_of_str(line) for line in _lines(ledger)] if ledger.exists() else []
 
 
 def read_ledger(ledger: pathlib.Path) -> list[dict]:

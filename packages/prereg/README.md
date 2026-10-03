@@ -42,7 +42,28 @@ unchanged    V16_reliability_ceilings/PREREG.md
 | `prereg link [--anonymous]` | Create a view-only link on the registration |
 | `prereg log <note>` | Append to the log without freezing |
 | `prereg check` | Has the plan changed since the freeze? |
+| `prereg timestamp` | Complete the freeze's outside timestamp and check it against Bitcoin |
 | `prereg setup` | Save your OSF token to `.env` |
+
+## Timestamp
+
+A freeze is recorded in the repository, and whoever holds the repository can rewrite its
+history. `prereg freeze` therefore also sends the plan's digest to the
+[OpenTimestamps](https://opentimestamps.org) calendars and keeps the proof beside the plan as
+`PREREG.md.ots`. No account is needed, and only the digest leaves the machine.
+
+The proof is pending until the calendars commit it into a Bitcoin block, usually within a few
+hours. `prereg timestamp` then completes it and reports the block and its date, which is the
+latest date the plan could have been written. Commit the proof with the plan.
+
+```text
+timestamped  V16_reliability_ceilings/PREREG.md
+  Bitcoin block 915004, 2026-10-03 16:12 UTC
+```
+
+`prereg check` reports the proof without the network, and fails when the proof is of a different
+digest than the freeze. `--no-timestamp` freezes without sending anything, and an empty
+`PROVENANCE_CALENDARS` turns stamping off for a whole machine.
 
 ## One file, one rule
 
