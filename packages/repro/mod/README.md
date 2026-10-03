@@ -1,4 +1,4 @@
-# repro-gates
+# repro
 
 A Claude Code mod for research sessions. The `reproducible-science` plugin's hooks speak when a
 number enters a manuscript unbound or a frozen plan changes, and they speak only in a project
@@ -18,8 +18,30 @@ that cannot load it still loads the plugin.
 | Notes an analysis with no ledger | The same, once per project, when a command runs an analysis. |
 | Notes a downloaded source | After `curl` or `wget` saves a PDF, the model is told the address to record as `url:` in the claims file, so `citations fetch` can retrieve the same bytes for a reader. |
 | Puts the gates in the system prompt | Seal before a run, claim before a number, freeze before a confirmatory analysis, with the state of the project's records as of the last turn. |
-| Shows the state | In the status line, refreshed at the end of each turn. |
+| Shows the state | One dim row above the prompt, refreshed at the end of each turn, with one field per tool. |
+| Warns | The pinned line under the prompt appears only when something is wrong, a few words per problem. |
 | `/repro-status` | The same readout on demand, with the sealed files hashed and the quotations counted. No model turn. |
+
+## The status row
+
+    study · prereg: 1/1 frozen · results: 3 runs, 2 sealed, 4 claims · citations: 120/120 found
+
+`prereg` is frozen plans over all plans, or `none drafted`. `results` counts the ledger's runs, seals and claims.
+`citations` is the last full check by `/repro-status`, and before one has run it is the count
+pinned: `citations: 120 pinned, not verified`. Checking quotations takes minutes on a large
+project, so the row never runs it. A check that does not finish in a minute marks its own field
+`not read (timed out)` and leaves the others standing.
+
+The warnings, each on the pinned line as `repro: ...`:
+
+| | |
+|---|---|
+| `1 plan edited after freeze` | a frozen `PREREG.md` no longer matches its digest |
+| `ledger truncated`, `edited`, `corrupt` | the chain does not verify |
+| `ledger rewritten after timestamp` | a timestamp proof contradicts the chain |
+| `2 sealed files changed` | after `/repro-status`, which hashes the sealed files |
+| `16 runs, nothing sealed` | runs are recorded and no input was sealed |
+| `3 runs, no plan frozen` | runs are recorded and no plan is frozen |
 
 ## The working project
 
@@ -38,7 +60,7 @@ The model can set it too, through the `set_project` tool the mod registers.
 ## Install
 
     /plugin marketplace add elliottower/reproducible-science
-    /plugin install repro-gates@reproducible-science
+    /plugin install repro@reproducible-science
 
 It needs the `results`, `prereg` and `citations` commands on `PATH`.
 
