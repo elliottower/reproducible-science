@@ -530,7 +530,8 @@ export const register: Register = on => {
       Box,
       { paddingRight: 5, flexDirection: 'row', flexWrap: 'wrap' },
       ...fields.map((field, at) =>
-        h(Text, { key: `field:${at}`, dimColor: true }, at < fields.length - 1 ? `${field} · ` : field),
+        // Spaces between fields, which vanish at the end of a row; a dot there was left dangling.
+        h(Text, { key: `field:${at}`, dimColor: true }, at < fields.length - 1 ? `${field}   ` : field),
       ),
     )
   })
