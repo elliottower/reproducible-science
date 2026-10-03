@@ -533,6 +533,12 @@ plan's digest and the ledger's head into a Bitcoin block through OpenTimestamps,
 date bounds when each existed. This check does not read those proofs; `prereg check` and
 `results verify` do. And the check reads a declared run record rather than observing execution.
 
+OpenTimestamps is used because it needs no account and trusts no party beyond Bitcoin, and
+because a proof names no one, so a stamp made during double-blind review identifies nobody. An
+RFC 3161 timestamp authority or Sigstore's Rekor log would date a digest at once, where a Bitcoin
+confirmation takes hours; the first trusts the authority's signing key, and the second ties each
+entry to the signer's key.
+
 ## 7.5 Output formats
 
 A renderer reads a report and an assessment and produces bytes. None computes anything, so two
