@@ -137,14 +137,19 @@ def _base(
 _QUOTE_STATE = {
     "found": (ExtractionStatus.EXTRACTED, ComparisonStatus.MATCH, Reason.PASSAGE_PRESENT),
     "not found": (ExtractionStatus.EXTRACTED, ComparisonStatus.MISMATCH, Reason.PASSAGE_ABSENT),
+    # The address matched more than once, which is where `row_ambiguous` sits for a table: the
+    # extraction did not single out one thing to compare, so there is no comparison, and no first
+    # match is taken. Not `passage_ambiguous`, which says the document states two different
+    # numbers: a passage written twice contradicts nothing, and an author told it does goes
+    # looking for a defect in the manuscript when the fix is a `prefix` in the record.
     "ambiguous": (
         ExtractionStatus.INVALID,
         ComparisonStatus.NOT_APPLICABLE,
-        Reason.PASSAGE_AMBIGUOUS,
+        Reason.QUOTATION_AMBIGUOUS,
     ),
-    # Not `passage_ambiguous`: that says the document states two numbers where one was asserted.
-    # This says the extractors on this machine do not settle what text the document holds, which
-    # accuses nothing and asks for a better reader.
+    # Not `passage_ambiguous` either: that says the document states two numbers where one was
+    # asserted. This says the extractors on this machine do not settle what text the document
+    # holds, which accuses nothing and asks for a better reader.
     "indeterminate": (
         ExtractionStatus.INVALID,
         ComparisonStatus.NOT_APPLICABLE,

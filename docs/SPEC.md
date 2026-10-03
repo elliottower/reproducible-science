@@ -80,6 +80,10 @@ line breaks removed, whitespace collapsed. Normalization never deletes a charact
 substituting a separator, because deleting a control character welds the words on either side
 into one appearing in neither text.
 
+A passage occurring more than once is `extraction=invalid`, reason `quotation_ambiguous`, for the
+reason an ambiguous row selector is: no occurrence is taken as the one meant. The record says
+which occurrence it quotes with a `prefix` or `suffix` naming the text on either side.
+
 ### 3.2 `metric`
 
 ```yaml
@@ -312,6 +316,7 @@ how a file silent on a value becomes one that contradicts it.
 | two sides disagree | completed | extracted | mismatch | `mismatch` |
 | one side does not extract | completed | absent or invalid | n/a | `not_found` |
 | passage absent from a readable source | completed | extracted | mismatch | `mismatch` |
+| passage occurs more than once | completed | invalid | n/a | `not_found` |
 | pointer does not resolve | completed | absent | n/a | `not_found` |
 | value is not a number | completed | invalid | n/a | `not_found` |
 | independent readers disagree | completed | invalid | n/a | `not_found` |
@@ -364,10 +369,12 @@ display and is never a `Decision`.
 `Reason` is a typed field carrying why an outcome obtained: `passage_present`, `value_match`,
 `passage_absent`, `value_mismatch`, `pointer_absent`, `value_not_numeric`,
 `extractor_missing`, `artifact_missing`, `artifact_unreadable`, `artifact_undeclared`,
-`backend_defect`, `not_offered`, `extractors_disagree`, and two a prose locator adds.
-`extractors_disagree`: two extractors that both read the artifact reach different answers about
-whether the passage is in it, which asks for a better reader rather than accusing the manuscript
-as `passage_absent` does. `passage_ambiguous`: one pair of
+`backend_defect`, `not_offered`, `extractors_disagree`, `quotation_ambiguous`, and two a prose
+locator adds. `extractors_disagree`: two extractors that both read the artifact reach different
+answers about whether the passage is in it, which asks for a better reader rather than accusing
+the manuscript as `passage_absent` does. `quotation_ambiguous`: the quoted passage occurs more
+than once and the record does not say which occurrence it means, which accuses nothing and asks
+for a `prefix` or `suffix`. `passage_ambiguous`: one pair of
 anchors selected two different values, so the document states two numbers where the assertion
 addresses one. `number_as_word`: the value is an English cardinal written out under a locator
 that did not ask for one. It is distinct from `value_not_numeric` because the fix differs — the

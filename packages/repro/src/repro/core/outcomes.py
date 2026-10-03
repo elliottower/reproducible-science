@@ -171,6 +171,13 @@ class Reason(enum.StrEnum):
     for one. Distinct from `value_not_numeric` because the fix is different: the value is
     there and a reader would call it a number, so an author told only that no number was found
     goes looking for a broken anchor."""
+    QUOTATION_AMBIGUOUS = "quotation_ambiguous"
+    """The quoted passage occurs more than once in the artifact, and the record does not say
+    which occurrence it means. Distinct from `passage_ambiguous`, which says the document states
+    two different numbers: a passage written twice contradicts nothing, and the fix is a
+    `prefix` or `suffix` in the record, not an edit to the document. The two shared a reason
+    after `citations`' `ambiguous` state, which `repro verify` reported as `KeyError: 'ambiguous'`
+    under 0.4.2, was first mapped."""
     EXTRACTORS_DISAGREE = "extractors_disagree"
     """Two extractors that both read the artifact disagree about whether the passage is in it.
     Distinct from `passage_absent`, which says the artifact was read and does not contain it --

@@ -472,6 +472,81 @@ def test_replacing_the_last_log_entry_is_caught_by_the_anchor(repo):
     assert run(["check"], repo).returncode != 0
 
 
+def _append_by_hand(path, line: str) -> None:
+    """Write an entry the way an editor does: before the closing fence, with no chain value and
+    no change to the anchor."""
+    head, mark, tail = path.read_text().partition(plan.MARK)
+    before, fence, after = tail.rpartition("```")
+    path.write_text(head + mark + before + line + "\n" + fence + after)
+
+
+def test_an_entry_added_by_hand_is_reported_as_added_not_removed(repo):
+    # Observed 2-3 Oct 2026 on two copies of one registration: a seventh entry typed into the
+    # log beneath six that `prereg log` wrote was reported as "the log records 6 entries and
+    # holds 7: an entry has been removed from the end". The log had grown. An author told an
+    # entry was removed from their registration goes looking for a deletion that never happened.
+    run(["freeze"], repo)
+    run(["log", "saw the outcome table", "--access", "results seen"], repo)
+    path = repo / "PREREG.md"
+    n = len(log.log_lines(path.read_text()))
+    _append_by_hand(path, "2026-09-04  a note typed into the file  results seen")
+
+    problems = log.log_problems(path.read_text())
+
+    assert problems, "an entry the anchor does not record went unreported"
+    assert "removed from the end" not in problems[0], problems
+    assert f"the log records {n} entries and holds {n + 1}" in problems[0]
+    assert f"entry {n + 1}" in problems[0] and "added" in problems[0]
+    assert "by hand" in problems[0], "an unchained entry is one no command wrote"
+    assert "`prereg log`" in problems[0], "the message has to say how to reconcile it"
+
+
+def test_an_entry_removed_from_the_end_is_reported_as_removed(repo):
+    # The other direction. Removing the last entry leaves a chain that still verifies, so the
+    # anchor's count is the only witness, and it must say removed and not added.
+    run(["freeze"], repo)
+    run(["log", "saw the outcome table", "--access", "results seen"], repo)
+    run(["log", "adjusted the threshold", "--access", "results seen"], repo)
+    path = repo / "PREREG.md"
+    n = len(log.log_lines(path.read_text()))
+    kept = [ln for ln in path.read_text().splitlines() if "adjusted the threshold" not in ln]
+    path.write_text("\n".join(kept) + "\n")
+
+    problems = log.log_problems(path.read_text())
+
+    assert problems, "an entry was removed from the end and nothing reported it"
+    assert f"the log records {n} entries and holds {n - 1}" in problems[0]
+    assert "removed from the end" in problems[0]
+    assert "added" not in problems[0], problems
+
+
+def test_logging_after_an_entry_added_by_hand_brings_the_record_up_to_date(repo):
+    # The reconciliation the message names has to work, or the message sends the author round in
+    # a circle. `prereg log` folds an unchained entry into the chain and recounts the anchor.
+    run(["freeze"], repo)
+    path = repo / "PREREG.md"
+    _append_by_hand(path, "2026-09-04  a note typed into the file  results seen")
+    assert run(["check"], repo).returncode == 1
+
+    run(["log", "the entry before this one was written by hand", "--access", "results seen"], repo)
+
+    assert log.log_problems(path.read_text()) == []
+    assert run(["check"], repo).returncode == 0
+
+
+def test_check_does_not_say_the_plan_was_edited_when_only_the_log_was(repo):
+    # `check` printed "The plan was edited after freezing" beneath LOG ALTERED, so the same
+    # output said the plan hash matched and that the plan had been edited.
+    run(["freeze"], repo)
+    _append_by_hand(repo / "PREREG.md", "2026-09-04  a note typed into the file  results seen")
+
+    r = run(["check"], repo)
+
+    assert r.returncode == 1
+    assert "LOG ALTERED" in r.stdout
+    assert "plan was edited" not in r.stdout, r.stdout
+
+
 def test_a_forced_refreeze_after_results_were_seen_must_say_what_was_seen(repo):
     """`nothing run` was written unconditionally, so a rewrite forced after a `results seen`
     entry logged itself as an amendment directly beneath the line saying otherwise."""

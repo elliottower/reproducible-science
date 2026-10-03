@@ -350,6 +350,9 @@ def check_one(path: pathlib.Path) -> int:
         print(f"CHANGED      {path}")
         print(f"  frozen  {m.group(1)[:16]}…")
         print(f"  now     {now[:16]}…")
+        # Here and not in `cmd_check`, which printed it after every failure: beneath `LOG
+        # ALTERED` it told the author the plan had been edited when the plan hash matched.
+        print("  the plan was edited after freezing: restore it and record the change in the log")
         return 1
     if hidden:
         print(f"UNCOVERED    {path}")
@@ -551,11 +554,7 @@ def cmd_check(a) -> int:
     path = find()
     if path is not None:
         rc = check_one(path)
-        if rc == 1:
-            print(
-                "\nThe plan was edited after freezing. Restore it and record the change in the log."
-            )
-        elif rc == 2:
+        if rc == 2:
             print("\nNothing to check against yet. `prereg freeze` records the hash.")
         return rc
 
@@ -570,8 +569,9 @@ def cmd_check(a) -> int:
         f"\n{len(found)} plans: {codes.count(0)} unchanged, {changed} changed, "
         f"{codes.count(2)} not frozen"
     )
-    if changed:
-        print("A changed plan was edited after freezing. Restore it and record the change.")
+    # No summary of what a changed plan means: `check_one` has said, per plan, whether the plan,
+    # an uncovered line or the log is what differs, and one sentence for all three was wrong for
+    # two of them.
     # The single-plan branch returns 2 for a plan that was never frozen; this one returned 0,
     # so whether an unfrozen registration passed CI depended on which directory it ran from.
     return 1 if (changed or codes.count(2)) else 0
