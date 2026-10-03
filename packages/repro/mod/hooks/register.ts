@@ -147,7 +147,7 @@ async function status($: EngineInterface, root: string, withFiles: boolean) {
     plans === undefined
       ? 'prereg: not read (timed out)'
       : total === 0
-        ? 'prereg: no plan'
+        ? 'prereg: none drafted'
         : broken
           ? `prereg: ${broken} changed`
           : `prereg: ${frozen}/${total} frozen`,

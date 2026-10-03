@@ -26,7 +26,7 @@ that cannot load it still loads the plugin.
 
     study · prereg: 1/1 frozen · results: 3 runs, 2 sealed, 4 claims · citations: 120/120 found
 
-`prereg` is frozen plans over all plans. `results` counts the ledger's runs, seals and claims.
+`prereg` is frozen plans over all plans, or `none drafted`. `results` counts the ledger's runs, seals and claims.
 `citations` is the last full check by `/repro-status`, and before one has run it is the count
 pinned: `citations: 120 pinned, not verified`. Checking quotations takes minutes on a large
 project, so the row never runs it. A check that does not finish in a minute marks its own field
