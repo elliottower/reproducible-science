@@ -108,6 +108,11 @@ there is nowhere to ask, and `citations pin` says so when a quotation is pinned 
 A source that stays `differs` or `unavailable` can be obtained another way and placed at the
 path its claims file names. `verify` checks it against the pin like any other.
 
+`verify` also reads a source from the library before reporting it absent. Where the path a
+claims file names holds no file, it looks in the library's `pdfs/` for a file under the same
+name and reads that copy if its sha256 is the pinned one, so a source kept once in the library
+serves every clone that pins it. See [Where the library lives](#where-the-library-lives).
+
 A source that records `derived_sha256` is checked a second time once its bytes match: the
 declared extractor is run and the digest of its text compared. The two stages fail under
 different names, because they send a reader to different places. `differs` means the download
@@ -496,6 +501,33 @@ none of those               it tells you to run citations init
 
 Project-local by default, so running the tool inside a paper works on that paper and there is
 no hidden global state.
+
+### Sources the library holds
+
+`citations verify --claims claims/` reads each source at the path its claims file names. Where
+that path holds no file, it looks for `pdfs/<the same filename>` in the library and reads that
+copy only if its bytes hash to the sha256 the claims file pins:
+
+```yaml
+source:
+  local: reference/schiffman2026.pdf   # absent in a fresh clone
+  sha256: 3f9a…                        # $CITATIONS_HOME/pdfs/schiffman2026.pdf is read if it hashes to this
+```
+
+The report then says how many sources were read that way and from which directory:
+
+```text
+94 sources absent at the path the record names and read from the library, matched to the pinned sha256
+  /home/you/citations-library/pdfs
+```
+
+The pin is what identifies the file; the name only says where to look. A claims file with no
+`sha256` is never read from the library, and its quotations stay `unchecked` with a reason
+saying a pin is needed. A library file under the right name with other bytes is not read
+either, and the reason gives both digests. `verify` writes nothing to the library and downloads
+nothing, a source present at the path its claims file names is read from there as before, and
+a library with no `pdfs/` entry under that name leaves the report as it was: `unchecked`,
+`file not found`.
 
 ## What a claim file looks like
 

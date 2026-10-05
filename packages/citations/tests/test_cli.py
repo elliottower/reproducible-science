@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import re
 import subprocess
 import sys
 
@@ -180,6 +181,99 @@ def test_verify_passes_the_same_claims_when_the_pin_is_intact(tmp_path):
     assert "changed since being pinned" not in r.stdout
 
 
+# --- a source that is not at the path its record names, and is in the library ------------------
+
+
+QUOTED = "matches the Haar expectation for this ensemble"
+PINNED = hashlib.sha256(SOURCE_TEXT.encode()).hexdigest()
+
+
+def _absent_source(tmp_path, held=None, sha=PINNED, at_path=None):
+    """A paper whose record names `reference/source.txt`, and a library that may hold a copy.
+
+    `held` is what the library's copy says and `at_path` what the named path says; None leaves
+    that file out.
+    """
+    paper, library = tmp_path / "paper", tmp_path / "library"
+    (paper / "claims").mkdir(parents=True)
+    (library / "pdfs").mkdir(parents=True)
+    if held is not None:
+        (library / "pdfs" / "source.txt").write_text(held)
+    if at_path is not None:
+        (paper / "reference").mkdir()
+        (paper / "reference" / "source.txt").write_text(at_path)
+    source = {"citation": "x", "local": "reference/source.txt"}
+    if sha:
+        source["sha256"] = sha
+    (paper / "claims" / "angle.yaml").write_text(
+        yaml.safe_dump({"source": source, "claims": {"c1": {"quotes": [{"exact": QUOTED}]}}})
+    )
+    return paper, library
+
+
+def _counted(stdout, outcome):
+    row = re.search(rf"^  {outcome}\s+(\d+)", stdout, re.MULTILINE)
+    return int(row.group(1)) if row else 0
+
+
+def _tree(root):
+    return {p.relative_to(root): p.read_bytes() for p in sorted(root.rglob("*")) if p.is_file()}
+
+
+def test_an_absent_source_is_read_from_the_library_when_its_bytes_match_the_pin(tmp_path):
+    paper, library = _absent_source(tmp_path, held=SOURCE_TEXT)
+    before = _tree(tmp_path)
+    r = run(["verify", "--claims", str(paper / "claims"), "--strict"], paper, library)
+    assert r.returncode == 0, r.stdout
+    assert (_counted(r.stdout, "found"), _counted(r.stdout, "unchecked")) == (1, 0)
+    assert "1 source absent at the path the record names and read from the library" in r.stdout
+    assert str(library / "pdfs") in r.stdout
+    assert _tree(tmp_path) == before, "verify reads; it wrote to the library or the repository"
+
+
+def test_a_library_copy_whose_bytes_differ_from_the_pin_is_not_read(tmp_path):
+    paper, library = _absent_source(tmp_path, held=SOURCE_TEXT + " (second printing)")
+    r = run(["verify", "--claims", str(paper / "claims")], paper, library)
+    assert r.returncode == 1, r.stdout
+    assert (_counted(r.stdout, "found"), _counted(r.stdout, "unchecked")) == (0, 1)
+    assert "does not match the pin" in r.stdout
+    assert PINNED[:12] in r.stdout
+    assert "from the library" not in r.stdout
+    assert "changed since being pinned" not in r.stdout
+
+
+def test_an_unpinned_record_is_never_read_from_the_library(tmp_path):
+    paper, library = _absent_source(tmp_path, held=SOURCE_TEXT, sha=None)
+    r = run(["verify", "--claims", str(paper / "claims")], paper, library)
+    assert r.returncode == 1, r.stdout
+    assert (_counted(r.stdout, "found"), _counted(r.stdout, "unchecked")) == (0, 1)
+    assert "only where the record pins a sha256" in r.stdout
+    assert "from the library" not in r.stdout
+    assert "read by" not in r.stdout, "an extractor ran over a file nothing identified"
+
+
+def test_a_source_at_the_path_its_record_names_is_read_from_there(tmp_path):
+    # The library's copy is the one that matches the pin and holds the passage, so a run that
+    # consulted it would come back clean.
+    wrong = "an unrelated document"
+    paper, library = _absent_source(tmp_path, held=SOURCE_TEXT, at_path=wrong)
+    r = run(["verify", "--claims", str(paper / "claims")], paper, library)
+    assert r.returncode == 1, r.stdout
+    assert "not found  angle:c1" in r.stdout
+    assert "changed since being pinned" in r.stdout
+    assert hashlib.sha256(wrong.encode()).hexdigest()[:12] in r.stdout
+    assert "from the library" not in r.stdout
+
+
+def test_an_empty_library_leaves_an_absent_source_reported_as_it_was(tmp_path):
+    paper, library = _absent_source(tmp_path)
+    with_library = run(["verify", "--claims", str(paper / "claims"), "--strict"], paper, library)
+    without = run(["verify", "--claims", str(paper / "claims"), "--strict"], paper)
+    assert with_library.returncode == without.returncode == 1
+    assert with_library.stdout == without.stdout
+    assert re.search(r"^  unchecked\s+1   file not found$", without.stdout, re.MULTILINE)
+
+
 def test_every_outcome_the_checker_can_return_is_printed():
     # `ambiguous` was added to `State` and not to `RESULTS`. The outcome table iterates
     # RESULTS, so those quotations were counted and never printed: the table stopped summing
@@ -229,8 +323,6 @@ def test_the_docstring_names_exactly_the_commands_the_parser_offers(capsys):
     """`citations bib` was documented for months and was never a command, while `pin` and
     `projects` were commands nobody had written down. The docstring is the first thing a
     reader of this module sees, and nothing compared it to the parser."""
-    import re
-
     from citations import cli
 
     with pytest.raises(SystemExit):
