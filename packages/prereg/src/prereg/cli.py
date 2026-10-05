@@ -32,7 +32,7 @@ from provenance_core import (
 )
 from provenance_core.gitref import try_run
 
-from prereg import osf, template
+from prereg import osf, pinned, template
 from prereg.confirm import NotConfirmed, confirm
 from prereg.log import (
     ACCESS,
@@ -619,18 +619,24 @@ def cmd_check(a) -> int:
     A repository usually holds one plan per experiment, side by side, so running this at the
     root has to mean "check them all" — otherwise the command is unusable from the one place
     someone would naturally run it.
+
+    Registrations frozen by a commit line are checked as well, wherever git tracks them below
+    here: a study registered under that convention has no `PREREG.md`, and reported nothing.
     """
     path = find()
+    documents = pinned.check_below(pathlib.Path.cwd())
     if path is not None:
         rc = check_one(path)
         if rc == 2:
             print("\nNothing to check against yet. `prereg freeze` records the hash.")
-        return rc
+        return _report_pinned(documents, rc)
 
     found = sorted(pathlib.Path.cwd().rglob(PREREG))
     if not found:
-        print(f"no {PREREG} here, above, or below.")
-        return 2
+        if not documents:
+            print(f"no {PREREG} here, above, or below.")
+            return 2
+        return _report_pinned(documents, 0)
 
     codes = [check_one(f) for f in found]
     changed = codes.count(1)
@@ -643,7 +649,44 @@ def cmd_check(a) -> int:
     # two of them.
     # The single-plan branch returns 2 for a plan that was never frozen; this one returned 0,
     # so whether an unfrozen registration passed CI depended on which directory it ran from.
-    return 1 if (changed or codes.count(2)) else 0
+    return _report_pinned(documents, 1 if (changed or codes.count(2)) else 0)
+
+
+def _report_pinned(documents: list[pinned.Pinned], rc: int) -> int:
+    """List the commit-pinned documents under their own heading, and fold them into the exit code.
+
+    A changed document is a finding, as a changed plan is. One whose commit line names no commit,
+    or names one this repository does not hold, was not compared: it exits 2 unless something
+    else changed, and the summary counts it, because a check that could not run is not a pass.
+    """
+    if not documents:
+        return rc
+    print("\nregistrations frozen by a commit line:")
+    for d in documents:
+        label = "CHANGED" if d.status == pinned.CHANGED else d.status
+        at = f"  at {d.commit}" if d.commit else ""
+        print(f"{label:<12} {d.path}{at}")
+        for line in d.detail:
+            print(f"  {line}")
+    statuses = [d.status for d in documents]
+    print(
+        f"\n{len(documents)} commit-pinned: "
+        + ", ".join(
+            f"{statuses.count(s)} {s}"
+            for s in (
+                pinned.UNCHANGED,
+                pinned.APPENDED,
+                pinned.CHANGED,
+                pinned.PENDING,
+                pinned.UNKNOWN,
+            )
+        )
+    )
+    if rc == 1 or pinned.CHANGED in statuses:
+        return 1
+    if rc == 2 or pinned.PENDING in statuses or pinned.UNKNOWN in statuses:
+        return 2
+    return 0
 
 
 def timestamp_one(path: pathlib.Path) -> int:
