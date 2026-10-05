@@ -198,8 +198,19 @@ def cmd_verify(a) -> int:
 
     if a.claims:
         root = pathlib.Path(a.claims).expanduser().resolve()
+        library = paths.find()
         for cf in _claim_files(root, skipped=rep.skipped):
             artifact = cf.artifact()
+            missing = V.MISSING
+            if artifact is not None and not artifact.exists():
+                # The path as given first, and the library only where that is empty. A copy
+                # there is read only where it matches the pin: see `verify.library_copy`.
+                held, missing = V.library_copy(
+                    artifact.name, cf.source.sha256, library / "pdfs" if library else None
+                )
+                if held is not None:
+                    artifact = held
+                    rep.from_library.append((cf.name, held))
             pin = V.check_pin(artifact, cf.source.sha256)
             if pin.state == "broken":
                 rep.broken_pins.append((cf.name, pin))
@@ -227,6 +238,7 @@ def cmd_verify(a) -> int:
                         a.triangulate,
                         q.prefix,
                         q.suffix,
+                        missing,
                     )
                     counts[r.state] += 1
                     _record_extractor(rep, extractors, r)
@@ -305,6 +317,16 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
         for name, n in sorted(rep.extractors.items(), key=lambda kv: (-kv[1], kv[0])):
             why = rep.fallback_reasons.get(name, "")
             print(f"  {n:>7,}  {name}" + (f"   fallback: {why[:50]}" if why else ""))
+    # Where the bytes came from. The same claims directory resolves on the machine that holds
+    # the library and is `unchecked` on one that does not, and the counts alone do not say which
+    # of those this run was.
+    if rep.from_library:
+        n = len(rep.from_library)
+        print(
+            f"\n{n:,} source{'' if n == 1 else 's'} absent at the path the record names and read "
+            f"from the library, matched to the pinned sha256"
+        )
+        print(f"  {rep.from_library[0][1].parent}")
     if a.triangulate:
         # What was triangulated, not what was asked for. A source that declares a command has
         # one extractor and a machine may have one reader, and reporting the request as the

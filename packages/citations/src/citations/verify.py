@@ -12,6 +12,10 @@ The pin -- is this the document that was pinned? Checked once per artifact:
     unpinned     no sha256 was recorded, so nothing can be checked
     missing      the file named by the record is not on disk
 
+A source missing at the path its record names is looked for once more, in the library's
+`pdfs/` under the same filename, and read from there only where its bytes match the recorded
+sha256. See `library_copy`.
+
 The result -- did the passage appear? Exhaustive, four outcomes:
 
     found          the passage is in the source
@@ -273,6 +277,11 @@ class Report:
     does not."""
     unpinned: list[str] = field(default_factory=list)
     """Sources with no recorded digest. Their quotations resolve against whatever is on disk."""
+    from_library: list[tuple[str, pathlib.Path]] = field(default_factory=list)
+    """Sources absent at the path their record names and read from the library instead, with
+    the file that was read. Each matched its pin, or it would not be here. Reported so the
+    counts above say where their bytes came from: the same claims directory resolves on the
+    machine holding the library and is `unchecked` on one that does not."""
     skipped: list[tuple[str, str]] = field(default_factory=list)
     """Claims files that would not parse, so their quotations were never examined."""
     extractors: dict[str, int] = field(default_factory=dict)
@@ -888,6 +897,49 @@ def check_pin(artifact: pathlib.Path | None, expected: str | None) -> Pin:
     return Pin("ok" if actual == expected else "broken", expected, actual)
 
 
+#: The reason on a quotation whose source is at no path this run could read.
+MISSING = "file not found"
+
+
+def library_copy(
+    name: str, expected: str | None, pdfs: pathlib.Path | None
+) -> tuple[pathlib.Path | None, str]:
+    """The library's copy of a source that is not at the path its record names, and why not.
+
+    A public repository carries each source's sha256 and not the source, so the path a record
+    names is empty on every machine but the author's, while the library on that machine may
+    hold the file. `pdfs` is the library's `pdfs/` directory, and the copy looked for is the
+    file there under the record's own filename.
+
+    The pin is the identity. The name only says where to look, so the copy is returned only
+    where its bytes hash to `expected`: a record with no pin has nothing to prove the library's
+    file is the same document, and a file under the right name with other bytes is another
+    document. Both return None with a reason that says so. A library holding no file under
+    that name returns `MISSING` alone, which is what an absent source has always read as.
+
+    Nothing is written and nothing is fetched.
+    """
+    held = pdfs / name if pdfs else None
+    if held is None or not held.is_file():
+        return None, MISSING
+    if not (expected and expected.strip()):
+        return None, (
+            f"{MISSING} at the path the record names; the library holds a file under that name, "
+            f"and it is read only where the record pins a sha256 for it to match"
+        )
+    try:
+        actual = sha256(held)
+    except OSError:
+        return None, MISSING
+    expected = expected.strip().lower()
+    if actual != expected:
+        return None, (
+            f"{MISSING} at the path the record names; the library holds a file under that name "
+            f"that does not match the pin (pinned {expected[:12]}, library {actual[:12]})"
+        )
+    return held, ""
+
+
 def check_derived(text: str, expected: str | None) -> Pin:
     """Is the text an extractor produced the text the quotations were pinned against?
 
@@ -911,8 +963,12 @@ def check_one(
     triangulate: bool = False,
     prefix: str = "",
     suffix: str = "",
+    missing: str = MISSING,
 ) -> Result:
     """Does this passage appear in this source, and what read the source to decide?
+
+    `missing` is the reason recorded where the artifact is not on disk, for a caller that
+    looked somewhere else for it and knows more than that it is absent.
 
     `prefix` and `suffix` are the W3C `TextQuoteSelector` neighbours, consulted only where the
     passage occurs more than once. Both default to empty, so a caller that has never carried
@@ -938,7 +994,7 @@ def check_one(
         warn.append("short")
 
     if artifact is None or not artifact.exists():
-        return Result("unchecked", "file not found", warn)
+        return Result("unchecked", missing, warn)
 
     if triangulate and not extract_cmd and is_paginated(artifact):
         return _triangulate(quote, artifact, page, warn, prefix, suffix)
