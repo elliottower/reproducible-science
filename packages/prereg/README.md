@@ -101,6 +101,56 @@ seen`. An entry logged before results is an amendment; one logged after is a dev
 
 `not frozen` is not a pass. It is the absence of a check.
 
+### Registrations frozen by a commit line
+
+A registration can also be fixed without `prereg freeze`: the document is committed, and the
+commit that follows writes the first commit's SHA into the document.
+
+```text
+# Does the rule hold?
+
+**Commit SHA:** b96d10a
+```
+
+`prereg check` finds every markdown file git tracks at or below the working directory that
+carries such a line, and compares it with the file at the commit the line names, leaving the
+commit line out of both sides. The line is bold and starts a line, `**Commit SHA:**`,
+`**Freeze SHA:**` or `**Freeze commit:**`, or the commit sits on the first line under a heading
+of one of those names. The hash is 7 to 40 digits, bare, in backticks or in bold. A bold
+`**Status:**` line before the first heading after the title is part of the freeze record too:
+it is left out of the comparison, and a status that differs from the frozen one is reported
+under the document without counting as an edit. These
+documents are listed under their own heading, after the plans:
+
+```text
+registrations frozen by a commit line:
+unchanged    PREREGISTRATION_AMENDMENT_2.md  at 12ea0ed
+appended     PREREGISTRATION_AMENDMENT_5.md  at fbc7d33
+  8 lines added after the frozen text
+CHANGED      PREREGISTRATION.md  at b96d10a
+  24 lines added, 4 removed
+  first difference at line 107:
+  - | Anti-CD20/MS | Per allele (FCRL3) | Yes |
+  + | Anti-CD20/MS | Per SD circulating FCRL3 | No |
+pending      PREREGISTRATION_AMENDMENT_3.md
+  the commit line names no commit: _pending_
+
+4 commit-pinned: 1 unchanged, 1 appended, 1 changed, 1 pending, 0 unknown commit
+```
+
+| Exit | Result | Meaning |
+|------|--------|---------|
+| 0 | `unchanged` | The document equals the file at its commit, apart from the commit line |
+| 0 | `appended` | Lines were added after the end of the frozen text, or at the end of the fenced log that closes it |
+| 1 | `CHANGED` | Frozen text was edited or removed, or lines were added inside it |
+| 2 | `pending` | The commit line holds a placeholder, so there is nothing to compare with |
+| 2 | `unknown commit` | The repository does not hold the named commit, or the file is not in it |
+
+`pending` and `unknown commit` are not passes. A shallow clone, a rewritten history and a commit
+of another repository all read as `unknown commit`, and none of them says the document changed.
+A changed plan or document exits 1 whatever else was found. `prereg check` reads these documents
+and never writes to them, and `prereg freeze` does not produce them.
+
 ## The plan uses OSF's headings
 
 Verbatim, so the document maps onto an [OSF registration](https://osf.io/prereg/) without being
