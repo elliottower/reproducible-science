@@ -86,7 +86,7 @@ const runsAnAnalysis = (command: string) =>
 
 /**
  * The last full quotation check of each project, as `found/pinned`. Checking thousands of
- * quotations takes minutes, so the status line never runs it: `/repro-status` does, and the
+ * quotations takes minutes, so the status line never runs it: `/repro-verify` does, and the
  * result is kept here, in the session's state, until the next one.
  */
 const quotations = atom({ plugin: 'repro', key: 'quotations' } as const, {} as Record<string, string>)
@@ -155,7 +155,15 @@ async function status($: EngineInterface, root: string, withFiles: boolean) {
   const plans = await output($, ['prereg', 'check'], root, 60_000)
   const counts = new Map<string, number>()
   for (const line of (plans ?? '').split('\n')) {
-    const label = /^([A-Za-z][A-Za-z ]*?)\s{2,}\//.exec(line)?.[1]?.toLowerCase()
+    // A plan frozen with `prereg freeze` is listed by its absolute path. A registration frozen by a
+    // commit line in the document is listed by its path in the repository, under its own words:
+    // text added after the frozen text leaves the plan intact, and a commit that is pending or not
+    // in the repository could not be checked, which is not a change.
+    const pinned = /^(unchanged|appended|CHANGED|pending|unknown commit)\s{2,}[^/\s]/.exec(line)?.[1]
+    const label =
+      /^([A-Za-z][A-Za-z ]*?)\s{2,}\//.exec(line)?.[1]?.toLowerCase() ??
+      (pinned && { unchanged: 'unchanged', appended: 'unchanged', CHANGED: 'changed' }[pinned]) ??
+      (pinned ? 'not frozen' : undefined)
     if (label) {
       counts.set(label, (counts.get(label) ?? 0) + 1)
     }
@@ -224,7 +232,7 @@ async function status($: EngineInterface, root: string, withFiles: boolean) {
     if (last) {
       fields.push(`citations: ${last}`)
     } else {
-      // Counting what is pinned is one grep; checking it is minutes, and `/repro-status` does that.
+      // Counting what is pinned is one grep; checking it is minutes, and `/repro-verify` does that.
       const counted = await output(
         $,
         ['grep', '-rhcE', '^[[:space:]]*-?[[:space:]]*exact:', ...folders],
@@ -319,6 +327,8 @@ let isPinned = false
 // The session keeps both, so a reload of this module does not forget which project is open.
 const savedProject = atom({ plugin: 'repro', key: 'project' } as const, null)
 const savedPin = atom({ plugin: 'repro', key: 'isPinned' } as const, false)
+/** Whether the person hid the readout above the prompt with `/repro-hide`. Warnings still show. */
+const hidden = atom({ plugin: 'repro', key: 'isHidden' } as const, false)
 
 async function save($: EngineInterface) {
   await update($, savedProject, () => project ?? null)
@@ -404,6 +414,18 @@ export const register: Register = on => {
       name: 'repro-status',
       description: "(reproducible-science) Instant status of a project's ledger, plans and quotations",
       argumentHint: '[part of a project name | pick | list | auto]',
+    })
+    await $.command.register({
+      name: 'repro-hide',
+      description: '(reproducible-science) Hide the readout above the prompt',
+    })
+    await $.command.register({
+      name: 'repro-show',
+      description: '(reproducible-science) Show the readout above the prompt again',
+    })
+    await $.command.register({
+      name: 'repro-verify',
+      description: "(reproducible-science) Check every pinned quotation of the working project against its source",
     })
     project = (await read($, savedProject)) ?? undefined
     isPinned = await read($, savedPin)
@@ -543,7 +565,7 @@ export const register: Register = on => {
   // own mode labels, which on a session with several of them is always.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
     const line = await read($, shownStatus)
-    if (!line || e.props.hasSurvey) {
+    if (!line || e.props.hasSurvey || (await read($, hidden))) {
       return next(e)
     }
     const { Box, Text } = $.ui.resolve(e)
@@ -682,7 +704,33 @@ export const register: Register = on => {
     if (!project || said.some(line => !line.startsWith('Working project') && !line.startsWith('Following'))) {
       return { text: said.join('\n') }
     }
-    // The quotations first, so the status line computed after them carries this check's count.
+    const lines = [...said, await status($, project, true)]
+    lastStatus = lines[said.length] ?? lastStatus
+    await show($)
+
+    return { text: lines.join('\n') }
+  })
+
+  // The readout is drawn every turn, and in a short window it takes rows the person may want back.
+  // A warning is not part of it: that line stays, because it only appears when something is wrong.
+  on('command.run', { command: 'repro-hide' }, async $ => {
+    await update($, hidden, () => true)
+
+    return { text: 'Readout hidden. /repro-show brings it back.' }
+  })
+
+  on('command.run', { command: 'repro-show' }, async $ => {
+    await update($, hidden, () => false)
+
+    return { text: 'Readout shown.' }
+  })
+
+  // The full quotation check. It reads every pinned source, which takes minutes on a large
+  // project, so it has its own command and `/repro-status` stays instant.
+  on('command.run', { command: 'repro-verify' }, async $ => {
+    if (!project) {
+      return { text: 'No working project. Run /repro-status <part of a name> first.' }
+    }
     const checked: string[] = []
     const folders = await claimsFolders($, project)
     const count = (text: string | undefined) => Number((text ?? '0').replace(/,/g, ''))
@@ -708,8 +756,8 @@ export const register: Register = on => {
     if (folders.length === 0) {
       checked.push('no claims folder, so no quotations are pinned')
     }
-    const lines = [...said, await status($, project, true), ...checked]
-    lastStatus = lines[said.length] ?? lastStatus
+    const lines = [await status($, project, true), ...checked]
+    lastStatus = lines[0] ?? lastStatus
     await show($)
 
     return { text: lines.join('\n') }

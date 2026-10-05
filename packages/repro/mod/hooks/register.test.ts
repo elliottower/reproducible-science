@@ -287,3 +287,50 @@ test('quotations pinned in a claims folder below the top of the project are coun
   expect(spawned.some(call => call.includes('paper/prior_art/claims') && call.includes('grep'))).toBe(true)
   await $.command.run({ command: 'repro-status', args: 'auto' })
 })
+
+test('the status command never runs the quotation check, and the verify command records its count', async ($, on) => {
+  project(on, { '/work/study/PREREG.md': DRAFT_PLAN }, argv =>
+    argv[0] === 'find'
+      ? './claims\n'
+      : argv[0] === 'grep'
+        ? '63\n'
+        : argv[0] === 'citations' && argv[1] === 'verify'
+          ? '63 quotes\n\n  found              61\n  not found           2\n'
+          : '',
+  )
+  const verifies = () => spawned.filter(call => call.includes('citations') && call.includes('verify')).length
+
+  const shown = await $.command.run({ command: 'repro-status', args: 'study' })
+  expect(shown.text).toContain('citations: 63 pinned, not verified')
+  expect(verifies()).toBe(0)
+
+  const verified = await $.command.run({ command: 'repro-verify', args: '' })
+  expect(verifies()).toBe(1)
+  expect(verified.text).toContain('citations: 61/63 found')
+  expect(verified.text).toContain('not found           2')
+
+  const after = await $.command.run({ command: 'repro-status', args: '' })
+  expect(after.text).toContain('citations: 61/63 found')
+  expect(verifies()).toBe(1)
+  await $.command.run({ command: 'repro-status', args: 'auto' })
+})
+
+test('registrations frozen by a commit line count as plans, and only an edited one is a change', async ($, on) => {
+  const intact =
+    '\nregistrations frozen by a commit line:\n' +
+    'unchanged    PREREGISTRATION_AMENDMENT_2.md  at 12ea0ed\n' +
+    'appended     PREREGISTRATION_AMENDMENT_5.md  at fbc7d33\n' +
+    '  8 lines added after the frozen text\n' +
+    'pending      PREREGISTRATION_AMENDMENT_3.md\n'
+  let listing = intact
+  project(on, { '/work/study/.results/ledger.jsonl': '' }, argv => (argv[0] === 'prereg' ? listing : ''))
+
+  const clean = await $.command.run({ command: 'repro-status', args: 'study' })
+  expect(clean.text).toContain('prereg: 2/3 frozen')
+  expect(clean.text).not.toContain('changed')
+
+  listing = intact + 'CHANGED      PREREGISTRATION.md  at b96d10a\n  23 lines added, 3 removed\n'
+  const edited = await $.command.run({ command: 'repro-status', args: '' })
+  expect(edited.text).toContain('prereg: 1 changed')
+  await $.command.run({ command: 'repro-status', args: 'auto' })
+})
