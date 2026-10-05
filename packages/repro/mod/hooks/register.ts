@@ -14,7 +14,7 @@ const RUNNERS = new Set([
   'jupyter', 'quarto', 'modal', 'sbatch', 'srun',
 ])
 
-const GATES = `# Research records (repro-gates)
+const GATES = `# Research records (reproducible-science)
 
 This project keeps machine-checkable records, and three steps are not taken without one:
 
@@ -85,43 +85,171 @@ const runsAnAnalysis = (command: string) =>
   command.trim().split(/\s+/).slice(0, 3).some(word => RUNNERS.has(word.replace(/^.*\//, '')))
 
 /**
- * One line saying what the ledger and the plans report.
+ * The last full quotation check of each project, as `found/pinned`. Checking thousands of
+ * quotations takes minutes, so the status line never runs it: `/repro-verify` does, and the
+ * result is kept here, in the session's state, until the next one.
+ */
+const quotations = atom({ plugin: 'repro', key: 'quotations' } as const, {} as Record<string, string>)
+
+const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
+
+/**
+ * A command's output, or undefined when it did not finish in time or could not start.
  *
- * `withFiles` also hashes every sealed file, which is the check that finds a changed output and
+ * `$.process.run` rejects on a timeout, and a rejection here used to end the whole turn's hook:
+ * one slow `prereg check` on a busy machine left no status line at all. A check that did not
+ * finish now marks its own field and leaves the others standing.
+ */
+async function output($: EngineInterface, argv: string[], cwd: string, timeoutMs: number) {
+  try {
+    return (await $.process.run(argv, { cwd, timeoutMs })).stdout
+  } catch {
+    return undefined
+  }
+}
+
+/**
+ * Every `claims` folder in the project, relative to its root. A paper keeps its pinned quotations
+ * beside the manuscript as often as at the top (`paper/prior_art/claims`), and looking only at
+ * the top reported 63 pinned quotations as none.
+ */
+async function claimsFolders($: EngineInterface, root: string) {
+  const found = await output(
+    $,
+    ['find', '.', '-maxdepth', '4', '-type', 'd', '-name', 'claims', '-not', '-path', '*/node_modules/*', '-not', '-path', '*/.git/*'],
+    root,
+    20_000,
+  )
+
+  return (found ?? '')
+    .split('\n')
+    .map(line => line.replace(/^\.\//, '').trim())
+    .filter(line => line.length > 0)
+    .sort()
+}
+
+/**
+ * What the last `status` found wrong, each in a few words. Drawn on the engine's pinned line
+ * under the prompt, which is one row and spends about 28 columns on this plugin's name, so a
+ * warning names the problem and `/repro-status` says what to do. The line is kept for these
+ * because of its warning mark: a line that is there every turn stops being read as a warning.
+ */
+let warnings: string[] = []
+
+/**
+ * One line, one field per tool, in a fixed order so each is found in the same place every turn:
+ *
+ *     study · prereg: 1/1 frozen · results: 3 runs, 2 sealed, 4 claims · citations: 120/120 found
+ *
+ * Fractions only where there is a real total. The project's name stays, because the project
+ * followed is the one whose files the session touches, which need not be where it started.
+ *
+ * `withFiles` also hashes every sealed file, which is the check that finds a changed input and
  * the one that costs: it runs for `/repro-status`, never at the end of every turn.
  */
 async function status($: EngineInterface, root: string, withFiles: boolean) {
-  const parts: string[] = []
-  if (await $.fs.exists(`${root}/${LEDGER}`)) {
-    const ran = await $.process.run(['results', 'verify', ...(withFiles ? ['--files'] : [])], {
-      cwd: root,
-      timeoutMs: withFiles ? 300_000 : 20_000,
-    })
-    const head = ran.stdout.split('\n')[0] ?? ''
-    const changed = (ran.stdout.match(/^\s+(CHANGED|MISSING)\s/gm) ?? []).length
-    const events = /chain intact: (\d+) events/.exec(head)
-    parts.push(
-      events
-        ? `ledger intact, ${events[1]} events${changed ? `, ${changed} file(s) changed` : ''}`
-        : `ledger: ${head.toLowerCase().slice(0, 48)}`,
-    )
-  } else {
-    parts.push('no ledger')
-  }
+  const fields = [root.replace(/^.*\//, '')]
+  const wrong: string[] = []
+
   // `prereg check` reads every plan at, above and below the directory it runs in.
-  const plans = await $.process.run(['prereg', 'check'], { cwd: root, timeoutMs: 20_000 })
+  const plans = await output($, ['prereg', 'check'], root, 60_000)
   const counts = new Map<string, number>()
-  for (const line of plans.stdout.split('\n')) {
-    const label = /^([A-Za-z][A-Za-z ]*?)\s{2,}\//.exec(line)?.[1]?.toLowerCase()
+  for (const line of (plans ?? '').split('\n')) {
+    // A plan frozen with `prereg freeze` is listed by its absolute path. A registration frozen by a
+    // commit line in the document is listed by its path in the repository, under its own words:
+    // text added after the frozen text leaves the plan intact, and a commit that is pending or not
+    // in the repository could not be checked, which is not a change.
+    const pinned = /^(unchanged|appended|CHANGED|pending|unknown commit)\s{2,}[^/\s]/.exec(line)?.[1]
+    const label =
+      /^([A-Za-z][A-Za-z ]*?)\s{2,}\//.exec(line)?.[1]?.toLowerCase() ??
+      (pinned && { unchanged: 'unchanged', appended: 'unchanged', CHANGED: 'changed' }[pinned]) ??
+      (pinned ? 'not frozen' : undefined)
     if (label) {
       counts.set(label, (counts.get(label) ?? 0) + 1)
     }
   }
-  if (counts.size > 0) {
-    parts.push(`plans: ${[...counts].map(([label, n]) => `${n} ${label}`).join(', ')}`)
+  const total = [...counts.values()].reduce((a, b) => a + b, 0)
+  const frozen = counts.get('unchanged') ?? 0
+  const broken = total - frozen - (counts.get('not frozen') ?? 0)
+  fields.push(
+    plans === undefined
+      ? 'prereg: not read (timed out)'
+      : total === 0
+        ? 'prereg: none drafted'
+        : broken
+          ? `prereg: ${broken} changed`
+          : `prereg: ${frozen}/${total} frozen`,
+  )
+  if (broken) {
+    wrong.push(`${plural(broken, 'plan')} edited after freeze`)
   }
 
-  return `${root.replace(/^.*\//, '')}: ${parts.join(' · ')}`
+  let runs = 0
+  if (await $.fs.exists(`${root}/${LEDGER}`)) {
+    const verified = await output(
+      $,
+      ['results', 'verify', ...(withFiles ? ['--files'] : [])],
+      root,
+      withFiles ? 300_000 : 60_000,
+    )
+    const head = verified?.split('\n')[0] ?? ''
+    if (verified === undefined) {
+      fields.push('results: not read (timed out)')
+    } else if (/chain intact: \d+ events/.test(head)) {
+      const ledger = await $.fs.read(`${root}/${LEDGER}`)
+      const count = (kind: string) => (ledger.match(new RegExp(`"event":"${kind}"`, 'g')) ?? []).length
+      const changed = (verified.match(/^\s+(CHANGED|MISSING)\s/gm) ?? []).length
+      runs = count('run')
+      fields.push(
+        `results: ${changed ? `${changed} changed, ` : ''}${plural(runs, 'run')}, ` +
+          `${count('seal')} sealed, ${plural(count('claim'), 'claim')}`,
+      )
+      if (changed) {
+        wrong.push(`${plural(changed, 'sealed file')} changed`)
+      }
+      if (/^TIMESTAMP CONTRADICTS/m.test(verified)) {
+        wrong.push('ledger rewritten after timestamp')
+      }
+      if (runs > 0 && count('seal') === 0) {
+        wrong.push(`${plural(runs, 'run')}, nothing sealed`)
+      }
+    } else {
+      // `CHAIN TRUNCATED — events are missing from the end`: the word after CHAIN.
+      const fault = /^(?:CHAIN|NO)\s+(\w+)/.exec(head)?.[1]?.toLowerCase() ?? 'unreadable'
+      fields.push(`results: ${fault}`)
+      wrong.push(`ledger ${fault}`)
+    }
+  } else {
+    fields.push('results: no ledger')
+  }
+  if (runs > 0 && total > 0 && frozen === 0 && !broken) {
+    wrong.push(`${plural(runs, 'run')}, no plan frozen`)
+  }
+
+  const folders = await claimsFolders($, root)
+  if (folders.length > 0) {
+    const last = (await read($, quotations))[root]
+    if (last) {
+      fields.push(`citations: ${last}`)
+    } else {
+      // Counting what is pinned is one grep; checking it is minutes, and `/repro-verify` does that.
+      const counted = await output(
+        $,
+        ['grep', '-rhcE', '^[[:space:]]*-?[[:space:]]*exact:', ...folders],
+        root,
+        20_000,
+      )
+      const pinned = (counted ?? '').split('\n').reduce((sum, n) => sum + (Number(n) || 0), 0)
+      fields.push(`citations: ${pinned.toLocaleString('en-US')} pinned, not verified`)
+    }
+  } else {
+    // Said, so the row always holds the same three fields and a missing one is not read as fine.
+    fields.push('citations: none pinned')
+  }
+
+  warnings = wrong
+
+  return fields.join(' · ')
 }
 
 /** The pane that lists the research projects, one button each, to pick one from. */
@@ -139,10 +267,10 @@ const ROW = 'project:'
 // the pane by itself. Kept in module variables, a slide changed the number and drew nothing.
 
 /** How many projects the window shows. Corrected from the pane's real height on a first scroll. */
-const windowRows = atom({ plugin: 'repro-gates', key: 'windowRows' } as const, 8)
+const windowRows = atom({ plugin: 'repro', key: 'windowRows' } as const, 8)
 
 /** The index in `found` of the window's first row. */
-const top = atom({ plugin: 'repro-gates', key: 'top' } as const, 0)
+const top = atom({ plugin: 'repro', key: 'top' } as const, 0)
 
 const lastTop = (rows: number) => Math.max(0, found.length - rows)
 
@@ -197,8 +325,10 @@ let project: string | undefined
 let isPinned = false
 
 // The session keeps both, so a reload of this module does not forget which project is open.
-const savedProject = atom({ plugin: 'repro-gates', key: 'project' } as const, null)
-const savedPin = atom({ plugin: 'repro-gates', key: 'isPinned' } as const, false)
+const savedProject = atom({ plugin: 'repro', key: 'project' } as const, null)
+const savedPin = atom({ plugin: 'repro', key: 'isPinned' } as const, false)
+/** Whether the person hid the readout above the prompt with `/repro-hide`. Warnings still show. */
+const hidden = atom({ plugin: 'repro', key: 'isHidden' } as const, false)
 
 async function save($: EngineInterface) {
   await update($, savedProject, () => project ?? null)
@@ -207,6 +337,20 @@ async function save($: EngineInterface) {
 
 /** What the checks last said, shown on the status line and given to the model with the gates. */
 let lastStatus = ''
+
+/**
+ * The same line, drawn in the band above the prompt. Kept in the session's state
+ * so a change redraws it: a `$.ui.status` line carried this plugin's name and a warning mark ahead
+ * of the text, and in a narrow terminal that left room for the project name and little else.
+ */
+const shownStatus = atom({ plugin: 'repro', key: 'statusLine' } as const, '')
+
+async function show($: EngineInterface) {
+  // The pinned line under the prompt carries a warning mark and this plugin's name, so it holds
+  // only what is wrong, and nothing at all when nothing is.
+  $.ui.status(warnings.length > 0 ? warnings.join(' · ') : undefined)
+  await update($, shownStatus, () => lastStatus)
+}
 
 /** Makes the project above `path` the active one, when there is one. */
 async function track($: EngineInterface, path: string) {
@@ -261,7 +405,7 @@ async function choose($: EngineInterface, wanted: string) {
 
 async function refresh($: EngineInterface) {
   lastStatus = project ? await status($, project, false) : ''
-  $.ui.status(lastStatus || undefined)
+  await show($)
 }
 
 export const register: Register = on => {
@@ -270,6 +414,18 @@ export const register: Register = on => {
       name: 'repro-status',
       description: "(reproducible-science) Instant status of a project's ledger, plans and quotations",
       argumentHint: '[part of a project name | pick | list | auto]',
+    })
+    await $.command.register({
+      name: 'repro-hide',
+      description: '(reproducible-science) Hide the readout above the prompt',
+    })
+    await $.command.register({
+      name: 'repro-show',
+      description: '(reproducible-science) Show the readout above the prompt again',
+    })
+    await $.command.register({
+      name: 'repro-verify',
+      description: "(reproducible-science) Check every pinned quotation of the working project against its source",
     })
     project = (await read($, savedProject)) ?? undefined
     isPinned = await read($, savedPin)
@@ -311,7 +467,7 @@ export const register: Register = on => {
           sections: [
             ...composed.sections,
             {
-              id: 'repro-gates:gates',
+              id: 'repro:gates',
               text: `${GATES}\n\nState of this project's records as of the last turn: ${lastStatus}.`,
               scope: 'session',
             },
@@ -347,7 +503,7 @@ export const register: Register = on => {
         ...ran,
         context: [
           ...(ran.context ?? []),
-          `repro-gates: ${path} is a manuscript and no .results/ ledger exists at or above it, ` +
+          `reproducible-science: ${path} is a manuscript and no .results/ ledger exists at or above it, ` +
             `so no number in it is bound to a run. Before reporting a result here, run ` +
             `\`results init\`, seal the inputs, and bind each sentence with \`results claim\`. ` +
             `If this file reports no results of this project, say so to the user and continue.`,
@@ -371,7 +527,7 @@ export const register: Register = on => {
         ...ran,
         context: [
           ...(ran.context ?? []),
-          `repro-gates: ${fetched[1]} was downloaded from ${fetched[0]}. When this source is ` +
+          `reproducible-science: ${fetched[1]} was downloaded from ${fetched[0]}. When this source is ` +
             `pinned, write that address as \`url:\` under \`source:\` in its claims file, beside ` +
             `its sha256 and its \`doi:\`, so \`citations fetch\` can retrieve the same bytes ` +
             `for a reader. Record the address the file came from, not a landing page.`,
@@ -390,18 +546,43 @@ export const register: Register = on => {
       ...ran,
       context: [
         ...(ran.context ?? []),
-        `repro-gates: that command ran an analysis in a project with no .results/ ledger. If a ` +
+        `reproducible-science: that command ran an analysis in a project with no .results/ ledger. If a ` +
           `paper will report its output, \`results init\` and \`results seal\` the inputs before ` +
           `the run that counts. If it was exploratory, no record is owed.`,
       ],
     }
   })
 
-  on('tool.call', { tool: 'mcp__repro-gates__set_project' }, async ($, e) => {
+  on('tool.call', { tool: 'mcp__repro__set_project' }, async ($, e) => {
     const said = await choose($, String(e.path ?? ''))
     await refresh($)
 
     return { result: `${said}\n${lastStatus}` }
+  })
+
+  // One dim row directly above the prompt, drawn by this mod. The hint line under the prompt
+  // takes a `tail`, and the terminal leaves the tail out where the row has no room beside its
+  // own mode labels, which on a session with several of them is always.
+  on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
+    const line = await read($, shownStatus)
+    if (!line || e.props.hasSurvey || (await read($, hidden))) {
+      return next(e)
+    }
+    const { Box, Text } = $.ui.resolve(e)
+
+    // The engine draws its collapse mark, `[-]`, over the last columns of the band's first row.
+    // Unpadded, a line wrapping there lost the characters under it: `4 sealed, 0 claims` showed
+    // as `4 sealed,` then `claims`.
+    // One field per row, always: the project's name with the plans, then the runs, then the
+    // quotations. Laid side by side they read differently at every window width.
+    const [name, first, ...rest] = line.split(' · ')
+    const fields = first === undefined ? [name ?? ''] : [`${name} · ${first}`, ...rest]
+
+    return h(
+      Box,
+      { paddingRight: 5, flexDirection: 'column' },
+      ...fields.map((field, at) => h(Text, { key: `field:${at}`, dimColor: true }, field)),
+    )
   })
 
   on('ui.render', { component: 'Pane', requestId: PICKER }, async ($, e) => {
@@ -524,17 +705,60 @@ export const register: Register = on => {
       return { text: said.join('\n') }
     }
     const lines = [...said, await status($, project, true)]
-    if (await $.fs.exists(`${project}/claims`)) {
-      const ran = await $.process.run(['citations', 'verify', '--claims', 'claims/'], {
+    lastStatus = lines[said.length] ?? lastStatus
+    await show($)
+
+    return { text: lines.join('\n') }
+  })
+
+  // The readout is drawn every turn, and in a short window it takes rows the person may want back.
+  // A warning is not part of it: that line stays, because it only appears when something is wrong.
+  on('command.run', { command: 'repro-hide' }, async $ => {
+    await update($, hidden, () => true)
+
+    return { text: 'Readout hidden. /repro-show brings it back.' }
+  })
+
+  on('command.run', { command: 'repro-show' }, async $ => {
+    await update($, hidden, () => false)
+
+    return { text: 'Readout shown.' }
+  })
+
+  // The full quotation check. It reads every pinned source, which takes minutes on a large
+  // project, so it has its own command and `/repro-status` stays instant.
+  on('command.run', { command: 'repro-verify' }, async $ => {
+    if (!project) {
+      return { text: 'No working project. Run /repro-status <part of a name> first.' }
+    }
+    const checked: string[] = []
+    const folders = await claimsFolders($, project)
+    const count = (text: string | undefined) => Number((text ?? '0').replace(/,/g, ''))
+    let pinned = 0
+    let found = 0
+    for (const folder of folders) {
+      const ran = await $.process.run(['citations', 'verify', '--claims', folder], {
         cwd: project,
         timeoutMs: 300_000,
       })
-      lines.push(...ran.stdout.split('\n').filter(line => /^\s+(found|not found|unchecked|ambiguous)\s/.test(line)))
-    } else {
-      lines.push('no claims/ directory, so no quotations are pinned')
+      checked.push(
+        folder,
+        ...ran.stdout.split('\n').filter(line => /^\s+(found|not found|unchecked|ambiguous)\s/.test(line)),
+      )
+      pinned += count(/^([\d,]+) quotes?$/m.exec(ran.stdout)?.[1])
+      found += count(/^\s+found\s+([\d,]+)/m.exec(ran.stdout)?.[1])
     }
-    lastStatus = lines[said.length] ?? lastStatus
-    $.ui.status(lastStatus || undefined)
+    if (pinned > 0) {
+      const root = project
+      const line = `${found.toLocaleString('en-US')}/${pinned.toLocaleString('en-US')} found`
+      await update($, quotations, saved => ({ ...saved, [root]: line }))
+    }
+    if (folders.length === 0) {
+      checked.push('no claims folder, so no quotations are pinned')
+    }
+    const lines = [await status($, project, true), ...checked]
+    lastStatus = lines[0] ?? lastStatus
+    await show($)
 
     return { text: lines.join('\n') }
   })

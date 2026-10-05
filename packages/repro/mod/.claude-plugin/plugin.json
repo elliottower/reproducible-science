@@ -1,5 +1,5 @@
 {
-  "name": "repro-gates",
+  "name": "repro",
   "description": "Holds a Claude Code research session to its records: refuses an edit to a frozen plan, says when a manuscript or a run has no ledger behind it, and shows what the checks report.",
   "version": "0.4.2",
   "author": {

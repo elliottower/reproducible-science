@@ -12,7 +12,7 @@ const revealed: string[] = []
 const spawned: string[] = []
 
 /** Stands for the engine beneath the mod: a project whose files are `files`, and a tool that always runs. */
-function project(on: On, files: Record<string, string>) {
+function project(on: On, files: Record<string, string>, says: (argv: readonly string[]) => string | null = () => '') {
   const ran: string[] = []
   on('session.cwd', () => ({ value: CWD }))
   on('fs.exists', (_$, e) => ({
@@ -38,9 +38,12 @@ function project(on: On, files: Record<string, string>) {
   })
   on('process.run', (_$, e) => {
     spawned.push(JSON.stringify(e))
+    if (says(e.argv) === null) {
+      throw new Error(`$.process.run(${e.argv[0]}) aborted: still running after 60000ms`)
+    }
 
     return {
-      value: { exitCode: 0, stdout: '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false },
+      value: { exitCode: 0, stdout: says(e.argv) ?? '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false },
     }
   })
   on('tool.call', (_$, e) => {
@@ -159,7 +162,7 @@ test('a project named by the person stays the working project when other files a
   const after = await $.command.run({ command: 'repro-status', args: '' })
 
   expect(set.text).toContain('Working project set to /work/pinned')
-  expect(after.text).toContain('pinned:')
+  expect(after.text).toContain('pinned ·')
   expect(spawned.every(call => call.includes('/work/pinned'))).toBe(true)
   await $.command.run({ command: 'repro-status', args: 'auto' })
 })
@@ -187,9 +190,9 @@ test('a project is set by its number in the list or by part of its name', async 
 
 test('the model can declare the project it is working on', async ($, on) => {
   project(on, { '/elsewhere/study/.results/ledger.jsonl': '{}' })
-  on('tool.register', () => ({ value: { tool: 'mcp__repro-gates__set_project' } }))
+  on('tool.register', () => ({ value: { tool: 'mcp__repro__set_project' } }))
 
-  const answer = await $.tool.call({ tool: 'mcp__repro-gates__set_project', path: '/elsewhere/study' })
+  const answer = await $.tool.call({ tool: 'mcp__repro__set_project', path: '/elsewhere/study' })
 
   expect(String(answer.result)).toContain('Working project set to /elsewhere/study')
   await $.command.run({ command: 'repro-status', args: 'auto' })
@@ -205,14 +208,14 @@ test('the picker draws one button per project, and picking one makes it the work
   await $.command.run({ command: 'repro-status', args: 'pick' })
 
   for (const surface of ['terminal', 'desktop'] as const) {
-    const ui = await $.ui.mount({ plugin: 'repro-gates', surface, component: 'Pane', requestId: 'repro-projects', props: {} as never })
+    const ui = await $.ui.mount({ plugin: 'repro', surface, component: 'Pane', requestId: 'repro-projects', props: {} as never })
     expect(await ui.find({ key: 'project:alpha' })).toBeDefined()
     expect(await ui.find({ key: 'project:beta' })).toBeDefined()
     expect(await ui.find({ key: 'project:notes' })).toBeUndefined()
 
     await ui.press({ key: 'project:beta' })
     const after = await $.command.run({ command: 'repro-status', args: '' })
-    expect(after.text).toContain('beta:')
+    expect(after.text).toContain('beta ·')
     await $.command.run({ command: 'repro-status', args: 'auto' })
     await ui.unmount()
   }
@@ -228,7 +231,7 @@ test('the picker draws only a window of the list, so the tree always fits the pa
   await $.command.run({ command: 'repro-status', args: 'pick' })
 
   for (const surface of ['terminal', 'desktop'] as const) {
-    const ui = await $.ui.mount({ plugin: 'repro-gates', surface, component: 'Pane', requestId: 'repro-projects', props: {} as never })
+    const ui = await $.ui.mount({ plugin: 'repro', surface, component: 'Pane', requestId: 'repro-projects', props: {} as never })
     expect(await ui.find({ key: 'project:study01' })).toBeDefined()
     expect(await ui.find({ key: 'project:study08' })).toBeDefined()
     expect(await ui.find({ key: 'project:study09' })).toBeUndefined()
@@ -249,4 +252,85 @@ test('the picker draws only a window of the list, so the tree always fits the pa
     await $.command.run({ command: 'repro-status', args: 'pick' })
     await ui.unmount()
   }
+})
+
+test('the readout gives the project, then plan, inputs and ledger, in that order', async ($, on) => {
+  project(on, { '/work/study/.results/ledger.jsonl': '{}', '/work/study/PREREG.md': DRAFT_PLAN }, argv =>
+    argv[0] === 'results' ? 'chain intact: 5 events, anchored\n' : 'not frozen   /work/study/PREREG.md\n',
+  )
+
+  const shown = await $.command.run({ command: 'repro-status', args: 'study' })
+
+  expect(shown.text).toContain('study · prereg: 0/1 frozen · results: 0 runs, 0 sealed, 0 claims')
+  await $.command.run({ command: 'repro-status', args: 'auto' })
+})
+
+test('a check that times out marks its own field and the rest of the line still shows', async ($, on) => {
+  project(on, { '/work/study/.results/ledger.jsonl': '{}', '/work/study/PREREG.md': DRAFT_PLAN }, argv =>
+    argv[0] === 'prereg' ? null : 'chain intact: 5 events, anchored\n',
+  )
+
+  const shown = await $.command.run({ command: 'repro-status', args: 'study' })
+
+  expect(shown.text).toContain('study · prereg: not read (timed out) · results: 0 runs, 0 sealed, 0 claims')
+  await $.command.run({ command: 'repro-status', args: 'auto' })
+})
+
+test('quotations pinned in a claims folder below the top of the project are counted', async ($, on) => {
+  project(on, { '/work/study/PREREG.md': DRAFT_PLAN }, argv =>
+    argv[0] === 'find' ? './paper/prior_art/claims\n' : argv[0] === 'grep' ? '40\n23\n' : '',
+  )
+
+  const shown = await $.command.run({ command: 'repro-status', args: 'study' })
+
+  expect(shown.text).toContain('citations: 63 pinned, not verified')
+  expect(spawned.some(call => call.includes('paper/prior_art/claims') && call.includes('grep'))).toBe(true)
+  await $.command.run({ command: 'repro-status', args: 'auto' })
+})
+
+test('the status command never runs the quotation check, and the verify command records its count', async ($, on) => {
+  project(on, { '/work/study/PREREG.md': DRAFT_PLAN }, argv =>
+    argv[0] === 'find'
+      ? './claims\n'
+      : argv[0] === 'grep'
+        ? '63\n'
+        : argv[0] === 'citations' && argv[1] === 'verify'
+          ? '63 quotes\n\n  found              61\n  not found           2\n'
+          : '',
+  )
+  const verifies = () => spawned.filter(call => call.includes('citations') && call.includes('verify')).length
+
+  const shown = await $.command.run({ command: 'repro-status', args: 'study' })
+  expect(shown.text).toContain('citations: 63 pinned, not verified')
+  expect(verifies()).toBe(0)
+
+  const verified = await $.command.run({ command: 'repro-verify', args: '' })
+  expect(verifies()).toBe(1)
+  expect(verified.text).toContain('citations: 61/63 found')
+  expect(verified.text).toContain('not found           2')
+
+  const after = await $.command.run({ command: 'repro-status', args: '' })
+  expect(after.text).toContain('citations: 61/63 found')
+  expect(verifies()).toBe(1)
+  await $.command.run({ command: 'repro-status', args: 'auto' })
+})
+
+test('registrations frozen by a commit line count as plans, and only an edited one is a change', async ($, on) => {
+  const intact =
+    '\nregistrations frozen by a commit line:\n' +
+    'unchanged    PREREGISTRATION_AMENDMENT_2.md  at 12ea0ed\n' +
+    'appended     PREREGISTRATION_AMENDMENT_5.md  at fbc7d33\n' +
+    '  8 lines added after the frozen text\n' +
+    'pending      PREREGISTRATION_AMENDMENT_3.md\n'
+  let listing = intact
+  project(on, { '/work/study/.results/ledger.jsonl': '' }, argv => (argv[0] === 'prereg' ? listing : ''))
+
+  const clean = await $.command.run({ command: 'repro-status', args: 'study' })
+  expect(clean.text).toContain('prereg: 2/3 frozen')
+  expect(clean.text).not.toContain('changed')
+
+  listing = intact + 'CHANGED      PREREGISTRATION.md  at b96d10a\n  23 lines added, 3 removed\n'
+  const edited = await $.command.run({ command: 'repro-status', args: '' })
+  expect(edited.text).toContain('prereg: 1 changed')
+  await $.command.run({ command: 'repro-status', args: 'auto' })
 })
