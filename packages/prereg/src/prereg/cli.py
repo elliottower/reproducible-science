@@ -614,24 +614,33 @@ def cmd_setup(a) -> int:
 
 
 def cmd_check(a) -> int:
-    """Check the governing plan, or every plan below when there is none.
+    """Check the governing plan and every plan below here.
 
     A repository usually holds one plan per experiment, side by side, so running this at the
     root has to mean "check them all" — otherwise the command is unusable from the one place
     someone would naturally run it.
+
+    That holds when the root has a plan of its own. A study with its plan at the top and a
+    second one in a subfolder had only the first checked, so an edit to the second passed, and
+    anything counting plans from this command's output counted one.
 
     Registrations frozen by a commit line are checked as well, wherever git tracks them below
     here: a study registered under that convention has no `PREREG.md`, and reported nothing.
     """
     path = find()
     documents = pinned.check_below(pathlib.Path.cwd())
-    if path is not None:
+    below = [
+        f
+        for f in sorted(pathlib.Path.cwd().rglob(PREREG))
+        if path is None or f.resolve() != path.resolve()
+    ]
+    if path is not None and not below:
         rc = check_one(path)
         if rc == 2:
             print("\nNothing to check against yet. `prereg freeze` records the hash.")
         return _report_pinned(documents, rc)
 
-    found = sorted(pathlib.Path.cwd().rglob(PREREG))
+    found = ([path] if path is not None else []) + below
     if not found:
         if not documents:
             print(f"no {PREREG} here, above, or below.")

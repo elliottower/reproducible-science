@@ -426,6 +426,44 @@ def test_check_at_a_root_fails_if_any_plan_below_it_was_never_frozen(tmp_path):
     assert run(["check"], tmp_path / "never").returncode == 2, "the two branches must agree"
 
 
+def test_a_plan_below_the_governing_one_is_checked_with_it(repo):
+    run(["new", "survey"], repo)
+    _run(["git", "add", "-A"], cwd=repo.parent)
+    _run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "second"],
+        cwd=repo.parent,
+    )
+    run(["freeze"], repo)
+    run(["freeze"], repo / "survey")
+
+    r = run(["check"], repo)
+    assert r.returncode == 0, r.stdout
+    assert str(repo / "PREREG.md") in r.stdout
+    assert str(repo / "survey" / "PREREG.md") in r.stdout
+    assert "2 plans: 2 unchanged" in r.stdout
+
+    below = repo / "survey" / "PREREG.md"
+    below.write_text(below.read_text().replace("## Randomization", "## Randomisation"))
+    r = run(["check"], repo)
+    assert r.returncode == 1
+    assert "2 plans: 1 unchanged, 1 changed" in r.stdout
+
+
+def test_a_check_inside_the_lower_plan_still_reads_that_plan_alone(repo):
+    run(["new", "survey"], repo)
+    _run(["git", "add", "-A"], cwd=repo.parent)
+    _run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "second"],
+        cwd=repo.parent,
+    )
+    run(["freeze"], repo / "survey")
+
+    r = run(["check"], repo / "survey")
+    assert r.returncode == 0, r.stdout
+    assert str(repo / "survey" / "PREREG.md") in r.stdout
+    assert "plans:" not in r.stdout
+
+
 def test_a_root_check_passes_when_every_plan_below_it_is_frozen(tmp_path):
     # The control: the root branch has to stay usable, not merely strict.
     _run(["git", "init", "-q"], cwd=tmp_path)
