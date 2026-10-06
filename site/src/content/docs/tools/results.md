@@ -63,6 +63,7 @@ all checks passed.
 | `results run <file>...` | Record outputs after a run |
 | `results claim <text>` | Bind a manuscript claim to a run |
 | `results verify` | Check the ledger chain and every hash it names |
+| `results timestamp` | Date the ledger's head outside the repository, and check earlier dates |
 
 ## The chain
 
@@ -104,6 +105,31 @@ An analysis registered after `outcomes seen` is retrospective.
 Append-only JSONL in `.results/ledger.jsonl`. Each line is hash-chained to the previous — editing
 or inserting a line breaks the chain. `git diff` shows what changed; `results verify` checks
 whether it should have.
+
+`results init` writes a `.results/.gitignore` that ignores only the lock files, so the ledger and
+its anchor are committed with the project. A ledger on one disk is a record nobody else can
+check. What is committed is public with the repository, so a run's `note` is written as a commit
+message would be.
+
+## Timestamp
+
+The chain catches a line edited by hand. It cannot catch the ledger and its anchor rewritten
+together, because whoever can write one can write the other. `results timestamp` sends the head
+to the [OpenTimestamps](https://opentimestamps.org) calendars, which commit it into a Bitcoin
+block within a few hours, and keeps the proof under `.results/timestamps/`. Each line names the
+hash of the one before it, so a proof of the head dates every earlier event too.
+
+```text
+events 1–153 existed by Bitcoin block 915004, 2026-10-03 16:12 UTC
+```
+
+`results verify` reads the proofs with no network. A proof whose head no longer matches the
+chain at its length means the ledger was rewritten after it was stamped:
+
+```text
+TIMESTAMP CONTRADICTS THE CHAIN — the ledger was rewritten after it was stamped
+  000153-3f9c2a1b7d4e5f60.ots dates event 153 as 3f9c2a1b7d4e5f60…, and the ledger's event 153 is 81d0…
+```
 
 ## Claude Code
 

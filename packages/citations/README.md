@@ -17,37 +17,20 @@ pip install "citations[sheets]"   # to read .xlsx and .xls sources
 pip install "citations[docx]"     # to read .docx sources
 ```
 
-## When a quotation will not resolve
+## What a check establishes
 
-`not found` says the source was read and the passage is not in it. That is an accusation
-against the manuscript, and it is usually wrong. Three things produce it far more often than a
-misquotation does, and `verify` now names which by reporting where the passage stopped matching:
+`citations verify` establishes one fact about each quotation: the passage occurs in the pinned
+copy of the source, as read by the extractor the report names. `citations audit` establishes one
+fact about each reference: its authors, title, year, volume and pages agree with the record its
+identifier resolves to.
 
-```text
-not found by any of pdftotext -layout, pdftotext, pypdf, so the passage is absent under every
-reader installed here; the first 155 characters are in the source and the rest is not
-      quoted: ...tionality, e.g. vec('king') - vec('man') + vec('woman') = vec(
-      source: ...tionality, e.g. vec('king') vec('man') + vec('woman') = vec('q
-```
+Neither establishes that the source is correct, or that the passage supports the sentence it
+is quoted for. In a claims file `statement` is yours and `exact` is theirs, and only `exact` is
+checked.
 
-**A character the text layer dropped.** A minus sign, an en dash, a subscript. The quotation is
-right and the document's extraction is lossy. Repair it by splitting the quotation into two
-adjacent fragments either side of the missing character, never by truncating it to the part
-that matches -- a truncated quotation resolves and says something the source does not.
-
-**A hyphen on a line break.** `fold` removes `-\n` because a renderer inserts one when it
-splits a word, and it cannot tell that from a real hyphen that happens to fall at a line end.
-The same quotation then resolves everywhere else in the document and fails at that one
-occurrence. Split it there.
-
-**The wrong reader.** `pdftotext -layout` preserves a page's geometry, so on a two-column paper
-it interleaves the columns and shreds every sentence crossing the gutter. A block of failures
-concentrated in one document is this. `verify` consults the other readers before a `not found`
-stands and records which one answered, so this repairs itself; a tool that asks one extractor
-does not, and reports the document as missing text it contains.
-
-**A source that is not what it claims to be.** A `.pdf` that is a Cloudflare interstitial or a
-login page fails under every reader. `file` will say so in one line.
+A pin names bytes. A quotation pinned against a preprint is checked against the preprint, so
+the reference beside it should be the version that was pinned. Where a DOI resolves to another
+version of the work, `audit` reports the year as a disagreement.
 
 ## Quick start
 
@@ -69,11 +52,56 @@ warnings
 all found.
 ```
 
+## A worked example
+
+One source, one quotation, and one deliberate misquotation. The source is a text file, and its
+claims file starts with a pin and no claims:
+
+```yaml
+source:
+  citation: notes2026
+  local: sources/notes.txt
+  sha256: 915ac27df4c7…
+  url: https://example.org/notes.txt
+claims: {}
+```
+
+`citations pin` resolves a passage against the pinned file before it writes anything:
+
+```console
+$ citations pin claims/notes2026.yaml --id mean-offset \
+    --quote "The mean offset was 0.43 degrees, and it did not change with ambient temperature."
+found     The mean offset was 0.43 degrees, and it did not change with
+added     mean-offset to notes2026.yaml
+```
+
+The same sentence with two digits transposed is refused, and the file is left as it was:
+
+```console
+$ citations pin claims/notes2026.yaml --id mean-offset-wrong \
+    --quote "The mean offset was 0.34 degrees, and it did not change with ambient temperature."
+not found  The mean offset was 0.34 degrees, and it did not change with
+  read the source: a broken extraction reads the same as a passage that was never there
+nothing written. read the source before recording the passage.
+```
+
+`citations verify --claims claims` then reads every claims file and reports `1 quotes`, `found
+1`, and `read by 1 text`. After one line is appended to the source, the quotation still
+resolves and the run fails, because the file is no longer the pinned one:
+
+```text
+1 source changed since being pinned
+  notes2026                               pinned 915ac27df4c7  on disk 3d79bea1dc32
+
+every quote resolved, but against a source that is not the one pinned.
+```
+
 ## Commands
 
 | Command | What it does |
 |---------|-------------|
 | `citations init` | Create a library here |
+| `citations pin` | Add a quotation to a claims file, refusing one that does not resolve |
 | `citations verify` | Do the quotations resolve in their sources? |
 | `citations coverage` | Is every quotation in my manuscript pinned at all? |
 | `citations audit` | Does the stored metadata match the record the identifier resolves to? |
@@ -156,24 +184,90 @@ requires nothing about what sits between them.
 
 ## Verify output
 
-Four results, and they are exhaustive:
+Five results, and they are exhaustive:
 
 | Result | Meaning |
 |--------|---------|
 | `found` | The passage is in the source |
 | `not found` | The source was read and the passage is not in it |
 | `indeterminate` | Independent readers disagree about whether it is in it |
+| `ambiguous` | The passage occurs more than once and the record does not say which occurrence |
 | `unchecked` | No reader could read the source, so no measurement was made |
 
 Warnings are separate, because a passage can be found and still worth a second look. A quote
 can be short enough that the next clause changes its meaning — `"We trained 50"` appears
 verbatim in a paper whose sentence continues `"...and 5 refits each for 12 layered"`.
 
-`unchecked` and `indeterminate` are neither a pass nor a failure. Only `not found` fails;
-`--strict` also fails on both of the others, for CI.
+`unchecked`, `indeterminate` and `ambiguous` are neither a pass nor a failure. Only
+`not found` fails; `--strict` also fails on the other three, for CI. A source whose bytes no
+longer match its pin fails the run whatever its quotations did.
 
 `not found` means read the source. A mirror-reversed scan or a two-column extraction produces
 the same signal as a passage that was never there.
+
+## Where a passage is, and how it is matched
+
+A quotation carries the passage and, optionally, where it sits:
+
+| Field | What it is | Checked |
+|-------|------------|---------|
+| `exact` | the passage, as the source has it | yes |
+| `prefix`, `suffix` | the text on either side, for a passage that occurs more than once | used to single out one occurrence |
+| `page` | the page it is on | yes, in a paginated source read by a built-in PDF reader |
+| `section` | the section, as the source names it | no, recorded only |
+
+A `page` the passage is not on leaves the result `found` with a `page` warning and the page it
+was found on. Under a declared `extract_cmd` there is no page to ask for, and the warning is
+`page unchecked`.
+
+Matching is exact after folding, and never approximate. Folding removes what a PDF extractor
+changes and nothing else: case, runs of whitespace, curly quotation marks, the dash variants,
+accents written as combining marks, ligatures, and a hyphen at a line break. A passage that
+matches only once whitespace is ignored altogether is `found` with a `normalized` warning.
+Punctuation that carries meaning is kept, so `p < 0.05` does not match a source reading
+`p = 0.05`, and `-0.42` does not match `0.42`.
+
+| Warning | Meaning |
+|---------|---------|
+| `short` | under 40 characters, or ending on a comma or a connecting word, so the source may qualify it in the next clause |
+| `truncated` | every occurrence stops mid-word or mid-number |
+| `normalized` | matched only after ignoring spacing |
+| `page`, `page unchecked` | found on another page, or the page could not be asked for |
+
+A match is relative to the extractor. Two readers produce two texts from one PDF, so a result
+names the reader, and `not found` means not found in the text that reader produced.
+
+## When a quotation will not resolve
+
+`not found` says the source was read and the passage is not in it. That is an accusation
+against the manuscript, and it is usually wrong. Three things produce it far more often than a
+misquotation does, and `verify` now names which by reporting where the passage stopped matching:
+
+```text
+not found by any of pdftotext -layout, pdftotext, pypdf, so the passage is absent under every
+reader installed here; the first 155 characters are in the source and the rest is not
+      quoted: ...tionality, e.g. vec('king') - vec('man') + vec('woman') = vec(
+      source: ...tionality, e.g. vec('king') vec('man') + vec('woman') = vec('q
+```
+
+**A character the text layer dropped.** A minus sign, an en dash, a subscript. The quotation is
+right and the document's extraction is lossy. Repair it by splitting the quotation into two
+adjacent fragments either side of the missing character, never by truncating it to the part
+that matches -- a truncated quotation resolves and says something the source does not.
+
+**A hyphen on a line break.** `fold` removes `-\n` because a renderer inserts one when it
+splits a word, and it cannot tell that from a real hyphen that happens to fall at a line end.
+The same quotation then resolves everywhere else in the document and fails at that one
+occurrence. Split it there.
+
+**The wrong reader.** `pdftotext -layout` preserves a page's geometry, so on a two-column paper
+it interleaves the columns and shreds every sentence crossing the gutter. A block of failures
+concentrated in one document is this. `verify` consults the other readers before a `not found`
+stands and records which one answered, so this repairs itself; a tool that asks one extractor
+does not, and reports the document as missing text it contains.
+
+**A source that is not what it claims to be.** A `.pdf` that is a Cloudflare interstitial or a
+login page fails under every reader. `file` will say so in one line.
 
 ## Reading PDFs
 
