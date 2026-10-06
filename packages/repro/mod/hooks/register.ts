@@ -1,8 +1,14 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
-/** What `prereg freeze` writes into a plan. Its presence is what makes a plan frozen. */
+/** What `prereg freeze` once wrote into a plan. Its presence makes a plan frozen in place. */
 const FROZEN = /^\*\*Plan sha256:\*\*[ \t]*`[0-9a-f]{64}`/m
+
+/**
+ * Where `prereg freeze` records a file frozen whole: `.prereg/<name>.json` beside it. A plan and
+ * each of its amendments has one, and a file with one is never written to again.
+ */
+const recordOf = (path: string) => `${parent(path)}/.prereg/${path.replace(/^.*\//, '')}.json`
 
 const PLAN = 'PREREG.md'
 const LEDGER = '.results/ledger.jsonl'
@@ -37,7 +43,7 @@ This project keeps machine-checkable records, and three steps are not taken with
 
 1. Before a run whose output a paper will report: \`results seal\` the inputs, then \`results run\`. With no ledger in the repository, \`results init\` comes first.
 2. Before a number goes into a manuscript: \`results claim\` binds the sentence to the run that produced it.
-3. Before a confirmatory analysis runs: \`prereg freeze\` the plan. A frozen plan is never edited in place; a change is recorded with \`prereg log\`.
+3. Before a confirmatory analysis runs: \`prereg freeze\` the plan. A frozen plan or amendment is never edited; a note is recorded with \`prereg log\` and a change to the plan with \`prereg amend\`.
 
 A quotation is pinned with \`citations pin\` before the sentence quoting it is written.
 A gate is skipped only with the user's approval or a reason written into the notebook or the commit message, and the user is told in the same turn.`
@@ -296,7 +302,9 @@ async function status($: EngineInterface, root: string, withFiles: boolean) {
       /^([A-Za-z][A-Za-z ]*?)\s{2,}\//.exec(line)?.[1]?.toLowerCase() ??
       (pinned && { unchanged: 'unchanged', appended: 'unchanged', CHANGED: 'changed' }[pinned]) ??
       (pinned ? 'not frozen' : undefined)
-    if (label) {
+    // `log  <path>  4 entries, chain intact` reports the log kept beside a plan. It is not a
+    // plan, and counted as one it read as a plan that was neither frozen nor a draft: changed.
+    if (label && label !== 'log') {
       counts.set(label, (counts.get(label) ?? 0) + 1)
     }
   }
@@ -652,6 +660,16 @@ export const register: Register = on => {
     on('tool.call', { tool }, async ($, e, next) => {
       const path = await absolute($, e.file_path)
       await track($, path)
+
+      if (path.includes('/') && (await $.fs.exists(recordOf(path)))) {
+        return {
+          deny:
+            `${path} has a freeze record (${recordOf(path)}), and a frozen file never changes by ` +
+            `one byte. Record a note with \`prereg log\`, or a change to the plan as an ` +
+            `amendment with \`prereg amend\`, which is a file of its own. Ask the user before ` +
+            `doing either.`,
+        }
+      }
 
       if (path.endsWith(`/${PLAN}`) && (await $.fs.exists(path)) && FROZEN.test(await $.fs.read(path))) {
         return {

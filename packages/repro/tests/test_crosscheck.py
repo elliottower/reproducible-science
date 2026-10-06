@@ -35,6 +35,49 @@ def test_a_frozen_plan_is_found_by_the_header_freeze_wrote(tmp_path):
     assert [f.ref for f in frozen_plans(tmp_path)] == ["5394ef0950b6"]
 
 
+def _frozen_whole(tmp_path, folder, name, commit):
+    """A file as `prereg freeze` leaves it now: untouched, with its record beside it."""
+    directory = tmp_path / folder
+    (directory / ".prereg").mkdir(parents=True, exist_ok=True)
+    (directory / name).write_text("# plan\n\nH1. ...\n")
+    (directory / ".prereg" / f"{name}.json").write_text(
+        json.dumps({"file": name, "sha256": "0" * 64, "commit": commit, "access": "nothing run"})
+    )
+    return directory / name
+
+
+def test_a_plan_frozen_whole_is_found_by_its_record(tmp_path):
+    plan = _frozen_whole(tmp_path, "study", "PREREG.md", "5394ef0950b6aa11bb22cc33dd44ee55ff667788")
+    amendment = _frozen_whole(
+        tmp_path, "study", "PREREG_AMENDMENT_1.md", "0a1b2c3d4e5f60718293a4b5c6d7e8f901234567"
+    )
+    found = {f.path: f.ref for f in frozen_plans(tmp_path)}
+    assert found == {
+        plan: "5394ef0950b6aa11bb22cc33dd44ee55ff667788",
+        amendment: "0a1b2c3d4e5f60718293a4b5c6d7e8f901234567",
+    }
+
+
+def test_a_claim_citing_the_commit_in_a_freeze_record_is_matched_and_another_is_not(tmp_path):
+    _frozen_whole(tmp_path, "study", "PREREG.md", "5394ef0950b6aa11bb22cc33dd44ee55ff667788")
+    _ledger(
+        tmp_path,
+        [
+            {"event": "claim", "claim": "c1", "frozen_at": "5394ef0", "confirmatory": True},
+            {"event": "claim", "claim": "c2", "frozen_at": "deadbeefcafe"},
+        ],
+    )
+    assert [c.claim for c in unmatched(tmp_path)] == ["c2"]
+    assert confirmatory_without_a_plan(tmp_path) == []
+
+
+def test_a_record_that_names_no_commit_is_not_a_freeze(tmp_path):
+    (tmp_path / ".prereg").mkdir()
+    (tmp_path / ".prereg" / "PREREG.md.json").write_text("not json")
+    (tmp_path / ".prereg" / "OTHER.md.json").write_text(json.dumps({"sha256": "0" * 64}))
+    assert frozen_plans(tmp_path) == []
+
+
 def test_a_draft_plan_is_not_a_freeze(tmp_path):
     (tmp_path / "draft.md").write_text("# draft\n\n**Status:** DRAFT — not frozen.\n")
     assert frozen_plans(tmp_path) == []

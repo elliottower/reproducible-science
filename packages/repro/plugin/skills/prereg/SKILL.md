@@ -1,30 +1,31 @@
 ---
 name: prereg
-description: Freeze an experiment's plan against a commit and a content hash before running it, then log amendments and deviations. Use when writing or freezing a PREREG.md, before launching a run a plan governs, when a frozen plan needs to change, or when asked whether a plan still says what it said. Requires the `prereg` CLI (`uv tool install prereg`).
+description: Freeze an experiment's plan against a commit and a content hash before running it, then record notes in a log beside it and changes in amendments. Use when writing or freezing a PREREG.md, before launching a run a plan governs, when a frozen plan needs to change, or when asked whether a plan still says what it said. Requires the `prereg` CLI (`uv tool install prereg`).
 ---
 
 # prereg
 
-A plan, frozen against a commit and a hash, plus an append-only log of what changed after.
+A plan, frozen whole against a commit and a hash and never written to again, an append-only log
+beside it, and an amendment file for each change to it.
 
 ## The rule that matters
 
-**Freeze before you look. Never write the header by hand.**
+**Freeze before you look. A frozen file never changes by one byte.**
 
 A pre-registration is worth exactly one thing: evidence that the predictions existed before the
 data did. Every way it fails is a version of the plan moving after the numbers were seen — a
-threshold nudged, a hypothesis dropped, a subgroup added. The freeze exists so that movement leaves
-a trace, and a hand-written `**Status:** FROZEN` header leaves none. It produces a document that
-reads as registered and cannot be verified, which is worse than one that never claimed to be.
+threshold nudged, a hypothesis dropped, a subgroup added. So `prereg freeze` hashes the whole
+file, records the freeze outside it in `.prereg/`, and sets the file read-only. Anything later
+is a separate file: a note in `PREREG.log`, a change in `PREREG_AMENDMENT_N.md`.
 
-`**Status:**`, `**Plan sha256:**` and `**Frozen:**` are the tool's output. Writing them yourself is
-the one thing this skill exists to prevent.
+Never edit a frozen plan or a frozen amendment, never remove its read-only flag, and never write
+or edit a record under `.prereg/` by hand. A record is the tool's output.
 
 ## Commands
 
 ```bash
 prereg new <name>      # scaffold PREREG.md in OSF's headings, plus tests/ and results/
-prereg freeze          # write the header, hash the plan, append to the log
+prereg freeze          # hash the whole file, record it in .prereg/, set the plan read-only
 prereg freeze --osf    # freeze and push as a draft registration to OSF (unattended)
 prereg freeze --osf --attach ../CONTEXT.md --subject "<OSF subject>" \
   --description "<text>" --tag <tag> --category hypothesis \
@@ -33,8 +34,12 @@ prereg register --embargo YYYY-MM-DD --access <level>   # or --immediate; irreve
 prereg register --all --immediate --access <level>      # every frozen plan below, one phrase
 prereg link --anonymous --access <level>     # view-only link for double-blind review
 prereg setup           # save OSF token to .env (once)
-prereg log <note> --access <level>
-prereg check           # has anything above the log line changed since the freeze?
+prereg log <note> --access <level>   # one entry in PREREG.log, beside the plan
+prereg amend           # start PREREG_AMENDMENT_N.md: a change to the frozen plan
+prereg freeze PREREG_AMENDMENT_N.md  # freeze the amendment, as a plan is frozen
+prereg check           # has any frozen file changed since its freeze?
+prereg check --staged  # does the git index hold a change to a frozen file? (pre-commit hook)
+prereg timestamp       # complete each freeze's outside timestamp
 ```
 
 ### Who must be present
@@ -61,50 +66,71 @@ such a pipe directly.
 2. **Commit the PREREG.md alone.** No code in that commit. A freeze whose commit also carries a
    code change cannot distinguish the registered design from the change made while registering it.
 3. **`prereg freeze`** in the experiment directory. It refuses on a dirty tree, because the freeze
-   names a commit.
-4. **Commit the freeze header.** The freeze is only evidence once it is in history.
+   names a commit. It always sends the digest to the OpenTimestamps calendars; with no network
+   the freeze still succeeds and the timestamp is owed until `prereg timestamp` makes it. With
+   a results ledger at or above the plan, the access level recorded is at least what the ledger
+   shows: its highest recorded level, and `results not opened` once any run is recorded.
+4. **Commit `.prereg/`, `.gitattributes` and the `.ots` proof.** The freeze is only evidence once it is in history.
 5. **Then run.** Not before step 4.
 
 ## Reading `prereg check`
 
-Three results, exhaustive:
+It lists the plan, then its amendments by freeze time, then the log. Each frozen file's line
+gives its freeze date and the access level recorded at its freeze.
 
 | exit | | |
 |---|---|---|
-| 0 | `unchanged` | the plan says what it said |
-| 1 | `CHANGED` | the plan was edited above the log line after freezing |
-| 2 | `not frozen` | no hash recorded — **nothing was measured** |
+| 0 | `unchanged` | the file is byte for byte what was frozen |
+| 1 | `CHANGED` | a frozen file differs from its freeze |
+| 1 | `MISSING` | a file was frozen and is gone |
+| 1 | `orphaned` | an amendment's parent digest matches no frozen file present |
+| 1 | `LOG ALTERED` | the log's chain does not verify |
+| 2 | `not frozen` | no freeze recorded — **nothing was measured** |
 
 **`not frozen` is not a pass.** It is the absence of a check, and it reads identically to success
 if you only look at whether the command complained.
 
-**`CHANGED` is not fixed by re-freezing.** Re-freezing overwrites the evidence that the plan moved.
-Restore the plan and `prereg log` the change with an honest `--access`.
+**`CHANGED` is not fixed by freezing again.** A frozen file cannot be frozen a second time.
+Restore the file from git, and record the change as an amendment with an honest access level.
+
+`timestamp  owed` under a file means the freeze reached no calendar. It does not fail the check;
+say so, and that `prereg timestamp` completes it.
 
 At a repository root with no governing plan, `check` checks every plan below it.
 
-## Amendments and deviations
+## Notes, and changes to the plan
 
-`--access` is one of `nothing run`, `no results seen`, `results not opened`, `results seen`. It
-records what was known when the change was made, so the distinction is never a judgment call: an
-entry logged before results is an amendment, one logged after is a deviation. Log the honest level
+`prereg log <note> --access <level>` is for bookkeeping and small deviations. Never edit
+`PREREG.log` or its anchor `PREREG.log.head` by hand: `check` reports a shortened or reworded log. `--access` is one
+of `nothing run`, `no results seen`, `results not opened`, `results seen`. Log the honest level
 even when it is the damaging one — that is the entire function of the field.
+
+A new hypothesis, criterion or experiment is an amendment, not a log entry. `prereg amend`
+creates `PREREG_AMENDMENT_N.md` with four required fields: what it amends, by digest; the
+sections replaced or added; the reason; and what had been seen. Where a results ledger exists,
+the access level is filled from it and cannot be lowered. Fill the file in, commit it, and
+`prereg freeze PREREG_AMENDMENT_N.md`. An amendment frozen after results is allowed, and `check`
+labels it.
 
 ## When to reach for this
 
 - Before launching any run whose result will be reported as confirmatory
 - When a plan is ready to freeze, after review
-- When a frozen plan has to change — log first, never edit silently
+- When a frozen plan has to change — `prereg amend`, never an edit to the frozen file
 - Before reporting a result a plan governs, to confirm the plan still says what it said
-- In CI, as `prereg check`
+- In CI, as `prereg check`; in a pre-commit hook, as `prereg check --staged`
 
 ## Non-obvious behavior
 
-- `freeze` is idempotent: the commit, digest and date sit on lines the hash skips, so re-freezing
-  an unedited plan reproduces its hash.
-- `--force` re-freezes an already-frozen plan. Use it when the plan legitimately changed and was
-  re-committed, never to clear a `CHANGED` warning.
-- Appending below the log line is the allowed edit and does not fail `check`.
+- A plan frozen by an earlier version carries its freeze in the file (`**Status:** FROZEN`,
+  `**Plan sha256:**`) and its log under a `## Log` line. It is not converted: `check` and `log`
+  treat it as they did, `log` appends in the file, and `freeze --force` re-freezes it there.
+  Never write those lines by hand.
+- A draft made by an earlier `prereg new` carries a `**Status:** DRAFT` line and a `## Log`
+  section. `freeze` refuses it until both are removed, because they would stay in the frozen
+  file for good.
+- `prereg log` is refused on a plan not yet frozen: the log's first entry carries the frozen
+  plan's digest.
 
 ## What it will not do
 

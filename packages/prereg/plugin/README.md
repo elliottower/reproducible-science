@@ -8,7 +8,7 @@ command is there for when you want the answer now.
 
 | | |
 |---|---|
-| **hook** `hooks/frozen_plan_changed.py` | fires when a frozen preregistration no longer matches the digest it was frozen with |
+| **hook** `hooks/frozen_plan_changed.py` | fires when a frozen plan or amendment no longer matches the digest it was frozen with |
 | **skill** `skills/prereg/SKILL.md` | fires when Claude judges the tool relevant |
 | **command** `/prereg-check` | fires when you type it |
 
@@ -21,7 +21,7 @@ with no frozen plan — nothing to check means nothing said.
 
 ## What the skill changes
 
-Claude freezes a plan before running rather than after seeing the outcome, and records amendments and deviations in the log instead of editing the plan in place.
+Claude freezes a plan before running rather than after seeing the outcome, and records a note in the log beside the plan and a change in an amendment file instead of editing the frozen plan.
 
 ## Install
 

@@ -70,6 +70,48 @@ test('an edit to a frozen plan is refused and never reaches the tool', async ($,
   expect(ran).toEqual([])
 })
 
+test('an edit to a frozen amendment is refused and never reaches the tool', async ($, on) => {
+  const ran = project(on, {
+    [`${CWD}/PREREG.md`]: DRAFT_PLAN,
+    [`${CWD}/PREREG_AMENDMENT_1.md`]: '# Amendment 1\n\n## Reason\n\nA second cohort.\n',
+    [`${CWD}/.prereg/PREREG.md.json`]: '{}',
+    [`${CWD}/.prereg/PREREG_AMENDMENT_1.md.json`]: '{}',
+  })
+
+  for (const name of ['PREREG_AMENDMENT_1.md', 'PREREG.md']) {
+    for (const tool of ['Edit', 'Write'] as const) {
+      const answer = await $.tool.call(
+        tool === 'Edit'
+          ? { tool, file_path: `${CWD}/${name}`, old_string: 'A second cohort.', new_string: 'The data suggested it.' }
+          : { tool, file_path: `${CWD}/${name}`, content: 'rewritten' },
+      )
+
+      expect(answer.deny).toContain('freeze record')
+      expect(answer.deny).toContain(`.prereg/${name}.json`)
+      expect(answer.deny).toContain('prereg amend')
+    }
+  }
+  expect(ran).toEqual([])
+})
+
+test('an amendment still in draft can be edited beside a frozen plan', async ($, on) => {
+  const ran = project(on, {
+    [`${CWD}/PREREG.md`]: DRAFT_PLAN,
+    [`${CWD}/PREREG_AMENDMENT_1.md`]: '# Amendment 1\n\n## Reason\n\n_Why the plan changes._\n',
+    [`${CWD}/.prereg/PREREG.md.json`]: '{}',
+  })
+
+  const answer = await $.tool.call({
+    tool: 'Edit',
+    file_path: `${CWD}/PREREG_AMENDMENT_1.md`,
+    old_string: '_Why the plan changes._',
+    new_string: 'A second cohort.',
+  })
+
+  expect(answer.deny).toBeUndefined()
+  expect(ran).toEqual(['Edit'])
+})
+
 test('a plan that is not frozen can be edited', async ($, on) => {
   const ran = project(on, { [`${CWD}/PREREG.md`]: DRAFT_PLAN })
 
@@ -331,6 +373,27 @@ test('a plan in a subfolder is counted beside the one at the top', async ($, on)
 
   const shown = await $.command.run({ command: 'repro-status', args: 'study' })
   expect(shown.text).toContain('prereg: 2/2 frozen')
+  await $.command.run({ command: 'repro-status', args: 'auto' })
+})
+
+test('a plan frozen whole, its amendment and its log read as two frozen files and no change', async ($, on) => {
+  const chain =
+    'unchanged    /work/study/PREREG.md  frozen 2026-10-06  nothing run\n' +
+    '  timestamp  owed. `prereg timestamp` completes it.\n' +
+    'unchanged    /work/study/PREREG_AMENDMENT_1.md  frozen 2026-10-07  results seen\n' +
+    '  amends     PREREG.md\n' +
+    '  written after results were seen\n' +
+    'log          /work/study/PREREG.log  2 entries, chain intact\n'
+  let listing = chain
+  project(on, { '/work/study/.results/ledger.jsonl': '' }, argv => (argv[0] === 'prereg' ? listing : ''))
+
+  const clean = await $.command.run({ command: 'repro-status', args: 'study' })
+  expect(clean.text).toContain('prereg: 2/2 frozen')
+  expect(clean.text).not.toContain('changed')
+
+  listing = chain.replace('log          /work/study/PREREG.log  2 entries, chain intact', 'LOG ALTERED  /work/study/PREREG.log')
+  const altered = await $.command.run({ command: 'repro-status', args: '' })
+  expect(altered.text).toContain('prereg: 1 changed')
   await $.command.run({ command: 'repro-status', args: 'auto' })
 })
 

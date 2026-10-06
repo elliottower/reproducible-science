@@ -22,6 +22,8 @@ default_stages: [pre-commit]
 #
 #   * conformance fixtures, whose exact bytes are the fixture -- a trailing newline breaks
 #     every pin in the corpus, which happened the first time these hooks ran;
+#   * a plan as `prereg freeze` once wrote it, whose template lines end in a space the digest
+#     written in the file covers;
 #   * registrations, codebooks and frames, where a digest has been cited and any edit
 #     invalidates it;
 #
@@ -37,6 +39,7 @@ exclude: |
   (?x)^(
     packages/repro/tests/conformance/cases/.*|
     packages/repro/examples/.*|
+    packages/prereg/tests/data/frozen_in_place\.md|
     research/.*/(frame\.json|published\.bib)|
     uv\.lock
   )$
