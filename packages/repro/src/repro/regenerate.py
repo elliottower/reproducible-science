@@ -158,12 +158,16 @@ def check(
 ) -> RegenerationState:
     """Run one regeneration record in a sandbox and compare what it produced."""
     root = manifest.path.parent if manifest.path else pathlib.Path.cwd()
-    known = {
-        "regeneration_id": record.id,
-        "artifact_id": record.output.artifact,
-        "expected": record.output.digest.value if record.output.digest else None,
-        "command": record.command,
-        "inputs": tuple(
+    # Every state this returns starts from the same facts about the record, so they are set
+    # once and each return says only what it adds.
+    base = RegenerationState(
+        regeneration_id=record.id,
+        artifact_id=record.output.artifact,
+        state=Regeneration.NOT_RERUN,
+        reason=RegenerationReason.SKIPPED,
+        expected=record.output.digest.value if record.output.digest else None,
+        command=record.command,
+        inputs=tuple(
             InputReading(
                 artifact_id=wanted.artifact,
                 path=_shown(manifest.resolve(artifact), root) if artifact is not None else "",
@@ -175,12 +179,10 @@ def check(
                 (manifest.artifact(wanted.artifact), states.get(wanted.artifact)),
             )
         ),
-    }
+    )
 
     def not_rerun(reason: RegenerationReason, detail: str) -> RegenerationState:
-        return RegenerationState(
-            **known, state=Regeneration.NOT_RERUN, reason=reason, detail=detail
-        )
+        return base.model_copy(update={"reason": reason, "detail": detail})
 
     if record.output.digest is None:
         return not_rerun(
@@ -294,14 +296,16 @@ def check(
 
         started = time.monotonic()
 
-        def failed(reason: RegenerationReason, detail: str, **ran) -> RegenerationState:
-            return RegenerationState(
-                **known,
-                state=Regeneration.FAILED,
-                reason=reason,
-                detail=_scrub(detail, sandbox, root),
-                duration_seconds=round(time.monotonic() - started, 3),
-                **ran,
+        def failed(
+            source: RegenerationState, reason: RegenerationReason, detail: str
+        ) -> RegenerationState:
+            return source.model_copy(
+                update={
+                    "state": Regeneration.FAILED,
+                    "reason": reason,
+                    "detail": _scrub(detail, sandbox, root),
+                    "duration_seconds": round(time.monotonic() - started, 3),
+                }
             )
 
         try:
@@ -315,13 +319,13 @@ def check(
             )
         except FileNotFoundError:
             return failed(
-                RegenerationReason.RUNNER_UNAVAILABLE, f"{record.command[0]} is not on PATH"
+                base, RegenerationReason.RUNNER_UNAVAILABLE, f"{record.command[0]} is not on PATH"
             )
         except subprocess.TimeoutExpired:
             return failed(
+                base.model_copy(update={"executed": True}),
                 RegenerationReason.COMMAND_TIMED_OUT,
                 f"exceeded {record.timeout_seconds:g}s",
-                executed=True,
             )
 
         written = sorted(
@@ -329,47 +333,50 @@ def check(
             for path in sandbox.rglob("*")
             if path.is_file() and path.resolve() not in placed and path.resolve() != produced
         )
-        ran = {
-            "executed": True,
-            "exit_code": completed.returncode,
-            "stdout_digest": _digest(completed.stdout or ""),
-            "stderr_digest": _digest(completed.stderr or ""),
-            "undeclared_outputs": tuple(written[:MAX_UNDECLARED])
-            + (
-                (f"... and {len(written) - MAX_UNDECLARED} more",)
-                if len(written) > MAX_UNDECLARED
-                else ()
-            ),
-        }
+        more = len(written) - MAX_UNDECLARED
+        ran = base.model_copy(
+            update={
+                "executed": True,
+                "exit_code": completed.returncode,
+                "stdout_digest": _digest(completed.stdout or ""),
+                "stderr_digest": _digest(completed.stderr or ""),
+                "undeclared_outputs": (
+                    *written[:MAX_UNDECLARED],
+                    *((f"... and {more} more",) if more > 0 else ()),
+                ),
+            }
+        )
 
         if completed.returncode != 0:
             tail = (completed.stderr or completed.stdout or "").strip().splitlines()
             return failed(
+                ran,
                 RegenerationReason.COMMAND_FAILED,
                 f"exit {completed.returncode}: {tail[-1] if tail else 'no output'}",
-                **ran,
             )
         if not produced.is_file():
             # Exit 0 and nothing written is not a pass, and is not a difference either: there is
             # no output to differ.
             return failed(
+                ran,
                 RegenerationReason.OUTPUT_NOT_PRODUCED,
                 f"the command wrote nothing to {produced.name}",
-                **ran,
             )
 
         # Where a record names volatile fields, the digest it pins is the canonical one, since
         # the raw bytes could never match. Either way the byte comparison is exact.
         actual = canonical_digest(produced, record.volatile).value
         expected = record.output.digest.value
-        ran |= {"actual": actual, "duration_seconds": round(time.monotonic() - started, 3)}
+        ran = ran.model_copy(
+            update={"actual": actual, "duration_seconds": round(time.monotonic() - started, 3)}
+        )
         if actual == expected:
-            return RegenerationState(
-                **known,
-                **ran,
-                state=Regeneration.REPRODUCED,
-                reason=RegenerationReason.OUTPUT_MATCHES,
-                bytes_identical=True,
+            return ran.model_copy(
+                update={
+                    "state": Regeneration.REPRODUCED,
+                    "reason": RegenerationReason.OUTPUT_MATCHES,
+                    "bytes_identical": True,
+                }
             )
 
         # The bytes differ. What that means depends on what the manuscript reads from them, and
@@ -391,14 +398,14 @@ def check(
     else:
         state, reason = Regeneration.REPRODUCED, RegenerationReason.CLAIMS_HOLD
         detail = f"bytes differ, {len(readings)} of {len(readings)} numbers hold"
-    return RegenerationState(
-        **known,
-        **ran,
-        state=state,
-        reason=reason,
-        detail=detail,
-        bytes_identical=False,
-        claims=tuple(
-            r.model_copy(update={"detail": _scrub(r.detail, sandbox, root)}) for r in readings
-        ),
+    return ran.model_copy(
+        update={
+            "state": state,
+            "reason": reason,
+            "detail": detail,
+            "bytes_identical": False,
+            "claims": tuple(
+                r.model_copy(update={"detail": _scrub(r.detail, sandbox, root)}) for r in readings
+            ),
+        }
     )
