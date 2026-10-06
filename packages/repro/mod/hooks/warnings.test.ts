@@ -192,6 +192,6 @@ test('a claim bound to a test run is pinned as a warning', async ($, on) => {
 
   const shown = await $.command.run({ command: 'repro-status', args: '/work/study' })
 
-  expect(shown.text).toContain('results: 1/1 runs sealed, 2 numbers bound')
+  expect(shown.text).toContain('results: 1/1 runs sealed, 2 claims bound')
   expect(pinned.join(' ')).toContain('1 claim on test runs')
 })

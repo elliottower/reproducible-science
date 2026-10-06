@@ -261,7 +261,7 @@ test('the readout gives the project, then plan, inputs and ledger, in that order
 
   const shown = await $.command.run({ command: 'repro-status', args: 'study' })
 
-  expect(shown.text).toContain('study · prereg: 0/1 frozen · results: 0 runs, 0 numbers bound')
+  expect(shown.text).toContain('study · prereg: 0/1 frozen · results: 0 runs, 0 claims bound')
   await $.command.run({ command: 'repro-status', args: 'auto' })
 })
 
@@ -272,7 +272,7 @@ test('a check that times out marks its own field and the rest of the line still 
 
   const shown = await $.command.run({ command: 'repro-status', args: 'study' })
 
-  expect(shown.text).toContain('study · prereg: not read (timed out) · results: 0 runs, 0 numbers bound')
+  expect(shown.text).toContain('study · prereg: not read (timed out) · results: 0 runs, 0 claims bound')
   await $.command.run({ command: 'repro-status', args: 'auto' })
 })
 
@@ -381,7 +381,7 @@ test('a manifest whose assertions all verify adds a fourth field, as verified ov
   await $.command.run({ command: 'repro-status', args: 'auto' })
 })
 
-test('claims are counted when every assertion is printed, and a claim is verified only when all of its are', async ($, on) => {
+test('checks are a fraction when every assertion is printed, even when one did not verify', async ($, on) => {
   trial(
     on,
     assertions(
@@ -399,7 +399,7 @@ test('claims are counted when every assertion is printed, and a claim is verifie
 
   const shown = await $.command.run({ command: 'repro-status', args: 'trial' })
 
-  expect(shown.text).toContain('· repro: 2/3 claims verified')
+  expect(shown.text).toContain('· repro: 5/6 checks verified')
   await $.command.run({ command: 'repro-status', args: 'auto' })
 })
 
@@ -482,7 +482,7 @@ test('runs are a fraction sealed, and runs named as tests are left out of the ro
 
   const shown = await $.command.run({ command: 'repro-status', args: 'study' })
 
-  expect(shown.text).toContain('results: 2/3 runs sealed, 1 number bound')
+  expect(shown.text).toContain('results: 2/3 runs sealed, 1 claim bound')
   expect(shown.text).not.toContain('test run')
   await $.command.run({ command: 'repro-status', args: 'auto' })
 })

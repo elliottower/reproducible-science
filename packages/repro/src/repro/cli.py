@@ -1,7 +1,8 @@
 """The `repro` command.
 
-    repro init <name>     scaffold an experiment directory
+    repro init [name]     scaffold an experiment directory, or set up the project here
     repro demo            write a worked example and run the workflow over it
+    repro manifest init   write a starter repro.yaml for an existing project
     repro verify          check every evidence assertion in repro.yaml
     repro check           run every tool this project uses, in one pass
     repro prereg          run `prereg`: freeze a plan, and record what deviated from it
@@ -17,6 +18,7 @@ that exits.
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import pathlib
 import subprocess
@@ -39,6 +41,8 @@ from repro.models import (
 )
 from repro.policy import PROFILES
 from repro.renderers import to_sarif
+from repro.starter import CONVENTIONAL, MAX_DISCOVERED, project_root
+from repro.starter import write as write_starter
 from repro.verify import verify as run_verify
 
 CLAUDE_MD = """\
@@ -83,7 +87,106 @@ def _run(cmd: list[str], cwd: Path) -> bool:
         return False
 
 
+def _plan(root: Path) -> str | None:
+    """The plan this project already has, as shown to the user.
+
+    `PREREG.md` is what `prereg check` reads. A plan written by hand under another name is
+    left alone too: scaffolding an empty template beside a registration would put two plans in
+    one project and say nothing about which governs.
+    """
+    named = sorted(p.name for p in root.glob("*.md") if p.name.lower().startswith("prereg"))
+    if "PREREG.md" in named:
+        return "PREREG.md"
+    if named:
+        return f"{named[0]} (not named PREREG.md, so `prereg check` does not read it)"
+    return "PREREG.md, below the top" if BY_NAME["prereg"].used_by(root) else None
+
+
+def _shown(path: Path, root: Path) -> str:
+    return f"{path.relative_to(root).as_posix()}/" if path.is_relative_to(root) else str(path)
+
+
+def _init_here() -> int:
+    """Set up whichever of the four records this project lacks, and touch none it has."""
+    root = project_root(Path.cwd())
+    print(f"{root}\n")
+
+    # `citations` is asked which library governs this project, because one made here would
+    # shadow a shared library the project already reads. Imported by name for the reason
+    # `delegate` does it: the tools are reached lazily everywhere in this package.
+    library = importlib.import_module("citations.paths").find(root)
+    claims = root / "claims" if (root / "claims").is_dir() else BY_NAME["citations"].data_dir(root)
+    present = {
+        "plan": _plan(root),
+        "ledger": ".results/" if (root / ".results").is_dir() else None,
+        "citations": f"{_shown(library, root)}, {_shown(claims, root)}"
+        if library and claims
+        else None,
+        "manifest": DEFAULT_NAME if (root / DEFAULT_NAME).exists() else None,
+    }
+
+    def plan() -> str | None:
+        made = _run(["prereg", "new", ".", "--title", root.name], cwd=root)
+        return "PREREG.md" if made else None
+
+    def ledger() -> str | None:
+        return ".results/" if _run(["results", "init"], cwd=root) else None
+
+    def citations() -> str | None:
+        made = []
+        if library is None and _run(["citations", "init"], cwd=root):
+            made.append(".citations/")
+        if claims is None:
+            (root / "claims").mkdir()
+            made.append("claims/")
+        return ", ".join(made) if library or ".citations/" in made else None
+
+    def manifest() -> str | None:
+        starter = write_starter(root, [], root)
+        return (
+            f"{DEFAULT_NAME} (artifacts pinned: {len(starter.artifacts)}, "
+            f"example claims: {len(starter.written)})"
+        )
+
+    created = {}
+    for label, create in (
+        ("plan", plan),
+        ("ledger", ledger),
+        ("citations", citations),
+        ("manifest", manifest),
+    ):
+        if present[label]:
+            print(f"  {label:<12} already present  {present[label]}")
+        elif made := create():
+            created[label] = made
+            print(f"  {label:<12} created          {made}")
+        else:
+            print(f"  {label:<12} NOT CREATED")
+
+    if not created and all(present.values()):
+        print("\neverything is already set up; nothing was created.")
+        return 0
+    if created:
+        print("\nnext:")
+    for label, step in (
+        ("plan", "fill in PREREG.md, then `prereg freeze`"),
+        ("ledger", "`results seal <inputs>` before a run, `results run <outputs>` after it"),
+        ("citations", "`citations pin` writes a quotation into claims/ once it resolves"),
+        ("manifest", f"edit the claims in {DEFAULT_NAME}, then `repro verify`"),
+    ):
+        if label in created:
+            print(f"  {label:<12} {step}")
+    return 0 if all(present[label] or label in created for label in present) else 1
+
+
 def cmd_init(args: argparse.Namespace) -> int:
+    if args.name is None:
+        if args.directory:
+            print("--directory names where a new project goes, so it needs a name:\n")
+            print(f"    repro init <name> --directory {args.directory}\n")
+            print("to set up an existing project, run `repro init` inside it.")
+            return 2
+        return _init_here()
     name = args.name
     target = Path(args.directory) if args.directory else Path.cwd() / name
     target.mkdir(parents=True, exist_ok=True)
@@ -98,6 +201,8 @@ def cmd_init(args: argparse.Namespace) -> int:
     if not claude_md.exists():
         claude_md.write_text(CLAUDE_MD.format(name=name))
         print(f"  wrote {claude_md}")
+    if not (target / DEFAULT_NAME).exists():
+        print(f"  wrote {write_starter(target, [], target).path}")
     print("done.")
     return 0
 
@@ -106,12 +211,51 @@ def cmd_demo(args: argparse.Namespace) -> int:
     return demo(args.directory, force=args.force)
 
 
+def cmd_manifest_init(args: argparse.Namespace) -> int:
+    starter = write_starter(project_root(Path.cwd()), args.files, Path.cwd())
+    print(f"wrote {starter.path}")
+
+    count = f"{len(starter.artifacts)} artifact{'' if len(starter.artifacts) == 1 else 's'}"
+    if starter.discovered:
+        places = ", ".join(f"{name}/" for name in CONVENTIONAL)
+        print(f"  pinned {count}, found by looking under {places} and for one manuscript")
+    else:
+        print(f"  pinned {count}, as named")
+    width = max((len(artifact.id) for artifact in starter.artifacts), default=0)
+    for artifact in starter.artifacts:
+        print(f"    {artifact.id:<{width}}  {artifact.path.as_posix()}")
+    if starter.capped:
+        print(
+            f"  more than {MAX_DISCOVERED} files were found; the first {MAX_DISCOVERED} are pinned"
+        )
+    for note in starter.notes:
+        print(f"  passed over: {note}")
+    if starter.discovered and starter.artifacts:
+        # Discovery reads names and suffixes, and knows nothing of what the manuscript reports.
+        print("  That list is a guess. Remove an entry under `artifacts`, or add one with its")
+        print(f"  `shasum -a 256`; or delete {DEFAULT_NAME} and name the files:")
+        print("      repro manifest init <file> ...")
+    elif starter.discovered:
+        print(f"  Nothing was found there. Delete {DEFAULT_NAME} and name the files to pin:")
+        print("      repro manifest init <file> ...")
+
+    if starter.written:
+        print(f"  example claims, to edit: {', '.join(starter.written)}")
+    if starter.commented:
+        print(f"  example claims left as comments: {', '.join(starter.commented)}")
+    if not starter.written:
+        print("  No claim is declared, and `repro verify` fails a manifest that checks nothing")
+        print("  (`report.empty`). Declare one claim and it will report on it and on the pins.")
+    print("\nnext: repro verify")
+    return 0
+
+
 def cmd_verify(args: argparse.Namespace) -> int:
     path = Path(args.manifest) if args.manifest else find()
     if path is None:
         print(f"no {DEFAULT_NAME} here or above.\n")
-        print("declare the artifacts and claims to check:\n")
-        print(f"    {DEFAULT_NAME}:\n      artifacts: [...]\n      claims: [...]")
+        print("write one that pins this project's result files, with example claims to edit:\n")
+        print("    repro manifest init")
         return 2
 
     report = run_verify(load(path), regenerate=getattr(args, "regenerate", False))
@@ -258,8 +402,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     sub = parser.add_subparsers(dest="command")
 
-    p_init = sub.add_parser("init", help="scaffold an experiment directory")
-    p_init.add_argument("name")
+    p_init = sub.add_parser(
+        "init",
+        help="scaffold an experiment directory, or set up the project here",
+        description=(
+            "With a name, scaffold a new experiment directory: a plan, a results ledger, a "
+            f"citations library and a starter {DEFAULT_NAME}. With no name, run inside an "
+            "existing project, create whichever of those four it lacks at the top of the "
+            "project and leave the ones it has untouched."
+        ),
+    )
+    p_init.add_argument("name", nargs="?", help="a new directory (default: set up this project)")
     p_init.add_argument("--directory", "-d", help="target directory (default: ./<name>)")
     p_init.set_defaults(func=cmd_init)
 
@@ -273,6 +426,30 @@ def main(argv: list[str] | None = None) -> int:
         help="replace the demo's own files in a directory that already holds them",
     )
     p_demo.set_defaults(func=cmd_demo)
+
+    p_manifest = sub.add_parser("manifest", help=f"write a starter {DEFAULT_NAME}")
+    p_manifest.set_defaults(func=lambda args: p_manifest.print_help() or 1)
+    p_manifest_init = p_manifest.add_subparsers(dest="action").add_parser(
+        "init",
+        help=f"write a starter {DEFAULT_NAME} for an existing project",
+        description=(
+            f"Write {DEFAULT_NAME} at the top of the project this is run in: its git root, or "
+            "the working directory outside a repository. Each file is pinned by sha256, and "
+            "example claims are written for a number and a quotation found in the pinned files, "
+            "so the manifest verifies as written. An example with nothing to point at is "
+            "written as a comment. An existing manifest is never overwritten."
+        ),
+    )
+    p_manifest_init.add_argument(
+        "files",
+        nargs="*",
+        help=(
+            "files to pin, inside the project (default: data files the adapters read under "
+            f"{', '.join(f'{name}/' for name in CONVENTIONAL)}, at most {MAX_DISCOVERED}, and "
+            "a manuscript when exactly one of paper, manuscript or main .tex/.md/.txt exists)"
+        ),
+    )
+    p_manifest_init.set_defaults(func=cmd_manifest_init)
 
     p_verify = sub.add_parser("verify", help="check every evidence assertion in repro.yaml")
     p_verify.add_argument("manifest", nargs="?", help=f"path to {DEFAULT_NAME}")

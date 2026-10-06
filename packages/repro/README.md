@@ -36,17 +36,19 @@ repro init my_experiment
 ```text
 initializing /home/you/work/my_experiment
   wrote /home/you/work/my_experiment/CLAUDE.md
+  wrote /home/you/work/my_experiment/repro.yaml
 done.
 ```
 
 `init` spawns `prereg new`, `results init` and `citations init`, whose own output it does not
-relay; the two lines above are everything it prints itself.
+relay; the lines above are everything it prints itself.
 
 This creates:
 
 ```text
 my_experiment/
     CLAUDE.md           tells Claude Code about the tools
+    repro.yaml          the manifest, with nothing pinned yet and two example claims as comments
     my_experiment/
         PREREG.md       the plan (OSF headings)
         results/        run outputs
@@ -59,10 +61,67 @@ my_experiment/
     figures/            output figures
 ```
 
-## Verify everything at once
+## Set up a project that already exists
+
+```bash
+cd my_project
+repro init
+```
+
+```text
+/home/you/work/my_project
+
+  plan         already present  PREREG.md
+  ledger       created          .results/
+  citations    created          .citations/, claims/
+  manifest     created          repro.yaml (artifacts pinned: 3, example claims: 2)
+
+next:
+  ledger       `results seal <inputs>` before a run, `results run <outputs>` after it
+  citations    `citations pin` writes a quotation into claims/ once it resolves
+  manifest     edit the claims in repro.yaml, then `repro verify`
+```
+
+With no name, `init` works at the top of the project it is run in (the git root, or the working directory outside a repository). It creates whichever of the four records are missing and never edits one that exists, so a second run creates nothing and says everything is already set up.
+
+| record | present when | created by |
+|---|---|---|
+| plan | a `PREREG.md` at the top or up to three levels below it, or any `prereg*.md` at the top | `prereg new .`, which also makes `tests/`, `results/` and a `.gitignore` where there is none |
+| ledger | `.results/` | `results init` |
+| citations | a library governs the project and it has a `claims/` directory | `citations init` for the library, and an empty `claims/` |
+| manifest | `repro.yaml` | `repro manifest init` with no file named |
+
+A library governs the project when `citations` finds one: `$CITATIONS_HOME`, a `.citations/` here or above, or the per-user library. Where one does, none is made here, because a project-local library would replace the shared one for this project. Inside a git repository `.citations/` is a directory the repository tracks. Outside one, `citations init` gives it a repository of its own.
+
+## Write a manifest
+
+`repro verify` reads `repro.yaml`, the manifest that pins a project's files and declares what the manuscript claims about them. In a project that has none:
 
 ```bash
 cd my_experiment
+repro manifest init
+```
+
+```text
+wrote /home/you/work/my_experiment/repro.yaml
+  pinned 2 artifacts, found by looking under results/, paper/artifacts/, outputs/, data/ and for one manuscript
+    metrics  results/metrics.json
+    paper    paper.md
+  That list is a guess. Remove an entry under `artifacts`, or add one with its
+  `shasum -a 256`; or delete repro.yaml and name the files:
+      repro manifest init <file> ...
+  example claims, to edit: example-number, example-quote
+
+next: repro verify
+```
+
+It writes `repro.yaml` at the top of the project (the git root, or the working directory outside a repository) and never overwrites one. Each artifact is a file pinned by sha256. Name the files to pin, or name none and it looks for data files the adapters read (the formats in the table below) at the shallowest level of `results/`, `paper/artifacts/`, `outputs/` and `data/` that holds any, at most 20, and for a manuscript when exactly one of `paper`, `manuscript` or `main` with a `.tex`, `.md` or `.txt` suffix exists at the top or under `paper/` or `manuscript/`. Hidden directories, virtual environments, `node_modules`, directories of more than 1000 entries and files over 50 MB are passed over.
+
+The two example claims show the commonest shapes: a `metric`, a number at a JSON Pointer in a pinned JSON or YAML file, and a `quote`, a passage in a pinned text source. Each is read out of the pinned files and checked before it is written, so the manifest verifies as written. An example with nothing in the project to point at is written as a YAML comment. A manifest with no claim declared fails `repro verify` with `report.empty`, because a run that checked nothing is not a pass; declare one claim and it reports on that claim and on every pin.
+
+## Verify everything at once
+
+```bash
 repro verify
 ```
 
@@ -126,6 +185,7 @@ results access "read metadata" --level "metadata only"
 
 results run output.json --run-id exp_001
 results claim "ICC = 0.42" --run-id exp_001 --confirmatory --location "Table 2"
+repro manifest init output.json       # once: pin the files, write example claims to edit
 repro verify                          # check everything
 ```
 

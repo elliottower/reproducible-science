@@ -24,8 +24,8 @@ test('the band above the prompt draws one field per row', async ($, on) => {
     component: 'AbovePrompt',
     props: { hasSurvey: false, isWorking: false, maxRows: 10, columns: 120 } as never,
   })
-  expect(await ui.find({ type: 'Text', text: /^study · prereg: none drafted$/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /^results: 0 runs, 0 numbers bound/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^study · prereg: none drafted {2}→ {2}prereg new$/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^results: 0 runs, 0 claims bound/ })).toBeDefined()
   await ui.unmount()
 })
 
@@ -90,9 +90,9 @@ async function rows($: Parameters<TestBody>[0], on: Parameters<TestBody>[1], roo
   return drawn
 }
 
-test('the band draws a fourth row saying so for a project with no manifest', async ($, on) => {
+test('a project with nothing set up is pointed at the one command that starts all four', async ($, on) => {
   expect(await rows($, on, '/work/plain', ['/work/plain', '/work/plain/PREREG.md'])).toEqual([
-    'plain · prereg: none drafted',
+    'plain · prereg: none drafted  →  repro init',
     'results: no ledger',
     'citations: none pinned',
     'repro: no manifest',
@@ -101,9 +101,15 @@ test('the band draws a fourth row saying so for a project with no manifest', asy
 
 test('the band draws the manifest’s assertions as a fourth row', async ($, on) => {
   expect(await rows($, on, '/work/bound', ['/work/bound', '/work/bound/PREREG.md', '/work/bound/repro.yaml'])).toEqual([
-    'bound · prereg: none drafted',
-    'results: no ledger',
-    'citations: none pinned',
+    'bound · prereg: none drafted  →  prereg new',
+    'results: no ledger  →  results init',
+    'citations: none pinned  →  citations pin',
     'repro: 3/3 checks verified',
   ])
+})
+
+test('a project with a ledger and no manifest is pointed at the command that writes one', async ($, on) => {
+  expect(
+    await rows($, on, '/work/half', ['/work/half', '/work/half/.results', '/work/half/.results/ledger.jsonl']),
+  ).toContain('repro: no manifest  →  repro manifest init')
 })
