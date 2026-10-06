@@ -85,10 +85,8 @@ export default defineConfig({
         },
         {
           label: "Reference",
-          collapsed: true,
           items: [
             { label: "Specification", link: "/reference/spec/" },
-            { label: "Releasing", link: "/reference/releasing/" },
             { label: "Changelog", link: "/reference/changelog/" },
           ],
         },

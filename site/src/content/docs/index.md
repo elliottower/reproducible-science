@@ -2,25 +2,65 @@
 title: Overview
 ---
 
-Four command-line tools that bind what a paper says to what its artifacts contain. Freeze a
-plan before running it, seal the inputs, record the outputs, bind every number in the
-manuscript to the run that produced it, and check that quoted passages appear in their
-sources.
+<p class="venue-note">
+  <span>Accepted at AI for Science @ NeurIPS 2026</span>
+  <a href="/reproducible-science/paper/reproducible_science.pdf">Paper</a>
+  <a href="/reproducible-science/slides/reproducible_science_slides.pdf">Slides</a>
+</p>
+
+Every claim in a paper comes from somewhere.
+
+**A declarative, continuous, machine-checkable provenance layer for research claims, throughout
+the whole research lifecycle.**
+
+- **Recording:** every result is tied to the run that produced it, at the time it's produced.
+- **Verifying:** every number against its results file, every quotation against its source, every analysis against its plan.
+- **Agents:** reproducible by construction. The record is made as the agent works.
 
 ```bash
 pip install reproducible-science
 ```
 
-| tool | install | what it does |
-|---|---|---|
-| [`prereg`](/reproducible-science/tools/prereg/) | `pip install prereg` | freezes a plan before running, records what changed after |
-| [`citations`](/reproducible-science/tools/citations/) | `pip install citations` | checks that quotations resolve in the sources they cite |
-| [`results`](/reproducible-science/tools/results/) | `pip install results-cli` | seals inputs, records outputs, binds claims to runs |
-| [`repro`](/reproducible-science/tools/repro/) | `pip install reproducible-science` | verifies declared evidence against hash-pinned artifacts |
+```text
+/plugin marketplace add elliottower/reproducible-science
+/plugin install reproducible-science@reproducible-science
+```
+
+<img class="framed narrow" src="/reproducible-science/figures/fig-commands.png" alt="prereg, results and citations each feed repro verify" />
+
+Like `git status`, for research provenance. In Claude Code, the state of a project's records
+sits above the prompt, with a warning when something no longer matches.
+
+<img class="framed narrow" src="/reproducible-science/figures/status_number_mismatch.png" alt="Four status rows above the prompt and a warning that one number is mismatched" />
+
+| tool | what it does |
+|---|---|
+| [`prereg`](/reproducible-science/tools/prereg/) | freezes a plan before running, records what changed after |
+| [`results`](/reproducible-science/tools/results/) | seals inputs, records outputs, binds claims to runs |
+| [`citations`](/reproducible-science/tools/citations/) | checks that quotations resolve in the sources they cite |
+| [`repro`](/reproducible-science/tools/repro/) | verifies a paper's plans, numbers and quotations in one report |
 
 Each is an independent distribution with its own public API, so installing citation
 verification never drags in a preregistration tool. They live in one repository because a
 change that crosses two of them should be one commit rather than a release sequence.
+
+## The problem
+
+AI tooling makes it quick to generate hypotheses, run analyses and draft manuscripts.
+Verification and provenance have not kept pace:
+
+1. Verifying that a finished paper agrees with the artifacts behind it takes manual or agentic
+   checking, which is expensive and difficult to audit.
+2. Verification usually reports no denominator for the sources or artifacts checked.
+3. A verification snapshot goes stale quickly, and a second run is not guaranteed to find the
+   same issues.
+4. More experiments mean more researcher degrees of freedom and post-hoc analysis, even when
+   unintentional, or done by an agent.
+5. Verification is typically done after the fact, and does not cover every step of the research
+   lifecycle.
+
+As agents take over more of the research lifecycle, the artifacts they leave behind are worth
+only as much as the claims inside them can be verified.
 
 ## The chain
 
@@ -35,9 +75,13 @@ results claim "ICC = 0.42" --run-id exp_001 --location "Table 2"
 repro verify                           # check the whole chain
 ```
 
-## What it does not do
+## Limitations
 
-It does not decide that a paper is reproducible. It checks relations: that a claim addresses
-an artifact, that the artifact is the one that was pinned, that the addressed value is what
-the manuscript prints, and that a confirmatory run started after the plan it names was
-registered. Everything it cannot establish is reported as unestablished rather than assumed.
+It does not decide that a paper is reproducible. It checks relations:
+
+- that a claim addresses an artifact;
+- that the artifact is the one that was pinned;
+- that the addressed value is what the manuscript prints;
+- that a confirmatory run started after the plan it names was registered.
+
+Everything it cannot establish is reported as unestablished rather than assumed.
