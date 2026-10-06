@@ -57,6 +57,17 @@ assertion, the field counts assertions under the tool's own words: `repro: 34/34
 verified`, or `repro: 1 mismatch, 33 verified`. The check takes under a second on a manifest of
 56 assertions, so it runs with the others at the end of each turn.
 
+A row whose tool has a next step still to take names the command that takes it, directly after
+the row:
+
+    citations: none pinned  →  citations pin
+    repro: no manifest  →  repro manifest init
+
+`prereg: none drafted` points at `prereg new`, an unfrozen draft at `prereg freeze`, a missing
+ledger at `results init`, a ledger with no runs at `results seal`, and a manifest with no claims
+at adding some. A project with none of the four set up shows one hint, `repro init`, which
+creates all four. A row with something to report carries no hint.
+
 The warnings, each on the pinned line as `repro: ...`:
 
 | | |

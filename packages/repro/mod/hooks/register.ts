@@ -7,6 +7,22 @@ const FROZEN = /^\*\*Plan sha256:\*\*[ \t]*`[0-9a-f]{64}`/m
 const PLAN = 'PREREG.md'
 const LEDGER = '.results/ledger.jsonl'
 const MANIFEST = 'repro.yaml'
+
+/**
+ * What a row reads while its tool has a next step still to take, and the command that takes it.
+ * A row matching none of these carries no hint.
+ */
+const HINTS: [state: RegExp, next: string][] = [
+  [/prereg: none drafted$/, 'prereg new'],
+  [/prereg: 0\/\d+ frozen$/, 'prereg freeze'],
+  [/^results: no ledger$/, 'results init'],
+  [/^results: 0 runs, 0 numbers bound$/, 'results seal'],
+  [/^citations: none pinned$/, 'citations pin'],
+  [/^repro: no manifest$/, 'repro manifest init'],
+  [/^repro: no claims declared$/, 'add claims to repro.yaml'],
+]
+/** The rows of a project with nothing set up, which `repro init` starts in one command. */
+const NOTHING = [/prereg: none drafted$/, /^results: no ledger$/, /^citations: none pinned$/, /^repro: no manifest$/]
 const MANUSCRIPT = /\.(tex|rmd|qmd|typ)$/i
 
 /** Programs that run an analysis, matched on a command's first three words. */
@@ -738,10 +754,19 @@ export const register: Register = on => {
     const [name, first, ...rest] = line.split(' · ')
     const fields = first === undefined ? [name ?? ''] : [`${name} · ${first}`, ...rest]
 
+    // A row with a next step still to take names the command that takes it.
+    const isNew = fields.length === NOTHING.length && NOTHING.every((state, at) => state.test(fields[at] ?? ''))
+    const hints = fields.map((field, at) =>
+      isNew ? (at === 0 ? 'repro init' : undefined) : HINTS.find(([state]) => state.test(field))?.[1],
+    )
+    // The hint follows its row directly. Set in a column, it sat as far right as the longest row,
+    // and a long project name pushed it off the edge of the window.
+    const rows = fields.map((field, at) => (hints[at] ? `${field}  →  ${hints[at]}` : field))
+
     return h(
       Box,
       { paddingRight: 5, flexDirection: 'column' },
-      ...fields.map((field, at) => h(Text, { key: `field:${at}`, dimColor: true }, field)),
+      ...rows.map((row, at) => h(Text, { key: `field:${at}`, dimColor: true }, row)),
     )
   })
 
