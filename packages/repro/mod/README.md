@@ -26,12 +26,12 @@ that cannot load it still loads the plugin.
 
 ## The status row
 
-    study · prereg: 1/1 frozen · results: 3/3 runs sealed, 4 numbers bound · citations: 120/120 quotes found · repro: 17/17 claims verified
+    study · prereg: 1/1 frozen · results: 3/3 runs sealed, 4 claims bound · citations: 120/120 quotes found · repro: 34/34 checks verified
 
 Above the prompt each field is drawn on a row of its own. `prereg` is frozen plans over all plans, or `none drafted`.
 
-`results` is the runs recorded after inputs were sealed, over all runs, then the manuscript
-numbers bound to a run with `results claim`. A run recorded before anything was sealed lowers
+`results` is the runs recorded after inputs were sealed, over all runs, then the claims
+bound to a run with `results claim`. A run recorded before anything was sealed lowers
 the first number: `2/3 runs sealed`. A run whose id begins `smoke_`, `prefreeze_`, `test_` or
 `dryrun_` is a test run and is left out of the row, because it is recorded before a plan is
 frozen and nothing may be claimed from it.
@@ -41,20 +41,20 @@ pinned: `citations: 120 pinned, not verified`. Checking quotations takes minutes
 project, so the row never runs it. A check that does not finish in a minute marks its own field
 `not read (timed out)` and leaves the others standing.
 
-`repro` is the claims `repro verify` verified over all the manifest declares. The manifest is
+`repro` is the checks `repro verify` verified over all the manifest declares, one per assertion. The manifest is
 the `repro.yaml` at the project's top or above it, which is the one `repro verify` reads without
 being given a path. A manifest under another name or in a subfolder (`paper/repro.yaml`) is not
-found, and a project with none reads `repro: no manifest`. A claim carries one or more assertions and is
-verified when every one of them is:
+found, and a project with none reads `repro: no manifest`. Claims are counted on the `results`
+row, where `results claim` makes them:
 
-    repro: 28/28 claims verified
-    repro: 27/28 claims verified
-    repro: 3/3 claims verified, 1 broken pin
+    repro: 56/56 checks verified
+    repro: 55/56 checks verified
+    repro: 6/6 checks verified, 1 broken pin
 
 A pinned file that changed is named because the assertions read from it still verify, against a
 file that is not the declared one. Where `repro verify` does not print a line for every
-assertion, the field counts assertions under the tool's own words: `repro: 34/34 checks
-verified`, or `repro: 1 mismatch, 33 verified`. The check takes under a second on a manifest of
+assertion and some did not verify, the field gives the tool's own words: `repro: 1 mismatch,
+33 verified`. The check takes under a second on a manifest of
 56 assertions, so it runs with the others at the end of each turn.
 
 A row whose tool has a next step still to take names the command that takes it, directly after

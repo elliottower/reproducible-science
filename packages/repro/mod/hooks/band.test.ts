@@ -25,7 +25,7 @@ test('the band above the prompt draws one field per row', async ($, on) => {
     props: { hasSurvey: false, isWorking: false, maxRows: 10, columns: 120 } as never,
   })
   expect(await ui.find({ type: 'Text', text: /^study · prereg: none drafted {2}→ {2}prereg new$/ })).toBeDefined()
-  expect(await ui.find({ type: 'Text', text: /^results: 0 runs, 0 numbers bound/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /^results: 0 runs, 0 claims bound/ })).toBeDefined()
   await ui.unmount()
 })
 

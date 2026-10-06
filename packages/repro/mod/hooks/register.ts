@@ -16,7 +16,7 @@ const HINTS: [state: RegExp, next: string][] = [
   [/prereg: none drafted$/, 'prereg new'],
   [/prereg: 0\/\d+ frozen$/, 'prereg freeze'],
   [/^results: no ledger$/, 'results init'],
-  [/^results: 0 runs, 0 numbers bound$/, 'results seal'],
+  [/^results: 0 runs, 0 claims bound$/, 'results seal'],
   [/^citations: none pinned$/, 'citations pin'],
   [/^repro: no manifest$/, 'repro manifest init'],
   [/^repro: no claims declared$/, 'add claims to repro.yaml'],
@@ -170,14 +170,10 @@ function assertions(printed: string | undefined) {
     ...OUTCOMES.filter(word => counts.has(word)).map(word => `${said(counts.get(word) ?? 0)} ${word.replace(/_/g, ' ')}`),
   ]
   const verified = counts.get('verified') ?? 0
-  // A claim carries one or more assertions and is verified when every one of them is. The row
-  // counts claims where the printed lines account for every assertion, and assertions otherwise.
+  // The row counts checks, one per assertion. Claims are counted on the results row, where
+  // `results claim` makes them. Where every assertion is printed the row is a fraction even
+  // when some failed; otherwise it is a fraction only when all verified.
   const lines = [...printed.matchAll(/^\s+(ok|MISS|GONE|--|ERR|none)\s+(\S+)\s/gm)]
-  const byClaim = new Map<string, boolean>()
-  for (const [, mark, id] of lines) {
-    byClaim.set(id as string, (byClaim.get(id as string) ?? true) && mark === 'ok')
-  }
-  const claimsVerified = [...byClaim.values()].filter(Boolean).length
   const pins = brokenPins ? `, ${said(brokenPins)} broken ${brokenPins === 1 ? 'pin' : 'pins'}` : ''
 
   const wrong: string[] = []
@@ -204,7 +200,7 @@ function assertions(printed: string | undefined) {
       total === 0
         ? 'repro: no claims declared'
         : lines.length === total
-          ? `repro: ${said(claimsVerified)}/${said(byClaim.size)} claims verified${pins}`
+          ? `repro: ${said(verified)}/${said(total)} checks verified${pins}`
           : verified === total && !brokenPins
             ? `repro: ${said(verified)}/${said(total)} checks verified`
             : `repro: ${parts.join(', ')}`,
@@ -264,7 +260,7 @@ let warnings: string[] = []
 /**
  * One line, one field per tool, in a fixed order so each is found in the same place every turn:
  *
- *     study · prereg: 1/1 frozen · results: 3 runs, 2 sealed, 4 claims · citations: 120/120 found · repro: 34/34 verified
+ *     study · prereg: 1/1 frozen · results: 2/3 runs sealed, 4 claims bound · citations: 120/120 quotes found · repro: 34/34 checks verified
  *
  * The `repro` field is there only in a project with a manifest. Fractions only where there is a real total. The project's name stays, because the project
  * followed is the one whose files the session touches, which need not be where it started.
@@ -359,7 +355,7 @@ async function status($: EngineInterface, root: string, withFiles: boolean) {
       const onTests = claims.filter(event => isTest(event.run_id)).length
       fields.push(
         `results: ${changed ? `${changed} changed, ` : ''}` +
-          `${runs ? `${sealed}/${runs} runs sealed` : '0 runs'}, ${plural(claims.length, 'number')} bound`,
+          `${runs ? `${sealed}/${runs} runs sealed` : '0 runs'}, ${plural(claims.length, 'claim')} bound`,
       )
       if (changed) {
         wrong.push(`${plural(changed, 'sealed file')} changed`)
