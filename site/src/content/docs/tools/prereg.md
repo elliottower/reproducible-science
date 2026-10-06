@@ -44,9 +44,33 @@ unchanged    V16_reliability_ceilings/PREREG.md
 | `prereg new <name>` | Scaffold a plan in OSF's headings |
 | `prereg freeze` | Record the commit and hash |
 | `prereg freeze --osf` | Freeze and push as a draft registration to OSF |
+| `prereg freeze --osf --attach PATH` | Also upload a file into the draft, so it is registered with the plan |
+| `prereg register --embargo DATE` / `--immediate` | Submit the draft as an OSF registration |
+| `prereg link [--anonymous]` | Create a view-only link on the registration |
 | `prereg log <note>` | Append to the log without freezing |
 | `prereg check` | Has the plan changed since the freeze? |
+| `prereg timestamp` | Complete the freeze's outside timestamp and check it against Bitcoin |
 | `prereg setup` | Save your OSF token to `.env` |
+
+## Timestamp
+
+A freeze is recorded in the repository, and whoever holds the repository can rewrite its
+history. `prereg freeze` therefore also sends the plan's digest to the
+[OpenTimestamps](https://opentimestamps.org) calendars and keeps the proof beside the plan as
+`PREREG.md.ots`. No account is needed, and only the digest leaves the machine.
+
+The proof is pending until the calendars commit it into a Bitcoin block, usually within a few
+hours. `prereg timestamp` then completes it and reports the block and its date, which is the
+latest date the plan could have been written. Commit the proof with the plan.
+
+```text
+timestamped  V16_reliability_ceilings/PREREG.md
+  Bitcoin block 915004, 2026-10-03 16:12 UTC
+```
+
+`prereg check` reports the proof without the network, and fails when the proof is of a different
+digest than the freeze. `--no-timestamp` freezes without sending anything, and an empty
+`PROVENANCE_CALENDARS` turns stamping off for a whole machine.
 
 ## One file, one rule
 
@@ -84,6 +108,56 @@ seen`. An entry logged before results is an amendment; one logged after is a dev
 
 `not frozen` is not a pass. It is the absence of a check.
 
+### Registrations frozen by a commit line
+
+A registration can also be fixed without `prereg freeze`: the document is committed, and the
+commit that follows writes the first commit's SHA into the document.
+
+```text
+# Does the rule hold?
+
+**Commit SHA:** b96d10a
+```
+
+`prereg check` finds every markdown file git tracks at or below the working directory that
+carries such a line, and compares it with the file at the commit the line names, leaving the
+commit line out of both sides. The line is bold and starts a line, `**Commit SHA:**`,
+`**Freeze SHA:**` or `**Freeze commit:**`, or the commit sits on the first line under a heading
+of one of those names. The hash is 7 to 40 digits, bare, in backticks or in bold. A bold
+`**Status:**` line before the first heading after the title is part of the freeze record too:
+it is left out of the comparison, and a status that differs from the frozen one is reported
+under the document without counting as an edit. These
+documents are listed under their own heading, after the plans:
+
+```text
+registrations frozen by a commit line:
+unchanged    PREREGISTRATION_AMENDMENT_2.md  at 12ea0ed
+appended     PREREGISTRATION_AMENDMENT_5.md  at fbc7d33
+  8 lines added after the frozen text
+CHANGED      PREREGISTRATION.md  at b96d10a
+  24 lines added, 4 removed
+  first difference at line 107:
+  - | Anti-CD20/MS | Per allele (FCRL3) | Yes |
+  + | Anti-CD20/MS | Per SD circulating FCRL3 | No |
+pending      PREREGISTRATION_AMENDMENT_3.md
+  the commit line names no commit: _pending_
+
+4 commit-pinned: 1 unchanged, 1 appended, 1 changed, 1 pending, 0 unknown commit
+```
+
+| Exit | Result | Meaning |
+|------|--------|---------|
+| 0 | `unchanged` | The document equals the file at its commit, apart from the commit line |
+| 0 | `appended` | Lines were added after the end of the frozen text, or at the end of the fenced log that closes it |
+| 1 | `CHANGED` | Frozen text was edited or removed, or lines were added inside it |
+| 2 | `pending` | The commit line holds a placeholder, so there is nothing to compare with |
+| 2 | `unknown commit` | The repository does not hold the named commit, or the file is not in it |
+
+`pending` and `unknown commit` are not passes. A shallow clone, a rewritten history and a commit
+of another repository all read as `unknown commit`, and none of them says the document changed.
+A changed plan or document exits 1 whatever else was found. `prereg check` reads these documents
+and never writes to them, and `prereg freeze` does not produce them.
+
 ## The plan uses OSF's headings
 
 Verbatim, so the document maps onto an [OSF registration](https://osf.io/prereg/) without being
@@ -97,15 +171,111 @@ A heading that does not apply is answered `N/A` with a reason, never deleted.
 ## OSF integration
 
 The plan uses OSF's question titles verbatim, so `prereg freeze --osf` pushes it directly to
-OSF as a draft registration. You review and submit it there — submission is irreversible.
+OSF as a draft registration.
 
 ```bash
-prereg setup                  # save your OSF token (once)
-prereg freeze --osf           # freeze locally and push to OSF
+prereg freeze --osf --attach ../CONTEXT.md \
+  --subject "Artificial Intelligence and Robotics" \
+  --description "What the study compares." --tag "AI incidents" \
+  --category hypothesis --copyright-holder "A. Author" \
+  --title-prefix "EXPT01: "                                  # freeze, push the draft, fill its metadata
+prereg register --embargo 2027-06-01 --access "nothing run" # or --immediate
+prereg register --all --immediate --access "nothing run"     # every frozen plan below, one phrase
+prereg link --anonymous --name "review" --access "results seen"
 ```
 
+`freeze --osf` needs no one at the terminal. A draft is private to its author and can be deleted
+on OSF, so pushing one, uploading its files and filling its Metadata page runs unattended; an
+agent can prepare every draft of a study. What cannot be undone -- `register` and `link` -- asks
+for a typed phrase.
+
+The flags fill OSF's Metadata page: `--subject` (repeatable, OSF's subject names in full;
+OSF refuses to register a draft with none, and the push warns when none is given), `--description`,
+`--tag` (repeatable), `--category` (one of OSF's project categories), and `--copyright-holder`
+(repeatable), which sets the license, CC-BY 4.0 by default or `--license NAME`, with the current
+year. `--title-prefix` goes before the plan's own title, so five drafts read `EXPT01: …` through
+`EXPT05: …` on OSF. A subject, license or category OSF does not have is refused before anything
+is frozen.
+
+Four OSF questions are multiple choice: Foreknowledge of data or evidence, Study type, Intention
+for causal interpretation, and Blinding of experimental treatments. OSF accepts only the listed
+options there, so each line under those headings names one option, by its full text or by a
+prefix no other option shares; `N/A` leaves the question unanswered. The push refuses a plan
+that does not, before anything is frozen, and lists the options.
+
+`--attach` uploads a file into the draft's storage, which OSF archives into the registration.
+Use it for a file several plans point at, such as a shared `CONTEXT.md`. The log records each
+file's sha256, and the push fails if OSF reports a different hash for what it received.
+
+`register` submits the draft the log recorded at the freeze. It refuses a plan that has changed
+since the freeze, a draft made from an earlier freeze, and a draft already registered. With
+`--all`, or run from a directory no plan governs, it registers every frozen plan below after one
+phrase that names the list: every plan is checked first, one that cannot be registered stops
+the batch before anyone is asked, and a plan already registered is skipped, so an interrupted
+batch can be run again.
+
+A failed request is not taken as a failed registration. OSF has answered 502 while creating the
+registration, and a retry then got 403 because the draft was already registered. After an error
+other than a 400, `register` reads OSF's list of registrations for one with the draft's title
+made since the request, and retries only if there is none; a registration found that way is
+logged with `found after OSF error 502`. Choosing
+between `--embargo` and `--immediate` is required: an immediate registration is public once it
+is approved. OSF emails every admin, and the registration is approved after 48 hours unless one
+of them cancels it. By OSF's defaults an embargo ends at least two days and at most four years
+ahead. OSF also refuses a draft with no subject; add one on the draft's page first.
+
+`link --anonymous` creates a view-only link that hides the contributors, for double-blind
+review; without `--anonymous` the link shows them. The URL is printed. The log records the
+link's id, not its key, because the key opens the registration while it is embargoed.
+
+### What the log records
+
+```text
+2026-09-27  frozen at 9894e148e429                nothing run
+2026-09-27  osf draft 64f1c2a9e4b0c1d2e3f4a5b6 of plan 35abc8ae2767bee4  nothing run
+2026-09-27  osf attached CONTEXT.md sha256 c8e26e6c8064b9cb…  nothing run
+2026-09-28  osf registration x7k2p from draft 64f1c2a9e4b0c1d2e3f4a5b6, embargo until 2027-06-01, https://osf.io/x7k2p/  nothing run
+2027-03-02  osf view-only link 65a0b1c2d3e4f5a6b7c8d9e0 on x7k2p, anonymous  results seen
+```
+
+The attached file's sha256 is written in full; it is shortened here.
+
+Each entry is appended through the same chained log as `prereg log`, so `prereg check` notices
+one removed or edited. `register` and `link` take `--access`, because the command cannot know
+what has been seen by the time it runs.
+
+### Who must be present
+
+Every write to OSF that cannot be undone — registering, creating a link — shows what it will
+send and asks for a phrase naming it: `register <draft>`, `register 5 plans <digest>`,
+`link <registration>`. Pushing a draft does not ask. The phrase is read from the terminal (`/dev/tty`), never stdin, so a
+piped answer does not count, and a process with no terminal is refused before any request. No
+flag or variable skips it.
+
+This is a guard against accidents, not a security boundary. An agent that wants to write to
+OSF has to go out of its way, for instance by faking a terminal, and that is not
+insurmountable. Anything that can read `OSF_TOKEN` can also call OSF without `prereg` at all.
+
+The barrier that holds is the token. Keep it in a secret source that asks for approval each
+time it is read, such as a 1Password-managed `.env`, which is a named pipe: every OSF
+interaction then needs Touch ID or the account password first. `prereg` reads such a pipe
+directly, only when a request is about to be made and after the phrase is typed, and gives up
+after 60 seconds if nothing is delivered.
+
+### The token
+
 Create a token at [osf.io/settings/tokens](https://osf.io/settings/tokens) with the
-`osf.full_write` scope. The token is stored in `.env` (gitignored).
+`osf.full_write` scope. `prereg` reads `OSF_TOKEN`, or `OSF_PAT`, from the environment, or from a `.env`
+in this directory or above, whether a regular file or a named pipe. `prereg setup` writes it to a
+plain `.env` and adds `.env` to `.gitignore`; a plain file can be read by every process running
+as you, coding agents included.
+
+### Changes after registering
+
+`prereg` does not change a registration. Updates are made in OSF's web interface: an update
+needs a written justification and goes to the registration's admins for approval, with a
+48-hour window. OSF reserves updates for events outside the authors' control. Record what
+changed, and why, with `prereg log` as well.
 
 ## What a freeze is
 

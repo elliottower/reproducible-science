@@ -85,6 +85,10 @@ line breaks removed, whitespace collapsed. Normalization never deletes a charact
 substituting a separator, because deleting a control character welds the words on either side
 into one appearing in neither text.
 
+A passage occurring more than once is `extraction=invalid`, reason `quotation_ambiguous`, for the
+reason an ambiguous row selector is: no occurrence is taken as the one meant. The record says
+which occurrence it quotes with a `prefix` or `suffix` naming the text on either side.
+
 ### 3.2 `metric`
 
 ```yaml
@@ -233,16 +237,17 @@ itself.
 | kind | addresses | identity |
 |---|---|---|
 | `tree` | JSON, and YAML restricted to a JSON-compatible tree | RFC 6901 pointer |
-| `table` | CSV, TSV, PSV | column plus a predicate matching exactly one row |
+| `table` | CSV, TSV, PSV; Parquet, Feather, Arrow; Stata, SPSS; an R data frame (`.rds`) | column plus a predicate matching exactly one row |
 | `table_position` | the same, by row index | column plus position, carrying a warning |
+| `sheet` | an Excel workbook (`.xlsx`, `.xls`) | sheet, column, and a predicate matching one row |
 | `sqlite` | a database file | table, column, and a predicate matching one row |
-| `array` | `.npy`, `.npz` | array name plus a multidimensional index |
+| `array` | `.npy`, `.npz`, HDF5, NetCDF | array name or dataset path plus a multidimensional index |
 | `prose` | a document, as text | two literal anchors bracketing the value |
 
 Every variant enforces one invariant: a locator resolves to **exactly one scalar**. Zero is
 absent, two or more is ambiguous, a container is not a value, and no backend takes the first
-match. A format with no adapter — HDF5, NetCDF, Parquet, XLSX — reports `format_unsupported`
-and stops. No backend falls back to searching a file for the printed number, which would find
+match. A format with no adapter — MATLAB, RData, SAS — reports `format_unsupported` and stops,
+as does a pickle, which no adapter opens because reading one runs code. No backend falls back to searching a file for the printed number, which would find
 it wherever it appears and call that verification.
 
 `prose` is the one variant addressing a format that has no addressing scheme of its own. A
@@ -317,6 +322,7 @@ how a file silent on a value becomes one that contradicts it.
 | two sides disagree | completed | extracted | mismatch | `mismatch` |
 | one side does not extract | completed | absent or invalid | n/a | `not_found` |
 | passage absent from a readable source | completed | extracted | mismatch | `mismatch` |
+| passage occurs more than once | completed | invalid | n/a | `not_found` |
 | pointer does not resolve | completed | absent | n/a | `not_found` |
 | value is not a number | completed | invalid | n/a | `not_found` |
 | independent readers disagree | completed | invalid | n/a | `not_found` |
@@ -369,7 +375,12 @@ display and is never a `Decision`.
 `Reason` is a typed field carrying why an outcome obtained: `passage_present`, `value_match`,
 `passage_absent`, `value_mismatch`, `pointer_absent`, `value_not_numeric`,
 `extractor_missing`, `artifact_missing`, `artifact_unreadable`, `artifact_undeclared`,
-`backend_defect`, `not_offered`, and two a prose locator adds. `passage_ambiguous`: one pair of
+`backend_defect`, `not_offered`, `extractors_disagree`, `quotation_ambiguous`, and two a prose
+locator adds. `extractors_disagree`: two extractors that both read the artifact reach different
+answers about whether the passage is in it, which asks for a better reader rather than accusing
+the manuscript as `passage_absent` does. `quotation_ambiguous`: the quoted passage occurs more
+than once and the record does not say which occurrence it means, which accuses nothing and asks
+for a `prefix` or `suffix`. `passage_ambiguous`: one pair of
 anchors selected two different values, so the document states two numbers where the assertion
 addresses one. `number_as_word`: the value is an English cardinal written out under a locator
 that did not ask for one. It is distinct from `value_not_numeric` because the fix differs — the
@@ -513,11 +524,13 @@ its evidence started after registration. `violated`: a run started first. `unche
 record does not settle it. `not_applicable`: the claim is not confirmatory.
 
 An `unchecked` ordering carries a reason, because collapsing distinct conditions into one word
-loses the only information that says what to fix: `no_run_record`, `no_registered_plan`,
-`registered_plan_unpinned`, `registered_plan_changed`, `run_output_unlinked`,
-`run_output_changed`, `timestamp_missing`, `ambiguous_producing_run`. A claim with no run
-record is `unchecked` and never `violated` — an absent record is not evidence that a result
-predates its plan.
+loses the only information that says what to fix: `no_run_record`, `no_evidence_offered`,
+`no_registered_plan`, `registered_plan_unpinned`, `registered_plan_changed`,
+`run_output_unlinked`, `run_output_changed`, `timestamp_missing`, `ambiguous_producing_run`. A
+claim with no run record is `unchecked` and never `violated` — an absent record is not evidence
+that a result predates its plan. `no_evidence_offered` is separate from `no_run_record`: a claim
+that declares no evidence names no artifact, so no run could produce one, and a reader told the
+run record is missing goes looking for a run that was never owed.
 
 Every artifact a claim's evidence names must have a covering run. Taking the runs that produce
 any one of them would let a run record for an incidental artifact order a claim whose number
@@ -528,8 +541,16 @@ after the fact to match results breaks its pin and the ordering reverts to `unch
 
 Two limits are structural. The registration timestamp is self-recorded, so the check
 establishes internal consistency and not that a registration is contemporaneous with what it
-claims; an external timestamp authority closes that and is out of scope. And the check reads
-a declared run record rather than observing execution.
+claims. An outside timestamp closes that: `prereg timestamp` and `results timestamp` commit the
+plan's digest and the ledger's head into a Bitcoin block through OpenTimestamps, and the block's
+date bounds when each existed. This check does not read those proofs; `prereg check` and
+`results verify` do. And the check reads a declared run record rather than observing execution.
+
+OpenTimestamps is used because it needs no account and trusts no party beyond Bitcoin, and
+because a proof names no one, so a stamp made during double-blind review identifies nobody. An
+RFC 3161 timestamp authority or Sigstore's Rekor log would date a digest at once, where a Bitcoin
+confirmation takes hours; the first trusts the authority's signing key, and the second ties each
+entry to the signer's key.
 
 ## 7.5 Output formats
 
