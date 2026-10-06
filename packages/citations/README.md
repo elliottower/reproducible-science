@@ -298,8 +298,27 @@ year against a print year, a deposited initial against a printed given name, Pub
 abbreviated end page, a BibTeX accent against the Unicode it encodes, and markup a publisher
 deposited inside a title. What survives is a disagreement about the work.
 
-Fetched payloads are cached beside the file audited, so a re-run is offline and the report is
-reproducible from what was fetched rather than from the network.
+An entry with no DOI and no PMID is searched for by title in Semantic Scholar, Crossref,
+OpenAlex and arXiv. A candidate is accepted under the rule `citations resolve` uses: the title
+is close, the first author's surname is among the candidate's authors, and the year agrees
+within one. The entry is then compared with the registry record of the identifier found, and
+the report lists that identifier so it can be added to the entry.
+
+| Row | Meaning | Fails `--strict` |
+|---|---|---|
+| `by search` | The search found a DOI or an arXiv id and the entry was compared with its record. An arXiv id is read as the DataCite DOI `10.48550/arXiv.<id>`. These entries are counted in `checked`. | on a disagreement |
+| `found` | The search matched an OpenAlex record that has no DOI, so there is no registry record to compare with. | no |
+| `not found` | At least one service answered and none had a matching record. A book, a report and a thesis land here, and so does a reference to a work that does not exist. | no |
+| `unresolved` | A registry did not return the record, or every search service refused. No measurement was made. | yes |
+
+An identifier found by title can belong to another version of the work, such as the preprint of
+a journal article, so a year or venue disagreement on a `by search` entry is read before it is
+corrected. `--no-search` asks no search service and counts these entries under `no id`, as in
+the report above.
+
+Fetched payloads and search answers are cached beside the file audited, so a re-run is offline
+and the report is reproducible from what was fetched rather than from the network. A refusal is
+not cached, so a service that refused is asked again on the next run.
 
 ## Adding an entry to a bibliography
 
@@ -489,6 +508,15 @@ Nothing is sent without it. Crossref and OpenAlex then place the requests in the
 which is faster and less likely to rate-limit, so a long `citations lint --authors` run over a
 large bibliography is slower with the variable unset. That is the tradeoff, not a regression: the
 alternative was shipping one person's address in every user's requests.
+
+Semantic Scholar is asked without a key by default, and its anonymous quota is low enough that
+it often refuses. Set `SEMANTIC_SCHOLAR_API_KEY` to a key from Semantic Scholar to have its
+answers counted. No other service needs a key, and a service that refuses is reported as not
+having answered, never as having found nothing.
+
+```bash
+export SEMANTIC_SCHOLAR_API_KEY=...
+```
 
 ## Where the library lives
 
