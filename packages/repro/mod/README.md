@@ -26,13 +26,36 @@ that cannot load it still loads the plugin.
 
 ## The status row
 
-    study · prereg: 1/1 frozen · results: 3 runs, 2 sealed, 4 claims · citations: 120/120 found
+    study · prereg: 1/1 frozen · results: 3/3 runs sealed, 4 numbers bound · citations: 120/120 quotes found · repro: 17/17 claims verified
 
-`prereg` is frozen plans over all plans, or `none drafted`. `results` counts the ledger's runs, seals and claims.
+Above the prompt each field is drawn on a row of its own. `prereg` is frozen plans over all plans, or `none drafted`.
+
+`results` is the runs recorded after inputs were sealed, over all runs, then the manuscript
+numbers bound to a run with `results claim`. A run recorded before anything was sealed lowers
+the first number: `2/3 runs sealed`. A run whose id begins `smoke_`, `prefreeze_`, `test_` or
+`dryrun_` is a test run and is left out of the row, because it is recorded before a plan is
+frozen and nothing may be claimed from it.
+
 `citations` is the last full check by `/repro-verify`, and before one has run it is the count
 pinned: `citations: 120 pinned, not verified`. Checking quotations takes minutes on a large
 project, so the row never runs it. A check that does not finish in a minute marks its own field
 `not read (timed out)` and leaves the others standing.
+
+`repro` is the claims `repro verify` verified over all the manifest declares, and the field is
+there only when a `repro.yaml` sits at the project's top or above it, which is the one manifest
+`repro verify` reads without being given a path. A manifest under another name or in a
+subfolder (`paper/repro.yaml`) is not found. A claim carries one or more assertions and is
+verified when every one of them is:
+
+    repro: 28/28 claims verified
+    repro: 27/28 claims verified
+    repro: 3/3 claims verified, 1 broken pin
+
+A pinned file that changed is named because the assertions read from it still verify, against a
+file that is not the declared one. Where `repro verify` does not print a line for every
+assertion, the field counts assertions under the tool's own words: `repro: 34/34 checks
+verified`, or `repro: 1 mismatch, 33 verified`. The check takes under a second on a manifest of
+56 assertions, so it runs with the others at the end of each turn.
 
 The warnings, each on the pinned line as `repro: ...`:
 
@@ -44,6 +67,14 @@ The warnings, each on the pinned line as `repro: ...`:
 | `2 sealed files changed` | after `/repro-status`, which hashes the sealed files |
 | `16 runs, nothing sealed` | runs are recorded and no input was sealed |
 | `3 runs, no plan frozen` | runs are recorded and no plan is frozen |
+| `1 number mismatched` | a number in the manuscript disagrees with the artifact `repro.yaml` binds it to |
+| `1 quotation mismatched` | the same, for a `quote` assertion |
+| `2 claims mismatched` | the same, where the kind could not be read off `repro verify`'s lines |
+| `1 quotation not found` | after `/repro-verify`: a pinned quotation is not in its source |
+| `1 claim on test runs` | a manuscript number is bound to a run named as a test run |
+
+An assertion or a quotation that is `unchecked`, and a claim offering no evidence, are counted
+in the row and draw no warning.
 
 ## The working project
 
@@ -64,7 +95,7 @@ The model can set it too, through the `set_project` tool the mod registers.
     /plugin marketplace add elliottower/reproducible-science
     /plugin install repro@reproducible-science
 
-It needs the `results`, `prereg` and `citations` commands on `PATH`.
+It needs the `results`, `prereg` and `citations` commands on `PATH`, and `repro` for the fourth field.
 
 ## Develop
 

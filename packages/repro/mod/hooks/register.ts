@@ -6,6 +6,7 @@ const FROZEN = /^\*\*Plan sha256:\*\*[ \t]*`[0-9a-f]{64}`/m
 
 const PLAN = 'PREREG.md'
 const LEDGER = '.results/ledger.jsonl'
+const MANIFEST = 'repro.yaml'
 const MANUSCRIPT = /\.(tex|rmd|qmd|typ)$/i
 
 /** Programs that run an analysis, matched on a command's first three words. */
@@ -91,6 +92,15 @@ const runsAnAnalysis = (command: string) =>
  */
 const quotations = atom({ plugin: 'repro', key: 'quotations' } as const, {} as Record<string, string>)
 
+/**
+ * How many quotations that check reported as `not found`, by project. Kept apart from the
+ * fraction because pinned less found also counts the quotations the check could not read.
+ */
+const quotationsNotFound = atom(
+  { plugin: 'repro', key: 'quotationsNotFound' } as const,
+  {} as Record<string, number>,
+)
+
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
 
 /**
@@ -105,6 +115,84 @@ async function output($: EngineInterface, argv: string[], cwd: string, timeoutMs
     return (await $.process.run(argv, { cwd, timeoutMs })).stdout
   } catch {
     return undefined
+  }
+}
+
+/** The outcomes `repro verify` counts, the most serious first, which is the order the row gives them in. */
+const OUTCOMES = ['mismatch', 'not_found', 'error', 'unchecked', 'not_offered', 'verified']
+
+/** The kinds of evidence `repro verify` prints beside an assertion. Only `quote` is not a number. */
+const KINDS = new Set(['quote', 'metric', 'table', 'value', 'correspondence'])
+
+/**
+ * The `repro` field and its warnings, from what `repro verify` printed:
+ *
+ *       MISS  effect-size  correspondence effect-delta: manuscript 0.055, run 0.0453
+ *
+ *       1 mismatch, 2 verified
+ *       policy publication: FAILED  (1 errors, 0 warnings)
+ *
+ * The counts are the tool's own summary line, under its own words. A pinned file that changed
+ * is counted too: the assertions read from it still say `verified`, of a file that is not the
+ * declared one, and `3/3 verified` would be the row saying so.
+ */
+function assertions(printed: string | undefined) {
+  if (printed === undefined) {
+    return { field: 'repro: not read (timed out)', wrong: [] }
+  }
+  // Without the policy line nothing was verified: the manifest did not load.
+  if (!/^\s+policy \S+: (passed|FAILED)/m.test(printed)) {
+    return { field: 'repro: manifest unreadable', wrong: [] }
+  }
+  const summary = /^\s+(\d+ \w+(?:, \d+ \w+)*)$/m.exec(printed)?.[1] ?? ''
+  const counts = new Map([...summary.matchAll(/(\d+) (\w+)/g)].map(([, n, word]) => [word as string, Number(n)]))
+  const total = [...counts.values()].reduce((a, b) => a + b, 0)
+  const said = (n: number) => n.toLocaleString('en-US')
+  const brokenPins = (printed.match(/^\s+BROKEN PIN\s/gm) ?? []).length
+  const parts = [
+    ...(brokenPins ? [`${said(brokenPins)} broken ${brokenPins === 1 ? 'pin' : 'pins'}`] : []),
+    ...OUTCOMES.filter(word => counts.has(word)).map(word => `${said(counts.get(word) ?? 0)} ${word.replace(/_/g, ' ')}`),
+  ]
+  const verified = counts.get('verified') ?? 0
+  // A claim carries one or more assertions and is verified when every one of them is. The row
+  // counts claims where the printed lines account for every assertion, and assertions otherwise.
+  const lines = [...printed.matchAll(/^\s+(ok|MISS|GONE|--|ERR|none)\s+(\S+)\s/gm)]
+  const byClaim = new Map<string, boolean>()
+  for (const [, mark, id] of lines) {
+    byClaim.set(id as string, (byClaim.get(id as string) ?? true) && mark === 'ok')
+  }
+  const claimsVerified = [...byClaim.values()].filter(Boolean).length
+  const pins = brokenPins ? `, ${said(brokenPins)} broken ${brokenPins === 1 ? 'pin' : 'pins'}` : ''
+
+  const wrong: string[] = []
+  const mismatched = counts.get('mismatch') ?? 0
+  if (mismatched) {
+    // The kind is the word after the claim's id. An id with a space in it moves that word, and
+    // a line cut short hides one, so the kinds are believed only when every one is a known kind.
+    const kinds = [...printed.matchAll(/^\s+MISS\s+\S+\s+(\S+)/gm)].map(match => match[1] as string)
+    const quotes = kinds.filter(kind => kind === 'quote').length
+    if (kinds.length !== mismatched || !kinds.every(kind => KINDS.has(kind))) {
+      wrong.push(`${plural(mismatched, 'claim')} mismatched`)
+    } else {
+      if (mismatched > quotes) {
+        wrong.push(`${plural(mismatched - quotes, 'number')} mismatched`)
+      }
+      if (quotes) {
+        wrong.push(`${plural(quotes, 'quotation')} mismatched`)
+      }
+    }
+  }
+
+  return {
+    field:
+      total === 0
+        ? 'repro: no claims declared'
+        : lines.length === total
+          ? `repro: ${said(claimsVerified)}/${said(byClaim.size)} claims verified${pins}`
+          : verified === total && !brokenPins
+            ? `repro: ${said(verified)}/${said(total)} checks verified`
+            : `repro: ${parts.join(', ')}`,
+    wrong,
   }
 }
 
@@ -139,9 +227,9 @@ let warnings: string[] = []
 /**
  * One line, one field per tool, in a fixed order so each is found in the same place every turn:
  *
- *     study · prereg: 1/1 frozen · results: 3 runs, 2 sealed, 4 claims · citations: 120/120 found
+ *     study · prereg: 1/1 frozen · results: 3 runs, 2 sealed, 4 claims · citations: 120/120 found · repro: 34/34 verified
  *
- * Fractions only where there is a real total. The project's name stays, because the project
+ * The `repro` field is there only in a project with a manifest. Fractions only where there is a real total. The project's name stays, because the project
  * followed is the one whose files the session touches, which need not be where it started.
  *
  * `withFiles` also hashes every sealed file, which is the check that finds a changed input and
@@ -197,20 +285,44 @@ async function status($: EngineInterface, root: string, withFiles: boolean) {
       fields.push('results: not read (timed out)')
     } else if (/chain intact: \d+ events/.test(head)) {
       const ledger = await $.fs.read(`${root}/${LEDGER}`)
-      const count = (kind: string) => (ledger.match(new RegExp(`"event":"${kind}"`, 'g')) ?? []).length
+      // A run counts as sealed when inputs were sealed before it was recorded. A run named as a
+      // test (`smoke_…`, `prefreeze_…`, `test_…`, `dryrun_…`) is left out of the row: it is
+      // recorded before a plan is frozen, and nothing may be claimed from it.
+      const events = ledger.split('\n').flatMap(line => {
+        try {
+          return line.trim() ? [JSON.parse(line) as { event?: string; run_id?: string }] : []
+        } catch {
+          return []
+        }
+      })
+      const isTest = (id: string | undefined) => /^(smoke|prefreeze|test|dryrun)[_-]/.test(id ?? '')
+      const claims = events.filter(event => event.event === 'claim')
+      let hasSeal = false
+      let sealed = 0
+      for (const event of events) {
+        if (event.event === 'seal') {
+          hasSeal = true
+        } else if (event.event === 'run' && !isTest(event.run_id)) {
+          runs += 1
+          sealed += hasSeal ? 1 : 0
+        }
+      }
       const changed = (verified.match(/^\s+(CHANGED|MISSING)\s/gm) ?? []).length
-      runs = count('run')
+      const onTests = claims.filter(event => isTest(event.run_id)).length
       fields.push(
-        `results: ${changed ? `${changed} changed, ` : ''}${plural(runs, 'run')}, ` +
-          `${count('seal')} sealed, ${plural(count('claim'), 'claim')}`,
+        `results: ${changed ? `${changed} changed, ` : ''}` +
+          `${runs ? `${sealed}/${runs} runs sealed` : '0 runs'}, ${plural(claims.length, 'number')} bound`,
       )
       if (changed) {
         wrong.push(`${plural(changed, 'sealed file')} changed`)
       }
+      if (onTests) {
+        wrong.push(`${plural(onTests, 'claim')} on test runs`)
+      }
       if (/^TIMESTAMP CONTRADICTS/m.test(verified)) {
         wrong.push('ledger rewritten after timestamp')
       }
-      if (runs > 0 && count('seal') === 0) {
+      if (runs > 0 && !hasSeal) {
         wrong.push(`${plural(runs, 'run')}, nothing sealed`)
       }
     } else {
@@ -231,6 +343,10 @@ async function status($: EngineInterface, root: string, withFiles: boolean) {
     const last = (await read($, quotations))[root]
     if (last) {
       fields.push(`citations: ${last}`)
+      const notFound = (await read($, quotationsNotFound))[root] ?? 0
+      if (notFound) {
+        wrong.push(`${plural(notFound, 'quotation')} not found`)
+      }
     } else {
       // Counting what is pinned is one grep; checking it is minutes, and `/repro-verify` does that.
       const counted = await output(
@@ -245,6 +361,15 @@ async function status($: EngineInterface, root: string, withFiles: boolean) {
   } else {
     // Said, so the row always holds the same three fields and a missing one is not read as fine.
     fields.push('citations: none pinned')
+  }
+
+  // `repro verify` reads the `repro.yaml` at or above the directory it runs in and no other, so
+  // that is the only manifest looked for. It takes under a second on 34 assertions, and runs here.
+  // With no manifest there is no field: a project that declares no claims is not missing one.
+  if (await above($, root, MANIFEST)) {
+    const checked = assertions(await output($, ['repro', 'verify'], root, 60_000))
+    fields.push(checked.field)
+    wrong.push(...checked.wrong)
   }
 
   warnings = wrong
@@ -574,7 +699,7 @@ export const register: Register = on => {
     // Unpadded, a line wrapping there lost the characters under it: `4 sealed, 0 claims` showed
     // as `4 sealed,` then `claims`.
     // One field per row, always: the project's name with the plans, then the runs, then the
-    // quotations. Laid side by side they read differently at every window width.
+    // quotations, then the manifest's assertions where there is a manifest. Laid side by side they read differently at every window width.
     const [name, first, ...rest] = line.split(' · ')
     const fields = first === undefined ? [name ?? ''] : [`${name} · ${first}`, ...rest]
 
@@ -736,6 +861,7 @@ export const register: Register = on => {
     const count = (text: string | undefined) => Number((text ?? '0').replace(/,/g, ''))
     let pinned = 0
     let found = 0
+    let notFound = 0
     for (const folder of folders) {
       const ran = await $.process.run(['citations', 'verify', '--claims', folder], {
         cwd: project,
@@ -747,11 +873,13 @@ export const register: Register = on => {
       )
       pinned += count(/^([\d,]+) quotes?$/m.exec(ran.stdout)?.[1])
       found += count(/^\s+found\s+([\d,]+)/m.exec(ran.stdout)?.[1])
+      notFound += count(/^\s+not found\s+([\d,]+)/m.exec(ran.stdout)?.[1])
     }
     if (pinned > 0) {
       const root = project
-      const line = `${found.toLocaleString('en-US')}/${pinned.toLocaleString('en-US')} found`
+      const line = `${found.toLocaleString('en-US')}/${pinned.toLocaleString('en-US')} quotes found`
       await update($, quotations, saved => ({ ...saved, [root]: line }))
+      await update($, quotationsNotFound, saved => ({ ...saved, [root]: notFound }))
     }
     if (folders.length === 0) {
       checked.push('no claims folder, so no quotations are pinned')

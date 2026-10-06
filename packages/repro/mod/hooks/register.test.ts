@@ -261,7 +261,7 @@ test('the readout gives the project, then plan, inputs and ledger, in that order
 
   const shown = await $.command.run({ command: 'repro-status', args: 'study' })
 
-  expect(shown.text).toContain('study · prereg: 0/1 frozen · results: 0 runs, 0 sealed, 0 claims')
+  expect(shown.text).toContain('study · prereg: 0/1 frozen · results: 0 runs, 0 numbers bound')
   await $.command.run({ command: 'repro-status', args: 'auto' })
 })
 
@@ -272,7 +272,7 @@ test('a check that times out marks its own field and the rest of the line still 
 
   const shown = await $.command.run({ command: 'repro-status', args: 'study' })
 
-  expect(shown.text).toContain('study · prereg: not read (timed out) · results: 0 runs, 0 sealed, 0 claims')
+  expect(shown.text).toContain('study · prereg: not read (timed out) · results: 0 runs, 0 numbers bound')
   await $.command.run({ command: 'repro-status', args: 'auto' })
 })
 
@@ -306,11 +306,11 @@ test('the status command never runs the quotation check, and the verify command 
 
   const verified = await $.command.run({ command: 'repro-verify', args: '' })
   expect(verifies()).toBe(1)
-  expect(verified.text).toContain('citations: 61/63 found')
+  expect(verified.text).toContain('citations: 61/63 quotes found')
   expect(verified.text).toContain('not found           2')
 
   const after = await $.command.run({ command: 'repro-status', args: '' })
-  expect(after.text).toContain('citations: 61/63 found')
+  expect(after.text).toContain('citations: 61/63 quotes found')
   expect(verifies()).toBe(1)
   await $.command.run({ command: 'repro-status', args: 'auto' })
 })
@@ -332,5 +332,132 @@ test('registrations frozen by a commit line count as plans, and only an edited o
   listing = intact + 'CHANGED      PREREGISTRATION.md  at b96d10a\n  23 lines added, 3 removed\n'
   const edited = await $.command.run({ command: 'repro-status', args: '' })
   expect(edited.text).toContain('prereg: 1 changed')
+  await $.command.run({ command: 'repro-status', args: 'auto' })
+})
+
+/** What `repro verify` prints, cut to the lines the mod reads: the assertions, the counts, the policy. */
+const assertions = (lines: string[], counts: string, policy = 'FAILED  (1 errors, 0 warnings)') =>
+  `/work/trial/repro.yaml\n\n${lines.map(line => `  ${line}\n`).join('')}\n  ${counts}\n  policy publication: ${policy}\n`
+
+/** A project at /work/trial with a manifest, where `repro verify` prints `printed` (null: it times out). */
+function trial(on: On, printed: string | null, files: Record<string, string> = { '/work/trial/repro.yaml': 'x' }) {
+  project(on, { '/work/trial/PREREG.md': DRAFT_PLAN, ...files }, argv => (argv[0] === 'repro' ? printed : ''))
+  spawned.length = 0
+}
+
+test('a manifest whose assertions all verify adds a fourth field, as verified over all', async ($, on) => {
+  trial(
+    on,
+    assertions(
+      ['ok    corpus-size  quote      [short]', 'ok    corpus-size  metric   /corpus/quotations = 2364'],
+      '34 verified',
+      'passed  (0 errors, 0 warnings)',
+    ),
+  )
+
+  const shown = await $.command.run({ command: 'repro-status', args: 'trial' })
+
+  expect(shown.text).toContain('citations: none pinned · repro: 34/34 checks verified')
+  expect(spawned.some(call => call.includes('"repro","verify"') && call.includes('/work/trial'))).toBe(true)
+  await $.command.run({ command: 'repro-status', args: 'auto' })
+})
+
+test('claims are counted when every assertion is printed, and a claim is verified only when all of its are', async ($, on) => {
+  trial(
+    on,
+    assertions(
+      [
+        'ok    sensors      quote    ',
+        'ok    sensors      metric   /sensors = 12',
+        'ok    mean-offset  quote    ',
+        'MISS  mean-offset  metric   /mean_offset: reported 0.34, found 0.43',
+        'ok    offset-sd    quote    ',
+        'ok    offset-sd    metric   /offset_sd = 0.41',
+      ],
+      '1 mismatch, 5 verified',
+    ),
+  )
+
+  const shown = await $.command.run({ command: 'repro-status', args: 'trial' })
+
+  expect(shown.text).toContain('· repro: 2/3 claims verified')
+  await $.command.run({ command: 'repro-status', args: 'auto' })
+})
+
+test('assertions that did not verify are counted under the tool’s own words, the most serious first', async ($, on) => {
+  trial(
+    on,
+    assertions(
+      ['MISS  effect-size  correspondence effect-delta: manuscript 0.055, run 0.0453'],
+      '1 mismatch, 2 not_found, 1 not_offered, 1 unchecked, 30 verified',
+    ),
+  )
+
+  const shown = await $.command.run({ command: 'repro-status', args: 'trial' })
+
+  expect(shown.text).toContain('· repro: 1 mismatch, 2 not found, 1 unchecked, 1 not offered, 30 verified')
+  await $.command.run({ command: 'repro-status', args: 'auto' })
+})
+
+test('a pinned file that changed keeps the field from reading as all verified', async ($, on) => {
+  trial(
+    on,
+    assertions(['BROKEN PIN  paper: pinned 978f5e1fd04a, found 2d9f4f51d553'], '3 verified'),
+  )
+
+  const shown = await $.command.run({ command: 'repro-status', args: 'trial' })
+
+  expect(shown.text).toContain('· repro: 1 broken pin, 3 verified')
+  expect(shown.text).not.toContain('3/3')
+  await $.command.run({ command: 'repro-status', args: 'auto' })
+})
+
+test('a project with no manifest has three fields and the check is never run', async ($, on) => {
+  trial(on, assertions([], '34 verified', 'passed  (0 errors, 0 warnings)'), {})
+
+  const shown = await $.command.run({ command: 'repro-status', args: 'trial' })
+  const line = (shown.text ?? '').split('\n').at(-1) ?? ''
+
+  expect(line.split(' · ')).toEqual(['trial', 'prereg: none drafted', 'results: no ledger', 'citations: none pinned'])
+  expect(spawned.filter(call => call.includes('"repro"')).length).toBe(0)
+  await $.command.run({ command: 'repro-status', args: 'auto' })
+})
+
+test('a manifest check that times out marks its own field and the others still show', async ($, on) => {
+  trial(on, null)
+
+  const shown = await $.command.run({ command: 'repro-status', args: 'trial' })
+
+  expect(shown.text).toContain('results: no ledger · citations: none pinned · repro: not read (timed out)')
+  await $.command.run({ command: 'repro-status', args: 'auto' })
+})
+
+test('a manifest that does not load is said to be unreadable, not verified', async ($, on) => {
+  trial(on, '/work/trial/repro.yaml: claims.0.id: Field required\n')
+
+  const shown = await $.command.run({ command: 'repro-status', args: 'trial' })
+
+  expect(shown.text).toContain('· repro: manifest unreadable')
+  await $.command.run({ command: 'repro-status', args: 'auto' })
+})
+
+test('runs are a fraction sealed, and runs named as tests are left out of the row', async ($, on) => {
+  const ledger =
+    '{"event":"init","seq":0}\n' +
+    '{"event":"run","seq":1,"run_id":"smoke_s1_search"}\n' +
+    '{"event":"run","seq":2,"run_id":"prefreeze_ledger_proof"}\n' +
+    '{"event":"run","seq":3,"run_id":"early"}\n' +
+    '{"event":"seal","seq":4,"files":[{"path":"a.csv"},{"path":"run.py"}]}\n' +
+    '{"event":"run","seq":5,"run_id":"s1_search"}\n' +
+    '{"event":"run","seq":6,"run_id":"s2_eligibility"}\n' +
+    '{"event":"claim","seq":7,"run_id":"s1_search"}\n'
+  project(on, { '/work/study/.results/ledger.jsonl': ledger }, argv =>
+    argv[0] === 'results' ? 'chain intact: 8 events, anchored\n' : '',
+  )
+
+  const shown = await $.command.run({ command: 'repro-status', args: 'study' })
+
+  expect(shown.text).toContain('results: 2/3 runs sealed, 1 number bound')
+  expect(shown.text).not.toContain('test run')
   await $.command.run({ command: 'repro-status', args: 'auto' })
 })

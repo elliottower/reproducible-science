@@ -17,6 +17,8 @@ declare module 'claude-code' {
       statusLine: string
       /** The last full quotation check of each project, as `found/pinned found`, by folder. */
       quotations: Record<string, string>
+      /** How many quotations that check reported as not found, by folder. */
+      quotationsNotFound: Record<string, number>
     }
   }
 }
