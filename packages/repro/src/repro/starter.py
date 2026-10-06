@@ -69,9 +69,14 @@ MAX_QUOTE_TRIES = 5
 _NOT_SEARCHED = {"node_modules", "__pycache__", "venv", "env", "site-packages"}
 
 #: The standard library's own table, never the host's `mime.types`, so one file gets one media
-#: type on every machine. `media_type` is recorded and not verified.
+#: type on every machine. The overrides are suffixes that table lacks in some supported Python:
+#: `.md` is in it only from 3.12. `media_type` is recorded and not verified.
 _MEDIA_TYPES = mimetypes.MimeTypes()
-_MEDIA_TYPE_OVERRIDES = {".yaml": "application/yaml", ".yml": "application/yaml"}
+_MEDIA_TYPE_OVERRIDES = {
+    ".yaml": "application/yaml",
+    ".yml": "application/yaml",
+    ".md": "text/markdown",
+}
 
 HEADER = """\
 # The evidence manifest for {project}, read by `repro verify`.
