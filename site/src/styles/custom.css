@@ -199,3 +199,70 @@
   font-weight: 700;
   letter-spacing: -0.01em;
 }
+
+/* The acceptance note at the top of the overview: one rounded pill holding the venue and
+   the links to the paper and the slides. */
+.venue-note {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.9rem;
+  padding: 0.45rem 1rem;
+  border: 1px solid var(--sl-color-accent);
+  border-radius: 999px;
+  background: var(--sl-color-accent-low);
+  color: var(--sl-color-white);
+  font-size: var(--sl-text-sm);
+}
+.venue-note a {
+  color: var(--sl-color-accent-high);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* Front-page pieces: a row of large numbers, and a framed figure. */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+.stat-grid > * { margin-top: 0 !important; }
+.stat {
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 0.6rem;
+  padding: 1.1rem 1.2rem;
+  background: var(--sl-color-gray-6);
+  color: inherit;
+  text-decoration: none;
+  display: block;
+}
+a.stat:hover { border-color: var(--sl-color-accent); }
+.stat .num {
+  display: block;
+  font-size: 2.3rem;
+  font-weight: 700;
+  line-height: 1.1;
+  color: var(--sl-color-accent-high);
+}
+.stat .what { display: block; margin-top: 0.4rem; font-size: var(--sl-text-sm); }
+.framed {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--sl-color-gray-5);
+  border-radius: 0.6rem;
+  margin: 1rem auto;
+}
+.framed.narrow { max-width: 44rem; }
+.slide-pair {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
+  gap: 1rem;
+}
+.slide-pair > * { margin-top: 0 !important; }
+.mock-note {
+  font-size: var(--sl-text-sm);
+  border-left: 3px solid var(--sl-color-accent);
+  padding-left: 0.8rem;
+}
