@@ -90,11 +90,12 @@ async function rows($: Parameters<TestBody>[0], on: Parameters<TestBody>[1], roo
   return drawn
 }
 
-test('the band draws exactly three rows for a project with no manifest', async ($, on) => {
+test('the band draws a fourth row saying so for a project with no manifest', async ($, on) => {
   expect(await rows($, on, '/work/plain', ['/work/plain', '/work/plain/PREREG.md'])).toEqual([
     'plain · prereg: none drafted',
     'results: no ledger',
     'citations: none pinned',
+    'repro: no manifest',
   ])
 })
 

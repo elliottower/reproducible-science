@@ -315,6 +315,25 @@ test('the status command never runs the quotation check, and the verify command 
   await $.command.run({ command: 'repro-status', args: 'auto' })
 })
 
+test('a plan in a subfolder is counted beside the one at the top', async ($, on) => {
+  const top = 'unchanged    /work/study/PREREG.md\n  timestamp  none.\n'
+  const below = top + 'unchanged    /work/study/artifact_survey/PREREG.md\n'
+  let checks = 0
+  project(on, { '/work/study/.results/ledger.jsonl': '' }, argv =>
+    argv[0] === 'find' && argv.includes('PREREG.md')
+      ? './artifact_survey/PREREG.md\n'
+      : argv[0] === 'prereg'
+        ? checks++ === 0
+          ? top
+          : below
+        : '',
+  )
+
+  const shown = await $.command.run({ command: 'repro-status', args: 'study' })
+  expect(shown.text).toContain('prereg: 2/2 frozen')
+  await $.command.run({ command: 'repro-status', args: 'auto' })
+})
+
 test('registrations frozen by a commit line count as plans, and only an edited one is a change', async ($, on) => {
   const intact =
     '\nregistrations frozen by a commit line:\n' +
@@ -412,13 +431,19 @@ test('a pinned file that changed keeps the field from reading as all verified', 
   await $.command.run({ command: 'repro-status', args: 'auto' })
 })
 
-test('a project with no manifest has three fields and the check is never run', async ($, on) => {
+test('a project with no manifest says so in a fourth field and the check is never run', async ($, on) => {
   trial(on, assertions([], '34 verified', 'passed  (0 errors, 0 warnings)'), {})
 
   const shown = await $.command.run({ command: 'repro-status', args: 'trial' })
   const line = (shown.text ?? '').split('\n').at(-1) ?? ''
 
-  expect(line.split(' · ')).toEqual(['trial', 'prereg: none drafted', 'results: no ledger', 'citations: none pinned'])
+  expect(line.split(' · ')).toEqual([
+    'trial',
+    'prereg: none drafted',
+    'results: no ledger',
+    'citations: none pinned',
+    'repro: no manifest',
+  ])
   expect(spawned.filter(call => call.includes('"repro"')).length).toBe(0)
   await $.command.run({ command: 'repro-status', args: 'auto' })
 })

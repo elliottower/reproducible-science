@@ -217,6 +217,27 @@ async function claimsFolders($: EngineInterface, root: string) {
 }
 
 /**
+ * Folders below the project that hold a `PREREG.md` of their own. `prereg check` reads the plan
+ * nearest the folder it runs in, so a study kept in a subfolder was never listed: a repository
+ * with a second frozen plan under `artifact_survey/` read `1/1 frozen`.
+ */
+async function planFolders($: EngineInterface, root: string) {
+  const found = await output(
+    $,
+    ['find', '.', '-mindepth', '2', '-maxdepth', '4', '-type', 'f', '-name', 'PREREG.md', '-not', '-path', '*/node_modules/*', '-not', '-path', '*/.git/*'],
+    root,
+    20_000,
+  )
+
+  return (found ?? '')
+    .split('\n')
+    .map(line => line.replace(/^\.\//, '').trim())
+    .filter(line => line.endsWith('/PREREG.md'))
+    .map(line => line.slice(0, -'/PREREG.md'.length))
+    .sort()
+}
+
+/**
  * What the last `status` found wrong, each in a few words. Drawn on the engine's pinned line
  * under the prompt, which is one row and spends about 28 columns on this plugin's name, so a
  * warning names the problem and `/repro-status` says what to do. The line is kept for these
@@ -241,8 +262,19 @@ async function status($: EngineInterface, root: string, withFiles: boolean) {
 
   // `prereg check` reads every plan at, above and below the directory it runs in.
   const plans = await output($, ['prereg', 'check'], root, 60_000)
+  // One line per plan, whichever folder reported it: a check run in a subfolder also lists the
+  // plan above it.
+  const listed = new Set((plans ?? '').split('\n'))
+  if (plans !== undefined) {
+    for (const folder of await planFolders($, root)) {
+      const below = await output($, ['prereg', 'check'], `${root}/${folder}`, 60_000)
+      for (const line of (below ?? '').split('\n')) {
+        listed.add(line)
+      }
+    }
+  }
   const counts = new Map<string, number>()
-  for (const line of (plans ?? '').split('\n')) {
+  for (const line of listed) {
     // A plan frozen with `prereg freeze` is listed by its absolute path. A registration frozen by a
     // commit line in the document is listed by its path in the repository, under its own words:
     // text added after the frozen text leaves the plan intact, and a commit that is pending or not
@@ -365,11 +397,14 @@ async function status($: EngineInterface, root: string, withFiles: boolean) {
 
   // `repro verify` reads the `repro.yaml` at or above the directory it runs in and no other, so
   // that is the only manifest looked for. It takes under a second on 34 assertions, and runs here.
-  // With no manifest there is no field: a project that declares no claims is not missing one.
+  // With no manifest the field says so, as the others do for a missing ledger or plan: a row
+  // left out reads the same as nothing to check.
   if (await above($, root, MANIFEST)) {
     const checked = assertions(await output($, ['repro', 'verify'], root, 60_000))
     fields.push(checked.field)
     wrong.push(...checked.wrong)
+  } else {
+    fields.push('repro: no manifest')
   }
 
   warnings = wrong
