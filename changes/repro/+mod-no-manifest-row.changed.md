@@ -1,0 +1,1 @@
+**[reproducible-science] The `repro` mod says when a project has no manifest.** A project with no `repro.yaml` at or above its top was drawn with three rows and no `repro` row, which read the same as a project with nothing to check. It now gets the fourth row as `repro: no manifest`, as a project with no ledger reads `results: no ledger`.

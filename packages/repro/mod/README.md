@@ -41,10 +41,10 @@ pinned: `citations: 120 pinned, not verified`. Checking quotations takes minutes
 project, so the row never runs it. A check that does not finish in a minute marks its own field
 `not read (timed out)` and leaves the others standing.
 
-`repro` is the claims `repro verify` verified over all the manifest declares, and the field is
-there only when a `repro.yaml` sits at the project's top or above it, which is the one manifest
-`repro verify` reads without being given a path. A manifest under another name or in a
-subfolder (`paper/repro.yaml`) is not found. A claim carries one or more assertions and is
+`repro` is the claims `repro verify` verified over all the manifest declares. The manifest is
+the `repro.yaml` at the project's top or above it, which is the one `repro verify` reads without
+being given a path. A manifest under another name or in a subfolder (`paper/repro.yaml`) is not
+found, and a project with none reads `repro: no manifest`. A claim carries one or more assertions and is
 verified when every one of them is:
 
     repro: 28/28 claims verified
