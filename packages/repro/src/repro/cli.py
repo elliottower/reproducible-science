@@ -4,6 +4,7 @@
     repro demo            write a worked example and run the workflow over it
     repro manifest init   write a starter repro.yaml for an existing project
     repro verify          check every evidence assertion in repro.yaml
+    repro reproduce       run the declared commands again and check the numbers still hold
     repro check           run every tool this project uses, in one pass
     repro audit           clone a repository at a pinned commit and run every tool over it
     repro prereg          run `prereg`: freeze a plan, and record what deviated from it
@@ -37,12 +38,15 @@ from repro.models import (
     Availability,
     Ordering,
     Outcome,
+    Reading,
     Regeneration,
-    RegenerationReason,
     Validity,
 )
 from repro.policy import PROFILES
 from repro.renderers import to_sarif
+from repro.reproduce import RECORD
+from repro.reproduce import append as append_reproduction
+from repro.reproduce import reproduce as run_reproduce
 from repro.starter import CONVENTIONAL, MAX_DISCOVERED, project_root
 from repro.starter import write as write_starter
 from repro.verify import verify as run_verify
@@ -260,7 +264,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
         print("    repro manifest init")
         return 2
 
-    report = run_verify(load(path), regenerate=getattr(args, "regenerate", False))
+    report = run_verify(load(path))
     policy = PROFILES[args.policy]
     assessment = policy.assess(report)
 
@@ -293,20 +297,6 @@ def cmd_verify(args: argparse.Namespace) -> int:
     if any(a.validity is not Validity.AUTHORITATIVE for a in report.artifacts):
         print()
 
-    # Built as a list and printed once. Printing the separator whenever the manifest declares a
-    # regeneration put a blank line under a section that had printed nothing, since the
-    # ordinary state -- not requested -- is the one state this block says nothing about.
-    regenerations = []
-    for state in report.regenerations:
-        if state.state is Regeneration.REPRODUCED:
-            regenerations.append(f"  reproduced  {state.artifact_id}")
-        elif state.state is Regeneration.DIVERGED:
-            regenerations.append(f"  DIVERGED    {state.artifact_id}: {state.detail[:48]}")
-        elif state.reason is not RegenerationReason.NOT_REQUESTED:
-            regenerations.append(f"  regen?      {state.artifact_id}: {state.reason.value}")
-    if regenerations:
-        print("\n".join(regenerations) + "\n")
-
     for claim in report.claims:
         if claim.availability is Availability.NOT_OFFERED:
             print(
@@ -336,6 +326,84 @@ def cmd_verify(args: argparse.Namespace) -> int:
     )
     for v in assessment.errors[:10]:
         print(f"    error   {v.rule:<26} {v.subject}: {v.detail[:44]}")
+    return 0 if assessment.passed else 1
+
+
+#: How each outcome is shown. `not_rerun` is the value a record carries; a reader sees the words.
+SHOWN = {
+    Regeneration.REPRODUCED: "reproduced",
+    Regeneration.CHANGED: "changed",
+    Regeneration.UNCHECKED: "unchecked",
+    Regeneration.FAILED: "failed",
+    Regeneration.NOT_RERUN: "not re-run",
+}
+
+
+def cmd_reproduce(args: argparse.Namespace) -> int:
+    path = Path(args.manifest) if args.manifest else find()
+    if path is None:
+        print(f"no {DEFAULT_NAME} here or above.\n")
+        print("write one that pins this project's result files, with example claims to edit:\n")
+        print("    repro manifest init")
+        return 2
+    manifest = load(path)
+    if not manifest.regenerations:
+        print(f"{path}\n")
+        print("  no command is declared, so there is nothing to run again. A record under")
+        print("  `regenerations` names a command, the files it reads and the file it writes.")
+        return 2
+
+    report = run_reproduce(manifest, only=tuple(args.only or ()), skip=tuple(args.skip or ()))
+    policy = PROFILES[args.policy]
+    assessment = policy.assess_reproduction(report)
+    recorded = append_reproduction(report, path.resolve().parent)
+
+    if args.format == "json":
+        print(
+            json.dumps(
+                {
+                    "reproduction": report.model_dump(mode="json"),
+                    "assessment": assessment.model_dump(mode="json"),
+                },
+                indent=2,
+            )
+        )
+        return 0 if assessment.passed else 1
+
+    states = report.regenerations
+    print(f"{path}\n")
+    print(f"  re-ran {sum(1 for s in states if s.executed)} of {len(states)}\n")
+    width = max(len(s.regeneration_id) for s in states)
+    for state in states:
+        detail = "bytes identical" if state.bytes_identical else state.detail
+        print(f"  {SHOWN[state.state]:<11} {state.regeneration_id:<{width}}  {detail[:60]}")
+        if state.rests_on:
+            print(
+                f"  {'':<11} {'':<{width}}  on the recorded output of {', '.join(state.rests_on)}"
+            )
+        for claim in state.claims:
+            if claim.reading is Reading.HOLDS:
+                continue
+            values = (
+                f"{claim.pinned} then, {claim.fresh} now, paper prints {claim.printed}"
+                if claim.pinned is not None and claim.fresh is not None
+                else claim.detail[:60]
+            )
+            note = (
+                "  (differed before the re-run)"
+                if claim.reading is Reading.ALREADY_MISMATCHED
+                else ""
+            )
+            print(f"  {'':<11}   {claim.name:<{width}}  {values}{note}")
+
+    print(
+        f"\n  {', '.join(f'{v} {SHOWN[Regeneration(k)]}' for k, v in sorted(report.counts.items()))}"
+    )
+    print(
+        f"  policy {policy.name}: {'passed' if assessment.passed else 'FAILED'}"
+        f"  ({len(assessment.errors)} errors, {len(assessment.warnings)} warnings)"
+    )
+    print(f"  recorded in {recorded.relative_to(path.resolve().parent).as_posix()}")
     return 0 if assessment.passed else 1
 
 
@@ -457,12 +525,30 @@ def main(argv: list[str] | None = None) -> int:
     p_verify.add_argument("manifest", nargs="?", help=f"path to {DEFAULT_NAME}")
     p_verify.add_argument("--policy", choices=sorted(PROFILES), default="publication")
     p_verify.add_argument("--format", choices=("text", "json", "sarif"), default="text")
-    p_verify.add_argument(
-        "--regenerate",
-        action="store_true",
-        help="run declared regeneration commands in a sandbox (executes them)",
-    )
     p_verify.set_defaults(func=cmd_verify)
+
+    p_reproduce = sub.add_parser(
+        "reproduce",
+        help="run the declared commands again and check the numbers still hold",
+        description=(
+            f"Run each command declared under `regenerations` in {DEFAULT_NAME}, in a directory "
+            "holding only its declared inputs, and check every claim that reads its output "
+            "against the file it wrote. A record is `reproduced` when every number the "
+            "manuscript prints from it still holds, whether or not the bytes match. This "
+            "executes what the manifest names: read a manifest before running it. Each "
+            f"invocation is appended to {RECORD.as_posix()}."
+        ),
+    )
+    p_reproduce.add_argument("manifest", nargs="?", help=f"path to {DEFAULT_NAME}")
+    p_reproduce.add_argument(
+        "--only", action="append", metavar="ID", help="run this record; repeatable"
+    )
+    p_reproduce.add_argument(
+        "--skip", action="append", metavar="ID", help="leave this record out; repeatable"
+    )
+    p_reproduce.add_argument("--policy", choices=sorted(PROFILES), default="publication")
+    p_reproduce.add_argument("--format", choices=("text", "json"), default="text")
+    p_reproduce.set_defaults(func=cmd_reproduce)
 
     p_check = sub.add_parser(
         "check",

@@ -93,19 +93,36 @@ class RunRecord(BaseModel):
 
 
 class Regeneration(enum.StrEnum):
-    """Whether the declared command reproduced the artifact it claims to have produced."""
+    """What happened when a declared command was run again.
+
+    The verdict is about the numbers the manuscript prints from the output, never about its
+    bytes: a re-run that names a different file for the same value has reproduced every number
+    and matched no digest. Whether the bytes matched is recorded beside the verdict.
+    """
 
     REPRODUCED = "reproduced"
-    DIVERGED = "diverged"
+    """Re-ran, and every number the manuscript prints from the output still holds."""
+    CHANGED = "changed"
+    """Re-ran, and at least one number the manuscript prints from the output is now different."""
     UNCHECKED = "unchecked"
-    """Not attempted, or the inputs are not the ones declared. Regeneration is opt-in, so
-    this is the ordinary state, not a finding."""
+    """Re-ran and wrote the output, but a number could not be read from it."""
+    FAILED = "failed"
+    """The command did not finish, or finished and wrote nothing."""
+    NOT_RERUN = "not_rerun"
+    """Never executed. The reason says why: skipped, or the inputs are not the ones declared."""
 
 
 class RegenerationReason(enum.StrEnum):
     OUTPUT_MATCHES = "output_matches"
-    OUTPUT_DIFFERS = "output_differs"
-    NOT_REQUESTED = "not_requested"
+    """The output has the pinned bytes, after any volatile fields are removed."""
+    CLAIMS_HOLD = "claims_hold"
+    """The bytes differ and every assertion reading the output holds against the new file."""
+    CLAIM_CHANGED = "claim_changed"
+    CLAIM_UNREADABLE = "claim_unreadable"
+    """The bytes differ and an assertion could not be evaluated against the new file."""
+    NO_CLAIM_READS_OUTPUT = "no_claim_reads_output"
+    """The bytes differ and no assertion reads the output, so bytes are all there is to compare."""
+    SKIPPED = "skipped"
     INPUT_UNPINNED = "input_unpinned"
     INPUT_CHANGED = "input_changed"
     INPUT_MISSING = "input_missing"
@@ -122,6 +139,7 @@ class RegenerationReason(enum.StrEnum):
     OUTPUT_IS_ALSO_AN_INPUT = "output_is_also_an_input"
     """The output was copied into the sandbox as one of its own inputs, so a command that does
     nothing reproduces it."""
+    OUTPUT_OUTSIDE_SANDBOX = "output_outside_sandbox"
     RUNNER_UNAVAILABLE = "runner_unavailable"
 
 
@@ -161,8 +179,50 @@ class RegenerationRecord(BaseModel):
         return self
 
 
+class Reading(enum.StrEnum):
+    """One assertion, evaluated against the file a re-run wrote."""
+
+    HOLDS = "holds"
+    CHANGED = "changed"
+    """It held against the pinned file and does not hold against the new one."""
+    ALREADY_MISMATCHED = "already_mismatched"
+    """The new file holds what the pinned file holds, and the manuscript prints something else.
+    The re-run changed nothing here; `repro verify` reports the disagreement."""
+    UNREADABLE = "unreadable"
+
+
+class ClaimReading(BaseModel):
+    """What one assertion found in the pinned output and in the re-run's output."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    claim_id: str
+    name: str = ""
+    printed: str = ""
+    """The value as the manuscript prints it."""
+    pinned: str | None = None
+    """The value in the pinned file, as stored."""
+    fresh: str | None = None
+    """The value in the file the re-run wrote, as stored."""
+    difference: str | None = None
+    """`fresh - pinned`, where both are numbers."""
+    reading: Reading
+    detail: str = ""
+
+
+class InputReading(BaseModel):
+    """One declared input: the digest the record names and the digest found on disk."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    artifact_id: str
+    path: str = ""
+    pinned: str | None = None
+    observed: str | None = None
+
+
 class RegenerationState(BaseModel):
-    """What happened when a regeneration record was checked."""
+    """What happened when a regeneration record was run again."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -173,6 +233,25 @@ class RegenerationState(BaseModel):
     expected: str | None = None
     actual: str | None = None
     detail: str = ""
+
+    executed: bool = False
+    """Whether the command was started. False for a record that was skipped or refused."""
+    bytes_identical: bool | None = None
+    """Whether the output had the pinned bytes. None where no output was compared."""
+    claims: tuple[ClaimReading, ...] = ()
+    """Each assertion reading the output, where the bytes differed and the claims were read."""
+    rests_on: tuple[str, ...] = ()
+    """Records producing an input of this one that did not themselves reproduce. This record
+    ran over their pinned outputs, so its result is conditional on them."""
+
+    command: tuple[str, ...] = ()
+    exit_code: int | None = None
+    duration_seconds: float | None = None
+    stdout_digest: str | None = None
+    stderr_digest: str | None = None
+    inputs: tuple[InputReading, ...] = ()
+    undeclared_outputs: tuple[str, ...] = ()
+    """Files the command wrote that the record does not declare, relative to its directory."""
 
 
 class Manifest(BaseModel):

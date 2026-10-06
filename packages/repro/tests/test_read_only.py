@@ -21,6 +21,7 @@ import pytest
 from repro import load, verify
 from repro.policy import PUBLICATION, STRICT
 from repro.renderers.sarif import to_sarif
+from repro.reproduce import reproduce
 
 
 def snapshot(root: pathlib.Path) -> dict[str, str]:
@@ -92,9 +93,8 @@ def test_a_failing_verification_also_writes_nothing(project):
     assert snapshot(project) == before
 
 
-def test_regeneration_is_off_unless_asked(project):
-    """`verify` never runs a declared command by default, and the sandbox never touches the
-    tree even when it does."""
+def test_running_the_declared_commands_writes_nothing(project):
+    """The sandbox never touches the tree. Recording a re-run is `append`, a separate act."""
     before = snapshot(project)
-    verify(load(project / "repro.yaml"), regenerate=True)
+    reproduce(load(project / "repro.yaml"))
     assert snapshot(project) == before

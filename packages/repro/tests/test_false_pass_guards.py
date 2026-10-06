@@ -15,6 +15,7 @@ import sys
 from repro.corpus import Corpus, CorpusEntry, EntryState
 from repro.crosscheck import Freeze
 from repro.manifest import load
+from repro.reproduce import reproduce
 from repro.verify import verify
 
 FROZEN = "a1b2c3d4e5f6"
@@ -162,8 +163,7 @@ def _regen_state(tmp_path):
             expected=canonical(PRODUCED_DOC),
         )
     )
-    report = verify(load(tmp_path / "repro.yaml"), regenerate=True)
-    return report.regenerations[0]
+    return reproduce(load(tmp_path / "repro.yaml")).regenerations[0]
 
 
 def test_a_record_naming_a_volatile_field_cannot_pin_its_own_answer(tmp_path):

@@ -63,8 +63,11 @@ from repro.core.evidence import (
     ValueLocator,
 )
 from repro.core.manifest import (
+    ClaimReading,
+    InputReading,
     Manifest,
     Provenance,
+    Reading,
     Regeneration,
     RegenerationReason,
     RegenerationRecord,
@@ -86,7 +89,13 @@ from repro.core.outcomes import (
     Validity,
     Warning_,
 )
-from repro.core.report import ArtifactState, ClaimAssessment, VerificationReport
+from repro.core.report import (
+    ArtifactState,
+    ClaimAssessment,
+    Environment,
+    ReproductionReport,
+    VerificationReport,
+)
 
 __all__ = [
     "SCHEMA_VERSION",
@@ -96,6 +105,7 @@ __all__ = [
     "Availability",
     "Claim",
     "ClaimAssessment",
+    "ClaimReading",
     "ComparisonMode",
     "ComparisonStatus",
     "CorrespondenceEvidence",
@@ -103,9 +113,11 @@ __all__ = [
     "Decision",
     "DecisionSide",
     "Digest",
+    "Environment",
     "Evidence",
     "ExecutionStatus",
     "ExtractionStatus",
+    "InputReading",
     "Locator",
     "Manifest",
     "MetricEvidence",
@@ -117,6 +129,7 @@ __all__ = [
     "ProseLocator",
     "Provenance",
     "QuoteEvidence",
+    "Reading",
     "Reason",
     "Regeneration",
     "RegenerationReason",
@@ -124,6 +137,7 @@ __all__ = [
     "RegenerationState",
     "Registration",
     "RegistrationAuthority",
+    "ReproductionReport",
     "RunOutput",
     "RunRecord",
     "SheetLocator",

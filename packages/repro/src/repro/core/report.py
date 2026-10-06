@@ -78,7 +78,6 @@ class VerificationReport(BaseModel):
     manifest_digest: str = ""
     artifacts: tuple[ArtifactState, ...] = ()
     claims: tuple[ClaimAssessment, ...] = ()
-    regenerations: tuple[RegenerationState, ...] = ()
 
     @property
     def decisions(self) -> tuple[Decision, ...]:
@@ -94,3 +93,51 @@ class VerificationReport(BaseModel):
 
     def artifacts_with(self, validity: Validity) -> tuple[str, ...]:
         return tuple(a.artifact_id for a in self.artifacts if a.validity is validity)
+
+
+# ------------------------------------------------------------------------------ reproduction
+
+
+class Environment(BaseModel):
+    """Where a re-run happened, as far as the tool can observe it.
+
+    Nothing here names a person or a machine: no hostname, no user, no absolute path. These
+    records are committed to repositories that become public.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    system: str = ""
+    release: str = ""
+    machine: str = ""
+    processor: str = ""
+    python: str = ""
+    lockfile: str = ""
+    """Name of the lockfile found at the top of the project, if any."""
+    lockfile_digest: str = ""
+    gpus: tuple[str, ...] = ()
+    """Model and driver per device, as `nvidia-smi` reports them. Empty where it is absent."""
+    variables: dict[str, str] = {}
+    """The environment variables that bear on determinism, where set."""
+
+
+class ReproductionReport(BaseModel):
+    """What one `repro reproduce` invocation ran and found. Frozen, and carries no verdict."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    schema_version: str = SCHEMA_VERSION
+    project: str = ""
+    manifest_digest: str = ""
+    tool_version: str = ""
+    started_at: str = ""
+    ended_at: str = ""
+    environment: Environment = Environment()
+    regenerations: tuple[RegenerationState, ...] = ()
+
+    @property
+    def counts(self) -> dict[str, int]:
+        tally: dict[str, int] = {}
+        for state in self.regenerations:
+            tally[state.state.value] = tally.get(state.state.value, 0) + 1
+        return tally

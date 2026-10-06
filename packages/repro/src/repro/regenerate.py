@@ -1,4 +1,4 @@
-"""Does the pinned code, over the pinned inputs, still produce the pinned artifact?
+"""Does the pinned code, over the pinned inputs, still produce the numbers the manuscript prints?
 
 The ordering check asks whether a confirmatory run followed its plan. That question has no
 meaning for a measurement no plan could have registered -- an exhaustive count over a
@@ -6,29 +6,44 @@ declared corpus selects no outcome, so there is nothing for a registration to fi
 What can be asked of such a number is whether it is still the output of the code that claims
 to produce it, and that is what this checks.
 
+**The verdict is about the manuscript's numbers, not the output's bytes.** A re-run that lists
+a directory in another order writes a different file holding every value the manuscript prints.
+Where the bytes match, the record reproduced. Where they differ, the caller's `read_claims` is
+handed the new file and evaluates each assertion that reads it; the record reproduced if they
+all hold, and has changed if one does not. Whether the bytes matched is recorded either way.
+
 **It runs in a sandbox, not in the repository.** The declared inputs are copied into an empty
 directory and the command runs there, so nothing in the working tree is written to. That also
 makes the check say something extra: a command needing a file the manifest never declared
 fails, which is a real defect in the declaration rather than a passing run.
 
-**Comparison is canonical, not literal.** An output carrying a timestamp or an absolute path
-never reproduces byte for byte, so a record names those fields as `volatile` and they are
-removed before hashing. Naming them keeps the comparison exact everywhere else, where
+**The byte comparison is canonical, not literal.** An output carrying a timestamp or an
+absolute path never reproduces byte for byte, so a record names those fields as `volatile` and
+they are removed before hashing. Naming them keeps the comparison exact everywhere else, where
 loosening the whole comparison would not.
+
+Nothing here reads a claim. `repro.reproduce` supplies `read_claims`, so this module stays
+below the verification engine it would otherwise have to import.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import pathlib
 import shutil
 import subprocess
 import tempfile
+import time
+from collections.abc import Callable
 
 from repro.models import (
     ArtifactState,
+    ClaimReading,
     Digest,
+    InputReading,
     Manifest,
+    Reading,
     Regeneration,
     RegenerationReason,
     RegenerationRecord,
@@ -55,19 +70,6 @@ def _inside(sandbox: pathlib.Path, source: pathlib.Path, root: pathlib.Path) -> 
     if candidate == sandbox.resolve() or sandbox.resolve() not in candidate.parents:
         return None
     return candidate
-
-
-def _unchecked(
-    record: RegenerationRecord, reason: RegenerationReason, detail: str
-) -> RegenerationState:
-    return RegenerationState(
-        regeneration_id=record.id,
-        artifact_id=record.output.artifact,
-        state=Regeneration.UNCHECKED,
-        reason=reason,
-        detail=detail,
-        expected=record.output.digest.value if record.output.digest else None,
-    )
 
 
 def _drop(document: object, pointer: str) -> object:
@@ -105,13 +107,85 @@ def canonical_digest(path: pathlib.Path, volatile: tuple[str, ...]) -> Digest:
     )
 
 
+#: Undeclared files named in a record. A command that unpacks an archive writes thousands, and
+#: the count is recorded beside the names that fit.
+MAX_UNDECLARED = 50
+
+ReadClaims = Callable[[pathlib.Path], tuple[ClaimReading, ...]]
+
+
+def _shown(source: pathlib.Path, root: pathlib.Path) -> str:
+    """A declared path as a record may carry it: relative to the project, or its name alone.
+
+    A record is committed, and an absolute path names a machine and usually a person.
+    """
+    try:
+        return source.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError:
+        return source.name
+
+
+def _scrub(text: str, *places: pathlib.Path) -> str:
+    """Remove the directories a message may name, for the same reason."""
+    for place in places:
+        for spelling in {str(place.resolve()), str(place)}:
+            text = text.replace(spelling, ".")
+    return text.replace(str(pathlib.Path.home()), "~")
+
+
+def _digest(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8", "replace")).hexdigest()
+
+
+def skipped(record: RegenerationRecord) -> RegenerationState:
+    """The state of a record the caller chose not to run."""
+    return RegenerationState(
+        regeneration_id=record.id,
+        artifact_id=record.output.artifact,
+        state=Regeneration.NOT_RERUN,
+        reason=RegenerationReason.SKIPPED,
+        detail="skipped",
+        expected=record.output.digest.value if record.output.digest else None,
+        command=record.command,
+    )
+
+
 def check(
-    record: RegenerationRecord, manifest: Manifest, states: dict[str, ArtifactState]
+    record: RegenerationRecord,
+    manifest: Manifest,
+    states: dict[str, ArtifactState],
+    read_claims: ReadClaims,
 ) -> RegenerationState:
     """Run one regeneration record in a sandbox and compare what it produced."""
+    root = manifest.path.parent if manifest.path else pathlib.Path.cwd()
+    # Every state this returns starts from the same facts about the record, so they are set
+    # once and each return says only what it adds.
+    base = RegenerationState(
+        regeneration_id=record.id,
+        artifact_id=record.output.artifact,
+        state=Regeneration.NOT_RERUN,
+        reason=RegenerationReason.SKIPPED,
+        expected=record.output.digest.value if record.output.digest else None,
+        command=record.command,
+        inputs=tuple(
+            InputReading(
+                artifact_id=wanted.artifact,
+                path=_shown(manifest.resolve(artifact), root) if artifact is not None else "",
+                pinned=wanted.digest.value if wanted.digest else None,
+                observed=state.actual if state is not None else None,
+            )
+            for wanted in record.inputs
+            for artifact, state in (
+                (manifest.artifact(wanted.artifact), states.get(wanted.artifact)),
+            )
+        ),
+    )
+
+    def not_rerun(reason: RegenerationReason, detail: str) -> RegenerationState:
+        return base.model_copy(update={"reason": reason, "detail": detail})
+
     if record.output.digest is None:
-        return _unchecked(
-            record,
+        return not_rerun(
             RegenerationReason.OUTPUT_UNPINNED,
             "the record names no expected digest for its output",
         )
@@ -119,8 +193,7 @@ def check(
     # Copying the output in as one of its own inputs means `true` reproduces it: the file is
     # already sitting at the expected path when the comparison runs.
     if record.output.artifact in {i.artifact for i in record.inputs}:
-        return _unchecked(
-            record,
+        return not_rerun(
             RegenerationReason.OUTPUT_IS_ALSO_AN_INPUT,
             f"{record.output.artifact} is declared as both an input and the output",
         )
@@ -129,8 +202,7 @@ def check(
     for wanted in (*record.inputs, record.output):
         artifact = manifest.artifact(wanted.artifact)
         if artifact is None:
-            return _unchecked(
-                record,
+            return not_rerun(
                 RegenerationReason.INPUT_MISSING,
                 f"manifest declares no artifact {wanted.artifact!r}",
             )
@@ -139,24 +211,21 @@ def check(
     for wanted in record.inputs:
         state = states.get(wanted.artifact)
         if state is None or not state.exists:
-            return _unchecked(
-                record, RegenerationReason.INPUT_MISSING, f"input {wanted.artifact} is not present"
+            return not_rerun(
+                RegenerationReason.INPUT_MISSING, f"input {wanted.artifact} is not present"
             )
         if state.validity is Validity.BROKEN_PIN:
-            return _unchecked(
-                record,
+            return not_rerun(
                 RegenerationReason.INPUT_CHANGED,
                 f"input {wanted.artifact} is not the file that was pinned",
             )
         if wanted.digest is None:
-            return _unchecked(
-                record,
+            return not_rerun(
                 RegenerationReason.INPUT_UNPINNED,
                 f"input {wanted.artifact} carries no digest in the record",
             )
         if state.actual != wanted.digest.value:
-            return _unchecked(
-                record,
+            return not_rerun(
                 RegenerationReason.INPUT_CHANGED,
                 f"input {wanted.artifact} holds {(state.actual or '')[:12]}, "
                 f"the record names {wanted.digest.value[:12]}",
@@ -186,14 +255,12 @@ def check(
                 else ""
             )
         if declared and declared != record.output.digest.value:
-            return _unchecked(
-                record,
+            return not_rerun(
                 RegenerationReason.OUTPUT_NOT_THE_ARTIFACT,
                 f"the record expects {record.output.digest.value[:12]} but "
                 f"{record.output.artifact} is {declared[:12]}",
             )
 
-    root = manifest.path.parent if manifest.path else pathlib.Path.cwd()
     with tempfile.TemporaryDirectory(prefix="repro-regen-") as scratch:
         sandbox = pathlib.Path(scratch)
         placed: dict[pathlib.Path, str] = {}
@@ -201,8 +268,7 @@ def check(
             source = files[wanted.artifact]
             target = _inside(sandbox, source, root)
             if target is None:
-                return _unchecked(
-                    record,
+                return not_rerun(
                     RegenerationReason.INPUT_MISSING,
                     f"input {wanted.artifact} resolves outside the sandbox",
                 )
@@ -210,8 +276,7 @@ def check(
                 # Two inputs from outside the root can share a basename; the second silently
                 # overwrote the first, and the command then read a file that was never
                 # digest-matched to the input it stood for.
-                return _unchecked(
-                    record,
+                return not_rerun(
                     RegenerationReason.INPUT_MISSING,
                     f"inputs {placed[target]} and {wanted.artifact} collide at "
                     f"{target.name} in the sandbox",
@@ -219,6 +284,29 @@ def check(
             placed[target] = wanted.artifact
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, target)
+
+        # Settled before the command runs: where the output would land is a fact about the
+        # declaration, and a record refused for it should not have executed anything.
+        produced = _inside(sandbox, files[record.output.artifact], root)
+        if produced is None:
+            return not_rerun(
+                RegenerationReason.OUTPUT_OUTSIDE_SANDBOX,
+                f"output {record.output.artifact} resolves outside the sandbox",
+            )
+
+        started = time.monotonic()
+
+        def failed(
+            source: RegenerationState, reason: RegenerationReason, detail: str
+        ) -> RegenerationState:
+            return source.model_copy(
+                update={
+                    "state": Regeneration.FAILED,
+                    "reason": reason,
+                    "detail": _scrub(detail, sandbox, root),
+                    "duration_seconds": round(time.monotonic() - started, 3),
+                }
+            )
 
         try:
             completed = subprocess.run(
@@ -229,80 +317,95 @@ def check(
                 timeout=record.timeout_seconds,
                 check=False,
             )
-        except FileNotFoundError as e:
-            return _unchecked(
-                record,
-                RegenerationReason.RUNNER_UNAVAILABLE,
-                f"{record.command[0]} is not on PATH: {e}",
+        except FileNotFoundError:
+            return failed(
+                base, RegenerationReason.RUNNER_UNAVAILABLE, f"{record.command[0]} is not on PATH"
             )
         except subprocess.TimeoutExpired:
-            return _unchecked(
-                record,
+            return failed(
+                base.model_copy(update={"executed": True}),
                 RegenerationReason.COMMAND_TIMED_OUT,
                 f"exceeded {record.timeout_seconds:g}s",
             )
 
+        written = sorted(
+            path.relative_to(sandbox).as_posix()
+            for path in sandbox.rglob("*")
+            if path.is_file() and path.resolve() not in placed and path.resolve() != produced
+        )
+        more = len(written) - MAX_UNDECLARED
+        ran = base.model_copy(
+            update={
+                "executed": True,
+                "exit_code": completed.returncode,
+                "stdout_digest": _digest(completed.stdout or ""),
+                "stderr_digest": _digest(completed.stderr or ""),
+                "undeclared_outputs": (
+                    *written[:MAX_UNDECLARED],
+                    *((f"... and {more} more",) if more > 0 else ()),
+                ),
+            }
+        )
+
         if completed.returncode != 0:
             tail = (completed.stderr or completed.stdout or "").strip().splitlines()
-            return RegenerationState(
-                regeneration_id=record.id,
-                artifact_id=record.output.artifact,
-                state=Regeneration.DIVERGED,
-                reason=RegenerationReason.COMMAND_FAILED,
-                expected=record.output.digest.value,
-                detail=f"exit {completed.returncode}: {tail[-1] if tail else 'no output'}",
-            )
-
-        source = files[record.output.artifact]
-        produced = _inside(sandbox, source, root)
-        if produced is None:
-            return _unchecked(
-                record,
-                RegenerationReason.OUTPUT_NOT_PRODUCED,
-                f"output {record.output.artifact} resolves outside the sandbox",
+            return failed(
+                ran,
+                RegenerationReason.COMMAND_FAILED,
+                f"exit {completed.returncode}: {tail[-1] if tail else 'no output'}",
             )
         if not produced.is_file():
-            return RegenerationState(
-                regeneration_id=record.id,
-                artifact_id=record.output.artifact,
-                state=Regeneration.DIVERGED,
-                reason=RegenerationReason.OUTPUT_NOT_PRODUCED,
-                expected=record.output.digest.value,
-                detail=f"the command wrote nothing to {produced.name}",
+            # Exit 0 and nothing written is not a pass, and is not a difference either: there is
+            # no output to differ.
+            return failed(
+                ran,
+                RegenerationReason.OUTPUT_NOT_PRODUCED,
+                f"the command wrote nothing to {produced.name}",
             )
 
-        actual = canonical_digest(produced, record.volatile)
-
-    # Where a record names volatile fields, the digest it pins is the canonical one, since
-    # the raw bytes could never match. Either way the comparison is exact.
-    expected = record.output.digest.value
-    matched = actual.value == expected
-    return RegenerationState(
-        regeneration_id=record.id,
-        artifact_id=record.output.artifact,
-        state=Regeneration.REPRODUCED if matched else Regeneration.DIVERGED,
-        reason=(
-            RegenerationReason.OUTPUT_MATCHES if matched else RegenerationReason.OUTPUT_DIFFERS
-        ),
-        expected=expected,
-        actual=actual.value,
-        detail=(
-            "" if matched else f"produced {actual.value[:12]}, the manifest pins {expected[:12]}"
-        ),
-    )
-
-
-def check_all(
-    manifest: Manifest, states: dict[str, ArtifactState], enabled: bool
-) -> tuple[RegenerationState, ...]:
-    """Every declared regeneration, or an `unchecked` state per record when not enabled."""
-    if not enabled:
-        return tuple(
-            _unchecked(
-                record,
-                RegenerationReason.NOT_REQUESTED,
-                "regeneration runs only when explicitly enabled",
-            )
-            for record in manifest.regenerations
+        # Where a record names volatile fields, the digest it pins is the canonical one, since
+        # the raw bytes could never match. Either way the byte comparison is exact.
+        actual = canonical_digest(produced, record.volatile).value
+        expected = record.output.digest.value
+        ran = ran.model_copy(
+            update={"actual": actual, "duration_seconds": round(time.monotonic() - started, 3)}
         )
-    return tuple(check(record, manifest, states) for record in manifest.regenerations)
+        if actual == expected:
+            return ran.model_copy(
+                update={
+                    "state": Regeneration.REPRODUCED,
+                    "reason": RegenerationReason.OUTPUT_MATCHES,
+                    "bytes_identical": True,
+                }
+            )
+
+        # The bytes differ. What that means depends on what the manuscript reads from them, and
+        # the file exists only inside this block.
+        readings = read_claims(produced)
+
+    differs = f"produced {actual[:12]}, the manifest pins {expected[:12]}"
+    changed = [r for r in readings if r.reading is Reading.CHANGED]
+    unreadable = [r for r in readings if r.reading is Reading.UNREADABLE]
+    if not readings:
+        state, reason = Regeneration.CHANGED, RegenerationReason.NO_CLAIM_READS_OUTPUT
+        detail = f"{differs}; no claim reads this file, so its bytes are all there is to compare"
+    elif changed:
+        state, reason = Regeneration.CHANGED, RegenerationReason.CLAIM_CHANGED
+        detail = f"{len(changed)} of {len(readings)} numbers changed"
+    elif unreadable:
+        state, reason = Regeneration.UNCHECKED, RegenerationReason.CLAIM_UNREADABLE
+        detail = f"{len(unreadable)} of {len(readings)} numbers could not be read"
+    else:
+        state, reason = Regeneration.REPRODUCED, RegenerationReason.CLAIMS_HOLD
+        detail = f"bytes differ, {len(readings)} of {len(readings)} numbers hold"
+    return ran.model_copy(
+        update={
+            "state": state,
+            "reason": reason,
+            "detail": detail,
+            "bytes_identical": False,
+            "claims": tuple(
+                r.model_copy(update={"detail": _scrub(r.detail, sandbox, root)}) for r in readings
+            ),
+        }
+    )

@@ -594,25 +594,62 @@ was told to writes inside that directory. Every declared path is resolved and ch
 containment before it is used, since a path holding `..` otherwise lands outside.
 
 This is a working directory, not a sandbox in the security sense: nothing stops a command
-writing to an absolute path elsewhere. Running `--regenerate` on a manifest you have not read
-is running a program you have not read. That makes the record a claim about sufficiency and not only about provenance.
+writing to an absolute path elsewhere. Running `repro reproduce` on a manifest you have not
+read is running a program you have not read. That makes the record a claim about sufficiency and not only about provenance.
 
-Three states. `reproduced`: the command produced the pinned artifact. `diverged`: it produced
-something else, produced nothing, or exited non-zero. `unchecked`: it was not requested, an
-input has moved since the record was written, or the runner is absent. An input that changed
-yields `unchecked` rather than `diverged`, because different inputs producing a different
-output is not a failure to reproduce.
+The verdict is about the numbers the manuscript prints, not the output's bytes. Where the
+command writes the pinned bytes, the record reproduced. Where it writes other bytes, every
+assertion that reads the output is put to the new file, by the comparison §5 defines and at the
+precision the manuscript prints, and the record reproduced if each still holds. A re-run that
+lists a directory in another order writes a different file holding the same values; calling
+that a divergence reports a difference no reader can find in the paper. Whether the bytes
+matched is recorded beside the verdict.
 
-Comparison is exact but canonical. An output carrying a timestamp or an absolute path never
-reproduces byte for byte, so a record names those fields as `volatile` JSON Pointers and they
-are removed before hashing; where a record names them, the digest it pins is the canonical one.
-Naming the fields keeps the comparison exact everywhere else, which loosening the whole
+Five states.
+
+| state | what happened |
+|---|---|
+| `reproduced` | re-ran, and every number the manuscript prints from the output still holds |
+| `changed` | re-ran, and at least one number the manuscript prints from it is now different |
+| `unchecked` | re-ran and wrote the output, but a number could not be read from it |
+| `failed` | the command did not finish, or finished and wrote nothing |
+| `not_rerun` | never executed: skipped, or an input is not the one the record names |
+
+Each carries a reason. An input that changed yields `not_rerun` rather than `changed`, because
+different inputs producing a different output is not a failure to reproduce, and the command
+is not started. A command that exits 0 and writes nothing is `failed`: a clean exit is not
+evidence that the work was done. An output with different bytes that no assertion reads is
+`changed`, since its bytes are then all there is to compare. A number the manuscript already
+printed differently from the pinned file, and which the re-run writes unchanged, is not
+counted against the re-run; `repro verify` reports it.
+
+The byte comparison is exact but canonical. An output carrying a timestamp or an absolute path
+never reproduces byte for byte, so a record names those fields as `volatile` JSON Pointers and
+they are removed before hashing; where a record names them, the digest it pins is the canonical
+one. Naming the fields keeps the comparison exact everywhere else, which loosening the whole
 comparison would not.
 
-Regeneration is off by default and runs only under `repro verify --regenerate`. Verifying a
-manifest should never execute what the manifest names. Commands are argv, never shell strings:
-a shell string needs quoting rules, brings a shell's expansion with it, and turns a manifest
-into something that can run anything.
+A record whose input is another record's output runs over the pinned copy of that output,
+whatever happened to the record producing it. Where that record did not reproduce, at any
+distance upstream, the dependent record names it in `rests_on`. An evaluation re-run over a
+long training run's recorded checkpoint is worth having, and is not the same result as
+re-running both.
+
+Each invocation appends one object to `.repro/reproductions.jsonl` beside the manifest: when it
+ran, the tool's version, the manifest's digest, the operating system, architecture and Python
+version, the name and digest of a lockfile at the top of the project, GPU models and drivers
+where there are any, the environment variables that bear on determinism, and per record the
+command, its exit code and duration, the digest each input was pinned at and found at, the
+digest the output was pinned at and produced at, the files the command wrote and did not
+declare, and for each assertion the value in the pinned file, the value in the new file and the
+value the manuscript prints. No field names a host, a user or an absolute path, and none
+records who ran it, which the tool cannot observe.
+
+Commands run only under `repro reproduce`. `repro verify` executes nothing: verifying a
+manifest should never run what the manifest names. Commands are argv, never shell strings: a
+shell string needs quoting rules, brings a shell's expansion with it, and turns a manifest into
+something that can run anything. `--only` and `--skip` choose records by id, and a record left
+out is reported `not_rerun`, never omitted.
 
 Regeneration is orthogonal to registration. A `not_applicable` claim need not declare one —
 methods statements and externally sourced facts are inapplicable without being script-generated

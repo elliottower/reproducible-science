@@ -134,6 +134,26 @@ repro verify
 
 Reads `repro.yaml` and checks every declared evidence assertion against the artifact it names. It spawns nothing: `prereg`, `results` and `citations` are separate commands.
 
+## Run it again
+
+```bash
+repro reproduce
+```
+
+Runs each command declared under `regenerations` in `repro.yaml`, in a directory holding only its declared inputs, and checks every claim that reads its output against the file it wrote. A record is `reproduced` when every number the manuscript prints from it still holds, whether or not the bytes match.
+
+| outcome | what happened |
+|---|---|
+| `reproduced` | re-ran, and every number the manuscript prints from it still holds |
+| `changed` | re-ran, and at least one number is now different |
+| `unchecked` | re-ran and wrote its output, but a number could not be read from it |
+| `failed` | the command did not finish, or finished and wrote nothing |
+| `not re-run` | never executed: skipped, or an input is not the one that was pinned |
+
+`--skip ID` leaves a record out, such as a long training run, and `--only ID` runs the ones named. A record that reads the output of one that did not reproduce still runs, over the pinned copy, and says so. Each invocation appends what it observed to `.repro/reproductions.jsonl`.
+
+This executes what the manifest names. `repro verify` never does.
+
 ## What it reads
 
 A number is checked at an address the manifest declares, in the addressing the format already has:
