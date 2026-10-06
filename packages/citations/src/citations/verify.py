@@ -1207,6 +1207,12 @@ def _occurrences(
     it and the joined form is counted instead, which is how the record says which occurrence
     it meant. Joined and then folded, rather than folded and then joined, because folding
     collapses the whitespace across each seam exactly as it collapsed it in the document.
+
+    The anchors are joined as written first, and with a space at each seam second. A YAML plain
+    scalar cannot begin or end with a space, so `suffix: in August` arrives without the space
+    that separates it from the passage, welds into `splitin August`, and matched nothing: the
+    report then said to widen an anchor that was already wide enough. As written comes first,
+    so an anchor that does end mid-word still selects the occurrence it names.
     """
     q = transform(quote)
     if not q:
@@ -1216,7 +1222,10 @@ def _occurrences(
         return n, n == 1
     if not (prefix or suffix):
         return n, False
-    return n, _count(transform(prefix + quote + suffix), doc) == 1
+    if _count(transform(prefix + quote + suffix), doc) == 1:
+        return n, True
+    spaced = " ".join(part for part in (prefix, quote, suffix) if part)
+    return n, _count(transform(spaced), doc) == 1
 
 
 @dataclass(frozen=True)

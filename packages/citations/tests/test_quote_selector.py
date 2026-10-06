@@ -8,6 +8,7 @@ record says which occurrence it means, and `ambiguous` is what it gets until it 
 from __future__ import annotations
 
 import pytest
+import yaml
 from citations import verify as V
 from citations.models import ClaimFile
 
@@ -66,6 +67,38 @@ def test_the_other_prefix_selects_the_other_occurrence(tmp_path):
 def test_a_suffix_alone_can_settle_it(tmp_path):
     doc = f"{PASSAGE} in July. Later, {PASSAGE} in August."
     r = V.check_one(PASSAGE, _src(tmp_path, doc), None, suffix=" in August")
+    assert r.state == "found"
+
+
+def test_a_suffix_written_without_its_seam_space_still_settles_it(tmp_path):
+    doc = f"{PASSAGE} in July. Later, {PASSAGE} in August."
+    r = V.check_one(PASSAGE, _src(tmp_path, doc), None, suffix="in August")
+    assert r.state == "found"
+
+
+def test_a_prefix_written_without_its_seam_space_still_settles_it(tmp_path):
+    r = V.check_one(PASSAGE, _src(tmp_path, TWICE), None, prefix="In the replication")
+    assert r.state == "found"
+
+
+def test_an_anchor_ending_mid_word_selects_the_occurrence_it_is_welded_to(tmp_path):
+    doc = f"un{PASSAGE} once, and un {PASSAGE} again, and then {PASSAGE} a third time."
+    assert V.resolve_in(PASSAGE, doc, prefix="un").state == "found"
+    assert V._count(V.passage_fold("un" + PASSAGE), V.passage_fold(doc)) == 1
+    assert V._count(V.passage_fold("un " + PASSAGE), V.passage_fold(doc)) == 1
+
+
+def test_a_claims_file_anchor_in_plain_yaml_settles_a_repeated_passage(tmp_path):
+    (tmp_path / "claims").mkdir()
+    (tmp_path / "src.txt").write_text(f"{PASSAGE} in July. Later, {PASSAGE} in August.")
+    (tmp_path / "claims" / "s.yaml").write_text(
+        "source:\n  local: src.txt\nclaims:\n  c:\n    quotes:\n"
+        f"    - exact: {PASSAGE}\n      suffix: in August\n"
+    )
+    cf = ClaimFile.model_validate(yaml.safe_load((tmp_path / "claims" / "s.yaml").read_text()))
+    quote = cf.claims["c"].quotes[0]
+    assert quote.suffix == "in August"
+    r = V.check_one(quote.text, tmp_path / "src.txt", None, suffix=quote.suffix)
     assert r.state == "found"
 
 
