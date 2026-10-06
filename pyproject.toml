@@ -238,6 +238,7 @@ source_modules = [
   "repro.verify",
   "repro.policy",
   "repro.regenerate",
+  "repro.reproduce",
 ]
 forbidden_modules = [ "repro.integrations" ]
 
@@ -251,6 +252,9 @@ layers = [
   "repro.demo",
   "repro.renderers.sarif",
   "repro.policy",
+  # Runs a declared command and puts the verifier's question to what it wrote, so it sits on
+  # the verifier and the verifier never reaches for it.
+  "repro.reproduce",
   "repro.verify",
   "repro.resolve",
   "repro.adapters",

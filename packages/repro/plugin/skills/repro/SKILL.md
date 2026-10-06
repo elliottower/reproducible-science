@@ -78,6 +78,7 @@ agree and the run still fail, because they agreed with a document nobody pinned.
 
 - Before submitting a draft, over the whole manifest
 - After regenerating results, to see which claims moved
+- To run the declared commands again and see whether the printed numbers survive: `repro reproduce`
 - When a reviewer asks where a number came from
 - When a manuscript and its data may have drifted apart
 - In CI, as `repro verify --policy strict`

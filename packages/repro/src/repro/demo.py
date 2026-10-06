@@ -242,8 +242,8 @@ def manifest() -> dict:
         "regenerations": [
             {
                 "id": "results-from-data",
-                # argv, never a shell string, and it runs only under `repro verify
-                # --regenerate`. The declared inputs are copied into an empty directory and the
+                # argv, never a shell string, and it runs only under `repro
+                # reproduce`. The declared inputs are copied into an empty directory and the
                 # command runs there, so a script reaching for a file the manifest never
                 # declared fails instead of quietly passing.
                 "command": ["python3", "analysis.py"],
@@ -317,7 +317,7 @@ the file it names.
 $ python analysis.py                 # deterministic: same seed, same numbers
 $ python pin.py                      # pin the files, declare the claims
 $ repro verify                       # check every assertion against its artifact
-$ repro verify --regenerate          # also: does the pinned code still produce results.json?
+$ repro reproduce                    # run analysis.py again: do the numbers still hold?
 $ results verify                     # is the ledger chain intact?
 ```
 
@@ -646,6 +646,6 @@ def demo(directory: str | None = None, force: bool = False) -> int:
         "producing by hand -- a pointer that no longer resolves, an anchor that addresses",
         "nothing, and a seed that changes the number the manuscript still prints.",
         "",
-        f"    cd {target} && repro verify --regenerate",
+        f"    cd {target} && repro reproduce",
     )
     return 0
