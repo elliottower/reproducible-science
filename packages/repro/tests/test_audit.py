@@ -86,7 +86,7 @@ def repo(empty, capsys):
     """A frozen plan, a ledger, a claims directory with its source, a manifest and a `.bib`."""
     tool(empty, "prereg", "new", "plan")
     commit(empty, "plan")
-    tool(empty / "plan", "prereg", "freeze", "--no-timestamp")
+    tool(empty / "plan", "prereg", "freeze")
 
     (empty / "analysis.py").write_text("print(0.9)\n")
     (empty / "out.json").write_text('{"accuracy": 0.9}\n')

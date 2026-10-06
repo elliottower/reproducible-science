@@ -44,6 +44,29 @@ def repo(tmp_path):
     return tmp_path / "study"
 
 
+@pytest.fixture
+def old(repo, frozen_in_place):
+    """`repo` with its plan as an earlier version froze it: the freeze and the log in the file.
+
+    A freeze no longer writes into the plan, so the rules for a plan frozen that way -- what its
+    hash skips, how its log is chained, a forced re-freeze -- are exercised on the bytes that
+    version wrote.
+    """
+    (repo / "PREREG.md").write_bytes(frozen_in_place)
+    _run(["git", "add", "-A"], cwd=repo)
+    _run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "frozen"],
+        cwd=repo,
+    )
+    return repo
+
+
+def edit(path, text: str) -> None:
+    """Write over a frozen file the way someone determined to would: a freeze leaves it read-only."""
+    path.chmod(0o644)
+    path.write_text(text)
+
+
 def test_new_uses_the_osf_headings(tmp_path):
     run(["new", "study"], tmp_path)
     text = (tmp_path / "study" / "PREREG.md").read_text()
@@ -66,7 +89,7 @@ def test_check_passes_immediately_after_freeze(repo):
 def test_editing_the_plan_is_detected(repo):
     run(["freeze"], repo)
     p = repo / "PREREG.md"
-    p.write_text(p.read_text().replace("## Randomization", "## Randomisation"))
+    edit(p, p.read_text().replace("## Randomization", "## Randomisation"))
     r = run(["check"], repo)
     assert r.returncode == 1
     assert "CHANGED" in r.stdout
@@ -114,83 +137,59 @@ def test_commands_find_the_plan_from_a_subdirectory(repo):
     assert run(["check"], repo / "results").returncode == 0
 
 
-def test_force_refreeze_rewrites_the_header_it_prints(repo):
-    run(["freeze"], repo)
-    p = repo / "PREREG.md"
+def test_force_refreeze_rewrites_the_header_it_prints(old):
+    p = old / "PREREG.md"
     p.write_text(p.read_text().replace("## Randomization", "## Randomization\n\nBy seed."))
-    _run(["git", "add", "-A"], cwd=repo)
+    _run(["git", "add", "-A"], cwd=old)
     _run(
-        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "edit"], cwd=repo
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "edit"], cwd=old
     )
-    r = run(["freeze", "--force", "--access", "nothing run"], repo)
+    r = run(["freeze", "--force", "--access", "nothing run"], old)
     printed = [w for w in r.stdout.split() if len(w.rstrip("…")) == 16][-1].rstrip("…")
     assert printed in p.read_text(), "freeze printed a digest it did not write"
-    assert run(["check"], repo).returncode == 0
+    assert run(["check"], old).returncode == 0
 
 
-def test_status_note_survives_the_freeze_intact(repo):
-    p = repo / "PREREG.md"
-    p.write_text(
-        p.read_text().replace(
-            "**Status:** DRAFT — not frozen.",
-            "**Status:** DRAFT — not frozen. Third version; see Log.",
-        )
-    )
-    _run(["git", "add", "-A"], cwd=repo)
+def test_status_note_survives_the_freeze_intact(old):
+    p = old / "PREREG.md"
+    status = next(ln for ln in p.read_text().splitlines() if ln.startswith("**Status:**"))
+    p.write_text(p.read_text().replace(status, f"{status} Third version; see Log."))
+    _run(["git", "add", "-A"], cwd=old)
     _run(
-        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "note"], cwd=repo
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "note"], cwd=old
     )
-    run(["freeze"], repo)
+    run(["freeze", "--force", "--access", "nothing run"], old)
     text = p.read_text()
     frozen_line = next(ln for ln in text.splitlines() if ln.startswith("**Frozen:**"))
     assert frozen_line.strip().endswith(plan.today()), (
         f"note was glued onto the freeze date: {frozen_line!r}"
     )
     assert "Third version; see Log." in text
-    assert run(["check"], repo).returncode == 0
+    assert run(["check"], old).returncode == 0
 
 
-def test_refreezing_an_unedited_plan_is_idempotent(repo):
-    run(["freeze"], repo)
-    first = (repo / "PREREG.md").read_text()
+def test_refreezing_an_unedited_plan_is_idempotent(old):
+    first = (old / "PREREG.md").read_text()
     digest = re.search(r"`([0-9a-f]{64})`", first).group(1)
-    run(["freeze", "--force", "--access", "nothing run"], repo)
-    second = (repo / "PREREG.md").read_text()
+    run(["freeze", "--force", "--access", "nothing run"], old)
+    second = (old / "PREREG.md").read_text()
     assert re.search(r"`([0-9a-f]{64})`", second).group(1) == digest
-    assert run(["check"], repo).returncode == 0
+    assert run(["check"], old).returncode == 0
 
 
 # --- what the hash does not cover ------------------------------------------------------------
 
 
-def test_freeze_refuses_a_plan_with_no_status_line(repo):
-    p = repo / "PREREG.md"
-    p.write_text(p.read_text().replace("**Status:** DRAFT — not frozen.", ""))
-    _run(["git", "add", "-A"], cwd=repo)
-    _run(
-        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "no status"],
-        cwd=repo,
-    )
-    r = run(["freeze"], repo)
-    assert r.returncode != 0, "reported a freeze it did not perform"
-    # A refusal has to leave the plan unfrozen. The earlier form of this assertion was
-    # `"not frozen" not in ... or r.returncode != 0`, whose right operand the line above had
-    # already proven true, so it could not fail whatever `check` printed.
-    check = run(["check"], repo)
-    assert "not frozen" in check.stdout
-    assert check.returncode == 2
-
-
-def test_a_status_marker_in_the_body_cannot_hide_from_the_hash(repo):
+def test_a_status_marker_in_the_body_cannot_hide_from_the_hash(old):
     """Marker-prefixed lines are skipped when hashing, so one in the body would be editable
     after freezing without `check` noticing."""
-    p = repo / "PREREG.md"
+    p = old / "PREREG.md"
     p.write_text(
         p.read_text().replace(
             "## Randomization", "## Randomization\n\n**Frozen:** whatever the author likes\n"
         )
     )
-    _run(["git", "add", "-A"], cwd=repo)
+    _run(["git", "add", "-A"], cwd=old)
     _run(
         [
             "git",
@@ -203,26 +202,26 @@ def test_a_status_marker_in_the_body_cannot_hide_from_the_hash(repo):
             "-m",
             "marker in body",
         ],
-        cwd=repo,
+        cwd=old,
     )
-    r = run(["freeze"], repo)
+    r = run(["freeze", "--force", "--access", "nothing run"], old)
     assert r.returncode == 1, "froze a plan whose body line the hash does not cover"
     assert "**Frozen:** whatever the author likes" in r.stdout, (
         "the refusal must name the offending line"
     )
 
 
-def test_a_log_marker_in_the_body_cannot_truncate_the_hash(repo):
+def test_a_log_marker_in_the_body_cannot_truncate_the_hash(old):
     """Hashing stops at the log marker. One in the body would leave the real plan after it
     unhashed and freely editable."""
-    p = repo / "PREREG.md"
+    p = old / "PREREG.md"
     p.write_text(
         p.read_text().replace(
             "## Randomization",
             "## Randomization\n\nSeeds 0-4.\n\n---\n\n## Log\n\n## Sample size\n\nn=300 per arm.\n",
         )
     )
-    _run(["git", "add", "-A"], cwd=repo)
+    _run(["git", "add", "-A"], cwd=old)
     _run(
         [
             "git",
@@ -235,27 +234,25 @@ def test_a_log_marker_in_the_body_cannot_truncate_the_hash(repo):
             "-m",
             "marker in body",
         ],
-        cwd=repo,
+        cwd=old,
     )
-    r = run(["freeze"], repo)
+    r = run(["freeze", "--force", "--access", "nothing run"], old)
     assert r.returncode == 1, "froze a plan whose tail the hash does not cover"
     assert "more than once" in r.stdout
 
 
-def test_line_endings_do_not_change_the_hash(repo):
-    run(["freeze"], repo)
-    p = repo / "PREREG.md"
+def test_line_endings_do_not_change_the_hash(old):
+    p = old / "PREREG.md"
     p.write_bytes(p.read_text().replace("\n", "\r\n").encode())
-    assert run(["check"], repo).returncode == 0, (
+    assert run(["check"], old).returncode == 0, (
         "a checkout with CRLF endings must not read as a tampered plan"
     )
 
 
-def test_trailing_whitespace_alone_is_not_a_change(repo):
-    run(["freeze"], repo)
-    p = repo / "PREREG.md"
+def test_trailing_whitespace_alone_is_not_a_change(old):
+    p = old / "PREREG.md"
     p.write_text(p.read_text() + "\n\n")
-    assert run(["check"], repo).returncode == 0
+    assert run(["check"], old).returncode == 0
 
 
 # --- the log is the tamper record, so it is worth attacking -----------------------------------
@@ -263,6 +260,7 @@ def test_trailing_whitespace_alone_is_not_a_change(repo):
 
 def test_a_log_note_cannot_forge_another_entry(repo):
     run(["freeze"], repo)
+    run(["log", "an honest note", "--access", "no results seen"], repo)
     run(
         [
             "log",
@@ -272,14 +270,14 @@ def test_a_log_note_cannot_forge_another_entry(repo):
         ],
         repo,
     )
-    text = (repo / "PREREG.md").read_text()
+    text = (repo / "PREREG.log").read_text()
+    assert "an honest note" in text
     assert "2020-01-01  frozen at" not in text, "a newline in a note forged a second log entry"
 
 
-def test_a_log_note_cannot_break_out_of_the_fence(repo):
-    run(["freeze"], repo)
-    run(["log", "see ``` and then some", "--access", "no results seen"], repo)
-    text = (repo / "PREREG.md").read_text()
+def test_a_log_note_cannot_break_out_of_the_fence(old):
+    run(["log", "see ``` and then some", "--access", "no results seen"], old)
+    text = (old / "PREREG.md").read_text()
     _, _, tail = text.partition(plan.MARK)
     assert tail.count("```") == 2, f"fence count is {tail.count('```')}, log structure broken"
 
@@ -297,9 +295,8 @@ def test_freezing_without_a_commit_says_so(tmp_path):
     r = run(["freeze", "--force", "--access", "nothing run"], plan)
     assert r.returncode == 1, r.stdout
     assert "not in a git repository with a commit" in r.stdout
-    text = (plan / "PREREG.md").read_text()
-    assert "**Plan sha256:**" not in text, "a refused freeze must not write a digest"
-    assert "DRAFT" in text
+    assert not (plan / ".prereg").exists(), "a refused freeze must not write a record"
+    assert (plan / "PREREG.md").read_text() == template.render("study")
 
 
 def test_check_at_a_root_fails_if_any_plan_below_it_changed(tmp_path):
@@ -314,7 +311,7 @@ def test_check_at_a_root_fails_if_any_plan_below_it_changed(tmp_path):
     run(["freeze"], tmp_path / "good")
     run(["freeze"], tmp_path / "bad")
     p = tmp_path / "bad" / "PREREG.md"
-    p.write_text(p.read_text().replace("## Randomization", "## Randomisation"))
+    edit(p, p.read_text().replace("## Randomization", "## Randomisation"))
     assert run(["check"], tmp_path).returncode != 0, (
         "a root check passed while a plan below it had been edited"
     )
@@ -326,7 +323,7 @@ def test_a_long_note_still_separates_from_its_access_level(repo):
     run(["freeze"], repo)
     note = "restricting the target to {0,1} and {0,1,2} because its value set is integers"
     run(["log", note, "--access", "no results seen"], repo)
-    line = next(ln for ln in (repo / "PREREG.md").read_text().splitlines() if note in ln)
+    line = next(ln for ln in (repo / "PREREG.log").read_text().splitlines() if note in ln)
     entry = line.rpartition(log.LOG_MARK)[0] or line
     assert entry.rstrip().endswith("no results seen")
     assert not line.endswith(note + "no results seen"), "access level glued to the note"
@@ -336,14 +333,13 @@ def test_a_long_note_still_separates_from_its_access_level(repo):
 # --- the log is append-only, and now says so ------------------------------------------------
 
 
-def test_deleting_a_log_entry_is_visible(repo):
+def test_deleting_a_log_entry_is_visible(old):
     """The plan's hash stops at the log, since the log is written after freezing. That left
     the record of deviations -- the only account of what changed after the plan was fixed --
     freely deletable while `check` still reported the plan unchanged."""
-    run(["freeze"], repo)
-    run(["log", "saw the outcome table", "--access", "results seen"], repo)
-    run(["log", "adjusted the threshold", "--access", "results seen"], repo)
-    path = repo / "PREREG.md"
+    run(["log", "saw the outcome table", "--access", "results seen"], old)
+    run(["log", "adjusted the threshold", "--access", "results seen"], old)
+    path = old / "PREREG.md"
     assert log.log_problems(path.read_text()) == []
 
     kept = [ln for ln in path.read_text().splitlines() if "saw the outcome table" not in ln]
@@ -353,38 +349,35 @@ def test_deleting_a_log_entry_is_visible(repo):
     assert "removed" in problems[0]
 
 
-def test_editing_a_log_entry_is_visible(repo):
-    run(["freeze"], repo)
-    run(["log", "results seen on the held-out split", "--access", "results seen"], repo)
-    path = repo / "PREREG.md"
+def test_editing_a_log_entry_is_visible(old):
+    run(["log", "results seen on the held-out split", "--access", "results seen"], old)
+    path = old / "PREREG.md"
     path.write_text(
         path.read_text().replace("results seen on the held-out split", "nothing was examined")
     )
     assert log.log_problems(path.read_text())
 
 
-def test_check_reports_a_tampered_log(repo):
-    run(["freeze"], repo)
-    run(["log", "saw the outcomes", "--access", "results seen"], repo)
-    path = repo / "PREREG.md"
+def test_check_reports_a_tampered_log(old):
+    run(["log", "saw the outcomes", "--access", "results seen"], old)
+    path = old / "PREREG.md"
     kept = [ln for ln in path.read_text().splitlines() if "saw the outcomes" not in ln]
     path.write_text("\n".join(kept) + "\n")
-    result = run(["check"], repo)
+    result = run(["check"], old)
     assert result.returncode != 0
     assert "log" in result.stdout.lower()
 
 
-def test_content_hidden_behind_a_marker_after_freezing_is_reported(repo):
+def test_content_hidden_behind_a_marker_after_freezing_is_reported(old):
     """`freeze` refuses a plan that hides content behind a marker line; `check` did not.
 
     `plan_of` skips marker-prefixed lines so the hash cannot cover itself, which means a line
     inserted *after* the freeze sits in the plan uncovered. `**Frozen:** we will also accept
     p<0.10` is a commitment the reader sees and the digest does not.
     """
-    run(["freeze"], repo)
-    assert run(["check"], repo).returncode == 0
+    assert run(["check"], old).returncode == 0
 
-    path = repo / "PREREG.md"
+    path = old / "PREREG.md"
     before = plan.sha256_of(plan.plan_of(path.read_text()))
     # Exactly one line, and no blank line around it: `plan_of` drops the marker line but joins
     # what remains, so an inserted blank would move the digest and the hash would catch it
@@ -398,7 +391,7 @@ def test_content_hidden_behind_a_marker_after_freezing_is_reported(repo):
         "the digest must be blind to this, or the test is not exercising the hidden-content check"
     )
 
-    r = run(["check"], repo)
+    r = run(["check"], old)
     assert r.returncode != 0, "a commitment added after the freeze reported as unchanged"
     assert "UNCOVERED" in r.stdout
     assert "p<0.10" in r.stdout
@@ -443,7 +436,7 @@ def test_a_plan_below_the_governing_one_is_checked_with_it(repo):
     assert "2 plans: 2 unchanged" in r.stdout
 
     below = repo / "survey" / "PREREG.md"
-    below.write_text(below.read_text().replace("## Randomization", "## Randomisation"))
+    edit(below, below.read_text().replace("## Randomization", "## Randomisation"))
     r = run(["check"], repo)
     assert r.returncode == 1
     assert "2 plans: 1 unchanged, 1 changed" in r.stdout
@@ -479,17 +472,16 @@ def test_a_root_check_passes_when_every_plan_below_it_is_frozen(tmp_path):
     assert run(["check"], tmp_path).returncode == 0
 
 
-def test_replacing_the_last_log_entry_is_caught_by_the_anchor(repo):
+def test_replacing_the_last_log_entry_is_caught_by_the_anchor(old):
     """Chaining cannot see the end of the log rewritten, because the chain is rebuilt with it.
 
     Only the anchor's head witnesses which entry is last. Deleting one changes the count and
     is caught there; substituting one keeps the count, so the head is the only thing that
     disagrees.
     """
-    run(["freeze"], repo)
-    run(["log", "saw the outcome table", "--access", "results seen"], repo)
-    run(["log", "adjusted the threshold", "--access", "results seen"], repo)
-    path = repo / "PREREG.md"
+    run(["log", "saw the outcome table", "--access", "results seen"], old)
+    run(["log", "adjusted the threshold", "--access", "results seen"], old)
+    path = old / "PREREG.md"
     assert log.log_problems(path.read_text()) == []
 
     lines = path.read_text().splitlines()
@@ -507,7 +499,7 @@ def test_replacing_the_last_log_entry_is_caught_by_the_anchor(repo):
     problems = log.log_problems(path.read_text())
     assert problems, "a rewritten last entry chained cleanly and nothing else looked at it"
     assert any("not the one recorded" in p for p in problems), problems
-    assert run(["check"], repo).returncode != 0
+    assert run(["check"], old).returncode != 0
 
 
 def _append_by_hand(path, line: str) -> None:
@@ -518,14 +510,13 @@ def _append_by_hand(path, line: str) -> None:
     path.write_text(head + mark + before + line + "\n" + fence + after)
 
 
-def test_an_entry_added_by_hand_is_reported_as_added_not_removed(repo):
+def test_an_entry_added_by_hand_is_reported_as_added_not_removed(old):
     # Observed 2-3 Oct 2026 on two copies of one registration: a seventh entry typed into the
     # log beneath six that `prereg log` wrote was reported as "the log records 6 entries and
     # holds 7: an entry has been removed from the end". The log had grown. An author told an
     # entry was removed from their registration goes looking for a deletion that never happened.
-    run(["freeze"], repo)
-    run(["log", "saw the outcome table", "--access", "results seen"], repo)
-    path = repo / "PREREG.md"
+    run(["log", "saw the outcome table", "--access", "results seen"], old)
+    path = old / "PREREG.md"
     n = len(log.log_lines(path.read_text()))
     _append_by_hand(path, "2026-09-04  a note typed into the file  results seen")
 
@@ -539,13 +530,12 @@ def test_an_entry_added_by_hand_is_reported_as_added_not_removed(repo):
     assert "`prereg log`" in problems[0], "the message has to say how to reconcile it"
 
 
-def test_an_entry_removed_from_the_end_is_reported_as_removed(repo):
+def test_an_entry_removed_from_the_end_is_reported_as_removed(old):
     # The other direction. Removing the last entry leaves a chain that still verifies, so the
     # anchor's count is the only witness, and it must say removed and not added.
-    run(["freeze"], repo)
-    run(["log", "saw the outcome table", "--access", "results seen"], repo)
-    run(["log", "adjusted the threshold", "--access", "results seen"], repo)
-    path = repo / "PREREG.md"
+    run(["log", "saw the outcome table", "--access", "results seen"], old)
+    run(["log", "adjusted the threshold", "--access", "results seen"], old)
+    path = old / "PREREG.md"
     n = len(log.log_lines(path.read_text()))
     kept = [ln for ln in path.read_text().splitlines() if "adjusted the threshold" not in ln]
     path.write_text("\n".join(kept) + "\n")
@@ -558,53 +548,50 @@ def test_an_entry_removed_from_the_end_is_reported_as_removed(repo):
     assert "added" not in problems[0], problems
 
 
-def test_logging_after_an_entry_added_by_hand_brings_the_record_up_to_date(repo):
+def test_logging_after_an_entry_added_by_hand_brings_the_record_up_to_date(old):
     # The reconciliation the message names has to work, or the message sends the author round in
     # a circle. `prereg log` folds an unchained entry into the chain and recounts the anchor.
-    run(["freeze"], repo)
-    path = repo / "PREREG.md"
+    path = old / "PREREG.md"
     _append_by_hand(path, "2026-09-04  a note typed into the file  results seen")
-    assert run(["check"], repo).returncode == 1
+    assert run(["check"], old).returncode == 1
 
-    run(["log", "the entry before this one was written by hand", "--access", "results seen"], repo)
+    run(["log", "the entry before this one was written by hand", "--access", "results seen"], old)
 
     assert log.log_problems(path.read_text()) == []
-    assert run(["check"], repo).returncode == 0
+    assert run(["check"], old).returncode == 0
 
 
-def test_check_does_not_say_the_plan_was_edited_when_only_the_log_was(repo):
+def test_check_does_not_say_the_plan_was_edited_when_only_the_log_was(old):
     # `check` printed "The plan was edited after freezing" beneath LOG ALTERED, so the same
     # output said the plan hash matched and that the plan had been edited.
-    run(["freeze"], repo)
-    _append_by_hand(repo / "PREREG.md", "2026-09-04  a note typed into the file  results seen")
+    _append_by_hand(old / "PREREG.md", "2026-09-04  a note typed into the file  results seen")
 
-    r = run(["check"], repo)
+    r = run(["check"], old)
 
     assert r.returncode == 1
     assert "LOG ALTERED" in r.stdout
     assert "plan was edited" not in r.stdout, r.stdout
 
 
-def test_a_forced_refreeze_after_results_were_seen_must_say_what_was_seen(repo):
+def test_a_forced_refreeze_after_results_were_seen_must_say_what_was_seen(old):
     """`nothing run` was written unconditionally, so a rewrite forced after a `results seen`
     entry logged itself as an amendment directly beneath the line saying otherwise."""
-    run(["freeze"], repo)
-    run(["log", "saw the outcome table", "--access", "results seen"], repo)
+    run(["log", "saw the outcome table", "--access", "results seen"], old)
 
-    before = log.log_lines((repo / "PREREG.md").read_text())
+    before = log.log_lines((old / "PREREG.md").read_text())
     assert before[-1].endswith("results seen") or "results seen" in before[-1]
 
-    r = run(["freeze", "--force"], repo)
+    r = run(["freeze", "--force"], old)
     assert r.returncode == 1, r.stdout
     assert "cannot describe itself" in r.stdout
     # The refusal has to leave the log alone. Writing `nothing run` blind put an amendment
     # claiming nothing had been run directly beneath the entry recording that the outcomes
     # had been examined.
-    assert log.log_lines((repo / "PREREG.md").read_text()) == before
+    assert log.log_lines((old / "PREREG.md").read_text()) == before
 
-    ok = run(["freeze", "--force", "--access", "results seen"], repo)
+    ok = run(["freeze", "--force", "--access", "results seen"], old)
     assert ok.returncode == 0, ok.stdout
-    after = log.log_lines((repo / "PREREG.md").read_text())
+    after = log.log_lines((old / "PREREG.md").read_text())
     assert len(after) == len(before) + 1
     assert "results seen" in after[-1] and "nothing run" not in after[-1]
 

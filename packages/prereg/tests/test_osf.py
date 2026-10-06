@@ -11,15 +11,16 @@ from prereg import cli, osf, plan, template
 
 
 def test_parse_plan_extracts_title_and_sections():
-    text = template.render("My experiment", "2026-01-01")
+    text = template.render("My experiment")
     title, sections = osf._parse_plan(text)
     assert title == "My experiment"
     assert "Research questions or hypotheses" in sections
     assert "Inference criteria" in sections
 
 
-def test_parse_plan_strips_status_lines():
-    text = template.render("test", "2026-01-01")
+def test_parse_plan_strips_status_lines(frozen_in_place):
+    text = frozen_in_place.decode()
+    assert "**Plan sha256:**" in text
     _, sections = osf._parse_plan(text)
     for content in sections.values():
         assert "**Status:**" not in content
@@ -27,8 +28,9 @@ def test_parse_plan_strips_status_lines():
         assert "**Frozen:**" not in content
 
 
-def test_parse_plan_stops_at_log():
-    text = template.render("test", "2026-01-01")
+def test_parse_plan_stops_at_log(frozen_in_place):
+    text = frozen_in_place.decode()
+    assert plan.MARK in text
     text += "\nsome extra content after log\n"
     _, sections = osf._parse_plan(text)
     for content in sections.values():
@@ -103,20 +105,20 @@ def test_heading_map_covers_all_template_questions():
 
 def _template_plan(tmp_path, monkeypatch, answers: dict[str, str] | None = None, extra="") -> str:
     """The text `prereg new` writes, with `answers` put under their headings and `extra`
-    inserted above the log line."""
+    added at its end."""
     monkeypatch.chdir(tmp_path)
     assert cli._main(["new", "study"]) == 0
     text = (tmp_path / "study" / "PREREG.md").read_text()
     for heading, content in (answers or {}).items():
         text, n = re.subn(
-            rf"(## {re.escape(heading)}\n).*?(?=\n## |\n---)",
+            rf"(## {re.escape(heading)}\n).*?(?=\n## |\Z)",
             rf"\g<1>{content}\n",
             text,
             count=1,
             flags=re.S,
         )
         assert n == 1, heading
-    return text.replace(plan.MARK, extra + plan.MARK)
+    return text + extra
 
 
 def _pushed(fake_osf) -> dict:

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
 import subprocess
 
 import pytest
@@ -91,7 +90,17 @@ def plan(tmp_path, monkeypatch):
 
 
 def frozen_digest(path) -> str:
-    return re.search(r"\*\*Plan sha256:\*\* `([0-9a-f]{64})`", path.read_text()).group(1)
+    digest = cli.frozen_digest(path)
+    assert digest is not None
+    return digest
+
+
+@pytest.fixture
+def in_place(plan, frozen_in_place):
+    """The plan as an earlier version froze it, with the freeze and the log in the file."""
+    plan.write_bytes(frozen_in_place)
+    git("commit", "-q", "-am", "frozen", cwd=plan.parent.parent)
+    return plan
 
 
 def test_a_freeze_leaves_a_pending_proof_of_exactly_the_frozen_digest(plan, calendars, capsys):
@@ -143,8 +152,9 @@ def test_a_freeze_with_no_calendar_reachable_still_freezes_and_can_be_stamped_la
     assert anchor.status(plan.with_name("PREREG.md.ots").read_bytes(), frozen_digest(plan)).pending
 
 
-def test_a_forced_refreeze_keeps_the_earlier_proof_under_its_own_digest(plan, calendars):
-    cli.main(["freeze"])
+def test_a_forced_refreeze_keeps_the_earlier_proof_under_its_own_digest(in_place, calendars):
+    plan = in_place
+    assert cli.main(["timestamp"]) == 2
     first = frozen_digest(plan)
     plan.write_text(plan.read_text().replace("## Study type", "## Study type\n\nObservational."))
     git("commit", "-q", "-am", "amend", cwd=plan.parent.parent)
@@ -157,11 +167,78 @@ def test_a_forced_refreeze_keeps_the_earlier_proof_under_its_own_digest(plan, ca
     assert frozen_digest(plan) != first
 
 
-def test_no_timestamp_sends_nothing(plan, calendars, monkeypatch):
-    sent: list[str] = []
-    monkeypatch.setattr(anchor, "remote", lambda url: sent.append(url))
+def test_there_is_no_flag_to_freeze_without_a_timestamp(plan, calendars):
+    with pytest.raises(SystemExit):
+        cli.main(["freeze", "--no-timestamp"])
 
-    assert cli.main(["freeze", "--no-timestamp"]) == 0
+    assert cli.frozen_digest(plan) is None, "a refused flag must not freeze"
+    assert cli.main(["freeze"]) == 0
+    assert anchor.status(plan.with_name("PREREG.md.ots").read_bytes(), frozen_digest(plan)).pending
 
-    assert sent == []
-    assert not plan.with_name("PREREG.md.ots").exists()
+
+def test_an_owed_timestamp_is_reported_by_every_check_until_timestamp_makes_it(
+    plan, calendars, monkeypatch, capsys
+):
+    monkeypatch.setenv(anchor.CALENDARS_ENV, "")
+    assert cli.main(["freeze"]) == 0
+    assert "The timestamp is owed" in capsys.readouterr().out
+    for _ in range(2):
+        assert cli.main(["check"]) == 0
+        assert "  timestamp  owed. `prereg timestamp` completes it." in capsys.readouterr().out
+    assert cli.main(["timestamp"]) == 1, "no calendar is configured, so nothing can be stamped"
+    assert "NOT STAMPED" in capsys.readouterr().out
+
+    monkeypatch.setenv(anchor.CALENDARS_ENV, f"{ALICE},{BOB}")
+    assert cli.main(["timestamp"]) == 2
+    capsys.readouterr()
+    assert cli.main(["check"]) == 0
+    out = capsys.readouterr().out
+    assert "timestamp  owed" not in out
+    assert "pending at 2 calendars" in out
+
+
+def test_timestamp_stamps_and_dates_each_amendment_as_well_as_the_plan(plan, calendars, capsys):
+    assert cli.main(["freeze"]) == 0
+    assert cli.main(["amend"]) == 0
+    amendment = plan.with_name("PREREG_AMENDMENT_1.md")
+    amendment.write_text(
+        amendment.read_text()
+        .replace("_Name each section", "Adds `Sample size`. _")
+        .replace("_Why the plan changes._", "A second cohort.")
+        .replace("**Access level:**", "**Access level:** nothing run")
+    )
+    git("add", "-A", cwd=plan.parent)
+    git("commit", "-q", "-m", "amendment", cwd=plan.parent)
+    assert cli.main(["freeze", str(amendment)]) == 0
+    proof = amendment.with_name("PREREG_AMENDMENT_1.md.ots")
+    assert anchor.status(proof.read_bytes(), frozen_digest(amendment)).pending == (ALICE, BOB)
+    assert frozen_digest(amendment) != frozen_digest(plan)
+
+    calendars.mine(915_000)
+    capsys.readouterr()
+    assert cli.main(["timestamp"]) == 0
+
+    out = capsys.readouterr().out
+    assert f"timestamped  {plan}" in out and f"timestamped  {amendment}" in out
+    for path in (plan, amendment):
+        stamped = anchor.status(
+            path.with_name(path.name + ".ots").read_bytes(), frozen_digest(path)
+        )
+        assert stamped.blocks == (915_000,)
+
+
+def test_a_plan_frozen_in_place_is_stamped_and_dated_as_before(in_place, calendars, capsys):
+    written = in_place.read_bytes()
+    digest = "35abc8ae2767bee40600e37a5032b1536a8799fea672bdc323f6c317176dd966"
+
+    assert cli.main(["timestamp"]) == 2
+    assert f"stamped      {in_place}" in capsys.readouterr().out
+    proof = in_place.with_name("PREREG.md.ots")
+    assert anchor.status(proof.read_bytes(), digest).pending == (ALICE, BOB)
+    assert cli.main(["check"]) == 0
+    assert "pending at 2 calendars" in capsys.readouterr().out
+
+    calendars.mine(915_000)
+    assert cli.main(["timestamp"]) == 0
+    assert "Bitcoin block 915000, 2025-10-03 14:00 UTC" in capsys.readouterr().out
+    assert in_place.read_bytes() == written

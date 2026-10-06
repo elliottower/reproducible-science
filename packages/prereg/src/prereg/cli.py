@@ -1,15 +1,18 @@
 """Preregister your plan to prevent p-hacking and unfalsifiable post-hoc analysis.
 
     prereg new <name>     scaffold the plan, in OSF's headings
-    prereg freeze         record the commit and hash, append to the log
-    prereg log <note>     append a line without freezing
-    prereg check          has anything above the line changed since the freeze?
-    prereg timestamp      complete the freeze's outside timestamp, and check it against Bitcoin
+    prereg freeze         record the file's hash, the commit and the time, beside the plan
+    prereg log <note>     append a line to the log beside the plan
+    prereg amend          start an amendment: a change to the frozen plan, in a file of its own
+    prereg check          has any frozen file changed since its freeze?
+    prereg timestamp      complete each freeze's outside timestamp, and check it against Bitcoin
     prereg setup          save an OSF token to .env
     prereg register       submit the plan's OSF draft as a registration (--all: every plan)
     prereg link           create a view-only link on the OSF registration
 
-One file per experiment, one rule: never edit above the line, only append below it.
+One rule: a frozen file never changes by one byte. Anything later is a separate file: the log
+in `PREREG.log`, an amendment in `PREREG_AMENDMENT_N.md`. A plan frozen by an earlier version,
+with its freeze and its log written into the file, is read by the rule it was frozen under.
 """
 
 from __future__ import annotations
@@ -19,6 +22,7 @@ import datetime
 import hashlib
 import pathlib
 import re
+import stat
 import sys
 from dataclasses import dataclass
 
@@ -28,11 +32,12 @@ from provenance_core import (
     atomic_write_bytes,
     exclusive_lock,
     hint,
+    sha256_of_file,
     shared_lock,
 )
 from provenance_core.gitref import try_run
 
-from prereg import osf, pinned, template
+from prereg import amendment, attributes, osf, pinned, record, sidelog, staged, template
 from prereg.confirm import NotConfirmed, confirm
 from prereg.log import (
     ACCESS,
@@ -43,6 +48,7 @@ from prereg.log import (
     log_problems,
 )
 from prereg.plan import (
+    MARK,
     PREREG,
     STATUS_BLOCK,
     find,
@@ -86,9 +92,11 @@ def proof_path(path: pathlib.Path) -> pathlib.Path:
 def _stamp(path: pathlib.Path, digest: str) -> None:
     """Send the freeze's digest to the calendars and keep the proof beside the plan.
 
+    Always attempted: a freeze with no outside date is the weak form, and no flag asks for it.
     A freeze that cannot be stamped is still a freeze, so a failure here is reported and never
-    undoes it. A proof of an earlier freeze is kept under its digest rather than overwritten: it
-    dates the plan as it was then, which a forced re-freeze does not make untrue.
+    undoes it. The timestamp is then owed, and `check` says so until `timestamp` completes it.
+    A proof of an earlier freeze is kept under its digest rather than overwritten: it dates the
+    plan as it was then, which a forced re-freeze of a plan frozen in place does not make untrue.
     """
     proof = proof_path(path)
     if proof.exists():
@@ -102,7 +110,8 @@ def _stamp(path: pathlib.Path, digest: str) -> None:
         atomic_write_bytes(proof, anchor.stamp(digest))
     except anchor.AnchorError as e:
         print(f"\nnot timestamped: {e}")
-        print("`prereg timestamp` stamps it once the calendars can be reached.")
+        print("The timestamp is owed. `prereg timestamp` completes it once the calendars can be")
+        print("reached, and `prereg check` reports it until then.")
         return
     print(f"  timestamp  {proof.name}, pending until Bitcoin confirms it, usually within hours")
     print("             `prereg timestamp` then completes the proof. Commit it with the plan.")
@@ -116,36 +125,226 @@ def cmd_new(a) -> int:
     (d / "tests").mkdir(parents=True, exist_ok=True)
     (d / "results").mkdir(exist_ok=True)
     title = a.title or d.name.replace("_", " ").replace("-", " ")
-    (d / PREREG).write_text(template.render(title, today()))
+    (d / PREREG).write_text(template.render(title))
     if not (d / ".gitignore").exists():
         (d / ".gitignore").write_text(NEW_GITIGNORE)
     print(f"created {d}/")
     print(f"  {PREREG}   the plan, in OSF's headings")
     print("  tests/  results/")
-    print("\nfill it in, then `prereg freeze`. Never edit above the log line afterwards.")
+    print("\nfill it in, commit it, then `prereg freeze`. A frozen plan never changes: a note")
+    print("goes in the log with `prereg log`, a change in an amendment with `prereg amend`.")
     return 0
 
 
+def frozen_digest(path: pathlib.Path) -> str | None:
+    """The digest a file was frozen with: from its record, or from a plan frozen in place."""
+    whole = record.read(path)
+    if whole is not None:
+        return whole.sha256
+    if not path.is_file():
+        return None
+    m = FROZEN_DIGEST.search(path.read_text())
+    return m.group(1) if m else None
+
+
+def _append(path: pathlib.Path, event: str, access: str) -> None:
+    """Write one log entry where this plan keeps its log: beside it, or in it if frozen in place."""
+    whole = record.read(path)
+    if whole is None:
+        append(path, today(), event, access)
+    else:
+        sidelog.append(path, whole.sha256, record.now(), event, access)
+
+
+def _entries(path: pathlib.Path) -> list[str]:
+    """The plan's log entries, from wherever this plan keeps its log."""
+    if record.read(path) is not None:
+        return sidelog.entries(path)
+    return log_lines(path.read_text())
+
+
 def cmd_freeze(a) -> int:
-    path = find()
-    if path is None:
+    plan = find()
+    if plan is None:
         print(f"no {PREREG} here or above. `prereg new <name>` makes one.")
         return 2
-    # The plan is read below and written near the end of this function, and `prereg log` appends
-    # to the same file. Without a hold across both, a log entry landing between them is erased --
+    path = plan if a.file is None else pathlib.Path(a.file).resolve()
+    if path != plan and not (path.is_file() and path in amendment.beside(plan)):
+        print(f"{a.file} is not an amendment to {plan}.")
+        print(f"`prereg amend` makes one, as {amendment.path_for(plan, 1).name} beside the plan.")
+        return 1
+    # A plan frozen in place is read below and written near the end, and `prereg log` appends to
+    # the same file. Without a hold across both, a log entry landing between them is erased --
     # and `set_log_anchor` runs over the stale text too, so the surviving chain and its count
-    # agree and `check` reports nothing missing. Freeze was bypassing the lock the log itself
-    # takes, which is the silent loss that chain exists to make visible.
+    # agree and `check` reports nothing missing. A freeze of the whole file holds the lock for
+    # the same span: two of them would each find no record and each write one.
     with exclusive_lock(path):
-        return _freeze_locked(a, path)
+        data = path.read_bytes()
+        if FROZEN_DIGEST.search(data.decode()):
+            return _refreeze_in_place(a, path)
+        return _freeze_whole(a, path, plan, data)
 
 
-def _freeze_locked(a, path: pathlib.Path) -> int:
-    """The freeze itself. Assumes the caller holds the lock for `path`."""
+def _commit_to_name(a, path: pathlib.Path) -> str | None:
+    """The commit a freeze of `path` names, or None after saying why there is none."""
+    repo = path.parent
+    dirty = git("status", "--porcelain", str(path), cwd=repo)
+    if dirty and not a.force:
+        print(f"{path} has uncommitted changes. Commit first — the freeze names a commit.")
+        return None
+    commit = git("rev-parse", "HEAD", cwd=repo)
+    if not commit:
+        # `git()` returns "" on any non-zero exit, so a missing binary, a locked index and a
+        # directory outside a repository all read as clean. Recording a commit-shaped string
+        # in place of a commit made an unanchored freeze look like an anchored one.
+        print(f"{path} is not in a git repository with a commit, so a freeze would name none.")
+        print("A freeze is evidence because it is anchored: commit the plan first.")
+        return None
+    return commit
+
+
+def _left_from_the_earlier_template(text: str) -> list[str]:
+    """What `prereg new` once wrote for a freeze recorded in the file, still in this draft."""
+    found = []
+    if re.search(r"^\*\*Status:\*\*[ \t]*DRAFT", text, re.M):
+        found.append("a `**Status:** DRAFT` line")
+    if MARK in text:
+        found.append("a `## Log` section under a `---` line")
+    return found
+
+
+def _freeze_whole(a, path: pathlib.Path, plan: pathlib.Path, data: bytes) -> int:
+    """Freeze a file whole: one digest over its bytes, recorded beside it, and nothing written
+    into it. Assumes the caller holds the lock for `path`."""
+    text = data.decode()
+    whole = record.read(path)
+    if whole is not None:
+        if a.osf and path == plan:
+            return _push_frozen(a, path, whole, data)
+        print(f"{path} is already frozen, and a frozen file never changes.")
+        print("`prereg log` records a note; `prereg amend` records a change to the plan.")
+        return 1
+    left = _left_from_the_earlier_template(text)
+    if left:
+        print(f"{path} carries {' and '.join(left)}, which an earlier `prereg new` wrote")
+        print("for a freeze recorded in the file. A freeze no longer writes into the plan, so")
+        print("they would stay as they are for good. Remove them, commit, and freeze again.")
+        return 1
+    commit = _commit_to_name(a, path)
+    if commit is None:
+        return 1
+
+    parent = None
+    try:
+        ledger = amendment.read_ledger(path.parent)
+    except amendment.LedgerError as e:
+        print(e)
+        return 1
+    if path == plan:
+        # A plan states no level of its own, so the ledger's floor is the default where there
+        # is one, and `--access` can raise it and not lower it.
+        access = a.access or (ledger.floor if ledger else None) or "nothing run"
+        refusal = ledger.refuses(access) if ledger else None
+        if refusal:
+            print(f"{path} cannot be frozen with --access {access!r}: {refusal}.")
+            return 1
+    else:
+        if a.osf:
+            print("--osf pushes a plan. An update to a registration is made on OSF.")
+            return 1
+        try:
+            parent, access = amendment.read(text, ledger)
+        except amendment.AmendmentError as e:
+            print(f"{path} cannot be frozen as an amendment:\n{e}")
+            return 1
+        if parent not in _frozen_here(plan):
+            print(f"{path} amends {parent[:16]}…, which is the digest of no frozen file here.")
+            return 1
+    # Everything that can refuse runs before anything is written, here or on OSF: a plan whose
+    # sections cannot map, a missing attachment, no token. A refusal found after the local
+    # freeze left a frozen plan with no draft.
+    push = None
+    if a.osf:
+        try:
+            push = _prepare_push(text, a.attach or [], _metadata_args(a))
+        except (RuntimeError, OSError) as e:
+            print(f"{e}\nNothing was frozen and nothing was sent.")
+            return 1
+    digest = hashlib.sha256(data).hexdigest()
+    where = record.write(
+        path, record.Record(path.name, digest, commit, record.now(), access, parent)
+    )
+    # Read-only stops an accidental save. It is not the guard: git does not carry the flag to
+    # another machine, and `check` is what fails on a change.
+    path.chmod(stat.S_IMODE(path.stat().st_mode) & ~0o222)
+    print(f"frozen  {path}")
+    print(f"  commit  {commit[:12]}")
+    print(f"  sha256  {digest[:16]}…  (of the whole file)")
+    print(f"  access  {access}")
+    print(f"  record  {where.relative_to(path.parent)}")
+    print("  The file is read-only now, and nothing writes to it again.")
+    if ledger is not None and ledger.floor:
+        print(f"  ledger  {ledger.summary}  ({ledger.path})")
+    # The plan's rule covers its amendments and its log, so an amendment to a plan frozen whole
+    # adds nothing. An amendment to a plan frozen in place adds the amendments' rule alone.
+    marked = [f"{plan.stem}_AMENDMENT_*.md"]
+    if path == plan:
+        marked = [plan.name, *marked, sidelog.log_path(plan).name]
+    attributes_file, rules = attributes.mark_binary_safe(path.parent, marked)
+    if rules:
+        print(f"  {attributes_file.name}  {len(rules)} `-text` rules added, so no checkout")
+        print(f"             converts the line endings of a frozen file  ({attributes_file})")
+    _stamp(path, digest)
+    print(
+        f"\nCommit {record.RECORDS}/, {attributes.ATTRIBUTES} and the proof. "
+        "The freeze is only evidence once it is in history."
+    )
+
+    if push:
+        try:
+            _push(path, push, digest, access)
+        except RuntimeError as e:
+            print(f"\nOSF push failed: {e}", file=sys.stderr)
+            return 1
+    return 0
+
+
+def _push_frozen(a, path: pathlib.Path, whole: record.Record, data: bytes) -> int:
+    """Push the OSF draft of a plan already frozen whole, leaving the freeze as it is.
+
+    A push that failed after the freeze, or a plan frozen without `--osf`, has no draft, and the
+    freeze cannot be made again to get one. The draft is of the frozen bytes or it is not made.
+    """
+    if hashlib.sha256(data).hexdigest() != whole.sha256:
+        print(f"{path} has changed since its freeze, and only the frozen plan can be pushed.")
+        return 1
+    draft = osf.last(osf.DRAFT_EVENT, sidelog.entries(path))
+    if draft is not None:
+        print(f"{path} is already frozen, and its log records OSF draft {draft.group(1)}.")
+        return 1
+    if not a.access:
+        print(f"{path} was frozen on {whole.date}, and the push is logged now. Pass --access:")
+        for level, why in ACCESS_MEANING.items():
+            print(f"  {level:<20} {why}")
+        return 1
+    try:
+        push = _prepare_push(data.decode(), a.attach or [], _metadata_args(a))
+        _push(path, push, whole.sha256, a.access)
+    except (RuntimeError, OSError) as e:
+        print(f"{e}", file=sys.stderr)
+        return 1
+    return 0
+
+
+def _refreeze_in_place(a, path: pathlib.Path) -> int:
+    """Re-freeze a plan an earlier version froze in place, as that version did.
+
+    Nothing converts such a plan, so its freeze stays in the file and a forced re-freeze rewrites
+    it there. Assumes the caller holds the lock for `path`.
+    """
     text = path.read_text()
     if STATUS_BLOCK.search(text) is None:
         print(f"{path} has no `**Status:**` line, so there is nowhere to record the freeze.")
-        print("Add one — `**Status:** DRAFT — not frozen.` — or scaffold with `prereg new`.")
         return 1
     if "**Status:** DRAFT" not in text and not a.force:
         print(f"{path} is already frozen. Use `prereg log` to append, or --force.")
@@ -162,19 +361,8 @@ def _freeze_locked(a, path: pathlib.Path) -> int:
         )
         return 1
 
-    repo = path.parent
-    dirty = git("status", "--porcelain", str(path), cwd=repo)
-    if dirty and not a.force:
-        print(f"{path} has uncommitted changes. Commit first — the freeze names a commit.")
-        return 1
-
-    commit = git("rev-parse", "HEAD", cwd=repo)
-    if not commit:
-        # `git()` returns "" on any non-zero exit, so a missing binary, a locked index and a
-        # directory outside a repository all read as clean. Recording a commit-shaped string
-        # in place of a commit made an unanchored freeze look like an anchored one.
-        print(f"{path} is not in a git repository with a commit, so a freeze would name none.")
-        print("A freeze is evidence because it is anchored: commit the plan first.")
+    commit = _commit_to_name(a, path)
+    if commit is None:
         return 1
     # Normalize the layout first, then hash. Freezing moves any status note onto
     # its own line, and `plan_of` skips marker lines but not that one, so hashing
@@ -212,8 +400,7 @@ def _freeze_locked(a, path: pathlib.Path) -> int:
     print(f"frozen  {path}")
     print(f"  commit  {commit[:12]}")
     print(f"  sha256  {digest[:16]}…  (of everything above the log)")
-    if not a.no_timestamp:
-        _stamp(path, digest)
+    _stamp(path, digest)
     print("\nCommit this. The freeze is only evidence once it is in history.")
 
     if push:
@@ -315,7 +502,7 @@ def _prepare_push(text: str, files: list[str], m: MetadataArgs) -> Push:
 
 def _push(path: pathlib.Path, push: Push, digest: str, access: str) -> None:
     draft = osf.create_draft(push.body, push.token)
-    append(path, today(), osf.draft_event(draft.id, digest), access)
+    _append(path, osf.draft_event(draft.id, digest), access)
     print(f"\nOSF draft created: https://osf.io/registries/drafts/{draft.id}/")
     osf.set_metadata(draft.id, push.metadata, push.token)
     meta = push.metadata
@@ -338,9 +525,40 @@ def _push(path: pathlib.Path, push: Push, digest: str, access: str) -> None:
             raise RuntimeError(
                 f"OSF holds {att.name} with sha256 {received}, not the {att.sha256} sent."
             )
-        append(path, today(), osf.attached_event(att.name, att.sha256), access)
+        _append(path, osf.attached_event(att.name, att.sha256), access)
         print(f"  attached  {att.name}  sha256 {att.sha256[:16]}…")
     print("`prereg register` submits it. Registration is irreversible.")
+
+
+def cmd_amend(a) -> int:
+    """Start an amendment: the next `PREREG_AMENDMENT_N.md`, naming what it amends by digest."""
+    plan = find()
+    if plan is None:
+        print(f"no {PREREG} here or above.")
+        return 2
+    parent = plan.with_name(a.parent) if a.parent else plan
+    here = parent.is_file() and parent in (plan, *amendment.beside(plan))
+    digest = frozen_digest(parent) if here else None
+    if digest is None:
+        print(f"{parent} is not a frozen file here, and an amendment names its parent by digest.")
+        print("A plan not yet frozen is a draft: edit it, then `prereg freeze`.")
+        return 1
+    try:
+        ledger = amendment.read_ledger(plan.parent)
+    except amendment.LedgerError as e:
+        print(e)
+        return 1
+    n = 1 + max((amendment.number(p) for p in amendment.beside(plan)), default=0)
+    path = amendment.path_for(plan, n)
+    title = osf._parse_plan(plan.read_text())[0] or plan.parent.name
+    path.write_text(amendment.render(n, title, parent, digest, ledger))
+    print(f"created {path}")
+    print(f"  amends  {parent.name}  {digest[:16]}…")
+    if ledger is not None:
+        level = ledger.level or "no access level"
+        print(f"  seen    {level}; runs recorded: {ledger.runs}  ({ledger.path})")
+    print(f"\nfill it in, commit it, then `prereg freeze {path.name}`. Its date is its freeze.")
+    return 0
 
 
 def cmd_log(a) -> int:
@@ -363,15 +581,25 @@ def cmd_log(a) -> int:
     if "```" in a.note:
         print("a note cannot contain ``` — it would close the log block early.")
         return 1
-    append(path, today(), a.note, a.access)
+    whole = record.read(path)
+    if whole is None and frozen_digest(path) is None:
+        print(f"{path} is not frozen, and a log's first entry carries the frozen plan's digest.")
+        print("`prereg freeze` first. Until then the plan is a draft: edit it.")
+        return 1
+    _append(path, a.note, a.access)
     print(f"logged: {a.note}  ({a.access})")
+    if whole is None:
+        print(
+            f"Plans frozen from now on keep their log beside them, in {sidelog.log_path(path).name}; "
+            "this plan was frozen with its log in the file, and it stays there."
+        )
     if a.access == "results seen":
         print("\nRecorded as a deviation: the results were already known.")
     return 0
 
 
-def check_one(path: pathlib.Path) -> int:
-    """0 unchanged, 1 changed, 2 not frozen."""
+def _check_in_place(path: pathlib.Path) -> int:
+    """A plan whose freeze and log are in the file. 0 unchanged, 1 changed, 2 not frozen."""
     # Read under a shared lock: a freeze or a log entry in flight would otherwise be read
     # half-written and reported as `CHANGED` or `not frozen`, which is a tampering report against
     # a plan nobody touched.
@@ -411,16 +639,20 @@ def check_one(path: pathlib.Path) -> int:
     return _report_timestamp(path, m.group(1))
 
 
-def _report_timestamp(path: pathlib.Path, digest: str) -> int:
+def _report_timestamp(path: pathlib.Path, digest: str, owed: bool = False) -> int:
     """One line on the freeze's outside timestamp, read from the proof with no network.
 
     A proof of another digest fails the check: it would otherwise lend this freeze the date of a
     plan that is not this one. A missing proof does not fail it, because every plan frozen before
-    timestamps existed has none.
+    timestamps existed has none. A file frozen whole always had a timestamp attempted, so where
+    it has no proof the timestamp is `owed`, and that is said on every run until it is made.
     """
     proof = proof_path(path)
     if not proof.exists():
-        print("  timestamp  none. `prereg timestamp` makes one.")
+        if owed:
+            print("  timestamp  owed. `prereg timestamp` completes it.")
+        else:
+            print("  timestamp  none. `prereg timestamp` makes one.")
         return 0
     try:
         found = anchor.status(proof.read_bytes(), digest)
@@ -435,6 +667,102 @@ def _report_timestamp(path: pathlib.Path, digest: str) -> int:
             f"  timestamp  pending at {len(found.pending)} calendars. `prereg timestamp` completes it."
         )
     return 0
+
+
+def _frozen_here(plan: pathlib.Path) -> dict[str, str]:
+    """The digest of each frozen file present beside `plan`, the plan included, and its name.
+
+    What an amendment's parent is looked up in: a parent digest found here names a file that is
+    on disk, and one that is not found names a file that is gone.
+    """
+    present = [p for p in (plan, *amendment.beside(plan)) if p.is_file()]
+    return {digest: p.name for p in present if (digest := frozen_digest(p)) is not None}
+
+
+def _check_whole(path: pathlib.Path, whole: record.Record, parents: dict[str, str]) -> int:
+    """A file frozen whole. Any byte that differs is a change: there are no exempt lines."""
+    what = f"{path}  frozen {whole.date}  {whole.access}"
+    if not path.is_file():
+        print(f"MISSING      {what}")
+        print("  the file was frozen and is gone: restore it")
+        return 1
+    now = sha256_of_file(path)
+    if now != whole.sha256:
+        print(f"CHANGED      {what}")
+        print(f"  frozen  {whole.sha256[:16]}…")
+        print(f"  now     {now[:16]}…")
+        print(
+            "  a frozen file never changes: restore it, and record the change with `prereg amend`"
+        )
+        return 1
+    orphaned = whole.parent is not None and whole.parent not in parents
+    print(f"{'orphaned' if orphaned else 'unchanged':<12} {what}")
+    if whole.parent is not None:
+        if orphaned:
+            print(f"  amends     {whole.parent[:16]}…, which is the digest of no frozen file here")
+        else:
+            print(f"  amends     {parents[whole.parent]}")
+        if whole.access == "results seen":
+            print("  written after results were seen")
+    stamped = _report_timestamp(path, whole.sha256, owed=True)
+    return 1 if orphaned else stamped
+
+
+def _check_sidelog(plan: pathlib.Path, digest: str) -> int:
+    where = sidelog.log_path(plan)
+    found = sidelog.problems(plan, digest)
+    if found:
+        print(f"LOG ALTERED  {where}")
+        for problem in found:
+            print(f"  - {problem}")
+        return 1
+    count = len(sidelog.entries(plan))
+    if count:
+        print(f"log          {where}  {count} entr{'y' if count == 1 else 'ies'}, chain intact")
+    return 0
+
+
+def check_one(path: pathlib.Path) -> int:
+    """A plan and what follows it, in order: the plan, its amendments by freeze time, its log.
+
+    0 unchanged, 1 changed, 2 not frozen. Each file is checked under the rule it was frozen by:
+    a file with a freeze record byte for byte, a plan frozen in place as it always was.
+    """
+    whole = record.read(path)
+    parents = _frozen_here(path)
+    codes = [_check_in_place(path) if whole is None else _check_whole(path, whole, parents)]
+    drafts = []
+    frozen: list[tuple[record.Record, pathlib.Path]] = []
+    for p in amendment.beside(path):
+        found = record.read(p)
+        if found is None:
+            drafts.append(p)
+        else:
+            frozen.append((found, p))
+    for found, p in sorted(frozen, key=lambda pair: pair[0].frozen_at):
+        codes.append(_check_whole(p, found, parents))
+    for p in drafts:
+        print(f"not frozen   {p}")
+        codes.append(2)
+    if whole is not None:
+        codes.append(_check_sidelog(path, whole.sha256))
+    return 1 if 1 in codes else (2 if 2 in codes else 0)
+
+
+def _check_staged() -> int:
+    """What a pre-commit hook runs: 1 where the index holds a change to anything frozen."""
+    found = staged.changes()
+    if found is None:
+        print("not in a git repository, so there is no index to read.")
+        return 2
+    if not found:
+        print("no staged change touches a frozen file.")
+        return 0
+    for name, why in found:
+        print(f"STAGED       {name}  {why}")
+    print("\nA frozen file never changes. Unstage each with `git restore --staged <file>`,")
+    print("restore it, and record the change with `prereg amend`.")
+    return 1
 
 
 @dataclass(frozen=True)
@@ -453,18 +781,18 @@ def _registrable(path: pathlib.Path) -> Registrable | str:
     if check_one(path) != 0:
         return "only a plan unchanged since its freeze can be registered"
     text = path.read_text()
-    digest = re.search(r"\*\*Plan sha256:\*\* `([0-9a-f]{64})`", text)
-    entries = log_lines(text)
+    digest = frozen_digest(path)
+    entries = _entries(path)
     draft = osf.last(osf.DRAFT_EVENT, entries)
     if draft is None or digest is None:
         return "the log records no OSF draft. `prereg freeze --osf` creates one"
     draft_id = draft.group(1)
-    if draft.group(2) != digest.group(1)[:16]:
+    if draft.group(2) != digest[:16]:
         # The draft holds the plan as it was pushed. After a forced re-freeze the plan the
         # hash describes is not the one on OSF, and registering would register the old one.
         return (
             f"OSF draft {draft_id} was made from plan {draft.group(2)}…, and the plan is now "
-            f"frozen as {digest.group(1)[:16]}…. Push the current freeze with "
+            f"frozen as {digest[:16]}…. Push the current freeze with "
             "`prereg freeze --force --osf --access ...` and register that draft"
         )
     for line in entries:
@@ -473,7 +801,7 @@ def _registrable(path: pathlib.Path) -> Registrable | str:
             return f"OSF draft {draft_id} is already registered as {done.group(1)}"
     after = entries[entries.index(draft.string) + 1 :]
     files = [(m.group(1), m.group(2)) for m in map(osf.ATTACHED_EVENT.search, after) if m]
-    return Registrable(path, osf._parse_plan(text)[0], digest.group(1), draft_id, files)
+    return Registrable(path, osf._parse_plan(text)[0], digest, draft_id, files)
 
 
 def cmd_register(a) -> int:
@@ -558,7 +886,7 @@ def cmd_register(a) -> int:
             print(f"\n{r.path}: {e}")
             failed += 1
             continue
-        append(r.path, today(), osf.registration_event(reg, r.draft_id, embargo), a.access)
+        _append(r.path, osf.registration_event(reg, r.draft_id, embargo), a.access)
         note = "  (OSF reported an error; found registered)" if reg.recovered_from else ""
         print(f"registered  {reg.url}  {r.path}{note}")
     print("OSF emails every admin; each is pending until they approve or 48 hours pass.")
@@ -572,7 +900,7 @@ def cmd_link(a) -> int:
     if path is None:
         print(f"no {PREREG} here or above.")
         return 2
-    reg = osf.last(osf.REGISTRATION_EVENT, log_lines(path.read_text()))
+    reg = osf.last(osf.REGISTRATION_EVENT, _entries(path))
     if reg is None:
         print("the log records no OSF registration. `prereg register` creates one.")
         return 1
@@ -596,7 +924,7 @@ def cmd_link(a) -> int:
     except (RuntimeError, NotConfirmed) as e:
         print(str(e))
         return 1
-    append(path, today(), osf.link_event(link, reg_id, a.anonymous), a.access)
+    _append(path, osf.link_event(link, reg_id, a.anonymous), a.access)
     print(link.url)
     print("\nThe log records the link's id, not its key: the key opens the registration.")
     return 0
@@ -613,6 +941,26 @@ def cmd_setup(a) -> int:
     return 0
 
 
+def _governing() -> pathlib.Path | None:
+    """The plan governing this directory, as `find` gives it, or one frozen whole and since
+    deleted: its record is still here, and a frozen file that is gone is a finding."""
+    here = pathlib.Path.cwd().resolve()
+    for d in [here, *here.parents]:
+        if (d / PREREG).is_file() or record.record_path(d / PREREG).is_file():
+            return d / PREREG
+    return None
+
+
+def _plans_below(root: pathlib.Path) -> list[pathlib.Path]:
+    """Every plan at or below `root`: on disk, or frozen whole and since deleted."""
+    found = set()
+    for p in root.rglob(f"{PREREG}*"):
+        plan = p if p.name == PREREG else p.parent.parent / PREREG
+        if p in (plan, record.record_path(plan)):
+            found.add(plan)
+    return sorted(found)
+
+
 def cmd_check(a) -> int:
     """Check the governing plan and every plan below here.
 
@@ -627,16 +975,16 @@ def cmd_check(a) -> int:
     Registrations frozen by a commit line are checked as well, wherever git tracks them below
     here: a study registered under that convention has no `PREREG.md`, and reported nothing.
     """
-    path = find()
+    if a.staged:
+        return _check_staged()
+    path = _governing()
     documents = pinned.check_below(pathlib.Path.cwd())
     below = [
-        f
-        for f in sorted(pathlib.Path.cwd().rglob(PREREG))
-        if path is None or f.resolve() != path.resolve()
+        f for f in _plans_below(pathlib.Path.cwd()) if path is None or f.resolve() != path.resolve()
     ]
     if path is not None and not below:
         rc = check_one(path)
-        if rc == 2:
+        if rc == 2 and frozen_digest(path) is None:
             print("\nNothing to check against yet. `prereg freeze` records the hash.")
         return _report_pinned(documents, rc)
 
@@ -699,13 +1047,16 @@ def _report_pinned(documents: list[pinned.Pinned], rc: int) -> int:
 
 
 def timestamp_one(path: pathlib.Path) -> int:
-    """Stamp, complete or check one plan's timestamp. 0 dated, 1 failed, 2 nothing to date yet."""
+    """Stamp, complete or check one frozen file's timestamp: a plan's or an amendment's.
+
+    0 dated, 1 failed, 2 nothing to date yet.
+    """
     with shared_lock(path):
-        m = FROZEN_DIGEST.search(path.read_text())
-    if not m:
+        digest = frozen_digest(path)
+    if digest is None:
         print(f"not frozen   {path}")
         return 2
-    digest, proof = m.group(1), proof_path(path)
+    proof = proof_path(path)
     if not proof.exists():
         try:
             atomic_write_bytes(proof, anchor.stamp(digest))
@@ -735,13 +1086,20 @@ def timestamp_one(path: pathlib.Path) -> int:
 
 
 def cmd_timestamp(a) -> int:
-    """Timestamp the governing plan, or every plan below when there is none, as `check` does."""
+    """Timestamp the governing plan and its amendments, or every plan below when there is none,
+    as `check` does."""
     path = find()
     paths = [path] if path is not None else sorted(pathlib.Path.cwd().rglob(PREREG))
     if not paths:
         print(f"no {PREREG} here, above, or below.")
         return 2
-    codes = [timestamp_one(p) for p in paths]
+    # A plan, then each amendment frozen beside it. An amendment still in draft has no digest
+    # to date, and `check` is what reports it.
+    codes = [
+        timestamp_one(p)
+        for plan in paths
+        for p in (plan, *(a for a in amendment.beside(plan) if record.read(a) is not None))
+    ]
     return 1 if 1 in codes else (2 if 2 in codes else 0)
 
 
@@ -769,18 +1127,15 @@ def _main(argv: list[str] | None = None) -> int:
     n.add_argument("--title")
     n.set_defaults(fn=cmd_new)
 
-    f = sub.add_parser("freeze", help="record the commit and hash")
+    f = sub.add_parser("freeze", help="record the file's hash, the commit and the time")
+    f.add_argument("file", nargs="?", help="an amendment to freeze; the plan where omitted")
     f.add_argument("--force", action="store_true")
     f.add_argument(
         "--access",
         choices=ACCESS,
         metavar="LEVEL",
-        help="required with --force. " + ACCESS_HELP,
-    )
-    f.add_argument(
-        "--no-timestamp",
-        action="store_true",
-        help="do not send the plan's digest to the OpenTimestamps calendars",
+        help="for a plan; `nothing run` where omitted, and required with --force on a plan "
+        "frozen in place. An amendment states its own. " + ACCESS_HELP,
     )
     f.add_argument("--osf", action="store_true", help="push as a draft registration to OSF")
     f.add_argument(
@@ -813,6 +1168,14 @@ def _main(argv: list[str] | None = None) -> int:
     )
     f.set_defaults(fn=cmd_freeze)
 
+    am = sub.add_parser("amend", help="start an amendment to the frozen plan")
+    am.add_argument(
+        "--parent",
+        metavar="FILE",
+        help="the frozen amendment this one amends, where it does not amend the plan itself",
+    )
+    am.set_defaults(fn=cmd_amend)
+
     lg = sub.add_parser("log", help="append a line")
     lg.add_argument("note")
     # Validated in `cmd_log` rather than by argparse: `choices` makes an unknown level exit 2,
@@ -823,11 +1186,16 @@ def _main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("setup", help="save OSF token to .env")
     s.set_defaults(fn=cmd_setup)
 
-    c = sub.add_parser("check", help="has the plan changed since the freeze?")
+    c = sub.add_parser("check", help="has any frozen file changed since its freeze?")
+    c.add_argument(
+        "--staged",
+        action="store_true",
+        help="for a pre-commit hook: fail if the git index holds a change to a frozen file",
+    )
     c.set_defaults(fn=cmd_check)
 
     t = sub.add_parser(
-        "timestamp", help="complete the freeze's outside timestamp and check it against Bitcoin"
+        "timestamp", help="complete each freeze's outside timestamp and check it against Bitcoin"
     )
     t.set_defaults(fn=cmd_timestamp)
 
@@ -865,7 +1233,11 @@ def _main(argv: list[str] | None = None) -> int:
     if not a.cmd:
         ap.print_help()
         return 0
-    return a.fn(a)
+    try:
+        return a.fn(a)
+    except (record.RecordError, sidelog.LogError) as e:
+        print(e)
+        return 1
 
 
 if __name__ == "__main__":

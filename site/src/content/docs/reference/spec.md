@@ -537,13 +537,17 @@ any one of them would let a run record for an incidental artifact order a claim 
 came from an artifact with no run at all.
 
 Where `registered_plan` names a declared artifact, that document is pinned, so a plan edited
-after the fact to match results breaks its pin and the ordering reverts to `unchecked`.
+after the fact to match results breaks its pin and the ordering reverts to `unchecked`. A plan
+frozen by `prereg freeze` is never written to again: the freeze record, the log and each
+amendment are separate files, so logging a deviation or amending the plan leaves the pin intact.
 
 Two limits are structural. The registration timestamp is self-recorded, so the check
 establishes internal consistency and not that a registration is contemporaneous with what it
 claims. An outside timestamp closes that: `prereg timestamp` and `results timestamp` commit the
-plan's digest and the ledger's head into a Bitcoin block through OpenTimestamps, and the block's
-date bounds when each existed. This check does not read those proofs; `prereg check` and
+digest of the plan, the digest of each amendment and the ledger's head into a Bitcoin block
+through OpenTimestamps, and the block's date bounds when each existed. `prereg freeze` always
+attempts the timestamp, and one it could not make is reported by `prereg check` as owed until
+`prereg timestamp` makes it. This check does not read those proofs; `prereg check` and
 `results verify` do. And the check reads a declared run record rather than observing execution.
 
 OpenTimestamps is used because it needs no account and trusts no party beyond Bitcoin, and

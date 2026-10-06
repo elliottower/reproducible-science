@@ -123,7 +123,7 @@ def test_a_freeze_excludes_other_writers_between_its_read_and_its_write(tmp_path
     # Freeze was bypassing the lock that `log.append` itself takes.
     import subprocess
 
-    from prereg import cli, plan
+    from prereg import cli, record
     from provenance_core.gitref import clean_env
 
     subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True, env=clean_env())
@@ -140,14 +140,14 @@ def test_a_freeze_excludes_other_writers_between_its_read_and_its_write(tmp_path
     monkeypatch.chdir(study)
 
     observed: list[bool] = []
-    real = plan.rewrite_status
+    real = record.write
 
     def spy(*args, **kwargs):
-        # Called after the plan has been read and before it is written back.
+        # Called after the plan has been read and before its freeze record is written.
         observed.append(_another_thread_can_take(study / "PREREG.md"))
         return real(*args, **kwargs)
 
-    monkeypatch.setattr(cli, "rewrite_status", spy)
+    monkeypatch.setattr(cli.record, "write", spy)
     assert cli.main(["freeze"]) == 0
 
     assert observed == [False], "another writer could take the plan's lock mid-freeze"

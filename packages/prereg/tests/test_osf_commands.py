@@ -13,7 +13,7 @@ import sys
 import urllib.error
 
 import pytest
-from prereg import cli, confirm, log, osf, plan
+from prereg import cli, confirm, osf, plan, sidelog
 from provenance_core.gitref import clean_env
 
 CONTEXT = b"Shared context for every plan in this project.\n"
@@ -138,11 +138,19 @@ def _plan(study):
 
 
 def _digest(study):
-    return re.search(r"`([0-9a-f]{64})`", _plan(study)).group(1)
+    digest = cli.frozen_digest(study / "PREREG.md")
+    assert digest is not None
+    return digest
 
 
 def _entries(study):
-    return log.log_lines(_plan(study))
+    return cli._entries(study / "PREREG.md")
+
+
+def _edit(path, text: str) -> None:
+    """Write over a frozen plan: a freeze leaves it read-only."""
+    path.chmod(0o644)
+    path.write_text(text)
 
 
 def _freeze_and_push(study, tty, *extra: str) -> int:
@@ -282,6 +290,50 @@ def test_a_missing_attachment_is_refused_before_anything_is_written(study, fake_
     assert _plan(study) == before
 
 
+def test_a_push_a_registration_and_a_link_write_nothing_into_the_plan(study, tty, fake_osf):
+    before = (study / "PREREG.md").read_bytes()
+    _registered(study, tty)
+    tty.types("link reg01")
+    assert cli._main(["link", "--anonymous", "--access", "results seen"]) == 0
+
+    assert (study / "PREREG.md").read_bytes() == before
+    logged = (study / "PREREG.log").read_text()
+    for event in (
+        "osf draft draft1",
+        "osf attached CONTEXT.md",
+        "osf registration reg01",
+        "osf view-only link vol1",
+    ):
+        assert event in logged
+    assert cli._main(["check"]) == 0
+
+
+def test_a_plan_frozen_without_a_draft_is_pushed_later_and_not_frozen_again(study, fake_osf):
+    assert cli._main(["freeze"]) == 0
+    record = (study / ".prereg" / "PREREG.md.json").read_bytes()
+
+    assert cli._main(["freeze", "--osf"]) == 1, (
+        "the push is logged now, so it must say what was seen"
+    )
+    assert fake_osf.writes == []
+    assert cli._main(["freeze", "--osf", "--access", "no results seen"]) == 0
+
+    assert (study / ".prereg" / "PREREG.md.json").read_bytes() == record
+    [entry] = [e for e in _entries(study) if "osf draft" in e]
+    assert f"osf draft draft1 of plan {_digest(study)[:16]}" in entry and "no results seen" in entry
+    assert cli._main(["freeze", "--osf", "--access", "no results seen"]) == 1
+    assert len(fake_osf.calls_to("POST", r"/draft_registrations/$")) == 1
+    assert cli._main(["check"]) == 0
+
+
+def test_a_changed_plan_is_not_pushed(study, fake_osf):
+    assert cli._main(["freeze"]) == 0
+    p = study / "PREREG.md"
+    _edit(p, p.read_text().replace("## Randomization", "## Randomization\n\nBy coin."))
+    assert cli._main(["freeze", "--osf", "--access", "nothing run"]) == 1
+    assert fake_osf.writes == []
+
+
 # --- register ------------------------------------------------------------------------------
 
 
@@ -364,16 +416,23 @@ def test_register_reads_the_token_only_after_the_phrase(study, tty, monkeypatch,
 def test_register_refuses_a_plan_changed_since_the_freeze(study, tty, fake_osf):
     assert _freeze_and_push(study, tty) == 0
     p = study / "PREREG.md"
-    p.write_text(p.read_text().replace("## Randomization", "## Randomization\n\nBy coin."))
+    _edit(p, p.read_text().replace("## Randomization", "## Randomization\n\nBy coin."))
     tty.types("register draft1")
     assert cli._main(["register", "--immediate", "--access", "nothing run"]) == 1
     assert fake_osf.calls_to("POST", r"/registrations/") == []
 
 
-def test_register_refuses_a_draft_made_from_an_earlier_freeze(study, tty, fake_osf):
-    """After a forced re-freeze the plan the hash describes is not the one on OSF."""
-    assert _freeze_and_push(study, tty) == 0
+def test_register_refuses_a_draft_made_from_an_earlier_freeze(
+    study, tty, fake_osf, frozen_in_place
+):
+    """After a forced re-freeze the plan the hash describes is not the one on OSF.
+
+    Only a plan frozen in place can be re-frozen, so this starts from one."""
     p = study / "PREREG.md"
+    p.write_bytes(frozen_in_place)
+    _commit(study.parent, "frozen in place")
+    assert cli._main(["freeze", "--force", "--osf", "--access", "nothing run"]) == 0
+    assert any("osf draft draft1" in e for e in _entries(study))
     p.write_text(p.read_text().replace("## Randomization", "## Randomization\n\nBy coin."))
     _commit(study.parent, "edit")
     assert cli._main(["freeze", "--force", "--access", "nothing run"]) == 0
@@ -522,10 +581,7 @@ def test_one_phrase_registers_every_plan_below(three_plans, tty, fake_osf):
     shown = tty.shown()
     assert all(d in shown for d in ("draft1", "draft2", "draft3"))
     for name in ("study", "b", "c"):
-        assert (
-            "osf registration reg0"
-            in log.log_lines((three_plans / name / "PREREG.md").read_text())[-1]
-        )
+        assert "osf registration reg0" in sidelog.entries(three_plans / name / "PREREG.md")[-1]
     assert cli._main(["check"]) == 0
 
 
@@ -537,7 +593,7 @@ def test_the_single_plan_phrase_does_not_confirm_a_batch(three_plans, tty, fake_
 
 def test_a_batch_with_one_changed_plan_sends_nothing(three_plans, tty, fake_osf):
     p = three_plans / "c" / "PREREG.md"
-    p.write_text(p.read_text().replace("## Randomization", "## Randomization\n\nBy coin."))
+    _edit(p, p.read_text().replace("## Randomization", "## Randomization\n\nBy coin."))
     tty.types(_batch_phrase("draft2", "draft3", "draft1"))
     assert cli._main(["register", "--all", "--immediate", "--access", "nothing run"]) == 1
     assert fake_osf.calls_to("POST", r"/registrations/") == []
@@ -574,7 +630,10 @@ def test_an_anonymous_link_is_created_and_logged_without_its_key(study, tty, fak
     assert call.json["data"]["attributes"] == {"anonymous": True, "name": "NeurIPS review"}
     last = _entries(study)[-1]
     assert "osf view-only link vol1 on reg01, anonymous" in last and "results seen" in last
-    assert "k3y" not in _plan(study), "the key opens the registration; it stays out of the file"
+    assert "osf view-only link vol1" in (study / "PREREG.log").read_text()
+    assert "k3y" not in (study / "PREREG.log").read_text(), (
+        "the key opens the registration; it stays out of the log"
+    )
     assert "https://osf.io/reg01/?view_only=k3y" in capsys.readouterr().out
     assert cli._main(["check"]) == 0
 

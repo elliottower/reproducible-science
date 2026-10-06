@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """Notice when a preregistration changes after it was frozen.
 
-Runs as a Claude Code PostToolUse hook. When an edit touches a plan carrying a recorded
-digest, the digest is recomputed and compared. A mismatch means the registered plan and the
-plan on disk are different documents.
+Runs as a Claude Code PostToolUse hook. When an edit touches a file with a recorded digest, the
+digest is recomputed and compared. A mismatch means the registered document and the one on disk
+are different documents.
+
+A freeze is recorded in one of two places. A file frozen whole, a plan or an amendment, has a
+record beside it in `.prereg/<name>.json` holding the sha256 of all its bytes. A plan frozen by
+an earlier version carries the digest of its plan section in a `**Plan sha256:**` line.
 
 This is the one check in the set that is exact rather than heuristic. Everything else here
 reports a likelihood; this recomputes a hash the author themselves recorded and compares two
@@ -12,7 +16,7 @@ plan being rewritten around the result, and an unrecorded edit to a frozen plan 
 entirely, silently, and in a way no reader can detect afterward.
 
 The hook does not refuse the edit. Amending a registration is legitimate; amending it without
-saying so is not, and `prereg log` is how it is said.
+saying so is not, and `prereg amend` and `prereg log` are how it is said.
 
 Design constraints, in order:
 
@@ -53,8 +57,29 @@ except ImportError:  # pragma: no cover - exercised only outside an installed en
         return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-#: Where a freeze records the digest it took.
+#: Where a freeze in place records the digest it took.
 RECORDED = re.compile(r"^\*\*Plan sha256:\*\*[ \t]*`([0-9a-f]{64})`", re.M)
+
+#: Where a freeze of the whole file records it, beside the file.
+RECORDS = ".prereg"
+
+
+def frozen_whole(path: pathlib.Path) -> str | None:
+    """The sha256 `path` was frozen whole with, or None where it has no freeze record."""
+    record = path.parent / RECORDS / f"{path.name}.json"
+    if not record.is_file():
+        return None
+    digest = json.loads(record.read_text()).get("sha256")
+    return digest if isinstance(digest, str) else None
+
+
+def report(message: str) -> int:
+    json.dump(
+        {"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": message}},
+        sys.stdout,
+    )
+    return 0
+
 
 #: Files a preregistration is written in.
 PLANS = {".md", ".markdown", ".txt"}
@@ -79,9 +104,27 @@ def main() -> int:
     try:
         if path.stat().st_size > MAX_BYTES:
             return 0
-        text = path.read_text(errors="replace")
+        data = path.read_bytes()
     except OSError:
         return 0
+
+    whole = frozen_whole(path)
+    if whole is not None:
+        now = hashlib.sha256(data).hexdigest()
+        if now == whole:
+            return 0
+        return report(
+            f"{path.name} was frozen whole and no longer matches its freeze record.\n"
+            f"  recorded  {whole}\n"
+            f"  now       {now}\n"
+            f"A frozen file never changes by one byte, and `prereg check` now reports this one "
+            f"as CHANGED. Restore it from git. A change to the plan is recorded as an amendment, "
+            f"a file of its own:\n"
+            f"  prereg amend\n"
+            f"and a note with `prereg log`. Do neither without asking the author: amending "
+            f"someone's registration on their behalf is the one thing this must not do."
+        )
+    text = data.decode(errors="replace")
 
     recorded = RECORDED.search(text)
     if not recorded:
@@ -104,11 +147,7 @@ def main() -> int:
         f"Then re-freeze if the change was intended. Do neither without asking the author: "
         f"amending someone's registration on their behalf is the one thing this must not do."
     )
-    json.dump(
-        {"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": message}},
-        sys.stdout,
-    )
-    return 0
+    return report(message)
 
 
 if __name__ == "__main__":

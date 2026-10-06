@@ -30,8 +30,10 @@ import re
 import shlex
 import sys
 
-#: What `prereg freeze` writes. Its absence is the whole signal.
+#: What `prereg freeze` once wrote into the plan. A plan frozen whole carries nothing: its
+#: freeze is the record `.prereg/PREREG.md.json` beside it. The absence of both is the signal.
 FROZEN = re.compile(r"^\*\*Plan sha256:\*\*[ \t]*`[0-9a-f]{64}`", re.M)
+RECORDS = ".prereg"
 
 #: The filename `prereg` governs a directory with.
 PLAN = "PREREG.md"
@@ -117,7 +119,7 @@ def main() -> int:
     except OSError:
         return 0
 
-    if FROZEN.search(text):
+    if FROZEN.search(text) or (plan.parent / RECORDS / f"{plan.name}.json").is_file():
         return 0
     if sum(text.count(marker) for marker in STUB_MARKERS) >= STUB_THRESHOLD:
         return 0

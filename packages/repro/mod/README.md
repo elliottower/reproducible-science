@@ -13,7 +13,7 @@ that cannot load it still loads the plugin.
 
 | | |
 |---|---|
-| Refuses an edit to a frozen plan | An `Edit` or `Write` to a `PREREG.md` carrying a freeze digest is denied, with the instruction to record the change with `prereg log`. |
+| Refuses an edit to a frozen file | An `Edit` or `Write` to a file with a freeze record (`.prereg/<name>.json` beside it: a plan or an amendment), or to a `PREREG.md` carrying a freeze digest, is denied, with the instruction to record a note with `prereg log` or a change with `prereg amend`. An amendment still in draft has no record and is edited freely. |
 | Notes a manuscript with no ledger | The first edit to a `.tex`, `.Rmd`, `.qmd` or `.typ` with no `.results/` ledger above it goes through, and the model is told no number in the file is bound to a run. |
 | Notes an analysis with no ledger | The same, once per project, when a command runs an analysis. |
 | Notes a downloaded source | After `curl` or `wget` saves a PDF, the model is told the address to record as `url:` in the claims file, so `citations fetch` can retrieve the same bytes for a reader. |

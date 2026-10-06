@@ -8,13 +8,15 @@ Say which file you used.
 
 Report:
 
-1. **Whether the plan still matches its freeze.** A plan that changed after freezing is a
-   deviation. State what changed, and check the log for whether the deviation was recorded.
+1. **Whether each frozen file still matches its freeze**: the plan, then each amendment. State
+   what changed in any that does not, and whether an amendment records the change.
 2. **Whether the freeze names a real commit** that exists in this repository.
-3. **What the log holds** — amendments and deviations, in order.
+3. **What follows the plan** — each amendment with its freeze date and access level, any
+   reported as orphaned or written after results were seen, and what the log holds, in order.
+4. **Whether a timestamp is owed or pending.**
 
 A plan that has not been frozen is not a failed check. Say so plainly, and that
-`prereg freeze` records the commit and hash.
+`prereg freeze` records the hash, the commit and the time beside the plan.
 
 Do not freeze, amend or log anything unless asked. Editing a registration on the author's
 behalf is the one thing this tool exists to make impossible.

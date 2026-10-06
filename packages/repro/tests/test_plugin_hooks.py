@@ -12,6 +12,7 @@ deny a command. That it does not is the property most worth pinning.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import pathlib
 import subprocess
@@ -205,6 +206,17 @@ def test_a_frozen_plan_says_nothing(tmp_path):
     assert out.stdout.strip() == ""
 
 
+def test_a_plan_frozen_whole_says_nothing(tmp_path):
+    """A freeze writes nothing into the plan now; the record beside it is the freeze."""
+    directory = plan(tmp_path, "# Plan\n\nWe will measure X against Y.\n")
+    payload = {"tool_input": {"command": "python analysis.py"}, "cwd": str(directory)}
+    assert "carries no freeze" in run(HOOK, payload).stdout, "the control: no record, no freeze"
+
+    (directory / ".prereg").mkdir()
+    (directory / ".prereg" / "PREREG.md.json").write_text(json.dumps({"sha256": "0" * 64}))
+    assert run(HOOK, payload).stdout.strip() == ""
+
+
 def test_a_command_that_runs_no_analysis_says_nothing(tmp_path):
     """It fires on every Bash call. A hook that speaks on `git status` gets uninstalled."""
     directory = plan(tmp_path, "# Plan\n\n**Status:** DRAFT\n\nWe will measure X.\n")
@@ -311,3 +323,65 @@ def test_nothing_is_said_when_the_edit_added_no_quotation(capsys):
     module = _hook_module()
     module._unavailable(set(), pathlib.Path("draft.tex"))
     assert capsys.readouterr().out == ""
+
+
+CHANGED = "frozen_plan_changed.py"
+
+
+def _frozen_whole(tmp_path: pathlib.Path, name: str, body: str) -> pathlib.Path:
+    """A file with a freeze record beside it, as `prereg freeze` leaves a plan or an amendment."""
+    directory = tmp_path / "experiment"
+    (directory / ".prereg").mkdir(parents=True, exist_ok=True)
+    path = directory / name
+    path.write_text(body)
+    digest = hashlib.sha256(body.encode()).hexdigest()
+    (directory / ".prereg" / f"{name}.json").write_text(json.dumps({"sha256": digest}))
+    return path
+
+
+@pytest.mark.parametrize("name", ["PREREG.md", "PREREG_AMENDMENT_1.md"])
+def test_a_change_to_a_file_frozen_whole_is_reported_with_both_digests(tmp_path, name):
+    path = _frozen_whole(tmp_path, name, "# Plan\n\nH1. The effect exceeds 0.10.\n")
+    payload = {"tool_input": {"file_path": str(path)}}
+    assert run(CHANGED, payload).stdout.strip() == "", "an unchanged frozen file says nothing"
+
+    recorded = hashlib.sha256(path.read_bytes()).hexdigest()
+    path.write_text(path.read_text() + "\n")
+    out = run(CHANGED, payload)
+
+    said = json.loads(out.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert f"{name} was frozen whole" in said
+    assert recorded in said
+    assert hashlib.sha256(path.read_bytes()).hexdigest() in said
+    assert "prereg amend" in said
+    assert out.returncode == 0
+
+
+def test_an_amendment_still_in_draft_is_edited_in_silence(tmp_path):
+    _frozen_whole(tmp_path, "PREREG.md", "# Plan\n")
+    draft = tmp_path / "experiment" / "PREREG_AMENDMENT_1.md"
+    draft.write_text("# Amendment 1\n\nStill being written.\n")
+    assert run(CHANGED, {"tool_input": {"file_path": str(draft)}}).stdout.strip() == ""
+
+
+def test_a_change_to_a_plan_frozen_in_place_is_still_reported(tmp_path):
+    directory = plan(tmp_path, f"# Plan\n\n{FROZEN}\nWe will measure X.\n")
+    out = run(CHANGED, {"tool_input": {"file_path": str(directory / "PREREG.md")}})
+    assert "carries a recorded digest and no longer matches it" in out.stdout
+
+
+def test_the_frozen_plan_hook_is_identical_in_both_plugins():
+    first, second = (
+        (ROOT / "packages" / package / "plugin" / "hooks" / CHANGED).read_bytes()
+        for package in ("prereg", "repro")
+    )
+    assert first == second
+
+
+@pytest.mark.parametrize("name", ["skills/prereg/SKILL.md", "commands/prereg-check.md"])
+def test_the_bundle_ships_the_prereg_plugins_own_instructions(name):
+    first, second = (
+        (ROOT / "packages" / package / "plugin" / name).read_bytes()
+        for package in ("prereg", "repro")
+    )
+    assert first == second
