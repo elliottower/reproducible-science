@@ -174,6 +174,51 @@ artifact into agreeing with the claim.
 
 This repository runs the hook on itself, against the `repro.yaml` at its root.
 
+## Audit a repository you did not write
+
+```bash
+repro audit https://github.com/someone/study.git --commit 4f2a9c1
+```
+
+Clones the repository into a cache directory at that commit (default: the remote's HEAD), runs the four tools over the clone, and writes `study_audit.json` and `study_audit.log` in the current directory. Nothing is written into the audited repository, and a path to a local repository is cloned the same way.
+
+| the clone keeps | check |
+|---|---|
+| a `PREREG.md`, or a registration frozen by a commit line | `prereg check` |
+| `.results/ledger.jsonl` | `results verify --files` |
+| a claims directory | `citations verify --claims <dir>` |
+| each tracked `.bib` file | `citations audit --bib <file>` |
+| `repro.yaml` | `repro verify` |
+
+```text
+command           exit  outcome          what it found                                 what it could not establish
+prereg.check      0     passed           3 plans: 3 unchanged, 0 changed, 0 not        -
+                                         frozen
+results.verify    1     failed           chain intact: 153 events, anchored; 4         -
+                                         file(s) changed or missing since they were
+                                         recorded.
+citations.verify  1     could not check  not found 0                                   unchecked 18 file not found
+repro.verify      2     nothing to read  no repro.yaml here or above.                  -
+```
+
+Each row carries one of four outcomes. `failed` is a finding about the repository. `could not check` means a source is not on this machine or a registry did not answer, and `nothing to read` means the repository keeps no record of that kind. Neither is a pass. A step left out is listed as `not run` with the reason. The command exits 1 when a check failed, 2 when one could not be made or nothing was established, and 0 otherwise.
+
+A quotation whose source the repository does not carry is read from the citations library when a file there matches the SHA-256 the record pins. `citations audit` reaches Crossref, DataCite and PubMed, and `--offline` skips it. An entry whose identifier did not fetch is counted as unresolved, never as agreeing or disagreeing.
+
+The record holds the commit and tree audited, the installed version of each tool, counts read from the repository's own files under `declared`, and each step's command, exit code and full output under `steps`. `--out` names where it is written and `--cache` where the clone goes.
+
+`--target` takes a YAML file for a repository the defaults do not fit. It can pin `commit` and `tree`, name paths under `layout` (`claims`, `manifest`, `ledger`, `bibliographies`, and `globs` to count), and list `steps`. A step named like a default replaces it, and any other is added. A tree that differs from the pinned tree is recorded and the audit continues.
+
+```yaml
+repository: https://github.com/someone/study.git
+commit: 4f2a9c1d0c0e4b7a9f3e2d1c0b9a8f7e6d5c4b3a
+layout:
+  claims: paper/quotes
+steps:
+  - name: results.coverage.manuscript
+    argv: [results, coverage, paper/main.tex]
+```
+
 ## The workflow
 
 ```bash

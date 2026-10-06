@@ -5,6 +5,7 @@
     repro manifest init   write a starter repro.yaml for an existing project
     repro verify          check every evidence assertion in repro.yaml
     repro check           run every tool this project uses, in one pass
+    repro audit           clone a repository at a pinned commit and run every tool over it
     repro prereg          run `prereg`: freeze a plan, and record what deviated from it
     repro citations       run `citations`: does every quotation resolve in its source?
     repro results         run `results`: seal a run, record it, verify the chain
@@ -18,13 +19,14 @@ that exits.
 from __future__ import annotations
 
 import argparse
+import functools
 import importlib
 import json
 import pathlib
 import subprocess
 from pathlib import Path
 
-from repro import __version__, crosscheck
+from repro import __version__, audit, crosscheck
 from repro.delegate import BY_NAME, TOOLS
 from repro.delegate import check as delegate_check
 from repro.delegate import run as delegate_run
@@ -477,6 +479,9 @@ def main(argv: list[str] | None = None) -> int:
         "--only", action="append", choices=sorted(BY_NAME), help="restrict to one tool; repeatable"
     )
     p_check.set_defaults(func=cmd_check)
+
+    entries = {t.name: functools.partial(delegate_run, t) for t in TOOLS} | {"repro": main}
+    audit.add_parser(sub).set_defaults(func=functools.partial(audit.command, entries=entries))
 
     # One subcommand per tool, each forwarding its arguments untouched. `parse_known_args`
     # below is what lets `repro citations verify --strict` reach citations with `--strict`
