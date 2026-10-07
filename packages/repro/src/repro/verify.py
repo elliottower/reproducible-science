@@ -25,6 +25,7 @@ import pathlib
 from collections.abc import Mapping
 from typing import Protocol
 
+from repro.adapters.reads import reading_once
 from repro.exceptions import (
     ArtifactUnreadableError,
     BackendUnavailableError,
@@ -820,27 +821,31 @@ def verify(
     states, paths = artifact_states(manifest)
 
     assessments = []
-    for claim in manifest.claims:
-        decisions = tuple(
-            check_evidence(claim, evidence, manifest, paths, states, registry)
-            for evidence in claim.evidence
-        )
-        ordering, ordering_reason, ordering_detail, authority = _ordering(claim, manifest, states)
-        assessments.append(
-            ClaimAssessment(
-                claim_id=claim.id,
-                claim_digest=claim.digest.value,
-                confirmatory=claim.confirmatory,
-                registration=claim.registration,
-                registration_note=claim.registration_note,
-                availability=claim.availability,
-                ordering=ordering,
-                ordering_reason=ordering_reason,
-                ordering_detail=ordering_detail,
-                registration_authority=authority,
-                decisions=decisions,
+    # Each artifact is parsed once for the whole manifest, just after it was hashed.
+    with reading_once():
+        for claim in manifest.claims:
+            decisions = tuple(
+                check_evidence(claim, evidence, manifest, paths, states, registry)
+                for evidence in claim.evidence
             )
-        )
+            ordering, ordering_reason, ordering_detail, authority = _ordering(
+                claim, manifest, states
+            )
+            assessments.append(
+                ClaimAssessment(
+                    claim_id=claim.id,
+                    claim_digest=claim.digest.value,
+                    confirmatory=claim.confirmatory,
+                    registration=claim.registration,
+                    registration_note=claim.registration_note,
+                    availability=claim.availability,
+                    ordering=ordering,
+                    ordering_reason=ordering_reason,
+                    ordering_detail=ordering_detail,
+                    registration_authority=authority,
+                    decisions=decisions,
+                )
+            )
 
     return VerificationReport(
         project=manifest.project,
