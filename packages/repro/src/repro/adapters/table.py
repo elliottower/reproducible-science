@@ -14,7 +14,8 @@ import pathlib
 from repro.adapters.base import Found, Resolution, _no
 from repro.adapters.cells import Cell, render
 from repro.adapters.columnar import COLUMNAR_SUFFIXES, read_columnar
-from repro.adapters.rows import resolve_row_at, resolve_rows
+from repro.adapters.reads import once
+from repro.adapters.rows import index_rows, resolve_row_at, resolve_rows
 from repro.adapters.sheet import WORKBOOK_SUFFIXES
 from repro.exceptions import ArtifactUnreadableError
 from repro.models import (
@@ -105,7 +106,7 @@ def _load(path: pathlib.Path, delimiter: str, wanted: set[str]) -> tuple[tuple, 
             f"a table locator addresses delimited text or a columnar file; "
             f"{path.name} is {path.suffix}",
         )
-    return _delimited(path, delimiter), None
+    return once(("delimited", path, delimiter), lambda: _delimited(path, delimiter)), None
 
 
 def _resolve_table(locator: TableLocator, path: pathlib.Path) -> Found:
@@ -115,9 +116,15 @@ def _resolve_table(locator: TableLocator, path: pathlib.Path) -> Found:
     header, rows = loaded
     # Delimited text is matched as text, as it always was; a typed table renders the predicate
     # in the convention its cells were rendered in, so `seed: 2` selects a stored 2.0.
-    key = render if path.suffix.lower() in COLUMNAR_SUFFIXES else predicate_text
+    columnar = path.suffix.lower() in COLUMNAR_SUFFIXES
+    key = render if columnar else predicate_text
     wanted = {k: key(v) for k, v in locator.where.items()}
-    return resolve_rows(header, rows, locator.column, wanted, path.name)
+    if columnar:
+        # A columnar read holds only the columns one locator named, so it is not shared.
+        return resolve_rows(header, rows, locator.column, wanted, path.name)
+    columns = tuple(sorted(wanted))
+    index = once(("rows", path, locator.delimiter, columns), lambda: index_rows(rows, columns))
+    return resolve_rows(header, rows, locator.column, wanted, path.name, index)
 
 
 def _resolve_table_position(locator: TablePositionLocator, path: pathlib.Path) -> Found:

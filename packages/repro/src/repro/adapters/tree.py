@@ -8,6 +8,7 @@ import pathlib
 import yaml
 
 from repro.adapters.base import Found, Resolution, _no, _ok
+from repro.adapters.reads import once
 from repro.exceptions import ArtifactUnreadableError
 from repro.models import (
     TreeLocator,
@@ -115,7 +116,7 @@ def _resolve_tree(locator: TreeLocator, path: pathlib.Path) -> Found:
             f"a tree locator addresses JSON or YAML; {path.name} is "
             f"{path.suffix or 'extensionless'}",
         )
-    node = resolve_pointer(_load_tree(path), locator.pointer)
+    node = resolve_pointer(once(("tree", path), lambda: _load_tree(path)), locator.pointer)
     if node is _MISSING:
         return _no(Resolution.ABSENT, f"{locator.pointer} does not resolve in {path.name}")
     if isinstance(node, (dict, list)):
