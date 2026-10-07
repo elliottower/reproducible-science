@@ -1,3 +1,29 @@
+## 0.5.1 — 2026-10-07
+
+### citations
+
+#### Changed
+
+- `citations verify` keeps the text `pdftotext` extracts between runs and reads several sources at a time. An entry is filed under the sha256 of the source's bytes, the extractor's version and its arguments, so a changed source or a different poppler is extracted again, and the report counts the readings taken from the cache. `--no-cache` or `CITATIONS_NO_CACHE=1` reads every source and keeps nothing. Normalizing the extracted text and listing a source's folder are also faster. Checking 947 quotations in 29 PDFs took 20.6 seconds before, 8.1 on a first run and 2.7 on a second.
+
+### prereg
+
+No significant changes.
+
+### results-cli
+
+No significant changes.
+
+### reproducible-science
+
+#### Fixed
+
+- `repro verify` reads each artifact once in a run. A manifest with many claims over one table parsed the table, and extracted the document's text, once for every claim, and scanned every row for each; under a profiler, checking 1,000 numbers bound to one CSV took 17.5 seconds and now takes 1.4. A second verification in the same process still reads every file again. The manifest itself is read with libyaml's loader where PyYAML has it.
+
+### provenance-core
+
+No significant changes.
+
 ## 0.5.0 — 2026-10-06
 
 ### citations
