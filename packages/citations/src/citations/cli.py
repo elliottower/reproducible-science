@@ -20,13 +20,15 @@ from __future__ import annotations
 
 import argparse
 import collections
+import concurrent.futures
 import importlib
+import os
 import pathlib
 
 from provenance_core import hint
 
 from citations import coverage as C
-from citations import paths, projects
+from citations import extraction_cache, paths, projects
 from citations import verify as V
 from citations.exceptions import CitationsError, ClaimFileError, SourceUnreadableError
 from citations.models import ClaimFile, load_claim_file, load_record
@@ -188,8 +190,36 @@ def cmd_coverage(a) -> int:
     return 1 if uncovered else 0
 
 
+def _extract_ahead(files: list[ClaimFile], allowed: frozenset[str]) -> None:
+    """Read every source once, several at a time, before the quotations are checked in order.
+
+    Each reading lands in the extraction cache, where the pass below finds it. A source that
+    cannot be read is left for that pass to report. Two claims files naming one source are one
+    reading: two threads asking for it together would each run the extractor.
+    """
+    wanted: dict[tuple[pathlib.Path, str | None], None] = {}
+    for cf in files:
+        artifact = cf.artifact()
+        if artifact is not None and artifact.is_file():
+            wanted[(artifact, V.declared_extractor(cf.source.reader))] = None
+
+    def read(reading: tuple[pathlib.Path, str | None]) -> None:
+        artifact, declared = reading
+        try:
+            if declared:
+                V.extract(artifact, None, declared, allowed)
+            else:
+                V.extract(artifact, None)
+        except SourceUnreadableError:
+            return
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(8, os.cpu_count() or 1)) as pool:
+        list(pool.map(read, wanted))
+
+
 def cmd_verify(a) -> int:
     rep = V.Report()
+    extraction_cache.use_default(disabled=getattr(a, "no_cache", False))
     counts: collections.Counter = collections.Counter()
     extractors: collections.Counter = collections.Counter()
     # Consent to run a program comes from whoever invokes the command, never from the file
@@ -199,7 +229,10 @@ def cmd_verify(a) -> int:
     if a.claims:
         root = pathlib.Path(a.claims).expanduser().resolve()
         library = paths.find()
-        for cf in _claim_files(root, skipped=rep.skipped):
+        files = list(_claim_files(root, skipped=rep.skipped))
+        if extraction_cache.enabled() and len(files) > 1:
+            _extract_ahead(files, allowed)
+        for cf in files:
             artifact = cf.artifact()
             missing = V.MISSING
             if artifact is not None and not artifact.exists():
@@ -246,6 +279,7 @@ def cmd_verify(a) -> int:
                         rep.problems.append((f"{cf.name}:{cid}", q.text[:58], r))
         rep.counts = dict(counts)
         rep.extractors = dict(extractors)
+        rep.from_cache = extraction_cache.hits()
         return _report(rep, counts, a, f"claims  {root}")
 
     lib, origin = paths.find_with_origin()
@@ -275,6 +309,7 @@ def cmd_verify(a) -> int:
                 rep.problems.append((rec.slug, q.text[:58], r))
     rep.counts = dict(counts)
     rep.extractors = dict(extractors)
+    rep.from_cache = extraction_cache.hits()
     return _report(rep, counts, a, source)
 
 
@@ -317,6 +352,13 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
         for name, n in sorted(rep.extractors.items(), key=lambda kv: (-kv[1], kv[0])):
             why = rep.fallback_reasons.get(name, "")
             print(f"  {n:>7,}  {name}" + (f"   fallback: {why[:50]}" if why else ""))
+    # Which readings no extractor produced in this run.
+    if rep.from_cache:
+        n = rep.from_cache
+        print(
+            f"\n{n:,} extraction{'' if n == 1 else 's'} taken from the cache, filed under the "
+            f"source's sha256 and the extractor's version; --no-cache reads every source again"
+        )
     # Where the bytes came from. The same claims directory resolves on the machine that holds
     # the library and is `unchecked` on one that does not, and the counts alone do not say which
     # of those this run was.
@@ -508,6 +550,11 @@ def _main(argv: list[str] | None = None) -> int:
         metavar="NAME",
         help="let a claims file's extract_cmd run this program, named exactly as it writes it "
         f"(allowed unasked: {', '.join(sorted(V.DEFAULT_EXTRACTORS))})",
+    )
+    v.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="run the extractor over every source, and keep nothing for the next run",
     )
     v.add_argument(
         "--triangulate",

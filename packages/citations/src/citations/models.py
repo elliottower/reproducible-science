@@ -342,10 +342,15 @@ class Record(_Base):
         return bool(self.sha256 and self.sha256.strip())
 
 
+#: libyaml's loader where PyYAML was built with it, which every published wheel is. It reads the
+#: same documents as the Python loader, several times faster.
+_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+
+
 def _load_yaml(path: pathlib.Path) -> dict[str, Any]:
     """Parse one YAML file into a mapping, naming the file when it is not one."""
     try:
-        raw = yaml.safe_load(path.read_text()) or {}
+        raw = yaml.load(path.read_text(), Loader=_LOADER) or {}
     except yaml.YAMLError as e:
         raise ClaimFileError(path, f"not valid YAML: {e}") from e
     except OSError as e:

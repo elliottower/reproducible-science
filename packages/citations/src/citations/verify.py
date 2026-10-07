@@ -96,6 +96,7 @@ from __future__ import annotations
 
 import functools
 import hashlib
+import os
 import pathlib
 import re
 import shlex
@@ -108,7 +109,7 @@ from typing import Literal
 
 from provenance_core import sha256_of_file
 
-from citations import extractors, readers
+from citations import extraction_cache, extractors, readers
 from citations.exceptions import SourceUnreadableError
 
 # Long enough to carry its own qualifiers. "We trained 50" resolves against a sentence that
@@ -314,6 +315,10 @@ class Report:
     """Interpretations marked `contested`, which a file records rather than resolves."""
 
     triangulated: int = 0
+    from_cache: int = 0
+    """Extractions returned from the cache of earlier runs, each filed under the sha256 of the
+    source's bytes and the version of the program that read them. Counted so a report says
+    which of its readings no extractor produced in this run."""
     """Quotations more than one extractor was asked about. Counted rather than inferred from
     `--triangulate`: a run can ask for triangulation and get none, where every source declares
     a command or only one reader is installed, and reporting the request as the result would
@@ -381,8 +386,14 @@ def passage_fold(s: str) -> str:
     # the marks makes both sides `naive`, at the cost of no longer distinguishing two words
     # that differ only by an accent -- which is a pair that does not occur inside one document.
     # NFKD folds the `ﬁ` and `ﬂ` ligatures the same as NFKC does.
-    s = unicodedata.normalize("NFKD", s)
-    s = "".join(c for c in s if not unicodedata.combining(c))
+    #
+    # The marks are found among the distinct characters of the text and deleted in one pass.
+    # Asking `unicodedata.combining` of every character in turn was a third of a run over a
+    # few hundred pages, and a text has a few hundred distinct characters.
+    if not s.isascii():
+        s = unicodedata.normalize("NFKD", s)
+        if marks := [ord(c) for c in set(s) if unicodedata.combining(c)]:
+            s = s.translate(dict.fromkeys(marks))
     # A PDF's embedded fonts can reach the extractor as raw glyph codes, arriving as control
     # characters mid-page. They become separators rather than being deleted: deleting them welds
     # the words on either side into one that appears in neither text, so a passage that is really
@@ -481,11 +492,17 @@ def _stem_siblings(source: pathlib.Path) -> frozenset[str]:
     session working in one tree.
     """
     try:
-        return frozenset(
-            q.name for q in source.parent.iterdir() if q.stem == source.stem and q != source
-        )
+        names = os.listdir(source.parent)
     except OSError:
         return frozenset()
+    # A name begins with its stem, so the prefix test settles almost every entry of a folder
+    # holding a few thousand sources without building a path for it.
+    stem = source.stem
+    return frozenset(
+        name
+        for name in names
+        if name.startswith(stem) and name != source.name and pathlib.PurePath(name).stem == stem
+    )
 
 
 def _run(source: pathlib.Path, argv: list[str], missing: str = "", hint: str = "") -> str:
@@ -508,6 +525,12 @@ def _run(source: pathlib.Path, argv: list[str], missing: str = "", hint: str = "
     # bytes twice and compare, and a cache keyed on the path returns the first answer both
     # times, which would make this check incapable of failing.
     before = sha256_of_file(source) if source.is_file() else ""
+    # The same bytes read by the same version of the same program with the same arguments give
+    # the same text, so that text is returned where an earlier run filed it. Nothing runs, so
+    # there is nothing below to check. See `extraction_cache`.
+    held_under = extraction_cache.address(before, argv, source)
+    if held_under is not None and (held := extraction_cache.get(held_under)) is not None:
+        return held
     # The same rule one level out. The hash above catches an extractor that overwrites the file
     # it was given; it cannot see one that writes a *sibling*, and that is the common shape:
     # `pdftotext -layout X.pdf` with no `-` writes `X.txt` and prints nothing. Thirty-two such
@@ -559,6 +582,8 @@ def _run(source: pathlib.Path, argv: list[str], missing: str = "", hint: str = "
             "so a command that writes a file prints nothing here)"
         )
         raise SourceUnreadableError(source, f"{program} printed nothing" + advice + hint)
+    if held_under is not None:
+        extraction_cache.put(held_under, proc.stdout)
     return proc.stdout
 
 
