@@ -319,6 +319,25 @@ because it costs one extraction per reader; it does not apply to a source that d
 command, and a run that triangulated nothing says so rather than reporting the readers as
 having concurred.
 
+## Text kept between runs
+
+Running `pdftotext` over each source is most of what `citations verify` costs, so the command
+keeps what it extracts and reads several sources at a time. An entry is filed under the sha256
+of the source's bytes, the version `pdftotext` reports, and its arguments. A source whose bytes
+changed, a different poppler or a different flag is extracted again; nothing is looked up by
+path or by date. The report counts the readings that came from the cache:
+
+```text
+28 extractions taken from the cache, filed under the source's sha256 and the extractor's version; --no-cache reads every source again
+```
+
+`--no-cache`, or `CITATIONS_NO_CACHE=1`, runs the extractor over every source and keeps nothing.
+The entries hold text from the sources, so they live with the user and not in a repository:
+`$CITATIONS_CACHE_DIR`, else `$XDG_CACHE_HOME/citations/extractions`, else
+`~/.cache/citations/extractions`. Only `pdftotext` is kept. A declared extractor the package
+does not know has no version to ask for, and is run every time. `repro verify` reads every
+source every time.
+
 ## Reading workbooks, `.docx` and article XML
 
 Three built-in extractors read the formats a supplement or an open-access article arrives in,
