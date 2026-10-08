@@ -26,6 +26,8 @@ citations audit --bib refs.bib      # check a BibTeX file directly
 citations resolve                   # backfill missing DOIs and arXiv ids
 citations init                      # create a library here
 citations lint                      # BibTeX correctness
+citations lint --claims <dir>       # pinned sources that git tracks
+citations fetch --claims <dir>      # download the pinned sources, keeping only matching bytes
 ```
 
 ## Reading the output
@@ -58,6 +60,25 @@ was never there.
 `$CITATIONS_HOME`, else `.citations/` found by walking up from the current directory, else the
 shared one from `citations init --user`. So the same command run one directory over can verify a
 different set of records and still report `all found`.
+
+## Keep source texts out of git
+
+A claims file pins its source by a `sha256` and names where it came from, so no check needs
+the source committed. **Keep source texts on disk and out of git**: ignore the folder they sit
+in before the first `git add`. A committed source is somebody else's text published with the
+repository, and taking it out later means rewriting every commit that held it.
+
+- The record carries the digest and the address: `sha256`, and a `url`, `doi` or arXiv id.
+  `citations fetch --claims <dir>` downloads each source again and keeps only bytes that match
+  the pin.
+- In a clone that holds no sources, `unchecked` with `file not found` is the expected report.
+  Run `citations fetch`, then `verify`.
+- `citations verify` and `citations lint --claims <dir>` list the pinned sources git tracks,
+  and `citations pin` says when the source it just read is tracked or covered by no ignore
+  rule. Each is a warning: it fails nothing, with or without `--strict`, and no command edits
+  `.gitignore`.
+- Text under a licence that allows redistribution is the author's to commit. Record the licence
+  beside it.
 
 ## Quote enough text
 

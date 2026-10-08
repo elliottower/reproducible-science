@@ -494,7 +494,7 @@ def test_asking_for_both_bib_modes_as_json_is_refused(tmp_path, registry, capsys
     path = mediational(tmp_path, "Smith, Louisa H.")
 
     assert lint.main(["--bib", str(path), "--authors", str(path), "--json"]) == 2
-    assert "not both" in capsys.readouterr().out
+    assert "--json prints one document" in capsys.readouterr().out
 
 
 def test_a_missing_file_is_an_error_rather_than_an_empty_pass(tmp_path):

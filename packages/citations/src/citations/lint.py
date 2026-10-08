@@ -4,6 +4,7 @@
     citations lint --json              # machine-readable
     citations lint --bib refs.bib      # repeated keys and bare family names, papis not required
     citations lint --authors refs.bib  # author lists, against each entry's own identifier
+    citations lint --claims claims/    # pinned sources that git tracks
 
 The modes answer different questions about different artifacts. The records mode asks whether a
 record carries the fields its entry type requires, and needs papis to know what those are. The
@@ -28,6 +29,12 @@ the offline mode, beside the repeated keys.
 A name that is one word, carries no comma and is not braced has no given part for any reference
 style to print. `{OpenAI}` and `{Open Science Collaboration}` are braced, which is how BibTeX is
 told a name is complete as written, so neither is a finding.
+
+`--claims` lists every source a claims directory pins that git tracks. A claims file pins its
+source by a sha256, so the check never needs the source committed, and a committed one is
+somebody else's text published with the repository. It is a warning and exits 0 whatever it
+finds: text under an open licence is the author's to commit. `verify` prints the same finding
+and shows the first ten; this lists them all. See `tracked`.
 
 `--authors` reads the author list back against the registry the entry's own identifier names. On
 2026-08-31 two agents, in one session, attributed "Mediational E-values" (Epidemiology
@@ -86,9 +93,9 @@ import yaml
 from provenance_core import atomic_write
 from pydantic import BaseModel, Field
 
-from citations import audit, bibtex, paths, resolve, services
-from citations.exceptions import CitationsError
-from citations.models import Record, load_record
+from citations import audit, bibtex, paths, resolve, services, tracked
+from citations.exceptions import CitationsError, ClaimFileError
+from citations.models import Record, load_claim_file, load_record
 from citations.text import name_fold, variants
 
 #: Venue words that decide which BibTeX entry type a record projects to, and therefore which
@@ -714,6 +721,58 @@ def author_lists(files: list[pathlib.Path], as_json: bool) -> int:
     return 1
 
 
+def tracked_sources(folders: list[pathlib.Path], as_json: bool) -> int:
+    """Every source these claims directories pin that git tracks. Exits 0 whatever it finds.
+
+    A claims file that will not parse is named and passed over, as `verify` does, and a source
+    that is not on disk has nothing to be tracked.
+    """
+    for folder in folders:
+        if not folder.is_dir():
+            print(f"  no claims directory at {folder}")
+            return 2
+    pinned: list[tuple[pathlib.Path, pathlib.Path]] = []
+    for folder in folders:
+        for path in sorted(folder.resolve().glob("*.yaml")):
+            try:
+                artifact = load_claim_file(path).artifact()
+            except ClaimFileError as e:
+                if not as_json:
+                    print(f"  skipped  {path.name}: {e.detail.splitlines()[0]}")
+                continue
+            if artifact is not None and artifact.is_file():
+                pinned.append((path, artifact))
+    in_git = tracked.tracked(artifact for _, artifact in pinned)
+    found = [(path, artifact) for path, artifact in pinned if artifact in in_git]
+
+    if as_json:
+        print(
+            json.dumps(
+                {
+                    "sources": len(pinned),
+                    "tracked": [
+                        {"claims_file": str(path), "source": str(artifact)}
+                        for path, artifact in found
+                    ],
+                },
+                indent=1,
+            )
+        )
+        return 0
+
+    print(
+        f"  {len(pinned):,} pinned source{'' if len(pinned) == 1 else 's'} on disk, "
+        f"{len(found):,} tracked by git"
+    )
+    for path, artifact in found:
+        print(f"  tracked  {path.name[:38]:<40}{artifact}")
+    if found:
+        print("\n  Publishing the repository republishes the text of each.")
+        print(f"  To keep one out, {tracked.REMEDY}.")
+        print("  A warning only: nothing here fails on it.")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="citations lint", description=__doc__.split("\n")[0])
     ap.add_argument("--json", action="store_true")
@@ -732,20 +791,29 @@ def main(argv: list[str] | None = None) -> int:
         help="a bibliography whose author lists are read back against the registry each entry's "
         "own DOI or arXiv id names; repeatable, and offline once the lists are cached",
     )
+    ap.add_argument(
+        "--claims",
+        action="append",
+        metavar="DIR",
+        help="a claims directory whose pinned sources are listed where git tracks them; "
+        "repeatable, a warning that exits 0 whatever it finds",
+    )
     a = ap.parse_args(argv)
 
-    if a.bib and a.authors and a.json:
+    if a.json and sum(bool(mode) for mode in (a.bib, a.authors, a.claims)) > 1:
         # Two documents printed back to back are not a JSON document. Refusing says so; running
         # one mode and dropping the other would report a check that never ran.
-        print("  --json prints one document: ask for --bib or --authors, not both")
+        print("  --json prints one document: ask for --bib, --authors or --claims, not two of them")
         return 2
 
-    if a.bib or a.authors:
+    if a.bib or a.authors or a.claims:
         code = 0
         if a.bib:
             code |= bib_defects([pathlib.Path(p).expanduser() for p in a.bib], a.json)
         if a.authors:
             code |= author_lists([pathlib.Path(p).expanduser() for p in a.authors], a.json)
+        if a.claims:
+            code |= tracked_sources([pathlib.Path(p).expanduser() for p in a.claims], a.json)
         return code
 
     papis = find_papis()
