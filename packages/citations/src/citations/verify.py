@@ -258,6 +258,9 @@ class Omission:
     passage: str
     """The source from the start of the quotation's first piece to the end of its last, gaps
     included: the quotation as the source has it."""
+    start: int = -1
+    """Where `passage` begins in the text the source was read as, in characters. -1 where
+    `folded`, since the folded text has no place in it."""
     folded: bool = False
     """Whether `passage` and each `Gap.text` are the folded text, in lower case with single
     spaces, and not the source's own characters. They are the source's own wherever a stretch
@@ -380,6 +383,12 @@ class Report:
 
     contested_readings: int = 0
     """Interpretations marked `contested`, which a file records rather than resolves."""
+
+    restored: int = 0
+    """Quotations written by `citations restore`: a passage of the source put back around
+    text the original quotation left out. Counted apart from the rest, because each is the
+    source's text and not what the quoting party wrote, and a total that mixed the two would
+    say more quotations resolved as written than did."""
 
     triangulated: int = 0
     from_cache: int = 0
@@ -1434,6 +1443,69 @@ def _stretch(text: str, doc: str, a: int, b: int) -> tuple[int, int] | None:
     return (s, e) if s >= 0 and fold(text[s:e]) == doc[a:b] else None
 
 
+def _fits(doc: str, words: list[str], at: int, i: int, j: int) -> bool:
+    """Whether words[i:j], found at `at` in `doc`, sits there as `omission`'s rule requires.
+
+    White space or an edge of the document on the outer side of every cut. The first piece's
+    start and the last piece's end are the quotation's own ends and may also fall beside
+    punctuation, never between two letters or digits.
+    """
+    end = at + len(" ".join(words[i:j]))
+    if at > 0 and doc[at - 1] != " " and (i or (doc[at - 1].isalnum() and doc[at].isalnum())):
+        return False
+    return (
+        end == len(doc)
+        or doc[end] == " "
+        or (j == len(words) and not (doc[end - 1].isalnum() and doc[end].isalnum()))
+    )
+
+
+def alignments(quote: str, text: str, limit: int = 2, max_omitted_tokens: int | None = None) -> int:
+    """In how many ways a quotation fits the source as pieces under `omission`'s rule, up to
+    `limit`.
+
+    A way is a division of the quotation into pieces together with a place in the source for
+    each. `omission` reports one of them. This counts all of them, of any number of pieces, so
+    a caller that is about to treat the reported one as the passage the quotation was taken
+    from can first ask whether there is another: a piece the source has twice, or a cut that
+    could fall on either side of a repeated word, makes two.
+
+    `max_omitted_tokens` counts only the ways that leave out no more than that many tokens of
+    the source over all their gaps. A quotation whose closing phrase the source repeats a
+    paragraph later fits a second way, with the paragraph left out, and that way is not a
+    candidate for a caller that would refuse an omission of that size anyway.
+    """
+    words, doc = passage_fold(quote).split(" "), passage_fold(text)
+    n = len(words)
+
+    @functools.cache
+    def ways(i: int, end: int, budget: int | None) -> int:
+        total = 0
+        for j in range(i + 1, n + 1):
+            piece = " ".join(words[i:j])
+            if len(piece) < MIN_PIECE_CHARS:
+                continue
+            fitted = False
+            at = doc.find(piece, end + 2 if i else 0)
+            while at >= 0:
+                if _fits(doc, words, at, i, j):
+                    fitted = True
+                    left = budget
+                    if i and budget is not None:
+                        left = budget - len(doc[end:at].split())
+                        if left < 0:
+                            break  # every later occurrence leaves out more
+                    total += 1 if j == n else ways(j, at + len(piece), left)
+                    if total >= limit:
+                        return limit
+                at = doc.find(piece, at + 1)
+            if not fitted:
+                break
+        return total
+
+    return ways(0, 0, max_omitted_tokens)
+
+
 def omission(quote: str, text: str) -> Omission | None:
     """What a quotation leaves out, if that is all that separates it from the source.
 
@@ -1489,15 +1561,7 @@ def omission(quote: str, text: str) -> Omission | None:
     n = len(words)
 
     def fits(at: int, i: int, j: int) -> bool:
-        """Whether words[i:j], found at `at`, sits in the source as the rule requires."""
-        end = at + len(" ".join(words[i:j]))
-        if at > 0 and doc[at - 1] != " " and (i or (doc[at - 1].isalnum() and doc[at].isalnum())):
-            return False
-        return (
-            end == len(doc)
-            or doc[end] == " "
-            or (j == n and not (doc[end - 1].isalnum() and doc[end].isalnum()))
-        )
+        return _fits(doc, words, at, i, j)
 
     def first(i: int, j: int, frm: int) -> int:
         piece = " ".join(words[i:j])
@@ -1541,19 +1605,20 @@ def omission(quote: str, text: str) -> Omission | None:
             # Each gap as offsets into the passage: past the space after one piece, up to the
             # space before the next.
             left_out = [(e + 1 - a, s - 1 - a) for (_, e), (s, _) in itertools.pairwise(placed)]
-            passage, spans = doc[a:b], left_out
+            passage, spans, start = doc[a:b], left_out, -1
             if (whole := _stretch(text, doc, a, b)) is not None:
                 own = text[whole[0] : whole[1]]
                 found = [_stretch(own, passage, x, y) for x, y in left_out]
                 if all(found):
-                    passage, spans = own, [f for f in found if f]
+                    passage, spans, start = own, [f for f in found if f], whole[0]
             return Omission(
                 [
                     Gap(len(" ".join(words[:j])), y - x, passage[s:e], s)
                     for j, (x, y), (s, e) in zip(cuts[1:], left_out, spans, strict=True)
                 ],
                 passage,
-                folded=spans is left_out,
+                start,
+                folded=start < 0,
             )
         if not reached:
             return None

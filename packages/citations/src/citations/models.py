@@ -225,6 +225,12 @@ class Claim(_Base):
     file now says so in its own structure rather than in a convention nobody can read.
     """
 
+    restored: dict[str, Any] | None = None
+    """What `citations restore` records where it wrote this claim: the claim it was derived
+    from, the original quotation, and where in the source the passage sits. Present only on a
+    derived claim, whose quotation is the source's text and not the quoting party's. See
+    `citations.restore`."""
+
     quotes: list[Quote] = Field(default_factory=list)
     """The passages cited in support. May be empty; an unsupported claim is a fact about
     the file, not an error in it."""

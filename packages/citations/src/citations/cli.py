@@ -9,6 +9,7 @@ citations build             rebuild records from the papers' bibliographies
 citations lint              BibTeX correctness, repeated keys, and author lists in a .bib
 citations add               add one entry to a .bib, refusing a key it already has
 citations pin               write a quotation into a claims file, refusing one that does not resolve
+citations restore           write the source's passage for a quotation that leaves text out, apart
 citations link              point pdfs/ at wherever the papers keep the artifacts
 citations fetch             download the sources a claims directory pins, keeping only matching bytes
 citations projects          which projects this library refers to, and which names are dead
@@ -58,6 +59,7 @@ DELEGATED = {
     "lint": "lint",
     "add": "add",
     "pin": "pin",
+    "restore": "restore",
     "projects": "projects",
     "tags": "tags",
     "link": "link_pdfs",
@@ -262,6 +264,7 @@ def cmd_verify(a) -> int:
                     if not q.text:
                         continue
                     rep.checked += 1
+                    rep.restored += claim.restored is not None
                     r = V.check_one(
                         q.text,
                         artifact,
@@ -397,6 +400,14 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
             print(f"  {rep.foreign_readings:>7,}  attributed to a party other than the source")
         if rep.contested_readings:
             print(f"  {rep.contested_readings:>7,}  contested")
+
+    # Never mixed in silently. A restored passage is the source's text, so its resolving says
+    # nothing about the quotation it was restored from, which is still `not found` in its file.
+    if rep.restored:
+        print(
+            f"\nrestored  {rep.restored:,} of the {rep.checked:,} — the source's own passage, "
+            f"written by `citations restore`; not what the quoting party wrote"
+        )
 
     # A record that is not committed exists on one machine, and a verdict resting on it cannot
     # be appealed to later. Counted and reported, never blocking: a library mid-edit is the
@@ -598,6 +609,7 @@ def _main(argv: list[str] | None = None) -> int:
         ("lint", "BibTeX correctness, repeated keys, and author lists in a .bib"),
         ("add", "add one entry to a .bib, refusing a key it already has"),
         ("pin", "write a quotation into a claims file, refusing one that does not resolve"),
+        ("restore", "write the source's passage for a quotation that leaves text out, apart"),
         ("projects", "which projects this library refers to, and which names are dead"),
         ("tags", "the tag vocabulary, what uses it, and any tag nothing declares"),
         ("link", "point pdfs/ at the papers' artifacts"),

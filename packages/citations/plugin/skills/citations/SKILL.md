@@ -79,6 +79,15 @@ source reads it: read both, because the words left out may be the ones that qual
 Then either quote the passage as the source reads, or, in a manuscript, mark the gap with an
 ellipsis. Never rejoin the pieces without one.
 
+**`citations restore <file> --id <id>` records the source's passage for an omission, apart
+from the quotation.** It writes a derived claim to `<file>.restored.yaml` and never edits the
+original, which stays `not found`. It restores one omitted token unless `--max-omitted-tokens`
+asks for more, and refuses a misquotation or a quotation that fits the source two ways. Use it
+only after reading what was left out. It corrects a quotation against its source; it does not
+show the omission was harmless, and a restored passage is the source's text, not what the
+quoting party wrote. `verify` counts restored quotations on their own line: report that count
+separately, never inside the count of quotations found.
+
 **`ambiguous` means the source has the passage more than once.** `citations pin` refuses it
 without choosing. Read the source, decide which occurrence is meant, and pin it with
 `citations pin <file> --id <id> --quote "<passage>" --occurrence N`, counting from 1 in the

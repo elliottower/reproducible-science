@@ -102,6 +102,7 @@ every quote resolved, but against a source that is not the one pinned.
 |---------|-------------|
 | `citations init` | Create a library here |
 | `citations pin` | Add a quotation to a claims file, refusing one that does not resolve; `--occurrence N` pins one occurrence of a repeated passage |
+| `citations restore` | Write the source's passage for a quotation that leaves text out, as a separate record |
 | `citations verify` | Do the quotations resolve in their sources? |
 | `citations coverage` | Is every quotation in my manuscript pinned at all? |
 | `citations audit` | Does the stored metadata match the record the identifier resolves to? |
@@ -330,7 +331,8 @@ The count line says how many of the `not found` are of this kind: `not found  3 
 source in pieces, with text left out between them`. There are two repairs, and the author
 chooses: quote the passage as the source reads, or, in a manuscript, mark the gap with an
 ellipsis, which `citations coverage` reads as omitted text. A claims file's `exact` takes no
-ellipsis, and no command rewrites a quotation.
+ellipsis, and no command rewrites a quotation. `citations restore` writes the passage as a
+separate record; see [Restoring the source's passage](#restoring-the-sources-passage).
 
 The result carries the same in full. `reason` is `omission`, each entry of `gaps` holds the
 `text` left out, its `offset` in the passage, where the gap falls in the quotation (`at`) and
@@ -377,6 +379,81 @@ an omission.
 
 **A source that is not what it claims to be.** A `.pdf` that is a Cloudflare interstitial or a
 login page fails under every reader. `file` will say so in one line.
+
+## Restoring the source's passage
+
+`citations restore` is the explicit step after an omission has been read. It writes the
+source's passage for that quotation as a separate, derived claim, and leaves the quotation
+alone:
+
+```console
+$ citations restore claims/notes2026.yaml --id joined
+restored  joined as joined-restored in notes2026.restored.yaml
+  1 token of the source put back in 1 place; notes2026.yaml is unchanged, and joined is still `not found` as written
+  the restored passage is the source's text, not what the quoting party wrote
+```
+
+The claims file it is given is never edited: `joined` stays as written and stays `not found`.
+The derived claim goes in `claims/notes2026.restored.yaml`, a claims file beside the original
+that carries the same `source` block, so `citations verify --claims claims` reads it with the
+rest. Its quotation is the bounded passage, from the start of the quotation's first piece to
+the end of its last, in the source's own characters. It is never widened to the sentence and no
+context is added.
+
+```yaml
+claims:
+  joined-restored:
+    restored:
+      from: joined
+      notice: The quotation in this claim is the source's own text, restored by `citations restore`
+        around text the original quotation left out. It is not what the quoting party wrote; that
+        is `original`, which is not found in the source as written.
+      original: Higher circulating levels of the protein were associated with lower risk
+      source: {citation: notes2026, local: sources/notes.txt, sha256: 56f5…}
+      text: {extractor: text, sha256: 56f5…}
+      passage: {start: 13, end: 95}
+      omitted:
+      - {start: 59, end: 67, tokens: 1, position: 8}
+      rule: {name: bounded-passage, version: 1, max_omitted_tokens: 1, min_piece_chars: 20}
+      software: {citations: 0.5.1}
+    quotes:
+    - exact: Higher circulating levels of the Protein were strongly associated with lower risk
+```
+
+`passage` and `omitted` are character offsets into the text the extractor produced, whose
+digest is `text.sha256`; `position` is the place of the first omitted token among the passage's
+tokens, counting from 1. `software` adds `commit` where the package was installed from one.
+Nothing in the record depends on when or where the command ran, so the same claims file and
+source give the same bytes.
+
+`verify` counts restored quotations on a line of their own, so they are never mixed with
+quotations that resolved as written:
+
+```text
+restored  1 of the 3 — the source's own passage, written by `citations restore`; not what the quoting party wrote
+```
+
+It refuses, and writes nothing, unless all of these hold:
+
+- the quotation is an omission under the rule above. A changed word or digit, a number or a
+  hyphenated word cut short, and a quotation that is absent are never restored;
+- the tokens left out, over all gaps, number at most `--max-omitted-tokens`. The default is 1,
+  the strictest setting; a larger limit is asked for by number;
+- the quotation fits the source in exactly one way that leaves out no more than that limit.
+  Where a piece occurs twice, or a cut could fall on either side of a repeated word, the
+  passage it was taken from is not determined and none is chosen. A way that leaves out more
+  than the limit is not counted, so raising the limit can turn a restoration into a refusal;
+- the passage can be given in the source's own characters, and resolves as `found` on its
+  own, once;
+- the source matches its pin, the claim has one quotation, and the derived id is not taken.
+
+**When to restore, and when not.** Restoring corrects a quotation against its source: the
+record then holds what the source says at that place, and says how it differs from what was
+quoted. It does not show that the omission was harmless. A dropped `not` is one token, and
+restoring it reverses the quotation. Whether the quoting party's reading survives the text
+they left out is a judgment about that text, which is why the record gives the offsets of
+every omitted stretch and keeps the original quotation beside the passage. Do not restore in
+order to make a run pass, and do not report restored quotations as quotations that resolved.
 
 ## Reading PDFs
 
