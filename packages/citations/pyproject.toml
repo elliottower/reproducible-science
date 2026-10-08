@@ -42,7 +42,7 @@ urls.Changelog = "https://github.com/elliottower/reproducible-science/blob/main/
 urls.Homepage = "https://github.com/elliottower/reproducible-science"
 urls.Issues = "https://github.com/elliottower/reproducible-science/issues"
 urls.Source = "https://github.com/elliottower/reproducible-science/tree/main/packages/citations"
-scripts.citations = "citations.cli:main"
+scripts.citations = "citations.entry:main"
 
 [dependency-groups]
 dev = [

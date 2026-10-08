@@ -22,7 +22,6 @@ from __future__ import annotations
 import argparse
 import collections
 import concurrent.futures
-import importlib
 import os
 import pathlib
 
@@ -31,6 +30,8 @@ from provenance_core import hint
 from citations import coverage as C
 from citations import extraction_cache, paths, projects, tracked
 from citations import verify as V
+from citations.entry import DELEGATED
+from citations.entry import delegate as _delegate
 from citations.exceptions import CitationsError, ClaimFileError, SourceUnreadableError
 from citations.models import ClaimFile, load_claim_file, load_record
 
@@ -49,22 +50,6 @@ WARNINGS = {
     "normalized": "matched after ignoring punctuation and spacing",
     "page": "found, but not on the page recorded",
     "page unchecked": "a page is recorded and the declared extractor cannot be asked for one",
-}
-
-DELEGATED = {
-    "init": "init",
-    "audit": "audit",
-    "resolve": "resolve",
-    "build": "build",
-    "lint": "lint",
-    "add": "add",
-    "pin": "pin",
-    "restore": "restore",
-    "projects": "projects",
-    "tags": "tags",
-    "link": "link_pdfs",
-    "fetch": "fetch",
-    "import-paperclip": "import_paperclip",
 }
 
 
@@ -568,16 +553,6 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
             print(f"{len(rep.skipped)} claims file(s) did not parse and were never examined.")
         print("--strict fails on these: nothing was established about them either way.")
     return 0 if (rep.strict_ok if a.strict else rep.ok) else 1
-
-
-def _delegate(module: str, argv: list[str]) -> int:
-    """Hand the remaining arguments to a subcommand's own parser.
-
-    `argv` is passed, never assigned to `sys.argv`: a function whose behavior depends on a
-    global cannot be called twice, tested without monkeypatching, or run from anything that is
-    not a terminal.
-    """
-    return importlib.import_module(f"citations.{module}").main(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
