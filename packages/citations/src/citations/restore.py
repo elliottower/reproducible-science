@@ -26,12 +26,14 @@ Refused, with nothing written, unless all of these hold:
         it: through `check_one`, so a passage any installed reader finds whole is `found` and
         is not restored. A changed word or digit, a number or a hyphenated word cut short,
         and a quotation that is simply absent are not omissions;
-    the passage is the only one the quotation can have been taken from. Every way the
-        quotation fits the source is listed, and the one with the shortest passage is restored
-        only where every other way spans a passage that contains it and is longer: a closing
-        phrase the source repeats a paragraph on gives such a way, and it is not a second
-        candidate. Where two ways span the same passage, or neither of two passages contains
-        the other (`In men A significantly B. In women A not once B.`), none is chosen. This
+    the passage is the shortest one the quotation fits, and every other way it fits spans a
+        longer passage that contains this one. Every way the quotation fits the source is
+        listed. Other ways may exist, as when the source repeats the quotation's closing
+        phrase a paragraph on, and the record counts them. That is what is guaranteed, and no
+        more: a way that contains the restored passage can be a different reading of where
+        the quotation came from, and the shortest is restored all the same. Where two ways
+        span the same passage, or neither of two passages contains the other
+        (`In men A significantly B. In women A not once B.`), none is chosen. This
         does not depend on `--max-omitted-tokens`, so raising the limit never turns a
         restoration into a refusal or into another passage. The listing stops at
         `verify.MAX_FITTINGS` ways, and a quotation with that many is refused;
@@ -43,8 +45,8 @@ Refused, with nothing written, unless all of these hold:
     the claims file pins its source by sha256 and the file on disk matches. An unpinned
         source may have changed since the quotation was taken, and a record of it would not
         verify under `--strict`;
-    the file the record goes into, if it exists, is a claims file with the same `source`
-        block as the original. One written against an earlier pin or another source is left
+    the file the record goes into, if it exists, is a claims file whose `source` block names
+        the same `local` and `sha256` as the original's. One written against an earlier pin or another source is left
         alone, since a record added to it would be checked against a source it was not
         taken from.
 
@@ -87,8 +89,9 @@ RULE = "bounded-passage"
 RULE_VERSION = 2
 
 #: How many tokens a quotation may leave out, over all its gaps, and still be restored unless
-#: `--max-omitted-tokens` says otherwise. One: a dropped word is the case a restoration is
-#: least likely to change the sense of, and anything longer is asked for by number.
+#: `--max-omitted-tokens` says otherwise. One, because it is the smallest, and anything longer
+#: is asked for by number. One token is not a small change: a sign, `not` and a unit are each
+#: one token.
 DEFAULT_MAX_OMITTED_TOKENS = 1
 
 NOTICE = (
@@ -236,12 +239,30 @@ def derive(cf: ClaimFile, claim_id: str, limit: int, allowed: frozenset[str]) ->
     }
 
 
+def same_source(path: pathlib.Path, held: object, source: dict) -> bool:
+    """Whether a sidecar's `source` block names the file and the bytes the original's does.
+
+    `local`, resolved as `ClaimFile.artifact` resolves it, and `sha256`. Nothing else: a
+    `doi` or a `url` added to the original since the sidecar was written changes neither
+    what is read nor what it is checked against.
+    """
+    if not isinstance(held, dict):
+        return False
+
+    def named(block: dict) -> tuple[pathlib.Path | None, str]:
+        local = block.get("local")
+        file = (path.parent.parent / str(local)).resolve() if local else None
+        return file, str(block.get("sha256") or "").strip().lower()
+
+    return named(held) == named(source)
+
+
 def document(path: pathlib.Path, source: dict, new_id: str, derived: dict) -> str:
     """The sidecar as it will be written: what it holds already, and this claim.
 
     A sidecar that is already there has to be one this command could have written for the
-    same original: a mapping, with a mapping of claims, under the original's `source` block
-    exactly. Anything else is refused and left as it is.
+    same original: a mapping, with a mapping of claims, whose `source` block names the same
+    file and the same sha256 as the original's. Anything else is refused and left as it is.
     """
     doc: dict = {"source": source, "claims": {}}
     if path.exists():
@@ -257,7 +278,7 @@ def document(path: pathlib.Path, source: dict, new_id: str, derived: dict) -> st
                     f"{path.name} is there and is not a claims file: a mapping with a "
                     f"mapping of `claims` was expected."
                 )
-            if held.get("source") != source:
+            if not same_source(path, held.get("source"), source):
                 raise RestoreRefused(
                     f"{path.name} is there with another `source` block than the claims file "
                     f"has now: it was written against an earlier pin or another source. A "

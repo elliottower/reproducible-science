@@ -266,6 +266,15 @@ def test_two_passages_neither_inside_the_other_are_refused_at_every_limit(tmp_pa
     assert "not inside all the others" in said and "whatever the limit" in said
 
 
+def test_the_shortest_passage_is_restored_inside_a_sentence_that_is_another_reading(tmp_path):
+    b = f"{B1} {B2}"
+    source = f"Critics deny that {A} at all (the sponsor wrote that {A} reliably {b}) or {b}."
+    code, _, exact = attempt(tmp_path, f"{A} {b}", source)
+    assert (code, exact) == (0, f"{A} reliably {b}")
+    f = tmp_path / "claims" / "notes.yaml"
+    assert record(f)["restored"]["fittings"] == {"found": 24, "others_contain_passage": True}
+
+
 def test_the_uniqueness_check_is_reached_at_the_default_limit(tmp_path):
     source = f"In men {A} significantly {B1} {B2}. In women {A} never {B1} {B2}."
     assert "not inside all the others" in refused(tmp_path, f"{A} {B1} {B2}", source)
@@ -405,6 +414,21 @@ def test_a_sidecar_written_against_an_earlier_pin_is_refused_and_left_alone(tmp_
     assert restore.main([str(f), "--id", "d"]) == 1
     assert "another `source` block" in capsys.readouterr().out
     assert restore.sidecar(f).read_bytes() == held
+
+
+def test_a_key_added_to_the_source_block_since_does_not_block_a_later_restore(tmp_path):
+    source = f"X. {FIRST} strongly {SECOND} here. Also {MODEL} only {SPLIT}."
+    f = project(tmp_path, {"c": ONE_OUT, "d": f"{MODEL} {SPLIT}"}, source)
+    assert restore.main([str(f), "--id", "c"]) == 0
+    doc = yaml.safe_load(f.read_text())
+    doc["source"] |= {"doi": "10.1000/x", "local": "./source.txt"}
+    doc["source"]["sha256"] = doc["source"]["sha256"].upper()
+    f.write_text(yaml.safe_dump(doc, sort_keys=False))
+    assert restore.main([str(f), "--id", "d"]) == 0
+    assert set(yaml.safe_load(restore.sidecar(f).read_text())["claims"]) == {
+        "c-restored",
+        "d-restored",
+    }
 
 
 @pytest.mark.parametrize(

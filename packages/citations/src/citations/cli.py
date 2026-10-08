@@ -339,9 +339,9 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
         if s == "not found" and (
             omitted := sum(r.reason == V.OMISSION for _, _, r in rep.problems if r.state == s)
         ):
-            # Its own count, because the remedy differs: these passages are in the source,
-            # and what the record lacks is a mark where text was left out.
-            why = f"   {omitted:,} in the source in pieces, with text left out between them"
+            # Its own count, because the remedy differs: every piece is in the source. That
+            # says nothing about the text left out, which can be what the sentence turns on.
+            why = f"   {omitted:,} in the source only in pieces, with text left out between them"
         if s in ("unchecked", "indeterminate", "ambiguous"):
             # Untruncated: the reason is the only thing that says what to fix, and the one
             # that matters most -- "which this run does not allow" -- is at the end of it.

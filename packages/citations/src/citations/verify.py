@@ -285,10 +285,11 @@ class Omission:
     """Whether the count stopped at `MAX_FITTINGS`, so there may be more and a shorter one
     among them."""
     unique: bool = False
-    """Whether this is the only passage the quotation can have been taken from: every other
-    way of fitting it spans a passage that contains this one and is longer. False where two
-    ways span the same passage, where neither of two passages contains the other, and where
-    the count was capped."""
+    """Whether every other way of fitting the quotation spans a passage that contains this
+    one and is longer. It says the passage is the shortest and sits inside all the others. It
+    does not say the quotation was taken from it: a containing way can be another reading.
+    False where two ways span the same passage, where neither of two passages contains the
+    other, and where the count was capped."""
 
 
 @dataclass
@@ -1665,8 +1666,7 @@ def omission(quote: str, text: str) -> Omission | None:
     shortest passage, which is the one that leaves the least out; of two that tie, the one
     with fewer pieces, and then the one earlier in the source. `fittings` is how many there
     are, and `unique` whether every other one spans a passage that contains the reported one
-    and is longer, which is what makes the reported passage the only candidate for where the
-    quotation was taken from.
+    and is longer.
 
     `Gap.tokens` and `Gap.position` count tokens as defined above, in the folded source. A
     word the source breaks across a line with a hyphen is one token, as it is one word.
@@ -1829,7 +1829,7 @@ def _omitted(quote: str, found: Omission) -> str:
         lines.append(
             f"      the pieces fit the source in "
             f"{'more than ' if found.capped else ''}{found.fittings:,} ways; this is the "
-            f"shortest passage" + ("" if found.unique else ", and not the only candidate")
+            f"shortest passage" + ("" if found.unique else ", and not inside all the others")
         )
     if found.folded:
         lines.append(

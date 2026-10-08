@@ -489,7 +489,7 @@ def test_a_count_that_reaches_the_cap_is_capped_and_never_unique():
 def test_the_detail_says_when_the_shortest_passage_is_not_the_only_candidate(tmp_path):
     source = f"In men {TREATMENT} significantly {MONTHS}. In women {TREATMENT} not once {MONTHS}."
     r = V.check_one(f"{TREATMENT} {MONTHS}", _src(tmp_path, source), None)
-    assert "ways; this is the shortest passage, and not the only candidate" in r.detail
+    assert "ways; this is the shortest passage, and not inside all the others" in r.detail
     one = V.check_one(JOINED, _src(tmp_path / "one", SOURCE), None)
     assert "ways" not in one.detail
 
@@ -521,7 +521,7 @@ def claims(tmp_path):
 def test_verify_fails_on_an_omission_and_counts_it_under_not_found(claims, capsys, flags):
     assert cli.main(["verify", "--no-cache", *flags, "--claims", str(claims)]) == 1
     out = capsys.readouterr().out
-    assert "1 in the source in pieces, with text left out between them" in out
+    assert "1 in the source only in pieces, with text left out between them" in out
     assert "1 not found." in out
     assert "all found." not in out
 

@@ -335,7 +335,7 @@ not found  notes2026:joined            Higher circulating levels of the protein 
 ```
 
 The count line says how many of the `not found` are of this kind: `not found  3   2 in the
-source in pieces, with text left out between them`. There are two repairs, and the author
+source only in pieces, with text left out between them`. There are two repairs, and the author
 chooses: quote the passage as the source reads, or, in a manuscript, mark the gap with an
 ellipsis, which `citations coverage` reads as omitted text. A claims file's `exact` takes no
 ellipsis, and no command rewrites a quotation. `citations restore` writes the passage as a
@@ -391,8 +391,8 @@ and the join is not, which is why an omission is `not found` and never a pass.
 A quotation can fit its source in more than one way, where the source repeats a piece. Every
 way is listed, up to 1,000, and the one reported spans the shortest passage, wherever in the
 source that is; of two that tie, the one with fewer pieces, then the earlier. The report says
-how many ways there are when there is more than one, and whether the shortest is the only
-candidate: it is when every other way spans a longer passage that contains it. The result
+how many ways there are when there is more than one, and whether every other way spans a
+longer passage that contains the shortest. The result
 carries the same as `fittings`, `unique` and `capped` on `verify.omission`'s answer. Text
 written without spaces between words, such as Chinese or Japanese, is one token a sentence and
 is not read as an omission.
@@ -462,9 +462,9 @@ It refuses, and writes nothing, unless all of these hold:
   passage any installed reader finds whole is `found` and is not restored. A changed word or
   digit, a number or a hyphenated word cut short, and a quotation that is absent are never
   restored;
-- the passage is the only one the quotation can have been taken from. The shortest passage is
-  restored only where every other way of fitting spans a longer passage that contains it, as
-  when the source repeats the quotation's closing phrase a paragraph later. Where two ways
+- the passage is the shortest one the quotation fits, and every other way of fitting spans a
+  longer passage that contains it, as when the source repeats the quotation's closing phrase a
+  paragraph later. Other ways may exist, and the record counts them. Where two ways
   span the same passage, or neither of two passages contains the other (`In men A
   significantly B. In women A not once B.`), none is chosen. This does not depend on the
   limit below, so raising the limit never turns a restoration into a refusal or into another
@@ -475,8 +475,9 @@ It refuses, and writes nothing, unless all of these hold:
   own, once;
 - the claims file pins its source by sha256 and the file on disk matches. An unpinned source
   is refused: nothing says it is the file the quotation was taken from;
-- `<name>.restored.yaml`, if it is already there, is a claims file with the same `source`
-  block as the original. One written against an earlier pin or another source, or one that
+- `<name>.restored.yaml`, if it is already there, is a claims file whose `source` block names
+  the same `local` and `sha256` as the original's. A key added to the original since, such as
+  `doi`, does not matter. One written against an earlier pin or another source, or one that
   does not parse, is refused and left as it is;
 - the claim has one quotation, and the derived id is not taken.
 
@@ -490,6 +491,14 @@ restoring it reverses the quotation. Whether the quoting party's reading survive
 they left out is a judgment about that text, which is why the record gives the offsets of
 every omitted stretch and keeps the original quotation beside the passage. Do not restore in
 order to make a run pass, and do not report restored quotations as quotations that resolved.
+
+The restored passage is the shortest the quotation fits, inside every other passage it fits.
+That does not make it where the quotation came from. Take a source reading `Critics deny that
+A at all (the sponsor wrote that A reliably B) or B.` and the quotation `A B`. It is restored
+as `A reliably B`, the sponsor's sentence in the parenthesis, and the record counts 24 ways the
+quotation fits. The outer sentence, in which critics deny A, contains that passage and is
+another possible origin, with the opposite sense. Where `fittings.found` is more than 1, read
+the source around the passage before relying on it.
 
 ## Reading PDFs
 
