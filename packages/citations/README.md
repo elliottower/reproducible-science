@@ -101,7 +101,7 @@ every quote resolved, but against a source that is not the one pinned.
 | Command | What it does |
 |---------|-------------|
 | `citations init` | Create a library here |
-| `citations pin` | Add a quotation to a claims file, refusing one that does not resolve |
+| `citations pin` | Add a quotation to a claims file, refusing one that does not resolve; `--occurrence N` pins one occurrence of a repeated passage |
 | `citations verify` | Do the quotations resolve in their sources? |
 | `citations coverage` | Is every quotation in my manuscript pinned at all? |
 | `citations audit` | Does the stored metadata match the record the identifier resolves to? |
@@ -203,7 +203,9 @@ verbatim in a paper whose sentence continues `"...and 5 refits each for 12 layer
 longer match its pin fails the run whatever its quotations did.
 
 `not found` means read the source. A mirror-reversed scan or a two-column extraction produces
-the same signal as a passage that was never there.
+the same signal as a passage that was never there. A `not found` whose every word is in the
+source, as pieces with text left out between them, is counted separately on the same line; see
+[When a quotation will not resolve](#when-a-quotation-will-not-resolve).
 
 ## Where a passage is, and how it is matched
 
@@ -219,6 +221,35 @@ A quotation carries the passage and, optionally, where it sits:
 A `page` the passage is not on leaves the result `found` with a `page` warning and the page it
 was found on. Under a declared `extract_cmd` there is no page to ask for, and the warning is
 `page unchecked`.
+
+A passage the source has more than once is `ambiguous` until the record says which occurrence
+it quotes, and `citations pin` refuses it. `--occurrence N` pins the Nth, counting from 1 in the
+source's order, and writes the `prefix` and `suffix` that single it out:
+
+```console
+$ citations pin claims/notes2026.yaml --id replication --occurrence 2 \
+    --quote "the model reached an accuracy of 0.94 on the split"
+found     the model reached an accuracy of 0.94 on the split
+added     replication to notes2026.yaml
+  occurrence 2, singled out by the prefix and suffix written with it
+```
+
+```yaml
+claims:
+  replication:
+    quotes:
+    - exact: the model reached an accuracy of 0.94 on the split
+      prefix: 'the replication '
+      suffix: . a third laboratory
+```
+
+The anchors are the source's text on either side as the matcher reads it, so in lower case
+with single spaces. They are widened equally on both sides, a word at a time, until the
+anchored passage is in the source once, which reaches the edges of the document where the
+passage sits in blocks that repeat in full. The quotation is then checked with its anchors
+before anything is written, so what is written resolves under `verify --strict`. An
+`--occurrence` the source does not have is refused, and without the flag no occurrence is
+chosen.
 
 Matching is exact after folding, and never approximate. Folding removes what a PDF extractor
 changes and nothing else: case, runs of whitespace, curly quotation marks, the dash variants,
@@ -265,6 +296,32 @@ it interleaves the columns and shreds every sentence crossing the gutter. A bloc
 concentrated in one document is this. `verify` consults the other readers before a `not found`
 stands and records which one answered, so this repairs itself; a tool that asks one extractor
 does not, and reports the document as missing text it contains.
+
+**Text left out of the middle.** A quotation that joins two stretches of the source and leaves
+out what lies between them is `not found`, because a quotation is one stretch of the source and
+the words left out may qualify it. Every word of it is in the source all the same, so the
+result says that, with `reason: omission` on the result and one gap for each place text was
+left out:
+
+```text
+not found  notes2026:joined            Higher circulating levels of the protein wer
+           every word of the quotation is in the source, as 2 pieces in the source's order with source text left out between them and nothing marking the gap
+           after: ...in were associated with lower risk   (69 characters of the source left out)
+           then:  the association replicated in two ...
+```
+
+The count line says how many of the `not found` are of this kind: `not found  3   2 in the
+source in pieces, with text left out between them`. Pin each piece as a quotation of its own.
+A claims file's `exact` takes no ellipsis; in a manuscript an ellipsis is omitted text and
+`citations coverage` checks the pieces either side of it.
+
+The rule is narrow so that it cannot excuse a misquotation. The quotation must divide into two
+or more pieces, each of which is in the source exactly under the folding above, begins and ends
+on a word boundary in both, and is at least 20 characters once folded. The pieces must occur in
+the source in the quotation's order with source text between each and the next. Every word of
+the quotation is in one piece, so a changed word or digit leaves its piece absent and the
+result is a plain `not found`. Pieces in another order, and a piece under 20 characters, are a
+plain `not found` as well.
 
 **A source that is not what it claims to be.** A `.pdf` that is a Cloudflare interstitial or a
 login page fails under every reader. `file` will say so in one line.

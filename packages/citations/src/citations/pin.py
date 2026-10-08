@@ -27,6 +27,14 @@ recorded against another.
 `--check` resolves the passage and reports what would be written, as `citations add --check`
 does for a bibliography.
 
+A passage the source has more than once is refused as `ambiguous`, because the record would
+not say which occurrence it quotes. `--occurrence N` names one, counting from 1 in the source's
+order, and writes the `prefix` and `suffix` that single it out: the source's own text on either
+side, taken as far out as it takes for `verify` to find the anchored passage once.
+
+    citations pin claims/notes2026.yaml --id second-run --occurrence 2 \
+        --quote "the model reached an accuracy of 0.94 on the split"
+
 Where the source names a built-in `extractor`, the first quotation pinned also records
 `extractor_version` and `derived_sha256` in the source block: the version that read the file
 and the digest of the text it produced. Nobody computes that digest by hand, and a field
@@ -63,9 +71,38 @@ def resolve(
     quote: str,
     page: int | None,
     allowed: frozenset[str],
+    prefix: str = "",
+    suffix: str = "",
 ) -> V.Result:
     """Read the pinned source and decide whether the passage is in it."""
-    return V.check_one(quote, _artifact(cf), page, cf.source.reader, allowed)
+    return V.check_one(
+        quote, _artifact(cf), page, cf.source.reader, allowed, prefix=prefix, suffix=suffix
+    )
+
+
+def anchors(cf: ClaimFile, quote: str, occurrence: int, allowed: frozenset[str]) -> tuple[str, str]:
+    """The prefix and suffix that single out one occurrence of a passage the source repeats.
+
+    Read from the text `resolve` just decided against, so the anchors and the verdict rest on
+    one reading. Raises `PinRefused` where the source has no such occurrence.
+    """
+    artifact = _artifact(cf)
+    assert artifact is not None
+    reader = V.declared_extractor(cf.source.reader)
+    got = V.reading(artifact, None, reader, allowed) if reader else V.reading(artifact)
+    found = V.single_out(quote, got.text, occurrence)
+    if found is None:
+        n = V.resolve_in(quote, got.text).count
+        if occurrence > n:
+            raise PinRefused(
+                f"the passage occurs {n} times in the source, so there is no occurrence "
+                f"{occurrence}. --occurrence takes 1 to {n}."
+            )
+        raise PinRefused(
+            f"no prefix and suffix taken from the source single out occurrence {occurrence} of "
+            f"{n}. Write `prefix`/`suffix` into the claims file by hand."
+        )
+    return found
 
 
 def reading_record(cf: ClaimFile, r: V.Result) -> dict:
@@ -101,6 +138,8 @@ def entry(
     whose: str | None,
     status: str,
     contest: str | None,
+    prefix: str = "",
+    suffix: str = "",
 ) -> dict:
     """The claim block as it will be written, with keys in the order a reader wants them."""
     claim: dict = {}
@@ -112,6 +151,10 @@ def entry(
             reading["contest"] = contest
         claim["interpretation"] = reading
     q: dict = {"exact": quote}
+    if prefix:
+        q["prefix"] = prefix
+    if suffix:
+        q["suffix"] = suffix
     if section:
         q["section"] = section
     if page is not None:
@@ -156,6 +199,13 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("claims_file", type=pathlib.Path, help="the claims/*.yaml to add to")
     ap.add_argument("--id", required=True, help="the claim's identifier within the file")
     ap.add_argument("--quote", required=True, help="the passage, exactly as the source has it")
+    ap.add_argument(
+        "--occurrence",
+        type=int,
+        metavar="N",
+        help="which occurrence of a passage the source repeats, counting from 1; "
+        "the prefix and suffix that single it out are written with the quotation",
+    )
     ap.add_argument("--section", help="where in the source it sits")
     ap.add_argument("--page", type=int, help="the page the passage is on")
     ap.add_argument("--says", help="the characterization the quotation is offered for")
@@ -194,6 +244,30 @@ def main(argv: list[str] | None = None) -> int:
     allowed = V.DEFAULT_EXTRACTORS | frozenset(a.allow_extractor)
     r = resolve(cf, a.quote, a.page, allowed)
 
+    prefix = suffix = ""
+    if a.occurrence is not None and r.state in ("found", "ambiguous"):
+        if a.occurrence < 1:
+            print("--occurrence counts from 1.")
+            return 2
+        if r.state == "found" and a.occurrence != 1:
+            print(f"found once  {a.quote[:60]}")
+            print(
+                f"  the passage occurs once in the source, so there is no occurrence {a.occurrence}."
+            )
+            print("nothing written.")
+            return 1
+        if r.state == "ambiguous":
+            try:
+                prefix, suffix = anchors(cf, a.quote, a.occurrence, allowed)
+            except PinRefused as e:
+                print(f"ambiguous  {a.quote[:60]}")
+                print(f"  {e}")
+                print("nothing written.")
+                return 1
+            # Through the same check `verify` will run, with the anchors as they will be
+            # written: what goes into the file is what was seen to resolve.
+            r = resolve(cf, a.quote, a.page, allowed, prefix, suffix)
+
     if r.state != "found":
         print(f"{r.state}  {a.quote[:60]}")
         if r.detail:
@@ -201,11 +275,18 @@ def main(argv: list[str] | None = None) -> int:
         print("nothing written. read the source before recording the passage.")
         return 1
 
-    claim = entry(a.quote, a.section, a.page, a.says, a.whose, a.status, a.contest)
+    claim = entry(a.quote, a.section, a.page, a.says, a.whose, a.status, a.contest, prefix, suffix)
     record = reading_record(cf, r)
+    singled = (
+        f"  occurrence {a.occurrence}, singled out by the prefix and suffix written with it"
+        if prefix or suffix
+        else ""
+    )
     if a.check:
         print(f"found     {a.quote[:60]}")
         print(f"would add {a.id} to {path.name}")
+        if singled:
+            print(singled)
         if r.warnings:
             print(f"  warnings: {', '.join(r.warnings)}")
         return 0
@@ -213,6 +294,8 @@ def main(argv: list[str] | None = None) -> int:
     add_to(path, a.id, claim, record)
     print(f"found     {a.quote[:60]}")
     print(f"added     {a.id} to {path.name}")
+    if singled:
+        print(singled)
     if r.warnings:
         print(f"  warnings: {', '.join(r.warnings)}")
     if a.says is not None:

@@ -52,6 +52,12 @@ pinned. The pin cannot answer this: an extractor that changed turns the same byt
 text under an unbroken pin. Checked once per source, reported beside the broken pins, and a
 failure for the same reason one of those is.
 
+A `not found` whose every word is in the source says so. Where the quotation is two or more
+stretches of the source, in the source's order, with source text left out between them and
+nothing marking the gap, the result carries `reason = "omission"` and one `Gap` for each place
+text was left out. It stays `not found`: a quotation is one stretch of the source, and the
+words left out may be the ones that qualify it. See `omission` for the rule.
+
 `indeterminate` is not a milder `not found`. `not found` says the source was read and the
 passage is not in it, which is an accusation against the manuscript. `indeterminate` says the
 extractors on this machine do not settle what text the document holds, which accuses nothing
@@ -115,6 +121,15 @@ from citations.exceptions import SourceUnreadableError
 # Long enough to carry its own qualifiers. "We trained 50" resolves against a sentence that
 # continues "...and 5 refits each for 12 layered".
 MIN_QUOTE_CHARS = 40
+
+#: The shortest stretch of a quotation that counts as a piece of the source when `omission`
+#: asks whether a quotation is the source with text left out. Half of `MIN_QUOTE_CHARS`, about
+#: four words: below it nearly any sentence can be assembled from fragments some long document
+#: holds in order, and a changed word would be reported as an omission on either side of it.
+MIN_PIECE_CHARS = 20
+
+#: `Result.reason` on a `not found` whose pieces are all in the source. See `omission`.
+OMISSION = "omission"
 
 #: How many pages `_find_page` will scan before giving up. Hitting it is reported, never
 #: silently folded into "not found on any page" -- the two are different facts.
@@ -212,6 +227,16 @@ State = Literal["found", "not found", "ambiguous", "indeterminate", "unchecked"]
 PinState = Literal["ok", "broken", "unpinned", "missing"]
 
 
+@dataclass(frozen=True)
+class Gap:
+    """One place a quotation leaves source text out without marking it."""
+
+    at: int
+    """Where the gap falls in the quotation: the folded characters before it."""
+    skipped: int
+    """Folded characters of the source between the piece before the gap and the piece after."""
+
+
 @dataclass
 class Result:
     """`state` is the measurement; `warnings` are notes about the quote itself."""
@@ -238,6 +263,13 @@ class Result:
 
     fallback_reason: str = ""
     """Why poppler did not produce it -- not installed, or failed on this file."""
+
+    reason: str = ""
+    """`omission` on a `not found` whose every word is in the source, as pieces in the source's
+    order with text left out between them. Empty on every other result."""
+
+    gaps: list[Gap] = field(default_factory=list)
+    """Where that quotation leaves source text out, in order. Empty unless `reason` is set."""
 
     agreement: dict[str, State] = field(default_factory=dict)
     """Each extractor's own verdict, when more than one was consulted. Empty on the default
@@ -1191,31 +1223,37 @@ def _triangulate(
     return result
 
 
-def _count(needle: str, doc: str) -> int:
-    """Occurrences of `needle` in `doc` that land on a token boundary.
+def _positions(needle: str, doc: str) -> list[int]:
+    """Where `needle` occurs in `doc` on a token boundary, in order.
 
     A passage whose last character is alphanumeric and which is followed by another is a
     shared prefix rather than an occurrence: `the catalog` inside `the catalogue` is not the
     document saying `the catalog` a second time. Counting those would report a passage as
     ambiguous because some longer word happens to begin with it.
 
-    Where no occurrence lands cleanly the total is returned instead. A quotation that only
+    Where no occurrence lands cleanly every occurrence is returned instead. A quotation that only
     ever cuts a word stays `found` and keeps its `truncated` warning, which is the behaviour
     `_cuts_a_token` exists to produce and states as its own rule: a quote that lands cleanly
     somewhere in the document is quoting that place.
     """
     if not needle:
-        return 0
+        return []
     cuts_matter = needle[-1].isalnum()
-    total = clean = 0
+    total: list[int] = []
+    clean: list[int] = []
     at = doc.find(needle)
     while at >= 0:
-        total += 1
+        total.append(at)
         after = at + len(needle)
         if not cuts_matter or after >= len(doc) or not doc[after].isalnum():
-            clean += 1
+            clean.append(at)
         at = doc.find(needle, at + 1)
     return clean or total
+
+
+def _count(needle: str, doc: str) -> int:
+    """How many occurrences `_positions` finds."""
+    return len(_positions(needle, doc))
 
 
 def _occurrences(
@@ -1288,6 +1326,112 @@ def resolve_in(quote: str, text: str, prefix: str = "", suffix: str = "") -> Mat
     return Match("not found", 0, False)
 
 
+def single_out(quote: str, text: str, occurrence: int) -> tuple[str, str] | None:
+    """The `prefix` and `suffix` that make `resolve_in` find one occurrence of a repeated passage.
+
+    `occurrence` counts from 1 over the occurrences `resolve_in` counts, in the order the
+    source has them. `None` where the source has no such occurrence.
+
+    The anchors are the source's own text on either side, as the matcher reads it: folded, so
+    lower case with single spaces. They are widened a word at a time and equally on both sides
+    until the anchored passage is in the source once and that once is this occurrence. Two
+    occurrences inside blocks that repeat in full are told apart only where a block ends, so
+    the widening runs to the edges of the document if it has to, and the whole document occurs
+    in itself once.
+
+    Each candidate is put through the join `_occurrences` performs before it is returned, so a
+    pair this returns is a pair `resolve_in` resolves. `None` as well where no pair does, which
+    is a passage whose own edges fold differently beside their neighbours than alone.
+    """
+    for transform in (passage_fold, skeleton):
+        q, doc = transform(quote), transform(text)
+        if at := _positions(q, doc):
+            break
+    else:
+        return None
+    if not 1 <= occurrence <= len(at):
+        return None
+    start, end = at[occurrence - 1], at[occurrence - 1] + len(q)
+    width = 16
+    while True:
+        s, e = max(0, start - width), min(len(doc), end + width)
+        while s > 0 and doc[s - 1].isalnum() and doc[s].isalnum():
+            s -= 1
+        while e < len(doc) and doc[e - 1].isalnum() and doc[e].isalnum():
+            e += 1
+        prefix, suffix = doc[s:start].lstrip(), doc[end:e].rstrip()
+        s, e = start - len(prefix), end + len(suffix)
+        if transform(prefix + quote + suffix) == doc[s:e] and _positions(doc[s:e], doc) == [s]:
+            return prefix, suffix
+        if width >= len(doc):
+            return None
+        width *= 2
+
+
+def omission(quote: str, text: str) -> list[Gap]:
+    """Where a quotation leaves source text out, if that is all that separates it from the source.
+
+    Empty unless the quotation divides into two or more pieces such that:
+
+        every piece is in the source exactly, under `passage_fold` and nothing looser;
+        the pieces occur in the source in the quotation's order, none overlapping the last;
+        source text lies between each piece and the next;
+        every piece begins and ends on a word boundary, in the quotation and in the source;
+        every piece is at least `MIN_PIECE_CHARS` folded characters.
+
+    Every word of the quotation is in exactly one piece, so a changed word or digit is in one
+    too, and that piece is then in the source only where the source says the changed thing
+    somewhere else. The minimum length is what makes that unlikely, and it is why a quotation
+    cannot be read as an omission by cutting it into fragments short enough to occur anywhere.
+
+    The division with the fewest pieces is reported. For each number of pieces the search keeps
+    the earliest place in the source each leading part of the quotation can end, since a part
+    that ends earlier leaves every later piece at least as much of the source to be found in.
+
+    Asked only about a passage `resolve_in` did not find, and never changes that verdict.
+    """
+    words, doc = passage_fold(quote).split(" "), passage_fold(text)
+    n = len(words)
+
+    def find(piece: str, frm: int) -> int:
+        """The first occurrence of `piece` at or after `frm` that begins and ends a word."""
+        at = doc.find(piece, frm)
+        while at >= 0:
+            end = at + len(piece)
+            before = at > 0 and doc[at - 1].isalnum() and piece[0].isalnum()
+            after = end < len(doc) and doc[end].isalnum() and piece[-1].isalnum()
+            if not (before or after):
+                return at
+            at = doc.find(piece, at + 1)
+        return -1
+
+    # ends[j]: where the first j words can end in the source as the current number of pieces,
+    # with the piece that got them there as (words before it, where it starts, the row before).
+    ends: dict[int, tuple[int, tuple]] = {0: (-2, ())}
+    for pieces in range(1, n + 1):
+        reached: dict[int, tuple[int, tuple]] = {}
+        for i, (end, trail) in ends.items():
+            for j in range(i + 1, n + 1):
+                piece = " ".join(words[i:j])
+                if len(piece) < MIN_PIECE_CHARS:
+                    continue
+                # Past the space after the last piece, so the two are not one stretch.
+                at = find(piece, end + 2)
+                if at < 0:
+                    break
+                if j not in reached or at + len(piece) < reached[j][0]:
+                    reached[j] = (at + len(piece), (*trail, (i, at, end)))
+        if pieces > 1 and n in reached:
+            return [
+                Gap(len(" ".join(words[:i])), len(doc[end:at].strip()))
+                for i, at, end in reached[n][1][1:]
+            ]
+        if not reached:
+            return []
+        ends = reached
+    return []
+
+
 def divergence(quote: str, text: str) -> tuple[int, str, str]:
     """Where a quotation stops matching its source: how far it got, and what each side reads.
 
@@ -1335,6 +1479,27 @@ def _not_found(quote: str, text: str) -> str:
     )
 
 
+def _omitted(quote: str, gaps: list[Gap]) -> str:
+    """The `not found` detail for a quotation that is the source with text left out."""
+    q = passage_fold(quote)
+    lines = [
+        f"every word of the quotation is in the source, as {len(gaps) + 1} pieces in the "
+        f"source's order with source text left out between them and nothing marking the gap"
+    ]
+    for g in gaps:
+        lines.append(
+            f"      after: ...{q[max(0, g.at - 34) : g.at]}   "
+            f"({g.skipped:,} characters of the source left out)"
+        )
+        lines.append(f"      then:  {q[g.at :].strip()[:34]}...")
+    lines.append(
+        "      a quotation is one stretch of the source, so pin each piece as a quotation of "
+        "its own. In a manuscript, write an ellipsis where the text is left out: `citations "
+        "coverage` reads one as omitted text and checks the pieces either side"
+    )
+    return "\n".join(lines)
+
+
 def _ambiguous(n: int, anchored: bool) -> str:
     """Why an ambiguous verdict obtained, and what would settle it."""
     if anchored:
@@ -1344,7 +1509,8 @@ def _ambiguous(n: int, anchored: bool) -> str:
         )
     return (
         f"the passage occurs {n} times in the source, so the record does not say which of "
-        f"them it means; add `prefix`/`suffix` naming the text on either side"
+        f"them it means; add `prefix`/`suffix` naming the text on either side, which "
+        f"`citations pin --occurrence N` writes for the occurrence it is given"
     )
 
 
@@ -1377,6 +1543,8 @@ def _verdict(
     if m.state == "ambiguous":
         return Result("ambiguous", _ambiguous(m.count, bool(prefix or suffix)), warn)
     if m.state == "not found":
+        if gaps := omission(quote, full):
+            return Result("not found", _omitted(quote, gaps), warn, reason=OMISSION, gaps=gaps)
         return Result("not found", _not_found(quote, full), warn)
     if m.normalized:
         # The skeleton dropped the whitespace the token check reads, so neither a cut word
