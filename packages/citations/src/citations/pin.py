@@ -35,6 +35,11 @@ side, taken as far out as it takes for `verify` to find the anchored passage onc
 are for the author to write. The quotation is written without white space at its ends, which is
 how a claims file is read back.
 
+A pin is also when the source is on disk and about to be committed with everything else. Where
+git tracks the source, or no ignore rule covers it, the command says so in one line and edits
+nothing: the sha256 in the claims file is what pins the source, and the text itself is somebody
+else's. See `tracked`.
+
 A source read by a PDF reader is anchored in the text of the reader that reads it first. A
 passage that reader misses and a fallback reader finds twice is `ambiguous` and cannot be
 pinned with `--occurrence`.
@@ -58,7 +63,7 @@ import pathlib
 import yaml
 from provenance_core import atomic_write, exclusive_lock
 
-from . import extractors
+from . import extractors, tracked
 from . import verify as V
 from .exceptions import CitationsError
 from .fetch import has_location
@@ -313,6 +318,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  warnings: {', '.join(r.warnings)}")
     if a.says is not None:
         print(f"  reading recorded as {a.whose}'s, unchecked")
+    if (artifact := _artifact(cf)) is not None and (kept := tracked.advice(artifact)):
+        # Said here because this is when the source was put on disk, and the next `git add`
+        # is when it stops being a private copy. Nothing is written to `.gitignore`.
+        print(f"  {kept}")
     if not has_location(cf.source):
         # Said at the moment the source is in hand. A reader who clones the repository has the
         # pin and not the file, and without one of these `citations fetch` has nowhere to ask.

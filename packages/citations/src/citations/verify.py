@@ -30,6 +30,10 @@ The warnings -- is the quote well formed? A quote can be `found` and still carry
     normalized   matched only after ignoring punctuation and spacing
     page         found, but not on the page the record claims
 
+One warning is about the source and not about any quotation: a source read from a file git
+tracks is listed after these, because publishing the repository then republishes its text. It
+changes no verdict and no exit code. See `tracked`.
+
 The extractor -- what turned the source into text? Recorded on every result, with a digest of
 what it produced. A pin says the bytes did not change and says nothing about how they were
 read: two extractors over one PDF produce two texts and one pin, so a decision that does not
@@ -379,6 +383,10 @@ class Report:
     machine holding the library and is `unchecked` on one that does not."""
     skipped: list[tuple[str, str]] = field(default_factory=list)
     """Claims files that would not parse, so their quotations were never examined."""
+    tracked_sources: list[tuple[str, pathlib.Path]] = field(default_factory=list)
+    """Sources read from a file git tracks, with the claims file that pins each. Reported and
+    never a failure, with or without `--strict`: the quotations resolve all the same, and what
+    the report adds is that publishing the repository republishes the text. See `tracked`."""
     extractors: dict[str, int] = field(default_factory=dict)
     """How many quotations each extractor answered. A report that does not say what read its
     sources cannot be compared with one taken where a different renderer was declared."""

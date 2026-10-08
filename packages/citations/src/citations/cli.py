@@ -29,7 +29,7 @@ import pathlib
 from provenance_core import hint
 
 from citations import coverage as C
-from citations import extraction_cache, paths, projects
+from citations import extraction_cache, paths, projects, tracked
 from citations import verify as V
 from citations.exceptions import CitationsError, ClaimFileError, SourceUnreadableError
 from citations.models import ClaimFile, load_claim_file, load_record
@@ -234,6 +234,7 @@ def cmd_verify(a) -> int:
         files = list(_claim_files(root, skipped=rep.skipped))
         if extraction_cache.enabled() and len(files) > 1:
             _extract_ahead(files, allowed)
+        read: list[tuple[str, pathlib.Path]] = []
         for cf in files:
             artifact = cf.artifact()
             missing = V.MISSING
@@ -251,6 +252,8 @@ def cmd_verify(a) -> int:
                 rep.broken_pins.append((cf.name, pin))
             elif pin.state == "unpinned":
                 rep.unpinned.append(cf.name)
+            if artifact is not None and artifact.is_file():
+                read.append((cf.name, artifact))
             _check_reading(rep, cf, artifact, allowed)
             for cid, claim in cf.claims.items():
                 if claim.interpretation is not None:
@@ -283,6 +286,9 @@ def cmd_verify(a) -> int:
         rep.counts = dict(counts)
         rep.extractors = dict(extractors)
         rep.from_cache = extraction_cache.hits()
+        # Asked once for the whole run, a directory at a time. See `tracked`.
+        in_git = tracked.tracked(artifact for _, artifact in read)
+        rep.tracked_sources = [(name, artifact) for name, artifact in read if artifact in in_git]
         return _report(rep, counts, a, f"claims  {root}")
 
     lib, origin = paths.find_with_origin()
@@ -427,6 +433,21 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
         print("\nwarnings")
         for w, n in warns.most_common():
             print(f"  {n:>7,}  {w} — {WARNINGS.get(w, '')}")
+
+    # About the sources and not about any quotation, so it sits apart from the counts above
+    # and changes neither verdict: a tracked source resolves exactly as an untracked one does.
+    if rep.tracked_sources:
+        n = len(rep.tracked_sources)
+        print(
+            f"\n{n:,} source{' is' if n == 1 else 's are'} tracked by git, so publishing the "
+            f"repository republishes {'its' if n == 1 else 'their'} text"
+        )
+        for name, artifact in rep.tracked_sources[:10]:
+            print(f"  tracked  {name[:38]:<40}{artifact}")
+        if n > 10:
+            print(f"  ... and {n - 10:,} more; `citations lint --claims <dir>` lists every one")
+        print(f"  {tracked.REMEDY}.")
+        print("  a warning only: it fails nothing, with or without `--strict`.")
 
     # A broken pin is reported before the quotation failures. Every result computed against
     # that source describes a document the record does not describe, so it changes how the
