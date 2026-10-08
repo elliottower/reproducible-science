@@ -498,3 +498,20 @@ def test_a_registry_that_did_not_answer_is_not_established_whatever_the_other_st
     assert audit.exit_code(steps) == 2
     assert audit.exit_code(steps | {"results.verify": {"outcome": audit.FAILED}}) == 1
     assert audit.exit_code({"prereg.check": {"outcome": audit.PASSED}}) == 0
+
+
+def test_restored_sidecars_are_counted_apart_from_the_claims_the_authors_declared(repo):
+    layout = audit.Layout(claims="claims")
+    before = audit.declared(repo, layout)
+    claims = repo / "claims"
+    original = sorted(claims.glob("*.yaml"))[0]
+    doc = yaml.safe_load(original.read_text())
+    doc["claims"] = {
+        "c-restored": {"restored": {"from": "c"}, "quotes": [{"exact": "the source's passage"}]}
+    }
+    (claims / f"{original.stem}.restored.yaml").write_text(yaml.safe_dump(doc))
+    after = audit.declared(repo, layout)
+    for key in ("claim_records", "claims", "quotations", "pinned_sources"):
+        assert after[key] == before[key], key
+    assert (after["restored_claim_records"], after["restored_quotations"]) == (1, 1)
+    assert "restored_claim_records" not in before

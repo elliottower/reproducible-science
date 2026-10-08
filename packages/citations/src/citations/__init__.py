@@ -50,7 +50,10 @@ from citations.paperclip import (
 from citations.readers import Extraction
 from citations.services import SERVICES, Candidate, Service
 from citations.verify import (
+    OMISSION,
+    Gap,
     Match,
+    Omission,
     Pin,
     Report,
     Result,
@@ -62,10 +65,12 @@ from citations.verify import (
     extract,
     extract_uncached,
     is_paginated,
+    omission,
     reading,
     reading_with,
     resolve_in,
     sha256,
+    single_out,
 )
 
 try:
@@ -74,6 +79,7 @@ except PackageNotFoundError:  # a source tree with nothing installed
     __version__ = "0+unknown"
 
 __all__ = [
+    "OMISSION",
     # identifier lookup
     "SERVICES",
     "Candidate",
@@ -89,10 +95,12 @@ __all__ = [
     "Document",
     # what read the source
     "Extraction",
+    "Gap",
     # library configuration
     "LibraryConfig",
     "LibraryNotFoundError",
     "Match",
+    "Omission",
     "PaperConfig",
     # checking
     "PaperclipUnavailableError",
@@ -117,9 +125,11 @@ __all__ = [
     "is_paginated",
     "load_claim_file",
     "load_record",
+    "omission",
     "reading",
     "reading_with",
     "resolve_document",
     "resolve_in",
     "sha256",
+    "single_out",
 ]

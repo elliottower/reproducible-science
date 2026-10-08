@@ -9,6 +9,7 @@ citations build             rebuild records from the papers' bibliographies
 citations lint              BibTeX correctness, repeated keys, and author lists in a .bib
 citations add               add one entry to a .bib, refusing a key it already has
 citations pin               write a quotation into a claims file, refusing one that does not resolve
+citations restore           write the source's passage for a quotation that leaves text out, apart
 citations link              point pdfs/ at wherever the papers keep the artifacts
 citations fetch             download the sources a claims directory pins, keeping only matching bytes
 citations projects          which projects this library refers to, and which names are dead
@@ -58,6 +59,7 @@ DELEGATED = {
     "lint": "lint",
     "add": "add",
     "pin": "pin",
+    "restore": "restore",
     "projects": "projects",
     "tags": "tags",
     "link": "link_pdfs",
@@ -262,6 +264,7 @@ def cmd_verify(a) -> int:
                     if not q.text:
                         continue
                     rep.checked += 1
+                    rep.restored += claim.is_restored
                     r = V.check_one(
                         q.text,
                         artifact,
@@ -333,6 +336,12 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
         if not n:
             continue
         why = ""
+        if s == "not found" and (
+            omitted := sum(r.reason == V.OMISSION for _, _, r in rep.problems if r.state == s)
+        ):
+            # Its own count, because the remedy differs: every piece is in the source. That
+            # says nothing about the text left out, which can be what the sentence turns on.
+            why = f"   {omitted:,} in the source only in pieces, with text left out between them"
         if s in ("unchecked", "indeterminate", "ambiguous"):
             # Untruncated: the reason is the only thing that says what to fix, and the one
             # that matters most -- "which this run does not allow" -- is at the end of it.
@@ -391,6 +400,14 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
             print(f"  {rep.foreign_readings:>7,}  attributed to a party other than the source")
         if rep.contested_readings:
             print(f"  {rep.contested_readings:>7,}  contested")
+
+    # Never mixed in silently. A restored passage is the source's text, so its resolving says
+    # nothing about the quotation it was restored from, which is still `not found` in its file.
+    if rep.restored:
+        print(
+            f"\nrestored  {rep.restored:,} of the {rep.checked:,} — the source's own passage, "
+            f"written by `citations restore`; not what the quoting party wrote"
+        )
 
     # A record that is not committed exists on one machine, and a verdict resting on it cannot
     # be appealed to later. Counted and reported, never blocking: a library mid-edit is the
@@ -592,6 +609,7 @@ def _main(argv: list[str] | None = None) -> int:
         ("lint", "BibTeX correctness, repeated keys, and author lists in a .bib"),
         ("add", "add one entry to a .bib, refusing a key it already has"),
         ("pin", "write a quotation into a claims file, refusing one that does not resolve"),
+        ("restore", "write the source's passage for a quotation that leaves text out, apart"),
         ("projects", "which projects this library refers to, and which names are dead"),
         ("tags", "the tag vocabulary, what uses it, and any tag nothing declares"),
         ("link", "point pdfs/ at the papers' artifacts"),

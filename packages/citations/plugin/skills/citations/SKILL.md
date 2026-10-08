@@ -71,6 +71,29 @@ exits non-zero and says `nothing was measured`, but the counts are what to quote
 **`not found` means read the source.** A broken extraction reads the same as a passage that
 was never there.
 
+**A `not found` that says "every word of the quotation is in the source" is an omission.** The
+quotation joins two or more stretches of the source and leaves out the text between them with
+nothing marking the gap; the result carries `reason: omission` and the count line says how many
+are of this kind. It still fails. The report shows the text left out and the passage as the
+source reads it: read both, because the words left out may be the ones that qualify the claim.
+Then either quote the passage as the source reads, or, in a manuscript, mark the gap with an
+ellipsis. Never rejoin the pieces without one.
+
+**`citations restore <file> --id <id>` records the source's passage for an omission, apart
+from the quotation.** It writes a derived claim to `<file>.restored.yaml` and never edits the
+original, which stays `not found`. It restores one omitted token unless `--max-omitted-tokens`
+asks for more, and refuses a misquotation, an unpinned source, and a quotation that could have
+been taken from more than one passage, whatever the limit. Use it
+only after reading what was left out. It corrects a quotation against its source; it does not
+show the omission was harmless, and a restored passage is the source's text, not what the
+quoting party wrote. `verify` counts restored quotations on their own line: report that count
+separately, never inside the count of quotations found.
+
+**`ambiguous` means the source has the passage more than once.** `citations pin` refuses it
+without choosing. Read the source, decide which occurrence is meant, and pin it with
+`citations pin <file> --id <id> --quote "<passage>" --occurrence N`, counting from 1 in the
+source's order; the `prefix` and `suffix` that single it out are written for you.
+
 **A run with nothing to check exits non-zero.** The path is wrong, not everything passing.
 
 **Check which library you are on before believing a clean run.** The library resolves in order:

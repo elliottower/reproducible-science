@@ -286,7 +286,12 @@ def declared(root: pathlib.Path, layout: Layout) -> dict:
     }
 
     if layout.claims and (root / layout.claims).is_dir():
-        files = sorted((root / layout.claims).glob("*.yaml"))
+        # `citations restore` writes its derived claims to `<name>.restored.yaml` beside the
+        # file they came from. Each is the source's own passage, written by a tool, and a
+        # count of what the authors declared that included them would count the same
+        # quotation twice. They are counted apart.
+        every = sorted((root / layout.claims).glob("*.yaml"))
+        files = [f for f in every if not f.name.endswith(".restored.yaml")]
         claims = quotes = 0
         sources: dict[str, str] = {}
         for f in files:
@@ -303,6 +308,15 @@ def declared(root: pathlib.Path, layout: Layout) -> dict:
             "pinned_sources": len(sources),
             "sources_carrying_a_digest": sum(1 for v in sources.values() if v),
         }
+        if restored := [f for f in every if f not in files]:
+            out["restored_claim_records"] = len(restored)
+            out["restored_quotations"] = sum(
+                len((claim or {}).get("quotes", []) or [])
+                for f in restored
+                for claim in (
+                    (yaml.safe_load(f.read_text()) or {}).get("claims", {}) or {}
+                ).values()
+            )
 
     for name, rel in (layout.bibliographies or {}).items():
         if (root / rel).is_file():

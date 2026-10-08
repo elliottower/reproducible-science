@@ -225,6 +225,23 @@ class Claim(_Base):
     file now says so in its own structure rather than in a convention nobody can read.
     """
 
+    restored: Any = None
+    """What `citations restore` records where it wrote this claim: the claim it was derived
+    from, the original quotation, and where in the source the passage sits. See
+    `citations.restore`.
+
+    Typed loosely on purpose. Claims files carry keys of their authors' own, and one that
+    already used `restored` for something else, a flag or a date, must go on loading.
+    `is_restored` says whether this is the record that command writes."""
+
+    @property
+    def is_restored(self) -> bool:
+        """Whether this claim is one `citations restore` derived: its quotation is the
+        source's text and not the quoting party's."""
+        return isinstance(self.restored, dict) and {"from", "original", "rule"} <= set(
+            self.restored
+        )
+
     quotes: list[Quote] = Field(default_factory=list)
     """The passages cited in support. May be empty; an unsupported claim is a fact about
     the file, not an error in it."""
