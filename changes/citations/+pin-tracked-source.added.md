@@ -1,1 +1,0 @@
-**`citations pin` says when the source it read is tracked by git, or covered by no ignore rule.** One line after the quotation is written, with the same remedy `verify` names. It refuses nothing and does not edit `.gitignore`. An ignored source, and a source outside any repository, get no line.
