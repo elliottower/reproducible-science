@@ -179,7 +179,9 @@ def test_every_kind_of_record_is_checked_and_the_record_names_the_commit_and_tre
     assert set(outcomes(record).values()) == {audit.PASSED}
     assert "1 plans: 1 unchanged" in record["steps"]["prereg.check"]["output"]
     assert "chain intact: 4 events" in record["steps"]["results.verify"]["found"]
-    assert record["steps"]["citations.verify"]["found"] == "found 1; not found 0"
+    assert record["steps"]["citations.verify"]["found"] == (
+        "found 1; not found 0; 1 source tracked by git"
+    )
     assert "1 verified" in record["steps"]["repro.verify"]["found"]
     assert record["declared"] | {"tracked_files": 0} == {
         "tracked_files": 0,
@@ -246,7 +248,7 @@ def test_a_quotation_its_source_does_not_hold_failed(repo, run_audit):
     code, record, _ = run_audit(str(repo))
     step = record["steps"]["citations.verify"]
     assert step["outcome"] == audit.FAILED
-    assert step["found"] == "not found 1"
+    assert step["found"] == "not found 1; 1 source tracked by git"
     assert step["could_not"] == ""
     assert code == 1
 
@@ -263,6 +265,27 @@ def test_an_absent_source_is_read_from_the_library_when_its_bytes_match_the_pin(
     assert step["outcome"] == audit.PASSED
     assert "1 source absent at the path the record names and read from the library" in step["found"]
     assert code == 0
+
+
+def test_a_source_the_repository_commits_is_counted_and_changes_no_outcome(
+    repo, library, run_audit
+):
+    code, record, printed = run_audit(str(repo))
+    step = record["steps"]["citations.verify"]
+    assert "git tracks 1 source read here" in step["output"]
+    assert step["found"].split("; ")[-1] == "1 source tracked by git"
+    # The column is 44 wide, so the table breaks the item before its last word.
+    row = next(line for line in printed.splitlines() if line.startswith("citations.verify"))
+    assert "found 1; not found 0; 1 source tracked by" in row
+
+    git(repo, "rm", "-q", "reference/source.txt")
+    commit(repo, "the source is kept out of the repository")
+    (library / "pdfs" / "source.txt").write_text(SOURCE)
+    again, without, _ = run_audit(str(repo))
+    kept_out = without["steps"]["citations.verify"]
+    assert "tracked by git" not in kept_out["found"]
+    assert (step["outcome"], step["exit"], code) == (kept_out["outcome"], kept_out["exit"], again)
+    assert (step["outcome"], code) == (audit.PASSED, 0)
 
 
 def test_a_repository_keeping_no_record_has_nothing_to_read_and_nothing_is_established(
@@ -481,6 +504,35 @@ def test_a_cache_below_another_projects_plan_is_refused(repo, run_audit, tmp_pat
             2,
             "ValueError: a ledger line is not JSON",
             (audit.COULD_NOT, "", "ValueError: a ledger line is not JSON"),
+        ),
+        (
+            ["citations", "verify"],
+            0,
+            "1,204 quotes\n\n  found    1,204\n  not found      0\n\n"
+            "git tracks 1,031 sources read here, so publishing the repository republishes "
+            "their text\n  tracked  a    /x/a.txt\n\nall found.",
+            (audit.PASSED, "found 1,204; not found 0; 1,031 sources tracked by git", ""),
+        ),
+        (
+            ["citations", "verify"],
+            1,
+            "2 quotes\n\n  found  1\n  not found  1\n\n"
+            "git tracks 1 source read here, so publishing the repository republishes its text\n"
+            "\n1 not found. read the source before concluding anything.",
+            (audit.FAILED, "found 1; not found 1; 1 source tracked by git", ""),
+        ),
+        (
+            ["citations", "verify"],
+            0,
+            "1 quotes\n\n  found  1\n  not found  0\n\nall found.",
+            (audit.PASSED, "found 1; not found 0", ""),
+        ),
+        (
+            ["citations", "audit"],
+            0,
+            "  checked  1\n  agree  1\n  disagree  0\n"
+            "git tracks 1 source read here, so publishing the repository republishes its text",
+            (audit.PASSED, "checked 1; agree 1; disagree 0", ""),
         ),
     ],
 )

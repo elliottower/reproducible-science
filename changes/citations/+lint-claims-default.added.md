@@ -1,0 +1,1 @@
+**`citations lint --claims` takes no directory.** Given none, it reads `claims` in the working directory, or the nearest `claims` above it inside the same repository; outside a repository it reads the working directory alone. A named directory is read as before.

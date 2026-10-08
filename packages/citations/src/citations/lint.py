@@ -5,6 +5,7 @@
     citations lint --bib refs.bib      # repeated keys and bare family names, papis not required
     citations lint --authors refs.bib  # author lists, against each entry's own identifier
     citations lint --claims claims/    # pinned sources that git tracks
+    citations lint --claims            # the same, of the `claims` here or nearest above
 
 The modes answer different questions about different artifacts. The records mode asks whether a
 record carries the fields its entry type requires, and needs papis to know what those are. The
@@ -34,7 +35,14 @@ told a name is complete as written, so neither is a finding.
 source by a sha256, so the check never needs the source committed, and a committed one is
 somebody else's text published with the repository. It is a warning and exits 0 whatever it
 finds: text under an open licence is the author's to commit. `verify` prints the same finding
-and shows the first ten; this lists them all. See `tracked`.
+and shows the first ten; this lists them all. A source `git rm --cached` has taken out of the
+index is still in the last commit until the removal is committed, and is listed as `in HEAD`;
+`--json` says of each source whether the index holds it and whether `HEAD` does. See `tracked`.
+
+`--claims` with no directory reads `claims` in the working directory, the default `coverage` and
+`fetch` take, and failing that the nearest `claims` above it inside the same repository. That is
+how another program asks without carrying the name: `prereg freeze` runs `citations lint
+--claims --json` beside the plan and reads what comes back.
 
 `--authors` reads the author list back against the registry the entry's own identifier names. On
 2026-08-31 two agents, in one session, attributed "Mediational E-values" (Epidemiology
@@ -114,6 +122,10 @@ PROCEEDINGS_WORDS = (
     "ijcai",
 )
 PUBLISHER_WORDS = ("press", "publisher", "wiley", "springer", "mifflin", "mcnally", "routledge")
+
+#: The claims directory `--claims` looks for where it is given none: the one `coverage` and
+#: `fetch` default to. A caller outside this package passes no name and so keeps no copy of it.
+CLAIMS = "claims"
 
 
 def find_papis() -> pathlib.Path | None:
@@ -721,11 +733,30 @@ def author_lists(files: list[pathlib.Path], as_json: bool) -> int:
     return 1
 
 
-def tracked_sources(folders: list[pathlib.Path], as_json: bool) -> int:
-    """Every source these claims directories pin that git tracks. Exits 0 whatever it finds.
+def claims_here() -> pathlib.Path:
+    """`claims` in the working directory, or the nearest one above it in the same repository.
 
-    A claims file that will not parse is named and passed over, as `verify` does, and a source
-    that is not on disk has nothing to be tracked.
+    The search stops at the top of the repository, and outside one it does not leave the
+    working directory: a `claims` further up belongs to some other project. Where none is found
+    the answer is the name itself, which the caller reports as a directory that is not there.
+    """
+    here = pathlib.Path.cwd().resolve()
+    top = tracked.top(here)
+    for folder in [here, *here.parents]:
+        if (folder / CLAIMS).is_dir():
+            return folder / CLAIMS
+        if top is None or folder == top:
+            break
+    return pathlib.Path(CLAIMS)
+
+
+def tracked_sources(folders: list[pathlib.Path], as_json: bool) -> int:
+    """Every source these claims directories pin that git holds. Exits 0 whatever it finds.
+
+    Git holds a source in two places, and both are reported: the index, which is what `tracked`
+    means everywhere here, and the last commit, which still has a file after `git rm --cached`
+    until the removal is committed. A source is asked about whether or not it is on disk. A
+    claims file that will not parse is named and passed over, as `verify` does.
     """
     for folder in folders:
         if not folder.is_dir():
@@ -740,18 +771,25 @@ def tracked_sources(folders: list[pathlib.Path], as_json: bool) -> int:
                 if not as_json:
                     print(f"  skipped  {path.name}: {e.detail.splitlines()[0]}")
                 continue
-            if artifact is not None and artifact.is_file():
+            if artifact is not None:
                 pinned.append((path, artifact))
-    in_git = tracked.tracked(artifact for _, artifact in pinned)
-    found = [(path, artifact) for path, artifact in pinned if artifact in in_git]
+    on_disk = sum(artifact.is_file() for _, artifact in pinned)
+    in_index = tracked.tracked(artifact for _, artifact in pinned)
+    in_head = tracked.committed(artifact for _, artifact in pinned)
+    found = [(path, artifact) for path, artifact in pinned if artifact in in_index | in_head]
 
     if as_json:
         print(
             json.dumps(
                 {
-                    "sources": len(pinned),
+                    "sources": on_disk,
                     "tracked": [
-                        {"claims_file": str(path), "source": str(artifact)}
+                        {
+                            "claims_file": str(path),
+                            "source": str(artifact),
+                            "index": artifact in in_index,
+                            "head": artifact in in_head,
+                        }
                         for path, artifact in found
                     ],
                 },
@@ -760,15 +798,20 @@ def tracked_sources(folders: list[pathlib.Path], as_json: bool) -> int:
         )
         return 0
 
+    left = [artifact for _, artifact in found if artifact not in in_index]
     print(
-        f"  {len(pinned):,} pinned source{'' if len(pinned) == 1 else 's'} on disk, "
-        f"{len(found):,} tracked by git"
+        f"  {on_disk:,} pinned source{'' if on_disk == 1 else 's'} on disk, "
+        f"{len(found) - len(left):,} tracked by git"
+        + (f", {len(left):,} more out of the index and still in the last commit" if left else "")
     )
     for path, artifact in found:
-        print(f"  tracked  {path.name[:38]:<40}{artifact}")
+        label = "tracked" if artifact in in_index else "in HEAD"
+        print(f"  {label}  {path.name[:38]:<40}{artifact}")
     if found:
         print("\n  Publishing the repository republishes the text of each.")
         print(f"  To keep one out, {tracked.REMEDY}.")
+        if left:
+            print("  `in HEAD` is a source `git rm --cached` has untracked: commit the removal.")
         print("  A warning only: nothing here fails on it.")
     return 0
 
@@ -794,9 +837,11 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--claims",
         action="append",
+        nargs="?",
         metavar="DIR",
-        help="a claims directory whose pinned sources are listed where git tracks them; "
-        "repeatable, a warning that exits 0 whatever it finds",
+        help="a claims directory whose pinned sources are listed where git tracks them "
+        f"(default: {CLAIMS} here, or the nearest above in the same repository); repeatable, "
+        "a warning that exits 0 whatever it finds",
     )
     a = ap.parse_args(argv)
 
@@ -813,7 +858,8 @@ def main(argv: list[str] | None = None) -> int:
         if a.authors:
             code |= author_lists([pathlib.Path(p).expanduser() for p in a.authors], a.json)
         if a.claims:
-            code |= tracked_sources([pathlib.Path(p).expanduser() for p in a.claims], a.json)
+            folders = [pathlib.Path(p).expanduser() if p else claims_here() for p in a.claims]
+            code |= tracked_sources(folders, a.json)
         return code
 
     papis = find_papis()

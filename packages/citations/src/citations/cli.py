@@ -289,6 +289,8 @@ def cmd_verify(a) -> int:
         # Asked once for the whole run, a directory at a time. See `tracked`.
         in_git = tracked.tracked(artifact for _, artifact in read)
         rep.tracked_sources = [(name, artifact) for name, artifact in read if artifact in in_git]
+        in_head = tracked.committed(artifact for _, artifact in read) - in_git
+        rep.committed_sources = [(name, artifact) for name, artifact in read if artifact in in_head]
         return _report(rep, counts, a, f"claims  {root}")
 
     lib, origin = paths.find_with_origin()
@@ -447,6 +449,19 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
         if n > 10:
             print(f"  ... and {n - 10:,} more; `citations lint --claims <dir>` lists every one")
         print(f"  {tracked.REMEDY}.")
+        print("  a warning only: it fails nothing, with or without `--strict`.")
+    # Worded so that no line opens `N sources`: `repro audit` reads lines of that form into
+    # what the run found.
+    if rep.committed_sources:
+        n = len(rep.committed_sources)
+        print(
+            f"\nthe last commit still holds {n:,} source{'' if n == 1 else 's'} read here that "
+            f"git no longer tracks: commit the removal"
+        )
+        for name, artifact in rep.committed_sources[:10]:
+            print(f"  in HEAD  {name[:38]:<40}{artifact}")
+        if n > 10:
+            print(f"  ... and {n - 10:,} more; `citations lint --claims <dir>` lists every one")
         print("  a warning only: it fails nothing, with or without `--strict`.")
 
     # A broken pin is reported before the quotation failures. Every result computed against
