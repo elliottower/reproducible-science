@@ -52,10 +52,18 @@ def test_the_gap_is_where_the_first_piece_ends_and_as_long_as_what_was_left_out(
 
 
 def test_three_pieces_report_two_gaps_in_order():
-    gaps = V.omission(f"{FIRST} {SECOND} {THIRD}", SOURCE)
-    assert [g.at for g in gaps] == [len(FIRST), len(f"{FIRST} {SECOND}")]
+    quote = f"{FIRST} {SECOND}. {THIRD}"
+    gaps = V.omission(quote, SOURCE)
+    assert [g.at for g in gaps] == [len(FIRST), len(f"{FIRST} {SECOND}.")]
     assert gaps[0].skipped == len(BETWEEN)
-    assert gaps[1].skipped == len(". Colocalization supported a shared variant,")
+    assert gaps[1].skipped == len("Colocalization supported a shared variant,")
+
+
+def test_a_gap_of_one_character_is_reported_in_the_singular(tmp_path):
+    source = f"{FIRST} a {SECOND}."
+    r = V.check_one(JOINED, _src(tmp_path, source), None)
+    assert r.gaps == [Gap(len(FIRST), 1)]
+    assert "(1 character of the source left out)" in r.detail
 
 
 def test_the_detail_shows_both_sides_of_the_gap_and_names_the_remedy(tmp_path):
@@ -141,6 +149,97 @@ def test_an_absent_passage_keeps_the_message_it_had(tmp_path):
     )
     assert (r.state, r.reason, r.gaps) == ("not found", "", [])
     assert "read the source" in r.detail
+
+
+# --- a cut never falls inside a token ----------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("quote", "source"),
+    [
+        (
+            "the change in the primary outcome was 0.42 standard deviations in the treated group",
+            "We found that the change in the primary outcome was -0.42 standard deviations in "
+            "the treated group.",
+        ),
+        (
+            "the pooled odds ratio for the outcome was 1 in the discovery cohort overall",
+            "Here the pooled odds ratio for the outcome was 1.81 in the discovery cohort overall.",
+        ),
+        (
+            "the trial enrolled a total of 500 participants across the eleven sites",
+            "In all, the trial enrolled a total of 12,500 participants across the eleven sites.",
+        ),
+        (
+            "the association with the outcome was significant after adjustment for age",
+            "Overall the association with the outcome was non-significant after adjustment for age.",
+        ),
+        (
+            "the response rate was 5 in the treated group overall",
+            "And the response rate was 5.3% in the treated group overall.",
+        ),
+        (
+            "the estimate in the first cohort was 5. the association replicated in two cohorts",
+            "Thus the estimate in the first cohort was 5.2 overall and the association replicated "
+            "in two cohorts.",
+        ),
+    ],
+    ids=["sign", "decimal", "thousands", "hyphenated", "percent", "decimal-point-kept"],
+)
+def test_a_number_or_compound_cut_short_is_not_an_omission(tmp_path, quote, source):
+    assert plain(quote, source)
+    r = V.check_one(quote, _src(tmp_path, source), None)
+    assert (r.state, r.reason, r.gaps) == ("not found", "", [])
+
+
+@pytest.mark.parametrize("joint", [", ", "/", "; ", " (", ") "])
+def test_punctuation_left_out_between_two_pieces_is_not_an_omission(joint):
+    left = "levels were associated with lower risk"
+    right = "the association replicated in two cohorts"
+    assert plain(f"{left} {right}", f"Circulating {left}{joint}{right}.")
+
+
+def test_a_piece_that_stops_before_its_tokens_punctuation_is_not_an_omission():
+    assert V.omission(f"{FIRST} {SECOND}. {THIRD}", SOURCE)
+    assert plain(f"{FIRST} {SECOND} {THIRD}")
+
+
+def test_a_piece_that_keeps_its_tokens_punctuation_is_an_omission():
+    source = (
+        "Patients were enrolled in the study (n = 828) at baseline; "
+        "the association replicated in two cohorts."
+    )
+    quote = "were enrolled in the study (n = 828) the association replicated in two cohorts"
+    assert V.omission(quote, source) == [Gap(len("were enrolled in the study (n = 828)"), 12)]
+
+
+def test_the_ends_of_the_quotation_may_stop_before_punctuation_and_not_inside_a_word():
+    assert V.omission(JOINED, f'"{FIRST} {BETWEEN} {SECOND}".')
+    assert plain(JOINED, f"un{FIRST} {BETWEEN} {SECOND}.")
+    assert plain(JOINED, f"{FIRST} {BETWEEN} {SECOND}s.")
+
+
+# --- a piece the source repeats ----------------------------------------------------------------
+
+
+def test_a_repeated_piece_is_paired_with_the_occurrence_nearest_the_next_piece():
+    a = "the model reached an accuracy of 0.94"
+    b = "on the held-out split of the second dataset"
+    between = "when evaluated, as measured"
+    source = (
+        f"First {a} in the pilot. "
+        + "Filler sentence number one goes here. " * 50
+        + f"Then {a} {between} {b}."
+    )
+    assert V.omission(f"{a} {b}", source) == [Gap(len(a), len(between))]
+
+
+def test_each_of_three_pieces_is_placed_as_late_as_the_next_allows():
+    a = "alpha beta gamma delta epsilon"
+    b = "zeta eta theta iota kappa lambda"
+    c = "mu nu xi omicron pi rho sigma tau"
+    source = f"{a} one two. {b} three. {a} four {b} five six {c}."
+    assert V.omission(f"{a} {b} {c}", source) == [Gap(len(a), 4), Gap(len(f"{a} {b}"), 8)]
 
 
 # --- what it does to a run ---------------------------------------------------------------------

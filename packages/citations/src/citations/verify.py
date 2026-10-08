@@ -102,6 +102,7 @@ from __future__ import annotations
 
 import functools
 import hashlib
+import itertools
 import os
 import pathlib
 import re
@@ -125,8 +126,15 @@ MIN_QUOTE_CHARS = 40
 #: The shortest stretch of a quotation that counts as a piece of the source when `omission`
 #: asks whether a quotation is the source with text left out. Half of `MIN_QUOTE_CHARS`, about
 #: four words: below it nearly any sentence can be assembled from fragments some long document
-#: holds in order, and a changed word would be reported as an omission on either side of it.
+#: holds in order, and a changed word is reported as an omission wherever the source uses that
+#: word later on. The minimum makes that rare; `omission` says what is left of it.
 MIN_PIECE_CHARS = 20
+
+#: The longest `prefix` or `suffix` `single_out` will return, in folded characters. Anchors are
+#: written into a claims file, and a passage inside blocks that repeat in full is singled out
+#: only by text reaching to where a block ends: on a 1.1 MB source of repeated blocks that was
+#: two anchors of 553,000 characters each. Past this the answer is a refusal that says so.
+MAX_ANCHOR_CHARS = 1000
 
 #: `Result.reason` on a `not found` whose pieces are all in the source. See `omission`.
 OMISSION = "omission"
@@ -234,7 +242,8 @@ class Gap:
     at: int
     """Where the gap falls in the quotation: the folded characters before it."""
     skipped: int
-    """Folded characters of the source between the piece before the gap and the piece after."""
+    """Folded characters of the source left out there: the whole tokens between the piece
+    before the gap and the piece after, without the space on either side."""
 
 
 @dataclass
@@ -1332,16 +1341,22 @@ def single_out(quote: str, text: str, occurrence: int) -> tuple[str, str] | None
     `occurrence` counts from 1 over the occurrences `resolve_in` counts, in the order the
     source has them. `None` where the source has no such occurrence.
 
-    The anchors are the source's own text on either side, as the matcher reads it: folded, so
-    lower case with single spaces. They are widened a word at a time and equally on both sides
-    until the anchored passage is in the source once and that once is this occurrence. Two
-    occurrences inside blocks that repeat in full are told apart only where a block ends, so
-    the widening runs to the edges of the document if it has to, and the whole document occurs
-    in itself once.
+    The anchors are the source's own text on either side, as the matcher reads it. Where the
+    passage matches under `passage_fold` that is lower case with single spaces. Where it
+    matches only on the `skeleton` it is that text with no spaces at all, since the skeleton is
+    what the anchored passage is then compared in.
+
+    They are taken 16 folded characters out on each side, then 32, then 64, doubling, each time
+    carried on to the end of the word the cut lands in, until the anchored passage is in the
+    source once and that once is this occurrence. Two occurrences inside blocks that repeat in
+    full are told apart only where a block ends, which can be the whole document away, so the
+    widening stops where either anchor would pass `MAX_ANCHOR_CHARS` and the answer is `None`.
 
     Each candidate is put through the join `_occurrences` performs before it is returned, so a
-    pair this returns is a pair `resolve_in` resolves. `None` as well where no pair does, which
-    is a passage whose own edges fold differently beside their neighbours than alone.
+    pair this returns is a pair `resolve_in` resolves, for the quotation exactly as given: a
+    caller writing the pair to a file writes that same quotation. `None` as well where no pair
+    does. That is a quotation with white space at either end, or one matched on the skeleton
+    whose own edge is a hyphen, which folds differently beside a neighbour than alone.
     """
     for transform in (passage_fold, skeleton):
         q, doc = transform(quote), transform(text)
@@ -1360,6 +1375,8 @@ def single_out(quote: str, text: str, occurrence: int) -> tuple[str, str] | None
         while e < len(doc) and doc[e - 1].isalnum() and doc[e].isalnum():
             e += 1
         prefix, suffix = doc[s:start].lstrip(), doc[end:e].rstrip()
+        if max(len(prefix), len(suffix)) > MAX_ANCHOR_CHARS:
+            return None
         s, e = start - len(prefix), end + len(suffix)
         if transform(prefix + quote + suffix) == doc[s:e] and _positions(doc[s:e], doc) == [s]:
             return prefix, suffix
@@ -1371,61 +1388,106 @@ def single_out(quote: str, text: str, occurrence: int) -> tuple[str, str] | None
 def omission(quote: str, text: str) -> list[Gap]:
     """Where a quotation leaves source text out, if that is all that separates it from the source.
 
-    Empty unless the quotation divides into two or more pieces such that:
+    Both sides are folded with `passage_fold` and nothing looser, and read as tokens: the
+    stretches between white space. `-0.42`, `1.81`, `12,500`, `non-significant`, `5.3%` and
+    `risk,` are one token each. Empty unless the quotation divides into two or more pieces
+    such that:
 
-        every piece is in the source exactly, under `passage_fold` and nothing looser;
+        every piece is a run of whole tokens of the quotation;
+        where the quotation is cut, the source has white space on the outer side of the piece,
+            so the piece before a gap ends with a whole token of the source and the piece
+            after it begins with one;
+        every piece is at least `MIN_PIECE_CHARS` folded characters;
         the pieces occur in the source in the quotation's order, none overlapping the last;
-        source text lies between each piece and the next;
-        every piece begins and ends on a word boundary, in the quotation and in the source;
-        every piece is at least `MIN_PIECE_CHARS` folded characters.
+        at least one whole token of the source lies between each piece and the next.
 
-    Every word of the quotation is in exactly one piece, so a changed word or digit is in one
-    too, and that piece is then in the source only where the source says the changed thing
-    somewhere else. The minimum length is what makes that unlikely, and it is why a quotation
-    cannot be read as an omission by cutting it into fragments short enough to occur anywhere.
+    The two ends of the quotation are not cuts, and are held to what the ends of any quotation
+    are held to: neither may fall between two letters or digits of the source. A quotation may
+    therefore stop before a sentence's full stop, as one that is `found` may.
 
-    The division with the fewest pieces is reported. For each number of pieces the search keeps
-    the earliest place in the source each leading part of the quotation can end, since a part
-    that ends earlier leaves every later piece at least as much of the source to be found in.
+    So what is left out is always whole tokens, and a cut never falls inside one. A quotation
+    reading `0.42` where the source reads `-0.42`, `1` for `1.81`, `500` for `12,500`,
+    `significant` for `non-significant` or `5` for `5.3%` has changed a token, and a changed
+    token is in no piece. The same holds for punctuation: `risk the` against a source reading
+    `risk, the` or `risk/the` leaves out no token and changes one, so it is not an omission,
+    whatever the punctuation is. To leave a clause out, a piece has to end with the token's
+    own punctuation, as the source has it.
+
+    A changed word is in some piece too, and that piece is then in the source only where the
+    source says the changed thing somewhere later, in at least `MIN_PIECE_CHARS` characters
+    of the quotation's own wording. The minimum length makes that rare and does not rule it
+    out: `a significant increase in mortality` spliced onto the subject of a sentence that
+    reports a decrease is reported as an omission when a later sentence reports the increase.
+    Every piece is the source's, the join is not, and the result is `not found` either way.
+
+    Which division is reported. The fewest pieces that will do. Among those, the cuts are the
+    ones that let the quotation end earliest in the source, since a leading part that ends
+    earlier leaves every later piece at least as much of the source to be found in. With the
+    cuts fixed and the last piece there, each earlier piece is then taken at its last
+    occurrence before the piece that follows it. A piece the source repeats is therefore
+    paired with the occurrence nearest the next piece, and each `Gap.skipped` is the shortest
+    stretch that can lie between that piece and the one placed after it.
+
+    Text with no white space between words, such as Chinese or Japanese, is one token a
+    sentence and is not read as an omission by this rule.
 
     Asked only about a passage `resolve_in` did not find, and never changes that verdict.
     """
     words, doc = passage_fold(quote).split(" "), passage_fold(text)
     n = len(words)
 
-    def find(piece: str, frm: int) -> int:
-        """The first occurrence of `piece` at or after `frm` that begins and ends a word."""
-        at = doc.find(piece, frm)
-        while at >= 0:
-            end = at + len(piece)
-            before = at > 0 and doc[at - 1].isalnum() and piece[0].isalnum()
-            after = end < len(doc) and doc[end].isalnum() and piece[-1].isalnum()
-            if not (before or after):
-                return at
-            at = doc.find(piece, at + 1)
-        return -1
+    def fits(at: int, i: int, j: int) -> bool:
+        """Whether words[i:j], found at `at`, sits in the source as the rule requires."""
+        end = at + len(" ".join(words[i:j]))
+        if at > 0 and doc[at - 1] != " " and (i or (doc[at - 1].isalnum() and doc[at].isalnum())):
+            return False
+        return (
+            end == len(doc)
+            or doc[end] == " "
+            or (j == n and not (doc[end - 1].isalnum() and doc[end].isalnum()))
+        )
 
-    # ends[j]: where the first j words can end in the source as the current number of pieces,
-    # with the piece that got them there as (words before it, where it starts, the row before).
-    ends: dict[int, tuple[int, tuple]] = {0: (-2, ())}
+    def first(i: int, j: int, frm: int) -> int:
+        piece = " ".join(words[i:j])
+        at = doc.find(piece, frm)
+        while at >= 0 and not fits(at, i, j):
+            at = doc.find(piece, at + 1)
+        return at
+
+    def last(i: int, j: int, before: int) -> int:
+        piece = " ".join(words[i:j])
+        at = doc.rfind(piece, 0, before)
+        while at >= 0 and not fits(at, i, j):
+            at = doc.rfind(piece, 0, at + len(piece) - 1)
+        return at
+
+    # ends[j]: the earliest the first j words can end in the source as this many pieces, and
+    # the cuts that got them there. The first piece may start anywhere; each later one starts
+    # at least a space, a token and a space after the last.
+    ends: dict[int, tuple[int, tuple[int, ...]]] = {0: (-3, ())}
     for pieces in range(1, n + 1):
-        reached: dict[int, tuple[int, tuple]] = {}
-        for i, (end, trail) in ends.items():
+        reached: dict[int, tuple[int, tuple[int, ...]]] = {}
+        for i, (end, cuts) in ends.items():
             for j in range(i + 1, n + 1):
                 piece = " ".join(words[i:j])
                 if len(piece) < MIN_PIECE_CHARS:
                     continue
-                # Past the space after the last piece, so the two are not one stretch.
-                at = find(piece, end + 2)
+                at = first(i, j, end + 3)
                 if at < 0:
                     break
                 if j not in reached or at + len(piece) < reached[j][0]:
-                    reached[j] = (at + len(piece), (*trail, (i, at, end)))
+                    reached[j] = (at + len(piece), (*cuts, i))
         if pieces > 1 and n in reached:
-            return [
-                Gap(len(" ".join(words[:i])), len(doc[end:at].strip()))
-                for i, at, end in reached[n][1][1:]
-            ]
+            end, cuts = reached[n]
+            gaps: list[Gap] = []
+            # Back from the last piece: each earlier one at its last occurrence before the next.
+            nxt = end - len(" ".join(words[cuts[-1] :]))
+            for i, j in reversed(list(itertools.pairwise(cuts))):
+                at = last(i, j, nxt - 2)
+                size = len(" ".join(words[i:j]))
+                gaps.append(Gap(len(" ".join(words[:j])), nxt - 1 - (at + size + 1)))
+                nxt = at
+            return gaps[::-1]
         if not reached:
             return []
         ends = reached
@@ -1489,7 +1551,7 @@ def _omitted(quote: str, gaps: list[Gap]) -> str:
     for g in gaps:
         lines.append(
             f"      after: ...{q[max(0, g.at - 34) : g.at]}   "
-            f"({g.skipped:,} characters of the source left out)"
+            f"({g.skipped:,} character{'' if g.skipped == 1 else 's'} of the source left out)"
         )
         lines.append(f"      then:  {q[g.at :].strip()[:34]}...")
     lines.append(

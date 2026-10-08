@@ -30,7 +30,14 @@ does for a bibliography.
 A passage the source has more than once is refused as `ambiguous`, because the record would
 not say which occurrence it quotes. `--occurrence N` names one, counting from 1 in the source's
 order, and writes the `prefix` and `suffix` that single it out: the source's own text on either
-side, taken as far out as it takes for `verify` to find the anchored passage once.
+side, taken as far out as it takes for `verify` to find the anchored passage once, up to
+`verify.MAX_ANCHOR_CHARS` characters a side. Past that the passage is refused, and the anchors
+are for the author to write. The quotation is written without white space at its ends, which is
+how a claims file is read back.
+
+A source read by a PDF reader is anchored in the text of the reader that reads it first. A
+passage that reader misses and a fallback reader finds twice is `ambiguous` and cannot be
+pinned with `--occurrence`.
 
     citations pin claims/notes2026.yaml --id second-run --occurrence 2 \
         --quote "the model reached an accuracy of 0.94 on the split"
@@ -99,8 +106,10 @@ def anchors(cf: ClaimFile, quote: str, occurrence: int, allowed: frozenset[str])
                 f"{occurrence}. --occurrence takes 1 to {n}."
             )
         raise PinRefused(
-            f"no prefix and suffix taken from the source single out occurrence {occurrence} of "
-            f"{n}. Write `prefix`/`suffix` into the claims file by hand."
+            f"no prefix and suffix of up to {V.MAX_ANCHOR_CHARS:,} characters each single out "
+            f"occurrence {occurrence} of {n}: the text around it repeats for longer than that, "
+            f"or the passage begins or ends on a hyphen that folds differently beside its "
+            f"neighbours. Write `prefix`/`suffix` into the claims file by hand."
         )
     return found
 
@@ -226,6 +235,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     ap.add_argument("--check", action="store_true", help="resolve and report, write nothing")
     a = ap.parse_args(argv)
+    # As the claims file will be read back: the model strips `exact` on load, and anchors
+    # found for a quotation with a trailing space would be anchors for another string.
+    a.quote = a.quote.strip()
+
+    if a.occurrence is not None and a.occurrence < 1:
+        print("--occurrence counts from 1.")
+        return 2
 
     if a.says is not None and not a.whose:
         # The schema's requirement, enforced at the point a characterization is written rather
@@ -246,9 +262,6 @@ def main(argv: list[str] | None = None) -> int:
 
     prefix = suffix = ""
     if a.occurrence is not None and r.state in ("found", "ambiguous"):
-        if a.occurrence < 1:
-            print("--occurrence counts from 1.")
-            return 2
         if r.state == "found" and a.occurrence != 1:
             print(f"found once  {a.quote[:60]}")
             print(

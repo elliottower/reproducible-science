@@ -243,13 +243,27 @@ claims:
       suffix: . a third laboratory
 ```
 
-The anchors are the source's text on either side as the matcher reads it, so in lower case
-with single spaces. They are widened equally on both sides, a word at a time, until the
-anchored passage is in the source once, which reaches the edges of the document where the
-passage sits in blocks that repeat in full. The quotation is then checked with its anchors
-before anything is written, so what is written resolves under `verify --strict`. An
-`--occurrence` the source does not have is refused, and without the flag no occurrence is
-chosen.
+The anchors are the source's text on either side as the matcher reads it: in lower case with
+single spaces, or, for a passage that matches only once spacing is ignored, with no spaces at
+all. They are taken 16 characters out on each side, then 32, then 64, doubling, each time
+carried on to the end of the word the cut lands in, until the anchored passage is in the source
+once and that once is the occurrence asked for. The quotation is then checked with its anchors
+before anything is written, so what is written resolves under `verify --strict`. White space at
+the ends of `--quote` is dropped, as it is when a claims file is read.
+
+`--occurrence` refuses, and writes nothing, in four cases:
+
+- an occurrence the source does not have, such as `--occurrence 4` of three;
+- a value below 1, which exits 2 before the source is read;
+- anchors that would pass 1,000 characters a side. A passage inside blocks that repeat in full
+  is singled out only by text reaching to where a block ends, and on a long source that is
+  anchors the size of the source. Write `prefix` and `suffix` by hand there;
+- a passage matched with spacing ignored that begins or ends on a hyphen, where no anchors
+  taken from the source join onto it.
+
+Without the flag no occurrence is chosen. A source read by a PDF reader is anchored in the text
+of the reader that reads it first, so a passage that reader misses and a fallback reader finds
+twice stays `ambiguous` and cannot be pinned with `--occurrence`.
 
 Matching is exact after folding, and never approximate. Folding removes what a PDF extractor
 changes and nothing else: case, runs of whitespace, curly quotation marks, the dash variants,
@@ -315,13 +329,37 @@ source in pieces, with text left out between them`. Pin each piece as a quotatio
 A claims file's `exact` takes no ellipsis; in a manuscript an ellipsis is omitted text and
 `citations coverage` checks the pieces either side of it.
 
-The rule is narrow so that it cannot excuse a misquotation. The quotation must divide into two
-or more pieces, each of which is in the source exactly under the folding above, begins and ends
-on a word boundary in both, and is at least 20 characters once folded. The pieces must occur in
-the source in the quotation's order with source text between each and the next. Every word of
-the quotation is in one piece, so a changed word or digit leaves its piece absent and the
-result is a plain `not found`. Pieces in another order, and a piece under 20 characters, are a
-plain `not found` as well.
+The rule reads both sides as tokens, the stretches between white space, after the folding
+above and nothing looser. `-0.42`, `1.81`, `12,500`, `non-significant`, `5.3%` and `risk,` are
+one token each. A quotation is an omission when it divides into two or more pieces and:
+
+1. each piece is a run of whole tokens of the quotation, at least 20 characters long;
+2. where the quotation is cut, the source has white space on the outer side of the piece, so
+   the piece before a gap ends with a whole token of the source and the piece after begins
+   with one;
+3. the pieces occur in the source in the quotation's order;
+4. at least one whole token of the source lies between each piece and the next.
+
+What is left out is therefore whole tokens, and a cut never falls inside one. `0.42` quoted
+from a source reading `-0.42`, `1` from `1.81`, `500` from `12,500`, `significant` from
+`non-significant` and `5` from `5.3%` are a changed token, and the result is a plain `not
+found`. Punctuation is treated the same way whatever it is: `risk the` against a source reading
+`risk, the` or `risk/the` leaves no token out and changes one, so it is a plain `not found`. A
+piece that ends a clause has to carry the token's punctuation as the source has it. The two
+ends of the quotation are not cuts and are held to what any quotation's ends are held to, so a
+quotation may stop before a full stop and may not stop inside a word.
+
+A changed word usually leaves its piece absent, and pieces in another order or under 20
+characters are a plain `not found`. The rule does not rule out a splice: `a significant increase
+in mortality` joined onto the subject of a sentence that reports a decrease is reported as an
+omission if a later sentence reports the increase in those words. Every piece is the source's
+and the join is not, which is why an omission is `not found` and never a pass.
+
+Where the source has a piece more than once, the gap reported is the shortest one: the
+quotation's last piece is placed where the quotation can first end in the source, and each
+earlier piece at its last occurrence before the piece that follows it. Text written without
+spaces between words, such as Chinese or Japanese, is one token a sentence and is not read as
+an omission.
 
 **A source that is not what it claims to be.** A `.pdf` that is a Cloudflare interstitial or a
 login page fails under every reader. `file` will say so in one line.

@@ -221,11 +221,68 @@ def test_an_occurrence_the_source_does_not_have_is_refused(repeating, capsys):
     assert "nothing written" in out
 
 
-def test_occurrence_zero_is_refused(repeating, capsys):
+@pytest.mark.parametrize("n", ["0", "-1"])
+@pytest.mark.parametrize("quote", [REPEATED, "a passage the source does not have at all"])
+def test_an_occurrence_below_one_is_refused_whatever_the_passage(repeating, capsys, n, quote):
     f = repeating(THRICE)
     before = f.read_text()
-    assert pin.main([str(f), "--id", "c", "--quote", REPEATED, "--occurrence", "0"]) == 2
+    assert pin.main([str(f), "--id", "c", "--quote", quote, "--occurrence", n]) == 2
     assert f.read_text() == before
+    assert "counts from 1" in capsys.readouterr().out
+
+
+def test_an_occurrence_below_one_is_refused_before_the_source_is_read(repeating, capsys):
+    f = repeating(THRICE)
+    (f.parent.parent / "source.txt").unlink()
+    assert pin.main([str(f), "--id", "c", "--quote", REPEATED, "--occurrence", "0"]) == 2
+    assert "unchecked" not in capsys.readouterr().out
+
+
+def test_white_space_at_the_ends_of_the_quotation_is_not_written_or_anchored(repeating, capsys):
+    f = repeating("first it reached 0.94. then it reached 0.94, ok")
+    assert pin.main([str(f), "--id", "c", "--quote", " it reached 0.94 ", "--occurrence", "1"]) == 0
+    q = read(f)["claims"]["c"]["quotes"][0]
+    assert q["exact"] == "it reached 0.94"
+    assert (q["prefix"], q["suffix"][:6]) == ("first ", ". then")
+    code, out = strict(f, capsys)
+    assert code == 0, out
+
+
+def test_a_passage_matched_only_with_spacing_ignored_is_anchored_in_that_text(repeating, capsys):
+    f = repeating(
+        "In run one the logitdifference was large and stable. "
+        "In run two the logitdifference was large and noisy."
+    )
+    quote = "the logit difference was large"
+    assert pin.main([str(f), "--id", "c", "--quote", quote, "--occurrence", "2"]) == 0
+    q = read(f)["claims"]["c"]["quotes"][0]
+    assert " " not in q["prefix"] + q["suffix"]
+    assert q["suffix"].startswith("andnoisy")
+    code, out = strict(f, capsys)
+    assert code == 0, out
+    assert "normalized" in out
+
+
+def test_anchors_past_the_limit_are_refused_and_the_refusal_says_why(repeating, capsys):
+    block = f"In every run {REPEATED}. " + "Filler sentence number one goes here. " * 60
+    assert len(block) > 2 * V.MAX_ANCHOR_CHARS
+    f = repeating(block * 3)
+    before = f.read_text()
+    assert pin.main([str(f), "--id", "c", "--quote", REPEATED, "--occurrence", "2"]) == 1
+    assert f.read_text() == before
+    out = capsys.readouterr().out
+    assert f"{V.MAX_ANCHOR_CHARS:,} characters" in out and "by hand" in out
+    assert "nothing written" in out
+
+
+def test_single_out_returns_no_anchor_past_the_limit_and_a_short_one_where_it_will_do():
+    block = f"In every run {REPEATED}. " + "Filler sentence number one goes here. " * 60
+    for n in (1, 2, 3):
+        assert V.single_out(REPEATED, block * 3, n) is None
+    assert V.single_out(REPEATED, f"Once, {REPEATED}. " + block * 3, 1) == (
+        "once, ",
+        ". in every run the",
+    )
 
 
 def test_an_occurrence_in_fully_duplicated_blocks_is_singled_out(repeating, capsys):
