@@ -6,9 +6,10 @@ match the pin, and a clone that holds neither reports the quotations `unchecked`
 itself never has to be committed, and a committed one is a copy of somebody else's text that
 goes wherever the repository goes. Removing it later means rewriting every commit that held it.
 
-This answers two questions and changes nothing. `tracked` says which of a set of files git
-has in its index. `standing` says where one file stands: tracked, covered by an ignore rule,
-covered by none, or outside any repository. Where git is absent or the directory is not a
+This answers three questions and changes nothing. `tracked` says which of a set of files git
+has in its index, and `committed` which of them the last commit holds: the two differ between
+a `git rm --cached` and the commit that records it. `standing` says where one file stands:
+tracked, covered by an ignore rule, covered by none, or outside any repository. Where git is absent or the directory is not a
 repository there is nothing to report, and nothing is reported.
 
 A warning, never a failure. Text under an open licence is the author's to commit, and nothing
@@ -58,6 +59,36 @@ def tracked(sources: Iterable[pathlib.Path]) -> set[pathlib.Path]:
         if not listed:
             continue
         held |= {folder / name for name in names & set(listed.split("\0"))}
+    return held
+
+
+def committed(sources: Iterable[pathlib.Path]) -> set[pathlib.Path]:
+    """Which of these files the last commit holds, whatever the index holds now.
+
+    The index and the last commit answer different questions. `git rm --cached` takes a file
+    out of the index at once and out of no commit: `HEAD` holds it until the removal is
+    committed, and a record that names `HEAD` names a commit with the text in it. A file need
+    not be on disk to be asked about, since deleting it takes it out of no commit either.
+
+    One `git ls-tree` for each repository the files sit in. Outside a repository, in one with
+    no commit yet, and on a machine without git, the answer is nothing.
+    """
+    tops: dict[pathlib.Path, pathlib.Path | None] = {}
+    by_top: dict[pathlib.Path, set[pathlib.Path]] = collections.defaultdict(set)
+    for source in sources:
+        folder = next((d for d in source.parents if d.is_dir()), None)
+        if folder is None:
+            continue
+        if folder not in tops:
+            tops[folder] = top(folder)
+        root = tops[folder]
+        if root is not None:
+            by_top[root].add(source)
+    held: set[pathlib.Path] = set()
+    for root, wanted in by_top.items():
+        listed = try_run("ls-tree", "-r", "-z", "--name-only", "--full-tree", "HEAD", cwd=root)
+        if listed:
+            held |= wanted & {root / name for name in listed.split("\0") if name}
     return held
 
 
