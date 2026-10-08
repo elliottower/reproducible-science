@@ -2,16 +2,18 @@
 
 A freeze names a commit, and the freeze is evidence because that commit's identifier never
 changes. A source text git tracks is in that commit or in one close to it, and the only way to
-take it out later is to rewrite the history, which gives the commit another identifier. So the
-time to hear about a tracked source is before the freeze is committed.
+take it out later is to rewrite the history, which gives the commit another identifier. So a
+freeze asks first, and where git tracks a pinned source it is refused before anything is
+written, unless `--allow-tracked-sources` says the sources are meant to be there.
 
 `citations` knows where a project keeps its claims files and which of the sources they pin git
 tracks. This asks it, by running `citations lint --claims --json` in the plan's directory, and
 knows neither: no name of a directory is written here, and nothing of that package is imported.
 
-Printed text and nothing else. Where `citations` is not installed, where it is a version that
-cannot be asked this way, where the project keeps no claims directory, or where git cannot
-answer, there is nothing to say and nothing is said.
+Only an answer refuses. Where `citations` is not installed, where it is a version that cannot
+be asked this way, where the project keeps no claims directory, or where git cannot answer,
+nothing was found, nothing is said, and the freeze goes ahead: a check that could not run is
+never a reason a plan could not be frozen.
 """
 
 from __future__ import annotations
@@ -65,11 +67,8 @@ def tracked(plan_dir: pathlib.Path) -> list[str]:
     )
 
 
-def warning(plan_dir: pathlib.Path) -> str:
-    """What a freeze prints about tracked sources, or nothing where there are none."""
-    found = tracked(plan_dir)
-    if not found:
-        return ""
+def _listed(found: list[str]) -> list[str]:
+    """The heading and the sources under it, ten at most and then a count of the rest."""
     n = len(found)
     lines = [
         f"git tracks {n:,} source{'' if n == 1 else 's'} this project's quotations are pinned to"
@@ -77,8 +76,29 @@ def warning(plan_dir: pathlib.Path) -> str:
     lines += [f"  tracked  {source}" for source in found[:SHOWN]]
     if n > SHOWN:
         lines.append(f"  ... and {n - SHOWN:,} more; `citations lint --claims` lists every one")
-    lines += [
-        "  A source in the commit a freeze names can only be removed later by rewriting history,",
-        "  which changes that commit's identifier. Untrack and ignore the files before freezing.",
-    ]
-    return "\n".join(lines)
+    return lines
+
+
+def refusal(path: pathlib.Path, found: list[str]) -> str:
+    """What a freeze of `path` prints in place of freezing, with both ways out."""
+    return "\n".join(
+        [
+            f"{path} was not frozen, and nothing was written.",
+            *_listed(found),
+            "A freeze names a commit, and a source in that commit can only be removed later by",
+            "rewriting history, which changes the commit's identifier. Untrack each with",
+            "`git rm --cached <file>`, add an ignore rule, commit, and freeze again: the record's",
+            "sha256 still pins the file. Or keep them and freeze with --allow-tracked-sources.",
+        ]
+    )
+
+
+def warning(found: list[str]) -> str:
+    """What a freeze made with `--allow-tracked-sources` prints after its own report."""
+    return "\n".join(
+        [
+            *_listed(found),
+            "  Frozen with --allow-tracked-sources. A source in the commit a freeze names can only",
+            "  be removed later by rewriting history, which changes that commit's identifier.",
+        ]
+    )

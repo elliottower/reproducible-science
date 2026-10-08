@@ -203,15 +203,19 @@ def _commit_to_name(a, path: pathlib.Path) -> str | None:
     return commit
 
 
-def _warn_of_tracked_sources(path: pathlib.Path) -> None:
-    """Say which pinned sources git tracks, after a freeze of `path` and never in place of it.
+def _tracked_sources(a, path: pathlib.Path) -> list[str] | None:
+    """The pinned sources git tracks, or None after refusing a freeze of `path` over them.
 
-    Last of what a freeze prints about itself and before anything is sent to OSF, so it is read
-    while the freeze is still uncommitted. It refuses nothing: see `sources`.
+    Asked before anything is written or sent, so a refusal leaves no record, no log entry and no
+    timestamp request behind it. `--allow-tracked-sources` lets the freeze go ahead, and the
+    sources are then named after its report. Where the question could not be asked there is
+    nothing to refuse over: see `sources`.
     """
-    said = sources.warning(path.parent)
-    if said:
-        print(f"\n{said}")
+    found = sources.tracked(path.parent)
+    if found and not a.allow_tracked_sources:
+        print(sources.refusal(path, found))
+        return None
+    return found
 
 
 def _left_from_the_earlier_template(text: str) -> list[str]:
@@ -271,6 +275,9 @@ def _freeze_whole(a, path: pathlib.Path, plan: pathlib.Path, data: bytes) -> int
         if parent not in _frozen_here(plan):
             print(f"{path} amends {parent[:16]}…, which is the digest of no frozen file here.")
             return 1
+    tracked = _tracked_sources(a, path)
+    if tracked is None:
+        return 1
     # Everything that can refuse runs before anything is written, here or on OSF: a plan whose
     # sections cannot map, a missing attachment, no token. A refusal found after the local
     # freeze left a frozen plan with no draft.
@@ -310,7 +317,8 @@ def _freeze_whole(a, path: pathlib.Path, plan: pathlib.Path, data: bytes) -> int
         f"\nCommit {record.RECORDS}/, {attributes.ATTRIBUTES} and the proof. "
         "The freeze is only evidence once it is in history."
     )
-    _warn_of_tracked_sources(path)
+    if tracked:
+        print(f"\n{sources.warning(tracked)}")
 
     if push:
         try:
@@ -397,6 +405,9 @@ def _refreeze_in_place(a, path: pathlib.Path) -> int:
         for level, why in ACCESS_MEANING.items():
             print(f"  {level:<20} {why}")
         return 1
+    tracked = _tracked_sources(a, path)
+    if tracked is None:
+        return 1
     # Everything that can refuse runs before anything is written, here or on OSF: a plan whose
     # sections cannot map, a missing attachment, no confirmation or no token. A refusal found
     # after the local freeze left a frozen plan with no draft and no clean way to retry.
@@ -414,7 +425,8 @@ def _refreeze_in_place(a, path: pathlib.Path) -> int:
     print(f"  sha256  {digest[:16]}…  (of everything above the log)")
     _stamp(path, digest)
     print("\nCommit this. The freeze is only evidence once it is in history.")
-    _warn_of_tracked_sources(path)
+    if tracked:
+        print(f"\n{sources.warning(tracked)}")
 
     if push:
         try:
@@ -1149,6 +1161,12 @@ def _main(argv: list[str] | None = None) -> int:
         metavar="LEVEL",
         help="for a plan; `nothing run` where omitted, and required with --force on a plan "
         "frozen in place. An amendment states its own. " + ACCESS_HELP,
+    )
+    f.add_argument(
+        "--allow-tracked-sources",
+        action="store_true",
+        help="freeze although git tracks a source the project's quotations are pinned to; "
+        "without it such a freeze is refused before anything is written",
     )
     f.add_argument("--osf", action="store_true", help="push as a draft registration to OSF")
     f.add_argument(

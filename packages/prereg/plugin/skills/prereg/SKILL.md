@@ -26,6 +26,7 @@ or edit a record under `.prereg/` by hand. A record is the tool's output.
 ```bash
 prereg new <name>      # scaffold PREREG.md in OSF's headings, plus tests/ and results/
 prereg freeze          # hash the whole file, record it in .prereg/, set the plan read-only
+prereg freeze --allow-tracked-sources   # freeze although git tracks a pinned source
 prereg freeze --osf    # freeze and push as a draft registration to OSF (unattended)
 prereg freeze --osf --attach ../CONTEXT.md --subject "<OSF subject>" \
   --description "<text>" --tag <tag> --category hypothesis \
@@ -71,10 +72,12 @@ such a pipe directly.
    a results ledger at or above the plan, the access level recorded is at least what the ledger
    shows: its highest recorded level, and `results not opened` once any run is recorded.
    Where `citations` is installed and git tracks a source the project's claims files pin, the
-   freeze names the sources after its own report. It is a warning: the freeze, its record and
-   its exit code are what they would have been. A source in the commit a freeze names can only
-   be removed later by rewriting history, which changes that commit's identifier, so untrack
-   and ignore source texts before the plan is committed.
+   freeze is refused with exit 1 before anything is written: no record, no log entry, no
+   timestamp request. A source in the commit a freeze names can only be removed later by
+   rewriting history, which changes that commit's identifier. Untrack each source with
+   `git rm --cached`, add an ignore rule, commit, and freeze again. Pass
+   `--allow-tracked-sources` only where the person has said the sources are theirs to commit;
+   the freeze then goes ahead and names them. Never add the flag to get past the refusal.
 4. **Commit `.prereg/`, `.gitattributes` and the `.ots` proof.** The freeze is only evidence once it is in history.
 5. **Then run.** Not before step 4.
 
