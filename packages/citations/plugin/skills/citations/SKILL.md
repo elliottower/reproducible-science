@@ -119,6 +119,9 @@ repository, and taking it out later means rewriting every commit that held it.
   and `citations pin` says when the source it just read is tracked or covered by no ignore
   rule. Each is a warning: it fails nothing, with or without `--strict`, and no command edits
   `.gitignore`.
+- `citations lint --claims` with no directory reads `claims` in the working directory, or the
+  nearest one above it in the same repository. `prereg freeze` asks this way and prints what
+  comes back, and `repro audit` reports the count as `N sources tracked by git`.
 - Text under a licence that allows redistribution is the author's to commit. Record the licence
   beside it.
 

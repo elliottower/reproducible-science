@@ -172,6 +172,44 @@ def test_lint_refuses_a_claims_directory_that_is_not_there(tmp_path, capsys):
     assert "no claims directory" in capsys.readouterr().out
 
 
+def test_lint_given_no_directory_reads_the_claims_here_or_the_nearest_above(
+    paper, monkeypatch, capsys
+):
+    git(paper, "init", "-q")
+    git(paper, "add", "sources/woodward.txt")
+    below = paper / "experiments" / "one"
+    below.mkdir(parents=True)
+    for folder in (paper, below):
+        monkeypatch.chdir(folder)
+        assert lint.main(["--claims", "--json"]) == 0
+        said = json.loads(capsys.readouterr().out)
+        assert [row["source"] for row in said["tracked"]] == [
+            str((paper / "sources" / "woodward.txt").resolve())
+        ]
+
+
+def test_lint_given_no_directory_does_not_look_above_the_repository(paper, monkeypatch, capsys):
+    inner = paper / "inner"
+    inner.mkdir()
+    git(inner, "init", "-q")
+    monkeypatch.chdir(inner)
+    assert lint.main(["--claims"]) == 2
+    assert "no claims directory at claims" in capsys.readouterr().out
+
+
+def test_lint_given_no_directory_outside_a_repository_reads_the_working_directory_alone(
+    paper, monkeypatch, capsys
+):
+    below = paper / "below"
+    below.mkdir()
+    monkeypatch.chdir(below)
+    assert lint.main(["--claims"]) == 2
+    assert "no claims directory at claims" in capsys.readouterr().out
+    monkeypatch.chdir(paper)
+    assert lint.main(["--claims"]) == 0
+    assert "1 pinned source on disk, 0 tracked by git" in capsys.readouterr().out
+
+
 def pinned(paper: pathlib.Path) -> int:
     f = paper / "claims" / "woodward.yaml"
     return pin.main([str(f), "--id", "again", "--quote", "A generalization is invariant if it"])

@@ -34,6 +34,12 @@ REMEDY = (
 )
 
 
+def top(folder: pathlib.Path) -> pathlib.Path | None:
+    """The top of the repository `folder` is in, or None outside one and where git is absent."""
+    shown = try_run("rev-parse", "--show-toplevel", cwd=folder)
+    return pathlib.Path(shown).resolve() if shown else None
+
+
 def tracked(sources: Iterable[pathlib.Path]) -> set[pathlib.Path]:
     """Which of these files git has in its index.
 
