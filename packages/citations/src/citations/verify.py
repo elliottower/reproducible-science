@@ -54,8 +54,8 @@ failure for the same reason one of those is.
 
 A `not found` whose every word is in the source says so. Where the quotation is two or more
 stretches of the source, in the source's order, with source text left out between them and
-nothing marking the gap, the result carries `reason = "omission"` and one `Gap` for each place
-text was left out. It stays `not found`: a quotation is one stretch of the source, and the
+nothing marking the gap, the result carries `reason = "omission"`, one `Gap` for each place
+text was left out with the text itself, and `passage`, the quotation as the source has it. It stays `not found`: a quotation is one stretch of the source, and the
 words left out may be the ones that qualify it. See `omission` for the rule.
 
 `indeterminate` is not a milder `not found`. `not found` says the source was read and the
@@ -244,6 +244,25 @@ class Gap:
     skipped: int
     """Folded characters of the source left out there: the whole tokens between the piece
     before the gap and the piece after, without the space on either side."""
+    text: str = ""
+    """The source text left out there, in full. See `Omission.folded` for whose characters."""
+    offset: int = 0
+    """Where `text` begins in `Omission.passage`."""
+
+
+@dataclass(frozen=True)
+class Omission:
+    """A quotation that is the source with text left out: what was left out, and what is there."""
+
+    gaps: list[Gap]
+    passage: str
+    """The source from the start of the quotation's first piece to the end of its last, gaps
+    included: the quotation as the source has it."""
+    folded: bool = False
+    """Whether `passage` and each `Gap.text` are the folded text, in lower case with single
+    spaces, and not the source's own characters. They are the source's own wherever a stretch
+    of the source can be found that folds to exactly the stretch that matched, which
+    `_stretch` looks for and checks. Where it cannot, the folded text is shown and this says so."""
 
 
 @dataclass
@@ -278,7 +297,14 @@ class Result:
     order with text left out between them. Empty on every other result."""
 
     gaps: list[Gap] = field(default_factory=list)
-    """Where that quotation leaves source text out, in order. Empty unless `reason` is set."""
+    """Where that quotation leaves source text out, in order, each with the text left out.
+    Empty unless `reason` is set."""
+
+    passage: str = ""
+    """The quotation as the source has it, gaps included. Empty unless `reason` is set."""
+
+    passage_folded: bool = False
+    """`Omission.folded` for `passage` and the gaps' text."""
 
     agreement: dict[str, State] = field(default_factory=dict)
     """Each extractor's own verdict, when more than one was consulted. Empty on the default
@@ -1385,8 +1411,31 @@ def single_out(quote: str, text: str, occurrence: int) -> tuple[str, str] | None
         width *= 2
 
 
-def omission(quote: str, text: str) -> list[Gap]:
-    """Where a quotation leaves source text out, if that is all that separates it from the source.
+def _stretch(text: str, doc: str, a: int, b: int) -> tuple[int, int] | None:
+    """The stretch of `text` that folds to `doc[a:b]`, where `doc` is `passage_fold(text)`.
+
+    Folding does not keep a map back to the characters it read, so the stretch is looked for:
+    the shortest leading part of `text` whose folding reaches each offset, by bisection. A
+    leading part usually folds to a leading part of the whole, and not always, since a hyphen
+    before a line break is in one and gone from the other. So the stretch is folded and
+    compared before it is returned, and `None` is the answer where it does not fold to
+    exactly what matched.
+    """
+    fold = passage_fold.__wrapped__  # not through the cache, which holds whole documents
+
+    def reach(n: int) -> int:
+        lo, hi = 0, len(text)
+        while lo < hi:
+            mid = (lo + hi) // 2
+            lo, hi = (lo, mid) if len(fold(text[:mid])) >= n else (mid + 1, hi)
+        return lo
+
+    s, e = reach(a + 1) - 1, reach(b)
+    return (s, e) if s >= 0 and fold(text[s:e]) == doc[a:b] else None
+
+
+def omission(quote: str, text: str) -> Omission | None:
+    """What a quotation leaves out, if that is all that separates it from the source.
 
     Both sides are folded with `passage_fold` and nothing looser, and read as tokens: the
     stretches between white space. `-0.42`, `1.81`, `12,500`, `non-significant`, `5.3%` and
@@ -1430,6 +1479,9 @@ def omission(quote: str, text: str) -> list[Gap]:
 
     Text with no white space between words, such as Chinese or Japanese, is one token a
     sentence and is not read as an omission by this rule.
+
+    The answer carries the text left out at each gap and the whole passage the pieces span,
+    in the source's own characters where `_stretch` can recover them.
 
     Asked only about a passage `resolve_in` did not find, and never changes that verdict.
     """
@@ -1479,19 +1531,34 @@ def omission(quote: str, text: str) -> list[Gap]:
                     reached[j] = (at + len(piece), (*cuts, i))
         if pieces > 1 and n in reached:
             end, cuts = reached[n]
-            gaps: list[Gap] = []
             # Back from the last piece: each earlier one at its last occurrence before the next.
-            nxt = end - len(" ".join(words[cuts[-1] :]))
+            placed = [(end - len(" ".join(words[cuts[-1] :])), end)]
             for i, j in reversed(list(itertools.pairwise(cuts))):
-                at = last(i, j, nxt - 2)
-                size = len(" ".join(words[i:j]))
-                gaps.append(Gap(len(" ".join(words[:j])), nxt - 1 - (at + size + 1)))
-                nxt = at
-            return gaps[::-1]
+                at = last(i, j, placed[-1][0] - 2)
+                placed.append((at, at + len(" ".join(words[i:j]))))
+            placed.reverse()
+            a, b = placed[0][0], placed[-1][1]
+            # Each gap as offsets into the passage: past the space after one piece, up to the
+            # space before the next.
+            left_out = [(e + 1 - a, s - 1 - a) for (_, e), (s, _) in itertools.pairwise(placed)]
+            passage, spans = doc[a:b], left_out
+            if (whole := _stretch(text, doc, a, b)) is not None:
+                own = text[whole[0] : whole[1]]
+                found = [_stretch(own, passage, x, y) for x, y in left_out]
+                if all(found):
+                    passage, spans = own, [f for f in found if f]
+            return Omission(
+                [
+                    Gap(len(" ".join(words[:j])), y - x, passage[s:e], s)
+                    for j, (x, y), (s, e) in zip(cuts[1:], left_out, spans, strict=True)
+                ],
+                passage,
+                folded=spans is left_out,
+            )
         if not reached:
-            return []
+            return None
         ends = reached
-    return []
+    return None
 
 
 def divergence(quote: str, text: str) -> tuple[int, str, str]:
@@ -1541,23 +1608,51 @@ def _not_found(quote: str, text: str) -> str:
     )
 
 
-def _omitted(quote: str, gaps: list[Gap]) -> str:
+#: How much of the text left out at one gap, and of the whole passage, the printed detail
+#: shows. The result carries both in full; a report listing twenty of these does not.
+SHOWN_GAP_CHARS = 200
+SHOWN_PASSAGE_CHARS = 600
+
+
+def _omitted(quote: str, found: Omission) -> str:
     """The `not found` detail for a quotation that is the source with text left out."""
     q = passage_fold(quote)
+
+    def shown(text: str, limit: int) -> tuple[str, str]:
+        """One line of at most `limit` characters, and a note where that is not all of it."""
+        line = " ".join(text.split())
+        if len(line) <= limit:
+            return line, ""
+        return line[:limit], f", truncated: the first {limit:,} of {len(line):,} shown"
+
     lines = [
-        f"every word of the quotation is in the source, as {len(gaps) + 1} pieces in the "
+        f"every word of the quotation is in the source, as {len(found.gaps) + 1} pieces in the "
         f"source's order with source text left out between them and nothing marking the gap"
     ]
-    for g in gaps:
+    for g in found.gaps:
+        text, cut = shown(g.text, SHOWN_GAP_CHARS)
+        lines.append(f"      after: ...{q[max(0, g.at - 34) : g.at]}")
         lines.append(
-            f"      after: ...{q[max(0, g.at - 34) : g.at]}   "
-            f"({g.skipped:,} character{'' if g.skipped == 1 else 's'} of the source left out)"
+            f"      left out ({g.skipped:,} character{'' if g.skipped == 1 else 's'} of the "
+            f"source{cut}): [[{text}]]"
         )
         lines.append(f"      then:  {q[g.at :].strip()[:34]}...")
+    marked, at = "", 0
+    for g in found.gaps:
+        marked += f"{found.passage[at : g.offset]}[[{g.text}]]"
+        at = g.offset + len(g.text)
+    passage, cut = shown(marked + found.passage[at:], SHOWN_PASSAGE_CHARS)
+    lines.append(f"      the source reads (left-out text in [[ ]]{cut}): {passage}")
+    if found.folded:
+        lines.append(
+            "      the source text is shown folded, in lower case with single spaces: its own "
+            "characters could not be recovered from the extraction"
+        )
     lines.append(
-        "      a quotation is one stretch of the source, so pin each piece as a quotation of "
-        "its own. In a manuscript, write an ellipsis where the text is left out: `citations "
-        "coverage` reads one as omitted text and checks the pieces either side"
+        "      to repair it, quote the passage as the source reads, with the left-out text "
+        "in it; or, in a manuscript, write an ellipsis where the text is left out, which "
+        "`citations coverage` reads as omitted text. As it stands the quotation is `not "
+        "found`, with or without `--strict`"
     )
     return "\n".join(lines)
 
@@ -1605,8 +1700,16 @@ def _verdict(
     if m.state == "ambiguous":
         return Result("ambiguous", _ambiguous(m.count, bool(prefix or suffix)), warn)
     if m.state == "not found":
-        if gaps := omission(quote, full):
-            return Result("not found", _omitted(quote, gaps), warn, reason=OMISSION, gaps=gaps)
+        if (found := omission(quote, full)) is not None:
+            return Result(
+                "not found",
+                _omitted(quote, found),
+                warn,
+                reason=OMISSION,
+                gaps=found.gaps,
+                passage=found.passage,
+                passage_folded=found.folded,
+            )
         return Result("not found", _not_found(quote, full), warn)
     if m.normalized:
         # The skeleton dropped the whitespace the token check reads, so neither a cut word

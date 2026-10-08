@@ -321,20 +321,34 @@ does not, and reports the document as missing text it contains.
 **Text left out of the middle.** A quotation that joins two stretches of the source and leaves
 out what lies between them is `not found`, because a quotation is one stretch of the source and
 the words left out may qualify it. Every word of it is in the source all the same, so the
-result says that, with `reason: omission` on the result and one gap for each place text was
-left out:
+report shows what was left out and what the source reads:
 
 ```text
 not found  notes2026:joined            Higher circulating levels of the protein wer
            every word of the quotation is in the source, as 2 pieces in the source's order with source text left out between them and nothing marking the gap
-           after: ...in were associated with lower risk   (69 characters of the source left out)
+           after: ...in were associated with lower risk
+           left out (69 characters of the source): [[in the discovery cohort (odds ratio 0.81 per standard deviation), and]]
            then:  the association replicated in two ...
+           the source reads (left-out text in [[ ]]): Higher circulating levels of the protein were associated with lower risk [[in the discovery cohort (odds ratio 0.81 per standard deviation), and]] the association replicated in two independent cohorts of European ancestry
+           to repair it, quote the passage as the source reads, with the left-out text in it; or, in a manuscript, write an ellipsis where the text is left out, which `citations coverage` reads as omitted text. As it stands the quotation is `not found`, with or without `--strict`
 ```
 
 The count line says how many of the `not found` are of this kind: `not found  3   2 in the
-source in pieces, with text left out between them`. Pin each piece as a quotation of its own.
-A claims file's `exact` takes no ellipsis; in a manuscript an ellipsis is omitted text and
-`citations coverage` checks the pieces either side of it.
+source in pieces, with text left out between them`. There are two repairs, and the author
+chooses: quote the passage as the source reads, or, in a manuscript, mark the gap with an
+ellipsis, which `citations coverage` reads as omitted text. A claims file's `exact` takes no
+ellipsis, and no command rewrites a quotation.
+
+The result carries the same in full. `reason` is `omission`, each entry of `gaps` holds the
+`text` left out, its `offset` in the passage, where the gap falls in the quotation (`at`) and
+its folded length (`skipped`), and `passage` is the source from the start of the first piece to
+the end of the last. The printed report shows the first 200 characters of a longer gap and the
+first 600 of a longer passage, and says so with both lengths.
+
+The text shown is the source's own, with its capitals, accents and line breaks, wherever a
+stretch of the source can be found that folds to exactly what matched; the printed report
+writes its line breaks as spaces. Where no such stretch is found the folded text is shown, in
+lower case with single spaces, the report says so, and `passage_folded` is set on the result.
 
 The rule reads both sides as tokens, the stretches between white space, after the folding
 above and nothing looser. `-0.42`, `1.81`, `12,500`, `non-significant`, `5.3%` and `risk,` are

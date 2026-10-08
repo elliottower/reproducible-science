@@ -53,6 +53,7 @@ from citations.verify import (
     OMISSION,
     Gap,
     Match,
+    Omission,
     Pin,
     Report,
     Result,
@@ -99,6 +100,7 @@ __all__ = [
     "LibraryConfig",
     "LibraryNotFoundError",
     "Match",
+    "Omission",
     "PaperConfig",
     # checking
     "PaperclipUnavailableError",

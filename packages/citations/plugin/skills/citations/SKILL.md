@@ -74,8 +74,10 @@ was never there.
 **A `not found` that says "every word of the quotation is in the source" is an omission.** The
 quotation joins two or more stretches of the source and leaves out the text between them with
 nothing marking the gap; the result carries `reason: omission` and the count line says how many
-are of this kind. It still fails. Pin each piece as a quotation of its own, and never rejoin
-them: the words left out may be the ones that qualify the claim.
+are of this kind. It still fails. The report shows the text left out and the passage as the
+source reads it: read both, because the words left out may be the ones that qualify the claim.
+Then either quote the passage as the source reads, or, in a manuscript, mark the gap with an
+ellipsis. Never rejoin the pieces without one.
 
 **`ambiguous` means the source has the passage more than once.** `citations pin` refuses it
 without choosing. Read the source, decide which occurrence is meant, and pin it with

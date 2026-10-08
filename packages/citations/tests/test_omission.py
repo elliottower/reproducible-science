@@ -8,6 +8,9 @@ left out, and stays `not found`.
 
 from __future__ import annotations
 
+import dataclasses
+import json
+
 import pytest
 import yaml
 from citations import cli, pin
@@ -48,12 +51,12 @@ def test_two_pieces_joined_are_not_found_and_say_why(tmp_path):
 
 
 def test_the_gap_is_where_the_first_piece_ends_and_as_long_as_what_was_left_out():
-    assert V.omission(JOINED, SOURCE) == [Gap(len(FIRST), len(BETWEEN))]
+    assert where(JOINED, SOURCE) == [(len(FIRST), len(BETWEEN))]
 
 
 def test_three_pieces_report_two_gaps_in_order():
     quote = f"{FIRST} {SECOND}. {THIRD}"
-    gaps = V.omission(quote, SOURCE)
+    gaps = V.omission(quote, SOURCE).gaps
     assert [g.at for g in gaps] == [len(FIRST), len(f"{FIRST} {SECOND}.")]
     assert gaps[0].skipped == len(BETWEEN)
     assert gaps[1].skipped == len("Colocalization supported a shared variant,")
@@ -62,16 +65,18 @@ def test_three_pieces_report_two_gaps_in_order():
 def test_a_gap_of_one_character_is_reported_in_the_singular(tmp_path):
     source = f"{FIRST} a {SECOND}."
     r = V.check_one(JOINED, _src(tmp_path, source), None)
-    assert r.gaps == [Gap(len(FIRST), 1)]
-    assert "(1 character of the source left out)" in r.detail
+    assert r.gaps == [Gap(len(FIRST), 1, "a", len(FIRST) + 1)]
+    assert "left out (1 character of the source): [[a]]" in r.detail
 
 
 def test_the_detail_shows_both_sides_of_the_gap_and_names_the_remedy(tmp_path):
     r = V.check_one(JOINED, _src(tmp_path), None)
-    assert f"({len(BETWEEN)} characters of the source left out)" in r.detail
+    assert f"left out ({len(BETWEEN)} characters of the source): [[{BETWEEN}]]" in r.detail
+    assert f"{FIRST} [[{BETWEEN}]] {SECOND}" in r.detail
     assert "associated with lower risk" in r.detail
     assert "the association replicated" in r.detail
-    assert "pin each piece" in r.detail and "ellipsis" in r.detail
+    assert "quote the passage as the source reads" in r.detail and "ellipsis" in r.detail
+    assert "`not found`, with or without `--strict`" in r.detail
 
 
 def test_the_fold_applies_to_each_piece(tmp_path):
@@ -92,9 +97,15 @@ def test_each_piece_pinned_on_its_own_is_found(tmp_path):
 # --- what must stay a plain not found ----------------------------------------------------------
 
 
+def where(quote: str, source: str) -> list[tuple[int, int]]:
+    found = V.omission(quote, source)
+    assert found is not None
+    return [(g.at, g.skipped) for g in found.gaps]
+
+
 def plain(quote: str, source: str = SOURCE) -> bool:
     m = V.resolve_in(quote, source)
-    return m.state == "not found" and V.omission(quote, source) == []
+    return m.state == "not found" and V.omission(quote, source) is None
 
 
 def test_a_changed_digit_is_not_an_omission():
@@ -189,7 +200,8 @@ def test_an_absent_passage_keeps_the_message_it_had(tmp_path):
 def test_a_number_or_compound_cut_short_is_not_an_omission(tmp_path, quote, source):
     assert plain(quote, source)
     r = V.check_one(quote, _src(tmp_path, source), None)
-    assert (r.state, r.reason, r.gaps) == ("not found", "", [])
+    assert (r.state, r.reason, r.gaps, r.passage) == ("not found", "", [], "")
+    assert "[[" not in r.detail and "the source reads" not in r.detail
 
 
 @pytest.mark.parametrize("joint", [", ", "/", "; ", " (", ") "])
@@ -210,7 +222,8 @@ def test_a_piece_that_keeps_its_tokens_punctuation_is_an_omission():
         "the association replicated in two cohorts."
     )
     quote = "were enrolled in the study (n = 828) the association replicated in two cohorts"
-    assert V.omission(quote, source) == [Gap(len("were enrolled in the study (n = 828)"), 12)]
+    assert where(quote, source) == [(len("were enrolled in the study (n = 828)"), 12)]
+    assert V.omission(quote, source).gaps[0].text == "at baseline;"
 
 
 def test_the_ends_of_the_quotation_may_stop_before_punctuation_and_not_inside_a_word():
@@ -231,7 +244,8 @@ def test_a_repeated_piece_is_paired_with_the_occurrence_nearest_the_next_piece()
         + "Filler sentence number one goes here. " * 50
         + f"Then {a} {between} {b}."
     )
-    assert V.omission(f"{a} {b}", source) == [Gap(len(a), len(between))]
+    assert where(f"{a} {b}", source) == [(len(a), len(between))]
+    assert V.omission(f"{a} {b}", source).passage == f"{a} {between} {b}"
 
 
 def test_each_of_three_pieces_is_placed_as_late_as_the_next_allows():
@@ -239,7 +253,108 @@ def test_each_of_three_pieces_is_placed_as_late_as_the_next_allows():
     b = "zeta eta theta iota kappa lambda"
     c = "mu nu xi omicron pi rho sigma tau"
     source = f"{a} one two. {b} three. {a} four {b} five six {c}."
-    assert V.omission(f"{a} {b} {c}", source) == [Gap(len(a), 4), Gap(len(f"{a} {b}"), 8)]
+    assert where(f"{a} {b} {c}", source) == [(len(a), 4), (len(f"{a} {b}"), 8)]
+
+
+# --- what was left out, and what the source reads ----------------------------------------------
+
+RAW = (
+    "BACKGROUND.  Higher circulating levels of the Protein were associated\n"
+    "   with lower risk in the DISCOVERY cohort (odds ratio 0.81). That estimate held after\n"
+    "adjustment.  Na\u00efve models agreed; and the association replicated in two independent\n"
+    "cohorts of European ancestry. Colocalization supported a shared variant, with no\n"
+    "evidence of horizontal pleiotropy in sensitivity analyses. Conclusions follow."
+)
+
+
+def test_a_one_token_gap_carries_that_token_and_the_passage_as_the_source_has_them():
+    quote = "levels of the protein associated with lower risk"
+    found = V.omission(quote, RAW)
+    assert not found.folded
+    assert [g.text for g in found.gaps] == ["were"]
+    assert found.passage == "levels of the Protein were associated\n   with lower risk"
+    assert RAW[RAW.index(found.passage) + found.gaps[0].offset :].startswith("were associated")
+
+
+def test_a_gap_of_several_sentences_carries_them_in_the_sources_own_characters():
+    quote = f"{FIRST} {SECOND}"
+    found = V.omission(quote, RAW)
+    left_out = (
+        "in the DISCOVERY cohort (odds ratio 0.81). That estimate held after\n"
+        "adjustment.  Na\u00efve models agreed; and"
+    )
+    assert not found.folded
+    assert [g.text for g in found.gaps] == [left_out]
+    start = RAW.index("Higher circulating")
+    assert found.passage == RAW[start : RAW.index("ancestry.") + len("ancestry")]
+    g = found.gaps[0]
+    assert found.passage[g.offset : g.offset + len(g.text)] == left_out
+    assert g.skipped == len(V.passage_fold(left_out))
+
+
+def test_three_pieces_carry_two_gaps_and_one_passage_that_spans_all_three():
+    found = V.omission(f"{FIRST} {SECOND}. {THIRD}", RAW)
+    assert [g.text for g in found.gaps][1] == "Colocalization supported a shared variant,"
+    assert found.gaps[0].text.startswith("in the DISCOVERY cohort") and found.gaps[0].text.endswith(
+        "and"
+    )
+    assert found.passage == RAW[RAW.index("Higher") : RAW.index(" Conclusions") - 1]
+    rebuilt, at = "", 0
+    for g in found.gaps:
+        assert found.passage[g.offset : g.offset + len(g.text)] == g.text
+        rebuilt += found.passage[at : g.offset]
+        at = g.offset + len(g.text)
+    rebuilt += found.passage[at:]
+    assert V.passage_fold(rebuilt) == V.passage_fold(f"{FIRST} {SECOND}. {THIRD}")
+
+
+def test_the_result_carries_the_passage_and_the_gap_text_in_full_and_serializes(tmp_path):
+    long_gap = " ".join(f"filler{i} sentence goes here." for i in range(200))
+    source = f"Start. {FIRST} {long_gap} {SECOND}. End."
+    r = V.check_one(JOINED, _src(tmp_path, source), None)
+    assert r.gaps[0].text == long_gap
+    assert r.passage == f"{FIRST} {long_gap} {SECOND}"
+    assert not r.passage_folded
+    assert long_gap not in r.detail
+    assert f"truncated: the first {V.SHOWN_GAP_CHARS:,} of {len(long_gap):,} shown" in r.detail
+    assert f"[[{long_gap[: V.SHOWN_GAP_CHARS]}]]" in r.detail
+    assert f"truncated: the first {V.SHOWN_PASSAGE_CHARS:,} of" in r.detail
+    again = json.loads(json.dumps(dataclasses.asdict(r)))
+    assert again["passage"] == r.passage
+    assert again["gaps"][0] == {
+        "at": len(FIRST),
+        "skipped": len(V.passage_fold(long_gap)),
+        "text": long_gap,
+        "offset": len(FIRST) + 1,
+    }
+
+
+def test_a_word_the_source_breaks_across_a_line_is_shown_as_the_source_breaks_it():
+    source = f"{FIRST} in the dis-\ncovery cohort, and {SECOND}."
+    found = V.omission(f"{FIRST} in the and {SECOND}", source)
+    assert not found.folded
+    assert [(g.text, g.skipped) for g in found.gaps] == [("dis-\ncovery cohort,", 17)]
+    assert found.passage == source[:-1]
+
+
+def test_text_whose_own_characters_cannot_be_recovered_is_shown_folded_and_says_so(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(V, "_stretch", lambda *a: None)
+    r = V.check_one(JOINED, _src(tmp_path, RAW), None)
+    assert r.passage_folded
+    assert r.gaps[0].text == (
+        "in the discovery cohort (odds ratio 0.81). that estimate held after adjustment. "
+        "naive models agreed; and"
+    )
+    assert r.passage == V.passage_fold(RAW[RAW.index("Higher") : RAW.index("ancestry.") + 8])
+    assert "shown folded, in lower case with single spaces" in r.detail
+
+
+def test_text_in_the_sources_own_characters_draws_no_remark_about_folding(tmp_path):
+    r = V.check_one(JOINED, _src(tmp_path, RAW), None)
+    assert not r.passage_folded
+    assert "DISCOVERY" in r.detail and "folded" not in r.detail
 
 
 # --- what it does to a run ---------------------------------------------------------------------
