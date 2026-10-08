@@ -159,6 +159,14 @@ def test_lint_reports_the_same_sources_as_json(paper, capsys):
     }
 
 
+def test_lint_refuses_json_for_claims_and_a_bibliography_together(paper, capsys):
+    bib = paper / "refs.bib"
+    bib.write_text("@misc{x, title = {A title}}\n")
+    code = lint.main(["--claims", str(paper / "claims"), "--bib", str(bib), "--json"])
+    assert code == 2
+    assert "--json prints one document" in capsys.readouterr().out
+
+
 def test_lint_refuses_a_claims_directory_that_is_not_there(tmp_path, capsys):
     assert lint.main(["--claims", str(tmp_path / "nowhere")]) == 2
     assert "no claims directory" in capsys.readouterr().out

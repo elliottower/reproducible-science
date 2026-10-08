@@ -803,7 +803,7 @@ def main(argv: list[str] | None = None) -> int:
     if a.json and sum(bool(mode) for mode in (a.bib, a.authors, a.claims)) > 1:
         # Two documents printed back to back are not a JSON document. Refusing says so; running
         # one mode and dropping the other would report a check that never ran.
-        print("  --json prints one document: ask for one of --bib, --authors and --claims")
+        print("  --json prints one document: ask for --bib, --authors or --claims, not two of them")
         return 2
 
     if a.bib or a.authors or a.claims:
