@@ -154,9 +154,74 @@ def test_lint_reports_the_same_sources_as_json(paper, capsys):
             {
                 "claims_file": str((paper / "claims" / "woodward.yaml").resolve()),
                 "source": str((paper / "sources" / "woodward.txt").resolve()),
+                "index": True,
+                "head": False,
             }
         ],
     }
+
+
+def committed_then_untracked(paper: pathlib.Path) -> pathlib.Path:
+    """`paper` with its source committed and then taken out of the index, the removal uncommitted."""
+    git(paper, "init", "-q")
+    git(paper, "add", "sources/woodward.txt")
+    git(paper, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "a source")
+    git(paper, "rm", "-q", "--cached", "sources/woodward.txt")
+    return (paper / "sources" / "woodward.txt").resolve()
+
+
+def rows(paper: pathlib.Path, capsys) -> list[tuple[bool, bool]]:
+    capsys.readouterr()
+    assert lint.main(["--claims", str(paper / "claims"), "--json"]) == 0
+    return [(r["index"], r["head"]) for r in json.loads(capsys.readouterr().out)["tracked"]]
+
+
+def test_lint_says_of_each_source_whether_the_index_holds_it_and_whether_the_last_commit_does(
+    paper, capsys
+):
+    assert rows(paper, capsys) == []
+    git(paper, "init", "-q")
+    assert rows(paper, capsys) == [], "a repository with no commit, and nothing staged"
+    git(paper, "add", "sources/woodward.txt")
+    assert rows(paper, capsys) == [(True, False)]
+    git(paper, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "a source")
+    assert rows(paper, capsys) == [(True, True)]
+    git(paper, "rm", "-q", "--cached", "sources/woodward.txt")
+    assert rows(paper, capsys) == [(False, True)]
+    (paper / "sources" / "woodward.txt").unlink()
+    assert rows(paper, capsys) == [(False, True)], "deleting the file takes it out of no commit"
+    git(paper, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "removed")
+    assert rows(paper, capsys) == []
+
+
+def test_lint_lists_a_source_out_of_the_index_and_still_in_the_last_commit(paper, capsys):
+    source = committed_then_untracked(paper)
+    assert tracked.tracked([source]) == set()
+    assert tracked.committed([source]) == {source}
+    assert lint.main(["--claims", str(paper / "claims")]) == 0
+    out = capsys.readouterr().out
+    assert (
+        "1 pinned source on disk, 0 tracked by git, 1 more out of the index and still in the "
+        "last commit"
+    ) in out
+    assert f"  in HEAD  {'woodward.yaml':<40}{source}\n" in out
+    assert "commit the removal" in out
+
+
+@pytest.mark.parametrize("flags", [(), ("--strict",)])
+def test_verify_names_a_source_the_last_commit_still_holds_and_changes_no_exit_code(
+    paper, capsys, flags
+):
+    source = committed_then_untracked(paper)
+    assert verify(paper, *flags) == 0
+    out = capsys.readouterr().out
+    assert "git tracks" not in out
+    assert (
+        "the last commit still holds 1 source read here that git no longer tracks: "
+        "commit the removal"
+    ) in out
+    assert f"  in HEAD  {'woodward':<40}{source}\n" in out
+    assert not [line for line in out.splitlines() if line.split()[:2] == ["1", "source"]]
 
 
 def test_lint_refuses_json_for_claims_and_a_bibliography_together(paper, capsys):
@@ -170,6 +235,44 @@ def test_lint_refuses_json_for_claims_and_a_bibliography_together(paper, capsys)
 def test_lint_refuses_a_claims_directory_that_is_not_there(tmp_path, capsys):
     assert lint.main(["--claims", str(tmp_path / "nowhere")]) == 2
     assert "no claims directory" in capsys.readouterr().out
+
+
+def test_lint_given_no_directory_reads_the_claims_here_or_the_nearest_above(
+    paper, monkeypatch, capsys
+):
+    git(paper, "init", "-q")
+    git(paper, "add", "sources/woodward.txt")
+    below = paper / "experiments" / "one"
+    below.mkdir(parents=True)
+    for folder in (paper, below):
+        monkeypatch.chdir(folder)
+        assert lint.main(["--claims", "--json"]) == 0
+        said = json.loads(capsys.readouterr().out)
+        assert [row["source"] for row in said["tracked"]] == [
+            str((paper / "sources" / "woodward.txt").resolve())
+        ]
+
+
+def test_lint_given_no_directory_does_not_look_above_the_repository(paper, monkeypatch, capsys):
+    inner = paper / "inner"
+    inner.mkdir()
+    git(inner, "init", "-q")
+    monkeypatch.chdir(inner)
+    assert lint.main(["--claims"]) == 2
+    assert "no claims directory at claims" in capsys.readouterr().out
+
+
+def test_lint_given_no_directory_outside_a_repository_reads_the_working_directory_alone(
+    paper, monkeypatch, capsys
+):
+    below = paper / "below"
+    below.mkdir()
+    monkeypatch.chdir(below)
+    assert lint.main(["--claims"]) == 2
+    assert "no claims directory at claims" in capsys.readouterr().out
+    monkeypatch.chdir(paper)
+    assert lint.main(["--claims"]) == 0
+    assert "1 pinned source on disk, 0 tracked by git" in capsys.readouterr().out
 
 
 def pinned(paper: pathlib.Path) -> int:

@@ -1,0 +1,1 @@
+**`repro audit` reports how many sources the audited repository commits.** Where `citations verify` read a source that git tracks, the step's `found` ends with `N sources tracked by git`, in the table and in the record. No outcome and no exit code changes.

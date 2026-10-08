@@ -79,6 +79,11 @@ READS: dict[tuple[str, str], tuple[str, str]] = {
     ),
 }
 
+#: How `citations verify` heads its warning that git tracks sources it read. The heading opens
+#: with `git` so that `N sources ...` above does not take the sentence whole; the count goes
+#: into what the step found under a name of its own, and changes no outcome.
+TRACKED = re.compile(r"^git tracks ([\d,]+) sources? read here\b")
+
 #: The distribution each command ships in.
 DISTRIBUTIONS = {
     "citations": "citations",
@@ -254,7 +259,14 @@ def read(argv: list[str], code: int, output: str, root: pathlib.Path) -> tuple[s
     measured, unmeasured = READS.get(
         (argv[0], argv[1] if len(argv) > 1 else ""), (r"(?!)", r"(?!)")
     )
-    found = "; ".join(m.group() for line in lines for m in re.finditer(measured, line))
+    items = [m.group() for line in lines for m in re.finditer(measured, line)]
+    if argv[:2] == ["citations", "verify"]:
+        items += [
+            f"{m[1]} source{'' if m[1] == '1' else 's'} tracked by git"
+            for m in map(TRACKED.match, lines)
+            if m
+        ]
+    found = "; ".join(items)
     could_not = "; ".join(m.group() for line in lines for m in re.finditer(unmeasured, line))
 
     # `citations verify --strict` exits 1 over a quotation it could not read, and `citations

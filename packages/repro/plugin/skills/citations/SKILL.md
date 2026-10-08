@@ -77,6 +77,13 @@ repository, and taking it out later means rewriting every commit that held it.
   and `citations pin` says when the source it just read is tracked or covered by no ignore
   rule. Each is a warning: it fails nothing, with or without `--strict`, and no command edits
   `.gitignore`.
+- `citations lint --claims` with no directory reads `claims` in the working directory, or the
+  nearest one above it in the same repository. `prereg freeze` asks this way and refuses to
+  freeze while any is tracked, unless given `--allow-tracked-sources`; `repro audit` reports
+  the count as `N sources tracked by git`.
+- `git rm --cached` takes a source out of the index and out of no commit. Until the removal is
+  committed the last commit still holds it: `lint --claims` lists it as `in HEAD`, `verify`
+  names it, and `prereg freeze` is still refused.
 - Text under a licence that allows redistribution is the author's to commit. Record the licence
   beside it.
 

@@ -387,6 +387,9 @@ class Report:
     """Sources read from a file git tracks, with the claims file that pins each. Reported and
     never a failure, with or without `--strict`: the quotations resolve all the same, and what
     the report adds is that publishing the repository republishes the text. See `tracked`."""
+    committed_sources: list[tuple[str, pathlib.Path]] = field(default_factory=list)
+    """Sources read here that git no longer tracks and the last commit still holds: untracked
+    with `git rm --cached`, and the removal not yet committed. Reported the same way."""
     extractors: dict[str, int] = field(default_factory=dict)
     """How many quotations each extractor answered. A report that does not say what read its
     sources cannot be compared with one taken where a different renderer was declared."""
