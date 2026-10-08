@@ -73,9 +73,10 @@ def warning(label: str) -> str:
 
 def git(repo: pathlib.Path, *args: str) -> str:
     # `clean_env`, because the pre-push hook runs this suite with `GIT_DIR` exported and these
-    # commits would otherwise land in the repository being pushed.
+    # commits would otherwise land in the repository being pushed. No maintenance after a commit:
+    # it runs detached and holds `.git/objects/maintenance.lock` while a test copies the repository.
     return subprocess.run(
-        ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", "-c", "maintenance.auto=false", *args],
         cwd=repo,
         env=clean_env(),
         capture_output=True,
