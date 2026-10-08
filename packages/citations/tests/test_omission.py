@@ -35,6 +35,7 @@ JOINED = f"{FIRST} {SECOND}"
 
 
 def _src(tmp_path, text=SOURCE):
+    tmp_path.mkdir(parents=True, exist_ok=True)
     f = tmp_path / "source.txt"
     f.write_text(text)
     return f
@@ -65,13 +66,15 @@ def test_three_pieces_report_two_gaps_in_order():
 def test_a_gap_of_one_character_is_reported_in_the_singular(tmp_path):
     source = f"{FIRST} a {SECOND}."
     r = V.check_one(JOINED, _src(tmp_path, source), None)
-    assert r.gaps == [Gap(len(FIRST), 1, "a", len(FIRST) + 1)]
-    assert "left out (1 character of the source): [[a]]" in r.detail
+    assert r.gaps == [Gap(len(FIRST), 1, "a", len(FIRST) + 1, tokens=1, position=12)]
+    assert "left out (1 token of the source, 1 character): [[a]]" in r.detail
 
 
 def test_the_detail_shows_both_sides_of_the_gap_and_names_the_remedy(tmp_path):
     r = V.check_one(JOINED, _src(tmp_path), None)
-    assert f"left out ({len(BETWEEN)} characters of the source): [[{BETWEEN}]]" in r.detail
+    assert (
+        f"left out (11 tokens of the source, {len(BETWEEN)} characters): [[{BETWEEN}]]" in r.detail
+    )
     assert f"{FIRST} [[{BETWEEN}]] {SECOND}" in r.detail
     assert "associated with lower risk" in r.detail
     assert "the association replicated" in r.detail
@@ -316,9 +319,14 @@ def test_the_result_carries_the_passage_and_the_gap_text_in_full_and_serializes(
     assert r.passage == f"{FIRST} {long_gap} {SECOND}"
     assert not r.passage_folded
     assert long_gap not in r.detail
-    assert f"truncated: the first {V.SHOWN_GAP_CHARS:,} of {len(long_gap):,} shown" in r.detail
-    assert f"[[{long_gap[: V.SHOWN_GAP_CHARS]}]]" in r.detail
-    assert f"truncated: the first {V.SHOWN_PASSAGE_CHARS:,} of" in r.detail
+    assert (
+        f"left out (800 tokens of the source, {len(long_gap):,} characters, the first "
+        f"{V.SHOWN_GAP_CHARS} shown): [[{long_gap[: V.SHOWN_GAP_CHARS]}]]"
+    ) in r.detail
+    shown = r.detail.split("left-out text in [[ ]]): ")[1].splitlines()[0]
+    assert f"({len(r.passage):,} characters, the first {V.SHOWN_PASSAGE_CHARS} shown" in r.detail
+    assert shown.count("[[") == shown.count("]]") == 1
+    assert len(shown.replace("[[", "").replace("]]", "")) == V.SHOWN_PASSAGE_CHARS
     again = json.loads(json.dumps(dataclasses.asdict(r)))
     assert again["passage"] == r.passage
     assert again["gaps"][0] == {
@@ -326,6 +334,8 @@ def test_the_result_carries_the_passage_and_the_gap_text_in_full_and_serializes(
         "skipped": len(V.passage_fold(long_gap)),
         "text": long_gap,
         "offset": len(FIRST) + 1,
+        "tokens": 800,
+        "position": 12,
     }
 
 
@@ -355,6 +365,133 @@ def test_text_in_the_sources_own_characters_draws_no_remark_about_folding(tmp_pa
     r = V.check_one(JOINED, _src(tmp_path, RAW), None)
     assert not r.passage_folded
     assert "DISCOVERY" in r.detail and "folded" not in r.detail
+
+
+# --- a token is what a reader of the source sees between white space ----------------------------
+
+LEAD = "the dose given to the treated group was"
+TAIL = "in the second phase of the trial overall"
+
+
+@pytest.mark.parametrize(
+    ("in_source", "quoted"),
+    [
+        ("12\u202f500", "500"),
+        ("12\u2009500", "12"),
+        ("12\u00a0500", "500"),
+        ("na\u00a8ive value", "ive value"),
+        ("don\u00b4t respond", "don respond"),
+        ("logit\x00difference", "logit"),
+    ],
+    ids=["narrow-no-break", "thin", "no-break", "diaeresis", "acute", "control"],
+)
+def test_a_space_the_fold_made_inside_a_token_is_not_a_place_to_cut(tmp_path, in_source, quoted):
+    source = f"We note {LEAD} {in_source} {TAIL}."
+    quote = f"{LEAD} {quoted} {TAIL}"
+    assert " " in V.passage_fold(in_source)
+    assert plain(quote, source)
+    r = V.check_one(quote, _src(tmp_path, source), None)
+    assert (r.state, r.reason, r.passage) == ("not found", "", "")
+
+
+def test_a_no_break_space_between_a_number_and_a_word_is_white_space():
+    source = f"We note {LEAD} 5\u00a0mg {TAIL}."
+    assert [g.text for g in V.omission(f"{LEAD} 5 {TAIL}", source).gaps] == ["mg"]
+
+
+@pytest.mark.parametrize(
+    ("left_out", "tokens"),
+    [
+        ("very\x00strongly", 1),
+        ("very-\nstrongly", 1),
+        ("never\u00b4once", 1),
+        ("12\u202f500", 1),
+        ("very strongly", 2),
+        ("very\u00a0strongly", 2),
+    ],
+)
+def test_tokens_left_out_are_counted_as_the_source_has_them(left_out, tokens):
+    source = f"X. {FIRST} {left_out} {SECOND} here."
+    found = V.omission(JOINED, source)
+    assert [(g.text, g.tokens) for g in found.gaps] == [(left_out, tokens)]
+
+
+def test_position_counts_a_word_broken_across_a_line_as_one_token():
+    source = f"X. {FIRST.replace('circulating', 'circu-' + chr(10) + 'lating')} strongly {SECOND}."
+    (gap,) = V.omission(JOINED, source).gaps
+    assert (gap.text, gap.tokens, gap.position) == ("strongly", 1, 12)
+
+
+def test_a_combining_mark_after_the_last_letter_is_kept_with_it():
+    cafe = "cafe\u0301"
+    assert V.omission(JOINED, f"X. {FIRST} {cafe} {SECOND} here.").gaps[0].text == cafe
+    ends_on_it = V.omission(
+        f"{FIRST} with lower risk of the cafe",
+        f"X. {FIRST} strongly associated with lower risk of the {cafe} here.",
+    )
+    assert ends_on_it.passage.endswith(cafe)
+    assert not ends_on_it.folded
+
+
+# --- which way of fitting is reported ----------------------------------------------------------
+
+MODEL = "the model reached an accuracy of 0.94"
+SPLIT = "on the held-out split of the second dataset"
+FILLER = "Filler sentence number one goes here. " * 50
+
+
+def test_the_shortest_passage_is_reported_wherever_in_the_source_it_is():
+    source = f"{MODEL} x1. {FILLER}{SPLIT}. Later {MODEL} only {SPLIT}."
+    found = V.omission(f"{MODEL} {SPLIT}", source)
+    assert found.passage == f"{MODEL} only {SPLIT}"
+    assert [(g.text, g.tokens) for g in found.gaps] == [("only", 1)]
+    assert (found.fittings, found.unique) == (4, False)
+
+
+def test_one_way_to_fit_is_unique():
+    found = V.omission(JOINED, SOURCE)
+    assert (found.fittings, found.unique, found.capped) == (1, True, False)
+
+
+TREATMENT = "the treatment reduced mortality in the trial population"
+MONTHS = "at twelve months of follow-up"
+ARMS = "in both arms of the study"
+
+
+def test_a_longer_way_that_contains_the_shortest_passage_leaves_it_unique():
+    source = (
+        f"Overall {TREATMENT} significantly {MONTHS} {ARMS}. Adverse events were similar {ARMS}."
+    )
+    found = V.omission(f"{TREATMENT} {MONTHS} {ARMS}", source)
+    assert found.passage == f"{TREATMENT} significantly {MONTHS} {ARMS}"
+    assert (found.fittings, found.unique) == (3, True)
+
+
+def test_two_passages_neither_inside_the_other_are_not_unique():
+    source = f"In men {TREATMENT} significantly {MONTHS}. In women {TREATMENT} not once {MONTHS}."
+    found = V.omission(f"{TREATMENT} {MONTHS}", source)
+    assert not found.unique and found.fittings > 1
+
+
+def test_two_ways_spanning_the_same_passage_are_not_unique():
+    found = V.omission(f"{FIRST} very {SECOND}", f"{FIRST} very very {SECOND}.")
+    assert (found.fittings, found.unique) == (2, False)
+
+
+def test_a_count_that_reaches_the_cap_is_capped_and_never_unique():
+    sentence = "the quick brown fox jumps over the lazy dog near the old river bank today "
+    words = sentence.split()
+    quote = " ".join(" ".join(words[:7] + words[8:]) for _ in range(4))
+    found = V.omission(quote, sentence * 40)
+    assert (found.fittings, found.capped, found.unique) == (V.MAX_FITTINGS, True, False)
+
+
+def test_the_detail_says_when_the_shortest_passage_is_not_the_only_candidate(tmp_path):
+    source = f"In men {TREATMENT} significantly {MONTHS}. In women {TREATMENT} not once {MONTHS}."
+    r = V.check_one(f"{TREATMENT} {MONTHS}", _src(tmp_path, source), None)
+    assert "ways; this is the shortest passage, and not the only candidate" in r.detail
+    one = V.check_one(JOINED, _src(tmp_path / "one", SOURCE), None)
+    assert "ways" not in one.detail
 
 
 # --- what it does to a run ---------------------------------------------------------------------

@@ -22,19 +22,31 @@ left out so that it can be made.
 
 Refused, with nothing written, unless all of these hold:
 
-    the quotation is an omission under `verify.omission`'s rule. A changed word or digit, a
-        number or a hyphenated word cut short, and a quotation that is simply absent are not;
-    the tokens left out, over all gaps, number at most `--max-omitted-tokens`, which is 1
-        unless more is asked for;
-    it fits the source in exactly one way that leaves out no more than that
-        (`verify.alignments`). Where a piece occurs twice near enough, or a cut could fall on
-        either side of a repeated word, the passage it was taken from is not determined and
-        none is chosen. A way that leaves out more than the limit is not counted: it would be
-        refused on its own, so it is not a passage this could restore. Raising the limit
-        therefore admits more ways and can turn a restoration into a refusal;
+    the quotation is an omission under `verify.omission`'s rule, decided as `verify` decides
+        it: through `check_one`, so a passage any installed reader finds whole is `found` and
+        is not restored. A changed word or digit, a number or a hyphenated word cut short,
+        and a quotation that is simply absent are not omissions;
+    the passage is the only one the quotation can have been taken from. Every way the
+        quotation fits the source is listed, and the one with the shortest passage is restored
+        only where every other way spans a passage that contains it and is longer: a closing
+        phrase the source repeats a paragraph on gives such a way, and it is not a second
+        candidate. Where two ways span the same passage, or neither of two passages contains
+        the other (`In men A significantly B. In women A not once B.`), none is chosen. This
+        does not depend on `--max-omitted-tokens`, so raising the limit never turns a
+        restoration into a refusal or into another passage. The listing stops at
+        `verify.MAX_FITTINGS` ways, and a quotation with that many is refused;
+    the tokens that passage puts back, over all gaps, number at most `--max-omitted-tokens`,
+        which is 1 unless more is asked for. Tokens are counted as `verify.omission` counts
+        them, and that count is the one recorded;
     the passage can be given in the source's own characters, and resolves as `found` on its
         own, exactly once;
-    the source matches its pin, where the claims file records one.
+    the claims file pins its source by sha256 and the file on disk matches. An unpinned
+        source may have changed since the quotation was taken, and a record of it would not
+        verify under `--strict`;
+    the file the record goes into, if it exists, is a claims file with the same `source`
+        block as the original. One written against an earlier pin or another source is left
+        alone, since a record added to it would be checked against a source it was not
+        taken from.
 
 The derived record, under `restored:` on the new claim:
 
@@ -46,11 +58,13 @@ The derived record, under `restored:` on the new claim:
     passage    start and end of the passage, in characters of that text
     omitted    for each stretch left out: start and end in that text, how many tokens, and
                the position of the first of them among the passage's tokens, counting from 1
+    fittings   how many ways the quotation fits the source, and that every other one spans a
+               passage containing this one
     rule       `bounded-passage`, its version, and the limits it ran under
     software   the `citations` version, and the commit where it was installed from one
 
 Nothing in it depends on when or where the command ran, so the same claims file and source
-give the same bytes.
+give the same bytes. `--check` decides and reports, and leaves the directory as it found it.
 """
 
 from __future__ import annotations
@@ -70,7 +84,7 @@ from .models import ClaimFile, load_claim_file
 #: The repair rule's name and version, written into every record. The version changes when
 #: the same quotation and source would restore to a different passage.
 RULE = "bounded-passage"
-RULE_VERSION = 1
+RULE_VERSION = 2
 
 #: How many tokens a quotation may leave out, over all its gaps, and still be restored unless
 #: `--max-omitted-tokens` says otherwise. One: a dropped word is the case a restoration is
@@ -114,62 +128,88 @@ def derive(cf: ClaimFile, claim_id: str, limit: int, allowed: frozenset[str]) ->
     claim = cf.claims.get(claim_id)
     if claim is None:
         raise RestoreRefused(f"{cf.name} has no claim {claim_id!r}.")
-    if claim.restored is not None:
+    if claim.is_restored:
         raise RestoreRefused(f"{claim_id!r} is itself a restored claim.")
     quotes = [q for q in claim.quotes if q.text]
     if len(quotes) != 1:
         raise RestoreRefused(
             f"{claim_id!r} has {len(quotes)} quotations; this restores a claim that has one."
         )
-    quote = quotes[0].text
+    quote = quotes[0]
 
     artifact = cf.artifact()
     if artifact is None or not artifact.is_file():
         raise RestoreRefused("the source is not on disk, so there is nothing to restore from.")
     pin = V.check_pin(artifact, cf.source.sha256)
-    if pin.state == "broken":
+    if pin.state == "unpinned":
+        raise RestoreRefused(
+            "the claims file records no sha256 for its source, so nothing says the file on "
+            "disk is the one the quotation was taken from. Pin the source first."
+        )
+    if pin.state != "ok":
         raise RestoreRefused(
             f"the source is not the file that was pinned (pinned {pin.expected[:12]}, on disk "
             f"{pin.actual[:12]})."
         )
-    reader = V.declared_extractor(cf.source.reader)
-    got = V.reading(artifact, None, reader, allowed) if reader else V.reading(artifact)
 
-    state = V.resolve_in(quote, got.text, quotes[0].prefix, quotes[0].suffix).state
-    if state != "not found":
-        raise RestoreRefused(f"the quotation is `{state}` in the source; there is no omission.")
-    found = V.omission(quote, got.text)
-    if found is None:
+    # The verdict `verify` gives, reached the way `verify` reaches it: a passage the first
+    # reader misses and another finds is `found` there, and is no omission here.
+    r = V.check_one(
+        quote.text,
+        artifact,
+        quote.page,
+        cf.source.reader,
+        allowed,
+        prefix=quote.prefix,
+        suffix=quote.suffix,
+    )
+    if r.state != "not found":
+        raise RestoreRefused(f"the quotation is `{r.state}` in the source; there is no omission.")
+    if r.reason != V.OMISSION:
         raise RestoreRefused(
             "the quotation is not the source with whole tokens left out. A changed word or "
             "number, or a token cut short, is a misquotation, and nothing is restored for one."
+        )
+    reader = V.declared_extractor(cf.source.reader)
+    got = V.reading(artifact, None, reader, allowed) if reader else V.reading(artifact)
+    found = V.omission(quote.text, got.text)
+    if found is None or V._digest(got.text) != r.extraction_digest:
+        raise RestoreRefused(
+            "the text the verdict was reached in is not the text that can be read back, so "
+            "there are no offsets to record."
+        )
+    if found.capped:
+        raise RestoreRefused(
+            f"the quotation's pieces fit the source in more than {V.MAX_FITTINGS:,} ways, "
+            f"which is where the listing stops. The passage it was taken from is not "
+            f"determined, and none is chosen."
+        )
+    if not found.unique:
+        raise RestoreRefused(
+            f"the quotation's pieces fit the source in {found.fittings} ways, and the "
+            f"shortest passage is not inside all the others, so the passage it was taken "
+            f"from is not determined. None is chosen, whatever the limit."
         )
     if found.folded:
         raise RestoreRefused(
             "the passage could not be recovered in the source's own characters, and a record "
             "of folded text would not be the source's."
         )
-    tokens = [len(g.text.split()) for g in found.gaps]
-    if sum(tokens) > limit:
+    tokens = sum(g.tokens for g in found.gaps)
+    if tokens > limit:
         raise RestoreRefused(
-            f"the quotation leaves out {sum(tokens)} tokens and the limit is {limit}. "
+            f"the quotation leaves out {tokens} tokens and the limit is {limit}. "
             f"--max-omitted-tokens N raises it; the default is {DEFAULT_MAX_OMITTED_TOKENS}."
-        )
-    if V.alignments(quote, got.text, max_omitted_tokens=limit) != 1:
-        raise RestoreRefused(
-            f"the quotation's pieces fit the source in more than one way that leaves out at "
-            f"most {limit} token{'' if limit == 1 else 's'}, so the passage it was taken from "
-            f"is not determined. None is chosen."
         )
     return {
         "restored": {
             "from": claim_id,
             "notice": NOTICE,
-            "original": quote,
+            "original": quote.text,
             "source": {
                 "citation": cf.source.citation,
                 "local": cf.source.local,
-                "sha256": V.sha256(artifact),
+                "sha256": pin.actual,
             },
             "text": {"extractor": got.extractor, "sha256": V._digest(got.text)},
             "passage": {"start": found.start, "end": found.start + len(found.passage)},
@@ -177,16 +217,18 @@ def derive(cf: ClaimFile, claim_id: str, limit: int, allowed: frozenset[str]) ->
                 {
                     "start": found.start + g.offset,
                     "end": found.start + g.offset + len(g.text),
-                    "tokens": n,
-                    "position": len(found.passage[: g.offset].split()) + 1,
+                    "tokens": g.tokens,
+                    "position": g.position,
                 }
-                for g, n in zip(found.gaps, tokens, strict=True)
+                for g in found.gaps
             ],
+            "fittings": {"found": found.fittings, "others_contain_passage": True},
             "rule": {
                 "name": RULE,
                 "version": RULE_VERSION,
                 "max_omitted_tokens": limit,
                 "min_piece_chars": V.MIN_PIECE_CHARS,
+                "max_fittings": V.MAX_FITTINGS,
             },
             "software": software(),
         },
@@ -195,17 +237,53 @@ def derive(cf: ClaimFile, claim_id: str, limit: int, allowed: frozenset[str]) ->
 
 
 def document(path: pathlib.Path, source: dict, new_id: str, derived: dict) -> str:
-    """The sidecar as it will be written: what it holds already, and this claim."""
-    doc = yaml.safe_load(path.read_text()) if path.exists() else None
-    doc = doc or {"source": source, "claims": {}}
-    claims = doc.setdefault("claims", {})
-    if new_id in claims:
+    """The sidecar as it will be written: what it holds already, and this claim.
+
+    A sidecar that is already there has to be one this command could have written for the
+    same original: a mapping, with a mapping of claims, under the original's `source` block
+    exactly. Anything else is refused and left as it is.
+    """
+    doc: dict = {"source": source, "claims": {}}
+    if path.exists():
+        try:
+            held = yaml.safe_load(path.read_text())
+        except (yaml.YAMLError, OSError) as e:
+            raise RestoreRefused(f"{path.name} is there and cannot be read as YAML: {e}") from e
+        if held is not None:
+            if isinstance(held, dict) and held.get("claims") is None:
+                held["claims"] = {}  # `claims:` with nothing under it holds none
+            if not isinstance(held, dict) or not isinstance(held["claims"], dict):
+                raise RestoreRefused(
+                    f"{path.name} is there and is not a claims file: a mapping with a "
+                    f"mapping of `claims` was expected."
+                )
+            if held.get("source") != source:
+                raise RestoreRefused(
+                    f"{path.name} is there with another `source` block than the claims file "
+                    f"has now: it was written against an earlier pin or another source. A "
+                    f"record added to it would be checked against a source it was not taken "
+                    f"from. Move it aside, or restore its claims again."
+                )
+            doc = held
+    if new_id in doc["claims"]:
         raise RestoreRefused(
             f"{path.name} already defines the claim {new_id!r}. A restoration is written once; "
             f"--as names another id."
         )
-    claims[new_id] = derived
+    doc["claims"][new_id] = derived
     return yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, width=100)
+
+
+def checked(text: str, new_id: str, cf: ClaimFile, allowed: frozenset[str]) -> str:
+    """`text`, once the passage in it is seen to resolve after its trip through the file."""
+    written = yaml.safe_load(text)["claims"][new_id]["quotes"][0]["exact"]
+    r = V.check_one(written.strip(), cf.artifact(), None, cf.source.reader, allowed)
+    if r.state != "found":
+        raise RestoreRefused(
+            f"the restored passage is `{r.state}` in the source on its own, so the record "
+            f"would not verify."
+        )
+    return text
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -243,21 +321,17 @@ def main(argv: list[str] | None = None) -> int:
     new_id = a.new_id or f"{a.id}-restored"
     out = sidecar(path)
     allowed = V.DEFAULT_EXTRACTORS | frozenset(a.allow_extractor)
+    source = yaml.safe_load(path.read_text())["source"]
     try:
         derived = derive(cf, a.id, a.max_omitted_tokens, allowed)
-        with exclusive_lock(out):
-            text = document(out, yaml.safe_load(path.read_text())["source"], new_id, derived)
-            # What will be read back is what is checked: the passage after its trip through
-            # the file, against the same source, resolving once on its own.
-            written = yaml.safe_load(text)["claims"][new_id]["quotes"][0]["exact"]
-            r = V.check_one(written.strip(), cf.artifact(), None, cf.source.reader, allowed)
-            if r.state != "found":
-                raise RestoreRefused(
-                    f"the restored passage is `{r.state}` in the source on its own, so the "
-                    f"record would not verify."
+        if a.check:
+            # No lock: taking one leaves a lock file, and `--check` writes nothing at all.
+            checked(document(out, source, new_id, derived), new_id, cf, allowed)
+        else:
+            with exclusive_lock(out):
+                atomic_write(
+                    out, checked(document(out, source, new_id, derived), new_id, cf, allowed)
                 )
-            if not a.check:
-                atomic_write(out, text)
     except RestoreRefused as e:
         print(f"refused   {a.id}")
         print(f"  {e}")

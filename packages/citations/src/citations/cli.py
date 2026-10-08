@@ -264,7 +264,7 @@ def cmd_verify(a) -> int:
                     if not q.text:
                         continue
                     rep.checked += 1
-                    rep.restored += claim.restored is not None
+                    rep.restored += claim.is_restored
                     r = V.check_one(
                         q.text,
                         artifact,

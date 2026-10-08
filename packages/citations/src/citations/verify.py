@@ -136,6 +136,12 @@ MIN_PIECE_CHARS = 20
 #: two anchors of 553,000 characters each. Past this the answer is a refusal that says so.
 MAX_ANCHOR_CHARS = 1000
 
+#: How many ways of fitting a quotation to its source `omission` will list before it stops
+#: counting. Each is a division into pieces and a place for each piece, and a source that
+#: repeats a phrase a hundred times has that many for every piece. Past this the shortest of
+#: the ones listed is reported, `Omission.capped` is set, and nothing is called unique.
+MAX_FITTINGS = 1000
+
 #: `Result.reason` on a `not found` whose pieces are all in the source. See `omission`.
 OMISSION = "omission"
 
@@ -248,6 +254,12 @@ class Gap:
     """The source text left out there, in full. See `Omission.folded` for whose characters."""
     offset: int = 0
     """Where `text` begins in `Omission.passage`."""
+    tokens: int = 0
+    """How many tokens of the source are left out there. A token is what `omission` says it
+    is, and this is the one count of them: `citations restore` holds it to its limit and
+    writes it down."""
+    position: int = 0
+    """The place of the first of those tokens among the passage's tokens, counting from 1."""
 
 
 @dataclass(frozen=True)
@@ -266,6 +278,17 @@ class Omission:
     spaces, and not the source's own characters. They are the source's own wherever a stretch
     of the source can be found that folds to exactly the stretch that matched, which
     `_stretch` looks for and checks. Where it cannot, the folded text is shown and this says so."""
+    fittings: int = 1
+    """In how many ways the quotation fits the source as pieces. This is the one with the
+    shortest passage."""
+    capped: bool = False
+    """Whether the count stopped at `MAX_FITTINGS`, so there may be more and a shorter one
+    among them."""
+    unique: bool = False
+    """Whether this is the only passage the quotation can have been taken from: every other
+    way of fitting it spans a passage that contains this one and is longer. False where two
+    ways span the same passage, where neither of two passages contains the other, and where
+    the count was capped."""
 
 
 @dataclass
@@ -1429,6 +1452,10 @@ def _stretch(text: str, doc: str, a: int, b: int) -> tuple[int, int] | None:
     before a line break is in one and gone from the other. So the stretch is folded and
     compared before it is returned, and `None` is the answer where it does not fold to
     exactly what matched.
+
+    The shortest stretch stops before a combining mark that follows its last letter, because
+    the mark folds to nothing: `cafe` and its acute accent written as two characters would
+    come back as `cafe`. The marks that follow are the source's and are taken with it.
     """
     fold = passage_fold.__wrapped__  # not through the cache, which holds whole documents
 
@@ -1440,79 +1467,171 @@ def _stretch(text: str, doc: str, a: int, b: int) -> tuple[int, int] | None:
         return lo
 
     s, e = reach(a + 1) - 1, reach(b)
+    while e < len(text) and unicodedata.combining(text[e]):
+        e += 1
     return (s, e) if s >= 0 and fold(text[s:e]) == doc[a:b] else None
 
 
-def _fits(doc: str, words: list[str], at: int, i: int, j: int) -> bool:
-    """Whether words[i:j], found at `at` in `doc`, sits there as `omission`'s rule requires.
+#: Characters `passage_fold` turns into a space that are not white space in the source, and
+#: every character that might be: the control characters it replaces, and anything outside
+#: ASCII, where the spacing accents and the spaces that group digits are.
+_CONTROL = re.compile(r"[\x00-\x08\x0b\x0e-\x1f\x7f]")
+_MAYBE_MADE = re.compile(r"[\x00-\x08\x0b\x0e-\x1f\x7f]|[^\x00-\x7f]")
 
-    White space or an edge of the document on the outer side of every cut. The first piece's
-    start and the last piece's end are the quotation's own ends and may also fall beside
-    punctuation, never between two letters or digits.
+
+@functools.lru_cache(maxsize=64)
+def _tokens(text: str) -> tuple[str, frozenset[int]] | None:
+    """The folded source, and which of its spaces are not white space in the source.
+
+    `passage_fold` writes a space in three places where a reader of the source sees none: for
+    a control character a font left in the middle of a word, for a spacing accent such as
+    `´` or `¨`, whose compatibility form is a space carrying the mark, and for the thin,
+    narrow or no-break space that groups the digits of `12 500`. Matching wants those folded
+    away, and counting tokens does not: `500` is not a word of a source that reads `12 500`.
+
+    So the source is folded a second time with each of those characters replaced by one that
+    survives folding, and the two foldings are laid side by side. A space in the folded source
+    that is that character in the second folding is one the fold made. `None` where the two
+    do not agree everywhere else, which leaves nothing to count tokens in.
     """
-    end = at + len(" ".join(words[i:j]))
-    if at > 0 and doc[at - 1] != " " and (i or (doc[at - 1].isalnum() and doc[at].isalnum())):
-        return False
-    return (
-        end == len(doc)
-        or doc[end] == " "
-        or (j == len(words) and not (doc[end - 1].isalnum() and doc[end].isalnum()))
-    )
+    mark = next(c for c in map(chr, range(0xE000, 0xF8FF)) if c not in text)
+    kept = list(text)
+    replaced = False
+    for m in _MAYBE_MADE.finditer(text):
+        i, c = m.start(), m.group()
+        grouping = (
+            c != " "
+            and unicodedata.category(c) == "Zs"
+            and 0 < i < len(text) - 1
+            and text[i - 1].isdigit()
+            and text[i + 1].isdigit()
+        )
+        accent = not c.isspace() and " " in unicodedata.normalize("NFKD", c)
+        if grouping or accent or _CONTROL.match(c):
+            kept[i] = mark
+            replaced = True
+    doc = passage_fold(text)
+    if not replaced:
+        return doc, frozenset()
+    made: set[int] = set()
+    out: list[str] = []
+    for c in passage_fold.__wrapped__("".join(kept)):
+        if c not in (" ", mark):
+            out.append(c)
+        elif not out:
+            continue
+        elif out[-1] != " ":
+            out.append(" ")
+            if c == mark:
+                made.add(len(out) - 1)
+        elif c == " ":
+            made.discard(len(out) - 1)
+    while out and out[-1] == " ":
+        made.discard(len(out) - 1)
+        out.pop()
+    return (doc, frozenset(made)) if "".join(out) == doc else None
 
 
-def alignments(quote: str, text: str, limit: int = 2, max_omitted_tokens: int | None = None) -> int:
-    """In how many ways a quotation fits the source as pieces under `omission`'s rule, up to
-    `limit`.
+def _fittings(
+    words: list[str], doc: str, made: frozenset[int], cap: int
+) -> tuple[list[list[tuple[int, int, int]]], bool]:
+    """Every way `words` fits `doc` as pieces under `omission`'s rule, up to `cap` of them.
 
-    A way is a division of the quotation into pieces together with a place in the source for
-    each. `omission` reports one of them. This counts all of them, of any number of pieces, so
-    a caller that is about to treat the reported one as the passage the quotation was taken
-    from can first ask whether there is another: a piece the source has twice, or a cut that
-    could fall on either side of a repeated word, makes two.
-
-    `max_omitted_tokens` counts only the ways that leave out no more than that many tokens of
-    the source over all their gaps. A quotation whose closing phrase the source repeats a
-    paragraph later fits a second way, with the paragraph left out, and that way is not a
-    candidate for a caller that would refuse an omission of that size anyway.
+    Each way is its pieces in order, as (words before the piece, where it starts in `doc`,
+    where it ends). The second value is whether the listing stopped at the cap.
     """
-    words, doc = passage_fold(quote).split(" "), passage_fold(text)
     n = len(words)
 
-    @functools.cache
-    def ways(i: int, end: int, budget: int | None) -> int:
-        total = 0
-        for j in range(i + 1, n + 1):
-            piece = " ".join(words[i:j])
-            if len(piece) < MIN_PIECE_CHARS:
-                continue
-            fitted = False
-            at = doc.find(piece, end + 2 if i else 0)
-            while at >= 0:
-                if _fits(doc, words, at, i, j):
-                    fitted = True
-                    left = budget
-                    if i and budget is not None:
-                        left = budget - len(doc[end:at].split())
-                        if left < 0:
-                            break  # every later occurrence leaves out more
-                    total += 1 if j == n else ways(j, at + len(piece), left)
-                    if total >= limit:
-                        return limit
-                at = doc.find(piece, at + 1)
-            if not fitted:
-                break
-        return total
+    def break_at(k: int) -> bool:
+        return k < 0 or k >= len(doc) or (doc[k] == " " and k not in made)
 
-    return ways(0, 0, max_omitted_tokens)
+    def fits(at: int, end: int, i: int, j: int) -> bool:
+        # A cut needs white space of the source's own on its outer side. The quotation's two
+        # ends are not cuts, and are held only to not parting two letters or digits.
+        left = break_at(at - 1) or (not i and not (doc[at - 1].isalnum() and doc[at].isalnum()))
+        right = break_at(end) or (j == n and not (doc[end - 1].isalnum() and doc[end].isalnum()))
+        return left and right
+
+    def piece(i: int, j: int) -> str:
+        return " ".join(words[i:j])
+
+    # Forward: the cuts any fitting can reach, with the earliest the words before each can
+    # end. Most cuts are reached by nothing, and nothing below looks at those.
+    earliest: dict[int, int] = {0: -3}
+    for i in range(n):
+        if i not in earliest:
+            continue
+        for j in range(i + 1, n + 1):
+            p = piece(i, j)
+            if len(p) < MIN_PIECE_CHARS:
+                continue
+            at = doc.find(p, earliest[i] + 3)
+            if at < 0:
+                break
+            while at >= 0 and not fits(at, at + len(p), i, j):
+                at = doc.find(p, at + 1)
+            if at >= 0:
+                earliest[j] = min(earliest.get(j, len(doc)), at + len(p))
+    cuts = sorted(earliest)
+    if n not in earliest:
+        return [], False
+
+    # Backward: the last place a piece beginning at each cut can start and the rest still
+    # fit. A piece placed later than that leads nowhere, so the listing never follows one.
+    latest: dict[int, int] = {n: len(doc)}
+    for i in reversed(cuts[:-1]):
+        for j in (j for j in cuts if j > i and j in latest):
+            p = piece(i, j)
+            if len(p) < MIN_PIECE_CHARS:
+                continue
+            # No earlier than the words before it can end, which keeps the search short.
+            low = max(0, earliest[i] + 3)
+            at = doc.rfind(p, low, len(doc) if j == n else latest[j] - 3)
+            if at < 0 and doc.find(p, low) < 0:
+                break  # nor is any longer piece from here
+            while at >= 0 and not fits(at, at + len(p), i, j):
+                at = doc.rfind(p, low, at + len(p) - 1)
+            if at >= 0:
+                latest[i] = max(latest.get(i, -1), at)
+
+    found: list[list[tuple[int, int, int]]] = []
+
+    def place(i: int, frm: int, so_far: list[tuple[int, int, int]]) -> bool:
+        """List the ways from word i on. False once the cap is reached."""
+        for j in (j for j in cuts if j > i and j in latest):
+            p = piece(i, j)
+            if len(p) < MIN_PIECE_CHARS:
+                continue
+            at = doc.find(p, frm)
+            if at < 0:
+                break
+            while 0 <= at and (j == n or at + len(p) + 3 <= latest[j]):
+                if fits(at, at + len(p), i, j):
+                    here = [*so_far, (i, at, at + len(p))]
+                    if j == n:
+                        if len(found) == cap:
+                            return False
+                        found.append(here)
+                    # Past the space after this piece, a token and the space after that.
+                    elif not place(j, at + len(p) + 3, here):
+                        return False
+                at = doc.find(p, at + 1)
+        return True
+
+    capped = not place(0, 0, [])
+    return [f for f in found if len(f) > 1], capped
 
 
 def omission(quote: str, text: str) -> Omission | None:
     """What a quotation leaves out, if that is all that separates it from the source.
 
-    Both sides are folded with `passage_fold` and nothing looser, and read as tokens: the
-    stretches between white space. `-0.42`, `1.81`, `12,500`, `non-significant`, `5.3%` and
-    `risk,` are one token each. Empty unless the quotation divides into two or more pieces
-    such that:
+    Both sides are folded with `passage_fold` and nothing looser, and read as tokens. A token
+    is a stretch of the source between white space of the source's own: `-0.42`, `1.81`,
+    `12,500`, `non-significant`, `5.3%` and `risk,` are one token each. White space is what a
+    reader of the source sees as such. A control character inside a word, a spacing accent
+    (`don´t`, `na¨ive`) and a thin, narrow or no-break space between two digits (`12 500`)
+    fold to a space and are not white space, so each of those is one token too; `_tokens`
+    tells them apart. `None` unless the quotation divides into two or more pieces such that:
 
         every piece is a run of whole tokens of the quotation;
         where the quotation is cut, the source has white space on the outer side of the piece,
@@ -1541,13 +1660,16 @@ def omission(quote: str, text: str) -> Omission | None:
     reports a decrease is reported as an omission when a later sentence reports the increase.
     Every piece is the source's, the join is not, and the result is `not found` either way.
 
-    Which division is reported. The fewest pieces that will do. Among those, the cuts are the
-    ones that let the quotation end earliest in the source, since a leading part that ends
-    earlier leaves every later piece at least as much of the source to be found in. With the
-    cuts fixed and the last piece there, each earlier piece is then taken at its last
-    occurrence before the piece that follows it. A piece the source repeats is therefore
-    paired with the occurrence nearest the next piece, and each `Gap.skipped` is the shortest
-    stretch that can lie between that piece and the one placed after it.
+    Which way of fitting is reported. Every way is listed, up to `MAX_FITTINGS`: a way is a
+    division into pieces and a place in the source for each. The one reported spans the
+    shortest passage, which is the one that leaves the least out; of two that tie, the one
+    with fewer pieces, and then the one earlier in the source. `fittings` is how many there
+    are, and `unique` whether every other one spans a passage that contains the reported one
+    and is longer, which is what makes the reported passage the only candidate for where the
+    quotation was taken from.
+
+    `Gap.tokens` and `Gap.position` count tokens as defined above, in the folded source. A
+    word the source breaks across a line with a hyphen is one token, as it is one word.
 
     Text with no white space between words, such as Chinese or Japanese, is one token a
     sentence and is not read as an omission by this rule.
@@ -1557,73 +1679,55 @@ def omission(quote: str, text: str) -> Omission | None:
 
     Asked only about a passage `resolve_in` did not find, and never changes that verdict.
     """
-    words, doc = passage_fold(quote).split(" "), passage_fold(text)
-    n = len(words)
+    words = passage_fold(quote).split(" ")
+    if (read := _tokens(text)) is None:
+        return None
+    doc, made = read
+    ways, capped = _fittings(words, doc, made, MAX_FITTINGS)
+    if not ways:
+        return None
 
-    def fits(at: int, i: int, j: int) -> bool:
-        return _fits(doc, words, at, i, j)
+    def span(way: list[tuple[int, int, int]]) -> tuple[int, int]:
+        return way[0][1], way[-1][2]
 
-    def first(i: int, j: int, frm: int) -> int:
-        piece = " ".join(words[i:j])
-        at = doc.find(piece, frm)
-        while at >= 0 and not fits(at, i, j):
-            at = doc.find(piece, at + 1)
-        return at
+    best = min(ways, key=lambda w: (span(w)[1] - span(w)[0], len(w), span(w)[0]))
+    a, b = span(best)
+    unique = not capped and all(
+        w is best or (span(w)[0] <= a and b <= span(w)[1] and span(w) != (a, b)) for w in ways
+    )
 
-    def last(i: int, j: int, before: int) -> int:
-        piece = " ".join(words[i:j])
-        at = doc.rfind(piece, 0, before)
-        while at >= 0 and not fits(at, i, j):
-            at = doc.rfind(piece, 0, at + len(piece) - 1)
-        return at
+    def tokens(lo: int, hi: int) -> int:
+        """Tokens of the source in doc[lo:hi], which begins and ends on one."""
+        return 1 + sum(doc[k] == " " and k not in made for k in range(lo, hi))
 
-    # ends[j]: the earliest the first j words can end in the source as this many pieces, and
-    # the cuts that got them there. The first piece may start anywhere; each later one starts
-    # at least a space, a token and a space after the last.
-    ends: dict[int, tuple[int, tuple[int, ...]]] = {0: (-3, ())}
-    for pieces in range(1, n + 1):
-        reached: dict[int, tuple[int, tuple[int, ...]]] = {}
-        for i, (end, cuts) in ends.items():
-            for j in range(i + 1, n + 1):
-                piece = " ".join(words[i:j])
-                if len(piece) < MIN_PIECE_CHARS:
-                    continue
-                at = first(i, j, end + 3)
-                if at < 0:
-                    break
-                if j not in reached or at + len(piece) < reached[j][0]:
-                    reached[j] = (at + len(piece), (*cuts, i))
-        if pieces > 1 and n in reached:
-            end, cuts = reached[n]
-            # Back from the last piece: each earlier one at its last occurrence before the next.
-            placed = [(end - len(" ".join(words[cuts[-1] :])), end)]
-            for i, j in reversed(list(itertools.pairwise(cuts))):
-                at = last(i, j, placed[-1][0] - 2)
-                placed.append((at, at + len(" ".join(words[i:j]))))
-            placed.reverse()
-            a, b = placed[0][0], placed[-1][1]
-            # Each gap as offsets into the passage: past the space after one piece, up to the
-            # space before the next.
-            left_out = [(e + 1 - a, s - 1 - a) for (_, e), (s, _) in itertools.pairwise(placed)]
-            passage, spans, start = doc[a:b], left_out, -1
-            if (whole := _stretch(text, doc, a, b)) is not None:
-                own = text[whole[0] : whole[1]]
-                found = [_stretch(own, passage, x, y) for x, y in left_out]
-                if all(found):
-                    passage, spans, start = own, [f for f in found if f], whole[0]
-            return Omission(
-                [
-                    Gap(len(" ".join(words[:j])), y - x, passage[s:e], s)
-                    for j, (x, y), (s, e) in zip(cuts[1:], left_out, spans, strict=True)
-                ],
-                passage,
-                start,
-                folded=start < 0,
+    # Each gap as offsets into the passage: past the space after one piece, up to the space
+    # before the next.
+    left_out = [(e + 1 - a, s - 1 - a) for (_, _, e), (_, s, _) in itertools.pairwise(best)]
+    passage, spans, start = doc[a:b], left_out, -1
+    if (whole := _stretch(text, doc, a, b)) is not None:
+        own = text[whole[0] : whole[1]]
+        found = [_stretch(own, passage, x, y) for x, y in left_out]
+        if all(found):
+            passage, spans, start = own, [f for f in found if f], whole[0]
+    return Omission(
+        [
+            Gap(
+                len(" ".join(words[:i])),
+                y - x,
+                passage[s:e],
+                s,
+                tokens(a + x, a + y),
+                tokens(a, a + x - 1) + 1,
             )
-        if not reached:
-            return None
-        ends = reached
-    return None
+            for (i, _, _), (x, y), (s, e) in zip(best[1:], left_out, spans, strict=True)
+        ],
+        passage,
+        start,
+        folded=start < 0,
+        fittings=len(ways),
+        capped=capped,
+        unique=unique,
+    )
 
 
 def divergence(quote: str, text: str) -> tuple[int, str, str]:
@@ -1683,31 +1787,50 @@ def _omitted(quote: str, found: Omission) -> str:
     """The `not found` detail for a quotation that is the source with text left out."""
     q = passage_fold(quote)
 
-    def shown(text: str, limit: int) -> tuple[str, str]:
-        """One line of at most `limit` characters, and a note where that is not all of it."""
-        line = " ".join(text.split())
-        if len(line) <= limit:
-            return line, ""
-        return line[:limit], f", truncated: the first {limit:,} of {len(line):,} shown"
+    def line(text: str) -> str:
+        return " ".join(text.split())
+
+    def count(n: int, limit: int) -> str:
+        """How long the shown text is, counted as shown: on one line, without the marks."""
+        size = f"{n:,} character{'' if n == 1 else 's'}"
+        return size if n <= limit else f"{size}, the first {limit:,} shown"
 
     lines = [
         f"every word of the quotation is in the source, as {len(found.gaps) + 1} pieces in the "
         f"source's order with source text left out between them and nothing marking the gap"
     ]
     for g in found.gaps:
-        text, cut = shown(g.text, SHOWN_GAP_CHARS)
+        text = line(g.text)
         lines.append(f"      after: ...{q[max(0, g.at - 34) : g.at]}")
         lines.append(
-            f"      left out ({g.skipped:,} character{'' if g.skipped == 1 else 's'} of the "
-            f"source{cut}): [[{text}]]"
+            f"      left out ({g.tokens:,} token{'' if g.tokens == 1 else 's'} of the source, "
+            f"{count(len(text), SHOWN_GAP_CHARS)}): [[{text[:SHOWN_GAP_CHARS]}]]"
         )
         lines.append(f"      then:  {q[g.at :].strip()[:34]}...")
-    marked, at = "", 0
+    # The passage on one line with each gap marked, cut after SHOWN_PASSAGE_CHARS of the
+    # passage's own characters: the marks are not counted and are always closed. A gap is
+    # whole tokens, so white space parts it from the piece on either side.
+    parts, at = [], 0
     for g in found.gaps:
-        marked += f"{found.passage[at : g.offset]}[[{g.text}]]"
+        parts += [(found.passage[at : g.offset], False), (g.text, True)]
         at = g.offset + len(g.text)
-    passage, cut = shown(marked + found.passage[at:], SHOWN_PASSAGE_CHARS)
-    lines.append(f"      the source reads (left-out text in [[ ]]{cut}): {passage}")
+    parts.append((found.passage[at:], False))
+    whole, shown, room = line(found.passage), [], SHOWN_PASSAGE_CHARS
+    for text, marked in parts:
+        text = line(text)[: max(room, 0)]
+        room -= len(text) + 1
+        if text:
+            shown.append(f"[[{text}]]" if marked else text)
+    lines.append(
+        f"      the source reads ({count(len(whole), SHOWN_PASSAGE_CHARS)}, left-out text in "
+        f"[[ ]]): {' '.join(shown)}"
+    )
+    if found.fittings > 1 or found.capped:
+        lines.append(
+            f"      the pieces fit the source in "
+            f"{'more than ' if found.capped else ''}{found.fittings:,} ways; this is the "
+            f"shortest passage" + ("" if found.unique else ", and not the only candidate")
+        )
     if found.folded:
         lines.append(
             "      the source text is shown folded, in lower case with single spaces: its own "

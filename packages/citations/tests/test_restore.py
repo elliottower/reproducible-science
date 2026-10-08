@@ -7,7 +7,9 @@ or let a restored passage be counted as a quotation that resolved as written.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
+import io
 import pathlib
 import shutil
 
@@ -89,6 +91,7 @@ def test_the_record_carries_where_the_passage_and_the_omitted_token_sit(tmp_path
         "text",
         "passage",
         "omitted",
+        "fittings",
         "rule",
         "software",
     }
@@ -103,11 +106,13 @@ def test_the_record_carries_where_the_passage_and_the_omitted_token_sit(tmp_path
     assert SOURCE[omitted["start"] : omitted["end"]] == "strongly"
     assert (omitted["tokens"], omitted["position"]) == (1, 8)
     assert passage.split()[omitted["position"] - 1] == "strongly"
+    assert r["fittings"] == {"found": 1, "others_contain_passage": True}
     assert r["rule"] == {
         "name": "bounded-passage",
-        "version": 1,
+        "version": 2,
         "max_omitted_tokens": 1,
         "min_piece_chars": V.MIN_PIECE_CHARS,
+        "max_fittings": V.MAX_FITTINGS,
     }
     assert r["software"]["citations"]
 
@@ -138,10 +143,11 @@ def test_restoring_the_same_claim_again_is_refused_and_changes_nothing(tmp_path,
     assert "already defines" in capsys.readouterr().out
 
 
-def test_check_decides_and_writes_nothing(tmp_path, capsys):
+def test_check_decides_and_leaves_the_directory_as_it_found_it(tmp_path, capsys):
     f = project(tmp_path, {"c": ONE_OUT})
+    before = sorted(p.name for p in tmp_path.rglob("*"))
     assert restore.main([str(f), "--id", "c", "--check"]) == 0
-    assert not restore.sidecar(f).exists()
+    assert sorted(p.name for p in tmp_path.rglob("*")) == before
     assert "would restore" in capsys.readouterr().out
 
 
@@ -215,52 +221,248 @@ def test_a_limit_below_one_is_a_usage_error(tmp_path):
     assert restore.main([str(f), "--id", "c", "--max-omitted-tokens", "0"]) == 2
 
 
-# --- more than one way to fit ------------------------------------------------------------------
+# --- the only passage it can have been taken from ----------------------------------------------
+
+A = "the treatment reduced mortality in the trial population"
+B1 = "at twelve months of follow-up"
+B2 = "in both arms of the study"
+MODEL = "the model reached an accuracy of 0.94"
+SPLIT = "on the held-out split of the second dataset"
+LIMITS = ["1", "2", "50"]
+
+
+def attempt(root: pathlib.Path, quote: str, source: str, *extra: str) -> tuple[int, str, str]:
+    """Exit code, what was printed, and the restored passage where one was written."""
+    f = project(root, {"c": quote}, source)
+    before = f.read_bytes()
+    printed = io.StringIO()
+    with contextlib.redirect_stdout(printed):
+        code = restore.main([str(f), "--id", "c", *extra])
+    assert f.read_bytes() == before
+    assert restore.sidecar(f).exists() == (code == 0)
+    return code, printed.getvalue(), record(f)["quotes"][0]["exact"] if code == 0 else ""
 
 
 def refused(tmp_path, quote: str, source: str, *extra: str) -> str:
-    f = project(tmp_path, {"c": quote}, source)
-    before = f.read_bytes()
-    with pytest.MonkeyPatch.context() as m, pathlib.Path(tmp_path / "out.txt").open("w") as sink:
-        m.setattr("sys.stdout", sink)
-        code = restore.main([str(f), "--id", "c", "--max-omitted-tokens", "50", *extra])
+    code, printed, _ = attempt(tmp_path, quote, source, *extra)
     assert code == 1
-    assert f.read_bytes() == before
-    assert not restore.sidecar(f).exists()
-    return (tmp_path / "out.txt").read_text()
+    return printed
 
 
-def test_a_piece_the_source_has_twice_is_refused(tmp_path):
+@pytest.mark.parametrize("limit", LIMITS)
+def test_a_longer_way_that_contains_the_passage_does_not_stop_it_at_any_limit(tmp_path, limit):
+    source = f"Overall {A} significantly {B1} {B2}. Adverse events were similar {B2}."
+    code, _, exact = attempt(tmp_path, f"{A} {B1} {B2}", source, "--max-omitted-tokens", limit)
+    assert code == 0
+    assert exact == f"{A} significantly {B1} {B2}"
+    f = tmp_path / "claims" / "notes.yaml"
+    assert record(f)["restored"]["fittings"] == {"found": 3, "others_contain_passage": True}
+
+
+@pytest.mark.parametrize("limit", LIMITS)
+def test_two_passages_neither_inside_the_other_are_refused_at_every_limit(tmp_path, limit):
+    source = f"In men {A} significantly {B1} {B2}. In women {A} not once {B1} {B2}."
+    said = refused(tmp_path, f"{A} {B1} {B2}", source, "--max-omitted-tokens", limit)
+    assert "not inside all the others" in said and "whatever the limit" in said
+
+
+def test_the_uniqueness_check_is_reached_at_the_default_limit(tmp_path):
+    source = f"In men {A} significantly {B1} {B2}. In women {A} never {B1} {B2}."
+    assert "not inside all the others" in refused(tmp_path, f"{A} {B1} {B2}", source)
+
+
+@pytest.mark.parametrize("glue", ["\x00", "\u00b4"], ids=["control", "acute"])
+@pytest.mark.parametrize("limit", LIMITS)
+def test_a_one_token_way_beside_another_one_token_way_is_refused(tmp_path, glue, limit):
+    source = f"In men {A} never{glue}once {B1} {B2}. In women {A} truly {B1} {B2}."
+    quote = f"{A} {B1} {B2}"
+    assert {g.tokens for g in V.omission(quote, source).gaps} == {1}
+    said = refused(tmp_path, quote, source, "--max-omitted-tokens", limit)
+    assert "not inside all the others" in said
+
+
+@pytest.mark.parametrize("limit", ["1", "5000"])
+def test_a_near_way_and_a_far_way_are_refused_the_same_at_every_limit(tmp_path, limit):
+    filler = "Filler sentence number one goes here. " * 50
+    source = f"{MODEL} x1. {filler}{SPLIT}. Later {MODEL} only {SPLIT}."
+    said = refused(tmp_path, f"{MODEL} {SPLIT}", source, "--max-omitted-tokens", limit)
+    assert "fit the source in 4 ways" in said and "not inside all the others" in said
+    assert "tokens and the limit" not in said
+
+
+def test_raising_the_limit_never_changes_what_is_restored(tmp_path):
+    source = f"Overall {A} significantly more {B1} {B2}. Adverse events were similar {B2}."
+    quote = f"{A} {B1} {B2}"
+    assert attempt(tmp_path / "one", quote, source)[0] == 1
+    passages = {
+        attempt(tmp_path / limit, quote, source, "--max-omitted-tokens", limit)[2]
+        for limit in ("2", "3", "50", "5000")
+    }
+    assert passages == {f"{A} significantly more {B1} {B2}"}
+
+
+def test_an_earlier_copy_of_a_piece_gives_a_longer_way_and_the_near_one_is_restored(tmp_path):
     source = f"{FIRST} briefly noted. Later, {FIRST} strongly {SECOND}."
-    assert V.omission(ONE_OUT, source) is not None
-    assert V.alignments(ONE_OUT, source) == 2
-    assert "more than one way" in refused(tmp_path, ONE_OUT, source)
+    found = V.omission(ONE_OUT, source)
+    assert (found.fittings, found.unique) == (2, True)
+    code, _, exact = attempt(tmp_path, ONE_OUT, source)
+    assert (code, exact) == (0, f"{FIRST} strongly {SECOND}")
 
 
 def test_a_cut_that_could_fall_either_side_of_a_repeated_word_is_refused(tmp_path):
     source = f"{FIRST} very very {SECOND}."
-    quote = f"{FIRST} very {SECOND}"
-    assert V.omission(quote, source) is not None
-    assert V.alignments(quote, source) == 2
-    assert "more than one way" in refused(tmp_path, quote, source)
+    assert "fit the source in 2 ways" in refused(tmp_path, f"{FIRST} very {SECOND}", source)
 
 
-def test_a_way_that_leaves_out_more_than_the_limit_is_not_a_second_way(tmp_path, capsys):
-    source = f"{FIRST} strongly {SECOND}. Much later, and elsewhere, {SECOND} again."
-    quote = f"{FIRST} associated with lower risk of the disease"
-    assert V.alignments(quote, source) == 2
-    assert V.alignments(quote, source, max_omitted_tokens=1) == 1
-    f = project(tmp_path, {"c": quote}, source)
-    assert restore.main([str(f), "--id", "c", "--max-omitted-tokens", "1"]) == 0
-    assert record(f)["quotes"][0]["exact"] == f"{FIRST} strongly {SECOND}"
-    assert restore.main([str(f), "--id", "c", "--as", "wide", "--max-omitted-tokens", "50"]) == 1
-    assert "more than one way that leaves out at most 50 tokens" in capsys.readouterr().out
-    assert set(yaml.safe_load(restore.sidecar(f).read_text())["claims"]) == {"c-restored"}
+def test_more_ways_than_the_listing_holds_are_refused(tmp_path):
+    sentence = "the quick brown fox jumps over the lazy dog near the old river bank today "
+    words = sentence.split()
+    quote = " ".join(" ".join(words[:7] + words[8:]) for _ in range(4))
+    said = refused(tmp_path, quote, sentence * 40, "--max-omitted-tokens", "5000")
+    assert f"more than {V.MAX_FITTINGS:,} ways" in said
 
 
-def test_one_way_to_fit_counts_as_one():
-    assert V.alignments(ONE_OUT, SOURCE) == 1
-    assert V.alignments(ONE_OUT.replace("lower", "higher"), SOURCE) == 0
+# --- one count of tokens -----------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("left_out", "restorable"),
+    [
+        ("very\x00strongly", True),
+        ("very-\nstrongly", True),
+        ("very strongly", False),
+        ("very\u00a0strongly", False),
+    ],
+    ids=["control-char", "line-break-hyphen", "two-words", "no-break-space"],
+)
+def test_the_limit_counts_tokens_as_the_omission_does(tmp_path, left_out, restorable):
+    source = f"X. {FIRST} {left_out} {SECOND} here."
+    code, said, exact = attempt(tmp_path, ONE_OUT, source)
+    assert (code == 0) == restorable, said
+    if restorable:
+        assert exact == f"{FIRST} {left_out} {SECOND}"
+        f = tmp_path / "claims" / "notes.yaml"
+        assert [o["tokens"] for o in record(f)["restored"]["omitted"]] == [1]
+    else:
+        assert "leaves out 2 tokens and the limit is 1" in said
+
+
+def test_position_counts_a_word_the_source_breaks_across_a_line_once(tmp_path):
+    source = f"X. Higher circu-\nlating levels of the protein were strongly {SECOND} here."
+    f = project(tmp_path, {"c": ONE_OUT}, source)
+    assert restore.main([str(f), "--id", "c"]) == 0
+    (omitted,) = record(f)["restored"]["omitted"]
+    assert (omitted["tokens"], omitted["position"]) == (1, 8)
+    assert source[omitted["start"] : omitted["end"]] == "strongly"
+
+
+@pytest.mark.parametrize(
+    ("in_source", "quoted"),
+    [
+        ("12\u202f500", "500"),
+        ("12\u2009500", "12"),
+        ("na\u00a8ive value", "ive value"),
+        ("don\u00b4t respond", "don respond"),
+        ("logit\x00difference", "logit"),
+    ],
+    ids=["narrow-no-break", "thin", "diaeresis", "acute", "control"],
+)
+def test_a_token_the_fold_would_split_is_never_restorable(tmp_path, in_source, quoted):
+    lead, tail = (
+        "the dose given to the treated group was",
+        "in the second phase of the trial overall",
+    )
+    source = f"We note {lead} {in_source} {tail}."
+    assert "nothing is restored" in refused(tmp_path, f"{lead} {quoted} {tail}", source)
+
+
+def test_a_passage_ending_on_a_combining_mark_is_restored_with_the_mark(tmp_path):
+    cafe = "cafe\u0301"
+    source = f"X. {FIRST} strongly associated with lower risk of the {cafe} here."
+    code, _, exact = attempt(tmp_path, f"{FIRST} associated with lower risk of the cafe", source)
+    assert code == 0
+    assert exact.endswith(cafe)
+    f = tmp_path / "claims" / "notes.yaml"
+    span = record(f)["restored"]["passage"]
+    assert source[span["start"] : span["end"]] == exact
+
+
+# --- the file the record goes into -------------------------------------------------------------
+
+
+def test_a_sidecar_written_against_an_earlier_pin_is_refused_and_left_alone(tmp_path, capsys):
+    source = f"X. {FIRST} strongly {SECOND} here. Also {MODEL} only {SPLIT}."
+    f = project(tmp_path, {"c": ONE_OUT, "d": f"{MODEL} {SPLIT}"}, source)
+    assert restore.main([str(f), "--id", "c"]) == 0
+    held = restore.sidecar(f).read_bytes()
+    changed = source + " An erratum line was added.\n"
+    (tmp_path / "source.txt").write_text(changed)
+    doc = yaml.safe_load(f.read_text())
+    doc["source"]["sha256"] = hashlib.sha256(changed.encode()).hexdigest()
+    f.write_text(yaml.safe_dump(doc, sort_keys=False))
+    V.clear_caches()
+    capsys.readouterr()
+    assert restore.main([str(f), "--id", "d"]) == 1
+    assert "another `source` block" in capsys.readouterr().out
+    assert restore.sidecar(f).read_bytes() == held
+
+
+@pytest.mark.parametrize(
+    ("body", "says"),
+    [
+        ("source: {citation: other, local: elsewhere.txt}\nclaims: {}\n", "another `source` block"),
+        ("claims: [unclosed\n", "cannot be read as YAML"),
+        ("- a\n- b\n", "is not a claims file"),
+        ("source: {}\nclaims: 3\n", "is not a claims file"),
+    ],
+    ids=["another-source", "unparseable", "a-list", "claims-not-a-mapping"],
+)
+def test_a_sidecar_that_is_not_this_files_own_is_refused_and_left_alone(
+    tmp_path, capsys, body, says
+):
+    f = project(tmp_path, {"c": ONE_OUT})
+    restore.sidecar(f).write_text(body)
+    assert restore.main([str(f), "--id", "c"]) == 1
+    assert says in capsys.readouterr().out
+    assert restore.sidecar(f).read_text() == body
+
+
+def test_a_sidecar_whose_claims_are_empty_takes_the_record(tmp_path):
+    f = project(tmp_path, {"c": ONE_OUT})
+    source = yaml.safe_load(f.read_text())["source"]
+    restore.sidecar(f).write_text(yaml.safe_dump({"source": source, "claims": None}))
+    assert restore.main([str(f), "--id", "c"]) == 0
+    assert record(f)["restored"]["from"] == "c"
+
+
+def test_an_unpinned_source_is_refused(tmp_path, capsys):
+    f = project(tmp_path, {"c": ONE_OUT})
+    doc = yaml.safe_load(f.read_text())
+    del doc["source"]["sha256"]
+    f.write_text(yaml.safe_dump(doc, sort_keys=False))
+    assert restore.main([str(f), "--id", "c"]) == 1
+    assert "records no sha256" in capsys.readouterr().out
+    assert not restore.sidecar(f).exists()
+
+
+def test_a_claims_file_using_restored_for_something_of_its_own_still_loads(tmp_path, capsys):
+    f = project(tmp_path, {"c": ONE_OUT, "whole": SECOND})
+    doc = yaml.safe_load(f.read_text())
+    doc["claims"]["whole"]["restored"] = True
+    doc["claims"]["c"]["restored"] = "2026-01-01"
+    f.write_text(yaml.safe_dump(doc, sort_keys=False))
+    assert cli.main(["verify", "--no-cache", "--claims", str(f.parent)]) == 1
+    out = capsys.readouterr().out
+    assert "2 quotes" in out and "skipped" not in out and "restored  " not in out
+    assert restore.main([str(f), "--id", "c"]) == 0
+
+
+def test_a_passage_another_reader_finds_whole_is_not_an_omission(tmp_path, monkeypatch, capsys):
+    f = project(tmp_path, {"c": ONE_OUT})
+    monkeypatch.setattr(V, "check_one", lambda *a, **k: V.Result("found", extractor="pypdf"))
+    assert restore.main([str(f), "--id", "c"]) == 1
+    assert "is `found` in the source; there is no omission" in capsys.readouterr().out
+    assert not restore.sidecar(f).exists()
 
 
 # --- a misquotation is never restored ----------------------------------------------------------
