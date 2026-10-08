@@ -74,7 +74,7 @@ def test_a_tracked_source_is_named_in_the_report(paper, capsys):
     git(paper, "add", "sources/woodward.txt")
     assert verify(paper) == 0
     out = capsys.readouterr().out
-    assert "1 source is tracked by git" in out
+    assert "git tracks 1 source read here" in out
     source = (paper / "sources" / "woodward.txt").resolve()
     assert f"  tracked  {'woodward':<40}{source}\n" in out
     assert "git rm --cached" in out
@@ -84,7 +84,7 @@ def test_a_tracked_source_is_named_in_the_report(paper, capsys):
 def test_a_source_git_does_not_track_is_not_reported(paper, capsys):
     git(paper, "init", "-q")
     assert verify(paper) == 0
-    assert "tracked by git" not in capsys.readouterr().out
+    assert "git tracks" not in capsys.readouterr().out
 
 
 def test_an_ignored_source_is_not_reported(paper, capsys):
@@ -92,12 +92,12 @@ def test_an_ignored_source_is_not_reported(paper, capsys):
     (paper / ".gitignore").write_text("sources/\n")
     git(paper, "add", ".")
     assert verify(paper) == 0
-    assert "tracked by git" not in capsys.readouterr().out
+    assert "git tracks" not in capsys.readouterr().out
 
 
 def test_outside_a_repository_nothing_is_reported(paper, capsys):
     assert verify(paper) == 0
-    assert "tracked by git" not in capsys.readouterr().out
+    assert "git tracks" not in capsys.readouterr().out
 
 
 @pytest.mark.parametrize("flags", [(), ("--strict",)])
@@ -111,7 +111,7 @@ def test_tracking_a_source_changes_no_exit_code(tmp_path, capsys, flags, quote, 
     git(root, "add", ".")
     capsys.readouterr()
     assert verify(root, *flags) == code
-    assert "1 source is tracked by git" in capsys.readouterr().out
+    assert "git tracks 1 source read here" in capsys.readouterr().out
 
 
 def test_past_ten_the_report_counts_the_rest_and_names_the_listing(tmp_path, capsys):
@@ -123,7 +123,7 @@ def test_past_ten_the_report_counts_the_rest_and_names_the_listing(tmp_path, cap
     git(root, "add", "sources")
     assert verify(root, "--strict") == 0
     out = capsys.readouterr().out
-    assert "12 sources are tracked by git" in out
+    assert "git tracks 12 sources read here" in out
     assert out.count("\n  tracked  ") == 10
     assert "... and 2 more; `citations lint --claims <dir>` lists every one" in out
 
@@ -224,4 +224,4 @@ def test_without_git_nothing_is_reported_and_nothing_fails(paper, tmp_path, monk
     assert tracked.tracked([source]) == set()
     assert tracked.standing(source) == "outside"
     assert verify(paper, "--strict") == 0
-    assert "tracked by git" not in capsys.readouterr().out
+    assert "git tracks" not in capsys.readouterr().out

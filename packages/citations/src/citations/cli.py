@@ -439,7 +439,7 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
     if rep.tracked_sources:
         n = len(rep.tracked_sources)
         print(
-            f"\n{n:,} source{' is' if n == 1 else 's are'} tracked by git, so publishing the "
+            f"\ngit tracks {n:,} source{'' if n == 1 else 's'} read here, so publishing the "
             f"repository republishes {'its' if n == 1 else 'their'} text"
         )
         for name, artifact in rep.tracked_sources[:10]:
