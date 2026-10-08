@@ -146,30 +146,45 @@ Nothing is written into the plan. A second `prereg freeze` is refused, with or w
 }
 ```
 
-### A pinned source that git tracks
+### A pinned source that git holds
 
 A freeze names a commit, and a source text in that commit can only be removed later by
 rewriting history, which changes the commit's identifier. So where `citations` is installed, a
-freeze first runs `citations lint --claims --json` beside the plan, and where git tracks a
+freeze first runs `citations lint --claims --json` beside the plan, and where git holds a
 source the project's claims files pin, it is refused before anything is written. There is no
-record, no log entry and no timestamp request, and the exit code is 1:
+record, no log entry, no timestamp request and no lock file, and the exit code is 1:
 
 ```text
 study/PREREG.md was not frozen, and nothing was written.
-git tracks 1 source this project's quotations are pinned to
-  tracked  study/sources/woodward.txt
+git holds 3 sources this project's quotations are pinned to
+  tracked  study/sources/committed.txt
+  in HEAD  study/sources/removed.txt
+  staged   study/sources/staged.txt
 A freeze names a commit, and a source in that commit can only be removed later by
-rewriting history, which changes the commit's identifier. Untrack each with
-`git rm --cached <file>`, add an ignore rule, commit, and freeze again: the record's
-sha256 still pins the file. Or keep them and freeze with --allow-tracked-sources.
+rewriting history, which changes the commit's identifier.
+`tracked` and `staged`: untrack each with `git rm --cached <file>`, add an ignore
+rule, commit, and freeze again. The record's sha256 still pins the file.
+`in HEAD`: no longer tracked, and still in the last commit. Commit the removal,
+then freeze.
+Or keep them and freeze with --allow-tracked-sources.
 ```
 
-It names ten sources at most and then counts the rest. `--allow-tracked-sources` is for text
-that is the author's to commit: the freeze goes ahead, and the sources are named after its
-report. The same holds for an amendment and for a forced re-freeze of a plan frozen in place.
+The commit a freeze names is `HEAD`, so the question is asked of `HEAD` and of the index:
+
+| listed as | the index | the last commit | way out |
+|---|---|---|---|
+| `tracked` | holds it | holds it | `git rm --cached`, an ignore rule, commit |
+| `staged` | holds it | does not | `git rm --cached`, an ignore rule, commit |
+| `in HEAD` | does not | holds it | commit the removal |
+
+A source deleted from disk is `in HEAD` all the same until the deletion is committed. The
+refusal names ten sources at most and then counts the rest, and gives only the ways out that
+apply. `--allow-tracked-sources` is for text that is the author's to commit: the freeze goes
+ahead, and the sources are named after its report. An amendment and a forced re-freeze of a
+plan frozen in place are refused the same way. A file already frozen is told so, as before.
 
 Only an answer refuses. With no `citations` on `PATH`, a version of it that cannot be asked
-this way, no claims directory, or nothing tracked, the freeze goes ahead and says nothing.
+this way, no claims directory, or nothing held, the freeze goes ahead and says nothing.
 
 ## The log
 

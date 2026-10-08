@@ -1,8 +1,8 @@
-"""A freeze is refused where git tracks a pinned source, before anything is written.
+"""A freeze is refused where git holds a pinned source, before anything is written.
 
 A freeze names a commit. A source text in that commit can only be taken out later by rewriting
 history, which gives the commit another identifier, so `prereg freeze` asks `citations` which
-pinned sources git tracks, and refuses where there are any unless `--allow-tracked-sources` is
+pinned sources the index or the last commit holds, and refuses where there are any unless `--allow-tracked-sources` is
 given. It asks the installed command and imports nothing of it, and a question that could not
 be asked refuses nothing. Every repository here is a real one made in `tmp_path`, and the
 `citations` asked is the one installed beside these tests, except where a test names a stand-in.
@@ -25,34 +25,50 @@ from provenance_core.gitref import clean_env
 
 TEXT = "A generalization is invariant if it continues to hold under some interventions.\n"
 
-LISTED = """\
-git tracks 1 source this project's quotations are pinned to
-  tracked  study/sources/woodward.txt
-"""
-
-REFUSAL = (
-    """\
-{path} was not frozen, and nothing was written.
-"""
-    + LISTED
-    + """\
+WHY = """\
 A freeze names a commit, and a source in that commit can only be removed later by
-rewriting history, which changes the commit's identifier. Untrack each with
-`git rm --cached <file>`, add an ignore rule, commit, and freeze again: the record's
-sha256 still pins the file. Or keep them and freeze with --allow-tracked-sources.
+rewriting history, which changes the commit's identifier.
 """
-)
 
-WARNING = (
-    "\n"
-    + LISTED
-    + """\
-  Frozen with --allow-tracked-sources. A source in the commit a freeze names can only
-  be removed later by rewriting history, which changes that commit's identifier.
+UNTRACK = """\
+`{label}`: untrack each with `git rm --cached <file>`, add an ignore
+rule, commit, and freeze again. The record's sha256 still pins the file.
 """
-)
+
+COMMIT_THE_REMOVAL = """\
+`in HEAD`: no longer tracked, and still in the last commit. Commit the removal,
+then freeze.
+"""
 
 ALLOW = "--allow-tracked-sources"
+
+
+def listed(label: str) -> str:
+    return (
+        "git holds 1 source this project's quotations are pinned to\n"
+        f"  {label:<7}  study/sources/woodward.txt\n"
+    )
+
+
+def refusal(path: pathlib.Path, label: str) -> str:
+    """What a freeze of `path` prints when its one pinned source stands as `label` says."""
+    remedy = COMMIT_THE_REMOVAL if label == "in HEAD" else UNTRACK.format(label=label)
+    return (
+        f"{path} was not frozen, and nothing was written.\n"
+        + listed(label)
+        + WHY
+        + remedy
+        + f"Or keep them and freeze with {ALLOW}.\n"
+    )
+
+
+def warning(label: str) -> str:
+    return (
+        "\n"
+        + listed(label)
+        + f"  Frozen with {ALLOW}. A source in the commit a freeze names can only\n"
+        "  be removed later by rewriting history, which changes that commit's identifier.\n"
+    )
 
 
 def git(repo: pathlib.Path, *args: str) -> str:
@@ -126,22 +142,41 @@ def written(study: pathlib.Path) -> dict[str, bytes]:
 
 
 def state(top: pathlib.Path) -> dict[str, tuple[int, bytes]]:
-    """Every file in the working tree with its mode, and what git holds, as one comparison.
-
-    A lock's sidecar is left out: every refusal of a freeze leaves one beside the plan, it holds
-    nothing, and `prereg new` writes the ignore rule for it.
-    """
+    """Every file in the working tree with its mode, and what git holds, as one comparison."""
     files = {
         p.relative_to(top).as_posix(): (p.stat().st_mode, p.read_bytes())
         for p in top.rglob("*")
         if p.is_file() and ".git" not in p.relative_to(top).parts[:1]
-        if not p.name.endswith(".provenance-lock")
     }
-    held = git(top, "status", "--porcelain") + git(top, "rev-parse", "HEAD")
+    held = "\n".join(
+        git(top, *args)
+        for args in (("status", "--porcelain"), ("rev-parse", "HEAD"), ("ls-files", "--stage"))
+    )
     return files | {"<git>": (0, held.encode())}
 
 
+def track(repo: pathlib.Path, *paths: str) -> None:
+    """Commit `paths`, so the index and the last commit both hold them."""
+    git(repo, "add", *paths)
+    git(repo, "commit", "-q", "-m", "sources")
+
+
 def test_a_tracked_source_refuses_the_freeze_and_nothing_is_written(repo, monkeypatch, capsys):
+    write_claims(repo / "study", "woodward")
+    track(repo, "study/sources/woodward.txt")
+    before = state(repo)
+
+    code, out = freeze(repo / "study", monkeypatch, capsys)
+
+    assert code == 1
+    assert out == refusal(repo / "study" / "PREREG.md", "tracked")
+    assert state(repo) == before
+    assert not list(repo.rglob("*.provenance-lock")), "not even the lock's sidecar"
+    assert not (repo / "study" / ".prereg").exists()
+    assert cli.main(["check"]) == 2, "the plan is still a draft"
+
+
+def test_a_source_staged_and_not_yet_committed_refuses_the_freeze(repo, monkeypatch, capsys):
     write_claims(repo / "study", "woodward")
     git(repo, "add", "study/sources/woodward.txt")
     before = state(repo)
@@ -149,27 +184,74 @@ def test_a_tracked_source_refuses_the_freeze_and_nothing_is_written(repo, monkey
     code, out = freeze(repo / "study", monkeypatch, capsys)
 
     assert code == 1
-    assert out == REFUSAL.format(path=repo / "study" / "PREREG.md")
+    assert out == refusal(repo / "study" / "PREREG.md", "staged")
     assert state(repo) == before
-    assert not (repo / "study" / ".prereg").exists()
-    assert not list((repo / "study").glob("PREREG.md.*ots"))
-    assert not list((repo / "study").glob("PREREG.log*"))
-    assert cli.main(["check"]) == 2, "the plan is still a draft"
 
 
-def test_untracking_the_source_and_committing_lets_the_freeze_through(repo, monkeypatch, capsys):
+def test_a_source_untracked_and_still_in_the_last_commit_refuses_until_the_removal_is_committed(
+    repo, monkeypatch, capsys
+):
     write_claims(repo / "study", "woodward")
-    git(repo, "add", "study/sources/woodward.txt")
-    git(repo, "commit", "-q", "-m", "a source, committed by mistake")
-    assert freeze(repo / "study", monkeypatch, capsys)[0] == 1
-
+    track(repo, "study/sources/woodward.txt")
     git(repo, "rm", "-q", "--cached", "study/sources/woodward.txt")
     (repo / ".gitignore").write_text("sources/\n")
     git(repo, "add", ".gitignore")
+    assert "woodward.txt" not in git(repo, "ls-files")
+    before = state(repo)
+
+    code, out = freeze(repo / "study", monkeypatch, capsys)
+    assert code == 1
+    assert out == refusal(repo / "study" / "PREREG.md", "in HEAD")
+    assert state(repo) == before
+
     git(repo, "commit", "-q", "-m", "the source is kept out")
     code, out = freeze(repo / "study", monkeypatch, capsys)
     assert code == 0
-    assert "git tracks" not in out
+    assert "git holds" not in out
+
+
+def test_a_source_deleted_from_disk_and_still_in_the_last_commit_refuses(repo, monkeypatch, capsys):
+    write_claims(repo / "study", "woodward")
+    track(repo, "study/sources/woodward.txt")
+    git(repo, "rm", "-q", "study/sources/woodward.txt")
+    assert not (repo / "study" / "sources" / "woodward.txt").exists()
+
+    code, out = freeze(repo / "study", monkeypatch, capsys)
+    assert code == 1
+    assert out == refusal(repo / "study" / "PREREG.md", "in HEAD")
+
+
+def test_each_source_is_listed_as_it_stands_and_each_case_has_its_way_out(
+    repo, monkeypatch, capsys
+):
+    for name in ("committed", "removed", "staged"):
+        write_claims(repo / "study", name)
+    track(repo, "study/sources/committed.txt", "study/sources/removed.txt")
+    git(repo, "rm", "-q", "--cached", "study/sources/removed.txt")
+    git(repo, "add", "study/sources/staged.txt")
+
+    code, out = freeze(repo / "study", monkeypatch, capsys)
+    assert code == 1
+    assert (
+        "git holds 3 sources this project's quotations are pinned to\n"
+        "  tracked  study/sources/committed.txt\n"
+        "  in HEAD  study/sources/removed.txt\n"
+        "  staged   study/sources/staged.txt\n"
+    ) in out
+    assert "`tracked` and `staged`: untrack each with `git rm --cached <file>`" in out
+    assert COMMIT_THE_REMOVAL in out
+
+
+def test_a_plan_already_frozen_is_told_so_and_not_asked_about_its_sources(
+    repo, monkeypatch, capsys
+):
+    assert freeze(repo / "study", monkeypatch, capsys)[0] == 0
+    write_claims(repo / "study", "woodward")
+    track(repo, "study/sources/woodward.txt")
+    code, out = freeze(repo / "study", monkeypatch, capsys)
+    assert code == 1
+    assert "is already frozen, and a frozen file never changes." in out
+    assert "git holds" not in out
 
 
 def test_with_the_flag_the_sources_are_named_and_the_freeze_is_the_one_made_without_them(
@@ -185,8 +267,8 @@ def test_with_the_flag_the_sources_are_named_and_the_freeze_is_the_one_made_with
     code, out = freeze(tracked / "study", monkeypatch, capsys, ALLOW)
 
     assert (plain_code, code) == (0, 0)
-    assert "git tracks" not in plain_out
-    assert out.replace(str(tracked), str(repo)) == plain_out + WARNING
+    assert "git holds" not in plain_out
+    assert out.replace(str(tracked), str(repo)) == plain_out + warning("staged")
     assert written(tracked / "study") == written(repo / "study")
     assert cli.main(["check"]) == 0
 
@@ -195,7 +277,7 @@ def test_the_flag_changes_nothing_where_no_source_is_tracked(repo, monkeypatch, 
     write_claims(repo / "study", "woodward")
     code, out = freeze(repo / "study", monkeypatch, capsys, ALLOW)
     assert code == 0
-    assert "git tracks" not in out
+    assert "git holds" not in out
     assert ALLOW not in out
 
 
@@ -207,7 +289,7 @@ def test_a_source_git_does_not_track_refuses_nothing(repo, monkeypatch, capsys, 
         git(repo, "add", ".gitignore", "study/claims")
     code, out = freeze(repo / "study", monkeypatch, capsys)
     assert code == 0
-    assert "git tracks" not in out
+    assert "git holds" not in out
     assert sources.tracked(repo / "study") == []
 
 
@@ -217,7 +299,7 @@ def test_a_project_with_no_claims_directory_is_frozen_and_told_nothing(repo, mon
     git(repo, "add", "study/sources")
     code, out = freeze(repo / "study", monkeypatch, capsys)
     assert code == 0
-    assert "git tracks" not in out
+    assert "git holds" not in out
 
 
 def test_claims_kept_at_the_top_of_the_repository_are_asked_about_from_a_plan_below_it(
@@ -227,7 +309,7 @@ def test_claims_kept_at_the_top_of_the_repository_are_asked_about_from_a_plan_be
     git(repo, "add", "sources")
     code, out = freeze(repo / "study", monkeypatch, capsys)
     assert code == 1
-    assert "\n  tracked  sources/woodward.txt\n" in out
+    assert "\n  staged   sources/woodward.txt\n" in out
     assert not (repo / "study" / ".prereg").exists()
 
 
@@ -237,9 +319,9 @@ def test_past_ten_the_refusal_counts_the_rest(repo, monkeypatch, capsys):
     git(repo, "add", "study/sources")
     code, out = freeze(repo / "study", monkeypatch, capsys)
     assert code == 1
-    assert "git tracks 12 sources this project's quotations are pinned to" in out
-    assert out.count("\n  tracked  ") == 10
-    assert "\n  tracked  study/sources/paper09.txt\n" in out
+    assert "git holds 12 sources this project's quotations are pinned to" in out
+    assert out.count("\n  staged   ") == 10
+    assert "\n  staged   study/sources/paper09.txt\n" in out
     assert "paper10.txt" not in out
     assert "  ... and 2 more; `citations lint --claims` lists every one\n" in out
 
@@ -256,12 +338,12 @@ def test_a_forced_refreeze_of_a_plan_frozen_in_place_is_refused_the_same_way(
     again = ("--force", "--access", "nothing run")
     code, out = freeze(repo / "study", monkeypatch, capsys, *again)
     assert code == 1
-    assert out == REFUSAL.format(path=repo / "study" / "PREREG.md")
+    assert out == refusal(repo / "study" / "PREREG.md", "tracked")
     assert state(repo) == before
 
     code, out = freeze(repo / "study", monkeypatch, capsys, *again, ALLOW)
     assert code == 0
-    assert out.endswith(WARNING)
+    assert out.endswith(warning("tracked"))
 
 
 def test_an_amendment_is_refused_the_same_way(repo, monkeypatch, capsys):
@@ -281,7 +363,7 @@ def test_an_amendment_is_refused_the_same_way(repo, monkeypatch, capsys):
 
     code, out = freeze(study, monkeypatch, capsys, amended.name)
     assert code == 1
-    assert out == REFUSAL.format(path=amended)
+    assert out == refusal(amended, "tracked")
     assert state(repo) == before
     assert freeze(study, monkeypatch, capsys, amended.name, ALLOW)[0] == 0
 
@@ -315,11 +397,13 @@ def test_without_citations_on_path_nothing_is_reported_and_the_freeze_succeeds(
 ):
     write_claims(repo / "study", "woodward")
     git(repo, "add", "study/sources")
-    assert sources.tracked(repo / "study") == ["study/sources/woodward.txt"]
+    assert sources.tracked(repo / "study") == [
+        sources.Held("study/sources/woodward.txt", index=True, head=False)
+    ]
     without_citations(monkeypatch)
     code, out = freeze(repo / "study", monkeypatch, capsys)
     assert code == 0
-    assert "git tracks" not in out
+    assert "git holds" not in out
     assert "frozen  " in out
     assert json.loads((repo / "study" / ".prereg" / "PREREG.md.json").read_text())["sha256"] == (
         hashlib.sha256((repo / "study" / "PREREG.md").read_bytes()).hexdigest()
@@ -351,4 +435,4 @@ def test_a_citations_that_cannot_be_asked_is_passed_over(
     monkeypatch.setattr(sources, "TIMEOUT", 0.5)
     code, out = freeze(repo / "study", monkeypatch, capsys)
     assert code == 0
-    assert "git tracks" not in out
+    assert "git holds" not in out

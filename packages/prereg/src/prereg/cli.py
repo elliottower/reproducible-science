@@ -173,6 +173,12 @@ def cmd_freeze(a) -> int:
         print(f"{a.file} is not an amendment to {plan}.")
         print(f"`prereg amend` makes one, as {amendment.path_for(plan, 1).name} beside the plan.")
         return 1
+    # Asked before the lock is taken, so a freeze refused over a source leaves nothing behind,
+    # the lock's sidecar included. The lock guards the plan and its record, and this reads
+    # neither. A file this call cannot freeze is not asked about: its own refusal says why.
+    tracked = [] if _frozen_for_good(a, path) else _tracked_sources(a, path)
+    if tracked is None:
+        return 1
     # A plan frozen in place is read below and written near the end, and `prereg log` appends to
     # the same file. Without a hold across both, a log entry landing between them is erased --
     # and `set_log_anchor` runs over the stale text too, so the surviving chain and its count
@@ -181,8 +187,18 @@ def cmd_freeze(a) -> int:
     with exclusive_lock(path):
         data = path.read_bytes()
         if FROZEN_DIGEST.search(data.decode()):
-            return _refreeze_in_place(a, path)
-        return _freeze_whole(a, path, plan, data)
+            return _refreeze_in_place(a, path, tracked)
+        return _freeze_whole(a, path, plan, data, tracked)
+
+
+def _frozen_for_good(a, path: pathlib.Path) -> bool:
+    """Whether `path` is already frozen in a way this call will not change.
+
+    A file frozen whole is never frozen again, and a plan frozen in place only with `--force`.
+    """
+    if record.read(path) is not None:
+        return True
+    return not a.force and FROZEN_DIGEST.search(path.read_text()) is not None
 
 
 def _commit_to_name(a, path: pathlib.Path) -> str | None:
@@ -203,11 +219,11 @@ def _commit_to_name(a, path: pathlib.Path) -> str | None:
     return commit
 
 
-def _tracked_sources(a, path: pathlib.Path) -> list[str] | None:
-    """The pinned sources git tracks, or None after refusing a freeze of `path` over them.
+def _tracked_sources(a, path: pathlib.Path) -> list[sources.Held] | None:
+    """The pinned sources git holds, or None after refusing a freeze of `path` over them.
 
-    Asked before anything is written or sent, so a refusal leaves no record, no log entry and no
-    timestamp request behind it. `--allow-tracked-sources` lets the freeze go ahead, and the
+    Asked before anything is written or sent and before the lock is taken, so a refusal leaves
+    no record, no log entry, no timestamp request and no sidecar behind it. `--allow-tracked-sources` lets the freeze go ahead, and the
     sources are then named after its report. Where the question could not be asked there is
     nothing to refuse over: see `sources`.
     """
@@ -228,7 +244,9 @@ def _left_from_the_earlier_template(text: str) -> list[str]:
     return found
 
 
-def _freeze_whole(a, path: pathlib.Path, plan: pathlib.Path, data: bytes) -> int:
+def _freeze_whole(
+    a, path: pathlib.Path, plan: pathlib.Path, data: bytes, tracked: list[sources.Held]
+) -> int:
     """Freeze a file whole: one digest over its bytes, recorded beside it, and nothing written
     into it. Assumes the caller holds the lock for `path`."""
     text = data.decode()
@@ -275,9 +293,6 @@ def _freeze_whole(a, path: pathlib.Path, plan: pathlib.Path, data: bytes) -> int
         if parent not in _frozen_here(plan):
             print(f"{path} amends {parent[:16]}…, which is the digest of no frozen file here.")
             return 1
-    tracked = _tracked_sources(a, path)
-    if tracked is None:
-        return 1
     # Everything that can refuse runs before anything is written, here or on OSF: a plan whose
     # sections cannot map, a missing attachment, no token. A refusal found after the local
     # freeze left a frozen plan with no draft.
@@ -356,7 +371,7 @@ def _push_frozen(a, path: pathlib.Path, whole: record.Record, data: bytes) -> in
     return 0
 
 
-def _refreeze_in_place(a, path: pathlib.Path) -> int:
+def _refreeze_in_place(a, path: pathlib.Path, tracked: list[sources.Held]) -> int:
     """Re-freeze a plan an earlier version froze in place, as that version did.
 
     Nothing converts such a plan, so its freeze stays in the file and a forced re-freeze rewrites
@@ -404,9 +419,6 @@ def _refreeze_in_place(a, path: pathlib.Path) -> int:
         print("A forced re-freeze cannot describe itself. Pass --access with one of:")
         for level, why in ACCESS_MEANING.items():
             print(f"  {level:<20} {why}")
-        return 1
-    tracked = _tracked_sources(a, path)
-    if tracked is None:
         return 1
     # Everything that can refuse runs before anything is written, here or on OSF: a plan whose
     # sections cannot map, a missing attachment, no confirmation or no token. A refusal found
