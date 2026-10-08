@@ -71,6 +71,17 @@ exits non-zero and says `nothing was measured`, but the counts are what to quote
 **`not found` means read the source.** A broken extraction reads the same as a passage that
 was never there.
 
+**A `not found` that says "every word of the quotation is in the source" is an omission.** The
+quotation joins two or more stretches of the source and leaves out the text between them with
+nothing marking the gap; the result carries `reason: omission` and the count line says how many
+are of this kind. It still fails. Pin each piece as a quotation of its own, and never rejoin
+them: the words left out may be the ones that qualify the claim.
+
+**`ambiguous` means the source has the passage more than once.** `citations pin` refuses it
+without choosing. Read the source, decide which occurrence is meant, and pin it with
+`citations pin <file> --id <id> --quote "<passage>" --occurrence N`, counting from 1 in the
+source's order; the `prefix` and `suffix` that single it out are written for you.
+
 **A run with nothing to check exits non-zero.** The path is wrong, not everything passing.
 
 **Check which library you are on before believing a clean run.** The library resolves in order:
