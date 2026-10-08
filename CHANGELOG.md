@@ -1,3 +1,45 @@
+## 0.5.2 — 2026-10-08
+
+### citations
+
+#### Changed
+
+- **A `citations` command that reads no source no longer loads the PDF and spreadsheet libraries.** Importing the package imported the checker, and the checker imports `pdfplumber`, `pypdf` and `openpyxl`, so `citations lint`, `citations add` and every other subcommand waited most of a second for libraries only `verify` and `coverage` call. The package now imports a public name the first time it is asked for, and the command starts in `citations.entry`, which loads the subcommand asked for. Every name importable from `citations` is still importable, and `citations.cli:main` still runs the whole command. `citations lint --claims DIR --json` on a one-source project went from a median of 1.34 s to 0.48 s.
+
+#### Added
+
+- **A `not found` quotation whose every word is in the source says so.** A quotation made of two or more stretches of the source, in the source's order, with source text left out between them and nothing marking the gap, is still `not found` and still fails. Its result now carries `reason = "omission"` and one gap for each place text was left out, with the position in the quotation, the source text left out there and its length, and `passage`, the source from the first piece to the last; the report prints the left-out text and the passage with it marked, names the two repairs (quote the passage as the source reads, or mark the gap with an ellipsis in a manuscript), and the `not found` row counts these separately. Every piece must match exactly under the existing folding and be at least 20 characters, and a cut may fall only between whole tokens of the source, at white space the source itself has, so a number, a signed number or a hyphenated word cut short, punctuation left out, pieces in another order and a short fragment are a plain `not found` as before.
+- **`citations lint --claims` and `citations verify` report a pinned source the last commit still holds.** `git rm --cached` takes a file out of the index and out of no commit, so until the removal is committed the text is still in `HEAD`. `lint --claims` lists such a source as `in HEAD`, whether or not the file is on disk, and its `--json` rows carry `index` and `head` for every source listed. `verify` names the sources it read that the last commit holds and git no longer tracks. Both remain warnings: no verdict and no exit code changes.
+- **`citations lint --claims` takes no directory.** Given none, it reads `claims` in the working directory, or the nearest `claims` above it inside the same repository; outside a repository it reads the working directory alone. A named directory is read as before.
+- **`citations pin --occurrence N` pins one occurrence of a passage the source repeats.** A passage occurring more than once is refused as `ambiguous`, and the remedy was a `prefix` and `suffix` written into the claims file by hand. `--occurrence N` counts from 1 in the source's order and writes the anchors that single that occurrence out, widened through the source until the anchored passage occurs once and checked before anything is written, so the entry resolves under `verify --strict`. Anchors that would pass 1,000 characters a side are refused. Without the flag a repeated passage is still refused, and the refusal names the flag.
+- **`citations pin` says when the source it read is tracked by git, or covered by no ignore rule.** One line after the quotation is written, with the same remedy `verify` names. It refuses nothing and does not edit `.gitignore`. An ignored source, and a source outside any repository, get no line.
+- **`citations restore` writes the source's passage for a quotation that leaves text out, as a separate record.** It applies only to an omission whose shortest passage is the only one the quotation can have been taken from, every other way of fitting it spanning a longer passage that contains it, and which leaves out at most `--max-omitted-tokens` tokens, 1 by default; the limit never changes which passage is restored. The source must be pinned. The claims file it is given is never edited; the derived claim goes in `<name>.restored.yaml` beside it, with the original quotation, the bounded passage in the source's own characters, the source and text digests, the offsets of the passage and of each omitted stretch, how many ways the quotation fits, the rule and its limits, and the software version. `verify` counts restored quotations on a line of their own.
+- **`citations verify` and `citations lint --claims DIR` report a pinned source that git tracks.** A claims file pins its source by a sha256, so no check needs the source committed, and a committed one is somebody else's text published with the repository. `verify` prints how many sources it read from a tracked file and names the first ten, each with the claims file that pins it; `lint --claims` lists every one, and prints them as JSON with `--json`. The finding is a warning: it changes no verdict and no exit code, with or without `--strict`, and `lint --claims` exits 0 whatever it finds. The report names the remedy, which is to untrack the file and add an ignore rule, the record's sha256 and url being what `citations fetch` restores it from. Outside a repository, and on a machine without git, nothing is reported.
+
+### prereg
+
+#### Changed
+
+- **`prereg freeze` is refused where git holds a pinned source.** This changes what a freeze does: one that succeeded before can now exit 1. A freeze names a commit, and a source text in that commit can only be removed later by rewriting history, which changes the commit's identifier. Where `citations` is on `PATH`, a freeze first runs `citations lint --claims --json` beside the plan; where the index or the last commit holds a source the project's claims files pin, it prints the count, the first ten by path, and the way out of each case, writes nothing (no record, no log entry, no timestamp request, no lock file, nothing sent to OSF), and exits 1. A source is listed as `tracked` (in the index and the last commit), `staged` (in the index alone), or `in HEAD` (untracked with `git rm --cached`, or deleted, with the removal not yet committed). The ways out are to untrack the files, add an ignore rule, commit and freeze again, or to pass the new `--allow-tracked-sources`, with which the freeze goes ahead and names the sources after its report. A plan, an amendment and a forced re-freeze of a plan frozen in place are treated alike. Only an answer refuses: with no `citations` installed, a version that cannot be asked this way, no claims directory, a timeout, or nothing held, the freeze goes ahead as before. Nothing of `citations` is imported.
+
+### results-cli
+
+No significant changes.
+
+### reproducible-science
+
+#### Changed
+
+- `repro audit` counts `*.restored.yaml` files, which `citations restore` writes, apart from the claims files the authors declared: `claim_records`, `claims` and `quotations` leave them out, and `restored_claim_records` and `restored_quotations` are reported where there are any.
+
+#### Added
+
+- **`repro audit` reports how many sources the audited repository commits.** Where `citations verify` read a source that git tracks, the step's `found` ends with `N sources tracked by git`, in the table and in the record. No outcome and no exit code changes.
+
+### provenance-core
+
+No significant changes.
+
 ## 0.5.1 — 2026-10-07
 
 ### citations

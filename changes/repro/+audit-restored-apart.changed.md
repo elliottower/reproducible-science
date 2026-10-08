@@ -1,1 +1,0 @@
-`repro audit` counts `*.restored.yaml` files, which `citations restore` writes, apart from the claims files the authors declared: `claim_records`, `claims` and `quotations` leave them out, and `restored_claim_records` and `restored_quotations` are reported where there are any.
