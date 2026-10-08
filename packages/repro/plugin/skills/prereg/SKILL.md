@@ -70,6 +70,11 @@ such a pipe directly.
    the freeze still succeeds and the timestamp is owed until `prereg timestamp` makes it. With
    a results ledger at or above the plan, the access level recorded is at least what the ledger
    shows: its highest recorded level, and `results not opened` once any run is recorded.
+   Where `citations` is installed and git tracks a source the project's claims files pin, the
+   freeze names the sources after its own report. It is a warning: the freeze, its record and
+   its exit code are what they would have been. A source in the commit a freeze names can only
+   be removed later by rewriting history, which changes that commit's identifier, so untrack
+   and ignore source texts before the plan is committed.
 4. **Commit `.prereg/`, `.gitattributes` and the `.ots` proof.** The freeze is only evidence once it is in history.
 5. **Then run.** Not before step 4.
 

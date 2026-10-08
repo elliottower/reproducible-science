@@ -134,6 +134,21 @@ bytes arrive on every machine.
 Nothing is written into the plan. A second `prereg freeze` is refused, with or without
 `--force`: a change to a frozen plan is an amendment.
 
+Where `citations` is installed, the freeze runs `citations lint --claims --json` beside the plan
+and names each source the project's claims files pin that git tracks, ten at most and then a
+count of the rest:
+
+```text
+git tracks 1 source this project's quotations are pinned to
+  tracked  study/sources/woodward.txt
+  A source in the commit a freeze names can only be removed later by rewriting history,
+  which changes that commit's identifier. Untrack and ignore the files before freezing.
+```
+
+It is printed after the freeze's own report and changes nothing: the record, the exit code and
+the files written are the same with it and without it. With no `citations` on `PATH`, no claims
+directory, or nothing tracked, nothing is printed.
+
 ```json
 {
   "file": "PREREG.md",

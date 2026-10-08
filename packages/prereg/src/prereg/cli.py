@@ -37,7 +37,7 @@ from provenance_core import (
 )
 from provenance_core.gitref import try_run
 
-from prereg import amendment, attributes, osf, pinned, record, sidelog, staged, template
+from prereg import amendment, attributes, osf, pinned, record, sidelog, sources, staged, template
 from prereg.confirm import NotConfirmed, confirm
 from prereg.log import (
     ACCESS,
@@ -203,6 +203,17 @@ def _commit_to_name(a, path: pathlib.Path) -> str | None:
     return commit
 
 
+def _warn_of_tracked_sources(path: pathlib.Path) -> None:
+    """Say which pinned sources git tracks, after a freeze of `path` and never in place of it.
+
+    Last of what a freeze prints about itself and before anything is sent to OSF, so it is read
+    while the freeze is still uncommitted. It refuses nothing: see `sources`.
+    """
+    said = sources.warning(path.parent)
+    if said:
+        print(f"\n{said}")
+
+
 def _left_from_the_earlier_template(text: str) -> list[str]:
     """What `prereg new` once wrote for a freeze recorded in the file, still in this draft."""
     found = []
@@ -299,6 +310,7 @@ def _freeze_whole(a, path: pathlib.Path, plan: pathlib.Path, data: bytes) -> int
         f"\nCommit {record.RECORDS}/, {attributes.ATTRIBUTES} and the proof. "
         "The freeze is only evidence once it is in history."
     )
+    _warn_of_tracked_sources(path)
 
     if push:
         try:
@@ -402,6 +414,7 @@ def _refreeze_in_place(a, path: pathlib.Path) -> int:
     print(f"  sha256  {digest[:16]}…  (of everything above the log)")
     _stamp(path, digest)
     print("\nCommit this. The freeze is only evidence once it is in history.")
+    _warn_of_tracked_sources(path)
 
     if push:
         try:
