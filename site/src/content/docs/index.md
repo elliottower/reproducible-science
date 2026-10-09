@@ -5,13 +5,16 @@ title: Overview
 <p class="venue-note">
   <span>Accepted at AI for Science @ NeurIPS 2026</span>
   <a href="/paper/reproducible_science.pdf">Paper</a>
+  <a href="https://github.com/elliottower/reproducible-science">Code</a>
   <a href="/slides/reproducible_science_slides.pdf">Slides</a>
 </p>
 
-Every claim in a paper comes from somewhere.
+Git status, for research provenance.
 
 **A declarative, continuous, machine-checkable provenance layer for research claims, throughout
 the whole research lifecycle.**
+
+Every claim in a paper comes from somewhere.
 
 - **Recording:** every result is tied to the run that produced it, at the time it's produced.
 - **Verifying:** every number against its results file, every quotation against its source, every analysis against its plan.
@@ -28,7 +31,7 @@ pip install reproducible-science
 
 <img class="framed narrow" src="/figures/fig-commands.png" alt="prereg, results and citations each feed repro verify" />
 
-Like `git status`, for research provenance. In Claude Code, the state of a project's records
+In Claude Code, the state of a project's records
 sits above the prompt, with a warning when something no longer matches.
 
 <img class="framed narrow" src="/figures/status_number_mismatch.png" alt="Four status rows above the prompt and a warning that one number is mismatched" />
