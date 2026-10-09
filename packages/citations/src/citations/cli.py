@@ -9,6 +9,7 @@ citations build             rebuild records from the papers' bibliographies
 citations lint              BibTeX correctness, repeated keys, and author lists in a .bib
 citations add               add one entry to a .bib, refusing a key it already has
 citations pin               write a quotation into a claims file, refusing one that does not resolve
+citations restore           write the source's passage for a quotation that leaves text out, apart
 citations link              point pdfs/ at wherever the papers keep the artifacts
 citations fetch             download the sources a claims directory pins, keeping only matching bytes
 citations projects          which projects this library refers to, and which names are dead
@@ -20,14 +21,17 @@ from __future__ import annotations
 
 import argparse
 import collections
-import importlib
+import concurrent.futures
+import os
 import pathlib
 
 from provenance_core import hint
 
 from citations import coverage as C
-from citations import paths, projects
+from citations import extraction_cache, paths, projects, tracked
 from citations import verify as V
+from citations.entry import DELEGATED
+from citations.entry import delegate as _delegate
 from citations.exceptions import CitationsError, ClaimFileError, SourceUnreadableError
 from citations.models import ClaimFile, load_claim_file, load_record
 
@@ -46,21 +50,6 @@ WARNINGS = {
     "normalized": "matched after ignoring punctuation and spacing",
     "page": "found, but not on the page recorded",
     "page unchecked": "a page is recorded and the declared extractor cannot be asked for one",
-}
-
-DELEGATED = {
-    "init": "init",
-    "audit": "audit",
-    "resolve": "resolve",
-    "build": "build",
-    "lint": "lint",
-    "add": "add",
-    "pin": "pin",
-    "projects": "projects",
-    "tags": "tags",
-    "link": "link_pdfs",
-    "fetch": "fetch",
-    "import-paperclip": "import_paperclip",
 }
 
 
@@ -188,8 +177,36 @@ def cmd_coverage(a) -> int:
     return 1 if uncovered else 0
 
 
+def _extract_ahead(files: list[ClaimFile], allowed: frozenset[str]) -> None:
+    """Read every source once, several at a time, before the quotations are checked in order.
+
+    Each reading lands in the extraction cache, where the pass below finds it. A source that
+    cannot be read is left for that pass to report. Two claims files naming one source are one
+    reading: two threads asking for it together would each run the extractor.
+    """
+    wanted: dict[tuple[pathlib.Path, str | None], None] = {}
+    for cf in files:
+        artifact = cf.artifact()
+        if artifact is not None and artifact.is_file():
+            wanted[(artifact, V.declared_extractor(cf.source.reader))] = None
+
+    def read(reading: tuple[pathlib.Path, str | None]) -> None:
+        artifact, declared = reading
+        try:
+            if declared:
+                V.extract(artifact, None, declared, allowed)
+            else:
+                V.extract(artifact, None)
+        except SourceUnreadableError:
+            return
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=min(8, os.cpu_count() or 1)) as pool:
+        list(pool.map(read, wanted))
+
+
 def cmd_verify(a) -> int:
     rep = V.Report()
+    extraction_cache.use_default(disabled=getattr(a, "no_cache", False))
     counts: collections.Counter = collections.Counter()
     extractors: collections.Counter = collections.Counter()
     # Consent to run a program comes from whoever invokes the command, never from the file
@@ -199,7 +216,11 @@ def cmd_verify(a) -> int:
     if a.claims:
         root = pathlib.Path(a.claims).expanduser().resolve()
         library = paths.find()
-        for cf in _claim_files(root, skipped=rep.skipped):
+        files = list(_claim_files(root, skipped=rep.skipped))
+        if extraction_cache.enabled() and len(files) > 1:
+            _extract_ahead(files, allowed)
+        read: list[tuple[str, pathlib.Path]] = []
+        for cf in files:
             artifact = cf.artifact()
             missing = V.MISSING
             if artifact is not None and not artifact.exists():
@@ -216,6 +237,8 @@ def cmd_verify(a) -> int:
                 rep.broken_pins.append((cf.name, pin))
             elif pin.state == "unpinned":
                 rep.unpinned.append(cf.name)
+            if artifact is not None and artifact.is_file():
+                read.append((cf.name, artifact))
             _check_reading(rep, cf, artifact, allowed)
             for cid, claim in cf.claims.items():
                 if claim.interpretation is not None:
@@ -229,6 +252,7 @@ def cmd_verify(a) -> int:
                     if not q.text:
                         continue
                     rep.checked += 1
+                    rep.restored += claim.is_restored
                     r = V.check_one(
                         q.text,
                         artifact,
@@ -246,6 +270,12 @@ def cmd_verify(a) -> int:
                         rep.problems.append((f"{cf.name}:{cid}", q.text[:58], r))
         rep.counts = dict(counts)
         rep.extractors = dict(extractors)
+        rep.from_cache = extraction_cache.hits()
+        # Asked once for the whole run, a directory at a time. See `tracked`.
+        in_git = tracked.tracked(artifact for _, artifact in read)
+        rep.tracked_sources = [(name, artifact) for name, artifact in read if artifact in in_git]
+        in_head = tracked.committed(artifact for _, artifact in read) - in_git
+        rep.committed_sources = [(name, artifact) for name, artifact in read if artifact in in_head]
         return _report(rep, counts, a, f"claims  {root}")
 
     lib, origin = paths.find_with_origin()
@@ -275,6 +305,7 @@ def cmd_verify(a) -> int:
                 rep.problems.append((rec.slug, q.text[:58], r))
     rep.counts = dict(counts)
     rep.extractors = dict(extractors)
+    rep.from_cache = extraction_cache.hits()
     return _report(rep, counts, a, source)
 
 
@@ -298,6 +329,12 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
         if not n:
             continue
         why = ""
+        if s == "not found" and (
+            omitted := sum(r.reason == V.OMISSION for _, _, r in rep.problems if r.state == s)
+        ):
+            # Its own count, because the remedy differs: every piece is in the source. That
+            # says nothing about the text left out, which can be what the sentence turns on.
+            why = f"   {omitted:,} in the source only in pieces, with text left out between them"
         if s in ("unchecked", "indeterminate", "ambiguous"):
             # Untruncated: the reason is the only thing that says what to fix, and the one
             # that matters most -- "which this run does not allow" -- is at the end of it.
@@ -317,6 +354,13 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
         for name, n in sorted(rep.extractors.items(), key=lambda kv: (-kv[1], kv[0])):
             why = rep.fallback_reasons.get(name, "")
             print(f"  {n:>7,}  {name}" + (f"   fallback: {why[:50]}" if why else ""))
+    # Which readings no extractor produced in this run.
+    if rep.from_cache:
+        n = rep.from_cache
+        print(
+            f"\n{n:,} extraction{'' if n == 1 else 's'} taken from the cache, filed under the "
+            f"source's sha256 and the extractor's version; --no-cache reads every source again"
+        )
     # Where the bytes came from. The same claims directory resolves on the machine that holds
     # the library and is `unchecked` on one that does not, and the counts alone do not say which
     # of those this run was.
@@ -350,6 +394,14 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
         if rep.contested_readings:
             print(f"  {rep.contested_readings:>7,}  contested")
 
+    # Never mixed in silently. A restored passage is the source's text, so its resolving says
+    # nothing about the quotation it was restored from, which is still `not found` in its file.
+    if rep.restored:
+        print(
+            f"\nrestored  {rep.restored:,} of the {rep.checked:,} — the source's own passage, "
+            f"written by `citations restore`; not what the quoting party wrote"
+        )
+
     # A record that is not committed exists on one machine, and a verdict resting on it cannot
     # be appealed to later. Counted and reported, never blocking: a library mid-edit is the
     # ordinary state of working in one.
@@ -368,6 +420,34 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
         print("\nwarnings")
         for w, n in warns.most_common():
             print(f"  {n:>7,}  {w} — {WARNINGS.get(w, '')}")
+
+    # About the sources and not about any quotation, so it sits apart from the counts above
+    # and changes neither verdict: a tracked source resolves exactly as an untracked one does.
+    if rep.tracked_sources:
+        n = len(rep.tracked_sources)
+        print(
+            f"\ngit tracks {n:,} source{'' if n == 1 else 's'} read here, so publishing the "
+            f"repository republishes {'its' if n == 1 else 'their'} text"
+        )
+        for name, artifact in rep.tracked_sources[:10]:
+            print(f"  tracked  {name[:38]:<40}{artifact}")
+        if n > 10:
+            print(f"  ... and {n - 10:,} more; `citations lint --claims <dir>` lists every one")
+        print(f"  {tracked.REMEDY}.")
+        print("  a warning only: it fails nothing, with or without `--strict`.")
+    # Worded so that no line opens `N sources`: `repro audit` reads lines of that form into
+    # what the run found.
+    if rep.committed_sources:
+        n = len(rep.committed_sources)
+        print(
+            f"\nthe last commit still holds {n:,} source{'' if n == 1 else 's'} read here that "
+            f"git no longer tracks: commit the removal"
+        )
+        for name, artifact in rep.committed_sources[:10]:
+            print(f"  in HEAD  {name[:38]:<40}{artifact}")
+        if n > 10:
+            print(f"  ... and {n - 10:,} more; `citations lint --claims <dir>` lists every one")
+        print("  a warning only: it fails nothing, with or without `--strict`.")
 
     # A broken pin is reported before the quotation failures. Every result computed against
     # that source describes a document the record does not describe, so it changes how the
@@ -475,16 +555,6 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
     return 0 if (rep.strict_ok if a.strict else rep.ok) else 1
 
 
-def _delegate(module: str, argv: list[str]) -> int:
-    """Hand the remaining arguments to a subcommand's own parser.
-
-    `argv` is passed, never assigned to `sys.argv`: a function whose behavior depends on a
-    global cannot be called twice, tested without monkeypatching, or run from anything that is
-    not a terminal.
-    """
-    return importlib.import_module(f"citations.{module}").main(argv)
-
-
 def main(argv: list[str] | None = None) -> int:
     code = _main(argv)
     # After the work, never before it, and never instead of it: the note is about how this
@@ -508,6 +578,11 @@ def _main(argv: list[str] | None = None) -> int:
         metavar="NAME",
         help="let a claims file's extract_cmd run this program, named exactly as it writes it "
         f"(allowed unasked: {', '.join(sorted(V.DEFAULT_EXTRACTORS))})",
+    )
+    v.add_argument(
+        "--no-cache",
+        action="store_true",
+        help="run the extractor over every source, and keep nothing for the next run",
     )
     v.add_argument(
         "--triangulate",
@@ -545,6 +620,7 @@ def _main(argv: list[str] | None = None) -> int:
         ("lint", "BibTeX correctness, repeated keys, and author lists in a .bib"),
         ("add", "add one entry to a .bib, refusing a key it already has"),
         ("pin", "write a quotation into a claims file, refusing one that does not resolve"),
+        ("restore", "write the source's passage for a quotation that leaves text out, apart"),
         ("projects", "which projects this library refers to, and which names are dead"),
         ("tags", "the tag vocabulary, what uses it, and any tag nothing declares"),
         ("link", "point pdfs/ at the papers' artifacts"),

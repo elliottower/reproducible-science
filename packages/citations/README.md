@@ -3,11 +3,11 @@
 [![pypi](https://img.shields.io/pypi/v/citations)](https://pypi.org/project/citations/)
 [![python](https://img.shields.io/pypi/pyversions/citations)](https://pypi.org/project/citations/)
 [![license](https://img.shields.io/pypi/l/citations)](https://github.com/elliottower/reproducible-science/blob/main/LICENSE)
-[![docs](https://img.shields.io/badge/docs-live-blue)](https://elliottower.github.io/reproducible-science/)
+[![docs](https://img.shields.io/badge/docs-live-blue)](https://reproducible.science/)
 
 Check that the passages you quote appear in the sources you cite.
 
-Part of [reproducible-science](https://github.com/elliottower/reproducible-science) alongside `repro`, `results` and `prereg` — see the [documentation](https://elliottower.github.io/reproducible-science/tools/citations/).
+Part of [reproducible-science](https://github.com/elliottower/reproducible-science) alongside `repro`, `results` and `prereg` — see the [documentation](https://reproducible.science/tools/citations/).
 
 ## Install
 
@@ -101,7 +101,8 @@ every quote resolved, but against a source that is not the one pinned.
 | Command | What it does |
 |---------|-------------|
 | `citations init` | Create a library here |
-| `citations pin` | Add a quotation to a claims file, refusing one that does not resolve |
+| `citations pin` | Add a quotation to a claims file, refusing one that does not resolve; `--occurrence N` pins one occurrence of a repeated passage |
+| `citations restore` | Write the source's passage for a quotation that leaves text out, as a separate record |
 | `citations verify` | Do the quotations resolve in their sources? |
 | `citations coverage` | Is every quotation in my manuscript pinned at all? |
 | `citations audit` | Does the stored metadata match the record the identifier resolves to? |
@@ -203,7 +204,9 @@ verbatim in a paper whose sentence continues `"...and 5 refits each for 12 layer
 longer match its pin fails the run whatever its quotations did.
 
 `not found` means read the source. A mirror-reversed scan or a two-column extraction produces
-the same signal as a passage that was never there.
+the same signal as a passage that was never there. A `not found` whose every word is in the
+source, as pieces with text left out between them, is counted separately on the same line; see
+[When a quotation will not resolve](#when-a-quotation-will-not-resolve).
 
 ## Where a passage is, and how it is matched
 
@@ -219,6 +222,49 @@ A quotation carries the passage and, optionally, where it sits:
 A `page` the passage is not on leaves the result `found` with a `page` warning and the page it
 was found on. Under a declared `extract_cmd` there is no page to ask for, and the warning is
 `page unchecked`.
+
+A passage the source has more than once is `ambiguous` until the record says which occurrence
+it quotes, and `citations pin` refuses it. `--occurrence N` pins the Nth, counting from 1 in the
+source's order, and writes the `prefix` and `suffix` that single it out:
+
+```console
+$ citations pin claims/notes2026.yaml --id replication --occurrence 2 \
+    --quote "the model reached an accuracy of 0.94 on the split"
+found     the model reached an accuracy of 0.94 on the split
+added     replication to notes2026.yaml
+  occurrence 2, singled out by the prefix and suffix written with it
+```
+
+```yaml
+claims:
+  replication:
+    quotes:
+    - exact: the model reached an accuracy of 0.94 on the split
+      prefix: 'the replication '
+      suffix: . a third laboratory
+```
+
+The anchors are the source's text on either side as the matcher reads it: in lower case with
+single spaces, or, for a passage that matches only once spacing is ignored, with no spaces at
+all. They are taken 16 characters out on each side, then 32, then 64, doubling, each time
+carried on to the end of the word the cut lands in, until the anchored passage is in the source
+once and that once is the occurrence asked for. The quotation is then checked with its anchors
+before anything is written, so what is written resolves under `verify --strict`. White space at
+the ends of `--quote` is dropped, as it is when a claims file is read.
+
+`--occurrence` refuses, and writes nothing, in four cases:
+
+- an occurrence the source does not have, such as `--occurrence 4` of three;
+- a value below 1, which exits 2 before the source is read;
+- anchors that would pass 1,000 characters a side. A passage inside blocks that repeat in full
+  is singled out only by text reaching to where a block ends, and on a long source that is
+  anchors the size of the source. Write `prefix` and `suffix` by hand there;
+- a passage matched with spacing ignored that begins or ends on a hyphen, where no anchors
+  taken from the source join onto it.
+
+Without the flag no occurrence is chosen. A source read by a PDF reader is anchored in the text
+of the reader that reads it first, so a passage that reader misses and a fallback reader finds
+twice stays `ambiguous` and cannot be pinned with `--occurrence`.
 
 Matching is exact after folding, and never approximate. Folding removes what a PDF extractor
 changes and nothing else: case, runs of whitespace, curly quotation marks, the dash variants,
@@ -266,8 +312,186 @@ concentrated in one document is this. `verify` consults the other readers before
 stands and records which one answered, so this repairs itself; a tool that asks one extractor
 does not, and reports the document as missing text it contains.
 
+**Text left out of the middle.** A quotation that joins two stretches of the source and leaves
+out what lies between them is `not found`, because a quotation is one stretch of the source and
+the words left out may qualify it. Every word of it is in the source all the same, so the
+report shows what was left out and what the source reads:
+
+```text
+not found  notes2026:joined            Higher circulating levels of the protein wer
+           every word of the quotation is in the source, as 2 pieces in the source's order with source text left out between them and nothing marking the gap
+           after: ...in were associated with lower risk
+           left out (11 tokens of the source, 69 characters): [[in the discovery cohort (odds ratio 0.81 per standard deviation), and]]
+           then:  the association replicated in two ...
+           the source reads (217 characters, left-out text in [[ ]]): Higher circulating levels of the protein were associated with lower risk [[in the discovery cohort (odds ratio 0.81 per standard deviation), and]] the association replicated in two independent cohorts of European ancestry
+           to repair it, quote the passage as the source reads, with the left-out text in it; or, in a manuscript, write an ellipsis where the text is left out, which `citations coverage` reads as omitted text. As it stands the quotation is `not found`, with or without `--strict`
+```
+
+The count line says how many of the `not found` are of this kind: `not found  3   2 in the
+source only in pieces, with text left out between them`. There are two repairs, and the author
+chooses: quote the passage as the source reads, or, in a manuscript, mark the gap with an
+ellipsis, which `citations coverage` reads as omitted text. A claims file's `exact` takes no
+ellipsis, and no command rewrites a quotation. `citations restore` writes the passage as a
+separate record; see [Restoring the source's passage](#restoring-the-sources-passage).
+
+The result carries the same in full. `reason` is `omission`, each entry of `gaps` holds the
+`text` left out, its `offset` in the passage, where the gap falls in the quotation (`at`), its
+folded length (`skipped`), how many `tokens` it is and the `position` of the first of them in
+the passage, and `passage` is the source from the start of the first piece to the end of the
+last. The printed report shows the first 200 characters of a longer gap and the first 600 of a
+longer passage. Each length it prints counts the text as shown, on one line with white space
+single, without the `[[ ]]` marks, and says how much of that is shown.
+
+The text shown is the source's own, with its capitals, accents and line breaks, wherever a
+stretch of the source can be found that folds to exactly what matched; the printed report
+writes its line breaks as spaces. Where no such stretch is found the folded text is shown, in
+lower case with single spaces, the report says so, and `passage_folded` is set on the result.
+
+The rule reads both sides as tokens, after the folding above and nothing looser. A token is a
+stretch of the source between white space that a reader of the source sees: `-0.42`, `1.81`,
+`12,500`, `non-significant`, `5.3%` and `risk,` are one token each. Folding writes a space in
+three places where the source has none, and none of them parts a token: a control character
+left inside a word (`logit` and `difference` with a stray byte between them), a spacing accent
+(`don´t`, `na¨ive`), and a thin, narrow or no-break space between two digits (`12 500` is one
+number). A no-break space anywhere else is white space. A word the source breaks across a line
+with a hyphen is one token. There is one count of tokens, this one, and `citations restore`
+uses it for its limit and writes it down.
+
+A quotation is an omission when it divides into two or more pieces and:
+
+1. each piece is a run of whole tokens of the quotation, at least 20 characters long;
+2. where the quotation is cut, the source has white space on the outer side of the piece, so
+   the piece before a gap ends with a whole token of the source and the piece after begins
+   with one;
+3. the pieces occur in the source in the quotation's order;
+4. at least one whole token of the source lies between each piece and the next.
+
+What is left out is therefore whole tokens, and a cut never falls inside one. `0.42` quoted
+from a source reading `-0.42`, `1` from `1.81`, `500` from `12,500`, `significant` from
+`non-significant` and `5` from `5.3%` are a changed token, and the result is a plain `not
+found`. Punctuation is treated the same way whatever it is: `risk the` against a source reading
+`risk, the` or `risk/the` leaves no token out and changes one, so it is a plain `not found`. A
+piece that ends a clause has to carry the token's punctuation as the source has it. The two
+ends of the quotation are not cuts and are held to what any quotation's ends are held to, so a
+quotation may stop before a full stop and may not stop inside a word.
+
+A changed word usually leaves its piece absent, and pieces in another order or under 20
+characters are a plain `not found`. The rule does not rule out a splice: `a significant increase
+in mortality` joined onto the subject of a sentence that reports a decrease is reported as an
+omission if a later sentence reports the increase in those words. Every piece is the source's
+and the join is not, which is why an omission is `not found` and never a pass.
+
+A quotation can fit its source in more than one way, where the source repeats a piece. Every
+way is listed, up to 1,000, and the one reported spans the shortest passage, wherever in the
+source that is; of two that tie, the one with fewer pieces, then the earlier. The report says
+how many ways there are when there is more than one, and whether every other way spans a
+longer passage that contains the shortest. The result
+carries the same as `fittings`, `unique` and `capped` on `verify.omission`'s answer. Text
+written without spaces between words, such as Chinese or Japanese, is one token a sentence and
+is not read as an omission.
+
 **A source that is not what it claims to be.** A `.pdf` that is a Cloudflare interstitial or a
 login page fails under every reader. `file` will say so in one line.
+
+## Restoring the source's passage
+
+`citations restore` is the explicit step after an omission has been read. It writes the
+source's passage for that quotation as a separate, derived claim, and leaves the quotation
+alone:
+
+```console
+$ citations restore claims/notes2026.yaml --id joined
+restored  joined as joined-restored in notes2026.restored.yaml
+  1 token of the source put back in 1 place; notes2026.yaml is unchanged, and joined is still `not found` as written
+  the restored passage is the source's text, not what the quoting party wrote
+```
+
+The claims file it is given is never edited: `joined` stays as written and stays `not found`.
+The derived claim goes in `claims/notes2026.restored.yaml`, a claims file beside the original
+that carries the same `source` block, so `citations verify --claims claims` reads it with the
+rest. Its quotation is the bounded passage, from the start of the quotation's first piece to
+the end of its last, in the source's own characters. It is never widened to the sentence and no
+context is added.
+
+```yaml
+claims:
+  joined-restored:
+    restored:
+      from: joined
+      notice: The quotation in this claim is the source's own text, restored by `citations restore`
+        around text the original quotation left out. It is not what the quoting party wrote; that
+        is `original`, which is not found in the source as written.
+      original: Higher circulating levels of the protein were associated with lower risk
+      source: {citation: notes2026, local: sources/notes.txt, sha256: 56f5…}
+      text: {extractor: text, sha256: 56f5…}
+      passage: {start: 13, end: 95}
+      omitted:
+      - {start: 59, end: 67, tokens: 1, position: 8}
+      fittings: {found: 1, others_contain_passage: true}
+      rule: {name: bounded-passage, version: 2, max_omitted_tokens: 1, min_piece_chars: 20, max_fittings: 1000}
+      software: {citations: 0.5.1}
+    quotes:
+    - exact: Higher circulating levels of the Protein were strongly associated with lower risk
+```
+
+`passage` and `omitted` are character offsets into the text the extractor produced, whose
+digest is `text.sha256`; `tokens` and `position` count tokens as the rule above does, and
+`position` is the place of the first omitted token among the passage's tokens, counting from 1.
+`fittings` is how many ways the quotation fits the source, and records that every other one
+spans a passage containing this one. `software` adds `commit` where the package was installed from one.
+Nothing in the record depends on when or where the command ran, so the same claims file and
+source give the same bytes.
+
+`verify` counts restored quotations on a line of their own, so they are never mixed with
+quotations that resolved as written:
+
+```text
+restored  1 of the 3 — the source's own passage, written by `citations restore`; not what the quoting party wrote
+```
+
+It refuses, and writes nothing, unless all of these hold:
+
+- the quotation is an omission under the rule above, decided the way `verify` decides it, so a
+  passage any installed reader finds whole is `found` and is not restored. A changed word or
+  digit, a number or a hyphenated word cut short, and a quotation that is absent are never
+  restored;
+- the passage is the shortest one the quotation fits, and every other way of fitting spans a
+  longer passage that contains it, as when the source repeats the quotation's closing phrase a
+  paragraph later. Other ways may exist, and the record counts them. Where two ways
+  span the same passage, or neither of two passages contains the other (`In men A
+  significantly B. In women A not once B.`), none is chosen. This does not depend on the
+  limit below, so raising the limit never turns a restoration into a refusal or into another
+  passage. A quotation that fits in 1,000 ways or more is refused;
+- the tokens that passage puts back, over all gaps, number at most `--max-omitted-tokens`. The
+  default is 1, the strictest setting; a larger limit is asked for by number;
+- the passage can be given in the source's own characters, and resolves as `found` on its
+  own, once;
+- the claims file pins its source by sha256 and the file on disk matches. An unpinned source
+  is refused: nothing says it is the file the quotation was taken from;
+- `<name>.restored.yaml`, if it is already there, is a claims file whose `source` block names
+  the same `local` and `sha256` as the original's. A key added to the original since, such as
+  `doi`, does not matter. One written against an earlier pin or another source, or one that
+  does not parse, is refused and left as it is;
+- the claim has one quotation, and the derived id is not taken.
+
+Every refusal exits 1. `--check` decides and reports, and leaves the directory as it found it.
+`repro audit` counts `*.restored.yaml` files apart from the claims the authors declared.
+
+**When to restore, and when not.** Restoring corrects a quotation against its source: the
+record then holds what the source says at that place, and says how it differs from what was
+quoted. It does not show that the omission was harmless. A dropped `not` is one token, and
+restoring it reverses the quotation. Whether the quoting party's reading survives the text
+they left out is a judgment about that text, which is why the record gives the offsets of
+every omitted stretch and keeps the original quotation beside the passage. Do not restore in
+order to make a run pass, and do not report restored quotations as quotations that resolved.
+
+The restored passage is the shortest the quotation fits, inside every other passage it fits.
+That does not make it where the quotation came from. Take a source reading `Critics deny that
+A at all (the sponsor wrote that A reliably B) or B.` and the quotation `A B`. It is restored
+as `A reliably B`, the sponsor's sentence in the parenthesis, and the record counts 24 ways the
+quotation fits. The outer sentence, in which critics deny A, contains that passage and is
+another possible origin, with the opposite sense. Where `fittings.found` is more than 1, read
+the source around the passage before relying on it.
 
 ## Reading PDFs
 
@@ -311,6 +535,25 @@ asserts the manuscript quoted a passage its source does not contain. Triangulati
 because it costs one extraction per reader; it does not apply to a source that declares a
 command, and a run that triangulated nothing says so rather than reporting the readers as
 having concurred.
+
+## Text kept between runs
+
+Running `pdftotext` over each source is most of what `citations verify` costs, so the command
+keeps what it extracts and reads several sources at a time. An entry is filed under the sha256
+of the source's bytes, the version `pdftotext` reports, and its arguments. A source whose bytes
+changed, a different poppler or a different flag is extracted again; nothing is looked up by
+path or by date. The report counts the readings that came from the cache:
+
+```text
+28 extractions taken from the cache, filed under the source's sha256 and the extractor's version; --no-cache reads every source again
+```
+
+`--no-cache`, or `CITATIONS_NO_CACHE=1`, runs the extractor over every source and keeps nothing.
+The entries hold text from the sources, so they live with the user and not in a repository:
+`$CITATIONS_CACHE_DIR`, else `$XDG_CACHE_HOME/citations/extractions`, else
+`~/.cache/citations/extractions`. Only `pdftotext` is kept. A declared extractor the package
+does not know has no version to ask for, and is run every time. `repro verify` reads every
+source every time.
 
 ## Reading workbooks, `.docx` and article XML
 

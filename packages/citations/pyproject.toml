@@ -4,7 +4,7 @@ requires = [ "hatchling" ]
 
 [project]
 name = "citations"
-version = "0.4.2"
+version = "0.5.2"
 description = "A library of quotations checked against the sources they came from"
 readme = "README.md"
 keywords = [ "bibliography", "bibtex", "citations", "provenance", "reproducibility" ]
@@ -18,7 +18,7 @@ classifiers = [
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
 ]
-dependencies = [ "platformdirs>=3", "provenance-core>=0.4,<0.5", "pydantic>=2.9", "pyyaml>=6.0.2" ]
+dependencies = [ "platformdirs>=3", "provenance-core>=0.5,<0.6", "pydantic>=2.9", "pyyaml>=6.0.2" ]
 optional-dependencies.docx = [ "python-docx>=1.1" ]
 optional-dependencies.lint = [ "papis>=0.15" ]
 # Paperclip's own client is distributed as a wheel at a URL rather than through an index, and a
@@ -42,7 +42,7 @@ urls.Changelog = "https://github.com/elliottower/reproducible-science/blob/main/
 urls.Homepage = "https://github.com/elliottower/reproducible-science"
 urls.Issues = "https://github.com/elliottower/reproducible-science/issues"
 urls.Source = "https://github.com/elliottower/reproducible-science/tree/main/packages/citations"
-scripts.citations = "citations.cli:main"
+scripts.citations = "citations.entry:main"
 
 [dependency-groups]
 dev = [

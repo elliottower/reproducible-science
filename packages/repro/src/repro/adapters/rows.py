@@ -60,17 +60,40 @@ def _cell_found(cell: Cell, column: str, address: str) -> Found:
     return _ok(cell, "str", f"{column} {address}")
 
 
+def index_rows(rows: list[dict[str, Cell]], columns: tuple[str, ...]) -> dict[tuple, list[int]]:
+    """Row numbers by the cells each row holds in `columns`, for a table of text cells.
+
+    One pass over the table answers every locator that selects on the same columns, where a
+    scan per locator read every row once for each of them.
+    """
+    index: dict[tuple, list[int]] = {}
+    for at, row in enumerate(rows):
+        index.setdefault(tuple(row.get(column) for column in columns), []).append(at)
+    return index
+
+
 def resolve_rows(
-    header: list[str], rows: list[dict[str, Cell]], column: str, where: dict, name: str
+    header: list[str],
+    rows: list[dict[str, Cell]],
+    column: str,
+    where: dict,
+    name: str,
+    index: dict[tuple, list[int]] | None = None,
 ) -> Found:
     """The one row whose key cells equal `where`, and its cell in `column`.
 
     `where` holds text already, in the convention of the table it is matched against:
-    `predicate_text` for delimited text, `cells.render` for a typed table.
+    `predicate_text` for delimited text, `cells.render` for a typed table. `index` is
+    `index_rows` over the sorted names of `where`, and selects the rows a scan would.
     """
     if failure := _header_faults(header, column, where, name):
         return failure
-    matched = [i for i, row in enumerate(rows) if all(row.get(k) == v for k, v in where.items())]
+    if index is None:
+        matched = [
+            i for i, row in enumerate(rows) if all(row.get(k) == v for k, v in where.items())
+        ]
+    else:
+        matched = index.get(tuple(where[k] for k in sorted(where)), [])
     described = ", ".join(f"{k}={v!r}" for k, v in where.items())
     if not matched:
         return _no(Resolution.ABSENT, f"no row in {name} where {described}")

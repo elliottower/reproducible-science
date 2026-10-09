@@ -225,6 +225,23 @@ class Claim(_Base):
     file now says so in its own structure rather than in a convention nobody can read.
     """
 
+    restored: Any = None
+    """What `citations restore` records where it wrote this claim: the claim it was derived
+    from, the original quotation, and where in the source the passage sits. See
+    `citations.restore`.
+
+    Typed loosely on purpose. Claims files carry keys of their authors' own, and one that
+    already used `restored` for something else, a flag or a date, must go on loading.
+    `is_restored` says whether this is the record that command writes."""
+
+    @property
+    def is_restored(self) -> bool:
+        """Whether this claim is one `citations restore` derived: its quotation is the
+        source's text and not the quoting party's."""
+        return isinstance(self.restored, dict) and {"from", "original", "rule"} <= set(
+            self.restored
+        )
+
     quotes: list[Quote] = Field(default_factory=list)
     """The passages cited in support. May be empty; an unsupported claim is a fact about
     the file, not an error in it."""
@@ -342,10 +359,15 @@ class Record(_Base):
         return bool(self.sha256 and self.sha256.strip())
 
 
+#: libyaml's loader where PyYAML was built with it, which every published wheel is. It reads the
+#: same documents as the Python loader, several times faster.
+_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+
+
 def _load_yaml(path: pathlib.Path) -> dict[str, Any]:
     """Parse one YAML file into a mapping, naming the file when it is not one."""
     try:
-        raw = yaml.safe_load(path.read_text()) or {}
+        raw = yaml.load(path.read_text(), Loader=_LOADER) or {}
     except yaml.YAMLError as e:
         raise ClaimFileError(path, f"not valid YAML: {e}") from e
     except OSError as e:

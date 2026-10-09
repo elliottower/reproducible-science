@@ -8,13 +8,13 @@ description: Prereg — Reproducible Science
 [![pypi](https://img.shields.io/pypi/v/prereg)](https://pypi.org/project/prereg/)
 [![python](https://img.shields.io/pypi/pyversions/prereg)](https://pypi.org/project/prereg/)
 [![license](https://img.shields.io/pypi/l/prereg)](https://github.com/elliottower/reproducible-science/blob/main/LICENSE)
-[![docs](https://img.shields.io/badge/docs-live-blue)](https://elliottower.github.io/reproducible-science/)
+[![docs](https://img.shields.io/badge/docs-live-blue)](https://reproducible.science/)
 
 **[Run it in your browser](#run-it)** — every command on this page, in a live notebook at the bottom. No install.
 
 Freeze a plan before you run it, and record what changed after.
 
-Part of [reproducible-science](https://github.com/elliottower/reproducible-science) alongside `repro`, `citations` and `results` — see the [documentation](https://elliottower.github.io/reproducible-science/tools/prereg/).
+Part of [reproducible-science](https://github.com/elliottower/reproducible-science) alongside `repro`, `citations` and `results` — see the [documentation](https://reproducible.science/tools/prereg/).
 
 ## Install
 
@@ -46,6 +46,7 @@ log          V16_reliability_ceilings/PREREG.log  1 entry, chain intact
 | `prereg new <name>` | Scaffold a plan in OSF's headings |
 | `prereg freeze` | Record the file's hash, the commit and the time beside the plan, and set the plan read-only |
 | `prereg freeze PREREG_AMENDMENT_N.md` | Freeze an amendment, the same way |
+| `prereg freeze --allow-tracked-sources` | Freeze although git tracks a source the project's quotations are pinned to |
 | `prereg freeze --osf` | Freeze and push as a draft registration to OSF |
 | `prereg freeze --osf --attach PATH` | Also upload a file into the draft, so it is registered with the plan |
 | `prereg register --embargo DATE` / `--immediate` | Submit the draft as an OSF registration |
@@ -145,6 +146,46 @@ Nothing is written into the plan. A second `prereg freeze` is refused, with or w
 }
 ```
 
+### A pinned source that git holds
+
+A freeze names a commit, and a source text in that commit can only be removed later by
+rewriting history, which changes the commit's identifier. So where `citations` is installed, a
+freeze first runs `citations lint --claims --json` beside the plan, and where git holds a
+source the project's claims files pin, it is refused before anything is written. There is no
+record, no log entry, no timestamp request and no lock file, and the exit code is 1:
+
+```text
+study/PREREG.md was not frozen, and nothing was written.
+git holds 3 sources this project's quotations are pinned to
+  tracked  study/sources/committed.txt
+  in HEAD  study/sources/removed.txt
+  staged   study/sources/staged.txt
+A freeze names a commit, and a source in that commit can only be removed later by
+rewriting history, which changes the commit's identifier.
+`tracked` and `staged`: untrack each with `git rm --cached <file>`, add an ignore
+rule, commit, and freeze again. The record's sha256 still pins the file.
+`in HEAD`: no longer tracked, and still in the last commit. Commit the removal,
+then freeze.
+Or keep them and freeze with --allow-tracked-sources.
+```
+
+The commit a freeze names is `HEAD`, so the question is asked of `HEAD` and of the index:
+
+| listed as | the index | the last commit | way out |
+|---|---|---|---|
+| `tracked` | holds it | holds it | `git rm --cached`, an ignore rule, commit |
+| `staged` | holds it | does not | `git rm --cached`, an ignore rule, commit |
+| `in HEAD` | does not | holds it | commit the removal |
+
+A source deleted from disk is `in HEAD` all the same until the deletion is committed. The
+refusal names ten sources at most and then counts the rest, and gives only the ways out that
+apply. `--allow-tracked-sources` is for text that is the author's to commit: the freeze goes
+ahead, and the sources are named after its report. An amendment and a forced re-freeze of a
+plan frozen in place are refused the same way. A file already frozen is told so, as before.
+
+Only an answer refuses. With no `citations` on `PATH`, a version of it that cannot be asked
+this way, no claims directory, or nothing held, the freeze goes ahead and says nothing.
+
 ## The log
 
 `prereg log` writes one entry to `PREREG.log`: the time, the note, and what had been seen.
@@ -182,7 +223,7 @@ an amendment.
 - **Reason.**
 - **What had been seen**: an access level, and what had been run and read.
 
-Where a [results](https://elliottower.github.io/reproducible-science/tools/results/) ledger
+Where a [results](https://reproducible.science/tools/results/) ledger
 sits at or above the plan (`.results/ledger.jsonl`), the access level is filled from the
 ledger's floor, with the highest level it records and the number of runs recorded so far. The
 floor is the highest access level ever recorded there, mapped onto the four levels here:

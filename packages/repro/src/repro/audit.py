@@ -79,6 +79,11 @@ READS: dict[tuple[str, str], tuple[str, str]] = {
     ),
 }
 
+#: How `citations verify` heads its warning that git tracks sources it read. The heading opens
+#: with `git` so that `N sources ...` above does not take the sentence whole; the count goes
+#: into what the step found under a name of its own, and changes no outcome.
+TRACKED = re.compile(r"^git tracks ([\d,]+) sources? read here\b")
+
 #: The distribution each command ships in.
 DISTRIBUTIONS = {
     "citations": "citations",
@@ -254,7 +259,14 @@ def read(argv: list[str], code: int, output: str, root: pathlib.Path) -> tuple[s
     measured, unmeasured = READS.get(
         (argv[0], argv[1] if len(argv) > 1 else ""), (r"(?!)", r"(?!)")
     )
-    found = "; ".join(m.group() for line in lines for m in re.finditer(measured, line))
+    items = [m.group() for line in lines for m in re.finditer(measured, line)]
+    if argv[:2] == ["citations", "verify"]:
+        items += [
+            f"{m[1]} source{'' if m[1] == '1' else 's'} tracked by git"
+            for m in map(TRACKED.match, lines)
+            if m
+        ]
+    found = "; ".join(items)
     could_not = "; ".join(m.group() for line in lines for m in re.finditer(unmeasured, line))
 
     # `citations verify --strict` exits 1 over a quotation it could not read, and `citations
@@ -286,7 +298,12 @@ def declared(root: pathlib.Path, layout: Layout) -> dict:
     }
 
     if layout.claims and (root / layout.claims).is_dir():
-        files = sorted((root / layout.claims).glob("*.yaml"))
+        # `citations restore` writes its derived claims to `<name>.restored.yaml` beside the
+        # file they came from. Each is the source's own passage, written by a tool, and a
+        # count of what the authors declared that included them would count the same
+        # quotation twice. They are counted apart.
+        every = sorted((root / layout.claims).glob("*.yaml"))
+        files = [f for f in every if not f.name.endswith(".restored.yaml")]
         claims = quotes = 0
         sources: dict[str, str] = {}
         for f in files:
@@ -303,6 +320,15 @@ def declared(root: pathlib.Path, layout: Layout) -> dict:
             "pinned_sources": len(sources),
             "sources_carrying_a_digest": sum(1 for v in sources.values() if v),
         }
+        if restored := [f for f in every if f not in files]:
+            out["restored_claim_records"] = len(restored)
+            out["restored_quotations"] = sum(
+                len((claim or {}).get("quotes", []) or [])
+                for f in restored
+                for claim in (
+                    (yaml.safe_load(f.read_text()) or {}).get("claims", {}) or {}
+                ).values()
+            )
 
     for name, rel in (layout.bibliographies or {}).items():
         if (root / rel).is_file():

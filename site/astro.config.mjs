@@ -3,12 +3,9 @@ import starlight from "@astrojs/starlight";
 import { defineConfig } from "astro/config";
 
 export default defineConfig({
-  // GitHub Pages, matching mechanistic-views. Nobody looks twice at a github.io docs URL,
-  // and it needs no DNS. A domain can be pointed here later with a Cloudflare-proxied CNAME,
-  // which is what makes analytics count requests server-side instead of relying on a beacon
-  // an ad blocker can drop. Changing that is this one line plus a rebuild.
-  site: "https://elliottower.github.io",
-  base: "/reproducible-science",
+  // GitHub Pages serving the custom domain. DNS is on Cloudflare; the old
+  // elliottower.github.io/reproducible-science address redirects here.
+  site: "https://reproducible.science",
   integrations: [
     starlight({
       head: [
@@ -20,7 +17,7 @@ export default defineConfig({
               if (!button) return;
               const box = button.closest(".nb-embed");
               const frame = document.createElement("iframe");
-              frame.src = "/reproducible-science/jlite/lab/index.html?path=" +
+              frame.src = "/jlite/lab/index.html?path=" +
                 encodeURIComponent(box.dataset.nb);
               frame.title = "Live notebook";
               box.replaceChildren(frame);
@@ -85,10 +82,8 @@ export default defineConfig({
         },
         {
           label: "Reference",
-          collapsed: true,
           items: [
             { label: "Specification", link: "/reference/spec/" },
-            { label: "Releasing", link: "/reference/releasing/" },
             { label: "Changelog", link: "/reference/changelog/" },
           ],
         },

@@ -3,11 +3,11 @@
 [![pypi](https://img.shields.io/pypi/v/results-cli)](https://pypi.org/project/results-cli/)
 [![python](https://img.shields.io/pypi/pyversions/results-cli)](https://pypi.org/project/results-cli/)
 [![license](https://img.shields.io/pypi/l/results-cli)](https://github.com/elliottower/reproducible-science/blob/main/LICENSE)
-[![docs](https://img.shields.io/badge/docs-live-blue)](https://elliottower.github.io/reproducible-science/)
+[![docs](https://img.shields.io/badge/docs-live-blue)](https://reproducible.science/)
 
 Seal inputs, record outputs, and bind a paper's claims to the runs behind them.
 
-Part of [reproducible-science](https://github.com/elliottower/reproducible-science) alongside `repro`, `citations` and `prereg` — see the [documentation](https://elliottower.github.io/reproducible-science/tools/results/).
+Part of [reproducible-science](https://github.com/elliottower/reproducible-science) alongside `repro`, `citations` and `prereg` — see the [documentation](https://reproducible.science/tools/results/).
 
 ## Install
 
@@ -55,6 +55,7 @@ all checks passed.
 | `results access <note>` | Record a data-access event |
 | `results run <file>...` | Record outputs after a run |
 | `results claim <text>` | Bind a manuscript claim to a run |
+| `results review <file>...` | Record that someone examined these files, and what they found |
 | `results verify` | Check the ledger chain and every hash it names |
 | `results timestamp` | Date the ledger's head outside the repository, and check earlier dates |
 
@@ -69,6 +70,30 @@ manuscript  →  claim  →  run  →  output file  →  sha256
 ```
 
 `results verify --files` walks the whole thing and tells you what moved.
+
+## Reviews
+
+Some checks are done by reading: a person, or a model, compares a table with the file behind it.
+`results review` records that the reading happened, and of which bytes.
+
+```bash
+results review results/table3.csv paper/table3.pdf \
+    --scope "every cell of Table 3 against the regenerated file" \
+    --procedure "read the rendered page beside the csv" \
+    --verdict partial --reviewer "A. Reader" --model claude-opus-5-5 \
+    --note "30 cells agree at the certified revision; 4 differ"
+```
+
+Each file is recorded by its sha256, so the review is of those bytes and no others.
+`results verify --files` lists every review and marks a subject `STALE` once the file has
+changed, without failing: a reviewed file that then changes is the ordinary result of acting on
+a review. `--scope`, `--procedure`, `--verdict` and `--reviewer` are required, and the verdict
+is one of `pass`, `fail`, `partial` and `uncertain`.
+
+The record is self-reported and unsigned. The ledger shows that the review was stated and when;
+nothing checks who stated it. `--model` is the identifier the caller gives. Inside Claude Code
+the command also records the harness, its version and the session identifier from the
+environment, which does not say which model ran, so a model reviewer passes `--model`.
 
 ## Data-access levels
 

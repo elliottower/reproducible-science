@@ -209,7 +209,7 @@ min_confidence = 100
 # this with PyPI: a newer release is a prompt, not a failure, until a release tag is cut.
 
 [tool.interop]
-adduce = "0.1.2"
+adduce = "0.2.0"
 
 [tool.importlinter]
 root_packages = [ "repro", "citations", "results", "prereg", "provenance_core" ]

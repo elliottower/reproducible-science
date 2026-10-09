@@ -10,7 +10,7 @@ type: software
 license: MIT
 doi: "10.5281/zenodo.22100272"
 repository-code: "https://github.com/elliottower/reproducible-science"
-url: "https://elliottower.github.io/reproducible-science/"
+url: "https://reproducible.science/"
 abstract: >-
   Four command-line tools and one Claude Code plugin for keeping a paper's
   claims tied to what backs them. prereg freezes an analysis plan against a
@@ -27,5 +27,5 @@ keywords:
   - provenance
   - research integrity
   - open science
-version: "0.4.2"
-date-released: "2026-08-29"
+version: "0.5.2"
+date-released: "2026-10-08"
