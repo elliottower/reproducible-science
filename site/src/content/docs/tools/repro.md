@@ -8,13 +8,13 @@ description: Repro — Reproducible Science
 [![pypi](https://img.shields.io/pypi/v/reproducible-science)](https://pypi.org/project/reproducible-science/)
 [![python](https://img.shields.io/pypi/pyversions/reproducible-science)](https://pypi.org/project/reproducible-science/)
 [![license](https://img.shields.io/pypi/l/reproducible-science)](https://github.com/elliottower/reproducible-science/blob/main/LICENSE)
-[![docs](https://img.shields.io/badge/docs-live-blue)](https://elliottower.github.io/reproducible-science/)
+[![docs](https://img.shields.io/badge/docs-live-blue)](https://reproducible.science/)
 
 **[Run it in your browser](#run-it)** — every command on this page, in a live notebook at the bottom. No install.
 
 Check whether a paper's claims match its artifacts.
 
-Part of [reproducible-science](https://github.com/elliottower/reproducible-science) alongside `citations`, `results` and `prereg` — see the [documentation](https://elliottower.github.io/reproducible-science/tools/repro/).
+Part of [reproducible-science](https://github.com/elliottower/reproducible-science) alongside `citations`, `results` and `prereg` — see the [documentation](https://reproducible.science/tools/repro/).
 
 ## Install
 

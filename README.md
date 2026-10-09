@@ -23,7 +23,7 @@ Command-line tools that check whether a paper's claims match its artifacts.
 pip install reproducible-science
 ```
 
-See our [Claude Code plugin](https://elliottower.github.io/reproducible-science/start/claude-code/),
+See our [Claude Code plugin](https://reproducible.science/start/claude-code/),
 which traces results at the time of experimentation.
 
 ```text
@@ -42,7 +42,7 @@ pip install "citations[pdf]"          # no system package available
 
 ## Documentation
 
-**[elliottower.github.io/reproducible-science](https://elliottower.github.io/reproducible-science/)**
+**[reproducible.science](https://reproducible.science/)**
 
 The docs include a notebook that runs the published packages in your browser, with nothing to
 install.

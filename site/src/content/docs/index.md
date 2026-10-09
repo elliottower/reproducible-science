@@ -4,8 +4,8 @@ title: Overview
 
 <p class="venue-note">
   <span>Accepted at AI for Science @ NeurIPS 2026</span>
-  <a href="/reproducible-science/paper/reproducible_science.pdf">Paper</a>
-  <a href="/reproducible-science/slides/reproducible_science_slides.pdf">Slides</a>
+  <a href="/paper/reproducible_science.pdf">Paper</a>
+  <a href="/slides/reproducible_science_slides.pdf">Slides</a>
 </p>
 
 Every claim in a paper comes from somewhere.
@@ -26,19 +26,19 @@ pip install reproducible-science
 /plugin install reproducible-science@reproducible-science
 ```
 
-<img class="framed narrow" src="/reproducible-science/figures/fig-commands.png" alt="prereg, results and citations each feed repro verify" />
+<img class="framed narrow" src="/figures/fig-commands.png" alt="prereg, results and citations each feed repro verify" />
 
 Like `git status`, for research provenance. In Claude Code, the state of a project's records
 sits above the prompt, with a warning when something no longer matches.
 
-<img class="framed narrow" src="/reproducible-science/figures/status_number_mismatch.png" alt="Four status rows above the prompt and a warning that one number is mismatched" />
+<img class="framed narrow" src="/figures/status_number_mismatch.png" alt="Four status rows above the prompt and a warning that one number is mismatched" />
 
 | tool | what it does |
 |---|---|
-| [`prereg`](/reproducible-science/tools/prereg/) | freezes a plan before running, records what changed after |
-| [`results`](/reproducible-science/tools/results/) | seals inputs, records outputs, binds claims to runs |
-| [`citations`](/reproducible-science/tools/citations/) | checks that quotations resolve in the sources they cite |
-| [`repro`](/reproducible-science/tools/repro/) | verifies a paper's plans, numbers and quotations in one report |
+| [`prereg`](/tools/prereg/) | freezes a plan before running, records what changed after |
+| [`results`](/tools/results/) | seals inputs, records outputs, binds claims to runs |
+| [`citations`](/tools/citations/) | checks that quotations resolve in the sources they cite |
+| [`repro`](/tools/repro/) | verifies a paper's plans, numbers and quotations in one report |
 
 Each is an independent distribution with its own public API, so installing citation
 verification never drags in a preregistration tool. They live in one repository because a
