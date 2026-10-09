@@ -8,13 +8,13 @@ description: Citations — Reproducible Science
 [![pypi](https://img.shields.io/pypi/v/citations)](https://pypi.org/project/citations/)
 [![python](https://img.shields.io/pypi/pyversions/citations)](https://pypi.org/project/citations/)
 [![license](https://img.shields.io/pypi/l/citations)](https://github.com/elliottower/reproducible-science/blob/main/LICENSE)
-[![docs](https://img.shields.io/badge/docs-live-blue)](https://elliottower.github.io/reproducible-science/)
+[![docs](https://img.shields.io/badge/docs-live-blue)](https://reproducible.science/)
 
 **[Run it in your browser](#run-it)** — every command on this page, in a live notebook at the bottom. No install.
 
 Check that the passages you quote appear in the sources you cite.
 
-Part of [reproducible-science](https://github.com/elliottower/reproducible-science) alongside `repro`, `results` and `prereg` — see the [documentation](https://elliottower.github.io/reproducible-science/tools/citations/).
+Part of [reproducible-science](https://github.com/elliottower/reproducible-science) alongside `repro`, `results` and `prereg` — see the [documentation](https://reproducible.science/tools/citations/).
 
 ## Install
 

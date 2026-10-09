@@ -8,13 +8,13 @@ description: Prereg — Reproducible Science
 [![pypi](https://img.shields.io/pypi/v/prereg)](https://pypi.org/project/prereg/)
 [![python](https://img.shields.io/pypi/pyversions/prereg)](https://pypi.org/project/prereg/)
 [![license](https://img.shields.io/pypi/l/prereg)](https://github.com/elliottower/reproducible-science/blob/main/LICENSE)
-[![docs](https://img.shields.io/badge/docs-live-blue)](https://elliottower.github.io/reproducible-science/)
+[![docs](https://img.shields.io/badge/docs-live-blue)](https://reproducible.science/)
 
 **[Run it in your browser](#run-it)** — every command on this page, in a live notebook at the bottom. No install.
 
 Freeze a plan before you run it, and record what changed after.
 
-Part of [reproducible-science](https://github.com/elliottower/reproducible-science) alongside `repro`, `citations` and `results` — see the [documentation](https://elliottower.github.io/reproducible-science/tools/prereg/).
+Part of [reproducible-science](https://github.com/elliottower/reproducible-science) alongside `repro`, `citations` and `results` — see the [documentation](https://reproducible.science/tools/prereg/).
 
 ## Install
 
@@ -223,7 +223,7 @@ an amendment.
 - **Reason.**
 - **What had been seen**: an access level, and what had been run and read.
 
-Where a [results](https://elliottower.github.io/reproducible-science/tools/results/) ledger
+Where a [results](https://reproducible.science/tools/results/) ledger
 sits at or above the plan (`.results/ledger.jsonl`), the access level is filled from the
 ledger's floor, with the highest level it records and the number of runs recorded so far. The
 floor is the highest access level ever recorded there, mapped onto the four levels here:
