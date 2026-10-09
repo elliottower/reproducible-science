@@ -1,16 +1,19 @@
 """The commands that put an event in the ledger.
 
-`init`, `seal`, `access`, `run` and `claim` share a shape: find the governing `.results/`,
+`init`, `seal`, `access`, `run`, `claim` and `review` share a shape: find the governing `.results/`,
 build one event, append it, and report what was written. What separates them is the refusal
 each makes first -- a path that is not a file, an access level outside the four, a run id
-already in use, a confirmatory claim resting on a run recorded after the outcomes were seen.
+already in use, a confirmatory claim resting on a run recorded after the outcomes were seen, a
+review with a verdict outside the four.
 
 Each returns the process's exit code. `cli.py` unpacks the argparse namespace and calls in.
 """
 
 from __future__ import annotations
 
+import os
 import pathlib
+import re
 
 from provenance_core import sha256_of_tree
 
@@ -23,6 +26,8 @@ ACCESS_LEVELS = [
     "structure seen",
     "outcomes seen",
 ]
+
+VERDICTS = ["pass", "fail", "partial", "uncertain"]
 
 
 #: Written into `.results/` so the ledger is tracked without anyone editing the project's own
@@ -249,4 +254,78 @@ def claim(
         print("  were seen: confirmatory, exposure logged")
     elif retrospective:
         print(f"  recorded after outcomes were seen at {retrospective[:19]}; verify will report it")
+    return 0
+
+
+def session(model: str | None) -> dict[str, str]:
+    """Where the command ran and which model the caller names, for a review's record.
+
+    Read off the environment and the `--model` flag, and checked against nothing. Claude Code
+    exports its own version and session but not the model, so the model is whatever the caller
+    passes. A person who runs the command from inside a session is recorded the same way as a
+    model that does, which is why the reviewer is a separate, required field.
+    """
+    found: dict[str, str] = {}
+    if model:
+        found["model"] = model
+    if os.environ.get("CLAUDECODE") == "1":
+        found["harness"] = "Claude Code"
+        version = pathlib.PurePath(os.environ.get("CLAUDE_CODE_EXECPATH", "")).name
+        if re.fullmatch(r"\d+(\.\d+)+", version):
+            found["harness_version"] = version
+        if session_id := os.environ.get("CLAUDE_CODE_SESSION_ID"):
+            found["session_id"] = session_id
+    return found
+
+
+def review(
+    files: list[str],
+    scope: str,
+    procedure: str,
+    verdict: str,
+    reviewer: str,
+    model: str | None,
+    note: str | None,
+) -> int:
+    root = require_root()
+    lp = ledger_path(root)
+    if verdict not in VERDICTS:
+        print(f"verdict must be one of: {', '.join(VERDICTS)}")
+        return 1
+    # Named `subjects`, never `files`: `verify --files` reads `files` as seals, and a review of
+    # a file that later changes would then report the path as sealed twice.
+    subjects = []
+    for name in files:
+        p = pathlib.Path(name).resolve()
+        if p.is_dir():
+            digest = sha256_of_tree(p)[0]
+            subjects.append({"path": record_path(p, root), "sha256": digest, "kind": "tree"})
+            continue
+        if not p.is_file():
+            print(f"not a file: {name}")
+            return 1
+        digest = ledger.sha256_of_file(p)
+        subjects.append({"path": record_path(p, root), "sha256": digest, "kind": "file"})
+    ran_in = session(model)
+    ledger.append_event(
+        lp,
+        {
+            "event": "review",
+            "subjects": subjects,
+            "scope": scope,
+            "procedure": procedure,
+            "verdict": verdict,
+            "reviewer": reviewer,
+            "session": ran_in,
+            "note": note or "",
+        },
+    )
+    print(f"review ({verdict}) by {reviewer}: {scope[:72]}")
+    for subject in subjects:
+        print(f"  {subject['sha256'][:16]}…  {subject['path']}")
+    if ran_in:
+        print(f"  session: {', '.join(f'{k} {v}' for k, v in ran_in.items())}")
+    if "harness" in ran_in and "model" not in ran_in:
+        print("  ran inside Claude Code with no --model; pass it if a model did the review.")
+    print("self-reported and unsigned: the ledger records that this was said, and of which bytes.")
     return 0
