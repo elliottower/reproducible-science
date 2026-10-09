@@ -44,6 +44,43 @@ def in_history(ledger: pathlib.Path) -> str | None:
     return None
 
 
+def reviews(events: list[dict], base: pathlib.Path, check_files: bool) -> list[str]:
+    """One block per review, and with `check_files` whether each subject is still those bytes.
+
+    A review is of a digest. Where the file has changed since, the review says nothing about
+    what is there now, and printing the verdict without that would carry it forward. Reported
+    and never counted as drift: a reviewed file that then changes is the ordinary result of
+    acting on a review.
+    """
+    lines: list[str] = []
+    for e in events:
+        if e.get("event") != "review":
+            continue
+        ran_in = e.get("session") or {}
+        harness = " ".join(v for k in ("harness", "harness_version") if (v := ran_in.get(k)))
+        named = ", ".join(v for v in (ran_in.get("model"), harness) if v)
+        lines.append(
+            f"  {e['timestamp'][:19]}  {e.get('verdict', '?'):<10}  {e.get('reviewer', '?')}"
+            + (f"  [{named}]" if named else "")
+        )
+        lines.append(f"    scope: {e.get('scope', '')}")
+        for subject in e.get("subjects", []):
+            path, recorded = subject["path"], subject["sha256"]
+            p = base / path
+            if not check_files:
+                lines.append(f"    not checked  {path}")
+            elif not p.exists():
+                lines.append(f"    MISSING      {path}")
+            else:
+                now = sha256_of_tree(p)[0] if p.is_dir() else ledger.sha256_of_file(p)
+                if now == recorded:
+                    lines.append(f"    current      {path}")
+                else:
+                    lines.append(f"    STALE        {path}")
+                    lines.append(f"      reviewed {recorded[:16]}…, now {now[:16]}…")
+    return lines
+
+
 def coverage(manuscript_path: str, limit: int, strict: bool) -> int:
     root = require_root()
     events = ledger.read_ledger(ledger_path(root))
@@ -291,6 +328,14 @@ def verify(check_files: bool) -> int:
         print("\ndata access timeline:")
         for e in access_events:
             print(f"  {e['timestamp'][:19]}  {e['level']:<20}  {e.get('note', '')}")
+
+    if review_lines := reviews(events, root.parent, check_files):
+        print("\nreviews (self-reported, unsigned):")
+        for line in review_lines:
+            print(line)
+        stale = sum(1 for line in review_lines if line.lstrip().startswith(("STALE", "MISSING")))
+        if stale:
+            print(f"  {stale} reviewed file(s) are no longer the bytes that were reviewed.")
 
     claims = [e for e in events if e.get("event") == "claim"]
     unlinked = []
