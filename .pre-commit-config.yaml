@@ -174,30 +174,33 @@ repos:
         pass_filenames: false
         always_run: true
 
+      # pyrefly is in the `types` group and the three tools after it are in `audit`. A bare
+      # `uv run` installs neither, so without `--group` the hook fails to spawn, or runs
+      # whatever copy is on PATH.
       - id: types
         name: type checks
-        entry: uv run pyrefly check packages/repro/src packages/citations/src packages/results/src packages/prereg/src
+        entry: uv run --group types pyrefly check packages/repro/src packages/citations/src packages/results/src packages/prereg/src
         language: system
         pass_filenames: false
         stages: [pre-push]
 
       - id: import-linter
         name: package dependency direction
-        entry: uv run lint-imports
+        entry: uv run --group audit lint-imports
         language: system
         pass_filenames: false
         stages: [pre-push]
 
       - id: vulture
         name: dead code
-        entry: uv run vulture
+        entry: uv run --group audit vulture
         language: system
         pass_filenames: false
         stages: [pre-push]
 
       - id: deptry
         name: declared dependencies match imports
-        entry: uv run python scripts/check_deps.py
+        entry: uv run --group audit python scripts/check_deps.py
         language: system
         pass_filenames: false
         stages: [pre-push]
