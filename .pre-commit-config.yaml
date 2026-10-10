@@ -1,5 +1,6 @@
 # Three tiers. Commit hooks stay under about ten seconds; anything slower runs on push or in
-# CI, because a commit that takes three minutes is a commit people bypass.
+# CI, because a commit that takes three minutes is a commit people bypass. The test suite is
+# the slowest of all and runs in CI only.
 #
 #     make hooks        # or: prek install --hook-type pre-commit --hook-type pre-push
 #
@@ -156,13 +157,17 @@ repos:
         stages: [commit-msg]
 
       # ---- pre-push: slower, repository-wide ---------------------------------------------
+      # The tests do not run on push. CI runs them on every pull request, on two Python
+      # versions, and a push that starts the whole suite on the author's machine is a push
+      # people bypass. `make test` runs them here; so does
+      # `prek run --hook-stage manual pytest`.
       - id: pytest
         name: the whole workspace's tests
         entry: uv run pytest -q -x -n auto
         language: system
         pass_filenames: false
         types_or: [python, toml]
-        stages: [pre-push]
+        stages: [manual]
 
       - id: repro-verify
         name: this repository's own declared claims
