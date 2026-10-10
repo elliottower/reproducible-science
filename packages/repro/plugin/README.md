@@ -21,10 +21,19 @@ its report twice. Nothing breaks and every message is doubled.
 | `unbound_numbers.py` | a number enters a manuscript that no recorded claim names |
 | `unfrozen_plan_before_run.py` | an analysis is about to run under a plan that was never frozen |
 
-**Three skills**, so the model reaches for the right tool without being told.
+**Skills**, so the model reaches for the right tool without being told.
 
-**Three commands**, named alike so there is nothing to remember:
-`/prereg-check`, `/citations-check`, `/results-check`.
+| skill | what it is for |
+|---|---|
+| `prereg` | Freeze an experiment's plan against a commit and a content hash before running it, then record notes in a log beside it and changes in amendments. |
+| `prereg-style` | One author's opinionated style for writing a preregistration, none of it required by the tool. |
+| `osf-registration` | Register a frozen `prereg` plan on OSF. |
+| `citations` | Verify that quotations resolve in the sources they cite, and manage a library of verified quotations. |
+| `results` | Seal a run's inputs before computing, record outputs after, bind manuscript claims to specific runs, and verify the hash chain. |
+| `repro` | Verify that a manuscript's declared claims resolve in the artifacts they name. |
+
+**A command for each tool**, named alike so there is nothing to remember:
+`/prereg-check`, `/citations-check`, `/results-check`, `/repro-check`.
 
 ## What it expects
 

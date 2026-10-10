@@ -9,6 +9,7 @@ fails when one is malformed: a skill with no description is never chosen, and a 
 from __future__ import annotations
 
 import pathlib
+import re
 
 import pytest
 
@@ -45,6 +46,14 @@ def test_a_skill_answers_to_its_directory_and_says_when_to_use_it(package, name)
     found = frontmatter(skill(package, name))
     assert found["name"] == name
     assert found["description"].strip()
+
+
+@pytest.mark.parametrize(("package", "name"), SKILLS, ids=lambda value: value)
+def test_a_plugins_readme_names_every_skill_its_directory_holds(package, name):
+    readme = (ROOT / "packages" / package / "plugin" / "README.md").read_text()
+    assert re.search(rf"(?:`|skills/){re.escape(name)}(?:`|/)", readme), (
+        f"packages/{package}/plugin/README.md does not name the skill {name}"
+    )
 
 
 @pytest.mark.parametrize("name", PREREG)

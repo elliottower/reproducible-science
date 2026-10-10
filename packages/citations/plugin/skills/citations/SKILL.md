@@ -20,7 +20,7 @@ artifact; if it is not, check it before using it.
 ```bash
 citations verify                    # do the quotations resolve in their sources?
 citations verify --claims <dir>     # check a paper's claims/ directory
-citations verify --strict           # also exit 1 on unchecked/indeterminate, for CI
+citations verify --strict           # also exit 1 on unchecked, indeterminate or ambiguous, for CI
 citations audit                     # does the stored metadata match the registry record?
 citations audit --bib refs.bib      # check a BibTeX file directly
 citations resolve                   # backfill missing DOIs and arXiv ids
@@ -88,13 +88,18 @@ can be placed at the path the claims file names, and `verify` checks it against 
 
 ## Reading the output
 
-Three results, exhaustive:
+Five results, exhaustive:
 
 | | |
 |---|---|
 | `found` | the passage is in the source |
 | `not found` | the source was read and the passage is not in it |
+| `indeterminate` | under `--triangulate`, readers that read the source disagree about whether it is in it |
+| `ambiguous` | the passage occurs more than once and the record does not say which occurrence |
 | `unchecked` | the source could not be read — **no measurement was made** |
+
+Only `not found` fails a run. `indeterminate`, `ambiguous` and `unchecked` are neither a pass
+nor a failure, and `--strict` fails on all three.
 
 Warnings sit on their own axis. A passage can be `found` and still carry one: `truncated` (stops
 mid-word or mid-number and the source continues it), `short` (the source may qualify it in the next

@@ -1,0 +1,1 @@
+**The plugin's skill lists the five results `citations verify` reports.** It listed three, `found`, `not found` and `unchecked`, and left out `indeterminate` and `ambiguous`. It now says that only `not found` fails a run and that `--strict` fails on the other three unresolved results as well; the comment beside `citations verify --strict` named two of them.
