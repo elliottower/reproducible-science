@@ -81,7 +81,8 @@ the project's repository. A committed copy is published with the repository, and
 out later means rewriting every commit that held it.
 
 - Keep each in an ignored folder. `repro init` writes the rule for `sources/` into the
-  project's `.gitignore`.
+  project's `.gitignore`, except where git already tracks a file under `sources/`: the
+  project's own files are there, so it says so and another folder has to be ignored.
 - Pin each by sha256, with the address it came from. For a quoted source that is the `source:`
   block of its claims file, which takes `sha256:` and `url:`. For a file no claims file names,
   such as a dataset, keep a manifest of your own: one line per file, its sha256 and its

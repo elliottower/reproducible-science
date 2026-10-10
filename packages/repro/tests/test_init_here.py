@@ -243,3 +243,43 @@ def test_a_project_with_every_record_and_no_ignore_rules_reports_only_the_ignore
     assert states(out) == dict.fromkeys(RECORDS, "already present")
     assert rules(project / ".gitignore") == list(RULES)
     assert "only .gitignore changed" in out and "nothing was created" not in out
+
+
+def git(project: pathlib.Path, *args: str) -> str:
+    plain = {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
+    return subprocess.run(
+        ["git", *args], cwd=project, check=True, capture_output=True, text=True, env=plain
+    ).stdout
+
+
+def test_a_tracked_sources_folder_is_not_ignored_and_the_report_says_why(project, run_repro):
+    (project / "sources").mkdir()
+    (project / "sources" / "x.py").write_text("x = 1\n")
+    git(project, "add", "sources/x.py")
+
+    code, out = run_repro("init", cwd=project)
+    assert code == 0, out
+    assert rules(project / ".gitignore") == list(SIDECARS)
+    assert "left sources/ out of .gitignore: git tracks 1 file(s) there." in out
+    assert "Keep other people's files in a folder git ignores." in out
+
+    (project / "sources" / "new.py").write_text("y = 2\n")
+    assert "?? sources/new.py" in git(project, "status", "--porcelain", "--untracked-files=all")
+
+    before = (project / ".gitignore").read_bytes()
+    code, out = run_repro("init", cwd=project)
+    assert code == 0
+    assert (project / ".gitignore").read_bytes() == before
+    assert "left sources/ out of .gitignore" in out and "nothing was created" in out
+
+
+@pytest.mark.parametrize("held", [(), ("paper.pdf",)])
+def test_an_empty_or_untracked_sources_folder_gets_the_rule(project, run_repro, held):
+    (project / "sources").mkdir()
+    for name in held:
+        (project / "sources" / name).write_bytes(b"%PDF-1.7")
+
+    code, out = run_repro("init", cwd=project)
+    assert code == 0, out
+    assert rules(project / ".gitignore") == list(RULES)
+    assert "left sources/ out" not in out

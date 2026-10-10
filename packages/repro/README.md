@@ -108,7 +108,7 @@ Both forms of `init` then see that the project's `.gitignore` holds three rules,
 sources/
 ```
 
-A project with no `.gitignore` gets one holding those lines. An existing `.gitignore` keeps every line it has and gains only the rules it lacks, at its end; a rule written another way, such as `/sources/`, counts as present. A second run adds nothing and prints no `.gitignore` line. `sources/` is where the examples in the `citations` documentation keep the files a claims file pins, and no command creates it here.
+A project with no `.gitignore` gets one holding those lines. An existing `.gitignore` keeps every line it has and gains only the rules it lacks, at its end; a rule written another way, such as `/sources/`, counts as present. The `sources/` rule is left out where git already tracks a file under `sources/`, because the project keeps its own files there and the rule would hide each new one; the output says so, as `left sources/ out of .gitignore: git tracks 2 file(s) there.`, and the sidecar rules are still added. A second run adds nothing, and prints no `.gitignore` line unless that rule was left out. `sources/` is where the examples in the `citations` documentation keep the files a claims file pins, and no command creates it here.
 
 ## Write a manifest
 
