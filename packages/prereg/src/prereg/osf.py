@@ -502,19 +502,35 @@ def push_draft(plan_text: str) -> tuple[str, str]:
     return draft.id, draft.url
 
 
+#: The storage provider every OSF node has, and the one a draft's files are archived from.
+STORAGE = "osfstorage"
+
+
 def upload(node_id: str, name: str, content: bytes, token: str) -> str:
     """Put a file in the draft's node, and return the sha256 OSF computed for what it received.
 
     Files in the draft's node are archived into the registration when it is registered
-    (website/archiver/listeners.py, `after_register`). The upload link comes from the storage
-    provider rather than being built here, because it names the node's storage region
-    (api/nodes/serializers.py, `NodeStorageProviderSerializer.links.upload`). The upload itself
-    is WaterButler's: PUT the raw bytes with `kind=file&name=...`, answered with a file entity
-    whose `extra.hashes.sha256` is the digest of what arrived (developer.osf.io, "Upload New
-    File"; waterbutler/providers/osfstorage/metadata.py).
+    (website/archiver/listeners.py, `after_register`). The upload link comes from the node's
+    list of storage providers rather than being built here, because it names the node's storage
+    region (api/nodes/serializers.py, `NodeStorageProviderSerializer.links.upload`). The list is
+    read and not the provider's own address: for a draft node, `files/providers/osfstorage/`
+    answered 404 on 10 Oct 2026 while `files/` listed `osfstorage` with its upload link. The
+    upload itself is WaterButler's: PUT the raw bytes with `kind=file&name=...`, answered with
+    a file entity whose `extra.hashes.sha256` is the digest of what arrived (developer.osf.io,
+    "Upload New File"; waterbutler/providers/osfstorage/metadata.py).
     """
-    provider = _request("GET", f"/draft_nodes/{node_id}/files/providers/osfstorage/", token)
-    link = provider["data"]["links"]["upload"]
+    providers = _request("GET", f"/draft_nodes/{node_id}/files/", token)["data"]
+    links = [
+        p.get("links", {}).get("upload")
+        for p in providers
+        if p.get("attributes", {}).get("provider") == STORAGE
+    ]
+    if len(links) != 1 or not links[0]:
+        raise OSFError(
+            f"OSF lists no {STORAGE} upload link for draft node {node_id}, so {name} was not "
+            "uploaded."
+        )
+    link = links[0]
     url = (
         link
         + ("&" if "?" in link else "?")
@@ -524,7 +540,12 @@ def upload(node_id: str, name: str, content: bytes, token: str) -> str:
     req.add_header("Authorization", f"Bearer {token}")
     req.add_header("Content-Type", "application/octet-stream")
     resp = _send(req)
-    return resp["data"]["attributes"]["extra"]["hashes"]["sha256"]
+    received = resp.get("data", {}).get("attributes", {}).get("extra", {}).get("hashes", {})
+    if not received.get("sha256"):
+        raise OSFError(
+            f"OSF answered the upload of {name} without a sha256, so what it holds is unknown."
+        )
+    return received["sha256"]
 
 
 # Registration and view-only links are pinned to the current API version. At 2.0 OSF reads
