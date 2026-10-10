@@ -71,6 +71,10 @@ KNOWN_KINDS = frozenset(BIB_KIND.values())
 #: Skipped when a citation key takes the first substantive word of the title.
 STOPWORDS = frozenset({"a", "an", "and", "are", "for", "in", "is", "of", "on", "the", "to", "with"})
 
+#: Characters a citation key cannot hold. BibTeX ends a key at whitespace or a comma, and reads
+#: the rest as the start of a field or as a syntax error.
+KEY_ILLEGAL = re.compile(r"""[\s,{}()"'#%=~\\]""")
+
 #: Characters that are markup in a `.bib` value and ordinary text in a registry payload.
 LATEX_SPECIAL = {"&": r"\&", "%": r"\%", "$": r"\$", "#": r"\#", "_": r"\_"}
 
@@ -393,6 +397,9 @@ def suggest_key(work: Work) -> str:
     The convention the corpus already uses, `vaswani2017attention`. A key that collides with one
     the file has is not resolved here; it is reported like any other repeat, and `--key` names a
     different one.
+
+    A family name of more than one word is written as one: `Sanchez-Stern` folds to
+    `sanchez stern` and `de la Cruz` to `de la cruz`, and a key cannot hold the space.
     """
     if not work.authors:
         raise MetadataError(
@@ -400,7 +407,25 @@ def suggest_key(work: Work) -> str:
             "no author to build a citation key from; name the key with --key",
         )
     words = [w for w in name_fold(work.title).split() if w not in STOPWORDS and len(w) > 2]
-    return f"{surname(work.authors[0])}{work.year}{words[0] if words else ''}"
+    family = surname(work.authors[0]).replace(" ", "")
+    return f"{family}{work.year}{words[0] if words else ''}"
+
+
+def checked_key(key: str) -> str:
+    """`key`, or `CitationsError` naming the characters in it that a citation key cannot hold.
+
+    Checked before an entry is rendered under it. A key with a space in it parses as no entry at
+    all, so the write fails its read-back and is reported as a file that changed underneath it.
+    """
+    illegal = sorted(set(KEY_ILLEGAL.findall(key)))
+    if illegal or not key:
+        found = ", ".join(repr(c) for c in illegal) or "nothing at all"
+        raise CitationsError(
+            f"{key!r} is not a citation key BibTeX can read: it holds {found}.\n"
+            "    a key is letters, digits and punctuation such as `-`, `_`, `:` and `.`, with no"
+            " whitespace; name one with --key"
+        )
+    return key
 
 
 # --------------------------------------------------------------------------------------- add
@@ -572,7 +597,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if a.doi or a.arxiv:
         work = fetch(a.doi, a.arxiv)
-        key = a.key or suggest_key(work)
+        key = checked_key(a.key or suggest_key(work))
         # Shown before anything is written, and the entry below carries every author the
         # registry listed -- the count is here so a reader can tell at a glance that it does.
         print(f"  fetched from  {work.source}")
