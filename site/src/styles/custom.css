@@ -255,6 +255,30 @@ a.stat:hover { border-color: var(--sl-color-accent); }
   margin: 1rem auto;
 }
 .framed.narrow { max-width: 44rem; }
+/* A command in a table's first column stays on one line: `repro reproduce` is one name. */
+.sl-markdown-content td:first-child code { white-space: nowrap; }
+/* Tool names on the home page carry the colors the commands figure gives them. */
+a.tool code {
+  --c: var(--sl-color-gray-3);
+  color: var(--c);
+  font-weight: 700;
+  background: color-mix(in srgb, var(--c) 16%, transparent);
+}
+a.tool.plan code { --c: #9b59b6; }
+a.tool.run code { --c: #3498db; }
+a.tool.cite code { --c: #e67e22; }
+a.tool.check code { --c: #27ae60; }
+/* A diagram drawn on white: no outline, and a white card behind it so it reads in the dark theme. */
+.diagram {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 44rem;
+  margin: 1rem auto;
+  padding: 0.75rem;
+  background: #fff;
+  border-radius: 0.4rem;
+}
 .slide-pair {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr));
