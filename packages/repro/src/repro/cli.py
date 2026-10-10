@@ -27,6 +27,9 @@ import pathlib
 import subprocess
 from pathlib import Path
 
+from provenance_core import atomic_write
+from provenance_core.gitref import try_run
+
 from repro import __version__, audit, crosscheck
 from repro.delegate import BY_NAME, TOOLS
 from repro.delegate import check as delegate_check
@@ -71,6 +74,22 @@ repro verify                          # check the declared evidence
 ```
 """
 
+#: What a project's own `.gitignore` should hold, as a comment and the rules under it. `prereg
+#: new`, `results init` and `citations init` each write the sidecar rules into the directory they
+#: make; `init` puts them at the top, where a locked write beside `repro.yaml` or a claims file
+#: leaves its sidecar, and adds the folder that holds other people's files.
+SOURCES_DIR = "sources"
+IGNORE_RULES = (
+    (
+        "# Sidecars a locked or interrupted write leaves beside a file. They hold nothing.",
+        ("*.provenance-lock", "*.provenance-tmp"),
+    ),
+    (
+        "# Third-party sources: papers, full texts, datasets. Pinned by sha256, never committed.",
+        (f"{SOURCES_DIR}/",),
+    ),
+)
+
 SYMBOL = {
     Outcome.VERIFIED: "ok  ",
     Outcome.MISMATCH: "MISS",
@@ -91,6 +110,45 @@ def _run(cmd: list[str], cwd: Path) -> bool:
     except subprocess.CalledProcessError:
         print(f"  warning: {' '.join(cmd)} failed")
         return False
+
+
+def _ignore(root: Path) -> tuple[str | None, str | None]:
+    """Add the rules of `IGNORE_RULES` that `root/.gitignore` lacks: what was written, and
+    what was left out.
+
+    An existing file keeps every byte it has and gains the missing rules at its end, each under
+    its comment. The first value is None where nothing was written, so a second run changes
+    nothing. A rule counts as present however it is anchored: `/sources/` and `sources` both
+    cover the folder.
+
+    The folder rule is not added where git tracks a file under `sources/`: the project keeps
+    its own files there, and the rule would hide each new one from `git status`. The second
+    value says so. Outside a repository, and where git is absent, nothing is tracked.
+    """
+    path = root / ".gitignore"
+    existing = path.read_text(encoding="utf-8") if path.exists() else ""
+    held = {line.strip().strip("/") for line in existing.splitlines()}
+    folder = f"{SOURCES_DIR}/"
+    tracked = (try_run("ls-files", "--", SOURCES_DIR, cwd=root) or "").splitlines()
+    note = None
+    blocks, added = [], []
+    for comment, rules in IGNORE_RULES:
+        missing = [rule for rule in rules if rule.strip("/") not in held]
+        if folder in missing and tracked:
+            missing.remove(folder)
+            note = (
+                f"left {folder} out of .gitignore: git tracks {len(tracked)} file(s) there. "
+                "Keep other people's files in a folder git ignores."
+            )
+        if missing:
+            blocks.append("\n".join([comment, *missing]))
+            added += missing
+    if not added:
+        return None, note
+    head = existing + ("" if existing.endswith("\n") or not existing else "\n")
+    atomic_write(path, head + ("\n" if head else "") + "\n\n".join(blocks) + "\n")
+    verb = "added to" if existing else "wrote"
+    return f"{verb} .gitignore: {', '.join(added)}", note
 
 
 def _plan(root: Path) -> str | None:
@@ -169,8 +227,16 @@ def _init_here() -> int:
         else:
             print(f"  {label:<12} NOT CREATED")
 
+    # After the records: `prereg new .` writes a `.gitignore` holding the sidecar rules where
+    # the project has none, and this adds to that file only what it lacks.
+    ignored, left_out = _ignore(root)
+    if ignored or left_out:
+        print("\n" + "\n".join(f"  {line}" for line in (ignored, left_out) if line))
     if not created and all(present.values()):
-        print("\neverything is already set up; nothing was created.")
+        if ignored:
+            print("\nthe four records are already set up; only .gitignore changed.")
+        else:
+            print("\neverything is already set up; nothing was created.")
         return 0
     if created:
         print("\nnext:")
@@ -209,6 +275,9 @@ def cmd_init(args: argparse.Namespace) -> int:
         print(f"  wrote {claude_md}")
     if not (target / DEFAULT_NAME).exists():
         print(f"  wrote {write_starter(target, [], target).path}")
+    for line in _ignore(target):
+        if line:
+            print(f"  {line}")
     print("done.")
     return 0
 
