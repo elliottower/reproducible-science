@@ -595,6 +595,8 @@ to ask for, and the command is there for when you want the answer now.
 | skill | when Claude judges the situation calls for freezing a plan before a run, and recording what changed after |
 | command | when you type `/prereg-check` |
 
+The plugin also ships `prereg-style`, one author's style for writing a plan, none of it required by the tool, and `osf-registration`, for registering a frozen plan on OSF.
+
 **Why the hook.** This is the only exact check in the set. It recomputes a hash you recorded and compares two strings, so there is no threshold and no judgment. A plan rewritten around a result defeats registration entirely and no reader can detect it afterward, so the hook reports the difference and never edits the registration.
 
 It reports and never blocks, and stays silent in a project with no frozen plan. It reads the freeze record beside a file frozen whole, and the digest a plan frozen in place carries.

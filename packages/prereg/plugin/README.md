@@ -10,6 +10,8 @@ command is there for when you want the answer now.
 |---|---|
 | **hook** `hooks/frozen_plan_changed.py` | fires when a frozen plan or amendment no longer matches the digest it was frozen with |
 | **skill** `skills/prereg/SKILL.md` | fires when Claude judges the tool relevant |
+| **skill** `skills/prereg-style/SKILL.md` | fires when a plan is being drafted or revised |
+| **skill** `skills/osf-registration/SKILL.md` | fires when a plan is going on OSF |
 | **command** `/prereg-check` | fires when you type it |
 
 ## Why the hook
@@ -19,9 +21,15 @@ This is the only exact check in the set. It recomputes a hash the author recorde
 It reports and never blocks, exits zero on every failure path, and stays silent in a project
 with no frozen plan — nothing to check means nothing said.
 
-## What the skill changes
+## What the skills change
 
 Claude freezes a plan before running rather than after seeing the outcome, and records a note in the log beside the plan and a change in an amendment file instead of editing the frozen plan.
+
+| skill | what it is for |
+|---|---|
+| `prereg` | Freeze an experiment's plan against a commit and a content hash before running it, then record notes in a log beside it and changes in amendments. |
+| `prereg-style` | One author's opinionated style for writing a preregistration, none of it required by the tool. |
+| `osf-registration` | Register a frozen `prereg` plan on OSF. |
 
 ## Install
 

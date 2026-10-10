@@ -54,7 +54,7 @@ ledger, no claims directory and no frozen plan means nothing to check and nothin
 The commands are `/prereg-check`, `/citations-check`, `/results-check` and `/repro-check`,
 named alike so there is nothing to remember about which tool answers which question.
 
-Each skill shells out to the published package of the same name, so the CLI has to be
+Each tool's skill shells out to the published package of the same name, so the CLI has to be
 installed where Claude is running:
 
 ```bash
