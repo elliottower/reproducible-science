@@ -37,6 +37,55 @@ it keeps the copy defined first, skips the second, and writes a `.bbl` without i
 just added never reaches the reference list and the build fails somewhere else, in `Citation
 undefined` warnings that name nothing. `citations add` refuses the key and changes nothing.
 
+## Pinning a source and a quotation
+
+**Download the source and keep the file.** `verify` reads the file a claims file names under
+`local`. A title in a chat answer or a search result is not a source: no file is behind it, so
+nothing can be pinned and nothing checked.
+
+**Pin the quotation before writing the sentence that quotes it.**
+
+```bash
+citations pin claims/<source>.yaml --id <id> --quote "<passage>"
+```
+
+`pin` resolves the passage against the pinned file first and writes nothing where it does not
+resolve, so the sentence is written from a passage already found in the source.
+
+**Give the bibliography entry a DOI or an arXiv id.** A record is keyed by its entry's DOI,
+else its arXiv id, else a hash of the title and first author. An entry with neither becomes a
+title-hash record, and a second record for the same work once another bibliography cites that
+work with an identifier. `citations resolve` backfills a missing one. Write `url:` or `doi:`
+under `source:` in the claims file as well: `pin` says when neither is there, and without one
+`citations fetch` has nowhere to ask.
+
+**`unchecked` is not `found`.** It means nothing could read the source, so no measurement was
+made: the file is not at the path the claims file names, the extractor is not installed or was
+refused, or it produced no text. Where other quotations were read, an `unchecked` one does not
+fail the run without `--strict`, so a run can exit 0 over quotations nothing read. A draft with
+unchecked quotations has not been verified. Report the count and the reason printed beside
+each.
+
+**The usual reasons a quotation does not resolve**, few of them a misquotation:
+
+- The text layer dropped a character: a minus sign, an en dash, a subscript.
+- A hyphen falls at a line break, where folding removes it whether or not the word has one.
+- The reader is the wrong one: `pdftotext -layout` interleaves the columns of a two-column page.
+- A paraphrase is stored under `exact`. `statement` holds your sentence, `exact` the source's.
+- Text is left out of the middle. `exact` takes no ellipsis, and the result is `not found`.
+- The passage is from another version of the work. A pin names bytes, so a passage taken from
+  the journal article is looked for in the preprint where the preprint is the file pinned.
+- The file is not the source: a `.pdf` that is a login page or a challenge page fails under
+  every reader.
+
+Read the source in each case, and never shorten a quotation to the part that matches.
+
+**A source behind a challenge page or a paywall was not obtained.** Record it so: its address
+as `url:` under `source:` and no file at `local`, and its quotations read `unchecked`. Never
+save the page that was served as the source. The tell is that the file is HTML and not a PDF,
+which `file <path>` says in one line. Never work around the block. A copy obtained with access
+can be placed at the path the claims file names, and `verify` checks it against the pin.
+
 ## Reading the output
 
 Three results, exhaustive:

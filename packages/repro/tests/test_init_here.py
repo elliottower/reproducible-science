@@ -152,3 +152,94 @@ def test_a_directory_without_a_name_is_refused_and_nothing_is_created(project, r
     assert code == 2
     assert "needs a name" in out
     assert tree(project) == {}
+
+
+SIDECARS = ("*.provenance-lock", "*.provenance-tmp")
+RULES = (*SIDECARS, "sources/")
+
+
+def rules(path: pathlib.Path) -> list[str]:
+    """The lines of an ignore file that are rules, in order."""
+    return [line for line in path.read_text().splitlines() if line and not line.startswith("#")]
+
+
+def test_a_fresh_project_gets_each_ignore_rule_once_and_git_obeys_them(project, run_repro):
+    code, out = run_repro("init", cwd=project)
+    assert code == 0, out
+    assert rules(project / ".gitignore") == list(RULES)
+    assert "added to .gitignore: sources/" in out
+
+    (project / "sources").mkdir()
+    (project / "sources" / "paper.pdf").write_bytes(b"%PDF-1.7")
+    (project / "repro.yaml.provenance-lock").touch()
+    plain = {name: value for name, value in os.environ.items() if not name.startswith("GIT_")}
+    listed = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=all"],
+        cwd=project,
+        check=True,
+        capture_output=True,
+        text=True,
+        env=plain,
+    ).stdout
+    assert "PREREG.md" in listed
+    assert "sources/" not in listed and "provenance-lock" not in listed
+
+
+def test_a_named_project_gets_an_ignore_file_with_every_rule_under_a_comment(project, run_repro):
+    code, out = run_repro("init", "pilot", cwd=project)
+    assert code == 0, out
+    text = (project / "pilot" / ".gitignore").read_text()
+    assert rules(project / "pilot" / ".gitignore") == list(RULES)
+    assert sum(line.startswith("#") for line in text.splitlines()) == 2
+    assert f"wrote .gitignore: {', '.join(RULES)}" in out
+    assert not (project / ".gitignore").exists()
+
+    before = text
+    code, out = run_repro("init", "pilot", cwd=project)
+    assert code == 0, out
+    assert (project / "pilot" / ".gitignore").read_text() == before
+    assert ".gitignore" not in out
+
+
+def test_an_existing_ignore_file_keeps_its_content_and_gains_only_the_missing_rules(
+    project, run_repro
+):
+    mine = "# mine\n.venv/\n*.provenance-lock\n/sources/"
+    (project / ".gitignore").write_text(mine)
+
+    code, out = run_repro("init", cwd=project)
+    assert code == 0, out
+    text = (project / ".gitignore").read_text()
+    assert text.startswith(mine + "\n")
+    assert rules(project / ".gitignore") == [
+        ".venv/",
+        "*.provenance-lock",
+        "/sources/",
+        "*.provenance-tmp",
+    ]
+    assert "added to .gitignore: *.provenance-tmp" in out
+    assert "sources/" not in out.split(".gitignore:")[1].splitlines()[0]
+
+
+def test_a_second_run_adds_no_rule_and_says_nothing_of_the_ignore_file(project, run_repro):
+    assert run_repro("init", cwd=project)[0] == 0
+    before = (project / ".gitignore").read_bytes()
+
+    code, out = run_repro("init", cwd=project)
+    assert code == 0
+    assert (project / ".gitignore").read_bytes() == before
+    assert ".gitignore" not in out
+    assert "nothing was created" in out
+
+
+def test_a_project_with_every_record_and_no_ignore_rules_reports_only_the_ignore_file(
+    project, run_repro
+):
+    assert run_repro("init", cwd=project)[0] == 0
+    (project / ".gitignore").unlink()
+
+    code, out = run_repro("init", cwd=project)
+    assert code == 0
+    assert states(out) == dict.fromkeys(RECORDS, "already present")
+    assert rules(project / ".gitignore") == list(RULES)
+    assert "only .gitignore changed" in out and "nothing was created" not in out

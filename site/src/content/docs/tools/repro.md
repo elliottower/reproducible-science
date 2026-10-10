@@ -44,6 +44,7 @@ repro init my_experiment
 initializing /home/you/work/my_experiment
   wrote /home/you/work/my_experiment/CLAUDE.md
   wrote /home/you/work/my_experiment/repro.yaml
+  wrote .gitignore: *.provenance-lock, *.provenance-tmp, sources/
 done.
 ```
 
@@ -56,6 +57,7 @@ This creates:
 my_experiment/
     CLAUDE.md           tells Claude Code about the tools
     repro.yaml          the manifest, with nothing pinned yet and two example claims as comments
+    .gitignore          ignores the tools' lock and temp sidecars, and sources/
     my_experiment/
         PREREG.md       the plan (OSF headings)
         results/        run outputs
@@ -83,6 +85,8 @@ repro init
   citations    created          .citations/, claims/
   manifest     created          repro.yaml (artifacts pinned: 3, example claims: 2)
 
+  wrote .gitignore: *.provenance-lock, *.provenance-tmp, sources/
+
 next:
   ledger       `results seal <inputs>` before a run, `results run <outputs>` after it
   citations    `citations pin` writes a quotation into claims/ once it resolves
@@ -99,6 +103,19 @@ With no name, `init` works at the top of the project it is run in (the git root,
 | manifest | `repro.yaml` | `repro manifest init` with no file named |
 
 A library governs the project when `citations` finds one: `$CITATIONS_HOME`, a `.citations/` here or above, or the per-user library. Where one does, none is made here, because a project-local library would replace the shared one for this project. Inside a git repository `.citations/` is a directory the repository tracks. Outside one, `citations init` gives it a repository of its own.
+
+Both forms of `init` then see that the project's `.gitignore` holds three rules, and report what they added:
+
+```gitignore
+# Sidecars a locked or interrupted write leaves beside a file. They hold nothing.
+*.provenance-lock
+*.provenance-tmp
+
+# Third-party sources: papers, full texts, datasets. Pinned by sha256, never committed.
+sources/
+```
+
+A project with no `.gitignore` gets one holding those lines. An existing `.gitignore` keeps every line it has and gains only the rules it lacks, at its end; a rule written another way, such as `/sources/`, counts as present. A second run adds nothing and prints no `.gitignore` line. `sources/` is where the examples in the `citations` documentation keep the files a claims file pins, and no command creates it here.
 
 ## Write a manifest
 

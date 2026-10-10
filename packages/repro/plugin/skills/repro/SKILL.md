@@ -74,6 +74,29 @@ never does.
 A fourth field, validity, says whether the bytes read are the bytes pinned. Every number can
 agree and the run still fail, because they agreed with a document nobody pinned.
 
+## Other people's files
+
+Papers, full texts, abstracts, datasets and any other file somebody else wrote do not go into
+the project's repository. A committed copy is published with the repository, and taking it
+out later means rewriting every commit that held it.
+
+- Keep each in an ignored folder. `repro init` writes the rule for `sources/` into the
+  project's `.gitignore`.
+- Pin each by sha256, with the address it came from. For a quoted source that is the `source:`
+  block of its claims file, which takes `sha256:` and `url:`. For a file no claims file names,
+  such as a dataset, keep a manifest of your own: one line per file, its sha256 and its
+  address. `repro.yaml` pins a file by digest and records no address.
+- A reader then gets the same bytes with `citations fetch --claims <dir>`, which downloads
+  each source a claims file pins and keeps only the bytes that match the pin.
+- A freeze commit holds the plan, the code and the tests, and nothing else.
+
+`prereg freeze` already refuses one case. Where `citations` is installed, it asks which
+sources the project's quotations are pinned to are held by git, in the index or in the last
+commit, and with any held it exits 1 before anything is written. `--allow-tracked-sources`
+lets that freeze go ahead and names the sources after its report; it is for text whose licence
+allows redistribution. Where the question cannot be asked, as in a project with no claims
+directory, the freeze goes ahead.
+
 ## When to reach for this
 
 - Before submitting a draft, over the whole manifest
