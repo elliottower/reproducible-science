@@ -33,6 +33,10 @@ prereg freeze --osf --attach ../CONTEXT.md --subject "<OSF subject>" \
   --copyright-holder "<name>" --title-prefix "EXPT01: "   # files and Metadata page too
 prereg register --embargo YYYY-MM-DD --access <level>   # or --immediate; irreversible
 prereg register --all --immediate --access <level>      # every frozen plan below, one phrase
+PREREG_UNATTENDED_REGISTER=1 prereg register --immediate --access <level> --confirm <draft id>
+                       # one plan, nobody at the terminal; only after the person approves it
+prereg status          # read the registration's state from OSF; says how a pending one is approved
+prereg status --log --access <level>   # also log the approval, the first time it is seen
 prereg link --anonymous --access <level>     # view-only link for double-blind review
 prereg setup           # save OSF token to .env (once)
 prereg log <note> --access <level>   # one entry in PREREG.log, beside the plan
@@ -53,7 +57,35 @@ draft is private and deletable. Do this part yourself, for every plan in the stu
 answer it, and do not call the OSF API to get around it: give the person one command, usually
 `prereg register --all --immediate --access "nothing run"` from the directory above the plans,
 which registers every frozen plan after a single phrase. Before handing it over, check each draft
-has a subject; OSF refuses to register one without. The token is read as `OSF_TOKEN` or
+has a subject; OSF refuses to register one without.
+
+One path registers without the phrase, and only on the person's say-so. Show them the plan's
+title, its sha256 and the draft id from the log, and ask. If they approve registering that draft
+unattended, run `PREREG_UNATTENDED_REGISTER=1 prereg register --immediate --access <level>
+--confirm <draft id>` (or `--embargo DATE`) from the plan's directory. It takes one plan at a
+time and refuses `--all`; the id must be the draft's own; the log entry records `unattended,
+confirmed by --confirm`. Never set the variable or pass `--confirm` on your own initiative, and
+never for a draft other than the one approved: approval of one draft is not approval of the
+next. `link` has no unattended path.
+
+After registering, OSF holds the registration pending, and `register` prints how that ends.
+Relay it to the person; it is theirs to do:
+
+- To make it effective now, they open OSF's email "Pending Registration - Admin Notification"
+  ("Pending Embargo - Admin Notification" for an embargo) and click the first "Click here",
+  which approves. The second "Click here" cancels the registration and cannot be undone.
+- Otherwise OSF approves it by itself after 48 hours.
+
+A first registration cannot be approved through OSF's API, by `prereg` or by you: the approval
+token exists only in that email. Do not open, request or parse the emailed link, and do not
+call OSF to approve. `prereg status` reads the state (`pending approval`, `approved, public`,
+`approved, embargoed`, `withdrawn`) and exits 2 while pending; `prereg status --log --access
+<level>` also records the approval in the plan's log the first time it is seen, so no note has
+to be written by hand. An update to an approved registration is a schema response, which OSF's
+API does let an admin approve (`POST /v2/schema_responses/<id>/actions/`, trigger `approve`);
+`prereg` has no command for updates.
+
+The token is read as `OSF_TOKEN` or
 `OSF_PAT`. The phrase guards against accidents; it is not a security boundary, because
 anything that can read `OSF_TOKEN` can call OSF directly. The real gate is a token kept in a
 secret source that requires approval at read time, such as a 1Password-managed `.env` (a named

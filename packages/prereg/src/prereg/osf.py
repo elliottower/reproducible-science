@@ -624,6 +624,102 @@ def register(draft_id: str, embargo: datetime.date | None, token: str) -> Regist
     raise RuntimeError(f"OSF did not register draft {draft_id} after {ATTEMPTS} attempts: {error}")
 
 
+#: How long OSF leaves a registration pending before approving it itself
+#: (website/settings/defaults.py, `REGISTRATION_APPROVAL_TIME` and `EMBARGO_PENDING_TIME`).
+APPROVAL_WAIT = datetime.timedelta(days=2)
+
+
+def approval_help(embargo: bool, due: datetime.datetime | None = None) -> list[str]:
+    """How a pending registration becomes effective, for whoever has to make it so.
+
+    The first approval of a registration cannot be given through OSF's API: see
+    `registration_state`. Each admin's approval token exists only in the email OSF sends them
+    (notifications.yaml, `node_pending_registration_admin` and `node_pending_embargo_admin`, for
+    the subjects), whose first link approves and whose second cancels
+    (website/templates/pending_registration_admin.html.mako: "If any admin clicks their cancel
+    link, the submission will be canceled immediately ... This operation is irreversible.").
+    With neither, OSF approves it after `APPROVAL_WAIT`.
+    """
+    subject = f"Pending {'Embargo' if embargo else 'Registration'} - Admin Notification"
+    hours = int(APPROVAL_WAIT.total_seconds() // 3600)
+    after = f"no earlier than {due:%Y-%m-%d %H:%M} UTC" if due else f"after {hours} hours"
+    return [
+        "It is pending, and takes effect in one of two ways:",
+        f'  now    open the email from OSF, "{subject}", and click the first "Click here",',
+        '         which approves. The second "Click here" cancels the registration, and that',
+        "         cannot be undone. Every admin has to approve.",
+        f"  later  do nothing: OSF approves it by itself, {after}.",
+        "prereg cannot approve a first registration: OSF's API has no request for it.",
+    ]
+
+
+@dataclass(frozen=True)
+class RegistrationState:
+    """What OSF says about a registration now: one word for it, and what that word means."""
+
+    state: str
+    detail: str
+    #: Whether the registration stands: approved, and public or under its embargo.
+    effective: bool
+    #: For a pending one, how it stops being pending: the lines of `approval_help`.
+    help: tuple[str, ...] = ()
+
+
+def registration_state(registration_id: str, token: str) -> RegistrationState:
+    """Read a registration's state from OSF. Sends one GET and changes nothing.
+
+    The state is read off the registration's own attributes (api/registrations/serializers.py,
+    `RegistrationSerializer`): `pending_registration_approval` and `pending_embargo_approval`
+    are true until every admin has approved or OSF's waiting period has passed, `embargoed` is
+    true once an embargo is approved and until it ends, and `public` is true from then on.
+
+    There is nothing here that approves. OSF's API has no request by which an admin approves
+    their own pending registration: the two `pending_*` attributes are read-only, `public`
+    cannot be set while either is true (osf/models/node.py, `set_privacy`: "An unapproved
+    registration cannot be made public."), and POST /registrations/<id>/actions/ is for
+    moderators and answers 409 for OSF Registries, which has none (api/registrations/views.py,
+    `RegistrationActionList.perform_create`). An admin approves by the link OSF emailed them,
+    signed in on osf.io (osf/utils/tokens/handlers.py, `sanction_handler_flask`).
+
+    An update to an approved registration is a different object, a schema response, and that
+    one an admin can approve through the API: POST /schema_responses/<id>/actions/ with trigger
+    `approve` (api/actions/serializers.py, `SchemaResponseActionSerializer.create`). Nothing
+    here makes or approves updates.
+    """
+    path = f"/registrations/{registration_id}/"
+    a = _request("GET", path, token, version=API_VERSION)["data"]["attributes"]
+    if a.get("withdrawn"):
+        return RegistrationState("withdrawn", "the registration was withdrawn on OSF", False)
+    if a.get("pending_registration_approval") or a.get("pending_embargo_approval"):
+        embargo = bool(a.get("pending_embargo_approval"))
+        due = None
+        if a.get("date_registered"):
+            due = datetime.datetime.fromisoformat(a["date_registered"]) + APPROVAL_WAIT
+        kind = "embargoed registration" if embargo else "registration"
+        return RegistrationState(
+            "pending approval",
+            f"submitted, and the {kind} is not yet approved",
+            False,
+            tuple(approval_help(embargo, due)),
+        )
+    asked = ""
+    if a.get("pending_withdrawal"):
+        asked = "; a withdrawal was requested on OSF and awaits approval"
+    elif a.get("pending_embargo_termination_approval"):
+        asked = "; ending the embargo early was requested on OSF and awaits approval"
+    if a.get("embargoed"):
+        end = str(a.get("embargo_end_date") or "")[:10]
+        detail = f"approved, and private until {end or 'the embargo ends'}"
+        return RegistrationState("approved, embargoed", detail + asked, True)
+    if a.get("public"):
+        return RegistrationState("approved, public", "approved, and open to anyone" + asked, True)
+    return RegistrationState(
+        str(a.get("reviews_state") or "unknown"),
+        "neither pending, embargoed nor public; see its page on OSF",
+        False,
+    )
+
+
 @dataclass(frozen=True)
 class ViewOnlyLink:
     id: str
@@ -657,6 +753,7 @@ def view_only_link(
 DRAFT_EVENT = re.compile(r"\bosf draft (\S+) of plan ([0-9a-f]{16})\b")
 REGISTRATION_EVENT = re.compile(r"\bosf registration (\S+) from draft ([^\s,]+)")
 ATTACHED_EVENT = re.compile(r"\bosf attached (.+) sha256 ([0-9a-f]{64})\b")
+APPROVED_EVENT = re.compile(r"\bosf registration (\S+) observed (approved, \w+)")
 
 
 def draft_event(draft_id: str, digest: str) -> str:
@@ -667,7 +764,9 @@ def attached_event(name: str, sha256: str) -> str:
     return f"osf attached {name} sha256 {sha256}"
 
 
-def registration_event(reg: Registration, draft_id: str, embargo: datetime.date | None) -> str:
+def registration_event(
+    reg: Registration, draft_id: str, embargo: datetime.date | None, unattended: bool = False
+) -> str:
     choice = f"embargo until {embargo.isoformat()}" if embargo else "immediate"
     event = f"osf registration {reg.id} from draft {draft_id}, {choice}, {reg.url}"
     if reg.recovered_from:
@@ -675,7 +774,17 @@ def registration_event(reg: Registration, draft_id: str, embargo: datetime.date 
         # because the id was read from OSF's listing rather than from the answer to the request.
         status = re.search(r"\((\d{3})\)", reg.recovered_from)
         event += f", found after OSF error {status.group(1) if status else 'unreachable'}"
+    if unattended:
+        # Nobody typed the phrase: the draft was named by `--confirm` and the environment opted
+        # in. The log says so, so that a reader can tell the two kinds of registration apart.
+        event += ", unattended, confirmed by --confirm"
     return event
+
+
+def approved_event(registration_id: str, state: str) -> str:
+    # "observed": the entry's time is when `status --log` read the state, which is at or after
+    # the approval and not the approval itself.
+    return f"osf registration {registration_id} observed {state}"
 
 
 def link_event(link: ViewOnlyLink, registration_id: str, anonymous: bool) -> str:

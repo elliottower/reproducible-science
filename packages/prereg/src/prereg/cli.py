@@ -8,6 +8,7 @@
     prereg timestamp      complete each freeze's outside timestamp, and check it against Bitcoin
     prereg setup          save an OSF token to .env
     prereg register       submit the plan's OSF draft as a registration (--all: every plan)
+    prereg status         read the OSF registration's state, and how a pending one is approved
     prereg link           create a view-only link on the OSF registration
 
 One rule: a frozen file never changes by one byte. Anything later is a separate file: the log
@@ -38,7 +39,7 @@ from provenance_core import (
 from provenance_core.gitref import try_run
 
 from prereg import amendment, attributes, osf, pinned, record, sidelog, sources, staged, template
-from prereg.confirm import NotConfirmed, confirm
+from prereg.confirm import UNATTENDED_ENV, NotConfirmed, confirm, confirm_unattended
 from prereg.log import (
     ACCESS,
     ACCESS_HELP,
@@ -849,7 +850,14 @@ def cmd_register(a) -> int:
     plan is checked before anyone is asked, and one that cannot be registered stops the batch,
     except a plan already registered, which is skipped so a batch interrupted partway can be
     run again.
+
+    `--confirm <draft id>` with `PREREG_UNATTENDED_REGISTER=1` set stands in for the phrase, for
+    one plan: see `confirm.confirm_unattended`. What the terminal would have shown is printed.
     """
+    if a.confirm and a.all:
+        print("--confirm names one draft, so it registers one plan: it cannot go with --all.")
+        print("Nothing was sent.")
+        return 1
     path = None if a.all else find()
     if path is not None:
         paths = [path]
@@ -882,6 +890,10 @@ def cmd_register(a) -> int:
     if not todo:
         print("\nEvery plan here is already registered. Nothing was sent.")
         return 1
+    if a.confirm and len(todo) > 1:
+        print(f"--confirm names one draft, and {len(todo)} plans below here would be registered.")
+        print("Run it from the plan's own directory. Nothing was sent.")
+        return 1
 
     choice = (
         f"embargo until {embargo} — private until then, public on that date"
@@ -908,7 +920,12 @@ def cmd_register(a) -> int:
         ids = ",".join(r.draft_id for r in todo)
         phrase = f"register {len(todo)} plans {hashlib.sha256(ids.encode()).hexdigest()[:8]}"
     try:
-        confirm(lines, phrase)
+        if a.confirm:
+            confirm_unattended(a.confirm, todo[0].draft_id)
+            print("\n".join(lines))
+            print(f"\nUnattended: confirmed by --confirm {a.confirm} and {UNATTENDED_ENV}=1.\n")
+        else:
+            confirm(lines, phrase)
         # After the confirmation: reading a pipe-backed token asks the person to approve, and a
         # cancelled command should not have asked.
         token = osf.require_token()
@@ -923,12 +940,80 @@ def cmd_register(a) -> int:
             print(f"\n{r.path}: {e}")
             failed += 1
             continue
-        _append(r.path, osf.registration_event(reg, r.draft_id, embargo), a.access)
+        event = osf.registration_event(reg, r.draft_id, embargo, unattended=bool(a.confirm))
+        _append(r.path, event, a.access)
         note = "  (OSF reported an error; found registered)" if reg.recovered_from else ""
         print(f"registered  {reg.url}  {r.path}{note}")
-    print("OSF emails every admin; each is pending until they approve or 48 hours pass.")
+    if failed < len(todo):
+        print()
+        print("\n".join(osf.approval_help(embargo is not None)))
+        print("`prereg status` reads its state from OSF; `prereg status --log` records approval.")
     print("\nCommit the log. Changes to a registration are made on OSF, not here.")
     return 1 if failed else 0
+
+
+def status_one(path: pathlib.Path, reg_id: str, token: str, access: str | None) -> int:
+    """Report the state of one plan's registration: 0 in effect, 1 withdrawn, gone or not
+    read, 2 pending. With `access`, an approval not yet in the log is logged at that level."""
+    try:
+        found = osf.registration_state(reg_id, token)
+    except osf.OSFError as e:
+        print(f"{'NOT READ':<20} {path}  {reg_id}\n  - {e}")
+        if e.status in (404, 410):
+            # osf/models/sanctions.py, `RegistrationApproval._on_reject`.
+            print("  OSF deletes a registration that an admin cancels while it is pending.")
+        return 1
+    print(f"{found.state:<20} {path}  https://osf.io/{reg_id}/")
+    print(f"  {found.detail}.")
+    for line in found.help:
+        print(f"  {line}")
+    if not found.effective:
+        return 1 if found.state == "withdrawn" else 2
+    if access:
+        seen = osf.last(osf.APPROVED_EVENT, _entries(path))
+        if seen is None or seen.group(1) != reg_id:
+            _append(path, osf.approved_event(reg_id, found.state), access)
+            print("  logged. Commit the log.")
+        else:
+            print("  already in the log.")
+    return 0
+
+
+def cmd_status(a) -> int:
+    """Read from OSF the state of the governing plan's registration, or of every plan's below
+    when there is none, as `timestamp` does. Nothing is ever written to OSF, and nothing to the
+    log unless `--log` asks: then the first time a registration is seen approved is one entry."""
+    if a.log and not a.access:
+        print("--log writes a log entry, which says what had been seen. Pass --access:")
+        for level, why in ACCESS_MEANING.items():
+            print(f"  {level:<20} {why}")
+        return 1
+    path = find()
+    paths = [path] if path is not None else sorted(pathlib.Path.cwd().rglob(PREREG))
+    if not paths:
+        print(f"no {PREREG} here, above, or below.")
+        return 2
+    registered = []
+    codes = []
+    for p in paths:
+        reg = osf.last(osf.REGISTRATION_EVENT, _entries(p))
+        if reg is None:
+            print(f"{'not registered':<20} {p}")
+            print("  the log records no OSF registration. `prereg register` creates one.")
+            codes.append(2)
+        else:
+            registered.append((p, reg.group(1)))
+    if registered:
+        # Read once, and only where there is something to ask OSF about: a pipe-backed token
+        # asks the person to approve each read.
+        try:
+            token = osf.require_token()
+        except RuntimeError as e:
+            print(str(e))
+            return 1
+        access = a.access if a.log else None
+        codes += [status_one(p, reg_id, token, access) for p, reg_id in registered]
+    return 1 if 1 in codes else (2 if 2 in codes else 0)
 
 
 def cmd_link(a) -> int:
@@ -1252,7 +1337,24 @@ def _main(argv: list[str] | None = None) -> int:
     r.add_argument(
         "--all", action="store_true", help="every frozen plan below here, after one phrase"
     )
+    r.add_argument(
+        "--confirm",
+        metavar="DRAFT_ID",
+        help=f"register this one draft with nobody at the terminal; only with {UNATTENDED_ENV}=1 "
+        "set, and the log records that it was unattended",
+    )
     r.set_defaults(fn=cmd_register)
+
+    st = sub.add_parser(
+        "status", help="read the OSF registration's state, and how a pending one is approved"
+    )
+    st.add_argument(
+        "--log",
+        action="store_true",
+        help="when the registration is first seen approved, record that in the plan's log",
+    )
+    st.add_argument("--access", choices=ACCESS, help="with --log: what had been seen")
+    st.set_defaults(fn=cmd_status)
 
     lk = sub.add_parser("link", help="create a view-only link on the OSF registration")
     lk.add_argument("--anonymous", action="store_true", help="hide contributors, for blind review")
