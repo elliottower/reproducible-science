@@ -138,3 +138,40 @@ def rewrite_status(text: str, commit: str, digest: str, date: str) -> str:
     if note:
         block += f"\n{note}"
     return text[: m.start()] + block + text[m.end() :]
+
+
+# A frozen plan whose hypotheses never reach the manuscript passes every other check: the plan
+# is unedited, its hash matches, its log is intact. Nothing looked at whether the plan was
+# reported. A registered hypothesis went missing from a submission for three months and was
+# found by reading, not by a tool, which is the gap this closes.
+HYPOTHESIS = re.compile(
+    r"""^(?:\#{1,6}[ \t]*|\*\*)      # a heading, or the bold run-in the template uses
+        (H[A-Za-z_]*\d+[a-z]?)       # H1, H2b, HP3, H_tissue1
+        [.:]                         # the template writes `**H1.**`, headings write `## H1:`
+    """,
+    re.M | re.X,
+)
+
+# A plan for work a given manuscript will not report says so, once, in the plan. H7a-c of one
+# project carried "Intended use: Future study, NOT included in the current submission" and were
+# correctly absent; without a declared form, every such plan is a standing false alarm, and a
+# check that cries wolf is one nobody reads.
+NOT_REPORTED = re.compile(r"^\*\*Manuscript:\*\*[ \t]*none\b", re.M | re.I)
+
+
+def hypotheses_of(text: str) -> list[str]:
+    """Every hypothesis label the plan declares, in order, without repeats."""
+    seen: dict[str, None] = {}
+    for label in HYPOTHESIS.findall(plan_of(text)):
+        seen.setdefault(label, None)
+    return list(seen)
+
+
+def unreported(text: str, manuscript: str) -> list[str]:
+    """Labels this plan declares that the manuscript never mentions.
+
+    Word-boundary matching, so `H1` does not count itself as present because `H10` is there.
+    """
+    if NOT_REPORTED.search(text):
+        return []
+    return [h for h in hypotheses_of(text) if not re.search(rf"\b{re.escape(h)}\b", manuscript)]

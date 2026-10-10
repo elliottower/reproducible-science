@@ -43,6 +43,7 @@ from prereg.plan import (
     sha256_of,
     today,
     unhashed_content,
+    unreported,
 )
 
 
@@ -280,8 +281,11 @@ def cmd_log(a) -> int:
     return 0
 
 
-def check_one(path: pathlib.Path) -> int:
-    """0 unchanged, 1 changed, 2 not frozen."""
+def check_one(path: pathlib.Path, manuscript: str | None = None) -> int:
+    """0 unchanged, 1 changed, 2 not frozen.
+
+    With `manuscript`, a plan whose hypotheses the manuscript never mentions also fails.
+    """
     # Read under a shared lock: a freeze or a log entry in flight would otherwise be read
     # half-written and reported as `CHANGED` or `not frozen`, which is a tampering report against
     # a plan nobody touched.
@@ -314,6 +318,14 @@ def check_one(path: pathlib.Path) -> int:
         for problem in log:
             print(f"  - {problem}")
         return 1
+    if manuscript is not None:
+        missing = unreported(text, manuscript)
+        if missing:
+            print(f"UNREPORTED   {path}")
+            for label in missing:
+                print(f"  - {label} is registered here and appears nowhere in the manuscript")
+            print("  report it, log it as not run, or mark the plan `**Manuscript:** none`")
+            return 1
     print(f"unchanged    {path}")
     return 0
 
@@ -445,9 +457,17 @@ def cmd_check(a) -> int:
     root has to mean "check them all" — otherwise the command is unusable from the one place
     someone would naturally run it.
     """
+    manuscript = None
+    if getattr(a, "manuscript", None):
+        ms = pathlib.Path(a.manuscript)
+        if not ms.exists():
+            print(f"no manuscript at {ms}")
+            return 2
+        manuscript = ms.read_text()
+
     path = find()
     if path is not None:
-        rc = check_one(path)
+        rc = check_one(path, manuscript)
         if rc == 1:
             print(
                 "\nThe plan was edited after freezing. Restore it and record the change in the log."
@@ -461,7 +481,7 @@ def cmd_check(a) -> int:
         print(f"no {PREREG} here, above, or below.")
         return 2
 
-    codes = [check_one(f) for f in found]
+    codes = [check_one(f, manuscript) for f in found]
     changed = codes.count(1)
     print(
         f"\n{len(found)} plans: {codes.count(0)} unchanged, {changed} changed, "
@@ -526,6 +546,14 @@ def _main(argv: list[str] | None = None) -> int:
     s.set_defaults(fn=cmd_setup)
 
     c = sub.add_parser("check", help="has the plan changed since the freeze?")
+    # A plan can pass every other check and still never reach the paper. The flag is opt-in
+    # because the tool cannot guess which manuscript a plan belongs to, and guessing wrong
+    # reports a hypothesis as missing from a paper that was never meant to carry it.
+    c.add_argument(
+        "--manuscript",
+        metavar="FILE",
+        help="also fail a plan whose hypotheses this manuscript never mentions",
+    )
     c.set_defaults(fn=cmd_check)
 
     r = sub.add_parser("register", help="submit the plan's OSF draft as a registration")
