@@ -8,7 +8,7 @@
     prereg timestamp      complete each freeze's outside timestamp, and check it against Bitcoin
     prereg setup          save an OSF token to .env
     prereg register       submit the plan's OSF draft as a registration (--all: every plan)
-    prereg status         is the OSF registration pending, embargoed or public? Reads, never writes
+    prereg status         read the OSF registration's state, and how a pending one is approved
     prereg link           create a view-only link on the OSF registration
 
 One rule: a frozen file never changes by one byte. Anything later is a separate file: the log
@@ -944,33 +944,50 @@ def cmd_register(a) -> int:
         _append(r.path, event, a.access)
         note = "  (OSF reported an error; found registered)" if reg.recovered_from else ""
         print(f"registered  {reg.url}  {r.path}{note}")
-    print("OSF emails every admin; each is pending until they approve or 48 hours pass.")
-    print("`prereg status` reads which from OSF. Approving is done on OSF, not here.")
+    if failed < len(todo):
+        print()
+        print("\n".join(osf.approval_help(embargo is not None)))
+        print("`prereg status` reads its state from OSF; `prereg status --log` records approval.")
     print("\nCommit the log. Changes to a registration are made on OSF, not here.")
     return 1 if failed else 0
 
 
-def status_one(path: pathlib.Path, reg_id: str, token: str) -> int:
+def status_one(path: pathlib.Path, reg_id: str, token: str, access: str | None) -> int:
     """Report the state of one plan's registration: 0 in effect, 1 withdrawn, gone or not
-    read, 2 pending."""
+    read, 2 pending. With `access`, an approval not yet in the log is logged at that level."""
     try:
         found = osf.registration_state(reg_id, token)
     except osf.OSFError as e:
-        print(f"{'NOT READ':<16} {path}  {reg_id}\n  - {e}")
+        print(f"{'NOT READ':<20} {path}  {reg_id}\n  - {e}")
         if e.status in (404, 410):
             # osf/models/sanctions.py, `RegistrationApproval._on_reject`.
-            print("  OSF deletes a registration that an admin rejects while it is pending.")
+            print("  OSF deletes a registration that an admin cancels while it is pending.")
         return 1
-    print(f"{found.state:<16} {path}  https://osf.io/{reg_id}/")
+    print(f"{found.state:<20} {path}  https://osf.io/{reg_id}/")
     print(f"  {found.detail}.")
-    if found.effective:
-        return 0
-    return 1 if found.state == "withdrawn" else 2
+    for line in found.help:
+        print(f"  {line}")
+    if not found.effective:
+        return 1 if found.state == "withdrawn" else 2
+    if access:
+        seen = osf.last(osf.APPROVED_EVENT, _entries(path))
+        if seen is None or seen.group(1) != reg_id:
+            _append(path, osf.approved_event(reg_id, found.state), access)
+            print("  logged. Commit the log.")
+        else:
+            print("  already in the log.")
+    return 0
 
 
 def cmd_status(a) -> int:
     """Read from OSF the state of the governing plan's registration, or of every plan's below
-    when there is none, as `timestamp` does. Nothing is written, on OSF or in the log."""
+    when there is none, as `timestamp` does. Nothing is ever written to OSF, and nothing to the
+    log unless `--log` asks: then the first time a registration is seen approved is one entry."""
+    if a.log and not a.access:
+        print("--log writes a log entry, which says what had been seen. Pass --access:")
+        for level, why in ACCESS_MEANING.items():
+            print(f"  {level:<20} {why}")
+        return 1
     path = find()
     paths = [path] if path is not None else sorted(pathlib.Path.cwd().rglob(PREREG))
     if not paths:
@@ -981,7 +998,7 @@ def cmd_status(a) -> int:
     for p in paths:
         reg = osf.last(osf.REGISTRATION_EVENT, _entries(p))
         if reg is None:
-            print(f"{'not registered':<16} {p}")
+            print(f"{'not registered':<20} {p}")
             print("  the log records no OSF registration. `prereg register` creates one.")
             codes.append(2)
         else:
@@ -994,7 +1011,8 @@ def cmd_status(a) -> int:
         except RuntimeError as e:
             print(str(e))
             return 1
-        codes += [status_one(p, reg_id, token) for p, reg_id in registered]
+        access = a.access if a.log else None
+        codes += [status_one(p, reg_id, token, access) for p, reg_id in registered]
     return 1 if 1 in codes else (2 if 2 in codes else 0)
 
 
@@ -1328,8 +1346,14 @@ def _main(argv: list[str] | None = None) -> int:
     r.set_defaults(fn=cmd_register)
 
     st = sub.add_parser(
-        "status", help="read the OSF registration's state: pending, embargoed or public"
+        "status", help="read the OSF registration's state, and how a pending one is approved"
     )
+    st.add_argument(
+        "--log",
+        action="store_true",
+        help="when the registration is first seen approved, record that in the plan's log",
+    )
+    st.add_argument("--access", choices=ACCESS, help="with --log: what had been seen")
     st.set_defaults(fn=cmd_status)
 
     lk = sub.add_parser("link", help="create a view-only link on the OSF registration")

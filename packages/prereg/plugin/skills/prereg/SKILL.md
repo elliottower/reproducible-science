@@ -35,7 +35,8 @@ prereg register --embargo YYYY-MM-DD --access <level>   # or --immediate; irreve
 prereg register --all --immediate --access <level>      # every frozen plan below, one phrase
 PREREG_UNATTENDED_REGISTER=1 prereg register --immediate --access <level> --confirm <draft id>
                        # one plan, nobody at the terminal; only after the person approves it
-prereg status          # read from OSF: pending approval, embargoed or public? writes nothing
+prereg status          # read the registration's state from OSF; says how a pending one is approved
+prereg status --log --access <level>   # also log the approval, the first time it is seen
 prereg link --anonymous --access <level>     # view-only link for double-blind review
 prereg setup           # save OSF token to .env (once)
 prereg log <note> --access <level>   # one entry in PREREG.log, beside the plan
@@ -67,11 +68,22 @@ confirmed by --confirm`. Never set the variable or pass `--confirm` on your own 
 never for a draft other than the one approved: approval of one draft is not approval of the
 next. `link` has no unattended path.
 
-After registering, OSF holds the registration pending until every admin approves it from the
-email OSF sends, or until 48 hours pass. `prereg status` reads which, and exits 2 while it is
-pending. Nothing in `prereg` approves, and OSF's API has no request that does: do not follow
-the emailed link or call OSF to approve one. Tell the person it is pending and when OSF will
-approve it by itself.
+After registering, OSF holds the registration pending, and `register` prints how that ends.
+Relay it to the person; it is theirs to do:
+
+- To make it effective now, they open OSF's email "Pending Registration - Admin Notification"
+  ("Pending Embargo - Admin Notification" for an embargo) and click the first "Click here",
+  which approves. The second "Click here" cancels the registration and cannot be undone.
+- Otherwise OSF approves it by itself after 48 hours.
+
+A first registration cannot be approved through OSF's API, by `prereg` or by you: the approval
+token exists only in that email. Do not open, request or parse the emailed link, and do not
+call OSF to approve. `prereg status` reads the state (`pending approval`, `approved, public`,
+`approved, embargoed`, `withdrawn`) and exits 2 while pending; `prereg status --log --access
+<level>` also records the approval in the plan's log the first time it is seen, so no note has
+to be written by hand. An update to an approved registration is a schema response, which OSF's
+API does let an admin approve (`POST /v2/schema_responses/<id>/actions/`, trigger `approve`);
+`prereg` has no command for updates.
 
 The token is read as `OSF_TOKEN` or
 `OSF_PAT`. The phrase guards against accidents; it is not a security boundary, because

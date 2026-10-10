@@ -629,6 +629,30 @@ def register(draft_id: str, embargo: datetime.date | None, token: str) -> Regist
 APPROVAL_WAIT = datetime.timedelta(days=2)
 
 
+def approval_help(embargo: bool, due: datetime.datetime | None = None) -> list[str]:
+    """How a pending registration becomes effective, for whoever has to make it so.
+
+    The first approval of a registration cannot be given through OSF's API: see
+    `registration_state`. Each admin's approval token exists only in the email OSF sends them
+    (notifications.yaml, `node_pending_registration_admin` and `node_pending_embargo_admin`, for
+    the subjects), whose first link approves and whose second cancels
+    (website/templates/pending_registration_admin.html.mako: "If any admin clicks their cancel
+    link, the submission will be canceled immediately ... This operation is irreversible.").
+    With neither, OSF approves it after `APPROVAL_WAIT`.
+    """
+    subject = f"Pending {'Embargo' if embargo else 'Registration'} - Admin Notification"
+    hours = int(APPROVAL_WAIT.total_seconds() // 3600)
+    after = f"no earlier than {due:%Y-%m-%d %H:%M} UTC" if due else f"after {hours} hours"
+    return [
+        "It is pending, and takes effect in one of two ways:",
+        f'  now    open the email from OSF, "{subject}", and click the first "Click here",',
+        '         which approves. The second "Click here" cancels the registration, and that',
+        "         cannot be undone. Every admin has to approve.",
+        f"  later  do nothing: OSF approves it by itself, {after}.",
+        "prereg cannot approve a first registration: OSF's API has no request for it.",
+    ]
+
+
 @dataclass(frozen=True)
 class RegistrationState:
     """What OSF says about a registration now: one word for it, and what that word means."""
@@ -637,6 +661,8 @@ class RegistrationState:
     detail: str
     #: Whether the registration stands: approved, and public or under its embargo.
     effective: bool
+    #: For a pending one, how it stops being pending: the lines of `approval_help`.
+    help: tuple[str, ...] = ()
 
 
 def registration_state(registration_id: str, token: str) -> RegistrationState:
@@ -654,21 +680,28 @@ def registration_state(registration_id: str, token: str) -> RegistrationState:
     moderators and answers 409 for OSF Registries, which has none (api/registrations/views.py,
     `RegistrationActionList.perform_create`). An admin approves by the link OSF emailed them,
     signed in on osf.io (osf/utils/tokens/handlers.py, `sanction_handler_flask`).
+
+    An update to an approved registration is a different object, a schema response, and that
+    one an admin can approve through the API: POST /schema_responses/<id>/actions/ with trigger
+    `approve` (api/actions/serializers.py, `SchemaResponseActionSerializer.create`). Nothing
+    here makes or approves updates.
     """
     path = f"/registrations/{registration_id}/"
     a = _request("GET", path, token, version=API_VERSION)["data"]["attributes"]
     if a.get("withdrawn"):
         return RegistrationState("withdrawn", "the registration was withdrawn on OSF", False)
     if a.get("pending_registration_approval") or a.get("pending_embargo_approval"):
-        kind = "embargo" if a.get("pending_embargo_approval") else "registration"
-        detail = (
-            f"the {kind} takes effect when every admin approves it, from the email OSF sent or "
-            "on its page"
-        )
+        embargo = bool(a.get("pending_embargo_approval"))
+        due = None
         if a.get("date_registered"):
             due = datetime.datetime.fromisoformat(a["date_registered"]) + APPROVAL_WAIT
-            detail += f", or once OSF approves it itself, no earlier than {due:%Y-%m-%d %H:%M} UTC"
-        return RegistrationState("pending approval", detail + ". prereg cannot approve it", False)
+        kind = "embargoed registration" if embargo else "registration"
+        return RegistrationState(
+            "pending approval",
+            f"submitted, and the {kind} is not yet approved",
+            False,
+            tuple(approval_help(embargo, due)),
+        )
     asked = ""
     if a.get("pending_withdrawal"):
         asked = "; a withdrawal was requested on OSF and awaits approval"
@@ -677,9 +710,9 @@ def registration_state(registration_id: str, token: str) -> RegistrationState:
     if a.get("embargoed"):
         end = str(a.get("embargo_end_date") or "")[:10]
         detail = f"approved, and private until {end or 'the embargo ends'}"
-        return RegistrationState("embargoed", detail + asked, True)
+        return RegistrationState("approved, embargoed", detail + asked, True)
     if a.get("public"):
-        return RegistrationState("public", "approved, and open to anyone" + asked, True)
+        return RegistrationState("approved, public", "approved, and open to anyone" + asked, True)
     return RegistrationState(
         str(a.get("reviews_state") or "unknown"),
         "neither pending, embargoed nor public; see its page on OSF",
@@ -720,6 +753,7 @@ def view_only_link(
 DRAFT_EVENT = re.compile(r"\bosf draft (\S+) of plan ([0-9a-f]{16})\b")
 REGISTRATION_EVENT = re.compile(r"\bosf registration (\S+) from draft ([^\s,]+)")
 ATTACHED_EVENT = re.compile(r"\bosf attached (.+) sha256 ([0-9a-f]{64})\b")
+APPROVED_EVENT = re.compile(r"\bosf registration (\S+) observed (approved, \w+)")
 
 
 def draft_event(draft_id: str, digest: str) -> str:
@@ -745,6 +779,12 @@ def registration_event(
         # in. The log says so, so that a reader can tell the two kinds of registration apart.
         event += ", unattended, confirmed by --confirm"
     return event
+
+
+def approved_event(registration_id: str, state: str) -> str:
+    # "observed": the entry's time is when `status --log` read the state, which is at or after
+    # the approval and not the approval itself.
+    return f"osf registration {registration_id} observed {state}"
 
 
 def link_event(link: ViewOnlyLink, registration_id: str, anonymous: bool) -> str:

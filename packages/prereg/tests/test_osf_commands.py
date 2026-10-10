@@ -743,9 +743,11 @@ def test_status_reports_a_pending_registration_and_says_it_cannot_approve(
     assert rc == 2
     assert out.startswith("pending approval")
     assert "https://osf.io/reg01/" in out
-    assert "the registration takes effect when every admin approves it" in out
+    assert '"Pending Registration - Admin Notification"' in out
+    assert out.index("which approves") < out.index("cancels the registration")
+    assert "cannot be undone" in out
     assert "no earlier than 2026-10-12 17:16 UTC" in out, "48 hours after it was submitted"
-    assert "prereg cannot approve it" in out
+    assert "prereg cannot approve a first registration" in out
     [get] = fake_osf.calls_to("GET", r"/registrations/reg01/")
     assert "version=2.20" in get.url
 
@@ -755,7 +757,8 @@ def test_status_reports_a_pending_embargo_as_pending(study, tty, fake_osf, capsy
     _osf_holds(fake_osf, pending_registration_approval=False, pending_embargo_approval=True)
     rc, out = _status(study, fake_osf, capsys)
     assert rc == 2
-    assert out.startswith("pending approval") and "the embargo takes effect" in out
+    assert out.startswith("pending approval")
+    assert '"Pending Embargo - Admin Notification"' in out
 
 
 def test_status_reports_an_approved_embargo_and_its_end(study, tty, fake_osf, capsys):
@@ -769,7 +772,7 @@ def test_status_reports_an_approved_embargo_and_its_end(study, tty, fake_osf, ca
     )
     rc, out = _status(study, fake_osf, capsys)
     assert rc == 0
-    assert out.startswith("embargoed") and "private until 2030-01-01" in out
+    assert out.startswith("approved, embargoed") and "private until 2030-01-01" in out
 
 
 def test_status_reports_a_public_registration(study, tty, fake_osf, capsys):
@@ -777,7 +780,7 @@ def test_status_reports_a_public_registration(study, tty, fake_osf, capsys):
     _osf_holds(fake_osf, pending_registration_approval=False, public=True)
     rc, out = _status(study, fake_osf, capsys)
     assert rc == 0
-    assert out.startswith("public") and "pending" not in out
+    assert out.startswith("approved, public") and "pending" not in out
 
 
 def test_status_reports_a_withdrawn_registration(study, tty, fake_osf, capsys):
@@ -812,6 +815,58 @@ def test_status_needs_no_terminal(study, tty, monkeypatch, fake_osf, tmp_path, c
     assert _status(study, fake_osf, capsys)[0] == 0
 
 
+def test_status_log_records_an_approval_once_and_never_a_pending_one(study, tty, fake_osf, capsys):
+    _registered(study, tty)
+    _osf_holds(fake_osf)
+    entries = _entries(study)
+    logging = ["status", "--log", "--access", "no results seen"]
+    assert cli._main(logging) == 2
+    assert _entries(study) == entries, "pending is not an approval"
+
+    _osf_holds(
+        fake_osf, pending_registration_approval=False, embargoed=True, embargo_end_date="2030-01-01"
+    )
+    assert cli._main(logging) == 0
+    last = _entries(study)[-1]
+    assert "osf registration reg01 observed approved, embargoed" in last
+    assert "no results seen" in last
+    assert cli._main(logging) == 0
+    assert len(_entries(study)) == len(entries) + 1, "seen approved twice, logged once"
+    assert fake_osf.calls_to("POST", r"/registrations/reg01/") == []
+    assert [c.method for c in fake_osf.calls_to("GET", r"/registrations/reg01/\?")] == ["GET"] * 3
+    assert cli._main(["check"]) == 0
+    assert "already registered as reg01" in cli._registrable(study / "PREREG.md")
+    capsys.readouterr()
+
+
+def test_status_log_without_an_access_level_asks_osf_nothing(study, tty, fake_osf):
+    _registered(study, tty)
+    asked, entries = len(fake_osf.calls), _entries(study)
+    assert cli._main(["status", "--log"]) == 1
+    assert len(fake_osf.calls) == asked and _entries(study) == entries
+
+
+def test_register_says_how_the_registration_gets_approved(study, tty, fake_osf, capsys):
+    assert _freeze_and_push(study, tty) == 0
+    tty.types("register draft1")
+    capsys.readouterr()
+    assert cli._main(["register", "--embargo", "2030-01-01", "--access", "nothing run"]) == 0
+    out = capsys.readouterr().out
+    assert '"Pending Embargo - Admin Notification"' in out
+    assert out.index("which approves") < out.index("cancels the registration")
+    assert "by itself, after 48 hours" in out
+    assert "prereg cannot approve a first registration" in out
+    assert "`prereg status`" in out
+
+
+def test_a_registration_osf_refused_prints_no_approval_steps(study, tty, fake_osf, capsys):
+    assert _freeze_and_push(study, tty) == 0
+    fake_osf.on("POST", r"/registrations/\?", (400, {"errors": [{"detail": "no subject"}]}))
+    tty.types("register draft1")
+    assert cli._main(["register", "--immediate", "--access", "nothing run"]) == 1
+    assert "Admin Notification" not in capsys.readouterr().out
+
+
 def test_status_above_several_plans_reports_each(three_plans, tty, fake_osf, capsys):
     tty.types(_batch_phrase("draft2", "draft3", "draft1"))
     assert cli._main(["register", "--all", "--immediate", "--access", "nothing run"]) == 0
@@ -825,7 +880,7 @@ def test_status_above_several_plans_reports_each(three_plans, tty, fake_osf, cap
     capsys.readouterr()
     assert cli._main(["status"]) == 2, "one still pending, so not all in effect"
     out = capsys.readouterr().out
-    assert out.count("pending approval") == 2 and out.count("public ") == 1
+    assert out.count("pending approval") == 2 and out.count("approved, public") == 1
     assert len(fake_osf.calls_to("GET", r"/registrations/reg0\d/")) == 3
 
 

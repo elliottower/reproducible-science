@@ -44,7 +44,7 @@ log          V16_reliability_ceilings/PREREG.log  1 entry, chain intact
 | `prereg freeze --osf --attach PATH` | Also upload a file into the draft, so it is registered with the plan |
 | `prereg register --embargo DATE` / `--immediate` | Submit the draft as an OSF registration |
 | `prereg register ... --confirm DRAFT_ID` | The same with nobody at the terminal, where `PREREG_UNATTENDED_REGISTER=1` is set |
-| `prereg status` | Read from OSF whether the registration is pending, embargoed or public |
+| `prereg status [--log]` | Read the registration's state from OSF, and say how a pending one gets approved |
 | `prereg link [--anonymous]` | Create a view-only link on the registration |
 | `prereg log <note>` | Append an entry to `PREREG.log`, beside the plan |
 | `prereg amend [--parent FILE]` | Start `PREREG_AMENDMENT_N.md`, a change to the frozen plan |
@@ -432,32 +432,63 @@ is approved. OSF emails every admin, and the registration is approved after 48 h
 of them cancels it. By OSF's defaults an embargo ends at least two days and at most four years
 ahead. OSF also refuses a draft with no subject; add one on the draft's page first.
 
-`status` reads the registration's state from OSF and prints it. It sends one GET per
-registration and writes nothing, on OSF or in the log, so it needs no phrase:
+### Approval
+
+A registration is not in effect when `register` returns. OSF holds it pending, and `register`
+prints how that ends:
+
+```text
+It is pending, and takes effect in one of two ways:
+  now    open the email from OSF, "Pending Registration - Admin Notification", and click the first "Click here",
+         which approves. The second "Click here" cancels the registration, and that
+         cannot be undone. Every admin has to approve.
+  later  do nothing: OSF approves it by itself, after 48 hours.
+prereg cannot approve a first registration: OSF's API has no request for it.
+```
+
+For an embargoed registration the email's subject is "Pending Embargo - Admin Notification".
+A cancelled registration is deleted on OSF.
+
+`prereg` does not approve a first registration, and nothing reading this page should try to
+through the API. OSF has no request for it: the `pending_registration_approval` and
+`pending_embargo_approval` attributes are read-only, `public` cannot be set while either is
+true, and the registration's `actions` endpoint is for a moderated registry's moderators and
+refuses OSF Registries, which has none. The approval token exists only in the email. An update
+to a registration already approved is a different object on OSF, a schema response, and an
+admin can approve that one with `POST /v2/schema_responses/<id>/actions/` and the trigger
+`approve`; `prereg` neither makes nor approves updates.
+
+`status` reads the registration's state from OSF and prints it, with the same two ways out for
+one still pending. It sends one GET per registration and needs no phrase:
 
 ```text
 $ prereg status
-pending approval /work/study/PREREG.md  https://osf.io/x7k2p/
-  the registration takes effect when every admin approves it, from the email OSF sent or on its page, or once OSF approves it itself, no earlier than 2026-09-30 08:40 UTC. prereg cannot approve it.
+pending approval     /work/study/PREREG.md  https://osf.io/x7k2p/
+  submitted, and the registration is not yet approved.
+  It is pending, and takes effect in one of two ways:
+  ...
+  later  do nothing: OSF approves it by itself, no earlier than 2026-09-30 08:40 UTC.
+
+$ prereg status --log --access "no results seen"
+approved, public     /work/study/PREREG.md  https://osf.io/x7k2p/
+  approved, and open to anyone.
+  logged. Commit the log.
 ```
 
 | State | Meaning | Exit |
 |---|---|---|
 | `pending approval` | Submitted, and waiting for every admin to approve or for OSF's 48 hours | 2 |
-| `embargoed` | Approved, and private until the embargo's end date | 0 |
-| `public` | Approved, and open to anyone | 0 |
+| `approved, embargoed` | Approved, and private until the embargo's end date | 0 |
+| `approved, public` | Approved, and open to anyone | 0 |
 | `withdrawn` | Withdrawn on OSF | 1 |
 | `not registered` | The log records no registration | 2 |
 | `NOT READ` | OSF could not be read, or no longer holds the registration | 1 |
 
-Run from a directory no plan governs, it reports every plan below.
-
-`prereg` cannot approve a registration. OSF's API has no request by which an admin approves
-their own pending registration: the `pending_registration_approval` and
-`pending_embargo_approval` attributes are read-only, `public` cannot be set while either is
-true, and the registration's `actions` endpoint is for a moderated registry's moderators and
-refuses OSF Registries, which has none. An admin approves from the link in the email OSF sends,
-signed in on osf.io, or the registration takes effect when the 48 hours have passed.
+Without `--log`, `status` writes nothing. With it, the first time a registration is seen
+approved is recorded as one log entry, `osf registration x7k2p observed approved, public`; a
+pending one is not logged, and an approval already in the log is not logged again. The entry's
+time is when the state was read, which is at or after the approval. Run from a directory no
+plan governs, `status` reports every plan below.
 
 `link --anonymous` creates a view-only link that hides the contributors, for double-blind
 review; without `--anonymous` the link shows them. The URL is printed. The log records the
@@ -469,11 +500,12 @@ link's id, not its key, because the key opens the registration while it is embar
 2026-09-27T10:02:11+00:00  osf draft 64f1c2a9e4b0c1d2e3f4a5b6 of plan 35abc8ae2767bee4  nothing run
 2026-09-27T10:02:14+00:00  osf attached CONTEXT.md sha256 c8e26e6c8064b9cb…  nothing run
 2026-09-28T08:40:53+00:00  osf registration x7k2p from draft 64f1c2a9e4b0c1d2e3f4a5b6, embargo until 2027-06-01, https://osf.io/x7k2p/  nothing run
+2026-09-30T09:12:40+00:00  osf registration x7k2p observed approved, embargoed  nothing run
 2027-03-02T15:21:07+00:00  osf view-only link 65a0b1c2d3e4f5a6b7c8d9e0 on x7k2p, anonymous  results seen
 ```
 
-A registration made with `--confirm` ends `…, https://osf.io/x7k2p/, unattended, confirmed by
---confirm`, so the log shows which registrations nobody typed a phrase for.
+The `observed approved` entry is written by `prereg status --log`. A registration made with
+`--confirm` ends `…, https://osf.io/x7k2p/, unattended, confirmed by --confirm`, so the log shows which registrations nobody typed a phrase for.
 
 The attached file's sha256 is written in full; it is shortened here, and each entry's chain
 value is left off.
