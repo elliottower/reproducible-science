@@ -29,7 +29,7 @@ pip install reproducible-science
 /plugin install reproducible-science@reproducible-science
 ```
 
-<img class="framed narrow" src="/figures/fig-commands.png" alt="prereg, results and citations each feed repro verify" />
+<img class="diagram" src="/figures/fig-commands.png" alt="prereg, results and citations each feed repro verify, which leads on to repro reproduce" />
 
 In Claude Code, the state of a project's records
 sits above the prompt, with a warning when something no longer matches.
@@ -38,16 +38,17 @@ sits above the prompt, with a warning when something no longer matches.
 
 | tool | what it does |
 |---|---|
-| [`prereg`](/tools/prereg/) | freezes a plan before running, records what changed after |
-| [`results`](/tools/results/) | seals inputs, records outputs, binds claims to runs |
-| [`citations`](/tools/citations/) | checks that quotations resolve in the sources they cite |
-| [`repro`](/tools/repro/) | verifies a paper's plans, numbers and quotations in one report |
+| <a class="tool plan" href="/tools/prereg/"><code>prereg</code></a> | freezes a plan before running, records what changed after |
+| <a class="tool run" href="/tools/results/"><code>results</code></a> | seals inputs, records outputs, binds claims to runs |
+| <a class="tool cite" href="/tools/citations/"><code>citations</code></a> | checks that quotations resolve in the sources they cite |
+| <a class="tool check" href="/tools/repro/"><code>repro verify</code></a> | checks a paper's plans, numbers and quotations against their recorded files, in one report |
+| <a class="tool check" href="/tools/repro/"><code>repro reproduce</code></a> | reruns the declared commands and checks the same claims against the new outputs |
 
 Each is an independent distribution with its own public API, so installing citation
 verification never drags in a preregistration tool. They live in one repository because a
 change that crosses two of them should be one commit rather than a release sequence.
 
-## The problem
+## Motivation
 
 AI tooling makes it quick to generate hypotheses, run analyses and draft manuscripts.
 Verification and provenance have not kept pace:
@@ -65,7 +66,7 @@ Verification and provenance have not kept pace:
 As agents take over more of the research lifecycle, the artifacts they leave behind are worth
 only as much as the claims inside them can be verified.
 
-## The chain
+## Workflow
 
 A number in a manuscript names a claim. The claim names a run. The run names its outputs,
 hashed when they were recorded. The inputs were hashed before the run started.
@@ -76,6 +77,7 @@ results seal PREREG.md analysis.py     # hash the inputs
 results run output.json --run-id exp_001
 results claim "ICC = 0.42" --run-id exp_001 --location "Table 2"
 repro verify                           # check the whole chain
+repro reproduce                        # run it again, check the claims against new outputs
 ```
 
 ## Limitations
