@@ -50,6 +50,8 @@ log          V16_reliability_ceilings/PREREG.log  1 entry, chain intact
 | `prereg freeze --osf` | Freeze and push as a draft registration to OSF |
 | `prereg freeze --osf --attach PATH` | Also upload a file into the draft, so it is registered with the plan |
 | `prereg register --embargo DATE` / `--immediate` | Submit the draft as an OSF registration |
+| `prereg register ... --confirm DRAFT_ID` | The same with nobody at the terminal, where `PREREG_UNATTENDED_REGISTER=1` is set |
+| `prereg status` | Read from OSF whether the registration is pending, embargoed or public |
 | `prereg link [--anonymous]` | Create a view-only link on the registration |
 | `prereg log <note>` | Append an entry to `PREREG.log`, beside the plan |
 | `prereg amend [--parent FILE]` | Start `PREREG_AMENDMENT_N.md`, a change to the frozen plan |
@@ -386,13 +388,15 @@ prereg freeze --osf --attach ../CONTEXT.md \
   --title-prefix "EXPT01: "                                  # freeze, push the draft, fill its metadata
 prereg register --embargo 2027-06-01 --access "nothing run" # or --immediate
 prereg register --all --immediate --access "nothing run"     # every frozen plan below, one phrase
+prereg status                                                # pending, embargoed or public? reads only
 prereg link --anonymous --name "review" --access "results seen"
 ```
 
 `freeze --osf` needs no one at the terminal. A draft is private to its author and can be deleted
 on OSF, so pushing one, uploading its files and filling its Metadata page runs unattended; an
 agent can prepare every draft of a study. What cannot be undone -- `register` and `link` -- asks
-for a typed phrase.
+for a typed phrase, and `register` has one opt-in path past it, described under
+[Who must be present](#who-must-be-present).
 
 The flags fill OSF's Metadata page: `--subject` (repeatable, OSF's subject names in full;
 OSF refuses to register a draft with none, and the push warns when none is given), `--description`,
@@ -435,6 +439,33 @@ is approved. OSF emails every admin, and the registration is approved after 48 h
 of them cancels it. By OSF's defaults an embargo ends at least two days and at most four years
 ahead. OSF also refuses a draft with no subject; add one on the draft's page first.
 
+`status` reads the registration's state from OSF and prints it. It sends one GET per
+registration and writes nothing, on OSF or in the log, so it needs no phrase:
+
+```text
+$ prereg status
+pending approval /work/study/PREREG.md  https://osf.io/x7k2p/
+  the registration takes effect when every admin approves it, from the email OSF sent or on its page, or once OSF approves it itself, no earlier than 2026-09-30 08:40 UTC. prereg cannot approve it.
+```
+
+| State | Meaning | Exit |
+|---|---|---|
+| `pending approval` | Submitted, and waiting for every admin to approve or for OSF's 48 hours | 2 |
+| `embargoed` | Approved, and private until the embargo's end date | 0 |
+| `public` | Approved, and open to anyone | 0 |
+| `withdrawn` | Withdrawn on OSF | 1 |
+| `not registered` | The log records no registration | 2 |
+| `NOT READ` | OSF could not be read, or no longer holds the registration | 1 |
+
+Run from a directory no plan governs, it reports every plan below.
+
+`prereg` cannot approve a registration. OSF's API has no request by which an admin approves
+their own pending registration: the `pending_registration_approval` and
+`pending_embargo_approval` attributes are read-only, `public` cannot be set while either is
+true, and the registration's `actions` endpoint is for a moderated registry's moderators and
+refuses OSF Registries, which has none. An admin approves from the link in the email OSF sends,
+signed in on osf.io, or the registration takes effect when the 48 hours have passed.
+
 `link --anonymous` creates a view-only link that hides the contributors, for double-blind
 review; without `--anonymous` the link shows them. The URL is printed. The log records the
 link's id, not its key, because the key opens the registration while it is embargoed.
@@ -448,6 +479,9 @@ link's id, not its key, because the key opens the registration while it is embar
 2027-03-02T15:21:07+00:00  osf view-only link 65a0b1c2d3e4f5a6b7c8d9e0 on x7k2p, anonymous  results seen
 ```
 
+A registration made with `--confirm` ends `…, https://osf.io/x7k2p/, unattended, confirmed by
+--confirm`, so the log shows which registrations nobody typed a phrase for.
+
 The attached file's sha256 is written in full; it is shortened here, and each entry's chain
 value is left off.
 
@@ -460,8 +494,22 @@ what has been seen by the time it runs.
 Every write to OSF that cannot be undone — registering, creating a link — shows what it will
 send and asks for a phrase naming it: `register <draft>`, `register 5 plans <digest>`,
 `link <registration>`. Pushing a draft does not ask. The phrase is read from the terminal (`/dev/tty`), never stdin, so a
-piped answer does not count, and a process with no terminal is refused before any request. No
-flag or variable skips it.
+piped answer does not count, and a process with no terminal is refused before any request.
+
+One path registers with nobody at the terminal, and it takes two parts given together:
+
+```bash
+PREREG_UNATTENDED_REGISTER=1 prereg register --immediate --access "nothing run" --confirm 64f1c2a9e4b0c1d2e3f4a5b6
+```
+
+`--confirm` names the draft, and has to equal the id of the draft the plan's log recorded; the
+variable has to be exactly `1`. With the flag and no variable, or with another draft's id, the
+command refuses before the token is read or any request is made. It registers one plan: `--all`
+is refused with it, and so is a directory with several plans below. What the terminal would
+have shown is printed, and the log entry says `unattended, confirmed by --confirm`. Without
+`--confirm` the variable does nothing and the phrase is asked for as before. `link` has no such
+path. This is for an agent that has shown the person the plan, its sha256 and the draft id and
+been told to go ahead; the id in the flag is what was approved.
 
 This is a guard against accidents, not a security boundary. An agent that wants to write to
 OSF has to go out of its way, for instance by faking a terminal, and that is not
@@ -471,7 +519,8 @@ The barrier that holds is the token. Keep it in a secret source that asks for ap
 time it is read, such as a 1Password-managed `.env`, which is a named pipe: every OSF
 interaction then needs Touch ID or the account password first. `prereg` reads such a pipe
 directly, only when a request is about to be made and after the phrase is typed, and gives up
-after 60 seconds if nothing is delivered.
+after 60 seconds if nothing is delivered. That holds for an unattended registration too: the
+token is read after `--confirm` is checked, so the approval prompt still appears.
 
 ### The token
 
