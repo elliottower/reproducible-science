@@ -33,6 +33,9 @@ slow enough to make people bypass the hooks runs later.
 
 CI runs the same commands, so a green `make qa` locally means a green pull request.
 
+A push runs the type, import-direction, dead-code and dependency checks. It does not run the
+tests: CI runs them on every pull request, and `make test` runs them locally.
+
 ## What the unusual checks are for
 
 **`lint-imports`** enforces the one architectural rule the monorepo exists to keep — the three
