@@ -16,6 +16,11 @@ registration cannot be deleted, so `prereg register` asks for a typed phrase on 
 Everything before that step can be prepared unattended; do not answer the phrase, and do not
 call the OSF API to get around it.
 
+There is one opt-in. `prereg register --confirm <draft id>` with `PREREG_UNATTENDED_REGISTER=1`
+set registers one plan with nobody at the terminal, and the log says it was unattended. The
+variable guards against an accident, not against an agent that sets it, so use the pair only
+when the person has asked for that registration, of that draft, in so many words.
+
 ## Write the plan so it maps onto the form
 
 `prereg new <name>` scaffolds PREREG.md under the 27 question titles of OSF's Preregistration
@@ -118,7 +123,7 @@ form, verbatim and in order. Keep them that way.
    The four multiple-choice answers are the authors' own statements about what they have seen
    and what they intend, so ask the person to read them on the draft's page
    (`https://osf.io/registries/drafts/<draft id>/`) first. `register` writes the registration's
-   id and address to the log.
+   id and address to the log, and prints how the approval that follows works.
 
 6. **Approval.** A new registration is pending, not public. OSF emails every admin contributor
    and approves the registration by itself after 48 hours unless one of them cancels.
@@ -138,7 +143,9 @@ a moderated registry. So every admin contributor clicks the first link in their 
 nobody does and the registration becomes effective when the 48 hours pass. Never fetch either
 link yourself.
 
-Confirm with `GET /v2/registrations/<id>/` and read three attributes:
+`prereg status` reads the state from OSF and prints it, and `prereg status --log --access
+<level>` writes one log entry the first time it sees the registration approved. By hand,
+`GET /v2/registrations/<id>/` and read three attributes:
 
 | attribute | while pending | approved, public | approved, embargoed |
 |---|---|---|---|
@@ -146,7 +153,7 @@ Confirm with `GET /v2/registrations/<id>/` and read three attributes:
 | `public` | `false` | `true` | `false` |
 | `reviews_state` | `initial` | `accepted` | `embargo` |
 
-Then record it:
+Where `status --log` was not used, record it:
 
 ```bash
 prereg log "osf registration <id> approved, public" --access "nothing run"
@@ -184,7 +191,8 @@ note.
 
 ## What it will not do
 
-It does not register for you, approve for you, or change a registration. It also cannot make
+It does not approve for you or change a registration, and it registers for you only under the
+opt-in above. It also cannot make
 the multiple-choice answers true: they are statements by the authors, and OSF records whatever
 option was written.
 
