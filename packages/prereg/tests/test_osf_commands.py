@@ -25,6 +25,19 @@ DRAFT = {
     }
 }
 UPLOAD_LINK = "https://files.osf.io/v1/resources/node1/providers/osfstorage/"
+# What OSF answers for a draft node's storage providers: a list, one item per provider, each
+# carrying the link a new file is PUT to (api/nodes/serializers.py,
+# `NodeStorageProviderSerializer`). Read from draft node pxbsc on 10 Oct 2026.
+PROVIDERS = {
+    "data": [
+        {
+            "id": "node1:osfstorage",
+            "type": "files",
+            "attributes": {"kind": "folder", "name": "osfstorage", "provider": "osfstorage"},
+            "links": {"upload": UPLOAD_LINK, "new_folder": UPLOAD_LINK + "?kind=folder"},
+        }
+    ]
+}
 SUBJECTS = {
     "Artificial Intelligence and Robotics": "subjAI",
     "Science and Technology Studies": "subjSTS",
@@ -53,11 +66,7 @@ def study(tmp_path, monkeypatch, fake_osf):
     monkeypatch.chdir(tmp_path / "study")
 
     fake_osf.on("POST", r"/draft_registrations/$", DRAFT)
-    fake_osf.on(
-        "GET",
-        r"/draft_nodes/node1/files/providers/osfstorage/$",
-        {"data": {"links": {"upload": UPLOAD_LINK}}},
-    )
+    fake_osf.on("GET", r"/draft_nodes/node1/files/$", PROVIDERS)
     fake_osf.on(
         "PUT",
         r"^https://files\.osf\.io/v1/resources/node1/",
@@ -277,6 +286,40 @@ def test_an_upload_osf_hashes_differently_is_not_logged_as_attached(study, tty, 
     assert _freeze_and_push(study, tty) == 1
     assert not any("osf attached" in e for e in _entries(study))
     assert any("osf draft draft1" in e for e in _entries(study)), "the draft does exist"
+
+
+def test_the_upload_link_is_read_from_the_draft_nodes_provider_list(study, tty, fake_osf):
+    # `files/providers/osfstorage/` answers 404 for a draft node, so it is never asked.
+    fake_osf.on("GET", r"/files/providers/", (404, {"errors": [{"detail": "Not found."}]}))
+    assert _freeze_and_push(study, tty) == 0
+    assert fake_osf.calls_to("GET", r"/files/providers/") == []
+    assert len(fake_osf.calls_to("GET", r"/v2/draft_nodes/node1/files/$")) == len(
+        fake_osf.calls_to("PUT", r"files\.osf\.io")
+    )
+    put = fake_osf.calls_to("PUT", r"files\.osf\.io")[0]
+    assert put.url.startswith(UPLOAD_LINK + "?kind=file&name=")
+    assert any("osf attached" in e for e in _entries(study))
+
+
+@pytest.mark.parametrize(
+    "providers",
+    [
+        [],
+        [{"attributes": {"provider": "github"}, "links": {"upload": UPLOAD_LINK}}],
+        [{"attributes": {"provider": "osfstorage"}, "links": {}}],
+    ],
+)
+def test_a_draft_node_with_no_storage_upload_link_attaches_nothing(study, tty, fake_osf, providers):
+    fake_osf.on("GET", r"/draft_nodes/node1/files/$", {"data": providers})
+    assert _freeze_and_push(study, tty) == 1
+    assert fake_osf.calls_to("PUT", r"files\.osf\.io") == []
+    assert not any("osf attached" in e for e in _entries(study))
+
+
+def test_an_upload_osf_answers_without_a_hash_is_not_logged_as_attached(study, tty, fake_osf):
+    fake_osf.on("PUT", r"files\.osf\.io", {"data": {"attributes": {"extra": {}}}})
+    assert _freeze_and_push(study, tty) == 1
+    assert not any("osf attached" in e for e in _entries(study))
 
 
 def test_attach_without_osf_is_refused(study):
