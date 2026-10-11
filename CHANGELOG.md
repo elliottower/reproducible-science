@@ -1,3 +1,65 @@
+## 0.5.3 — 2026-10-11
+
+### citations
+
+#### Fixed
+
+- **The plugin's skill lists the five results `citations verify` reports.** It listed three, `found`, `not found` and `unchecked`, and left out `indeterminate` and `ambiguous`. It now says that only `not found` fails a run and that `--strict` fails on the other three unresolved results as well; the comment beside `citations verify --strict` named two of them.
+- **`citations add --doi` and `--arxiv` derive a key with no space in it for a family name of more than one word.** `Sanchez-Stern` gave `sanchez stern2019generating` and `de la Cruz` gave `de la cruz2019generating`, which BibTeX cannot read as a key; the entry failed its read-back, the file was restored, and the message blamed a change to the file between the check and the write. The derived key now writes the family name as one word, `sanchezstern2019generating`. A `--key` holding whitespace, a comma, a brace or another character a key cannot hold is refused before anything is written, with a message naming the characters.
+
+#### Changed
+
+- **[citations] The skill says to pin the passage behind a claim a manuscript paraphrases, not only one it quotes.** "Before writing any sentence that quotes a paper" was the only stated trigger, and it reads as a licence to skip the tool entirely: a manuscript that quotes no one can still make thirty claims about what thirty papers say, and each can be wrong in every way a misquotation can. That reading happened, twice in one session, on a paper with 31 references and no `claims/` directory, after a grep for quotation marks found only the author's own scare-quoted terms. `--says` and `--whose` already exist for exactly this, and thirty paper repositories in this project already pin passages their manuscripts never print. The skill now says when a pin is owed — a definition applied in your own setting, an identity attributed to someone, a dataset's own description your eligibility rule depends on, a method you say another paper used, a number quoted rather than computed — and names the reading that causes the trouble.
+
+#### Added
+
+- **The plugin's skill has a section on pinning a source and a quotation.** It says to download the source and keep the file, to pin a quotation with `citations pin` before writing the sentence that quotes it, and to give the bibliography entry a DOI or an arXiv id so its record is not keyed by a title hash. It says what `unchecked` means and that a draft with unchecked quotations has not been verified, lists the usual reasons a quotation does not resolve, and says what to record for a source behind a challenge page or a paywall.
+
+### prereg
+
+#### Fixed
+
+- **The plugin's README and the package README name `prereg-style` and `osf-registration`.** Both described one skill where the plugin ships three.
+- **`prereg freeze --osf --attach` uploads its files.** It asked OSF for the draft node's storage provider by the provider's own address, which OSF answers with 404 for a draft node, so the draft was created and logged and no file was attached. The upload link is now read from the draft node's list of storage providers. An upload OSF answers without a sha256 is an error and is not logged as attached.
+
+#### Changed
+
+- **The `prereg` plugin refuses an edit to a frozen plan or a frozen amendment.** A new `PreToolUse` hook, `frozen_file_before_edit.py`, denies an `Edit`, `Write` or `MultiEdit` to a file with a freeze record (`.prereg/<name>.json` beside it) or to a plan carrying a `**Plan sha256:**` line, and tells the model to record a note with `prereg log` or a change with `prereg amend`. An amendment still in draft and an unfrozen plan are edited as before. `frozen_plan_changed.py` still runs after an edit and reports a frozen file changed by another route, such as a shell command.
+
+#### Added
+
+- **The plugin ships two more skills, `osf-registration` and `prereg-style`.** `osf-registration` covers putting a frozen plan on OSF: writing the plan so it maps onto OSF's Preregistration form, a dry run with `osf.build_draft`, `prereg freeze --osf` with its metadata flags, checking the draft against the plan, the step a person has to take, and how to confirm and log the approval that follows. `prereg-style` is one author's opinionated style for writing a plan, and says so at the top: none of it is required by the tool. Both are in the `prereg` plugin and in the `reproducible-science` bundle.
+- **[prereg] `check --manuscript FILE` fails a frozen plan whose hypotheses the manuscript never mentions.** Every existing check asks whether a plan was altered; none asked whether it was reported. A plan can be frozen, unedited, hash-matching, its log intact, and carry a hypothesis that reaches no paper, and the tool stays silent. In one project a registered hypothesis and its committed script went unreported for three months in a manuscript whose stated contribution was registration discipline, and the gap was found by reading rather than by any check. Hypothesis labels are read from the plan above the log, in both the template's `**H1.**` form and the `## H1:` heading form, and are matched against the manuscript on word boundaries so `H10` does not report `H1` as present. A plan written for work the manuscript will not carry declares that once, with `**Manuscript:** none`, rather than standing as a permanent false alarm. The flag is opt-in because the tool cannot know which manuscript a plan belongs to.
+- **`prereg register --confirm <draft id>` registers one plan with nobody at the terminal, where `PREREG_UNATTENDED_REGISTER=1` is set.** The typed phrase is skipped only when both are given: the flag has to equal the id of the draft the plan's log recorded, and the variable has to be exactly `1`. The flag without the variable, or with another draft's id, is refused before the token is read or anything is sent. `--all` is refused with it, and so is a directory with several plans below. What the terminal would have shown is printed, and the log entry ends `unattended, confirmed by --confirm`. Without `--confirm` nothing changes: the phrase is asked for on the terminal, and the variable alone does nothing. `link` still needs the phrase.
+- **`prereg status` reads from OSF whether the plan's registration is pending approval, approved and public, approved and embargoed, or withdrawn, and `prereg register` now says how a pending one gets approved.** `status` sends one GET per registration and asks for no phrase. For a pending registration both commands print the two ways it ends: an admin opens OSF's email "Pending Registration - Admin Notification" ("Pending Embargo - Admin Notification" for an embargo) and clicks the first link, which approves, where the second cancels and cannot be undone; or OSF approves it by itself after 48 hours. `status --log --access LEVEL` records the approval in the plan's log the first time it is seen, as `osf registration <id> observed approved, public`. `status` exits 0 for a registration in effect, 2 for one pending or not yet made, and 1 for one withdrawn or not readable; run where no plan governs, it reports every plan below. `prereg` does not approve a first registration: OSF's API has no request for it.
+
+### results-cli
+
+#### Added
+
+- **`results annotate <file>... --kind <namespace:type> --ref <reference>` records that named files correspond to something outside the ledger.** The event holds each file's sha256, the target's kind and reference, and the status `linked, not checked`: the tool fetches nothing and compares nothing. `--kind` is any `namespace:type` in lowercase, such as `wandb:artifact`, `doi:dataset` or `osf:node`, and a malformed kind writes nothing. `--digest <algorithm:hex>` records the digest the outside system reports, and `--by`, `--note` and `--location` are optional; no session information is recorded. `results verify` lists every annotation, and with `--files` marks a file `STALE` where it is no longer the bytes the link was stated of and `MISSING` where it is gone; neither changes the exit code.
+- **`results review <file>...` records that someone examined named files, and what they found.** The event holds each file's sha256, a scope, a procedure, a verdict of `pass`, `fail`, `partial` or `uncertain`, and the reviewer; all four flags are required, and a verdict outside the four writes nothing. `--model` records the model the caller names, and inside Claude Code the harness, its version and the session identifier are read from the environment. `results verify` lists every review, and with `--files` marks a subject `STALE` where the file is no longer the bytes reviewed and `MISSING` where it is gone; neither changes the exit code. The record is self-reported and unsigned, and the readout says so.
+
+### reproducible-science
+
+#### Fixed
+
+- **The plugin READMEs list the skills each plugin ships.** The bundle's README said "Three skills" and "Three commands" where it ships a skill for each of the four tools, `prereg-style`, `osf-registration`, and four commands; it now names each skill with one line on what it is for, and states no count of them. The bundled `citations` skill listed three of the five results `citations verify` reports and described `--strict` as failing on a failure only; both are corrected.
+- **The status row counts a `MISSING` line as a changed sealed file only under `file hashes:`.** `results verify --files` prints the same word for a subject of a review or an annotation that is gone, four spaces deep, and the row counted each as `1 changed` and pinned `1 sealed file changed`.
+
+#### Changed
+
+- **The plugin refuses an edit to a frozen plan or a frozen amendment, as the mod does.** A new `PreToolUse` hook, `frozen_file_before_edit.py`, denies an `Edit`, `Write` or `MultiEdit` to a file with a freeze record (`.prereg/<name>.json` beside it) or to a plan carrying a `**Plan sha256:**` line, and tells the model to record a note with `prereg log` or a change with `prereg amend`. An amendment still in draft, an unfrozen plan and every other file are edited as before. It ships in the `reproducible-science` bundle and in the `prereg` plugin. `frozen_plan_changed.py` still runs after an edit and reports a frozen file changed by another route, such as a shell command. Every other hook still reports and never blocks, and the new hook exits 0 and allows the edit on any failure of its own.
+
+#### Added
+
+- **The plugin's `citations` and `repro` skills say how a source is pinned and where other people's files are kept.** The `citations` skill gains a section on pinning: download the source and keep the file, pin a quotation with `citations pin` before writing the sentence that quotes it, give the bibliography entry a DOI or an arXiv id so its record is not keyed by a title hash, read `unchecked` as no measurement, the usual reasons a quotation does not resolve, and what to record for a source behind a challenge page or a paywall. The `repro` skill gains a section on third-party files: each is kept in an ignored folder and pinned by sha256 with its address, and a freeze commit holds the plan, the code and the tests.
+- **`repro init` writes ignore rules for the lock and temp sidecars and for a `sources/` folder.** Both forms do it: with a name, in the new project's directory, and with none, at the top of the project it is run in. The rules are `*.provenance-lock`, `*.provenance-tmp` and `sources/`, each group under a one-line comment. A project with no `.gitignore` gets one; an existing `.gitignore` keeps every line and gains only the rules it lacks, and a rule anchored another way, such as `/sources/`, counts as present. The output names what was added, as `added to .gitignore: sources/`, and a second run adds nothing. Where git already tracks a file under `sources/`, the folder rule is not added, because it would hide each new file the project puts there; the sidecar rules still are, and the output says `left sources/ out of .gitignore: git tracks N file(s) there.`
+
+### provenance-core
+
+No significant changes.
+
 ## 0.5.2 — 2026-10-08
 
 ### citations

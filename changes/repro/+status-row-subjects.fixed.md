@@ -1,1 +1,0 @@
-**The status row counts a `MISSING` line as a changed sealed file only under `file hashes:`.** `results verify --files` prints the same word for a subject of a review or an annotation that is gone, four spaces deep, and the row counted each as `1 changed` and pinned `1 sealed file changed`.
