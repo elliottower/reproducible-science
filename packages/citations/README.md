@@ -5,9 +5,30 @@
 [![license](https://img.shields.io/pypi/l/citations)](https://github.com/elliottower/reproducible-science/blob/main/LICENSE)
 [![docs](https://img.shields.io/badge/docs-live-blue)](https://reproducible.science/)
 
-Check that the passages you quote appear in the sources you cite.
+Check that what a paper attributes to a source is really in it, quoted or not.
 
 Part of [reproducible-science](https://github.com/elliottower/reproducible-science) alongside `repro`, `results` and `prereg` — see the [documentation](https://reproducible.science/tools/citations/).
+
+## What it is for
+
+A paper makes two kinds of claim about the literature. It quotes a source, and it says what a
+source holds without quoting it. Both can be wrong in the same way: the words are not there.
+The second kind is far more common and nothing checks it, because the manuscript shows no
+quotation marks to check.
+
+That is the shape of a fabricated citation. A sentence reading "X equals Y (Author, year)",
+or "the authors recommend Z", is generated from what the source plausibly says rather than
+from what it does say — by a language model, or by a person working from memory three months
+after reading the paper. Both produce a reference that resolves, an author list that is right,
+a year that is right, and an attribution nobody can find in the text.
+
+`pin` closes it by storing the source's own words beside the reading taken from them. `--says`
+records your characterization, `--whose` owns it, and `verify` re-reads the pinned artifact and
+reports whether the words are still there. The manuscript never has to print the passage. What
+changes is that the attribution has an address.
+
+So the trigger for reaching for this is not a quotation mark. It is a sentence that rests on
+what someone else wrote.
 
 ## Install
 

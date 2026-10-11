@@ -117,4 +117,5 @@ artifacts pinned — not that the study replicates.
 ## Where this sits
 
 `prereg` freezes the plan, `results` records what each run consumed and produced, `citations`
-checks quotations against sources. This reads all of it back and reports what holds.
+checks quotations against sources — including the passages a manuscript paraphrases rather
+than prints, which are most of them. This reads all of it back and reports what holds.

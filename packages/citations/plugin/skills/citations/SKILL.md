@@ -267,9 +267,37 @@ deletion returns on the next run and the bibliography that caused it is untouche
 different papers. Set it in `enrichment.yaml`, keyed by slug, and `build` reports which
 divergences still have no answer.
 
+## Pin what you rely on, not only what you quote
+
+A sentence that paraphrases a source makes a claim about that source, and the claim can be
+wrong in every way a misquotation can be wrong. `pin` exists for both. `--says` records your
+characterization of a passage and `--whose` owns it, so the claims file holds the source's own
+words beside the reading you took from them, and `verify` checks that the words are really
+there. Your manuscript never has to reproduce the passage.
+
+The failure this closes is quiet. A reviewer asks where a cited paper says what you attribute
+to it, and the answer is a PDF nobody has opened since the sentence was written. Pinning makes
+the answer a file.
+
+So pin a passage whenever a sentence rests on one:
+
+- a definition or framework taken from a source and applied in your own setting
+- an identity or prior result you attribute to someone ("X equals Y (Author, year)")
+- a dataset's own description of what it contains, where your eligibility rule depends on it
+- a method you say another paper used, especially where you then depart from it
+- a number you quote from a paper rather than compute
+
+Thirty paper repositories in this project keep a `claims/` directory. The quotations in them
+are mostly passages the manuscripts never print: eight checklist items behind one sentence
+about what a checklist does not ask for, a definition behind a term used without quoting it.
+That is the normal case, not an edge case.
+
+The reading that causes trouble is "nothing is quoted here, so there is nothing to pin." A
+manuscript can quote no one and still make thirty claims about what thirty papers say.
+
 ## When to reach for this
 
-- Before writing any sentence that quotes a paper
+- Before writing any sentence that quotes a paper, or that rests on one
 - When adding a citation, to pin the artifact and its sha256
 - When asked whether a quotation is real
 - When a bibliography has entries with no DOI or arXiv id — `citations resolve`

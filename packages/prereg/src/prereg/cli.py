@@ -58,6 +58,7 @@ from prereg.plan import (
     sha256_of,
     today,
     unhashed_content,
+    unreported,
 )
 
 
@@ -760,15 +761,25 @@ def _check_sidelog(plan: pathlib.Path, digest: str) -> int:
     return 0
 
 
-def check_one(path: pathlib.Path) -> int:
+def check_one(path: pathlib.Path, manuscript: str | None = None) -> int:
     """A plan and what follows it, in order: the plan, its amendments by freeze time, its log.
 
     0 unchanged, 1 changed, 2 not frozen. Each file is checked under the rule it was frozen by:
     a file with a freeze record byte for byte, a plan frozen in place as it always was.
+
+    With `manuscript`, an unchanged plan whose hypotheses the manuscript never mentions also fails.
     """
     whole = record.read(path)
     parents = _frozen_here(path)
     codes = [_check_in_place(path) if whole is None else _check_whole(path, whole, parents)]
+    if manuscript is not None and codes[0] == 0:
+        missing = unreported(path.read_text(), manuscript)
+        if missing:
+            print(f"UNREPORTED   {path}")
+            for label in missing:
+                print(f"  - {label} is registered here and appears nowhere in the manuscript")
+            print("  report it, log it as not run, or mark the plan `**Manuscript:** none`")
+            codes.append(1)
     drafts = []
     frozen: list[tuple[record.Record, pathlib.Path]] = []
     for p in amendment.beside(path):
@@ -1099,13 +1110,20 @@ def cmd_check(a) -> int:
     """
     if a.staged:
         return _check_staged()
+    manuscript = None
+    if a.manuscript:
+        ms = pathlib.Path(a.manuscript)
+        if not ms.exists():
+            print(f"no manuscript at {ms}")
+            return 2
+        manuscript = ms.read_text()
     path = _governing()
     documents = pinned.check_below(pathlib.Path.cwd())
     below = [
         f for f in _plans_below(pathlib.Path.cwd()) if path is None or f.resolve() != path.resolve()
     ]
     if path is not None and not below:
-        rc = check_one(path)
+        rc = check_one(path, manuscript)
         if rc == 2 and frozen_digest(path) is None:
             print("\nNothing to check against yet. `prereg freeze` records the hash.")
         return _report_pinned(documents, rc)
@@ -1117,7 +1135,7 @@ def cmd_check(a) -> int:
             return 2
         return _report_pinned(documents, 0)
 
-    codes = [check_one(f) for f in found]
+    codes = [check_one(f, manuscript) for f in found]
     changed = codes.count(1)
     print(
         f"\n{len(found)} plans: {codes.count(0)} unchanged, {changed} changed, "
@@ -1319,6 +1337,14 @@ def _main(argv: list[str] | None = None) -> int:
         "--staged",
         action="store_true",
         help="for a pre-commit hook: fail if the git index holds a change to a frozen file",
+    )
+    # A plan can pass every other check and still never reach the paper. The flag is opt-in
+    # because the tool cannot guess which manuscript a plan belongs to, and guessing wrong
+    # reports a hypothesis as missing from a paper that was never meant to carry it.
+    c.add_argument(
+        "--manuscript",
+        metavar="FILE",
+        help="also fail a plan whose hypotheses this manuscript never mentions",
     )
     c.set_defaults(fn=cmd_check)
 
