@@ -1,9 +1,9 @@
 # repro
 
 A Claude Code mod for research sessions. The `reproducible-science` plugin's hooks speak when a
-number enters a manuscript unbound or a frozen plan changes, and they speak only in a project
-that already keeps a ledger or a plan. This closes the other half: it works in a project that
-keeps neither yet, and it can refuse.
+number enters a manuscript unbound or a frozen plan changes, refuse an edit to a frozen plan, and
+act only in a project that already keeps a ledger or a plan. This closes the other half: it works
+in a project that keeps neither yet.
 
 It is a plugin of function hooks. That API is early access and changes between Claude Code
 releases, so this ships beside the `reproducible-science` plugin and not inside it: a build

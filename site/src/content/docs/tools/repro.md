@@ -316,17 +316,20 @@ This repository is a Claude Code plugin marketplace. One plugin carries all four
 /plugin install reproducible-science@reproducible-science
 ```
 
-It installs a skill for each tool, `prereg-style` and `osf-registration` beside them, four commands and four hooks. The hooks are the part a CLI
+It installs a skill for each tool, `prereg-style` and `osf-registration` beside them, four commands and five hooks. The hooks are the part a CLI
 cannot do, because each fires at a moment rather than when you remember to run something:
 
 | hook | fires when |
 |---|---|
+| frozen file before edit | an edit targets a frozen plan or a frozen amendment; the edit is refused |
 | frozen plan changed | a preregistration no longer matches the digest it was frozen with |
 | unverified quotation | a passage enters a manuscript that no claim file pins to a source |
 | unbound number | a number enters a manuscript that no recorded claim names |
 
-Every hook reports and never blocks, and stays silent in a project that has not opted in: no
-ledger, no claims directory and no frozen plan means nothing to check and nothing said.
+An edit to a frozen plan or a frozen amendment is refused, with the instruction to record a note
+with `prereg log` or a change with `prereg amend`. Every other hook reports and never blocks. All
+of them stay silent in a project that has not opted in: no ledger, no claims directory and no
+frozen plan means nothing to check and nothing said.
 
 The commands are `/prereg-check`, `/citations-check`, `/results-check` and `/repro-check`, named alike so
 there is nothing to remember about which tool answers which question.

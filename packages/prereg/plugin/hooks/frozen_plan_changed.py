@@ -15,13 +15,16 @@ strings. It is also the check whose failure matters most: a preregistration exis
 plan being rewritten around the result, and an unrecorded edit to a frozen plan defeats it
 entirely, silently, and in a way no reader can detect afterward.
 
-The hook does not refuse the edit. Amending a registration is legitimate; amending it without
-saying so is not, and `prereg amend` and `prereg log` are how it is said.
+This hook reports and refuses nothing: it runs after the edit, when there is nothing left to
+refuse. An `Edit`, `Write` or `MultiEdit` to a frozen file is refused beforehand by
+`frozen_file_before_edit.py`, so what arrives here is a frozen file changed by another route, such
+as a shell command or an edit made outside the session. Amending a registration is legitimate;
+amending it without saying so is not, and `prereg amend` and `prereg log` are how it is said.
 
 Design constraints, in order:
 
 1. Never break the session. Every failure exits 0 in silence.
-2. Never block. A deviation is a thing to record, not a thing to prevent.
+2. Report, and leave the file alone. Restoring it or recording the change is the author's to do.
 3. Say nothing when there is nothing to say -- when the plan is unfrozen, unchanged, or not
    a preregistration at all.
 """
