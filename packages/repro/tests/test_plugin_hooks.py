@@ -448,9 +448,30 @@ def test_input_the_refusing_hook_cannot_read_allows_the_edit(stdin):
     assert (out.returncode, out.stdout) == (0, "")
 
 
-def test_a_freeze_record_that_cannot_be_read_allows_the_edit(tmp_path):
+@pytest.mark.parametrize("record", ["{ not json", "", "[]", '{"sha256": 7}', "{}"])
+def test_a_freeze_record_that_cannot_be_read_still_denies_the_edit(tmp_path, record):
     path = _frozen_whole(tmp_path, "PREREG.md", "# Plan\n")
-    (path.parent / ".prereg" / "PREREG.md.json").write_text("{ not json")
+    (path.parent / ".prereg" / "PREREG.md.json").write_text(record)
+    reason = _denial(run(REFUSED, {"tool_name": "Edit", "tool_input": {"file_path": str(path)}}))
+    assert f"{path} has a freeze record" in reason
+
+
+@pytest.mark.parametrize("name", ["protocol.rst", "PROTOCOL", "analysis.py", "not_yet_written.md"])
+def test_a_freeze_record_denies_the_edit_whatever_the_file_is_named(tmp_path, name):
+    path = _frozen_whole(tmp_path, name, "The plan.\n")
+    if name.startswith("not_yet"):
+        path.unlink()
+    reason = _denial(run(REFUSED, {"tool_name": "Write", "tool_input": {"file_path": str(path)}}))
+    assert f"{path} has a freeze record ({path.parent / '.prereg' / (name + '.json')})" in reason
+
+
+@pytest.mark.parametrize("name", ["notes.md", "prereg.md", "PREREG_OLD.md", "PREREG.txt"])
+def test_a_digest_line_in_a_file_not_named_as_the_plan_allows_the_edit(tmp_path, name):
+    directory = tmp_path / "experiment"
+    directory.mkdir()
+    path = directory / name
+    path.write_text(f"# Notes\n\n{FROZEN}\nQuoted from the plan.\n")
+    assert sorted(entry.name for entry in directory.iterdir()) == [name]
     out = run(REFUSED, {"tool_name": "Edit", "tool_input": {"file_path": str(path)}})
     assert (out.returncode, out.stdout) == (0, "")
 

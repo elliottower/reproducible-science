@@ -600,7 +600,7 @@ The plugin also ships `prereg-style`, one author's style for writing a plan, non
 
 **Why the hooks.** The second is the only exact check in the set. It recomputes a hash you recorded and compares two strings, so there is no threshold and no judgment. A plan rewritten around a result defeats registration entirely and no reader can detect it afterward, so the hook reports the difference and never edits the registration.
 
-The first hook refuses an edit to a frozen file before it happens, with the instruction to record a note with `prereg log` or a change with `prereg amend`; an amendment still in draft is edited freely. The second reports a frozen file changed by another route, such as a shell command, and blocks nothing. Both stay silent in a project with no frozen plan. Each reads the freeze record beside a file frozen whole, and the digest a plan frozen in place carries.
+The first hook refuses an edit to a frozen file before it happens, with the instruction to record a note with `prereg log` or a change with `prereg amend`; an amendment still in draft is edited freely. The second reports a frozen file changed by another route, such as a shell command, and blocks nothing. Both stay silent in a project with no frozen plan. The first refuses a file of any name that has a freeze record beside it, and a `PREREG.md` carrying the digest of a freeze in place. The second compares a file frozen whole with the digest in its freeze record, and a plan frozen in place with the digest it carries.
 
 ```bash
 /plugin marketplace add elliottower/reproducible-science
