@@ -9,6 +9,11 @@ frozen: the record existing is enough, whatever it holds. A file named `PREREG.m
 the pattern `frozen_plan_changed.py` reads it with. An amendment still in draft has neither and
 is edited freely, as is an unfrozen plan and every file that is not a preregistration.
 
+The decision is made from where the target is and not from where this process runs, as the mod
+makes it: a leading `~/` is the home directory, an absolute path is kept, and a relative path
+is read against the `cwd` of the hook's input, the session's working directory. A plan of any
+size is read. The two reasons are the mod's, word for word, and a test holds them equal.
+
 This is the one hook in the set that denies a tool call. A frozen file never changes by one
 byte, so there is no edit to it worth letting through and reporting afterward: a note goes in
 the log with `prereg log`, and a change to the plan goes in an amendment with `prereg amend`,
@@ -18,7 +23,7 @@ frozen file changed by a route this hook does not see.
 Design constraints, in order:
 
 1. Never break the session. Every failure exits 0 in silence, which allows the edit.
-2. Deny only what is frozen. A plan that cannot be opened and a payload that is not one both
+2. Deny only what is frozen. A plan that cannot be read and a payload that is not one both
    allow the edit; the check after it reports what this one missed. A freeze record that does
    not parse is still a freeze record, and the edit is refused.
 3. Say nothing when there is nothing to refuse.
@@ -33,13 +38,23 @@ import sys
 try:
     # One detector for both hooks. A script runs with its own directory first on the path, so
     # the sibling is importable wherever the plugin is installed.
-    from frozen_plan_changed import MAX_BYTES, RECORDED, RECORDS
+    from frozen_plan_changed import RECORDED, RECORDS
 except Exception:
     # Constraint 1.
     sys.exit(0)
 
 #: The one name a plan frozen in place has. Matched whole and by case, as the mod matches it.
 PLAN = "PREREG.md"
+
+
+def located(path_text: str, cwd: str) -> pathlib.Path:
+    """Where `path_text` is, read as the mod reads it: from the session's directory, not ours."""
+    if path_text.startswith("~/"):
+        return pathlib.Path.home() / path_text[2:]
+    path = pathlib.Path(path_text)
+    if path.is_absolute():
+        return path
+    return (pathlib.Path(cwd) if cwd else pathlib.Path.cwd()) / path
 
 
 def deny(reason: str) -> int:
@@ -65,7 +80,7 @@ def main() -> int:
     path_text = (payload.get("tool_input") or {}).get("file_path", "")
     if not path_text:
         return 0
-    path = pathlib.Path(path_text)
+    path = located(path_text, payload.get("cwd") or "")
 
     record = path.parent / RECORDS / f"{path.name}.json"
     if record.exists():
@@ -79,7 +94,7 @@ def main() -> int:
         return 0
 
     try:
-        if not path.is_file() or path.stat().st_size > MAX_BYTES:
+        if not path.is_file():
             return 0
         text = path.read_text(errors="replace")
     except OSError:

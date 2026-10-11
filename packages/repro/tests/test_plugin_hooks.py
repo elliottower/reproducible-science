@@ -17,7 +17,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import pathlib
+import re
 import subprocess
 import sys
 
@@ -474,6 +476,96 @@ def test_a_digest_line_in_a_file_not_named_as_the_plan_allows_the_edit(tmp_path,
     assert sorted(entry.name for entry in directory.iterdir()) == [name]
     out = run(REFUSED, {"tool_name": "Edit", "tool_input": {"file_path": str(path)}})
     assert (out.returncode, out.stdout) == (0, "")
+
+
+def test_a_plan_frozen_in_place_is_denied_whatever_its_size(tmp_path):
+    body = "# Plan\n\n" + "We will measure X.\n" * 150_000 + FROZEN
+    path = plan(tmp_path, body) / "PREREG.md"
+    assert path.stat().st_size > 2 * 1024 * 1024
+    reason = _denial(run(REFUSED, {"tool_name": "Edit", "tool_input": {"file_path": str(path)}}))
+    assert f"{path} is a frozen registration" in reason
+
+
+def _refused_from(tmp_path: pathlib.Path, payload: dict, **env: str) -> subprocess.CompletedProcess:
+    """The refusing hook run in a directory of its own, holding no plan and no record."""
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    return subprocess.run(
+        [sys.executable, str(HOOKS / REFUSED)],
+        input=json.dumps(payload),
+        capture_output=True,
+        text=True,
+        timeout=30,
+        cwd=elsewhere,
+        env={**os.environ, **env},
+    )
+
+
+@pytest.mark.parametrize("given", ["PREREG.md", "./PREREG.md"])
+def test_a_relative_path_is_read_against_the_cwd_of_the_session(tmp_path, given):
+    path = _frozen_whole(tmp_path, "PREREG.md", "# Plan\n")
+    payload = {"cwd": str(path.parent), "tool_input": {"file_path": given}}
+    reason = _denial(_refused_from(tmp_path, payload))
+    assert f"{path.parent / given} has a freeze record" in reason
+
+
+def test_a_relative_path_to_a_plan_frozen_in_place_is_read_against_the_cwd(tmp_path):
+    directory = plan(tmp_path, f"# Plan\n\n{FROZEN}\nWe will measure X.\n")
+    payload = {"cwd": str(tmp_path), "tool_input": {"file_path": "experiment/PREREG.md"}}
+    reason = _denial(_refused_from(tmp_path, payload))
+    assert f"{directory / 'PREREG.md'} is a frozen registration" in reason
+
+
+def test_a_relative_path_with_no_cwd_given_is_read_against_the_directory_of_the_hook(tmp_path):
+    _frozen_whole(tmp_path, "PREREG.md", "# Plan\n")
+    out = _refused_from(tmp_path, {"tool_input": {"file_path": "PREREG.md"}})
+    assert (out.returncode, out.stdout) == (0, "")
+
+
+def test_a_path_under_the_home_directory_is_expanded(tmp_path):
+    path = _frozen_whole(tmp_path, "PREREG.md", "# Plan\n")
+    payload = {
+        "cwd": str(tmp_path / "elsewhere"),
+        "tool_input": {"file_path": "~/experiment/PREREG.md"},
+    }
+    reason = _denial(_refused_from(tmp_path, payload, HOME=str(tmp_path)))
+    assert f"{path} has a freeze record ({path.parent / '.prereg' / 'PREREG.md.json'})" in reason
+
+
+def test_an_absolute_path_is_unchanged_by_the_cwd_of_the_session(tmp_path):
+    path = _frozen_whole(tmp_path, "PREREG.md", "# Plan\n")
+    payload = {"cwd": str(tmp_path / "elsewhere"), "tool_input": {"file_path": str(path)}}
+    reason = _denial(_refused_from(tmp_path, payload, HOME=str(tmp_path / "elsewhere")))
+    assert reason.startswith(f"{path} has a freeze record ({path.parent / '.prereg'}")
+
+
+def _reasons_of_the_mod() -> list[str]:
+    """Each refusal `register.ts` writes as backtick literals, with its `${...}` left as written."""
+    source = (ROOT / "packages" / "repro" / "mod" / "hooks" / "register.ts").read_text()
+    literal = r"`(?:\\.|[^`\\])*`"
+    return [
+        "".join(part[1:-1] for part in re.findall(literal, joined)).replace("\\`", "`")
+        for joined in re.findall(rf"deny:\s*((?:{literal}\s*\+?\s*)+),", source)
+    ]
+
+
+def test_the_plugin_and_the_mod_refuse_in_the_same_words(tmp_path):
+    whole = _frozen_whole(tmp_path, "PREREG_AMENDMENT_1.md", "# Amendment 1\n")
+    in_place = tmp_path / "in_place" / "PREREG.md"
+    in_place.parent.mkdir()
+    in_place.write_text(f"# Plan\n\n{FROZEN}")
+    record = whole.parent / ".prereg" / f"{whole.name}.json"
+
+    said = [
+        _denial(run(REFUSED, {"tool_input": {"file_path": str(path)}}))
+        for path in (whole, in_place)
+    ]
+    by_the_mod = _reasons_of_the_mod()
+    assert len(by_the_mod) == 2
+    assert said == [
+        by_the_mod[0].replace("${recordOf(path)}", str(record)).replace("${path}", str(whole)),
+        by_the_mod[1].replace("${path}", str(in_place)),
+    ]
 
 
 @pytest.mark.parametrize("hook", [CHANGED, REFUSED])
