@@ -53,37 +53,21 @@ QUESTIONS = [
     ("Context and additional information", ""),
 ]
 
+# No status line and no log: a frozen plan never changes, so the freeze is recorded beside it in
+# `.prereg/` and the log is kept in `PREREG.log`. A line saying "not frozen" would stay in the
+# file for good.
 HEADER = """\
 # {title}
-
-**Status:** DRAFT — not frozen.
 
 Sections use the [OSF Preregistration](https://osf.io/prereg/) question titles verbatim, so
 this maps onto a registration without being rewritten. A question that does not apply is
 answered **N/A** with the reason, never deleted.
 """
 
-LOG = """\
 
----
-
-## Log
-
-Append only. Never edit above the line.
-
-The last column is what distinguishes an amendment from a deviation, so you do not have to
-decide which word to use: `nothing run`, `no results seen`, `results not opened`, `results seen`.
-
-```
-{date}  created                              nothing run
-```
-"""
-
-
-def render(title: str, date: str) -> str:
+def render(title: str) -> str:
     parts = [HEADER.format(title=title)]
     for q, hint in QUESTIONS:
         parts.append(f"\n## {q}\n")
         parts.append(f"_{hint}_\n" if hint else "N/A — \n")
-    parts.append(LOG.format(date=date))
     return "".join(parts)

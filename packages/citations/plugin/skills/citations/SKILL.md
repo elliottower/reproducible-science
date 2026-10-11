@@ -20,13 +20,15 @@ artifact; if it is not, check it before using it.
 ```bash
 citations verify                    # do the quotations resolve in their sources?
 citations verify --claims <dir>     # check a paper's claims/ directory
-citations verify --strict           # also exit 1 on unchecked/indeterminate, for CI
+citations verify --strict           # also exit 1 on unchecked, indeterminate or ambiguous, for CI
 citations audit                     # does the stored metadata match the registry record?
 citations audit --bib refs.bib      # check a BibTeX file directly
 citations resolve                   # backfill missing DOIs and arXiv ids
 citations init                      # create a library here
 citations lint                      # BibTeX correctness
 citations lint --bib refs.bib       # keys the bibliography defines twice
+citations lint --claims <dir>       # pinned sources that git tracks
+citations fetch --claims <dir>      # download the pinned sources, keeping only matching bytes
 citations add refs.bib --doi <doi>  # add an entry, refusing a key it already has
 ```
 
@@ -35,15 +37,69 @@ it keeps the copy defined first, skips the second, and writes a `.bbl` without i
 just added never reaches the reference list and the build fails somewhere else, in `Citation
 undefined` warnings that name nothing. `citations add` refuses the key and changes nothing.
 
+## Pinning a source and a quotation
+
+**Download the source and keep the file.** `verify` reads the file a claims file names under
+`local`. A title in a chat answer or a search result is not a source: no file is behind it, so
+nothing can be pinned and nothing checked.
+
+**Pin the quotation before writing the sentence that quotes it.**
+
+```bash
+citations pin claims/<source>.yaml --id <id> --quote "<passage>"
+```
+
+`pin` resolves the passage against the pinned file first and writes nothing where it does not
+resolve, so the sentence is written from a passage already found in the source.
+
+**Give the bibliography entry a DOI or an arXiv id.** A record is keyed by its entry's DOI,
+else its arXiv id, else a hash of the title and first author. An entry with neither becomes a
+title-hash record, and a second record for the same work once another bibliography cites that
+work with an identifier. `citations resolve` backfills a missing one. Write `url:` or `doi:`
+under `source:` in the claims file as well: `pin` says when neither is there, and without one
+`citations fetch` has nowhere to ask.
+
+**`unchecked` is not `found`.** It means nothing could read the source, so no measurement was
+made: the file is not at the path the claims file names, the extractor is not installed or was
+refused, or it produced no text. Where other quotations were read, an `unchecked` one does not
+fail the run without `--strict`, so a run can exit 0 over quotations nothing read. A draft with
+unchecked quotations has not been verified. Report the count and the reason printed beside
+each.
+
+**The usual reasons a quotation does not resolve**, few of them a misquotation:
+
+- The text layer dropped a character: a minus sign, an en dash, a subscript.
+- A hyphen falls at a line break, where folding removes it whether or not the word has one.
+- The reader is the wrong one: `pdftotext -layout` interleaves the columns of a two-column page.
+- A paraphrase is stored under `exact`. `statement` holds your sentence, `exact` the source's.
+- Text is left out of the middle. `exact` takes no ellipsis, and the result is `not found`.
+- The passage is from another version of the work. A pin names bytes, so a passage taken from
+  the journal article is looked for in the preprint where the preprint is the file pinned.
+- The file is not the source: a `.pdf` that is a login page or a challenge page fails under
+  every reader.
+
+Read the source in each case, and never shorten a quotation to the part that matches.
+
+**A source behind a challenge page or a paywall was not obtained.** Record it so: its address
+as `url:` under `source:` and no file at `local`, and its quotations read `unchecked`. Never
+save the page that was served as the source. The tell is that the file is HTML and not a PDF,
+which `file <path>` says in one line. Never work around the block. A copy obtained with access
+can be placed at the path the claims file names, and `verify` checks it against the pin.
+
 ## Reading the output
 
-Three results, exhaustive:
+Five results, exhaustive:
 
 | | |
 |---|---|
 | `found` | the passage is in the source |
 | `not found` | the source was read and the passage is not in it |
+| `indeterminate` | under `--triangulate`, readers that read the source disagree about whether it is in it |
+| `ambiguous` | the passage occurs more than once and the record does not say which occurrence |
 | `unchecked` | the source could not be read — **no measurement was made** |
+
+Only `not found` fails a run. `indeterminate`, `ambiguous` and `unchecked` are neither a pass
+nor a failure, and `--strict` fails on all three.
 
 Warnings sit on their own axis. A passage can be `found` and still carry one: `truncated` (stops
 mid-word or mid-number and the source continues it), `short` (the source may qualify it in the next
@@ -71,12 +127,61 @@ exits non-zero and says `nothing was measured`, but the counts are what to quote
 **`not found` means read the source.** A broken extraction reads the same as a passage that
 was never there.
 
+**A `not found` that says "every word of the quotation is in the source" is an omission.** The
+quotation joins two or more stretches of the source and leaves out the text between them with
+nothing marking the gap; the result carries `reason: omission` and the count line says how many
+are of this kind. It still fails. The report shows the text left out and the passage as the
+source reads it: read both, because the words left out may be the ones that qualify the claim.
+Then either quote the passage as the source reads, or, in a manuscript, mark the gap with an
+ellipsis. Never rejoin the pieces without one.
+
+**`citations restore <file> --id <id>` records the source's passage for an omission, apart
+from the quotation.** It writes a derived claim to `<file>.restored.yaml` and never edits the
+original, which stays `not found`. It restores one omitted token unless `--max-omitted-tokens`
+asks for more, and refuses a misquotation, an unpinned source, and a quotation that could have
+been taken from more than one passage, whatever the limit. Use it
+only after reading what was left out. It corrects a quotation against its source; it does not
+show the omission was harmless, and a restored passage is the source's text, not what the
+quoting party wrote. `verify` counts restored quotations on their own line: report that count
+separately, never inside the count of quotations found.
+
+**`ambiguous` means the source has the passage more than once.** `citations pin` refuses it
+without choosing. Read the source, decide which occurrence is meant, and pin it with
+`citations pin <file> --id <id> --quote "<passage>" --occurrence N`, counting from 1 in the
+source's order; the `prefix` and `suffix` that single it out are written for you.
+
 **A run with nothing to check exits non-zero.** The path is wrong, not everything passing.
 
 **Check which library you are on before believing a clean run.** The library resolves in order:
 `$CITATIONS_HOME`, else `.citations/` found by walking up from the current directory, else the
 shared one from `citations init --user`. So the same command run one directory over can verify a
 different set of records and still report `all found`.
+
+## Keep source texts out of git
+
+A claims file pins its source by a `sha256` and names where it came from, so no check needs
+the source committed. **Keep source texts on disk and out of git**: ignore the folder they sit
+in before the first `git add`. A committed source is somebody else's text published with the
+repository, and taking it out later means rewriting every commit that held it.
+
+- The record carries the digest and the address: `sha256`, and a `url`, `doi` or arXiv id.
+  `citations fetch --claims <dir>` downloads each source again and keeps only bytes that match
+  the pin.
+- In a clone that holds no sources, `unchecked` with `file not found` is the expected report.
+  Run `citations fetch`, then `verify`.
+- `citations verify` and `citations lint --claims <dir>` list the pinned sources git tracks,
+  and `citations pin` says when the source it just read is tracked or covered by no ignore
+  rule. Each is a warning: it fails nothing, with or without `--strict`, and no command edits
+  `.gitignore`.
+- `citations lint --claims` with no directory reads `claims` in the working directory, or the
+  nearest one above it in the same repository. `prereg freeze` asks this way and refuses to
+  freeze while any is tracked, unless given `--allow-tracked-sources`; `repro audit` reports
+  the count as `N sources tracked by git`.
+- `git rm --cached` takes a source out of the index and out of no commit. Until the removal is
+  committed the last commit still holds it: `lint --claims` lists it as `in HEAD`, `verify`
+  names it, and `prereg freeze` is still refused.
+- Text under a licence that allows redistribution is the author's to commit. Record the licence
+  beside it.
 
 ## Declaring an extractor
 

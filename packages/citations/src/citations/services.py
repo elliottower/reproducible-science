@@ -19,10 +19,10 @@ import re
 import urllib.parse
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
+from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict
 
-from citations.models import Record
 from citations.text import surname_variants
 
 #: Crossref and OpenAlex ask for a contact address and offer politeness-pool rate limits in
@@ -49,6 +49,24 @@ def polite(params: dict) -> dict:
     written in here makes every user's lookups claim to be one person's, so it is opt-in.
     """
     return {**params, "mailto": contact()} if contact() else params
+
+
+class Work(Protocol):
+    """What a search reads off the thing it is looking up: a library `Record`, or one entry of
+    a bibliography under `citations audit`. One matching rule serves both because both are
+    read through these four fields and no others."""
+
+    @property
+    def title(self) -> str: ...
+
+    @property
+    def authors(self) -> list[str]: ...
+
+    @property
+    def year(self) -> str: ...
+
+    @property
+    def venue(self) -> str: ...
 
 
 class Candidate(BaseModel):
@@ -90,7 +108,7 @@ class Service:
     name: str
     """Shown in output and used to report which service answered."""
 
-    url: Callable[[Record], str]
+    url: Callable[[Work], str]
     """The record turned into a request URL."""
 
     candidates: Callable[[object], Iterable[Candidate]]
@@ -110,7 +128,7 @@ class Service:
 # --------------------------------------------------------------------------------------------
 
 
-def _crossref_url(rec: Record) -> str:
+def _crossref_url(rec: Work) -> str:
     q = urllib.parse.urlencode({"query.bibliographic": rec.title, "rows": 8})
     return f"https://api.crossref.org/works?{q}"
 
@@ -136,7 +154,7 @@ def _crossref_candidates(payload) -> Iterator[Candidate]:
 # --------------------------------------------------------------------------------------------
 
 
-def _s2_url(rec: Record) -> str:
+def _s2_url(rec: Work) -> str:
     q = urllib.parse.urlencode(
         {"query": rec.title[:250], "limit": 6, "fields": "title,externalIds,authors,year,venue"}
     )
@@ -170,7 +188,7 @@ def _s2_candidates(payload) -> Iterator[Candidate]:
 # --------------------------------------------------------------------------------------------
 
 
-def _openalex_url(rec: Record) -> str:
+def _openalex_url(rec: Work) -> str:
     q = urllib.parse.urlencode(polite({"filter": f"title.search:{rec.title}", "per-page": 5}))
     return f"https://api.openalex.org/works?{q}"
 
@@ -212,7 +230,7 @@ _NAME = re.compile(r"<name>(.*?)</name>")
 _PUBLISHED = re.compile(r"<published>(\d{4})-")
 
 
-def _arxiv_url(rec: Record) -> str:
+def _arxiv_url(rec: Work) -> str:
     q = urllib.parse.urlencode({"search_query": f'ti:"{rec.title}"', "max_results": 4})
     return f"https://export.arxiv.org/api/query?{q}"
 

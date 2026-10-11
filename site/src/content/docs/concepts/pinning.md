@@ -26,10 +26,11 @@ Locators are typed, and each format is addressed the way that format is already 
 | kind | addresses | example |
 |---|---|---|
 | `tree` | JSON and YAML, by [RFC 6901](https://datatracker.ietf.org/doc/html/rfc6901) JSON Pointer | `/metrics/accuracy` |
-| `table` | CSV, TSV, by column and a key predicate | `column: accuracy, where: {model: resnet}` |
+| `table` | CSV, TSV, Parquet, Feather, Stata, SPSS, `.rds`, by column and a key predicate | `column: accuracy, where: {model: resnet}` |
 | `table_position` | a row number, reported with a warning | `row: 37` |
+| `sheet` | an Excel workbook, by sheet, column and key predicate | `sheet: main, column: accuracy, where: {model: resnet}` |
 | `sqlite` | a table, column and key predicate | |
-| `array` | `.npy` / `.npz`, by name and index | `index: [0, 1]` |
+| `array` | `.npy` / `.npz` by name, HDF5 / NetCDF by dataset path, and an index | `array: /runs/accuracy, index: [0, 1]` |
 
 The pointer syntax is RFC 6901 — `/metrics/accuracy` — which JSONPath's `$.metrics.accuracy`
 resembles closely enough to be mistaken for. Array indices carry no leading zeros, so `/xs/0`
@@ -39,7 +40,7 @@ addresses a value and `/xs/00` addresses nothing.
 
 Every adapter enforces the same invariant:
 
-```
+```text
 0 matches   -> absent
 1 scalar    -> resolved
 2 or more   -> ambiguous

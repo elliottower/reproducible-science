@@ -8,6 +8,7 @@ import os
 import re
 import stat
 import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -91,30 +92,47 @@ def _read_env(env: Path) -> str:
     )
 
 
+#: The names a token is read under, in order. `OSF_PAT` is what a secret manager's environment
+#: is likely to call a personal access token; asking the person to rename it in their vault to
+#: suit one tool was the whole obstacle.
+TOKEN_NAMES = ("OSF_TOKEN", "OSF_PAT")
+
+
 def _token() -> str | None:
-    """OSF_TOKEN from the environment, or from the nearest `.env` here or above that sets it.
+    """OSF_TOKEN (or OSF_PAT) from the environment, or from the nearest `.env` here or above
+    that sets it.
 
     Called only when a request is about to be made: reading a pipe-backed `.env` asks the
     person to approve, and a command that makes no request should not ask.
     """
-    token = os.environ.get("OSF_TOKEN")
-    if token:
-        return token
+    for name in TOKEN_NAMES:
+        token = os.environ.get(name)
+        if token:
+            return token
     for p in [Path.cwd(), *Path.cwd().parents]:
         env = p / ".env"
         # `is_file()` is False for a named pipe, so a secret manager's pipe was passed over as
         # if there were no `.env` at all.
         if not (env.is_file() or env.is_fifo()):
             continue
+        found: dict[str, str] = {}
         for line in _read_env(env).splitlines():
-            line = line.strip()
-            if line.startswith("OSF_TOKEN=") and not line.startswith("#"):
-                return line.split("=", 1)[1].strip().strip("'\"")
+            line = line.strip().removeprefix("export ").strip()
+            name, sep, value = line.partition("=")
+            if sep and name in TOKEN_NAMES and not line.startswith("#"):
+                found.setdefault(name, value.strip().strip("'\""))
+        for name in TOKEN_NAMES:
+            if found.get(name):
+                return found[name]
     return None
 
 
 class OSFError(RuntimeError):
     """An OSF request failed. The message carries the status and OSF's own error body."""
+
+    def __init__(self, message: str, status: int | None = None) -> None:
+        super().__init__(message)
+        self.status = status  # None when OSF could not be reached at all
 
 
 def _request(
@@ -149,7 +167,7 @@ def _send(req: urllib.request.Request) -> dict:
     except urllib.error.HTTPError as e:
         detail = e.read().decode(errors="replace") if e.fp else str(e)
         raise OSFError(
-            f"OSF API error ({e.code}) on {req.get_method()} {req.full_url}: {detail}"
+            f"OSF API error ({e.code}) on {req.get_method()} {req.full_url}: {detail}", e.code
         ) from e
     except urllib.error.URLError as e:
         raise OSFError(f"could not reach OSF ({req.full_url}): {e.reason}") from e
@@ -339,7 +357,8 @@ def require_token() -> str:
     token = _token()
     if not token:
         raise RuntimeError(
-            "no OSF token found. Set OSF_TOKEN in .env or as an environment variable.\n"
+            "no OSF token found. Set OSF_TOKEN (or OSF_PAT) in .env or as an environment "
+            "variable.\n"
             "Create one at https://osf.io/settings/tokens (scope: osf.full_write)."
         )
     return token
@@ -366,6 +385,113 @@ def create_draft(body: dict, token: str) -> Draft:
     return Draft(data["id"], f"https://osf.io/{data['id']}", branched.get("id"))
 
 
+#: OSF's project categories, which a draft registration takes as well
+#: (osf/models/node.py, `CATEGORY_MAP`). The empty string is "uncategorized".
+CATEGORIES = (
+    "analysis",
+    "communication",
+    "data",
+    "hypothesis",
+    "instrumentation",
+    "methods and measures",
+    "procedure",
+    "project",
+    "software",
+    "other",
+)
+
+DEFAULT_LICENSE = "CC-By Attribution 4.0 International"
+
+
+@dataclass(frozen=True)
+class Metadata:
+    """What OSF's draft Metadata page asks for, besides the plan itself.
+
+    `subject_ids` and `license_id` are resolved against OSF before anything is written, so a
+    subject that does not exist refuses the push instead of leaving a draft half-described.
+    """
+
+    title: str | None = None
+    description: str = ""
+    tags: tuple[str, ...] = ()
+    category: str = ""
+    license_id: str | None = None
+    license_name: str | None = None
+    year: str = ""
+    copyright_holders: tuple[str, ...] = ()
+    subject_ids: tuple[str, ...] = ()
+    subject_names: tuple[str, ...] = ()
+
+
+def find_subjects(names: list[str], token: str | None = None) -> list[str]:
+    """The ids of OSF's registration subjects named exactly `names`, or RuntimeError.
+
+    Subjects are OSF's taxonomy (bepress), looked up by their text. A name matching nothing, or
+    matching only by prefix, is refused rather than guessed.
+    """
+    ids = []
+    for name in names:
+        q = urllib.parse.urlencode({"filter[text]": name, "page[size]": 100})
+        data = _request("GET", f"/providers/registrations/osf/subjects/?{q}", token)["data"]
+        exact = [s["id"] for s in data if s["attributes"]["text"].casefold() == name.casefold()]
+        if len(exact) != 1:
+            near = sorted({s["attributes"]["text"] for s in data})[:8]
+            raise RuntimeError(
+                f"{name!r} is not one of OSF's subjects"
+                + (f"; close: {', '.join(near)}" if near else "")
+                + ". Subjects are OSF's taxonomy, matched by their full text."
+            )
+        ids.append(exact[0])
+    return ids
+
+
+def find_license(name: str, token: str | None = None) -> str:
+    """The id of the OSF license named `name`, or RuntimeError."""
+    q = urllib.parse.urlencode({"filter[name]": name})
+    data = _request("GET", f"/licenses/?{q}", token)["data"]
+    exact = [x["id"] for x in data if x["attributes"]["name"].casefold() == name.casefold()]
+    if len(exact) != 1:
+        raise RuntimeError(f"{name!r} is not one of OSF's licenses.")
+    return exact[0]
+
+
+def set_metadata(draft_id: str, meta: Metadata, token: str) -> None:
+    """Fill the draft's Metadata page: title, description, tags, category, license, subjects.
+
+    Two requests, because subjects are a relationship with its own endpoint
+    (api/draft_registrations/views.py, `DraftRegistrationSubjectsRelationship`). OSF adds each
+    subject's parents itself, so the leaves are enough.
+    """
+    attributes: dict[str, object] = {}
+    if meta.title:
+        attributes["title"] = meta.title
+    if meta.description:
+        attributes["description"] = meta.description
+    if meta.tags:
+        attributes["tags"] = list(meta.tags)
+    if meta.category:
+        attributes["category"] = meta.category
+    body: dict = {"data": {"type": "draft_registrations", "id": draft_id}}
+    if meta.license_id:
+        attributes["node_license"] = {
+            "year": meta.year,
+            "copyright_holders": list(meta.copyright_holders),
+        }
+        body["data"]["relationships"] = {
+            "license": {"data": {"type": "licenses", "id": meta.license_id}}
+        }
+    body["data"]["attributes"] = attributes
+    if attributes:
+        _request("PATCH", f"/draft_registrations/{draft_id}/", token, body)
+    if meta.subject_ids:
+        _request(
+            "PATCH",
+            f"/draft_registrations/{draft_id}/relationships/subjects/",
+            token,
+            {"data": [{"type": "subjects", "id": s} for s in meta.subject_ids]},
+        )
+
+
 def push_draft(plan_text: str) -> tuple[str, str]:
     """Create a draft registration on OSF from a PREREG.md.
 
@@ -376,19 +502,35 @@ def push_draft(plan_text: str) -> tuple[str, str]:
     return draft.id, draft.url
 
 
+#: The storage provider every OSF node has, and the one a draft's files are archived from.
+STORAGE = "osfstorage"
+
+
 def upload(node_id: str, name: str, content: bytes, token: str) -> str:
     """Put a file in the draft's node, and return the sha256 OSF computed for what it received.
 
     Files in the draft's node are archived into the registration when it is registered
-    (website/archiver/listeners.py, `after_register`). The upload link comes from the storage
-    provider rather than being built here, because it names the node's storage region
-    (api/nodes/serializers.py, `NodeStorageProviderSerializer.links.upload`). The upload itself
-    is WaterButler's: PUT the raw bytes with `kind=file&name=...`, answered with a file entity
-    whose `extra.hashes.sha256` is the digest of what arrived (developer.osf.io, "Upload New
-    File"; waterbutler/providers/osfstorage/metadata.py).
+    (website/archiver/listeners.py, `after_register`). The upload link comes from the node's
+    list of storage providers rather than being built here, because it names the node's storage
+    region (api/nodes/serializers.py, `NodeStorageProviderSerializer.links.upload`). The list is
+    read and not the provider's own address: for a draft node, `files/providers/osfstorage/`
+    answered 404 on 10 Oct 2026 while `files/` listed `osfstorage` with its upload link. The
+    upload itself is WaterButler's: PUT the raw bytes with `kind=file&name=...`, answered with
+    a file entity whose `extra.hashes.sha256` is the digest of what arrived (developer.osf.io,
+    "Upload New File"; waterbutler/providers/osfstorage/metadata.py).
     """
-    provider = _request("GET", f"/draft_nodes/{node_id}/files/providers/osfstorage/", token)
-    link = provider["data"]["links"]["upload"]
+    providers = _request("GET", f"/draft_nodes/{node_id}/files/", token)["data"]
+    links = [
+        p.get("links", {}).get("upload")
+        for p in providers
+        if p.get("attributes", {}).get("provider") == STORAGE
+    ]
+    if len(links) != 1 or not links[0]:
+        raise OSFError(
+            f"OSF lists no {STORAGE} upload link for draft node {node_id}, so {name} was not "
+            "uploaded."
+        )
+    link = links[0]
     url = (
         link
         + ("&" if "?" in link else "?")
@@ -398,7 +540,12 @@ def upload(node_id: str, name: str, content: bytes, token: str) -> str:
     req.add_header("Authorization", f"Bearer {token}")
     req.add_header("Content-Type", "application/octet-stream")
     resp = _send(req)
-    return resp["data"]["attributes"]["extra"]["hashes"]["sha256"]
+    received = resp.get("data", {}).get("attributes", {}).get("extra", {}).get("hashes", {})
+    if not received.get("sha256"):
+        raise OSFError(
+            f"OSF answered the upload of {name} without a sha256, so what it holds is unknown."
+        )
+    return received["sha256"]
 
 
 # Registration and view-only links are pinned to the current API version. At 2.0 OSF reads
@@ -413,6 +560,37 @@ API_VERSION = "2.20"
 class Registration:
     id: str
     url: str
+    #: The error OSF answered with, when the registration was found to exist anyway.
+    recovered_from: str | None = None
+
+
+#: How often, and how far apart, a failed registration request is checked and retried.
+ATTEMPTS = 4
+RETRY_WAIT = 20.0
+
+
+def _registration_of(title: str, since: datetime.datetime, token: str) -> dict | None:
+    """The registration of this draft made at or after `since`, if OSF lists one.
+
+    A registration names neither the draft it came from nor, for a draft with no project, a
+    node the draft shares, so the draft's title and the time are what identify it. Two
+    registrations with the same title made in the same minutes would be ambiguous; that is
+    refused rather than guessed.
+    """
+    q = urllib.parse.urlencode({"sort": "-date_created", "page[size]": 50})
+    data = _request("GET", f"/users/me/registrations/?{q}", token)["data"]
+    hits = [
+        r
+        for r in data
+        if r["attributes"].get("title") == title
+        and datetime.datetime.fromisoformat(r["attributes"]["date_created"]) >= since
+    ]
+    if len(hits) > 1:
+        raise RuntimeError(
+            f"OSF lists {len(hits)} registrations titled {title!r} since {since:%H:%M}; "
+            "check them on OSF before doing anything else."
+        )
+    return hits[0] if hits else None
 
 
 def register(draft_id: str, embargo: datetime.date | None, token: str) -> Registration:
@@ -423,6 +601,14 @@ def register(draft_id: str, embargo: datetime.date | None, token: str) -> Regist
     `require_approval` / `embargo_registration`; website/settings REGISTRATION_APPROVAL_TIME,
     EMBARGO_PENDING_TIME). An embargo must end between about two days and four years ahead.
     The draft must have at least one subject, or OSF refuses it (`DraftRegistration.register`).
+
+    A failed request is not a failed registration. OSF has answered 502 to the POST while
+    creating the registration, and a retry then got 403 because the draft was already
+    registered. So after a server error, a timeout or a refusal, OSF's list of registrations is
+    read before anything is reported or retried. Retrying is safe on its own terms -- a draft
+    registers once, and OSF refuses the second -- but reporting a failure that did not happen
+    leaves a registration the log does not record. A 400 is OSF declining the draft (no subject,
+    say) and is reported at once.
     """
     end = f"{embargo.isoformat()}T00:00:00" if embargo else None
     body = {
@@ -431,9 +617,128 @@ def register(draft_id: str, embargo: datetime.date | None, token: str) -> Regist
             "attributes": {"draft_registration_id": draft_id, "embargo_end_date": end},
         }
     }
-    data = _request("POST", "/registrations/", token, body, version=API_VERSION)["data"]
-    url = (data.get("links") or {}).get("html") or f"https://osf.io/{data['id']}/"
-    return Registration(data["id"], url)
+    title = _request("GET", f"/draft_registrations/{draft_id}/", token)["data"]["attributes"][
+        "title"
+    ]
+    # OSF's timestamps are naive UTC. A minute's slack covers a clock that runs ahead of OSF's.
+    since = datetime.datetime.now(datetime.UTC).replace(tzinfo=None) - datetime.timedelta(minutes=1)
+    error: OSFError | None = None
+    for attempt in range(ATTEMPTS):
+        if attempt:
+            time.sleep(RETRY_WAIT)
+        if error is not None:
+            found = _registration_of(title, since, token)
+            if found:
+                return Registration(found["id"], f"https://osf.io/{found['id']}/", str(error)[:80])
+        try:
+            data = _request("POST", "/registrations/", token, body, version=API_VERSION)["data"]
+        except OSFError as e:
+            if e.status == 400:
+                raise
+            error = e
+            continue
+        url = (data.get("links") or {}).get("html") or f"https://osf.io/{data['id']}/"
+        return Registration(data["id"], url)
+    found = _registration_of(title, since, token)
+    if found:
+        return Registration(found["id"], f"https://osf.io/{found['id']}/", str(error)[:80])
+    raise RuntimeError(f"OSF did not register draft {draft_id} after {ATTEMPTS} attempts: {error}")
+
+
+#: How long OSF leaves a registration pending before approving it itself
+#: (website/settings/defaults.py, `REGISTRATION_APPROVAL_TIME` and `EMBARGO_PENDING_TIME`).
+APPROVAL_WAIT = datetime.timedelta(days=2)
+
+
+def approval_help(embargo: bool, due: datetime.datetime | None = None) -> list[str]:
+    """How a pending registration becomes effective, for whoever has to make it so.
+
+    The first approval of a registration cannot be given through OSF's API: see
+    `registration_state`. Each admin's approval token exists only in the email OSF sends them
+    (notifications.yaml, `node_pending_registration_admin` and `node_pending_embargo_admin`, for
+    the subjects), whose first link approves and whose second cancels
+    (website/templates/pending_registration_admin.html.mako: "If any admin clicks their cancel
+    link, the submission will be canceled immediately ... This operation is irreversible.").
+    With neither, OSF approves it after `APPROVAL_WAIT`.
+    """
+    subject = f"Pending {'Embargo' if embargo else 'Registration'} - Admin Notification"
+    hours = int(APPROVAL_WAIT.total_seconds() // 3600)
+    after = f"no earlier than {due:%Y-%m-%d %H:%M} UTC" if due else f"after {hours} hours"
+    return [
+        "It is pending, and takes effect in one of two ways:",
+        f'  now    open the email from OSF, "{subject}", and click the first "Click here",',
+        '         which approves. The second "Click here" cancels the registration, and that',
+        "         cannot be undone. Every admin has to approve.",
+        f"  later  do nothing: OSF approves it by itself, {after}.",
+        "prereg cannot approve a first registration: OSF's API has no request for it.",
+    ]
+
+
+@dataclass(frozen=True)
+class RegistrationState:
+    """What OSF says about a registration now: one word for it, and what that word means."""
+
+    state: str
+    detail: str
+    #: Whether the registration stands: approved, and public or under its embargo.
+    effective: bool
+    #: For a pending one, how it stops being pending: the lines of `approval_help`.
+    help: tuple[str, ...] = ()
+
+
+def registration_state(registration_id: str, token: str) -> RegistrationState:
+    """Read a registration's state from OSF. Sends one GET and changes nothing.
+
+    The state is read off the registration's own attributes (api/registrations/serializers.py,
+    `RegistrationSerializer`): `pending_registration_approval` and `pending_embargo_approval`
+    are true until every admin has approved or OSF's waiting period has passed, `embargoed` is
+    true once an embargo is approved and until it ends, and `public` is true from then on.
+
+    There is nothing here that approves. OSF's API has no request by which an admin approves
+    their own pending registration: the two `pending_*` attributes are read-only, `public`
+    cannot be set while either is true (osf/models/node.py, `set_privacy`: "An unapproved
+    registration cannot be made public."), and POST /registrations/<id>/actions/ is for
+    moderators and answers 409 for OSF Registries, which has none (api/registrations/views.py,
+    `RegistrationActionList.perform_create`). An admin approves by the link OSF emailed them,
+    signed in on osf.io (osf/utils/tokens/handlers.py, `sanction_handler_flask`).
+
+    An update to an approved registration is a different object, a schema response, and that
+    one an admin can approve through the API: POST /schema_responses/<id>/actions/ with trigger
+    `approve` (api/actions/serializers.py, `SchemaResponseActionSerializer.create`). Nothing
+    here makes or approves updates.
+    """
+    path = f"/registrations/{registration_id}/"
+    a = _request("GET", path, token, version=API_VERSION)["data"]["attributes"]
+    if a.get("withdrawn"):
+        return RegistrationState("withdrawn", "the registration was withdrawn on OSF", False)
+    if a.get("pending_registration_approval") or a.get("pending_embargo_approval"):
+        embargo = bool(a.get("pending_embargo_approval"))
+        due = None
+        if a.get("date_registered"):
+            due = datetime.datetime.fromisoformat(a["date_registered"]) + APPROVAL_WAIT
+        kind = "embargoed registration" if embargo else "registration"
+        return RegistrationState(
+            "pending approval",
+            f"submitted, and the {kind} is not yet approved",
+            False,
+            tuple(approval_help(embargo, due)),
+        )
+    asked = ""
+    if a.get("pending_withdrawal"):
+        asked = "; a withdrawal was requested on OSF and awaits approval"
+    elif a.get("pending_embargo_termination_approval"):
+        asked = "; ending the embargo early was requested on OSF and awaits approval"
+    if a.get("embargoed"):
+        end = str(a.get("embargo_end_date") or "")[:10]
+        detail = f"approved, and private until {end or 'the embargo ends'}"
+        return RegistrationState("approved, embargoed", detail + asked, True)
+    if a.get("public"):
+        return RegistrationState("approved, public", "approved, and open to anyone" + asked, True)
+    return RegistrationState(
+        str(a.get("reviews_state") or "unknown"),
+        "neither pending, embargoed nor public; see its page on OSF",
+        False,
+    )
 
 
 @dataclass(frozen=True)
@@ -469,6 +774,7 @@ def view_only_link(
 DRAFT_EVENT = re.compile(r"\bosf draft (\S+) of plan ([0-9a-f]{16})\b")
 REGISTRATION_EVENT = re.compile(r"\bosf registration (\S+) from draft ([^\s,]+)")
 ATTACHED_EVENT = re.compile(r"\bosf attached (.+) sha256 ([0-9a-f]{64})\b")
+APPROVED_EVENT = re.compile(r"\bosf registration (\S+) observed (approved, \w+)")
 
 
 def draft_event(draft_id: str, digest: str) -> str:
@@ -479,9 +785,27 @@ def attached_event(name: str, sha256: str) -> str:
     return f"osf attached {name} sha256 {sha256}"
 
 
-def registration_event(reg: Registration, draft_id: str, embargo: datetime.date | None) -> str:
+def registration_event(
+    reg: Registration, draft_id: str, embargo: datetime.date | None, unattended: bool = False
+) -> str:
     choice = f"embargo until {embargo.isoformat()}" if embargo else "immediate"
-    return f"osf registration {reg.id} from draft {draft_id}, {choice}, {reg.url}"
+    event = f"osf registration {reg.id} from draft {draft_id}, {choice}, {reg.url}"
+    if reg.recovered_from:
+        # The request reported an error and the registration existed anyway; the log says so,
+        # because the id was read from OSF's listing rather than from the answer to the request.
+        status = re.search(r"\((\d{3})\)", reg.recovered_from)
+        event += f", found after OSF error {status.group(1) if status else 'unreachable'}"
+    if unattended:
+        # Nobody typed the phrase: the draft was named by `--confirm` and the environment opted
+        # in. The log says so, so that a reader can tell the two kinds of registration apart.
+        event += ", unattended, confirmed by --confirm"
+    return event
+
+
+def approved_event(registration_id: str, state: str) -> str:
+    # "observed": the entry's time is when `status --log` read the state, which is at or after
+    # the approval and not the approval itself.
+    return f"osf registration {registration_id} observed {state}"
 
 
 def link_event(link: ViewOnlyLink, registration_id: str, anonymous: bool) -> str:

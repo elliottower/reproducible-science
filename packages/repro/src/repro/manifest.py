@@ -18,12 +18,17 @@ from repro.models import Manifest
 
 DEFAULT_NAME = "repro.yaml"
 
+#: libyaml's loader where PyYAML was built with it, which every published wheel is. It reads the
+#: same documents as the Python loader and reads a manifest of a thousand claims in a tenth of
+#: the time, which was most of what verifying one took.
+_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+
 
 def load(path: pathlib.Path | str) -> Manifest:
     """Read one manifest, or raise `ManifestError` naming the file and the field."""
     path = pathlib.Path(path)
     try:
-        raw: Any = yaml.safe_load(path.read_text()) or {}
+        raw: Any = yaml.load(path.read_text(), Loader=_LOADER) or {}
     except yaml.YAMLError as e:
         raise ManifestError(path, f"not valid YAML: {e}") from e
     except OSError as e:

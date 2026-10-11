@@ -15,10 +15,11 @@ from __future__ import annotations
 
 import pathlib
 
-from provenance_core import sha256_of_tree, try_run
+from provenance_core import anchor, sha256_of_tree, try_run
 
-from results import ledger, manuscript
+from results import ledger, manuscript, stamps
 from results.paths import ledger_path, require_root
+from results.record import LINKED
 from results.timeline import first_outcomes_seen, first_run_timestamp, precedes
 
 
@@ -42,6 +43,75 @@ def in_history(ledger: pathlib.Path) -> str | None:
     if (try_run("status", "--porcelain", "--", str(ledger), cwd=root) or "").strip():
         return "has changes that are not committed"
     return None
+
+
+def reviews(events: list[dict], base: pathlib.Path, check_files: bool) -> list[str]:
+    """One block per review, and with `check_files` whether each subject is still those bytes.
+
+    A review is of a digest. Where the file has changed since, the review says nothing about
+    what is there now, and printing the verdict without that would carry it forward. Reported
+    and never counted as drift: a reviewed file that then changes is the ordinary result of
+    acting on a review.
+    """
+    lines: list[str] = []
+    for e in events:
+        if e.get("event") != "review":
+            continue
+        ran_in = e.get("session") or {}
+        harness = " ".join(v for k in ("harness", "harness_version") if (v := ran_in.get(k)))
+        named = ", ".join(v for v in (ran_in.get("model"), harness) if v)
+        lines.append(
+            f"  {e['timestamp'][:19]}  {e.get('verdict', '?'):<10}  {e.get('reviewer', '?')}"
+            + (f"  [{named}]" if named else "")
+        )
+        lines.append(f"    scope: {e.get('scope', '')}")
+        lines += subjects(e, base, check_files, "reviewed")
+    return lines
+
+
+def annotation_lines(events: list[dict], base: pathlib.Path, check_files: bool) -> list[str]:
+    """One block per annotation: what it links to, and with `check_files` whether each subject
+    is still the bytes the link was stated of.
+
+    An annotation is a statement that these bytes correspond to something outside the ledger.
+    Nothing here reads the target, so the most this can say is whether the local side of the
+    link still exists as recorded. Reported and never counted as drift, as a review is.
+    """
+    lines: list[str] = []
+    for e in events:
+        if e.get("event") != "annotation":
+            continue
+        target = e.get("target") or {}
+        lines.append(
+            f"  {e['timestamp'][:19]}  {target.get('kind', '?')}  {target.get('ref', '?')}"
+            + (f"  [{by}]" if (by := e.get("by")) else "")
+        )
+        if stated := target.get("digest"):
+            lines.append(f"    digest as stated: {stated}")
+        if location := e.get("location"):
+            lines.append(f"    appears in: {location}")
+        lines += subjects(e, base, check_files, "annotated")
+    return lines
+
+
+def subjects(event: dict, base: pathlib.Path, check_files: bool, was: str) -> list[str]:
+    """Each subject of a review or an annotation, and whether it is still the recorded bytes."""
+    lines: list[str] = []
+    for subject in event.get("subjects", []):
+        path, recorded = subject["path"], subject["sha256"]
+        p = base / path
+        if not check_files:
+            lines.append(f"    not checked  {path}")
+        elif not p.exists():
+            lines.append(f"    MISSING      {path}")
+        else:
+            now = sha256_of_tree(p)[0] if p.is_dir() else ledger.sha256_of_file(p)
+            if now == recorded:
+                lines.append(f"    current      {path}")
+            else:
+                lines.append(f"    STALE        {path}")
+                lines.append(f"      {was} {recorded[:16]}…, now {now[:16]}…")
+    return lines
 
 
 def coverage(manuscript_path: str, limit: int, strict: bool) -> int:
@@ -132,6 +202,37 @@ def reanchor() -> int:
     return 0
 
 
+def timestamp() -> int:
+    """Stamp the current head, complete every pending proof, and check the complete ones."""
+    root = require_root()
+    lp = ledger_path(root)
+    try:
+        made = stamps.stamp_head(lp)
+    except anchor.AnchorError as e:
+        print(f"not timestamped: {e}")
+        return 1
+    if made is not None:
+        print(f"stamped      {made.relative_to(root.parent)}")
+    try:
+        found = stamps.complete(lp)
+    except anchor.AnchorError as e:
+        print(f"TIMESTAMP    {e}")
+        return 1
+    dated = [(s, block) for s, block in found if block is not None]
+    if dated:
+        stamp, block = max(dated, key=lambda pair: pair[0].count)
+        print(
+            f"events 1–{stamp.count} existed by Bitcoin block {block.height}, "
+            f"{block.time:%Y-%m-%d %H:%M} UTC"
+        )
+    waiting = [s for s, block in found if block is None]
+    if waiting:
+        latest = max(waiting, key=lambda s: s.count)
+        print(f"events 1–{latest.count} pending; Bitcoin usually confirms within hours.")
+    print("Commit .results/timestamps/ with the ledger.")
+    return 0
+
+
 def verify(check_files: bool) -> int:
     root = require_root()
     lp = ledger_path(root)
@@ -165,6 +266,28 @@ def verify(check_files: bool) -> int:
 
     if state := in_history(lp):
         print(f"  the ledger {state}. A record is evidence once it is in history.\n")
+
+    reading = stamps.read(lp)
+    if reading.contradictions:
+        # The chain verifies against its own anchor and not against a proof held outside it, so
+        # the chain and the anchor were rewritten together after that proof was made.
+        print("TIMESTAMP CONTRADICTS THE CHAIN — the ledger was rewritten after it was stamped")
+        for problem in reading.contradictions:
+            print(f"  {problem}")
+        return 1
+    if reading.dated:
+        print(
+            f"  events 1–{reading.dated.count} dated by Bitcoin block "
+            f"{reading.dated.status.blocks[0]}. `results timestamp` checks the block."
+        )
+    if reading.pending and (not reading.dated or reading.pending.count > reading.dated.count):
+        print(
+            f"  events 1–{reading.pending.count} stamped, pending at "
+            f"{len(reading.pending.status.pending)} calendars."
+        )
+    if not reading.dated and not reading.pending:
+        print("  no outside timestamp. `results timestamp` makes one.")
+    print()
 
     counts = {}
     for e in events:
@@ -238,6 +361,22 @@ def verify(check_files: bool) -> int:
         print("\ndata access timeline:")
         for e in access_events:
             print(f"  {e['timestamp'][:19]}  {e['level']:<20}  {e.get('note', '')}")
+
+    if review_lines := reviews(events, root.parent, check_files):
+        print("\nreviews (self-reported, unsigned):")
+        for line in review_lines:
+            print(line)
+        stale = sum(1 for line in review_lines if line.lstrip().startswith(("STALE", "MISSING")))
+        if stale:
+            print(f"  {stale} reviewed file(s) are no longer the bytes that were reviewed.")
+
+    if linked := annotation_lines(events, root.parent, check_files):
+        print(f"\nannotations ({LINKED}):")
+        for line in linked:
+            print(line)
+        stale = sum(1 for line in linked if line.lstrip().startswith(("STALE", "MISSING")))
+        if stale:
+            print(f"  {stale} annotated file(s) are no longer the bytes the link was stated of.")
 
     claims = [e for e in events if e.get("event") == "claim"]
     unlinked = []

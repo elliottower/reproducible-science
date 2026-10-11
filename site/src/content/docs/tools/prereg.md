@@ -8,13 +8,13 @@ description: Prereg — Reproducible Science
 [![pypi](https://img.shields.io/pypi/v/prereg)](https://pypi.org/project/prereg/)
 [![python](https://img.shields.io/pypi/pyversions/prereg)](https://pypi.org/project/prereg/)
 [![license](https://img.shields.io/pypi/l/prereg)](https://github.com/elliottower/reproducible-science/blob/main/LICENSE)
-[![docs](https://img.shields.io/badge/docs-live-blue)](https://elliottower.github.io/reproducible-science/)
+[![docs](https://img.shields.io/badge/docs-live-blue)](https://reproducible.science/)
 
 **[Run it in your browser](#run-it)** — every command on this page, in a live notebook at the bottom. No install.
 
 Freeze a plan before you run it, and record what changed after.
 
-Part of [reproducible-science](https://github.com/elliottower/reproducible-science) alongside `repro`, `citations` and `results` — see the [documentation](https://elliottower.github.io/reproducible-science/tools/prereg/).
+Part of [reproducible-science](https://github.com/elliottower/reproducible-science) alongside `repro`, `citations` and `results` — see the [documentation](https://reproducible.science/tools/prereg/).
 
 ## Install
 
@@ -28,13 +28,15 @@ pip install prereg
 prereg new V16_reliability_ceilings
 # fill in the plan, commit it
 prereg freeze
-# run the experiment, then log what happened
+# commit .prereg/ and the proof, run the experiment, then log what happened
 prereg log "tolerance now derived from fixtures" --access "no results seen"
 prereg check
 ```
 
 ```text
-unchanged    V16_reliability_ceilings/PREREG.md
+unchanged    V16_reliability_ceilings/PREREG.md  frozen 2026-10-06  nothing run
+  timestamp  pending at 4 calendars. `prereg timestamp` completes it.
+log          V16_reliability_ceilings/PREREG.log  1 entry, chain intact
 ```
 
 ## Commands
@@ -42,47 +44,326 @@ unchanged    V16_reliability_ceilings/PREREG.md
 | Command | What it does |
 |---------|-------------|
 | `prereg new <name>` | Scaffold a plan in OSF's headings |
-| `prereg freeze` | Record the commit and hash |
+| `prereg freeze` | Record the file's hash, the commit and the time beside the plan, and set the plan read-only |
+| `prereg freeze PREREG_AMENDMENT_N.md` | Freeze an amendment, the same way |
+| `prereg freeze --allow-tracked-sources` | Freeze although git tracks a source the project's quotations are pinned to |
 | `prereg freeze --osf` | Freeze and push as a draft registration to OSF |
-| `prereg log <note>` | Append to the log without freezing |
-| `prereg check` | Has the plan changed since the freeze? |
+| `prereg freeze --osf --attach PATH` | Also upload a file into the draft, so it is registered with the plan |
+| `prereg register --embargo DATE` / `--immediate` | Submit the draft as an OSF registration |
+| `prereg register ... --confirm DRAFT_ID` | The same with nobody at the terminal, where `PREREG_UNATTENDED_REGISTER=1` is set |
+| `prereg status [--log]` | Read the registration's state from OSF, and say how a pending one gets approved |
+| `prereg link [--anonymous]` | Create a view-only link on the registration |
+| `prereg log <note>` | Append an entry to `PREREG.log`, beside the plan |
+| `prereg amend [--parent FILE]` | Start `PREREG_AMENDMENT_N.md`, a change to the frozen plan |
+| `prereg check` | Has any frozen file changed since its freeze? |
+| `prereg check --staged` | Does the git index hold a change to a frozen file? For a pre-commit hook |
+| `prereg timestamp` | Complete each freeze's outside timestamp and check it against Bitcoin |
 | `prereg setup` | Save your OSF token to `.env` |
 
-## One file, one rule
+## Timestamp
+
+A freeze is recorded in the repository, and whoever holds the repository can rewrite its
+history. `prereg freeze` therefore always sends the file's digest to the
+[OpenTimestamps](https://opentimestamps.org) calendars and keeps the proof beside the plan as
+`PREREG.md.ots`. No account is needed, and only the digest leaves the machine. No flag skips
+it.
+
+The proof is pending until the calendars commit it into a Bitcoin block, usually within a few
+hours. `prereg timestamp` then completes it and reports the block and its date, which is the
+latest date the plan could have been written. Commit the proof with the plan.
+
+```text
+timestamped  V16_reliability_ceilings/PREREG.md
+  Bitcoin block 915004, 2026-10-03 16:12 UTC
+```
+
+`prereg check` reports the proof without the network, and fails when the proof is of a different
+digest than the freeze.
+
+A freeze made with no network still succeeds. The timestamp is then owed: the freeze says so,
+and `prereg check` says so on every run until `prereg timestamp` makes it.
+
+```text
+unchanged    V16_reliability_ceilings/PREREG.md  frozen 2026-10-06  nothing run
+  timestamp  owed. `prereg timestamp` completes it.
+```
+
+An empty `PROVENANCE_CALENDARS` names no calendar, which is how a test suite stays off the
+network. A freeze made under it owes its timestamp like any other.
+
+## One rule
+
+**A frozen file never changes by one byte. Anything later is a separate file.**
 
 ```text
 V16_reliability_ceilings/
-    PREREG.md      the plan, then a line, then an append-only log
+    PREREG.md                 the plan. Frozen once, never written to again.
+    PREREG.log                short dated entries. Append-only.
+    PREREG.log.head           the log's length and last entry, rewritten by each `prereg log`
+    PREREG_AMENDMENT_1.md     an amendment. Frozen once, never written to again.
+    .prereg/                  one freeze record per frozen file
+        PREREG.md.json
+        PREREG_AMENDMENT_1.md.json
+    PREREG.md.ots             the timestamp proof of each frozen file
+    PREREG_AMENDMENT_1.md.ots
+    .gitattributes            `-text` rules, so no checkout converts a frozen file's line endings
     tests/  results/
 ```
 
-**Never edit above the line. Only append below it.**
+Commit all of it. A freeze is evidence once its record is in history.
 
-`prereg check` enforces it — the freeze records a hash of the plan, and any later edit to it
-fails the check. Appending to the log does not.
+## Freezing
+
+`prereg freeze` refuses a plan with uncommitted changes, because the freeze names a commit. It
+then:
+
+1. takes one sha256 over the whole file;
+2. writes the record to `.prereg/PREREG.md.json`: the digest, the commit, the time in UTC, and
+   the access level;
+3. sets the plan read-only;
+4. adds `-text` rules for the plan, its amendments and its log to the nearest `.gitattributes`
+   at or above the plan, or to a new one beside it, leaving the lines already there as they are;
+5. sends the digest to the OpenTimestamps calendars.
+
+The access level is `nothing run` unless `--access` says otherwise or a results ledger shows
+more: with a ledger at or above the plan, the level defaults to the ledger's floor and
+`--access` can raise it and cannot lower it (see [Amending a frozen plan](#amending-a-frozen-plan)
+for how the floor is read).
+
+A file frozen whole is hashed byte for byte, and a checkout with `core.autocrlf` on rewrites the
+line endings of a text file. The `-text` rules stop git converting these files, so the same
+bytes arrive on every machine.
+
+Nothing is written into the plan. A second `prereg freeze` is refused, with or without
+`--force`: a change to a frozen plan is an amendment.
+
+```json
+{
+  "file": "PREREG.md",
+  "sha256": "35abc8ae2767bee40600e37a5032b1536a8799fea672bdc323f6c317176dd966",
+  "commit": "9894e148e4291c0b5f0d1a7a3c1f2b6e8d7a9c01",
+  "frozen_at": "2026-10-06T14:03:11+00:00",
+  "access": "nothing run",
+  "parent": null
+}
+```
+
+### A pinned source that git holds
+
+A freeze names a commit, and a source text in that commit can only be removed later by
+rewriting history, which changes the commit's identifier. So where `citations` is installed, a
+freeze first runs `citations lint --claims --json` beside the plan, and where git holds a
+source the project's claims files pin, it is refused before anything is written. There is no
+record, no log entry, no timestamp request and no lock file, and the exit code is 1:
+
+```text
+study/PREREG.md was not frozen, and nothing was written.
+git holds 3 sources this project's quotations are pinned to
+  tracked  study/sources/committed.txt
+  in HEAD  study/sources/removed.txt
+  staged   study/sources/staged.txt
+A freeze names a commit, and a source in that commit can only be removed later by
+rewriting history, which changes the commit's identifier.
+`tracked` and `staged`: untrack each with `git rm --cached <file>`, add an ignore
+rule, commit, and freeze again. The record's sha256 still pins the file.
+`in HEAD`: no longer tracked, and still in the last commit. Commit the removal,
+then freeze.
+Or keep them and freeze with --allow-tracked-sources.
+```
+
+The commit a freeze names is `HEAD`, so the question is asked of `HEAD` and of the index:
+
+| listed as | the index | the last commit | way out |
+|---|---|---|---|
+| `tracked` | holds it | holds it | `git rm --cached`, an ignore rule, commit |
+| `staged` | holds it | does not | `git rm --cached`, an ignore rule, commit |
+| `in HEAD` | does not | holds it | commit the removal |
+
+A source deleted from disk is `in HEAD` all the same until the deletion is committed. The
+refusal names ten sources at most and then counts the rest, and gives only the ways out that
+apply. `--allow-tracked-sources` is for text that is the author's to commit: the freeze goes
+ahead, and the sources are named after its report. An amendment and a forced re-freeze of a
+plan frozen in place are refused the same way. A file already frozen is told so, as before.
+
+Only an answer refuses. With no `citations` on `PATH`, a version of it that cannot be asked
+this way, no claims directory, or nothing held, the freeze goes ahead and says nothing.
 
 ## The log
 
+`prereg log` writes one entry to `PREREG.log`: the time, the note, and what had been seen.
+
 ```text
-2026-08-11  frozen at 9894e148e429              nothing run
-2026-08-13  tolerance now from fixtures         no results seen
-2026-08-14  ran                                 results not opened
-2026-08-15  C5 failed at k=15: 6.6% vs 5%       results seen
+2026-08-13T09:12:40+00:00  tolerance now from fixtures           no results seen  ·35abc8ae…
+2026-08-14T17:03:02+00:00  ran                                   results not opened  ·9f0613…
+2026-08-15T08:44:19+00:00  C5 failed at k=15: 6.6% vs 5%         results seen  ·c8e26e…
 ```
 
-The last column is what distinguishes an amendment from a deviation, so you never have to
-decide which word to use. `nothing run`, `no results seen`, `results not opened`, `results
-seen`. An entry logged before results is an amendment; one logged after is a deviation.
+The access level is one of `nothing run`, `no results seen`, `results not opened`, `results
+seen`. The last field chains the entries, and is shortened here: the first carries the plan's
+sha256, and each later entry carries the sha256 of the entry before it. Removing or rewording an entry breaks
+every entry after it, and `prereg check` reports the log as altered.
+
+A chain cannot see an entry removed from its end, because the entries that remain still follow
+one another. `PREREG.log.head` is the witness to the length: it holds the number of entries and
+the sha256 of the last, and each `prereg log` rewrites it. `prereg check` reports a log shorter
+than its anchor as altered, and `prereg log` refuses to append to one. The anchor is not a
+frozen file. Someone who removes the last entry and edits the anchor to match leaves a log and
+an anchor that verify, and `prereg check` passes on that working tree. `prereg check --staged`
+refuses the pair when a longer log is already committed, and the commit history is what shows
+the removed entry afterwards.
+
+The log is for bookkeeping and small deviations. A new hypothesis, criterion or experiment is
+an amendment.
+
+## Amending a frozen plan
+
+`prereg amend` creates `PREREG_AMENDMENT_N.md` beside the plan, with four required fields:
+
+- **Amends**: the plan or amendment it amends, by sha256 digest. `prereg amend` names the plan;
+  `prereg amend --parent PREREG_AMENDMENT_1.md` names an amendment.
+- **Sections replaced or added.**
+- **Reason.**
+- **What had been seen**: an access level, and what had been run and read.
+
+Where a [results](https://reproducible.science/tools/results/) ledger
+sits at or above the plan (`.results/ledger.jsonl`), the access level is filled from the
+ledger's floor, with the highest level it records and the number of runs recorded so far. The
+floor is the highest access level ever recorded there, mapped onto the four levels here:
+
+| the ledger records | the amendment starts at |
+|---|---|
+| `nothing seen` | `nothing run` |
+| `metadata only` | `no results seen` |
+| `structure seen` | `no results seen` |
+| `outcomes seen` | `results seen` |
+
+One or more recorded runs put the floor at `results not opened` or above, whatever access was
+recorded. The author can raise the level. `prereg freeze` refuses an amendment that states a
+lower level than the floor, and one with a field left unfilled; a plan's own freeze has the same
+floor. The ledger is read whole, so one ledger at the top of a repository sets the floor for
+every plan and amendment in it, including a plan for an experiment none of its runs belong to.
+
+```bash
+prereg amend
+# fill in the four fields, commit the file
+prereg freeze PREREG_AMENDMENT_1.md
+```
+
+An amendment is frozen as a plan is: one digest over the whole file, the commit, the time, the
+outside timestamp, read-only. Its date is the time of its freeze, whatever its prose says. An
+amendment frozen after results were seen is allowed, and `prereg check` labels it.
 
 ## Check output
 
+`prereg check` reports the plan, then its amendments in order of freeze time, then the log:
+
+```text
+unchanged    PREREG.md  frozen 2026-07-08  nothing run
+  timestamp  Bitcoin block 915004. `prereg timestamp` checks the block.
+unchanged    PREREG_AMENDMENT_1.md  frozen 2026-07-08  nothing run
+  amends     PREREG.md
+  timestamp  Bitcoin block 915004. `prereg timestamp` checks the block.
+unchanged    PREREG_AMENDMENT_2.md  frozen 2026-09-11  results seen
+  amends     PREREG_AMENDMENT_1.md
+  written after results were seen
+  timestamp  pending at 4 calendars. `prereg timestamp` completes it.
+log          PREREG.log  4 entries, chain intact
+```
+
 | Exit | Result | Meaning |
 |------|--------|---------|
-| 0 | `unchanged` | The plan says what it said |
-| 1 | `CHANGED` | The plan was edited above the line after freezing |
-| 2 | `not frozen` | No hash recorded — nothing was measured |
+| 0 | `unchanged` | The file is byte for byte what was frozen |
+| 1 | `CHANGED` | A frozen file differs from its freeze by at least one byte |
+| 1 | `MISSING` | A file was frozen and is gone |
+| 1 | `orphaned` | An amendment's parent digest matches no frozen file present |
+| 1 | `LOG ALTERED` | The log's chain does not verify, or the log is shorter than its anchor records |
+| 2 | `not frozen` | No freeze recorded for the plan, or for an amendment still in draft |
 
-`not frozen` is not a pass. It is the absence of a check.
+`not frozen` is not a pass. It is the absence of a check. A timestamp that is owed or pending
+is reported and does not change the exit code.
+
+### A pre-commit hook
+
+A file on the author's disk can be changed by anyone who removes the read-only flag, and git
+does not carry that flag to another machine. `prereg check --staged` exits 1 when the git index
+holds a change to a frozen file, an amendment or a committed freeze record, a log that no longer
+begins with its committed entries, or a log anchor whose count went down, and names each path. `prereg` installs no hook. To have git refuse such a commit, put this in
+`.git/hooks/pre-commit` and make it executable:
+
+```sh
+#!/bin/sh
+exec prereg check --staged
+```
+
+### Plans frozen by an earlier version
+
+Before this rule, `prereg freeze` wrote the freeze into the plan, as `**Status:** FROZEN at`,
+`**Plan sha256:**` and `**Frozen:**` lines, and `prereg log` appended to a `## Log` section
+under a `---` line in the same file. Such a plan is not converted, and every command reads it
+under the rule it was frozen by:
+
+- `prereg check` hashes the plan above the log line, leaves the status lines out, and verifies
+  the log's chain and its `**Log:**` count, as it did. `CHANGED`, `UNCOVERED` and `LOG ALTERED`
+  exit 1.
+- `prereg log` appends in the file, and prints one line saying that plans frozen from now on
+  keep their log beside them.
+- `prereg timestamp`, `prereg register` and `prereg link` work on it unchanged, and
+  `prereg freeze --force --access LEVEL` re-freezes it in the file.
+- `prereg amend` amends it, naming the `**Plan sha256:**` digest. The amendment is frozen whole.
+- `prereg check --staged` refuses a staged change above its log line and allows a log entry.
+
+A project holding plans of both kinds, and registrations frozen by a commit line, reports each
+under its own rule.
+
+### Registrations frozen by a commit line
+
+A registration can also be fixed without `prereg freeze`: the document is committed, and the
+commit that follows writes the first commit's SHA into the document.
+
+```text
+# Does the rule hold?
+
+**Commit SHA:** b96d10a
+```
+
+`prereg check` finds every markdown file git tracks at or below the working directory that
+carries such a line, and compares it with the file at the commit the line names, leaving the
+commit line out of both sides. The line is bold and starts a line, `**Commit SHA:**`,
+`**Freeze SHA:**` or `**Freeze commit:**`, or the commit sits on the first line under a heading
+of one of those names. The hash is 7 to 40 digits, bare, in backticks or in bold. A bold
+`**Status:**` line before the first heading after the title is part of the freeze record too:
+it is left out of the comparison, and a status that differs from the frozen one is reported
+under the document without counting as an edit. These
+documents are listed under their own heading, after the plans:
+
+```text
+registrations frozen by a commit line:
+unchanged    PREREGISTRATION_AMENDMENT_2.md  at 12ea0ed
+appended     PREREGISTRATION_AMENDMENT_5.md  at fbc7d33
+  8 lines added after the frozen text
+CHANGED      PREREGISTRATION.md  at b96d10a
+  24 lines added, 4 removed
+  first difference at line 107:
+  - | Anti-CD20/MS | Per allele (FCRL3) | Yes |
+  + | Anti-CD20/MS | Per SD circulating FCRL3 | No |
+pending      PREREGISTRATION_AMENDMENT_3.md
+  the commit line names no commit: _pending_
+
+4 commit-pinned: 1 unchanged, 1 appended, 1 changed, 1 pending, 0 unknown commit
+```
+
+| Exit | Result | Meaning |
+|------|--------|---------|
+| 0 | `unchanged` | The document equals the file at its commit, apart from the commit line |
+| 0 | `appended` | Lines were added after the end of the frozen text, or at the end of the fenced log that closes it |
+| 1 | `CHANGED` | Frozen text was edited or removed, or lines were added inside it |
+| 2 | `pending` | The commit line holds a placeholder, so there is nothing to compare with |
+| 2 | `unknown commit` | The repository does not hold the named commit, or the file is not in it |
+
+`pending` and `unknown commit` are not passes. A shallow clone, a rewritten history and a commit
+of another repository all read as `unknown commit`, and none of them says the document changed.
+A changed plan or document exits 1 whatever else was found. `prereg check` reads these documents
+and never writes to them, and `prereg freeze` does not produce them.
 
 ## The plan uses OSF's headings
 
@@ -97,21 +378,207 @@ A heading that does not apply is answered `N/A` with a reason, never deleted.
 ## OSF integration
 
 The plan uses OSF's question titles verbatim, so `prereg freeze --osf` pushes it directly to
-OSF as a draft registration. You review and submit it there — submission is irreversible.
+OSF as a draft registration.
 
 ```bash
-prereg setup                  # save your OSF token (once)
-prereg freeze --osf           # freeze locally and push to OSF
+prereg freeze --osf --attach ../CONTEXT.md \
+  --subject "Artificial Intelligence and Robotics" \
+  --description "What the study compares." --tag "AI incidents" \
+  --category hypothesis --copyright-holder "A. Author" \
+  --title-prefix "EXPT01: "                                  # freeze, push the draft, fill its metadata
+prereg register --embargo 2027-06-01 --access "nothing run" # or --immediate
+prereg register --all --immediate --access "nothing run"     # every frozen plan below, one phrase
+prereg status                                                # pending, embargoed or public? reads only
+prereg link --anonymous --name "review" --access "results seen"
 ```
 
+`freeze --osf` needs no one at the terminal. A draft is private to its author and can be deleted
+on OSF, so pushing one, uploading its files and filling its Metadata page runs unattended; an
+agent can prepare every draft of a study. What cannot be undone -- `register` and `link` -- asks
+for a typed phrase, and `register` has one opt-in path past it, described under
+[Who must be present](#who-must-be-present).
+
+The flags fill OSF's Metadata page: `--subject` (repeatable, OSF's subject names in full;
+OSF refuses to register a draft with none, and the push warns when none is given), `--description`,
+`--tag` (repeatable), `--category` (one of OSF's project categories), and `--copyright-holder`
+(repeatable), which sets the license, CC-BY 4.0 by default or `--license NAME`, with the current
+year. `--title-prefix` goes before the plan's own title, so five drafts read `EXPT01: …` through
+`EXPT05: …` on OSF. A subject, license or category OSF does not have is refused before anything
+is frozen.
+
+Four OSF questions are multiple choice: Foreknowledge of data or evidence, Study type, Intention
+for causal interpretation, and Blinding of experimental treatments. OSF accepts only the listed
+options there, so each line under those headings names one option, by its full text or by a
+prefix no other option shares; `N/A` leaves the question unanswered. The push refuses a plan
+that does not, before anything is frozen, and lists the options.
+
+`--attach` uploads a file into the draft's storage, which OSF archives into the registration.
+Use it for a file several plans point at, such as a shared `CONTEXT.md`. The log records each
+file's sha256, and the push fails if OSF reports a different hash for what it received.
+
+Nothing here writes into the plan: the draft, the attachments, the registration and the link are
+entries in `PREREG.log`. A plan frozen without `--osf`, or whose push failed, is pushed with
+`prereg freeze --osf --access LEVEL`, which makes the draft from the frozen file and leaves the
+freeze as it is.
+
+`register` submits the draft the log recorded. It refuses a plan that has changed since the
+freeze, a draft made from an earlier freeze of a plan frozen in place, and a draft already
+registered. With
+`--all`, or run from a directory no plan governs, it registers every frozen plan below after one
+phrase that names the list: every plan is checked first, one that cannot be registered stops
+the batch before anyone is asked, and a plan already registered is skipped, so an interrupted
+batch can be run again.
+
+A failed request is not taken as a failed registration. OSF has answered 502 while creating the
+registration, and a retry then got 403 because the draft was already registered. After an error
+other than a 400, `register` reads OSF's list of registrations for one with the draft's title
+made since the request, and retries only if there is none; a registration found that way is
+logged with `found after OSF error 502`. Choosing
+between `--embargo` and `--immediate` is required: an immediate registration is public once it
+is approved. OSF emails every admin, and the registration is approved after 48 hours unless one
+of them cancels it. By OSF's defaults an embargo ends at least two days and at most four years
+ahead. OSF also refuses a draft with no subject; add one on the draft's page first.
+
+### Approval
+
+A registration is not in effect when `register` returns. OSF holds it pending, and `register`
+prints how that ends:
+
+```text
+It is pending, and takes effect in one of two ways:
+  now    open the email from OSF, "Pending Registration - Admin Notification", and click the first "Click here",
+         which approves. The second "Click here" cancels the registration, and that
+         cannot be undone. Every admin has to approve.
+  later  do nothing: OSF approves it by itself, after 48 hours.
+prereg cannot approve a first registration: OSF's API has no request for it.
+```
+
+For an embargoed registration the email's subject is "Pending Embargo - Admin Notification".
+A cancelled registration is deleted on OSF.
+
+`prereg` does not approve a first registration, and nothing reading this page should try to
+through the API. OSF has no request for it: the `pending_registration_approval` and
+`pending_embargo_approval` attributes are read-only, `public` cannot be set while either is
+true, and the registration's `actions` endpoint is for a moderated registry's moderators and
+refuses OSF Registries, which has none. The approval token exists only in the email. An update
+to a registration already approved is a different object on OSF, a schema response, and an
+admin can approve that one with `POST /v2/schema_responses/<id>/actions/` and the trigger
+`approve`; `prereg` neither makes nor approves updates.
+
+`status` reads the registration's state from OSF and prints it, with the same two ways out for
+one still pending. It sends one GET per registration and needs no phrase:
+
+```text
+$ prereg status
+pending approval     /work/study/PREREG.md  https://osf.io/x7k2p/
+  submitted, and the registration is not yet approved.
+  It is pending, and takes effect in one of two ways:
+  ...
+  later  do nothing: OSF approves it by itself, no earlier than 2026-09-30 08:40 UTC.
+
+$ prereg status --log --access "no results seen"
+approved, public     /work/study/PREREG.md  https://osf.io/x7k2p/
+  approved, and open to anyone.
+  logged. Commit the log.
+```
+
+| State | Meaning | Exit |
+|---|---|---|
+| `pending approval` | Submitted, and waiting for every admin to approve or for OSF's 48 hours | 2 |
+| `approved, embargoed` | Approved, and private until the embargo's end date | 0 |
+| `approved, public` | Approved, and open to anyone | 0 |
+| `withdrawn` | Withdrawn on OSF | 1 |
+| `not registered` | The log records no registration | 2 |
+| `NOT READ` | OSF could not be read, or no longer holds the registration | 1 |
+
+Without `--log`, `status` writes nothing. With it, the first time a registration is seen
+approved is recorded as one log entry, `osf registration x7k2p observed approved, public`; a
+pending one is not logged, and an approval already in the log is not logged again. The entry's
+time is when the state was read, which is at or after the approval. Run from a directory no
+plan governs, `status` reports every plan below.
+
+`link --anonymous` creates a view-only link that hides the contributors, for double-blind
+review; without `--anonymous` the link shows them. The URL is printed. The log records the
+link's id, not its key, because the key opens the registration while it is embargoed.
+
+### What the log records
+
+```text
+2026-09-27T10:02:11+00:00  osf draft 64f1c2a9e4b0c1d2e3f4a5b6 of plan 35abc8ae2767bee4  nothing run
+2026-09-27T10:02:14+00:00  osf attached CONTEXT.md sha256 c8e26e6c8064b9cb…  nothing run
+2026-09-28T08:40:53+00:00  osf registration x7k2p from draft 64f1c2a9e4b0c1d2e3f4a5b6, embargo until 2027-06-01, https://osf.io/x7k2p/  nothing run
+2026-09-30T09:12:40+00:00  osf registration x7k2p observed approved, embargoed  nothing run
+2027-03-02T15:21:07+00:00  osf view-only link 65a0b1c2d3e4f5a6b7c8d9e0 on x7k2p, anonymous  results seen
+```
+
+The `observed approved` entry is written by `prereg status --log`. A registration made with
+`--confirm` ends `…, https://osf.io/x7k2p/, unattended, confirmed by --confirm`, so the log shows which registrations nobody typed a phrase for.
+
+The attached file's sha256 is written in full; it is shortened here, and each entry's chain
+value is left off.
+
+Each entry is appended through the same chained log as `prereg log`, so `prereg check` notices
+one removed or edited. `register` and `link` take `--access`, because the command cannot know
+what has been seen by the time it runs.
+
+### Who must be present
+
+Every write to OSF that cannot be undone — registering, creating a link — shows what it will
+send and asks for a phrase naming it: `register <draft>`, `register 5 plans <digest>`,
+`link <registration>`. Pushing a draft does not ask. The phrase is read from the terminal (`/dev/tty`), never stdin, so a
+piped answer does not count, and a process with no terminal is refused before any request.
+
+One path registers with nobody at the terminal, and it takes two parts given together:
+
+```bash
+PREREG_UNATTENDED_REGISTER=1 prereg register --immediate --access "nothing run" --confirm 64f1c2a9e4b0c1d2e3f4a5b6
+```
+
+`--confirm` names the draft, and has to equal the id of the draft the plan's log recorded; the
+variable has to be exactly `1`. With the flag and no variable, or with another draft's id, the
+command refuses before the token is read or any request is made. It registers one plan: `--all`
+is refused with it, and so is a directory with several plans below. What the terminal would
+have shown is printed, and the log entry says `unattended, confirmed by --confirm`. Without
+`--confirm` the variable does nothing and the phrase is asked for as before. `link` has no such
+path. This is for an agent that has shown the person the plan, its sha256 and the draft id and
+been told to go ahead; the id in the flag is what was approved.
+
+This is a guard against accidents, not a security boundary. An agent that wants to write to
+OSF has to go out of its way, for instance by faking a terminal, and that is not
+insurmountable. Anything that can read `OSF_TOKEN` can also call OSF without `prereg` at all.
+
+The barrier that holds is the token. Keep it in a secret source that asks for approval each
+time it is read, such as a 1Password-managed `.env`, which is a named pipe: every OSF
+interaction then needs Touch ID or the account password first. `prereg` reads such a pipe
+directly, only when a request is about to be made and after the phrase is typed, and gives up
+after 60 seconds if nothing is delivered. That holds for an unattended registration too: the
+token is read after `--confirm` is checked, so the approval prompt still appears.
+
+### The token
+
 Create a token at [osf.io/settings/tokens](https://osf.io/settings/tokens) with the
-`osf.full_write` scope. The token is stored in `.env` (gitignored).
+`osf.full_write` scope. `prereg` reads `OSF_TOKEN`, or `OSF_PAT`, from the environment, or from a `.env`
+in this directory or above, whether a regular file or a named pipe. `prereg setup` writes it to a
+plain `.env` and adds `.env` to `.gitignore`; a plain file can be read by every process running
+as you, coding agents included.
+
+### Changes after registering
+
+`prereg` does not change a registration. Updates are made in OSF's web interface: an update
+needs a written justification and goes to the registration's admins for approval, with a
+48-hour window. OSF reserves updates for events outside the authors' control. Record what
+changed, and why, here as well: a change to the plan with `prereg amend`, a note with
+`prereg log`.
 
 ## What a freeze is
 
-A commit and a hash. The commit is the evidence — it is in history, dated, and not yours to
-revise quietly. The hash is the convenience that lets `prereg check` tell you in a second
-whether the plan still says what it said.
+A commit, a hash of the whole file, and a timestamp held outside the repository. The commit is
+in history and dated. The hash lets `prereg check` tell you in a second whether the plan is byte
+for byte what was frozen. The timestamp and an OSF registration hold a copy of the digest that
+the author cannot alter, which is what makes a deliberate change detectable; read-only on disk
+and the pre-commit hook prevent an accidental one. A frozen file and its record in `.prereg/`
+edited together pass `prereg check` on that working tree: the staged check, the commit history,
+the timestamp and the registration are what show it.
 
 Neither proves you did not run the experiment first. Nothing can: a timestamp bounds when
 something existed, never when work began.
@@ -124,13 +591,16 @@ to ask for, and the command is there for when you want the answer now.
 
 | surface | fires |
 |---|---|
-| hook | when a frozen preregistration no longer matches the digest it was frozen with |
+| hook | before an `Edit`, `Write` or `MultiEdit` to a frozen plan or amendment, which it refuses |
+| hook | when a frozen plan or amendment no longer matches the digest it was frozen with |
 | skill | when Claude judges the situation calls for freezing a plan before a run, and recording what changed after |
 | command | when you type `/prereg-check` |
 
-**Why the hook.** This is the only exact check in the set. It recomputes a hash you recorded and compares two strings, so there is no threshold and no judgment. A plan rewritten around a result defeats registration entirely and no reader can detect it afterward, so the hook reports the difference and never edits the registration.
+The plugin also ships `prereg-style`, one author's style for writing a plan, none of it required by the tool, and `osf-registration`, for registering a frozen plan on OSF.
 
-It reports and never blocks, and stays silent in a project with no frozen plan.
+**Why the hooks.** The second is the only exact check in the set. It recomputes a hash you recorded and compares two strings, so there is no threshold and no judgment. A plan rewritten around a result defeats registration entirely and no reader can detect it afterward, so the hook reports the difference and never edits the registration.
+
+The first hook refuses an edit to a frozen file before it happens, with the instruction to record a note with `prereg log` or a change with `prereg amend`; an amendment still in draft is edited freely. The second reports a frozen file changed by another route, such as a shell command, and blocks nothing. Both stay silent in a project with no frozen plan. Each reads the freeze record beside a file frozen whole, and the digest a plan frozen in place carries.
 
 ```bash
 /plugin marketplace add elliottower/reproducible-science

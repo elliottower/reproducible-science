@@ -5,9 +5,12 @@ results seal <file>...    hash inputs before a run (prereg, script, data)
 results access <note>     record a data-access event (what you looked at, when)
 results run <file>...     record outputs after a run completes
 results claim <text>      bind a manuscript claim to a run's output
+results review <file>...  record that someone examined these files, and what they found
+results annotate <file>...  link these files to something outside the ledger; linked, not checked
 results coverage <paper>  how many of a manuscript's numbers are bound to a run
 results verify            check the ledger chain and every hash it names
 results reanchor          record the ledger's current length as authoritative
+results timestamp         date the ledger's head outside the repository, and check earlier dates
 
 This module parses arguments. Each handler unpacks the namespace argparse built and calls into
 `results.record` or `results.audit`, where the command's logic and its refusals live.
@@ -30,7 +33,7 @@ from results.paths import find_root as find_root
 from results.paths import ledger_path as ledger_path
 from results.paths import record_path as record_path
 from results.paths import require_root as require_root
-from results.record import ACCESS_LEVELS
+from results.record import ACCESS_LEVELS, VERDICTS
 from results.timeline import first_outcomes_seen as first_outcomes_seen
 from results.timeline import first_run_timestamp as first_run_timestamp
 from results.timeline import freeze_timestamp as freeze_timestamp
@@ -64,6 +67,14 @@ def cmd_claim(a) -> int:
     )
 
 
+def cmd_review(a) -> int:
+    return record.review(a.files, a.scope, a.procedure, a.verdict, a.reviewer, a.model, a.note)
+
+
+def cmd_annotate(a) -> int:
+    return record.annotate(a.files, a.kind, a.ref, a.digest, a.by, a.note, a.location)
+
+
 def cmd_coverage(a) -> int:
     return audit.coverage(a.manuscript, a.limit, a.strict)
 
@@ -74,6 +85,10 @@ def cmd_reanchor(a) -> int:
 
 def cmd_verify(a) -> int:
     return audit.verify(a.files)
+
+
+def cmd_timestamp(a) -> int:
+    return audit.timestamp()
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -142,6 +157,45 @@ def _main(argv: list[str] | None = None) -> int:
     cl.add_argument("--location", help="where in the manuscript: Table 2, Section 4.1, etc.")
     cl.set_defaults(fn=cmd_claim)
 
+    rv = sub.add_parser(
+        "review", help="record that someone examined these files, and what they found"
+    )
+    rv.add_argument("files", nargs="+", help="what was examined; each is recorded by digest")
+    rv.add_argument("--scope", required=True, help="what was checked about them")
+    rv.add_argument("--procedure", required=True, help="how it was checked")
+    rv.add_argument("--verdict", required=True, help=f"one of: {', '.join(VERDICTS)}")
+    rv.add_argument("--reviewer", required=True, help="who answers for the review")
+    rv.add_argument(
+        "--model",
+        help="the model that did the reading, where one did: its identifier, as reported",
+    )
+    rv.add_argument("--note", help="anything the verdict needs said beside it")
+    rv.set_defaults(fn=cmd_review)
+
+    an = sub.add_parser(
+        "annotate", help="link these files to something outside the ledger; linked, not checked"
+    )
+    an.add_argument(
+        "files", nargs="+", help="what the link is stated of; each is recorded by digest"
+    )
+    an.add_argument(
+        "--kind",
+        required=True,
+        help="what the outside thing is, as namespace:type: wandb:artifact, doi:dataset, "
+        "osf:node, url:page",
+    )
+    an.add_argument(
+        "--ref", required=True, help="where it is: an artifact path, a DOI, a URL, an id"
+    )
+    an.add_argument(
+        "--digest",
+        help="the digest the outside system states, as algorithm:hex; recorded, never compared",
+    )
+    an.add_argument("--by", help="who states the link")
+    an.add_argument("--note", help="anything the link needs said beside it")
+    an.add_argument("--location", help="where in the manuscript: Table 2, Section 4.1, etc.")
+    an.set_defaults(fn=cmd_annotate)
+
     v = sub.add_parser("verify", help="check the ledger and every hash it names")
     v.add_argument(
         "--files",
@@ -164,6 +218,11 @@ def _main(argv: list[str] | None = None) -> int:
 
     ra = sub.add_parser("reanchor", help="record the ledger's current length as authoritative")
     ra.set_defaults(fn=cmd_reanchor)
+
+    ts = sub.add_parser(
+        "timestamp", help="date the ledger's head outside the repository, and check earlier dates"
+    )
+    ts.set_defaults(fn=cmd_timestamp)
 
     a = ap.parse_args(argv)
     if not a.cmd:

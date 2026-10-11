@@ -14,8 +14,8 @@ publish reports. The interesting boundaries are:
 
 - **Manifest parsing.** A manifest is untrusted input. A crafted `repro.yaml` should never
   cause anything to execute.
-- **`repro verify --regenerate`.** This runs commands named in a manifest. It is off by
-  default for that reason, runs only what the manifest declares, and runs it in a sandbox
+- **`repro reproduce`.** This runs commands named in a manifest. It is a separate command
+  for that reason (`repro verify` executes nothing), runs only what the manifest declares, and runs it in a sandbox
   holding only the declared inputs. Commands are argv, never shell strings.
 - **Artifact reading.** Extractors handle files from arbitrary sources. A malformed PDF, CSV
   or database should produce an error, not a crash or an escape.
@@ -27,5 +27,5 @@ security problem, not merely a bug. Report it as one.
 
 ## What is not
 
-Running `--regenerate` on a manifest you have not read is equivalent to running a script you
-have not read. The flag is opt-in and documented as executing what the manifest names.
+Running `repro reproduce` on a manifest you have not read is equivalent to running a script
+you have not read. The command is documented as executing what the manifest names.

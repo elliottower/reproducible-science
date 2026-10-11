@@ -15,6 +15,7 @@ import sys
 from repro.corpus import Corpus, CorpusEntry, EntryState
 from repro.crosscheck import Freeze
 from repro.manifest import load
+from repro.reproduce import reproduce
 from repro.verify import verify
 
 FROZEN = "a1b2c3d4e5f6"
@@ -162,8 +163,7 @@ def _regen_state(tmp_path):
             expected=canonical(PRODUCED_DOC),
         )
     )
-    report = verify(load(tmp_path / "repro.yaml"), regenerate=True)
-    return report.regenerations[0]
+    return reproduce(load(tmp_path / "repro.yaml")).regenerations[0]
 
 
 def test_a_record_naming_a_volatile_field_cannot_pin_its_own_answer(tmp_path):
@@ -188,6 +188,74 @@ def test_every_citations_quote_state_is_mapped():
     from repro.verify import _QUOTE_STATE
 
     assert set(_QUOTE_STATE) == set(get_args(State))
+
+
+# --- a quotation occurring twice is undecided, and says why -------------------------------------
+
+PASSAGE = "The effect held in every cohort we examined"
+
+QUOTED_TWICE = """\
+project: demo
+artifacts:
+  - id: manuscript
+    path: manuscript.txt
+claims:
+  - id: unresolved-quotations
+    text: "the effect held throughout"
+    evidence:
+      - kind: quote
+        artifact: manuscript
+        text: "The effect held in every cohort we examined"
+"""
+
+
+def _quoted(tmp_path, occurrences: int):
+    body = "".join(f"Paragraph {i}. {PASSAGE}.\n" for i in range(occurrences))
+    (tmp_path / "manuscript.txt").write_text(body)
+    (tmp_path / "repro.yaml").write_text(QUOTED_TWICE)
+    return verify(load(tmp_path / "repro.yaml")).claims[0].decisions[0]
+
+
+def test_a_passage_occurring_twice_is_reported_as_an_ambiguous_quotation(tmp_path):
+    # Observed 1 Oct 2026 under the released 0.4.2: `repro verify --policy strict` reported
+    # `evidence.error ... KeyError: 'ambiguous'` for this manifest. The state is mapped now, and
+    # under its own reason: `passage_ambiguous` says a document states two different numbers,
+    # which accuses the manuscript of contradicting itself. A quotation found twice accuses
+    # nothing; the record has not said which occurrence it means.
+    from repro.models import ComparisonStatus, ExecutionStatus, ExtractionStatus, Outcome, Reason
+
+    decision = _quoted(tmp_path, 2)
+
+    assert decision.execution is ExecutionStatus.COMPLETED
+    assert decision.extraction is ExtractionStatus.INVALID
+    assert decision.comparison is ComparisonStatus.NOT_APPLICABLE
+    assert decision.reason is Reason.QUOTATION_AMBIGUOUS
+    assert decision.outcome is Outcome.NOT_FOUND
+    assert "occurs 2 times" in decision.detail
+
+
+def test_the_same_passage_occurring_once_is_verified(tmp_path):
+    # The control: the passage and the manifest are the ones above, so what made the first
+    # decision undecided is the second occurrence and nothing else.
+    from repro.models import Outcome, Reason
+
+    decision = _quoted(tmp_path, 1)
+
+    assert decision.reason is Reason.PASSAGE_PRESENT
+    assert decision.outcome is Outcome.VERIFIED
+
+
+def test_strict_verify_grades_an_ambiguous_quotation_as_a_finding_not_a_defect(tmp_path, capsys):
+    from repro.cli import main
+
+    _quoted(tmp_path, 2)
+
+    main(["verify", str(tmp_path / "repro.yaml"), "--policy", "strict"])
+
+    out = capsys.readouterr().out
+    assert "KeyError" not in out
+    assert "evidence.error" not in out
+    assert "evidence.not_found" in out
 
 
 # --- a claim the policy grades an error does not render as a note -------------------------------

@@ -17,6 +17,18 @@ from dataclasses import dataclass, field
 import pytest
 
 SCHEMA_BLOCKS = pathlib.Path(__file__).parent / "data" / "osf_preregistration_schema_blocks.json"
+FROZEN_IN_PLACE = pathlib.Path(__file__).parent / "data" / "frozen_in_place.md"
+
+
+@pytest.fixture
+def frozen_in_place() -> bytes:
+    """A plan frozen in place: the freeze record and the log inside the file.
+
+    The bytes `prereg freeze` and two `prereg log` calls wrote on 6 Oct 2026, at the last commit
+    before a freeze stopped writing into the plan. Captured, not rebuilt, so the tests of that
+    format run against what that version produced.
+    """
+    return FROZEN_IN_PLACE.read_bytes()
 
 
 @dataclass

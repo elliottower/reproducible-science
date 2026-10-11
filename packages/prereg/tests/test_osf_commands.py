@@ -1,17 +1,20 @@
-"""`freeze --osf`, `register` and `link`: nothing reaches OSF unless a person typed the phrase,
-and everything that does reach it is in the log."""
+"""`freeze --osf`, `register`, `status` and `link`: a draft is pushed unattended, nothing is
+linked unless a person typed the phrase, nothing is registered unless they typed it or the draft
+was named with the environment opted in, and everything that reaches OSF is in the log."""
 
 from __future__ import annotations
 
+import datetime
 import hashlib
 import io
 import os
 import re
 import subprocess
 import sys
+import urllib.error
 
 import pytest
-from prereg import cli, confirm, log, osf, plan
+from prereg import cli, confirm, osf, plan, sidelog
 from provenance_core.gitref import clean_env
 
 CONTEXT = b"Shared context for every plan in this project.\n"
@@ -22,6 +25,24 @@ DRAFT = {
     }
 }
 UPLOAD_LINK = "https://files.osf.io/v1/resources/node1/providers/osfstorage/"
+# What OSF answers for a draft node's storage providers: a list, one item per provider, each
+# carrying the link a new file is PUT to (api/nodes/serializers.py,
+# `NodeStorageProviderSerializer`). Read from draft node pxbsc on 10 Oct 2026.
+PROVIDERS = {
+    "data": [
+        {
+            "id": "node1:osfstorage",
+            "type": "files",
+            "attributes": {"kind": "folder", "name": "osfstorage", "provider": "osfstorage"},
+            "links": {"upload": UPLOAD_LINK, "new_folder": UPLOAD_LINK + "?kind=folder"},
+        }
+    ]
+}
+SUBJECTS = {
+    "Artificial Intelligence and Robotics": "subjAI",
+    "Science and Technology Studies": "subjSTS",
+    "Other Science and Technology Studies": "subjOther",
+}
 
 
 def _git(*args, cwd):
@@ -45,11 +66,7 @@ def study(tmp_path, monkeypatch, fake_osf):
     monkeypatch.chdir(tmp_path / "study")
 
     fake_osf.on("POST", r"/draft_registrations/$", DRAFT)
-    fake_osf.on(
-        "GET",
-        r"/draft_nodes/node1/files/providers/osfstorage/$",
-        {"data": {"links": {"upload": UPLOAD_LINK}}},
-    )
+    fake_osf.on("GET", r"/draft_nodes/node1/files/$", PROVIDERS)
     fake_osf.on(
         "PUT",
         r"^https://files\.osf\.io/v1/resources/node1/",
@@ -71,6 +88,30 @@ def study(tmp_path, monkeypatch, fake_osf):
         r"/registrations/reg01/view_only_links/",
         {"data": {"id": "vol1", "attributes": {"key": "k3y", "anonymous": True}}},
     )
+    fake_osf.on(
+        "GET", r"/draft_registrations/[^/]+/$", {"data": {"attributes": {"title": "study"}}}
+    )
+    fake_osf.on("PATCH", r"/draft_registrations/[^/]+/$", {"data": {}})
+    fake_osf.on("PATCH", r"/relationships/subjects/$", {"data": []})
+    fake_osf.on("GET", r"/users/me/registrations/", {"data": []})
+
+    def subjects(call):
+        # OSF's filter is a substring match, so the lookup has to pick the exact name itself.
+        text = re.search(r"filter%5Btext%5D=([^&]+)", call.url).group(1).replace("+", " ")
+        hits = [(n, i) for n, i in SUBJECTS.items() if text.casefold() in n.casefold()]
+        return {"data": [{"id": i, "attributes": {"text": n}} for n, i in hits]}
+
+    fake_osf.on("GET", r"/providers/registrations/osf/subjects/", subjects)
+    fake_osf.on(
+        "GET",
+        r"/licenses/\?",
+        {
+            "data": [
+                {"id": "lic_ccby", "attributes": {"name": "CC-By Attribution 4.0 International"}}
+            ]
+        },
+    )
+    monkeypatch.setattr(osf, "RETRY_WAIT", 0)
     return tmp_path / "study"
 
 
@@ -107,22 +148,24 @@ def _plan(study):
 
 
 def _digest(study):
-    return re.search(r"`([0-9a-f]{64})`", _plan(study)).group(1)
+    digest = cli.frozen_digest(study / "PREREG.md")
+    assert digest is not None
+    return digest
 
 
 def _entries(study):
-    return log.log_lines(_plan(study))
+    return cli._entries(study / "PREREG.md")
 
 
-def _push_phrase(study):
-    """The phrase `freeze --osf` asks for: the digest the freeze is about to record."""
-    frozen = plan.rewrite_status(_plan(study), "0" * 40, "0" * 64, plan.today())
-    return f"push {plan.sha256_of(plan.plan_of(frozen))[:12]}"
+def _edit(path, text: str) -> None:
+    """Write over a frozen plan: a freeze leaves it read-only."""
+    path.chmod(0o644)
+    path.write_text(text)
 
 
-def _freeze_and_push(study, tty) -> int:
-    tty.types(_push_phrase(study))
-    rc = cli._main(["freeze", "--osf", "--attach", "../CONTEXT.md"])
+def _freeze_and_push(study, tty, *extra: str) -> int:
+    del tty  # a draft is pushed without asking; the fixture stays so the tests read alike
+    rc = cli._main(["freeze", "--osf", "--attach", "../CONTEXT.md", *extra])
     _commit(study.parent, "freeze")
     return rc
 
@@ -146,44 +189,79 @@ def test_freeze_pushes_the_draft_and_logs_each_attachment_with_its_hash(study, t
     [put] = fake_osf.calls_to("PUT", r"files\.osf\.io")
     assert put.body == CONTEXT, "the bytes hashed must be the bytes sent"
     assert "kind=file" in put.url and "name=CONTEXT.md" in put.url
-    assert expected in tty.shown(), "the confirmation must show what will be attached"
     assert cli._main(["check"]) == 0, "the OSF entries must extend the log's chain, not break it"
 
 
-def test_a_wrong_phrase_sends_nothing_and_freezes_nothing(study, tty, fake_osf):
-    before = _plan(study)
-    tty.types("yes")
-    assert cli._main(["freeze", "--osf", "--attach", "../CONTEXT.md"]) == 1
-    assert fake_osf.writes == []
-    assert _plan(study) == before, "a cancelled push must leave the plan unfrozen"
-
-
-def test_with_no_terminal_no_draft_is_pushed(study, monkeypatch, fake_osf, tmp_path):
+def test_a_draft_is_pushed_with_no_terminal(study, monkeypatch, fake_osf, tmp_path):
+    """A draft is private and deletable, so an agent's shell can push one unattended."""
     _no_terminal(monkeypatch, tmp_path)
+    assert cli._main(["freeze", "--osf", "--attach", "../CONTEXT.md"]) == 0
+    assert fake_osf.calls_to("POST", r"/draft_registrations/$")
+    assert any("osf draft draft1" in e for e in _entries(study))
+
+
+def test_the_metadata_page_is_filled_from_the_flags(study, tty, fake_osf, capsys):
+    assert (
+        _freeze_and_push(
+            study,
+            tty,
+            "--subject", "Artificial Intelligence and Robotics",
+            "--subject", "Science and Technology Studies",
+            "--description", "What the study compares.",
+            "--tag", "AI incidents",
+            "--tag", "preregistration",
+            "--category", "hypothesis",
+            "--copyright-holder", "A. Author",
+            "--title-prefix", "EXPT01: ",
+        )
+        == 0
+    )  # fmt: skip
+    [patch] = fake_osf.calls_to("PATCH", r"/draft_registrations/draft1/$")
+    data = patch.json["data"]
+    assert data["attributes"] == {
+        "title": "EXPT01: study",
+        "description": "What the study compares.",
+        "tags": ["AI incidents", "preregistration"],
+        "category": "hypothesis",
+        "node_license": {"year": plan.today()[:4], "copyright_holders": ["A. Author"]},
+    }
+    assert data["relationships"]["license"]["data"] == {"type": "licenses", "id": "lic_ccby"}
+    [subjects] = fake_osf.calls_to("PATCH", r"/draft_registrations/draft1/relationships/subjects/")
+    assert [d["id"] for d in subjects.json["data"]] == ["subjAI", "subjSTS"], (
+        "a substring hit such as 'Other Science and Technology Studies' must not be taken"
+    )
+    assert "no subject" not in capsys.readouterr().out
+
+
+def test_a_push_without_a_prefix_still_sends_the_plan_title(study, tty, fake_osf):
+    """OSF ignores the title in the POST that creates a draft, so only the PATCH sets it."""
+    assert _freeze_and_push(study, tty) == 0
+    [patch] = fake_osf.calls_to("PATCH", r"/draft_registrations/draft1/$")
+    assert patch.json["data"]["attributes"] == {"title": "study"}
+
+
+def test_a_push_with_no_subject_warns_that_osf_will_not_register_it(study, tty, capsys):
+    assert _freeze_and_push(study, tty) == 0
+    assert "OSF refuses to register a draft without one" in capsys.readouterr().out
+
+
+def test_an_unknown_subject_is_refused_before_anything_is_written(study, fake_osf):
     before = _plan(study)
-    assert cli._main(["freeze", "--osf", "--attach", "../CONTEXT.md"]) == 1
+    assert cli._main(["freeze", "--osf", "--subject", "Astrology"]) == 1
     assert fake_osf.writes == []
     assert _plan(study) == before
 
 
-def test_the_push_phrase_on_stdin_is_not_read(study, tty, monkeypatch, fake_osf, capsys):
-    """Piping the phrase is exactly what an unattended process would do."""
-    monkeypatch.setattr(sys, "stdin", io.StringIO(f"{_push_phrase(study)}\n" * 5))
-    tty.types("")
-    assert cli._main(["freeze", "--osf"]) == 1
+def test_an_unknown_category_is_refused_before_anything_is_written(study, fake_osf):
+    before = _plan(study)
+    assert cli._main(["freeze", "--osf", "--category", "misc"]) == 1
     assert fake_osf.writes == []
-    assert "cancelled" in capsys.readouterr().out
+    assert _plan(study) == before
 
 
-def test_the_token_is_read_only_after_the_push_phrase(study, tty, monkeypatch, fake_osf):
-    """Reading a pipe-backed token asks the person to approve; a cancelled command must not."""
-    reads = []
-    monkeypatch.setattr(osf, "require_token", lambda: reads.append(1) or "t")
-    tty.types("no")
-    assert cli._main(["freeze", "--osf"]) == 1
-    assert reads == []
-    [schema] = fake_osf.calls_to("GET", r"schema_blocks")
-    assert "Authorization" not in schema.headers, "the public schema is read without the token"
+def test_metadata_flags_without_osf_are_refused(study):
+    with pytest.raises(SystemExit):
+        cli._main(["freeze", "--subject", "Artificial Intelligence and Robotics"])
 
 
 def test_a_plan_that_cannot_map_is_refused_before_anyone_is_asked(study, tty, fake_osf):
@@ -194,7 +272,7 @@ def test_a_plan_that_cannot_map_is_refused_before_anyone_is_asked(study, tty, fa
     _commit(study.parent, "odd heading")
     before = _plan(study)
     assert cli._main(["freeze", "--osf"]) == 1
-    assert tty.shown() == "", "nobody should be asked to confirm a push that cannot happen"
+    assert tty.shown() == ""
     assert fake_osf.writes == []
     assert _plan(study) == before
 
@@ -210,6 +288,40 @@ def test_an_upload_osf_hashes_differently_is_not_logged_as_attached(study, tty, 
     assert any("osf draft draft1" in e for e in _entries(study)), "the draft does exist"
 
 
+def test_the_upload_link_is_read_from_the_draft_nodes_provider_list(study, tty, fake_osf):
+    # `files/providers/osfstorage/` answers 404 for a draft node, so it is never asked.
+    fake_osf.on("GET", r"/files/providers/", (404, {"errors": [{"detail": "Not found."}]}))
+    assert _freeze_and_push(study, tty) == 0
+    assert fake_osf.calls_to("GET", r"/files/providers/") == []
+    assert len(fake_osf.calls_to("GET", r"/v2/draft_nodes/node1/files/$")) == len(
+        fake_osf.calls_to("PUT", r"files\.osf\.io")
+    )
+    put = fake_osf.calls_to("PUT", r"files\.osf\.io")[0]
+    assert put.url.startswith(UPLOAD_LINK + "?kind=file&name=")
+    assert any("osf attached" in e for e in _entries(study))
+
+
+@pytest.mark.parametrize(
+    "providers",
+    [
+        [],
+        [{"attributes": {"provider": "github"}, "links": {"upload": UPLOAD_LINK}}],
+        [{"attributes": {"provider": "osfstorage"}, "links": {}}],
+    ],
+)
+def test_a_draft_node_with_no_storage_upload_link_attaches_nothing(study, tty, fake_osf, providers):
+    fake_osf.on("GET", r"/draft_nodes/node1/files/$", {"data": providers})
+    assert _freeze_and_push(study, tty) == 1
+    assert fake_osf.calls_to("PUT", r"files\.osf\.io") == []
+    assert not any("osf attached" in e for e in _entries(study))
+
+
+def test_an_upload_osf_answers_without_a_hash_is_not_logged_as_attached(study, tty, fake_osf):
+    fake_osf.on("PUT", r"files\.osf\.io", {"data": {"attributes": {"extra": {}}}})
+    assert _freeze_and_push(study, tty) == 1
+    assert not any("osf attached" in e for e in _entries(study))
+
+
 def test_attach_without_osf_is_refused(study):
     with pytest.raises(SystemExit):
         cli._main(["freeze", "--attach", "../CONTEXT.md"])
@@ -220,6 +332,50 @@ def test_a_missing_attachment_is_refused_before_anything_is_written(study, fake_
     assert cli._main(["freeze", "--osf", "--attach", "../MISSING.md"]) == 1
     assert fake_osf.calls == []
     assert _plan(study) == before
+
+
+def test_a_push_a_registration_and_a_link_write_nothing_into_the_plan(study, tty, fake_osf):
+    before = (study / "PREREG.md").read_bytes()
+    _registered(study, tty)
+    tty.types("link reg01")
+    assert cli._main(["link", "--anonymous", "--access", "results seen"]) == 0
+
+    assert (study / "PREREG.md").read_bytes() == before
+    logged = (study / "PREREG.log").read_text()
+    for event in (
+        "osf draft draft1",
+        "osf attached CONTEXT.md",
+        "osf registration reg01",
+        "osf view-only link vol1",
+    ):
+        assert event in logged
+    assert cli._main(["check"]) == 0
+
+
+def test_a_plan_frozen_without_a_draft_is_pushed_later_and_not_frozen_again(study, fake_osf):
+    assert cli._main(["freeze"]) == 0
+    record = (study / ".prereg" / "PREREG.md.json").read_bytes()
+
+    assert cli._main(["freeze", "--osf"]) == 1, (
+        "the push is logged now, so it must say what was seen"
+    )
+    assert fake_osf.writes == []
+    assert cli._main(["freeze", "--osf", "--access", "no results seen"]) == 0
+
+    assert (study / ".prereg" / "PREREG.md.json").read_bytes() == record
+    [entry] = [e for e in _entries(study) if "osf draft" in e]
+    assert f"osf draft draft1 of plan {_digest(study)[:16]}" in entry and "no results seen" in entry
+    assert cli._main(["freeze", "--osf", "--access", "no results seen"]) == 1
+    assert len(fake_osf.calls_to("POST", r"/draft_registrations/$")) == 1
+    assert cli._main(["check"]) == 0
+
+
+def test_a_changed_plan_is_not_pushed(study, fake_osf):
+    assert cli._main(["freeze"]) == 0
+    p = study / "PREREG.md"
+    _edit(p, p.read_text().replace("## Randomization", "## Randomization\n\nBy coin."))
+    assert cli._main(["freeze", "--osf", "--access", "nothing run"]) == 1
+    assert fake_osf.writes == []
 
 
 # --- register ------------------------------------------------------------------------------
@@ -304,16 +460,23 @@ def test_register_reads_the_token_only_after_the_phrase(study, tty, monkeypatch,
 def test_register_refuses_a_plan_changed_since_the_freeze(study, tty, fake_osf):
     assert _freeze_and_push(study, tty) == 0
     p = study / "PREREG.md"
-    p.write_text(p.read_text().replace("## Randomization", "## Randomization\n\nBy coin."))
+    _edit(p, p.read_text().replace("## Randomization", "## Randomization\n\nBy coin."))
     tty.types("register draft1")
     assert cli._main(["register", "--immediate", "--access", "nothing run"]) == 1
     assert fake_osf.calls_to("POST", r"/registrations/") == []
 
 
-def test_register_refuses_a_draft_made_from_an_earlier_freeze(study, tty, fake_osf):
-    """After a forced re-freeze the plan the hash describes is not the one on OSF."""
-    assert _freeze_and_push(study, tty) == 0
+def test_register_refuses_a_draft_made_from_an_earlier_freeze(
+    study, tty, fake_osf, frozen_in_place
+):
+    """After a forced re-freeze the plan the hash describes is not the one on OSF.
+
+    Only a plan frozen in place can be re-frozen, so this starts from one."""
     p = study / "PREREG.md"
+    p.write_bytes(frozen_in_place)
+    _commit(study.parent, "frozen in place")
+    assert cli._main(["freeze", "--force", "--osf", "--access", "nothing run"]) == 0
+    assert any("osf draft draft1" in e for e in _entries(study))
     p.write_text(p.read_text().replace("## Randomization", "## Randomization\n\nBy coin."))
     _commit(study.parent, "edit")
     assert cli._main(["freeze", "--force", "--access", "nothing run"]) == 0
@@ -357,6 +520,413 @@ def test_an_embargo_in_the_past_is_refused_before_asking(study, tty, fake_osf):
     assert fake_osf.calls_to("POST", r"/registrations/") == []
 
 
+def _listed(reg_id="reg01", title="study", minutes=0):
+    created = datetime.datetime.now(datetime.UTC).replace(tzinfo=None) + datetime.timedelta(
+        minutes=minutes
+    )
+    return {"id": reg_id, "attributes": {"title": title, "date_created": created.isoformat()}}
+
+
+def test_a_502_that_registered_anyway_is_recovered_not_retried(study, tty, fake_osf, capsys):
+    """OSF answered 502 to the POST while creating the registration. Retrying got 403."""
+    assert _freeze_and_push(study, tty) == 0
+    fake_osf.on("POST", r"/registrations/\?", (502, {"errors": [{"detail": "Bad Gateway"}]}))
+    fake_osf.on("GET", r"/users/me/registrations/", {"data": [_listed("t6ns4")]})
+    tty.types("register draft1")
+    assert cli._main(["register", "--immediate", "--access", "nothing run"]) == 0
+    assert len(fake_osf.calls_to("POST", r"/registrations/")) == 1, "found, so not sent again"
+    last = _entries(study)[-1]
+    assert "osf registration t6ns4 from draft draft1, immediate" in last
+    assert "found after OSF error 502" in last
+    assert cli._main(["check"]) == 0
+
+
+def test_a_502_that_did_not_register_is_retried(study, tty, fake_osf):
+    assert _freeze_and_push(study, tty) == 0
+    answers = iter([(502, {}), (502, {})])
+
+    def flaky(call):
+        answer = next(answers, None)
+        if answer is None:
+            return {"data": {"id": "reg01", "links": {"html": "https://osf.io/reg01/"}}}
+        raise urllib.error.HTTPError(call.url, answer[0], "error", {}, io.BytesIO(b"{}"))
+
+    fake_osf.on("POST", r"/registrations/\?", flaky)
+    tty.types("register draft1")
+    assert cli._main(["register", "--immediate", "--access", "nothing run"]) == 0
+    assert len(fake_osf.calls_to("POST", r"/registrations/")) == 3
+    assert "osf registration reg01 from draft draft1" in _entries(study)[-1]
+    assert "found after" not in _entries(study)[-1]
+
+
+def test_an_old_registration_with_the_same_title_is_not_taken_for_this_one(study, tty, fake_osf):
+    assert _freeze_and_push(study, tty) == 0
+    fake_osf.on("POST", r"/registrations/\?", (502, {}))
+    fake_osf.on("GET", r"/users/me/registrations/", {"data": [_listed("old01", minutes=-90)]})
+    entries = _entries(study)
+    tty.types("register draft1")
+    assert cli._main(["register", "--immediate", "--access", "nothing run"]) == 1
+    assert len(fake_osf.calls_to("POST", r"/registrations/")) == osf.ATTEMPTS
+    assert _entries(study) == entries
+
+
+def test_a_400_is_reported_at_once_and_not_retried(study, tty, fake_osf):
+    assert _freeze_and_push(study, tty) == 0
+    fake_osf.on("POST", r"/registrations/\?", (400, {"errors": [{"detail": "no subject"}]}))
+    tty.types("register draft1")
+    assert cli._main(["register", "--immediate", "--access", "nothing run"]) == 1
+    assert len(fake_osf.calls_to("POST", r"/registrations/")) == 1
+    assert fake_osf.calls_to("GET", r"/users/me/registrations/") == []
+
+
+@pytest.fixture
+def three_plans(tmp_path, monkeypatch, fake_osf, study):
+    """Three frozen plans side by side, each with its own draft."""
+    del study
+    for name in ("b", "c"):
+        assert cli._main(["new", str(tmp_path / name)]) == 0
+    _commit(tmp_path, "more plans")
+    drafts = iter(["draft1", "draft2", "draft3"])
+    fake_osf.on(
+        "POST",
+        r"/draft_registrations/$",
+        lambda call: {
+            "data": {
+                "id": next(drafts),
+                "relationships": {"branched_from": {"data": {"id": "node1"}}},
+            }
+        },
+    )
+    for name in ("study", "b", "c"):
+        monkeypatch.chdir(tmp_path / name)
+        assert cli._main(["freeze", "--osf"]) == 0
+    _commit(tmp_path, "freeze")
+    regs = iter(["reg01", "reg02", "reg03"])
+    fake_osf.on(
+        "POST",
+        r"/registrations/\?",
+        lambda call: {"data": {"id": next(regs), "links": {}}},
+    )
+    monkeypatch.chdir(tmp_path)
+    return tmp_path
+
+
+def _batch_phrase(*ids):
+    digest = hashlib.sha256(",".join(ids).encode()).hexdigest()[:8]
+    return f"register {len(ids)} plans {digest}"
+
+
+def test_one_phrase_registers_every_plan_below(three_plans, tty, fake_osf):
+    tty.types(_batch_phrase("draft2", "draft3", "draft1"))  # b, c, study: sorted by path
+    assert cli._main(["register", "--all", "--immediate", "--access", "nothing run"]) == 0
+    sent = [c.json["data"]["attributes"]["draft_registration_id"] for c in fake_osf.calls_to(
+        "POST", r"/registrations/\?")]  # fmt: skip
+    assert sorted(sent) == ["draft1", "draft2", "draft3"]
+    shown = tty.shown()
+    assert all(d in shown for d in ("draft1", "draft2", "draft3"))
+    for name in ("study", "b", "c"):
+        assert "osf registration reg0" in sidelog.entries(three_plans / name / "PREREG.md")[-1]
+    assert cli._main(["check"]) == 0
+
+
+def test_the_single_plan_phrase_does_not_confirm_a_batch(three_plans, tty, fake_osf):
+    tty.types("register draft1")
+    assert cli._main(["register", "--all", "--immediate", "--access", "nothing run"]) == 1
+    assert fake_osf.calls_to("POST", r"/registrations/") == []
+
+
+def test_a_batch_with_one_changed_plan_sends_nothing(three_plans, tty, fake_osf):
+    p = three_plans / "c" / "PREREG.md"
+    _edit(p, p.read_text().replace("## Randomization", "## Randomization\n\nBy coin."))
+    tty.types(_batch_phrase("draft2", "draft3", "draft1"))
+    assert cli._main(["register", "--all", "--immediate", "--access", "nothing run"]) == 1
+    assert fake_osf.calls_to("POST", r"/registrations/") == []
+    assert tty.shown() == "", "nobody is asked to confirm a batch that cannot go through"
+
+
+def test_a_batch_rerun_skips_the_plans_already_registered(three_plans, tty, fake_osf):
+    tty.types(_batch_phrase("draft2", "draft3", "draft1"))
+    assert cli._main(["register", "--all", "--immediate", "--access", "nothing run"]) == 0
+    _commit(three_plans, "registered")
+    assert cli._main(["register", "--all", "--immediate", "--access", "nothing run"]) == 1
+    assert len(fake_osf.calls_to("POST", r"/registrations/\?")) == 3
+
+
+# --- register --confirm --------------------------------------------------------------------
+
+UNATTENDED = ["register", "--immediate", "--access", "nothing run", "--confirm"]
+
+
+def test_confirm_with_the_draft_id_and_the_variable_registers_with_no_terminal(
+    study, tty, monkeypatch, fake_osf, tmp_path, capsys
+):
+    assert _freeze_and_push(study, tty) == 0
+    _no_terminal(monkeypatch, tmp_path)
+    monkeypatch.setenv(confirm.UNATTENDED_ENV, "1")
+    assert cli._main([*UNATTENDED, "draft1"]) == 0
+
+    [call] = fake_osf.calls_to("POST", r"/registrations/")
+    assert call.json["data"]["attributes"]["draft_registration_id"] == "draft1"
+    last = _entries(study)[-1]
+    assert "osf registration reg01 from draft draft1, immediate, https://osf.io/reg01/" in last
+    assert "unattended, confirmed by --confirm" in last
+    out = capsys.readouterr().out
+    assert _digest(study) in out and "draft1" in out and "CONTEXT.md" in out, (
+        "what the terminal would have shown is printed instead"
+    )
+    assert cli._main(["check"]) == 0
+    assert "already registered as reg01" in cli._registrable(study / "PREREG.md")
+
+
+@pytest.mark.parametrize("value", [None, "", "0", "true", "yes"])
+def test_confirm_without_the_variable_set_to_1_sends_nothing(
+    study, tty, monkeypatch, fake_osf, tmp_path, capsys, value
+):
+    assert _freeze_and_push(study, tty) == 0
+    _no_terminal(monkeypatch, tmp_path)
+    if value is None:
+        monkeypatch.delenv(confirm.UNATTENDED_ENV, raising=False)
+    else:
+        monkeypatch.setenv(confirm.UNATTENDED_ENV, value)
+    reads = []
+    monkeypatch.setattr(osf, "require_token", lambda: reads.append(1) or "t")
+    entries = _entries(study)
+    assert cli._main([*UNATTENDED, "draft1"]) == 1
+    assert fake_osf.calls_to("POST", r"/registrations/") == []
+    assert _entries(study) == entries
+    assert reads == [], "a refused command must not ask for the token"
+    assert f"{confirm.UNATTENDED_ENV}=1" in capsys.readouterr().out
+
+
+def test_confirm_with_another_draft_id_sends_nothing(
+    study, tty, monkeypatch, fake_osf, tmp_path, capsys
+):
+    assert _freeze_and_push(study, tty) == 0
+    _no_terminal(monkeypatch, tmp_path)
+    monkeypatch.setenv(confirm.UNATTENDED_ENV, "1")
+    entries = _entries(study)
+    assert cli._main([*UNATTENDED, "draft2"]) == 1
+    assert fake_osf.calls_to("POST", r"/registrations/") == []
+    assert _entries(study) == entries
+    assert "--confirm draft2 does not name this plan's draft" in capsys.readouterr().out
+
+
+def test_the_variable_alone_does_not_register(study, tty, monkeypatch, fake_osf, tmp_path):
+    assert _freeze_and_push(study, tty) == 0
+    _no_terminal(monkeypatch, tmp_path)
+    monkeypatch.setenv(confirm.UNATTENDED_ENV, "1")
+    assert cli._main(["register", "--immediate", "--access", "nothing run"]) == 1
+    assert fake_osf.calls_to("POST", r"/registrations/") == []
+
+
+def test_a_typed_registration_is_not_logged_as_unattended(study, tty, monkeypatch, fake_osf):
+    assert _freeze_and_push(study, tty) == 0
+    monkeypatch.setenv(confirm.UNATTENDED_ENV, "1")
+    tty.types("register draft1")
+    assert cli._main(["register", "--immediate", "--access", "nothing run"]) == 0
+    assert _entries(study)[-1].count("unattended") == 0
+    assert "register draft1" in tty.shown()
+
+
+def test_confirm_with_all_sends_nothing(three_plans, monkeypatch, fake_osf, capsys):
+    monkeypatch.setenv(confirm.UNATTENDED_ENV, "1")
+    assert cli._main(["register", "--all", "--immediate", "--access", "nothing run",
+                      "--confirm", "draft1"]) == 1  # fmt: skip
+    assert fake_osf.calls_to("POST", r"/registrations/") == []
+    assert "cannot go with --all" in capsys.readouterr().out
+
+
+def test_confirm_above_several_plans_sends_nothing(three_plans, monkeypatch, fake_osf):
+    monkeypatch.setenv(confirm.UNATTENDED_ENV, "1")
+    assert cli._main([*UNATTENDED, "draft1"]) == 1
+    assert fake_osf.calls_to("POST", r"/registrations/") == []
+    for name in ("study", "b", "c"):
+        assert "osf registration" not in sidelog.entries(three_plans / name / "PREREG.md")[-1]
+
+
+# --- status --------------------------------------------------------------------------------
+
+PENDING = {
+    "public": False,
+    "reviews_state": "initial",
+    "pending_registration_approval": True,
+    "pending_embargo_approval": False,
+    "embargoed": False,
+    "embargo_end_date": None,
+    "withdrawn": False,
+    "date_registered": "2026-10-10T17:16:52.463390Z",
+}
+
+
+def _osf_holds(fake_osf, **attributes):
+    """What OSF answers for the registration, as its attributes; the rest are a pending one's."""
+    fake_osf.on(
+        "GET",
+        r"/registrations/reg01/\?",
+        {"data": {"id": "reg01", "attributes": {**PENDING, **attributes}}},
+    )
+
+
+def _status(study, fake_osf, capsys) -> tuple[int, str]:
+    """Run `status`, and fail if it wrote anything: to OSF, or into the log."""
+    sent, entries = len(fake_osf.writes), _entries(study)
+    capsys.readouterr()
+    rc = cli._main(["status"])
+    assert len(fake_osf.writes) == sent, "status reads; it must send nothing but a GET"
+    assert _entries(study) == entries
+    return rc, capsys.readouterr().out
+
+
+def test_status_reports_a_pending_registration_and_says_it_cannot_approve(
+    study, tty, fake_osf, capsys
+):
+    _registered(study, tty)
+    _osf_holds(fake_osf)
+    rc, out = _status(study, fake_osf, capsys)
+    assert rc == 2
+    assert out.startswith("pending approval")
+    assert "https://osf.io/reg01/" in out
+    assert '"Pending Registration - Admin Notification"' in out
+    assert out.index("which approves") < out.index("cancels the registration")
+    assert "cannot be undone" in out
+    assert "no earlier than 2026-10-12 17:16 UTC" in out, "48 hours after it was submitted"
+    assert "prereg cannot approve a first registration" in out
+    [get] = fake_osf.calls_to("GET", r"/registrations/reg01/")
+    assert "version=2.20" in get.url
+
+
+def test_status_reports_a_pending_embargo_as_pending(study, tty, fake_osf, capsys):
+    _registered(study, tty)
+    _osf_holds(fake_osf, pending_registration_approval=False, pending_embargo_approval=True)
+    rc, out = _status(study, fake_osf, capsys)
+    assert rc == 2
+    assert out.startswith("pending approval")
+    assert '"Pending Embargo - Admin Notification"' in out
+
+
+def test_status_reports_an_approved_embargo_and_its_end(study, tty, fake_osf, capsys):
+    _registered(study, tty)
+    _osf_holds(
+        fake_osf,
+        pending_registration_approval=False,
+        embargoed=True,
+        reviews_state="embargo",
+        embargo_end_date="2030-01-01T00:00:00Z",
+    )
+    rc, out = _status(study, fake_osf, capsys)
+    assert rc == 0
+    assert out.startswith("approved, embargoed") and "private until 2030-01-01" in out
+
+
+def test_status_reports_a_public_registration(study, tty, fake_osf, capsys):
+    _registered(study, tty)
+    _osf_holds(fake_osf, pending_registration_approval=False, public=True)
+    rc, out = _status(study, fake_osf, capsys)
+    assert rc == 0
+    assert out.startswith("approved, public") and "pending" not in out
+
+
+def test_status_reports_a_withdrawn_registration(study, tty, fake_osf, capsys):
+    _registered(study, tty)
+    _osf_holds(fake_osf, pending_registration_approval=None, public=None, withdrawn=True)
+    rc, out = _status(study, fake_osf, capsys)
+    assert rc == 1
+    assert out.startswith("withdrawn")
+
+
+def test_status_of_a_registration_osf_no_longer_holds_fails(study, tty, fake_osf, capsys):
+    _registered(study, tty)
+    fake_osf.on("GET", r"/registrations/reg01/\?", (410, {"errors": [{"detail": "Gone"}]}))
+    rc, out = _status(study, fake_osf, capsys)
+    assert rc == 1
+    assert out.startswith("NOT READ") and "(410)" in out
+
+
+def test_status_without_a_logged_registration_asks_osf_nothing(study, tty, fake_osf, capsys):
+    assert _freeze_and_push(study, tty) == 0
+    asked = len(fake_osf.calls)
+    rc, out = _status(study, fake_osf, capsys)
+    assert rc == 2
+    assert out.startswith("not registered")
+    assert len(fake_osf.calls) == asked
+
+
+def test_status_needs_no_terminal(study, tty, monkeypatch, fake_osf, tmp_path, capsys):
+    _registered(study, tty)
+    _no_terminal(monkeypatch, tmp_path)
+    _osf_holds(fake_osf, pending_registration_approval=False, public=True)
+    assert _status(study, fake_osf, capsys)[0] == 0
+
+
+def test_status_log_records_an_approval_once_and_never_a_pending_one(study, tty, fake_osf, capsys):
+    _registered(study, tty)
+    _osf_holds(fake_osf)
+    entries = _entries(study)
+    logging = ["status", "--log", "--access", "no results seen"]
+    assert cli._main(logging) == 2
+    assert _entries(study) == entries, "pending is not an approval"
+
+    _osf_holds(
+        fake_osf, pending_registration_approval=False, embargoed=True, embargo_end_date="2030-01-01"
+    )
+    assert cli._main(logging) == 0
+    last = _entries(study)[-1]
+    assert "osf registration reg01 observed approved, embargoed" in last
+    assert "no results seen" in last
+    assert cli._main(logging) == 0
+    assert len(_entries(study)) == len(entries) + 1, "seen approved twice, logged once"
+    assert fake_osf.calls_to("POST", r"/registrations/reg01/") == []
+    assert [c.method for c in fake_osf.calls_to("GET", r"/registrations/reg01/\?")] == ["GET"] * 3
+    assert cli._main(["check"]) == 0
+    assert "already registered as reg01" in cli._registrable(study / "PREREG.md")
+    capsys.readouterr()
+
+
+def test_status_log_without_an_access_level_asks_osf_nothing(study, tty, fake_osf):
+    _registered(study, tty)
+    asked, entries = len(fake_osf.calls), _entries(study)
+    assert cli._main(["status", "--log"]) == 1
+    assert len(fake_osf.calls) == asked and _entries(study) == entries
+
+
+def test_register_says_how_the_registration_gets_approved(study, tty, fake_osf, capsys):
+    assert _freeze_and_push(study, tty) == 0
+    tty.types("register draft1")
+    capsys.readouterr()
+    assert cli._main(["register", "--embargo", "2030-01-01", "--access", "nothing run"]) == 0
+    out = capsys.readouterr().out
+    assert '"Pending Embargo - Admin Notification"' in out
+    assert out.index("which approves") < out.index("cancels the registration")
+    assert "by itself, after 48 hours" in out
+    assert "prereg cannot approve a first registration" in out
+    assert "`prereg status`" in out
+
+
+def test_a_registration_osf_refused_prints_no_approval_steps(study, tty, fake_osf, capsys):
+    assert _freeze_and_push(study, tty) == 0
+    fake_osf.on("POST", r"/registrations/\?", (400, {"errors": [{"detail": "no subject"}]}))
+    tty.types("register draft1")
+    assert cli._main(["register", "--immediate", "--access", "nothing run"]) == 1
+    assert "Admin Notification" not in capsys.readouterr().out
+
+
+def test_status_above_several_plans_reports_each(three_plans, tty, fake_osf, capsys):
+    tty.types(_batch_phrase("draft2", "draft3", "draft1"))
+    assert cli._main(["register", "--all", "--immediate", "--access", "nothing run"]) == 0
+    states = {"reg01": {"public": True, "pending_registration_approval": False}, "reg02": {}}
+
+    def held(call):
+        reg_id = re.search(r"/registrations/(reg0\d)/", call.url).group(1)
+        return {"data": {"id": reg_id, "attributes": {**PENDING, **states.get(reg_id, {})}}}
+
+    fake_osf.on("GET", r"/registrations/reg0\d/\?", held)
+    capsys.readouterr()
+    assert cli._main(["status"]) == 2, "one still pending, so not all in effect"
+    out = capsys.readouterr().out
+    assert out.count("pending approval") == 2 and out.count("approved, public") == 1
+    assert len(fake_osf.calls_to("GET", r"/registrations/reg0\d/")) == 3
+
+
 # --- link ----------------------------------------------------------------------------------
 
 
@@ -379,7 +949,10 @@ def test_an_anonymous_link_is_created_and_logged_without_its_key(study, tty, fak
     assert call.json["data"]["attributes"] == {"anonymous": True, "name": "NeurIPS review"}
     last = _entries(study)[-1]
     assert "osf view-only link vol1 on reg01, anonymous" in last and "results seen" in last
-    assert "k3y" not in _plan(study), "the key opens the registration; it stays out of the file"
+    assert "osf view-only link vol1" in (study / "PREREG.log").read_text()
+    assert "k3y" not in (study / "PREREG.log").read_text(), (
+        "the key opens the registration; it stays out of the log"
+    )
     assert "https://osf.io/reg01/?view_only=k3y" in capsys.readouterr().out
     assert cli._main(["check"]) == 0
 

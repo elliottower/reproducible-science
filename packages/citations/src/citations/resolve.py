@@ -45,7 +45,7 @@ from provenance_core import atomic_write
 
 from citations import paperclip, paths
 from citations.models import Record, load_record
-from citations.services import SERVICES, Service, user_agent
+from citations.services import SERVICES, Service, Work, user_agent
 from citations.text import name_fold as norm
 from citations.text import surname_variants
 
@@ -136,7 +136,7 @@ def year_ok(ours: str, theirs: int | None) -> bool:
         return True
 
 
-def match(rec: Record, candidates) -> tuple[str, str] | None:
+def match(rec: Work, candidates) -> tuple[str, str] | None:
     """The best acceptable candidate's identifier, or None if none is acceptable.
 
     Acceptability and ranking are separate. A candidate that fails any guard is out regardless
@@ -173,7 +173,7 @@ def match(rec: Record, candidates) -> tuple[str, str] | None:
     return best[1] if best else None
 
 
-def search(service: Service, rec: Record) -> tuple[str, str] | None:
+def search(service: Service, rec: Work) -> tuple[str, str] | None:
     """Ask one service about one record. Raises `Throttled` if it refused."""
     headers = None
     if service.needs_key:

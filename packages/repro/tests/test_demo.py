@@ -42,8 +42,7 @@ def decisions(payload: dict) -> list[dict]:
 def problems(payload: dict) -> list[str]:
     """The rules a policy graded above `ignore`.
 
-    A policy records every violation it considered, `ignore` included, so an unrequested
-    regeneration appears in the list of a run that passed with nothing wrong with it.
+    A policy records every violation it considered, `ignore` included.
     """
     return [v["rule"] for v in payload["assessment"]["violations"] if v["severity"] != "ignore"]
 
@@ -234,8 +233,9 @@ def test_a_tool_that_is_not_installed_is_reported_rather_than_raised(tmp_path, c
 def test_the_declared_regeneration_reproduces_the_pinned_results(tmp_path):
     target = project(tmp_path)
 
-    result = run_repro("verify", "--regenerate", "--format", "json", cwd=target)
+    result = run_repro("reproduce", "--format", "json", cwd=target)
     payload = json.loads(result.stdout)
 
     assert result.returncode == 0
-    assert [r["state"] for r in payload["report"]["regenerations"]] == ["reproduced"]
+    assert [r["state"] for r in payload["reproduction"]["regenerations"]] == ["reproduced"]
+    assert [r["bytes_identical"] for r in payload["reproduction"]["regenerations"]] == [True]

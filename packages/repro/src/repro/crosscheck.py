@@ -7,7 +7,8 @@ preregistration, so any commit in the repository is accepted. `prereg` records t
 never reads the ledger, so it cannot see what a claim cited.
 
 Neither tool can close that, and it does not need new data to close: `prereg freeze` already
-writes the commit into the plan, as `**Status:** FROZEN at \\`<sha>\\``, and the ledger already
+records the commit, in `.prereg/<plan>.json` beside a plan frozen whole and as
+`**Status:** FROZEN at \\`<sha>\\`` in a plan frozen in place, and the ledger already
 records what each claim named. Reading both is the whole check, and reading both is what the
 umbrella is for.
 
@@ -25,9 +26,15 @@ import pathlib
 import re
 from dataclasses import dataclass
 
-#: `prereg freeze` writes this line into the plan. The short form is what it records; a claim
-#: may cite the same commit at any length, so comparison is on a common prefix.
+#: `prereg freeze` once wrote this line into the plan. The short form is what it records; a
+#: claim may cite the same commit at any length, so comparison is on a common prefix.
 FROZEN_AT = re.compile(r"^\*\*Status:\*\*\s*FROZEN at\s*`([0-9a-f]{7,40})`", re.M)
+
+#: Where `prereg freeze` records a file frozen whole: one JSON document per file, beside it,
+#: holding the full commit. A plan and each of its amendments has one.
+RECORDS = ".prereg"
+
+SKIPPED = {".git", "node_modules", ".venv"}
 
 #: How much of two abbreviations must agree before they are the same commit. Git's own default
 #: abbreviation is seven, and `prereg` writes twelve.
@@ -70,15 +77,15 @@ class Citation:
 
 
 def frozen_plans(root: pathlib.Path) -> list[Freeze]:
-    """Every frozen plan under `root`, by reading the header `freeze` wrote.
+    """Every frozen plan and amendment under `root`, by reading what `freeze` wrote.
 
-    Markdown rather than a registry, because that is where the freeze lives: a repository
-    pinning its registrations by a status line in the plan is the convention this follows
-    rather than retrofitting a directory it would then have to keep in step.
+    A file frozen whole is read from its record in `.prereg/`, and a plan frozen in place from
+    the status line in the plan. Both are read where the freeze lives, so there is no registry
+    to keep in step with either.
     """
     out: list[Freeze] = []
     for md in sorted(root.rglob("*.md")):
-        if any(part in {".git", "node_modules", ".venv"} for part in md.parts):
+        if any(part in SKIPPED for part in md.parts):
             continue
         try:
             found = FROZEN_AT.search(md.read_text(errors="replace"))
@@ -86,6 +93,15 @@ def frozen_plans(root: pathlib.Path) -> list[Freeze]:
             continue
         if found:
             out.append(Freeze(md, found.group(1)))
+    for record in sorted(root.rglob(f"{RECORDS}/*.json")):
+        if any(part in SKIPPED for part in record.parts):
+            continue
+        try:
+            commit = json.loads(record.read_text(errors="replace")).get("commit")
+        except (OSError, ValueError, AttributeError):
+            continue
+        if isinstance(commit, str) and commit:
+            out.append(Freeze(record.parent.parent / record.name.removesuffix(".json"), commit))
     return out
 
 

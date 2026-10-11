@@ -28,6 +28,28 @@ def test_init_creates_results_dir(tmp_path):
     assert events[0]["event"] == "init"
 
 
+def test_a_new_ledger_is_tracked_by_git_and_its_lock_files_are_not(tmp_path):
+    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True, env=clean_env())
+    run_cli("init", cwd=tmp_path)
+    (tmp_path / "script.py").write_text("print('hello')\n")
+    run_cli("seal", "script.py", cwd=tmp_path)
+    (tmp_path / ".results" / "ledger.jsonl.lock").touch()
+    (tmp_path / ".results" / "ledger.jsonl.provenance-lock").touch()
+
+    def ignored(name):
+        return (
+            subprocess.run(
+                ["git", "check-ignore", "-q", f".results/{name}"], cwd=tmp_path, env=clean_env()
+            ).returncode
+            == 0
+        )
+
+    assert not ignored("ledger.jsonl")
+    assert not ignored("ledger.head")
+    assert ignored("ledger.jsonl.lock")
+    assert ignored("ledger.jsonl.provenance-lock")
+
+
 def test_init_twice_fails(tmp_path):
     run_cli("init", cwd=tmp_path)
     r = run_cli("init", cwd=tmp_path)

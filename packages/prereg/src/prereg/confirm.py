@@ -1,10 +1,16 @@
-"""A typed confirmation, asked on the controlling terminal, before anything is written to OSF.
+"""A typed confirmation, asked on the controlling terminal, before OSF writes that cannot be undone.
 
-A registration cannot be deleted, an immediate one is public at once, a view-only link is a URL
-anyone holding it can open, and a draft carries the plan and its files off this machine. The question is asked on `/dev/tty` rather than stdin, so
+A registration cannot be deleted, an immediate one is public at once, and a view-only link is a
+URL anyone holding it can open. A draft is not asked about: it is private to its author and can be
+deleted, so `freeze --osf` runs unattended. The question is asked on `/dev/tty` rather than stdin, so
 `echo "register abc12" | prereg register ...` does not answer it, and a process with no
 controlling terminal -- an agent's shell, CI, cron -- cannot be asked at all and stops there.
-There is no flag or variable that skips it.
+
+One thing skips the question, for a single registration, and it takes two parts given together:
+`register --confirm <draft id>`, naming the draft exactly, and `PREREG_UNATTENDED_REGISTER=1` in
+the environment. The flag says which draft was approved and the variable says that registering
+with nobody at the terminal was asked for; either one alone is refused. The log entry then says
+the registration was unattended. A batch and a view-only link have no such path.
 
 This raises the cost of an accidental write; it is not a security boundary. A program can
 allocate a pseudo-terminal and type into it, and anything that can read `OSF_TOKEN` can call the
@@ -15,9 +21,13 @@ pipe-backed `.env`, which `osf._token` reads only after this confirmation.
 
 from __future__ import annotations
 
+import os
 from typing import TextIO
 
 TTY = "/dev/tty"
+
+#: Set to `1`, with `register --confirm <draft id>`, to register with nobody at the terminal.
+UNATTENDED_ENV = "PREREG_UNATTENDED_REGISTER"
 
 
 class NotConfirmed(Exception):
@@ -52,3 +62,22 @@ def confirm(summary: list[str], phrase: str) -> None:
         answer = reader.readline()
     if answer.strip() != phrase:
         raise NotConfirmed("cancelled: the confirmation did not match. Nothing was sent to OSF.")
+
+
+def confirm_unattended(given: str, expected: str) -> None:
+    """Return only if `given` names the draft being registered and the environment opts in.
+
+    Stands in for the typed phrase, so it refuses the same way: before any request, with
+    `NotConfirmed`. The id has to match because it is what the person approved; the variable has
+    to be set because a flag alone is one argument away from every `register` an agent writes.
+    """
+    if given != expected:
+        raise NotConfirmed(
+            f"--confirm {given} does not name this plan's draft, which is {expected}. "
+            "Nothing was sent to OSF."
+        )
+    if os.environ.get(UNATTENDED_ENV) != "1":
+        raise NotConfirmed(
+            f"--confirm registers with nobody at the terminal only where {UNATTENDED_ENV}=1 is "
+            "set, and it is not. Nothing was sent to OSF."
+        )

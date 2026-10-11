@@ -11,15 +11,16 @@ from prereg import cli, osf, plan, template
 
 
 def test_parse_plan_extracts_title_and_sections():
-    text = template.render("My experiment", "2026-01-01")
+    text = template.render("My experiment")
     title, sections = osf._parse_plan(text)
     assert title == "My experiment"
     assert "Research questions or hypotheses" in sections
     assert "Inference criteria" in sections
 
 
-def test_parse_plan_strips_status_lines():
-    text = template.render("test", "2026-01-01")
+def test_parse_plan_strips_status_lines(frozen_in_place):
+    text = frozen_in_place.decode()
+    assert "**Plan sha256:**" in text
     _, sections = osf._parse_plan(text)
     for content in sections.values():
         assert "**Status:**" not in content
@@ -27,8 +28,9 @@ def test_parse_plan_strips_status_lines():
         assert "**Frozen:**" not in content
 
 
-def test_parse_plan_stops_at_log():
-    text = template.render("test", "2026-01-01")
+def test_parse_plan_stops_at_log(frozen_in_place):
+    text = frozen_in_place.decode()
+    assert plan.MARK in text
     text += "\nsome extra content after log\n"
     _, sections = osf._parse_plan(text)
     for content in sections.values():
@@ -103,20 +105,20 @@ def test_heading_map_covers_all_template_questions():
 
 def _template_plan(tmp_path, monkeypatch, answers: dict[str, str] | None = None, extra="") -> str:
     """The text `prereg new` writes, with `answers` put under their headings and `extra`
-    inserted above the log line."""
+    added at its end."""
     monkeypatch.chdir(tmp_path)
     assert cli._main(["new", "study"]) == 0
     text = (tmp_path / "study" / "PREREG.md").read_text()
     for heading, content in (answers or {}).items():
         text, n = re.subn(
-            rf"(## {re.escape(heading)}\n).*?(?=\n## |\n---)",
+            rf"(## {re.escape(heading)}\n).*?(?=\n## |\Z)",
             rf"\g<1>{content}\n",
             text,
             count=1,
             flags=re.S,
         )
         assert n == 1, heading
-    return text.replace(plan.MARK, extra + plan.MARK)
+    return text + extra
 
 
 def _pushed(fake_osf) -> dict:
@@ -244,3 +246,26 @@ def test_a_pipe_is_not_read_when_the_environment_has_the_token(tmp_path, monkeyp
     monkeypatch.setenv("OSF_TOKEN", "from_env")
     monkeypatch.setattr(osf, "FIFO_TIMEOUT", 0.2)
     assert osf._token() == "from_env", "reading the pipe would have timed out"
+
+
+def test_osf_pat_is_read_when_osf_token_is_absent(tmp_path, monkeypatch):
+    """A 1Password environment names the personal access token OSF_PAT."""
+    (tmp_path / ".env").write_text("OTHER=1\nexport OSF_PAT='pat_value'\n")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("OSF_TOKEN", raising=False)
+    monkeypatch.delenv("OSF_PAT", raising=False)
+    assert osf._token() == "pat_value"
+
+
+def test_osf_token_wins_over_osf_pat(tmp_path, monkeypatch):
+    (tmp_path / ".env").write_text("OSF_PAT=pat\nOSF_TOKEN=token\n")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("OSF_TOKEN", raising=False)
+    monkeypatch.delenv("OSF_PAT", raising=False)
+    assert osf._token() == "token"
+
+
+def test_osf_pat_from_the_environment(monkeypatch):
+    monkeypatch.delenv("OSF_TOKEN", raising=False)
+    monkeypatch.setenv("OSF_PAT", "env_pat")
+    assert osf._token() == "env_pat"

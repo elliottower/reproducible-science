@@ -17,7 +17,7 @@ import sys
 
 import pytest
 from citations import add, bibtex, lint
-from citations.exceptions import BibFileError, MetadataError
+from citations.exceptions import BibFileError, CitationsError, MetadataError
 
 ENTRY = (
     "@misc{{{cite},\n"
@@ -265,6 +265,22 @@ ARXIV_ERROR = """<?xml version='1.0' encoding='UTF-8'?>
 </feed>
 """
 
+#: arXiv's Atom feed for 1907.07794, with the summary and the links dropped.
+PROVERBOT = """<?xml version='1.0' encoding='UTF-8'?>
+<feed xmlns:arxiv="http://arxiv.org/schemas/atom" xmlns="http://www.w3.org/2005/Atom">
+  <entry>
+    <id>http://arxiv.org/abs/1907.07794v4</id>
+    <title>Generating Correctness Proofs with Neural Networks</title>
+    <published>2019-07-17T22:11:13Z</published>
+    <arxiv:primary_category term="cs.PL"/>
+    <author><name>Alex Sanchez-Stern</name></author>
+    <author><name>Yousef Alhessi</name></author>
+    <author><name>Lawrence Saul</name></author>
+    <author><name>Sorin Lerner</name></author>
+  </entry>
+</feed>
+"""
+
 
 def test_every_author_crossref_lists_reaches_the_entry():
     work = add.crossref_work(MODEL_CARDS, "10.1145/3287560.3287596")
@@ -332,6 +348,71 @@ def test_a_title_arrives_as_text_and_not_as_the_markup_it_was_deposited_in():
     body = bibtex.entries(add.render(work, "k"))[0][2]
     assert "<i>" not in body and "&amp;" not in body
     assert r"Cost \& benefit of in vivo assays" in body
+
+
+# --- the derived key ---------------------------------------------------------------------------
+
+
+def test_a_hyphenated_family_name_from_arxiv_is_one_word_of_the_key():
+    work = add.arxiv_work(PROVERBOT, "1907.07794")
+
+    assert work is not None
+    assert add.suggest_key(work) == "sanchezstern2019generating"
+
+
+@pytest.mark.parametrize(
+    ("family", "key"),
+    [
+        ("Sanchez-Stern", "sanchezstern2019generating"),
+        ("Sanchez Stern", "sanchezstern2019generating"),
+        ("de la Cruz", "delacruz2019generating"),
+        ("O'Neil", "oneil2019generating"),
+        ("Hölscher-Obermaier", "holscherobermaier2019generating"),
+    ],
+)
+def test_a_family_name_of_several_words_from_crossref_is_one_word_of_the_key(family, key):
+    work = add.crossref_work(
+        {
+            "title": ["Generating Correctness Proofs with Neural Networks"],
+            "author": [{"family": family, "given": "Alex"}],
+            "issued": {"date-parts": [[2019]]},
+        },
+        "10.0000/x",
+    )
+
+    assert add.suggest_key(work) == key
+    assert [k for _kind, k, _body in bibtex.entries(add.render(work, key))] == [key]
+
+
+def test_an_entry_fetched_for_a_hyphenated_family_name_is_written_and_read_back(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(add.resolve, "get", lambda url, as_json: PROVERBOT)
+    target = bib(tmp_path, "alpha2026one")
+
+    assert add.main([str(target), "--arxiv", "1907.07794"]) == 0
+
+    text = bibtex.read(target)
+    assert [key for _kind, key, _body in bibtex.entries(text)] == [
+        "alpha2026one",
+        "sanchezstern2019generating",
+    ]
+    assert "Alex Sanchez-Stern and Yousef Alhessi" in text, "the name itself is as arXiv wrote it"
+
+
+@pytest.mark.parametrize("key", ["sanchez stern2019generating", "a,b", "a{b", "a\tb"])
+def test_a_named_key_bibtex_cannot_read_is_refused_before_anything_is_written(
+    tmp_path, monkeypatch, key
+):
+    monkeypatch.setattr(add.resolve, "get", lambda url, as_json: PROVERBOT)
+    target = bib(tmp_path, "alpha2026one")
+    before = target.read_bytes()
+
+    with pytest.raises(CitationsError) as caught:
+        add.main([str(target), "--arxiv", "1907.07794", "--key", key])
+
+    assert "not a citation key" in str(caught.value)
+    assert target.read_bytes() == before
 
 
 # --- the parser the duplicate check rests on ---------------------------------------------------

@@ -5,12 +5,17 @@
   },
   "metadata": {
     "description": "Preregistration, citation verification, evidence verification, and results provenance for reproducible science",
-    "version": "0.4.2"
+    "version": "0.5.2"
   },
   "plugins": [
     {
       "name": "reproducible-science",
       "source": "./packages/repro/plugin",
+      "strict": false
+    },
+    {
+      "name": "repro",
+      "source": "./packages/repro/mod",
       "strict": false
     },
     {

@@ -21,6 +21,15 @@
     ],
     "PreToolUse": [
       {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PLUGIN_ROOT}/hooks/frozen_file_before_edit.py"
+          }
+        ]
+      },
+      {
         "matcher": "Bash",
         "hooks": [
           {

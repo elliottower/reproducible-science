@@ -8,6 +8,9 @@ paper. It resolves, the link is live, the quotations are genuine, and the refere
 
 from __future__ import annotations
 
+import io
+import json
+
 from citations import audit as A
 
 
@@ -302,7 +305,7 @@ def test_an_entry_with_no_identifier_is_not_reported_as_matching(tmp_path):
     f = tmp_path / "refs.bib"
     f.write_text(BIB)
     entries = [e for e in A.entries_from_bib(f) if e.key == "rothman2008"]
-    report = A.audit(entries, tmp_path / "cache")
+    report = A.audit(entries, tmp_path / "cache", search=False)
     assert report.entries["rothman2008"].status == "no identifier", (
         "nothing checked it, so it is neither clean nor dirty"
     )
@@ -426,3 +429,294 @@ def test_a_library_record_marked_et_al_is_not_reported_as_truncated():
 
     unmarked = A.Entry(key="k", title="T", authors=["Smith, Ann"], year="2020")
     assert [p for p in A.compare(unmarked, src) if "stops at" in p]
+
+
+# --- an entry with no identifier is searched for by title ---------------------------------------
+
+FOUND_DOI = "10.1093/hmg/dds213"
+
+CROSSREF_HIT = json.dumps(
+    {
+        "message": {
+            "items": [
+                {
+                    "title": [REAL.title],
+                    "author": [{"family": "Naitza"}, {"family": "Porcu"}, {"family": "Steri"}],
+                    "issued": {"date-parts": [[2012]]},
+                    "DOI": FOUND_DOI,
+                }
+            ]
+        }
+    }
+)
+
+CROSSREF_WORK = json.dumps(
+    {
+        "message": {
+            "title": [REAL.title],
+            "issued": {"date-parts": [[2012]]},
+            "author": [
+                {"family": "Naitza", "given": "Silvia"},
+                {"family": "Porcu", "given": "Eleonora"},
+                {"family": "Steri", "given": "Maristella"},
+            ],
+        }
+    }
+)
+
+
+def _no_network(*a, **kw):
+    raise AssertionError("went to the network")
+
+
+def _search_answers(monkeypatch, answers):
+    """Each service answers what `answers` holds for it: a body, None for nothing, or Throttled."""
+    asked = []
+
+    def get(url, as_json, tries=4, headers=None):
+        asked.append(url)
+        answer = next((v for host, v in answers.items() if host in url), None)
+        if answer is A.resolve.Throttled:
+            raise A.resolve.Throttled(url)
+        return answer
+
+    monkeypatch.setattr(A.resolve, "get", get)
+    monkeypatch.setattr(A.time, "sleep", lambda _: None)
+    return asked
+
+
+def _unidentified(**kw):
+    fields = {
+        "key": "naitza2012",
+        "title": REAL.title,
+        "authors": ["Naitza, Silvia", "Porcu, Eleonora", "Steri, Maristella"],
+        "year": "2012",
+    }
+    return A.Entry(**{**fields, **kw})
+
+
+def test_a_wrong_author_on_an_entry_found_by_title_is_a_mismatch(tmp_path, monkeypatch, capsys):
+    _search_answers(monkeypatch, {"api.crossref.org": CROSSREF_HIT})
+    asked_for = []
+    monkeypatch.setattr(A, "from_crossref", lambda doi, cache: asked_for.append(doi) or REAL)
+    entry = _unidentified(authors=["Naitza, Silvia", "Chen, Wei", "Steri, Maristella"])
+
+    report = A.audit([entry], tmp_path / "cache")
+
+    verdict = report.entries["naitza2012"]
+    assert asked_for == [FOUND_DOI]
+    assert verdict.status == "mismatch"
+    assert verdict.problems == ["author 2 surname: ours 'chen' vs registry 'porcu'"]
+    assert (verdict.found_kind, verdict.found_id, verdict.found_by) == (
+        "doi",
+        FOUND_DOI,
+        "crossref",
+    )
+    assert verdict.doi == "", "the entry itself still names no DOI"
+    assert report.checked == 1
+    assert A.render(report, quiet=False) == 1
+    assert f"naitza2012  doi {FOUND_DOI}  (crossref)" in capsys.readouterr().out
+
+
+def test_the_same_entry_with_the_real_names_agrees_and_suggests_the_doi(
+    tmp_path, monkeypatch, capsys
+):
+    _search_answers(monkeypatch, {"api.crossref.org": CROSSREF_HIT})
+    monkeypatch.setattr(A, "from_crossref", lambda doi, cache: REAL)
+
+    report = A.audit([_unidentified()], tmp_path / "cache")
+
+    assert report.entries["naitza2012"].status == "ok"
+    assert report.ok
+    assert A.render(report, quiet=True) == 0
+    out = capsys.readouterr().out
+    assert "1 agree, 0 disagree" in out
+    assert FOUND_DOI not in out, "--quiet prints counts and no list"
+
+
+def test_a_near_title_by_other_authors_is_not_taken_for_the_work(tmp_path, monkeypatch, capsys):
+    near = json.dumps(
+        {
+            "message": {
+                "items": [
+                    {
+                        "title": ["Is Attention All You Need?"],
+                        "author": [{"family": "Merrill"}],
+                        "issued": {"date-parts": [[2023]]},
+                        "DOI": "10.9999/another.paper",
+                    }
+                ]
+            }
+        }
+    )
+    title = "Attention Is All You Need"
+    assert A.resolve.close(title, "Is Attention All You Need?") >= A.resolve.TITLE_MIN
+    _search_answers(monkeypatch, {"api.crossref.org": near})
+    monkeypatch.setattr(A, "from_crossref", _no_network)
+    monkeypatch.setattr(A, "from_datacite", _no_network)
+    entries = [
+        A.Entry(key="vaswani2017", title=title, authors=["Vaswani, Ashish"], year="2017"),
+        A.Entry(key="bare", title=title),
+    ]
+
+    report = A.audit(entries, tmp_path / "cache")
+
+    assert [v.status for v in report.entries.values()] == ["not found", "not found"]
+    assert [v.found_id for v in report.entries.values()] == ["", ""]
+    assert report.checked == 0
+    assert A.render(report, quiet=False) == 0, "a book with no DOI is not a failed audit"
+    row = next(x for x in capsys.readouterr().out.splitlines() if x.startswith("  not found"))
+    assert "2" in row
+    assert not any(word in row for word in ("error", "fabricat", "invent", "fail"))
+
+
+def test_every_service_refusing_is_a_search_not_made(tmp_path, monkeypatch):
+    hosts = ("semanticscholar.org", "crossref.org", "openalex.org", "arxiv.org")
+    asked = _search_answers(monkeypatch, dict.fromkeys(hosts, A.resolve.Throttled))
+
+    report = A.audit([_unidentified()], tmp_path / "cache")
+
+    assert len(asked) == len(A.SERVICES)
+    assert report.entries["naitza2012"].status == "unresolved"
+    assert report.not_found == []
+    assert not report.ok
+    assert A.render(report, quiet=True) == 1
+    assert not list((tmp_path / "cache").glob("*")), "a refusal was cached as an answer"
+
+
+def test_a_service_that_refused_is_not_counted_among_those_that_answered(tmp_path, monkeypatch):
+    _search_answers(monkeypatch, {"semanticscholar.org": A.resolve.Throttled})
+
+    report = A.audit([_unidentified()], tmp_path / "cache")
+
+    verdict = report.entries["naitza2012"]
+    assert verdict.status == "not found"
+    assert verdict.searched == ["crossref", "openalex", "arxiv"]
+
+
+def test_searching_stops_once_every_service_keeps_refusing(tmp_path, monkeypatch):
+    hosts = ("semanticscholar.org", "crossref.org", "openalex.org", "arxiv.org")
+    asked = _search_answers(monkeypatch, dict.fromkeys(hosts, A.resolve.Throttled))
+    entries = [_unidentified(key=f"k{i}", title=f"{REAL.title} {i}") for i in range(6)]
+
+    report = A.audit(entries, tmp_path / "cache")
+
+    assert len(asked) == A.GIVE_UP_AFTER * len(A.SERVICES)
+    assert len(report.unresolved) == 6, "an entry nobody was asked about was given a verdict"
+
+
+def test_an_arxiv_match_is_compared_with_the_datacite_record_arxiv_registers(tmp_path, monkeypatch):
+    feed = (
+        "<feed><entry><id>http://arxiv.org/abs/1706.03762v7</id>"
+        "<published>2017-06-12T00:00:00Z</published>"
+        "<title>Attention Is All You Need</title>"
+        "<author><name>Ashish Vaswani</name></author></entry></feed>"
+    )
+    _search_answers(monkeypatch, {"arxiv.org": feed})
+    asked_for = []
+    theirs = A.RegistryRecord(source="datacite", title="Attention Is All You Need", years=["2017"])
+    monkeypatch.setattr(A, "from_crossref", _no_network)
+    monkeypatch.setattr(A, "from_datacite", lambda doi, cache: asked_for.append(doi) or theirs)
+    entry = A.Entry(
+        key="vaswani2017",
+        title="Attention Is All You Need",
+        authors=["Vaswani, Ashish"],
+        year="2016",
+    )
+
+    verdict = A.audit([entry], tmp_path / "cache").entries["vaswani2017"]
+
+    assert asked_for == ["10.48550/arXiv.1706.03762"]
+    assert (verdict.found_kind, verdict.found_id, verdict.found_by) == (
+        "arxiv",
+        "1706.03762",
+        "arxiv",
+    )
+    assert verdict.problems == ["year: ours 2016 vs registry 2017"]
+
+
+def test_a_match_with_no_doi_is_found_and_nothing_is_compared(tmp_path, monkeypatch, capsys):
+    work = json.dumps(
+        {
+            "results": [
+                {
+                    "id": "https://openalex.org/W123",
+                    "doi": None,
+                    "display_name": "Modern Epidemiology",
+                    "publication_year": 2008,
+                    "authorships": [{"author": {"display_name": "Kenneth J. Rothman"}}],
+                }
+            ]
+        }
+    )
+    _search_answers(monkeypatch, {"openalex.org": work})
+    monkeypatch.setattr(A, "from_crossref", _no_network)
+    monkeypatch.setattr(A, "from_datacite", _no_network)
+    entry = A.Entry(
+        key="rothman2008", title="Modern Epidemiology", authors=["Rothman, K."], year="2008"
+    )
+
+    report = A.audit([entry], tmp_path / "cache")
+
+    verdict = report.entries["rothman2008"]
+    assert (verdict.status, verdict.found_kind, verdict.found_id) == ("found", "openalex", "W123")
+    assert verdict.checked_against is None
+    assert report.checked == 0
+    assert A.render(report, quiet=False) == 0
+    assert "rothman2008  openalex W123  (openalex)" in capsys.readouterr().out
+
+
+def test_a_second_run_reads_the_search_from_the_cache(tmp_path, monkeypatch, capsys):
+    bib = tmp_path / "refs.bib"
+    bib.write_text(
+        "@article{naitza2012,\n"
+        f"  title = {{{REAL.title}}},\n"
+        "  author = {Naitza, Silvia and Chen, Wei and Steri, Maristella},\n"
+        "  year = {2012}\n"
+        "}\n"
+    )
+    out = tmp_path / "report.json"
+    argv = ["--bib", str(bib), "--json", str(out)]
+    _search_answers(
+        monkeypatch, {"semanticscholar.org": '{"data": []}', "api.crossref.org": CROSSREF_HIT}
+    )
+    monkeypatch.setattr(
+        A.urllib.request, "urlopen", lambda req, timeout: io.BytesIO(CROSSREF_WORK.encode())
+    )
+    A.main(argv)
+    first = json.loads(out.read_text())
+
+    monkeypatch.setattr(A.resolve, "get", _no_network)
+    monkeypatch.setattr(A.urllib.request, "urlopen", _no_network)
+    A.main(argv)
+    capsys.readouterr()
+
+    assert json.loads(out.read_text()) == first
+    verdict = first["entries"]["naitza2012"]
+    assert verdict["status"] == "mismatch"
+    assert verdict["found_id"] == FOUND_DOI
+    assert verdict["found_by"] == "crossref"
+    assert verdict["searched"] == ["semanticscholar", "crossref"]
+
+
+def test_no_search_leaves_an_entry_with_no_identifier_unchecked(tmp_path, monkeypatch, capsys):
+    monkeypatch.setattr(A.resolve, "get", _no_network)
+    monkeypatch.setattr(A.urllib.request, "urlopen", _no_network)
+    bib = tmp_path / "refs.bib"
+    bib.write_text(BIB.split("@book")[0].replace("doi", "note") + "@book" + BIB.split("@book")[1])
+    out = tmp_path / "report.json"
+
+    assert A.main(["--bib", str(bib), "--json", str(out), "--no-search", "--strict"]) == 0
+
+    printed = capsys.readouterr().out
+    assert printed.split("2 entries\n\n")[1].split("\n\nwrote")[0] == (
+        "  checked           0\n"
+        "  agree             0\n"
+        "  disagree          0\n"
+        "  no id             2   nothing can check these until they have a DOI or PMID\n"
+        "\n"
+        "every checked entry matches its registry record."
+    )
+    assert {v["status"] for v in json.loads(out.read_text())["entries"].values()} == {
+        "no identifier"
+    }

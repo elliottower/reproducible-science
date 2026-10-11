@@ -25,6 +25,8 @@ results seal <file>... [--role input]   # hash inputs before a run
 results access <note> [--level ...]     # record a data-access event
 results run <file>... --run-id <id>     # record outputs after a run
 results claim <text> --run-id <id>      # bind a manuscript claim to a run
+results review <file>... --scope ... --procedure ... --verdict ... --reviewer ...  # record a reading
+results annotate <file>... --kind <namespace:type> --ref <reference>   # link to an outside artifact; not checked
 results verify [--files]                # check the chain and every hash it names
 results coverage <manuscript>           # which of a paper's numbers are bound
 ```
@@ -75,6 +77,28 @@ With `--files`, every sealed input and recorded output is re-hashed against its 
 
 **`CHAIN BROKEN` means the ledger was tampered with.** It does not mean the results are wrong —
 it means the evidence that they are right was damaged. Restore from git history.
+
+## Reviews
+
+When you check something by reading it (a table against its file, a mismatch list against the
+paper), record it: `results review <file>... --scope "<what was checked>" --procedure "<how>"
+--verdict pass|fail|partial|uncertain --reviewer "<who answers for it>"`. Pass `--model` with
+your own model identifier when you did the reading; the harness, its version and the session
+are read from the environment. Each file is recorded by digest, and `results verify --files`
+marks the review `STALE` once a file changes. The record is self-reported and unsigned, so
+describe it as a recorded review and never as verified.
+
+## Annotations
+
+When a file corresponds to something outside the repository (a W&B artifact, a dataset DOI, an
+OSF node, a URL), record the link: `results annotate <file>... --kind <namespace:type> --ref
+"<artifact path, DOI, URL or id>"`, with `--kind` such as `wandb:artifact`, `doi:dataset`,
+`osf:node` or `url:page`. Optional: `--digest <algorithm:hex>` for the digest the outside system
+reports, `--by`, `--note`, and `--location "<where in the manuscript>"`. An annotation is a
+statement of a link and not a check: the tool fetches nothing, and the event's status is
+`linked, not checked`. `results verify --files` marks the file `STALE` once it changes and never
+fails on it. Describe an annotated file as linked and never as verified, and do not use an
+annotation in place of `results run` for an output the project produced.
 
 ## Claims
 

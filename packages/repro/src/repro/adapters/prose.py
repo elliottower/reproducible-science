@@ -21,6 +21,7 @@ import decimal
 import pathlib
 
 from repro.adapters.base import Found, Resolution, _no, _ok
+from repro.adapters.reads import once
 from repro.exceptions import ArtifactUnreadableError, BackendUnavailableError
 from repro.models import NumberForm, ProseLocator
 
@@ -79,9 +80,10 @@ def _resolve_prose(locator: ProseLocator, path: pathlib.Path) -> Found:
     # and the `getattr` fallback quietly returned the cached function instead. The engine hashes every artifact
     # immediately before this runs, so a stale read would produce a decision whose recorded
     # artifact digest does not describe the text it was computed from. `fold` is cached on the
-    # string it is given, which is content, and stays as it is.
+    # string it is given, which is content, and stays as it is. `once` keeps the read for the
+    # verification in progress and no longer, so the next verification reads the file again.
     try:
-        text = passage_fold(extract_uncached(path))
+        text = once(("prose", path), lambda: passage_fold(extract_uncached(path)))
     except SourceUnreadableError as e:
         raise ArtifactUnreadableError(path, e.detail) from e
     if not text:

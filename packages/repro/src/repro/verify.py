@@ -25,6 +25,7 @@ import pathlib
 from collections.abc import Mapping
 from typing import Protocol
 
+from repro.adapters.reads import reading_once
 from repro.exceptions import (
     ArtifactUnreadableError,
     BackendUnavailableError,
@@ -57,7 +58,6 @@ from repro.models import (
     VerificationReport,
     Warning_,
 )
-from repro.regenerate import check_all
 from repro.resolve import Resolution, resolve
 from repro.toolchain import UNKNOWN, binary_version, distribution_version
 
@@ -137,14 +137,19 @@ def _base(
 _QUOTE_STATE = {
     "found": (ExtractionStatus.EXTRACTED, ComparisonStatus.MATCH, Reason.PASSAGE_PRESENT),
     "not found": (ExtractionStatus.EXTRACTED, ComparisonStatus.MISMATCH, Reason.PASSAGE_ABSENT),
+    # The address matched more than once, which is where `row_ambiguous` sits for a table: the
+    # extraction did not single out one thing to compare, so there is no comparison, and no first
+    # match is taken. Not `passage_ambiguous`, which says the document states two different
+    # numbers: a passage written twice contradicts nothing, and an author told it does goes
+    # looking for a defect in the manuscript when the fix is a `prefix` in the record.
     "ambiguous": (
         ExtractionStatus.INVALID,
         ComparisonStatus.NOT_APPLICABLE,
-        Reason.PASSAGE_AMBIGUOUS,
+        Reason.QUOTATION_AMBIGUOUS,
     ),
-    # Not `passage_ambiguous`: that says the document states two numbers where one was asserted.
-    # This says the extractors on this machine do not settle what text the document holds, which
-    # accuses nothing and asks for a better reader.
+    # Not `passage_ambiguous` either: that says the document states two numbers where one was
+    # asserted. This says the extractors on this machine do not settle what text the document
+    # holds, which accuses nothing and asks for a better reader.
     "indeterminate": (
         ExtractionStatus.INVALID,
         ComparisonStatus.NOT_APPLICABLE,
@@ -254,6 +259,7 @@ _ABSENT_REASON = {
     "table_position": Reason.ROW_ABSENT,
     "sqlite": Reason.ROW_ABSENT,
     "array": Reason.POINTER_ABSENT,
+    "sheet": Reason.ROW_ABSENT,
     "prose": Reason.PASSAGE_ABSENT,
 }
 
@@ -787,59 +793,69 @@ def _ordering(
     return Ordering.ORDERED, OrderingReason.RUN_FOLLOWS_REGISTRATION, detail, authority
 
 
-def verify(
-    manifest: Manifest, backends: tuple[Backend, ...] = DEFAULT_BACKENDS, regenerate: bool = False
-) -> VerificationReport:
-    """Check every evidence assertion in a manifest and report what was found.
-
-    Returns facts. No verdict: see `repro.policy` for whether a given set of facts is
-    acceptable, which depends on what the project is for.
-
-    `regenerate` runs any declared regeneration commands in a sandbox. Off by default,
-    because verifying a manifest should never execute what the manifest names.
-    """
-    registry: dict[str, Backend] = {b.kind: b for b in backends}
-
+def artifact_states(
+    manifest: Manifest,
+) -> tuple[dict[str, ArtifactState], dict[str, pathlib.Path]]:
+    """Each declared artifact's pin, resolved once, and the path it was read from."""
     states: dict[str, ArtifactState] = {}
     paths: dict[str, pathlib.Path] = {}
     for artifact in manifest.artifacts:
         path = manifest.resolve(artifact)
         paths[artifact.id] = path
         states[artifact.id] = _artifact_state(artifact, path)
+    return states, paths
+
+
+def verify(
+    manifest: Manifest, backends: tuple[Backend, ...] = DEFAULT_BACKENDS
+) -> VerificationReport:
+    """Check every evidence assertion in a manifest and report what was found.
+
+    Returns facts. No verdict: see `repro.policy` for whether a given set of facts is
+    acceptable, which depends on what the project is for.
+
+    Executes nothing. A manifest may declare commands that regenerate its artifacts; running
+    them is `repro.reproduce`, which has to be asked for by name.
+    """
+    registry: dict[str, Backend] = {b.kind: b for b in backends}
+    states, paths = artifact_states(manifest)
 
     assessments = []
-    for claim in manifest.claims:
-        decisions = tuple(
-            _check(claim, evidence, manifest, paths, states, registry)
-            for evidence in claim.evidence
-        )
-        ordering, ordering_reason, ordering_detail, authority = _ordering(claim, manifest, states)
-        assessments.append(
-            ClaimAssessment(
-                claim_id=claim.id,
-                claim_digest=claim.digest.value,
-                confirmatory=claim.confirmatory,
-                registration=claim.registration,
-                registration_note=claim.registration_note,
-                availability=claim.availability,
-                ordering=ordering,
-                ordering_reason=ordering_reason,
-                ordering_detail=ordering_detail,
-                registration_authority=authority,
-                decisions=decisions,
+    # Each artifact is parsed once for the whole manifest, just after it was hashed.
+    with reading_once():
+        for claim in manifest.claims:
+            decisions = tuple(
+                check_evidence(claim, evidence, manifest, paths, states, registry)
+                for evidence in claim.evidence
             )
-        )
+            ordering, ordering_reason, ordering_detail, authority = _ordering(
+                claim, manifest, states
+            )
+            assessments.append(
+                ClaimAssessment(
+                    claim_id=claim.id,
+                    claim_digest=claim.digest.value,
+                    confirmatory=claim.confirmatory,
+                    registration=claim.registration,
+                    registration_note=claim.registration_note,
+                    availability=claim.availability,
+                    ordering=ordering,
+                    ordering_reason=ordering_reason,
+                    ordering_detail=ordering_detail,
+                    registration_authority=authority,
+                    decisions=decisions,
+                )
+            )
 
     return VerificationReport(
         project=manifest.project,
         manifest_digest=Digest.of_text(manifest.model_dump_json()).value,
         artifacts=tuple(states.values()),
         claims=tuple(assessments),
-        regenerations=check_all(manifest, states, regenerate),
     )
 
 
-def _check(
+def check_evidence(
     claim: Claim,
     evidence: Evidence,
     manifest: Manifest,
@@ -847,6 +863,12 @@ def _check(
     states: dict[str, ArtifactState],
     registry: dict[str, Backend],
 ) -> Decision:
+    """Evaluate one assertion against the files in `paths`.
+
+    `paths` is a parameter and not read off the manifest so that a re-run can ask the same
+    question of the file it has just written: `repro.reproduce` passes the path of the fresh
+    output in place of the pinned one, and every rule below applies unchanged.
+    """
     backend = registry.get(evidence.kind)
     if backend is None:
         raise UnknownEvidenceKindError(evidence.kind, tuple(registry))

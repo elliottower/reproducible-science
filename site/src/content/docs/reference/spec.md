@@ -85,6 +85,10 @@ line breaks removed, whitespace collapsed. Normalization never deletes a charact
 substituting a separator, because deleting a control character welds the words on either side
 into one appearing in neither text.
 
+A passage occurring more than once is `extraction=invalid`, reason `quotation_ambiguous`, for the
+reason an ambiguous row selector is: no occurrence is taken as the one meant. The record says
+which occurrence it quotes with a `prefix` or `suffix` naming the text on either side.
+
 ### 3.2 `metric`
 
 ```yaml
@@ -233,16 +237,17 @@ itself.
 | kind | addresses | identity |
 |---|---|---|
 | `tree` | JSON, and YAML restricted to a JSON-compatible tree | RFC 6901 pointer |
-| `table` | CSV, TSV, PSV | column plus a predicate matching exactly one row |
+| `table` | CSV, TSV, PSV; Parquet, Feather, Arrow; Stata, SPSS; an R data frame (`.rds`) | column plus a predicate matching exactly one row |
 | `table_position` | the same, by row index | column plus position, carrying a warning |
+| `sheet` | an Excel workbook (`.xlsx`, `.xls`) | sheet, column, and a predicate matching one row |
 | `sqlite` | a database file | table, column, and a predicate matching one row |
-| `array` | `.npy`, `.npz` | array name plus a multidimensional index |
+| `array` | `.npy`, `.npz`, HDF5, NetCDF | array name or dataset path plus a multidimensional index |
 | `prose` | a document, as text | two literal anchors bracketing the value |
 
 Every variant enforces one invariant: a locator resolves to **exactly one scalar**. Zero is
 absent, two or more is ambiguous, a container is not a value, and no backend takes the first
-match. A format with no adapter — HDF5, NetCDF, Parquet, XLSX — reports `format_unsupported`
-and stops. No backend falls back to searching a file for the printed number, which would find
+match. A format with no adapter — MATLAB, RData, SAS — reports `format_unsupported` and stops,
+as does a pickle, which no adapter opens because reading one runs code. No backend falls back to searching a file for the printed number, which would find
 it wherever it appears and call that verification.
 
 `prose` is the one variant addressing a format that has no addressing scheme of its own. A
@@ -317,6 +322,7 @@ how a file silent on a value becomes one that contradicts it.
 | two sides disagree | completed | extracted | mismatch | `mismatch` |
 | one side does not extract | completed | absent or invalid | n/a | `not_found` |
 | passage absent from a readable source | completed | extracted | mismatch | `mismatch` |
+| passage occurs more than once | completed | invalid | n/a | `not_found` |
 | pointer does not resolve | completed | absent | n/a | `not_found` |
 | value is not a number | completed | invalid | n/a | `not_found` |
 | independent readers disagree | completed | invalid | n/a | `not_found` |
@@ -369,7 +375,12 @@ display and is never a `Decision`.
 `Reason` is a typed field carrying why an outcome obtained: `passage_present`, `value_match`,
 `passage_absent`, `value_mismatch`, `pointer_absent`, `value_not_numeric`,
 `extractor_missing`, `artifact_missing`, `artifact_unreadable`, `artifact_undeclared`,
-`backend_defect`, `not_offered`, and two a prose locator adds. `passage_ambiguous`: one pair of
+`backend_defect`, `not_offered`, `extractors_disagree`, `quotation_ambiguous`, and two a prose
+locator adds. `extractors_disagree`: two extractors that both read the artifact reach different
+answers about whether the passage is in it, which asks for a better reader rather than accusing
+the manuscript as `passage_absent` does. `quotation_ambiguous`: the quoted passage occurs more
+than once and the record does not say which occurrence it means, which accuses nothing and asks
+for a `prefix` or `suffix`. `passage_ambiguous`: one pair of
 anchors selected two different values, so the document states two numbers where the assertion
 addresses one. `number_as_word`: the value is an English cardinal written out under a locator
 that did not ask for one. It is distinct from `value_not_numeric` because the fix differs — the
@@ -513,23 +524,37 @@ its evidence started after registration. `violated`: a run started first. `unche
 record does not settle it. `not_applicable`: the claim is not confirmatory.
 
 An `unchecked` ordering carries a reason, because collapsing distinct conditions into one word
-loses the only information that says what to fix: `no_run_record`, `no_registered_plan`,
-`registered_plan_unpinned`, `registered_plan_changed`, `run_output_unlinked`,
-`run_output_changed`, `timestamp_missing`, `ambiguous_producing_run`. A claim with no run
-record is `unchecked` and never `violated` — an absent record is not evidence that a result
-predates its plan.
+loses the only information that says what to fix: `no_run_record`, `no_evidence_offered`,
+`no_registered_plan`, `registered_plan_unpinned`, `registered_plan_changed`,
+`run_output_unlinked`, `run_output_changed`, `timestamp_missing`, `ambiguous_producing_run`. A
+claim with no run record is `unchecked` and never `violated` — an absent record is not evidence
+that a result predates its plan. `no_evidence_offered` is separate from `no_run_record`: a claim
+that declares no evidence names no artifact, so no run could produce one, and a reader told the
+run record is missing goes looking for a run that was never owed.
 
 Every artifact a claim's evidence names must have a covering run. Taking the runs that produce
 any one of them would let a run record for an incidental artifact order a claim whose number
 came from an artifact with no run at all.
 
 Where `registered_plan` names a declared artifact, that document is pinned, so a plan edited
-after the fact to match results breaks its pin and the ordering reverts to `unchecked`.
+after the fact to match results breaks its pin and the ordering reverts to `unchecked`. A plan
+frozen by `prereg freeze` is never written to again: the freeze record, the log and each
+amendment are separate files, so logging a deviation or amending the plan leaves the pin intact.
 
 Two limits are structural. The registration timestamp is self-recorded, so the check
 establishes internal consistency and not that a registration is contemporaneous with what it
-claims; an external timestamp authority closes that and is out of scope. And the check reads
-a declared run record rather than observing execution.
+claims. An outside timestamp closes that: `prereg timestamp` and `results timestamp` commit the
+digest of the plan, the digest of each amendment and the ledger's head into a Bitcoin block
+through OpenTimestamps, and the block's date bounds when each existed. `prereg freeze` always
+attempts the timestamp, and one it could not make is reported by `prereg check` as owed until
+`prereg timestamp` makes it. This check does not read those proofs; `prereg check` and
+`results verify` do. And the check reads a declared run record rather than observing execution.
+
+OpenTimestamps is used because it needs no account and trusts no party beyond Bitcoin, and
+because a proof names no one, so a stamp made during double-blind review identifies nobody. An
+RFC 3161 timestamp authority or Sigstore's Rekor log would date a digest at once, where a Bitcoin
+confirmation takes hours; the first trusts the authority's signing key, and the second ties each
+entry to the signer's key.
 
 ## 7.5 Output formats
 
@@ -569,25 +594,62 @@ was told to writes inside that directory. Every declared path is resolved and ch
 containment before it is used, since a path holding `..` otherwise lands outside.
 
 This is a working directory, not a sandbox in the security sense: nothing stops a command
-writing to an absolute path elsewhere. Running `--regenerate` on a manifest you have not read
-is running a program you have not read. That makes the record a claim about sufficiency and not only about provenance.
+writing to an absolute path elsewhere. Running `repro reproduce` on a manifest you have not
+read is running a program you have not read. That makes the record a claim about sufficiency and not only about provenance.
 
-Three states. `reproduced`: the command produced the pinned artifact. `diverged`: it produced
-something else, produced nothing, or exited non-zero. `unchecked`: it was not requested, an
-input has moved since the record was written, or the runner is absent. An input that changed
-yields `unchecked` rather than `diverged`, because different inputs producing a different
-output is not a failure to reproduce.
+The verdict is about the numbers the manuscript prints, not the output's bytes. Where the
+command writes the pinned bytes, the record reproduced. Where it writes other bytes, every
+assertion that reads the output is put to the new file, by the comparison §5 defines and at the
+precision the manuscript prints, and the record reproduced if each still holds. A re-run that
+lists a directory in another order writes a different file holding the same values; calling
+that a divergence reports a difference no reader can find in the paper. Whether the bytes
+matched is recorded beside the verdict.
 
-Comparison is exact but canonical. An output carrying a timestamp or an absolute path never
-reproduces byte for byte, so a record names those fields as `volatile` JSON Pointers and they
-are removed before hashing; where a record names them, the digest it pins is the canonical one.
-Naming the fields keeps the comparison exact everywhere else, which loosening the whole
+Five states.
+
+| state | what happened |
+|---|---|
+| `reproduced` | re-ran, and every number the manuscript prints from the output still holds |
+| `changed` | re-ran, and at least one number the manuscript prints from it is now different |
+| `unchecked` | re-ran and wrote the output, but a number could not be read from it |
+| `failed` | the command did not finish, or finished and wrote nothing |
+| `not_rerun` | never executed: skipped, or an input is not the one the record names |
+
+Each carries a reason. An input that changed yields `not_rerun` rather than `changed`, because
+different inputs producing a different output is not a failure to reproduce, and the command
+is not started. A command that exits 0 and writes nothing is `failed`: a clean exit is not
+evidence that the work was done. An output with different bytes that no assertion reads is
+`changed`, since its bytes are then all there is to compare. A number the manuscript already
+printed differently from the pinned file, and which the re-run writes unchanged, is not
+counted against the re-run; `repro verify` reports it.
+
+The byte comparison is exact but canonical. An output carrying a timestamp or an absolute path
+never reproduces byte for byte, so a record names those fields as `volatile` JSON Pointers and
+they are removed before hashing; where a record names them, the digest it pins is the canonical
+one. Naming the fields keeps the comparison exact everywhere else, which loosening the whole
 comparison would not.
 
-Regeneration is off by default and runs only under `repro verify --regenerate`. Verifying a
-manifest should never execute what the manifest names. Commands are argv, never shell strings:
-a shell string needs quoting rules, brings a shell's expansion with it, and turns a manifest
-into something that can run anything.
+A record whose input is another record's output runs over the pinned copy of that output,
+whatever happened to the record producing it. Where that record did not reproduce, at any
+distance upstream, the dependent record names it in `rests_on`. An evaluation re-run over a
+long training run's recorded checkpoint is worth having, and is not the same result as
+re-running both.
+
+Each invocation appends one object to `.repro/reproductions.jsonl` beside the manifest: when it
+ran, the tool's version, the manifest's digest, the operating system, architecture and Python
+version, the name and digest of a lockfile at the top of the project, GPU models and drivers
+where there are any, the environment variables that bear on determinism, and per record the
+command, its exit code and duration, the digest each input was pinned at and found at, the
+digest the output was pinned at and produced at, the files the command wrote and did not
+declare, and for each assertion the value in the pinned file, the value in the new file and the
+value the manuscript prints. No field names a host, a user or an absolute path, and none
+records who ran it, which the tool cannot observe.
+
+Commands run only under `repro reproduce`. `repro verify` executes nothing: verifying a
+manifest should never run what the manifest names. Commands are argv, never shell strings: a
+shell string needs quoting rules, brings a shell's expansion with it, and turns a manifest into
+something that can run anything. `--only` and `--skip` choose records by id, and a record left
+out is reported `not_rerun`, never omitted.
 
 Regeneration is orthogonal to registration. A `not_applicable` claim need not declare one —
 methods statements and externally sourced facts are inapplicable without being script-generated

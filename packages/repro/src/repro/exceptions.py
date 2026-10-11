@@ -85,3 +85,22 @@ class UnknownEvidenceKindError(ReproError):
         self.kind = kind
         self.known = known
         super().__init__(f"no verifier for evidence kind {kind!r}; known: {', '.join(known)}")
+
+
+class ManifestExistsError(ReproError):
+    """A manifest is already where a starter would be written. Nothing is overwritten."""
+
+    def __init__(self, path: pathlib.Path) -> None:
+        self.path = path
+        super().__init__(
+            f"{path} exists; nothing was written. Edit it, or move it aside to start again."
+        )
+
+
+class ArtifactRefusedError(ReproError):
+    """A file named for pinning cannot be an artifact of this project."""
+
+    def __init__(self, path: pathlib.Path, detail: str) -> None:
+        self.path = path
+        self.detail = detail
+        super().__init__(f"{path}: {detail}; nothing was written.")

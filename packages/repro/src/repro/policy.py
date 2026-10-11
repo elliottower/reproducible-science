@@ -21,6 +21,7 @@ from repro.models import (
     Outcome,
     Regeneration,
     RegistrationAuthority,
+    ReproductionReport,
     Validity,
     VerificationReport,
 )
@@ -93,11 +94,16 @@ class Policy(BaseModel):
     requires better. None accepts any."""
     weak_registration_authority: Severity = Severity.WARNING
 
-    regeneration_diverged: Severity = Severity.ERROR
-    """The declared command did not reproduce the artifact it claims to produce."""
-    regeneration_unchecked: Severity = Severity.IGNORE
-    """Regeneration is opt-in, so not having run it is the ordinary state rather than a
-    finding. A project that requires it raises this."""
+    regeneration_changed: Severity = Severity.ERROR
+    """A re-run after which a number the manuscript prints is different."""
+    regeneration_failed: Severity = Severity.ERROR
+    """A declared command that did not finish, or finished and wrote nothing."""
+    regeneration_unchecked: Severity = Severity.WARNING
+    """A re-run whose output a number could not be read from. Not a finding that the number
+    changed, which is why it is separable from `regeneration_changed`."""
+    regeneration_not_rerun: Severity = Severity.IGNORE
+    """A record that was skipped or refused. Leaving out a week of training is an ordinary
+    choice; a project that requires every record to run raises this."""
 
     require_one_check: bool = True
     """A run that evaluated nothing is not a pass. Without this a project with no evidence
@@ -133,26 +139,6 @@ class Policy(BaseModel):
                         rule="artifact.unpinned",
                         subject=artifact.artifact_id,
                         detail="no digest recorded",
-                    )
-                )
-
-        for regeneration in report.regenerations:
-            if regeneration.state is Regeneration.DIVERGED:
-                violations.append(
-                    Violation(
-                        severity=self.regeneration_diverged,
-                        rule="artifact.regeneration",
-                        subject=regeneration.artifact_id,
-                        detail=regeneration.detail or regeneration.reason.value,
-                    )
-                )
-            elif regeneration.state is Regeneration.UNCHECKED:
-                violations.append(
-                    Violation(
-                        severity=self.regeneration_unchecked,
-                        rule=f"artifact.regeneration_unchecked.{regeneration.reason.value}",
-                        subject=regeneration.artifact_id,
-                        detail=regeneration.detail or regeneration.reason.value,
                     )
                 )
 
@@ -237,6 +223,31 @@ class Policy(BaseModel):
             passed=not any(v.severity is Severity.ERROR for v in violations),
         )
 
+    def assess_reproduction(self, report: ReproductionReport) -> Assessment:
+        """Whether a set of re-runs is acceptable. The counterpart of `assess` for
+        `repro.reproduce`: the same severities, over the five outcomes a re-run can have."""
+        severities = {
+            Regeneration.CHANGED: self.regeneration_changed,
+            Regeneration.FAILED: self.regeneration_failed,
+            Regeneration.UNCHECKED: self.regeneration_unchecked,
+            Regeneration.NOT_RERUN: self.regeneration_not_rerun,
+        }
+        violations = tuple(
+            Violation(
+                severity=severities[state.state],
+                rule=f"reproduction.{state.state.value}.{state.reason.value}",
+                subject=state.regeneration_id,
+                detail=state.detail or state.reason.value,
+            )
+            for state in report.regenerations
+            if state.state is not Regeneration.REPRODUCED
+        )
+        return Assessment(
+            policy=self.name,
+            violations=violations,
+            passed=not any(v.severity is Severity.ERROR for v in violations),
+        )
+
 
 EXPLORATORY = Policy(
     name="exploratory",
@@ -277,6 +288,8 @@ STRICT = Policy(
     confirmatory_outcomes={o: Severity.ERROR for o in Outcome if o is not Outcome.VERIFIED},
     unpinned_artifact=Severity.ERROR,
     ordering_unchecked=Severity.ERROR,
+    regeneration_unchecked=Severity.ERROR,
+    regeneration_not_rerun=Severity.WARNING,
 )
 
 PROFILES = {p.name: p for p in (EXPLORATORY, PUBLICATION, STRICT)}

@@ -429,7 +429,7 @@ def test_papers_yaml_survives_a_write_that_never_lands(tmp_path, monkeypatch):
 
 
 def test_an_audit_report_survives_a_write_that_never_lands(tmp_path, monkeypatch, capsys):
-    # Neither entry carries a DOI or a PMID, so the audit resolves nothing and asks no registry.
+    # Neither entry carries a DOI or a PMID, and the search is off, so the audit resolves nothing and asks no registry.
     bib = tmp_path / "references.bib"
     bib.write_text(_entry("k0", 0, doi=False) + "\n" + _entry("k1", 1, doi=False))
     out = tmp_path / "reports" / "audit.json"
@@ -438,7 +438,7 @@ def test_an_audit_report_survives_a_write_that_never_lands(tmp_path, monkeypatch
 
     monkeypatch.setattr(os, "replace", _no_space)
     with pytest.raises(OSError):
-        audit.main(["--bib", str(bib), "--json", str(out)])
+        audit.main(["--bib", str(bib), "--json", str(out), "--no-search"])
     capsys.readouterr()
 
     assert json.loads(out.read_text())["where"] == "the audit run before this one"

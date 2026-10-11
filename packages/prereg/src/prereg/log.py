@@ -117,14 +117,62 @@ def log_problems(text: str) -> list[str]:
     anchor = LOG_ANCHOR.search(text)
     if anchor:
         count, head = log_head(text)
-        if int(anchor.group(1)) != count:
+        recorded = int(anchor.group(1))
+        if count < recorded:
+            removed = recorded - count
             problems.append(
-                f"the log records {anchor.group(1)} entries and holds {count}: "
-                f"an entry has been removed from the end"
+                f"the log records {recorded} entries and holds {count}: "
+                f"{_entries(removed)} been removed from the end"
             )
+        elif count > recorded:
+            problems.append(_added_beyond_the_record(text, recorded, count))
         elif anchor.group(2) != (head or "00000000"):
             problems.append("the log's last entry is not the one recorded")
     return problems
+
+
+def _entries(n: int) -> str:
+    return "an entry has" if n == 1 else f"{n} entries have"
+
+
+def _added_beyond_the_record(text: str, recorded: int, count: int) -> str:
+    """The message for a log longer than its anchor says.
+
+    Every count mismatch was reported as "an entry has been removed from the end", including a
+    log that had grown: observed 2-3 Oct 2026 as "the log records 6 entries and holds 7", on a
+    registration whose seventh entry had been typed into the file beneath six that `prereg log`
+    wrote. Nothing had been removed. The entries past the count are named, and an entry carrying
+    no chain value is said to have been written by hand, since `prereg log` writes one.
+
+    `prereg log` is how the record is brought up to date: it folds an unchained entry into the
+    chain, as it does the template's `created` line, and recounts the anchor over the whole log.
+    Editing the anchor line by hand would also silence this, and would be the same kind of edit
+    the anchor exists to catch.
+    """
+    numbers = list(range(recorded + 1, count + 1))
+    extra = log_lines(text)[recorded:]
+    which = (
+        f"entry {numbers[0]} was"
+        if len(numbers) == 1
+        else f"entries {numbers[0]}-{numbers[-1]} were"
+    )
+    by_hand = [n for n, line in zip(numbers, extra, strict=True) if LOG_MARK not in line]
+    if by_hand:
+        how = (
+            f"; {'it carries' if len(numbers) == 1 else 'they carry'} no chain value, which "
+            f"`prereg log` writes, so {'it was' if len(numbers) == 1 else 'they were'} "
+            f"written by hand"
+            if by_hand == numbers
+            else f"; {', '.join(map(str, by_hand))} carry no chain value, so were written by hand"
+        )
+    else:
+        how = ""
+    return (
+        f"the log records {recorded} entries and holds {count}: {which} added after the record "
+        f"was last written{how}. Nothing was removed. If the added text is a genuine entry, "
+        f"record that with `prereg log`, which brings the "
+        f"count and head up to date; if it is not, delete it"
+    )
 
 
 def append(path: pathlib.Path, date: str, event: str, access: str) -> None:

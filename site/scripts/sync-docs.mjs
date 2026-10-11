@@ -15,7 +15,6 @@ const DOCS = resolve(HERE, "..", "src", "content", "docs");
 // exists, and the sidebar group is not an answer -- it is a different section.
 const SYNCED = [
   ["docs/SPEC.md", "reference/spec.md", "Specification"],
-  ["docs/RELEASING.md", "reference/releasing.md", "Releasing"],
   ["CHANGELOG.md", "reference/changelog.md", "Changelog"],
   ["packages/prereg/README.md", "tools/prereg.md", "Prereg", "prereg"],
   ["packages/citations/README.md", "tools/citations.md", "Citations", "citations"],
