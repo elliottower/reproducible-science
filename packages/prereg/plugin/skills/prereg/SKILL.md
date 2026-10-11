@@ -19,7 +19,9 @@ file, records the freeze outside it in `.prereg/`, and sets the file read-only. 
 is a separate file: a note in `PREREG.log`, a change in `PREREG_AMENDMENT_N.md`.
 
 Never edit a frozen plan or a frozen amendment, never remove its read-only flag, and never write
-or edit a record under `.prereg/` by hand. A record is the tool's output.
+or edit a record under `.prereg/` by hand. A record is the tool's output. The plugin refuses an
+`Edit`, `Write` or `MultiEdit` to a frozen file; a refusal means record a note with `prereg log`
+or a change with `prereg amend`, never that the file should be changed another way.
 
 ## Commands
 

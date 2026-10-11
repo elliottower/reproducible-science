@@ -8,6 +8,9 @@ were promises and nothing else.
 
 `unfrozen_plan_before_run.py` is the first `PreToolUse` hook here, and the first that could
 deny a command. That it does not is the property most worth pinning.
+
+`frozen_file_before_edit.py` is the one hook that denies: an edit to a frozen plan or a frozen
+amendment, and nothing else.
 """
 
 from __future__ import annotations
@@ -370,12 +373,106 @@ def test_a_change_to_a_plan_frozen_in_place_is_still_reported(tmp_path):
     assert "carries a recorded digest and no longer matches it" in out.stdout
 
 
-def test_the_frozen_plan_hook_is_identical_in_both_plugins():
+REFUSED = "frozen_file_before_edit.py"
+
+
+def _denial(out: subprocess.CompletedProcess) -> str:
+    """The reason a `PreToolUse` hook denied the call with, in the shape the runtime reads."""
+    decision = json.loads(out.stdout)["hookSpecificOutput"]
+    assert out.returncode == 0
+    assert decision["hookEventName"] == "PreToolUse"
+    assert decision["permissionDecision"] == "deny"
+    return decision["permissionDecisionReason"]
+
+
+@pytest.mark.parametrize("tool", ["Edit", "Write", "MultiEdit"])
+@pytest.mark.parametrize("name", ["PREREG.md", "PREREG_AMENDMENT_1.md"])
+def test_an_edit_to_a_file_frozen_whole_is_denied(tmp_path, name, tool):
+    path = _frozen_whole(tmp_path, name, "# Plan\n\nH1. The effect exceeds 0.10.\n")
+    reason = _denial(run(REFUSED, {"tool_name": tool, "tool_input": {"file_path": str(path)}}))
+    assert f"{path} has a freeze record ({path.parent / '.prereg' / (name + '.json')})" in reason
+    assert "`prereg log`" in reason
+    assert "`prereg amend`" in reason
+
+
+def test_an_edit_to_a_plan_frozen_in_place_is_denied(tmp_path):
+    path = plan(tmp_path, f"# Plan\n\n{FROZEN}\nWe will measure X.\n") / "PREREG.md"
+    reason = _denial(run(REFUSED, {"tool_name": "Edit", "tool_input": {"file_path": str(path)}}))
+    assert f"{path} is a frozen registration" in reason
+    assert "`prereg log`" in reason
+    assert "`prereg amend`" in reason
+
+
+def test_an_edit_to_an_amendment_still_in_draft_is_allowed(tmp_path):
+    _frozen_whole(tmp_path, "PREREG.md", "# Plan\n")
+    draft = tmp_path / "experiment" / "PREREG_AMENDMENT_1.md"
+    draft.write_text("# Amendment 1\n\nStill being written.\n")
+    out = run(REFUSED, {"tool_name": "Edit", "tool_input": {"file_path": str(draft)}})
+    assert (out.returncode, out.stdout) == (0, "")
+
+
+def test_an_edit_to_an_unfrozen_plan_is_allowed(tmp_path):
+    path = plan(tmp_path, "# Plan\n\n**Status:** DRAFT\n\nWe will measure X.\n") / "PREREG.md"
+    out = run(REFUSED, {"tool_name": "Edit", "tool_input": {"file_path": str(path)}})
+    assert (out.returncode, out.stdout) == (0, "")
+
+
+@pytest.mark.parametrize("name", ["analysis.py", "notes.md", "not_yet_written.md"])
+def test_an_edit_to_a_file_that_is_no_preregistration_is_allowed(tmp_path, name):
+    _frozen_whole(tmp_path, "PREREG.md", "# Plan\n")
+    path = tmp_path / "experiment" / name
+    if not name.startswith("not_yet"):
+        path.write_text("x = 1\n")
+    out = run(REFUSED, {"tool_name": "Write", "tool_input": {"file_path": str(path)}})
+    assert (out.returncode, out.stdout) == (0, "")
+
+
+@pytest.mark.parametrize(
+    "stdin",
+    [
+        "this is not json",
+        "[]",
+        '"a string"',
+        '{"tool_input": "PREREG.md"}',
+        '{"tool_input": {"file_path": 7}}',
+    ],
+)
+def test_input_the_refusing_hook_cannot_read_allows_the_edit(stdin):
+    out = subprocess.run(
+        [sys.executable, str(HOOKS / REFUSED)],
+        input=stdin,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert (out.returncode, out.stdout) == (0, "")
+
+
+def test_a_freeze_record_that_cannot_be_read_allows_the_edit(tmp_path):
+    path = _frozen_whole(tmp_path, "PREREG.md", "# Plan\n")
+    (path.parent / ".prereg" / "PREREG.md.json").write_text("{ not json")
+    out = run(REFUSED, {"tool_name": "Edit", "tool_input": {"file_path": str(path)}})
+    assert (out.returncode, out.stdout) == (0, "")
+
+
+@pytest.mark.parametrize("hook", [CHANGED, REFUSED])
+def test_the_frozen_plan_hooks_are_identical_in_both_plugins(hook):
     first, second = (
-        (ROOT / "packages" / package / "plugin" / "hooks" / CHANGED).read_bytes()
+        (ROOT / "packages" / package / "plugin" / "hooks" / hook).read_bytes()
         for package in ("prereg", "repro")
     )
     assert first == second
+
+
+def test_the_prereg_plugin_registers_the_refusing_hook_as_the_bundle_does():
+    def before_edit(package: str) -> list:
+        registry = json.loads(
+            (ROOT / "packages" / package / "plugin" / "hooks" / "hooks.json").read_text()
+        )["hooks"]
+        return [group for group in registry["PreToolUse"] if REFUSED in json.dumps(group)]
+
+    assert before_edit("prereg") == before_edit("repro")
+    assert [group["matcher"] for group in before_edit("repro")] == ["Edit|Write|MultiEdit"]
 
 
 @pytest.mark.parametrize("name", ["skills/prereg/SKILL.md", "commands/prereg-check.md"])

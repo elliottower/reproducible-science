@@ -12,10 +12,13 @@ its report twice. Nothing breaks and every message is doubled.
 
 ## What it adds
 
-**Four hooks**, which speak when a moment passes unrecorded and are silent otherwise.
+**Five hooks.** Four speak when a moment passes unrecorded and are silent otherwise. The fifth,
+`frozen_file_before_edit.py`, refuses an edit to a frozen plan or a frozen amendment before it
+happens, and is the only hook that refuses anything.
 
 | hook | fires when |
 |---|---|
+| `frozen_file_before_edit.py` | an `Edit`, `Write` or `MultiEdit` targets a frozen plan or a frozen amendment; the edit is refused |
 | `frozen_plan_changed.py` | a preregistration no longer matches the digest it was frozen with |
 | `unverified_quotations.py` | a quotation enters a manuscript that no claim file pins to a source |
 | `unbound_numbers.py` | a number enters a manuscript that no recorded claim names |
