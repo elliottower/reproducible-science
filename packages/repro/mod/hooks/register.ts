@@ -677,8 +677,8 @@ export const register: Register = on => {
         return {
           deny:
             `${path} is a frozen registration, and a frozen plan is not edited in place. ` +
-            `Record the change as an amendment or a deviation with \`prereg log\`, which keeps ` +
-            `the frozen text and its digest. If the plan must be replaced, ask the user first.`,
+            `Record a note with \`prereg log\`, or a change to the plan as an amendment with ` +
+            `\`prereg amend\`, which is a file of its own. Ask the user before doing either.`,
         }
       }
 

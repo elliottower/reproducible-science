@@ -65,8 +65,11 @@ test('an edit to a frozen plan is refused and never reaches the tool', async ($,
     new_string: 'H1. something the data suggested',
   })
 
-  expect(answer.deny).toContain('frozen registration')
-  expect(answer.deny).toContain('prereg log')
+  expect(answer.deny).toBe(
+    `${CWD}/PREREG.md is a frozen registration, and a frozen plan is not edited in place. ` +
+      'Record a note with `prereg log`, or a change to the plan as an amendment with ' +
+      '`prereg amend`, which is a file of its own. Ask the user before doing either.',
+  )
   expect(ran).toEqual([])
 })
 

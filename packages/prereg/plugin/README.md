@@ -19,7 +19,7 @@ command is there for when you want the answer now.
 
 `frozen_plan_changed.py` is the only exact check in the set. It recomputes a hash the author recorded and compares two strings, so there is no threshold and no judgment. It is also the one whose failure matters most: a plan rewritten around a result defeats registration entirely, and no reader can detect it afterward. The hook reports the difference and never edits the registration.
 
-`frozen_file_before_edit.py` refuses the edit before it happens. An `Edit`, `Write` or `MultiEdit` to a file with a freeze record (`.prereg/<name>.json` beside it: a plan or an amendment), or to a plan carrying a freeze digest, is denied, with the instruction to record a note with `prereg log` or a change with `prereg amend`. An amendment still in draft has no record and is edited freely. `frozen_plan_changed.py` then reports a frozen file changed by another route, such as a shell command or an edit made outside the session.
+`frozen_file_before_edit.py` refuses the edit before it happens. An `Edit`, `Write` or `MultiEdit` to a file with a freeze record (`.prereg/<name>.json` beside it: a plan or an amendment), or to a `PREREG.md` carrying a freeze digest, is denied, with the instruction to record a note with `prereg log` or a change with `prereg amend`. An amendment still in draft has no record and is edited freely. `frozen_plan_changed.py` then reports a frozen file changed by another route, such as a shell command or an edit made outside the session.
 
 The refusal is the only thing either hook blocks. Both exit zero on every failure path, which
 allows the edit, and both stay silent in a project with no frozen plan — nothing to check means
