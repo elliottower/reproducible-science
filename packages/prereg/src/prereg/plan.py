@@ -142,8 +142,7 @@ def rewrite_status(text: str, commit: str, digest: str, date: str) -> str:
 
 # A frozen plan whose hypotheses never reach the manuscript passes every other check: the plan
 # is unedited, its hash matches, its log is intact. Nothing looked at whether the plan was
-# reported. A registered hypothesis went missing from a submission for three months and was
-# found by reading, not by a tool, which is the gap this closes.
+# reported, which is the gap this closes.
 HYPOTHESIS = re.compile(
     r"""^(?:\#{1,6}[ \t]*|\*\*)      # a heading, or the bold run-in the template uses
         (H[A-Za-z_]*\d+[a-z]?)       # H1, H2b, HP3, H_tissue1
