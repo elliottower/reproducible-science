@@ -1,10 +1,11 @@
 """The commands that put an event in the ledger.
 
-`init`, `seal`, `access`, `run`, `claim` and `review` share a shape: find the governing `.results/`,
-build one event, append it, and report what was written. What separates them is the refusal
-each makes first -- a path that is not a file, an access level outside the four, a run id
-already in use, a confirmatory claim resting on a run recorded after the outcomes were seen, a
-review with a verdict outside the four.
+`init`, `seal`, `access`, `run`, `claim`, `review` and `annotate` share a shape: find the
+governing `.results/`, build one event, append it, and report what was written. What separates
+them is the refusal each makes first -- a path that is not a file, an access level outside the
+four, a run id already in use, a confirmatory claim resting on a run recorded after the outcomes
+were seen, a review with a verdict outside the four, an annotation whose kind is not
+`namespace:type`.
 
 Each returns the process's exit code. `cli.py` unpacks the argparse namespace and calls in.
 """
@@ -28,6 +29,20 @@ ACCESS_LEVELS = [
 ]
 
 VERDICTS = ["pass", "fail", "partial", "uncertain"]
+
+#: What an annotation's target is, as `namespace:type`: `wandb:artifact`, `doi:dataset`,
+#: `osf:node`, `url:page`. Open-ended, because the outside systems a project links to are not
+#: this tool's to enumerate; only the shape is fixed, so that a reader can group by namespace.
+KIND = re.compile(r"[a-z0-9._-]+:[a-z0-9._-]+")
+
+#: A digest as the outside system states it: `algorithm:hex`.
+DIGEST = re.compile(r"([a-z0-9][a-z0-9_-]*):([0-9a-fA-F]+)")
+
+#: Hex digits in the digests whose length is fixed. Any other algorithm is taken at any length.
+DIGEST_LENGTHS = {"md5": 32, "sha1": 40, "sha256": 64, "sha512": 128}
+
+#: Written into every annotation and printed wherever one is shown.
+LINKED = "linked, not checked"
 
 
 #: Written into `.results/` so the ledger is tracked without anyone editing the project's own
@@ -278,6 +293,28 @@ def session(model: str | None) -> dict[str, str]:
     return found
 
 
+def digests_of(files: list[str], root: pathlib.Path) -> list[dict[str, str]] | None:
+    """Each named file or directory by its digest, or None once one of them is neither.
+
+    What a review and an annotation both record under `subjects`. Named `subjects`, never
+    `files`: `verify --files` reads `files` as seals, and a subject that later changes would
+    then report the path as sealed twice.
+    """
+    subjects = []
+    for name in files:
+        p = pathlib.Path(name).resolve()
+        if p.is_dir():
+            digest = sha256_of_tree(p)[0]
+            subjects.append({"path": record_path(p, root), "sha256": digest, "kind": "tree"})
+            continue
+        if not p.is_file():
+            print(f"not a file: {name}")
+            return None
+        digest = ledger.sha256_of_file(p)
+        subjects.append({"path": record_path(p, root), "sha256": digest, "kind": "file"})
+    return subjects
+
+
 def review(
     files: list[str],
     scope: str,
@@ -292,20 +329,9 @@ def review(
     if verdict not in VERDICTS:
         print(f"verdict must be one of: {', '.join(VERDICTS)}")
         return 1
-    # Named `subjects`, never `files`: `verify --files` reads `files` as seals, and a review of
-    # a file that later changes would then report the path as sealed twice.
-    subjects = []
-    for name in files:
-        p = pathlib.Path(name).resolve()
-        if p.is_dir():
-            digest = sha256_of_tree(p)[0]
-            subjects.append({"path": record_path(p, root), "sha256": digest, "kind": "tree"})
-            continue
-        if not p.is_file():
-            print(f"not a file: {name}")
-            return 1
-        digest = ledger.sha256_of_file(p)
-        subjects.append({"path": record_path(p, root), "sha256": digest, "kind": "file"})
+    subjects = digests_of(files, root)
+    if subjects is None:
+        return 1
     ran_in = session(model)
     ledger.append_event(
         lp,
@@ -328,4 +354,60 @@ def review(
     if "harness" in ran_in and "model" not in ran_in:
         print("  ran inside Claude Code with no --model; pass it if a model did the review.")
     print("self-reported and unsigned: the ledger records that this was said, and of which bytes.")
+    return 0
+
+
+def annotate(
+    files: list[str],
+    kind: str,
+    ref: str,
+    digest: str | None,
+    by: str | None,
+    note: str | None,
+    location: str | None,
+) -> int:
+    root = require_root()
+    lp = ledger_path(root)
+    if not KIND.fullmatch(kind):
+        print(f"kind must be namespace:type, such as wandb:artifact or doi:dataset; got '{kind}'")
+        print("lowercase letters, digits, '-', '_' and '.' on each side of one colon.")
+        return 1
+    if not ref.strip():
+        print("ref must name the outside thing: an artifact path, a DOI, a URL, an id.")
+        return 1
+    if digest is not None:
+        stated = DIGEST.fullmatch(digest)
+        length = DIGEST_LENGTHS.get(stated[1]) if stated else None
+        if not stated or (length is not None and len(stated[2]) != length):
+            print(f"digest must be algorithm:hex, such as sha256:<64 hex digits>; got '{digest}'")
+            return 1
+    subjects = digests_of(files, root)
+    if subjects is None:
+        return 1
+    # No session is read here. A review says who or what did the reading, so it records where
+    # the command ran; an annotation makes no such statement, and `--by` is whatever was typed.
+    target = {"kind": kind, "ref": ref}
+    if digest:
+        target["digest"] = digest
+    event: dict[str, object] = {
+        "event": "annotation",
+        "subjects": subjects,
+        "target": target,
+        "status": LINKED,
+        "note": note or "",
+    }
+    if by:
+        event["by"] = by
+    if location:
+        event["location"] = location
+    ledger.append_event(lp, event)
+    print(f"annotation: {kind}  {ref[:72]}" + (f"  by {by}" if by else ""))
+    for subject in subjects:
+        print(f"  {subject['sha256'][:16]}…  {subject['path']}")
+    if digest:
+        print(f"  digest as stated: {digest}")
+    if location:
+        print(f"  appears in: {location}")
+    print(f"{LINKED}: the ledger records that this link was stated, and of which bytes.")
+    print("Nothing was fetched or compared.")
     return 0

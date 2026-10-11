@@ -549,3 +549,28 @@ test('runs are a fraction sealed, and runs named as tests are left out of the ro
   expect(shown.text).not.toContain('test run')
   await $.command.run({ command: 'repro-status', args: 'auto' })
 })
+
+test('a missing subject of a review or an annotation is not counted as a sealed file that changed', async ($, on) => {
+  const ledger =
+    '{"event":"init","seq":0}\n' +
+    '{"event":"seal","seq":1,"files":[{"path":"a.csv"}]}\n' +
+    '{"event":"run","seq":2,"run_id":"s1"}\n' +
+    '{"event":"review","seq":3,"subjects":[{"path":"gone.csv"}]}\n' +
+    '{"event":"annotation","seq":4,"subjects":[{"path":"model.pt"}]}\n'
+  const noted =
+    'reviews (self-reported, unsigned):\n  2026-10-11T09:00:00  pass        A. Reader\n    MISSING      gone.csv\n' +
+    'annotations (linked, not checked):\n  2026-10-11T09:01:00  wandb:artifact  lab/study/model:v3\n    MISSING      model.pt\n'
+  let hashes = 'file hashes:\n  ok         a.csv\n'
+  project(on, { '/work/study/.results/ledger.jsonl': ledger }, argv =>
+    argv[0] === 'results' ? `chain intact: 5 events, anchored\n\n${hashes}\n${noted}` : '',
+  )
+
+  const clean = await $.command.run({ command: 'repro-status', args: 'study' })
+  expect(clean.text).toContain('results: 1/1 runs sealed, 0 claims bound')
+  expect(clean.text).not.toContain('changed')
+
+  hashes = 'file hashes:\n  MISSING    a.csv\n'
+  const moved = await $.command.run({ command: 'repro-status', args: 'study' })
+  expect(moved.text).toContain('results: 1 changed, 1/1 runs sealed')
+  await $.command.run({ command: 'repro-status', args: 'auto' })
+})
