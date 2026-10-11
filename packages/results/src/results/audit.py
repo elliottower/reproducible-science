@@ -19,6 +19,7 @@ from provenance_core import anchor, sha256_of_tree, try_run
 
 from results import ledger, manuscript, stamps
 from results.paths import ledger_path, require_root
+from results.record import LINKED
 from results.timeline import first_outcomes_seen, first_run_timestamp, precedes
 
 
@@ -64,20 +65,52 @@ def reviews(events: list[dict], base: pathlib.Path, check_files: bool) -> list[s
             + (f"  [{named}]" if named else "")
         )
         lines.append(f"    scope: {e.get('scope', '')}")
-        for subject in e.get("subjects", []):
-            path, recorded = subject["path"], subject["sha256"]
-            p = base / path
-            if not check_files:
-                lines.append(f"    not checked  {path}")
-            elif not p.exists():
-                lines.append(f"    MISSING      {path}")
+        lines += subjects(e, base, check_files, "reviewed")
+    return lines
+
+
+def annotation_lines(events: list[dict], base: pathlib.Path, check_files: bool) -> list[str]:
+    """One block per annotation: what it links to, and with `check_files` whether each subject
+    is still the bytes the link was stated of.
+
+    An annotation is a statement that these bytes correspond to something outside the ledger.
+    Nothing here reads the target, so the most this can say is whether the local side of the
+    link still exists as recorded. Reported and never counted as drift, as a review is.
+    """
+    lines: list[str] = []
+    for e in events:
+        if e.get("event") != "annotation":
+            continue
+        target = e.get("target") or {}
+        lines.append(
+            f"  {e['timestamp'][:19]}  {target.get('kind', '?')}  {target.get('ref', '?')}"
+            + (f"  [{by}]" if (by := e.get("by")) else "")
+        )
+        if stated := target.get("digest"):
+            lines.append(f"    digest as stated: {stated}")
+        if location := e.get("location"):
+            lines.append(f"    appears in: {location}")
+        lines += subjects(e, base, check_files, "annotated")
+    return lines
+
+
+def subjects(event: dict, base: pathlib.Path, check_files: bool, was: str) -> list[str]:
+    """Each subject of a review or an annotation, and whether it is still the recorded bytes."""
+    lines: list[str] = []
+    for subject in event.get("subjects", []):
+        path, recorded = subject["path"], subject["sha256"]
+        p = base / path
+        if not check_files:
+            lines.append(f"    not checked  {path}")
+        elif not p.exists():
+            lines.append(f"    MISSING      {path}")
+        else:
+            now = sha256_of_tree(p)[0] if p.is_dir() else ledger.sha256_of_file(p)
+            if now == recorded:
+                lines.append(f"    current      {path}")
             else:
-                now = sha256_of_tree(p)[0] if p.is_dir() else ledger.sha256_of_file(p)
-                if now == recorded:
-                    lines.append(f"    current      {path}")
-                else:
-                    lines.append(f"    STALE        {path}")
-                    lines.append(f"      reviewed {recorded[:16]}…, now {now[:16]}…")
+                lines.append(f"    STALE        {path}")
+                lines.append(f"      {was} {recorded[:16]}…, now {now[:16]}…")
     return lines
 
 
@@ -336,6 +369,14 @@ def verify(check_files: bool) -> int:
         stale = sum(1 for line in review_lines if line.lstrip().startswith(("STALE", "MISSING")))
         if stale:
             print(f"  {stale} reviewed file(s) are no longer the bytes that were reviewed.")
+
+    if linked := annotation_lines(events, root.parent, check_files):
+        print(f"\nannotations ({LINKED}):")
+        for line in linked:
+            print(line)
+        stale = sum(1 for line in linked if line.lstrip().startswith(("STALE", "MISSING")))
+        if stale:
+            print(f"  {stale} annotated file(s) are no longer the bytes the link was stated of.")
 
     claims = [e for e in events if e.get("event") == "claim"]
     unlinked = []

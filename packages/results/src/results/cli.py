@@ -6,6 +6,7 @@ results access <note>     record a data-access event (what you looked at, when)
 results run <file>...     record outputs after a run completes
 results claim <text>      bind a manuscript claim to a run's output
 results review <file>...  record that someone examined these files, and what they found
+results annotate <file>...  link these files to something outside the ledger; linked, not checked
 results coverage <paper>  how many of a manuscript's numbers are bound to a run
 results verify            check the ledger chain and every hash it names
 results reanchor          record the ledger's current length as authoritative
@@ -68,6 +69,10 @@ def cmd_claim(a) -> int:
 
 def cmd_review(a) -> int:
     return record.review(a.files, a.scope, a.procedure, a.verdict, a.reviewer, a.model, a.note)
+
+
+def cmd_annotate(a) -> int:
+    return record.annotate(a.files, a.kind, a.ref, a.digest, a.by, a.note, a.location)
 
 
 def cmd_coverage(a) -> int:
@@ -166,6 +171,30 @@ def _main(argv: list[str] | None = None) -> int:
     )
     rv.add_argument("--note", help="anything the verdict needs said beside it")
     rv.set_defaults(fn=cmd_review)
+
+    an = sub.add_parser(
+        "annotate", help="link these files to something outside the ledger; linked, not checked"
+    )
+    an.add_argument(
+        "files", nargs="+", help="what the link is stated of; each is recorded by digest"
+    )
+    an.add_argument(
+        "--kind",
+        required=True,
+        help="what the outside thing is, as namespace:type: wandb:artifact, doi:dataset, "
+        "osf:node, url:page",
+    )
+    an.add_argument(
+        "--ref", required=True, help="where it is: an artifact path, a DOI, a URL, an id"
+    )
+    an.add_argument(
+        "--digest",
+        help="the digest the outside system states, as algorithm:hex; recorded, never compared",
+    )
+    an.add_argument("--by", help="who states the link")
+    an.add_argument("--note", help="anything the link needs said beside it")
+    an.add_argument("--location", help="where in the manuscript: Table 2, Section 4.1, etc.")
+    an.set_defaults(fn=cmd_annotate)
 
     v = sub.add_parser("verify", help="check the ledger and every hash it names")
     v.add_argument(

@@ -63,6 +63,7 @@ all checks passed.
 | `results run <file>...` | Record outputs after a run |
 | `results claim <text>` | Bind a manuscript claim to a run |
 | `results review <file>...` | Record that someone examined these files, and what they found |
+| `results annotate <file>...` | Link these files to something outside the ledger; linked, not checked |
 | `results verify` | Check the ledger chain and every hash it names |
 | `results timestamp` | Date the ledger's head outside the repository, and check earlier dates |
 
@@ -101,6 +102,50 @@ The record is self-reported and unsigned. The ledger shows that the review was s
 nothing checks who stated it. `--model` is the identifier the caller gives. Inside Claude Code
 the command also records the harness, its version and the session identifier from the
 environment, which does not say which model ran, so a model reviewer passes `--model`.
+
+## Annotations
+
+Some of what a paper rests on lives outside the repository: a Weights & Biases artifact, a
+deposited dataset, an OSF node, a row in another group's table. `results annotate` records that
+a file here corresponds to that outside thing.
+
+```bash
+results annotate checkpoints/model.pt \
+    --kind wandb:artifact --ref "lab/study/model:v3" \
+    --digest md5:0123456789abcdef0123456789abcdef \
+    --by "A. Reader" --note "the checkpoint behind Table 2"
+
+results annotate results/table2.csv \
+    --kind doi:dataset --ref 10.5281/zenodo.1234567 --location "Table 2"
+```
+
+An annotation is a statement of a link and not a check: the tool fetches nothing and compares
+nothing, and the event carries the status `linked, not checked`. Each file is recorded by its
+sha256, so the link is stated of those bytes.
+
+`--kind` and `--ref` are required. `--kind` is `namespace:type` in lowercase, such as
+`wandb:artifact`, `doi:dataset`, `osf:node`, `url:page`, `zenodo:record` or `hf:dataset`; any
+kind of that shape is accepted, and a malformed kind writes nothing. `--ref` is the artifact
+path, DOI, URL or identifier. `--digest` records the digest the outside system reports, as
+`algorithm:hex`. `--by` names who states the link, `--note` says anything else, and `--location`
+names where in the manuscript the linked number or sentence appears. No session information is
+recorded.
+
+```text
+annotations (linked, not checked):
+  2026-10-11T16:54:21  wandb:artifact  lab/study/model:v3  [A. Reader]
+    digest as stated: md5:0123456789abcdef0123456789abcdef
+    STALE        checkpoints/model.pt
+      annotated 1b465fa6b6bcbc06…, now 7e4fa2eb8c7ac089…
+  2026-10-11T16:54:21  doi:dataset  10.5281/zenodo.1234567
+    appears in: Table 2
+    current      results/table2.csv
+  1 annotated file(s) are no longer the bytes the link was stated of.
+```
+
+`results verify` lists every annotation. With `--files` each file is `current`, `STALE` once it
+has changed, or `MISSING`; without `--files` it is `not checked`. None of the three changes the
+exit code.
 
 ## Data-access levels
 

@@ -359,7 +359,9 @@ async function status($: EngineInterface, root: string, withFiles: boolean) {
           sealed += hasSeal ? 1 : 0
         }
       }
-      const changed = (verified.match(/^\s+(CHANGED|MISSING)\s/gm) ?? []).length
+      // Two spaces exactly: a sealed file under `file hashes:`. A review's or an annotation's
+      // subject is listed four deep with the same word, and is not a seal.
+      const changed = (verified.match(/^ {2}(CHANGED|MISSING)\s/gm) ?? []).length
       const onTests = claims.filter(event => isTest(event.run_id)).length
       fields.push(
         `results: ${changed ? `${changed} changed, ` : ''}` +
