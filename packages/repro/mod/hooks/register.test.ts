@@ -400,6 +400,22 @@ test('a plan frozen whole, its amendment and its log read as two frozen files an
   await $.command.run({ command: 'repro-status', args: 'auto' })
 })
 
+test('a superseded draft and a withdrawn plan are not plans awaiting a freeze, and are left out of the count', async ($, on) => {
+  const listing =
+    '\nregistrations frozen by a commit line:\n' +
+    'unchanged    PREREGISTRATION_PHASE6_V2.md  at c19aa59\n' +
+    'superseded   PREREGISTRATION_PHASE6_V2_predraft.md\n' +
+    '  a draft never frozen; superseded by PREREGISTRATION_PHASE6_V2.md, which is unchanged at c19aa59\n' +
+    'withdrawn    PREREGISTRATION_ARM_B.md\n' +
+    '  a plan never frozen; withdrawn, as the document says and not checked: 2026-07-20, never run\n' +
+    'pending      PREREGISTRATION_AMENDMENT_3.md\n'
+  project(on, { '/work/study/.results/ledger.jsonl': '' }, argv => (argv[0] === 'prereg' ? listing : ''))
+
+  const shown = await $.command.run({ command: 'repro-status', args: 'study' })
+  expect(shown.text).toContain('prereg: 1/2 frozen')
+  await $.command.run({ command: 'repro-status', args: 'auto' })
+})
+
 test('registrations frozen by a commit line count as plans, and only an edited one is a change', async ($, on) => {
   const intact =
     '\nregistrations frozen by a commit line:\n' +

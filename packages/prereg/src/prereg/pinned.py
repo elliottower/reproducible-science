@@ -14,6 +14,29 @@ A `**Status:**` line in the document's header is part of the same record. The co
 writes the SHA often rewrites it from a draft to a frozen status, so it is masked as well, and
 a status that differs from the frozen one is reported without counting as an edit.
 
+A document whose commit line names no commit was never frozen, and is reported as pending
+until it is. Two kinds stay pending for good, and each says so in its header.
+
+A draft that a later document replaced:
+
+    **Superseded by:** PREREGISTRATION_PHASE6_V2.md
+
+A plan is one chain of drafts, so the draft is reported as superseded and the document at the
+end of its chain carries the result: unchanged where it was frozen and holds, pending where the
+plan is still awaiting its freeze, changed where the frozen text was edited. Nothing is excused
+by this. The plan is counted once instead of once per draft.
+
+A plan that was dropped and replaced by nothing:
+
+    **Withdrawn:** 2026-07-20, the mismatched arm was never run
+
+It is reported as withdrawn with the reason it gives. The check cannot tell whether that is
+true and says so; what it adds is that the plan is still listed, under its own word, where
+deleting the commit line would have removed it from the report without a trace.
+
+Neither line does anything for a document that names a commit: that one is compared, and an edit
+to it is a finding whatever its header says.
+
 Leaving the record out is also the limit of the check. Text written onto the record line after
 the hash is not compared, as a `**Status:**` line is not hashed in a plan `prereg freeze` froze.
 
@@ -25,6 +48,7 @@ from __future__ import annotations
 
 import difflib
 import pathlib
+import posixpath
 import re
 from dataclasses import dataclass
 
@@ -50,6 +74,13 @@ HASH = re.compile(r"^[*`]*([0-9a-f]{7,40})(?![0-9a-z])", re.I)
 #: this line too, from a draft to a frozen status, so in the header it is part of the record.
 STATUS = re.compile(r"^\*\*status(?::\*\*|\*\*:)", re.I)
 
+#: `**Superseded by:** PREREGISTRATION_V2.md`, in the header of a draft that was never frozen.
+#: The path is read from the draft's own directory, bare, in backticks or as a markdown link.
+SUPERSEDED_BY = re.compile(r"^\*\*superseded by(?::\*\*|\*\*:)[ \t]*(.*)$", re.I)
+#: `**Withdrawn:** 2026-07-20, the arm was never run`, in the header of a plan that was dropped.
+WITHDRAWN_LINE = re.compile(r"^\*\*withdrawn(?::\*\*|\*\*:)[ \t]*(.*)$", re.I)
+_LINK = re.compile(r"^\[[^\]]*\]\(([^)]+)\)")
+
 FENCE = re.compile(r"^(```|~~~)")
 
 UNCHANGED = "unchanged"
@@ -57,6 +88,8 @@ APPENDED = "appended"
 CHANGED = "changed"
 PENDING = "pending"
 UNKNOWN = "unknown commit"
+SUPERSEDED = "superseded"
+WITHDRAWN = "withdrawn"
 
 #: What a commit record is compared as, on both sides.
 MASK = "(the commit line)"
@@ -193,6 +226,101 @@ def check_document(
     return compare(path, named, frozen, body, statuses)
 
 
+def _header_value(text: str, key: re.Pattern[str]) -> str | None:
+    """What a bold `key` line in the document's header holds, or None where there is none.
+
+    The header only, as a `**Status:**` line is read: below the first heading after the title
+    the words are the plan's own text. A line inside a fenced block is an example.
+    """
+    fenced = started = False
+    for line in text.splitlines():
+        if FENCE.match(line):
+            fenced = not fenced
+        elif not fenced:
+            if started and line.startswith("#"):
+                return None
+            found = key.match(line)
+            if found:
+                return found.group(1).strip()
+        started = started or bool(line.strip())
+    return None
+
+
+def successor(text: str) -> str | None:
+    """The path a document's header names as the document that replaced it, if it names one."""
+    value = _header_value(text, SUPERSEDED_BY)
+    if not value:
+        return None
+    link = _LINK.match(value)
+    return (link.group(1) if link else value.strip("`*_ ")).strip() or None
+
+
+def withdrawal(text: str) -> str | None:
+    """The reason a document's header gives for having been withdrawn, if it gives one.
+
+    A `**Withdrawn:**` line with nothing after it gives none, and the document stays pending.
+    """
+    return _header_value(text, WITHDRAWN_LINE) or None
+
+
+def _dispositions(
+    found: list[Pinned], successors: dict[pathlib.Path, str], withdrawn: dict[pathlib.Path, str]
+) -> list[Pinned]:
+    """Report a pending document as superseded or withdrawn where its header says which.
+
+    Only a pending document is looked at: one that names a commit was compared, and its result
+    stands. A superseded draft is followed along its chain to the document that declares no
+    successor, which has to be another document of this check. That document keeps its own
+    result, so a chain ending on a plan that was never frozen still reports one pending plan,
+    and a chain ending on an edited one still reports the edit. A draft that names a file this
+    check does not list, or whose chain comes back to itself, stays pending and says why.
+    """
+    by_path = {d.path.as_posix(): d for d in found}
+
+    def next_of(d: Pinned) -> Pinned | None | str:
+        named = successors.get(d.path)
+        if d.status != PENDING or named is None:
+            return None
+        target = posixpath.normpath((d.path.parent / named).as_posix())
+        return by_path.get(target, named)
+
+    out = []
+    for d in found:
+        if d.status != PENDING:
+            out.append(d)
+            continue
+        step = next_of(d)
+        if step is None:
+            reason = withdrawn.get(d.path)
+            if reason is None:
+                out.append(d)
+            else:
+                said = f"a plan never frozen; withdrawn, as the document says and not checked: {reason}"
+                out.append(Pinned(d.path, WITHDRAWN, "", (said,)))
+            continue
+        chain = [d]
+        while isinstance(step, Pinned) and step not in chain:
+            chain.append(step)
+            step = next_of(step)
+        if isinstance(step, str):
+            why = f"says it is superseded by {step}, which is not a registration checked here"
+            if len(chain) > 1:
+                why = f"its chain reaches {chain[-1].path}, which {why}"
+            out.append(Pinned(d.path, PENDING, "", (*d.detail, why)))
+        elif step is not None:
+            names = ", then ".join(str(c.path) for c in (*chain[1:], step))
+            why = f"says it is superseded by {names}, a chain that comes back to itself"
+            out.append(Pinned(d.path, PENDING, "", (*d.detail, why)))
+        else:
+            head = chain[-1]
+            names = ", then ".join(str(c.path) for c in chain[1:])
+            status = WITHDRAWN if head.status == PENDING and head.path in withdrawn else head.status
+            at = f" at {head.commit}" if head.commit else ""
+            by = f"a draft never frozen; superseded by {names}, which is {status}{at}"
+            out.append(Pinned(d.path, SUPERSEDED, "", (by,)))
+    return out
+
+
 def check_below(here: pathlib.Path) -> list[Pinned]:
     """Every commit-pinned markdown document git tracks at or below `here`, checked.
 
@@ -200,11 +328,20 @@ def check_below(here: pathlib.Path) -> list[Pinned]:
     """
     listed = try_run("ls-files", "-z", "--", "*.md", cwd=here)
     found = []
+    successors: dict[pathlib.Path, str] = {}
+    withdrawn: dict[pathlib.Path, str] = {}
     for name in sorted(filter(None, (listed or "").split("\0"))):
         path = pathlib.Path(name)
         if path.name == PREREG or not (here / path).is_file():
             continue
-        body, values, statuses = split_record((here / path).read_text())
+        text = (here / path).read_text()
+        body, values, statuses = split_record(text)
         if values:
             found.append(check_document(here, path, body, values, statuses))
-    return found
+            named = successor(text)
+            if named:
+                successors[path] = named
+            reason = withdrawal(text)
+            if reason:
+                withdrawn[path] = reason
+    return _dispositions(found, successors, withdrawn)

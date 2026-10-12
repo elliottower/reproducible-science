@@ -352,6 +352,38 @@ pending      PREREGISTRATION_AMENDMENT_3.md
 | 1 | `CHANGED` | Frozen text was edited or removed, or lines were added inside it |
 | 2 | `pending` | The commit line holds a placeholder, so there is nothing to compare with |
 | 2 | `unknown commit` | The repository does not hold the named commit, or the file is not in it |
+| 0 | `superseded` | A draft never frozen, whose header names the document that replaced it; the document at the end of its chain carries the result |
+| 0 | `withdrawn` | A plan never frozen, whose header says it was dropped and why; listed as declared, not checked |
+
+Two kinds of document stay `pending` for good, because nothing will ever freeze them, and
+each says so in its header, before the first heading after the title.
+
+A draft that a later document replaced names it, by a path read from the draft's own
+directory:
+
+```text
+**Superseded by:** PREREGISTRATION_PHASE6_V2.md
+```
+
+A plan is one chain of drafts. The draft is listed as `superseded`, and the document at the end
+of its chain is listed with its own result: `unchanged` where it was frozen and holds,
+`pending` where the plan still awaits its freeze, `CHANGED` where its frozen text was edited.
+So nothing is excused, and a plan with three drafts counts once. A draft that names a file this
+check does not list, or whose chain comes back to itself, stays `pending` and says why.
+
+A plan that was dropped and replaced by nothing says so and gives the reason:
+
+```text
+**Withdrawn:** 2026-07-20, the mismatched arm was never run
+```
+
+It is listed as `withdrawn` with that reason, marked as the document's own statement. The check
+cannot tell whether a plan was really dropped. What the line adds is the listing: deleting the
+commit line would remove the plan from this report without a trace, and this keeps it in view.
+A `**Withdrawn:**` line with no reason leaves the plan `pending`.
+
+Neither line does anything for a document whose commit line names a commit: that document is
+compared, and an edit to it is `CHANGED` whatever its header says.
 
 `pending` and `unknown commit` are not passes. A shallow clone, a rewritten history and a commit
 of another repository all read as `unknown commit`, and none of them says the document changed.

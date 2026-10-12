@@ -1155,6 +1155,9 @@ def _report_pinned(documents: list[pinned.Pinned], rc: int) -> int:
     A changed document is a finding, as a changed plan is. One whose commit line names no commit,
     or names one this repository does not hold, was not compared: it exits 2 unless something
     else changed, and the summary counts it, because a check that could not run is not a pass.
+    A draft that names the document that replaced it is listed and counted as superseded, and a
+    plan that says it was dropped as withdrawn. Neither moves the exit code: the document at the
+    end of a draft's chain is listed with its own result, and that result moves it.
     """
     if not documents:
         return rc
@@ -1177,6 +1180,11 @@ def _report_pinned(documents: list[pinned.Pinned], rc: int) -> int:
                 pinned.PENDING,
                 pinned.UNKNOWN,
             )
+        )
+        + "".join(
+            f", {statuses.count(s)} {s}"
+            for s in (pinned.SUPERSEDED, pinned.WITHDRAWN)
+            if s in statuses
         )
     )
     if rc == 1 or pinned.CHANGED in statuses:
