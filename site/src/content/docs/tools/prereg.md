@@ -382,6 +382,24 @@ nothing, stays `pending` and says why. Where a header carries both lines, the su
 followed and the withdrawal is not read, so a draft whose successor line names nothing or
 names a file this check does not list stays `pending` whatever its withdrawal says.
 
+The path is looked up in the whole repository, so a draft has the same status whichever
+directory the check runs from: `exp/DRAFT.md` naming `../PREREGISTRATION.md` is `superseded`
+from the repository's top level and from `exp/`. A run in a subfolder still lists only the
+documents at or below it, and a successor above it or beside it is read to settle the draft
+without being listed. A path that is absolute, or that leaves the repository, leaves the draft
+`pending`.
+
+A chain may end on a `PREREG.md` frozen with `prereg freeze`, which is how a registration moves
+from a commit line to the tool:
+
+```text
+**Superseded by:** study/PREREG.md
+```
+
+That plan is checked as `prereg check` checks any plan, and the draft is `superseded` only where
+that check passes. Where the plan is not frozen, or was changed after its freeze, the draft
+stays `pending` and says which. Neither header line is read on a `PREREG.md` itself.
+
 A plan that was dropped and replaced by nothing says so and gives the reason:
 
 ```text
@@ -391,6 +409,16 @@ A plan that was dropped and replaced by nothing says so and gives the reason:
 It is listed as `withdrawn` with that reason, marked as the document's own statement. The check
 cannot tell whether a plan was really dropped. What the line adds is the listing: deleting the
 commit line would remove the plan from this report without a trace, and this keeps it in view.
+The report names the commit that added the line and its date, read from the repository's
+history and followed across renames, or says that the line is not yet committed:
+
+```text
+withdrawn    PREREGISTRATION_ARM_B.md
+  a plan never frozen; withdrawn, as the document says and not checked: 2026-07-20, the mismatched arm was never run
+  its `Withdrawn` line was added in 4be1c07, committed 2026-07-21
+```
+
+The commit is information and changes neither the status nor the exit code.
 A `**Withdrawn:**` line left empty, or holding what a template leaves behind (`no`, `N/A`,
 `TBD`, a dash), leaves the plan `pending` and says so. `prereg check` exits 0 on a withdrawn plan.
 `repro audit` reads the same report and counts the withdrawal as not measured, so it exits 2

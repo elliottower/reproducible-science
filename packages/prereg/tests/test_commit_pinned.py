@@ -600,3 +600,150 @@ def test_more_template_words_are_not_reasons(repo, check, value):
     code, out = check()
     assert code == 2
     assert f"its `Withdrawn` line gives no reason: {value}" in out
+
+
+@pytest.mark.parametrize("successor", ["../PREREGISTRATION.md", "../plans/PREREGISTRATION.md"])
+def test_a_successor_above_or_beside_the_folder_checked_gives_the_draft_one_status(
+    repo, check, monkeypatch, successor
+):
+    name = successor.removeprefix("../")
+    (repo / name).parent.mkdir(exist_ok=True)
+    sha = freeze(repo, name)
+    draft(repo, successor=successor, name="exp/DRAFT.md")
+    code, out = check()
+    assert code == 0
+    assert "superseded   exp/DRAFT.md" in out
+    assert f"says it is superseded by {name}, which is unchanged at {sha[:7]}" in out
+
+    monkeypatch.chdir(repo / "exp")
+    code, out = check()
+    assert code == 0
+    assert "superseded   DRAFT.md" in out
+    assert f"says it is superseded by {successor}, which is unchanged at {sha[:7]}" in out
+    assert (
+        "1 commit-pinned: 0 unchanged, 0 appended, 0 changed, 0 pending, 0 unknown commit, "
+        "1 superseded"
+    ) in out
+
+
+def test_a_successor_outside_the_repository_leaves_the_draft_pending_from_any_folder(
+    repo, check, monkeypatch
+):
+    freeze(repo)
+    draft(repo, successor="../../PREREGISTRATION.md", name="exp/DRAFT.md")
+    for folder, shown in ((repo, "exp/DRAFT.md"), (repo / "exp", "DRAFT.md")):
+        monkeypatch.chdir(folder)
+        code, out = check()
+        assert code == 2
+        assert f"pending      {shown}" in out
+        assert (
+            "says it is superseded by ../../PREREGISTRATION.md, "
+            "which is an absolute path or leaves this repository"
+        ) in out
+        assert "superseded   " not in out
+
+
+def tool_plan(repo, monkeypatch, frozen=True):
+    """A `PREREG.md` in `study/`, committed, and frozen with `prereg freeze` unless told not to."""
+    assert cli.main(["new", "study"]) == 0
+    commit(repo, "plan")
+    if frozen:
+        monkeypatch.chdir(repo / "study")
+        assert cli.main(["freeze"]) == 0
+        monkeypatch.chdir(repo)
+        commit(repo, "freeze")
+    return repo / "study" / "PREREG.md"
+
+
+@pytest.mark.parametrize(
+    ("folder", "shown", "plan"),
+    [
+        (".", "drafts/DRAFT.md", "study/PREREG.md"),
+        ("drafts", "DRAFT.md", "../study/PREREG.md"),
+    ],
+)
+def test_a_draft_naming_a_plan_the_tool_froze_is_superseded(
+    repo, check, monkeypatch, folder, shown, plan
+):
+    tool_plan(repo, monkeypatch)
+    draft(repo, successor="../study/PREREG.md", name="drafts/DRAFT.md")
+    monkeypatch.chdir(repo / folder)
+    code, out = check()
+    assert code == 0
+    assert f"superseded   {shown}" in out
+    assert (
+        f"says it is superseded by {plan}, a plan `prereg freeze` froze, which is unchanged" in out
+    )
+    assert "0 pending, 0 unknown commit, 1 superseded" in out
+
+
+def test_a_draft_naming_a_plan_the_tool_has_not_frozen_stays_pending(repo, check, monkeypatch):
+    tool_plan(repo, monkeypatch, frozen=False)
+    draft(repo, successor="../study/PREREG.md", name="drafts/DRAFT.md")
+    monkeypatch.chdir(repo / "drafts")
+    code, out = check()
+    assert code == 2
+    assert "pending      DRAFT.md" in out
+    assert (
+        "says it is superseded by ../study/PREREG.md, a plan `prereg check` reports as not frozen"
+        in out
+    )
+    assert "superseded   " not in out
+
+
+def test_a_draft_naming_a_plan_edited_after_its_freeze_stays_pending(repo, check, monkeypatch):
+    plan = tool_plan(repo, monkeypatch)
+    draft(repo, successor="../study/PREREG.md", name="drafts/DRAFT.md")
+    plan.chmod(0o644)
+    plan.write_text(plan.read_text() + "\nOne more hypothesis.\n")
+    commit(repo, "edit the frozen plan")
+    monkeypatch.chdir(repo / "drafts")
+    code, out = check()
+    assert code == 2
+    assert "pending      DRAFT.md" in out
+    assert (
+        "says it is superseded by ../study/PREREG.md, a plan `prereg check` reports a finding on"
+        in out
+    )
+    assert "superseded   " not in out
+    assert "CHANGED" not in out, "a plan outside the folder checked is read and not listed"
+
+
+def test_a_withdrawn_line_on_a_plan_the_tool_freezes_is_not_read(repo, check, monkeypatch):
+    plan = tool_plan(repo, monkeypatch, frozen=False)
+    title, rest = plan.read_text().split("\n", 1)
+    plan.write_text(f"{title}\n\n**Withdrawn:** the arm was never run\n{rest}")
+    commit(repo, "say the plan was withdrawn")
+    code, out = check()
+    assert code == 1
+    assert "not frozen   " in out
+    assert "withdrawn    " not in out
+    assert "commit-pinned" not in out
+
+
+def test_a_withdrawal_names_the_commit_that_added_its_line(repo, check):
+    (repo / "PREREGISTRATION_predraft.md").write_text(PLAN)
+    commit(repo, "draft")
+    draft(repo, successor="the arm was never run", key="Withdrawn")
+    added = git(repo, "log", "-1", "--format=%h, committed %cs")
+    git(repo, "mv", "PREREGISTRATION_predraft.md", "PREREGISTRATION_ARM_B.md")
+    commit(repo, "rename")
+    code, out = check()
+    assert code == 0
+    assert "withdrawn    PREREGISTRATION_ARM_B.md" in out
+    assert f"its `Withdrawn` line was added in {added}" in out
+    assert "0 pending, 0 unknown commit, 1 withdrawn" in out
+
+
+def test_a_withdrawal_not_yet_committed_says_so_and_is_still_withdrawn(repo, check):
+    doc = repo / "PREREGISTRATION_predraft.md"
+    doc.write_text(PLAN)
+    commit(repo, "draft")
+    doc.write_text(
+        PLAN.replace("**Commit SHA:**", "**Withdrawn:** the arm was never run\n\n**Commit SHA:**")
+    )
+    code, out = check()
+    assert code == 0
+    assert "withdrawn    PREREGISTRATION_predraft.md" in out
+    assert "its `Withdrawn` line is not yet committed" in out
+    assert "0 pending, 0 unknown commit, 1 withdrawn" in out

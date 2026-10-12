@@ -19,8 +19,10 @@ with its freeze and its log written into the file, is read by the rule it was fr
 from __future__ import annotations
 
 import argparse
+import contextlib
 import datetime
 import hashlib
+import io
 import pathlib
 import re
 import stat
@@ -1118,7 +1120,7 @@ def cmd_check(a) -> int:
             return 2
         manuscript = ms.read_text()
     path = _governing()
-    documents = pinned.check_below(pathlib.Path.cwd())
+    documents = pinned.check_below(pathlib.Path.cwd(), _plan_result)
     below = [
         f for f in _plans_below(pathlib.Path.cwd()) if path is None or f.resolve() != path.resolve()
     ]
@@ -1147,6 +1149,20 @@ def cmd_check(a) -> int:
     # The single-plan branch returns 2 for a plan that was never frozen; this one returned 0,
     # so whether an unfrozen registration passed CI depended on which directory it ran from.
     return _report_pinned(documents, 1 if (changed or codes.count(2)) else 0)
+
+
+def _plan_result(path: pathlib.Path) -> int | None:
+    """What `check_one` finds for the plan at `path`, printing nothing, or None where no plan is
+    there: neither the file nor the record of a freeze of it.
+
+    For a draft frozen by a commit line that names a `PREREG.md` as the plan that replaced it.
+    The plan may lie outside what this run lists, so nothing is printed for it here, and where
+    it is listed it is printed once, by the run itself.
+    """
+    if not (path.is_file() or record.record_path(path).is_file()):
+        return None
+    with contextlib.redirect_stdout(io.StringIO()):
+        return check_one(path)
 
 
 def _report_pinned(documents: list[pinned.Pinned], rc: int) -> int:
