@@ -546,4 +546,17 @@ write(
     claims=printed("0.459", "| 4|", "|"),
 )
 
+write(
+    "prose_anchor_splits_number",
+    artifacts=OUT,
+    files={"output.txt": PRINTED},
+    expected=["not_found"],
+    reasons=["passage_absent"],
+    validity={"out": "authoritative"},
+    stages=[["completed", "absent", "not_applicable"]],
+    # `9|` begins inside `0.459`, and cutting there would read `0.45`, which is what the
+    # manifest reports. An anchor never splits a number, so nothing is read.
+    claims=printed("0.45", "| 3|", "9|"),
+)
+
 print(f"  built {len(list(CASES.iterdir()))} fixtures in {CASES}")

@@ -498,13 +498,61 @@ def test_text_between_found_anchors_that_is_not_a_number_keeps_its_own_reason(
     assert f"'{read}'" in decision.detail, "the refusal has to show what was read"
 
 
-def test_a_trailing_anchor_inside_the_run_cuts_it_at_the_last_place_it_begins(tmp_path):
-    doc = "The ratio is 3.14.\n"
-    assert printed(tmp_path, "3.14", "ratio is", ".", doc=doc).outcome is Outcome.VERIFIED
+@pytest.mark.parametrize(
+    ("doc", "before", "after", "reported"),
+    [
+        ("## | 3| 0.459| 0.124|\n", "| 3|", "|", "0.459"),
+        ("|3|0.459|0.124|\n", "|3|", "|", "0.459"),
+        ("Accuracy was 93.1% overall.\n", "Accuracy was", "%", "93.1"),
+        ("The ratio is 3.14.\n", "ratio is", ".", "3.14"),
+        ("The dose was 12.5(3) mg.\n", "dose was", "(", "12.5"),
+        ("Loss fell to 2.5e-3. Then rose.\n", "fell to", ".", "2.5e-3"),
+    ],
+)
+def test_a_trailing_anchor_cuts_the_run_where_it_touches_the_number(
+    tmp_path, doc, before, after, reported
+):
+    decision = printed(tmp_path, reported, before, after, doc=doc)
+    assert decision.outcome is Outcome.VERIFIED
+    assert decision.extraction_digest == Digest.of_text(reported).value
+
+
+def test_the_first_full_stop_inside_a_number_is_passed_over_for_the_one_that_ends_it(tmp_path):
     # Cut at the first full stop the value would be 3, which agrees with a reported 3.0.
-    decision = printed(tmp_path, "3.0", "ratio is", ".", doc=doc)
+    decision = printed(tmp_path, "3.0", "ratio is", ".", doc="The ratio is 3.14.\n")
     assert decision.outcome is Outcome.MISMATCH
     assert "3.14" in decision.detail
+
+
+@pytest.mark.parametrize(
+    ("doc", "before", "after", "number"),
+    [
+        ("Delta was 0.459 rows.\n", "Delta was", "9", "0.459"),
+        ("Delta was 0.459 rows.\n", "Delta was", ".", "0.459"),
+        ("Delta was 0.459 rows.\n", "Delta was", "459", "0.459"),
+        ("We kept 1,234 items.\n", "We kept", ",", "1,234"),
+        ("We kept 1_234 items.\n", "We kept", "_", "1_234"),
+        ("Loss fell to 2.5e-3 here.\n", "fell to", "e", "2.5e-3"),
+        ("Loss fell to 2.5e-3 here.\n", "fell to", "-", "2.5e-3"),
+        ("Delta was 0.459 rows.\n", "0.4", "rows", "0.459"),
+        ("Delta was 0.459 rows.\n", "was 0.", "", "0.459"),
+        ("We kept 1,234 items.\n", "kept 1,", "items", "1,234"),
+    ],
+)
+def test_an_anchor_never_splits_a_number(tmp_path, doc, before, after, number):
+    decision = printed(tmp_path, "0", before, after, doc=doc)
+    assert decision.reason is Reason.PASSAGE_ABSENT
+    assert decision.extraction is ExtractionStatus.ABSENT
+    assert decision.comparison is ComparisonStatus.NOT_APPLICABLE
+    assert decision.outcome is Outcome.NOT_FOUND
+    assert decision.extraction_digest == UNKNOWN, "no part of the number was read"
+    assert f"would split {number}" in decision.detail
+
+
+def test_a_bare_divider_between_two_different_cells_is_ambiguous(tmp_path):
+    decision = printed(tmp_path, "0.459", "|", "|", doc="|0.459|0.124|\n")
+    assert decision.reason is Reason.PASSAGE_AMBIGUOUS
+    assert "0.459" in decision.detail and "0.124" in decision.detail
 
 
 def test_a_trailing_anchor_past_the_run_is_taken_before_one_inside_it(tmp_path):

@@ -44,7 +44,7 @@ def test_fixture_produces_its_recorded_outcomes(case):
 def test_fixture_produces_its_recorded_reasons(case):
     """The outcome alone cannot tell a defect in the tool from a fact about the manuscript.
 
-    Three cases share the outcome `unchecked` and ten share `not_found`; only the reason
+    Three cases share the outcome `unchecked` and eleven share `not_found`; only the reason
     separates "the manifest never declared this artifact" from "the file is not there", an
     absent column from an ambiguous row, or an ambiguous pair of prose anchors from a number
     written as a word. Asserting outcomes and never reasons let those swap.

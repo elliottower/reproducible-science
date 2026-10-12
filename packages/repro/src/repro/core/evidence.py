@@ -204,11 +204,15 @@ class ProseLocator(Locator):
     fixtures`) needs an escaping grammar for the brace, which LaTeX sources are full of. Two
     literal anchors need neither.
 
-    The value is the longest run of non-whitespace characters following `before` that `after`
-    follows: the whole run up to the next whitespace where `after` begins past it or is empty,
-    and otherwise the run cut at the last place inside it where `after` begins. A cell printed
-    against its divider, `0.459|`, is addressed with `after: "|"`. A value containing a space
-    is not addressable this way, which bounds `cardinal_word` to numbers written as one word.
+    The value is a run of non-whitespace characters following `before`: the whole run up to
+    the next whitespace where `after` begins past it or is empty, and otherwise the run cut at
+    the first place inside it where `after` begins. A cell printed against its divider,
+    `0.459|`, is addressed with `after: "|"`. A value containing a space is not addressable
+    this way, which bounds `cardinal_word` to numbers written as one word.
+
+    An anchor never splits a number: `after` may not begin, and `before` may not end, inside
+    a run of digits joined by a decimal point, a grouping comma or underscore, or an exponent.
+    `after: "9"` over `0.459` reads nothing, never `0.45`, and `before: "0.4"` never `59`.
     """
 
     kind: Literal["prose"] = "prose"

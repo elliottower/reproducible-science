@@ -134,7 +134,9 @@ single spaces whatever the file's padding and may run across lines.
 - **Name what touches the number.** A cell is printed against its divider, so `after: "|"`.
   With `after` left out the value runs to the next whitespace and is `0.459|`, reported as
   `value_not_numeric` with the text that was read. The same holds for `93.1%` and for a number
-  that ends a sentence, `3.14.`, which `after: "."` reads as `3.14`.
+  that ends a sentence, `3.14.`, which `after: "."` reads as `3.14`. An anchor cannot split a
+  number: `after: "9"` on `0.459` and `before: "0.4"` read nothing, and the output names the
+  number.
 - **`before` is the row's leading cells**, with enough of the header or group label to be the
   only such row. Anchors selecting two different numbers are `passage_ambiguous`; the same
   number twice is fine.

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import decimal
 import pathlib
+import re
 
 from repro.adapters.base import Found, Resolution, _no, _ok
 from repro.adapters.reads import once
@@ -55,6 +56,27 @@ def _cardinals() -> dict[str, int]:
 
 
 CARDINALS = _cardinals()
+
+#: A number as it is printed, for deciding where an anchor may not fall. The digits, grouping
+#: underscores, decimal point and exponent are the unsigned part of what `decimal.Decimal`
+#: parses, which is what reads the value in `_is_decimal` here and in `repro.verify`. The comma
+#: is not: `Decimal("1,234")` is refused. It is here because a document prints `1,234`, and an
+#: anchor that cut it at the comma would have `1` read as the value.
+_NUMBER = re.compile(r"\d+(?:_\d+)*(?:[.,]\d+(?:_\d+)*)*(?:[eE][+-]?\d+)?")
+
+
+def _split(text: str, at: int) -> str:
+    """The number `at` falls strictly inside, or the empty string where it splits none."""
+    lo = at
+    while lo > 0 and not text[lo - 1].isspace():
+        lo -= 1
+    hi = at
+    while hi < len(text) and not text[hi].isspace():
+        hi += 1
+    for number in _NUMBER.finditer(text, lo, hi):
+        if number.start() < at < number.end():
+            return number.group()
+    return ""
 
 
 def _is_decimal(text: str) -> bool:
@@ -99,15 +121,20 @@ def _resolve_prose(locator: ProseLocator, path: pathlib.Path) -> Found:
             "`before` is empty after normalization, so it anchors nothing",
         )
 
-    hits = _spans(text, before, after)
+    hits, split = _spans(text, before, after)
     address = (
         f'"{locator.before}" ... "{locator.after}"' if locator.after else f'"{locator.before}"'
     )
     if not hits:
+        refused = (
+            f"; an anchor never splits a number, and these would split {', '.join(split)}"
+            if split
+            else ""
+        )
         return _no(
             Resolution.ABSENT,
             f"no value sits between {address} in {path.name}; anchors are literal text, "
-            f"matched after the same normalization a quotation is matched under",
+            f"matched after the same normalization a quotation is matched under{refused}",
         )
     values = sorted(set(hits))
     if len(values) > 1:
@@ -142,25 +169,33 @@ def _resolve_prose(locator: ProseLocator, path: pathlib.Path) -> Found:
     return _ok(value, "decimal" if _is_decimal(value) else "text", *trace)
 
 
-def _spans(text: str, before: str, after: str) -> list[str]:
-    """For each occurrence of `before`, the longest run after it that `after` follows.
+def _spans(text: str, before: str, after: str) -> tuple[list[str], list[str]]:
+    """The value after each occurrence of `before`, and the numbers an anchor would have split.
 
-    The run is of non-whitespace characters. With no `after` it is the whole run up to the
-    next whitespace. With one, the whole run is taken where `after` begins past it, and
-    otherwise the run is cut at the last place inside it where `after` begins: a cell printed
+    The value is a run of non-whitespace characters. With no `after` it is the whole run up to
+    the next whitespace. With one, the whole run is taken where `after` begins past it, and
+    otherwise the run is cut at the first place inside it where `after` begins: a cell printed
     against its divider, `0.459|`, or a number closing a sentence, `3.14.`, is delimited by
-    the anchor that touches it and by nothing the engine guessed. The whole run is tried
-    first, so `3.14.` under `after: "."` is `3.14` and never `3`.
+    the anchor that touches it and by nothing the engine guessed.
+
+    Neither anchor may fall inside a number. `after: "9"` does not read `0.459` as `0.45`, the
+    first full stop in `3.14.` is passed over for the second, and `before: "0.4"` does not
+    read `59`. An occurrence refused on those grounds yields no value, and the number it
+    would have split is returned so the report can say why.
 
     Whitespace at an anchor boundary is ignored, on the same grounds `fold` collapses it
     everywhere else: `before: "holds"` and `before: "holds "` address the same value, and a
     manifest should not turn on which one the author typed.
     """
     found: list[str] = []
+    split: list[str] = []
     n, start = len(text), 0
     while (at := text.find(before, start)) != -1:
         start = at + 1
         cursor = at + len(before)
+        if number := _split(text, cursor):
+            split.append(number)
+            continue
         while cursor < n and text[cursor].isspace():
             cursor += 1
         end = cursor
@@ -174,8 +209,12 @@ def _spans(text: str, before: str, after: str) -> list[str]:
         if not after or text.startswith(after, tail):
             found.append(text[cursor:end])
             continue
-        for stop in range(end - 1, cursor, -1):
-            if text.startswith(after, stop):
-                found.append(text[cursor:stop])
-                break
-    return found
+        for stop in range(cursor + 1, end):
+            if not text.startswith(after, stop):
+                continue
+            if number := _split(text, stop):
+                split.append(number)
+                continue
+            found.append(text[cursor:stop])
+            break
+    return found, list(dict.fromkeys(split))
