@@ -290,3 +290,313 @@ def test_another_header_key_is_frozen_text(repo, check):
     code, out = check()
     assert code == 1
     assert "- **Date:** 2026-07-06" in out
+
+
+def draft(
+    repo, successor="PREREGISTRATION.md", name="PREREGISTRATION_predraft.md", key="Superseded by"
+):
+    """A registration that was never frozen and says in its header what became of it."""
+    text = PLAN.replace("**Commit SHA:**", f"**{key}:** {successor}\n\n**Commit SHA:**")
+    path = repo / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text)
+    commit(repo, "keep the draft")
+    return path
+
+
+def test_a_draft_naming_the_frozen_registration_that_replaced_it_is_superseded(repo, check):
+    sha = freeze(repo)
+    draft(repo)
+    code, out = check()
+    assert code == 0
+    assert "superseded   PREREGISTRATION_predraft.md" in out
+    assert f"superseded by PREREGISTRATION.md, which is unchanged at {sha[:7]}" in out
+    assert (
+        "2 commit-pinned: 1 unchanged, 0 appended, 0 changed, 0 pending, 0 unknown commit, "
+        "1 superseded"
+    ) in out
+
+
+def test_an_edit_to_the_successor_is_still_a_finding_when_a_draft_points_at_it(repo, check):
+    freeze(repo)
+    draft(repo)
+    doc = repo / "PREREGISTRATION.md"
+    doc.write_text(doc.read_text().replace("0.10", "0.05"))
+    code, out = check()
+    assert code == 1
+    assert "CHANGED      PREREGISTRATION.md" in out
+    assert "superseded by PREREGISTRATION.md, which is changed at" in out
+
+
+def test_a_plan_whose_latest_draft_is_unfrozen_is_one_pending_plan_not_two(repo, check):
+    (repo / "PREREGISTRATION.md").write_text(PLAN)
+    commit(repo)
+    draft(repo)
+    code, out = check()
+    assert code == 2
+    assert "pending      PREREGISTRATION.md" in out
+    assert "superseded by PREREGISTRATION.md, which is pending" in out
+    assert "0 changed, 1 pending, 0 unknown commit, 1 superseded" in out
+
+
+def test_a_chain_of_drafts_is_followed_to_the_document_that_ends_it(repo, check):
+    sha = freeze(repo)
+    draft(repo, successor="PREREGISTRATION_v1a_DRAFT.md", name="PREREGISTRATION_DRAFT.md")
+    draft(repo, name="PREREGISTRATION_v1a_DRAFT.md")
+    code, out = check()
+    assert code == 0
+    assert (
+        "superseded by PREREGISTRATION_v1a_DRAFT.md, then PREREGISTRATION.md, "
+        f"which is unchanged at {sha[:7]}"
+    ) in out
+    assert "1 unchanged, 0 appended, 0 changed, 0 pending, 0 unknown commit, 2 superseded" in out
+
+
+@pytest.mark.parametrize("named", ["MISSING.md", "README.md"])
+def test_a_draft_stays_pending_when_what_it_names_is_no_registration(repo, check, named):
+    freeze(repo)
+    (repo / "README.md").write_text("# A project\n")
+    draft(repo, successor=named)
+    code, out = check()
+    assert code == 2
+    assert "pending      PREREGISTRATION_predraft.md" in out
+    assert f"says it is superseded by {named}, which is not a registration checked here" in out
+
+
+def test_drafts_that_name_each_other_both_stay_pending(repo, check):
+    draft(repo, successor="B_DRAFT.md", name="A_DRAFT.md")
+    draft(repo, successor="A_DRAFT.md", name="B_DRAFT.md")
+    code, out = check()
+    assert code == 2
+    assert "superseded   " not in out
+    assert (
+        "says it is superseded by B_DRAFT.md, then A_DRAFT.md, a chain that comes back to itself"
+        in out
+    )
+    assert "0 changed, 2 pending" in out
+
+
+def test_a_draft_that_names_itself_stays_pending(repo, check):
+    draft(repo, successor="PREREGISTRATION_predraft.md")
+    code, out = check()
+    assert code == 2
+    assert "a chain that comes back to itself" in out
+
+
+def test_a_frozen_registration_cannot_declare_itself_superseded_to_cover_an_edit(repo, check):
+    freeze(repo)
+    freeze(repo, name="PREREGISTRATION_V2.md")
+    doc = repo / "PREREGISTRATION.md"
+    edited = doc.read_text().replace("0.10", "0.05")
+    doc.write_text(
+        edited.replace(
+            "**Commit SHA:**", "**Superseded by:** PREREGISTRATION_V2.md\n\n**Commit SHA:**"
+        )
+    )
+    code, out = check()
+    assert code == 1
+    assert "CHANGED      PREREGISTRATION.md" in out
+    assert "superseded   " not in out
+
+
+def test_the_successor_is_read_from_the_drafts_own_directory(repo, check):
+    freeze(repo)
+    draft(repo, successor="../PREREGISTRATION.md", name="drafts/PREREGISTRATION_predraft.md")
+    code, out = check()
+    assert code == 0
+    assert "superseded   drafts/PREREGISTRATION_predraft.md" in out
+
+
+@pytest.mark.parametrize(
+    "written", ["`PREREGISTRATION.md`", "[the frozen plan](PREREGISTRATION.md)"]
+)
+def test_the_successor_may_be_written_in_backticks_or_as_a_link(repo, check, written):
+    freeze(repo)
+    draft(repo, successor=written)
+    code, out = check()
+    assert code == 0
+    assert "superseded   PREREGISTRATION_predraft.md" in out
+
+
+def test_the_words_below_the_header_do_not_declare_a_successor(repo, check):
+    freeze(repo)
+    (repo / "PREREGISTRATION_predraft.md").write_text(
+        PLAN.replace("## Deviations", "**Superseded by:** PREREGISTRATION.md\n\n## Deviations")
+    )
+    commit(repo)
+    code, out = check()
+    assert code == 2
+    assert "pending      PREREGISTRATION_predraft.md" in out
+
+
+def test_a_plan_that_says_it_was_withdrawn_is_listed_with_its_reason_and_is_not_pending(
+    repo, check
+):
+    draft(repo, successor="2026-07-20, the mismatched arm was never run", key="Withdrawn")
+    code, out = check()
+    assert code == 0
+    assert "withdrawn    PREREGISTRATION_predraft.md" in out
+    assert (
+        "as the document says and not checked: 2026-07-20, the mismatched arm was never run" in out
+    )
+    assert "0 pending, 0 unknown commit, 1 withdrawn" in out
+
+
+def test_a_withdrawal_that_gives_no_reason_leaves_the_plan_pending(repo, check):
+    draft(repo, successor="", key="Withdrawn")
+    code, out = check()
+    assert code == 2
+    assert "pending      PREREGISTRATION_predraft.md" in out
+    assert "withdrawn    " not in out
+
+
+def test_a_frozen_registration_cannot_declare_itself_withdrawn_to_cover_an_edit(repo, check):
+    freeze(repo)
+    doc = repo / "PREREGISTRATION.md"
+    edited = doc.read_text().replace("0.10", "0.05")
+    doc.write_text(
+        edited.replace("**Commit SHA:**", "**Withdrawn:** not needed\n\n**Commit SHA:**")
+    )
+    code, out = check()
+    assert code == 1
+    assert "CHANGED      PREREGISTRATION.md" in out
+    assert "withdrawn    " not in out
+
+
+def test_a_chain_broken_two_steps_along_says_where_it_breaks(repo, check):
+    draft(repo, successor="B_DRAFT.md", name="A_DRAFT.md")
+    draft(repo, successor="MISSING.md", name="B_DRAFT.md")
+    code, out = check()
+    assert code == 2
+    assert "superseded   " not in out
+    assert (
+        "its chain reaches B_DRAFT.md, which says it is superseded by MISSING.md, "
+        "which is not a registration checked here"
+    ) in out
+    assert "0 changed, 2 pending" in out
+
+
+def test_a_draft_carrying_both_lines_is_followed_to_its_successor_and_not_withdrawn(repo, check):
+    (repo / "PREREGISTRATION.md").write_text(PLAN)
+    commit(repo)
+    both = "**Superseded by:** PREREGISTRATION.md\n**Withdrawn:** the arm was never run\n\n"
+    (repo / "PREREGISTRATION_predraft.md").write_text(
+        PLAN.replace("**Commit SHA:**", both + "**Commit SHA:**")
+    )
+    commit(repo)
+    code, out = check()
+    assert code == 2
+    assert "superseded   PREREGISTRATION_predraft.md" in out
+    assert "withdrawn    " not in out
+    assert "pending      PREREGISTRATION.md" in out
+
+
+@pytest.mark.parametrize(
+    "line", ["**Superseded by:** PREREGISTRATION_V2.md", "**Withdrawn:** not needed"]
+)
+def test_adding_either_line_alone_to_a_frozen_registration_is_an_edit(repo, check, line):
+    freeze(repo)
+    freeze(repo, name="PREREGISTRATION_V2.md")
+    doc = repo / "PREREGISTRATION.md"
+    doc.write_text(doc.read_text().replace("**Commit SHA:**", line + "\n\n**Commit SHA:**"))
+    code, out = check()
+    assert code == 1
+    assert "CHANGED      PREREGISTRATION.md" in out
+    assert "0 removed" in out
+
+
+@pytest.mark.parametrize("value", ["no", "N/A", "TBD", "-", "none", "_pending_", "Yes."])
+def test_a_withdrawal_holding_a_placeholder_leaves_the_plan_pending_and_says_so(repo, check, value):
+    draft(repo, successor=value, key="Withdrawn")
+    code, out = check()
+    assert code == 2
+    assert "pending      PREREGISTRATION_predraft.md" in out
+    assert f"its `Withdrawn` line gives no reason: {value}" in out
+    assert "withdrawn    " not in out
+
+
+def test_an_empty_withdrawal_says_why_the_plan_is_still_pending(repo, check):
+    draft(repo, successor="", key="Withdrawn")
+    code, out = check()
+    assert code == 2
+    assert "its `Withdrawn` line gives no reason: (empty)" in out
+
+
+def test_an_empty_successor_says_why_the_draft_is_still_pending(repo, check):
+    draft(repo, successor="")
+    code, out = check()
+    assert code == 2
+    assert "its `Superseded by` line names no document" in out
+
+
+def test_a_successor_whose_name_opens_with_an_underscore_is_found(repo, check):
+    freeze(repo, name="_FROZEN.md")
+    draft(repo, successor="_FROZEN.md")
+    code, out = check()
+    assert code == 0
+    assert "superseded   PREREGISTRATION_predraft.md" in out
+
+
+def withdrawn_elsewhere(repo, text):
+    (repo / "PREREGISTRATION_predraft.md").write_text(text)
+    commit(repo)
+
+
+def test_a_withdrawal_written_below_the_header_is_the_plans_own_text(repo, check):
+    withdrawn_elsewhere(
+        repo, PLAN.replace("## Deviations", "**Withdrawn:** the arm was never run\n\n## Deviations")
+    )
+    code, out = check()
+    assert code == 2
+    assert "pending      PREREGISTRATION_predraft.md" in out
+    assert "withdrawn    " not in out
+
+
+def test_a_withdrawal_inside_a_fenced_block_is_an_example(repo, check):
+    fenced = "```\n**Withdrawn:** the arm was never run\n```\n\n"
+    withdrawn_elsewhere(repo, PLAN.replace("**Commit SHA:**", fenced + "**Commit SHA:**"))
+    code, out = check()
+    assert code == 2
+    assert "pending      PREREGISTRATION_predraft.md" in out
+    assert "withdrawn    " not in out
+
+
+def test_a_chain_ending_on_a_withdrawn_plan_says_so_and_exits_clean(repo, check):
+    draft(
+        repo, successor="the arm was never run", name="PREREGISTRATION_v2_DRAFT.md", key="Withdrawn"
+    )
+    draft(repo, successor="PREREGISTRATION_v2_DRAFT.md")
+    code, out = check()
+    assert code == 0
+    assert "withdrawn    PREREGISTRATION_v2_DRAFT.md" in out
+    assert "says it is superseded by PREREGISTRATION_v2_DRAFT.md, which is withdrawn" in out
+    assert "0 pending, 0 unknown commit, 1 superseded, 1 withdrawn" in out
+
+
+@pytest.mark.parametrize("named", ["MISSING.md", ""])
+def test_a_withdrawal_does_not_rescue_a_draft_whose_successor_cannot_be_followed(
+    repo, check, named
+):
+    both = f"**Superseded by:** {named}\n**Withdrawn:** the arm was never run\n\n"
+    withdrawn_elsewhere(repo, PLAN.replace("**Commit SHA:**", both + "**Commit SHA:**"))
+    code, out = check()
+    assert code == 2
+    assert "pending      PREREGISTRATION_predraft.md" in out
+    assert "withdrawn    " not in out
+    assert ("names no document" if not named else "not a registration checked here") in out
+
+
+@pytest.mark.parametrize("reason", ["план отменён до запуска", "该计划在运行前被放弃"])
+def test_a_reason_in_another_script_is_a_reason(repo, check, reason):
+    draft(repo, successor=reason, key="Withdrawn")
+    code, out = check()
+    assert code == 0
+    assert f"not checked: {reason}" in out
+
+
+@pytest.mark.parametrize("value", ["not applicable", "TBA", "Not Applicable."])
+def test_more_template_words_are_not_reasons(repo, check, value):
+    draft(repo, successor=value, key="Withdrawn")
+    code, out = check()
+    assert code == 2
+    assert f"its `Withdrawn` line gives no reason: {value}" in out

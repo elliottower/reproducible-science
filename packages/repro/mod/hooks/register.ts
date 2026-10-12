@@ -296,7 +296,9 @@ async function status($: EngineInterface, root: string, withFiles: boolean) {
     // A plan frozen with `prereg freeze` is listed by its absolute path. A registration frozen by a
     // commit line in the document is listed by its path in the repository, under its own words:
     // text added after the frozen text leaves the plan intact, and a commit that is pending or not
-    // in the repository could not be checked, which is not a change.
+    // in the repository could not be checked, which is not a change. A draft `prereg check` lists
+    // as superseded is one plan with the document that ends its chain, which is listed too, and a
+    // plan listed as withdrawn awaits no freeze: neither matches here, so neither is counted.
     const pinned = /^(unchanged|appended|CHANGED|pending|unknown commit)\s{2,}[^/\s]/.exec(line)?.[1]
     const label =
       /^([A-Za-z][A-Za-z ]*?)\s{2,}\//.exec(line)?.[1]?.toLowerCase() ??
