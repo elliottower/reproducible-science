@@ -1,0 +1,18 @@
+{
+  "outcomes": [
+    "verified"
+  ],
+  "reasons": [
+    "value_match"
+  ],
+  "artifacts": {
+    "out": "authoritative"
+  },
+  "stages": [
+    [
+      "completed",
+      "extracted",
+      "match"
+    ]
+  ]
+}

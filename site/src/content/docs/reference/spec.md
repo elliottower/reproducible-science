@@ -259,6 +259,21 @@ and the value is the run of non-whitespace characters between them.
 locator: {kind: prose, before: "suite holds", after: "fixtures", form: cardinal_word}
 ```
 
+With no `after`, the value is the whole run up to the next whitespace. With one, it is the
+longest run following `before` that `after` follows: the whole run where `after` begins past
+it, and otherwise the run cut at the last place inside it where `after` begins. A character
+printed against the value is therefore removed by naming it. A cell of a printed table is glued
+to its divider, `| 3| 0.459| 0.124|`, and is addressed by the row's leading cells and the
+divider; a number closing a sentence, `3.14.`, by the full stop, which reads `3.14` and never
+`3`.
+
+```yaml
+locator: {kind: prose, before: "| 3|", after: "|"}      # 0.459
+```
+
+With `after` omitted the same cell is the run `0.459|`, which is `value_not_numeric`. Nothing
+is stripped that the locator did not name.
+
 Two alternatives were available and are worse under this document's own rules. A capture-group
 pattern is a string expression language, which §3.6 rejects for predicates: it needs a dialect,
 an escaping grammar, and a backtracking bound. A braced template — `holds {n} fixtures` — needs
@@ -694,17 +709,19 @@ An implementation conforms when:
 12. A spelled-out number is converted only where the locator declares `cardinal_word`, and
     refused with `number_as_word` otherwise.
 
-Conformance is executable: `packages/repro/tests/conformance/` holds 25 fixtures, each with
+Conformance is executable: `packages/repro/tests/conformance/` holds 28 fixtures, each with
 canonical expected JSON. They cover `verified`, `mismatch`, `not_found`, `unchecked` and
 `not_offered`, the pointer-escaping and undeclared-artifact cases, an unpinned artifact, a
-broken pin, five table-addressing cases, and six over `correspondence` and the prose locator:
+broken pin, five table-addressing cases, six over `correspondence` and the prose locator —
 two sides agreeing, two sides disagreeing, one side that does not resolve, a spelled-out number
 refused, one pair of anchors selecting two different values, and a prose value against a
-literal.
+literal — and three over a printed table read as text: a cell bound by the row's leading cells
+and its divider, the same cell with no `after`, which is not a number, and a leading anchor the
+document does not hold. Those three also declare the three stages of §4.
 
 Each fixture declares its outcome, its reason, and the validity of every artifact. The outcome
 alone cannot tell a defect in the tool from a fact about the document: three cases share
-`unchecked` and eight share `not_found`, and only the reason separates an undeclared artifact
+`unchecked` and ten share `not_found`, and only the reason separates an undeclared artifact
 from an absent file, or an ambiguous anchor pair from a number written as a word.
 
 Two rows of §4 have no fixture: `error`, which needs a backend defect, and the

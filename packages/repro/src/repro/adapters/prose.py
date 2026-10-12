@@ -143,7 +143,14 @@ def _resolve_prose(locator: ProseLocator, path: pathlib.Path) -> Found:
 
 
 def _spans(text: str, before: str, after: str) -> list[str]:
-    """Every non-whitespace run that sits between the two anchors.
+    """For each occurrence of `before`, the longest run after it that `after` follows.
+
+    The run is of non-whitespace characters. With no `after` it is the whole run up to the
+    next whitespace. With one, the whole run is taken where `after` begins past it, and
+    otherwise the run is cut at the last place inside it where `after` begins: a cell printed
+    against its divider, `0.459|`, or a number closing a sentence, `3.14.`, is delimited by
+    the anchor that touches it and by nothing the engine guessed. The whole run is tried
+    first, so `3.14.` under `after: "."` is `3.14` and never `3`.
 
     Whitespace at an anchor boundary is ignored, on the same grounds `fold` collapses it
     everywhere else: `before: "holds"` and `before: "holds "` address the same value, and a
@@ -164,7 +171,11 @@ def _spans(text: str, before: str, after: str) -> list[str]:
         tail = end
         while tail < n and text[tail].isspace():
             tail += 1
-        if after and not text.startswith(after, tail):
+        if not after or text.startswith(after, tail):
+            found.append(text[cursor:end])
             continue
-        found.append(text[cursor:end])
+        for stop in range(end - 1, cursor, -1):
+            if text.startswith(after, stop):
+                found.append(text[cursor:stop])
+                break
     return found

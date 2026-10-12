@@ -3,14 +3,30 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import typing
 
 import pytest
+import yaml
+from pydantic import TypeAdapter
 from repro.cli import main
 from repro.manifest import DEFAULT_NAME, load
-from repro.models import MetricEvidence, Outcome, QuoteEvidence, Validity
+from repro.models import (
+    Evidence,
+    MetricEvidence,
+    Outcome,
+    QuoteEvidence,
+    Validity,
+    ValueLocator,
+)
 from repro.policy import PUBLICATION
 from repro.starter import MAX_DISCOVERED
 from repro.verify import verify
+
+
+def kinds(union) -> set[str]:
+    """The `kind` of every model in a discriminated union."""
+    models = typing.get_args(typing.get_args(union)[0])
+    return {model.model_fields["kind"].default for model in models}
 
 
 @pytest.fixture
@@ -203,3 +219,23 @@ def test_one_manuscript_is_pinned_and_two_candidates_are_left_for_the_author(tmp
     assert code == 0, out
     assert "main.tex" in out and "none was pinned" in out
     assert load(tmp_path / DEFAULT_NAME).artifacts == ()
+
+
+def test_the_starter_names_every_kind_of_evidence_and_every_locator_the_engine_has(
+    project, run_repro
+):
+    assert run_repro("manifest", "init", cwd=project)[0] == 0
+    comments = [
+        line[1:].strip()
+        for line in (project / DEFAULT_NAME).read_text().splitlines()
+        if line.startswith("#")
+    ]
+    named = {line.split()[0] for line in comments if line}
+    assert kinds(Evidence) <= named
+
+    locators = [
+        TypeAdapter(ValueLocator).validate_python(yaml.safe_load(line[line.index("{kind:") :]))
+        for line in comments
+        if "{kind:" in line and "artifact:" not in line and "sides:" not in line
+    ]
+    assert {locator.kind for locator in locators} == kinds(ValueLocator)

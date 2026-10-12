@@ -40,6 +40,7 @@ def write(
     expected: list[str],
     reasons: list[str | None] | None = None,
     validity: dict[str, str] | None = None,
+    stages: list[list[str]] | None = None,
     files: dict[str, str] | None = None,
 ) -> None:
     """Write one fixture and the outcomes it is required to produce.
@@ -53,6 +54,7 @@ def write(
         "outcomes",
         *(("reasons",) if reasons is not None else ()),
         *(("artifacts",) if validity is not None else ()),
+        *(("stages",) if stages is not None else ()),
     }
     if prior.exists() and (lost := set(json.loads(prior.read_text())) - declared):
         # The committed corpus asserts more than the earliest version of this script wrote.
@@ -87,6 +89,10 @@ def write(
         record["reasons"] = reasons
     if validity is not None:
         record["artifacts"] = validity
+    if stages is not None:
+        # Execution, extraction and comparison, one triple per decision. The outcome is
+        # derived from these, so declaring them says which row of §4 the case is.
+        record["stages"] = stages
     (d / "expected.json").write_text(json.dumps(record, indent=2) + "\n")
 
 
@@ -464,6 +470,80 @@ write(
             {"pointer": "/no/such/key"},
         )
     ),
+)
+
+# -- a printed table, read as text -----------------------------------------------------------
+
+#: What a script prints and a report keeps: a pipe table, each cell padded on the left and
+#: glued to the divider on its right, every line carrying the `## ` an R chunk's output has.
+PRINTED = (
+    "## $north\n"
+    "##\n"
+    "##\n"
+    "## | N (studies)| Delta|    se|   pval|\n"
+    "## |-----------:|-----:|-----:|------:|\n"
+    "## |           3| 0.459| 0.124| 0.0655|\n"
+    "##\n"
+    "## $south\n"
+    "##\n"
+    "##\n"
+    "## | N (studies)| Delta|    se|   pval|\n"
+    "## |-----------:|-----:|-----:|------:|\n"
+    "## |           5| 0.212| 0.090| 0.0412|\n"
+    "##\n"
+)
+OUT = [{"id": "out", "path": "output.txt"}]
+
+
+def printed(reported, before, after):
+    return one(
+        {
+            "kind": "value",
+            "artifact": "out",
+            "name": "delta",
+            "reported": reported,
+            "locator": prose(before, after),
+        }
+    )
+
+
+write(
+    "prose_table_cell_match",
+    artifacts=OUT,
+    files={"output.txt": PRINTED},
+    expected=["verified"],
+    reasons=["value_match"],
+    validity={"out": "authoritative"},
+    stages=[["completed", "extracted", "match"]],
+    # The anchors are written with single spaces and the file pads the cell with ten. The
+    # divider is the trailing anchor, so the value is the cell and not the cell with a bar on it.
+    claims=printed("0.459", "| 3|", "|"),
+)
+
+write(
+    "prose_table_cell_not_numeric",
+    artifacts=OUT,
+    files={"output.txt": PRINTED},
+    expected=["not_found"],
+    reasons=["value_not_numeric"],
+    validity={"out": "authoritative"},
+    stages=[["completed", "invalid", "not_applicable"]],
+    # No trailing anchor, so the value runs to the next whitespace and is `0.459|`. The engine
+    # strips nothing the locator did not name, and reports what it read.
+    claims=printed("0.459", "| 3|", ""),
+)
+
+write(
+    "prose_anchor_absent",
+    artifacts=OUT,
+    files={"output.txt": PRINTED},
+    expected=["not_found"],
+    reasons=["passage_absent"],
+    validity={"out": "authoritative"},
+    stages=[["completed", "absent", "not_applicable"]],
+    # No row of either table opens with a 4. A row that is not there is absent, and is not
+    # read off the nearest row that is.
+    claims=printed("0.459", "| 4|", "|"),
 )
 
 print(f"  built {len(list(CASES.iterdir()))} fixtures in {CASES}")

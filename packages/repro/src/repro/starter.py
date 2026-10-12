@@ -86,10 +86,44 @@ HEADER = """\
 #
 # `claims` says what the manuscript states and where a pinned artifact holds it. To add a
 # claim, copy an entry under `claims`, give it a new id, and point its evidence at the id of
-# an artifact. A `metric` reads a number at an RFC 6901 JSON Pointer in a JSON or YAML file;
-# `reported` is the number as the manuscript prints it, in quotes. A `quote` finds a passage
-# in a text source. Claims whose id begins `example-` were written by `repro manifest init` to
-# show the shape, and are there to be edited or removed.
+# an artifact. Claims whose id begins `example-` were written by `repro manifest init` to show
+# the shape, and are there to be edited or removed.
+#
+# The kinds of evidence. `reported` is the number as the manuscript prints it, in quotes.
+#
+#   metric          a number at an RFC 6901 JSON Pointer in a JSON or YAML file
+#                     {{kind: metric, artifact: ID, name: p, reported: '0.031', pointer: /primary/p}}
+#   table           a cell of a CSV, TSV, Parquet, Stata, SPSS or .rds table: `where` or `row`
+#                     {{kind: table, artifact: ID, name: acc, reported: '0.648', column: accuracy,
+#                      where: {{model: lasso}}}}
+#   value           a number at a locator, for every format `repro` reads
+#                     {{kind: value, artifact: ID, name: n, reported: '480', locator: {{...}}}}
+#   quote           a passage that occurs in a PDF, LaTeX or text source; it reads no number
+#                     {{kind: quote, artifact: ID, text: 'A passage copied from the source.'}}
+#   correspondence  two artifacts hold the same number, and neither is written here
+#                     {{kind: correspondence, name: n, sides: [
+#                        {{name: stated, artifact: ID, locator: {{...}}}},
+#                        {{name: measured, artifact: ID, locator: {{...}}}}]}}
+#
+# The locators a `value` or a side takes:
+#
+#   JSON, YAML                     {{kind: tree, pointer: /primary/n}}
+#   CSV, TSV, PSV, Parquet, Feather,
+#   Arrow, Stata, SPSS, .rds       {{kind: table, column: accuracy, where: {{model: lasso}}}}
+#   the same, by row from 0        {{kind: table_position, column: accuracy, row: 0}}
+#   Excel                          {{kind: sheet, sheet: Table 2, column: auc, where: {{model: lasso}}}}
+#   SQLite                         {{kind: sqlite, table: runs, column: loss, where: {{seed: 3}}}}
+#   .npy, .npz, HDF5, NetCDF       {{kind: array, array: accuracy, index: [1, 1]}}
+#   PDF, LaTeX, text, HTML source  {{kind: prose, before: 'split was', after: '%'}}
+#
+# `prose` reads the number between two literal anchors, for a sentence or a printed table.
+# Anchors are written with single spaces, whatever the padding or line breaks in the file, and
+# `after` names what touches the number. The Delta cell of the row `|     3| 0.459| 0.124|`:
+#
+#   {{kind: prose, before: '| 3|', after: '|'}}
+#
+# `mode: absolute` or `relative` with `tolerance: '0.01'` replaces comparison at the precision
+# `reported` prints. `where` must match exactly one row.
 #
 # Check it:
 #

@@ -386,6 +386,133 @@ def test_a_prose_locator_addresses_a_value_without_a_correspondence(tmp_path):
     assert only(path).outcome is Outcome.VERIFIED
 
 
+PRINTED = (
+    "## $north\n"
+    "##\n"
+    "## | N (studies)| Delta|    se|   pval|\n"
+    "## |-----------:|-----:|-----:|------:|\n"
+    "## |           3| 0.459| 0.124| 0.0655|\n"
+    "##\n"
+    "## $south\n"
+    "##\n"
+    "## | N (studies)| Delta|    se|   pval|\n"
+    "## |-----------:|-----:|-----:|------:|\n"
+    "## |           5| 0.212|   n/a| 0.0412|\n"
+)
+
+
+def printed(tmp_path, reported, before, after="", doc=PRINTED):
+    """The decision for one value read out of printed text by a prose locator."""
+    (tmp_path / "output.txt").write_text(doc)
+    manifest = {
+        "schema_version": "repro/1",
+        "project": "t",
+        "artifacts": [{"id": "out", "path": "output.txt"}],
+        "claims": [
+            {
+                "id": "c",
+                "text": "t",
+                "evidence": [
+                    {
+                        "kind": "value",
+                        "artifact": "out",
+                        "name": "m",
+                        "reported": reported,
+                        "locator": {"kind": "prose", "before": before, "after": after},
+                    }
+                ],
+            }
+        ],
+    }
+    path = tmp_path / "repro.yaml"
+    path.write_text(yaml.safe_dump(manifest, sort_keys=False))
+    return only(path)
+
+
+@pytest.mark.parametrize(
+    ("reported", "before"),
+    [
+        ("0.459", "| 3|"),
+        ("0.124", "| 3| 0.459|"),
+        ("0.0655", "$north ## ## | N (studies)| Delta| se| pval| ## | 3| 0.459| 0.124|"),
+        ("0.212", "| 5|"),
+    ],
+)
+def test_a_cell_of_a_printed_table_is_bound_by_its_leading_cells_and_its_divider(
+    tmp_path, reported, before
+):
+    doc = PRINTED.replace("## |-----------:|-----:|-----:|------:|\n", "")
+    decision = printed(tmp_path, reported, before, "|", doc=doc)
+    assert decision.outcome is Outcome.VERIFIED
+    assert decision.reason is Reason.VALUE_MATCH
+    assert decision.extraction is ExtractionStatus.EXTRACTED
+
+
+def test_a_cell_bound_by_its_divider_is_compared_and_can_disagree(tmp_path):
+    decision = printed(tmp_path, "0.495", "| 3|", "|")
+    assert decision.outcome is Outcome.MISMATCH
+    assert decision.reason is Reason.VALUE_MISMATCH
+    assert "0.459" in decision.detail
+
+
+def test_anchors_written_on_one_line_match_text_broken_over_several(tmp_path):
+    before = (
+        "## $north ## ## | N (studies)| Delta| se| pval| "
+        "## |-----------:|-----:|-----:|------:| ## | 3|"
+    )
+    assert printed(tmp_path, "0.459", before, "| 0.124| 0.0655| ## ## $south").outcome is (
+        Outcome.VERIFIED
+    )
+
+
+def test_a_leading_anchor_the_text_does_not_hold_is_absent(tmp_path):
+    decision = printed(tmp_path, "0.459", "| 4|", "|")
+    assert decision.reason is Reason.PASSAGE_ABSENT
+    assert decision.extraction is ExtractionStatus.ABSENT
+    assert decision.comparison is ComparisonStatus.NOT_APPLICABLE
+    assert decision.outcome is Outcome.NOT_FOUND
+
+
+def test_a_trailing_anchor_that_does_not_follow_the_value_is_absent(tmp_path):
+    decision = printed(tmp_path, "0.459", "| 3|", "| 0.125|")
+    assert decision.reason is Reason.PASSAGE_ABSENT
+    assert decision.outcome is Outcome.NOT_FOUND
+
+
+@pytest.mark.parametrize(
+    ("before", "after", "read"),
+    [
+        ("| 5| 0.212|", "|", "n/a"),
+        ("| 3|", "", "0.459|"),
+        ("| 3|", "0.124|", "0.459|"),
+    ],
+)
+def test_text_between_found_anchors_that_is_not_a_number_keeps_its_own_reason(
+    tmp_path, before, after, read
+):
+    decision = printed(tmp_path, "0.459", before, after)
+    assert decision.reason is Reason.VALUE_NOT_NUMERIC
+    assert decision.extraction is ExtractionStatus.INVALID
+    assert decision.comparison is ComparisonStatus.NOT_APPLICABLE
+    assert decision.outcome is Outcome.NOT_FOUND
+    assert f"'{read}'" in decision.detail, "the refusal has to show what was read"
+
+
+def test_a_trailing_anchor_inside_the_run_cuts_it_at_the_last_place_it_begins(tmp_path):
+    doc = "The ratio is 3.14.\n"
+    assert printed(tmp_path, "3.14", "ratio is", ".", doc=doc).outcome is Outcome.VERIFIED
+    # Cut at the first full stop the value would be 3, which agrees with a reported 3.0.
+    decision = printed(tmp_path, "3.0", "ratio is", ".", doc=doc)
+    assert decision.outcome is Outcome.MISMATCH
+    assert "3.14" in decision.detail
+
+
+def test_a_trailing_anchor_past_the_run_is_taken_before_one_inside_it(tmp_path):
+    decision = printed(tmp_path, "0.5", "share of", "% of", doc="A share of 0.5% % of all.\n")
+    assert decision.reason is Reason.VALUE_NOT_NUMERIC
+    assert "'0.5%'" in decision.detail
+
+
 def test_an_empty_leading_anchor_anchors_nothing():
     with pytest.raises(ValidationError):
         ProseLocator(before="", after="fixtures")
