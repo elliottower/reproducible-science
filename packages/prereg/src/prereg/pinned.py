@@ -31,15 +31,20 @@ names a file this check does not list: the draft stays pending.
 
 The path is read from the draft's own directory and looked up in the whole repository, so a
 draft has the same status whichever directory the check runs from. A run in a subfolder still
-lists only the documents at or below it: a successor above it or beside it is read to settle the
-draft and is not listed. A path that is absolute, or that leaves the repository, names nothing
-this check can read, and the draft stays pending.
+lists only the documents at or below it, with one exception. A successor above it or beside it
+is read to settle the draft, and where the document that ends the chain passes it is not listed.
+Where that document is pending, changed or of an unknown commit, the run lists it as well, once,
+by its path from the top of the repository and with the drafts that reached it, so the run exits
+2 or 1 as a run at the top does: a check does not pass while the plan it depends on has not. A
+path that is absolute, or that leaves the repository, names nothing this check can read, and the
+draft stays pending.
 
 A chain may end on a `PREREG.md` frozen with `prereg freeze`, which is how a registration moves
 from this convention to the tool. That plan is checked as `prereg check` checks it, and the
 draft is superseded only where that check passes. Where the plan is not frozen, or was changed
-after its freeze, the draft stays pending and says which. Neither header line is read on a
-`PREREG.md` itself.
+after its freeze, the draft stays pending and says which: such a plan may lie outside what the
+run lists, and it is not a document of this check to be listed here, so the draft carries the
+result. Neither header line is read on a `PREREG.md` itself.
 
 A plan that was dropped and replaced by nothing:
 
@@ -396,8 +401,9 @@ def _disposition(
     shown: Callable[[str], pathlib.Path],
     document: Callable[[str], _Document | None],
     plan_result: Callable[[pathlib.Path], int | None],
-) -> Pinned:
-    """Report a pending document as superseded or withdrawn where its header says which.
+) -> tuple[Pinned, _Document | None]:
+    """Report a pending document as superseded or withdrawn where its header says which, and
+    name the commit-pinned document its chain ends on where it is superseded by one.
 
     Only a pending document is looked at: one that names a commit was compared, and its result
     stands. A superseded draft is followed along its chain to the document that declares no
@@ -415,16 +421,16 @@ def _disposition(
     """
     path = d.result.path
     if d.result.status != PENDING:
-        return d.result
+        return d.result, None
     if d.successor is None:
         if d.withdrawn is None:
-            return Pinned(path, PENDING, "", (*d.result.detail, *d.notes))
+            return Pinned(path, PENDING, "", (*d.result.detail, *d.notes)), None
         reason, line = d.withdrawn
         said = f"a plan never frozen; withdrawn, as the document says and not checked: {reason}"
-        return Pinned(path, WITHDRAWN, "", (said, _withdrawn_in(top, d.name, line)))
+        return Pinned(path, WITHDRAWN, "", (said, _withdrawn_in(top, d.name, line))), None
 
-    def pending(why: str) -> Pinned:
-        return Pinned(path, PENDING, "", (*d.result.detail, why))
+    def pending(why: str) -> tuple[Pinned, None]:
+        return Pinned(path, PENDING, "", (*d.result.detail, why)), None
 
     chain = [d]
     while True:
@@ -452,7 +458,7 @@ def _disposition(
                 f"a draft never frozen; says it is superseded by {names}, "
                 "a plan `prereg freeze` froze, which is unchanged"
             )
-            return Pinned(path, SUPERSEDED, "", (by,))
+            return Pinned(path, SUPERSEDED, "", (by,)), None
         step = document(target)
         if step is None:
             return pending(f"{says}, which is not a registration checked here")
@@ -466,7 +472,7 @@ def _disposition(
     status = WITHDRAWN if withdrawn else head.result.status
     at = f" at {head.result.commit}" if head.result.commit else ""
     by = f"a draft never frozen; says it is superseded by {names}, which is {status}{at}"
-    return Pinned(path, SUPERSEDED, "", (by,))
+    return Pinned(path, SUPERSEDED, "", (by,)), head
 
 
 def check_below(
@@ -478,8 +484,11 @@ def check_below(
 
     The documents listed are the ones at or below `here`, by their paths from `here`. A draft's
     successor is looked up among every document the repository tracks, so one above `here` or
-    beside it settles the draft without being listed. `plan_result` answers for a `PREREG.md` a
-    draft names: what `prereg check` finds for the plan at that path, or None where none is there.
+    beside it settles the draft. Where the document that ends such a chain lies outside `here`
+    and was not passed, it is listed too, once, by its path from the top of the repository:
+    otherwise a run here would exit 0 on a draft whose plan is pending or was edited.
+    `plan_result` answers for a `PREREG.md` a draft names: what `prereg check` finds for the
+    plan at that path, or None where none is there.
     """
     where = try_run("rev-parse", "--show-toplevel", "--show-prefix", cwd=here)
     if where is None:
@@ -499,8 +508,22 @@ def check_below(
         return read[name]
 
     below = sorted(name for name in tracked if name and name.startswith(prefix))
-    return [
-        _disposition(d, top, shown, document, plan_result)
-        for d in map(document, below)
-        if d is not None
-    ]
+    found = []
+    outside: dict[str, tuple[_Document, list[pathlib.Path]]] = {}
+    for d in map(document, below):
+        if d is None:
+            continue
+        result, head = _disposition(d, top, shown, document, plan_result)
+        found.append(result)
+        if head is not None and not head.name.startswith(prefix):
+            outside.setdefault(head.name, (head, []))[1].append(result.path)
+    for name, (head, drafts) in sorted(outside.items()):
+        own, _ = _disposition(head, top, shown, document, plan_result)
+        if own.status in (PENDING, CHANGED, UNKNOWN):
+            reached = ", ".join(str(draft) for draft in drafts)
+            note = (
+                "outside the folder checked, listed by its path from the top of the repository; "
+                f"reached from {reached}"
+            )
+            found.append(Pinned(pathlib.Path(name), own.status, own.commit, (note, *own.detail)))
+    return found

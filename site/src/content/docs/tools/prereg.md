@@ -384,10 +384,21 @@ names a file this check does not list stays `pending` whatever its withdrawal sa
 
 The path is looked up in the whole repository, so a draft has the same status whichever
 directory the check runs from: `exp/DRAFT.md` naming `../PREREGISTRATION.md` is `superseded`
-from the repository's top level and from `exp/`. A run in a subfolder still lists only the
-documents at or below it, and a successor above it or beside it is read to settle the draft
-without being listed. A path that is absolute, or that leaves the repository, leaves the draft
-`pending`.
+from the repository's top level and from `exp/`. A run in a subfolder still lists the
+documents at or below it, and a successor above it or beside it is read to settle the draft.
+Where the document that ends the chain passes, it is not listed. Where it is `pending`,
+`CHANGED` or of an `unknown commit`, the run lists it too, once, by its path from the top of the
+repository, and exits 2 or 1 as a run at the top does:
+
+```text
+superseded   DRAFT.md
+  a draft never frozen; says it is superseded by ../PREREGISTRATION.md, which is pending
+pending      PREREGISTRATION.md
+  outside the folder checked, listed by its path from the top of the repository; reached from DRAFT.md
+  the commit line names no commit: _pending_
+```
+
+A path that is absolute, or that leaves the repository, leaves the draft `pending`.
 
 A chain may end on a `PREREG.md` frozen with `prereg freeze`, which is how a registration moves
 from a commit line to the tool:
@@ -398,7 +409,8 @@ from a commit line to the tool:
 
 That plan is checked as `prereg check` checks any plan, and the draft is `superseded` only where
 that check passes. Where the plan is not frozen, or was changed after its freeze, the draft
-stays `pending` and says which. Neither header line is read on a `PREREG.md` itself.
+stays `pending` and says which, so the run exits 2 from any directory. Neither header line is
+read on a `PREREG.md` itself.
 
 A plan that was dropped and replaced by nothing says so and gives the reason:
 

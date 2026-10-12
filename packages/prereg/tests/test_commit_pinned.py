@@ -624,6 +624,78 @@ def test_a_successor_above_or_beside_the_folder_checked_gives_the_draft_one_stat
         "1 commit-pinned: 0 unchanged, 0 appended, 0 changed, 0 pending, 0 unknown commit, "
         "1 superseded"
     ) in out
+    assert "outside the folder checked" not in out
+
+
+OUTSIDE = "outside the folder checked, listed by its path from the top of the repository"
+
+
+@pytest.mark.parametrize("successor", ["../PREREGISTRATION.md", "../plans/PREREGISTRATION.md"])
+def test_a_pending_plan_outside_the_folder_checked_is_listed_and_fails_the_run(
+    repo, check, monkeypatch, successor
+):
+    name = successor.removeprefix("../")
+    (repo / name).parent.mkdir(exist_ok=True)
+    (repo / name).write_text(PLAN)
+    commit(repo)
+    draft(repo, successor=successor, name="exp/DRAFT.md")
+    code, out = check()
+    assert code == 2
+    assert "superseded   exp/DRAFT.md" in out
+    assert out.count(f"pending      {name}") == 1
+    assert OUTSIDE not in out
+    assert "0 changed, 1 pending, 0 unknown commit, 1 superseded" in out
+
+    monkeypatch.chdir(repo / "exp")
+    code, out = check()
+    assert code == 2
+    assert "superseded   DRAFT.md" in out
+    assert out.count(f"pending      {name}") == 1
+    assert f"{OUTSIDE}; reached from DRAFT.md" in out
+    assert (
+        "2 commit-pinned: 0 unchanged, 0 appended, 0 changed, 1 pending, 0 unknown commit, "
+        "1 superseded"
+    ) in out
+
+
+@pytest.mark.parametrize("successor", ["../PREREGISTRATION.md", "../plans/PREREGISTRATION.md"])
+def test_an_edited_plan_outside_the_folder_checked_is_listed_and_fails_the_run(
+    repo, check, monkeypatch, successor
+):
+    name = successor.removeprefix("../")
+    (repo / name).parent.mkdir(exist_ok=True)
+    sha = freeze(repo, name)
+    draft(repo, successor=successor, name="exp/DRAFT.md")
+    (repo / name).write_text((repo / name).read_text().replace("0.10", "0.05"))
+    code, out = check()
+    assert code == 1
+    assert out.count(f"CHANGED      {name}  at {sha[:7]}") == 1
+    assert OUTSIDE not in out
+
+    monkeypatch.chdir(repo / "exp")
+    code, out = check()
+    assert code == 1
+    assert "superseded   DRAFT.md" in out
+    assert out.count(f"CHANGED      {name}  at {sha[:7]}") == 1
+    assert f"{OUTSIDE}; reached from DRAFT.md" in out
+    assert "1 line added, 1 removed" in out
+    assert "2 commit-pinned: 0 unchanged, 0 appended, 1 changed, 0 pending" in out
+
+
+def test_a_plan_outside_the_folder_checked_is_listed_once_when_two_drafts_reach_it(
+    repo, check, monkeypatch
+):
+    (repo / "PREREGISTRATION.md").write_text(PLAN)
+    commit(repo)
+    draft(repo, successor="../PREREGISTRATION.md", name="exp/A_DRAFT.md")
+    draft(repo, successor="A_DRAFT.md", name="exp/B_DRAFT.md")
+    draft(repo, successor="../PREREGISTRATION.md", name="exp/C_DRAFT.md")
+    monkeypatch.chdir(repo / "exp")
+    code, out = check()
+    assert code == 2
+    assert out.count("pending      PREREGISTRATION.md") == 1
+    assert f"{OUTSIDE}; reached from A_DRAFT.md, B_DRAFT.md, C_DRAFT.md" in out
+    assert "0 changed, 1 pending, 0 unknown commit, 3 superseded" in out
 
 
 def test_a_successor_outside_the_repository_leaves_the_draft_pending_from_any_folder(
@@ -746,4 +818,16 @@ def test_a_withdrawal_not_yet_committed_says_so_and_is_still_withdrawn(repo, che
     assert code == 0
     assert "withdrawn    PREREGISTRATION_predraft.md" in out
     assert "its `Withdrawn` line is not yet committed" in out
+    assert "0 pending, 0 unknown commit, 1 withdrawn" in out
+
+
+def test_a_withdrawal_in_a_repository_with_no_commit_says_git_could_not_date_it(repo, check):
+    (repo / "PREREGISTRATION_predraft.md").write_text(
+        PLAN.replace("**Commit SHA:**", "**Withdrawn:** the arm was never run\n\n**Commit SHA:**")
+    )
+    git(repo, "add", "-A")
+    code, out = check()
+    assert code == 0
+    assert "withdrawn    PREREGISTRATION_predraft.md" in out
+    assert "git could not say which commit added its `Withdrawn` line" in out
     assert "0 pending, 0 unknown commit, 1 withdrawn" in out
