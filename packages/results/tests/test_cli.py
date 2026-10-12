@@ -385,15 +385,75 @@ def test_a_path_sealed_under_two_hashes_is_reported_even_when_it_matches_one(tmp
     """Seal, edit, seal again: the file on disk matches the second seal.
 
     Keyed by path, the later seal replaced the earlier one and the run read as clean, so
-    "seal your inputs before the run" was not what the command checked.
+    "seal your inputs before the run" was not what the command checked. Reaching this state
+    now takes --anyway, so the state the check describes is one somebody chose.
     """
     path = seal_one(tmp_path)
     path.write_text("a,b\n9,9\n")
-    run_cli("seal", "data.csv", "--role", "input", cwd=tmp_path)
+    run_cli("seal", "data.csv", "--role", "input", "--anyway", cwd=tmp_path)
     v = run_cli("verify", "--files", cwd=tmp_path)
     assert v.returncode == 1, v.stdout
     assert "RESEALED" in v.stdout
     assert "2 different hashes" in v.stdout
+
+
+def test_sealing_a_path_whose_bytes_moved_is_refused_and_writes_nothing(tmp_path):
+    path = seal_one(tmp_path)
+    before = ledger.read_ledger(tmp_path / ".results" / "ledger.jsonl")
+    path.write_text("a,b\n9,9\n")
+
+    r = run_cli("seal", "data.csv", "--role", "input", cwd=tmp_path)
+    assert r.returncode == 1, r.stdout
+    assert "already sealed at other bytes" in r.stdout
+    assert "new path" in r.stdout
+    after = ledger.read_ledger(tmp_path / ".results" / "ledger.jsonl")
+    assert len(after) == len(before), "a refused seal must leave the ledger alone"
+    v = run_cli("verify", "--files", cwd=tmp_path)
+    assert "RESEALED" not in v.stdout
+
+
+def test_the_repair_for_a_moved_sealed_file_is_a_new_path(tmp_path):
+    """Restore the bytes, seal the correction beside them, and verify reads clean."""
+    path = seal_one(tmp_path)
+    original = path.read_text()
+    path.write_text("a,b\n9,9\n")
+    assert run_cli("seal", "data.csv", "--role", "input", cwd=tmp_path).returncode == 1
+
+    path.write_text(original)
+    (tmp_path / "data_corrected.csv").write_text("a,b\n9,9\n")
+    r = run_cli("seal", "data_corrected.csv", "--role", "input", cwd=tmp_path)
+    assert r.returncode == 0, r.stdout
+    v = run_cli("verify", "--files", cwd=tmp_path)
+    assert v.returncode == 0, v.stdout
+    assert "RESEALED" not in v.stdout
+
+
+def test_sealing_the_same_bytes_again_is_not_a_refusal(tmp_path):
+    seal_one(tmp_path)
+    r = run_cli("seal", "data.csv", "--role", "input", cwd=tmp_path)
+    assert r.returncode == 0, r.stdout
+    v = run_cli("verify", "--files", cwd=tmp_path)
+    assert v.returncode == 0, v.stdout
+    assert "RESEALED" not in v.stdout, (
+        "the same digest recorded twice is one digest for the path, not drift"
+    )
+
+
+def test_one_moved_path_refuses_the_whole_seal(tmp_path):
+    path = seal_one(tmp_path)
+    path.write_text("a,b\n9,9\n")
+    (tmp_path / "fresh.csv").write_text("x\n1\n")
+
+    r = run_cli("seal", "fresh.csv", "data.csv", "--role", "input", cwd=tmp_path)
+    assert r.returncode == 1, r.stdout
+    recorded = {
+        f["path"]
+        for e in ledger.read_ledger(tmp_path / ".results" / "ledger.jsonl")
+        for f in e.get("files", [])
+    }
+    assert "fresh.csv" not in recorded, (
+        "a seal is one event, so a refusal cannot have recorded part of it"
+    )
 
 
 def test_an_untouched_sealed_file_still_passes(tmp_path):

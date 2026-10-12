@@ -74,9 +74,39 @@ With `--files`, every sealed input and recorded output is re-hashed against its 
 | `ok` | file matches its recorded hash |
 | `CHANGED` | file was modified since it was sealed or recorded |
 | `MISSING` | file no longer exists at the recorded path |
+| `RESEALED` | the path carries more than one recorded hash |
 
 **`CHAIN BROKEN` means the ledger was tampered with.** It does not mean the results are wrong —
 it means the evidence that they are right was damaged. Restore from git history.
+
+## One path, one hash
+
+**A sealed file that changes gets a new path.** `verify --files` re-derives every digest
+from the path it was recorded under, so a path holding two hashes is reported as
+`RESEALED` and counted as drift, and it stays that way for the life of the ledger. The
+file on disk still matches one of the recorded hashes, which is why this reads as a pass
+in every other check and as a permanent failure here.
+
+The cost is not the failing exit code. It is that no result can say which version
+produced it. A path with eleven recorded hashes and a run between each pair is a record
+of eleven different programs under one name, and recovering which one a published number
+came from means reading session logs rather than the ledger.
+
+**When a sealed script turns out to be wrong before it has run**, the repair is four steps
+and none of them is a second seal:
+
+1. Restore the sealed bytes, from git if the seal was committed.
+2. Write the correction at a new path.
+3. `results seal` the new path.
+4. Leave the old path on disk and untouched, because `verify` re-reads it and reports
+   `MISSING` if it is deleted.
+
+The dead path is the point: the ledger then shows one seal with nothing bound to it and
+one seal with the run, instead of one path that quietly became a different program.
+
+Sealing is therefore a commitment that a file is finished, and it extends to every file
+passed to `seal` — a test suite sealed alongside the script it exercises cannot take
+another test without forking a path. Seal what a run reads, when it is ready to be read.
 
 ## Reviews
 

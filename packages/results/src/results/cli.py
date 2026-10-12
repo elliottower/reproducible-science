@@ -45,7 +45,7 @@ def cmd_init(a) -> int:
 
 
 def cmd_seal(a) -> int:
-    return record.seal(a.files, a.role)
+    return record.seal(a.files, a.role, getattr(a, "anyway", False))
 
 
 def cmd_access(a) -> int:
@@ -116,6 +116,11 @@ def _main(argv: list[str] | None = None) -> int:
     s.add_argument("files", nargs="+")
     s.add_argument(
         "--role", default="input", help="what these files are: input, prereg, script, data"
+    )
+    s.add_argument(
+        "--anyway",
+        action="store_true",
+        help="seal a path already sealed at different bytes; it then reads RESEALED forever",
     )
     s.set_defaults(fn=cmd_seal)
 

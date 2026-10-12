@@ -2,10 +2,10 @@
 
 `init`, `seal`, `access`, `run`, `claim`, `review` and `annotate` share a shape: find the
 governing `.results/`, build one event, append it, and report what was written. What separates
-them is the refusal each makes first -- a path that is not a file, an access level outside the
-four, a run id already in use, a confirmatory claim resting on a run recorded after the outcomes
-were seen, a review with a verdict outside the four, an annotation whose kind is not
-`namespace:type`.
+them is the refusal each makes first -- a path that is not a file, a path already sealed at
+different bytes, an access level outside the four, a run id already in use, a confirmatory claim
+resting on a run recorded after the outcomes were seen, a review with a verdict outside the four,
+an annotation whose kind is not `namespace:type`.
 
 Each returns the process's exit code. `cli.py` unpacks the argparse namespace and calls in.
 """
@@ -76,9 +76,27 @@ def init() -> int:
     return 0
 
 
-def seal(files: list[str], role: str) -> int:
+def sealed_digests(events: list[dict]) -> dict[str, list[str]]:
+    """Every digest the ledger has recorded against each path, in order.
+
+    `verify --files` re-derives a digest from the path it was recorded under, so a path
+    holding two digests can never read clean again and no run can say which version it
+    read. Collected here so `seal` can refuse before writing rather than leaving `verify`
+    to report it later.
+    """
+    digests: dict[str, list[str]] = {}
+    for e in events:
+        for f in e.get("files", []) + e.get("outputs", []):
+            recorded = digests.setdefault(f["path"], [])
+            if f["sha256"] not in recorded:
+                recorded.append(f["sha256"])
+    return digests
+
+
+def seal(files: list[str], role: str, anyway: bool = False) -> int:
     root = require_root()
     lp = ledger_path(root)
+    already = sealed_digests(ledger.read_ledger(lp))
     # A sealed entry holds a path and digest, a kind, a file count for a tree, and the names a
     # tree digest did not cover. Declared once so writing and reading it agree.
     sealed: list[dict[str, str | int | list[str]]] = []
@@ -110,6 +128,23 @@ def seal(files: list[str], role: str) -> int:
             return 1
         digest = ledger.sha256_of_file(p)
         sealed.append({"path": record_path(p, root), "sha256": digest, "kind": "file"})
+    if not anyway:
+        moved = [
+            e for e in sealed if (prior := already.get(str(e["path"]))) and e["sha256"] not in prior
+        ]
+        if moved:
+            for e in moved:
+                prior = already[str(e["path"])]
+                print(f"already sealed at other bytes: {e['path']}")
+                print(f"  recorded {prior[-1][:16]}…, now {str(e['sha256'])[:16]}…")
+            print()
+            print("one path holds one digest: `verify --files` re-derives each digest from the")
+            print("path it was recorded under, so a second seal makes this path read RESEALED")
+            print("for the life of the ledger and leaves no run able to say which version it")
+            print("read. Restore the sealed bytes, write the correction at a new path, and seal")
+            print("that; leave the old path in place, because `verify` reports it MISSING if it")
+            print("is deleted. Pass --anyway to record the second seal regardless.")
+            return 1
     ledger.append_event(
         lp,
         {
