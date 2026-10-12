@@ -62,7 +62,8 @@ NOTHING_MARKERS = (
 READS: dict[tuple[str, str], tuple[str, str]] = {
     ("prereg", "check"): (
         r"^\d+ (?:plans|commit-pinned): .*",
-        r"\b[1-9]\d* (?:not frozen|pending|unknown commit)",
+        # `withdrawn` is a document's statement about itself, which the check did not measure.
+        r"\b[1-9]\d* (?:not frozen|pending|unknown commit|withdrawn)",
     ),
     ("results", "verify"): (r"^chain .*|^\d+ file\(s\) .*|^all checks passed\.", r"(?!)"),
     ("citations", "verify"): (

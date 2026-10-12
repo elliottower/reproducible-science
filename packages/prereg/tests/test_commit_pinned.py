@@ -461,3 +461,77 @@ def test_a_frozen_registration_cannot_declare_itself_withdrawn_to_cover_an_edit(
     assert code == 1
     assert "CHANGED      PREREGISTRATION.md" in out
     assert "withdrawn    " not in out
+
+
+def test_a_chain_broken_two_steps_along_says_where_it_breaks(repo, check):
+    draft(repo, successor="B_DRAFT.md", name="A_DRAFT.md")
+    draft(repo, successor="MISSING.md", name="B_DRAFT.md")
+    code, out = check()
+    assert code == 2
+    assert "superseded   " not in out
+    assert (
+        "its chain reaches B_DRAFT.md, which says it is superseded by MISSING.md, "
+        "which is not a registration checked here"
+    ) in out
+    assert "0 changed, 2 pending" in out
+
+
+def test_a_draft_carrying_both_lines_is_followed_to_its_successor_and_not_withdrawn(repo, check):
+    (repo / "PREREGISTRATION.md").write_text(PLAN)
+    commit(repo)
+    both = "**Superseded by:** PREREGISTRATION.md\n**Withdrawn:** the arm was never run\n\n"
+    (repo / "PREREGISTRATION_predraft.md").write_text(
+        PLAN.replace("**Commit SHA:**", both + "**Commit SHA:**")
+    )
+    commit(repo)
+    code, out = check()
+    assert code == 2
+    assert "superseded   PREREGISTRATION_predraft.md" in out
+    assert "withdrawn    " not in out
+    assert "pending      PREREGISTRATION.md" in out
+
+
+@pytest.mark.parametrize(
+    "line", ["**Superseded by:** PREREGISTRATION_V2.md", "**Withdrawn:** not needed"]
+)
+def test_adding_either_line_alone_to_a_frozen_registration_is_an_edit(repo, check, line):
+    freeze(repo)
+    freeze(repo, name="PREREGISTRATION_V2.md")
+    doc = repo / "PREREGISTRATION.md"
+    doc.write_text(doc.read_text().replace("**Commit SHA:**", line + "\n\n**Commit SHA:**"))
+    code, out = check()
+    assert code == 1
+    assert "CHANGED      PREREGISTRATION.md" in out
+    assert "0 removed" in out
+
+
+@pytest.mark.parametrize("value", ["no", "N/A", "TBD", "-", "none", "_pending_", "Yes."])
+def test_a_withdrawal_holding_a_placeholder_leaves_the_plan_pending_and_says_so(repo, check, value):
+    draft(repo, successor=value, key="Withdrawn")
+    code, out = check()
+    assert code == 2
+    assert "pending      PREREGISTRATION_predraft.md" in out
+    assert f"its `Withdrawn` line gives no reason: {value}" in out
+    assert "withdrawn    " not in out
+
+
+def test_an_empty_withdrawal_says_why_the_plan_is_still_pending(repo, check):
+    draft(repo, successor="", key="Withdrawn")
+    code, out = check()
+    assert code == 2
+    assert "its `Withdrawn` line gives no reason: (empty)" in out
+
+
+def test_an_empty_successor_says_why_the_draft_is_still_pending(repo, check):
+    draft(repo, successor="")
+    code, out = check()
+    assert code == 2
+    assert "its `Superseded by` line names no document" in out
+
+
+def test_a_successor_whose_name_opens_with_an_underscore_is_found(repo, check):
+    freeze(repo, name="_FROZEN.md")
+    draft(repo, successor="_FROZEN.md")
+    code, out = check()
+    assert code == 0
+    assert "superseded   PREREGISTRATION_predraft.md" in out

@@ -23,8 +23,10 @@ A draft that a later document replaced:
 
 A plan is one chain of drafts, so the draft is reported as superseded and the document at the
 end of its chain carries the result: unchanged where it was frozen and holds, pending where the
-plan is still awaiting its freeze, changed where the frozen text was edited. Nothing is excused
-by this. The plan is counted once instead of once per draft.
+plan is still awaiting its freeze, changed where the frozen text was edited. The plan is counted
+once instead of once per draft. That the draft belongs to that plan is the document's statement
+and is not checked, as a withdrawal is not. Where a header carries both lines, the successor is
+followed and the withdrawal is not read.
 
 A plan that was dropped and replaced by nothing:
 
@@ -34,8 +36,9 @@ It is reported as withdrawn with the reason it gives. The check cannot tell whet
 true and says so; what it adds is that the plan is still listed, under its own word, where
 deleting the commit line would have removed it from the report without a trace.
 
-Neither line does anything for a document that names a commit: that one is compared, and an edit
-to it is a finding whatever its header says.
+Neither line excuses a document that names a commit: that one is compared. Its header is part
+of the compared text, so adding either line to it after the freeze is itself an edit, and is
+reported as changed.
 
 Leaving the record out is also the limit of the check. Text written onto the record line after
 the hash is not compared, as a `**Status:**` line is not hashed in a plan `prereg freeze` froze.
@@ -246,25 +249,48 @@ def _header_value(text: str, key: re.Pattern[str]) -> str | None:
     return None
 
 
-def successor(text: str) -> str | None:
-    """The path a document's header names as the document that replaced it, if it names one."""
+#: What a `**Withdrawn:**` line can hold without giving a reason: the words a template leaves
+#: behind. Compared with the value lowered and stripped of everything but letters.
+NOT_A_REASON = frozenset(
+    {"", "no", "none", "na", "nil", "tbd", "todo", "yes", "true", "false", "pending", "unknown"}
+)
+
+
+def successor(text: str) -> tuple[str | None, str | None]:
+    """The path a document's header names as the document that replaced it, and, where the line
+    is there and names nothing, what to say about that."""
     value = _header_value(text, SUPERSEDED_BY)
-    if not value:
-        return None
+    if value is None:
+        return None, None
     link = _LINK.match(value)
-    return (link.group(1) if link else value.strip("`*_ ")).strip() or None
+    # Backticks only: an underscore or an asterisk can open a real file name.
+    named = (link.group(1) if link else value.strip().strip("`")).strip()
+    if not named:
+        return None, "its `Superseded by` line names no document"
+    return named, None
 
 
-def withdrawal(text: str) -> str | None:
-    """The reason a document's header gives for having been withdrawn, if it gives one.
+def withdrawal(text: str) -> tuple[str | None, str | None]:
+    """The reason a document's header gives for having been withdrawn, and, where the line is
+    there and gives none, what to say about that.
 
-    A `**Withdrawn:**` line with nothing after it gives none, and the document stays pending.
+    A reason is words. A line left empty, or holding what a template leaves behind (`no`, `N/A`,
+    `TBD`, a dash), would turn a plan awaiting its freeze into one that exits 0, so it is
+    refused and the document stays pending.
     """
-    return _header_value(text, WITHDRAWN_LINE) or None
+    value = _header_value(text, WITHDRAWN_LINE)
+    if value is None:
+        return None, None
+    if re.sub(r"[^a-z]", "", value.lower()) in NOT_A_REASON:
+        return None, f"its `Withdrawn` line gives no reason: {value or '(empty)'}"
+    return value, None
 
 
 def _dispositions(
-    found: list[Pinned], successors: dict[pathlib.Path, str], withdrawn: dict[pathlib.Path, str]
+    found: list[Pinned],
+    successors: dict[pathlib.Path, str],
+    withdrawn: dict[pathlib.Path, str],
+    unreadable: dict[pathlib.Path, tuple[str, ...]],
 ) -> list[Pinned]:
     """Report a pending document as superseded or withdrawn where its header says which.
 
@@ -293,7 +319,7 @@ def _dispositions(
         if step is None:
             reason = withdrawn.get(d.path)
             if reason is None:
-                out.append(d)
+                out.append(Pinned(d.path, PENDING, "", (*d.detail, *unreadable.get(d.path, ()))))
             else:
                 said = f"a plan never frozen; withdrawn, as the document says and not checked: {reason}"
                 out.append(Pinned(d.path, WITHDRAWN, "", (said,)))
@@ -316,7 +342,7 @@ def _dispositions(
             names = ", then ".join(str(c.path) for c in chain[1:])
             status = WITHDRAWN if head.status == PENDING and head.path in withdrawn else head.status
             at = f" at {head.commit}" if head.commit else ""
-            by = f"a draft never frozen; superseded by {names}, which is {status}{at}"
+            by = f"a draft never frozen; says it is superseded by {names}, which is {status}{at}"
             out.append(Pinned(d.path, SUPERSEDED, "", (by,)))
     return out
 
@@ -330,6 +356,7 @@ def check_below(here: pathlib.Path) -> list[Pinned]:
     found = []
     successors: dict[pathlib.Path, str] = {}
     withdrawn: dict[pathlib.Path, str] = {}
+    unreadable: dict[pathlib.Path, tuple[str, ...]] = {}
     for name in sorted(filter(None, (listed or "").split("\0"))):
         path = pathlib.Path(name)
         if path.name == PREREG or not (here / path).is_file():
@@ -338,10 +365,13 @@ def check_below(here: pathlib.Path) -> list[Pinned]:
         body, values, statuses = split_record(text)
         if values:
             found.append(check_document(here, path, body, values, statuses))
-            named = successor(text)
+            named, no_successor = successor(text)
             if named:
                 successors[path] = named
-            reason = withdrawal(text)
+            reason, no_reason = withdrawal(text)
             if reason:
                 withdrawn[path] = reason
-    return _dispositions(found, successors, withdrawn)
+            notes = tuple(note for note in (no_successor, no_reason) if note)
+            if notes:
+                unreadable[path] = notes
+    return _dispositions(found, successors, withdrawn, unreadable)

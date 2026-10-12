@@ -375,8 +375,11 @@ directory:
 A plan is one chain of drafts. The draft is listed as `superseded`, and the document at the end
 of its chain is listed with its own result: `unchanged` where it was frozen and holds,
 `pending` where the plan still awaits its freeze, `CHANGED` where its frozen text was edited.
-So nothing is excused, and a plan with three drafts counts once. A draft that names a file this
-check does not list, or whose chain comes back to itself, stays `pending` and says why.
+So a plan with three drafts counts once, and its result is its newest document's. That the
+draft belongs to that plan is the draft's own statement and is not checked. A draft that names
+a file this check does not list, or whose chain comes back to itself, or whose line names
+nothing, stays `pending` and says why. Where a header carries both lines, the successor is
+followed and the withdrawal is not read.
 
 A plan that was dropped and replaced by nothing says so and gives the reason:
 
@@ -387,10 +390,12 @@ A plan that was dropped and replaced by nothing says so and gives the reason:
 It is listed as `withdrawn` with that reason, marked as the document's own statement. The check
 cannot tell whether a plan was really dropped. What the line adds is the listing: deleting the
 commit line would remove the plan from this report without a trace, and this keeps it in view.
-A `**Withdrawn:**` line with no reason leaves the plan `pending`.
+A `**Withdrawn:**` line left empty, or holding what a template leaves behind (`no`, `N/A`,
+`TBD`, a dash), leaves the plan `pending` and says so.
 
-Neither line does anything for a document whose commit line names a commit: that document is
-compared, and an edit to it is `CHANGED` whatever its header says.
+Neither line excuses a document whose commit line names a commit: that document is compared.
+Its header is part of the compared text, so adding either line to it after the freeze is itself
+an edit and is reported as `CHANGED`.
 
 `pending` and `unknown commit` are not passes. A shallow clone, a rewritten history and a commit
 of another repository all read as `unknown commit`, and none of them says the document changed.
