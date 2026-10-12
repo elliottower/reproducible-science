@@ -535,3 +535,68 @@ def test_a_successor_whose_name_opens_with_an_underscore_is_found(repo, check):
     code, out = check()
     assert code == 0
     assert "superseded   PREREGISTRATION_predraft.md" in out
+
+
+def withdrawn_elsewhere(repo, text):
+    (repo / "PREREGISTRATION_predraft.md").write_text(text)
+    commit(repo)
+
+
+def test_a_withdrawal_written_below_the_header_is_the_plans_own_text(repo, check):
+    withdrawn_elsewhere(
+        repo, PLAN.replace("## Deviations", "**Withdrawn:** the arm was never run\n\n## Deviations")
+    )
+    code, out = check()
+    assert code == 2
+    assert "pending      PREREGISTRATION_predraft.md" in out
+    assert "withdrawn    " not in out
+
+
+def test_a_withdrawal_inside_a_fenced_block_is_an_example(repo, check):
+    fenced = "```\n**Withdrawn:** the arm was never run\n```\n\n"
+    withdrawn_elsewhere(repo, PLAN.replace("**Commit SHA:**", fenced + "**Commit SHA:**"))
+    code, out = check()
+    assert code == 2
+    assert "pending      PREREGISTRATION_predraft.md" in out
+    assert "withdrawn    " not in out
+
+
+def test_a_chain_ending_on_a_withdrawn_plan_says_so_and_exits_clean(repo, check):
+    draft(
+        repo, successor="the arm was never run", name="PREREGISTRATION_v2_DRAFT.md", key="Withdrawn"
+    )
+    draft(repo, successor="PREREGISTRATION_v2_DRAFT.md")
+    code, out = check()
+    assert code == 0
+    assert "withdrawn    PREREGISTRATION_v2_DRAFT.md" in out
+    assert "says it is superseded by PREREGISTRATION_v2_DRAFT.md, which is withdrawn" in out
+    assert "0 pending, 0 unknown commit, 1 superseded, 1 withdrawn" in out
+
+
+@pytest.mark.parametrize("named", ["MISSING.md", ""])
+def test_a_withdrawal_does_not_rescue_a_draft_whose_successor_cannot_be_followed(
+    repo, check, named
+):
+    both = f"**Superseded by:** {named}\n**Withdrawn:** the arm was never run\n\n"
+    withdrawn_elsewhere(repo, PLAN.replace("**Commit SHA:**", both + "**Commit SHA:**"))
+    code, out = check()
+    assert code == 2
+    assert "pending      PREREGISTRATION_predraft.md" in out
+    assert "withdrawn    " not in out
+    assert ("names no document" if not named else "not a registration checked here") in out
+
+
+@pytest.mark.parametrize("reason", ["план отменён до запуска", "该计划在运行前被放弃"])
+def test_a_reason_in_another_script_is_a_reason(repo, check, reason):
+    draft(repo, successor=reason, key="Withdrawn")
+    code, out = check()
+    assert code == 0
+    assert f"not checked: {reason}" in out
+
+
+@pytest.mark.parametrize("value", ["not applicable", "TBA", "Not Applicable."])
+def test_more_template_words_are_not_reasons(repo, check, value):
+    draft(repo, successor=value, key="Withdrawn")
+    code, out = check()
+    assert code == 2
+    assert f"its `Withdrawn` line gives no reason: {value}" in out

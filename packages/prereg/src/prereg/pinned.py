@@ -26,7 +26,8 @@ end of its chain carries the result: unchanged where it was frozen and holds, pe
 plan is still awaiting its freeze, changed where the frozen text was edited. The plan is counted
 once instead of once per draft. That the draft belongs to that plan is the document's statement
 and is not checked, as a withdrawal is not. Where a header carries both lines, the successor is
-followed and the withdrawal is not read.
+followed and the withdrawal is not read, including where the successor line names nothing or
+names a file this check does not list: the draft stays pending.
 
 A plan that was dropped and replaced by nothing:
 
@@ -250,9 +251,26 @@ def _header_value(text: str, key: re.Pattern[str]) -> str | None:
 
 
 #: What a `**Withdrawn:**` line can hold without giving a reason: the words a template leaves
-#: behind. Compared with the value lowered and stripped of everything but letters.
+#: behind. Compared with the value case-folded and stripped of everything but letters, of any
+#: script: a reason written in Cyrillic or in Chinese is a reason.
 NOT_A_REASON = frozenset(
-    {"", "no", "none", "na", "nil", "tbd", "todo", "yes", "true", "false", "pending", "unknown"}
+    {
+        "",
+        "no",
+        "none",
+        "na",
+        "notapplicable",
+        "nil",
+        "tbd",
+        "tba",
+        "tbc",
+        "todo",
+        "yes",
+        "true",
+        "false",
+        "pending",
+        "unknown",
+    }
 )
 
 
@@ -281,7 +299,7 @@ def withdrawal(text: str) -> tuple[str | None, str | None]:
     value = _header_value(text, WITHDRAWN_LINE)
     if value is None:
         return None, None
-    if re.sub(r"[^a-z]", "", value.lower()) in NOT_A_REASON:
+    if "".join(c for c in value.casefold() if c.isalpha()) in NOT_A_REASON:
         return None, f"its `Withdrawn` line gives no reason: {value or '(empty)'}"
     return value, None
 
@@ -369,7 +387,10 @@ def check_below(here: pathlib.Path) -> list[Pinned]:
             if named:
                 successors[path] = named
             reason, no_reason = withdrawal(text)
-            if reason:
+            # A header with a `Superseded by` line says the plan was replaced. Where that line
+            # names nothing, a withdrawal beside it is not read either, so the document stays
+            # pending with the note on the line that could not be followed.
+            if reason and not named and not no_successor:
                 withdrawn[path] = reason
             notes = tuple(note for note in (no_successor, no_reason) if note)
             if notes:

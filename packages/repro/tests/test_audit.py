@@ -500,6 +500,36 @@ def test_a_cache_below_another_projects_plan_is_refused(repo, run_audit, tmp_pat
             ),
         ),
         (
+            ["prereg", "check"],
+            0,
+            "withdrawn PREREGISTRATION.md\n"
+            "  a plan never frozen; withdrawn, as the document says and not checked: no arm ran\n\n"
+            "1 commit-pinned: 0 unchanged, 0 appended, 0 changed, 0 pending, 0 unknown commit, "
+            "1 withdrawn",
+            (
+                audit.COULD_NOT,
+                "1 commit-pinned: 0 unchanged, 0 appended, 0 changed, 0 pending, 0 unknown commit, "
+                "1 withdrawn",
+                "1 withdrawn",
+            ),
+        ),
+        (
+            ["prereg", "check"],
+            0,
+            "unchanged PREREGISTRATION.md at 12ea0ed\n"
+            "superseded PREREGISTRATION_DRAFT.md\n"
+            "  a draft never frozen; says it is superseded by PREREGISTRATION.md, which is "
+            "unchanged at 12ea0ed\n\n"
+            "2 commit-pinned: 1 unchanged, 0 appended, 0 changed, 0 pending, 0 unknown commit, "
+            "1 superseded",
+            (
+                audit.PASSED,
+                "2 commit-pinned: 1 unchanged, 0 appended, 0 changed, 0 pending, 0 unknown commit, "
+                "1 superseded",
+                "",
+            ),
+        ),
+        (
             ["results", "verify"],
             2,
             "ValueError: a ledger line is not JSON",

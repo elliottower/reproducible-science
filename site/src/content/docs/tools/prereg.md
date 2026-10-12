@@ -379,7 +379,8 @@ So a plan with three drafts counts once, and its result is its newest document's
 draft belongs to that plan is the draft's own statement and is not checked. A draft that names
 a file this check does not list, or whose chain comes back to itself, or whose line names
 nothing, stays `pending` and says why. Where a header carries both lines, the successor is
-followed and the withdrawal is not read.
+followed and the withdrawal is not read, so a draft whose successor line names nothing or
+names a file this check does not list stays `pending` whatever its withdrawal says.
 
 A plan that was dropped and replaced by nothing says so and gives the reason:
 
@@ -391,7 +392,9 @@ It is listed as `withdrawn` with that reason, marked as the document's own state
 cannot tell whether a plan was really dropped. What the line adds is the listing: deleting the
 commit line would remove the plan from this report without a trace, and this keeps it in view.
 A `**Withdrawn:**` line left empty, or holding what a template leaves behind (`no`, `N/A`,
-`TBD`, a dash), leaves the plan `pending` and says so.
+`TBD`, a dash), leaves the plan `pending` and says so. `prereg check` exits 0 on a withdrawn plan.
+`repro audit` reads the same report and counts the withdrawal as not measured, so it exits 2
+there.
 
 Neither line excuses a document whose commit line names a commit: that document is compared.
 Its header is part of the compared text, so adding either line to it after the freeze is itself
