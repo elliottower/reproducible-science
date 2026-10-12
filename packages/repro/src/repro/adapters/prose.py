@@ -62,6 +62,18 @@ CARDINALS = _cardinals()
 #: parses, which is what reads the value in `_is_decimal` here and in `repro.verify`. The comma
 #: is not: `Decimal("1,234")` is refused. It is here because a document prints `1,234`, and an
 #: anchor that cut it at the comma would have `1` read as the value.
+#:
+#: A match counts only where no letter stands immediately before it. Digits attached to a
+#: letter are part of a name -- the version `v0.5`, the label `H10` -- and an anchor may fall
+#: among them. Punctuation does not make a name: `x=0.459`, `(0.459` and `p<0.05` hold numbers,
+#: and so does a number with letters after it, `5kg`.
+#:
+#: A sign immediately before the digits belongs to the number where it opens the run or follows
+#: a character that is neither a digit nor a letter: `x=-0.42`, `(-0.42)`, `| -0.42|`. After a
+#: digit or a letter it is a range, a subtraction or a hyphen, `10-12` and `pre-2020`, and the
+#: digits after it are a number of their own. `passage_fold` has already written U+2212 and
+#: the dashes as `-` by the time this is read; the character is listed for a caller that has not.
+_SIGNS = "+-\u2212"
 _NUMBER = re.compile(r"\d+(?:_\d+)*(?:[.,]\d+(?:_\d+)*)*(?:[eE][+-]?\d+)?")
 
 
@@ -74,8 +86,15 @@ def _split(text: str, at: int) -> str:
     while hi < len(text) and not text[hi].isspace():
         hi += 1
     for number in _NUMBER.finditer(text, lo, hi):
-        if number.start() < at < number.end():
-            return number.group()
+        first = number.start()
+        if first > lo and text[first - 1].isalpha():
+            continue
+        if first > lo and text[first - 1] in _SIGNS:
+            sign = first - 1
+            if sign == lo or not text[sign - 1].isalnum():
+                first = sign
+        if first < at < number.end():
+            return text[first : number.end()]
     return ""
 
 
@@ -181,7 +200,10 @@ def _spans(text: str, before: str, after: str) -> tuple[list[str], list[str]]:
     Neither anchor may fall inside a number. `after: "9"` does not read `0.459` as `0.45`, the
     first full stop in `3.14.` is passed over for the second, and `before: "0.4"` does not
     read `59`. An occurrence refused on those grounds yields no value, and the number it
-    would have split is returned so the report can say why.
+    would have split is returned so the report can say why. Digits attached to a preceding
+    letter are a name, so `before: "v0."` reads `5` from `v0.5`. A sign is part of its number
+    unless a digit or a letter precedes it, so `before: "x=-"` reads nothing from `x=-0.42`
+    and `before: "10-"` reads `12` from `10-12`.
 
     Whitespace at an anchor boundary is ignored, on the same grounds `fold` collapses it
     everywhere else: `before: "holds"` and `before: "holds "` address the same value, and a

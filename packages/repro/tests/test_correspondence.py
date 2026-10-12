@@ -537,6 +537,20 @@ def test_the_first_full_stop_inside_a_number_is_passed_over_for_the_one_that_end
         ("Delta was 0.459 rows.\n", "0.4", "rows", "0.459"),
         ("Delta was 0.459 rows.\n", "was 0.", "", "0.459"),
         ("We kept 1,234 items.\n", "kept 1,", "items", "1,234"),
+        ("Here x=0.459 rows.\n", "x=0.4", "", "0.459"),
+        ("Here (0.459 rows.\n", "(0.4", "", "0.459"),
+        ("Here p<0.05 held.\n", "p<0.", "", "0.05"),
+        ("Here run_0.459 rows.\n", "run_0.4", "", "0.459"),
+        ("Mass was 12.5kg total.\n", "Mass was", ".5kg", "12.5"),
+        ("Delta was 0.459rows here.\n", "Delta was", "9rows", "0.459"),
+        ("Here x=-0.42 held.\n", "x=-", "", "-0.42"),
+        ("## | -0.42| 0.1|\n", "| -", "|", "-0.42"),
+        ("Effect (-0.42) held.\n", "(-", ")", "-0.42"),
+        ("Here x=+3 held.\n", "x=+", "", "+3"),
+        ("Effect was \u22120.42 overall.\n", "Effect was \u2212", "", "-0.42"),
+        ("\u22120.42 was the effect.\n", "\u2212", "", "-0.42"),
+        ("Effect was -0.42 overall.\n", "Effect was", "0.42", "-0.42"),
+        ("Build v-0.5 released.\n", "v-0.", "", "0.5"),
     ],
 )
 def test_an_anchor_never_splits_a_number(tmp_path, doc, before, after, number):
@@ -547,6 +561,46 @@ def test_an_anchor_never_splits_a_number(tmp_path, doc, before, after, number):
     assert decision.outcome is Outcome.NOT_FOUND
     assert decision.extraction_digest == UNKNOWN, "no part of the number was read"
     assert f"would split {number}" in decision.detail
+
+
+@pytest.mark.parametrize(
+    ("doc", "before", "after", "read"),
+    [
+        ("Build v0.5 released today.\n", "v0.", "", "5"),
+        ("Build v0.5 released today.\n", "v0.", "released", "5"),
+        ("Here H10 holds for all.\n", "H1", "", "0"),
+        ("Build v0.5 released today.\n", "Build v", ".5", "0"),
+        ("Layer x2 scored well.\n", "Layer x", "", "2"),
+    ],
+)
+def test_digits_attached_to_a_letter_are_a_name_an_anchor_may_fall_inside(
+    tmp_path, doc, before, after, read
+):
+    decision = printed(tmp_path, read, before, after, doc=doc)
+    assert decision.outcome is Outcome.VERIFIED
+    assert decision.extraction_digest == Digest.of_text(read).value
+
+
+@pytest.mark.parametrize(
+    ("doc", "before", "after", "reported", "read"),
+    [
+        ("Here x=-0.42 held.\n", "x=", "", "-0.42", "-0.42"),
+        ("## | -0.42| 0.1|\n", "## |", "|", "-0.42", "-0.42"),
+        ("Effect (-0.42) held.\n", "(", ")", "-0.42", "-0.42"),
+        ("Here x=+3 held.\n", "x=", "", "3", "+3"),
+        ("Effect was \u22120.42 overall.\n", "Effect was", "", "-0.42", "-0.42"),
+        ("Rows 10-12 were kept.\n", "10-", "", "12", "12"),
+        ("Rows 10\u201312 were kept.\n", "10\u2013", "", "12", "12"),
+        ("Data pre-2020 were kept.\n", "pre-", "", "2020", "2020"),
+        ("Build v-0.5 released.\n", "v-", "", "0.5", "0.5"),
+    ],
+)
+def test_a_sign_belongs_to_its_number_unless_a_digit_or_a_letter_precedes_it(
+    tmp_path, doc, before, after, reported, read
+):
+    decision = printed(tmp_path, reported, before, after, doc=doc)
+    assert decision.outcome is Outcome.VERIFIED
+    assert decision.extraction_digest == Digest.of_text(read).value
 
 
 def test_a_bare_divider_between_two_different_cells_is_ambiguous(tmp_path):

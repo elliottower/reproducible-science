@@ -136,7 +136,8 @@ single spaces whatever the file's padding and may run across lines.
   `value_not_numeric` with the text that was read. The same holds for `93.1%` and for a number
   that ends a sentence, `3.14.`, which `after: "."` reads as `3.14`. An anchor cannot split a
   number: `after: "9"` on `0.459` and `before: "0.4"` read nothing, and the output names the
-  number.
+  number. A sign is part of its number unless a digit or letter precedes it (`10-12`), and
+  digits attached to a letter (`v0.5`, `H10`) are a name.
 - **`before` is the row's leading cells**, with enough of the header or group label to be the
   only such row. Anchors selecting two different numbers are `passage_ambiguous`; the same
   number twice is fine.

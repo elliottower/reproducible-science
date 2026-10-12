@@ -272,6 +272,10 @@ them. `after: "9"` over `0.459 rows` reads nothing where a cut would read `0.45`
 full stop of `3.14.` is passed over for the second, and `before: "0.4"` does not read `59`. An
 occurrence refused this way yields no value, so where no other occurrence resolves the
 assertion is `passage_absent` and its detail names the number the anchor would have split.
+Digits attached to a preceding letter, as in `v0.5` or `H10`, are a name and not a number, so
+`before: "v0."` reads `5`. A sign belongs to its number unless a digit or a letter precedes
+it: `before: "x=-"` reads nothing from `x=-0.42`, and `before: "10-"` still reads `12` from
+`10-12`.
 
 ```yaml
 locator: {kind: prose, before: "| 3|", after: "|"}      # 0.459

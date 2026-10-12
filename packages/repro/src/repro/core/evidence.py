@@ -213,6 +213,9 @@ class ProseLocator(Locator):
     An anchor never splits a number: `after` may not begin, and `before` may not end, inside
     a run of digits joined by a decimal point, a grouping comma or underscore, or an exponent.
     `after: "9"` over `0.459` reads nothing, never `0.45`, and `before: "0.4"` never `59`.
+    Digits attached to a preceding letter, `v0.5` or `H10`, are a name and not a number. A
+    sign belongs to its number unless a digit or a letter precedes it, so `before: "x=-"`
+    reads nothing from `x=-0.42` and `before: "10-"` reads `12` from `10-12`.
     """
 
     kind: Literal["prose"] = "prose"
