@@ -1,0 +1,18 @@
+{
+  "outcomes": [
+    "not_found"
+  ],
+  "reasons": [
+    "passage_absent"
+  ],
+  "artifacts": {
+    "out": "authoritative"
+  },
+  "stages": [
+    [
+      "completed",
+      "absent",
+      "not_applicable"
+    ]
+  ]
+}

@@ -1,0 +1,21 @@
+schema_version: repro/1
+project: prose_table_cell_not_numeric
+artifacts:
+- id: out
+  path: output.txt
+  digest:
+    algorithm: sha256
+    value: 0e87dae0cbcf4347251a144fc9e2c59644cc91f66698850f5985584aca2e23c8
+claims:
+- id: c
+  text: t
+  evidence:
+  - kind: value
+    artifact: out
+    name: delta
+    reported: '0.459'
+    locator:
+      kind: prose
+      before: '| 3|'
+      after: ''
+      form: decimal

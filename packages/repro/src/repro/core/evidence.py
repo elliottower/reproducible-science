@@ -204,9 +204,18 @@ class ProseLocator(Locator):
     fixtures`) needs an escaping grammar for the brace, which LaTeX sources are full of. Two
     literal anchors need neither.
 
-    The value is the maximal run of non-whitespace characters that follows `before`, and
-    `after` must follow it immediately. A value containing a space is not addressable this
-    way, which bounds `cardinal_word` to numbers written as one word.
+    The value is a run of non-whitespace characters following `before`: the whole run up to
+    the next whitespace where `after` begins past it or is empty, and otherwise the run cut at
+    the first place inside it where `after` begins. A cell printed against its divider,
+    `0.459|`, is addressed with `after: "|"`. A value containing a space is not addressable
+    this way, which bounds `cardinal_word` to numbers written as one word.
+
+    An anchor never splits a number: `after` may not begin, and `before` may not end, inside
+    a run of digits joined by a decimal point, a grouping comma or underscore, or an exponent.
+    `after: "9"` over `0.459` reads nothing, never `0.45`, and `before: "0.4"` never `59`.
+    Digits attached to a preceding letter, `v0.5` or `H10`, are a name and not a number. A
+    sign belongs to its number unless a digit or a letter precedes it, so `before: "x=-"`
+    reads nothing from `x=-0.42` and `before: "10-"` reads `12` from `10-12`.
     """
 
     kind: Literal["prose"] = "prose"
@@ -217,8 +226,10 @@ class ProseLocator(Locator):
     document."""
 
     after: str = ""
-    """Literal text immediately following the value. Empty means the value runs to the next
-    whitespace, which is enough where the number ends the sentence."""
+    """Literal text immediately following the value, with or without whitespace between.
+    Empty means the value runs to the next whitespace, so a character printed against the
+    number -- a table divider, a full stop, a percent sign -- is part of what is read unless
+    `after` names it."""
 
     form: NumberForm = NumberForm.DECIMAL
 

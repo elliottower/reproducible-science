@@ -47,6 +47,116 @@ claims:
         reported: "0.031"
 ```
 
+## What can be declared
+
+Five kinds of evidence. Each names an `artifact` by id, except `correspondence`, which names
+one per side. `reported` is the number as the manuscript prints it, always a quoted string:
+`"3.20"` is compared at two decimals and `"3.2"` at one.
+
+| kind | asserts | fields |
+|---|---|---|
+| `metric` | a JSON or YAML file holds this number at a pointer | `name`, `reported`, `pointer` |
+| `table` | a table holds this number in a cell | `name`, `reported`, `column`, and `where` or `row`; optional `delimiter` |
+| `value` | a file holds this number at a locator, in any format below | `name`, `reported`, `locator` |
+| `quote` | this passage occurs in the text of a document | `text`; optional `page` (checked), `section` (recorded only) |
+| `correspondence` | two artifacts hold the same number, neither written in the manifest | `name`, `sides`: two of `{name, artifact, locator}` |
+
+The four that compare a number take `mode` and `tolerance`: `printed_precision` (the default,
+round to the digits `reported` prints), `absolute`, or `relative`, with `tolerance` a quoted
+string. A `correspondence` has no `relative`.
+
+```yaml
+- {kind: metric, artifact: results, name: p, reported: "0.031", pointer: /primary/p}
+- {kind: table, artifact: models, name: accuracy, reported: "0.648", column: accuracy, where: {model: lasso}}
+- {kind: quote, artifact: paper, text: "We enrolled eighteen sites across the two regions."}
+- kind: correspondence
+  name: participants
+  sides:
+    - {name: stated, artifact: paper, locator: {kind: prose, before: "We analysed", after: "participants"}}
+    - {name: measured, artifact: results, locator: {kind: tree, pointer: /primary/n}}
+```
+
+`metric` is short for a `value` with a `tree` locator, and `table` for one with a `table` or
+`table_position` locator. Everything else is a `value`:
+
+| locator | reads | fields |
+|---|---|---|
+| `tree` | `.json`, `.yaml`, `.yml` | `pointer`, RFC 6901 |
+| `table` | `.csv`, `.tsv`, `.psv`, delimited `.txt`; `.parquet`, `.feather`, `.arrow`; `.dta`, `.sav`, `.zsav`; `.rds` | `column`, `where`; optional `delimiter` |
+| `table_position` | the same | `column`, `row` counted from 0 below the header; passes with a warning |
+| `sheet` | `.xlsx`, `.xlsm`, `.xls` | `column`, `where`; `sheet`, required with more than one |
+| `sqlite` | `.db`, `.sqlite`, `.sqlite3` | `table`, `column`, `where` |
+| `array` | `.npy`, `.npz`, `.h5`, `.hdf5`, `.nc` | `index`; `array`, the name or dataset path, omitted for `.npy` |
+| `prose` | PDF, `.tex`, `.txt`, `.md`, `.rst`, `.html`, `.htm`, `.xml`, `.tei`, `.py` | `before`; optional `after`, `form` |
+
+```yaml
+- {kind: value, artifact: results, name: n, reported: "480", locator: {kind: tree, pointer: /primary/n}}
+- {kind: value, artifact: models, name: accuracy, reported: "0.641", locator: {kind: table_position, column: accuracy, row: 1}}
+- {kind: value, artifact: tables, name: auc, reported: "0.71", locator: {kind: sheet, sheet: Table 2, column: auc, where: {model: lasso}}}
+- {kind: value, artifact: runs, name: loss, reported: "0.218", locator: {kind: sqlite, table: runs, column: loss, where: {seed: 3}}}
+- {kind: value, artifact: acc, name: accuracy, reported: "0.95", locator: {kind: array, index: [1, 1]}}
+```
+
+`where` must match exactly one row; none is absent and two is ambiguous, never the first. The
+columnar, workbook, array and HDF5 formats each need an extra, which an `unchecked` result
+names. No locator takes a pattern, and a pickle is never opened.
+
+## A number in a printed table or in running text
+
+A `prose` locator is two literal anchors: `before` is the text that precedes the number and
+`after` the text that follows it. The value is the run of non-whitespace characters between
+them. Anchors and document are both lower-cased with every run of spaces and line breaks
+folded to one space before matching, the folding a `quote` gets, so an anchor is written with
+single spaces whatever the file's padding and may run across lines.
+
+```text
+## $north
+##
+## | N (studies)| Delta|    se|   pval|
+## |-----------:|-----:|-----:|------:|
+## |           3| 0.459| 0.124| 0.0655|
+```
+
+```yaml
+- kind: value
+  artifact: output
+  name: Delta (north)
+  reported: "0.459"
+  locator:
+    kind: prose
+    before: "$north ## ## | N (studies)| Delta| se| pval| ## |-----------:|-----:|-----:|------:| ## | 3|"
+    after: "|"
+- {kind: value, artifact: output, name: se (north), reported: "0.124", locator: {kind: prose, before: "| 3| 0.459|", after: "|"}}
+- {kind: value, artifact: output, name: accuracy, reported: "93.1", locator: {kind: prose, before: "held-out split was", after: "%"}}
+- {kind: value, artifact: output, name: sites, reported: "18", locator: {kind: prose, before: "We enrolled", after: "sites", form: cardinal_word}}
+```
+
+- **Name what touches the number.** A cell is printed against its divider, so `after: "|"`.
+  With `after` left out the value runs to the next whitespace and is `0.459|`, reported as
+  `value_not_numeric` with the text that was read. The same holds for `93.1%` and for a number
+  that ends a sentence, `3.14.`, which `after: "."` reads as `3.14`. An anchor cannot split a
+  number: `after: "9"` on `0.459` and `before: "0.4"` read nothing, and the output names the
+  number. A sign is part of its number unless a digit or letter precedes it (`10-12`), and
+  digits attached to a letter (`v0.5`, `H10`) are a name.
+- **`before` is the row's leading cells**, with enough of the header or group label to be the
+  only such row. Anchors selecting two different numbers are `passage_ambiguous`; the same
+  number twice is fine.
+- **A number written as a word** is refused with `number_as_word` until the locator says
+  `form: cardinal_word`, which reads one word below one hundred.
+- **`.html` and `.xml` are read as source**, tags and entities included: a table marked up as
+  `<td>` cells has `</td>` after the number, and `<` in the text is `&lt;`.
+
+## When a quote is the fallback
+
+A `quote` passes where the passage, folded the same way, occurs once in the document. Use it
+for what a source says in words, and for a number only where no locator reaches it: a value
+with a space inside it (`1 234`, `one hundred and five`), or a file whose text cannot be
+anchored on both sides. It establishes that the passage is there. It reads no number, so
+nothing is compared at printed precision, a `correspondence` cannot use it, and a longer
+number containing the quoted one satisfies it: `"accuracy of 0.9"` occurs in a source
+reporting 0.95. Quote the whole row or sentence, and prefer a `value` wherever two anchors
+fit.
+
 ## Reading the output
 
 ```text

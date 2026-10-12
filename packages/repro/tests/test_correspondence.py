@@ -386,6 +386,235 @@ def test_a_prose_locator_addresses_a_value_without_a_correspondence(tmp_path):
     assert only(path).outcome is Outcome.VERIFIED
 
 
+PRINTED = (
+    "## $north\n"
+    "##\n"
+    "## | N (studies)| Delta|    se|   pval|\n"
+    "## |-----------:|-----:|-----:|------:|\n"
+    "## |           3| 0.459| 0.124| 0.0655|\n"
+    "##\n"
+    "## $south\n"
+    "##\n"
+    "## | N (studies)| Delta|    se|   pval|\n"
+    "## |-----------:|-----:|-----:|------:|\n"
+    "## |           5| 0.212|   n/a| 0.0412|\n"
+)
+
+
+def printed(tmp_path, reported, before, after="", doc=PRINTED):
+    """The decision for one value read out of printed text by a prose locator."""
+    (tmp_path / "output.txt").write_text(doc)
+    manifest = {
+        "schema_version": "repro/1",
+        "project": "t",
+        "artifacts": [{"id": "out", "path": "output.txt"}],
+        "claims": [
+            {
+                "id": "c",
+                "text": "t",
+                "evidence": [
+                    {
+                        "kind": "value",
+                        "artifact": "out",
+                        "name": "m",
+                        "reported": reported,
+                        "locator": {"kind": "prose", "before": before, "after": after},
+                    }
+                ],
+            }
+        ],
+    }
+    path = tmp_path / "repro.yaml"
+    path.write_text(yaml.safe_dump(manifest, sort_keys=False))
+    return only(path)
+
+
+@pytest.mark.parametrize(
+    ("reported", "before"),
+    [
+        ("0.459", "| 3|"),
+        ("0.124", "| 3| 0.459|"),
+        ("0.0655", "$north ## ## | N (studies)| Delta| se| pval| ## | 3| 0.459| 0.124|"),
+        ("0.212", "| 5|"),
+    ],
+)
+def test_a_cell_of_a_printed_table_is_bound_by_its_leading_cells_and_its_divider(
+    tmp_path, reported, before
+):
+    doc = PRINTED.replace("## |-----------:|-----:|-----:|------:|\n", "")
+    decision = printed(tmp_path, reported, before, "|", doc=doc)
+    assert decision.outcome is Outcome.VERIFIED
+    assert decision.reason is Reason.VALUE_MATCH
+    assert decision.extraction is ExtractionStatus.EXTRACTED
+
+
+def test_a_cell_bound_by_its_divider_is_compared_and_can_disagree(tmp_path):
+    decision = printed(tmp_path, "0.495", "| 3|", "|")
+    assert decision.outcome is Outcome.MISMATCH
+    assert decision.reason is Reason.VALUE_MISMATCH
+    assert "0.459" in decision.detail
+
+
+def test_anchors_written_on_one_line_match_text_broken_over_several(tmp_path):
+    before = (
+        "## $north ## ## | N (studies)| Delta| se| pval| "
+        "## |-----------:|-----:|-----:|------:| ## | 3|"
+    )
+    assert printed(tmp_path, "0.459", before, "| 0.124| 0.0655| ## ## $south").outcome is (
+        Outcome.VERIFIED
+    )
+
+
+def test_a_leading_anchor_the_text_does_not_hold_is_absent(tmp_path):
+    decision = printed(tmp_path, "0.459", "| 4|", "|")
+    assert decision.reason is Reason.PASSAGE_ABSENT
+    assert decision.extraction is ExtractionStatus.ABSENT
+    assert decision.comparison is ComparisonStatus.NOT_APPLICABLE
+    assert decision.outcome is Outcome.NOT_FOUND
+
+
+def test_a_trailing_anchor_that_does_not_follow_the_value_is_absent(tmp_path):
+    decision = printed(tmp_path, "0.459", "| 3|", "| 0.125|")
+    assert decision.reason is Reason.PASSAGE_ABSENT
+    assert decision.outcome is Outcome.NOT_FOUND
+
+
+@pytest.mark.parametrize(
+    ("before", "after", "read"),
+    [
+        ("| 5| 0.212|", "|", "n/a"),
+        ("| 3|", "", "0.459|"),
+        ("| 3|", "0.124|", "0.459|"),
+    ],
+)
+def test_text_between_found_anchors_that_is_not_a_number_keeps_its_own_reason(
+    tmp_path, before, after, read
+):
+    decision = printed(tmp_path, "0.459", before, after)
+    assert decision.reason is Reason.VALUE_NOT_NUMERIC
+    assert decision.extraction is ExtractionStatus.INVALID
+    assert decision.comparison is ComparisonStatus.NOT_APPLICABLE
+    assert decision.outcome is Outcome.NOT_FOUND
+    assert f"'{read}'" in decision.detail, "the refusal has to show what was read"
+
+
+@pytest.mark.parametrize(
+    ("doc", "before", "after", "reported"),
+    [
+        ("## | 3| 0.459| 0.124|\n", "| 3|", "|", "0.459"),
+        ("|3|0.459|0.124|\n", "|3|", "|", "0.459"),
+        ("Accuracy was 93.1% overall.\n", "Accuracy was", "%", "93.1"),
+        ("The ratio is 3.14.\n", "ratio is", ".", "3.14"),
+        ("The dose was 12.5(3) mg.\n", "dose was", "(", "12.5"),
+        ("Loss fell to 2.5e-3. Then rose.\n", "fell to", ".", "2.5e-3"),
+    ],
+)
+def test_a_trailing_anchor_cuts_the_run_where_it_touches_the_number(
+    tmp_path, doc, before, after, reported
+):
+    decision = printed(tmp_path, reported, before, after, doc=doc)
+    assert decision.outcome is Outcome.VERIFIED
+    assert decision.extraction_digest == Digest.of_text(reported).value
+
+
+def test_the_first_full_stop_inside_a_number_is_passed_over_for_the_one_that_ends_it(tmp_path):
+    # Cut at the first full stop the value would be 3, which agrees with a reported 3.0.
+    decision = printed(tmp_path, "3.0", "ratio is", ".", doc="The ratio is 3.14.\n")
+    assert decision.outcome is Outcome.MISMATCH
+    assert "3.14" in decision.detail
+
+
+@pytest.mark.parametrize(
+    ("doc", "before", "after", "number"),
+    [
+        ("Delta was 0.459 rows.\n", "Delta was", "9", "0.459"),
+        ("Delta was 0.459 rows.\n", "Delta was", ".", "0.459"),
+        ("Delta was 0.459 rows.\n", "Delta was", "459", "0.459"),
+        ("We kept 1,234 items.\n", "We kept", ",", "1,234"),
+        ("We kept 1_234 items.\n", "We kept", "_", "1_234"),
+        ("Loss fell to 2.5e-3 here.\n", "fell to", "e", "2.5e-3"),
+        ("Loss fell to 2.5e-3 here.\n", "fell to", "-", "2.5e-3"),
+        ("Delta was 0.459 rows.\n", "0.4", "rows", "0.459"),
+        ("Delta was 0.459 rows.\n", "was 0.", "", "0.459"),
+        ("We kept 1,234 items.\n", "kept 1,", "items", "1,234"),
+        ("Here x=0.459 rows.\n", "x=0.4", "", "0.459"),
+        ("Here (0.459 rows.\n", "(0.4", "", "0.459"),
+        ("Here p<0.05 held.\n", "p<0.", "", "0.05"),
+        ("Here run_0.459 rows.\n", "run_0.4", "", "0.459"),
+        ("Mass was 12.5kg total.\n", "Mass was", ".5kg", "12.5"),
+        ("Delta was 0.459rows here.\n", "Delta was", "9rows", "0.459"),
+        ("Here x=-0.42 held.\n", "x=-", "", "-0.42"),
+        ("## | -0.42| 0.1|\n", "| -", "|", "-0.42"),
+        ("Effect (-0.42) held.\n", "(-", ")", "-0.42"),
+        ("Here x=+3 held.\n", "x=+", "", "+3"),
+        ("Effect was \u22120.42 overall.\n", "Effect was \u2212", "", "-0.42"),
+        ("\u22120.42 was the effect.\n", "\u2212", "", "-0.42"),
+        ("Effect was -0.42 overall.\n", "Effect was", "0.42", "-0.42"),
+        ("Build v-0.5 released.\n", "v-0.", "", "0.5"),
+    ],
+)
+def test_an_anchor_never_splits_a_number(tmp_path, doc, before, after, number):
+    decision = printed(tmp_path, "0", before, after, doc=doc)
+    assert decision.reason is Reason.PASSAGE_ABSENT
+    assert decision.extraction is ExtractionStatus.ABSENT
+    assert decision.comparison is ComparisonStatus.NOT_APPLICABLE
+    assert decision.outcome is Outcome.NOT_FOUND
+    assert decision.extraction_digest == UNKNOWN, "no part of the number was read"
+    assert f"would split {number}" in decision.detail
+
+
+@pytest.mark.parametrize(
+    ("doc", "before", "after", "read"),
+    [
+        ("Build v0.5 released today.\n", "v0.", "", "5"),
+        ("Build v0.5 released today.\n", "v0.", "released", "5"),
+        ("Here H10 holds for all.\n", "H1", "", "0"),
+        ("Build v0.5 released today.\n", "Build v", ".5", "0"),
+        ("Layer x2 scored well.\n", "Layer x", "", "2"),
+    ],
+)
+def test_digits_attached_to_a_letter_are_a_name_an_anchor_may_fall_inside(
+    tmp_path, doc, before, after, read
+):
+    decision = printed(tmp_path, read, before, after, doc=doc)
+    assert decision.outcome is Outcome.VERIFIED
+    assert decision.extraction_digest == Digest.of_text(read).value
+
+
+@pytest.mark.parametrize(
+    ("doc", "before", "after", "reported", "read"),
+    [
+        ("Here x=-0.42 held.\n", "x=", "", "-0.42", "-0.42"),
+        ("## | -0.42| 0.1|\n", "## |", "|", "-0.42", "-0.42"),
+        ("Effect (-0.42) held.\n", "(", ")", "-0.42", "-0.42"),
+        ("Here x=+3 held.\n", "x=", "", "3", "+3"),
+        ("Effect was \u22120.42 overall.\n", "Effect was", "", "-0.42", "-0.42"),
+        ("Rows 10-12 were kept.\n", "10-", "", "12", "12"),
+        ("Rows 10\u201312 were kept.\n", "10\u2013", "", "12", "12"),
+        ("Data pre-2020 were kept.\n", "pre-", "", "2020", "2020"),
+        ("Build v-0.5 released.\n", "v-", "", "0.5", "0.5"),
+    ],
+)
+def test_a_sign_belongs_to_its_number_unless_a_digit_or_a_letter_precedes_it(
+    tmp_path, doc, before, after, reported, read
+):
+    decision = printed(tmp_path, reported, before, after, doc=doc)
+    assert decision.outcome is Outcome.VERIFIED
+    assert decision.extraction_digest == Digest.of_text(read).value
+
+
+def test_a_bare_divider_between_two_different_cells_is_ambiguous(tmp_path):
+    decision = printed(tmp_path, "0.459", "|", "|", doc="|0.459|0.124|\n")
+    assert decision.reason is Reason.PASSAGE_AMBIGUOUS
+    assert "0.459" in decision.detail and "0.124" in decision.detail
+
+
+def test_a_trailing_anchor_past_the_run_is_taken_before_one_inside_it(tmp_path):
+    decision = printed(tmp_path, "0.5", "share of", "% of", doc="A share of 0.5% % of all.\n")
+    assert decision.reason is Reason.VALUE_NOT_NUMERIC
+    assert "'0.5%'" in decision.detail
+
+
 def test_an_empty_leading_anchor_anchors_nothing():
     with pytest.raises(ValidationError):
         ProseLocator(before="", after="fixtures")

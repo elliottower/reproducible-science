@@ -44,13 +44,26 @@ def test_fixture_produces_its_recorded_outcomes(case):
 def test_fixture_produces_its_recorded_reasons(case):
     """The outcome alone cannot tell a defect in the tool from a fact about the manuscript.
 
-    Three cases share the outcome `unchecked` and eight share `not_found`; only the reason
+    Three cases share the outcome `unchecked` and eleven share `not_found`; only the reason
     separates "the manifest never declared this artifact" from "the file is not there", an
     absent column from an ambiguous row, or an ambiguous pair of prose anchors from a number
     written as a word. Asserting outcomes and never reasons let those swap.
     """
     expected = json.loads((case / "expected.json").read_text())["reasons"]
     assert reasons_of(verify(load(case / "repro.yaml"))) == expected
+
+
+STAGED = [c for c in CASES if "stages" in json.loads((c / "expected.json").read_text())]
+
+
+@pytest.mark.parametrize("case", STAGED, ids=lambda p: p.name)
+def test_fixture_produces_its_recorded_stages(case):
+    expected = json.loads((case / "expected.json").read_text())["stages"]
+    found = [
+        [d.execution.value, d.extraction.value, d.comparison.value]
+        for d in verify(load(case / "repro.yaml")).decisions
+    ]
+    assert found == expected
 
 
 @pytest.mark.parametrize("case", CASES, ids=lambda p: p.name)

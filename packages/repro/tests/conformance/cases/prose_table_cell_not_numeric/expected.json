@@ -1,0 +1,18 @@
+{
+  "outcomes": [
+    "not_found"
+  ],
+  "reasons": [
+    "value_not_numeric"
+  ],
+  "artifacts": {
+    "out": "authoritative"
+  },
+  "stages": [
+    [
+      "completed",
+      "invalid",
+      "not_applicable"
+    ]
+  ]
+}

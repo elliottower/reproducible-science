@@ -10,8 +10,12 @@ from __future__ import annotations
 
 import pathlib
 import re
+import typing
 
 import pytest
+import yaml
+from pydantic import TypeAdapter
+from repro.models import Evidence, ValueLocator
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 BUNDLE = ROOT / "packages" / "repro" / "plugin" / "skills"
@@ -59,3 +63,27 @@ def test_a_plugins_readme_names_every_skill_its_directory_holds(package, name):
 @pytest.mark.parametrize("name", PREREG)
 def test_the_bundle_ships_every_prereg_skill_byte_for_byte(name):
     assert (BUNDLE / name / "SKILL.md").read_bytes() == skill("prereg", name).read_bytes()
+
+
+def kinds(union) -> set[str]:
+    models = typing.get_args(typing.get_args(union)[0])
+    return {model.model_fields["kind"].default for model in models}
+
+
+def test_the_repro_skill_shows_a_valid_example_of_every_evidence_kind_and_locator():
+    text = (BUNDLE / "repro" / "SKILL.md").read_text()
+    section = text.split("## What can be declared\n", 1)[1].split("## Reading the output\n")[0]
+    evidence = [
+        TypeAdapter(Evidence).validate_python(entry)
+        for block in re.findall(r"```yaml\n(.*?)```", section, flags=re.DOTALL)
+        for entry in yaml.safe_load(block)
+    ]
+    assert {e.kind for e in evidence} == kinds(Evidence)
+
+    locators = [e.locator for e in evidence if e.kind == "value"]
+    locators += [side.locator for e in evidence if e.kind == "correspondence" for side in e.sides]
+    assert {locator.kind for locator in locators} == kinds(ValueLocator) - {"table"}
+    # `table` is shown as the `table` evidence kind, which is the same locator.
+    assert any(e.kind == "table" and e.locator.kind == "table" for e in evidence)
+    for kind in kinds(Evidence) | kinds(ValueLocator):
+        assert f"| `{kind}` |" in section, f"{kind} has no row saying what it takes"
