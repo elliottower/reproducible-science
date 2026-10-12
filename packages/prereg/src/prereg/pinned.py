@@ -277,7 +277,7 @@ def _dispositions(
     """
     by_path = {d.path.as_posix(): d for d in found}
 
-    def next_of(d: Pinned) -> Pinned | None | str:
+    def next_of(d: Pinned) -> Pinned | str | None:
         named = successors.get(d.path)
         if d.status != PENDING or named is None:
             return None
