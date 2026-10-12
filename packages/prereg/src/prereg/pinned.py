@@ -29,13 +29,33 @@ and is not checked, as a withdrawal is not. Where a header carries both lines, t
 followed and the withdrawal is not read, including where the successor line names nothing or
 names a file this check does not list: the draft stays pending.
 
+The path is read from the draft's own directory and looked up in the whole repository, so a
+draft has the same status whichever directory the check runs from. A run in a subfolder still
+lists only the documents at or below it, with one exception. A successor above it or beside it
+is read to settle the draft, and where the document that ends the chain passes it is not listed.
+Where that document is pending, changed or of an unknown commit, the run lists it as well, once,
+by its path from the top of the repository and with the drafts that reached it, so the run exits
+2 or 1 as a run at the top does: a check does not pass while the plan it depends on has not. A
+path that is absolute, or that leaves the repository, names nothing this check can read, and the
+draft stays pending.
+
+A chain may end on a `PREREG.md` frozen with `prereg freeze`, which is how a registration moves
+from this convention to the tool. That plan is checked as `prereg check` checks it, and the
+draft is superseded only where that check passes. Where the plan is not frozen, or was changed
+after its freeze, the draft stays pending and says which: such a plan may lie outside what the
+run lists, and it is not a document of this check to be listed here, so the draft carries the
+result. Neither header line is read on a `PREREG.md` itself.
+
 A plan that was dropped and replaced by nothing:
 
     **Withdrawn:** 2026-07-20, the mismatched arm was never run
 
 It is reported as withdrawn with the reason it gives. The check cannot tell whether that is
 true and says so; what it adds is that the plan is still listed, under its own word, where
-deleting the commit line would have removed it from the report without a trace.
+deleting the commit line would have removed it from the report without a trace. The report also
+names the commit that added the line, with its date, read from the repository's history, or says
+that the line is not yet committed. That is information: it changes neither the status nor the
+exit code.
 
 Neither line excuses a document that names a commit: that one is compared. Its header is part
 of the compared text, so adding either line to it after the freeze is itself an edit, and is
@@ -54,9 +74,10 @@ import difflib
 import pathlib
 import posixpath
 import re
+from collections.abc import Callable
 from dataclasses import dataclass
 
-from provenance_core.gitref import try_run
+from provenance_core.gitref import run, try_run
 
 from prereg.plan import PREREG
 
@@ -212,26 +233,36 @@ def compare(
 
 
 def check_document(
-    here: pathlib.Path, path: pathlib.Path, body: Lines, values: list[str], statuses: list[str]
+    here: pathlib.Path,
+    path: pathlib.Path,
+    body: Lines,
+    values: list[str],
+    statuses: list[str],
+    shown: pathlib.Path | None = None,
 ) -> Pinned:
-    """Compare one document with the file at the commit its record names."""
+    """Compare one document with the file at the commit its record names.
+
+    `path` is read from `here`. `shown` is the path the result carries where that differs: the
+    document's path from the directory the check was run in.
+    """
+    shown = path if shown is None else shown
     named = next((m.group(1) for m in map(HASH.match, values) if m), None)
     if named is None:
-        return Pinned(path, PENDING, "", (f"the commit line names no commit: {values[0]}",))
+        return Pinned(shown, PENDING, "", (f"the commit line names no commit: {values[0]}",))
     if try_run("rev-parse", "--verify", "--quiet", f"{named}^{{commit}}", cwd=here) is None:
         # Not `changed`: a shallow clone, a rewritten history and a commit of another repository
         # all land here, and none of them says the document was edited.
         why = f"{named} is not a commit in this repository, so nothing was compared"
-        return Pinned(path, UNKNOWN, named, (why,))
+        return Pinned(shown, UNKNOWN, named, (why,))
     frozen = try_run("show", f"{named}:./{path.as_posix()}", cwd=here)
     if frozen is None:
-        why = f"{path} is not in commit {named}, so nothing was compared"
-        return Pinned(path, UNKNOWN, named, (why,))
-    return compare(path, named, frozen, body, statuses)
+        why = f"{shown} is not in commit {named}, so nothing was compared"
+        return Pinned(shown, UNKNOWN, named, (why,))
+    return compare(shown, named, frozen, body, statuses)
 
 
-def _header_value(text: str, key: re.Pattern[str]) -> str | None:
-    """What a bold `key` line in the document's header holds, or None where there is none.
+def _header_line(text: str, key: re.Pattern[str]) -> re.Match[str] | None:
+    """The bold `key` line in the document's header, matched, or None where there is none.
 
     The header only, as a `**Status:**` line is read: below the first heading after the title
     the words are the plan's own text. A line inside a fenced block is an example.
@@ -245,9 +276,15 @@ def _header_value(text: str, key: re.Pattern[str]) -> str | None:
                 return None
             found = key.match(line)
             if found:
-                return found.group(1).strip()
+                return found
         started = started or bool(line.strip())
     return None
+
+
+def _header_value(text: str, key: re.Pattern[str]) -> str | None:
+    """What a bold `key` line in the document's header holds, or None where there is none."""
+    found = _header_line(text, key)
+    return None if found is None else found.group(1).strip()
 
 
 #: What a `**Withdrawn:**` line can hold without giving a reason: the words a template leaves
@@ -304,95 +341,189 @@ def withdrawal(text: str) -> tuple[str | None, str | None]:
     return value, None
 
 
-def _dispositions(
-    found: list[Pinned],
-    successors: dict[pathlib.Path, str],
-    withdrawn: dict[pathlib.Path, str],
-    unreadable: dict[pathlib.Path, tuple[str, ...]],
-) -> list[Pinned]:
-    """Report a pending document as superseded or withdrawn where its header says which.
+@dataclass(frozen=True)
+class _Document:
+    """A commit-pinned document: its result, and what its header says became of it."""
+
+    #: The document's path from the top level of the repository.
+    name: str
+    result: Pinned
+    successor: str | None
+    #: The reason a `**Withdrawn:**` line gives, and the line as it is written.
+    withdrawn: tuple[str, str] | None
+    notes: tuple[str, ...]
+
+
+def _read(top: pathlib.Path, name: str, shown: pathlib.Path) -> _Document | None:
+    """The commit-pinned document at `name` below `top`, checked, or None where the file is not
+    one: a `PREREG.md`, which `prereg freeze` freezes, or a file with no commit line."""
+    path = top / name
+    if path.name == PREREG or not path.is_file():
+        return None
+    text = path.read_text()
+    body, values, statuses = split_record(text)
+    if not values:
+        return None
+    result = check_document(top, pathlib.Path(name), body, values, statuses, shown)
+    named, no_successor = successor(text)
+    reason, no_reason = withdrawal(text)
+    line = _header_line(text, WITHDRAWN_LINE)
+    # A header with a `Superseded by` line says the plan was replaced. Where that line names
+    # nothing, a withdrawal beside it is not read either, so the document stays pending with the
+    # note on the line that could not be followed.
+    withdrawn = None
+    if reason is not None and line is not None and named is None and no_successor is None:
+        withdrawn = (reason, line.string.rstrip())
+    notes = tuple(note for note in (no_successor, no_reason) if note)
+    return _Document(name, result, named, withdrawn, notes)
+
+
+def _withdrawn_in(top: pathlib.Path, name: str, line: str) -> str:
+    """The commit that added a document's `**Withdrawn:**` line, in words for the report.
+
+    The oldest commit in the file's history, followed across renames, in which the line as it is
+    written now appears where it did not before. Git lists the newest first, so that commit is
+    the last one listed. Where git cannot answer, the report says so and the document's status
+    stands: the line is the document's statement, and its date is a note on it.
+    """
+    log = try_run("log", "--follow", "--format=%h %cs", f"-S{line}", "--", name, cwd=top)
+    if log is None:
+        return "git could not say which commit added its `Withdrawn` line"
+    if not log:
+        return "its `Withdrawn` line is not yet committed"
+    commit, date = log.splitlines()[-1].split()
+    return f"its `Withdrawn` line was added in {commit}, committed {date}"
+
+
+def _disposition(
+    d: _Document,
+    top: pathlib.Path,
+    shown: Callable[[str], pathlib.Path],
+    document: Callable[[str], _Document | None],
+    plan_result: Callable[[pathlib.Path], int | None],
+) -> tuple[Pinned, _Document | None]:
+    """Report a pending document as superseded or withdrawn where its header says which, and
+    name the commit-pinned document its chain ends on where it is superseded by one.
 
     Only a pending document is looked at: one that names a commit was compared, and its result
     stands. A superseded draft is followed along its chain to the document that declares no
-    successor, which has to be another document of this check. That document keeps its own
-    result, so a chain ending on a plan that was never frozen still reports one pending plan,
-    and a chain ending on an edited one still reports the edit. A draft that names a file this
-    check does not list, or whose chain comes back to itself, stays pending and says why.
+    successor. Each path is read from the directory of the draft that names it and looked up in
+    the whole repository, so the answer does not depend on where the check was run.
+
+    A chain ending on another commit-pinned document leaves that document its own result, so a
+    chain ending on a plan that was never frozen still reports one pending plan, and a chain
+    ending on an edited one still reports the edit. A chain ending on a `PREREG.md` is settled by
+    `plan_result`, which is `prereg check` on that plan: 0 unchanged, 1 changed, 2 not frozen,
+    None where there is no plan. The draft is superseded only on 0.
+
+    A draft that names a file that is no registration, or a path outside the repository, or
+    whose chain comes back to itself, stays pending and says why.
     """
-    by_path = {d.path.as_posix(): d for d in found}
+    path = d.result.path
+    if d.result.status != PENDING:
+        return d.result, None
+    if d.successor is None:
+        if d.withdrawn is None:
+            return Pinned(path, PENDING, "", (*d.result.detail, *d.notes)), None
+        reason, line = d.withdrawn
+        said = f"a plan never frozen; withdrawn, as the document says and not checked: {reason}"
+        return Pinned(path, WITHDRAWN, "", (said, _withdrawn_in(top, d.name, line))), None
 
-    def next_of(d: Pinned) -> Pinned | str | None:
-        named = successors.get(d.path)
-        if d.status != PENDING or named is None:
-            return None
-        target = posixpath.normpath((d.path.parent / named).as_posix())
-        return by_path.get(target, named)
+    def pending(why: str) -> tuple[Pinned, None]:
+        return Pinned(path, PENDING, "", (*d.result.detail, why)), None
 
-    out = []
-    for d in found:
-        if d.status != PENDING:
-            out.append(d)
-            continue
-        step = next_of(d)
+    chain = [d]
+    while True:
+        last = chain[-1]
+        named = last.successor
+        if last.result.status != PENDING or named is None:
+            break
+        says = f"says it is superseded by {named}"
+        if len(chain) > 1:
+            says = f"its chain reaches {last.result.path}, which {says}"
+        target = posixpath.normpath(posixpath.join(posixpath.dirname(last.name), named))
+        if posixpath.isabs(named) or target == ".." or target.startswith("../"):
+            return pending(f"{says}, which is an absolute path or leaves this repository")
+        if posixpath.basename(target) == PREREG:
+            found = plan_result(top / target)
+            if found is None:
+                return pending(f"{says}, which is not a registration checked here")
+            if found == 2:
+                return pending(f"{says}, a plan `prereg check` reports as not frozen")
+            if found != 0:
+                return pending(f"{says}, a plan `prereg check` reports a finding on")
+            drafts = [c.result.path for c in chain[1:]]
+            names = ", then ".join(str(p) for p in (*drafts, shown(target)))
+            by = (
+                f"a draft never frozen; says it is superseded by {names}, "
+                "a plan `prereg freeze` froze, which is unchanged"
+            )
+            return Pinned(path, SUPERSEDED, "", (by,)), None
+        step = document(target)
         if step is None:
-            reason = withdrawn.get(d.path)
-            if reason is None:
-                out.append(Pinned(d.path, PENDING, "", (*d.detail, *unreadable.get(d.path, ()))))
-            else:
-                said = f"a plan never frozen; withdrawn, as the document says and not checked: {reason}"
-                out.append(Pinned(d.path, WITHDRAWN, "", (said,)))
-            continue
-        chain = [d]
-        while isinstance(step, Pinned) and step not in chain:
-            chain.append(step)
-            step = next_of(step)
-        if isinstance(step, str):
-            why = f"says it is superseded by {step}, which is not a registration checked here"
-            if len(chain) > 1:
-                why = f"its chain reaches {chain[-1].path}, which {why}"
-            out.append(Pinned(d.path, PENDING, "", (*d.detail, why)))
-        elif step is not None:
-            names = ", then ".join(str(c.path) for c in (*chain[1:], step))
-            why = f"says it is superseded by {names}, a chain that comes back to itself"
-            out.append(Pinned(d.path, PENDING, "", (*d.detail, why)))
-        else:
-            head = chain[-1]
-            names = ", then ".join(str(c.path) for c in chain[1:])
-            status = WITHDRAWN if head.status == PENDING and head.path in withdrawn else head.status
-            at = f" at {head.commit}" if head.commit else ""
-            by = f"a draft never frozen; says it is superseded by {names}, which is {status}{at}"
-            out.append(Pinned(d.path, SUPERSEDED, "", (by,)))
-    return out
+            return pending(f"{says}, which is not a registration checked here")
+        if step in chain:
+            names = ", then ".join(str(c.result.path) for c in (*chain[1:], step))
+            return pending(f"says it is superseded by {names}, a chain that comes back to itself")
+        chain.append(step)
+    head = chain[-1]
+    names = ", then ".join(str(c.result.path) for c in chain[1:])
+    withdrawn = head.result.status == PENDING and head.withdrawn is not None
+    status = WITHDRAWN if withdrawn else head.result.status
+    at = f" at {head.result.commit}" if head.result.commit else ""
+    by = f"a draft never frozen; says it is superseded by {names}, which is {status}{at}"
+    return Pinned(path, SUPERSEDED, "", (by,)), head
 
 
-def check_below(here: pathlib.Path) -> list[Pinned]:
+def check_below(
+    here: pathlib.Path, plan_result: Callable[[pathlib.Path], int | None]
+) -> list[Pinned]:
     """Every commit-pinned markdown document git tracks at or below `here`, checked.
 
     Tracked files only: a document git does not track cannot have been in the commit it names.
+
+    The documents listed are the ones at or below `here`, by their paths from `here`. A draft's
+    successor is looked up among every document the repository tracks, so one above `here` or
+    beside it settles the draft. Where the document that ends such a chain lies outside `here`
+    and was not passed, it is listed too, once, by its path from the top of the repository:
+    otherwise a run here would exit 0 on a draft whose plan is pending or was edited.
+    `plan_result` answers for a `PREREG.md` a draft names: what `prereg check` finds for the
+    plan at that path, or None where none is there.
     """
-    listed = try_run("ls-files", "-z", "--", "*.md", cwd=here)
+    where = try_run("rev-parse", "--show-toplevel", "--show-prefix", cwd=here)
+    if where is None:
+        return []
+    # The top level, then the path from it to `here`: empty at the top, `exp/` one folder down.
+    top_name, _, prefix = where.partition("\n")
+    top = pathlib.Path(top_name)
+    tracked = set(run("ls-files", "-z", "--full-name", "--", "*.md", cwd=top).split("\0"))
+    read: dict[str, _Document | None] = {}
+
+    def shown(name: str) -> pathlib.Path:
+        return pathlib.Path(posixpath.relpath(name, prefix or "."))
+
+    def document(name: str) -> _Document | None:
+        if name not in read:
+            read[name] = _read(top, name, shown(name)) if name in tracked else None
+        return read[name]
+
+    below = sorted(name for name in tracked if name and name.startswith(prefix))
     found = []
-    successors: dict[pathlib.Path, str] = {}
-    withdrawn: dict[pathlib.Path, str] = {}
-    unreadable: dict[pathlib.Path, tuple[str, ...]] = {}
-    for name in sorted(filter(None, (listed or "").split("\0"))):
-        path = pathlib.Path(name)
-        if path.name == PREREG or not (here / path).is_file():
+    outside: dict[str, tuple[_Document, list[pathlib.Path]]] = {}
+    for d in map(document, below):
+        if d is None:
             continue
-        text = (here / path).read_text()
-        body, values, statuses = split_record(text)
-        if values:
-            found.append(check_document(here, path, body, values, statuses))
-            named, no_successor = successor(text)
-            if named:
-                successors[path] = named
-            reason, no_reason = withdrawal(text)
-            # A header with a `Superseded by` line says the plan was replaced. Where that line
-            # names nothing, a withdrawal beside it is not read either, so the document stays
-            # pending with the note on the line that could not be followed.
-            if reason and not named and not no_successor:
-                withdrawn[path] = reason
-            notes = tuple(note for note in (no_successor, no_reason) if note)
-            if notes:
-                unreadable[path] = notes
-    return _dispositions(found, successors, withdrawn, unreadable)
+        result, head = _disposition(d, top, shown, document, plan_result)
+        found.append(result)
+        if head is not None and not head.name.startswith(prefix):
+            outside.setdefault(head.name, (head, []))[1].append(result.path)
+    for name, (head, drafts) in sorted(outside.items()):
+        own, _ = _disposition(head, top, shown, document, plan_result)
+        if own.status in (PENDING, CHANGED, UNKNOWN):
+            reached = ", ".join(str(draft) for draft in drafts)
+            note = (
+                "outside the folder checked, listed by its path from the top of the repository; "
+                f"reached from {reached}"
+            )
+            found.append(Pinned(pathlib.Path(name), own.status, own.commit, (note, *own.detail)))
+    return found
