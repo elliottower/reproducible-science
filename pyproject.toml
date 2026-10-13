@@ -59,7 +59,7 @@ dev = [
   "rdata>=1",
   # What `citations[web]` installs, so the tests of `citations pin --url` drive the real store
   # and denylist. The fetch is the only part replaced, and no test opens a connection.
-  "retrieved>=0.1,<0.2",
+  "retrieved>=0.1,<0.3",
   "ruff>=0.14",
   "xlrd>=2.0.1",
   "xlwt>=1.3",

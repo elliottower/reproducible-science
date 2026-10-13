@@ -43,7 +43,7 @@ optional-dependencies.sheets = [ "openpyxl>=3.1", "xlrd>=2.0.1" ]
 # files, and it brings an HTTP client no other command here uses. Without the extra `pin --url`
 # names the install and writes nothing; `verify` and `fetch` read a pinned page as a path and
 # need none of it. Held below 0.2: it is an alpha, and the next minor may move what is called.
-optional-dependencies.web = [ "retrieved>=0.1,<0.2" ]
+optional-dependencies.web = [ "retrieved>=0.1,<0.3" ]
 urls.Changelog = "https://github.com/elliottower/reproducible-science/blob/main/CHANGELOG.md"
 urls.Homepage = "https://github.com/elliottower/reproducible-science"
 urls.Issues = "https://github.com/elliottower/reproducible-science/issues"
