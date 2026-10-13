@@ -935,7 +935,7 @@ on what a project considers acceptable. A claim offering no evidence has no deci
 result is `informational` at the level `note` and `fail` where a policy grades it a warning or
 an error.
 
-`repro export sarif` writes a second log, from the check records of §7.7 and from nothing else,
+`repro export sarif` writes a second log, from the check records of §7.10 and from nothing else,
 for GitHub code scanning. It is a projection for display and loses what SARIF has no property
 for; the whole record travels in each result's property bag under `repro/checkRecord`.
 
