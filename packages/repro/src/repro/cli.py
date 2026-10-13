@@ -1078,7 +1078,11 @@ def cmd_export(args: argparse.Namespace) -> int:
         print("write one that pins this project's result files, with example claims to edit:\n")
         print("    repro manifest init")
         return 2
-    written = EXPORTS[args.target](check_records(load(path)))
+    if args.include_matches and args.target != "sarif":
+        print("--include-matches is an option of `repro export sarif`.")
+        return 2
+    options = {"include_matches": True} if args.include_matches else {}
+    written = EXPORTS[args.target](check_records(load(path)), **options)
     if args.output:
         atomic_write(Path(args.output), written)
     else:
@@ -1312,7 +1316,18 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
             "file read and its digests, the address, the value stored there, the value the "
             "manuscript reports, the comparison and the outcome. Experimental: each record "
             "names its version. Executes nothing, writes only what it is asked for, and exits "
-            "0 whatever the outcomes; `repro verify` is the check that fails."
+            "0 whatever the outcomes; `repro verify` is the check that fails. `sarif` is a "
+            "SARIF 2.1.0 log for GitHub code scanning, built from the records: a result for "
+            "each mismatch, not-found and error, and a notification for each assertion that "
+            "was not checked."
+        ),
+    )
+    p_export.add_argument(
+        "--include-matches",
+        action="store_true",
+        help=(
+            "sarif only: also write a `pass` result for each assertion that matched. Not for "
+            "an upload to GitHub, which shows each as a warning alert"
         ),
     )
     p_export.add_argument("target", choices=sorted(EXPORTS))

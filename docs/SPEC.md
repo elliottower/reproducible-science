@@ -935,6 +935,29 @@ on what a project considers acceptable. A claim offering no evidence has no deci
 result is `informational` at the level `note` and `fail` where a policy grades it a warning or
 an error.
 
+`repro export sarif` writes a second log, from the check records of §7.10 and from nothing else,
+for GitHub code scanning. It is a projection for display and loses what SARIF has no property
+for; the whole record travels in each result's property bag under `repro/checkRecord`.
+
+| `outcome` | in the log | by |
+|---|---|---|
+| `mismatch` | result, `kind: fail`, `level: error` | 3.27.9: `fail` is "a problem whose severity is specified by the level property" |
+| `not-found` | result, `kind: fail`, `level: warning` | 3.27.10: `warning` is "a problem was found", `error` "a serious problem" |
+| `error` | result, `kind: fail`, `level: error`, and a notification at `level: error` | 3.20.21: a notification at `error` "SHALL mean that the run failed" |
+| `not-checked` | no result; a notification at `level: warning` | 3.58.6: "the analysis might be incomplete but the results that were generated are probably valid" |
+| `match` | no result; with `--include-matches`, `kind: pass`, `level: none` | 3.27.9: "evaluated, and no problem was found". GitHub does not read `kind` and opens a `warning` alert for one, which is why it is not the default |
+
+A `not-checked` assertion is not a result of any kind. `notApplicable` says the rule "does not
+apply to the analysis target", which is false of a check that applies and did not run, and
+`open` says the rule "was evaluated", which it was not. A notification is what the format has
+for a condition of the run and not of the file. The outcome is read through `read_outcome`, so
+a word the exporter does not know is `not-checked` and never a `pass`.
+
+A result has one location: the line of the sentence, where the claim quotes one from a text
+file that holds the passage exactly once, and otherwise the assertion's line in the manifest.
+`partialFingerprints` carries a digest over the assertion's identity and what it declares, as
+`reproAssertion/v1` and as `primaryLocationLineHash`, the one GitHub reads.
+
 ## 7.6 Regeneration
 
 Ordering asks whether a confirmatory run followed its plan. That question has no meaning for a
@@ -1301,6 +1324,7 @@ is not done by either.
 | claim-to-evidence entailment | FEVER, SciFact, CliniFact | a different relation; see §0 |
 | repository artifact auditing | adduce | interoperates via manifest format and rule entry point |
 | agent trace graphs | LEDGER | exposes claim-support paths; returns no verdict |
+| results shown on a pull request | SARIF 2.1.0, GitHub code scanning | export target, from the check records; lossy (§7.5) |
 
 The contribution is §3 and §4: one contract spanning quotations, reported values, and values
 read from two artifacts at once, and a three-stage outcome that separates a value that
