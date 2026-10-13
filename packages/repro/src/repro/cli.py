@@ -1325,7 +1325,10 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
     p_export.add_argument(
         "--include-matches",
         action="store_true",
-        help="sarif only: also write a `pass` result for each assertion that matched",
+        help=(
+            "sarif only: also write a `pass` result for each assertion that matched. Not for "
+            "an upload to GitHub, which shows each as a warning alert"
+        ),
     )
     p_export.add_argument("target", choices=sorted(EXPORTS))
     p_export.add_argument("manifest", nargs="?", help=f"path to {DEFAULT_NAME}")

@@ -945,7 +945,7 @@ for; the whole record travels in each result's property bag under `repro/checkRe
 | `not-found` | result, `kind: fail`, `level: warning` | 3.27.10: `warning` is "a problem was found", `error` "a serious problem" |
 | `error` | result, `kind: fail`, `level: error`, and a notification at `level: error` | 3.20.21: a notification at `error` "SHALL mean that the run failed" |
 | `not-checked` | no result; a notification at `level: warning` | 3.58.6: "the analysis might be incomplete but the results that were generated are probably valid" |
-| `match` | no result; with `--include-matches`, `kind: pass`, `level: none` | 3.27.9: "evaluated, and no problem was found" |
+| `match` | no result; with `--include-matches`, `kind: pass`, `level: none` | 3.27.9: "evaluated, and no problem was found". GitHub does not read `kind` and opens a `warning` alert for one, which is why it is not the default |
 
 A `not-checked` assertion is not a result of any kind. `notApplicable` says the rule "does not
 apply to the analysis target", which is false of a check that applies and did not run, and

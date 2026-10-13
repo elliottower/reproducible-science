@@ -670,6 +670,8 @@ The job needs `permissions: security-events: write` beside `contents: read`. Run
 
 An assertion that was not checked is neither a finding nor a pass, so it is never a result. A word the exporter does not know is `not-checked`, never a pass.
 
+Leave `--include-matches` off for an upload to GitHub. GitHub does not read `kind`: uploaded from this repository, each `pass` result at `level: none` became an open alert of severity `warning`, annotated on the pull request beside the real findings. The flag is for a SARIF viewer that does read `kind`.
+
 Each result is shown at one place, the first of these that exists: the line of the sentence, where the claim has a `quote` assertion against a text file (`.md`, `.tex`, `.txt`, `.rst`) that holds the passage exactly once; otherwise the assertion's own line in `repro.yaml`. A line is never estimated. The files the assertion reads are related locations. GitHub annotates a pull request only where that line is in its diff, and lists every alert under Security, Code scanning.
 
 An alert follows its assertion across commits by `partialFingerprints`: a digest over the claim's id, the assertion's kind, name and position, and the address or passage it declares. GitHub reads only `primaryLocationLineHash`, so the same digest is supplied there. Moving a sentence or reordering the manifest keeps the alert; changing an address closes one and opens another.

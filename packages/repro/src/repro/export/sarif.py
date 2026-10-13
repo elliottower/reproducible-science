@@ -7,7 +7,8 @@ travel in each result's property bag under `repro/checkRecord`, where the whole 
 `NOT_CARRIED_NATIVELY` lists them.
 
 What becomes a result is what a reader has to act on: `mismatch`, `not-found` and `error`.
-A `match` is a result only where asked for, as `kind: pass`. A `not-checked` assertion is
+A `match` is a result only where asked for, as `kind: pass`: GitHub does not read `kind` and
+opens a warning alert for a pass, so it is not the default. A `not-checked` assertion is
 never a result, since a result reads as a finding and a `pass` reads as a success, and it is
 neither: it is a notification on the invocation, counted in the run's properties.
 
