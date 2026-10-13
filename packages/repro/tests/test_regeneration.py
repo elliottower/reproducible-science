@@ -785,6 +785,59 @@ def test_a_reading_with_no_conversion_is_recorded_and_printed_as_it_was(tmp_path
     assert "as a" not in line and "6 then, " in line and line.endswith("now, paper prints 6")
 
 
+RUNNER = {
+    "GITHUB_ACTIONS": "true",
+    "GITHUB_REPOSITORY": "owner/repo",
+    "GITHUB_RUN_ID": "123456",
+    "RUNNER_OS": "Linux",
+}
+
+
+def test_a_rerun_records_where_it_ran_only_where_its_variables_say(tmp_path):
+    manifest = project(tmp_path)
+    local = reproduce(manifest, variables={})
+    assert local.witness is None
+    assert "witness" not in json.loads(append(local, tmp_path).read_text().splitlines()[-1])
+
+    witnessed = reproduce(manifest, variables=RUNNER)
+    assert witnessed.regenerations[0].state is Regeneration.REPRODUCED
+    recorded = json.loads(append(witnessed, tmp_path).read_text().splitlines()[-1])
+    assert recorded["witness"] == {
+        "kind": "github_actions",
+        "repository": "owner/repo",
+        "run_id": "123456",
+        "runner_os": "Linux",
+    }
+    # Beside `environment`, and nothing else about the entry differs in shape.
+    assert set(recorded) - {"witness"} == set(json.loads(local.model_dump_json()))
+
+
+def test_the_command_names_the_witness_after_the_record_and_only_where_there_is_one(
+    tmp_path, capsys, monkeypatch
+):
+    path = on_disk(tmp_path, SCRIPT)
+    for name in ("GITHUB_ACTIONS", "GITHUB_WORKFLOW", "GITHUB_RUN_ATTEMPT", "GITHUB_SHA"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.delenv("GITHUB_REF", raising=False)
+    assert main(["reproduce", str(path)]) == 0
+    out = capsys.readouterr().out
+    assert out.rstrip().splitlines()[-1] == f"  recorded in {RECORD.as_posix()}"
+    assert "witness" not in out
+    assert "witness" not in json.loads((tmp_path / RECORD).read_text().splitlines()[-1])
+
+    for name, value in RUNNER.items():
+        monkeypatch.setenv(name, value)
+    assert main(["reproduce", str(path)]) == 0
+    recorded, witnessed = capsys.readouterr().out.rstrip().splitlines()[-2:]
+    assert recorded == f"  recorded in {RECORD.as_posix()}"
+    assert witnessed == (
+        "  witnessed in GitHub Actions run 123456 of owner/repo, as the environment said"
+    )
+    assert json.loads((tmp_path / RECORD).read_text().splitlines()[-1])["witness"]["run_id"] == (
+        "123456"
+    )
+
+
 def test_the_command_passes_a_rerun_whose_numbers_hold(tmp_path, capsys):
     code = main(["reproduce", str(on_disk(tmp_path, NONDETERMINISTIC))])
     out = capsys.readouterr().out

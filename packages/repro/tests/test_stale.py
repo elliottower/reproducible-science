@@ -501,7 +501,16 @@ def test_the_json_document_is_the_report_as_a_graph(tmp_path, capsys):
     consumed = next(e for e in edges if (e["kind"], e["target"]) == ("consumes", "a0"))
     assert consumed["observed"] != consumed["on_disk"] == Digest.of_file(file(tmp_path, "a0")).value
     (found,) = document["staleness"]["findings"]
-    assert set(found) == {"cause", "regeneration", "artifact", "observed", "on_disk", "rerun_at"}
+    assert set(found) == {
+        "cause",
+        "regeneration",
+        "artifact",
+        "observed",
+        "on_disk",
+        "rerun_at",
+        "witness",
+    }
+    assert found["witness"] is None
     for table in ("claims", "artifacts", "regenerations"):
         assert all("state" in node for node in document["staleness"][table])
     assert all("state" in a for c in document["staleness"]["claims"] for a in c["assertions"])

@@ -1040,6 +1040,15 @@ cannot write is `.repro/reproductions.jsonl` (§7.6). From it, only an entry who
 started is read, and only one whose state is `reproduced` is a re-run a file can be compared
 with.
 
+An entry says where its re-run happened where the environment said. Under GitHub Actions,
+where `GITHUB_ACTIONS` is the string `true`, it carries a `witness` beside `environment`:
+`kind` (`github_actions`), `repository`, `workflow`, `run_id`, `run_attempt`, `sha`, `ref` and
+`runner_os`, each the runner's variable as the process was given it, and one that was not
+given is left out. Any other run has no `witness` at all. The variables are copied and
+nothing is checked against the service, so the entry states what the environment said, and
+the run's page and log are what a reader checks it against. A regeneration and a finding each
+carry the `witness` of the re-run they name, or null.
+
 A regeneration is compared with its own re-runs first.
 
 | state | of a regeneration, holds when |

@@ -5,7 +5,7 @@ from __future__ import annotations
 import enum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_serializer
 
 from repro.core.checks import CheckedAssertion, RecordSetAside, RecordState
 from repro.core.claims import Availability, Registration
@@ -129,6 +129,52 @@ class Environment(BaseModel):
     """The environment variables that bear on determinism, where set."""
 
 
+class Witness(BaseModel):
+    """Where a re-run happened, as the process's environment said.
+
+    The fields are the variables a GitHub Actions runner sets, copied as they were given.
+    Nothing here was checked: no request is made to the service, and a process started with
+    these variables set by hand records the same thing. What a reader checks the record
+    against is the run's own page and log, at
+    `https://github.com/<repository>/actions/runs/<run_id>`. No URL is stored, since those
+    two fields are all one holds.
+
+    A variable the process was not given is left out of the record, and never written as
+    null or as an empty string.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["github_actions"]
+    repository: str | None = None
+    """`GITHUB_REPOSITORY`: owner and name."""
+    workflow: str | None = None
+    """`GITHUB_WORKFLOW`: the workflow's name."""
+    run_id: str | None = None
+    """`GITHUB_RUN_ID`."""
+    run_attempt: str | None = None
+    """`GITHUB_RUN_ATTEMPT`: 1 for a first run, more for a re-run of the same run."""
+    sha: str | None = None
+    """`GITHUB_SHA`: the commit the workflow ran on."""
+    ref: str | None = None
+    """`GITHUB_REF`."""
+    runner_os: str | None = None
+    """`RUNNER_OS`."""
+
+    @model_serializer(mode="wrap")
+    def _omit_what_was_not_given(self, handler):
+        return {name: value for name, value in handler(self).items() if value is not None}
+
+    @property
+    def said(self) -> str:
+        """Where it ran, as a clause: `in GitHub Actions run 123456 of owner/repo`."""
+        return (
+            "in GitHub Actions"
+            + (f" run {self.run_id}" if self.run_id else "")
+            + (f" of {self.repository}" if self.repository else "")
+        )
+
+
 class ReproductionReport(BaseModel):
     """What one `repro reproduce` invocation ran and found. Frozen, and carries no verdict."""
 
@@ -141,7 +187,19 @@ class ReproductionReport(BaseModel):
     started_at: str = ""
     ended_at: str = ""
     environment: Environment = Environment()
+    witness: Witness | None = None
+    """Where the re-run happened, where the environment said. None for a run that was given
+    no such variables, which is every run on an author's machine."""
     regenerations: tuple[RegenerationState, ...] = ()
+
+    @model_serializer(mode="wrap")
+    def _omit_no_witness(self, handler):
+        """Leave the field out where there is none, so an entry for a local run is the entry
+        it was before the field existed."""
+        dumped = handler(self)
+        if self.witness is None:
+            dumped.pop("witness", None)
+        return dumped
 
     @property
     def counts(self) -> dict[str, int]:
@@ -210,6 +268,8 @@ class StaleFinding(BaseModel):
     on_disk: str | None = None
     rerun_at: str | None = None
     """When the re-run compared against started."""
+    witness: Witness | None = None
+    """Where that re-run happened, where its entry says. None where it does not."""
 
 
 class PinDisagreement(BaseModel):
@@ -236,6 +296,8 @@ class RegenerationNode(BaseModel):
     """How many producers lie between this record and `upstream`, counting `upstream`."""
     rerun_at: str | None = None
     """When the re-run compared against started. None where no re-run is recorded."""
+    witness: Witness | None = None
+    """Where that re-run happened, where its entry says. None where it does not."""
 
 
 class ArtifactNode(BaseModel):

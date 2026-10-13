@@ -127,6 +127,7 @@ from repro.core.report import (
     StaleFinding,
     StalenessReport,
     VerificationReport,
+    Witness,
 )
 
 __all__ = [
@@ -216,4 +217,5 @@ __all__ = [
     "ValueLocator",
     "VerificationReport",
     "Warning_",
+    "Witness",
 ]
