@@ -22,10 +22,16 @@ from repro.models import (
     ArtifactRef,
     Claim,
     Digest,
+    Freshness,
     Manifest,
     MetricEvidence,
+    NotEstablishedKind,
+    NumberRule,
     Outcome,
     Reason,
+    RegistrationAuthority,
+    StaleCause,
+    Standing,
     TableLocator,
     TreeLocator,
     Validity,
@@ -321,6 +327,22 @@ SPEC = (pathlib.Path(__file__).resolve().parents[3] / "docs" / "SPEC.md").read_t
 
 @pytest.mark.parametrize("value", [*Reason, *Warning_], ids=lambda v: f"{type(v).__name__}.{v}")
 def test_the_specification_names_every_reason_and_every_warning(value):
+    assert f"| `{value.value}` |" in SPEC
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        *Freshness,
+        *StaleCause,
+        *NotEstablishedKind,
+        *Standing,
+        *NumberRule,
+        *RegistrationAuthority,
+    ],
+    ids=lambda v: f"{type(v).__name__}.{v}",
+)
+def test_the_specification_names_every_state_cause_kind_standing_rule_and_authority(value):
     assert f"| `{value.value}` |" in SPEC
 
 
