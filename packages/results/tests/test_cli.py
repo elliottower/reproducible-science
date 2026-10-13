@@ -96,6 +96,88 @@ def test_run_records_outputs(tmp_path):
     assert runs[0]["run_id"] == "run_001"
 
 
+def test_run_records_what_its_outputs_hold_only_when_told(tmp_path):
+    run_cli("init", cwd=tmp_path)
+    (tmp_path / "counts.json").write_text('{"pairs": 16}\n')
+    (tmp_path / "results.json").write_text('{"icc": 0.42}\n')
+    labelled = run_cli(
+        "run", "counts.json", "--run-id", "panel", "--holds", "metadata only", cwd=tmp_path
+    )
+    assert labelled.returncode == 0
+    assert "holding metadata only" in labelled.stdout
+    assert run_cli("run", "results.json", "--run-id", "exp", cwd=tmp_path).returncode == 0
+    runs = {
+        e["run_id"]: e
+        for e in ledger.read_ledger(tmp_path / ".results" / "ledger.jsonl")
+        if e["event"] == "run"
+    }
+    assert runs["panel"]["holds"] == "metadata only"
+    assert "holds" not in runs["exp"]
+
+
+def test_run_refuses_a_label_that_does_not_mean_no_outcome(tmp_path):
+    run_cli("init", cwd=tmp_path)
+    (tmp_path / "out.json").write_text("{}\n")
+    for label in ("outcomes seen", "nothing seen", "metadata"):
+        r = run_cli("run", "out.json", "--run-id", "x", "--holds", label, cwd=tmp_path)
+        assert r.returncode == 1
+        assert "--holds must be one of: metadata only, structure seen" in r.stdout
+    events = ledger.read_ledger(tmp_path / ".results" / "ledger.jsonl")
+    assert [e["event"] for e in events] == ["init"]
+
+
+def test_label_declares_a_recorded_run_after_the_fact_as_its_own_event(tmp_path):
+    run_cli("init", cwd=tmp_path)
+    (tmp_path / "counts.json").write_text('{"pairs": 16}\n')
+    run_cli("run", "counts.json", "--run-id", "panel", cwd=tmp_path)
+    before = ledger.read_ledger(tmp_path / ".results" / "ledger.jsonl")
+    r = run_cli(
+        "label", "panel", "--holds", "metadata only", "--note", "flag forgotten", cwd=tmp_path
+    )
+    assert r.returncode == 0
+    assert "declared after the fact as holding metadata only" in r.stdout
+    after = ledger.read_ledger(tmp_path / ".results" / "ledger.jsonl")
+    assert after[: len(before)] == before, "the run event is not rewritten"
+    assert after[-1]["event"] == "label"
+    assert (after[-1]["run_id"], after[-1]["holds"]) == ("panel", "metadata only")
+    assert run_cli("verify", cwd=tmp_path).returncode == 0
+
+
+def test_label_refuses_what_it_cannot_declare_and_records_nothing(tmp_path):
+    run_cli("init", cwd=tmp_path)
+    (tmp_path / "a.json").write_text("{}\n")
+    run_cli("run", "a.json", "--run-id", "held", "--holds", "structure seen", cwd=tmp_path)
+    run_cli("run", "a.json", "--run-id", "twice", cwd=tmp_path)
+    run_cli("run", "a.json", "--run-id", "twice", "--anyway", cwd=tmp_path)
+    run_cli("run", "a.json", "--run-id", "plain", cwd=tmp_path)
+    path = tmp_path / ".results" / "ledger.jsonl"
+    n = len(ledger.read_ledger(path))
+
+    def refused(*args):
+        r = run_cli("label", *args, cwd=tmp_path)
+        assert r.returncode == 1
+        return r.stdout
+
+    assert "no run 'missing'" in refused("missing", "--holds", "metadata only", "--note", "x")
+    assert "already says what it holds" in refused(
+        "held", "--holds", "metadata only", "--note", "x"
+    )
+    assert "names 2 runs" in refused("twice", "--holds", "metadata only", "--note", "x")
+    assert "--holds must be one of" in refused("plain", "--holds", "outcomes seen", "--note", "x")
+    assert "a note is required" in refused("plain", "--holds", "metadata only", "--note", " ")
+    assert len(ledger.read_ledger(path)) == n
+
+    assert (
+        run_cli(
+            "label", "plain", "--holds", "metadata only", "--note", "x", cwd=tmp_path
+        ).returncode
+        == 0
+    )
+    assert "already says what it holds" in refused(
+        "plain", "--holds", "structure seen", "--note", "x"
+    )
+
+
 def test_run_refuses_a_duplicate_id(tmp_path):
     """A warning was not enough. Both the claim-time refusal and `verify`'s contested list
     resolve an id to a single timestamp, so two runs sharing an id let a confirmatory claim
