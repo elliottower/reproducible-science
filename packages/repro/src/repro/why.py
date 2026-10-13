@@ -367,6 +367,7 @@ def why(
         findings=tuple(found for found in report.findings if found.regeneration in on_chain),
         not_established=_not_established(claim, assertions, chain),
         records=kept.states,
+        set_aside=kept.set_aside,
         no_local_record=kept.no_local_record,
         outcomes={outcome: by_outcome[outcome] for outcome in Outcome if by_outcome[outcome]},
         states={state: by_state[state] for state in Freshness if by_state[state]},

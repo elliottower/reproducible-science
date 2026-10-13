@@ -62,6 +62,31 @@ class CheckedAssertion(BaseModel):
         return self.model_copy(update=unset) == other.model_copy(update=unset)
 
 
+class RecordSetAside(BaseModel):
+    """A record of checks that was moved aside, as the entry that follows it says.
+
+    Written by `repro verify --set-aside-record` and by nothing else, as the first entry of
+    the chain that replaces a local record, so the break stays on the record.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["local", "tracked"]
+    kept_as: str
+    """The name the record now has, beside where it was. Its head file is kept the same way."""
+    entries: int
+    """How many entries it held."""
+    head: str
+    """The SHA-256 of its last entry the chain still vouched for, as stored. The digest that
+    addresses nothing where it vouched for none."""
+    status: str
+    """What its chain was reported as: the `results` ledger's word."""
+    problems: tuple[str, ...] = ()
+    """Each fault found in it, as `repro why` listed them."""
+    at: str = ""
+    """When it was set aside. Read from the entry that says so and not stored in it."""
+
+
 class CheckRecord(BaseModel):
     """One entry of a record of checks: the assertions one `repro verify` found different from
     the last time each was recorded.
@@ -75,6 +100,9 @@ class CheckRecord(BaseModel):
 
     schema_version: str = SCHEMA_VERSION
     assertions: tuple[CheckedAssertion, ...]
+    set_aside: RecordSetAside | None = None
+    """On an entry `repro verify --set-aside-record` wrote, and on no other, where the key is
+    absent: the record that was moved aside before this entry."""
     seq: int
     timestamp: str
     prev_hash: str

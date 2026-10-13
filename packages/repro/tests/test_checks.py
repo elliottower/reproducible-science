@@ -11,11 +11,22 @@ import hashlib
 import itertools
 import json
 import shutil
+import subprocess
+import sys
 import threading
 
 import pytest
 from provenance_core import run as git
-from repro.checks import LOCAL, NOT_A_REPOSITORY, RECORD, Records, git_dir, record
+from repro.checks import (
+    LOCAL,
+    NOT_A_REPOSITORY,
+    RECORD,
+    RecordIntactError,
+    Records,
+    git_dir,
+    record,
+    set_aside,
+)
 from repro.cli import main
 from repro.models import (
     ArtifactRef,
@@ -524,7 +535,7 @@ def test_verify_prints_and_returns_the_same_whatever_the_record(repo, capfd):
         assert (got_code, got.out) == (code, streams.out)
         assert got.err == (
             f"record not written: {local(repo)}: refusing to append to a chain reported as "
-            f"edited: {EDITED}\n"
+            f"edited: {EDITED}; `repro verify --set-aside-record` keeps it and starts anew\n"
         )
     assert entries(local(repo)) == held
 
@@ -571,4 +582,169 @@ def test_two_quotations_in_one_claim_are_followed_by_their_position(repo):
     assert [(a.kind, a.position) for a in first.assertions] == [("quote", 0), ("quote", 1)]
     assert [(a.kind, a.position, a.outcome) for a in second.assertions] == [
         ("quote", 1, Outcome.MISMATCH)
+    ]
+
+
+def test_separate_processes_checking_at_once_write_one_chain(repo):
+    """What the status line and a hook do: several `repro verify` processes, started together,
+    over one repository, round after round as the manifest changes."""
+    rounds, at_once = ("0.92", "0.91", "0.93", "0.91"), 5
+    for reported in rounds:
+        project = manifest(repo, claim(reported))
+        alone = main(["verify", str(project.path)], local_record=False)
+        started = [
+            subprocess.Popen(
+                [sys.executable, "-m", "repro", "verify", str(project.path)],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            for _ in range(at_once)
+        ]
+        finished = [(process.communicate(timeout=300), process.returncode) for process in started]
+        # Each exits as a lone check does, and none had anything to say about the record.
+        assert [code for _, code in finished] == [alone] * at_once
+        assert [streams[1] for streams, _ in finished] == [""] * at_once
+        assert len({streams[0] for streams, _ in finished}) == 1
+
+    written = [CheckRecord.model_validate_json(line) for line in entries(local(repo))]
+    # One entry per round: the first process to hold the lock wrote it and the rest found it.
+    assert [entry.assertions[0].printed for entry in written] == list(rounds)
+    assert [entry.seq for entry in written] == list(range(len(rounds)))
+    assert len(set(entries(local(repo)))) == len(rounds)
+    (state,) = Records(repo).states
+    assert (state.status, state.problems, state.entries) == ("intact", (), len(rounds))
+
+
+def test_a_checkout_whose_git_directory_is_inside_another_repositorys_records_there(tmp_path):
+    """The layout of a submodule: a working tree whose `.git` is a file naming a directory
+    under the superproject's `.git/modules/`."""
+    above = tmp_path / "super"
+    above.mkdir()
+    git("init", "-q", cwd=above)
+    put(above)
+    check(manifest(above, claim("0.92")))
+    theirs = entries(local(above))
+
+    inside = above / "vendored"
+    modules = git_dir(above) / "modules" / "vendored"
+    modules.parent.mkdir()
+    git("init", "-q", f"--separate-git-dir={modules}", str(inside), cwd=above)
+    put(inside)
+    project = manifest(inside, claim("0.91"))
+    before = tree(inside)
+    assert (inside / ".git").is_file()
+    assert check(project) == 0
+
+    assert local(inside) == modules / LOCAL
+    assert len(entries(local(inside))) == 1
+    assert entries(local(above)) == theirs
+    # `.git` here is a file, and it is as it was with everything else.
+    assert tree(inside) == before
+    assert (inside / ".git").read_text().strip() == f"gitdir: {modules}"
+
+
+def kept(directory):
+    """Every file in a record's directory by digest, the lock beside it left out."""
+    return {
+        p.name: hashlib.sha256(p.read_bytes()).hexdigest()
+        for p in sorted(directory.iterdir())
+        if not p.name.endswith(".provenance-lock")
+    }
+
+
+def test_a_damaged_record_is_set_aside_by_name_and_the_new_chain_says_so(repo, capfd):
+    three_states(repo)
+    rewrite(local(repo), forge)
+    old = kept(local(repo).parent)
+    first = hashlib.sha256(entries(local(repo))[0].strip()).hexdigest()
+    project = manifest(repo, claim("0.94"))
+    before = tree(repo)
+
+    capfd.readouterr()
+    assert main(["verify", str(project.path)], local_record=False) == 1
+    wanted = capfd.readouterr().out
+    assert check(project, "--set-aside-record") == 1
+    got = capfd.readouterr()
+    assert got.out == wanted
+    (name,) = (n for n in kept(local(repo).parent) if n.startswith("checks.jsonl.set-aside-"))
+    stamp = name.rpartition("-")[2]
+    assert got.err == (
+        f"record set aside: the local record is kept as {name}, and a new one starts by saying so\n"
+    )
+    assert tree(repo) == before
+
+    # The old record and its head file are there under the new names, byte for byte.
+    now = kept(local(repo).parent)
+    assert now[name] == old["checks.jsonl"]
+    assert now[f"ledger.head.set-aside-{stamp}"] == old["ledger.head"]
+    assert set(now) == {name, f"ledger.head.set-aside-{stamp}", "checks.jsonl", "ledger.head"}
+
+    opening, then = (CheckRecord.model_validate_json(line) for line in entries(local(repo)))
+    note = opening.set_aside
+    assert (opening.seq, opening.prev_hash, opening.assertions) == (0, "0" * 64, ())
+    assert (note.kind, note.kept_as, note.entries, note.status) == ("local", name, 3, "edited")
+    assert (note.head, note.problems) == (first, (EDITED,))
+    assert (then.seq, then.set_aside, then.assertions[0].printed) == (1, None, "0.94")
+    (state,) = Records(repo).states
+    assert (state.status, state.problems) == ("intact", ())
+
+    account = why(project, "accuracy")
+    assert account.set_aside == (note.model_copy(update={"at": opening.timestamp}),)
+    assert ClaimAccount.model_validate_json(account.model_dump_json()) == account
+    assert main(["why", "accuracy", str(project.path)]) == 0
+    out = capfd.readouterr().out
+    assert out.count("was set aside on") == 1
+    assert (
+        f"  record of checks\n    a local record of 3 entries was set aside on "
+        f"{opening.timestamp} as {name}: reported edited ({EDITED}); its last entry that "
+        f"verified hashes to {first[:12]}\n"
+    ) in out
+
+    # Checks go on in the new chain, and a second asking finds nothing to set aside.
+    held = entries(local(repo))
+    assert check(project, "--set-aside-record") == 1
+    assert capfd.readouterr().err == (
+        f"record not set aside: {repo}: no record here is damaged, so none is set aside\n"
+    )
+    assert entries(local(repo)) == held and kept(local(repo).parent) == now
+
+
+def test_an_intact_record_is_not_set_aside(repo):
+    project = three_states(repo, "--record")
+    here, there = kept(local(repo).parent), kept(repo / ".repro")
+    with pytest.raises(RecordIntactError):
+        set_aside(project, tracked=True)
+    assert (kept(local(repo).parent), kept(repo / ".repro")) == (here, there)
+
+
+def test_a_tracked_record_follows_a_local_one_that_started_again_only_when_set_aside_too(
+    repo, capfd
+):
+    project = three_states(repo, "--record")
+    rewrite(local(repo), forge)
+    tracked = kept(repo / ".repro")
+    assert check(project, "--set-aside-record") == 1
+    # Not asked for, the tracked record is left as it was, and no longer begins the local one.
+    assert kept(repo / ".repro") == tracked
+    assert Records(repo).state("tracked").diverges_at == 1
+    capfd.readouterr()
+    assert check(project, "--record") == 1
+    assert capfd.readouterr().err == (
+        f"record not written: {repo / RECORD}: diverges from the local record at entry 1\n"
+    )
+
+    assert check(project, "--record", "--set-aside-record") == 1
+    (name,) = (n for n in kept(repo / ".repro") if n.startswith("checks.jsonl.set-aside-"))
+    assert kept(repo / ".repro")[name] == tracked["checks.jsonl"]
+    assert entries(repo / RECORD) == entries(local(repo))
+    notes = Records(repo).set_aside
+    assert [(note.kind, note.status) for note in notes] == [
+        ("local", "edited"),
+        ("tracked", "intact"),
+    ]
+    assert notes[1].problems == ("diverges from the local record at entry 1",)
+    assert [(s.kind, s.status, s.diverges_at) for s in Records(repo).states] == [
+        ("local", "intact", None),
+        ("tracked", "intact", None),
     ]
