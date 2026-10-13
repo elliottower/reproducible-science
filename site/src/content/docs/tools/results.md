@@ -60,7 +60,7 @@ all checks passed.
 | `results init` | Start tracking results here |
 | `results seal <file>...` | Hash inputs before a run |
 | `results access <note>` | Record a data-access event |
-| `results run <file>...` | Record outputs after a run |
+| `results run <file>...` | Record outputs after a run; `--holds` says the outputs hold metadata or structure and no outcome |
 | `results claim <text>` | Bind a manuscript claim to a run |
 | `results review <file>...` | Record that someone examined these files, and what they found |
 | `results annotate <file>...` | Link these files to something outside the ledger; linked, not checked |

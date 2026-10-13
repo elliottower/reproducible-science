@@ -238,7 +238,12 @@ floor is the highest access level ever recorded there, mapped onto the four leve
 | `outcomes seen` | `results seen` |
 
 One or more recorded runs put the floor at `results not opened` or above, whatever access was
-recorded. The author can raise the level. `prereg freeze` refuses an amendment that states a
+recorded. The exception is a run recorded as holding no outcome, with `results run --holds
+"metadata only"` or `--holds "structure seen"`: a panel or feasibility query whose counts a
+plan is built on has to run before the plan can be written, and it is not a result. Such a run
+puts the floor at `no results seen`. A run recorded without the label, or with a label this
+version does not know, holds results as before, and one of them puts the floor back at
+`results not opened`. The author can raise the level. `prereg freeze` refuses an amendment that states a
 lower level than the floor, and one with a field left unfilled; a plan's own freeze has the same
 floor. The ledger is read whole, so one ledger at the top of a repository sets the floor for
 every plan and amendment in it, including a plan for an experiment none of its runs belong to.

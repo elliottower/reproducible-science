@@ -155,7 +155,18 @@ def access(note: str, level: str) -> int:
     return 0
 
 
-def run(files: list[str], run_id: str, note: str | None, anyway: bool) -> int:
+#: What a run's outputs can be declared to hold where they hold no outcome. A run recorded
+#: without one is taken to hold results, which is what a run meant before the field existed.
+RUN_HOLDS = ["metadata only", "structure seen"]
+
+
+def run(
+    files: list[str], run_id: str, note: str | None, anyway: bool, holds: str | None = None
+) -> int:
+    if holds is not None and holds not in RUN_HOLDS:
+        print(f"--holds must be one of: {', '.join(RUN_HOLDS)}")
+        print("a run whose outputs hold outcomes is recorded without --holds.")
+        return 1
     root = require_root()
     lp = ledger_path(root)
     existing = ledger.read_ledger(lp)
@@ -176,16 +187,18 @@ def run(files: list[str], run_id: str, note: str | None, anyway: bool) -> int:
             return 1
         digest = ledger.sha256_of_file(p)
         outputs.append({"path": record_path(p, root), "sha256": digest})
-    ledger.append_event(
-        lp,
-        {
-            "event": "run",
-            "run_id": run_id,
-            "outputs": outputs,
-            "note": note or "",
-        },
-    )
-    print(f"run {run_id}: {len(outputs)} output(s)")
+    event = {
+        "event": "run",
+        "run_id": run_id,
+        "outputs": outputs,
+        "note": note or "",
+    }
+    if holds is not None:
+        # Written with the run and never afterwards: no command labels a run already recorded,
+        # so the declaration is in the chain before anything that reads it.
+        event["holds"] = holds
+    ledger.append_event(lp, event)
+    print(f"run {run_id}: {len(outputs)} output(s){f', holding {holds}' if holds else ''}")
     for o in outputs:
         print(f"  {o['sha256'][:16]}…  {o['path']}")
     return 0

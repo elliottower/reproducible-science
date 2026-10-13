@@ -33,7 +33,7 @@ from results.paths import find_root as find_root
 from results.paths import ledger_path as ledger_path
 from results.paths import record_path as record_path
 from results.paths import require_root as require_root
-from results.record import ACCESS_LEVELS, VERDICTS
+from results.record import ACCESS_LEVELS, RUN_HOLDS, VERDICTS
 from results.timeline import first_outcomes_seen as first_outcomes_seen
 from results.timeline import first_run_timestamp as first_run_timestamp
 from results.timeline import freeze_timestamp as freeze_timestamp
@@ -53,7 +53,9 @@ def cmd_access(a) -> int:
 
 
 def cmd_run(a) -> int:
-    return record.run(a.files, a.run_id, a.note, getattr(a, "anyway", False))
+    return record.run(
+        a.files, a.run_id, a.note, getattr(a, "anyway", False), getattr(a, "holds", None)
+    )
 
 
 def cmd_claim(a) -> int:
@@ -128,6 +130,12 @@ def _main(argv: list[str] | None = None) -> int:
     r.add_argument("files", nargs="+")
     r.add_argument("--run-id", required=True, help="a name for this run")
     r.add_argument("--note", help="what this run computed")
+    r.add_argument(
+        "--holds",
+        help=f"what the outputs hold, where they hold no outcome: one of {', '.join(RUN_HOLDS)}. "
+        "For a panel or feasibility query whose counts are reported. `prereg freeze` does not "
+        "count such a run as a result; a run recorded without this is taken to hold results",
+    )
     r.add_argument(
         "--anyway",
         action="store_true",
