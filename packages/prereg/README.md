@@ -50,6 +50,7 @@ log          V16_reliability_ceilings/PREREG.log  1 entry, chain intact
 | `prereg amend [--parent FILE]` | Start `PREREG_AMENDMENT_N.md`, a change to the frozen plan |
 | `prereg check` | Has any frozen file changed since its freeze? |
 | `prereg check --staged` | Does the git index hold a change to a frozen file? For a pre-commit hook |
+| `prereg check --json PATH` | Also write what the check found to `PATH` as JSON: each plan, frozen or not, with its amendments and log entries counted |
 | `prereg timestamp` | Complete each freeze's outside timestamp and check it against Bitcoin |
 | `prereg setup` | Save your OSF token to `.env` |
 

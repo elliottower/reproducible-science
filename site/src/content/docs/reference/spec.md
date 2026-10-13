@@ -940,6 +940,29 @@ on what a project considers acceptable. A claim offering no evidence has no deci
 result is `informational` at the level `note` and `fail` where a policy grades it a warning or
 an error.
 
+`repro export sarif` writes a second log, from the check records of §7.10 and from nothing else,
+for GitHub code scanning. It is a projection for display and loses what SARIF has no property
+for; the whole record travels in each result's property bag under `repro/checkRecord`.
+
+| `outcome` | in the log | by |
+|---|---|---|
+| `mismatch` | result, `kind: fail`, `level: error` | 3.27.9: `fail` is "a problem whose severity is specified by the level property" |
+| `not-found` | result, `kind: fail`, `level: warning` | 3.27.10: `warning` is "a problem was found", `error` "a serious problem" |
+| `error` | result, `kind: fail`, `level: error`, and a notification at `level: error` | 3.20.21: a notification at `error` "SHALL mean that the run failed" |
+| `not-checked` | no result; a notification at `level: warning` | 3.58.6: "the analysis might be incomplete but the results that were generated are probably valid" |
+| `match` | no result; with `--include-matches`, `kind: pass`, `level: none` | 3.27.9: "evaluated, and no problem was found". GitHub does not read `kind` and opens a `warning` alert for one, which is why it is not the default |
+
+A `not-checked` assertion is not a result of any kind. `notApplicable` says the rule "does not
+apply to the analysis target", which is false of a check that applies and did not run, and
+`open` says the rule "was evaluated", which it was not. A notification is what the format has
+for a condition of the run and not of the file. The outcome is read through `read_outcome`, so
+a word the exporter does not know is `not-checked` and never a `pass`.
+
+A result has one location: the line of the sentence, where the claim quotes one from a text
+file that holds the passage exactly once, and otherwise the assertion's line in the manifest.
+`partialFingerprints` carries a digest over the assertion's identity and what it declares, as
+`reproAssertion/v1` and as `primaryLocationLineHash`, the one GitHub reads.
+
 ## 7.6 Regeneration
 
 Ordering asks whether a confirmatory run followed its plan. That question has no meaning for a
@@ -1198,13 +1221,13 @@ evaluated by the functions `repro verify` uses and by no others.
 
 | field | holds |
 |---|---|
-| `record`, `checker`, `checked_at` | the record version, the tool's name and version, when the check ran |
+| `record`, `checker`, `checked_at` | the record version, the tool's name, version and URL, when the check ran |
 | `manifest` | its path and the sha256 of its bytes |
 | `claim` | `id`, `text`, `where`, the claim digest of §1, its line in the manifest, and each passage its quote assertions name, with the line where a text file holds it exactly once |
 | `assertion` | `kind`, `name`, its `position` among the claim's assertions of that kind and name, its `index` among all of them, and its line in the manifest |
 | `check_type` | which proposition was checked; below |
 | `reads` | per file read: artifact id, path, media type, `validity`, the pinned digest and the digest on disk, the `address`, the value `stored` there, that value `converted` where a conversion is declared, and the side for a `correspondence`. An `aggregate` has one entry per member |
-| `printed`, `comparison` | the value as the manuscript prints it (the manifest's `reported`) or the passage a quotation asserts, and the `mode` and `tolerance` of §3.2, with the declared `places` and `conversion`, the `statistic` an `aggregate` computes and what it `computed`, and a `tie` where there was one |
+| `printed`, `comparison` | the value as the manuscript prints it (the manifest's `reported`) or the passage a quotation asserts, and the `mode` and `tolerance` of §3.2, with the declared `places` and `conversion`, the `statistic` an `aggregate` computes, the `count` of its members and what it `computed`, and a `tie` where there was one |
 | `outcome` | one of five words; below |
 | `native_outcome`, `native_reason` | the `Outcome` of §4 and the `Reason` of §4.1, as this tool prints them |
 | `stages`, `reader`, `warnings` | the three stages of §4, the backend and extraction toolchain of §5.1, the warnings of §4.1 |
@@ -1222,7 +1245,8 @@ Closed.
 
 | `check_type` | the proposition |
 |---|---|
-| `value-comparison` | a value the manuscript prints, against the value at an address in a file (`metric`, `table`, `value`), or against a statistic over the values at several (`aggregate`) |
+| `value-comparison` | a value the manuscript prints, against the value at an address in a file (`metric`, `table`, `value`) |
+| `aggregate-comparison` | a value the manuscript prints, against a statistic computed over the values at several addresses (`aggregate`); no one stored value is the value compared |
 | `passage-presence` | a passage occurs in a file (`quote`) |
 | `correspondence` | the values at two addresses, in two files, agree |
 | `artifact-identity` | a file's bytes are the bytes that were recorded; no value in it is compared |
@@ -1231,7 +1255,7 @@ Closed.
 | `coverage-check` | whether something the manuscript states has a claim declared for it |
 | `other` | a proposition none of the above names |
 
-This tool emits the first three. The rest are reserved for a record written from another
+This tool emits the first four. The rest are reserved for a record written from another
 tool's result, and nothing here writes one.
 
 **`outcome` is five words defined by their preconditions**, and the checker's own word travels
@@ -1252,7 +1276,9 @@ possible, and refuses the rest: an `outcome` that is not what its `native_outcom
 to, or that the stages do not give; a `match` or `mismatch` against a file that was not read;
 a `value-comparison` that is a `match` or `mismatch` without both the stored and the printed
 value, a `correspondence` without the value on each side, a `passage-presence` without the
-passage; a stored value on a record that is `not-checked` or an `error`; a pair of values on a
+passage; a comparison under a declared conversion without the converted value; an
+`aggregate-comparison` without its statistic, its count, every member's value or what was
+computed; a match on a tie that prints neither of the tie's two values; a stored value on a record that is `not-checked` or an `error`; a pair of values on a
 check type that compares none; a `validity` the two digests do not bear out.
 
 **Unknown stays unknown.** A `native_outcome` from a checker not known to emit it, a
@@ -1266,6 +1292,10 @@ A claim that offers no evidence has no assertion, so no record. `repro verify` r
 The JSON Schema generated from the model is `docs/schemas/repro.check-0.1-experimental.schema.json`.
 
 ### Relation to `.repro/checks.jsonl`
+
+Two models, told apart by name: `repro.record.ExportRecord` is one check written out for
+another program, and `repro.models.CheckRecord` is one entry of the stored history, holding the
+`CheckedAssertion`s a `repro verify --record` found changed.
 
 A project may also keep a history, `.repro/checks.jsonl`, to which `repro verify --record`
 appends what an assertion said each time a check found it changed. A check record is the
@@ -1294,8 +1324,43 @@ and the address is an object so that a program can read it without parsing a sen
 `history`, where present, is a pointer into that record: how many states it holds for the
 assertion and when the last was recorded. Nothing writes it yet. Once both are in one tree the
 shared fields should come from one model, an assertion identity and a declared state that
-`CheckedAssertion` and `CheckRecord` both embed; that is a follow-up to these two changes and
+`CheckedAssertion` and `ExportRecord` both embed; that is a follow-up to these two changes and
 is not done by either.
+
+## 7.11 RO-Crate export
+
+Experimental, as the record of §7.10 is, and a projection of that record and of nothing else.
+
+`repro export ro-crate` writes the check records as an RO-Crate 1.3 metadata document,
+`ro-crate-metadata.json`, whose root is the directory the manifest is in. It reads records
+only, so a file that no record names is not in the crate: an artifact that no assertion reads,
+and that no command upstream of one reads or writes.
+
+| in the record | in the crate |
+|---|---|
+| a file read, or a command's input or output | a `File` at its declared path, with `sha256` for the bytes on disk, `encodingFormat`, the pinned digest and the `validity` of §2; under a `#` identifier where it is absent or outside the project |
+| the manifest | a `File` with its `sha256` |
+| the claim | a schema.org `Claim` |
+| the checked assertion | a `CheckAction` whose `instrument` is the checker and whose `object` is the claim |
+| the address and the stored value | a `PropertyValue` naming the file, with the locator of §3.6 as canonical JSON |
+| a declared command | a `HowTo` holding its argv, its declared inputs and its declared output |
+| its latest recorded re-run | a `CreateAction` as Process Run Crate 0.6 describes one: `instrument`, `object`, `result`, `startTime`, `endTime`, `actionStatus` |
+
+RO-Crate has no term for the address inside a file, for a printed value against a stored one,
+for the check type or for the outcome. Those are terms of a profile of this tool's own,
+`https://reproducible.science/ro-crate/claim-check/0.1/`, version `0.1-experimental`, declared
+with `conformsTo` on the root data entity and mapped in `@context`. The profile's page defines
+each term. Conformance to Process Run Crate is declared only where the records hold a re-run.
+
+The projection loses nothing: `repro.export.rocrate.from_ro_crate` reads a crate back into the
+records it was written from, for every record this version understands. A `match` it does not
+understand is written `not-checked`, as §7.10 requires of every exporter, with its
+`native_outcome` kept as written. No date in the document is taken when it is written, so the
+same records give the same bytes.
+
+A record carries no license, and RO-Crate requires the root data entity to have one, so the
+crate says in words that none is stated. A check refers to the commands upstream of what it
+reads and does not restate them.
 
 ## 8. What this composes with
 
@@ -1303,11 +1368,12 @@ is not done by either.
 |---|---|---|
 | entity/activity/agent provenance | W3C PROV-O | export target; no ontology defined here |
 | signed ordered attestation | in-toto, SLSA | wraps a report where external attestation is needed |
-| packaging at rest | RO-Crate | export target |
+| packaging at rest | RO-Crate 1.3, Process Run Crate 0.6 | export target: `repro export ro-crate`, §7.11 |
 | content-addressed pipelines | DVC | complementary; no claim model there |
 | claim-to-evidence entailment | FEVER, SciFact, CliniFact | a different relation; see §0 |
 | repository artifact auditing | adduce | interoperates via manifest format and rule entry point |
 | agent trace graphs | LEDGER | exposes claim-support paths; returns no verdict |
+| results shown on a pull request | SARIF 2.1.0, GitHub code scanning | export target, from the check records; lossy (§7.5) |
 
 The contribution is §3 and §4: one contract spanning quotations, reported values, and values
 read from two artifacts at once, and a three-stage outcome that separates a value that

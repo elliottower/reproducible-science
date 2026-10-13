@@ -126,6 +126,7 @@ every quote resolved, but against a source that is not the one pinned.
 | `citations pin` | Add a quotation to a claims file, refusing one that does not resolve; `--occurrence N` pins one occurrence of a repeated passage; `--url` pins against a web page |
 | `citations restore` | Write the source's passage for a quotation that leaves text out, as a separate record |
 | `citations verify` | Do the quotations resolve in their sources? |
+| `citations verify --json PATH` | Also write the counts to `PATH` as JSON: quotations by outcome, sources read and sources absent |
 | `citations coverage` | Is every quotation in my manuscript pinned at all? |
 | `citations audit` | Does the stored metadata match the record the identifier resolves to? |
 | `citations resolve` | Backfill missing DOIs and arXiv ids |
@@ -134,6 +135,7 @@ every quote resolved, but against a source that is not the one pinned.
 | `citations add` | Add one entry to a `.bib`, refusing a key it already has |
 | `citations link` | Point pdfs/ at the papers' artifacts |
 | `citations fetch` | Download the sources a claims directory pins, keeping only bytes that match the pin |
+| `citations fetch --json PATH` | Also write the count of sources per outcome to `PATH` as JSON |
 | `citations import-paperclip` | Turn a Paperclip paper repo into pinned claim files |
 
 ## Pinning a web page by its URL

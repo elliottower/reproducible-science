@@ -9,6 +9,7 @@
     repro why             say what the record establishes for one claim, and what it does not
     repro numbers         count every number the manuscript prints, bound to a claim or not
     repro export          write one record per checked assertion, for another program to read
+    repro ci              run the checks in a workflow, with a summary on the run page
     repro check           run every tool this project uses, in one pass
     repro audit           clone a repository at a pinned commit and run every tool over it
     repro prereg          run `prereg`: freeze a plan, and record what deviated from it
@@ -39,7 +40,7 @@ from provenance_core import atomic_write
 from provenance_core.gitref import try_run
 from results.ledger import ChainError
 
-from repro import __version__, audit, crosscheck
+from repro import __version__, audit, ci, crosscheck
 from repro.checks import LOCAL as LOCAL_CHECKS
 from repro.checks import RECORD as CHECKS
 from repro.checks import SET_ASIDE
@@ -51,6 +52,7 @@ from repro.delegate import run as delegate_run
 from repro.demo import demo
 from repro.exceptions import ReproError
 from repro.export import EXPORTS
+from repro.export.rocrate import METADATA_FILE
 from repro.manifest import DEFAULT_NAME, find, load
 from repro.models import (
     AssertionAccount,
@@ -66,15 +68,17 @@ from repro.models import (
     Reading,
     Reason,
     Regeneration,
+    ReproductionReport,
     StaleCause,
     StaleFinding,
     StalenessReport,
     Standing,
     Validity,
+    VerificationReport,
     Warning_,
 )
 from repro.numbers import numbers as run_numbers
-from repro.policy import PROFILES
+from repro.policy import PROFILES, Assessment, Policy
 from repro.record import check_records
 from repro.renderers import to_sarif
 from repro.reproduce import RECORD
@@ -413,6 +417,13 @@ def cmd_verify(args: argparse.Namespace) -> int:
         )
         return 0 if assessment.passed else 1
 
+    _verify_text(path, report, policy, assessment)
+    return 0 if assessment.passed else 1
+
+
+def _verify_text(
+    path: Path, report: VerificationReport, policy: Policy, assessment: Assessment
+) -> None:
     print(f"{path}\n")
     for artifact in report.artifacts:
         if artifact.validity is Validity.BROKEN_PIN:
@@ -459,7 +470,6 @@ def cmd_verify(args: argparse.Namespace) -> int:
     )
     for v in assessment.errors[:10]:
         print(f"    error   {v.rule:<26} {v.subject}: {v.detail[:44]}")
-    return 0 if assessment.passed else 1
 
 
 #: How each outcome is shown. `not_rerun` is the value a record carries; a reader sees the words.
@@ -503,6 +513,17 @@ def cmd_reproduce(args: argparse.Namespace) -> int:
         )
         return 0 if assessment.passed else 1
 
+    _reproduce_text(path, report, policy, assessment, recorded)
+    return 0 if assessment.passed else 1
+
+
+def _reproduce_text(
+    path: Path,
+    report: ReproductionReport,
+    policy: Policy,
+    assessment: Assessment,
+    recorded: Path,
+) -> None:
     states = report.regenerations
     print(f"{path}\n")
     print(f"  re-ran {sum(1 for s in states if s.executed)} of {len(states)}\n")
@@ -544,7 +565,6 @@ def cmd_reproduce(args: argparse.Namespace) -> int:
     print(f"  recorded in {recorded.relative_to(path.resolve().parent).as_posix()}")
     if report.witness is not None:
         print(f"  witnessed {report.witness.said}, as the environment said")
-    return 0 if assessment.passed else 1
 
 
 def _said(state: enum.StrEnum) -> str:
@@ -701,6 +721,13 @@ def cmd_stale(args: argparse.Namespace) -> int:
         )
         return 0 if assessment.passed else 1
 
+    _stale_text(path, report, policy, assessment)
+    return 0 if assessment.passed else 1
+
+
+def _stale_text(
+    path: Path, report: StalenessReport, policy: Policy, assessment: Assessment
+) -> None:
     print(f"{path}\n")
     if not report.reruns:
         print(f"  {RECORD.as_posix()} holds no re-run; `repro reproduce` records one.\n")
@@ -709,7 +736,6 @@ def cmd_stale(args: argparse.Namespace) -> int:
         f"  policy {policy.name}: {'passed' if assessment.passed else 'FAILED'}"
         f"  ({len(assessment.errors)} errors, {len(assessment.warnings)} warnings)"
     )
-    return 0 if assessment.passed else 1
 
 
 def _steps(count: int | None) -> str:
@@ -1058,9 +1084,18 @@ def cmd_export(args: argparse.Namespace) -> int:
         print("write one that pins this project's result files, with example claims to edit:\n")
         print("    repro manifest init")
         return 2
-    written = EXPORTS[args.target](check_records(load(path)))
+    if args.include_matches and args.target != "sarif":
+        print("--include-matches is an option of `repro export sarif`.")
+        return 2
+    options = {"include_matches": True} if args.include_matches else {}
+    written = EXPORTS[args.target](check_records(load(path)), **options)
     if args.output:
-        atomic_write(Path(args.output), written)
+        target = Path(args.output)
+        if args.target == "ro-crate" and (target.is_dir() or target.suffix != ".json"):
+            # A crate is a directory holding a file of one fixed name.
+            target.mkdir(parents=True, exist_ok=True)
+            target = target / METADATA_FILE
+        atomic_write(target, written)
     else:
         print(written, end="")
     return 0
@@ -1292,7 +1327,19 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
             "file read and its digests, the address, the value stored there, the value the "
             "manuscript reports, the comparison and the outcome. Experimental: each record "
             "names its version. Executes nothing, writes only what it is asked for, and exits "
-            "0 whatever the outcomes; `repro verify` is the check that fails."
+            "0 whatever the outcomes; `repro verify` is the check that fails. `sarif` is a "
+            "SARIF 2.1.0 log for GitHub code scanning, built from the records: a result for "
+            "each mismatch, not-found and error, and a notification for each assertion that "
+            "was not checked. `ro-crate` is the same records as an RO-Crate 1.3 "
+            f"{METADATA_FILE}, and `-o DIR` writes it into DIR."
+        ),
+    )
+    p_export.add_argument(
+        "--include-matches",
+        action="store_true",
+        help=(
+            "sarif only: also write a `pass` result for each assertion that matched. Not for "
+            "an upload to GitHub, which shows each as a warning alert"
         ),
     )
     p_export.add_argument("target", choices=sorted(EXPORTS))
@@ -1315,6 +1362,8 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
         "--only", action="append", choices=sorted(BY_NAME), help="restrict to one tool; repeatable"
     )
     p_check.set_defaults(func=cmd_check)
+
+    ci.add_parser(sub, verify=_verify_text, reproduce=_reproduce_text, stale=_stale_text)
 
     # An audit runs these inside a clone of someone else's repository, and keeps no record of
     # its checks in that clone's git directory.

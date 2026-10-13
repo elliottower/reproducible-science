@@ -65,6 +65,7 @@
         "value-comparison",
         "passage-presence",
         "correspondence",
+        "aggregate-comparison",
         "artifact-identity",
         "lineage-check",
         "rerun-comparison",
@@ -79,6 +80,11 @@
       "properties": {
         "name": {
           "title": "Name",
+          "type": "string"
+        },
+        "url": {
+          "default": "",
+          "title": "Url",
           "type": "string"
         },
         "version": {
@@ -241,6 +247,18 @@
           ],
           "default": null,
           "title": "Conversion"
+        },
+        "count": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Count"
         },
         "mode": {
           "$ref": "#/$defs/ComparisonMode"
@@ -949,6 +967,6 @@
     "native_outcome",
     "native_reason"
   ],
-  "title": "CheckRecord",
+  "title": "ExportRecord",
   "type": "object"
 }

@@ -45,13 +45,14 @@ from __future__ import annotations
 import argparse
 import collections
 import hashlib
+import json
 import pathlib
 import re
 import urllib.error
 import urllib.parse
 from dataclasses import dataclass
 
-from provenance_core import atomic_write_bytes, sha256_of_file
+from provenance_core import atomic_write, atomic_write_bytes, sha256_of_file
 
 from citations import resolve
 from citations import verify as V
@@ -294,6 +295,9 @@ def main(argv: list[str] | None = None) -> int:
         metavar="NAME",
         help="let a claims file's extract_cmd run this program, to check the text it produces",
     )
+    ap.add_argument(
+        "--json", metavar="PATH", help="also write the count of sources per outcome to this file"
+    )
     a = ap.parse_args(argv)
     allowed = V.DEFAULT_EXTRACTORS | frozenset(a.allow_extractor)
 
@@ -315,6 +319,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"  {outcome.state:<{WIDTH}}{outcome.name[:38]:<40}{outcome.detail}")
 
     counts = collections.Counter(o.state for o in outcomes)
+    if a.json:
+        account = {"sources": len(outcomes), "counts": {s: counts.get(s, 0) for s in OUTCOMES}}
+        atomic_write(a.json, json.dumps(account, indent=2) + "\n")
     print(f"\nclaims  {root}\n\n{len(outcomes):,} sources\n")
     for state in OUTCOMES:
         if counts.get(state):
