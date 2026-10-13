@@ -8,6 +8,7 @@
     repro stale           say which claims read a file changed since its recorded re-run
     repro why             say what the record establishes for one claim, and what it does not
     repro numbers         count every number the manuscript prints, bound to a claim or not
+    repro export          write one record per checked assertion, for another program to read
     repro check           run every tool this project uses, in one pass
     repro audit           clone a repository at a pinned commit and run every tool over it
     repro prereg          run `prereg`: freeze a plan, and record what deviated from it
@@ -47,6 +48,7 @@ from repro.delegate import check as delegate_check
 from repro.delegate import run as delegate_run
 from repro.demo import demo
 from repro.exceptions import ReproError
+from repro.export import EXPORTS
 from repro.manifest import DEFAULT_NAME, find, load
 from repro.models import (
     AssertionAccount,
@@ -71,6 +73,7 @@ from repro.models import (
 )
 from repro.numbers import numbers as run_numbers
 from repro.policy import PROFILES
+from repro.record import check_records
 from repro.renderers import to_sarif
 from repro.reproduce import RECORD
 from repro.reproduce import append as append_reproduction
@@ -1014,6 +1017,21 @@ def cmd_numbers(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_export(args: argparse.Namespace) -> int:
+    path = Path(args.manifest) if args.manifest else find()
+    if path is None:
+        print(f"no {DEFAULT_NAME} here or above.\n")
+        print("write one that pins this project's result files, with example claims to edit:\n")
+        print("    repro manifest init")
+        return 2
+    written = EXPORTS[args.target](check_records(load(path)))
+    if args.output:
+        atomic_write(Path(args.output), written)
+    else:
+        print(written, end="")
+    return 0
+
+
 def cmd_check(args) -> int:
     """Run every applicable tool and report them together."""
     root = pathlib.Path(args.directory or ".").resolve()
@@ -1221,6 +1239,23 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
     )
     p_numbers.add_argument("--format", choices=("text", "json"), default="text")
     p_numbers.set_defaults(func=cmd_numbers)
+
+    p_export = sub.add_parser(
+        "export",
+        help="write one record per checked assertion, for another program to read",
+        description=(
+            f"Check every assertion in {DEFAULT_NAME} as `repro verify` does and write what was "
+            "found in another format. `record` is JSON Lines, one object per assertion: the "
+            "file read and its digests, the address, the value stored there, the value the "
+            "manuscript reports, the comparison and the outcome. Experimental: each record "
+            "names its version. Executes nothing, writes only what it is asked for, and exits "
+            "0 whatever the outcomes; `repro verify` is the check that fails."
+        ),
+    )
+    p_export.add_argument("target", choices=sorted(EXPORTS))
+    p_export.add_argument("manifest", nargs="?", help=f"path to {DEFAULT_NAME}")
+    p_export.add_argument("--output", "-o", help="write to this file (default: standard output)")
+    p_export.set_defaults(func=cmd_export)
 
     p_check = sub.add_parser(
         "check",
