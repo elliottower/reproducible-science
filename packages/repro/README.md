@@ -537,7 +537,6 @@ artifact into agreeing with the claim.
 
 This repository runs the hook on itself, against the `repro.yaml` at its root.
 
-<<<<<<< HEAD
 ## In CI
 
 ```bash
@@ -647,7 +646,7 @@ A workflow is named for the check it runs, `claims` or `reruns`, and not for the
 A run in CI adds three things to a run on the author's machine: the check ran on a machine the author does not control, at a commit the run names, and its log is public. It does not remove the author from the record: the author writes the workflow, the manifest and the list of what each command reads. In a private repository the badge and the summary are visible to whoever has access to the repository, and GitHub's documentation notes that a private repository's badge cannot be embedded on an outside site.
 
 This repository runs `repro ci claims` on its own `repro.yaml`, in `.github/workflows/claims.yml`.
-=======
+
 ## On a pull request, as SARIF
 
 ```yaml
@@ -681,7 +680,6 @@ SARIF has no property for most of what a record holds. The whole record is in ea
 GitHub keeps the 5,000 most severe results of a run and rejects a file over 10 MB compressed. The default output holds only what did not match; with `--include-matches` a log over 5,000 results is written whole and a warning says so.
 
 `repro verify --format sarif` is an older log built from the report, graded by `--policy`, and is unchanged.
->>>>>>> 8fa9689 (repro: `repro export sarif` writes a SARIF log from the check records, for GitHub code scanning)
 
 ## Audit a repository you did not write
 
