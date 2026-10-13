@@ -52,6 +52,7 @@ from repro.delegate import run as delegate_run
 from repro.demo import demo
 from repro.exceptions import ReproError
 from repro.export import EXPORTS
+from repro.export.rocrate import METADATA_FILE
 from repro.manifest import DEFAULT_NAME, find, load
 from repro.models import (
     AssertionAccount,
@@ -1084,7 +1085,12 @@ def cmd_export(args: argparse.Namespace) -> int:
     options = {"include_matches": True} if args.include_matches else {}
     written = EXPORTS[args.target](check_records(load(path)), **options)
     if args.output:
-        atomic_write(Path(args.output), written)
+        target = Path(args.output)
+        if args.target == "ro-crate" and (target.is_dir() or target.suffix != ".json"):
+            # A crate is a directory holding a file of one fixed name.
+            target.mkdir(parents=True, exist_ok=True)
+            target = target / METADATA_FILE
+        atomic_write(target, written)
     else:
         print(written, end="")
     return 0
@@ -1319,7 +1325,8 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
             "0 whatever the outcomes; `repro verify` is the check that fails. `sarif` is a "
             "SARIF 2.1.0 log for GitHub code scanning, built from the records: a result for "
             "each mismatch, not-found and error, and a notification for each assertion that "
-            "was not checked."
+            "was not checked. `ro-crate` is the same records as an RO-Crate 1.3 "
+            f"{METADATA_FILE}, and `-o DIR` writes it into DIR."
         ),
     )
     p_export.add_argument(

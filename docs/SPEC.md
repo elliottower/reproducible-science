@@ -1313,13 +1313,48 @@ shared fields should come from one model, an assertion identity and a declared s
 `CheckedAssertion` and `ExportRecord` both embed; that is a follow-up to these two changes and
 is not done by either.
 
+## 7.11 RO-Crate export
+
+Experimental, as the record of §7.10 is, and a projection of that record and of nothing else.
+
+`repro export ro-crate` writes the check records as an RO-Crate 1.3 metadata document,
+`ro-crate-metadata.json`, whose root is the directory the manifest is in. It reads records
+only, so a file that no record names is not in the crate: an artifact that no assertion reads,
+and that no command upstream of one reads or writes.
+
+| in the record | in the crate |
+|---|---|
+| a file read, or a command's input or output | a `File` at its declared path, with `sha256` for the bytes on disk, `encodingFormat`, the pinned digest and the `validity` of §2; under a `#` identifier where it is absent or outside the project |
+| the manifest | a `File` with its `sha256` |
+| the claim | a schema.org `Claim` |
+| the checked assertion | a `CheckAction` whose `instrument` is the checker and whose `object` is the claim |
+| the address and the stored value | a `PropertyValue` naming the file, with the locator of §3.6 as canonical JSON |
+| a declared command | a `HowTo` holding its argv, its declared inputs and its declared output |
+| its latest recorded re-run | a `CreateAction` as Process Run Crate 0.6 describes one: `instrument`, `object`, `result`, `startTime`, `endTime`, `actionStatus` |
+
+RO-Crate has no term for the address inside a file, for a printed value against a stored one,
+for the check type or for the outcome. Those are terms of a profile of this tool's own,
+`https://reproducible.science/ro-crate/claim-check/0.1/`, version `0.1-experimental`, declared
+with `conformsTo` on the root data entity and mapped in `@context`. The profile's page defines
+each term. Conformance to Process Run Crate is declared only where the records hold a re-run.
+
+The projection loses nothing: `repro.export.rocrate.from_ro_crate` reads a crate back into the
+records it was written from, for every record this version understands. A `match` it does not
+understand is written `not-checked`, as §7.10 requires of every exporter, with its
+`native_outcome` kept as written. No date in the document is taken when it is written, so the
+same records give the same bytes.
+
+A record carries no license, and RO-Crate requires the root data entity to have one, so the
+crate says in words that none is stated. A check refers to the commands upstream of what it
+reads and does not restate them.
+
 ## 8. What this composes with
 
 | layer | prior art | relation |
 |---|---|---|
 | entity/activity/agent provenance | W3C PROV-O | export target; no ontology defined here |
 | signed ordered attestation | in-toto, SLSA | wraps a report where external attestation is needed |
-| packaging at rest | RO-Crate | export target |
+| packaging at rest | RO-Crate 1.3, Process Run Crate 0.6 | export target: `repro export ro-crate`, §7.11 |
 | content-addressed pipelines | DVC | complementary; no claim model there |
 | claim-to-evidence entailment | FEVER, SciFact, CliniFact | a different relation; see §0 |
 | repository artifact auditing | adduce | interoperates via manifest format and rule entry point |
