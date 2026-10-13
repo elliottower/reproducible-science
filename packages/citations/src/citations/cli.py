@@ -22,10 +22,11 @@ from __future__ import annotations
 import argparse
 import collections
 import concurrent.futures
+import json
 import os
 import pathlib
 
-from provenance_core import hint
+from provenance_core import atomic_write, hint
 
 from citations import coverage as C
 from citations import extraction_cache, paths, projects, tracked, web
@@ -243,8 +244,11 @@ def cmd_verify(a) -> int:
                 rep.broken_pins.append((cf.name, pin))
             elif pin.state == "unpinned":
                 rep.unpinned.append(cf.name)
+            rep.sources += 1
             if artifact is not None and artifact.is_file():
                 read.append((cf.name, artifact))
+            else:
+                rep.absent_sources += 1
             _check_reading(rep, cf, artifact, allowed)
             for cid, claim in cf.claims.items():
                 if claim.interpretation is not None:
@@ -320,6 +324,25 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
     # like a clean run against the right one, and the path is the only thing that separates them.
     if source:
         print(f"{source}\n")
+    if getattr(a, "json", None):
+        # The counts below, as one object. `sources` and `absent_sources` are counted only
+        # with `--claims`, where each file names the one source it pins.
+        atomic_write(
+            a.json,
+            json.dumps(
+                {
+                    "quotes": rep.checked,
+                    "counts": {state: counts.get(state, 0) for state in RESULTS},
+                    "sources": rep.sources,
+                    "absent_sources": rep.absent_sources,
+                    "broken_pins": len(rep.broken_pins),
+                    "unpinned_sources": len(rep.unpinned),
+                    "skipped_files": len(rep.skipped),
+                },
+                indent=2,
+            )
+            + "\n",
+        )
     if rep.checked == 0:
         print("nothing to check.\n")
         print("quotes live in a paper's claims/ directory. point at one:")
@@ -614,6 +637,11 @@ def _main(argv: list[str] | None = None) -> int:
     )
     c.set_defaults(fn=cmd_coverage)
 
+    v.add_argument(
+        "--json",
+        metavar="PATH",
+        help="also write the counts to this file as JSON: quotations by outcome, and sources",
+    )
     v.add_argument("--verbose", action="store_true", help="also list loose matches")
     v.add_argument("--quiet", action="store_true")
     v.set_defaults(fn=cmd_verify)

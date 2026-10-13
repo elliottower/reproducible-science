@@ -1,37 +1,46 @@
 """`repro ci`: the checks as one line of a workflow each, with a summary on the run page.
 
-    repro ci claims    what `repro verify` checks, then what `repro stale` reports
-    repro ci reruns    what `repro reproduce` runs
-    repro ci init      write the workflows that run those, and print the README lines
+    repro ci prereg     what `prereg check` checks
+    repro ci results    what `results verify --files` checks
+    repro ci claims     what `repro verify` checks, then what `repro stale` reports
+    repro ci citations  what `citations verify --claims <dir>` checks
+    repro ci reruns     what `repro reproduce` runs
+    repro ci init       write the workflows that run those, and print the README lines
 
-Nothing is evaluated here that those three commands do not evaluate. `claims` calls
-`repro.verify.verify` and `repro.stale.stale`, `reruns` calls `repro.reproduce.reproduce`, the
-policy grades each as it does there, and the text printed is the text those commands print.
-What this adds is a Markdown summary appended to the file `GITHUB_STEP_SUMMARY` names, which
-GitHub shows on the page of the run.
+Nothing is evaluated here that those commands do not evaluate. `claims` calls
+`repro.verify.verify` and `repro.stale.stale`, `reruns` calls `repro.reproduce.reproduce`, and
+the policy grades each as it does there. `prereg`, `results` and `citations` run the tool's own
+check in this process, found and pointed as `repro check` finds and points it, and read the
+counts from the JSON the tool writes with `--json`. The text printed is the text those commands
+print. What this adds is a Markdown summary appended to the file `GITHUB_STEP_SUMMARY` names,
+which GitHub shows on the page of the run.
 
 `init` writes one workflow per check, each named for that check, because GitHub's badge is
 per workflow and prints the workflow's name beside `passing`. A name that called the study
 reproducible would say more than a job that compares printed values with files can establish.
 
-The summaries are pure functions of the report models. Reaches no network.
+The summaries are pure functions of the report models. Reaches no network, except that
+`citations --fetch-sources` runs `citations fetch` first.
 """
 
 from __future__ import annotations
 
 import argparse
 import collections
+import json
 import os
 import pathlib
 import re
 import shlex
+import tempfile
 from collections.abc import Callable
 
 from provenance_core import atomic_write
 from provenance_core.gitref import try_run
 from pydantic import BaseModel, ConfigDict
 
-from repro import __version__
+from repro import __version__, audit
+from repro.delegate import BY_NAME
 from repro.exceptions import ReproError
 from repro.manifest import DEFAULT_NAME, find, load
 from repro.models import (
@@ -55,14 +64,32 @@ from repro.policy import PROFILES, Assessment, Policy
 from repro.reproduce import RECORD, append, reproduce
 from repro.stale import reruns as recorded_reruns
 from repro.stale import stale
+from repro.starter import project_root
 from repro.verify import verify
 from repro.why import why
 
 #: The checks a workflow can run, in the order their badges are printed, and the name each
 #: workflow takes: the word GitHub's badge prints beside `passing`. A name says which check
 #: ran and nothing about the study.
-CHECKS = ("claims", "reruns")
-NAMES = {"claims": "claims", "reruns": "reruns"}
+CHECKS = ("prereg", "results", "claims", "citations", "reruns")
+NAMES = {
+    "prereg": "prereg",
+    "results": "results",
+    "claims": "claims",
+    "citations": "citations",
+    "reruns": "reruns",
+}
+
+#: The checks another tool makes, each run as `repro check` runs it, and what `init` says of a
+#: repository that keeps no record for one.
+TOOLS = ("prereg", "results", "citations")
+NO_RECORD = {
+    "prereg": "no PREREG.md and no .prereg/ here",
+    "results": "no .results/ ledger here",
+    "claims": f"no {DEFAULT_NAME} here or above",
+    "citations": "no claims directory holding a claims file here",
+    "reruns": "not asked for; `--reruns` writes it",
+}
 
 WORKFLOWS = pathlib.Path(".github") / "workflows"
 
@@ -100,6 +127,12 @@ jobs:
 {environment}      - run: uvx --from {distribution}=={version} {command}
 """
 
+#: `citations` reads a PDF with `pdftotext` first, and GitHub's Ubuntu runner image does not
+#: list poppler-utils among its installed packages.
+POPPLER = """\
+      - run: sudo apt-get update && sudo apt-get install --yes poppler-utils
+"""
+
 #: Where the reruns workflow installs what the project's commands need. A comment, because
 #: only the project knows what that is.
 ENVIRONMENT = """\
@@ -126,6 +159,21 @@ RERUNS_SHOWS = (
     "manifest does not declare were not run."
 )
 
+SHOWS = {
+    "prereg": (
+        "What this checks: each frozen plan, its amendments and its log are the bytes that "
+        "were frozen. It does not show that the study followed the plan."
+    ),
+    "results": (
+        "What this checks: the ledger's chain is intact and each recorded file is the bytes "
+        "that were recorded. It does not show that the results are right."
+    ),
+    "citations": (
+        "What this checks: each quoted passage is in the source its claims file pins. It does "
+        "not show that the source supports the sentence that quotes it."
+    ),
+}
+
 _GITHUB = re.compile(r"github\.com[:/](?P<owner>[^/\s]+)/(?P<repo>[^/\s]+?)(?:\.git)?/?$")
 _HEADING = re.compile(r"^#{1,6} ")
 _PLAIN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._/-]*$")
@@ -142,14 +190,16 @@ class NotARepositoryError(ReproError):
         )
 
 
-class NoManifestError(ReproError):
-    """The repository holds no manifest for a workflow to check."""
+class NothingToCheckError(ReproError):
+    """The repository keeps no record any check reads."""
 
     def __init__(self, root: pathlib.Path) -> None:
         self.root = root
         super().__init__(
-            f"no {DEFAULT_NAME} here or above, inside {root}; nothing was written. Write one "
-            "that pins this project's result files:\n\n    repro manifest init"
+            f"{root} keeps no record a check reads; nothing was written.\n"
+            + "\n".join(f"  {check:<10} {NO_RECORD[check]}" for check in CHECKS[:-1])
+            + "\n\nWrite a manifest that pins this project's result files:\n\n"
+            "    repro manifest init"
         )
 
 
@@ -279,6 +329,83 @@ def claims(manifest: Manifest, policy: Policy) -> ClaimsRun:
         fresh=policy.assess_staleness(staleness) if staleness else None,
         last_rerun=log[-1] if log else None,
         numbers=counted,
+    )
+
+
+class ToolRun(BaseModel):
+    """What one tool's own check found, run as `repro check` runs it."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    check: str
+    command: tuple[str, ...] = ()
+    """The tool's command as a reader would type it. Empty where the tool was not run."""
+    exit: int | None = None
+    outcome: str
+    """One of `repro audit`'s four words: passed, failed, could not check, nothing to read."""
+    output: str = ""
+    account: dict = {}
+    """The JSON the tool wrote with `--json`. Empty where it wrote none."""
+    fetched: dict | None = None
+    """The JSON `citations fetch` wrote, where sources were fetched first."""
+
+    @property
+    def code(self) -> int:
+        """`repro audit`'s exit code for one step with this outcome."""
+        return audit.exit_code({self.check: {"outcome": self.outcome}})
+
+
+def _account(path: pathlib.Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+
+
+def tool(check: str, root: pathlib.Path, *, fetch: bool = False) -> ToolRun:
+    """Run one tool's check over the project at `root` and read what it found.
+
+    The tool is found and pointed by `repro.delegate`, run by `repro.audit.run_step`, and its
+    outcome is the word `repro.audit.read` gives it, with one difference for `citations`: a run
+    in which some quotations were found, none was not found and the rest were unchecked is
+    `passed`, as `citations verify` exits 0 for it, where `repro audit` calls any unchecked
+    quotation `could not check`. A run that read no source stays `could not check`.
+    """
+    found = BY_NAME[check]
+    if not found.used_by(root):
+        return ToolRun(check=check, outcome=audit.NOTHING, output=NO_RECORD[check])
+    argv = [check, *found.argv_for(root), *(["--files"] if check == "results" else [])]
+    fetched, output = None, ""
+    with tempfile.TemporaryDirectory() as scratch:
+        if fetch:
+            # Its exit code is not taken: a source nobody may redistribute is the ordinary
+            # case, and what could not be fetched stays `unchecked` in the check below.
+            wrote = pathlib.Path(scratch) / "fetch.json"
+            claims_at = argv[argv.index("--claims") + 1]
+            _, output = audit.run_step(
+                [check, "fetch", "--claims", claims_at, "--json", str(wrote)], root, found.entry()
+            )
+            fetched = _account(wrote)
+            output += "\n\n"
+        wrote = pathlib.Path(scratch) / "check.json"
+        code, said = audit.run_step([*argv, "--json", str(wrote)], root, found.entry())
+        account = _account(wrote)
+    outcome, _, _ = audit.read(argv, code, said, root)
+    if check == "citations" and outcome == audit.COULD_NOT and code == 0:
+        # `citations verify` exits 1 for a run that measured nothing, so an exit of 0 with
+        # quotations unchecked is a run in which some were found.
+        outcome = audit.PASSED
+    shown = tuple(
+        pathlib.Path(part).relative_to(root).as_posix()
+        if pathlib.Path(part).is_absolute() and pathlib.Path(part).is_relative_to(root)
+        else part
+        for part in argv
+    )
+    return ToolRun(
+        check=check,
+        command=shown,
+        exit=code,
+        outcome=outcome,
+        output=output + said,
+        account=account,
+        fetched=fetched,
     )
 
 
@@ -573,6 +700,166 @@ def reruns_summary(run: RerunsRun) -> str:
     return "\n".join([*lines, "", RERUNS_SHOWS, ""])
 
 
+def _tool_verdict(run: ToolRun) -> str:
+    word = run.outcome if run.outcome == audit.PASSED else run.outcome.upper()
+    if not run.command:
+        return f"`repro ci {run.check}`: **{word}**: {run.output}"
+    return f"`{' '.join(run.command)}`: **{word}** (exit {run.exit})"
+
+
+def _nonzero(counts: dict[str, int], states: tuple[str, ...]) -> str:
+    return "".join(f", {counts[state]} {state}" for state in states if counts.get(state))
+
+
+def _prereg_rows(account: dict) -> tuple[list[tuple[str, str]], list[str]]:
+    plans = account.get("plans", [])
+    frozen = [plan for plan in plans if plan["frozen"]]
+    checks = collections.Counter(plan["check"] for plan in frozen)
+    drafts = len(plans) - len(frozen)
+    found = (
+        f"{checks['unchanged']} of {_count(len(frozen), 'frozen plan')} unchanged since "
+        f"the freeze"
+        + (f", {checks['changed']} changed" if checks["changed"] else "")
+        + (
+            f", {checks['not frozen']} with an amendment that is not frozen"
+            if checks["not frozen"]
+            else ""
+        )
+        + (
+            f"; {_count(drafts, 'plan')} of {len(plans)} never frozen, so a draft with nothing "
+            "to compare"
+            if drafts
+            else ""
+        )
+    )
+    entries = sum(plan["log_entries"] for plan in frozen)
+    rows = [
+        ("plans", found),
+        (
+            "amendments",
+            f"{_count(sum(plan['amendments'] for plan in frozen), 'frozen amendment')}, "
+            f"{_count(sum(plan['amendment_drafts'] for plan in frozen), 'draft')}",
+        ),
+        ("log", f"{entries} log entr{'y' if entries == 1 else 'ies'}"),
+    ]
+    if pinned := account.get("commit_pinned", []):
+        statuses = collections.Counter(document["status"] for document in pinned)
+        rows.append(
+            (
+                "frozen by a commit line",
+                f"{statuses['unchanged']} of {_count(len(pinned), 'registration')} unchanged"
+                + "".join(
+                    f", {n} {status}" for status, n in statuses.items() if status != "unchanged"
+                ),
+            )
+        )
+    listed = [
+        f"- `{plan['path']}`: " + ("never frozen" if not plan["frozen"] else plan["check"])
+        for plan in plans
+        if not plan["frozen"] or plan["check"] != "unchanged"
+    ] + [
+        f"- `{document['path']}`: {document['status']}"
+        for document in account.get("commit_pinned", [])
+        if document["status"] in ("changed", "pending", "unknown commit")
+    ]
+    return rows, listed
+
+
+def _results_rows(account: dict) -> tuple[list[tuple[str, str]], list[str]]:
+    files = account.get("files", [])
+    states = collections.Counter(file["state"] for file in files)
+    chain = account.get("chain", "")
+    rows = [
+        (
+            "chain",
+            f"{chain}: {_count(account['events'], 'event')}"
+            if "events" in account
+            else f"{_said(chain)}: {'; '.join(account.get('problems', []))[: MAX_SHOWN * 3]}",
+        ),
+        (
+            "recorded files",
+            f"{states['ok']} of {_count(len(files), 'recorded file')} match "
+            f"the hash recorded"
+            + _nonzero(states, ("changed", "missing", "resealed", "not a tree", "not a file"))
+            if "events" in account
+            else "not compared: the chain did not verify",
+        ),
+    ]
+    listed = [f"- `{file['path']}`: {file['state']}" for file in files if file["state"] != "ok"]
+    return rows, listed
+
+
+def _citations_rows(run: ToolRun) -> tuple[list[tuple[str, str]], list[str]]:
+    account = run.account
+    counts = account.get("counts", {})
+    rows = [
+        (
+            "quotations",
+            f"{counts.get('found', 0)} found, {counts.get('not found', 0)} not found, "
+            f"{counts.get('unchecked', 0)} unchecked"
+            + _nonzero(counts, ("ambiguous", "indeterminate"))
+            + f" of {_count(account.get('quotes', 0), 'quotation')}",
+        ),
+        (
+            "sources",
+            f"{account.get('sources', 0) - account.get('absent_sources', 0)} of "
+            f"{_count(account.get('sources', 0), 'source')} on this machine, "
+            f"{account.get('absent_sources', 0)} absent"
+            + _nonzero(
+                {
+                    "not the pinned bytes": account.get("broken_pins", 0),
+                    "unpinned": account.get("unpinned_sources", 0),
+                },
+                ("not the pinned bytes", "unpinned"),
+            ),
+        ),
+    ]
+    if run.fetched is not None:
+        fetched = run.fetched.get("counts", {})
+        rows.append(
+            (
+                "fetch",
+                f"{_count(run.fetched.get('sources', 0), 'source')}: "
+                f"{fetched.get('fetched', 0)} fetched and matched to the pinned digest, "
+                f"{fetched.get('present', 0)} already present"
+                + "".join(
+                    f", {n} {state}"
+                    for state, n in fetched.items()
+                    if n and state not in ("fetched", "present")
+                ),
+            )
+        )
+    return rows, []
+
+
+def tool_summary(run: ToolRun) -> str:
+    """The Markdown `repro ci prereg`, `results` and `citations` append to a step summary."""
+    lines = [f"## {run.check}", "", _tool_verdict(run)]
+    if run.account:
+        if run.check == "citations":
+            counts = run.account.get("counts", {})
+            total = run.account.get("quotes", 0)
+            unresolved = total - counts.get("found", 0) - counts.get("not found", 0)
+            if unresolved:
+                # Before the table, so a pass is never read without it.
+                lines += [
+                    "",
+                    f"{unresolved} of {_count(total, 'quotation')} were not checked: "
+                    f"{run.account.get('absent_sources', 0)} of "
+                    f"{_count(run.account.get('sources', 0), 'source')} are not on this machine. "
+                    "An unchecked quotation is not a found one.",
+                ]
+            rows, listed = _citations_rows(run)
+        elif run.check == "results":
+            rows, listed = _results_rows(run.account)
+        else:
+            rows, listed = _prereg_rows(run.account)
+        lines += ["", *_table(rows)]
+        if listed:
+            lines += ["", *_listed(listed)]
+    return "\n".join([*lines, "", SHOWS[run.check], ""])
+
+
 # --------------------------------------------------------------------------------- workflows
 
 
@@ -604,7 +891,7 @@ def workflow(
     name: str | None = None,
     prefix: str = "",
     branch: str = "main",
-    environment: bool = False,
+    environment: str = "",
 ) -> Workflow:
     """The workflow that runs one `repro ci` command, pinned to the installed version of this
     package."""
@@ -620,7 +907,7 @@ def workflow(
             job=check,
             checkout=CHECKOUT,
             setup_uv=SETUP_UV,
-            environment=ENVIRONMENT if environment else "",
+            environment=environment,
             distribution=DISTRIBUTION,
             version=__version__,
             command=command,
@@ -661,39 +948,50 @@ def init(
     cwd: pathlib.Path,
     *,
     reruns: bool = False,
+    fetch_sources: bool = False,
     force: bool = False,
     readme: bool = False,
     prefix: str = "",
     names: dict[str, str] | None = None,
 ) -> int:
-    """Write a workflow for each check into the repository holding `cwd`, and print the README
-    lines."""
+    """Write a workflow for each check the repository holding `cwd` keeps a record for, and
+    print the README lines."""
     top = try_run("rev-parse", "--show-toplevel", cwd=cwd)
     if not top:
         raise NotARepositoryError(cwd)
     root = pathlib.Path(top.strip()).resolve()
     path = find(cwd)
-    if path is None or not path.is_relative_to(root):
-        raise NoManifestError(root)
-    if reruns and not load(path).regenerations:
-        raise NothingToRerunError(path)
+    if path is not None and not path.is_relative_to(root):
+        path = None
+    if reruns and (path is None or not load(path).regenerations):
+        raise NothingToRerunError(path or root / DEFAULT_NAME)
 
     # The workflow runs at the top of the checkout, so a manifest below the top is named.
-    relative = path.relative_to(root).as_posix()
+    relative = path.relative_to(root).as_posix() if path else DEFAULT_NAME
     named = "" if relative == DEFAULT_NAME else f" {shlex.quote(relative)}"
+    commands = {
+        "claims": f"repro ci claims{named}",
+        "citations": "repro ci citations" + (" --fetch-sources" if fetch_sources else ""),
+        "reruns": f"repro ci reruns{named}",
+    }
+    steps = {"citations": POPPLER, "reruns": ENVIRONMENT}
+    kept = {check: BY_NAME[check].used_by(root) for check in TOOLS}
+    kept |= {"claims": path is not None, "reruns": reruns}
+    if not any(kept.values()):
+        raise NothingToCheckError(root)
     head = try_run("symbolic-ref", "--short", "refs/remotes/origin/HEAD", cwd=root)
     branch = head.strip().removeprefix("origin/") if head else "main"
-    chosen = [check for check in CHECKS if check != "reruns" or reruns]
     wanted = [
         workflow(
             check,
-            f"repro ci {check}{named}",
+            commands.get(check, f"repro ci {check}"),
             name=(names or {}).get(check),
             prefix=prefix,
             branch=branch,
-            environment=check == "reruns",
+            environment=steps.get(check, ""),
         )
-        for check in chosen
+        for check in CHECKS
+        if kept[check]
     ]
 
     there = [root / WORKFLOWS / flow.file for flow in wanted]
@@ -718,11 +1016,12 @@ def init(
         print(f"wrote {root / WORKFLOWS / flow.file}")
         print(f"  name: {flow.name}")
         print(f"  runs: {flow.text.rstrip().splitlines()[-1].split('run: ', 1)[1]}")
-    print(f"  on a push to {branch} and on every pull request")
+    for check in CHECKS:
+        if not kept[check]:
+            print(f"skipped {check}: {NO_RECORD[check]}")
+    print(f"each runs on a push to {branch} and on every pull request")
     if reruns:
-        print(
-            f"  edit {(WORKFLOWS / wanted[-1].file).as_posix()} to install what the commands need"
-        )
+        print(f"edit {(WORKFLOWS / wanted[-1].file).as_posix()} to install what the commands need")
 
     if readme and slug:
         text, added = with_badges(target.read_text(encoding="utf-8"), wanted, slug)
@@ -805,6 +1104,17 @@ def command_reruns(args: argparse.Namespace, reproduce_text: Shown) -> int:
     return 0 if assessment.passed else 1
 
 
+def command_tool(args: argparse.Namespace) -> int:
+    run = tool(
+        args.action, project_root(pathlib.Path.cwd()), fetch=getattr(args, "fetch_sources", False)
+    )
+    print(run.output)
+    if run.command and run.outcome != audit.PASSED:
+        print(f"\n{run.outcome}: `repro ci {run.check}` exits {run.code}.")
+    _summarize(args, tool_summary(run))
+    return run.code
+
+
 def command_init(args: argparse.Namespace) -> int:
     names = {}
     for given in args.name or ():
@@ -815,6 +1125,7 @@ def command_init(args: argparse.Namespace) -> int:
     return init(
         pathlib.Path.cwd(),
         reruns=args.reruns,
+        fetch_sources=args.fetch_sources,
         force=args.force,
         readme=args.readme,
         prefix=args.prefix,
@@ -829,10 +1140,11 @@ def add_parser(
         "ci",
         help="run the checks in a workflow, with a summary on the run page",
         description=(
-            "The checks as one line of a workflow each. `claims` runs what `repro verify` and "
-            "`repro stale` run, `reruns` runs what `repro reproduce` runs, and each appends a "
-            "Markdown summary to the file GITHUB_STEP_SUMMARY names. `init` writes the "
-            "workflows and prints the README lines."
+            "The checks as one line of a workflow each. `prereg`, `results` and `citations` "
+            "run that tool's own check, `claims` runs what `repro verify` and `repro stale` "
+            "run, `reruns` runs what `repro reproduce` runs, and each appends a Markdown "
+            "summary to the file GITHUB_STEP_SUMMARY names. `init` writes a workflow for each "
+            "check the repository keeps a record for, and prints the README lines."
         ),
     )
     p.set_defaults(func=lambda args: p.print_help() or 1)
@@ -849,6 +1161,33 @@ def add_parser(
         )
         return made
 
+    def tool_check(name: str, text: str, description: str) -> argparse.ArgumentParser:
+        made = actions.add_parser(
+            name,
+            help=text,
+            description=description
+            + " Exits 0 where the check passed, 1 where it failed, and 2 where it could not "
+            "be made or the project keeps nothing for it to read.",
+        )
+        made.add_argument(
+            "--summary",
+            metavar="PATH",
+            help="append the Markdown summary to this file (default: $GITHUB_STEP_SUMMARY)",
+        )
+        made.set_defaults(func=command_tool)
+        return made
+
+    tool_check(
+        "prereg",
+        "has any frozen plan changed since its freeze?",
+        "Run `prereg check` over the project: every plan, its amendments and its log.",
+    )
+    tool_check(
+        "results",
+        "does the ledger's chain verify, and is each recorded file the one recorded?",
+        "Run `results verify --files` over the project.",
+    )
+
     p_claims = checks(
         "claims",
         "check every assertion, then say which claims read a file changed since its re-run",
@@ -857,6 +1196,20 @@ def add_parser(
         "no manifest, and 0 otherwise.",
     )
     p_claims.set_defaults(func=lambda args: command_claims(args, verify, stale))
+
+    tool_check(
+        "citations",
+        "does every quotation resolve in the source its claims file pins?",
+        "Run `citations verify --claims <dir>` over the project's claims directory. A run in "
+        "which no quotation was found could not check anything and does not pass; one in "
+        "which some were found, none was not found and the rest were unchecked passes, and "
+        "its summary opens on how many were not checked.",
+    ).add_argument(
+        "--fetch-sources",
+        action="store_true",
+        help="run `citations fetch` first, which downloads each absent source from where its "
+        "claims file says an open copy is and keeps only bytes matching the pinned digest",
+    )
 
     p_reruns = checks(
         "reruns",
@@ -877,10 +1230,11 @@ def add_parser(
         "init",
         help="write the workflows and print the README lines",
         description=(
-            f"Write {(WORKFLOWS / 'claims.yml').as_posix()}, which runs `repro ci claims` on a "
-            "push to the default branch and on every pull request, and print the badge line "
-            f"for the README. With --reruns, write {(WORKFLOWS / 'reruns.yml').as_posix()} as "
-            "well, which runs `repro ci reruns`. Each workflow is named for its check. A "
+            f"Write a workflow under {WORKFLOWS.as_posix()}/ for each check the repository "
+            "keeps a record for (prereg.yml, results.yml, claims.yml, citations.yml), each "
+            "running one `repro ci` command on a push to the default branch and on every pull "
+            "request, say which were skipped and why, and print a badge line for each. With "
+            "--reruns, write reruns.yml as well. Each workflow is named for its check. A "
             "workflow this command wrote is replaced only with --force, and any other file "
             "of that name is never replaced."
         ),
@@ -890,6 +1244,11 @@ def add_parser(
         action="store_true",
         help="also write the workflow that runs the declared commands again, for a project "
         "whose commands can run in CI",
+    )
+    p_init.add_argument(
+        "--fetch-sources",
+        action="store_true",
+        help="have the citations workflow fetch absent sources before it checks",
     )
     p_init.add_argument(
         "--force", action="store_true", help="replace a workflow this command wrote"
@@ -920,12 +1279,15 @@ __all__ = [
     "NAMES",
     "ClaimsRun",
     "RerunsRun",
+    "ToolRun",
     "Workflow",
     "claims",
     "claims_summary",
     "init",
     "repository",
     "reruns_summary",
+    "tool",
+    "tool_summary",
     "with_badges",
     "workflow",
 ]

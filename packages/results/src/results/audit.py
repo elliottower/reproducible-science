@@ -13,9 +13,10 @@ is why it is a separate command and not something verification does on its own.
 
 from __future__ import annotations
 
+import json
 import pathlib
 
-from provenance_core import anchor, sha256_of_tree, try_run
+from provenance_core import anchor, atomic_write, sha256_of_tree, try_run
 
 from results import ledger, manuscript, stamps
 from results.paths import ledger_path, require_root
@@ -233,11 +234,23 @@ def timestamp() -> int:
     return 0
 
 
-def verify(check_files: bool) -> int:
+def verify(check_files: bool, json_path: str | None = None) -> int:
+    """Check the chain and, with `check_files`, every recorded file. With `json_path`, the
+    same findings are also written there as one JSON object: the chain's status and problems,
+    the number of events, and each recorded path with what was found at it."""
+    report: dict = {"files_checked": check_files, "files": []}
+    code = _verify(check_files, report)
+    if json_path:
+        atomic_write(json_path, json.dumps({**report, "exit": code}, indent=2) + "\n")
+    return code
+
+
+def _verify(check_files: bool, report: dict) -> int:
     root = require_root()
     lp = ledger_path(root)
 
     status, problems = ledger.verify(lp)
+    report |= {"chain": status.value, "problems": problems}
     if status is not ledger.ChainStatus.INTACT:
         # Name which failure it is. Truncated, edited and unattested have different causes and
         # different remedies, and one banner for all three tells a reader nothing to act on.
@@ -262,6 +275,7 @@ def verify(check_files: bool) -> int:
         return 1
 
     events = ledger.read_ledger(lp)
+    report["events"] = len(events)
     print(f"chain intact: {len(events)} events, anchored\n")
 
     if state := in_history(lp):
@@ -315,10 +329,12 @@ def verify(check_files: bool) -> int:
                 if f["sha256"] not in recorded:
                     recorded.append(f["sha256"])
         base = root.parent
+        found = report["files"]
         for path, recorded in sorted(file_hashes.items()):
             p = base / path
             if not p.exists():
                 print(f"  MISSING    {path}")
+                found.append({"path": path, "state": "missing"})
                 drift += 1
                 continue
             if kinds.get(path) == "tree":
@@ -328,12 +344,14 @@ def verify(check_files: bool) -> int:
                     # that never happened.
                     print(f"  NOT A TREE {path}")
                     print("    sealed as a directory; what is there now is not one")
+                    found.append({"path": path, "state": "not a tree"})
                     drift += 1
                     continue
                 actual = sha256_of_tree(p)[0]
             elif p.is_dir():
                 print(f"  NOT A FILE {path}")
                 print("    sealed as a file; what is there now is a directory")
+                found.append({"path": path, "state": "not a file"})
                 drift += 1
                 continue
             else:
@@ -344,13 +362,16 @@ def verify(check_files: bool) -> int:
                     # so the path was sealed, changed, and sealed again.
                     print(f"  RESEALED   {path}")
                     print(f"    recorded {len(recorded)} different hashes for this path")
+                    found.append({"path": path, "state": "resealed"})
                     drift += 1
                 else:
                     print(f"  ok         {path}")
+                    found.append({"path": path, "state": "ok"})
             else:
                 print(f"  CHANGED    {path}")
                 print(f"    sealed   {recorded[-1][:16]}…")
                 print(f"    now      {actual[:16]}…")
+                found.append({"path": path, "state": "changed"})
                 drift += 1
         if drift:
             print(f"\n{drift} file(s) changed or missing since they were recorded.")

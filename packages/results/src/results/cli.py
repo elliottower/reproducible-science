@@ -91,7 +91,7 @@ def cmd_reanchor(a) -> int:
 
 
 def cmd_verify(a) -> int:
-    return audit.verify(a.files)
+    return audit.verify(a.files, a.json)
 
 
 def cmd_timestamp(a) -> int:
@@ -225,6 +225,11 @@ def _main(argv: list[str] | None = None) -> int:
         "--files",
         action="store_true",
         help="also check that sealed/output files still match their hashes",
+    )
+    v.add_argument(
+        "--json",
+        metavar="PATH",
+        help="also write the findings to this file as JSON: the chain, and each recorded file",
     )
     v.set_defaults(fn=cmd_verify)
 

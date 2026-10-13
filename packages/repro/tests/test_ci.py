@@ -509,15 +509,15 @@ def test_a_named_summary_file_is_written_in_place_of_the_environments(tmp_path, 
 
 def test_bare_ci_prints_its_checks_and_exits_1(capsys):
     assert main(["ci"]) == 1
-    assert "{claims,reruns,init}" in capsys.readouterr().out
+    assert "{prereg,results,claims,citations,reruns,init}" in capsys.readouterr().out
 
 
 # -- the workflows ---------------------------------------------------------------------------
 
 
 def test_the_default_names_say_which_check_ran_and_nothing_about_the_study():
-    assert ci.CHECKS == ("claims", "reruns")
-    assert ci.NAMES == {"claims": "claims", "reruns": "reruns"}
+    assert ci.CHECKS == ("prereg", "results", "claims", "citations", "reruns")
+    assert ci.NAMES == {check: check for check in ci.CHECKS}
 
 
 def test_init_writes_only_the_claims_workflow_and_prints_its_badge(repository, capsys):
@@ -527,8 +527,10 @@ def test_init_writes_only_the_claims_workflow_and_prints_its_badge(repository, c
     written = repository / ci.WORKFLOWS / "claims.yml"
     assert f"wrote {written.resolve()}" in out
     runs = "https://github.com/someone/study/actions/workflows/claims.yml"
-    assert f"[![claims]({runs}/badge.svg)]({runs})" in out.splitlines()
-    assert "reruns" not in out
+    assert [line for line in out.splitlines() if "[![" in line] == [
+        f"[![claims]({runs}/badge.svg)]({runs})"
+    ]
+    assert "skipped prereg: " in out and "skipped reruns: not asked for" in out
 
 
 def test_the_claims_workflow_runs_one_pinned_command_with_read_only_permissions(repository):
@@ -615,7 +617,7 @@ def test_init_never_replaces_a_workflow_it_did_not_write_and_a_prefix_writes_bes
 
 def test_a_name_for_a_check_there_is_no_workflow_for_is_refused(repository, capsys):
     assert main(["ci", "init", "--name", "study=reproducible"]) == 2
-    assert "CHECK is one of claims, reruns" in capsys.readouterr().out
+    assert "CHECK is one of prereg, results, claims, citations, reruns" in capsys.readouterr().out
     assert not (repository / ".github").exists()
 
 
@@ -660,7 +662,7 @@ def test_readme_puts_the_badge_under_the_first_heading_once(repository, capsys):
 def test_badges_go_on_one_line_at_the_head_of_the_badges_already_there():
     flows = [ci.workflow(check, f"repro ci {check}") for check in ci.CHECKS]
     text, added = ci.with_badges("# Study\n\n[![pypi](a)](b)\n\nText.\n", flows, "o/r")
-    assert len(added) == 2
+    assert len(added) == 5
     assert text.splitlines()[2] == " ".join(flow.badge("o/r") for flow in flows)
     assert text.splitlines()[3:] == ["[![pypi](a)](b)", "", "Text."]
     assert ci.with_badges(text, flows, "o/r") == (text, [])
@@ -702,3 +704,272 @@ def test_a_manifest_below_the_top_is_named_in_the_command(tmp_path, monkeypatch)
     assert main(["ci", "init"]) == 0
     text = (tmp_path / ci.WORKFLOWS / "claims.yml").read_text()
     assert text.rstrip().endswith("repro ci claims paper/repro.yaml")
+
+
+# -- the three tools' checks -----------------------------------------------------------------
+
+TEXT = "The quick brown fox jumps over the lazy dog near the quiet river bank at dawn.\n"
+QUOTE = "quick brown fox jumps over the lazy dog"
+
+
+def pin(root, name, quote=QUOTE, there=True):
+    """A claims file pinning one source by digest, with the source on disk or not."""
+    (root / "sources").mkdir(exist_ok=True)
+    (root / "claims").mkdir(exist_ok=True)
+    if there:
+        (root / "sources" / f"{name}.txt").write_text(TEXT)
+    source = {
+        "citation": name,
+        "local": f"sources/{name}.txt",
+        "sha256": Digest.of_text(TEXT).value,
+    }
+    document = {"source": source, "claims": {"c1": {"quotes": [{"exact": quote}]}}}
+    (root / "claims" / f"{name}.yaml").write_text(yaml.safe_dump(document))
+
+
+@pytest.fixture
+def tools(tmp_path, monkeypatch):
+    """A git repository as the working directory, with no calendar to stamp a freeze at and no
+    cache or note shared with the machine the tests run on."""
+    monkeypatch.setenv("PROVENANCE_CALENDARS", "")
+    monkeypatch.setenv("CITATIONS_NO_CACHE", "1")
+    monkeypatch.setenv("REPRO_NO_HINT", "1")
+    monkeypatch.delenv("GITHUB_STEP_SUMMARY", raising=False)
+    git(tmp_path, "init", "--quiet")
+    monkeypatch.chdir(tmp_path)
+    return tmp_path
+
+
+def plan(root, freeze=True):
+    assert main(["prereg", "new", ".", "--title", "study"]) == 0
+    git(root, "add", "PREREG.md")
+    git(root, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "--quiet", "-m", "plan")
+    if freeze:
+        assert main(["prereg", "freeze"]) == 0
+
+
+def ledger(root):
+    (root / "results.json").write_text(json.dumps({"total": 6}))
+    (root / "inputs.json").write_text(json.dumps({"xs": [1, 2, 3]}))
+    assert main(["results", "init"]) == 0
+    assert main(["results", "seal", "inputs.json"]) == 0
+    assert main(["results", "run", "results.json", "--run-id", "r1"]) == 0
+
+
+@pytest.fixture
+def four(tools):
+    """Every record a check reads: a frozen plan with one log entry, a ledger recording two
+    files, a manifest, and two pinned sources of which one is on disk."""
+    plan(tools)
+    assert main(["prereg", "log", "tolerance from fixtures", "--access", "no results seen"]) == 0
+    ledger(tools)
+    on_disk(project(tools))
+    pin(tools, "here")
+    pin(tools, "gone", there=False)
+    return tools
+
+
+def summary_of(root, *argv):
+    """The exit code of one check and the summary it appended."""
+    target = root / "summary.md"
+    target.unlink(missing_ok=True)
+    code = main(["ci", *argv, "--summary", str(target)])
+    return code, target.read_text()
+
+
+def test_the_four_checks_of_a_project_holding_every_record(four, capsys):
+    code, said = summary_of(four, "prereg")
+    assert code == 0
+    assert "`prereg check`: **passed** (exit 0)" in said
+    assert row(said, "plans") == "1 of 1 frozen plan unchanged since the freeze"
+    assert row(said, "amendments") == "0 frozen amendments, 0 drafts"
+    assert row(said, "log") == "1 log entry"
+    assert said.rstrip().endswith("It does not show that the study followed the plan.")
+
+    code, said = summary_of(four, "results")
+    assert code == 0
+    assert "`results verify --files`: **passed** (exit 0)" in said
+    assert row(said, "chain") == "intact: 3 events"
+    assert row(said, "recorded files") == "2 of 2 recorded files match the hash recorded"
+    assert said.rstrip().endswith("It does not show that the results are right.")
+
+    code, said = summary_of(four, "claims")
+    assert code == 0
+    assert row(said, "assertions") == "1 of 1 assertion verified"
+
+    code, said = summary_of(four, "citations")
+    assert code == 0
+    assert "`citations verify --claims claims`: **passed** (exit 0)" in said
+    assert said.splitlines()[4] == (
+        "1 of 2 quotations were not checked: 1 of 2 sources are not on this machine. "
+        "An unchecked quotation is not a found one."
+    )
+    assert row(said, "quotations") == "1 found, 0 not found, 1 unchecked of 2 quotations"
+    assert row(said, "sources") == "1 of 2 sources on this machine, 1 absent"
+    assert said.rstrip().endswith(
+        "It does not show that the source supports the sentence that quotes it."
+    )
+    assert "1 unchecked" in capsys.readouterr().out
+
+
+def test_a_plan_edited_after_its_freeze_fails_and_is_named(tools):
+    plan(tools)
+    (tools / "PREREG.md").chmod(0o644)
+    (tools / "PREREG.md").write_text((tools / "PREREG.md").read_text() + "\nAlso p < 0.10.\n")
+    code, said = summary_of(tools, "prereg")
+    assert code == 1
+    assert "**FAILED** (exit 1)" in said
+    assert row(said, "plans") == "0 of 1 frozen plan unchanged since the freeze, 1 changed"
+    assert f"- `{tools.resolve() / 'PREREG.md'}`: changed" in said
+
+
+def test_a_plan_never_frozen_is_called_a_draft_and_does_not_pass(tools):
+    plan(tools, freeze=False)
+    code, said = summary_of(tools, "prereg")
+    assert code == 2
+    assert "**COULD NOT CHECK** (exit 2)" in said
+    assert row(said, "plans") == (
+        "0 of 0 frozen plans unchanged since the freeze; 1 plan of 1 never frozen, so a draft "
+        "with nothing to compare"
+    )
+    assert f"- `{tools.resolve() / 'PREREG.md'}`: never frozen" in said
+
+
+def test_the_plans_row_adds_up_over_frozen_changed_pending_and_draft():
+    def entry(frozen, check, amendments=0, drafts=0, entries=0):
+        return {
+            "path": "p",
+            "frozen": frozen,
+            "sha256": None,
+            "check": check,
+            "amendments": amendments,
+            "amendment_drafts": drafts,
+            "log_entries": entries,
+        }
+
+    plans = [
+        entry(True, "unchanged", amendments=2, entries=3),
+        entry(True, "unchanged", entries=1),
+        entry(True, "changed", amendments=1),
+        entry(True, "not frozen", drafts=1),
+        entry(False, "not frozen", entries=9),
+    ]
+    run = ci.ToolRun(
+        check="prereg", command=("prereg", "check"), exit=1, outcome="failed",
+        account={"plans": plans, "commit_pinned": []},
+    )  # fmt: skip
+    said = ci.tool_summary(run)
+    assert row(said, "plans") == (
+        "2 of 4 frozen plans unchanged since the freeze, 1 changed, 1 with an amendment that "
+        "is not frozen; 1 plan of 5 never frozen, so a draft with nothing to compare"
+    )
+    assert row(said, "amendments") == "3 frozen amendments, 1 draft"
+    assert row(said, "log") == "4 log entries"
+    assert len([line for line in said.splitlines() if line.startswith("- ")]) == 3
+
+
+def test_a_recorded_file_that_changed_and_one_that_is_gone_fail_and_are_named(tools):
+    ledger(tools)
+    (tools / "results.json").write_text(json.dumps({"total": 7}))
+    (tools / "inputs.json").unlink()
+    code, said = summary_of(tools, "results")
+    assert code == 1
+    assert row(said, "chain") == "intact: 3 events"
+    assert row(said, "recorded files") == (
+        "0 of 2 recorded files match the hash recorded, 1 changed, 1 missing"
+    )
+    assert "- `results.json`: changed" in said and "- `inputs.json`: missing" in said
+
+
+def test_a_ledger_whose_chain_does_not_verify_fails_and_compares_no_file(tools):
+    ledger(tools)
+    path = tools / ".results" / "ledger.jsonl"
+    path.write_text(path.read_text().replace("r1", "r2"))
+    code, said = summary_of(tools, "results")
+    assert code == 1
+    assert row(said, "chain").startswith("edited: ")
+    assert row(said, "recorded files") == "not compared: the chain did not verify"
+
+
+def test_a_citations_run_that_read_no_source_could_not_check_and_does_not_pass(tools, capsys):
+    pin(tools, "gone", there=False)
+    pin(tools, "lost", there=False)
+    assert main(["citations", "verify", "--claims", "claims"]) == 1
+    assert "nothing was measured" in capsys.readouterr().out
+    code, said = summary_of(tools, "citations")
+    assert code == 2
+    assert "**COULD NOT CHECK** (exit 1)" in said
+    assert row(said, "quotations") == "0 found, 0 not found, 2 unchecked of 2 quotations"
+    assert row(said, "sources") == "0 of 2 sources on this machine, 2 absent"
+    assert "could not check: `repro ci citations` exits 2." in capsys.readouterr().out
+
+
+def test_a_quotation_its_source_does_not_hold_fails(tools):
+    pin(tools, "here")
+    pin(tools, "other", quote="a sentence the source does not contain anywhere in its text")
+    code, said = summary_of(tools, "citations")
+    assert code == 1
+    assert row(said, "quotations") == "1 found, 1 not found, 0 unchecked of 2 quotations"
+    assert "were not checked" not in said
+
+
+def test_fetching_first_reports_what_was_fetched_and_leaves_the_rest_unchecked(tools):
+    pin(tools, "here")
+    pin(tools, "gone", there=False)
+    code, said = summary_of(tools, "citations", "--fetch-sources")
+    assert code == 0
+    assert row(said, "fetch") == (
+        "2 sources: 0 fetched and matched to the pinned digest, 1 already present, 1 no location"
+    )
+    assert row(said, "quotations") == "1 found, 0 not found, 1 unchecked of 2 quotations"
+
+
+def test_a_check_with_no_record_to_read_exits_2_and_says_so(tools):
+    for check in ci.TOOLS:
+        code, said = summary_of(tools, check)
+        assert code == 2
+        assert f"`repro ci {check}`: **NOTHING TO READ**: {ci.NO_RECORD[check]}" in said
+
+
+def badges(out):
+    return [line.split("]")[0].removeprefix("[![") for line in out.splitlines() if "[![" in line]
+
+
+def test_init_writes_a_workflow_for_each_record_kept_in_badge_order(four, capsys):
+    assert main(["ci", "init", "--fetch-sources"]) == 0
+    out = capsys.readouterr().out
+    assert sorted(p.name for p in (four / ci.WORKFLOWS).iterdir()) == [
+        "citations.yml",
+        "claims.yml",
+        "prereg.yml",
+        "results.yml",
+    ]
+    assert badges(out) == ["prereg", "results", "claims", "citations"]
+    assert "skipped reruns: not asked for" in out
+    for check in ("prereg", "results"):
+        flow = yaml.safe_load((four / ci.WORKFLOWS / f"{check}.yml").read_text())
+        assert flow["name"] == check
+        assert [step["run"] for step in flow["jobs"][check]["steps"] if "run" in step] == [
+            f"uvx --from reproducible-science=={repro.__version__} repro ci {check}"
+        ]
+    flow = yaml.safe_load((four / ci.WORKFLOWS / "citations.yml").read_text())
+    assert [step["run"] for step in flow["jobs"]["citations"]["steps"] if "run" in step] == [
+        "sudo apt-get update && sudo apt-get install --yes poppler-utils",
+        f"uvx --from reproducible-science=={repro.__version__} repro ci citations --fetch-sources",
+    ]
+
+
+def test_init_writes_only_the_workflows_whose_records_exist(tools, capsys):
+    ledger(tools)
+    pin(tools, "here")
+    assert main(["ci", "init"]) == 0
+    out = capsys.readouterr().out
+    assert sorted(p.name for p in (tools / ci.WORKFLOWS).iterdir()) == [
+        "citations.yml",
+        "results.yml",
+    ]
+    assert badges(out) == ["results", "citations"]
+    assert f"skipped prereg: {ci.NO_RECORD['prereg']}" in out
+    assert f"skipped claims: {ci.NO_RECORD['claims']}" in out
+    text = (tools / ci.WORKFLOWS / "citations.yml").read_text()
+    assert text.rstrip().endswith("repro ci citations")
