@@ -355,15 +355,15 @@ set_aside:
 
 ```bash
 repro export record              # JSON Lines on standard output
-repro export record -o checks.jsonl
+repro export record -o records.jsonl
 ```
 
-`repro export record` checks every assertion as `repro verify` does and writes one JSON object per line, one per assertion. Each states what was observed: the checker and its version, the file read with its pinned digest and its digest on disk, the address, the value stored there, the value the manuscript reports, the comparison rule and the outcome. It executes nothing, writes only the output it is asked for, and exits 0 whatever the outcomes, since `repro verify` is the check that fails.
+`repro export record` checks every assertion as `repro verify` does and writes one JSON object per line, one per assertion. Each states what was observed: the checker and its version, the file read with its pinned digest and its digest on disk, the address, the value stored there, the value the manuscript prints, the comparison rule and the outcome. It executes nothing, writes only the output it is asked for, and exits 0 whatever the outcomes, since `repro verify` is the check that fails.
 
 Experimental. The format is this tool's own export, `repro.check/0.1-experimental`, and a field may change before `1.0`; every record names its version.
 
 ```json
-{"record": "repro.check/0.1-experimental", "checker": {"name": "repro", "version": "0.5.5"}, "checked_at": "2026-10-13T21:41:43Z", "manifest": {"path": "repro.yaml", "digest": "2ea85eb5..."}, "claim": {"id": "responders", "text": "Thirty-five participants responded.", "digest": "1ccb77d0...", "line": 12}, "assertion": {"kind": "metric", "name": "responders", "index": 0, "line": 15}, "check_type": "value-comparison", "reads": [{"artifact": "totals", "path": "totals.json", "media_type": "application/json", "validity": "authoritative", "pinned": "ce260cfb...", "on_disk": "ce260cfb...", "side": "", "address": {"kind": "tree", "contract": 1, "pointer": "/responders"}, "stored": "36"}], "reported": "35", "comparison": {"mode": "printed_precision", "tolerance": "0"}, "outcome": "mismatch", "native_outcome": "mismatch", "native_reason": "value_mismatch", "detail": "responders: manuscript prints 35, totals.json holds 36 at /responders", "stages": {"execution": "completed", "extraction": "extracted", "comparison": "mismatch"}, "reader": {"backend": "metric", "backend_version": "2", "tool": "reproducible-science", "tool_version": "0.5.5", "extraction_digest": "76a50887..."}, "warnings": []}
+{"record": "repro.check/0.1-experimental", "checker": {"name": "repro", "version": "0.5.5"}, "checked_at": "2026-10-13T21:41:43Z", "manifest": {"path": "repro.yaml", "digest": "2ea85eb5..."}, "claim": {"id": "responders", "text": "Thirty-five participants responded.", "digest": "1ccb77d0...", "line": 12}, "assertion": {"kind": "metric", "name": "responders", "position": 0, "index": 0, "line": 15}, "check_type": "value-comparison", "reads": [{"artifact": "totals", "path": "totals.json", "media_type": "application/json", "validity": "authoritative", "pinned": "ce260cfb...", "on_disk": "ce260cfb...", "side": "", "address": {"kind": "tree", "contract": 1, "pointer": "/responders"}, "stored": "36"}], "printed": "35", "comparison": {"mode": "printed_precision", "tolerance": "0"}, "outcome": "mismatch", "native_outcome": "mismatch", "native_reason": "value_mismatch", "detail": "responders: manuscript prints 35, totals.json holds 36 at /responders", "stages": {"execution": "completed", "extraction": "extracted", "comparison": "mismatch"}, "reader": {"backend": "metric", "backend_version": "2", "tool": "reproducible-science", "tool_version": "0.5.5", "extraction_digest": "76a50887..."}, "warnings": []}
 ```
 
 The digests above are shortened for the page; a record carries all 64 characters.
@@ -382,7 +382,7 @@ The digests above are shortened for the page; a record carries all 64 characters
 
 Whether the file is the pinned one is `validity` on each file read, apart from the outcome, as in the report. No field is a `true` or a `false`. Where a command under `regenerations` writes a file the assertion reads, the record adds an `execution` block: the state `repro stale` gives, and each command upstream with its inputs and its latest recorded re-run.
 
-`repro.record.validate` reads a record back and refuses one no check could have produced, such as a `mismatch` with no stored value. A reader that meets a word, a check type or an address kind it does not know keeps it and never counts it as a `match`. The fields are defined in section 7.7 of [`docs/SPEC.md`](https://github.com/elliottower/reproducible-science/blob/main/docs/SPEC.md), with a JSON Schema beside it.
+`repro.record.validate` reads a record back and refuses one no check could have produced, such as a `mismatch` with no stored value. A reader that meets a word, a check type or an address kind it does not know keeps it and never counts it as a `match`. A record is derived when the command runs, from the manifest and the files, and nothing is stored. An assertion is identified by its claim's id, its kind, its name and its `position` among the claim's assertions of that kind and name. The fields are defined in section 7.7 of [`docs/SPEC.md`](https://github.com/elliottower/reproducible-science/blob/main/docs/SPEC.md), with a JSON Schema beside it.
 
 ## What it reads
 

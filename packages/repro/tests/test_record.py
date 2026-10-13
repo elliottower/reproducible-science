@@ -147,7 +147,7 @@ def test_a_mismatched_value_carries_what_is_stored_and_what_is_reported():
     assert (record.outcome, record.native_outcome) == (NormalizedOutcome.MISMATCH, "mismatch")
     assert record.check_type is CheckType.VALUE_COMPARISON
     (read,) = record.reads
-    assert (read.stored, record.reported) == ("3.2", "9.9")
+    assert (read.stored, record.printed) == ("3.2", "9.9")
     assert read.address.model_dump() == {"kind": "tree", "contract": 1, "pointer": "/delta"}
     assert (
         read.pinned
@@ -165,7 +165,7 @@ def test_a_table_cell_is_addressed_by_its_column_and_row():
         "column": "accuracy",
         "where": {"model": "LASSO-Cox"},
     }
-    assert (read.stored, record.reported) == ("0.6478999999999999", "0.900")
+    assert (read.stored, record.printed) == ("0.6478999999999999", "0.900")
 
 
 def test_a_quotation_reports_the_passage_and_stores_no_value():
@@ -175,7 +175,7 @@ def test_a_quotation_reports_the_passage_and_stores_no_value():
         NormalizedOutcome.MATCH,
         NormalizedOutcome.MISMATCH,
     )
-    assert present.reported == "matches the Haar expectation"
+    assert present.printed == "matches the Haar expectation"
     assert present.reads[0].address.kind == "passage"
     assert present.reads[0].stored is None and present.comparison is None
 
@@ -183,7 +183,7 @@ def test_a_quotation_reports_the_passage_and_stores_no_value():
 def test_a_correspondence_carries_both_sides_and_no_reported_value():
     record = one("correspondence_mismatch")
     assert record.check_type is CheckType.CORRESPONDENCE
-    assert record.reported is None
+    assert record.printed is None
     assert [(r.side, r.artifact, r.stored) for r in record.reads] == [
         ("stated", "doc", "18"),
         ("measured", "counts", "19"),
@@ -286,15 +286,13 @@ def changed(name, **edits):
 
 
 def test_a_mismatch_without_a_stored_value_is_refused():
-    assert "needs a stored and a reported value" in refused(
+    assert "needs a stored and a printed value" in refused(
         changed("value_mismatch", reads__0__stored=None)
     )
 
 
 def test_a_mismatch_without_a_reported_value_is_refused():
-    assert "needs a stored and a reported value" in refused(
-        changed("value_mismatch", reported=None)
-    )
+    assert "needs a stored and a printed value" in refused(changed("value_mismatch", printed=None))
 
 
 def test_a_correspondence_missing_one_side_of_a_match_is_refused():
@@ -356,7 +354,7 @@ def test_a_check_type_that_compares_nothing_cannot_carry_a_pair_of_values():
     identity = changed(
         "value_match",
         check_type="artifact-identity",
-        reported=None,
+        printed=None,
         comparison=None,
         reads__0__stored=None,
         stages=None,
@@ -408,7 +406,7 @@ def test_a_word_repro_emits_means_nothing_from_a_checker_that_is_not_known():
 
 def test_a_check_type_that_is_other_is_never_read_as_a_match():
     record = CheckRecord.model_validate(
-        changed("passage_present", check_type="other", reported=None, reads__0__address=None)
+        changed("passage_present", check_type="other", printed=None, reads__0__address=None)
     )
     assert read_outcome(record) is NormalizedOutcome.NOT_CHECKED
 
@@ -510,6 +508,38 @@ def test_a_claim_and_each_assertion_name_their_line_in_the_manifest(project):
     assert lines[quote.assertion.line - 1] == "  - kind: quote"
     assert lines[metric.assertion.line - 1] == "  - kind: metric"
     assert (quote.assertion.index, metric.assertion.index) == (0, 1)
+    assert (quote.assertion.position, metric.assertion.position) == (0, 0)
+
+
+def test_position_counts_among_assertions_of_one_kind_and_name(project):
+    """The identity `.repro/checks.jsonl` keeps a history under: claim id, kind, name, and the
+    position among the claim's assertions of that kind and name."""
+    manifest = project / "repro.yaml"
+    manifest.write_text(
+        manifest.read_text().replace(
+            "  - kind: metric\n",
+            "  - kind: quote\n    artifact: paper\n    text: Of those invited\n  - kind: metric\n",
+        )
+    )
+    records = check_records(load(manifest), WHEN)
+    assert [
+        (r.claim.id, r.assertion.kind, r.assertion.name, r.assertion.position) for r in records
+    ] == [
+        ("responders", "quote", "", 0),
+        ("responders", "quote", "", 1),
+        ("responders", "metric", "responders", 0),
+    ]
+    assert [r.assertion.index for r in records] == [0, 1, 2]
+
+
+def test_history_is_reserved_and_nothing_writes_it(project):
+    quote, metric = check_records(load(project / "repro.yaml"), WHEN)
+    assert quote.history is None and metric.history is None
+    assert not (project / ".repro").exists(), "an export stores nothing"
+    data = as_dict(metric) | {
+        "history": {"states": 2, "last_changed_at": "2026-10-13T21:03:22+00:00"}
+    }
+    assert validate(data).history.states == 2
 
 
 def test_a_passage_in_a_text_file_names_the_line_it_starts_on(project):

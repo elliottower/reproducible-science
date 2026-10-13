@@ -23,6 +23,7 @@ statistic beside `comparison`. Neither changes what an existing field means.
 
 from __future__ import annotations
 
+import collections
 import datetime
 import enum
 import json
@@ -251,8 +252,12 @@ class AssertionRef(BaseModel):
 
     kind: str
     name: str = ""
+    position: int = Field(default=0, ge=0)
+    """Which of the claim's assertions of this kind and name it is, from 0. With the claim's
+    id, the kind and the name, this is the identity an assertion keeps across edits, and the
+    one `.repro/checks.jsonl` records a history under."""
     index: int = Field(ge=0)
-    """Position among the claim's assertions, from 0."""
+    """Where it is among all of the claim's assertions, from 0, as the manifest orders them."""
     line: int | None = Field(default=None, ge=1)
     """The line of the manifest the assertion is declared on."""
 
@@ -373,6 +378,17 @@ class Execution(BaseModel):
     """Nearest first."""
 
 
+class History(BaseModel):
+    """A pointer into the record of checks, for the assertion a record is about."""
+
+    model_config = _CONFIG
+
+    states: int = Field(ge=0)
+    """How many states the record of checks holds for the assertion."""
+    last_changed_at: str | None = None
+    """When a check last found it different from the state recorded before."""
+
+
 class CheckRecord(BaseModel):
     """One assertion, as it was checked. Frozen, and carries no verdict."""
 
@@ -386,9 +402,10 @@ class CheckRecord(BaseModel):
     assertion: AssertionRef
     check_type: CheckType
     reads: tuple[FileRead, ...] = ()
-    reported: str | None = None
-    """The value as the manuscript prints it, or the passage a quotation asserts. None for a
-    `correspondence`, which compares two files and reports no value of its own."""
+    printed: str | None = None
+    """The value as the manuscript prints it, the manifest's `reported`, or the passage a
+    quotation asserts. None for a `correspondence`, which compares two files and prints no
+    value of its own."""
     comparison: Comparison | None = None
     """None for a quotation, which is present or absent."""
     outcome: NormalizedOutcome
@@ -404,6 +421,9 @@ class CheckRecord(BaseModel):
     warnings: tuple[Warning_, ...] = ()
     execution: Execution | None = None
     """Present only where a declared command writes a file the assertion reads."""
+    history: History | None = None
+    """What the project's record of checks holds for this assertion. Reserved: nothing writes
+    it yet, and a record is derived when it is exported, from no stored state."""
 
     def to_json(self) -> str:
         """One line. A field with nothing known is left out."""
@@ -636,6 +656,7 @@ def check_records(
                 line=claim_line,
                 passages=_passages(claim, manifest, paths, texts),
             )
+            seen: collections.Counter[tuple[str, str]] = collections.Counter()
             for index, (evidence, freshness) in enumerate(
                 zip(claim.evidence, node.assertions, strict=True)
             ):
@@ -649,12 +670,13 @@ def check_records(
                         assertion=AssertionRef(
                             kind=evidence.kind,
                             name=getattr(evidence, "name", ""),
+                            position=seen[evidence.kind, getattr(evidence, "name", "")],
                             index=index,
                             line=evidence_lines[index] if index < len(evidence_lines) else None,
                         ),
                         check_type=check_type(evidence.kind),
                         reads=_reads(evidence, decision, manifest, states, paths),
-                        reported=evidence.text
+                        printed=evidence.text
                         if isinstance(evidence, QuoteEvidence)
                         else getattr(evidence, "reported", None),
                         comparison=None
@@ -682,6 +704,7 @@ def check_records(
                         ),
                     )
                 )
+                seen[evidence.kind, getattr(evidence, "name", "")] += 1
     return tuple(records)
 
 
@@ -789,20 +812,20 @@ def _value_problems(record: CheckRecord) -> list[str]:
     word = record.outcome.value
     found = []
     if record.check_type is CheckType.VALUE_COMPARISON:
-        if compared and (record.reported is None or not values):
-            found.append(f"a value-comparison that is a {word} needs a stored and a reported value")
+        if compared and (record.printed is None or not values):
+            found.append(f"a value-comparison that is a {word} needs a stored and a printed value")
     elif record.check_type is CheckType.PASSAGE_PRESENCE:
-        if compared and not record.reported:
+        if compared and not record.printed:
             found.append(f"a passage-presence that is a {word} needs the passage looked for")
         if values:
             found.append("a passage-presence compares no value, so none can be stored")
     elif record.check_type is CheckType.CORRESPONDENCE:
-        if len(record.reads) != 2 or record.reported is not None:
-            found.append("a correspondence reads two files and reports no value of its own")
+        if len(record.reads) != 2 or record.printed is not None:
+            found.append("a correspondence reads two files and prints no value of its own")
         elif compared and len(values) != 2:
             found.append(f"a correspondence that is a {word} needs the value stored on each side")
     elif record.check_type is not CheckType.RERUN_COMPARISON and (
-        values or record.reported is not None or record.comparison is not None
+        values or record.printed is not None or record.comparison is not None
     ):
         # Identity, lineage and coverage are facts about a file or a manuscript as a whole.
         # A pair of values on one of them would say a value was compared, and none was.
@@ -913,6 +936,7 @@ __all__ = [
     "Execution",
     "FileRead",
     "FileState",
+    "History",
     "InvalidRecordError",
     "ManifestRef",
     "NormalizedOutcome",

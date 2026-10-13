@@ -44,6 +44,12 @@
           "default": "",
           "title": "Name",
           "type": "string"
+        },
+        "position": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Position",
+          "type": "integer"
         }
       },
       "required": [
@@ -447,6 +453,34 @@
       "title": "Freshness",
       "type": "string"
     },
+    "History": {
+      "additionalProperties": true,
+      "description": "A pointer into the record of checks, for the assertion a record is about.",
+      "properties": {
+        "last_changed_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Changed At"
+        },
+        "states": {
+          "minimum": 0,
+          "title": "States",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "states"
+      ],
+      "title": "History",
+      "type": "object"
+    },
     "ManifestRef": {
       "additionalProperties": true,
       "description": "The manifest the assertion was read from.",
@@ -720,6 +754,7 @@
         "truncated",
         "normalized",
         "wrong_page",
+        "page_unchecked",
         "positional_address"
       ],
       "title": "Warning_",
@@ -773,6 +808,17 @@
       ],
       "default": null
     },
+    "history": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/History"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
     "manifest": {
       "$ref": "#/$defs/ManifestRef",
       "default": {
@@ -790,6 +836,18 @@
     },
     "outcome": {
       "$ref": "#/$defs/NormalizedOutcome"
+    },
+    "printed": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Printed"
     },
     "reader": {
       "$ref": "#/$defs/Reader",
@@ -813,18 +871,6 @@
       "default": "repro.check/0.1-experimental",
       "title": "Record",
       "type": "string"
-    },
-    "reported": {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "type": "null"
-        }
-      ],
-      "default": null,
-      "title": "Reported"
     },
     "stages": {
       "anyOf": [
