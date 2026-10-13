@@ -21,6 +21,7 @@ import pathlib
 from repro.adapters.reads import reading_once
 from repro.exceptions import ReproError
 from repro.models import (
+    AggregateEvidence,
     AssertionAccount,
     ChainNode,
     Claim,
@@ -118,6 +119,14 @@ def _held(
         return [
             (side.artifact, side.name, address(side.locator), extracted.get(side.name))
             for side in evidence.sides
+        ]
+    if isinstance(evidence, AggregateEvidence):
+        # No member was read where a file is absent or undeclared: the engine stops before
+        # the backend, and the decision lists none.
+        read = [member.extracted for member in decision.members] or [None] * evidence.count
+        return [
+            (member.artifact, "", address(member.locator), value)
+            for member, value in zip(evidence.members, read, strict=True)
         ]
     if isinstance(evidence, TableCellEvidence) and not evidence.addresses_one_row:
         # Neither `row` nor `where`, or both: there is no one address to show.
@@ -263,6 +272,8 @@ def why(
             if isinstance(evidence, QuoteEvidence)
             else getattr(evidence, "reported", None),
             reads=tuple(read(*found) for found in files),
+            statistic=evidence.statistic if isinstance(evidence, AggregateEvidence) else None,
+            computed=decision.computed,
             outcome=decision.outcome,
             reason=decision.reason,
             detail=decision.detail,

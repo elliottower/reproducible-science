@@ -144,7 +144,7 @@ async function output($: EngineInterface, argv: string[], cwd: string, timeoutMs
 const OUTCOMES = ['mismatch', 'not_found', 'error', 'unchecked', 'not_offered', 'verified']
 
 /** The kinds of evidence `repro verify` prints beside an assertion. Only `quote` is not a number. */
-const KINDS = new Set(['quote', 'metric', 'table', 'value', 'correspondence'])
+const KINDS = new Set(['quote', 'metric', 'table', 'value', 'correspondence', 'aggregate'])
 
 /**
  * The `repro` field and its warnings, from what `repro verify` printed:

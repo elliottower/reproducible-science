@@ -21,7 +21,9 @@ it adds on top of the backends is the part that has to be uniform:
 from __future__ import annotations
 
 import decimal
+import fractions
 import pathlib
+import statistics
 from collections.abc import Mapping
 from typing import Protocol
 
@@ -32,6 +34,7 @@ from repro.exceptions import (
     UnknownEvidenceKindError,
 )
 from repro.models import (
+    AggregateEvidence,
     ArtifactRef,
     ArtifactState,
     Claim,
@@ -40,6 +43,7 @@ from repro.models import (
     ComparisonStatus,
     CorrespondenceEvidence,
     Decision,
+    DecisionMember,
     DecisionSide,
     Digest,
     Evidence,
@@ -52,6 +56,7 @@ from repro.models import (
     QuoteEvidence,
     Reason,
     RegistrationAuthority,
+    Statistic,
     TableCellEvidence,
     Validity,
     ValueEvidence,
@@ -117,9 +122,9 @@ def _base(
         "claim_id": claim.id,
         "claim_digest": claim.digest.value,
         "kind": evidence.kind,
-        # Left empty where an assertion reads two files: `artifact_id` is singular, and
-        # filling it with one of them would name a side the engine does not rank. The two are
-        # recorded in `sides`.
+        # Left empty where an assertion reads two files or more: `artifact_id` is singular,
+        # and filling it with one of them would name a side the engine does not rank. They are
+        # recorded in `sides`, or in `members`.
         "artifact_id": named[0] if len(named) == 1 else "",
         "backend": backend.kind,
         "backend_version": backend.version,
@@ -329,6 +334,65 @@ def _agree(
     if mode is ComparisonMode.ABSOLUTE:
         return delta <= tolerance
     return delta <= tolerance * abs(reported)
+
+
+def _agree_exact(
+    computed: fractions.Fraction,
+    reported: decimal.Decimal,
+    mode: ComparisonMode,
+    tolerance: decimal.Decimal,
+) -> bool:
+    """`_agree` for a value that may have no finite decimal expansion.
+
+    A mean of three values is a third of their sum, and dividing in decimals rounds it once
+    at whatever precision the context carries before `printed_precision` rounds it again. A
+    rational is exact, so the one rounding is the rule's own: half-even to the precision
+    `reported` prints. On a value that is a decimal the two functions agree.
+    """
+    printed = fractions.Fraction(reported)
+    if mode is ComparisonMode.PRINTED_PRECISION:
+        quantum = fractions.Fraction(10) ** _exponent(reported)
+        # `round` of a rational is exact and takes a tie to the even neighbor.
+        return round(computed / quantum) * quantum == printed
+    delta = abs(computed - printed)
+    if mode is ComparisonMode.ABSOLUTE:
+        return delta <= fractions.Fraction(tolerance)
+    return delta <= fractions.Fraction(tolerance) * abs(printed)
+
+
+def _aggregate(statistic: Statistic, values: list[fractions.Fraction]) -> fractions.Fraction:
+    """One statistic of at least one value, exactly."""
+    if statistic is Statistic.MEAN:
+        return sum(values, fractions.Fraction(0)) / len(values)
+    if statistic is Statistic.MEDIAN:
+        # The middle value, or half the sum of the two middle ones, which a rational holds.
+        return statistics.median(values)
+    if statistic is Statistic.MIN:
+        return min(values)
+    if statistic is Statistic.MAX:
+        return max(values)
+    if statistic is Statistic.SUM:
+        return sum(values, fractions.Fraction(0))
+    return fractions.Fraction(len(values))
+
+
+#: How many places past the printed precision a statistic with no finite expansion is shown to.
+SHOWN_PLACES = 3
+
+
+def _shown(computed: fractions.Fraction, reported: decimal.Decimal) -> str:
+    """A statistic as a report shows it: exactly where it is a terminating decimal, and
+    otherwise rounded half-even to `SHOWN_PLACES` past the precision the manuscript prints."""
+    places = 0
+    scaled = computed
+    while scaled.denominator % 2 == 0 or scaled.denominator % 5 == 0:
+        scaled *= 10
+        places += 1
+    if scaled.denominator != 1:
+        places = max(0, -_exponent(reported)) + SHOWN_PLACES
+        scaled = fractions.Fraction(round(computed * 10**places))
+    sign, digits, _ = decimal.Decimal(scaled.numerator).as_tuple()
+    return format(decimal.Decimal((sign, digits, -places)), "f")
 
 
 class ValueBackend:
@@ -595,12 +659,158 @@ class CorrespondenceBackend:
         )
 
 
+# -------------------------------------------------------------------------------- aggregates
+
+
+class AggregateBackend:
+    """Assertion: the printed value is a statistic of the values its members hold.
+
+    As many extractions as there are members precede one comparison. A member that does not
+    extract makes the comparison impossible rather than false, as one side of a correspondence
+    does: a statistic over the members that did resolve is a statistic over a set the manifest
+    did not declare. The decision carries the first failing member's own reason and its detail
+    names every member that failed, by its position in the list and its artifact.
+
+    The statistic is computed over rationals, so a mean is the exact quotient and is rounded
+    once, by the comparison.
+    """
+
+    kind = "aggregate"
+    version = "1"
+    #: As for `CorrespondenceBackend`: one field where the members may be read by more than
+    #: one program, and `DecisionMember.extraction_digest` is what moves when any of them does.
+    tool = ADAPTER_DISTRIBUTION
+
+    @property
+    def tool_version(self) -> str:
+        return distribution_version(self.tool)
+
+    def check(
+        self, claim: Claim, evidence: Evidence, paths: Mapping[str, pathlib.Path]
+    ) -> Decision:
+        if not isinstance(evidence, AggregateEvidence):
+            raise TypeError(f"AggregateBackend received {type(evidence).__name__}")
+        base = _base(claim, evidence, self)
+        base["statistic"] = evidence.statistic
+        no_compare = {"comparison": ComparisonStatus.NOT_APPLICABLE}
+
+        def named(position: int, artifact: str) -> str:
+            return f"member {position} of {evidence.count} ({artifact})"
+
+        readings = []
+        for position, member in enumerate(evidence.members, start=1):
+            try:
+                found = resolve(member.locator, paths[member.artifact])
+            except ArtifactUnreadableError as e:
+                # Still a file that could not be parsed, and the engine reports it as one.
+                # Raised again so that it says which of the members the file is.
+                raise ArtifactUnreadableError(
+                    e.path, f"{named(position, member.artifact)}: {e.detail}"
+                ) from e
+            readings.append((position, member, *found))
+        base["members"] = tuple(
+            DecisionMember(
+                artifact_id=member.artifact,
+                locator_digest=member.locator.digest.value,
+                extracted=extracted.raw if extracted is not None else None,
+                extraction_digest=(
+                    Digest.of_text(extracted.raw).value if extracted is not None else UNKNOWN
+                ),
+            )
+            for _, member, _, extracted, _ in readings
+        )
+        # Over every member's extraction, in the order the manifest lists them, so it moves
+        # whenever any member's extraction moves. Which one moved is on the member.
+        base["extraction_digest"] = Digest.of_text(
+            "\x00".join(m.extraction_digest for m in base["members"])
+        ).value
+        warnings = (
+            (Warning_.POSITIONAL_ADDRESS,)
+            if any(member.locator.kind == "table_position" for member in evidence.members)
+            else ()
+        )
+
+        unsupported = [
+            (p, m, d) for p, m, r, _, d in readings if r is Resolution.FORMAT_UNSUPPORTED
+        ]
+        if unsupported:
+            return Decision(
+                **base,
+                execution=ExecutionStatus.UNAVAILABLE,
+                extraction=ExtractionStatus.NOT_ATTEMPTED,
+                **no_compare,
+                reason=Reason.FORMAT_UNSUPPORTED,
+                detail="; ".join(f"{named(p, m.artifact)}: {d}" for p, m, d in unsupported),
+                warnings=warnings,
+            )
+
+        completed = {"execution": ExecutionStatus.COMPLETED}
+        unresolved = [
+            (p, m, r, d) for p, m, r, e, d in readings if r is not Resolution.RESOLVED or e is None
+        ]
+        if unresolved:
+            _, member, resolution, _ = unresolved[0]
+            extraction, reason = _RESOLUTION_STATE[resolution]
+            return Decision(
+                **base,
+                **completed,
+                **no_compare,
+                extraction=extraction,
+                reason=reason or _ABSENT_REASON[member.locator.kind],
+                detail="; ".join(f"{named(p, m.artifact)}: {d}" for p, m, _, d in unresolved),
+                warnings=warnings,
+            )
+
+        values: list[fractions.Fraction] = []
+        not_numeric = []
+        for position, member, _, extracted, _ in readings:
+            raw = extracted.raw if extracted is not None else ""
+            try:
+                number = decimal.Decimal(raw)
+            except (decimal.InvalidOperation, ValueError):
+                number = decimal.Decimal("NaN")
+            if number.is_finite():
+                values.append(fractions.Fraction(number))
+            else:
+                not_numeric.append(f"{named(position, member.artifact)} holds {raw!r}")
+        if not_numeric:
+            return Decision(
+                **base,
+                **completed,
+                **no_compare,
+                extraction=ExtractionStatus.INVALID,
+                reason=Reason.VALUE_NOT_NUMERIC,
+                detail="; ".join(not_numeric),
+                warnings=warnings,
+            )
+
+        computed = _aggregate(evidence.statistic, values)
+        agrees = _agree_exact(computed, evidence.value, evidence.mode, evidence.tolerance_value)
+        shown = _shown(computed, evidence.value)
+        base["computed"] = shown
+        over = f"{evidence.statistic.value} of {evidence.count}"
+        return Decision(
+            **base,
+            **completed,
+            extraction=ExtractionStatus.EXTRACTED,
+            comparison=ComparisonStatus.MATCH if agrees else ComparisonStatus.MISMATCH,
+            reason=Reason.VALUE_MATCH if agrees else Reason.VALUE_MISMATCH,
+            detail=(
+                f"{evidence.name}: {over} = {shown}"
+                if agrees
+                else f"{evidence.name}: manuscript prints {evidence.reported}, {over} is {shown}"
+            ),
+            warnings=warnings,
+        )
+
+
 DEFAULT_BACKENDS: tuple[Backend, ...] = (
     QuoteBackend(),
     MetricBackend(),
     TableBackend(),
     ValueBackend(),
     CorrespondenceBackend(),
+    AggregateBackend(),
 )
 
 
@@ -936,6 +1146,15 @@ def check_evidence(
                     }
                 )
                 for side in decision.sides
+            ),
+            "members": tuple(
+                member.model_copy(
+                    update={
+                        "artifact_digest": states[member.artifact_id].actual,
+                        "validity": states[member.artifact_id].validity,
+                    }
+                )
+                for member in decision.members
             ),
         }
     )

@@ -42,6 +42,8 @@ from __future__ import annotations
 from repro.core.artifacts import SCHEMA_VERSION, ArtifactRef, Digest
 from repro.core.claims import Availability, Claim, Registration
 from repro.core.evidence import (
+    AggregateEvidence,
+    AggregateMember,
     ArrayLocator,
     ComparisonMode,
     CorrespondenceEvidence,
@@ -55,6 +57,7 @@ from repro.core.evidence import (
     QuoteEvidence,
     SheetLocator,
     SqliteLocator,
+    Statistic,
     TableCellEvidence,
     TableLocator,
     TablePositionLocator,
@@ -78,6 +81,7 @@ from repro.core.manifest import (
 from repro.core.outcomes import (
     ComparisonStatus,
     Decision,
+    DecisionMember,
     DecisionSide,
     ExecutionStatus,
     ExtractionStatus,
@@ -115,6 +119,8 @@ from repro.core.report import (
 
 __all__ = [
     "SCHEMA_VERSION",
+    "AggregateEvidence",
+    "AggregateMember",
     "ArrayLocator",
     "ArtifactNode",
     "ArtifactRef",
@@ -133,6 +139,7 @@ __all__ = [
     "CorrespondenceEvidence",
     "CorrespondenceSide",
     "Decision",
+    "DecisionMember",
     "DecisionSide",
     "Digest",
     "Edge",
@@ -174,6 +181,7 @@ __all__ = [
     "StaleCause",
     "StaleFinding",
     "StalenessReport",
+    "Statistic",
     "TableCellEvidence",
     "TableLocator",
     "TablePositionLocator",

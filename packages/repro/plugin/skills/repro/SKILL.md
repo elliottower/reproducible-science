@@ -49,8 +49,8 @@ claims:
 
 ## What can be declared
 
-Five kinds of evidence. Each names an `artifact` by id, except `correspondence`, which names
-one per side. `reported` is the number as the manuscript prints it, always a quoted string:
+Six kinds of evidence. Each names an `artifact` by id, except `correspondence`, which names
+one per side, and `aggregate`, which names one per member. `reported` is the number as the manuscript prints it, always a quoted string:
 `"3.20"` is compared at two decimals and `"3.2"` at one.
 
 | kind | asserts | fields |
@@ -60,8 +60,9 @@ one per side. `reported` is the number as the manuscript prints it, always a quo
 | `value` | a file holds this number at a locator, in any format below | `name`, `reported`, `locator` |
 | `quote` | this passage occurs in the text of a document | `text`; optional `page` (checked), `section` (recorded only) |
 | `correspondence` | two artifacts hold the same number, neither written in the manifest | `name`, `sides`: two of `{name, artifact, locator}` |
+| `aggregate` | the printed number is a statistic over every member listed | `name`, `reported`, `statistic`, `count`, `members`: `count` of `{artifact, locator}` |
 
-The four that compare a number take `mode` and `tolerance`: `printed_precision` (the default,
+The five that compare a number take `mode` and `tolerance`: `printed_precision` (the default,
 round to the digits `reported` prints), `absolute`, or `relative`, with `tolerance` a quoted
 string. A `correspondence` has no `relative`.
 
@@ -74,7 +75,24 @@ string. A `correspondence` has no `relative`.
   sides:
     - {name: stated, artifact: paper, locator: {kind: prose, before: "We analysed", after: "participants"}}
     - {name: measured, artifact: results, locator: {kind: tree, pointer: /primary/n}}
+- kind: aggregate
+  name: accuracy
+  reported: "0.914"
+  statistic: mean
+  count: 3
+  members:
+    - {artifact: seed-0, locator: {kind: tree, pointer: /accuracy}}
+    - {artifact: seed-1, locator: {kind: tree, pointer: /accuracy}}
+    - {artifact: seed-2, locator: {kind: tree, pointer: /accuracy}}
 ```
+
+Use an `aggregate` wherever the manuscript reports a number over several runs, such as "mean
+over ten seeds". `statistic` is `mean`, `median`, `min`, `max`, `sum` or `count`, and `count`
+must equal the number of members, so a run left out of the list is a manifest that does not
+load. Every member must hold a number: a missing file is `unchecked` and a member that does
+not resolve is `not_found`, each naming the member, and the statistic of the remaining members
+is never compared. Binding the sentence to one run's file with a `metric` checks that run and
+nothing about the others. There is no standard deviation.
 
 `metric` is short for a `value` with a `tree` locator, and `table` for one with a `table` or
 `table_position` locator. Everything else is a `value`:

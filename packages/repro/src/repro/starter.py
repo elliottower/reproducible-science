@@ -104,8 +104,12 @@ HEADER = """\
 #                     {{kind: correspondence, name: n, sides: [
 #                        {{name: stated, artifact: ID, locator: {{...}}}},
 #                        {{name: measured, artifact: ID, locator: {{...}}}}]}}
+#   aggregate       a mean, median, min, max, sum or count over every member listed
+#                     {{kind: aggregate, members: [{{artifact: ID, locator: {{...}}}},
+#                      {{artifact: ID, locator: {{...}}}}], count: 2, statistic: mean,
+#                      name: acc, reported: '0.914'}}
 #
-# The locators a `value` or a side takes:
+# The locators a `value`, a side or a member takes:
 #
 #   JSON, YAML                     {{kind: tree, pointer: /primary/n}}
 #   CSV, TSV, PSV, Parquet, Feather,

@@ -271,6 +271,40 @@ A predicate matching two rows is reported as ambiguous and never resolved to the
 
 Pickles (`.pkl`, `.joblib`, `.pt`) are never opened, because reading one runs code. An `.rds` is parsed by [`rdata`](https://pypi.org/project/rdata/), which starts no R process and evaluates nothing in the file.
 
+## A number over several runs
+
+Ten runs exist, and the manuscript reports their mean. A `metric` binds the sentence to one file, and passes whichever run that file is. An `aggregate` names every run and checks that the printed value is the stated statistic of all of them:
+
+```yaml
+- kind: aggregate
+  name: accuracy
+  reported: "0.914"
+  statistic: mean
+  count: 10
+  members:
+    - {artifact: seed-0, locator: {kind: tree, pointer: /accuracy}}
+    - {artifact: seed-1, locator: {kind: tree, pointer: /accuracy}}
+    # ... one member per run, ten in all
+```
+
+`statistic` is `mean`, `median`, `min`, `max`, `sum` or `count`. A member is an artifact and a locator from the table above, so the ten values may sit in ten files or at ten addresses in one. `count` is required and must equal the number of members: a manifest stating ten and listing nine does not load, and neither does one listing a member twice.
+
+```text
+  ok    accuracy     aggregate accuracy: mean of 10 = 0.9137
+```
+
+The best of the ten runs printed as their mean is a `mismatch`, `manuscript prints 0.921, mean of 10 is 0.9137`.
+
+The statistic is computed exactly, over rationals, and rounded once to the precision the manuscript prints: runs holding `0.264` and `0.099` have a mean of `0.1815`, which is `0.182` at three places, where the same mean in floating point prints `0.181`. `mode` and `tolerance` apply as they do to a `metric`. There is no standard deviation in the set.
+
+Every member must hold a number. A member whose file is missing leaves the assertion `unchecked`, and one whose address does not resolve or holds no number makes it `not_found`, with the member named:
+
+```text
+  GONE  accuracy     aggregate member 4 of 10 (seed-3): /accuracy does not resolve
+```
+
+The statistic of the members that did resolve is never compared. `repro why` lists each member's pin and stored value and then the statistic, `repro stale` treats every member's file as read by the claim, and in `--format json` a decision carries `members`, `statistic` and `computed`. The assertion binds the printed value to the listed runs. Whether those are all the runs there were is the author's declaration.
+
 ## On every commit
 
 ```yaml

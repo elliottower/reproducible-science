@@ -670,6 +670,11 @@ def _assertion_lines(assertion: AssertionAccount, paths: dict[str, str]) -> list
             side = f"{file.side}: " if file.side else ""
             held = f"holds {file.stored}" if file.stored is not None else "no value was read"
             lines.append(f"{side}{file.artifact} at {file.address}: {held}")
+    if assertion.statistic is not None and assertion.computed is not None:
+        lines.append(
+            f"the {assertion.statistic.value} of the {len(assertion.reads)} values: "
+            f"{assertion.computed}"
+        )
 
     outcome = _said(assertion.outcome)
     if assertion.outcome not in (Outcome.VERIFIED, Outcome.MISMATCH):

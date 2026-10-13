@@ -8,6 +8,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from repro.core.claims import Availability, Registration
+from repro.core.evidence import Statistic
 from repro.core.manifest import RegenerationState
 from repro.core.outcomes import (
     Decision,
@@ -325,6 +326,10 @@ class AssertionAccount(BaseModel):
     printed: str | None = None
     """The value as the manuscript prints it, or the passage a quotation asserts."""
     reads: tuple[FileRead, ...] = ()
+    statistic: Statistic | None = None
+    """What an `aggregate` computes over the values it reads. None for every other kind."""
+    computed: str | None = None
+    """That statistic of the stored values. None where one of them held no number."""
     outcome: Outcome
     reason: Reason
     detail: str = ""

@@ -1,0 +1,40 @@
+schema_version: repro/1
+project: aggregate_match
+artifacts:
+- id: run0
+  path: run0.json
+  digest:
+    algorithm: sha256
+    value: a9a1118bd29a1113df8170b31eec892bcd705ec1df48c40c2ae0a0ad896306e8
+- id: run1
+  path: run1.json
+  digest:
+    algorithm: sha256
+    value: a9a1118bd29a1113df8170b31eec892bcd705ec1df48c40c2ae0a0ad896306e8
+- id: run2
+  path: run2.json
+  digest:
+    algorithm: sha256
+    value: bddf2acbb60f47ebfc48c06f36fbce1a38ef50ac8a5699f5f99acb3639202c78
+claims:
+- id: c
+  text: t
+  evidence:
+  - kind: aggregate
+    name: m
+    reported: '1.33'
+    statistic: mean
+    count: 3
+    members:
+    - artifact: run0
+      locator:
+        kind: tree
+        pointer: /accuracy
+    - artifact: run1
+      locator:
+        kind: tree
+        pointer: /accuracy
+    - artifact: run2
+      locator:
+        kind: tree
+        pointer: /accuracy
