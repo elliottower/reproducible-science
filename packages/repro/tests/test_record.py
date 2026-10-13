@@ -261,6 +261,7 @@ def test_every_record_names_the_checker_the_time_and_the_manifest(monkeypatch, t
     record = one("value_match")
     assert record.record == RECORD_VERSION
     assert record.checker.name == "repro" and record.checker.version
+    assert record.checker.url == "https://github.com/elliottower/reproducible-science"
     assert record.checked_at == WHEN
     assert record.manifest.path == "value_match/repro.yaml"
     assert record.manifest.digest == hashlib.sha256(manifest.read_bytes()).hexdigest()

@@ -9,11 +9,13 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from repro.export.rocrate import to_ro_crate
 from repro.export.sarif import to_sarif_log
 from repro.record import to_jsonl
 
 #: What `repro export <target>` writes, by target.
 EXPORTS: dict[str, Callable[..., str]] = {
+    "ro-crate": to_ro_crate,
     "record": to_jsonl,
     "sarif": to_sarif_log,
 }

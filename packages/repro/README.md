@@ -372,7 +372,7 @@ repro export record -o records.jsonl
 Experimental. The format is this tool's own export, `repro.check/0.1-experimental`, and a field may change before `1.0`; every record names its version.
 
 ```json
-{"record": "repro.check/0.1-experimental", "checker": {"name": "repro", "version": "0.5.5"}, "checked_at": "2026-10-13T21:41:43Z", "manifest": {"path": "repro.yaml", "digest": "2ea85eb5..."}, "claim": {"id": "responders", "text": "Thirty-five participants responded.", "digest": "1ccb77d0...", "line": 12}, "assertion": {"kind": "metric", "name": "responders", "position": 0, "index": 0, "line": 15}, "check_type": "value-comparison", "reads": [{"artifact": "totals", "path": "totals.json", "media_type": "application/json", "validity": "authoritative", "pinned": "ce260cfb...", "on_disk": "ce260cfb...", "side": "", "address": {"kind": "tree", "contract": 1, "pointer": "/responders"}, "stored": "36"}], "printed": "35", "comparison": {"mode": "printed_precision", "tolerance": "0"}, "outcome": "mismatch", "native_outcome": "mismatch", "native_reason": "value_mismatch", "detail": "responders: manuscript prints 35, totals.json holds 36 at /responders", "stages": {"execution": "completed", "extraction": "extracted", "comparison": "mismatch"}, "reader": {"backend": "metric", "backend_version": "2", "tool": "reproducible-science", "tool_version": "0.5.5", "extraction_digest": "76a50887..."}, "warnings": []}
+{"record": "repro.check/0.1-experimental", "checker": {"name": "repro", "version": "0.5.5", "url": "https://github.com/elliottower/reproducible-science"}, "checked_at": "2026-10-13T21:41:43Z", "manifest": {"path": "repro.yaml", "digest": "2ea85eb5..."}, "claim": {"id": "responders", "text": "Thirty-five participants responded.", "digest": "1ccb77d0...", "line": 12}, "assertion": {"kind": "metric", "name": "responders", "position": 0, "index": 0, "line": 15}, "check_type": "value-comparison", "reads": [{"artifact": "totals", "path": "totals.json", "media_type": "application/json", "validity": "authoritative", "pinned": "ce260cfb...", "on_disk": "ce260cfb...", "side": "", "address": {"kind": "tree", "contract": 1, "pointer": "/responders"}, "stored": "36"}], "printed": "35", "comparison": {"mode": "printed_precision", "tolerance": "0"}, "outcome": "mismatch", "native_outcome": "mismatch", "native_reason": "value_mismatch", "detail": "responders: manuscript prints 35, totals.json holds 36 at /responders", "stages": {"execution": "completed", "extraction": "extracted", "comparison": "mismatch"}, "reader": {"backend": "metric", "backend_version": "2", "tool": "reproducible-science", "tool_version": "0.5.5", "extraction_digest": "76a50887..."}, "warnings": []}
 ```
 
 The digests above are shortened for the page; a record carries all 64 characters.
@@ -747,6 +747,19 @@ SARIF has no property for most of what a record holds. The whole record is in ea
 GitHub keeps the 5,000 most severe results of a run and rejects a file over 10 MB compressed. The default output holds only what did not match; with `--include-matches` a log over 5,000 results is written whole and a warning says so.
 
 `repro verify --format sarif` is an older log built from the report, graded by `--policy`, and is unchanged.
+
+## As an RO-Crate
+
+```bash
+repro export ro-crate -o .        # writes ./ro-crate-metadata.json beside repro.yaml
+repro export ro-crate             # the same document on standard output
+```
+
+`repro export ro-crate` writes the same check records as an [RO-Crate 1.3](https://w3id.org/ro/crate/1.3) metadata document. Each file a record names is a `File` with the `sha256` of its bytes, each claim a schema.org `Claim`, each checked assertion a `CheckAction`, and each command under `regenerations` with a recorded re-run a `CreateAction` as [Process Run Crate 0.6](https://w3id.org/ro/wfrun/process/0.6) describes one. The crate's root is the directory `repro.yaml` is in, so `-o .` there puts the file where its paths resolve. `-o DIR` writes `DIR/ro-crate-metadata.json`, and a path ending in `.json` is written as that file.
+
+Experimental. RO-Crate has no term for the address inside a file, for a printed value against a stored one or for the outcome of comparing them, so those come from a profile of this tool's own, [`https://reproducible.science/ro-crate/claim-check/0.1/`](https://reproducible.science/ro-crate/claim-check/0.1/), version `0.1-experimental`. It is this tool's export format and nothing more, and its terms may change before `1.0`.
+
+The crate is written from the records alone and loses none of them: `repro.export.rocrate.from_ro_crate` reads one back into the records it came from. Two consequences follow. A file no record names is not in the crate, which is an artifact that no assertion reads and no command upstream of one touches. And a record knows no license, which RO-Crate requires of a crate, so the document says none is stated; add the project's own before publishing one.
 
 ## Audit a repository you did not write
 

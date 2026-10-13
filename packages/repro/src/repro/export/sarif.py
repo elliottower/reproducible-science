@@ -31,7 +31,6 @@ from repro.record import CheckType, ExportRecord, NormalizedOutcome, read_outcom
 
 SCHEMA = "https://json.schemastore.org/sarif-2.1.0.json"
 VERSION = "2.1.0"
-INFORMATION_URI = "https://reproducible.science/tools/repro/"
 
 #: Where the whole record sits in a result's or a notification's property bag.
 RECORD_PROPERTY = "repro/checkRecord"
@@ -344,7 +343,7 @@ def to_sarif_log(records: Sequence[ExportRecord], include_matches: bool = False)
             "driver": {
                 "name": first.checker.name if first else "repro",
                 **({"version": first.checker.version} if first else {}),
-                "informationUri": INFORMATION_URI,
+                **({"informationUri": first.checker.url} if first and first.checker.url else {}),
                 "rules": [rules[name] for name in sorted(rules)],
                 "notifications": [descriptors[name] for name in sorted(descriptors)],
             }

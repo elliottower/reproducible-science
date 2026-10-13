@@ -308,6 +308,7 @@ def test_documented_loss(project):
         "checker",
         "checker.name",
         "checker.version",
+        "checker.url",
         "checked_at",
         "manifest",
         "manifest.path",
@@ -331,6 +332,8 @@ def test_documented_loss(project):
         if any(path == name or path.startswith(f"{name}.") for name in NOT_CARRIED_NATIVELY)
     }
     assert found - lost <= native, sorted(found - lost - native)
+    driver = json.loads(to_sarif_log(records))["runs"][0]["tool"]["driver"]
+    assert driver["informationUri"] == records[0].checker.url
     assert set(NOT_CARRIED_NATIVELY) - {"execution", "history", "reads.converted"} <= found
 
     log = json.loads(to_sarif_log(records))

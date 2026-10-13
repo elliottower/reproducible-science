@@ -1,0 +1,497 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claim check crate 0.1-experimental</title>
+<style>
+body { font: 16px/1.55 system-ui, sans-serif; max-width: 46rem; margin: 2rem auto; padding: 0 1rem; color: #1a1a1a; }
+code, pre { font: 0.9em ui-monospace, monospace; }
+pre { overflow-x: auto; background: #f5f5f5; padding: 0.75rem; }
+h3 { margin-bottom: 0.2rem; }
+dl { margin: 0; font-size: 0.85em; color: #555; }
+dt, dd { display: inline; margin: 0; }
+dt::after { content: ": "; }
+section p { margin-top: 0.3rem; }
+table { border-collapse: collapse; }
+td, th { border: 1px solid #ccc; padding: 0.3rem 0.5rem; text-align: left; vertical-align: top; }
+.note { border-left: 4px solid #b58900; padding: 0.2rem 0.8rem; background: #fdf6e3; }
+</style>
+</head>
+<body>
+<h1>Claim check crate</h1>
+<p>Version <code>0.1-experimental</code>. Permalink: <code>https://reproducible.science/ro-crate/claim-check/0.1/</code></p>
+<p class="note"><strong>Experimental.</strong> This is the export format of one tool,
+<a href="https://reproducible.science/tools/repro/"><code>repro</code></a>, written by
+<code>repro export ro-crate</code>. It is not a standard, it is registered with no one, and
+any term here may change before <code>1.0</code>.</p>
+
+<h2>What it is for</h2>
+<p>An <a href="https://w3id.org/ro/crate/1.3">RO-Crate 1.3</a> describes files, and the
+<a href="https://w3id.org/ro/wfrun/process/0.6">Process Run Crate 0.6</a> profile describes the
+runs of the software that made them. Neither has a term for a check of this kind: the value
+at an address inside a file was compared with the value a manuscript prints, and here is what
+was found. This profile adds the terms for that and no others. A crate that conforms to it
+holds one entity per checked assertion, and each entity states an observation. It states no
+verdict on whether a claim is true.</p>
+<p>The profile is a projection of the tool's check record,
+<code>repro.check/0.1-experimental</code>, which section 7.10 of the
+<a href="https://reproducible.science/reference/spec/">specification</a> defines. Every field
+of a record has a place in the crate, and the tool reads its own crates back into the records
+they were written from.</p>
+
+<h2>Requirements</h2>
+<p>The key words MUST, SHOULD and MAY are to be read as in
+<a href="https://www.rfc-editor.org/rfc/rfc2119">RFC 2119</a>.</p>
+<ul>
+<li>The crate MUST conform to RO-Crate 1.3, and its root data entity MUST list
+<code>https://reproducible.science/ro-crate/claim-check/0.1/</code> under <code>conformsTo</code>, with a contextual entity for it whose
+<code>@type</code> includes <code>Profile</code>.</li>
+<li>The <code>@context</code> MUST map each term below to its permalink.</li>
+<li>Each checked assertion MUST be one entity typed <code>CheckAction</code> and
+<code>ClaimCheck</code>, with <code>checkType</code>, <code>outcome</code>,
+<code>nativeOutcome</code>, <code>nativeReason</code>, an <code>instrument</code> naming the
+checker as a <code>SoftwareApplication</code> with its <code>version</code>, an
+<code>endTime</code> for when the check ran, and an <code>object</code> naming a schema.org
+<code>Claim</code>.</li>
+<li>Each file a check read MUST be a <code>FileRead</code> with <code>readsFile</code>, and
+SHOULD carry <code>canonicalAddress</code> and, where a value was read, <code>value</code>.</li>
+<li>A <code>File</code> SHOULD carry <code>sha256</code> for the bytes on disk,
+<code>pinnedDigest</code> for the digest the manifest pins, and <code>validity</code>. A file
+that is absent, or outside the project, MUST use an identifier beginning with <code>#</code>,
+as RO-Crate provides for a file that is not in the crate.</li>
+<li>An <code>outcome</code> of <code>match</code> or <code>mismatch</code> MUST mean that the
+file was read, the address resolved and a comparison ran. A consumer that does not know a
+<code>nativeOutcome</code>, a <code>checkType</code> or an <code>addressKind</code> MUST NOT
+read the check as a match.</li>
+<li>No property is a boolean. Whether a file is the pinned one is <code>validity</code>, and
+is never folded into an outcome.</li>
+<li>A command the manifest declares is a <code>DeclaredCommand</code>, and a recorded re-run
+of it is a <code>CreateAction</code> as Process Run Crate describes one, with the command as
+its <code>instrument</code>. A check refers to the commands upstream of what it reads with
+<code>upstream</code> and does not restate them. A crate declares conformance to Process Run
+Crate only where it holds a re-run.</li>
+</ul>
+
+<h2>Terms taken from RO-Crate and schema.org</h2>
+<table>
+<tr><th>term</th><th>used for</th></tr>
+<tr><td><code>Claim</code>, <code>text</code>, <code>identifier</code></td><td>the claim, its sentence and its id in the manifest</td></tr>
+<tr><td><code>CheckAction</code>, <code>instrument</code>, <code>object</code>, <code>endTime</code>, <code>description</code></td><td>the check, the checker, the claim examined, when it ran, the checker's own message</td></tr>
+<tr><td><code>SoftwareApplication</code>, <code>version</code>, <code>url</code></td><td>the checker</td></tr>
+<tr><td><code>PropertyValue</code>, <code>value</code></td><td>the value stored at the address</td></tr>
+<tr><td><code>File</code>, <code>sha256</code>, <code>encodingFormat</code>, <code>alternateName</code>, <code>identifier</code></td><td>a file, the digest of its bytes, its media type, the path the manifest declares, its artifact id</td></tr>
+<tr><td><code>HowTo</code></td><td>a declared command</td></tr>
+<tr><td><code>CreateAction</code>, <code>object</code>, <code>result</code>, <code>startTime</code>, <code>endTime</code>, <code>actionStatus</code>, <code>error</code></td><td>a recorded re-run, as in Process Run Crate</td></tr>
+<tr><td><code>DefinedTerm</code>, <code>termCode</code></td><td>an outcome or a check type</td></tr>
+</table>
+
+<h2>An example</h2>
+<pre>{
+  "@id": "#check/responders/0",
+  "@type": ["CheckAction", "ClaimCheck"],
+  "name": "responders metric responders",
+  "instrument": {"@id": "#checker/repro/0.5.5"},
+  "object": {"@id": "#claim/responders"},
+  "endTime": "2026-10-13T12:00:00+00:00",
+  "checkType": {"@id": "https://reproducible.science/ro-crate/claim-check/0.1/#value-comparison"},
+  "fileRead": {"@id": "#check/responders/0/read/0"},
+  "printedValue": "35",
+  "comparisonMode": "printed_precision",
+  "tolerance": "0",
+  "outcome": {"@id": "https://reproducible.science/ro-crate/claim-check/0.1/#mismatch"},
+  "nativeOutcome": "mismatch",
+  "nativeReason": "value_mismatch"
+},
+{
+  "@id": "#check/responders/0/read/0",
+  "@type": ["PropertyValue", "FileRead"],
+  "readsFile": {"@id": "totals.json"},
+  "addressKind": "tree",
+  "canonicalAddress": "{\"contract\":1,\"kind\":\"tree\",\"pointer\":\"/responders\"}",
+  "value": "36"
+}</pre>
+<h2>Classes</h2>
+<section id="ClaimCheck">
+<h3><code>ClaimCheck</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#ClaimCheck</code></dd><br><dt>Used with</dt><dd><code>http://schema.org/CheckAction</code></dd></dl>
+<p>One assertion as it was checked. Used beside schema.org <code>CheckAction</code>.</p>
+</section>
+<section id="FileRead">
+<h3><code>FileRead</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#FileRead</code></dd><br><dt>Used with</dt><dd><code>http://schema.org/PropertyValue</code></dd></dl>
+<p>One file a check read, the address it read and the value stored there. Used beside schema.org <code>PropertyValue</code>, whose <code>value</code> holds the stored value.</p>
+</section>
+<section id="DeclaredCommand">
+<h3><code>DeclaredCommand</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#DeclaredCommand</code></dd><br><dt>Used with</dt><dd><code>http://schema.org/HowTo</code></dd></dl>
+<p>A command the manifest declares as producing a file: an argv, its declared inputs and its declared output. Used beside schema.org <code>HowTo</code>.</p>
+</section>
+<h2>Properties</h2>
+<h3>On a ClaimCheck</h3>
+<section id="recordVersion">
+<h3><code>recordVersion</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#recordVersion</code></dd></dl>
+<p>The version of the check record the entity was written from, such as <code>repro.check/0.1-experimental</code>.</p>
+</section>
+<section id="manifest">
+<h3><code>manifest</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#manifest</code></dd></dl>
+<p>The <code>File</code> the assertion was declared in.</p>
+</section>
+<section id="assertionKind">
+<h3><code>assertionKind</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#assertionKind</code></dd></dl>
+<p>The kind of assertion as the manifest writes it: <code>metric</code>, <code>table</code>, <code>value</code>, <code>quote</code> or <code>correspondence</code>.</p>
+</section>
+<section id="assertionName">
+<h3><code>assertionName</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#assertionName</code></dd></dl>
+<p>The name the manifest gives the assertion.</p>
+</section>
+<section id="assertionIndex">
+<h3><code>assertionIndex</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#assertionIndex</code></dd></dl>
+<p>Where the assertion is among all of the claim's assertions, from 0.</p>
+</section>
+<section id="assertionPosition">
+<h3><code>assertionPosition</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#assertionPosition</code></dd></dl>
+<p>Which of the claim's assertions of this kind and name it is, from 0.</p>
+</section>
+<section id="manifestLine">
+<h3><code>manifestLine</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#manifestLine</code></dd></dl>
+<p>The line of the manifest a claim or an assertion is declared on. Also used on a <code>Claim</code>.</p>
+</section>
+<section id="passageLine">
+<h3><code>passageLine</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#passageLine</code></dd></dl>
+<p>For a quotation, the line the passage starts on, where the file is text and holds the passage exactly once.</p>
+</section>
+<section id="checkType">
+<h3><code>checkType</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#checkType</code></dd></dl>
+<p>Which proposition was checked. A reference to one of the check types below.</p>
+</section>
+<section id="fileRead">
+<h3><code>fileRead</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#fileRead</code></dd></dl>
+<p>A <code>FileRead</code> of this check. A correspondence has two, in the order the manifest declares its sides, and an aggregate has one for each member.</p>
+</section>
+<section id="printedValue">
+<h3><code>printedValue</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#printedValue</code></dd></dl>
+<p>The value as the manuscript prints it, or the passage a quotation asserts. Absent for a correspondence.</p>
+</section>
+<section id="comparisonMode">
+<h3><code>comparisonMode</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#comparisonMode</code></dd></dl>
+<p>The rule the two values were compared under: <code>printed_precision</code>, <code>absolute</code> or <code>relative</code>.</p>
+</section>
+<section id="tolerance">
+<h3><code>tolerance</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#tolerance</code></dd></dl>
+<p>The tolerance of the comparison, as a decimal string.</p>
+</section>
+<section id="declaredPlaces">
+<h3><code>declaredPlaces</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#declaredPlaces</code></dd></dl>
+<p>The decimal places the assertion declares the manuscript reports the value to.</p>
+</section>
+<section id="conversion">
+<h3><code>conversion</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#conversion</code></dd></dl>
+<p>The conversion declared between what a file stores and what is printed: <code>percent</code> or <code>fraction</code>.</p>
+</section>
+<section id="statistic">
+<h3><code>statistic</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#statistic</code></dd></dl>
+<p>For an aggregate, what is computed over the values read, such as a mean.</p>
+</section>
+<section id="memberCount">
+<h3><code>memberCount</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#memberCount</code></dd></dl>
+<p>For an aggregate, how many members the assertion declares, which is how many <code>FileRead</code>s the check has.</p>
+</section>
+<section id="computedValue">
+<h3><code>computedValue</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#computedValue</code></dd></dl>
+<p>That statistic of the values read, which is what was compared with the printed value.</p>
+</section>
+<section id="tieLower">
+<h3><code>tieLower</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#tieLower</code></dd></dl>
+<p>Where the compared value lies exactly halfway between two values at the printed precision, the lower of the two.</p>
+</section>
+<section id="tieUpper">
+<h3><code>tieUpper</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#tieUpper</code></dd></dl>
+<p>The upper of those two values.</p>
+</section>
+<section id="tiePrinted">
+<h3><code>tiePrinted</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#tiePrinted</code></dd></dl>
+<p>Which of the two the manuscript prints.</p>
+</section>
+<section id="outcome">
+<h3><code>outcome</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#outcome</code></dd></dl>
+<p>What the check found. A reference to one of the outcomes below.</p>
+</section>
+<section id="nativeOutcome">
+<h3><code>nativeOutcome</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#nativeOutcome</code></dd></dl>
+<p>The checker's own word for what it found, as it prints it.</p>
+</section>
+<section id="nativeReason">
+<h3><code>nativeReason</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#nativeReason</code></dd></dl>
+<p>The checker's own reason for the outcome.</p>
+</section>
+<section id="executionStage">
+<h3><code>executionStage</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#executionStage</code></dd></dl>
+<p>Whether the check ran: <code>completed</code>, <code>unavailable</code> or <code>failed</code>.</p>
+</section>
+<section id="extractionStage">
+<h3><code>extractionStage</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#extractionStage</code></dd></dl>
+<p>Whether a value was located: <code>extracted</code>, <code>absent</code>, <code>invalid</code> or <code>not_attempted</code>.</p>
+</section>
+<section id="comparisonStage">
+<h3><code>comparisonStage</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#comparisonStage</code></dd></dl>
+<p>Whether the values agreed: <code>match</code>, <code>mismatch</code> or <code>not_applicable</code>.</p>
+</section>
+<section id="backend">
+<h3><code>backend</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#backend</code></dd></dl>
+<p>The backend that evaluated the assertion.</p>
+</section>
+<section id="backendVersion">
+<h3><code>backendVersion</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#backendVersion</code></dd></dl>
+<p>The version of that backend's interface.</p>
+</section>
+<section id="extractionTool">
+<h3><code>extractionTool</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#extractionTool</code></dd></dl>
+<p>The program that read the bytes.</p>
+</section>
+<section id="extractionToolVersion">
+<h3><code>extractionToolVersion</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#extractionToolVersion</code></dd></dl>
+<p>The version that program reports.</p>
+</section>
+<section id="extractionDigest">
+<h3><code>extractionDigest</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#extractionDigest</code></dd></dl>
+<p>sha256 of what the extraction produced.</p>
+</section>
+<section id="checkWarning">
+<h3><code>checkWarning</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#checkWarning</code></dd></dl>
+<p>A note about the evidence that does not bear on the outcome, such as <code>short</code>.</p>
+</section>
+<section id="freshness">
+<h3><code>freshness</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#freshness</code></dd></dl>
+<p>The state against the record of re-runs: <code>current</code>, <code>stale</code>, <code>never_rerun</code>, <code>no_producer</code>, <code>undetermined</code> or <code>partly_outside_the_record</code>. Also used on a <code>DeclaredCommand</code>.</p>
+</section>
+<section id="upstream">
+<h3><code>upstream</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#upstream</code></dd></dl>
+<p>A <code>DeclaredCommand</code> upstream of what the check reads, nearest first. The command and its re-run are described once, on their own entities.</p>
+</section>
+<section id="historyStates">
+<h3><code>historyStates</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#historyStates</code></dd></dl>
+<p>How many states the project's record of checks holds for the assertion. Reserved.</p>
+</section>
+<section id="historyLastChangedAt">
+<h3><code>historyLastChangedAt</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#historyLastChangedAt</code></dd></dl>
+<p>When a check last found the assertion different from the state recorded before. Reserved.</p>
+</section>
+<h3>On a Claim</h3>
+<section id="whereStated">
+<h3><code>whereStated</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#whereStated</code></dd></dl>
+<p>Where the manuscript makes the claim, in the author's words.</p>
+</section>
+<section id="claimDigest">
+<h3><code>claimDigest</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#claimDigest</code></dd></dl>
+<p>sha256 over the claim's id, text and location, as the checker computes it.</p>
+</section>
+<h3>On a FileRead</h3>
+<section id="readsFile">
+<h3><code>readsFile</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#readsFile</code></dd></dl>
+<p>The <code>File</code> that was read.</p>
+</section>
+<section id="side">
+<h3><code>side</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#side</code></dd></dl>
+<p>Which side of a correspondence this is, in the author's word for it.</p>
+</section>
+<section id="addressKind">
+<h3><code>addressKind</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#addressKind</code></dd></dl>
+<p>The kind of address: <code>tree</code>, <code>table</code>, <code>table_position</code>, <code>sheet</code>, <code>sqlite</code>, <code>array</code>, <code>prose</code>, or <code>passage</code> for a quotation.</p>
+</section>
+<section id="convertedValue">
+<h3><code>convertedValue</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#convertedValue</code></dd></dl>
+<p>The stored value under the conversion the check names, which is then the value compared. The stored value itself stays in schema.org <code>value</code>.</p>
+</section>
+<section id="canonicalAddress">
+<h3><code>canonicalAddress</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#canonicalAddress</code></dd></dl>
+<p>The address inside the file as canonical JSON: sorted keys and no whitespace. For a JSON file, <code>{"contract":1,"kind":"tree","pointer":"/metrics/accuracy"}</code>.</p>
+</section>
+<h3>On a File</h3>
+<section id="pinnedDigest">
+<h3><code>pinnedDigest</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#pinnedDigest</code></dd></dl>
+<p>The sha256 the manifest pins for the file. The digest of the bytes on disk is schema.org <code>sha256</code>.</p>
+</section>
+<section id="validity">
+<h3><code>validity</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#validity</code></dd></dl>
+<p>Whether the file read is the file that was pinned: <code>authoritative</code>, <code>unpinned_artifact</code>, <code>broken_pin</code> or <code>artifact_absent</code>. Stated apart from every outcome.</p>
+</section>
+<h3>On a DeclaredCommand</h3>
+<section id="argv">
+<h3><code>argv</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#argv</code></dd></dl>
+<p>The command as a JSON array of strings.</p>
+</section>
+<section id="declaredInput">
+<h3><code>declaredInput</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#declaredInput</code></dd></dl>
+<p>A <code>File</code> the manifest declares the command reads.</p>
+</section>
+<section id="declaredOutput">
+<h3><code>declaredOutput</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#declaredOutput</code></dd></dl>
+<p>The <code>File</code> the manifest declares the command writes.</p>
+</section>
+<section id="staleCause">
+<h3><code>staleCause</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#staleCause</code></dd></dl>
+<p>Why the command is not current, such as <code>input_changed</code>.</p>
+</section>
+<section id="lastRerun">
+<h3><code>lastRerun</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#lastRerun</code></dd></dl>
+<p>The <code>CreateAction</code> for the latest recorded re-run of the command.</p>
+</section>
+<h3>On the CreateAction of a re-run</h3>
+<section id="rerunState">
+<h3><code>rerunState</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#rerunState</code></dd></dl>
+<p>What the re-run found: <code>reproduced</code>, <code>changed</code>, <code>unchecked</code> or <code>failed</code>.</p>
+</section>
+<section id="rerunReason">
+<h3><code>rerunReason</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#rerunReason</code></dd></dl>
+<p>The reason recorded with that state.</p>
+</section>
+<section id="checkerVersion">
+<h3><code>checkerVersion</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#checkerVersion</code></dd></dl>
+<p>The version of the tool that ran the command again.</p>
+</section>
+<section id="exitCode">
+<h3><code>exitCode</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#exitCode</code></dd></dl>
+<p>The command's exit code.</p>
+</section>
+<section id="durationSeconds">
+<h3><code>durationSeconds</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#durationSeconds</code></dd></dl>
+<p>How long the command ran, in seconds.</p>
+</section>
+<section id="outputDigest">
+<h3><code>outputDigest</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#outputDigest</code></dd></dl>
+<p>sha256 of the output the re-run wrote.</p>
+</section>
+<h2>Outcomes</h2>
+<p>The values of <code>outcome</code>, each defined by what has to have happened.</p>
+<section id="match">
+<h3><code>match</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#match</code></dd></dl>
+<p>The file was read, the address resolved, a comparison ran, and the two agreed.</p>
+</section>
+<section id="mismatch">
+<h3><code>mismatch</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#mismatch</code></dd></dl>
+<p>The file was read, the address resolved, a comparison ran, and the two differed.</p>
+</section>
+<section id="not-found">
+<h3><code>not-found</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#not-found</code></dd></dl>
+<p>The file was readable and the address did not resolve to exactly one value of the kind the assertion needs. Nothing was compared.</p>
+</section>
+<section id="not-checked">
+<h3><code>not-checked</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#not-checked</code></dd></dl>
+<p>No comparison occurred, because something it needed was absent or was skipped.</p>
+</section>
+<section id="error">
+<h3><code>error</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#error</code></dd></dl>
+<p>The tool failed.</p>
+</section>
+<h2>Check types</h2>
+<p>The values of <code>checkType</code>. The tool writes the first four.</p>
+<section id="value-comparison">
+<h3><code>value-comparison</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#value-comparison</code></dd></dl>
+<p>A value the manuscript prints, against the value at an address in a file.</p>
+</section>
+<section id="passage-presence">
+<h3><code>passage-presence</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#passage-presence</code></dd></dl>
+<p>A passage occurs in a file.</p>
+</section>
+<section id="correspondence">
+<h3><code>correspondence</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#correspondence</code></dd></dl>
+<p>The values at two addresses, in two files, agree.</p>
+</section>
+<section id="aggregate-comparison">
+<h3><code>aggregate-comparison</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#aggregate-comparison</code></dd></dl>
+<p>A value the manuscript prints, against a statistic computed over the values at several addresses. No one stored value is the value compared.</p>
+</section>
+<section id="artifact-identity">
+<h3><code>artifact-identity</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#artifact-identity</code></dd></dl>
+<p>A file's bytes are the bytes that were recorded. Reserved; this tool writes none.</p>
+</section>
+<section id="lineage-check">
+<h3><code>lineage-check</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#lineage-check</code></dd></dl>
+<p>A file was produced by a recorded process from recorded inputs. Reserved.</p>
+</section>
+<section id="rerun-comparison">
+<h3><code>rerun-comparison</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#rerun-comparison</code></dd></dl>
+<p>What a command wrote when run again, against what it wrote before. Reserved.</p>
+</section>
+<section id="coverage-check">
+<h3><code>coverage-check</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#coverage-check</code></dd></dl>
+<p>Whether something the manuscript states has a claim declared for it. Reserved.</p>
+</section>
+<section id="other">
+<h3><code>other</code></h3>
+<dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#other</code></dd></dl>
+<p>A proposition none of the other check types names. Never read as a match.</p>
+</section>
+</body>
+</html>
