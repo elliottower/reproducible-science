@@ -122,6 +122,9 @@ HEADER = """\
 #
 #   {{kind: prose, before: '| 7|', after: '|'}}
 #
+# `conversion: percent` on a number says the file stores the fraction of the percentage the
+# manuscript prints, 0.042 for 4.2, and `conversion: fraction` the reverse.
+#
 # `mode: absolute` or `relative` with `tolerance: '0.01'` replaces comparison at the precision
 # `reported` prints. `where` must match exactly one row.
 #

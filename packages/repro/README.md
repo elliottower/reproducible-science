@@ -336,6 +336,34 @@ A predicate matching two rows is reported as ambiguous and never resolved to the
 
 Pickles (`.pkl`, `.joblib`, `.pt`) are never opened, because reading one runs code. An `.rds` is parsed by [`rdata`](https://pypi.org/project/rdata/), which starts no R process and evaluates nothing in the file.
 
+## A fraction printed as a percentage
+
+A file holds `0.0424` and the manuscript prints 4.2%. The assertion declares the conversion by name:
+
+```yaml
+- {kind: metric, artifact: results, name: attrition, reported: "4.2", pointer: /attrition, conversion: percent}
+```
+
+| conversion | the file stores | the manuscript prints |
+|---|---|---|
+| `percent` | a fraction, `0.042` | a percentage, `4.2` |
+| `fraction` | a percentage, `4.2` | a fraction, `0.042` |
+
+The stored value is converted exactly, by moving its decimal point, and then compared at the precision the manuscript prints: `0.0424` is 4.24 and agrees with `4.2`, and `0.0426` is 4.26 and does not. A `tolerance` is in the printed unit. `metric`, `table` and `value` take the field, and so does each side of a `correspondence`. The two names are the whole set. No assertion takes a multiplier or an expression, and a manifest naming any other conversion does not load.
+
+`repro verify` and `repro why` show both values:
+
+```text
+  ok    attrition    metric   /attrition = 0.0424 (4.24 as a percentage)
+```
+
+```text
+    results at /attrition: holds 0.0424, 4.24 as a percentage
+    the manuscript prints 4.2: verified
+```
+
+In `--format json` a decision carries `extracted`, `conversion` and `converted`.
+
 ## On every commit
 
 ```yaml

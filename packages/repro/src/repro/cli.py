@@ -689,6 +689,8 @@ def _assertion_lines(assertion: AssertionAccount, paths: dict[str, str]) -> list
         if file.address:
             side = f"{file.side}: " if file.side else ""
             held = f"holds {file.stored}" if file.stored is not None else "no value was read"
+            if file.conversion is not None and file.converted is not None:
+                held += f", {file.converted} {file.conversion.said}"
             lines.append(f"{side}{file.artifact} at {file.address}: {held}")
 
     outcome = _said(assertion.outcome)

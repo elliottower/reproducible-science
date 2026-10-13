@@ -123,6 +123,7 @@ reported: "3.20"                          # a string, always
 pointer: /comparisons/primary/delta       # RFC 6901
 mode: printed_precision                   # or absolute | relative
 tolerance: "0"                            # a string; ignored for printed_precision
+conversion: percent                       # optional; or fraction (§3.7)
 ```
 
 Assertion: this artifact holds this value at this location.
@@ -198,6 +199,8 @@ tolerance: "0"
 ```
 
 Assertion: these two artifacts hold the same value.
+
+A side may carry a `conversion` (§3.7), and is then compared as converted.
 
 Every other kind compares an artifact against a literal written in the manifest. A claim a
 document makes about the code beside it has an artifact on both sides: `docs/SPEC.md` states a
@@ -362,6 +365,56 @@ Locators are canonicalized — sorted keys, no whitespace, no coercion — and h
 records that digest beside the artifact digest, so it binds how a value was addressed as well
 as what was read: a selector edited after the fact changes the record even where the file does
 not.
+
+## 3.7 Conversions
+
+A file stores 0.042 and the manuscript prints 4.2, as a percentage. Without a declared
+conversion the two cannot be bound, and an author's alternatives are to transcribe 4.2 into a
+second file or to leave the number unchecked.
+
+```yaml
+kind: metric
+artifact: results
+name: attrition
+reported: "4.2"
+pointer: /attrition
+conversion: percent
+```
+
+`conversion` is an optional field of `metric`, `table` and `value`, and of each side of a
+`correspondence`. It takes one of two names.
+
+| conversion | the file stores | the manuscript prints | converted value |
+|---|---|---|---|
+| `percent` | a fraction, `0.042` | a percentage, `4.2` | stored × 100 |
+| `fraction` | a percentage, `4.2` | a fraction, `0.042` | stored ÷ 100 |
+
+**The set is closed.** There is no multiplier and no expression. An assertion that states its
+own arithmetic can make any stored value agree with any printed one, and nothing checks the
+arithmetic. A name outside the set is a manifest that does not load.
+
+**The stored value is converted exactly, and then compared.** Both conversions move the
+decimal point two places and change no digit, so the converted value is an exact decimal at
+any number of digits: no binary float is formed and no rounding happens in the conversion.
+The comparison of §3.2 then runs on the converted value. Under `printed_precision` the
+converted value is rounded half-even to the precision `reported` prints, so a file holding
+`0.0424` agrees with a manuscript printing `4.2` (4.24 rounds to 4.2) and a file holding
+`0.0426` does not (4.26 rounds to 4.3). Rounding before converting would compare `0.0` with
+`4.2` in both cases. Under `absolute` and `relative` the tolerance is in the unit the
+manuscript prints: `tolerance: "0.1"` under `percent` is a tenth of a percentage point.
+
+In a `correspondence` each side is converted under its own declaration, and the coarser of the
+two precisions is found after converting. A stored `0.04` is 4 as a percentage, with no decimal
+place, so a document printing `4.2` is rounded to it.
+
+With no `conversion`, nothing is converted, and a manifest that declares none is serialized
+without the field, so its digest is the one it had before the field existed. A stored value
+that is not a finite number is `value_not_numeric` before any conversion.
+
+A decision over one artifact records `extracted`, the value as stored; `conversion`, the name
+declared; and `converted`, the value compared. A `DecisionSide` records the same three. The
+conversion is not part of the locator, which says where a value sits and nothing about the
+unit it is printed in, so the locator digest does not move when a conversion is declared.
 
 ## 4. Outcomes
 
@@ -798,8 +851,10 @@ An implementation conforms when:
     carries the failing side's reason.
 12. A spelled-out number is converted only where the locator declares `cardinal_word`, and
     refused with `number_as_word` otherwise.
+13. A stored value is converted only where the assertion declares a `conversion`, exactly and
+    before the comparison, and the decision names the conversion and records both values.
 
-Conformance is executable: `packages/repro/tests/conformance/` holds 29 fixtures, each with
+Conformance is executable: `packages/repro/tests/conformance/` holds 31 fixtures, each with
 canonical expected JSON. They cover `verified`, `mismatch`, `not_found`, `unchecked` and
 `not_offered`, the pointer-escaping and undeclared-artifact cases, an unpinned artifact, a
 broken pin, five table-addressing cases, six over `correspondence` and the prose locator —
@@ -808,7 +863,9 @@ refused, one pair of anchors selecting two different values, and a prose value a
 literal — and four over a printed table read as text: a cell bound by the row's leading cells
 and its divider, the same cell with no `after`, which is not a number, a leading anchor the
 document does not hold, and a trailing anchor that would split the number. Those four also
-declare the three stages of §4.
+declare the three stages of §4, as do two over a conversion: a stored fraction that agrees
+with the printed percentage beside the same address with no conversion declared, which does
+not, and a stored fraction that rounds to another percentage at the printed precision.
 
 Each fixture declares its outcome, its reason, and the validity of every artifact. The outcome
 alone cannot tell a defect in the tool from a fact about the document: three cases share

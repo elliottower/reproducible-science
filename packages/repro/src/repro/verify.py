@@ -38,6 +38,7 @@ from repro.models import (
     ClaimAssessment,
     ComparisonMode,
     ComparisonStatus,
+    Conversion,
     CorrespondenceEvidence,
     Decision,
     DecisionSide,
@@ -301,8 +302,37 @@ _ABSENT_REASON = {
 def compare_decimal(
     stored: decimal.Decimal, evidence: MetricEvidence | TableCellEvidence | ValueEvidence
 ) -> bool:
-    """Does the stored value agree with the reported one, under the declared mode?"""
-    return _agree(stored, evidence.value, evidence.mode, evidence.tolerance_value)
+    """Does the stored value agree with the reported one, under the declared conversion and
+    mode?"""
+    return _agree(
+        _compared(stored, evidence.conversion),
+        evidence.value,
+        evidence.mode,
+        evidence.tolerance_value,
+    )
+
+
+def _compared(stored: decimal.Decimal, conversion: Conversion | None) -> decimal.Decimal:
+    """The stored value in the unit it is compared in.
+
+    Converted first and rounded after: a file holding 0.0426 printed as a percentage is 4.26,
+    which is 4.3 at one decimal, where rounding the fraction to 0.04 first would print 4. A
+    non-finite value has no unit and is returned as it is, for `_agree` to refuse.
+    """
+    return conversion.apply(stored) if conversion is not None and stored.is_finite() else stored
+
+
+def _held(stored: decimal.Decimal, compared: decimal.Decimal, conversion: Conversion | None) -> str:
+    """A stored value as a detail shows it: with what it is under a declared conversion."""
+    if conversion is None:
+        return f"{stored}"
+    return f"{stored} ({_plain(compared)} {conversion.said})"
+
+
+def _plain(converted: decimal.Decimal) -> str:
+    """A converted value with no exponent: 0.5 as a percentage is written 50, where `str`
+    writes the same decimal as 5E+1."""
+    return format(converted, "f")
 
 
 def _exponent(value: decimal.Decimal) -> int:
@@ -388,6 +418,7 @@ class ValueBackend:
             raise TypeError(f"{type(self).__name__} received {type(evidence).__name__}")
         path = paths[evidence.artifact]
         base = _base(claim, evidence, self)
+        base["conversion"] = evidence.conversion
         completed = {"execution": ExecutionStatus.COMPLETED}
         no_compare = {"comparison": ComparisonStatus.NOT_APPLICABLE}
 
@@ -438,6 +469,7 @@ class ValueBackend:
         # comparison, and for a value that turns out not to be numeric: what the extractor
         # read is a fact about the extractor whatever the comparison then makes of it.
         base["extraction_digest"] = Digest.of_text(extracted.raw).value
+        base["extracted"] = extracted.raw
 
         try:
             stored = decimal.Decimal(extracted.raw)
@@ -465,6 +497,10 @@ class ValueBackend:
             )
 
         agrees = compare_decimal(stored, evidence)
+        compared = _compared(stored, evidence.conversion)
+        if evidence.conversion is not None:
+            base["converted"] = _plain(compared)
+        held = _held(stored, compared, evidence.conversion)
         where = " ".join(extracted.trace) or locator.kind
         return Decision(
             **base,
@@ -473,10 +509,10 @@ class ValueBackend:
             comparison=ComparisonStatus.MATCH if agrees else ComparisonStatus.MISMATCH,
             reason=Reason.VALUE_MATCH if agrees else Reason.VALUE_MISMATCH,
             detail=(
-                f"{where} = {stored}"
+                f"{where} = {held}"
                 if agrees
                 else f"{evidence.name}: manuscript prints {evidence.reported}, "
-                f"{path.name} holds {stored} at {where}"
+                f"{path.name} holds {held} at {where}"
             ),
             warnings=warnings,
         )
@@ -542,6 +578,7 @@ class CorrespondenceBackend:
                 artifact_id=side.artifact,
                 locator_digest=side.locator.digest.value,
                 extracted=extracted.raw if extracted is not None else None,
+                conversion=side.conversion,
                 # Hashed per side before any comparison, and for a value that turns out not
                 # to be numeric: what an extractor read is a fact about the extractor whatever
                 # the comparison then makes of it.
@@ -607,8 +644,25 @@ class CorrespondenceBackend:
                 )
             numbers.append(number)
 
+        # Each side in the unit it declares, and the comparison is over those: a document
+        # printing 4.2 beside a file holding 0.0424 as a percentage compares 4.2 with 4.24.
+        stored = numbers
+        numbers = [
+            _compared(n, side.conversion) for n, side in zip(stored, evidence.sides, strict=True)
+        ]
+        base["sides"] = tuple(
+            recorded.model_copy(update={"converted": _plain(number)})
+            if recorded.conversion is not None
+            else recorded
+            for recorded, number in zip(base["sides"], numbers, strict=True)
+        )
+
         left, right = evidence.sides
         a, b = numbers
+        held = [
+            _held(was, number, side.conversion)
+            for was, number, side in zip(stored, numbers, evidence.sides, strict=True)
+        ]
         # `printed_precision` compares at the coarser of the two precisions, so a document
         # printing 0.65 agrees with a file holding 0.6478 and the answer does not depend on
         # which side the manifest wrote first. A larger exponent is the coarser value.
@@ -620,7 +674,7 @@ class CorrespondenceBackend:
             extraction=ExtractionStatus.EXTRACTED,
             comparison=ComparisonStatus.MATCH if agrees else ComparisonStatus.MISMATCH,
             reason=Reason.VALUE_MATCH if agrees else Reason.VALUE_MISMATCH,
-            detail=f"{evidence.name}: {left.name} {a}, {right.name} {b}",
+            detail=f"{evidence.name}: {left.name} {held[0]}, {right.name} {held[1]}",
             warnings=(
                 (Warning_.POSITIONAL_ADDRESS,)
                 if any(side.locator.kind == "table_position" for side in evidence.sides)
