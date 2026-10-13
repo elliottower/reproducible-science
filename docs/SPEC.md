@@ -1252,8 +1252,8 @@ The JSON Schema generated from the model is `docs/schemas/repro.check-0.1-experi
 ### Relation to `.repro/checks.jsonl`
 
 A project may also keep a history, `.repro/checks.jsonl`, to which `repro verify --record`
-appends what an assertion said each time a check found it changed, in a build that has that
-flag. A check record is the other thing, the present check written out for another program. It is derived when `repro export` runs, from the manifest and
+appends what an assertion said each time a check found it changed. A check record is the
+other thing, the present check written out for another program. It is derived when `repro export` runs, from the manifest and
 the files, and this command stores nothing and reads no history.
 
 The two describe some of the same facts, under the same names where the shapes allow:
