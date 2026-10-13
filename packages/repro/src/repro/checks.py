@@ -129,6 +129,15 @@ def _address(evidence: Evidence) -> str:
     return address(evidence.locator)
 
 
+def _conversion(evidence: Evidence) -> str:
+    if isinstance(evidence, CorrespondenceEvidence):
+        return "; ".join(
+            f"{side.name}: {side.conversion.value}" for side in evidence.sides if side.conversion
+        )
+    declared = getattr(evidence, "conversion", None)
+    return declared.value if declared else ""
+
+
 def checked(
     claim: Claim, decisions: tuple[Decision, ...], at: str = ""
 ) -> tuple[CheckedAssertion, ...]:
@@ -148,6 +157,7 @@ def checked(
                 if isinstance(evidence, QuoteEvidence)
                 else getattr(evidence, "reported", None),
                 address=_address(evidence),
+                conversion=_conversion(evidence),
                 digests={side.artifact_id: side.artifact_digest for side in decision.sides}
                 or dict.fromkeys(evidence.artifacts, decision.artifact_digest),
                 outcome=decision.outcome,

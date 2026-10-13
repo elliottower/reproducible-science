@@ -62,16 +62,23 @@ one per side. `reported` is the number as the manuscript prints it, always a quo
 | `metric` | a JSON or YAML file holds this number at a pointer | `name`, `reported`, `pointer` |
 | `table` | a table holds this number in a cell | `name`, `reported`, `column`, and `where` or `row`; optional `delimiter` |
 | `value` | a file holds this number at a locator, in any format below | `name`, `reported`, `locator` |
-| `quote` | this passage occurs in the text of a document | `text`; optional `page` (checked), `section` (recorded only) |
+| `quote` | this passage occurs in the text of a document | `text`; optional `page` (checked where the document has pages, reported as `page_unchecked` where it has none), `section` (recorded only) |
 | `correspondence` | two artifacts hold the same number, neither written in the manifest | `name`, `sides`: two of `{name, artifact, locator}` |
 
 The four that compare a number take `mode` and `tolerance`: `printed_precision` (the default,
 round to the digits `reported` prints), `absolute`, or `relative`, with `tolerance` a quoted
 string. A `correspondence` has no `relative`.
 
+`metric`, `table`, `value` and each side of a `correspondence` take an optional `conversion`,
+for a file that stores a number in one unit where the manuscript prints another: `percent`
+(the file holds the fraction `0.042`, the manuscript prints `4.2`) or `fraction` (the file
+holds `4.2`, the manuscript prints `0.042`). The stored value is converted exactly and then
+rounded to the digits `reported` prints. There is no multiplier and no other name.
+
 ```yaml
 - {kind: metric, artifact: results, name: p, reported: "0.031", pointer: /primary/p}
 - {kind: table, artifact: models, name: accuracy, reported: "0.648", column: accuracy, where: {model: lasso}}
+- {kind: metric, artifact: results, name: attrition, reported: "4.2", pointer: /primary/attrition, conversion: percent}
 - {kind: quote, artifact: paper, text: "We enrolled eighteen sites across the two regions."}
 - kind: correspondence
   name: participants
@@ -221,6 +228,7 @@ directory, the freeze goes ahead.
 - In the project's CI job or before a release, so that record travels with the repository: `repro verify --record`, then commit `.repro/checks.jsonl` and `.repro/ledger.head`
 - After editing an input or a script, before trusting a green verify: `repro stale`
 - For one claim, what the record establishes and what it does not: `repro why <claim-id>`
+- To count every number the manuscript prints, and which no claim accounts for: `repro numbers`
 - When a reviewer asks where a number came from
 - When a manuscript and its data may have drifted apart
 - In CI, as `repro verify --policy strict`

@@ -9,6 +9,8 @@ import enum
 
 from pydantic import BaseModel, ConfigDict
 
+from repro.core.evidence import Conversion
+
 SCHEMA_VERSION = "repro/1"
 
 _SHA256_HEX = r"^[a-f0-9]{64}$"
@@ -201,6 +203,12 @@ class Warning_(enum.StrEnum):
     TRUNCATED = "truncated"
     NORMALIZED = "normalized"
     WRONG_PAGE = "wrong_page"
+    PAGE_UNCHECKED = "page_unchecked"
+    """The quote assertion declares a `page`, the passage was found, and nothing checked the
+    page: the artifact is not read page by page, or the passage matched only with spacing
+    ignored. The passage is in the artifact, so the assertion is `verified`; the page is
+    neither confirmed nor refuted, and a policy grades it as it grades a check that did not
+    run."""
     POSITIONAL_ADDRESS = "positional_address"
     """Addressed by row index, which names a different cell if the table is reordered."""
 
@@ -224,6 +232,13 @@ class DecisionSide(BaseModel):
     extracted: str | None = None
     """The value read, in the representation the artifact used. `None` where this side did
     not extract, which is why the decision reports no comparison."""
+
+    conversion: Conversion | None = None
+    """The conversion this side declares, or None."""
+
+    converted: str | None = None
+    """`extracted` under `conversion`, which is the value compared. None where no conversion
+    is declared, or where the side read no number to convert."""
 
     extraction_digest: str = ""
     """sha256 of what this side's extractor produced. `unknown` where the side produced
@@ -260,6 +275,18 @@ class Decision(BaseModel):
     """The digest of the canonical locator, so a decision binds how the value was addressed
     as well as what was read. A selector edited after the fact changes this even where the
     artifact is untouched."""
+
+    extracted: str | None = None
+    """The value read from the one artifact, in the representation the artifact used. None
+    where no value was read, and for a kind that reads no value or reads two: a
+    `correspondence` records what each side read in `sides`."""
+
+    conversion: Conversion | None = None
+    """The conversion the assertion declares, or None."""
+
+    converted: str | None = None
+    """`extracted` under `conversion`, which is the value compared with the printed one. None
+    where no conversion is declared, or where no number was read to convert."""
 
     sides: tuple[DecisionSide, ...] = ()
     """The two values a `correspondence` compared, each with the artifact and locator it came

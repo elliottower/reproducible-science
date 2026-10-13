@@ -22,6 +22,7 @@ from repro.models import (
     CheckRecord,
     Claim,
     ClaimAccount,
+    Conversion,
     Digest,
     Manifest,
     MetricEvidence,
@@ -196,6 +197,30 @@ def test_what_changed_between_two_states_is_named(repo, capsys, first, second, c
     project = manifest(repo, second)
     check(project)
     assert shown(project, capsys)[1].endswith(f"verified ({changed})")
+
+
+def test_a_conversion_declared_after_a_mismatch_is_named(repo, capsys):
+    def percent(conversion):
+        return Claim(
+            id="accuracy",
+            text="Accuracy is 91%.",
+            evidence=(
+                MetricEvidence(
+                    artifact="results",
+                    name="accuracy",
+                    reported="91",
+                    pointer="/acc",
+                    conversion=conversion,
+                ),
+            ),
+        )
+
+    assert check(manifest(repo, percent(None))) == 1
+    project = manifest(repo, percent(Conversion.PERCENT))
+    assert check(project) == 0
+    before, after = recorded(repo)
+    assert (before.conversion, after.conversion) == ("", "percent")
+    assert shown(project, capsys)[1].endswith("verified (after mismatch: conversion changed)")
 
 
 def test_a_file_edited_between_checks_is_a_new_state_with_both_digests(repo, capsys):

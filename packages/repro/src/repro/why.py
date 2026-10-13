@@ -28,6 +28,7 @@ from repro.models import (
     ChainNode,
     Claim,
     ClaimAccount,
+    Conversion,
     CorrespondenceEvidence,
     Decision,
     Evidence,
@@ -97,22 +98,31 @@ class UnknownClaimError(ReproError):
         )
 
 
-def _held(
-    evidence: Evidence, decision: Decision, paths: dict[str, pathlib.Path]
-) -> list[tuple[str, str, str, str | None]]:
-    """Each file an assertion reads: the artifact, the side it is, the address and the value
-    stored there."""
+#: One file an assertion reads: the artifact, the side it is, the address, the value stored
+#: there, and the conversion declared for it with the value under it.
+Held = tuple[str, str, str, str | None, Conversion | None, str | None]
+
+
+def _held(evidence: Evidence, decision: Decision, paths: dict[str, pathlib.Path]) -> list[Held]:
+    """Each file an assertion reads, and what was found at the address in it."""
     if isinstance(evidence, QuoteEvidence):
-        return [(evidence.artifact, "", "", None)]
+        return [(evidence.artifact, "", "", None, None, None)]
     if isinstance(evidence, CorrespondenceEvidence):
-        extracted = {side.name: side.extracted for side in decision.sides}
+        read = {side.name: side for side in decision.sides}
         return [
-            (side.artifact, side.name, address(side.locator), extracted.get(side.name))
+            (
+                side.artifact,
+                side.name,
+                address(side.locator),
+                read[side.name].extracted if side.name in read else None,
+                side.conversion,
+                read[side.name].converted if side.name in read else None,
+            )
             for side in evidence.sides
         ]
     if isinstance(evidence, TableCellEvidence) and not evidence.addresses_one_row:
         # Neither `row` nor `where`, or both: there is no one address to show.
-        return [(evidence.artifact, "", "", None)]
+        return [(evidence.artifact, "", "", None, None, None)]
     path = paths.get(evidence.artifact)
     return [
         (
@@ -120,6 +130,8 @@ def _held(
             "",
             address(evidence.locator),
             stored(evidence, path) if path is not None else None,
+            evidence.conversion,
+            decision.converted,
         )
     ]
 
@@ -232,7 +244,14 @@ def why(
             for evidence, decision in zip(claim.evidence, decisions, strict=True)
         ]
 
-    def read(artifact_id: str, side: str, where: str, value: str | None) -> FileRead:
+    def read(
+        artifact_id: str,
+        side: str,
+        where: str,
+        value: str | None,
+        conversion: Conversion | None,
+        converted: str | None,
+    ) -> FileRead:
         declared, state = manifest.artifact(artifact_id), states.get(artifact_id)
         return FileRead(
             artifact=artifact_id,
@@ -243,6 +262,8 @@ def why(
             on_disk=state.actual if state else None,
             address=where,
             stored=value,
+            conversion=conversion,
+            converted=converted,
         )
 
     # What the record of checks holds for each assertion, and the assertion as it stands where

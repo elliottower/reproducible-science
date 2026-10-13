@@ -35,6 +35,9 @@ class CheckedAssertion(BaseModel):
     """The `reported` value, or the passage a quotation asserts."""
     address: str = ""
     """Where the assertion looked. Both sides of a `correspondence`, each with its name."""
+    conversion: str = ""
+    """The conversion declared between the stored value and the printed one, where there is
+    one. Each side's, with its name, for a `correspondence`."""
     digests: dict[str, str | None] = {}
     """Per artifact the assertion read, the digest of the bytes read. None where nothing was
     at the declared path."""

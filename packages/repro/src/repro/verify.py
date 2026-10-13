@@ -38,6 +38,7 @@ from repro.models import (
     ClaimAssessment,
     ComparisonMode,
     ComparisonStatus,
+    Conversion,
     CorrespondenceEvidence,
     Decision,
     DecisionSide,
@@ -167,12 +168,35 @@ _QUOTE_STATE = {
     ),
 }
 
+#: Every warning `citations.verify` can put on a result. `page unchecked` was not here, and a
+#: warning with no entry is dropped, so the one warning that says a check was skipped was the
+#: one `repro verify` never showed.
 _QUOTE_WARNINGS = {
     "short": Warning_.SHORT,
     "truncated": Warning_.TRUNCATED,
     "normalized": Warning_.NORMALIZED,
     "page": Warning_.WRONG_PAGE,
+    "page unchecked": Warning_.PAGE_UNCHECKED,
 }
+
+
+def _page_unchecked(page: int | None, state: str, warnings: list[str], paginated: bool) -> str:
+    """Why a declared page was not checked on a passage that was found, or empty where it was.
+
+    `citations` says so itself only where a source declares its own extractor, which a
+    manifest cannot do. The two cases a manifest reaches are silent there: a source that is
+    not read page by page has its page dropped before the passage is looked for, and a passage
+    that matches only with spacing ignored is returned before the page is looked at.
+    """
+    if page is None or state != "found" or "page" in warnings:
+        return ""
+    if "page unchecked" in warnings:
+        return f"page {page} was not checked: the declared extractor cannot be asked for one page"
+    if not paginated:
+        return f"page {page} was not checked: the artifact is not read page by page"
+    if "normalized" in warnings:
+        return f"page {page} was not checked: the passage matched only with spacing ignored"
+    return ""
 
 
 class QuoteBackend:
@@ -200,7 +224,7 @@ class QuoteBackend:
             # Imported here rather than at module scope so an absent `citations` reports as a
             # backend that could not run, which is what the caller can act on.
             from citations.exceptions import SourceUnreadableError
-            from citations.verify import check_one, extract
+            from citations.verify import check_one, extract, is_paginated
         except ImportError as e:
             raise BackendUnavailableError("quote", f"citations is not installed: {e}") from e
 
@@ -208,7 +232,14 @@ class QuoteBackend:
         result = check_one(
             evidence.text, path, evidence.page, prefix=evidence.prefix, suffix=evidence.suffix
         )
-        warnings = tuple(_QUOTE_WARNINGS[w] for w in result.warnings if w in _QUOTE_WARNINGS)
+        named = list(result.warnings)
+        # Asked only of a source that was read: `is_paginated` opens the file to tell text from
+        # a format with pages.
+        paginated = result.state == "found" and is_paginated(path)
+        unchecked = _page_unchecked(evidence.page, result.state, named, paginated)
+        if unchecked and "page unchecked" not in named:
+            named.append("page unchecked")
+        warnings = tuple(_QUOTE_WARNINGS[w] for w in named if w in _QUOTE_WARNINGS)
 
         if result.state == "unchecked":
             # The extractor could not produce text. Distinguishing this from an absent
@@ -237,7 +268,7 @@ class QuoteBackend:
             extraction=extraction,
             comparison=comparison,
             reason=reason,
-            detail=result.detail,
+            detail=result.detail or unchecked,
             warnings=warnings,
         )
 
@@ -271,8 +302,37 @@ _ABSENT_REASON = {
 def compare_decimal(
     stored: decimal.Decimal, evidence: MetricEvidence | TableCellEvidence | ValueEvidence
 ) -> bool:
-    """Does the stored value agree with the reported one, under the declared mode?"""
-    return _agree(stored, evidence.value, evidence.mode, evidence.tolerance_value)
+    """Does the stored value agree with the reported one, under the declared conversion and
+    mode?"""
+    return _agree(
+        _compared(stored, evidence.conversion),
+        evidence.value,
+        evidence.mode,
+        evidence.tolerance_value,
+    )
+
+
+def _compared(stored: decimal.Decimal, conversion: Conversion | None) -> decimal.Decimal:
+    """The stored value in the unit it is compared in.
+
+    Converted first and rounded after: a file holding 0.0426 printed as a percentage is 4.26,
+    which is 4.3 at one decimal, where rounding the fraction to 0.04 first would print 4. A
+    non-finite value has no unit and is returned as it is, for `_agree` to refuse.
+    """
+    return conversion.apply(stored) if conversion is not None and stored.is_finite() else stored
+
+
+def _held(stored: decimal.Decimal, compared: decimal.Decimal, conversion: Conversion | None) -> str:
+    """A stored value as a detail shows it: with what it is under a declared conversion."""
+    if conversion is None:
+        return f"{stored}"
+    return f"{stored} ({_plain(compared)} {conversion.said})"
+
+
+def _plain(converted: decimal.Decimal) -> str:
+    """A converted value with no exponent: 0.5 as a percentage is written 50, where `str`
+    writes the same decimal as 5E+1."""
+    return format(converted, "f")
 
 
 def _exponent(value: decimal.Decimal) -> int:
@@ -358,6 +418,7 @@ class ValueBackend:
             raise TypeError(f"{type(self).__name__} received {type(evidence).__name__}")
         path = paths[evidence.artifact]
         base = _base(claim, evidence, self)
+        base["conversion"] = evidence.conversion
         completed = {"execution": ExecutionStatus.COMPLETED}
         no_compare = {"comparison": ComparisonStatus.NOT_APPLICABLE}
 
@@ -408,6 +469,7 @@ class ValueBackend:
         # comparison, and for a value that turns out not to be numeric: what the extractor
         # read is a fact about the extractor whatever the comparison then makes of it.
         base["extraction_digest"] = Digest.of_text(extracted.raw).value
+        base["extracted"] = extracted.raw
 
         try:
             stored = decimal.Decimal(extracted.raw)
@@ -435,6 +497,10 @@ class ValueBackend:
             )
 
         agrees = compare_decimal(stored, evidence)
+        compared = _compared(stored, evidence.conversion)
+        if evidence.conversion is not None:
+            base["converted"] = _plain(compared)
+        held = _held(stored, compared, evidence.conversion)
         where = " ".join(extracted.trace) or locator.kind
         return Decision(
             **base,
@@ -443,10 +509,10 @@ class ValueBackend:
             comparison=ComparisonStatus.MATCH if agrees else ComparisonStatus.MISMATCH,
             reason=Reason.VALUE_MATCH if agrees else Reason.VALUE_MISMATCH,
             detail=(
-                f"{where} = {stored}"
+                f"{where} = {held}"
                 if agrees
                 else f"{evidence.name}: manuscript prints {evidence.reported}, "
-                f"{path.name} holds {stored} at {where}"
+                f"{path.name} holds {held} at {where}"
             ),
             warnings=warnings,
         )
@@ -512,6 +578,7 @@ class CorrespondenceBackend:
                 artifact_id=side.artifact,
                 locator_digest=side.locator.digest.value,
                 extracted=extracted.raw if extracted is not None else None,
+                conversion=side.conversion,
                 # Hashed per side before any comparison, and for a value that turns out not
                 # to be numeric: what an extractor read is a fact about the extractor whatever
                 # the comparison then makes of it.
@@ -577,8 +644,25 @@ class CorrespondenceBackend:
                 )
             numbers.append(number)
 
+        # Each side in the unit it declares, and the comparison is over those: a document
+        # printing 4.2 beside a file holding 0.0424 as a percentage compares 4.2 with 4.24.
+        stored = numbers
+        numbers = [
+            _compared(n, side.conversion) for n, side in zip(stored, evidence.sides, strict=True)
+        ]
+        base["sides"] = tuple(
+            recorded.model_copy(update={"converted": _plain(number)})
+            if recorded.conversion is not None
+            else recorded
+            for recorded, number in zip(base["sides"], numbers, strict=True)
+        )
+
         left, right = evidence.sides
         a, b = numbers
+        held = [
+            _held(was, number, side.conversion)
+            for was, number, side in zip(stored, numbers, evidence.sides, strict=True)
+        ]
         # `printed_precision` compares at the coarser of the two precisions, so a document
         # printing 0.65 agrees with a file holding 0.6478 and the answer does not depend on
         # which side the manifest wrote first. A larger exponent is the coarser value.
@@ -590,7 +674,7 @@ class CorrespondenceBackend:
             extraction=ExtractionStatus.EXTRACTED,
             comparison=ComparisonStatus.MATCH if agrees else ComparisonStatus.MISMATCH,
             reason=Reason.VALUE_MATCH if agrees else Reason.VALUE_MISMATCH,
-            detail=f"{evidence.name}: {left.name} {a}, {right.name} {b}",
+            detail=f"{evidence.name}: {left.name} {held[0]}, {right.name} {held[1]}",
             warnings=(
                 (Warning_.POSITIONAL_ADDRESS,)
                 if any(side.locator.kind == "table_position" for side in evidence.sides)

@@ -9,6 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from repro.core.checks import CheckedAssertion, RecordState
 from repro.core.claims import Availability, Registration
+from repro.core.evidence import Conversion
 from repro.core.manifest import RegenerationState
 from repro.core.outcomes import (
     Decision,
@@ -315,6 +316,11 @@ class FileRead(BaseModel):
     """Where the assertion looks. Empty for a quotation, which addresses no value."""
     stored: str | None = None
     """The value at the address, as stored. None where none was read."""
+    conversion: Conversion | None = None
+    """The conversion the assertion declares for this value, or None."""
+    converted: str | None = None
+    """`stored` under `conversion`, which is the value compared. None where no conversion is
+    declared, or where no number was read to convert."""
 
 
 class AssertionAccount(BaseModel):
