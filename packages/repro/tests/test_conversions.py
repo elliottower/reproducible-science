@@ -150,7 +150,7 @@ def test_a_manifest_declaring_no_conversion_serializes_without_the_field():
         '"claims":[{"id":"c","text":"t","where":null,"registration":"exploratory",'
         '"registration_note":"","evidence":[{"artifact":"a","kind":"metric","name":"m",'
         '"reported":"1","pointer":"/x","mode":"printed_precision","tolerance":"0"}]}],'
-        '"runs":[],"regenerations":[]}'
+        '"runs":[],"regenerations":[],"set_aside":[]}'
     )
     manifest = Manifest.model_validate_json(written)
     assert Digest.of_text(manifest.model_dump_json()) == Digest.of_text(written)

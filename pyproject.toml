@@ -244,6 +244,7 @@ source_modules = [
   "repro.reproduce",
   "repro.stale",
   "repro.why",
+  "repro.numbers",
 ]
 forbidden_modules = [ "repro.integrations" ]
 
@@ -266,6 +267,9 @@ layers = [
   "repro.reproduce",
   "repro.verify",
   "repro.resolve",
+  # Reads a text with the prose adapter's rule for a number and evaluates no assertion, so it
+  # sits on the adapters and reaches for nothing above them.
+  "repro.numbers",
   "repro.adapters",
   "repro.models",
   "repro.core",

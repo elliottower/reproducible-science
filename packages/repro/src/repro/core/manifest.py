@@ -254,6 +254,27 @@ class RegenerationState(BaseModel):
     """Files the command wrote that the record does not declare, relative to its directory."""
 
 
+class SetAside(BaseModel):
+    """A passage whose numbers the author declares are not claims, and why.
+
+    `repro numbers` counts every number a text prints. A number in a passage listed here is
+    counted as set aside with a reason and printed with that reason, never dropped.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    artifact: str
+    """Id of the text artifact the passage is in."""
+
+    text: str = Field(min_length=1)
+    """The passage, matched as a quotation is. Every number inside each place it occurs is
+    set aside, unless an assertion binds it."""
+
+    reason: str = Field(min_length=1)
+    """Why no assertion is offered for these numbers. Required: an entry without one would be
+    a way to shrink the count of unbound numbers without saying anything."""
+
+
 class Manifest(BaseModel):
     """One project: its artifacts and its claims."""
 
@@ -266,6 +287,7 @@ class Manifest(BaseModel):
     claims: tuple[Claim, ...] = ()
     runs: tuple[RunRecord, ...] = ()
     regenerations: tuple[RegenerationRecord, ...] = ()
+    set_aside: tuple[SetAside, ...] = ()
 
     path: pathlib.Path | None = Field(default=None, exclude=True)
 
