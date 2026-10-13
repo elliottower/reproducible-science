@@ -5,7 +5,7 @@ from __future__ import annotations
 import enum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from repro.core.claims import Availability, Registration
 from repro.core.manifest import RegenerationState
@@ -394,3 +394,8 @@ class ClaimAccount(BaseModel):
     """The edges of the staleness graph that lie on the chain."""
     findings: tuple[StaleFinding, ...] = ()
     not_established: tuple[NotEstablished, ...] = ()
+    outcomes: dict[Outcome, int] = Field(default_factory=dict)
+    """How many of the claim's assertions have each outcome, in the order `Outcome` declares
+    them. An outcome no assertion has is left out."""
+    states: dict[Freshness, int] = Field(default_factory=dict)
+    """How many of the claim's assertions are in each state against the record of re-runs."""

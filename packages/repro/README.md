@@ -217,6 +217,7 @@ established
   chain
     totals (totals.json): stale
       written by sum: python3 totals.py
+      which reads counts (counts.json), script (totals.py)
       re-run of 2026-10-13T19:44:16+00:00 reproduced, and its output is the bytes now on disk
       input changed: counts (counts.json): the re-run of 2026-10-13T19:44:16+00:00 read dfb342fd85a5, on disk b9109751e9cb
     counts (counts.json): no producer, 1 step up
