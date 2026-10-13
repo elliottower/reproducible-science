@@ -53,6 +53,7 @@ file is confirmed.
 | digest matches | `authoritative` | the file is the file that was pinned |
 | digest differs | `broken_pin` | the file read is provably not the file declared |
 | no digest | `unpinned_artifact` | nothing about the file is confirmed |
+| no file | `artifact_absent` | nothing is at the declared path, so no assertion against it read anything |
 
 Pins are resolved before any evidence is read. Decisions computed against a broken or unpinned
 artifact still run and are still reported, marked with that validity, because a diagnostic is
@@ -73,14 +74,28 @@ text: "Model A exceeded Model B by 3.2 percentage points"
 prefix: "In the held-out split, "   # optional: the text immediately before the passage
 suffix: " on the primary metric"    # optional: the text immediately after it
 section: "Results"      # recorded, never verified
-page: 4                 # verified when present
+page: 4                 # checked where the artifact is read page by page
 ```
 
-Assertion: this passage occurs in the extracted text of this artifact, after normalization
-that preserves which words appear — NFKC, curly quotes and dashes folded, hyphenation across
-line breaks removed, whitespace collapsed. Normalization never deletes a character without
-substituting a separator, because deleting a control character welds the words on either side
-into one appearing in neither text.
+Assertion: this passage occurs in the extracted text of this artifact, after the passage and
+the text are normalized the same way. Unicode is decomposed to NFKD and combining marks are
+dropped, so a ligature becomes its letters and an accented letter matches its unaccented form:
+`Krzyżosiak` matches `Krzyzosiak`. Dotless `ı` and dotted `İ` become `i` and `I`. Curly
+quotation marks become straight ones, and the em dash, en dash, minus sign and U+2010 hyphen
+become `-`. A hyphen at a line break is removed with the break, runs of whitespace collapse to
+one space, and case is ignored. A control character becomes a space and is not deleted, because
+deleting one welds the words on either side into one appearing in neither text.
+
+A passage that does not occur under that normalization is looked for once more with all
+whitespace, underscores, and any hyphen joining two word characters removed. One found only
+that way is `verified` and carries the warning `normalized`. Other punctuation is kept in both
+passes, so `p < 0.05` does not match `p = 0.05` and `-0.42` does not match `0.42`.
+
+`page` is checked where the artifact is read page by page and the passage matched under the
+first normalization: a passage found on another page is `comparison=mismatch`, reason
+`wrong_page`. Where neither holds — the artifact is a text file, or the passage matched only
+with spacing ignored — the passage is `verified`, the decision carries the warning
+`page_unchecked`, and its detail says why the page was not checked.
 
 A passage occurring more than once is `extraction=invalid`, reason `quotation_ambiguous`, for the
 reason an ambiguous row selector is: no occurrence is taken as the one meant. The record says
@@ -179,7 +194,7 @@ tolerance: "0"
 
 Assertion: these two artifacts hold the same value.
 
-The other three kinds compare an artifact against a literal written in the manifest. A claim a
+Every other kind compares an artifact against a literal written in the manifest. A claim a
 document makes about the code beside it has an artifact on both sides: `docs/SPEC.md` states a
 fixture count, and `ls -1 packages/repro/tests/conformance/cases` returns one. Expressing that
 with a `metric` requires transcribing one of the two into `reported`, and no assertion reads
@@ -227,8 +242,8 @@ document and a script can agree on a number that is wrong.
 `protocol` was specified as a third kind and is not one. Its integrity check is the artifact
 pin, which every artifact already carries; its content check — that a registered document
 states a given hypothesis — is a `quote` against the plan. What remains distinct about a
-protocol is temporal: whether a confirmatory run postdates its registration. That requires a
-run record, is unimplemented (§7), and is not smuggled in as a third kind in the meantime.
+protocol is temporal: whether a confirmatory run postdates its registration. That is read from
+a run record (§7) and is not an evidence kind.
 
 ## 3.6 Locators
 
@@ -321,6 +336,19 @@ coerced, so `"001"` and `1` address different rows. YAML is read with duplicate 
 rejected, since a file that resolves one way with nothing said about the other is not
 addressable.
 
+`value` is the evidence kind that carries a locator, and addresses every format in the table
+above:
+
+```yaml
+kind: value
+artifact: results-db
+name: n
+reported: "480"
+locator: {kind: sqlite, table: runs, column: n, where: {split: test}}
+mode: printed_precision
+tolerance: "0"
+```
+
 `metric` and `table` evidence remain as shorthand for the two commonest locators and resolve
 through the same adapters, so a manifest never chooses between a convenient spelling and a
 supported one.
@@ -351,12 +379,14 @@ how a file silent on a value becomes one that contradicts it.
 | two sides disagree | completed | extracted | mismatch | `mismatch` |
 | one side does not extract | completed | absent or invalid | n/a | `not_found` |
 | passage absent from a readable source | completed | extracted | mismatch | `mismatch` |
+| passage present, on another page than the one declared | completed | extracted | mismatch | `mismatch` |
 | passage occurs more than once | completed | invalid | n/a | `not_found` |
 | pointer does not resolve | completed | absent | n/a | `not_found` |
 | value is not a number | completed | invalid | n/a | `not_found` |
 | independent readers disagree | completed | invalid | n/a | `not_found` |
 | extractor not installed | unavailable | not_attempted | n/a | `unchecked` |
 | artifact missing or unparseable | unavailable | not_attempted | n/a | `unchecked` |
+| format no adapter reads | unavailable | not_attempted | n/a | `unchecked` |
 | backend defect | failed | not_attempted | n/a | `error` |
 
 `Outcome` is derived from the three stages and never assigned, so the flattening cannot drift
@@ -401,26 +431,59 @@ display and is never a `Decision`.
 
 ### 4.1 Reasons and warnings
 
-`Reason` is a typed field carrying why an outcome obtained: `passage_present`, `value_match`,
-`passage_absent`, `value_mismatch`, `pointer_absent`, `value_not_numeric`,
-`extractor_missing`, `artifact_missing`, `artifact_unreadable`, `artifact_undeclared`,
-`backend_defect`, `not_offered`, `extractors_disagree`, `quotation_ambiguous`, and two a prose
-locator adds. `extractors_disagree`: two extractors that both read the artifact reach different
-answers about whether the passage is in it, which asks for a better reader rather than accusing
-the manuscript as `passage_absent` does. `quotation_ambiguous`: the quoted passage occurs more
-than once and the record does not say which occurrence it means, which accuses nothing and asks
-for a `prefix` or `suffix` on the quote assertion (§3.1), as it does where the two are given
-and single out no occurrence. `passage_ambiguous`: one pair of
-anchors selected two different values, so the document states two numbers where the assertion
-addresses one. `number_as_word`: the value is an English cardinal written out under a locator
-that did not ask for one. It is distinct from `value_not_numeric` because the fix differs — the
-value is there and a reader would call it a number, so an author told only that no number was
-found goes looking for a broken anchor.
+`Reason` is a typed field carrying why an outcome obtained. Every value, with the outcome
+it flattens to:
 
-`Warning` is orthogonal to the outcome: `short`, `truncated`, `normalized`, `wrong_page`. A
-decision may be `verified` and carry one. `truncated` exists because *"an accuracy of 0.9"*
-genuinely occurs in a source reporting **0.95**, so the passage is present and the reader is
-told a true thing that misstates the result.
+| reason | outcome | obtained when |
+|---|---|---|
+| `passage_present` | `verified` | the quoted passage occurs in the artifact |
+| `value_match` | `verified` | the stored value agrees with the reported one, or two sides agree |
+| `value_mismatch` | `mismatch` | the stored value disagrees with the reported one, or two sides disagree |
+| `passage_absent` | `mismatch`, `not_found` | a quoted passage is not in an artifact that was read, which is `mismatch`; or a prose locator's anchors select nothing, which is `not_found` |
+| `wrong_page` | `mismatch` | the quoted passage occurs, on another page than the one declared |
+| `pointer_absent` | `not_found` | a JSON Pointer or an array index does not resolve |
+| `row_absent` | `not_found` | a row predicate matches no row, or a row index is past the end |
+| `column_absent` | `not_found` | the column is not in the table |
+| `row_ambiguous` | `not_found` | a locator matches more than one value; no first match is taken |
+| `row_selector_invalid` | `not_found` | a `table` assertion gives both `row` and `where`, or neither; or a locator leaves out or adds what the artifact's format needs, such as an `.npz` with no array named |
+| `selector_not_scalar` | `not_found` | the locator resolves to a list or a mapping |
+| `value_not_numeric` | `not_found` | the value addressed is not a finite number |
+| `number_as_word` | `not_found` | the value is an English cardinal written out, under a locator that did not ask for one |
+| `passage_ambiguous` | `not_found` | one pair of prose anchors selects two different values |
+| `quotation_ambiguous` | `not_found` | the quoted passage occurs more than once and no `prefix` or `suffix` singles one occurrence out |
+| `extractors_disagree` | `not_found` | two extractors that both read the artifact disagree about whether the passage is in it |
+| `format_unsupported` | `unchecked` | no adapter reads the artifact's format |
+| `extractor_missing` | `unchecked` | the program or package that reads the artifact is not installed, or produced no text |
+| `artifact_missing` | `unchecked` | nothing is at the declared path |
+| `artifact_unreadable` | `unchecked` | the file is there and could not be parsed |
+| `artifact_undeclared` | `unchecked` | the assertion names an artifact id the manifest does not declare |
+| `backend_defect` | `error` | the backend raised something unexpected |
+| `not_offered` | `not_offered` | reserved for a claim offering no evidence; no decision carries it, since availability is a claim-level fact |
+
+Four of these exist to keep apart cases that share an outcome and need different fixes.
+`extractors_disagree` asks for a better reader rather than accusing the manuscript as
+`passage_absent` does. `quotation_ambiguous` accuses nothing and asks for a `prefix` or
+`suffix` on the quote assertion (§3.1), as it does where the two are given and single out no
+occurrence. `passage_ambiguous` says the document states two numbers where the assertion
+addresses one. `number_as_word` is distinct from `value_not_numeric` because the value is
+there and a reader would call it a number, so an author told only that no number was found
+goes looking for a broken anchor.
+
+`Warning` is orthogonal to the outcome, and a decision may be `verified` and carry one:
+
+| warning | on | says |
+|---|---|---|
+| `short` | `quote` | the passage is under 40 characters or ends on a comma or a connecting word, so the source may qualify it in the next clause |
+| `truncated` | `quote` | every occurrence of the passage stops in the middle of a word or a number |
+| `normalized` | `quote` | the passage matched only with spacing ignored (§3.1) |
+| `wrong_page` | `quote` | the passage is on another page than the one declared; the decision is a `mismatch` with reason `wrong_page` |
+| `page_unchecked` | `quote` | a `page` is declared and was not checked (§3.1) |
+| `positional_address` | `table`, `value` | the cell is addressed by row index, which names another cell once the table is reordered |
+
+`truncated` exists because *"an accuracy of 0.9"* genuinely occurs in a source reporting
+**0.95**, so the passage is present and the reader is told a true thing that misstates the
+result. `page_unchecked` is the one warning a policy reads (§6): the others qualify a check
+that ran, and it says a declared check did not.
 
 ## 5. Backends
 
@@ -517,6 +580,11 @@ to claims marked confirmatory. Three profiles ship:
 | `publication`, confirmatory claims | error | error | **error** | **error** | — |
 | `strict` | error | error | error | error | error |
 
+The `error` outcome is an error under every profile, as is a broken pin. An artifact absent
+from its declared path is a warning under `exploratory` and an error under the other two. A
+`verified` quotation whose declared page was not checked (`page_unchecked`, §4.1) is graded as
+the profile grades `unchecked` for that claim, under the rule `evidence.page_unchecked`.
+
 Every policy requires at least one assertion to have been evaluated. A run that checked
 nothing is not a pass, and without that condition a project with no evidence anywhere
 satisfies every other condition trivially.
@@ -597,8 +665,10 @@ computed against travel with it; and `result.kind` is separate from `result.leve
 that could not run is `notApplicable` rather than a low-severity failure. Most report formats
 cannot express that difference, and it is the one this document exists to preserve.
 
-A policy raises a result's `level` and never changes its `kind`: what happened does not depend
-on what a project considers acceptable.
+A policy raises a decision's `level` and never changes its `kind`: what happened does not depend
+on what a project considers acceptable. A claim offering no evidence has no decision, and its
+result is `informational` at the level `note` and `fail` where a policy grades it a warning or
+an error.
 
 ## 7.6 Regeneration
 

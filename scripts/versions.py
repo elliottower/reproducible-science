@@ -61,6 +61,13 @@ HOOKS = PROJECT_ROOT / ".pre-commit-hooks.yaml"
 
 HOOK_REV = re.compile(r"^(?P<head>#\s+rev:\s*)v(?P<version>[0-9][^\s]*)", re.M)
 
+#: The same snippet where a reader meets it first, in the README PyPI renders. It read `v0.4.0`
+#: at 0.5.5: the copy in `.pre-commit-hooks.yaml` was written at each release and this one was
+#: owned by nothing.
+HOOK_README = PROJECT_ROOT / "packages" / "repro" / "README.md"
+
+README_REV = re.compile(r"^(?P<head>\s+rev:\s*)v(?P<version>[0-9][^\s]*)", re.M)
+
 CFF_VERSION = re.compile(r'^(?P<head>version:\s*")(?P<version>[^"]+)(?P<tail>")', re.M)
 CFF_DATE = re.compile(r'^(?P<head>date-released:\s*")(?P<date>[^"]+)(?P<tail>")', re.M)
 
@@ -88,6 +95,14 @@ def hook_rev() -> str | None:
     if not HOOKS.exists():
         return None
     m = HOOK_REV.search(HOOKS.read_text())
+    return m.group("version") if m else None
+
+
+def readme_rev() -> str | None:
+    """The version the README's pre-commit snippet tells people to pin, or None."""
+    if not HOOK_README.exists():
+        return None
+    m = README_REV.search(HOOK_README.read_text())
     return m.group("version") if m else None
 
 
@@ -217,6 +232,13 @@ def check() -> list[str]:
             f"but the release is {version}"
         )
 
+    shown = readme_rev()
+    if shown is not None and shown != version:
+        problems.append(
+            f"{HOOK_README.relative_to(PROJECT_ROOT)}: the pre-commit snippet pins v{shown}, "
+            f"but the release is {version}"
+        )
+
     cited = citation_version()
     if cited is not None and cited != version:
         problems.append(f"CITATION.cff: version {cited}, but the release is {version}")
@@ -280,6 +302,13 @@ def bump(version: str, realign: bool = False) -> list[str]:
         if text != original:
             HOOKS.write_text(text)
             touched.append(HOOKS.name)
+
+    if HOOK_README.exists():
+        text = original = HOOK_README.read_text()
+        text = README_REV.sub(rf"\g<head>v{version}", text, count=1)
+        if text != original:
+            HOOK_README.write_text(text)
+            touched.append(str(HOOK_README.relative_to(PROJECT_ROOT)))
 
     if CITATION.exists():
         text = original = CITATION.read_text()

@@ -380,9 +380,12 @@ of the reader that reads it first, so a passage that reader misses and a fallbac
 twice stays `ambiguous` and cannot be pinned with `--occurrence`.
 
 Matching is exact after folding, and never approximate. Folding removes what a PDF extractor
-changes and nothing else: case, runs of whitespace, curly quotation marks, the dash variants,
-accents written as combining marks, ligatures, and a hyphen at a line break. A passage that
-matches only once whitespace is ignored altogether is `found` with a `normalized` warning.
+changes: case, runs of whitespace, curly quotation marks, the dash variants, ligatures, a
+hyphen at a line break, and accents. Text is decomposed to Unicode NFKD and the combining marks
+are dropped, and dotless `ı` is read as `i`, so an accented letter matches its unaccented
+form: `Krzyżosiak` matches `Krzyzosiak`. A passage that matches only once whitespace,
+underscores and a hyphen joining two word characters are ignored altogether is `found` with a
+`normalized` warning.
 Punctuation that carries meaning is kept, so `p < 0.05` does not match a source reading
 `p = 0.05`, and `-0.42` does not match `0.42`.
 
@@ -390,7 +393,7 @@ Punctuation that carries meaning is kept, so `p < 0.05` does not match a source 
 |---------|---------|
 | `short` | under 40 characters, or ending on a comma or a connecting word, so the source may qualify it in the next clause |
 | `truncated` | every occurrence stops mid-word or mid-number |
-| `normalized` | matched only after ignoring spacing |
+| `normalized` | matched only after ignoring spacing, underscores and hyphens inside a word |
 | `page`, `page unchecked` | found on another page, or the page could not be asked for |
 
 A match is relative to the extractor. Two readers produce two texts from one PDF, so a result
