@@ -676,7 +676,8 @@ def _assertion_lines(assertion: AssertionAccount, paths: dict[str, str]) -> list
     if assertion.kind == "quote":
         passage = assertion.printed or ""
         shown = passage if len(passage) <= 60 else f"{passage[:60]}..."
-        lines.append(f'the manuscript quotes "{shown}": {outcome}')
+        within = assertion.reads[0].artifact if assertion.reads else "the artifact"
+        lines.append(f'the passage "{shown}" in {within}: {outcome}')
     elif assertion.printed is not None:
         lines.append(f"the manuscript prints {assertion.printed}: {outcome}")
     else:
@@ -689,9 +690,13 @@ def _chain_lines(node: ChainNode, account: ClaimAccount, paths: dict[str, str]) 
     difference from that re-run."""
     record = node.regeneration
     if record is None:
+        if node.validity is Validity.ARTIFACT_ABSENT:
+            return ["no command recorded", "nothing at the declared path"]
         return ["no command recorded"]
     lines = [f"written by {record.id}: {shlex.join(node.command)}"]
-    if record.rerun_at is None:
+    if StaleCause.CYCLE in record.causes:
+        lines.append(f"{record.id} is on a cycle of commands, so it is compared with no re-run")
+    elif record.rerun_at is None:
         lines.append(f"no re-run of {record.id} that reproduced is recorded")
     else:
         wrote = next(
@@ -702,9 +707,12 @@ def _chain_lines(node: ChainNode, account: ClaimAccount, paths: dict[str, str]) 
         lines.append(
             f"re-run of {record.rerun_at} reproduced"
             + (
-                ", and its output is the bytes now on disk"
-                if wrote.observed == wrote.on_disk
-                else ""
+                ""
+                if wrote.observed != wrote.on_disk
+                else ", and its output is what is now on disk outside the fields "
+                f"{', '.join(node.volatile)}"
+                if node.volatile
+                else ", and its output is the bytes now on disk"
             )
         )
     lines += [
@@ -744,8 +752,9 @@ def _why_lines(account: ClaimAccount) -> list[str]:
     ]
 
     outcomes = collections.Counter(assertion.outcome for assertion in account.assertions)
-    outside = (Freshness.NO_PRODUCER, Freshness.PARTLY_OUTSIDE)
-    covered = collections.Counter(a.state for a in account.assertions if a.state not in outside)
+    covered = collections.Counter(
+        a.state for a in account.assertions if a.state is not Freshness.NO_PRODUCER
+    )
     count = sum(covered.values())
     summary = (
         f"  {total} assertion{'' if total == 1 else 's'}: "
@@ -757,6 +766,10 @@ def _why_lines(account: ClaimAccount) -> list[str]:
 
 
 def cmd_why(args: argparse.Namespace) -> int:
+    # `repro why repro.yaml` names a manifest, as the first argument of the sibling commands
+    # does, and lists its claims.
+    if args.manifest is None and args.claim and Path(args.claim).suffix in (".yaml", ".yml"):
+        args.manifest, args.claim = args.claim, None
     path = Path(args.manifest) if args.manifest else find()
     if path is None:
         print(f"no {DEFAULT_NAME} here or above.\n")

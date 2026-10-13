@@ -48,8 +48,9 @@ from repro.verify import DEFAULT_BACKENDS, Backend, artifact_states, check_evide
 #: Ids named in an error. A manifest can declare thousands.
 MAX_LISTED = 10
 
-#: What holds of every claim, whatever its record holds. The design does not check these, so
-#: each account ends on them.
+#: What the design does not check. An account ends on each that applies to it: the first where
+#: a command is recorded, the second where an assertion has an address, the third where there
+#: is an assertion.
 UNDECLARED_INPUTS = (
     "the inputs each command declares are the author's list; a file a command reads and does "
     "not declare is invisible"
@@ -59,7 +60,8 @@ ADDRESS_IS_CHOSEN = (
     "sentence means"
 )
 COMPARISON_ONLY = (
-    "a verified comparison says the printed number matches the file, not that the analysis is right"
+    "a verified assertion says the declared value or passage is in the file, not that the "
+    "analysis is right"
 )
 
 #: What is said of a file no command is recorded for, by what its pin found.
@@ -133,7 +135,7 @@ def _held(
 def _not_established(
     claim: Claim, assertions: tuple[AssertionAccount, ...], chain: tuple[ChainNode, ...]
 ) -> tuple[NotEstablished, ...]:
-    """What the record does not cover for this claim, then the three lines that hold of any."""
+    """What the record does not cover for this claim, then what the design does not check."""
     lines = []
     for node in chain:
         if node.regeneration is None and node.validity in _TAKEN_AS_GIVEN:
@@ -145,15 +147,42 @@ def _not_established(
                 )
             )
     for node in chain:
+        if node.validity is Validity.ARTIFACT_ABSENT:
+            lines.append(
+                NotEstablished(
+                    kind=NotEstablishedKind.ABSENT,
+                    subject=node.path or node.artifact,
+                    said="nothing at the declared path",
+                )
+            )
+        elif node.regeneration is not None and node.validity is Validity.BROKEN_PIN:
+            lines.append(
+                NotEstablished(
+                    kind=NotEstablishedKind.BROKEN_PIN,
+                    subject=node.path or node.artifact,
+                    said="its bytes are not the pinned ones",
+                )
+            )
+    for node in chain:
         record = node.regeneration
+        if record is None:
+            continue
         # A record on a cycle is compared with no re-run, whether or not one is recorded.
-        if record and record.rerun_at is None and StaleCause.CYCLE not in record.causes:
+        if StaleCause.CYCLE in record.causes:
+            lines.append(
+                NotEstablished(
+                    kind=NotEstablishedKind.CYCLE,
+                    subject=record.id,
+                    said="on a cycle of commands, so it is compared with no re-run",
+                )
+            )
+        elif record.rerun_at is None:
             lines.append(
                 NotEstablished(
                     kind=NotEstablishedKind.NEVER_RERUN,
                     subject=record.id,
-                    said="never rerun; nothing in the record shows the command produces "
-                    f"{node.path or node.artifact}",
+                    said="no re-run that reproduced is recorded; nothing in the record shows "
+                    f"the command produces {node.path or node.artifact}",
                 )
             )
     if not claim.evidence:
@@ -175,12 +204,15 @@ def _not_established(
                     + (f": {assertion.detail}" if assertion.detail else ""),
                 )
             )
-    return (
-        *lines,
-        NotEstablished(kind=NotEstablishedKind.UNDECLARED_INPUTS, said=UNDECLARED_INPUTS),
-        NotEstablished(kind=NotEstablishedKind.ADDRESS, said=ADDRESS_IS_CHOSEN),
-        NotEstablished(kind=NotEstablishedKind.COMPARISON, said=COMPARISON_ONLY),
-    )
+    if any(node.regeneration is not None for node in chain):
+        lines.append(
+            NotEstablished(kind=NotEstablishedKind.UNDECLARED_INPUTS, said=UNDECLARED_INPUTS)
+        )
+    if any(read.address for assertion in assertions for read in assertion.reads):
+        lines.append(NotEstablished(kind=NotEstablishedKind.ADDRESS, said=ADDRESS_IS_CHOSEN))
+    if assertions:
+        lines.append(NotEstablished(kind=NotEstablishedKind.COMPARISON, said=COMPARISON_ONLY))
+    return tuple(lines)
 
 
 def why(
@@ -267,6 +299,7 @@ def why(
             validity=states[name].validity if name in states else None,
             state=nodes[name].state if name in nodes else Freshness.NO_PRODUCER,
             command=producers[name].command if name in producers else (),
+            volatile=producers[name].volatile if name in producers else (),
             regeneration=nodes.get(name),
         )
         for name in sorted(steps, key=steps.__getitem__)

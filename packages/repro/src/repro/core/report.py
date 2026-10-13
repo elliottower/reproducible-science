@@ -343,6 +343,8 @@ class ChainNode(BaseModel):
     validity: Validity | None = None
     state: Freshness
     command: tuple[str, ...] = ()
+    volatile: tuple[str, ...] = ()
+    """The fields the record leaves out of the comparison of its output."""
     regeneration: RegenerationNode | None = None
     """The record that writes the file. None where no command is recorded for it."""
 
@@ -352,6 +354,9 @@ class NotEstablishedKind(enum.StrEnum):
 
     NO_PRODUCER = "no_producer"
     NEVER_RERUN = "never_rerun"
+    ABSENT = "absent"
+    BROKEN_PIN = "broken_pin"
+    CYCLE = "cycle"
     UNCHECKED = "unchecked"
     NOT_FOUND = "not_found"
     ERROR = "error"
@@ -366,8 +371,8 @@ class NotEstablished(BaseModel):
 
     kind: NotEstablishedKind
     subject: str = ""
-    """The file, record or assertion the line names. Empty for the three that hold of every
-    claim."""
+    """The file, record or assertion the line names. Empty for the lines that hold of the
+    design."""
     said: str
 
 

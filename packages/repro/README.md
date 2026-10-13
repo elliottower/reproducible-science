@@ -199,7 +199,7 @@ Under `--policy publication`, the default, a command that is stale, never rerun 
 repro why responders
 ```
 
-`repro why` prints, for one claim, each assertion as `repro verify` evaluates it now and each file the claim rests on as `repro stale` finds it, and then what the record does not cover. It executes nothing, writes nothing and exits 0 whatever it finds: `repro verify` and `repro stale` are the checks that fail. With no claim id it lists the ids.
+`repro why` prints, for one claim, each assertion as `repro verify` evaluates it now and each file the claim rests on as `repro stale` finds it, and then what the record does not cover. It executes nothing, writes nothing and exits 0 for any claim the manifest declares: `repro verify` and `repro stale` are the checks that fail. With no claim id it lists the ids.
 
 Here a command `sum` writes `totals.json` from `counts.json` and `totals.py`, `repro reproduce` recorded one re-run of it, and `counts.json` was edited afterwards:
 
@@ -229,7 +229,7 @@ not established
   totals.py: no command is recorded for it; its bytes are pinned and taken as given
   the inputs each command declares are the author's list; a file a command reads and does not declare is invisible
   the address is the author's choice; nothing checks that it holds the quantity the sentence means
-  a verified comparison says the printed number matches the file, not that the analysis is right
+  a verified assertion says the declared value or passage is in the file, not that the analysis is right
 
   1 assertion: 1 verified; 1 of 1 reads a file with a recorded producer, 1 stale
 ```

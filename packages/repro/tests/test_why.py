@@ -37,6 +37,7 @@ from repro.models import (
     TreeLocator,
     Validity,
 )
+from repro.regenerate import canonical_digest
 from repro.reproduce import append
 from repro.stale import stale
 from repro.verify import verify
@@ -220,7 +221,8 @@ def test_a_claim_reading_a_file_no_command_writes_has_a_chain_of_that_file(tmp_p
     assert [edge.kind for edge in account.edges] == ["reads"]
     assert [kind for kind, _, _ in said(account)] == [
         NotEstablishedKind.NO_PRODUCER,
-        *(kind for kind, _, _ in ALWAYS),
+        NotEstablishedKind.ADDRESS,
+        NotEstablishedKind.COMPARISON,
     ]
 
     established, _, summary = printed(project, "on-a0", capsys)
@@ -237,7 +239,8 @@ def test_a_producer_with_no_recorded_rerun_is_named_as_never_rerun(tmp_path, cap
     assert said(account)[1] == (
         NotEstablishedKind.NEVER_RERUN,
         "ra1",
-        f"never rerun; nothing in the record shows the command produces {a1}",
+        "no re-run that reproduced is recorded; nothing in the record shows the command "
+        f"produces {a1}",
     )
     assert len(account.not_established) == 2 + len(ALWAYS)
 
@@ -452,12 +455,16 @@ def test_a_quotation_is_shown_as_the_passage_with_no_address(tmp_path, capsys):
     (read,) = found.reads
     assert (read.artifact, read.address, read.stored) == ("notes", "", None)
     assert read.validity is Validity.AUTHORITATIVE
-    assert said(account)[0][0] is NotEstablishedKind.NO_PRODUCER
+    # No command is recorded and a quotation has no address, so neither line is printed.
+    assert [kind for kind, _, _ in said(account)] == [
+        NotEstablishedKind.NO_PRODUCER,
+        NotEstablishedKind.COMPARISON,
+    ]
 
     established, _, summary = printed(project, "quoted", capsys)
-    assert 'the manuscript quotes "six participants": verified' in established
-    assert 'the manuscript quotes "seven participants": mismatch' in established
-    assert " at " not in established and "holds" not in established
+    assert 'the passage "six participants" in notes: verified' in established
+    assert 'the passage "seven participants" in notes: mismatch' in established
+    assert "holds" not in established and "manuscript" not in established
     assert summary == (
         "2 assertions: 1 verified, 1 mismatch; 0 of 2 read a file with a recorded producer"
     )
@@ -545,10 +552,27 @@ def test_records_on_a_cycle_are_undetermined_and_not_called_never_rerun(tmp_path
     }
     assert account.assertions[0].state is Freshness.UNDETERMINED
     assert account.assertions[0].outcome is Outcome.VERIFIED
-    assert said(account) == ALWAYS
+    on_a_cycle = "on a cycle of commands, so it is compared with no re-run"
+    assert said(account) == [
+        (NotEstablishedKind.CYCLE, "ry", on_a_cycle),
+        (NotEstablishedKind.CYCLE, "rx", on_a_cycle),
+        *ALWAYS,
+    ]
 
     established, _, summary = printed(project, "on-y", capsys)
     assert "): undetermined\n      written by ry: make ry\n" in established
+    assert "ry is on a cycle of commands, so it is compared with no re-run" in established
+
+    # With a re-run of each in the record, nothing says that none is recorded.
+    append(
+        ReproductionReport(
+            started_at=THEN, regenerations=tuple(rerun(tmp_path, made) for made in records)
+        ),
+        tmp_path,
+    )
+    assert said(why(project, "on-y"))[0][0] is NotEstablishedKind.CYCLE
+    established, _, _ = printed(project, "on-y", capsys)
+    assert "no re-run of" not in established and "reproduced" not in established
     assert summary == (
         "1 assertion: 1 verified; 1 of 1 reads a file with a recorded producer, 1 undetermined"
     )
@@ -562,8 +586,103 @@ def test_a_missing_input_leaves_the_claim_undetermined_and_is_not_taken_as_given
     assert produced.state is Freshness.UNDETERMINED
     assert produced.regeneration.causes == (StaleCause.INPUT_MISSING,)
     assert (gone.artifact, gone.validity) == ("a0", Validity.ARTIFACT_ABSENT)
-    assert said(account) == ALWAYS
+    a0 = file(tmp_path, "a0").as_posix()
+    assert said(account) == [
+        (NotEstablishedKind.ABSENT, a0, "nothing at the declared path"),
+        *ALWAYS,
+    ]
 
     established, _, summary = printed(project, "on-a1", capsys)
+    assert "no command recorded\n      nothing at the declared path" in established
     assert "): undetermined\n      written by ra1: make ra1\n" in established
     assert summary.endswith("1 of 1 reads a file with a recorded producer, 1 undetermined")
+
+
+def test_an_assertion_reading_a_produced_and_an_unproduced_file_counts_as_reading_a_produced_one(
+    tmp_path, capsys
+):
+    records = chain(tmp_path, 1)
+    put(tmp_path, "other")
+    both = Claim(
+        id="both",
+        text="The total in a1 is the total in other.",
+        evidence=(
+            CorrespondenceEvidence(
+                name="totals",
+                sides=(
+                    CorrespondenceSide(
+                        name="computed", artifact="a1", locator=TreeLocator(pointer="/total")
+                    ),
+                    CorrespondenceSide(
+                        name="written", artifact="other", locator=TreeLocator(pointer="/total")
+                    ),
+                ),
+            ),
+        ),
+    )
+    project = manifest(tmp_path, records, [both])
+    assert why(project, "both").assertions[0].state is Freshness.PARTLY_OUTSIDE
+    _, _, summary = printed(project, "both", capsys)
+    assert summary == (
+        "1 assertion: 1 verified; 1 of 1 reads a file with a recorded producer, "
+        "1 partly outside the record"
+    )
+
+
+def test_a_rerun_that_did_not_reproduce_is_not_called_no_rerun_at_all(tmp_path, capsys):
+    records = chain(tmp_path, 1, rerun_them=False)
+    project = manifest(tmp_path, records, [claim("a1")])
+    failed = rerun(tmp_path, records[0]).model_copy(
+        update={
+            "state": Regeneration.FAILED,
+            "reason": RegenerationReason.COMMAND_FAILED,
+            "actual": None,
+            "bytes_identical": False,
+        }
+    )
+    append(ReproductionReport(started_at=THEN, regenerations=(failed,)), tmp_path)
+
+    account = why(project, "on-a1")
+    line = next(s for k, _, s in said(account) if k is NotEstablishedKind.NEVER_RERUN)
+    assert line.startswith("no re-run that reproduced is recorded; ")
+    established, not_established, _ = printed(project, "on-a1", capsys)
+    assert "no re-run of ra1 that reproduced is recorded" in established
+    assert not [text for text in not_established if "never rerun;" in text]
+
+
+def test_volatile_fields_are_named_where_the_output_is_compared_without_them(tmp_path, capsys):
+    for name in ("a0", "a1"):
+        put(tmp_path, name, stamp="first")
+    written = canonical_digest(file(tmp_path, "a1"), ("/stamp",))
+    made = record(tmp_path, "ra1", ("a0",), "a1").model_copy(
+        update={
+            "volatile": ("/stamp",),
+            "output": RunOutput(artifact="a1", digest=written),
+        }
+    )
+    project = manifest(tmp_path, [made], [claim("a1")])
+    ran = rerun(tmp_path, made).model_copy(
+        update={"expected": written.value, "actual": written.value}
+    )
+    append(ReproductionReport(started_at=THEN, regenerations=(ran,)), tmp_path)
+    put(tmp_path, "a1", stamp="second")
+
+    account = why(project, "on-a1")
+    assert account.chain[0].volatile == ("/stamp",)
+    assert account.chain[0].validity is Validity.BROKEN_PIN
+    a1 = file(tmp_path, "a1").as_posix()
+    assert (NotEstablishedKind.BROKEN_PIN, a1, "its bytes are not the pinned ones") in said(account)
+
+    established, _, _ = printed(project, "on-a1", capsys)
+    assert "does not match its pinned digest" in established
+    assert "its output is the bytes now on disk" not in established
+    assert "its output is what is now on disk outside the fields /stamp" in established
+
+
+def test_a_manifest_named_where_the_claim_goes_lists_its_claims(tmp_path, capsys, monkeypatch):
+    project = manifest(tmp_path, chain(tmp_path, 1), [claim("a1"), claim("a0")])
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    assert main(["why", str(project.path)]) == 0
+    assert capsys.readouterr().out == "on-a1\non-a0\n"
