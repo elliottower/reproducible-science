@@ -277,9 +277,15 @@ class Manifest(BaseModel):
         The engine keys its state by id, so a duplicate silently kept the last declaration and
         dropped the rest -- including, in the case that matters, a broken pin, which then
         disappeared from the report entirely and left `strict` passing with no violations.
-        Claims are checked the same way for the same reason.
+        Claims are checked the same way for the same reason, and so are regenerations: a
+        re-run is recorded under its id, and two records sharing one cannot be told apart in
+        the record of re-runs.
         """
-        for label, items in (("artifact", self.artifacts), ("claim", self.claims)):
+        for label, items in (
+            ("artifact", self.artifacts),
+            ("claim", self.claims),
+            ("regeneration", self.regenerations),
+        ):
             seen: set[str] = set()
             for item in items:
                 if item.id in seen:
@@ -287,6 +293,20 @@ class Manifest(BaseModel):
                         f"duplicate {label} id {item.id!r}: one id must name one thing"
                     )
                 seen.add(item.id)
+        return self
+
+    @model_validator(mode="after")
+    def _one_regeneration_writes_an_artifact(self):
+        """Which command produced a file has one answer. With two records naming one output,
+        the last declared was taken as the producer and the other was never consulted."""
+        producers: dict[str, str] = {}
+        for record in self.regenerations:
+            other = producers.setdefault(record.output.artifact, record.id)
+            if other != record.id:
+                raise ValueError(
+                    f"regenerations {other!r} and {record.id!r} both write artifact "
+                    f"{record.output.artifact!r}: one artifact has one producer"
+                )
         return self
 
     def artifact(self, artifact_id: str) -> ArtifactRef | None:
