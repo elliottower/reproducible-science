@@ -2,14 +2,15 @@
 
     repro ci prereg     what `prereg check` checks
     repro ci results    what `results verify --files` checks
-    repro ci claims     what `repro verify` checks, then what `repro stale` reports
+    repro ci claims     what `repro verify` checks
     repro ci citations  what `citations verify --claims <dir>` checks
-    repro ci reruns     what `repro reproduce` runs
+    repro ci reruns     what `repro stale` reports of each declared command, running none;
+                        with `--run`, what `repro reproduce` runs
     repro ci init       write the workflows that run those, and print the README lines
 
 Nothing is evaluated here that those commands do not evaluate. `claims` calls
-`repro.verify.verify` and `repro.stale.stale`, `reruns` calls `repro.reproduce.reproduce`, and
-the policy grades each as it does there. `prereg`, `results` and `citations` run the tool's own
+`repro.verify.verify`, `reruns` calls `repro.stale.stale` and with `--run`
+`repro.reproduce.reproduce`, and the policy grades each as it does there. `prereg`, `results` and `citations` run the tool's own
 check in this process, found and pointed as `repro check` finds and points it, and read the
 counts from the JSON the tool writes with `--json`. The text printed is the text those commands
 print. What this adds is a Markdown summary appended to the file `GITHUB_STEP_SUMMARY` names,
@@ -26,13 +27,16 @@ The summaries are pure functions of the report models. Reaches no network, excep
 from __future__ import annotations
 
 import argparse
+import base64
 import collections
+import importlib.resources
 import json
 import os
 import pathlib
 import re
 import shlex
 import tempfile
+import urllib.parse
 from collections.abc import Callable
 
 from provenance_core import atomic_write
@@ -60,7 +64,7 @@ from repro.models import (
     VerificationReport,
 )
 from repro.numbers import NoTextError, numbers
-from repro.policy import PROFILES, Assessment, Policy
+from repro.policy import PROFILES, STRICT, Assessment, Policy
 from repro.reproduce import RECORD, append, reproduce
 from repro.stale import reruns as recorded_reruns
 from repro.stale import stale
@@ -77,19 +81,77 @@ NAMES = {
     "results": "results",
     "claims": "claims",
     "citations": "citations",
-    "reruns": "reruns",
+    "reruns": "reproduced",
 }
 
-#: The checks another tool makes, each run as `repro check` runs it, and what `init` says of a
-#: repository that keeps no record for one.
-TOOLS = ("prereg", "results", "citations")
+
+class ToolCommand(BaseModel):
+    """How `repro ci <tool>` reaches one tool: every name of that tool's that this module
+    spells. The command itself is `repro.delegate`'s, which `repro check` also runs."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    distribution: str
+    """The PyPI distribution that provides the tool's command."""
+    options: tuple[str, ...] = ()
+    """Options added to the command `repro.delegate` gives for the tool."""
+    report: str = "--json"
+    """The option naming the file the tool writes its findings to, as JSON."""
+    fetch: tuple[str, ...] = ()
+    """The tool's command that fetches absent sources, where it has one."""
+
+    def argv(self, tool: str, root: pathlib.Path) -> list[str]:
+        """The tool's own command over the project at `root`, as a reader would type it."""
+        return [tool, *BY_NAME[tool].argv_for(root), *self.options]
+
+    def said(self, tool: str) -> str:
+        """The command in a sentence, with no project to point it at."""
+        found = BY_NAME[tool]
+        pointed = (found.points_at, "<dir>") if found.points_at else ()
+        return " ".join([tool, *found.check_argv, *pointed, *self.options])
+
+
+#: The tools whose own command a workflow runs, in badge order.
+TOOL_COMMANDS = {
+    "prereg": ToolCommand(distribution=audit.DISTRIBUTIONS["prereg"]),
+    "results": ToolCommand(distribution=audit.DISTRIBUTIONS["results"], options=("--files",)),
+    "citations": ToolCommand(distribution=audit.DISTRIBUTIONS["citations"], fetch=("fetch",)),
+}
+TOOLS = tuple(TOOL_COMMANDS)
+#: What `init` says of a repository that keeps no record for one.
 NO_RECORD = {
     "prereg": "no PREREG.md and no .prereg/ here",
     "results": "no .results/ ledger here",
     "claims": f"no {DEFAULT_NAME} here or above",
     "citations": "no claims directory holding a claims file here",
-    "reruns": "not asked for; `--reruns` writes it",
+    "reruns": f"{DEFAULT_NAME} declares no command",
 }
+NO_RERUN = (
+    f"{RECORD.as_posix()} holds no re-run; run `repro reproduce` and commit {RECORD.as_posix()}"
+)
+
+#: What each check compares, in a few words, and the section of the documentation that says
+#: what it means. A summary opens on these: a badge leads to the page of a run, and nothing on
+#: that page says what the check is.
+DOCS = "https://reproducible.science/tools/repro/"
+ABOUT = {
+    "prereg": "each frozen plan, its amendments and its log against the bytes that were frozen",
+    "results": "the ledger's chain, and each recorded file against the hash recorded for it",
+    "claims": (
+        "the manuscript's printed values and quoted passages against the files they are "
+        "declared to come from"
+    ),
+    "citations": "each quoted passage against the source its claims file pins",
+    "reruns": "each declared command against the record of its re-runs",
+}
+ANCHORS = {check: f"{check}-in-ci" for check in CHECKS}
+
+#: The label colour of a branded badge, which the white-on-dark icons are drawn for.
+LABEL_COLOR = "24292f"
+SHIELDS = "https://img.shields.io/github/actions/workflow/status"
+#: Characters in a branded badge's address. shields.io documents no limit on a custom logo;
+#: this keeps the address under what servers and Markdown renderers are known to accept.
+MAX_BADGE_URL = 2000
 
 WORKFLOWS = pathlib.Path(".github") / "workflows"
 
@@ -153,10 +215,24 @@ CLAIMS_SHOWS = (
     "the address it declares, and each file matches its pin. It does not show that the "
     "analysis is right."
 )
+#: What the word on the reruns badge means, as `repro.models.Regeneration` defines it.
+REPRODUCED = (
+    "`reproduced` means a command was run again and every number the manuscript prints from "
+    "its output still holds; whether the output had the same bytes is recorded beside it."
+)
 RERUNS_SHOWS = (
-    "What this checks: each declared command was run again on this machine, and `reproduced` "
-    "means every number the manuscript prints from its output still holds. Commands the "
-    "manifest does not declare were not run."
+    "What this checks: each declared command was run again in this job. "
+    + REPRODUCED
+    + " Commands the manifest does not declare were not run."
+)
+RECORD_SHOWS = (
+    "What this checks: for each declared command, the record holds a re-run that reproduced, "
+    "made over the command and the input files as they are now, whose output is the file now "
+    "here. The re-runs were recorded before this job, which read the record and ran no "
+    "command; the record does not say on which machine. "
+    + REPRODUCED
+    + " Commands the manifest does not declare were not run, and this does not show that a "
+    "command would reproduce if run now."
 )
 
 SHOWS = {
@@ -229,7 +305,8 @@ class UnknownCheckError(ReproError):
     def __init__(self, given: str) -> None:
         self.given = given
         super().__init__(
-            f"--name takes CHECK=TEXT, where CHECK is one of {', '.join(CHECKS)}; got {given!r}"
+            f"--name takes WORKFLOW=TEXT, where WORKFLOW is one of {', '.join(CHECKS)}; "
+            f"got {given!r}"
         )
 
 
@@ -243,6 +320,13 @@ class NothingToRerunError(ReproError):
             "nothing was written. A record under `regenerations` names a command, the files "
             "it reads and the file it writes."
         )
+
+
+class NoRerunRecordedError(ReproError):
+    """The reruns workflow was asked for and the record of re-runs holds none."""
+
+    def __init__(self) -> None:
+        super().__init__(f"{NO_RERUN}; nothing was written.")
 
 
 class ReadmeError(ReproError):
@@ -280,8 +364,8 @@ class ClaimsRun(BaseModel):
     """The account `repro why` gives of each claim with an assertion that is not verified, for
     the first `MAX_LISTED` such assertions."""
     staleness: StalenessReport | None = None
-    """None where the manifest declares no command."""
-    fresh: Assessment | None = None
+    """None where the manifest declares no command. Reported and never graded here:
+    `repro ci reruns` is the check that fails on it."""
     last_rerun: ReproductionReport | None = None
     """The latest invocation in the record of re-runs. None where it holds none."""
     numbers: NumbersReport | None = None
@@ -290,7 +374,17 @@ class ClaimsRun(BaseModel):
 
     @property
     def passed(self) -> bool:
-        return self.verified.passed and (self.fresh is None or self.fresh.passed)
+        return self.verified.passed
+
+
+class RecordRun(BaseModel):
+    """What `repro ci reruns` found in the record of re-runs, having run nothing."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    staleness: StalenessReport
+    assessment: Assessment
+    """Under `strict`, which fails a command that is stale, never rerun or undetermined."""
 
 
 class RerunsRun(BaseModel):
@@ -326,7 +420,6 @@ def claims(manifest: Manifest, policy: Policy) -> ClaimsRun:
         verified=policy.assess(verification),
         not_verified=tuple(accounts),
         staleness=staleness,
-        fresh=policy.assess_staleness(staleness) if staleness else None,
         last_rerun=log[-1] if log else None,
         numbers=counted,
     )
@@ -371,21 +464,23 @@ def tool(check: str, root: pathlib.Path, *, fetch: bool = False) -> ToolRun:
     found = BY_NAME[check]
     if not found.used_by(root):
         return ToolRun(check=check, outcome=audit.NOTHING, output=NO_RECORD[check])
-    argv = [check, *found.argv_for(root), *(["--files"] if check == "results" else [])]
+    command = TOOL_COMMANDS[check]
+    argv = command.argv(check, root)
     fetched, output = None, ""
     with tempfile.TemporaryDirectory() as scratch:
         if fetch:
             # Its exit code is not taken: a source nobody may redistribute is the ordinary
             # case, and what could not be fetched stays `unchecked` in the check below.
             wrote = pathlib.Path(scratch) / "fetch.json"
-            claims_at = argv[argv.index("--claims") + 1]
             _, output = audit.run_step(
-                [check, "fetch", "--claims", claims_at, "--json", str(wrote)], root, found.entry()
+                [check, *command.fetch, *argv[2:], command.report, str(wrote)],
+                root,
+                found.entry(),
             )
             fetched = _account(wrote)
             output += "\n\n"
         wrote = pathlib.Path(scratch) / "check.json"
-        code, said = audit.run_step([*argv, "--json", str(wrote)], root, found.entry())
+        code, said = audit.run_step([*argv, command.report, str(wrote)], root, found.entry())
         account = _account(wrote)
     outcome, _, _ = audit.read(argv, code, said, root)
     if check == "citations" and outcome == audit.COULD_NOT and code == 0:
@@ -431,6 +526,16 @@ def _listed(lines: list[str]) -> list[str]:
     """At most `MAX_LISTED` lines, and how many were left out."""
     more = len(lines) - MAX_LISTED
     return [*lines[:MAX_LISTED], *([f"- and {more} more"] if more > 0 else [])]
+
+
+def _heading(check: str, project: str = "") -> list[str]:
+    """The heading, then what the check is and where the documentation says what it means."""
+    return [
+        f"## {check}: {project}" if project else f"## {check}",
+        "",
+        f"{check}: {ABOUT[check]}. What this means: {DOCS}#{ANCHORS[check]}",
+        "",
+    ]
 
 
 def _verdict(command: str, policy: str, assessments: list[Assessment]) -> str:
@@ -590,11 +695,8 @@ def claims_summary(run: ClaimsRun) -> str:
     """The Markdown `repro ci claims` appends to a step summary."""
     report = run.verification
     lines = [
-        f"## claims: {report.project}" if report.project else "## claims",
-        "",
-        _verdict(
-            "repro ci claims", run.policy, [run.verified, *([run.fresh] if run.fresh else [])]
-        ),
+        *_heading("claims", report.project),
+        _verdict("repro ci claims", run.policy, [run.verified]),
         "",
         *_table(
             [
@@ -630,21 +732,46 @@ def claims_summary(run: ClaimsRun) -> str:
     if files:
         lines += ["", "### Files that do not match their pins", "", *_listed(files)]
 
-    graded = (Freshness.STALE, Freshness.NEVER_RERUN, Freshness.UNDETERMINED)
-    commands = [
+    return "\n".join([*lines, "", CLAIMS_SHOWS, ""])
+
+
+def record_summary(run: RecordRun) -> str:
+    """The Markdown `repro ci reruns` appends to a step summary where it ran no command."""
+    report = run.staleness
+    nodes = report.regenerations
+    states = collections.Counter(node.state for node in nodes)
+    found = (
+        f"{states[Freshness.CURRENT]} of {_count(len(nodes), 'declared command')} "
+        f"{'has' if len(nodes) == 1 else 'have'} a recorded re-run over the current files that "
+        "reproduced"
+    )
+    for state in (Freshness.STALE, Freshness.NEVER_RERUN, Freshness.UNDETERMINED):
+        if states[state]:
+            found += f", {states[state]} {_said(state.value)}"
+    failing = [
         f"- `{node.artifact}`, written by `{node.id}`: {_said(node.state.value)}"
         + (
             f": upstream `{node.upstream}`"
             if node.upstream
             else "".join(f": {_said(cause.value)}" for cause in node.causes[:1])
         )
-        for node in (run.staleness.regenerations if run.staleness else ())
-        if node.state in graded
+        for node in nodes
+        if node.state is not Freshness.CURRENT
     ]
-    if commands:
-        lines += ["", "### Files not current with a recorded re-run", "", *_listed(commands)]
-
-    return "\n".join([*lines, "", CLAIMS_SHOWS, ""])
+    lines = [
+        *_heading("reruns", report.project),
+        f"`repro ci reruns`: **{'passed' if run.assessment.passed else 'FAILED'}**",
+        "",
+        *_table(
+            [
+                ("commands", found),
+                ("record", f"`{RECORD.as_posix()}` holds {_count(report.reruns, 're-run')}"),
+            ]
+        ),
+    ]
+    if failing:
+        lines += ["", "### Commands with no current re-run on record", "", *_listed(failing)]
+    return "\n".join([*lines, "", RECORD_SHOWS, ""])
 
 
 def reruns_summary(run: RerunsRun) -> str:
@@ -663,9 +790,8 @@ def reruns_summary(run: RerunsRun) -> str:
         if part
     )
     lines = [
-        f"## reruns: {report.project}" if report.project else "## reruns",
-        "",
-        _verdict("repro ci reruns", run.policy, [run.assessment]),
+        *_heading("reruns", report.project),
+        _verdict("repro ci reruns --run", run.policy, [run.assessment]),
         "",
         *_table(
             [
@@ -834,7 +960,7 @@ def _citations_rows(run: ToolRun) -> tuple[list[tuple[str, str]], list[str]]:
 
 def tool_summary(run: ToolRun) -> str:
     """The Markdown `repro ci prereg`, `results` and `citations` append to a step summary."""
-    lines = [f"## {run.check}", "", _tool_verdict(run)]
+    lines = [*_heading(run.check), _tool_verdict(run)]
     if run.account:
         if run.check == "citations":
             counts = run.account.get("counts", {})
@@ -872,10 +998,31 @@ class Workflow(BaseModel):
     name: str
     text: str
 
+    check: str
+
     def badge(self, slug: str) -> str:
         """The README line: GitHub's badge for this workflow, linked to its runs."""
         runs = f"https://github.com/{slug}/actions/workflows/{self.file}"
         return f"[![{self.name}]({runs}/badge.svg)]({runs})"
+
+    def branded(self, slug: str) -> str:
+        """The same badge drawn by shields.io, with the check's icon on a dark label.
+
+        shields.io reads GitHub's badge for the workflow, so it shows what that badge shows,
+        and only for a repository anyone can read.
+        """
+        runs = f"https://github.com/{slug}/actions/workflows/{self.file}"
+        query = urllib.parse.urlencode(
+            {"label": self.name, "labelColor": LABEL_COLOR, "logo": logo(self.check)},
+            quote_via=urllib.parse.quote,
+        )
+        return f"[![{self.name}]({SHIELDS}/{slug}/{self.file}?{query})]({runs})"
+
+
+def logo(check: str) -> str:
+    """A check's icon as the data URI shields.io takes for a custom logo."""
+    icon = importlib.resources.files("repro").joinpath("icons", f"{check}.svg").read_bytes()
+    return "data:image/svg+xml;base64," + base64.b64encode(icon.strip()).decode("ascii")
 
 
 def _scalar(text: str) -> str:
@@ -898,6 +1045,7 @@ def workflow(
     if __version__ == "0+unknown":
         raise VersionUnknownError
     return Workflow(
+        check=check,
         file=f"{prefix}{check}.yml",
         name=name or NAMES[check],
         text=WORKFLOW.format(
@@ -921,16 +1069,19 @@ def repository(remote: str) -> str | None:
     return f"{found['owner']}/{found['repo']}" if found else None
 
 
-def with_badges(readme: str, wanted: list[Workflow], slug: str) -> tuple[str, list[str]]:
+def with_badges(
+    readme: str, wanted: list[Workflow], slug: str, *, branded: bool = False
+) -> tuple[str, list[str]]:
     """A README with the badge of each workflow it does not already show, and the badges added.
 
     They go together on one line under the first heading, at the head of a block of badges
     where one is there. A README with no heading takes them at its top.
     """
     added = [
-        flow.badge(slug)
+        flow.branded(slug) if branded else flow.badge(slug)
         for flow in wanted
         if f"/actions/workflows/{flow.file}/badge.svg" not in readme
+        and f"{SHIELDS}/{slug}/{flow.file}?" not in readme
     ]
     if not added:
         return readme, []
@@ -948,9 +1099,11 @@ def init(
     cwd: pathlib.Path,
     *,
     reruns: bool = False,
+    run_reruns: bool = False,
     fetch_sources: bool = False,
     force: bool = False,
     readme: bool = False,
+    branded: bool = False,
     prefix: str = "",
     names: dict[str, str] | None = None,
 ) -> int:
@@ -963,8 +1116,14 @@ def init(
     path = find(cwd)
     if path is not None and not path.is_relative_to(root):
         path = None
-    if reruns and (path is None or not load(path).regenerations):
+    declared = bool(path and load(path).regenerations)
+    if (reruns or run_reruns) and not declared:
         raise NothingToRerunError(path or root / DEFAULT_NAME)
+    # A badge for the record check is written only where there is a record for it to read:
+    # without one the workflow could only fail, and its badge would say so from the first run.
+    recorded = bool(path and declared and recorded_reruns(path.parent))
+    if reruns and not run_reruns and not recorded:
+        raise NoRerunRecordedError
 
     # The workflow runs at the top of the checkout, so a manifest below the top is named.
     relative = path.relative_to(root).as_posix() if path else DEFAULT_NAME
@@ -972,11 +1131,11 @@ def init(
     commands = {
         "claims": f"repro ci claims{named}",
         "citations": "repro ci citations" + (" --fetch-sources" if fetch_sources else ""),
-        "reruns": f"repro ci reruns{named}",
+        "reruns": f"repro ci reruns{named}" + (" --run" if run_reruns else ""),
     }
-    steps = {"citations": POPPLER, "reruns": ENVIRONMENT}
+    steps = {"citations": POPPLER, "reruns": ENVIRONMENT if run_reruns else ""}
     kept = {check: BY_NAME[check].used_by(root) for check in TOOLS}
-    kept |= {"claims": path is not None, "reruns": reruns}
+    kept |= {"claims": path is not None, "reruns": declared and (recorded or run_reruns)}
     if not any(kept.values()):
         raise NothingToCheckError(root)
     head = try_run("symbolic-ref", "--short", "refs/remotes/origin/HEAD", cwd=root)
@@ -1018,13 +1177,14 @@ def init(
         print(f"  runs: {flow.text.rstrip().splitlines()[-1].split('run: ', 1)[1]}")
     for check in CHECKS:
         if not kept[check]:
-            print(f"skipped {check}: {NO_RECORD[check]}")
+            why_not = NO_RERUN if check == "reruns" and declared else NO_RECORD[check]
+            print(f"skipped {check}: {why_not}")
     print(f"each runs on a push to {branch} and on every pull request")
-    if reruns:
+    if run_reruns:
         print(f"edit {(WORKFLOWS / wanted[-1].file).as_posix()} to install what the commands need")
 
     if readme and slug:
-        text, added = with_badges(target.read_text(encoding="utf-8"), wanted, slug)
+        text, added = with_badges(target.read_text(encoding="utf-8"), wanted, slug, branded=branded)
         print("\nREADME.md")
         if added:
             atomic_write(target, text)
@@ -1032,8 +1192,13 @@ def init(
         else:
             print("  already shows each badge; nothing was added")
     else:
-        print("\nadd to your README:\n")
-        print("\n".join(flow.badge(slug or "OWNER/REPO") for flow in wanted))
+        named_as = slug or "OWNER/REPO"
+        print("\nadd to your README, one line per check. GitHub's own badge, which also")
+        print("works in a private repository:\n")
+        print("\n".join(flow.badge(named_as) for flow in wanted))
+        print("\nor, for a public repository, the same status drawn by shields.io with the")
+        print("check's icon:\n")
+        print("\n".join(flow.branded(named_as) for flow in wanted))
         if slug is None:
             print("\nOWNER/REPO: `git remote get-url origin` names no GitHub repository.")
     print("\nnext: commit and push. Each badge prints its workflow's name beside `passing` or")
@@ -1066,32 +1231,37 @@ def _summarize(args: argparse.Namespace, markdown: str) -> None:
         handle.write(markdown + "\n")
 
 
-def command_claims(args: argparse.Namespace, verify_text: Shown, stale_text: Shown) -> int:
+def command_claims(args: argparse.Namespace, verify_text: Shown) -> int:
     path = _manifest(args)
     if path is None:
         return 2
     policy = PROFILES[args.policy]
     run = claims(load(path), policy)
     verify_text(path, run.verification, policy, run.verified)
-    print()
-    if run.staleness is None or run.fresh is None:
-        print("  no command is declared, so no file has a recorded producer to compare it with.")
-    else:
-        stale_text(path, run.staleness, policy, run.fresh)
+    # Reported, and graded by `repro ci reruns`.
+    print(f"\n  freshness: {_freshness_found(run.staleness)}")
     _summarize(args, claims_summary(run))
     return 0 if run.passed else 1
 
 
-def command_reruns(args: argparse.Namespace, reproduce_text: Shown) -> int:
+def command_reruns(args: argparse.Namespace, reproduce_text: Shown, stale_text: Shown) -> int:
     path = _manifest(args)
     if path is None:
         return 2
     manifest = load(path)
     if not manifest.regenerations:
         print(f"{path}\n")
-        print("  no command is declared, so there is nothing to run again. A record under")
+        print("  no command is declared, so there is no re-run to look for. A record under")
         print("  `regenerations` names a command, the files it reads and the file it writes.")
         return 2
+    if not args.run:
+        # Graded under `strict` whatever `--policy` says: this check is the one that fails a
+        # command with no current re-run on record, which `publication` only warns of.
+        report = stale(manifest)
+        found = STRICT.assess_staleness(report)
+        stale_text(path, report, STRICT, found)
+        _summarize(args, record_summary(RecordRun(staleness=report, assessment=found)))
+        return 0 if found.passed else 1
     policy = PROFILES[args.policy]
     report = reproduce(manifest, only=tuple(args.only or ()), skip=tuple(args.skip or ()))
     assessment = policy.assess_reproduction(report)
@@ -1125,9 +1295,11 @@ def command_init(args: argparse.Namespace) -> int:
     return init(
         pathlib.Path.cwd(),
         reruns=args.reruns,
+        run_reruns=args.run_reruns,
         fetch_sources=args.fetch_sources,
         force=args.force,
         readme=args.readme,
+        branded=args.branded,
         prefix=args.prefix,
         names=names,
     )
@@ -1180,51 +1352,65 @@ def add_parser(
     tool_check(
         "prereg",
         "has any frozen plan changed since its freeze?",
-        "Run `prereg check` over the project: every plan, its amendments and its log.",
+        f"Run `{TOOL_COMMANDS['prereg'].said('prereg')}` over the project: every plan, its "
+        "amendments and its log.",
     )
     tool_check(
         "results",
         "does the ledger's chain verify, and is each recorded file the one recorded?",
-        "Run `results verify --files` over the project.",
+        f"Run `{TOOL_COMMANDS['results'].said('results')}` over the project.",
     )
 
     p_claims = checks(
         "claims",
         "check every assertion, then say which claims read a file changed since its re-run",
-        "Run what `repro verify` runs, then what `repro stale` reports where the manifest "
-        "declares a command. Executes nothing. Exits 1 where the policy fails either, 2 with "
-        "no manifest, and 0 otherwise.",
+        "Run what `repro verify` runs. Executes nothing. Exits 1 where the policy fails the "
+        "verification, 2 with no manifest, and 0 otherwise. Where the manifest declares a "
+        "command, how many assertions read a file current with a recorded re-run is printed "
+        "and not graded: `repro ci reruns` is the check that fails on it.",
     )
-    p_claims.set_defaults(func=lambda args: command_claims(args, verify, stale))
+    p_claims.set_defaults(func=lambda args: command_claims(args, verify))
 
     tool_check(
         "citations",
         "does every quotation resolve in the source its claims file pins?",
-        "Run `citations verify --claims <dir>` over the project's claims directory. A run in "
+        f"Run `{TOOL_COMMANDS['citations'].said('citations')}` over the project's claims "
+        "directory. A run in "
         "which no quotation was found could not check anything and does not pass; one in "
         "which some were found, none was not found and the rest were unchecked passes, and "
         "its summary opens on how many were not checked.",
     ).add_argument(
         "--fetch-sources",
         action="store_true",
-        help="run `citations fetch` first, which downloads each absent source from where its "
+        help="fetch first, which downloads each absent source from where its "
         "claims file says an open copy is and keeps only bytes matching the pinned digest",
     )
 
     p_reruns = checks(
         "reruns",
-        "run the declared commands again on this machine",
-        f"Run what `repro reproduce` runs, and append the re-run to {RECORD.as_posix()} as it "
-        "does. This executes what the manifest names. Exits 1 where the policy fails a "
-        "re-run, 2 with no manifest or no command declared, and 0 otherwise.",
+        "is a re-run of each declared command, over the current files, on record?",
+        f"Read {RECORD.as_posix()} as `repro stale` reads it and run nothing: pass where every "
+        "declared command has a recorded re-run that reproduced, made over today's command "
+        "and inputs, whose output is the file now on disk, and fail where one is stale, never "
+        "rerun or undetermined, whatever --policy says. With --run, run what `repro reproduce` "
+        f"runs instead, append the re-run to {RECORD.as_posix()} as it does, and grade it "
+        "under --policy. Exits 2 with no manifest or no command declared.",
     )
     p_reruns.add_argument(
-        "--only", action="append", metavar="ID", help="run this record; repeatable"
+        "--run",
+        action="store_true",
+        help="run the declared commands again in this job; this executes what the manifest names",
     )
     p_reruns.add_argument(
-        "--skip", action="append", metavar="ID", help="leave this record out; repeatable"
+        "--only", action="append", metavar="ID", help="with --run, run this record; repeatable"
     )
-    p_reruns.set_defaults(func=lambda args: command_reruns(args, reproduce))
+    p_reruns.add_argument(
+        "--skip",
+        action="append",
+        metavar="ID",
+        help="with --run, leave this record out; repeatable",
+    )
+    p_reruns.set_defaults(func=lambda args: command_reruns(args, reproduce, stale))
 
     p_init = actions.add_parser(
         "init",
@@ -1233,8 +1419,10 @@ def add_parser(
             f"Write a workflow under {WORKFLOWS.as_posix()}/ for each check the repository "
             "keeps a record for (prereg.yml, results.yml, claims.yml, citations.yml), each "
             "running one `repro ci` command on a push to the default branch and on every pull "
-            "request, say which were skipped and why, and print a badge line for each. With "
-            "--reruns, write reruns.yml as well. Each workflow is named for its check. A "
+            "request, say which were skipped and why, and print two badge lines for each. "
+            "reruns.yml, which checks that a re-run of each declared command is on record, is "
+            "written where the manifest declares a command and the record holds a re-run. "
+            "Each workflow is named for its check. A "
             "workflow this command wrote is replaced only with --force, and any other file "
             "of that name is never replaced."
         ),
@@ -1242,7 +1430,13 @@ def add_parser(
     p_init.add_argument(
         "--reruns",
         action="store_true",
-        help="also write the workflow that runs the declared commands again, for a project "
+        help="require reruns.yml, and write nothing where the manifest declares no command "
+        "or the record holds no re-run",
+    )
+    p_init.add_argument(
+        "--run-reruns",
+        action="store_true",
+        help="write reruns.yml to run the declared commands again in the job, for a project "
         "whose commands can run in CI",
     )
     p_init.add_argument(
@@ -1259,6 +1453,12 @@ def add_parser(
         help="put the badges on one line under the first heading of README.md",
     )
     p_init.add_argument(
+        "--branded",
+        action="store_true",
+        help="with --readme, put the shields.io badges, which carry each check's icon and "
+        "work only for a public repository",
+    )
+    p_init.add_argument(
         "--prefix",
         default="",
         metavar="TEXT",
@@ -1267,7 +1467,7 @@ def add_parser(
     p_init.add_argument(
         "--name",
         action="append",
-        metavar="CHECK=TEXT",
+        metavar="WORKFLOW=TEXT",
         help="name a check's workflow, which is what its badge prints; repeatable "
         f"(default: {', '.join(f'{check}={NAMES[check]}' for check in CHECKS)})",
     )
