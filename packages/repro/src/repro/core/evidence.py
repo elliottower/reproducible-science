@@ -355,7 +355,42 @@ class _Convertible(BaseModel):
         return dumped
 
 
-class MetricEvidence(_EvidenceBase, _Convertible):
+class _Reported(_Convertible):
+    """A value compared with one the manuscript prints, which may declare how many decimal
+    places the manuscript reports it to."""
+
+    places: int | None = Field(default=None, ge=0)
+    """How many decimal places the manuscript reports this value to, as the author states it.
+
+    None, the default, takes the precision from `reported` as written. Declared, it is a
+    second statement that must agree with the first: `reported` must be written to exactly
+    this many places, so `"4.20"` under `places: 1` does not verify, whatever the file holds.
+    A table whose caption says one decimal and whose cell prints two is a finding about the
+    manuscript, and it is reported as one. Only under `printed_precision`: a tolerance rounds
+    nothing, so there are no places for it to be at."""
+
+    @model_serializer(mode="wrap")
+    def _omit_what_is_not_declared(self, handler):
+        """Leave `conversion` and `places` out where neither is declared, so a manifest that
+        declares none serializes, and hashes, as it did before the fields existed."""
+        dumped = handler(self)
+        for field in ("conversion", "places"):
+            if getattr(self, field) is None:
+                dumped.pop(field, None)
+        return dumped
+
+    @model_validator(mode="after")
+    def _places_are_of_a_printed_precision(self):
+        mode = getattr(self, "mode", ComparisonMode.PRINTED_PRECISION)
+        if self.places is not None and mode is not ComparisonMode.PRINTED_PRECISION:
+            raise ValueError(
+                f"`places` is declared with mode {mode.value!r}: a tolerance rounds nothing, "
+                f"so `places` goes with `printed_precision` only"
+            )
+        return self
+
+
+class MetricEvidence(_EvidenceBase, _Reported):
     """Assertion: this artifact holds this value at this location."""
 
     kind: Literal["metric"] = "metric"
@@ -394,7 +429,7 @@ class MetricEvidence(_EvidenceBase, _Convertible):
         return TreeLocator(pointer=self.pointer)
 
 
-class TableCellEvidence(_EvidenceBase, _Convertible):
+class TableCellEvidence(_EvidenceBase, _Reported):
     """Assertion: this table holds this value in this cell.
 
     Most published result artifacts are delimited tables rather than JSON, so addressing a
@@ -449,7 +484,7 @@ class TableCellEvidence(_EvidenceBase, _Convertible):
         return TableLocator(column=self.column, where=dict(self.where), delimiter=self.delimiter)
 
 
-class ValueEvidence(_EvidenceBase, _Convertible):
+class ValueEvidence(_EvidenceBase, _Reported):
     """Assertion: this artifact holds this value at this locator.
 
     The general form. `metric` and `table` remain as shorthand for the two commonest cases,

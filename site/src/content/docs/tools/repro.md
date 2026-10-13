@@ -299,6 +299,41 @@ The stored value is converted exactly, by moving its decimal point, and then com
 
 In `--format json` a decision carries `extracted`, `conversion` and `converted`.
 
+## Decimal places, and a value exactly halfway
+
+The precision of a comparison is the precision of `reported` as written: `"3.20"` is compared at two decimal places and `"3.2"` at one, with the stored value rounded half to even. `places` states that precision a second time, where a table or a journal fixes it:
+
+```yaml
+- {kind: metric, artifact: results, name: effect, reported: "4.2", pointer: /effect, places: 1}
+```
+
+`reported` must then be written to exactly that many decimal places, and the stored value must round to it. A value printed as `4.20` in a table declared to one place does not verify, whatever the file holds, and neither does `3.1` declared to two:
+
+```text
+  MISS  effect-two   metric   effect: manuscript prints 4.20, which is 2 decimal p
+```
+
+```text
+    results at /effect: holds 4.2051
+    the manuscript prints 4.20, declared to 1 decimal place: mismatch (places mismatch)
+```
+
+`metric`, `table` and `value` take `places`, under `printed_precision` only: a manifest declaring it with `absolute` or `relative` does not load.
+
+A stored value exactly halfway between two printed values has two correct roundings. `4.25` at one place is `4.3` in a spreadsheet, which rounds half away from zero, and `4.2` in Python or R, which round half to even. Either verifies, and the output says it was a tie:
+
+```text
+  ok    tie-up       metric   /attrition = 0.0425 (4.25 as a percentage), an exact  [exact tie: 4.2 or 4.3]
+```
+
+```text
+    results at /attrition: holds 0.0425, 4.25 as a percentage
+    an exact tie between 4.2 and 4.3: rounding half up prints one and half to even may print the other
+    the manuscript prints 4.3: verified
+```
+
+A printed value that is neither neighbor is a mismatch, and a tie is exact: `4.2500001` is not one, and only `4.3` verifies against it. In `--format json` a decision at a tie carries `tie`, with `lower`, `upper` and `printed`.
+
 ## On every commit
 
 ```yaml

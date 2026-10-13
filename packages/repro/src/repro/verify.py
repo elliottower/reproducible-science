@@ -54,6 +54,7 @@ from repro.models import (
     Reason,
     RegistrationAuthority,
     TableCellEvidence,
+    Tie,
     Validity,
     ValueEvidence,
     VerificationReport,
@@ -299,6 +300,12 @@ def _held(stored: decimal.Decimal, compared: decimal.Decimal, conversion: Conver
     return f"{stored} ({_plain(compared)} {conversion.said})"
 
 
+def _places(count: int) -> str:
+    """A number of decimal places, in words a detail can use. A value printed to the tens
+    has fewer than none, which is said as it is."""
+    return f"{count} decimal place{'' if count == 1 else 's'}"
+
+
 def _plain(converted: decimal.Decimal) -> str:
     """A converted value with no exponent: 0.5 as a percentage is written 50, where `str`
     writes the same decimal as 5E+1."""
@@ -322,6 +329,46 @@ def _exponent(value: decimal.Decimal) -> int:
             f"so reaching the comparison with one is a defect"
         )
     return exponent
+
+
+def _tie(
+    stored: decimal.Decimal, reported: decimal.Decimal
+) -> tuple[decimal.Decimal, decimal.Decimal] | None:
+    """The two values at the precision `reported` prints that `stored` lies exactly halfway
+    between, lower first, or None where it is nearer one of them.
+
+    Decided on the digits, as integers: the digits of `stored` past the printed precision are
+    a 5 followed by nothing but zeros, or they are not. No float is formed and nothing is
+    within a tolerance of a tie, so 4.25 is one at one place and 4.2500001 is not.
+    """
+    sign, digits, exponent = stored.as_tuple()
+    quantum = _exponent(reported)
+    if not isinstance(exponent, int) or exponent >= quantum:
+        return None
+    coefficient = int("".join(map(str, digits)))
+    below, past = divmod(coefficient, 10 ** (quantum - exponent))
+    if past * 2 != 10 ** (quantum - exponent):
+        return None
+
+    def at_precision(magnitude: int, negative: bool) -> decimal.Decimal:
+        return decimal.Decimal(
+            (int(negative and magnitude != 0), tuple(map(int, str(magnitude))), quantum)
+        )
+
+    if sign:
+        return at_precision(below + 1, True), at_precision(below, True)
+    return at_precision(below, False), at_precision(below + 1, False)
+
+
+def _tied(compared: decimal.Decimal, printed: decimal.Decimal, mode: ComparisonMode) -> Tie | None:
+    """The record of a tie, where the comparison is at a printed precision and met one."""
+    if mode is not ComparisonMode.PRINTED_PRECISION or not compared.is_finite():
+        return None
+    neighbors = _tie(compared, printed)
+    if neighbors is None:
+        return None
+    lower, upper = neighbors
+    return Tie(lower=_plain(lower), upper=_plain(upper), printed=_plain(printed))
 
 
 def _agree(
@@ -348,6 +395,13 @@ def _agree(
         # thirty-digit integers also exceed the default precision of 28, and were reported as
         # a mismatch. That is a defect in the arithmetic emitted as a contradicted manuscript,
         # which is the one thing this package must never do. Size the context to the operands.
+        #
+        # A value exactly halfway between two printed values is rounded up by half the
+        # software a manuscript's numbers come out of and to the even neighbor by the other
+        # half, so either neighbor agrees. Everywhere else the rounding is half-even, and
+        # which rule is used makes no difference away from a tie.
+        if (neighbors := _tie(stored, reported)) is not None:
+            return reported in neighbors
         with decimal.localcontext() as context:
             context.prec = max(
                 context.prec,
@@ -466,12 +520,33 @@ class ValueBackend:
                 warnings=warnings,
             )
 
-        agrees = compare_decimal(stored, evidence)
         compared = _compared(stored, evidence.conversion)
         if evidence.conversion is not None:
             base["converted"] = _plain(compared)
         held = _held(stored, compared, evidence.conversion)
         where = " ".join(extracted.trace) or locator.kind
+
+        printed_places = -_exponent(evidence.value)
+        if evidence.places is not None and printed_places != evidence.places:
+            # Two statements about the manuscript disagree, and no rounding of the file's
+            # value settles which is meant: `4.20` is not a number reported to one place.
+            return Decision(
+                **base,
+                **completed,
+                extraction=ExtractionStatus.EXTRACTED,
+                comparison=ComparisonStatus.MISMATCH,
+                reason=Reason.PLACES_MISMATCH,
+                detail=(
+                    f"{evidence.name}: manuscript prints {evidence.reported}, which is "
+                    f"{_places(printed_places)}, and {_places(evidence.places)} is declared"
+                ),
+                warnings=warnings,
+            )
+
+        agrees = compare_decimal(stored, evidence)
+        tie = _tied(compared, evidence.value, evidence.mode)
+        base["tie"] = tie
+        between = f", an exact tie between {tie.lower} and {tie.upper}" if tie else ""
         return Decision(
             **base,
             **completed,
@@ -479,10 +554,11 @@ class ValueBackend:
             comparison=ComparisonStatus.MATCH if agrees else ComparisonStatus.MISMATCH,
             reason=Reason.VALUE_MATCH if agrees else Reason.VALUE_MISMATCH,
             detail=(
-                f"{where} = {held}"
+                f"{where} = {held}{between}"
+                + (f"; the manuscript prints {evidence.reported}" if tie else "")
                 if agrees
                 else f"{evidence.name}: manuscript prints {evidence.reported}, "
-                f"{path.name} holds {held} at {where}"
+                f"{path.name} holds {held} at {where}{between}"
             ),
             warnings=warnings,
         )
@@ -638,13 +714,16 @@ class CorrespondenceBackend:
         # which side the manifest wrote first. A larger exponent is the coarser value.
         coarse, fine = (a, b) if _exponent(a) >= _exponent(b) else (b, a)
         agrees = _agree(fine, coarse, evidence.mode, evidence.tolerance_value)
+        tie = _tied(fine, coarse, evidence.mode)
+        base["tie"] = tie
         return Decision(
             **base,
             **completed,
             extraction=ExtractionStatus.EXTRACTED,
             comparison=ComparisonStatus.MATCH if agrees else ComparisonStatus.MISMATCH,
             reason=Reason.VALUE_MATCH if agrees else Reason.VALUE_MISMATCH,
-            detail=f"{evidence.name}: {left.name} {held[0]}, {right.name} {held[1]}",
+            detail=f"{evidence.name}: {left.name} {held[0]}, {right.name} {held[1]}"
+            + (f", an exact tie between {tie.lower} and {tie.upper}" if tie else ""),
             warnings=(
                 (Warning_.POSITIONAL_ADDRESS,)
                 if any(side.locator.kind == "table_position" for side in evidence.sides)

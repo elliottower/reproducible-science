@@ -605,4 +605,57 @@ write(
     ],
 )
 
+#: A value exactly halfway between two values at one decimal place, and one that is not.
+HALVES = {"halves.json": json.dumps({"tie": 4.25, "effect": 4.2011}, indent=2)}
+HALF = [{"id": "halves", "path": "halves.json"}]
+
+write(
+    "value_tie_either_neighbor",
+    artifacts=HALF,
+    files=HALVES,
+    expected=["verified", "verified", "mismatch"],
+    reasons=["value_match", "value_match", "value_mismatch"],
+    validity={"halves": "authoritative"},
+    stages=[
+        ["completed", "extracted", "match"],
+        ["completed", "extracted", "match"],
+        ["completed", "extracted", "mismatch"],
+    ],
+    # 4.25 rounds to 4.2 half to even and to 4.3 half up, and a manuscript printing either
+    # has rounded correctly. 4.4 is neither.
+    claims=[
+        {
+            "id": "c",
+            "text": "t",
+            "evidence": [
+                metric("4.2", "/tie", artifact="halves"),
+                metric("4.3", "/tie", artifact="halves"),
+                metric("4.4", "/tie", artifact="halves"),
+            ],
+        }
+    ],
+)
+
+write(
+    "value_places_mismatch",
+    artifacts=HALF,
+    files=HALVES,
+    expected=["mismatch", "verified"],
+    reasons=["places_mismatch", "value_match"],
+    validity={"halves": "authoritative"},
+    stages=[["completed", "extracted", "mismatch"], ["completed", "extracted", "match"]],
+    # The file holds 4.2011, which is 4.20 at two places, so the printed value is right. It
+    # is declared to one place and printed to two, and that is what does not hold.
+    claims=[
+        {
+            "id": "c",
+            "text": "t",
+            "evidence": [
+                metric("4.20", "/effect", artifact="halves", places=1),
+                metric("4.2", "/effect", artifact="halves", places=1),
+            ],
+        }
+    ],
+)
+
 print(f"  built {len(list(CASES.iterdir()))} fixtures in {CASES}")

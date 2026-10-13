@@ -75,10 +75,22 @@ for a file that stores a number in one unit where the manuscript prints another:
 holds `4.2`, the manuscript prints `0.042`). The stored value is converted exactly and then
 rounded to the digits `reported` prints. There is no multiplier and no other name.
 
+`metric`, `table` and `value` take an optional `places`, the number of decimal places the
+manuscript reports the value to. `reported` must then be written to exactly that many:
+`"4.20"` with `places: 1` is a `mismatch` with reason `places_mismatch`, whatever the file
+holds. Declare it where a table or a journal fixes the precision, and only under
+`printed_precision`.
+
+A stored value exactly halfway between two printed values, `4.25` at one place, verifies as
+either `4.2` or `4.3`, because half-up and half-to-even rounding are both in use. The output
+marks it `[exact tie: 4.2 or 4.3]`. Report it as a tie, not as an error and not as an
+ordinary match.
+
 ```yaml
 - {kind: metric, artifact: results, name: p, reported: "0.031", pointer: /primary/p}
 - {kind: table, artifact: models, name: accuracy, reported: "0.648", column: accuracy, where: {model: lasso}}
 - {kind: metric, artifact: results, name: attrition, reported: "4.2", pointer: /primary/attrition, conversion: percent}
+- {kind: metric, artifact: results, name: effect, reported: "0.41", pointer: /primary/effect, places: 2}
 - {kind: quote, artifact: paper, text: "We enrolled eighteen sites across the two regions."}
 - kind: correspondence
   name: participants
