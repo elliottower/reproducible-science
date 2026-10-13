@@ -480,14 +480,14 @@ PRINTED = (
     "## $north\n"
     "##\n"
     "##\n"
-    "## | N (studies)| Delta|    se|   pval|\n"
+    "## |   N (sites)| Slope|    se|   pval|\n"
     "## |-----------:|-----:|-----:|------:|\n"
-    "## |           3| 0.459| 0.124| 0.0655|\n"
+    "## |           7| 0.318| 0.107| 0.0271|\n"
     "##\n"
     "## $south\n"
     "##\n"
     "##\n"
-    "## | N (studies)| Delta|    se|   pval|\n"
+    "## |   N (sites)| Slope|    se|   pval|\n"
     "## |-----------:|-----:|-----:|------:|\n"
     "## |           5| 0.212| 0.090| 0.0412|\n"
     "##\n"
@@ -517,7 +517,7 @@ write(
     stages=[["completed", "extracted", "match"]],
     # The anchors are written with single spaces and the file pads the cell with ten. The
     # divider is the trailing anchor, so the value is the cell and not the cell with a bar on it.
-    claims=printed("0.459", "| 3|", "|"),
+    claims=printed("0.318", "| 7|", "|"),
 )
 
 write(
@@ -528,9 +528,9 @@ write(
     reasons=["value_not_numeric"],
     validity={"out": "authoritative"},
     stages=[["completed", "invalid", "not_applicable"]],
-    # No trailing anchor, so the value runs to the next whitespace and is `0.459|`. The engine
+    # No trailing anchor, so the value runs to the next whitespace and is `0.318|`. The engine
     # strips nothing the locator did not name, and reports what it read.
-    claims=printed("0.459", "| 3|", ""),
+    claims=printed("0.318", "| 7|", ""),
 )
 
 write(
@@ -543,7 +543,7 @@ write(
     stages=[["completed", "absent", "not_applicable"]],
     # No row of either table opens with a 4. A row that is not there is absent, and is not
     # read off the nearest row that is.
-    claims=printed("0.459", "| 4|", "|"),
+    claims=printed("0.318", "| 4|", "|"),
 )
 
 write(
@@ -554,9 +554,9 @@ write(
     reasons=["passage_absent"],
     validity={"out": "authoritative"},
     stages=[["completed", "absent", "not_applicable"]],
-    # `9|` begins inside `0.459`, and cutting there would read `0.45`, which is what the
+    # `8|` begins inside `0.318`, and cutting there would read `0.31`, which is what the
     # manifest reports. An anchor never splits a number, so nothing is read.
-    claims=printed("0.45", "| 3|", "9|"),
+    claims=printed("0.31", "| 7|", "8|"),
 )
 
 print(f"  built {len(list(CASES.iterdir()))} fixtures in {CASES}")

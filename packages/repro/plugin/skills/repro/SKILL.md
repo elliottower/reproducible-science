@@ -112,30 +112,30 @@ single spaces whatever the file's padding and may run across lines.
 ```text
 ## $north
 ##
-## | N (studies)| Delta|    se|   pval|
+## |   N (sites)| Slope|    se|   pval|
 ## |-----------:|-----:|-----:|------:|
-## |           3| 0.459| 0.124| 0.0655|
+## |           7| 0.318| 0.107| 0.0271|
 ```
 
 ```yaml
 - kind: value
   artifact: output
-  name: Delta (north)
-  reported: "0.459"
+  name: Slope (north)
+  reported: "0.318"
   locator:
     kind: prose
-    before: "$north ## ## | N (studies)| Delta| se| pval| ## |-----------:|-----:|-----:|------:| ## | 3|"
+    before: "$north ## ## | N (sites)| Slope| se| pval| ## |-----------:|-----:|-----:|------:| ## | 7|"
     after: "|"
-- {kind: value, artifact: output, name: se (north), reported: "0.124", locator: {kind: prose, before: "| 3| 0.459|", after: "|"}}
+- {kind: value, artifact: output, name: se (north), reported: "0.107", locator: {kind: prose, before: "| 7| 0.318|", after: "|"}}
 - {kind: value, artifact: output, name: accuracy, reported: "93.1", locator: {kind: prose, before: "held-out split was", after: "%"}}
 - {kind: value, artifact: output, name: sites, reported: "18", locator: {kind: prose, before: "We enrolled", after: "sites", form: cardinal_word}}
 ```
 
 - **Name what touches the number.** A cell is printed against its divider, so `after: "|"`.
-  With `after` left out the value runs to the next whitespace and is `0.459|`, reported as
+  With `after` left out the value runs to the next whitespace and is `0.318|`, reported as
   `value_not_numeric` with the text that was read. The same holds for `93.1%` and for a number
   that ends a sentence, `3.14.`, which `after: "."` reads as `3.14`. An anchor cannot split a
-  number: `after: "9"` on `0.459` and `before: "0.4"` read nothing, and the output names the
+  number: `after: "8"` on `0.318` and `before: "0.3"` read nothing, and the output names the
   number. A sign is part of its number unless a digit or letter precedes it (`10-12`), and
   digits attached to a letter (`v0.5`, `H10`) are a name.
 - **`before` is the row's leading cells**, with enough of the header or group label to be the

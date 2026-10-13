@@ -118,9 +118,9 @@ HEADER = """\
 #
 # `prose` reads the number between two literal anchors, for a sentence or a printed table.
 # Anchors are written with single spaces, whatever the padding or line breaks in the file, and
-# `after` names what touches the number. The Delta cell of the row `|     3| 0.459| 0.124|`:
+# `after` names what touches the number. The Slope cell of the row `|     7| 0.318| 0.107|`:
 #
-#   {{kind: prose, before: '| 3|', after: '|'}}
+#   {{kind: prose, before: '| 7|', after: '|'}}
 #
 # `mode: absolute` or `relative` with `tolerance: '0.01'` replaces comparison at the precision
 # `reported` prints. `where` must match exactly one row.

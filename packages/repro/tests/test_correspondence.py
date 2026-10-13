@@ -389,13 +389,13 @@ def test_a_prose_locator_addresses_a_value_without_a_correspondence(tmp_path):
 PRINTED = (
     "## $north\n"
     "##\n"
-    "## | N (studies)| Delta|    se|   pval|\n"
+    "## |   N (sites)| Slope|    se|   pval|\n"
     "## |-----------:|-----:|-----:|------:|\n"
-    "## |           3| 0.459| 0.124| 0.0655|\n"
+    "## |           7| 0.318| 0.107| 0.0271|\n"
     "##\n"
     "## $south\n"
     "##\n"
-    "## | N (studies)| Delta|    se|   pval|\n"
+    "## |   N (sites)| Slope|    se|   pval|\n"
     "## |-----------:|-----:|-----:|------:|\n"
     "## |           5| 0.212|   n/a| 0.0412|\n"
 )
@@ -432,9 +432,9 @@ def printed(tmp_path, reported, before, after="", doc=PRINTED):
 @pytest.mark.parametrize(
     ("reported", "before"),
     [
-        ("0.459", "| 3|"),
-        ("0.124", "| 3| 0.459|"),
-        ("0.0655", "$north ## ## | N (studies)| Delta| se| pval| ## | 3| 0.459| 0.124|"),
+        ("0.318", "| 7|"),
+        ("0.107", "| 7| 0.318|"),
+        ("0.0271", "$north ## ## | N (sites)| Slope| se| pval| ## | 7| 0.318| 0.107|"),
         ("0.212", "| 5|"),
     ],
 )
@@ -449,24 +449,24 @@ def test_a_cell_of_a_printed_table_is_bound_by_its_leading_cells_and_its_divider
 
 
 def test_a_cell_bound_by_its_divider_is_compared_and_can_disagree(tmp_path):
-    decision = printed(tmp_path, "0.495", "| 3|", "|")
+    decision = printed(tmp_path, "0.381", "| 7|", "|")
     assert decision.outcome is Outcome.MISMATCH
     assert decision.reason is Reason.VALUE_MISMATCH
-    assert "0.459" in decision.detail
+    assert "0.318" in decision.detail
 
 
 def test_anchors_written_on_one_line_match_text_broken_over_several(tmp_path):
     before = (
-        "## $north ## ## | N (studies)| Delta| se| pval| "
-        "## |-----------:|-----:|-----:|------:| ## | 3|"
+        "## $north ## ## | N (sites)| Slope| se| pval| "
+        "## |-----------:|-----:|-----:|------:| ## | 7|"
     )
-    assert printed(tmp_path, "0.459", before, "| 0.124| 0.0655| ## ## $south").outcome is (
+    assert printed(tmp_path, "0.318", before, "| 0.107| 0.0271| ## ## $south").outcome is (
         Outcome.VERIFIED
     )
 
 
 def test_a_leading_anchor_the_text_does_not_hold_is_absent(tmp_path):
-    decision = printed(tmp_path, "0.459", "| 4|", "|")
+    decision = printed(tmp_path, "0.318", "| 4|", "|")
     assert decision.reason is Reason.PASSAGE_ABSENT
     assert decision.extraction is ExtractionStatus.ABSENT
     assert decision.comparison is ComparisonStatus.NOT_APPLICABLE
@@ -474,7 +474,7 @@ def test_a_leading_anchor_the_text_does_not_hold_is_absent(tmp_path):
 
 
 def test_a_trailing_anchor_that_does_not_follow_the_value_is_absent(tmp_path):
-    decision = printed(tmp_path, "0.459", "| 3|", "| 0.125|")
+    decision = printed(tmp_path, "0.318", "| 7|", "| 0.108|")
     assert decision.reason is Reason.PASSAGE_ABSENT
     assert decision.outcome is Outcome.NOT_FOUND
 
@@ -483,14 +483,14 @@ def test_a_trailing_anchor_that_does_not_follow_the_value_is_absent(tmp_path):
     ("before", "after", "read"),
     [
         ("| 5| 0.212|", "|", "n/a"),
-        ("| 3|", "", "0.459|"),
-        ("| 3|", "0.124|", "0.459|"),
+        ("| 7|", "", "0.318|"),
+        ("| 7|", "0.107|", "0.318|"),
     ],
 )
 def test_text_between_found_anchors_that_is_not_a_number_keeps_its_own_reason(
     tmp_path, before, after, read
 ):
-    decision = printed(tmp_path, "0.459", before, after)
+    decision = printed(tmp_path, "0.318", before, after)
     assert decision.reason is Reason.VALUE_NOT_NUMERIC
     assert decision.extraction is ExtractionStatus.INVALID
     assert decision.comparison is ComparisonStatus.NOT_APPLICABLE
@@ -501,8 +501,8 @@ def test_text_between_found_anchors_that_is_not_a_number_keeps_its_own_reason(
 @pytest.mark.parametrize(
     ("doc", "before", "after", "reported"),
     [
-        ("## | 3| 0.459| 0.124|\n", "| 3|", "|", "0.459"),
-        ("|3|0.459|0.124|\n", "|3|", "|", "0.459"),
+        ("## | 7| 0.318| 0.107|\n", "| 7|", "|", "0.318"),
+        ("|7|0.318|0.107|\n", "|7|", "|", "0.318"),
         ("Accuracy was 93.1% overall.\n", "Accuracy was", "%", "93.1"),
         ("The ratio is 3.14.\n", "ratio is", ".", "3.14"),
         ("The dose was 12.5(3) mg.\n", "dose was", "(", "12.5"),
@@ -527,22 +527,22 @@ def test_the_first_full_stop_inside_a_number_is_passed_over_for_the_one_that_end
 @pytest.mark.parametrize(
     ("doc", "before", "after", "number"),
     [
-        ("Delta was 0.459 rows.\n", "Delta was", "9", "0.459"),
-        ("Delta was 0.459 rows.\n", "Delta was", ".", "0.459"),
-        ("Delta was 0.459 rows.\n", "Delta was", "459", "0.459"),
+        ("Slope was 0.318 rows.\n", "Slope was", "8", "0.318"),
+        ("Slope was 0.318 rows.\n", "Slope was", ".", "0.318"),
+        ("Slope was 0.318 rows.\n", "Slope was", "318", "0.318"),
         ("We kept 1,234 items.\n", "We kept", ",", "1,234"),
         ("We kept 1_234 items.\n", "We kept", "_", "1_234"),
         ("Loss fell to 2.5e-3 here.\n", "fell to", "e", "2.5e-3"),
         ("Loss fell to 2.5e-3 here.\n", "fell to", "-", "2.5e-3"),
-        ("Delta was 0.459 rows.\n", "0.4", "rows", "0.459"),
-        ("Delta was 0.459 rows.\n", "was 0.", "", "0.459"),
+        ("Slope was 0.318 rows.\n", "0.3", "rows", "0.318"),
+        ("Slope was 0.318 rows.\n", "was 0.", "", "0.318"),
         ("We kept 1,234 items.\n", "kept 1,", "items", "1,234"),
-        ("Here x=0.459 rows.\n", "x=0.4", "", "0.459"),
-        ("Here (0.459 rows.\n", "(0.4", "", "0.459"),
+        ("Here x=0.318 rows.\n", "x=0.3", "", "0.318"),
+        ("Here (0.318 rows.\n", "(0.3", "", "0.318"),
         ("Here p<0.05 held.\n", "p<0.", "", "0.05"),
-        ("Here run_0.459 rows.\n", "run_0.4", "", "0.459"),
+        ("Here run_0.318 rows.\n", "run_0.3", "", "0.318"),
         ("Mass was 12.5kg total.\n", "Mass was", ".5kg", "12.5"),
-        ("Delta was 0.459rows here.\n", "Delta was", "9rows", "0.459"),
+        ("Slope was 0.318rows here.\n", "Slope was", "8rows", "0.318"),
         ("Here x=-0.42 held.\n", "x=-", "", "-0.42"),
         ("## | -0.42| 0.1|\n", "| -", "|", "-0.42"),
         ("Effect (-0.42) held.\n", "(-", ")", "-0.42"),
@@ -604,9 +604,9 @@ def test_a_sign_belongs_to_its_number_unless_a_digit_or_a_letter_precedes_it(
 
 
 def test_a_bare_divider_between_two_different_cells_is_ambiguous(tmp_path):
-    decision = printed(tmp_path, "0.459", "|", "|", doc="|0.459|0.124|\n")
+    decision = printed(tmp_path, "0.318", "|", "|", doc="|0.318|0.107|\n")
     assert decision.reason is Reason.PASSAGE_AMBIGUOUS
-    assert "0.459" in decision.detail and "0.124" in decision.detail
+    assert "0.318" in decision.detail and "0.107" in decision.detail
 
 
 def test_a_trailing_anchor_past_the_run_is_taken_before_one_inside_it(tmp_path):
