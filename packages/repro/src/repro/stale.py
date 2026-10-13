@@ -108,6 +108,7 @@ def _read(entry: RegenerationState) -> dict[str, str | None]:
 def _compare(
     record: RegenerationRecord,
     recorded: list[Rerun],
+    attempted: list[Rerun],
     disk: dict[str, str | None],
     written: str | None,
     loops: bool,
@@ -144,6 +145,25 @@ def _compare(
             # was compared against, so that file is as much its output as the one it wrote.
             and written in (entry.expected, entry.actual)
         ):
+            # A later re-run of the same command over the same inputs that did not reproduce
+            # leaves two witnessed runs that disagree, and the record does not say which the
+            # file on disk is the output of.
+            later = attempted[attempted.index(rerun) + 1 :]
+            disagreeing = [
+                finding(
+                    StaleCause.LATER_RERUN_DID_NOT_REPRODUCE,
+                    output,
+                    observed=other.actual,
+                    on_disk=written,
+                    rerun_at=when,
+                )
+                for when, other in later
+                if other.state is not Regeneration.REPRODUCED
+                and other.command == record.command
+                and _read(other) == declared
+            ]
+            if disagreeing:
+                return Freshness.UNDETERMINED, rerun, disagreeing[-1:]
             return Freshness.CURRENT, rerun, []
 
     when, last = recorded[-1]
@@ -184,9 +204,13 @@ def stale(manifest: Manifest) -> StalenessReport:
     root = manifest.path.parent if manifest.path else pathlib.Path.cwd()
     log = reruns(root)
     recorded: dict[str, list[Rerun]] = collections.defaultdict(list)
+    attempted: dict[str, list[Rerun]] = collections.defaultdict(list)
     for report in log:
         for entry in report.regenerations:
-            if entry.executed and entry.state is Regeneration.REPRODUCED:
+            if not entry.executed:
+                continue
+            attempted[entry.regeneration_id].append((report.started_at, entry))
+            if entry.state is Regeneration.REPRODUCED:
                 recorded[entry.regeneration_id].append((report.started_at, entry))
 
     states, paths = artifact_states(manifest)
@@ -210,6 +234,7 @@ def stale(manifest: Manifest) -> StalenessReport:
         local[record.id], compared[record.id], differences[record.id] = _compare(
             record,
             recorded[record.id],
+            attempted[record.id],
             disk,
             written[record.id],
             loops=record.id in above[record.id],

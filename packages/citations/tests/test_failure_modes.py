@@ -143,6 +143,21 @@ def test_hyphenation_across_a_line_break_is_normalized():
     assert V.passage_fold("inter-\npretable") == "interpretable"
 
 
+@pytest.mark.parametrize(
+    ("source", "folded"),
+    [
+        ("## -----\n## Average effects", "## ----- ## average effects"),
+        ("rows 10-\n12 were kept", "rows 10- 12 were kept"),
+        ("the effect held -\nand then reversed", "the effect held - and then reversed"),
+        ("delta was -\n0.42", "delta was - 0.42"),
+        ("GPT-\n2 small", "gpt- 2 small"),
+    ],
+    ids=["rule-of-dashes", "range", "clause-dash", "sign", "letter-then-digit"],
+)
+def test_a_dash_at_a_line_end_that_does_not_split_a_word_is_kept(source, folded):
+    assert V.passage_fold(source) == folded
+
+
 def test_glyph_codes_from_a_figure_do_not_hide_the_passage(pinned):
     # pdftotext emits a figure's embedded font as raw UTF-16 glyph codes. They land mid-page and
     # must not swallow the surrounding prose.
@@ -281,3 +296,35 @@ def test_truncation_is_independent_of_length(tmp_path):
     r = V.check_one(body, f, None)
     assert "short" not in r.warnings, "quote is long enough that `short` says nothing"
     assert "truncated" in r.warnings
+
+
+@pytest.mark.parametrize("name", ["output", "run.log", "notes.Rout"])
+def test_an_undeclared_file_holding_text_is_read_off_disk(tmp_path, name):
+    source = tmp_path / name
+    source.write_text("Accuracy was 93.1% on the held-out split.\n")
+    assert V.reads_off_disk(source)
+    assert V.extract_uncached(source) == "Accuracy was 93.1% on the held-out split.\n"
+    assert not V.is_paginated(source)
+
+
+@pytest.mark.parametrize(
+    ("name", "data"),
+    [
+        ("output", b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"),
+        ("weights", b"\xff\xfe\x80\x81 not utf-8"),
+        ("paper", b"%PDF-1.7\n1 0 obj\n"),
+        ("renamed.pdf", b"plain text under a pdf suffix\n"),
+        ("empty", b""),
+    ],
+    ids=["nul-bytes", "not-utf-8", "pdf-magic", "pdf-suffix", "empty"],
+)
+def test_a_file_that_is_not_text_is_not_read_off_disk(tmp_path, name, data):
+    source = tmp_path / name
+    source.write_bytes(data)
+    assert not V.reads_off_disk(source)
+
+
+def test_a_multibyte_character_cut_by_the_sniff_window_is_still_text(tmp_path):
+    source = tmp_path / "output"
+    source.write_bytes(b"a" * (V._SNIFF_BYTES - 1) + "é".encode() + b" tail\n")
+    assert V.reads_off_disk(source)

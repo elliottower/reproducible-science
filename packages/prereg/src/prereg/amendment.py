@@ -32,6 +32,10 @@ LEDGER_ACCESS = {
     "outcomes seen": "results seen",
 }
 
+#: What `results run --holds` can declare a run's outputs to hold. Both mean data and no outcome.
+#: Any other value, and no value, is a run that holds results.
+RUN_HOLDS = ("metadata only", "structure seen")
+
 SECTIONS = "Sections replaced or added"
 REASON = "Reason"
 SEEN = "What had been seen"
@@ -66,16 +70,26 @@ class Ledger:
     level: str | None
     """The highest access level recorded, in the ledger's own words. None where it records none."""
     runs: int
+    no_outcome_runs: int = 0
+    """How many of `runs` were recorded as holding metadata or structure and no outcome."""
+    declared_late: int = 0
+    """How many of `no_outcome_runs` were declared so by `results label`, after the run."""
 
     @property
     def floor(self) -> str | None:
         """The lowest access level a freeze can record, in this tool's words.
 
         A recorded run has finished and left outputs, so one or more of them puts the floor at
-        `results not opened` whatever was said about access.
+        `results not opened` whatever was said about access. The exception is a run recorded as
+        holding no outcome (`results run --holds`, or `results label` afterwards): code has run
+        and no result exists, which is `no results seen`. One run without that label puts the
+        floor back at `results not opened`. A label declared after the run counts as one, and
+        the summary says how many were, so a freeze shows it.
         """
         levels = [LEDGER_ACCESS[self.level]] if self.level else []
-        if self.runs:
+        if self.no_outcome_runs:
+            levels.append("no results seen")
+        if self.runs > self.no_outcome_runs:
             levels.append("results not opened")
         return max(levels, key=ACCESS.index, default=None)
 
@@ -84,7 +98,14 @@ class Ledger:
         """What the ledger records, as one phrase."""
         recorded = f"`{self.level}`" if self.level else "none"
         runs = f"{self.runs} run{'' if self.runs == 1 else 's'}"
-        return f"highest access level recorded {recorded}, {runs} recorded"
+        apart = (
+            f", {self.no_outcome_runs} of them recorded as holding no outcome"
+            if self.no_outcome_runs
+            else ""
+        )
+        if self.declared_late:
+            apart += f" ({self.declared_late} declared after the run was recorded)"
+        return f"highest access level recorded {recorded}, {runs} recorded{apart}"
 
     def refuses(self, access: str) -> str | None:
         """Why `access` cannot be recorded: it is lower than this ledger shows. None if it can."""
@@ -112,7 +133,21 @@ def read_ledger(start: pathlib.Path) -> Ledger | None:
         level = max(levels, key=list(LEDGER_ACCESS).index, default=None)
     except (ValueError, KeyError, AttributeError) as e:
         raise LedgerError(f"{path} cannot be read as a results ledger: {e}") from e
-    return Ledger(path, level, sum(e.get("event") == "run" for e in events))
+    runs = [e for e in events if e.get("event") == "run"]
+    # A label this version does not know is read as no label, so the floor rises: an older
+    # `prereg` reading a newer ledger is never more lenient than it was.
+    at_record = sum(e.get("holds") in RUN_HOLDS for e in runs)
+    # A later declaration counts for a run it names alone, that carried no label of its own.
+    unlabelled = [e.get("run_id") for e in runs if "holds" not in e]
+    late = {
+        e.get("run_id")
+        for e in events
+        if e.get("event") == "label"
+        and e.get("holds") in RUN_HOLDS
+        and unlabelled.count(e.get("run_id")) == 1
+        and sum(r.get("run_id") == e.get("run_id") for r in runs) == 1
+    }
+    return Ledger(path, level, len(runs), at_record + len(late), len(late))
 
 
 def path_for(plan: pathlib.Path, n: int) -> pathlib.Path:

@@ -4,6 +4,7 @@ results init              start tracking results here
 results seal <file>...    hash inputs before a run (prereg, script, data)
 results access <note>     record a data-access event (what you looked at, when)
 results run <file>...     record outputs after a run completes
+results label <run-id>    declare after the fact that a recorded run's outputs hold no outcome
 results claim <text>      bind a manuscript claim to a run's output
 results review <file>...  record that someone examined these files, and what they found
 results annotate <file>...  link these files to something outside the ledger; linked, not checked
@@ -33,7 +34,7 @@ from results.paths import find_root as find_root
 from results.paths import ledger_path as ledger_path
 from results.paths import record_path as record_path
 from results.paths import require_root as require_root
-from results.record import ACCESS_LEVELS, VERDICTS
+from results.record import ACCESS_LEVELS, RUN_HOLDS, VERDICTS
 from results.timeline import first_outcomes_seen as first_outcomes_seen
 from results.timeline import first_run_timestamp as first_run_timestamp
 from results.timeline import freeze_timestamp as freeze_timestamp
@@ -53,7 +54,13 @@ def cmd_access(a) -> int:
 
 
 def cmd_run(a) -> int:
-    return record.run(a.files, a.run_id, a.note, getattr(a, "anyway", False))
+    return record.run(
+        a.files, a.run_id, a.note, getattr(a, "anyway", False), getattr(a, "holds", None)
+    )
+
+
+def cmd_label(a) -> int:
+    return record.label(a.run_id, a.holds, a.note)
 
 
 def cmd_claim(a) -> int:
@@ -129,12 +136,29 @@ def _main(argv: list[str] | None = None) -> int:
     r.add_argument("--run-id", required=True, help="a name for this run")
     r.add_argument("--note", help="what this run computed")
     r.add_argument(
+        "--holds",
+        help=f"what the outputs hold, where they hold no outcome: one of {', '.join(RUN_HOLDS)}. "
+        "For a panel or feasibility query whose counts are reported. `prereg freeze` does not "
+        "count such a run as a result; a run recorded without this is taken to hold results",
+    )
+    r.add_argument(
         "--anyway",
         action="store_true",
         help="record a second run under an id that already exists; a claim naming that id "
         "is then ordered by the later run",
     )
     r.set_defaults(fn=cmd_run)
+
+    lb = sub.add_parser(
+        "label",
+        help="declare after the fact that a recorded run's outputs hold no outcome",
+    )
+    lb.add_argument("run_id", help="the run, recorded without --holds")
+    lb.add_argument("--holds", required=True, help=f"one of: {', '.join(RUN_HOLDS)}")
+    lb.add_argument(
+        "--note", required=True, help="why the run was not labelled when it was recorded"
+    )
+    lb.set_defaults(fn=cmd_label)
 
     cl = sub.add_parser("claim", help="bind a manuscript claim to a run")
     cl.add_argument("text", help="the claim, as it appears in the manuscript")

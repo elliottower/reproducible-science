@@ -709,3 +709,37 @@ def test_the_decision_digest_moves_when_either_side_moves(tmp_path):
         len({before.extraction_digest, moved_right.extraction_digest, moved_left.extraction_digest})
         == 3
     )
+
+
+@pytest.mark.parametrize("name", ["output", "run.log", "session.Rout"])
+def test_a_text_file_whose_suffix_names_no_reader_is_read_as_text(tmp_path, name):
+    (tmp_path / name).write_text("epoch 9\ntrain loss: 0.0459 at the end\n")
+    manifest = {
+        "schema_version": "repro/1",
+        "project": "t",
+        "artifacts": [{"id": "log", "path": name}],
+        "claims": [
+            {
+                "id": "c",
+                "text": "t",
+                "evidence": [
+                    {
+                        "kind": "value",
+                        "artifact": "log",
+                        "name": "loss",
+                        "reported": "0.0459",
+                        "locator": {
+                            "kind": "prose",
+                            "before": "train loss:",
+                            "after": "at the end",
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+    path = tmp_path / "repro.yaml"
+    path.write_text(yaml.safe_dump(manifest, sort_keys=False))
+    decision = only(path)
+    assert decision.outcome is Outcome.VERIFIED
+    assert decision.extraction is ExtractionStatus.EXTRACTED

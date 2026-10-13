@@ -177,7 +177,9 @@ class Reason(enum.StrEnum):
     """The quoted passage occurs more than once in the artifact, and the record does not say
     which occurrence it means. Distinct from `passage_ambiguous`, which says the document states
     two different numbers: a passage written twice contradicts nothing, and the fix is a
-    `prefix` or `suffix` in the record, not an edit to the document. The two shared a reason
+    `prefix` or `suffix` on the quote assertion, naming the text on either side of the
+    occurrence meant, not an edit to the document. A `prefix` or `suffix` that singles out no
+    occurrence leaves this reason standing. The two shared a reason
     after `citations`' `ambiguous` state, which `repro verify` reported as `KeyError: 'ambiguous'`
     under 0.4.2, was first mapped."""
     EXTRACTORS_DISAGREE = "extractors_disagree"

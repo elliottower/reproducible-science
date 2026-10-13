@@ -10,7 +10,7 @@ import enum
 import json
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
 
 from repro.core.artifacts import Digest
 
@@ -247,12 +247,34 @@ ValueLocator = Annotated[
 ]
 
 
+Verbatim = Annotated[str, StringConstraints(strip_whitespace=False)]
+"""A string kept exactly as written: `citations.models.Verbatim`, defined here to the same
+effect. A quotation's `prefix` is the text immediately before the passage, so the space it
+ends on is what separates its last word from the passage's first. `citations` is imported
+only where a quotation is checked, so that an installation without it reports a backend that
+could not run, and importing the type from it here would make every manifest need it to
+load."""
+
+
 class QuoteEvidence(_EvidenceBase):
     """Assertion: this passage occurs in this artifact."""
 
     kind: Literal["quote"] = "quote"
 
     text: str
+
+    prefix: Verbatim = ""
+    """Text immediately preceding the passage in the artifact, used only to say which
+    occurrence is quoted where the passage occurs more than once.
+
+    With `suffix`, the W3C Web Annotation `TextQuoteSelector`, as `citations` records it. A
+    passage that occurs once needs neither and is checked without them. Handed to `citations`
+    unchanged, so the two are matched as a `citations` record's are: joined to the passage
+    and normalized as it is."""
+
+    suffix: Verbatim = ""
+    """Text immediately following the passage in the artifact. See `prefix`."""
+
     section: str | None = None
     """Where the source puts it, as the source names it. Recorded, never verified."""
 

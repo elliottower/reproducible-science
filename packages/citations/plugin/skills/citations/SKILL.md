@@ -84,7 +84,8 @@ each.
 **The usual reasons a quotation does not resolve**, few of them a misquotation:
 
 - The text layer dropped a character: a minus sign, an en dash, a subscript.
-- A hyphen falls at a line break, where folding removes it whether or not the word has one.
+- A hyphen falls at a line break between two letters, where folding removes it whether or not
+  the word has one.
 - The reader is the wrong one: `pdftotext -layout` interleaves the columns of a two-column page.
 - A paraphrase is stored under `exact`. `statement` holds your sentence, `exact` the source's.
 - Text is left out of the middle. `exact` takes no ellipsis, and the result is `not found`.

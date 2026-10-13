@@ -76,6 +76,8 @@ digest, so there is one source of truth per file.
 kind: quote
 artifact: paper-source
 text: "Model A exceeded Model B by 3.2 percentage points"
+prefix: "In the held-out split, "   # optional: the text immediately before the passage
+suffix: " on the primary metric"    # optional: the text immediately after it
 section: "Results"      # recorded, never verified
 page: 4                 # verified when present
 ```
@@ -89,6 +91,13 @@ into one appearing in neither text.
 A passage occurring more than once is `extraction=invalid`, reason `quotation_ambiguous`, for the
 reason an ambiguous row selector is: no occurrence is taken as the one meant. The record says
 which occurrence it quotes with a `prefix` or `suffix` naming the text on either side.
+
+`prefix` and `suffix` are the W3C Web Annotation `TextQuoteSelector` neighbours: the text
+immediately before and immediately after the passage, either or both, kept as written with
+their surrounding whitespace and normalized as the passage is. They are consulted only where
+the passage occurs more than once, and the assertion resolves where exactly one occurrence
+carries them; where none or several do it stays `quotation_ambiguous`, and a passage that
+occurs once is checked without them.
 
 ### 3.2 `metric`
 
@@ -490,7 +499,8 @@ locator adds. `extractors_disagree`: two extractors that both read the artifact 
 answers about whether the passage is in it, which asks for a better reader rather than accusing
 the manuscript as `passage_absent` does. `quotation_ambiguous`: the quoted passage occurs more
 than once and the record does not say which occurrence it means, which accuses nothing and asks
-for a `prefix` or `suffix`. `passage_ambiguous`: one pair of
+for a `prefix` or `suffix` on the quote assertion (§3.1), as it does where the two are given
+and single out no occurrence. `passage_ambiguous`: one pair of
 anchors selected two different values, so the document states two numbers where the assertion
 addresses one. `number_as_word`: the value is an English cardinal written out under a locator
 that did not ask for one. It is distinct from `value_not_numeric` because the fix differs — the

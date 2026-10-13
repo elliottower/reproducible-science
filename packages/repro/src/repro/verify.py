@@ -146,7 +146,9 @@ _QUOTE_STATE = {
     # extraction did not single out one thing to compare, so there is no comparison, and no first
     # match is taken. Not `passage_ambiguous`, which says the document states two different
     # numbers: a passage written twice contradicts nothing, and an author told it does goes
-    # looking for a defect in the manuscript when the fix is a `prefix` in the record.
+    # looking for a defect in the manuscript when the fix is a `prefix` or `suffix` on the quote
+    # assertion. One that singles out no occurrence is this state too, and `citations` says so
+    # in the detail: the record names text on either side and still has not said which it means.
     "ambiguous": (
         ExtractionStatus.INVALID,
         ComparisonStatus.NOT_APPLICABLE,
@@ -208,7 +210,9 @@ class QuoteBackend:
             raise BackendUnavailableError("quote", f"citations is not installed: {e}") from e
 
         path = paths[evidence.artifact]
-        result = check_one(evidence.text, path, evidence.page)
+        result = check_one(
+            evidence.text, path, evidence.page, prefix=evidence.prefix, suffix=evidence.suffix
+        )
         warnings = tuple(_QUOTE_WARNINGS[w] for w in result.warnings if w in _QUOTE_WARNINGS)
 
         if result.state == "unchecked":

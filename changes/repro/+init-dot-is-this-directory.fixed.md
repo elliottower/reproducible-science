@@ -1,0 +1,1 @@
+`repro init .` sets up the directory it is run in, as `repro init` does. The dot was read as a project name, so a `CLAUDE.md` headed `# .` and `data/`, `scripts/` and `figures/` folders were written into an existing project.
