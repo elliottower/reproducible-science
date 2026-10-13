@@ -191,6 +191,40 @@ def test_a_correspondence_carries_both_sides_and_no_reported_value():
     assert [r.address.kind for r in record.reads] == ["prose", "tree"]
 
 
+def test_an_aggregate_carries_every_member_the_statistic_and_what_it_computed():
+    record = one("aggregate_mismatch")
+    assert record.check_type is CheckType.VALUE_COMPARISON
+    assert [(read.artifact, read.stored) for read in record.reads] == [
+        ("run0", "1"),
+        ("run1", "1"),
+        ("run2", "2"),
+        ("run3", "4"),
+    ]
+    assert (record.comparison.statistic, record.comparison.computed, record.printed) == (
+        "mean",
+        "2",
+        "4",
+    )
+    assert record.outcome is NormalizedOutcome.MISMATCH
+
+
+def test_a_conversion_is_named_and_the_converted_value_sits_beside_the_stored_one():
+    converted, plain = check_records(case("value_match_converted"), WHEN)
+    (read,) = converted.reads
+    assert converted.comparison.conversion == "percent"
+    assert (read.stored, read.converted, converted.printed) == ("0.0424", "4.24", "4.2")
+    assert converted.outcome is NormalizedOutcome.MATCH
+    # The same address with no conversion declared: nothing is converted, and it differs.
+    assert plain.comparison.conversion is None and plain.reads[0].converted is None
+    assert plain.outcome is NormalizedOutcome.MISMATCH
+
+
+def test_declared_places_travel_with_the_comparison():
+    mismatch, _ = check_records(case("value_places_mismatch"), WHEN)
+    assert mismatch.comparison.places == 1
+    assert (mismatch.printed, mismatch.native_reason) == ("4.20", "places_mismatch")
+
+
 def test_one_side_that_does_not_resolve_is_not_found_and_keeps_the_side_that_did():
     record = one("correspondence_side_absent")
     assert (record.outcome, record.native_outcome) == (NormalizedOutcome.NOT_FOUND, "not_found")
@@ -261,7 +295,7 @@ def test_an_outcome_or_a_kind_with_no_mapping_is_refused_and_never_defaulted():
     with pytest.raises(UnmappedError):
         normalized("partial")
     with pytest.raises(UnmappedError):
-        check_type("aggregate")
+        check_type("vote")
 
 
 def test_only_verified_normalizes_to_match():

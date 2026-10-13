@@ -216,9 +216,69 @@
     },
     "Comparison": {
       "additionalProperties": true,
+      "description": "The rule a printed value was compared under, and what it was compared with where that\nis not a stored value as it stands.",
       "properties": {
+        "computed": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Computed"
+        },
+        "conversion": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Conversion"
+        },
         "mode": {
           "$ref": "#/$defs/ComparisonMode"
+        },
+        "places": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Places"
+        },
+        "statistic": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Statistic"
+        },
+        "tie": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Tie"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "tolerance": {
           "default": "0",
@@ -310,6 +370,18 @@
         "artifact": {
           "title": "Artifact",
           "type": "string"
+        },
+        "converted": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Converted"
         },
         "media_type": {
           "default": "",
@@ -697,6 +769,31 @@
         "comparison"
       ],
       "title": "Stages",
+      "type": "object"
+    },
+    "Tie": {
+      "additionalProperties": true,
+      "description": "A compared value exactly halfway between two values at the printed precision, either\nof which a manuscript may print.",
+      "properties": {
+        "lower": {
+          "title": "Lower",
+          "type": "string"
+        },
+        "printed": {
+          "title": "Printed",
+          "type": "string"
+        },
+        "upper": {
+          "title": "Upper",
+          "type": "string"
+        }
+      },
+      "required": [
+        "lower",
+        "upper",
+        "printed"
+      ],
+      "title": "Tie",
       "type": "object"
     },
     "Validity": {

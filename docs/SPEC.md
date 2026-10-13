@@ -1187,8 +1187,8 @@ evaluated by the functions `repro verify` uses and by no others.
 | `claim` | `id`, `text`, `where`, the claim digest of §1, its line in the manifest, and each passage its quote assertions name, with the line where a text file holds it exactly once |
 | `assertion` | `kind`, `name`, its `position` among the claim's assertions of that kind and name, its `index` among all of them, and its line in the manifest |
 | `check_type` | which proposition was checked; below |
-| `reads` | per file read: artifact id, path, media type, `validity`, the pinned digest and the digest on disk, the `address` and the value `stored` there, and the side for a `correspondence` |
-| `printed`, `comparison` | the value as the manuscript prints it (the manifest's `reported`) or the passage a quotation asserts, and the `mode` and `tolerance` of §3.2 |
+| `reads` | per file read: artifact id, path, media type, `validity`, the pinned digest and the digest on disk, the `address`, the value `stored` there, that value `converted` where a conversion is declared, and the side for a `correspondence`. An `aggregate` has one entry per member |
+| `printed`, `comparison` | the value as the manuscript prints it (the manifest's `reported`) or the passage a quotation asserts, and the `mode` and `tolerance` of §3.2, with the declared `places` and `conversion`, the `statistic` an `aggregate` computes and what it `computed`, and a `tie` where there was one |
 | `outcome` | one of five words; below |
 | `native_outcome`, `native_reason` | the `Outcome` of §4 and the `Reason` of §4.1, as this tool prints them |
 | `stages`, `reader`, `warnings` | the three stages of §4, the backend and extraction toolchain of §5.1, the warnings of §4.1 |
@@ -1206,7 +1206,7 @@ Closed.
 
 | `check_type` | the proposition |
 |---|---|
-| `value-comparison` | a value the manuscript prints, against the value at an address in a file (`metric`, `table`, `value`) |
+| `value-comparison` | a value the manuscript prints, against the value at an address in a file (`metric`, `table`, `value`), or against a statistic over the values at several (`aggregate`) |
 | `passage-presence` | a passage occurs in a file (`quote`) |
 | `correspondence` | the values at two addresses, in two files, agree |
 | `artifact-identity` | a file's bytes are the bytes that were recorded; no value in it is compared |

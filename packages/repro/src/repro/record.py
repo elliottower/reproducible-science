@@ -14,11 +14,10 @@ Executes nothing and writes nothing.
 
 **Experimental.** The version is in every record, and a field may change before `1.0`.
 
-Two things a record does not yet carry and has room for. A conversion, where the file stores
-a fraction and the manuscript prints a percentage, is a second value beside `stored` on the
-file read, and `comparison` names which of the two was compared. An aggregate, a statistic
-over several runs, is several entries in `reads`, each with its own `stored`, and the
-statistic beside `comparison`. Neither changes what an existing field means.
+A conversion, where the file stores a fraction and the manuscript prints a percentage, is a
+second value beside `stored` on the file read: `converted`, which is then the one compared.
+An aggregate, a statistic over several runs, is one entry in `reads` per member, each with
+its own `stored`, and the statistic and what it computed in `comparison`.
 """
 
 from __future__ import annotations
@@ -38,6 +37,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, ValidationErro
 from repro.adapters.reads import reading_once
 from repro.exceptions import ReproError
 from repro.models import (
+    AggregateEvidence,
     ArtifactState,
     Claim,
     ComparisonMode,
@@ -127,6 +127,8 @@ class NormalizedOutcome(enum.StrEnum):
 #: The proposition each evidence kind asserts.
 CHECK_TYPES: dict[str, CheckType] = {
     "metric": CheckType.VALUE_COMPARISON,
+    # A printed value against a statistic over the values at several addresses.
+    "aggregate": CheckType.VALUE_COMPARISON,
     "table": CheckType.VALUE_COMPARISON,
     "value": CheckType.VALUE_COMPARISON,
     "quote": CheckType.PASSAGE_PRESENCE,
@@ -296,13 +298,40 @@ class FileRead(FileState):
     """None where the assertion names no one address."""
     stored: str | None = None
     """The value at the address, as the file stores it. None where none was read."""
+    converted: str | None = None
+    """`stored` under the conversion `comparison` names, which is then the value compared.
+    None where no conversion is declared or no number was read."""
+
+
+class Tie(BaseModel):
+    """A compared value exactly halfway between two values at the printed precision, either
+    of which a manuscript may print."""
+
+    model_config = _CONFIG
+
+    lower: str
+    upper: str
+    printed: str
 
 
 class Comparison(BaseModel):
+    """The rule a printed value was compared under, and what it was compared with where that
+    is not a stored value as it stands."""
+
     model_config = _CONFIG
 
     mode: ComparisonMode
     tolerance: str = "0"
+    places: int | None = None
+    """The decimal places the assertion declares the manuscript reports the value to."""
+    conversion: str | None = None
+    """The conversion declared between what a file stores and what is printed: `percent` or
+    `fraction`. A side of a `correspondence` that declares one says so in its address."""
+    statistic: str | None = None
+    """What an `aggregate` computes over the values in `reads`."""
+    computed: str | None = None
+    """That statistic of the values read, which is what was compared with `printed`."""
+    tie: Tie | None = None
 
 
 class Stages(BaseModel):
@@ -469,15 +498,34 @@ def _reads(
     # value would report a reading no check was made with.
     ran = decision.execution is ExecutionStatus.COMPLETED
     if isinstance(evidence, CorrespondenceEvidence):
-        extracted = {side.name: side.extracted for side in decision.sides}
+        read = {side.name: side for side in decision.sides}
         return tuple(
             FileRead(
                 **_state(side.artifact, manifest, states),
                 side=side.name,
-                address=Address.model_validate(side.locator.model_dump(mode="json")),
-                stored=extracted.get(side.name) if ran else None,
+                address=Address.model_validate(
+                    side.locator.model_dump(mode="json")
+                    | ({"conversion": side.conversion.value} if side.conversion else {})
+                ),
+                stored=read[side.name].extracted if ran and side.name in read else None,
+                converted=read[side.name].converted if ran and side.name in read else None,
             )
             for side in evidence.sides
+        )
+    if isinstance(evidence, AggregateEvidence):
+        # No member was read where a file is absent or undeclared: the engine stops before
+        # the backend, and the decision lists none.
+        found = [(member.extracted, member.converted) for member in decision.members]
+        return tuple(
+            FileRead(
+                **_state(member.artifact, manifest, states),
+                address=Address.model_validate(member.locator.model_dump(mode="json")),
+                stored=value if ran else None,
+                converted=converted if ran else None,
+            )
+            for member, (value, converted) in zip(
+                evidence.members, found or [(None, None)] * evidence.count, strict=True
+            )
         )
     path = paths.get(evidence.artifact)
     return (
@@ -485,7 +533,23 @@ def _reads(
             **_state(evidence.artifact, manifest, states),
             address=_address(evidence),
             stored=stored(evidence, path) if ran and path is not None else None,
+            converted=decision.converted if ran else None,
         ),
+    )
+
+
+def _comparison(evidence: Evidence, decision: Decision) -> Comparison | None:
+    if isinstance(evidence, QuoteEvidence):
+        return None
+    conversion = getattr(evidence, "conversion", None)
+    return Comparison(
+        mode=evidence.mode,
+        tolerance=evidence.tolerance,
+        places=getattr(evidence, "places", None),
+        conversion=conversion.value if conversion else None,
+        statistic=decision.statistic.value if decision.statistic else None,
+        computed=decision.computed,
+        tie=Tie(**decision.tie.model_dump()) if decision.tie else None,
     )
 
 
@@ -677,9 +741,7 @@ def check_records(
                         printed=evidence.text
                         if isinstance(evidence, QuoteEvidence)
                         else getattr(evidence, "reported", None),
-                        comparison=None
-                        if isinstance(evidence, QuoteEvidence)
-                        else Comparison(mode=evidence.mode, tolerance=evidence.tolerance),
+                        comparison=_comparison(evidence, decision),
                         outcome=normalized(decision.outcome),
                         native_outcome=decision.outcome.value,
                         native_reason=decision.reason.value,
@@ -942,6 +1004,7 @@ __all__ = [
     "Reader",
     "Rerun",
     "Stages",
+    "Tie",
     "UnmappedError",
     "check_records",
     "check_type",
