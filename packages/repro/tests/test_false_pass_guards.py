@@ -12,9 +12,19 @@ import json
 import pathlib
 import sys
 
+import citations.models
+from citations.models import Quote
+from repro.core import evidence as evidence_types
 from repro.corpus import Corpus, CorpusEntry, EntryState
 from repro.crosscheck import Freeze
 from repro.manifest import load
+from repro.models import (
+    ComparisonStatus,
+    ExtractionStatus,
+    Outcome,
+    QuoteEvidence,
+    Reason,
+)
 from repro.reproduce import reproduce
 from repro.verify import verify
 
@@ -243,6 +253,84 @@ def test_the_same_passage_occurring_once_is_verified(tmp_path):
 
     assert decision.reason is Reason.PASSAGE_PRESENT
     assert decision.outcome is Outcome.VERIFIED
+
+
+# --- a quotation occurring twice says which occurrence it means ---------------------------------
+
+TWO_SAMPLES = f"""\
+In the pilot sample: {PASSAGE}, before attrition.
+In the full sample: {PASSAGE}, after attrition.
+"""
+
+
+def _anchored(tmp_path, **anchors: str):
+    (tmp_path / "manuscript.txt").write_text(TWO_SAMPLES)
+    lines = "".join(f"        {name}: {json.dumps(text)}\n" for name, text in anchors.items())
+    (tmp_path / "repro.yaml").write_text(QUOTED_TWICE + lines)
+    manifest = load(tmp_path / "repro.yaml")
+    return manifest.claims[0].evidence[0], verify(manifest).claims[0].decisions[0]
+
+
+def test_a_passage_occurring_twice_with_no_prefix_or_suffix_is_ambiguous(tmp_path):
+    _, decision = _anchored(tmp_path)
+
+    assert decision.reason is Reason.QUOTATION_AMBIGUOUS
+    assert decision.outcome is Outcome.NOT_FOUND
+
+
+def test_a_prefix_naming_the_words_before_the_second_occurrence_verifies_it(tmp_path):
+    _, decision = _anchored(tmp_path, prefix="In the full sample: ")
+
+    assert decision.reason is Reason.PASSAGE_PRESENT
+    assert decision.outcome is Outcome.VERIFIED
+
+
+def test_a_suffix_naming_the_words_after_the_second_occurrence_verifies_it(tmp_path):
+    _, decision = _anchored(tmp_path, suffix=", after attrition")
+
+    assert decision.reason is Reason.PASSAGE_PRESENT
+    assert decision.outcome is Outcome.VERIFIED
+
+
+def test_a_prefix_and_a_suffix_from_different_occurrences_single_out_neither(tmp_path):
+    _, decision = _anchored(tmp_path, prefix="In the pilot sample: ", suffix=", after attrition")
+
+    assert decision.reason is Reason.QUOTATION_AMBIGUOUS
+    assert decision.outcome is Outcome.NOT_FOUND
+
+
+def test_a_prefix_matching_neither_occurrence_leaves_the_quotation_ambiguous(tmp_path):
+    # What `citations` answers for an anchor that singles out nothing is `ambiguous`, with a
+    # detail that says the anchors were read. It is not `not found`: the passage is there twice.
+    _, decision = _anchored(tmp_path, prefix="In the replication sample: ")
+
+    assert decision.extraction is ExtractionStatus.INVALID
+    assert decision.comparison is ComparisonStatus.NOT_APPLICABLE
+    assert decision.reason is Reason.QUOTATION_AMBIGUOUS
+    assert decision.outcome is Outcome.NOT_FOUND
+    assert "prefix/suffix do not single one out" in decision.detail
+
+
+def test_a_manifest_carrying_a_prefix_and_a_suffix_loads_them_as_written(tmp_path):
+    # The space a prefix ends on is what separates its last word from the passage's first, so
+    # neither end of either anchor is stripped.
+    evidence, _ = _anchored(tmp_path, prefix="In the full sample: ", suffix=" , after attrition ")
+
+    assert isinstance(evidence, QuoteEvidence)
+    assert evidence.prefix == "In the full sample: "
+    assert evidence.suffix == " , after attrition "
+
+
+def test_a_quote_with_no_prefix_or_suffix_has_empty_ones(tmp_path):
+    evidence, _ = _anchored(tmp_path)
+
+    assert isinstance(evidence, QuoteEvidence)
+    assert (evidence.prefix, evidence.suffix) == ("", "")
+
+
+def test_the_whitespace_preserving_type_is_the_one_citations_declares():
+    assert evidence_types.Verbatim == citations.models.Verbatim
+    assert QuoteEvidence.model_fields["prefix"].metadata == Quote.model_fields["prefix"].metadata
 
 
 def test_strict_verify_grades_an_ambiguous_quotation_as_a_finding_not_a_defect(tmp_path, capsys):
