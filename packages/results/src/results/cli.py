@@ -4,6 +4,7 @@ results init              start tracking results here
 results seal <file>...    hash inputs before a run (prereg, script, data)
 results access <note>     record a data-access event (what you looked at, when)
 results run <file>...     record outputs after a run completes
+results label <run-id>    declare after the fact that a recorded run's outputs hold no outcome
 results claim <text>      bind a manuscript claim to a run's output
 results review <file>...  record that someone examined these files, and what they found
 results annotate <file>...  link these files to something outside the ledger; linked, not checked
