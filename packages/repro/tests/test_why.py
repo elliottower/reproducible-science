@@ -720,3 +720,23 @@ def test_a_file_read_at_two_addresses_is_pinned_once_and_text_keeps_its_lines(tm
     assert "twice\n  The total in a0 is 6.\n  So is the other figure.\n" in out
     assert out.count("matches its pinned digest") == 1
     assert "total: a0 at /total: holds 6" in out and "other: a0 at /other: holds 6" in out
+
+
+def test_a_later_rerun_that_did_not_reproduce_is_shown_beside_the_one_that_did(tmp_path, capsys):
+    records = chain(tmp_path, 1)
+    project = manifest(tmp_path, records, [claim("a1")])
+    later = "2026-02-01T00:00:00+00:00"
+    changed = rerun(tmp_path, records[0]).model_copy(
+        update={"state": Regeneration.CHANGED, "actual": "0" * 64, "bytes_identical": False}
+    )
+    append(ReproductionReport(started_at=later, regenerations=(changed,)), tmp_path)
+
+    account = why(project, "on-a1")
+    assert account.assertions[0].state is Freshness.UNDETERMINED
+    assert account.chain[0].regeneration.rerun_at == THEN
+    established, _, summary = printed(project, "on-a1", capsys)
+    assert f"re-run of {THEN} reproduced, and its output is the bytes now on disk" in established
+    assert (
+        f"later rerun did not reproduce: the re-run of {later} read the same inputs" in established
+    )
+    assert summary.endswith("1 of 1 reads a file with a recorded producer, 1 undetermined")

@@ -517,6 +517,12 @@ def _finding_said(found: StaleFinding, paths: dict[str, str]) -> str:
         return f"{cause} since the re-run of {found.rerun_at}"
     if found.cause is StaleCause.CYCLE:
         return f"{cause}: {found.regeneration} is upstream of itself"
+    if found.cause is StaleCause.LATER_RERUN_DID_NOT_REPRODUCE:
+        wrote = f"wrote {found.observed[:12]}" if found.observed else "wrote no output"
+        return (
+            f"{cause}: the re-run of {found.rerun_at} read the same inputs and {wrote}, "
+            f"on disk {(found.on_disk or 'nothing')[:12]}"
+        )
     return f"{cause}: {_named(found.artifact, paths)}"
 
 
@@ -532,7 +538,12 @@ def _stale_lines(report: StalenessReport) -> list[str]:
         label = (
             "UNDETERMINED"
             if found.cause
-            in (StaleCause.INPUT_MISSING, StaleCause.OUTPUT_MISSING, StaleCause.CYCLE)
+            in (
+                StaleCause.INPUT_MISSING,
+                StaleCause.OUTPUT_MISSING,
+                StaleCause.CYCLE,
+                StaleCause.LATER_RERUN_DID_NOT_REPRODUCE,
+            )
             else "STALE"
         )
         lines.append(f"  {label:<13} {outputs[found.regeneration]}: {said}")
