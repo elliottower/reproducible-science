@@ -7,6 +7,8 @@ import enum
 
 from pydantic import BaseModel, ConfigDict
 
+from repro.core.evidence import NumberForm
+
 SCHEMA_VERSION = "repro/1"
 
 
@@ -29,13 +31,18 @@ class NumberRule(enum.StrEnum):
     and the first that holds is the one named."""
 
     LINK = "link"
-    """Inside a URL, a DOI or an arXiv identifier."""
+    """Inside a URL."""
     DATE = "date"
     """One of the three parts of a date written `2026-10-13`."""
+    DOCUMENT = "document_identifier"
+    """The number a document is known by: what follows `rfc`, `iso`, `iec`, `ieee`, `ansi`,
+    `ecma`, `fips`, `pep`, `arxiv`, `doi`, `isbn`, `issn`, `pmid` or `pmcid`, as in `rfc 6901`
+    and `arxiv 2609.22111`, and the digits of a DOI."""
     NAME = "name"
-    """Part of a name: a letter stands immediately before the digits, `v15` and `sha256`, or
-    before a hyphen or underscore that touches them, `gpt-4`, or the digits open a run of
-    letters and digits that holds more digits later, as a hexadecimal digest does."""
+    """Part of a name: a letter stands immediately before the digits, `v15zw` and `sha256sum`,
+    or a hyphen or underscore joins them to a part that holds a letter, `gpt-4` and `9750` in
+    `i7-9750h`, or the digits open a run of letters and digits that holds more digits later,
+    as a hexadecimal digest does. An em or en dash is punctuation and joins nothing."""
     VERSION_OR_SECTION = "version_or_section"
     """Digits joined by two or more full stops, `0.5.5` and `3.2.1`."""
     CITATION = "citation"
@@ -66,7 +73,9 @@ class PrintedNumber(BaseModel):
     `24.11%`, `eighteen`."""
     value: str | None = None
     """The decimal it is read as, without grouping commas or a percent sign. None for digits
-    no value is read from: a name, a link, a version."""
+    no value is read from: a name, a link, a document's identifier, a version."""
+    form: NumberForm = NumberForm.DECIMAL
+    """Whether it is printed in digits or as a word."""
     offset: int
     """Where it starts in the normalized text."""
     line: int | None = None
@@ -82,7 +91,11 @@ class PrintedNumber(BaseModel):
     """The author's reason, where the manifest sets it aside."""
     reported_elsewhere: bool = False
     """Of an unbound number only: some assertion in the manifest reports this value, and
-    none accounts for this occurrence."""
+    none accounts for this occurrence. Marked where the value has two digits or more, or a
+    decimal point."""
+    reported_elsewhere_one_digit: bool = False
+    """The same, for a value of one digit and no decimal point. Most manifests report some
+    `4`, so the match says little: it is counted and not marked."""
 
 
 class TextInventory(BaseModel):

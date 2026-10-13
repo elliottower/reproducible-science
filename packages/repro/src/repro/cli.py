@@ -49,6 +49,7 @@ from repro.models import (
     ChainNode,
     ClaimAccount,
     Freshness,
+    NumberForm,
     NumbersReport,
     Ordering,
     Outcome,
@@ -851,10 +852,14 @@ def _numbers_lines(report: NumbersReport) -> list[str]:
     lines.append(
         f"  {total} numbers in {texts} text{'' if texts == 1 else 's'}: {_count_said(counts)}"
     )
-    elsewhere = sum(number.reported_elsewhere for number in report.numbers)
+    unbound = [number for number in report.numbers if number.standing is Standing.UNBOUND]
+    words = sum(number.form is NumberForm.CARDINAL_WORD for number in unbound)
+    lines.append(f"  {len(unbound)} unbound: {len(unbound) - words} numerals, {words} number words")
     lines.append(
-        f"  {elsewhere} of the {counts[Standing.UNBOUND]} unbound print a value an assertion "
-        "reports, outside the passage it reports it for"
+        f"  {sum(number.reported_elsewhere for number in unbound)} of the {len(unbound)} "
+        "unbound print a value an assertion reports, outside the passage it reports it for; "
+        f"{sum(number.reported_elsewhere_one_digit for number in unbound)} more match on one "
+        "digit and are not marked"
     )
     return lines
 

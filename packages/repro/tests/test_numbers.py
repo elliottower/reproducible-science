@@ -274,7 +274,57 @@ def test_a_set_aside_entry_needs_a_reason(tmp_path):
         ("the 95th percentile", [("95", "95", "ordinal")]),
         ("one of the files", [("one", "1", "the_word_one")]),
         ("at https://example.org/v2/2024 now", [("2", None, "link"), ("2024", None, "link")]),
-        ("doi:10.1000/182 cited", [("10.1000", None, "link"), ("182", None, "link")]),
+        (
+            "doi:10.1000/182 cited",
+            [("10.1000", None, "document_identifier"), ("182", None, "document_identifier")],
+        ),
+        # Lines of a real manuscript's text, each with what leaked before its rule read it.
+        (
+            "(macbookpro16,1: 6-core intel core i7-9750h at 2.6,ghz, 16,gb of memory",
+            [
+                ("16,1", None, "name"),
+                ("6", "6", None),
+                ("7", None, "name"),
+                ("9750", None, "name"),
+                ("2.6", "2.6", None),
+                ("16", "16", None),
+            ],
+        ),
+        (
+            "| sha256sum -c 10 | 647 |",
+            [("256", None, "name"), ("10", "10", None), ("647", "647", None)],
+        ),
+        (
+            "paper/continuous_verification_v15zw_ai4sci.txt",
+            [("15", None, "name"), ("4", None, "name")],
+        ),
+        (
+            "(ubuntu-24.04: amd epyc 9v45, 2 processors",
+            [("24.04", None, "name"), ("9", None, "name"), ("45", None, "name"), ("2", "2", None)],
+        ),
+        ("value here | rfc 6901 json pointer | decimal", [("6901", None, "document_identifier")]),
+        (
+            "iso 8601 and arxiv 2609.22111",
+            [("8601", None, "document_identifier"), ("2609.22111", None, "document_identifier")],
+        ),
+        (
+            "isbn 978-3-16-148410-0 and pep-8",
+            [(n, None, "document_identifier") for n in ("978", "3", "16", "148410", "0", "8")],
+        ),
+        # An em or en dash before a number ends a clause. It joins no name and is no sign.
+        ("accuracy\u201492 of 100", [("92", "92", None), ("100", "100", None)]),
+        ("we kept three \u20143 of them", [("three", "3", None), ("3", "3", None)]),
+        ("weeks 10\u201312", [("10", "10", None), ("12", "12", None)]),
+        ("recall---61 in all", [("61", "61", None)]),
+        ("a drop of \u22120.42 and gpt\u20104", [("-0.42", "-0.42", None), ("4", None, "name")]),
+        # Left counted: a status code is a statement the text makes, and a year rule or a
+        # citation rule narrowed by its surroundings would be a judgment.
+        ("the run exits 1, and exit code 2", [("1", "1", None), ("2", "2", None)]),
+        ("a count of 1950 cells", [("1950", "1950", "year")]),
+        (
+            "95% ci [12, 18]",
+            [("95%", "95", None), ("12", "12", "citation"), ("18", "18", "citation")],
+        ),
     ],
 )
 def test_each_form_of_number_is_read_and_each_rule_names_what_it_sets_aside(
@@ -325,8 +375,9 @@ def test_every_number_stands_in_one_place_and_the_counts_add_up(tmp_path, capsys
         '  set aside with a reason: 1 in paper "took 0.53 seconds": a timing, not a result',
         "  11 numbers in 2 texts: 1 bound, 3 set aside by rule, 1 set aside with a reason, "
         "6 unbound",
+        "  6 unbound: 6 numerals, 0 number words",
         "  1 of the 6 unbound print a value an assertion reports, outside the passage it "
-        "reports it for",
+        "reports it for; 0 more match on one digit and are not marked",
     ]
 
 
@@ -413,3 +464,49 @@ def test_with_no_text_to_read_the_command_says_so_and_exits_2(tmp_path, capsys, 
     with pytest.raises(ArtifactMissingError):
         numbers(made, only=("paper",))
     assert main(["numbers", "--text", "paper"]) == 2
+
+
+def test_a_value_reported_elsewhere_is_marked_only_where_it_has_two_digits_or_a_point(
+    tmp_path, capsys
+):
+    stated = "We kept 4 sites, 25 fixtures, 0.5 of the rows and four readers"
+    text = stated + ". Later: 4 sites, 25 fixtures, 0.5 of the rows, four readers, twenty-five.\n"
+    claims = [
+        claim(name, stated, reported)
+        for name, reported in (("sites", "4"), ("fixtures", "25"), ("rows", "0.5"))
+    ]
+    made = project(tmp_path, text, claims)
+    report = numbers(made)
+    later = report.numbers[4:]
+    assert [(n.text, n.reported_elsewhere, n.reported_elsewhere_one_digit) for n in later] == [
+        ("4", False, True),
+        ("25", True, False),
+        ("0.5", True, False),
+        ("four", False, True),
+        ("twenty-five", True, False),
+    ]
+    # The word in the passage is bound by the claim that reports its value.
+    assert [(n.text, n.standing) for n in report.numbers[:4]] == [
+        ("4", BOUND),
+        ("25", BOUND),
+        ("0.5", BOUND),
+        ("four", BOUND),
+    ]
+    assert main(["numbers", str(made.path)]) == 0
+    assert capsys.readouterr().out.splitlines()[-2:] == [
+        "  5 unbound: 3 numerals, 2 number words",
+        "  3 of the 5 unbound print a value an assertion reports, outside the passage it "
+        "reports it for; 2 more match on one digit and are not marked",
+    ]
+
+
+def test_a_number_whose_line_cannot_be_placed_is_printed_with_its_offset(
+    tmp_path, capsys, monkeypatch
+):
+    made = project(tmp_path, "First line.\nThen 12 trials.\n")
+    assert [n.line for n in numbers(made, only=("paper",)).numbers] == [2]
+    monkeypatch.setattr("repro.numbers._line_starts", lambda raw, folded: None)
+    (number,) = numbers(made, only=("paper",)).numbers
+    assert (number.line, number.offset) == (None, 17)
+    assert main(["numbers", str(made.path), "--text", "paper"]) == 0
+    assert "    offset 17  12  first line. then 12 trials." in capsys.readouterr().out

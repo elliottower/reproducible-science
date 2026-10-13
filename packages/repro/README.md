@@ -261,7 +261,8 @@ repro.yaml
   set aside by rule: 1 name, 1 label, 1 year
   set aside with a reason: 1 in paper "took 12 minutes": how long the form takes, not a result
   8 numbers in 1 text: 1 bound, 3 set aside by rule, 1 set aside with a reason, 3 unbound
-  0 of the 3 unbound print a value an assertion reports, outside the passage it reports it for
+  3 unbound: 3 numerals, 0 number words
+  0 of the 3 unbound print a value an assertion reports, outside the passage it reports it for; 0 more match on one digit and are not marked
 ```
 
 Each number stands in exactly one place, so the four counts add up to the total:
@@ -273,7 +274,9 @@ Each number stands in exactly one place, so the four counts add up to the total:
 | `set aside by rule` | a named rule reads the digits as something other than a quantity |
 | `unbound` | printed, and nothing in the manifest accounts for it |
 
-The same digits `reported` by a claim about another passage bind nothing. That occurrence is unbound, marked `(reported elsewhere)` on its line, and counted in the last line of the summary.
+The same digits `reported` by a claim about another passage bind nothing. That occurrence is unbound, marked `(reported elsewhere)` on its line, and counted in the last line of the summary. It is marked where the value has two digits or more, or a decimal point. A single digit matches some reported value in most manifests, so a bare `4` is counted in the same line as matching on one digit and is not marked.
+
+A cardinal written as a word is counted as any other number, because `thirty-eight claims are bound` is a claim. The summary says how many of the unbound are numerals and how many are number words.
 
 The text read is each artifact a claim reads its own sentence from: one a `quote` reads in a claim that also offers an assertion of another kind, or one a prose address reads. A `quote` alone in its claim is a quotation from a source, and the source is not counted. `--text <artifact-id>`, repeatable, names the texts instead.
 
@@ -281,9 +284,10 @@ A number is digits with an optional sign, grouping commas, a decimal point and a
 
 | rule | what it sets aside |
 |---|---|
-| `link` | digits inside a URL, a DOI or an arXiv identifier |
+| `link` | digits inside a URL |
 | `date` | the three parts of a date written `2026-10-13` |
-| `name` | digits with a letter immediately before them, `v15` and `sha256`, or before a hyphen or underscore that touches them, `gpt-4`, and digits that open a run of letters and digits holding more digits, as a hexadecimal digest does |
+| `document identifier` | the number after `rfc`, `iso`, `iec`, `ieee`, `ansi`, `ecma`, `fips`, `pep`, `arxiv`, `doi`, `isbn`, `issn`, `pmid` or `pmcid`, as in `rfc 6901` and `arxiv 2609.22111`, and the digits of a DOI |
+| `name` | digits with a letter immediately before them, `v15zw` and `sha256sum`, digits a hyphen or underscore joins to a part that holds a letter, `gpt-4` and `9750` in `i7-9750h`, and digits that open a run of letters and digits holding more digits, as a hexadecimal digest does |
 | `version or section` | digits joined by two or more full stops, `0.5.5` |
 | `citation` | whole numbers from 1 up, alone in square brackets: `[12]`, `[3, 7-9]` |
 | `label` | the number after `section`, `figure`, `table`, `equation`, `appendix`, `chapter`, `page`, `algorithm`, `listing`, `theorem`, `lemma`, `proposition`, `corollary`, `definition`, `footnote`, `step` or `line`, or the usual abbreviation of one, and both ends of a range written `2-4` |
@@ -292,7 +296,9 @@ A number is digits with an optional sign, grouping commas, a decimal point and a
 | `year` | four digits from 1800 to 2099 with no sign, separator, decimal point or percent sign |
 | `the word one` | the word `one`, which is a pronoun more often than a count |
 
-A binding or a `set_aside` entry takes precedence over a rule, so a year a claim reports is bound. The rules read characters and not meaning: a bare count of 1,950 printed `1950` is set aside as a year, `[12, 18]` as a citation, and a page number alone on its line, which looks like a table cell, is counted. The JSON carries every occurrence, so each rule can be audited.
+A binding or a `set_aside` entry takes precedence over a rule, so a year a claim reports is bound. An em or en dash before a number is punctuation: `accuracy—92` holds the number 92, joined to no name and carrying no sign.
+
+The rules read characters and not meaning, and where telling two readings apart would take a judgment the rule is left as it is. A bare count of 1,950 printed `1950` is set aside as a year and `[12, 18]` as a citation. A status code, `exit 2`, is counted, because it is a statement the text makes about a program. A number inside a printed listing of code or of a manifest is counted, because the extracted text does not say where a listing starts. A page number alone on its line, which looks like a table cell, is counted. The JSON carries every occurrence with the rule that set it aside, so each rule can be audited.
 
 To declare that a passage holds no claim, list it with the reason:
 

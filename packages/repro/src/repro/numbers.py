@@ -21,7 +21,8 @@ the rule that says what they are, `repro.models.NumberRule`.
 occurs and an assertion of the same claim carries a `reported` value that is this number,
 digit for digit at the printed precision, or where it lies in the value a prose address
 selects. The same digits reported by some other claim bind nothing: that occurrence is
-unbound and marked `reported_elsewhere`.
+unbound and marked `reported_elsewhere`, where the value has two digits or a decimal point; a
+single digit matching some reported value is counted apart and not marked.
 """
 
 from __future__ import annotations
@@ -43,6 +44,7 @@ from repro.models import (
     CorrespondenceEvidence,
     Digest,
     Manifest,
+    NumberForm,
     NumberRule,
     NumbersReport,
     PrintedNumber,
@@ -64,6 +66,16 @@ _WORD = re.compile(r"[a-z]+(?:-[a-z]+)*")
 _YEAR = re.compile(r"(?:18|19|20)\d\d")
 _DATE = re.compile(r"(?<![\d-])\d{4}-\d{2}-\d{2}(?![\d-])")
 _DOI = re.compile(r"(?<![\d.])10\.\d{4,9}/")
+#: A standard, a preprint or a book named by its series and number: `rfc 6901`, `iso 8601`.
+_DOCUMENT = re.compile(
+    r"(?<![a-z])(?:rfc|iso(?:/iec)?|iec|ieee|ansi|ecma|fips|pep|arxiv|doi|isbn|issn|pmid|pmcid)"
+    r"(?:: ?|[ -])?(\d+(?:[.:/-]\d+)*)"
+)
+#: An em or en dash set against the digit after it. `passage_fold` writes both as a hyphen, so
+#: the text is folded a second time with these replaced by a character it leaves alone, to
+#: tell the dash that ends a clause from the hyphen that joins a name.
+_DASH_BEFORE_DIGIT = re.compile("[\u2014\u2013](?=\\d)")
+_BAR = "\u2015"
 _CITATION = re.compile(r"\[[1-9]\d*(?:\s?[,;-]\s?[1-9]\d*)*\]")
 _LIST_MARKER = re.compile(r"\(\d{1,2}\)")
 _LABEL = re.compile(
@@ -149,18 +161,20 @@ def _read(value: str | None) -> decimal.DecimalTuple | None:
 def _line_starts(raw: str, folded: str) -> list[int] | None:
     """Where each line of the extracted text starts in the normalized text.
 
-    `passage_fold` joins the lines with one space and joins a line ending in a hyphen to the
-    next with nothing. This walks the lines under that rule, and returns None where what it
+    `passage_fold` joins the lines with one space, and joins a word a hyphen splits across a
+    line break with nothing. This walks the lines under that rule, and returns None where what it
     walked is not the normalized text, so no line number is ever a guess.
     """
-    lines = raw.split("\n")
+    pieces = [passage_fold(line) for line in raw.split("\n")]
     starts, at = [], 0
-    for number, line in enumerate(lines):
+    for number, piece in enumerate(pieces):
         starts.append(at)
-        piece = passage_fold(line)
         if not piece:
             continue
-        broken = piece.endswith("-") and number < len(lines) - 1
+        after = next((later for later in pieces[number + 1 :] if later), "")
+        # A word split across the break: a letter before the hyphen and one opening the next
+        # line that holds anything.
+        broken = piece.endswith("-") and piece[-2:-1].isalpha() and after[:1].isalpha()
         if broken:
             piece = piece[:-1]
         if not folded.startswith(piece.rstrip(), at):
@@ -169,11 +183,24 @@ def _line_starts(raw: str, folded: str) -> list[int] | None:
     return starts
 
 
-def _tokens(folded: str) -> list[_Token]:
+def _dashes(raw: str, folded: str) -> frozenset[int]:
+    """Where the normalized text holds a hyphen that was an em or en dash before a digit."""
+    marked = passage_fold(_DASH_BEFORE_DIGIT.sub(_BAR, raw))
+    if len(marked) != len(folded):
+        return frozenset()
+    return frozenset(
+        found.start() for found in re.finditer(_BAR, marked) if folded[found.start()] == "-"
+    )
+
+
+def _tokens(folded: str, dashes: frozenset[int]) -> list[_Token]:
     """Every number in the text, in order: digits as the prose adapter reads them, and each
-    cardinal written as one word."""
+    cardinal written as one word. A dash before the digits is punctuation and not a sign: an
+    em or en dash, or the last of a run of hyphens."""
     found = []
     for first, end, named in numerals(folded):
+        if folded[first] == "-" and (first in dashes or folded[first - 1 : first] == "-"):
+            first += 1
         whole = folded[first:end]
         if named:
             found.append(_Token(first, end, None, True))
@@ -198,7 +225,21 @@ def _run(folded: str, at: int) -> str:
     return folded[lo : len(folded) if hi == -1 else hi]
 
 
-def _rule(folded: str, token: _Token, marked: dict[NumberRule, list[Span]]) -> NumberRule | None:
+def _joined(folded: str, start: int, dashes: frozenset[int]) -> bool:
+    """Whether a hyphen or underscore joins the digits to a part before them that holds a
+    letter: `gpt-4`, and `9750` in `i7-9750h`."""
+    at = start - 1
+    if folded[at:start] not in ("-", "_") or at in dashes:
+        return False
+    lo = at
+    while lo > 0 and folded[lo - 1].isalnum():
+        lo -= 1
+    return any(character.isalpha() for character in folded[lo:at])
+
+
+def _rule(
+    folded: str, token: _Token, marked: dict[NumberRule, list[Span]], dashes: frozenset[int]
+) -> NumberRule | None:
     """The first rule that reads this token as something other than a quantity."""
     start, end = token.start, token.end
     text = folded[start:end]
@@ -207,15 +248,13 @@ def _rule(folded: str, token: _Token, marked: dict[NumberRule, list[Span]]) -> N
         return any(lo <= start and end <= hi for lo, hi in marked[rule])
 
     run = _run(folded, start)
-    if "://" in run or run.startswith(("doi:", "arxiv:", "www.")) or _DOI.search(run):
+    if "://" in run or run.startswith("www."):
         return NumberRule.LINK
     if within(NumberRule.DATE):
         return NumberRule.DATE
-    if (
-        token.named
-        or (folded[start - 1 : start] in ("-", "_") and folded[start - 2 : start - 1].isalpha())
-        or _MORE_DIGITS.match(folded, end)
-    ):
+    if within(NumberRule.DOCUMENT) or run.startswith(("doi:", "arxiv:")) or _DOI.search(run):
+        return NumberRule.DOCUMENT
+    if token.named or _joined(folded, start, dashes) or _MORE_DIGITS.match(folded, end):
         return NumberRule.NAME
     if text.count(".") > 1:
         return NumberRule.VERSION_OR_SECTION
@@ -235,6 +274,7 @@ def _marked(folded: str) -> dict[NumberRule, list[Span]]:
     """The stretches of the text the rules that read their surroundings apply to."""
     return {
         NumberRule.DATE: [found.span() for found in _DATE.finditer(folded)],
+        NumberRule.DOCUMENT: [found.span(1) for found in _DOCUMENT.finditer(folded)],
         NumberRule.CITATION: [found.span() for found in _CITATION.finditer(folded)],
         NumberRule.LABEL: [found.span(1) for found in _LABEL.finditer(folded)],
         NumberRule.LIST_MARKER: [found.span() for found in _LIST_MARKER.finditer(folded)],
@@ -287,6 +327,7 @@ def _inventory(
         raise ArtifactUnreadableError(path, e.detail) from e
     folded = passage_fold(raw)
     starts = _line_starts(raw, folded)
+    dashes = _dashes(raw, folded)
 
     # What binds: the claim, the stretch of text, and the values it binds there. None is the
     # value a prose address selects, which the assertion reads whatever it holds.
@@ -307,7 +348,7 @@ def _inventory(
     marked = _marked(folded)
 
     numbers = []
-    for token in _tokens(folded):
+    for token in _tokens(folded, dashes):
         start, end = token.start, token.end
         value = _read(token.value)
         percent = folded[end : end + 1] == "%"
@@ -332,12 +373,20 @@ def _inventory(
         elif held is not None:
             standing, reason = Standing.SET_ASIDE_WITH_A_REASON, entries[held].reason
             counted[held] += 1
-        elif rule := _rule(folded, token, marked):
+        elif rule := _rule(folded, token, marked, dashes):
             standing = Standing.SET_ASIDE_BY_RULE
         else:
             standing = Standing.UNBOUND
-        # A name, a link and a version hold digits and no value.
-        valued = rule not in (NumberRule.NAME, NumberRule.LINK, NumberRule.VERSION_OR_SECTION)
+        # A name, a link, a document's identifier and a version hold digits and no value.
+        valued = rule not in (
+            NumberRule.NAME,
+            NumberRule.LINK,
+            NumberRule.DOCUMENT,
+            NumberRule.VERSION_OR_SECTION,
+        )
+        elsewhere = standing is Standing.UNBOUND and value in reported
+        # One digit with no decimal point matches some reported value in most manifests.
+        telling = value is not None and (len(value.digits) > 1 or value.exponent != 0)
         numbers.append(
             PrintedNumber(
                 text=folded[start : end + 1 if percent else end],
@@ -349,7 +398,9 @@ def _inventory(
                 rule=rule,
                 claims=claims,
                 reason=reason,
-                reported_elsewhere=standing is Standing.UNBOUND and value in reported,
+                form=NumberForm.CARDINAL_WORD if folded[start].isalpha() else NumberForm.DECIMAL,
+                reported_elsewhere=elsewhere and telling,
+                reported_elsewhere_one_digit=elsewhere and not telling,
             )
         )
 
