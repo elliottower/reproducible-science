@@ -9,6 +9,7 @@
     repro why             say what the record establishes for one claim, and what it does not
     repro numbers         count every number the manuscript prints, bound to a claim or not
     repro export          write one record per checked assertion, for another program to read
+    repro ci              run the checks in a workflow, with a summary on the run page
     repro check           run every tool this project uses, in one pass
     repro audit           clone a repository at a pinned commit and run every tool over it
     repro prereg          run `prereg`: freeze a plan, and record what deviated from it
@@ -39,7 +40,7 @@ from provenance_core import atomic_write
 from provenance_core.gitref import try_run
 from results.ledger import ChainError
 
-from repro import __version__, audit, crosscheck
+from repro import __version__, audit, ci, crosscheck
 from repro.checks import LOCAL as LOCAL_CHECKS
 from repro.checks import RECORD as CHECKS
 from repro.checks import SET_ASIDE
@@ -66,15 +67,17 @@ from repro.models import (
     Reading,
     Reason,
     Regeneration,
+    ReproductionReport,
     StaleCause,
     StaleFinding,
     StalenessReport,
     Standing,
     Validity,
+    VerificationReport,
     Warning_,
 )
 from repro.numbers import numbers as run_numbers
-from repro.policy import PROFILES
+from repro.policy import PROFILES, Assessment, Policy
 from repro.record import check_records
 from repro.renderers import to_sarif
 from repro.reproduce import RECORD
@@ -413,6 +416,13 @@ def cmd_verify(args: argparse.Namespace) -> int:
         )
         return 0 if assessment.passed else 1
 
+    _verify_text(path, report, policy, assessment)
+    return 0 if assessment.passed else 1
+
+
+def _verify_text(
+    path: Path, report: VerificationReport, policy: Policy, assessment: Assessment
+) -> None:
     print(f"{path}\n")
     for artifact in report.artifacts:
         if artifact.validity is Validity.BROKEN_PIN:
@@ -459,7 +469,6 @@ def cmd_verify(args: argparse.Namespace) -> int:
     )
     for v in assessment.errors[:10]:
         print(f"    error   {v.rule:<26} {v.subject}: {v.detail[:44]}")
-    return 0 if assessment.passed else 1
 
 
 #: How each outcome is shown. `not_rerun` is the value a record carries; a reader sees the words.
@@ -503,6 +512,17 @@ def cmd_reproduce(args: argparse.Namespace) -> int:
         )
         return 0 if assessment.passed else 1
 
+    _reproduce_text(path, report, policy, assessment, recorded)
+    return 0 if assessment.passed else 1
+
+
+def _reproduce_text(
+    path: Path,
+    report: ReproductionReport,
+    policy: Policy,
+    assessment: Assessment,
+    recorded: Path,
+) -> None:
     states = report.regenerations
     print(f"{path}\n")
     print(f"  re-ran {sum(1 for s in states if s.executed)} of {len(states)}\n")
@@ -542,7 +562,6 @@ def cmd_reproduce(args: argparse.Namespace) -> int:
         f"  ({len(assessment.errors)} errors, {len(assessment.warnings)} warnings)"
     )
     print(f"  recorded in {recorded.relative_to(path.resolve().parent).as_posix()}")
-    return 0 if assessment.passed else 1
 
 
 def _said(state: enum.StrEnum) -> str:
@@ -697,6 +716,13 @@ def cmd_stale(args: argparse.Namespace) -> int:
         )
         return 0 if assessment.passed else 1
 
+    _stale_text(path, report, policy, assessment)
+    return 0 if assessment.passed else 1
+
+
+def _stale_text(
+    path: Path, report: StalenessReport, policy: Policy, assessment: Assessment
+) -> None:
     print(f"{path}\n")
     if not report.reruns:
         print(f"  {RECORD.as_posix()} holds no re-run; `repro reproduce` records one.\n")
@@ -705,7 +731,6 @@ def cmd_stale(args: argparse.Namespace) -> int:
         f"  policy {policy.name}: {'passed' if assessment.passed else 'FAILED'}"
         f"  ({len(assessment.errors)} errors, {len(assessment.warnings)} warnings)"
     )
-    return 0 if assessment.passed else 1
 
 
 def _steps(count: int | None) -> str:
@@ -1310,6 +1335,8 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
         "--only", action="append", choices=sorted(BY_NAME), help="restrict to one tool; repeatable"
     )
     p_check.set_defaults(func=cmd_check)
+
+    ci.add_parser(sub, verify=_verify_text, reproduce=_reproduce_text, stale=_stale_text)
 
     # An audit runs these inside a clone of someone else's repository, and keeps no record of
     # its checks in that clone's git directory.

@@ -263,7 +263,7 @@ directory, the freeze goes ahead.
 - To count every number the manuscript prints, and which no claim accounts for: `repro numbers`
 - When a reviewer asks where a number came from
 - When a manuscript and its data may have drifted apart
-- In CI, as `repro verify --policy strict`
+- In CI: `repro ci init` writes a workflow that runs `repro ci claims`, with a summary on the run page
 
 ## What it will not do
 
