@@ -82,6 +82,11 @@
           "title": "Name",
           "type": "string"
         },
+        "url": {
+          "default": "",
+          "title": "Url",
+          "type": "string"
+        },
         "version": {
           "title": "Version",
           "type": "string"

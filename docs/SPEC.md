@@ -1207,7 +1207,7 @@ evaluated by the functions `repro verify` uses and by no others.
 
 | field | holds |
 |---|---|
-| `record`, `checker`, `checked_at` | the record version, the tool's name and version, when the check ran |
+| `record`, `checker`, `checked_at` | the record version, the tool's name, version and URL, when the check ran |
 | `manifest` | its path and the sha256 of its bytes |
 | `claim` | `id`, `text`, `where`, the claim digest of §1, its line in the manifest, and each passage its quote assertions name, with the line where a text file holds it exactly once |
 | `assertion` | `kind`, `name`, its `position` among the claim's assertions of that kind and name, its `index` among all of them, and its line in the manifest |

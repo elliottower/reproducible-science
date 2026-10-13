@@ -77,6 +77,10 @@ RECORD_VERSION = "repro.check/0.1-experimental"
 
 CHECKER = "repro"
 
+#: Where the checker is described. A record names it so a reader can find out what the tool
+#: is without knowing the name already.
+CHECKER_URL = "https://github.com/elliottower/reproducible-science"
+
 
 class CheckType(enum.StrEnum):
     """Which proposition a record is about. Closed, and defined once, in SPEC 7.10.
@@ -206,6 +210,8 @@ class Checker(BaseModel):
 
     name: str
     version: str
+    url: str = ""
+    """Where the checker is described."""
 
 
 class ManifestRef(BaseModel):
@@ -695,7 +701,9 @@ def check_records(
     and writes nothing.
     """
     when = checked_at or datetime.datetime.now(datetime.UTC).replace(microsecond=0)
-    checker = Checker(name=CHECKER, version=distribution_version(ADAPTER_DISTRIBUTION))
+    checker = Checker(
+        name=CHECKER, version=distribution_version(ADAPTER_DISTRIBUTION), url=CHECKER_URL
+    )
     reference = _manifest_ref(manifest)
     lines = _declared_lines(manifest.path) if manifest.path else {}
 
@@ -1022,6 +1030,7 @@ def validate(data: Mapping[str, Any]) -> ExportRecord:
 
 __all__ = [
     "CHECKER",
+    "CHECKER_URL",
     "CHECK_TYPES",
     "KNOWN_ADDRESS_KINDS",
     "NATIVE_OUTCOMES",
