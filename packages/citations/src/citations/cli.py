@@ -45,7 +45,7 @@ RESULTS = ["found", "not found", "ambiguous", "indeterminate", "unchecked"]
 #: for what fits is why this is derived instead of written down.
 OUTCOME_WIDTH = max(len(r) for r in RESULTS) + 1
 WARNINGS = {
-    "truncated": "stops mid-word or mid-number — the source continues it",
+    "truncated": "begins or stops mid-word or mid-number — the source continues it",
     "short": "the source may qualify this in the next clause",
     "normalized": "matched after ignoring punctuation and spacing",
     "page": "found, but not on the page recorded",
