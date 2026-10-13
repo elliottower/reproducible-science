@@ -164,6 +164,11 @@ class Reason(enum.StrEnum):
     WRONG_PAGE = "wrong_page"
     """The passage occurs in the artifact, on a different page than the one asserted."""
     VALUE_NOT_NUMERIC = "value_not_numeric"
+    PLACES_MISMATCH = "places_mismatch"
+    """The assertion declares how many decimal places the manuscript reports the value to,
+    and the value as printed is written to another number. Distinct from `value_mismatch`
+    because the file is not what disagrees: the two statements about the manuscript do, and
+    the fix is in the manuscript or in the declaration."""
     PASSAGE_AMBIGUOUS = "passage_ambiguous"
     """One pair of prose anchors selected two different values, so the document states two
     numbers where the assertion addresses one. Reported rather than resolved to the first: a
@@ -211,6 +216,26 @@ class Warning_(enum.StrEnum):
     run."""
     POSITIONAL_ADDRESS = "positional_address"
     """Addressed by row index, which names a different cell if the table is reordered."""
+
+
+class Tie(BaseModel):
+    """A compared value exactly halfway between two values at the comparison precision.
+
+    Rounding half up prints one neighbor and rounding half to even may print the other, and
+    software is divided between the two, so a manuscript printing either has rounded
+    correctly. Both verify. The record says that it was a tie, so the acceptance is visible
+    and is not mistaken for an ordinary agreement.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    lower: str
+    upper: str
+    """The two values the compared one lies halfway between, at the printed precision."""
+
+    printed: str
+    """The value the manuscript prints. `lower` or `upper` where the assertion verified, and
+    neither where it is a mismatch."""
 
 
 class DecisionSide(BaseModel):
@@ -287,6 +312,10 @@ class Decision(BaseModel):
     converted: str | None = None
     """`extracted` under `conversion`, which is the value compared with the printed one. None
     where no conversion is declared, or where no number was read to convert."""
+
+    tie: Tie | None = None
+    """Set where the compared value lay exactly halfway between two values at the printed
+    precision. None otherwise, and under `absolute` and `relative`, which round nothing."""
 
     sides: tuple[DecisionSide, ...] = ()
     """The two values a `correspondence` compared, each with the artifact and locator it came

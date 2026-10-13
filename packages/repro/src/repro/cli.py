@@ -54,6 +54,7 @@ from repro.models import (
     Ordering,
     Outcome,
     Reading,
+    Reason,
     Regeneration,
     StaleCause,
     StaleFinding,
@@ -406,8 +407,11 @@ def cmd_verify(args: argparse.Namespace) -> int:
         for d in claim.decisions:
             mark = "" if d.is_authoritative else f"  <{d.validity.value}>"
             note = f"  [{','.join(w.value for w in d.warnings)}]" if d.warnings else ""
+            # Said outside the detail, which is cut short and would lose it.
+            tie = f"  [exact tie: {d.tie.lower} or {d.tie.upper}]" if d.tie else ""
             print(
-                f"  {SYMBOL[d.outcome]}  {d.claim_id:<12} {d.kind:<8} {d.detail[:52]}{note}{mark}"
+                f"  {SYMBOL[d.outcome]}  {d.claim_id:<12} {d.kind:<8} "
+                f"{d.detail[:52]}{tie}{note}{mark}"
             )
 
     counts = report.counts
@@ -693,8 +697,16 @@ def _assertion_lines(assertion: AssertionAccount, paths: dict[str, str]) -> list
                 held += f", {file.converted} {file.conversion.said}"
             lines.append(f"{side}{file.artifact} at {file.address}: {held}")
 
+    if assertion.tie is not None:
+        lines.append(
+            f"an exact tie between {assertion.tie.lower} and {assertion.tie.upper}: "
+            "rounding half up prints one and half to even may print the other"
+        )
     outcome = _said(assertion.outcome)
-    if assertion.outcome not in (Outcome.VERIFIED, Outcome.MISMATCH):
+    if (
+        assertion.outcome not in (Outcome.VERIFIED, Outcome.MISMATCH)
+        or assertion.reason is Reason.PLACES_MISMATCH
+    ):
         outcome += f" ({_said(assertion.reason)})"
     if assertion.kind == "quote":
         passage = assertion.printed or ""
@@ -702,7 +714,13 @@ def _assertion_lines(assertion: AssertionAccount, paths: dict[str, str]) -> list
         within = assertion.reads[0].artifact if assertion.reads else "the artifact"
         lines.append(f'the passage "{shown}" in {within}: {outcome}')
     elif assertion.printed is not None:
-        lines.append(f"the manuscript prints {assertion.printed}: {outcome}")
+        declared = (
+            ""
+            if assertion.places is None
+            else f", declared to {assertion.places} "
+            f"decimal place{'' if assertion.places == 1 else 's'}"
+        )
+        lines.append(f"the manuscript prints {assertion.printed}{declared}: {outcome}")
     else:
         lines.append(f"the two sides compared: {outcome}")
     return lines

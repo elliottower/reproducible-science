@@ -284,6 +284,8 @@ def why(
             if isinstance(evidence, QuoteEvidence)
             else getattr(evidence, "reported", None),
             reads=tuple(read(*found) for found in files),
+            places=getattr(evidence, "places", None),
+            tie=decision.tie,
             outcome=decision.outcome,
             reason=decision.reason,
             detail=decision.detail,

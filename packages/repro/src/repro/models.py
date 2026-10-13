@@ -96,6 +96,7 @@ from repro.core.outcomes import (
     Outcome,
     Reason,
     RegistrationAuthority,
+    Tie,
     Validity,
     Warning_,
 )
@@ -195,6 +196,7 @@ __all__ = [
     "TableLocator",
     "TablePositionLocator",
     "TextInventory",
+    "Tie",
     "TreeLocator",
     "Validity",
     "ValueEvidence",

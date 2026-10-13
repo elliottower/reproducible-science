@@ -17,6 +17,7 @@ from repro.core.outcomes import (
     Outcome,
     Reason,
     RegistrationAuthority,
+    Tie,
     Validity,
 )
 
@@ -332,6 +333,10 @@ class AssertionAccount(BaseModel):
     printed: str | None = None
     """The value as the manuscript prints it, or the passage a quotation asserts."""
     reads: tuple[FileRead, ...] = ()
+    places: int | None = None
+    """How many decimal places the assertion declares the manuscript reports the value to."""
+    tie: Tie | None = None
+    """Set where the compared value lay exactly halfway between two printed values."""
     outcome: Outcome
     reason: Reason
     detail: str = ""
