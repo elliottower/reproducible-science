@@ -34,6 +34,20 @@ LATER = "A capture is refused where the address is not public, and the refusal i
 CHANGED = f"<html><body><p>{LATER}</p></body></html>".encode()
 LONG_AGO = "2026-01-05T09:30:00+00:00"
 
+RICH_URL = "https://docs.example.org/denylist"
+RICH = b"""<!DOCTYPE html>
+<html><head><title>Denylist</title>
+<style>.note::after { content: "styled words nobody is shown"; }</style>
+<script>var hidden = "scripted words nobody is shown";</script></head>
+<body>
+<p>The denylist is the <a href="/security">security boundary</a>, and it is
+<em>checked twice</em> on every capture.</p>
+<p>Fish &amp; chips aren&rsquo;t refused by the denylist.</p>
+<ul><li>The first item of the list ends here</li><li>The second item of the list starts here</li></ul>
+<table><tr><th>Hosts refused in the sample</th><td>12 of 40</td></tr></table>
+</body></html>
+"""
+
 
 def sha(body: bytes) -> str:
     return hashlib.sha256(body).hexdigest()
@@ -51,6 +65,7 @@ def site(tmp_path, monkeypatch):
     monkeypatch.setenv("RETRIEVED_HOME", str(home))
     library = Library(home)
     pages: dict[str, bytes] = {}
+    types_sent: dict[str, str] = {}
     asked: list[str] = []
 
     def refuse_to_connect(self, address):
@@ -68,7 +83,7 @@ def site(tmp_path, monkeypatch):
             return httpx.Response(
                 404 if body is None else 200,
                 content=b"no such page" if body is None else body,
-                headers={"content-type": "text/html"},
+                headers={"content-type": types_sent.get(str(request.url), "text/html")},
                 request=request,
             )
 
@@ -84,7 +99,9 @@ def site(tmp_path, monkeypatch):
             library.write(dataclasses.replace(real(url, client=mock), fetched_at=at))
 
     monkeypatch.setattr(capture, "fetch", offline)
-    return types.SimpleNamespace(library=library, pages=pages, asked=asked, hold=hold)
+    return types.SimpleNamespace(
+        library=library, pages=pages, types_sent=types_sent, asked=asked, hold=hold
+    )
 
 
 @pytest.fixture
@@ -123,7 +140,9 @@ def test_a_page_the_library_holds_is_pinned_from_it_and_nothing_is_fetched(site,
         "sha256": sha(PAGE),
         "retrieved": f"store/{sha(PAGE)}",
         "retrieved_at": LONG_AGO,
-        "extract_cmd": "cat {}",
+        "extractor": "html-text",
+        "extractor_version": 1,
+        "derived_sha256": sha(f"{PASSAGE}\nEvery refusal is recorded.".encode()),
     }
     assert doc["claims"]["refusal"]["quotes"] == [{"exact": PASSAGE}]
     out = capsys.readouterr().out
@@ -344,16 +363,124 @@ def test_check_with_a_url_resolves_and_writes_no_claims_file(site, claims, capsy
     assert not claims.exists()
 
 
-def test_a_page_that_is_a_pdf_declares_no_reading_and_a_page_of_text_declares_its_bytes(tmp_path):
-    served = {"paper": b"%PDF-1.7 the bytes of a paper", "page": PAGE}
-    blocks = {}
-    for name, body in served.items():
-        (tmp_path / name).write_bytes(body)
-        blocks[name] = web.Page(URL, sha(body), LONG_AGO, tmp_path / name, False).source()
+@pytest.mark.parametrize(
+    ("body", "content_type", "reading"),
+    [
+        (PAGE, "text/html; charset=utf-8", {"extractor": "html-text"}),
+        (RICH, "", {"extractor": "html-text"}),
+        (PAGE, "text/plain", {"extract_cmd": "cat {}"}),
+        (PASSAGE.encode(), "", {"extract_cmd": "cat {}"}),
+        (b"%PDF-1.7 the bytes of a paper", "application/pdf", {}),
+        (b"%PDF-1.7 the bytes of a paper", "", {}),
+    ],
+)
+def test_the_reading_a_page_declares_follows_its_content_type_and_then_its_bytes(
+    tmp_path, body, content_type, reading
+):
+    (tmp_path / "blob").write_bytes(body)
+    block = web.Page(URL, sha(body), LONG_AGO, tmp_path / "blob", False, content_type).source()
 
-    assert "extract_cmd" not in blocks["paper"]
-    assert blocks["page"]["extract_cmd"] == "cat {}"
-    assert V.reads_as_is(blocks["page"]["extract_cmd"])
+    assert {k: v for k, v in block.items() if k in ("extractor", "extract_cmd")} == reading
+
+
+@pytest.mark.parametrize(
+    "quote",
+    [
+        "The denylist is the security boundary, and it is checked twice on every capture.",
+        "Fish & chips aren\u2019t refused by the denylist.",
+        "Fish & chips aren't refused by the denylist.",
+    ],
+    ids=["across a link and emphasis", "entities as characters", "a straight apostrophe"],
+)
+def test_a_quotation_resolves_through_inline_tags_and_character_entities(
+    site, claims, capsys, quote
+):
+    site.hold(RICH_URL, RICH)
+
+    assert pin_url(claims / "denylist.yaml", quote, url=RICH_URL) == 0
+
+    assert "normalized" not in capsys.readouterr().out
+    code, out = verify(claims, capsys)
+    assert code == 0, out
+    assert "html-text@1" in out
+
+
+@pytest.mark.parametrize(
+    "words", ["scripted words nobody is shown", "styled words nobody is shown"]
+)
+def test_the_text_of_a_script_or_a_stylesheet_satisfies_no_quotation(site, claims, capsys, words):
+    assert words.encode() in RICH
+    site.hold(RICH_URL, RICH)
+
+    assert pin_url(claims / "denylist.yaml", words, url=RICH_URL) == 1
+
+    assert "not found" in capsys.readouterr().out
+    assert not claims.exists()
+
+
+def test_a_block_boundary_is_a_line_break_and_a_cell_boundary_is_a_separator(site, claims):
+    site.hold(RICH_URL, RICH)
+    file = claims / "denylist.yaml"
+    across_items = "The first item of the list ends here The second item of the list starts here"
+
+    assert pin_url(file, across_items, url=RICH_URL, id="items") == 0
+    assert pin_url(file, "Hosts refused in the sample 12 of 40", url=RICH_URL, id="cells") == 1
+    assert pin_url(file, "Hosts refused in the sample | 12 of 40", url=RICH_URL, id="row") == 0
+
+    text = V.extract(site.library.store / sha(RICH), None, "html-text")
+    assert "ends here\nThe second item" in text
+    assert set(read(file)["claims"]) == {"items", "row"}
+
+
+def test_a_page_served_as_plain_text_is_read_as_its_bytes(site, claims):
+    site.types_sent[RICH_URL] = "text/plain"
+    site.pages[RICH_URL] = RICH
+    file = claims / "denylist.yaml"
+
+    assert pin_url(file, "it is <em>checked twice</em> on every capture", url=RICH_URL) == 0
+    assert pin_url(file, "it is checked twice on every capture", url=RICH_URL, id="read") == 1
+
+    source = read(file)["source"]
+    assert source["extract_cmd"] == "cat {}"
+    assert "extractor" not in source and "derived_sha256" not in source
+
+
+def test_verify_reads_a_pinned_page_with_retrieved_not_importable(
+    site, claims, capsys, monkeypatch
+):
+    site.hold(RICH_URL, RICH)
+    quote = "The denylist is the security boundary, and it is checked twice on every capture."
+    assert pin_url(claims / "denylist.yaml", quote, url=RICH_URL) == 0
+    real = builtins.__import__
+
+    def absent(name, *args, **kwargs):
+        if name.split(".")[0] == "retrieved":
+            raise ImportError(f"No module named {name!r}")
+        return real(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", absent)
+
+    code, out = verify(claims, capsys)
+
+    assert code == 0, out
+    assert count("found", out) == 1
+
+
+def test_a_local_html_file_is_read_as_its_source_unless_it_names_the_extractor(tmp_path, capsys):
+    (tmp_path / "page.html").write_bytes(RICH)
+    folder = tmp_path / "claims"
+    folder.mkdir()
+    raw = "it is\n<em>checked twice</em> on every capture"
+    shown = "it is checked twice on every capture"
+    (folder / "as-source.yaml").write_text("source:\n  local: page.html\nclaims: {}\n")
+    (folder / "as-text.yaml").write_text(
+        "source:\n  local: page.html\n  extractor: html-text\nclaims: {}\n"
+    )
+
+    assert pin.main([str(folder / "as-source.yaml"), "--id", "raw", "--quote", raw]) == 0
+    assert pin.main([str(folder / "as-source.yaml"), "--id", "shown", "--quote", shown]) == 1
+    assert pin.main([str(folder / "as-text.yaml"), "--id", "shown", "--quote", shown]) == 0
+    assert pin.main([str(folder / "as-text.yaml"), "--id", "raw", "--quote", raw]) == 1
 
 
 def test_with_no_library_anywhere_one_is_made_beside_the_claims_directory(

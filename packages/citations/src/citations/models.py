@@ -115,7 +115,7 @@ class ClaimSource(_Base):
 
     extractor: str | None = None
     """The built-in extractor that turns the pinned file into the text the quotations resolve
-    against: `sheet-rows`, `docx-text` or `jats-text`. See `citations.extractors`.
+    against: `sheet-rows`, `docx-text`, `jats-text` or `html-text`. See `citations.extractors`.
 
     For a source whose pinned file is the publisher's own -- a workbook, a `.docx`, an article's
     XML -- and not a text somebody made from it. `sha256` then names bytes a reader can

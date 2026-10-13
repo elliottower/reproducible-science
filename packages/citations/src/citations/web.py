@@ -36,12 +36,22 @@ from citations.models import ClaimFile
 
 EXTRA = "citations[web]"
 
-#: What a page that is not a PDF declares as its reading: the bytes as they are. A file in the
+#: What an HTML page declares as its reading: the built-in extractor that drops its tags,
+#: decodes its entities and leaves out its scripts and stylesheets. Written into the claims
+#: file, so `verify` reads the page the same way later with no record of the retrieval to ask.
+HTML = "html-text"
+
+#: What a page that is neither HTML nor a PDF declares: the bytes as they are. A file in the
 #: store has no suffix to say it is text, and without a declaration it would be handed to the
 #: PDF readers. `verify.reads_as_is` reads this in process and runs no program.
 AS_SERVED = "cat {}"
 
 PDF_MAGIC = b"%PDF-"
+
+#: How a page whose record names no content type is told to be HTML: one of these, in any
+#: case, within its first `SNIFFED` bytes.
+HTML_MARKS = (b"<!doctype html", b"<html")
+SNIFFED = 1024
 
 
 class WebSourceError(CitationsError):
@@ -63,8 +73,16 @@ class Page:
     captured: bool
     """Whether this call fetched the page. False where the library already held it."""
 
+    content_type: str = ""
+    """The `Content-Type` the server sent, as the retrieval's record has it. Empty where the
+    record has none, and the bytes are then looked at instead."""
+
     def source(self) -> dict:
-        """The `source` block that pins this retrieval, in the order a reader wants it."""
+        """The `source` block that pins this retrieval, in the order a reader wants it.
+
+        It names the reading: `html-text` for an HTML page, the bytes as served for other text,
+        and nothing for a PDF, which the PDF readers take as they take any other.
+        """
         block = {
             "url": self.url,
             "sha256": self.sha256,
@@ -72,8 +90,13 @@ class Page:
             "retrieved_at": self.fetched_at,
         }
         with self.path.open("rb") as handle:
-            if handle.read(len(PDF_MAGIC)) != PDF_MAGIC:
-                block["extract_cmd"] = AS_SERVED
+            head = handle.read(SNIFFED)
+        if "html" in self.content_type.lower() or (
+            not self.content_type and any(mark in head.lower() for mark in HTML_MARKS)
+        ):
+            block["extractor"] = HTML
+        elif not head.startswith(PDF_MAGIC):
+            block["extract_cmd"] = AS_SERVED
         return block
 
 
@@ -86,8 +109,9 @@ def _retrieved():
     return capture, politeness, refuse, store
 
 
-def _held(library, url: str) -> tuple[str, str] | None:
-    """The most recent retrieval of `url` whose bytes the store still has: when, and its digest.
+def _held(library, url: str) -> tuple[str, str, str] | None:
+    """The most recent retrieval of `url` whose bytes the store still has: when, its digest,
+    and the content type its record gives.
 
     A library keeps a record after its bytes are removed, so a row in the index is not a file.
     """
@@ -98,19 +122,20 @@ def _held(library, url: str) -> tuple[str, str] | None:
     for fetched_at, digest, _ in reversed(library.history(url)):
         if not (library.store / digest).is_file():
             continue
-        record = library.retrievals / f"{digest}.yaml"
-        status = yaml.safe_load(record.read_text())["http_status"]
+        record = yaml.safe_load((library.retrievals / f"{digest}.yaml").read_text())
+        status = record["http_status"]
         if not 200 <= status < 300:
             raise WebSourceError(
                 f"the most recent retrieval of {url}, at {fetched_at}, is the server's answer "
                 f"HTTP {status} and not the page. --recapture fetches it again."
             )
-        return fetched_at, digest
+        return fetched_at, digest, record.get("content_type") or ""
     return None
 
 
-def _capture(library, url: str, capture, politeness, refuse) -> tuple[str, str]:
-    """Fetch `url` through `retrieved` and store what came back: when, and its digest.
+def _capture(library, url: str, capture, politeness, refuse) -> tuple[str, str, str]:
+    """Fetch `url` through `retrieved` and store what came back: when, its digest, and the
+    content type the server sent.
 
     The denylist, then the pacing, then the fetch, which checks the denylist again on the URL a
     redirect reached. A refusal is written to the library's `skipped.jsonl`, as `retrieved`
@@ -136,7 +161,7 @@ def _capture(library, url: str, capture, politeness, refuse) -> tuple[str, str]:
         library.skip(url, f"HTTP {got.http_status}")
         raise WebSourceError(f"{url} answered HTTP {got.http_status}, and nothing was stored.")
     library.write(got)
-    return got.fetched_at, got.bytes_sha256
+    return got.fetched_at, got.bytes_sha256, got.content_type
 
 
 def obtain(url: str, project: pathlib.Path, recapture: bool = False) -> Page:
@@ -151,14 +176,14 @@ def obtain(url: str, project: pathlib.Path, recapture: bool = False) -> Page:
     captured = found is None
     if found is None:
         found = _capture(library, url, capture, politeness, refuse)
-    fetched_at, digest = found
+    fetched_at, digest, content_type = found
     blob = library.store / digest
     if sha256_of_file(blob) != digest:
         raise WebSourceError(
             f"{blob} does not hash to its name, so it is not the retrieval its record "
             f"describes. `retrieved verify` lists every such file."
         )
-    return Page(url, digest, fetched_at, blob, captured)
+    return Page(url, digest, fetched_at, blob, captured, content_type)
 
 
 def missing(cf: ClaimFile) -> str:
@@ -171,4 +196,4 @@ def missing(cf: ClaimFile) -> str:
     )
 
 
-__all__ = ["AS_SERVED", "EXTRA", "Page", "WebSourceError", "missing", "obtain"]
+__all__ = ["AS_SERVED", "EXTRA", "HTML", "Page", "WebSourceError", "missing", "obtain"]

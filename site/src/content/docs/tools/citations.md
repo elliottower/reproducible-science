@@ -181,8 +181,16 @@ source:
   sha256: 98ae199b9a71…                    # the bytes retrieved
   retrieved: store/98ae199b9a71…           # where they are, inside the retrieved library
   retrieved_at: '2026-01-05T09:30:00+00:00'
-  extract_cmd: cat {}                      # read as served; absent where the page is a PDF
+  extractor: html-text                     # what turns the page into the text quoted
+  extractor_version: 1
+  derived_sha256: 5c1d…                    # the text it produced when the quotation was pinned
 ```
+
+The block names the reading, so `verify` reads the page the same way later. An HTML page names
+`html-text`: HTML by the content type the retrieval's record gives, or, where the record gives
+none, by a doctype or an `<html>` tag in its first 1,024 bytes. Any other text names
+`extract_cmd: cat {}` and is read as served, and a PDF names nothing and goes to the PDF
+readers.
 
 The page is somebody else's text and is never copied into the project. `retrieved` is a path
 inside the library, so a claims file committed to a public repository names no directory of
@@ -220,9 +228,11 @@ pinned one. A live page is rarely served twice with the same bytes, so the usual
 `differs`, and the line says the page may have changed since the retrieval time the claims
 file records. Nothing is written in that case.
 
-An HTML page is read as its source, as an `.html` file is: tags and character entities are
-part of the text. A quotation that crosses a tag, or holds a character the page writes as an
-entity, does not resolve; quote the stretch between them.
+A quotation from an HTML page is checked against the text the page shows. `html-text` drops
+the tags, decodes character entities, and leaves out the text of `<script>` and `<style>`, so
+a sentence quoted through a link or an emphasis resolves, and so does one typed with the `&`
+or the apostrophe the page writes as `&amp;` or `&rsquo;`. See
+[Reading workbooks, `.docx`, article XML and HTML](#reading-workbooks-docx-article-xml-and-html).
 
 ## Fetching the sources a repository cannot ship
 
@@ -665,20 +675,32 @@ The entries hold text from the sources, so they live with the user and not in a 
 does not know has no version to ask for, and is run every time. `repro verify` reads every
 source every time.
 
-## Reading workbooks, `.docx` and article XML
+## Reading workbooks, `.docx`, article XML and HTML
 
-Three built-in extractors read the formats a supplement or an open-access article arrives in,
-so a claims file can pin the publisher's file and not a text somebody made from it:
+Four built-in extractors read the formats a supplement, an open-access article or a web page
+arrives in, so a claims file can pin the publisher's file and not a text somebody made from it:
 
 | Extractor | Reads | Produces | Install |
 |-----------|-------|----------|---------|
 | `sheet-rows` | `.xlsx`, `.xls`, `.csv` | one row per line, cells joined with `\|` | `pip install "citations[sheets]"` (`.csv` needs nothing) |
 | `docx-text` | `.docx` | body paragraphs in order, then each table one row per line | `pip install "citations[docx]"` |
 | `jats-text` | JATS XML: Europe PMC `fullTextXML`, NCBI `efetch db=pmc` | one block per line, inline markup dropped, entities decoded, table rows as cells | nothing |
+| `html-text` | HTML | one block per line, tags dropped, entities decoded, `<script>` and `<style>` left out, table rows as cells | nothing |
 
 A workbook or a `.docx` that declares nothing is read by the extractor its suffix names. An
 `.xml` that declares nothing is still read as plain text with its markup, so quotations already
 pinned against the XML as served go on resolving; `jats-text` is for a source that names it.
+An `.html` or `.htm` file that declares nothing is likewise still read with its markup, and
+`html-text` is for a source that names it: a local file by `extractor: html-text`, and a page
+pinned with `citations pin --url` in the block that command writes.
+
+`html-text` keeps the text of an inline element (`<a>`, `<em>`, `<code>`, `<span>` and the
+like) in its sentence and ends a line at every other element. A line break is white space to
+the matcher, as in any text source, so a quotation that runs from the end of one paragraph or
+list item into the start of the next resolves, as it does across a line break in a `.txt`. A
+table row is one line with ` | ` between its cells, so a quotation spanning two cells resolves
+only where it writes the ` | `. Navigation, footers and text a stylesheet hides are part of
+the page and are read; only `<script>` and `<style>` are left out. The page is read as UTF-8.
 
 ```yaml
 source:

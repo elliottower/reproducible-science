@@ -54,10 +54,11 @@ path of the bytes inside the library; the page is never copied into the project.
 page by hand and write its path and digest. `--recapture` fetches the page again, and the new
 retrieval goes in a new claims file: a claims file pins one retrieval. Where `retrieved`
 refuses the URL, or the server answers with an error, nothing is written and the reason is
-printed; report it, and never work around a refusal. An HTML page is read as its source, so
-quote a stretch that crosses no tag and holds no character entity. Needs `pip install
-"citations[web]"`. In a clone whose library lacks the page its quotations are `unchecked`,
-and the reason names the retrieved store.
+printed; report it, and never work around a refusal. An HTML page is checked as the text it
+shows: tags dropped, entities decoded, `<script>` and `<style>` left out, and a table row
+written with ` | ` between its cells. The claims file names that reading as `extractor:
+html-text`. Needs `pip install "citations[web]"`. In a clone whose library lacks the page its
+quotations are `unchecked`, and the reason names the retrieved store.
 
 **Give the bibliography entry a DOI or an arXiv id.** A record is keyed by its entry's DOI,
 else its arXiv id, else a hash of the title and first author. An entry with neither becomes a
