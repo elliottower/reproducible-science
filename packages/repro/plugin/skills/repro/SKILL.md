@@ -219,6 +219,7 @@ directory, the freeze goes ahead.
 - To run the declared commands again and see whether the printed numbers survive: `repro reproduce`
 - After editing an input or a script, before trusting a green verify: `repro stale`
 - For one claim, what the record establishes and what it does not: `repro why <claim-id>`
+- To count every number the manuscript prints, and which no claim accounts for: `repro numbers`
 - When a reviewer asks where a number came from
 - When a manuscript and its data may have drifted apart
 - In CI, as `repro verify --policy strict`
