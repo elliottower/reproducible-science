@@ -15,6 +15,8 @@ from repro.models import (
     ArtifactRef,
     Claim,
     ClaimAccount,
+    CorrespondenceEvidence,
+    CorrespondenceSide,
     Digest,
     Freshness,
     InputReading,
@@ -22,6 +24,7 @@ from repro.models import (
     MetricEvidence,
     NotEstablishedKind,
     Outcome,
+    QuoteEvidence,
     Reason,
     Regeneration,
     RegenerationReason,
@@ -30,6 +33,8 @@ from repro.models import (
     ReproductionReport,
     RunOutput,
     StaleCause,
+    TableCellEvidence,
+    TreeLocator,
     Validity,
 )
 from repro.reproduce import append
@@ -86,7 +91,7 @@ def manifest(root, records, claims):
         path=root / "repro.yaml",
         artifacts=tuple(
             ArtifactRef(id=p.stem, path=p, digest=Digest.of_file(p))
-            for p in sorted(root.glob("*.json"))
+            for p in sorted(p for p in root.iterdir() if p.suffix in (".json", ".txt", ".csv"))
         ),
         regenerations=tuple(records),
         claims=tuple(claims),
@@ -422,3 +427,143 @@ def test_the_command_writes_nothing_and_changes_no_other_report(tmp_path, capsys
     assert main(["why", "on-a2", str(project.path)]) == 0
     assert main(["why", "on-a2", str(project.path), "--format", "json"]) == 0
     assert (snapshot(tmp_path), verify(project), stale(project)) == before
+
+
+def test_a_quotation_is_shown_as_the_passage_with_no_address(tmp_path, capsys):
+    put(tmp_path, "a0")
+    (tmp_path / "notes.txt").write_text("The cohort held six participants in all.\n")
+    quoted = Claim(
+        id="quoted",
+        text="The total in notes is six.",
+        evidence=(
+            QuoteEvidence(artifact="notes", text="six participants"),
+            QuoteEvidence(artifact="notes", text="seven participants"),
+        ),
+    )
+    project = manifest(tmp_path, [], [quoted])
+    account = why(project, "quoted")
+    found, absent = account.assertions
+    assert (found.kind, found.printed, found.outcome) == (
+        "quote",
+        "six participants",
+        Outcome.VERIFIED,
+    )
+    assert absent.outcome is Outcome.MISMATCH
+    (read,) = found.reads
+    assert (read.artifact, read.address, read.stored) == ("notes", "", None)
+    assert read.validity is Validity.AUTHORITATIVE
+    assert said(account)[0][0] is NotEstablishedKind.NO_PRODUCER
+
+    established, _, summary = printed(project, "quoted", capsys)
+    assert 'the manuscript quotes "six participants": verified' in established
+    assert 'the manuscript quotes "seven participants": mismatch' in established
+    assert " at " not in established and "holds" not in established
+    assert summary == (
+        "2 assertions: 1 verified, 1 mismatch; 0 of 2 read a file with a recorded producer"
+    )
+
+
+def test_a_table_cell_is_shown_at_its_column_and_row_selector(tmp_path, capsys):
+    put(tmp_path, "a0")
+    (tmp_path / "t.csv").write_text("arm,total\ncontrol,4\ntreated,6\n")
+    cell = Claim(
+        id="cell",
+        text="The total in the treated arm is 6.",
+        evidence=(
+            TableCellEvidence(
+                artifact="t", name="treated", reported="6", column="total", where={"arm": "treated"}
+            ),
+            TableCellEvidence(
+                artifact="t", name="nobody", reported="6", column="total", where={"arm": "absent"}
+            ),
+        ),
+    )
+    project = manifest(tmp_path, [], [cell])
+    account = why(project, "cell")
+    treated, nobody = account.assertions
+    assert (treated.outcome, treated.printed, treated.reads[0].stored) == (
+        Outcome.VERIFIED,
+        "6",
+        "6",
+    )
+    assert "total" in treated.reads[0].address and "treated" in treated.reads[0].address
+    assert nobody.outcome is not Outcome.VERIFIED
+    assert nobody.reads[0].stored is None
+
+    established, _, _ = printed(project, "cell", capsys)
+    assert f"t at {treated.reads[0].address}: holds 6" in established
+    assert "the manuscript prints 6: verified" in established
+    assert f"t at {nobody.reads[0].address}: no value was read" in established
+
+
+def test_a_correspondence_shows_each_side_and_what_it_holds(tmp_path, capsys):
+    records = chain(tmp_path, 1)
+    put(tmp_path, "other", total=7)
+    sides = Claim(
+        id="sides",
+        text="The total in a1 is the total in other.",
+        evidence=(
+            CorrespondenceEvidence(
+                name="totals",
+                sides=(
+                    CorrespondenceSide(
+                        name="computed", artifact="a1", locator=TreeLocator(pointer="/total")
+                    ),
+                    CorrespondenceSide(
+                        name="written", artifact="other", locator=TreeLocator(pointer="/total")
+                    ),
+                ),
+            ),
+        ),
+    )
+    project = manifest(tmp_path, records, [sides])
+    account = why(project, "sides")
+    (assertion,) = account.assertions
+    assert assertion.outcome is Outcome.MISMATCH and assertion.printed is None
+    assert [(r.side, r.artifact, r.address, r.stored) for r in assertion.reads] == [
+        ("computed", "a1", "/total", "6"),
+        ("written", "other", "/total", "7"),
+    ]
+    assert [(n.artifact, n.steps) for n in account.chain] == [("a1", 0), ("other", 0), ("a0", 1)]
+
+    established, _, summary = printed(project, "sides", capsys)
+    assert "computed: a1 at /total: holds 6" in established
+    assert "written: other at /total: holds 7" in established
+    assert "the two sides compared: mismatch" in established
+    assert summary.startswith("1 assertion: 1 mismatch; ")
+
+
+def test_records_on_a_cycle_are_undetermined_and_not_called_never_rerun(tmp_path, capsys):
+    for name in ("x", "y"):
+        put(tmp_path, name, step=name)
+    records = [record(tmp_path, "rx", ("y",), "x"), record(tmp_path, "ry", ("x",), "y")]
+    project = manifest(tmp_path, records, [claim("y")])
+    account = why(project, "on-y")
+    assert {n.artifact: n.state for n in account.chain} == {
+        "x": Freshness.UNDETERMINED,
+        "y": Freshness.UNDETERMINED,
+    }
+    assert account.assertions[0].state is Freshness.UNDETERMINED
+    assert account.assertions[0].outcome is Outcome.VERIFIED
+    assert said(account) == ALWAYS
+
+    established, _, summary = printed(project, "on-y", capsys)
+    assert "): undetermined\n      written by ry: make ry\n" in established
+    assert summary == (
+        "1 assertion: 1 verified; 1 of 1 reads a file with a recorded producer, 1 undetermined"
+    )
+
+
+def test_a_missing_input_leaves_the_claim_undetermined_and_is_not_taken_as_given(tmp_path, capsys):
+    project = manifest(tmp_path, chain(tmp_path, 1), [claim("a1")])
+    file(tmp_path, "a0").unlink()
+    account = why(project, "on-a1")
+    produced, gone = account.chain
+    assert produced.state is Freshness.UNDETERMINED
+    assert produced.regeneration.causes == (StaleCause.INPUT_MISSING,)
+    assert (gone.artifact, gone.validity) == ("a0", Validity.ARTIFACT_ABSENT)
+    assert said(account) == ALWAYS
+
+    established, _, summary = printed(project, "on-a1", capsys)
+    assert "): undetermined\n      written by ra1: make ra1\n" in established
+    assert summary.endswith("1 of 1 reads a file with a recorded producer, 1 undetermined")
