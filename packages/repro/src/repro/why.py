@@ -267,6 +267,7 @@ def why(
             reason=decision.reason,
             detail=decision.detail,
             state=node.state,
+            warnings=decision.warnings,
         )
         for evidence, decision, files, node in zip(
             claim.evidence, decisions, held, freshness, strict=True

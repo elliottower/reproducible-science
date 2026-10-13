@@ -17,6 +17,7 @@ from repro.core.outcomes import (
     Reason,
     RegistrationAuthority,
     Validity,
+    Warning_,
 )
 
 SCHEMA_VERSION = "repro/1"
@@ -330,6 +331,9 @@ class AssertionAccount(BaseModel):
     reason: Reason
     detail: str = ""
     state: Freshness
+    warnings: tuple[Warning_, ...] = ()
+    """The warnings on the decision, as `repro verify` lists them beside the assertion. A
+    warning qualifies an outcome and is not one: a `verified` assertion may carry any."""
 
 
 class ChainNode(BaseModel):
