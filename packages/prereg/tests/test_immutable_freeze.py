@@ -383,11 +383,17 @@ def test_an_amendment_cannot_name_a_parent_that_is_not_frozen_here(frozen):
     assert not (study / ".prereg" / f"{path.name}.json").exists()
 
 
-def ledger(root, *levels: str, runs: int, holds: tuple[str, ...] = ()) -> None:
+def ledger(
+    root,
+    *levels: str,
+    runs: int,
+    holds: tuple[str, ...] = (),
+    late: tuple[tuple[str, str], ...] = (),
+) -> None:
     """A results ledger as `results` writes one: an `init`, then runs and access events.
 
     Each entry of `holds` adds one run recorded with that `--holds` label, beside the `runs`
-    recorded without one.
+    recorded without one. Each `(run_id, label)` of `late` adds a `results label` event.
     """
     events = [{"event": "init"}]
     events += [
@@ -398,6 +404,10 @@ def ledger(root, *levels: str, runs: int, holds: tuple[str, ...] = ()) -> None:
         for i, label in enumerate(holds)
     ]
     events += [{"event": "access", "level": level, "note": "opened"} for level in levels]
+    events += [
+        {"event": "label", "run_id": run_id, "holds": label, "note": "forgotten"}
+        for run_id, label in late
+    ]
     (root / ".results").mkdir()
     (root / ".results" / "ledger.jsonl").write_text(
         "".join(
@@ -553,6 +563,42 @@ def test_outcomes_seen_is_the_floor_whatever_the_runs_were_recorded_as_holding(s
     assert run(["freeze", "--access", "no results seen"], study).returncode == 1
     assert run(["freeze"], study).returncode == 0
     assert record_of(study / "PREREG.md")["access"] == "results seen"
+
+
+def test_a_run_declared_afterwards_as_holding_no_outcome_lowers_the_floor_and_says_so(study):
+    ledger(study.parent, "metadata only", runs=1, late=(("run-0", "metadata only"),))
+    commit(study, "ledger")
+
+    refused = run(["freeze", "--access", "nothing run"], study)
+    assert refused.returncode == 1
+    assert (
+        "1 run recorded, 1 of them recorded as holding no outcome "
+        "(1 declared after the run was recorded)"
+    ) in refused.stdout
+
+    frozen_now = run(["freeze", "--access", "no results seen"], study)
+    assert frozen_now.returncode == 0
+    assert "(1 declared after the run was recorded)" in frozen_now.stdout
+    assert record_of(study / "PREREG.md")["access"] == "no results seen"
+
+
+def test_a_later_declaration_reaches_only_the_run_it_names(study):
+    ledger(
+        study.parent, runs=2, late=(("run-0", "metadata only"), ("no-such-run", "metadata only"))
+    )
+    commit(study, "ledger")
+    refused = run(["freeze", "--access", "no results seen"], study)
+    assert refused.returncode == 1
+    assert "2 runs recorded, 1 of them recorded as holding no outcome" in refused.stdout
+    assert "which is `results not opened` here" in refused.stdout
+
+
+def test_a_later_declaration_with_an_unknown_label_changes_nothing(study):
+    ledger(study.parent, runs=1, late=(("run-0", "counts only"),))
+    commit(study, "ledger")
+    refused = run(["freeze", "--access", "no results seen"], study)
+    assert refused.returncode == 1
+    assert "1 run recorded, which is `results not opened` here" in refused.stdout
 
 
 def test_a_plan_with_no_ledger_above_it_is_frozen_as_nothing_run_or_as_stated(study):

@@ -126,6 +126,58 @@ def test_run_refuses_a_label_that_does_not_mean_no_outcome(tmp_path):
     assert [e["event"] for e in events] == ["init"]
 
 
+def test_label_declares_a_recorded_run_after_the_fact_as_its_own_event(tmp_path):
+    run_cli("init", cwd=tmp_path)
+    (tmp_path / "counts.json").write_text('{"pairs": 16}\n')
+    run_cli("run", "counts.json", "--run-id", "panel", cwd=tmp_path)
+    before = ledger.read_ledger(tmp_path / ".results" / "ledger.jsonl")
+    r = run_cli(
+        "label", "panel", "--holds", "metadata only", "--note", "flag forgotten", cwd=tmp_path
+    )
+    assert r.returncode == 0
+    assert "declared after the fact as holding metadata only" in r.stdout
+    after = ledger.read_ledger(tmp_path / ".results" / "ledger.jsonl")
+    assert after[: len(before)] == before, "the run event is not rewritten"
+    assert after[-1]["event"] == "label"
+    assert (after[-1]["run_id"], after[-1]["holds"]) == ("panel", "metadata only")
+    assert run_cli("verify", cwd=tmp_path).returncode == 0
+
+
+def test_label_refuses_what_it_cannot_declare_and_records_nothing(tmp_path):
+    run_cli("init", cwd=tmp_path)
+    (tmp_path / "a.json").write_text("{}\n")
+    run_cli("run", "a.json", "--run-id", "held", "--holds", "structure seen", cwd=tmp_path)
+    run_cli("run", "a.json", "--run-id", "twice", cwd=tmp_path)
+    run_cli("run", "a.json", "--run-id", "twice", "--anyway", cwd=tmp_path)
+    run_cli("run", "a.json", "--run-id", "plain", cwd=tmp_path)
+    path = tmp_path / ".results" / "ledger.jsonl"
+    n = len(ledger.read_ledger(path))
+
+    def refused(*args):
+        r = run_cli("label", *args, cwd=tmp_path)
+        assert r.returncode == 1
+        return r.stdout
+
+    assert "no run 'missing'" in refused("missing", "--holds", "metadata only", "--note", "x")
+    assert "already says what it holds" in refused(
+        "held", "--holds", "metadata only", "--note", "x"
+    )
+    assert "names 2 runs" in refused("twice", "--holds", "metadata only", "--note", "x")
+    assert "--holds must be one of" in refused("plain", "--holds", "outcomes seen", "--note", "x")
+    assert "a note is required" in refused("plain", "--holds", "metadata only", "--note", " ")
+    assert len(ledger.read_ledger(path)) == n
+
+    assert (
+        run_cli(
+            "label", "plain", "--holds", "metadata only", "--note", "x", cwd=tmp_path
+        ).returncode
+        == 0
+    )
+    assert "already says what it holds" in refused(
+        "plain", "--holds", "structure seen", "--note", "x"
+    )
+
+
 def test_run_refuses_a_duplicate_id(tmp_path):
     """A warning was not enough. Both the claim-time refusal and `verify`'s contested list
     resolve an id to a single timestamp, so two runs sharing an id let a confirmatory claim

@@ -58,6 +58,10 @@ def cmd_run(a) -> int:
     )
 
 
+def cmd_label(a) -> int:
+    return record.label(a.run_id, a.holds, a.note)
+
+
 def cmd_claim(a) -> int:
     return record.claim(
         a.text,
@@ -143,6 +147,17 @@ def _main(argv: list[str] | None = None) -> int:
         "is then ordered by the later run",
     )
     r.set_defaults(fn=cmd_run)
+
+    lb = sub.add_parser(
+        "label",
+        help="declare after the fact that a recorded run's outputs hold no outcome",
+    )
+    lb.add_argument("run_id", help="the run, recorded without --holds")
+    lb.add_argument("--holds", required=True, help=f"one of: {', '.join(RUN_HOLDS)}")
+    lb.add_argument(
+        "--note", required=True, help="why the run was not labelled when it was recorded"
+    )
+    lb.set_defaults(fn=cmd_label)
 
     cl = sub.add_parser("claim", help="bind a manuscript claim to a run")
     cl.add_argument("text", help="the claim, as it appears in the manuscript")

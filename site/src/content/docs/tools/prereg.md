@@ -243,7 +243,10 @@ recorded. The exception is a run recorded as holding no outcome, with `results r
 plan is built on has to run before the plan can be written, and it is not a result. Such a run
 puts the floor at `no results seen`. A run recorded without the label, or with a label this
 version does not know, holds results as before, and one of them puts the floor back at
-`results not opened`. The author can raise the level. `prereg freeze` refuses an amendment that states a
+`results not opened`. A run recorded without the label by oversight can be declared afterwards
+with `results label <run-id> --holds ... --note ...`; that is an event of its own, the freeze
+counts it, and the ledger summary a freeze prints says how many runs were declared after they
+were recorded. The author can raise the level. `prereg freeze` refuses an amendment that states a
 lower level than the floor, and one with a field left unfilled; a plan's own freeze has the same
 floor. The ledger is read whole, so one ledger at the top of a repository sets the floor for
 every plan and amendment in it, including a plan for an experiment none of its runs belong to.
