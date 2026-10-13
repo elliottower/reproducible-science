@@ -11,6 +11,7 @@ from __future__ import annotations
 import decimal
 import json
 import pathlib
+import shutil
 
 import citations.cli
 import pytest
@@ -217,6 +218,30 @@ def test_a_page_declared_on_a_source_with_no_pages_is_verified_and_says_it_was_n
     assert decision.reason is Reason.PASSAGE_PRESENT
     assert Warning_.PAGE_UNCHECKED in decision.warnings
     assert "page 9999 was not checked" in decision.detail
+
+
+@pytest.mark.skipif(shutil.which("detex") is None, reason="detex is not installed")
+@pytest.mark.parametrize("page", [1, 9999])
+def test_a_page_declared_on_a_latex_source_is_not_checked_and_never_a_wrong_page(tmp_path, page):
+    source = tmp_path / "s.tex"
+    source.write_text(
+        "\\documentclass{article}\\begin{document}\nthe effect was large\n\\end{document}\n"
+    )
+    decision = verify(quote_manifest(source, page=page)).claims[0].decisions[0]
+    assert decision.outcome is Outcome.VERIFIED
+    assert decision.reason is Reason.PASSAGE_PRESENT
+    assert Warning_.PAGE_UNCHECKED in decision.warnings
+    assert Warning_.WRONG_PAGE not in decision.warnings
+
+
+def test_a_passage_that_is_absent_carries_no_warning_about_its_page(tmp_path):
+    source = tmp_path / "s.txt"
+    source.write_text("an unrelated opening paragraph\n")
+    report = verify(quote_manifest(source, page=3))
+    decision = report.claims[0].decisions[0]
+    assert decision.outcome is Outcome.MISMATCH
+    assert Warning_.PAGE_UNCHECKED not in decision.warnings
+    assert not [v for v in STRICT.assess(report).violations if v.rule == "evidence.page_unchecked"]
 
 
 def test_a_quote_declaring_no_page_carries_no_page_warning(tmp_path):
