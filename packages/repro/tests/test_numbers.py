@@ -15,8 +15,11 @@ from repro.cli import main
 from repro.exceptions import ArtifactMissingError, ManifestError
 from repro.manifest import load
 from repro.models import (
+    AggregateEvidence,
+    AggregateMember,
     ArtifactRef,
     Claim,
+    Conversion,
     CorrespondenceEvidence,
     CorrespondenceSide,
     Digest,
@@ -29,6 +32,7 @@ from repro.models import (
     QuoteEvidence,
     SetAside,
     Standing,
+    Statistic,
     TreeLocator,
     ValueEvidence,
 )
@@ -132,6 +136,67 @@ def test_a_number_is_bound_by_the_reported_value_it_prints_digit_for_digit(
     passage = f"the estimate was {printed} overall"
     made = project(tmp_path, f"In all, {passage}.\n", [claim("c", passage, reported)])
     assert found(numbers(made)) == [(printed, standing)]
+
+
+@pytest.mark.parametrize(
+    ("printed", "reported", "conversion", "standing"),
+    [
+        # The file holds 0.2411 and the manuscript prints 24.11%: bound by what is printed.
+        ("24.11%", "24.11", Conversion.PERCENT, BOUND),
+        ("0.042", "0.042", Conversion.FRACTION, BOUND),
+        # The stored value is not what the text prints, and a conversion does not make it so.
+        ("24.11%", "0.2411", Conversion.PERCENT, UNBOUND),
+        ("24.1%", "24.11", Conversion.PERCENT, UNBOUND),
+    ],
+)
+def test_a_number_bound_through_an_assertion_that_declares_a_conversion_is_bound(
+    tmp_path, printed, reported, conversion, standing
+):
+    passage = f"attrition was {printed} of the sample"
+    declared = Claim(
+        id="c",
+        text=passage,
+        evidence=(
+            QuoteEvidence(artifact="paper", text=passage),
+            MetricEvidence(
+                artifact="results", name="c", reported=reported, pointer="/c", conversion=conversion
+            ),
+        ),
+    )
+    made = project(tmp_path, f"In all, {passage}.\n", [declared])
+    report = numbers(made)
+    assert found(report) == [(printed, standing)]
+    assert report.counts == {standing: 1}
+
+
+def test_an_aggregate_binds_the_statistic_it_reports_and_its_count(tmp_path):
+    def over(passage):
+        return Claim(
+            id="c",
+            text=passage,
+            evidence=(
+                QuoteEvidence(artifact="paper", text=passage),
+                AggregateEvidence(
+                    name="accuracy",
+                    reported="91.4",
+                    statistic=Statistic.MEAN,
+                    count=2,
+                    conversion=Conversion.PERCENT,
+                    members=(
+                        AggregateMember(artifact="results", locator=TreeLocator(pointer="/a")),
+                        AggregateMember(artifact="results", locator=TreeLocator(pointer="/b")),
+                    ),
+                ),
+            ),
+        )
+
+    # "two seeds" is the aggregate's `count`, which the manifest checks against its members.
+    passage = "mean accuracy over two seeds was 91.4%"
+    made = project(tmp_path, f"In all, {passage}.\n", [over(passage)])
+    assert found(numbers(made)) == [("two", BOUND), ("91.4%", BOUND)]
+    passage = "mean accuracy over three seeds was 91.4%"
+    made = project(tmp_path, f"In all, {passage}.\n", [over(passage)])
+    assert found(numbers(made)) == [("three", UNBOUND), ("91.4%", BOUND)]
 
 
 def test_a_quotation_alone_in_its_claim_binds_nothing_and_its_source_is_not_a_text(tmp_path):

@@ -194,6 +194,13 @@ Runs each command declared under `regenerations` in `repro.yaml`, in a directory
 | `failed` | the command did not finish, or finished and wrote nothing |
 | `not re-run` | never executed: skipped, or an input is not the one that was pinned |
 
+A number that changed is printed as stored then and now beside what the paper prints, and in the printed unit too where the assertion declares a `conversion`:
+
+```text
+  changed     rates  1 of 1 numbers changed
+                attrition  0.044 (4.4 as a percentage) then, 0.042 (4.2 as a percentage) now, paper prints 4.4
+```
+
 `--skip ID` leaves a record out, such as a long training run, and `--only ID` runs the ones named. A record that reads the output of one that did not reproduce still runs, over the pinned copy, and says so. Each invocation appends what it observed to `.repro/reproductions.jsonl`.
 
 This executes what the manifest names. `repro verify` never does.

@@ -20,7 +20,8 @@ the rule that says what they are, `repro.models.NumberRule`.
 **Bound.** One occurrence is bound where it lies inside a place the passage of a `quote`
 occurs and an assertion of the same claim carries a `reported` value that is this number,
 digit for digit at the printed precision, or where it lies in the value a prose address
-selects. The same digits reported by some other claim bind nothing: that occurrence is
+selects. A `reported` value is what the manuscript prints, so one declared with a `conversion`
+binds the printed number and not the stored one, and an `aggregate` also binds its `count`. The same digits reported by some other claim bind nothing: that occurrence is
 unbound and marked `reported_elsewhere`, where the value has two digits or a decimal point; a
 single digit matching some reported value is counted apart and not marked.
 """
@@ -39,6 +40,7 @@ from citations.verify import extract_uncached, passage_fold
 from repro.adapters.prose import CARDINALS, located, numerals
 from repro.exceptions import ArtifactMissingError, ArtifactUnreadableError, ReproError
 from repro.models import (
+    AggregateEvidence,
     ArtifactRef,
     Claim,
     CorrespondenceEvidence,
@@ -306,12 +308,14 @@ def _context(folded: str, start: int, end: int) -> str:
 
 
 def _reported(claim: Claim) -> set[decimal.DecimalTuple]:
-    """Each value a claim's assertions say the manuscript prints."""
-    return {
-        read
-        for evidence in claim.evidence
-        if (read := _read(getattr(evidence, "reported", None))) is not None
-    }
+    """Each value a claim's assertions say the manuscript prints.
+
+    An `aggregate` says two: the statistic it reports, and how many members it is over, which
+    the manifest declares as `count` and refuses to load where the list is another length.
+    """
+    stated = [getattr(evidence, "reported", None) for evidence in claim.evidence]
+    stated += [str(e.count) for e in claim.evidence if isinstance(e, AggregateEvidence)]
+    return {read for value in stated if (read := _read(value)) is not None}
 
 
 def _inventory(

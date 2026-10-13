@@ -11,6 +11,7 @@ from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validato
 
 from repro.core.artifacts import ArtifactRef, Digest
 from repro.core.claims import Claim
+from repro.core.evidence import Conversion
 from repro.core.outcomes import RegistrationAuthority
 
 SCHEMA_VERSION = "repro/1"
@@ -206,6 +207,14 @@ class ClaimReading(BaseModel):
     """The value in the file the re-run wrote, as stored."""
     difference: str | None = None
     """`fresh - pinned`, where both are numbers."""
+    conversion: Conversion | None = None
+    """The conversion the assertion declares, or None. The manuscript prints the value under
+    it, so `pinned` and `fresh` are in another unit than `printed` where one is declared."""
+    pinned_converted: str | None = None
+    """`pinned` under `conversion`. None where no conversion is declared, or where the pinned
+    file holds no number at the address."""
+    fresh_converted: str | None = None
+    """`fresh` under `conversion`, which is the value compared with `printed`."""
     reading: Reading
     detail: str = ""
 
