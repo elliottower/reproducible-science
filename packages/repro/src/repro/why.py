@@ -13,6 +13,7 @@ Executes nothing and writes nothing.
 
 from __future__ import annotations
 
+import collections
 import difflib
 import json
 import pathlib
@@ -306,6 +307,8 @@ def why(
         for declared in (manifest.artifact(name),)
     )
     on_chain = {node.regeneration.id for node in chain if node.regeneration}
+    by_outcome = collections.Counter(assertion.outcome for assertion in assertions)
+    by_state = collections.Counter(assertion.state for assertion in assertions)
 
     return ClaimAccount(
         project=report.project,
@@ -324,6 +327,8 @@ def why(
         ),
         findings=tuple(found for found in report.findings if found.regeneration in on_chain),
         not_established=_not_established(claim, assertions, chain),
+        outcomes={outcome: by_outcome[outcome] for outcome in Outcome if by_outcome[outcome]},
+        states={state: by_state[state] for state in Freshness if by_state[state]},
     )
 
 

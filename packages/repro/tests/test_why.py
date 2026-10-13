@@ -198,7 +198,11 @@ def test_a_rerun_producer_is_established_and_only_its_input_is_not(tmp_path, cap
     established, not_established, summary = printed(project, "on-a1", capsys)
     assert f"matches its pinned digest {read.pinned[:12]}" in established
     assert "a1 at /total: holds 6\n    the manuscript prints 6: verified" in established
-    assert "): current\n      written by ra1: make ra1\n" in established
+    assert "): current\n      written by ra1: make ra1\n      which reads a0 (" in established
+    assert (account.outcomes, account.states) == (
+        {Outcome.VERIFIED: 1},
+        {Freshness.CURRENT: 1},
+    )
     assert f"re-run of {THEN} reproduced, and its output is the bytes now on disk" in established
     assert "): no producer, 1 step up\n      no command recorded" in established
     assert not_established == [
@@ -335,7 +339,8 @@ def test_an_assertion_that_was_not_checked_is_named_with_its_reason(tmp_path, ca
     assert "a1 at /no/such/key: no value was read" in established
     assert "the manuscript prints 6: not found (pointer absent)" in established
     assert "nothing at the declared path" in established
-    assert summary.startswith("3 assertions: 1 not found, 1 unchecked, 1 verified; 2 of 3 read ")
+    assert summary.startswith("3 assertions: 1 verified, 1 not found, 1 unchecked; 2 of 3 read ")
+    assert account.outcomes == {Outcome.VERIFIED: 1, Outcome.NOT_FOUND: 1, Outcome.UNCHECKED: 1}
 
 
 def test_a_chain_of_two_commands_lists_both_and_the_file_under_them(tmp_path, capsys):
@@ -384,6 +389,7 @@ def test_the_json_document_is_the_account(tmp_path, capsys):
     assert account == why(project, "on-a2")
     assert ClaimAccount.model_validate_json(account.model_dump_json()) == account
     assert document["assertions"][0]["outcome"] == "mismatch"
+    assert (document["outcomes"], document["states"]) == ({"mismatch": 1}, {"stale": 1})
     assert [node["artifact"] for node in document["chain"]] == ["a2", "a1", "a0"]
     assert all(set(line) == {"kind", "subject", "said"} for line in document["not_established"])
     assert [line["kind"] for line in document["not_established"]] == [
@@ -531,6 +537,7 @@ def test_a_correspondence_shows_each_side_and_what_it_holds(tmp_path, capsys):
         ("computed", "a1", "/total", "6"),
         ("written", "other", "/total", "7"),
     ]
+    assert account.states == {Freshness.PARTLY_OUTSIDE: 1}
     assert [(n.artifact, n.steps) for n in account.chain] == [("a1", 0), ("other", 0), ("a0", 1)]
 
     established, _, summary = printed(project, "sides", capsys)
@@ -686,3 +693,50 @@ def test_a_manifest_named_where_the_claim_goes_lists_its_claims(tmp_path, capsys
     monkeypatch.chdir(elsewhere)
     assert main(["why", str(project.path)]) == 0
     assert capsys.readouterr().out == "on-a1\non-a0\n"
+
+
+def test_a_file_read_at_two_addresses_is_pinned_once_and_text_keeps_its_lines(tmp_path, capsys):
+    put(tmp_path, "a0", other=6)
+    twice = Claim(
+        id="twice",
+        text="The total in a0 is 6.\nSo is the other figure.",
+        evidence=(
+            CorrespondenceEvidence(
+                name="same",
+                sides=(
+                    CorrespondenceSide(
+                        name="total", artifact="a0", locator=TreeLocator(pointer="/total")
+                    ),
+                    CorrespondenceSide(
+                        name="other", artifact="a0", locator=TreeLocator(pointer="/other")
+                    ),
+                ),
+            ),
+        ),
+    )
+    project = manifest(tmp_path, [], [twice])
+    assert main(["why", "twice", str(project.path)]) == 0
+    out = capsys.readouterr().out
+    assert "twice\n  The total in a0 is 6.\n  So is the other figure.\n" in out
+    assert out.count("matches its pinned digest") == 1
+    assert "total: a0 at /total: holds 6" in out and "other: a0 at /other: holds 6" in out
+
+
+def test_a_later_rerun_that_did_not_reproduce_is_shown_beside_the_one_that_did(tmp_path, capsys):
+    records = chain(tmp_path, 1)
+    project = manifest(tmp_path, records, [claim("a1")])
+    later = "2026-02-01T00:00:00+00:00"
+    changed = rerun(tmp_path, records[0]).model_copy(
+        update={"state": Regeneration.CHANGED, "actual": "0" * 64, "bytes_identical": False}
+    )
+    append(ReproductionReport(started_at=later, regenerations=(changed,)), tmp_path)
+
+    account = why(project, "on-a1")
+    assert account.assertions[0].state is Freshness.UNDETERMINED
+    assert account.chain[0].regeneration.rerun_at == THEN
+    established, _, summary = printed(project, "on-a1", capsys)
+    assert f"re-run of {THEN} reproduced, and its output is the bytes now on disk" in established
+    assert (
+        f"later rerun did not reproduce: the re-run of {later} read the same inputs" in established
+    )
+    assert summary.endswith("1 of 1 reads a file with a recorded producer, 1 undetermined")
