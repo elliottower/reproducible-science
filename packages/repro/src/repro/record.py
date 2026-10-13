@@ -79,7 +79,7 @@ CHECKER = "repro"
 
 
 class CheckType(enum.StrEnum):
-    """Which proposition a record is about. Closed, and defined once, in SPEC 7.7.
+    """Which proposition a record is about. Closed, and defined once, in SPEC 7.10.
 
     Two tools can both say `verified` and have checked different things, so a record names
     the proposition as well as the outcome. The first three are the ones this tool checks. The
@@ -106,7 +106,7 @@ class CheckType(enum.StrEnum):
 
 
 class NormalizedOutcome(enum.StrEnum):
-    """What a check found, in five words defined by their preconditions. SPEC 7.7.
+    """What a check found, in five words defined by their preconditions. SPEC 7.10.
 
     The emitting tool's own word travels beside it in `native_outcome`.
     """

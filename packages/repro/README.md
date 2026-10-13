@@ -382,7 +382,7 @@ The digests above are shortened for the page; a record carries all 64 characters
 
 Whether the file is the pinned one is `validity` on each file read, apart from the outcome, as in the report. No field is a `true` or a `false`. Where a command under `regenerations` writes a file the assertion reads, the record adds an `execution` block: the state `repro stale` gives, and each command upstream with its inputs and its latest recorded re-run.
 
-`repro.record.validate` reads a record back and refuses one no check could have produced, such as a `mismatch` with no stored value. A reader that meets a word, a check type or an address kind it does not know keeps it and never counts it as a `match`. A record is derived when the command runs, from the manifest and the files, and nothing is stored. An assertion is identified by its claim's id, its kind, its name and its `position` among the claim's assertions of that kind and name. The fields are defined in section 7.7 of [`docs/SPEC.md`](https://github.com/elliottower/reproducible-science/blob/main/docs/SPEC.md), with a JSON Schema beside it.
+`repro.record.validate` reads a record back and refuses one no check could have produced, such as a `mismatch` with no stored value. A reader that meets a word, a check type or an address kind it does not know keeps it and never counts it as a `match`. A record is derived when the command runs, from the manifest and the files, and nothing is stored. An assertion is identified by its claim's id, its kind, its name and its `position` among the claim's assertions of that kind and name. The fields are defined in section 7.10 of [`docs/SPEC.md`](https://github.com/elliottower/reproducible-science/blob/main/docs/SPEC.md), with a JSON Schema beside it.
 
 ## What it reads
 

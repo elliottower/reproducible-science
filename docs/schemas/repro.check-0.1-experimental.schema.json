@@ -60,7 +60,7 @@
       "type": "object"
     },
     "CheckType": {
-      "description": "Which proposition a record is about. Closed, and defined once, in SPEC 7.7.\n\nTwo tools can both say `verified` and have checked different things, so a record names\nthe proposition as well as the outcome. The first three are the ones this tool checks. The\nrest are reserved for a record written from another tool's result, and this tool emits\nnone of them.",
+      "description": "Which proposition a record is about. Closed, and defined once, in SPEC 7.10.\n\nTwo tools can both say `verified` and have checked different things, so a record names\nthe proposition as well as the outcome. The first three are the ones this tool checks. The\nrest are reserved for a record written from another tool's result, and this tool emits\nnone of them.",
       "enum": [
         "value-comparison",
         "passage-presence",
@@ -580,7 +580,7 @@
       "type": "object"
     },
     "NormalizedOutcome": {
-      "description": "What a check found, in five words defined by their preconditions. SPEC 7.7.\n\nThe emitting tool's own word travels beside it in `native_outcome`.",
+      "description": "What a check found, in five words defined by their preconditions. SPEC 7.10.\n\nThe emitting tool's own word travels beside it in `native_outcome`.",
       "enum": [
         "match",
         "mismatch",
