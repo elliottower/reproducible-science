@@ -1,0 +1,954 @@
+{
+  "$defs": {
+    "Address": {
+      "additionalProperties": true,
+      "description": "Where in a file an assertion looks, tagged by `kind`.\n\nThe fields beside `kind` are those of the locator: `{\"kind\": \"tree\", \"pointer\": ...}`,\n`{\"kind\": \"table\", \"column\": ..., \"where\": {...}}`, and so on for each kind SPEC 3.6\ndefines. A quotation is `{\"kind\": \"passage\"}` with the page or the neighbouring text it\nnames. A kind this version does not know is kept as it was written.",
+      "properties": {
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "required": [
+        "kind"
+      ],
+      "title": "Address",
+      "type": "object"
+    },
+    "AssertionRef": {
+      "additionalProperties": true,
+      "properties": {
+        "index": {
+          "minimum": 0,
+          "title": "Index",
+          "type": "integer"
+        },
+        "kind": {
+          "title": "Kind",
+          "type": "string"
+        },
+        "line": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Line"
+        },
+        "name": {
+          "default": "",
+          "title": "Name",
+          "type": "string"
+        },
+        "position": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Position",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "kind",
+        "index"
+      ],
+      "title": "AssertionRef",
+      "type": "object"
+    },
+    "CheckType": {
+      "description": "Which proposition a record is about. Closed, and defined once, in SPEC 7.10.\n\nTwo tools can both say `verified` and have checked different things, so a record names\nthe proposition as well as the outcome. The first three are the ones this tool checks. The\nrest are reserved for a record written from another tool's result, and this tool emits\nnone of them.",
+      "enum": [
+        "value-comparison",
+        "passage-presence",
+        "correspondence",
+        "artifact-identity",
+        "lineage-check",
+        "rerun-comparison",
+        "coverage-check",
+        "other"
+      ],
+      "title": "CheckType",
+      "type": "string"
+    },
+    "Checker": {
+      "additionalProperties": true,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "version": {
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "version"
+      ],
+      "title": "Checker",
+      "type": "object"
+    },
+    "ClaimRef": {
+      "additionalProperties": true,
+      "properties": {
+        "digest": {
+          "title": "Digest",
+          "type": "string"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "line": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Line"
+        },
+        "passages": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Passage"
+          },
+          "title": "Passages",
+          "type": "array"
+        },
+        "text": {
+          "default": "",
+          "title": "Text",
+          "type": "string"
+        },
+        "where": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Where"
+        }
+      },
+      "required": [
+        "id",
+        "digest"
+      ],
+      "title": "ClaimRef",
+      "type": "object"
+    },
+    "Command": {
+      "additionalProperties": true,
+      "description": "A declared command upstream of what the assertion reads.",
+      "properties": {
+        "causes": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "title": "Causes",
+          "type": "array"
+        },
+        "command": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Command",
+          "type": "array"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "inputs": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/FileState"
+          },
+          "title": "Inputs",
+          "type": "array"
+        },
+        "last_rerun": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Rerun"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "output": {
+          "$ref": "#/$defs/FileState"
+        },
+        "state": {
+          "$ref": "#/$defs/Freshness"
+        },
+        "steps": {
+          "minimum": 0,
+          "title": "Steps",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "command",
+        "steps",
+        "output",
+        "state"
+      ],
+      "title": "Command",
+      "type": "object"
+    },
+    "Comparison": {
+      "additionalProperties": true,
+      "description": "The rule a printed value was compared under, and what it was compared with where that\nis not a stored value as it stands.",
+      "properties": {
+        "computed": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Computed"
+        },
+        "conversion": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Conversion"
+        },
+        "mode": {
+          "$ref": "#/$defs/ComparisonMode"
+        },
+        "places": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Places"
+        },
+        "statistic": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Statistic"
+        },
+        "tie": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Tie"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "tolerance": {
+          "default": "0",
+          "title": "Tolerance",
+          "type": "string"
+        }
+      },
+      "required": [
+        "mode"
+      ],
+      "title": "Comparison",
+      "type": "object"
+    },
+    "ComparisonMode": {
+      "description": "How a reported number is compared with a stored one.",
+      "enum": [
+        "printed_precision",
+        "absolute",
+        "relative"
+      ],
+      "title": "ComparisonMode",
+      "type": "string"
+    },
+    "ComparisonStatus": {
+      "enum": [
+        "match",
+        "mismatch",
+        "not_applicable"
+      ],
+      "title": "ComparisonStatus",
+      "type": "string"
+    },
+    "Execution": {
+      "additionalProperties": true,
+      "description": "What is known of the commands that produce what the assertion reads.",
+      "properties": {
+        "commands": {
+          "items": {
+            "$ref": "#/$defs/Command"
+          },
+          "title": "Commands",
+          "type": "array"
+        },
+        "state": {
+          "$ref": "#/$defs/Freshness"
+        }
+      },
+      "required": [
+        "state",
+        "commands"
+      ],
+      "title": "Execution",
+      "type": "object"
+    },
+    "ExecutionStatus": {
+      "enum": [
+        "completed",
+        "unavailable",
+        "failed"
+      ],
+      "title": "ExecutionStatus",
+      "type": "string"
+    },
+    "ExtractionStatus": {
+      "enum": [
+        "extracted",
+        "absent",
+        "invalid",
+        "not_attempted"
+      ],
+      "title": "ExtractionStatus",
+      "type": "string"
+    },
+    "FileRead": {
+      "additionalProperties": true,
+      "description": "One file an assertion reads, the address it reads, and the value there.",
+      "properties": {
+        "address": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Address"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "artifact": {
+          "title": "Artifact",
+          "type": "string"
+        },
+        "converted": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Converted"
+        },
+        "media_type": {
+          "default": "",
+          "title": "Media Type",
+          "type": "string"
+        },
+        "on_disk": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "On Disk"
+        },
+        "path": {
+          "default": "",
+          "title": "Path",
+          "type": "string"
+        },
+        "pinned": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pinned"
+        },
+        "side": {
+          "default": "",
+          "title": "Side",
+          "type": "string"
+        },
+        "stored": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stored"
+        },
+        "validity": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Validity"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "artifact"
+      ],
+      "title": "FileRead",
+      "type": "object"
+    },
+    "FileState": {
+      "additionalProperties": true,
+      "description": "One declared file: its pin, and what is on disk.",
+      "properties": {
+        "artifact": {
+          "title": "Artifact",
+          "type": "string"
+        },
+        "media_type": {
+          "default": "",
+          "title": "Media Type",
+          "type": "string"
+        },
+        "on_disk": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "On Disk"
+        },
+        "path": {
+          "default": "",
+          "title": "Path",
+          "type": "string"
+        },
+        "pinned": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Pinned"
+        },
+        "validity": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Validity"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "artifact"
+      ],
+      "title": "FileState",
+      "type": "object"
+    },
+    "Freshness": {
+      "description": "Whether a file is still what a recorded re-run produced.\n\nRelative to the record of re-runs, never to the digests a manifest carries for its own\nregenerations: a manifest rebuilt from the files on disk agrees with them whether or not\nany command ran. A pin that no longer matches its file is `Validity.BROKEN_PIN`, a\ndifferent fact that `repro verify` reports.",
+      "enum": [
+        "current",
+        "stale",
+        "never_rerun",
+        "no_producer",
+        "undetermined",
+        "partly_outside_the_record"
+      ],
+      "title": "Freshness",
+      "type": "string"
+    },
+    "History": {
+      "additionalProperties": true,
+      "description": "A pointer into the record of checks, for the assertion a record is about.",
+      "properties": {
+        "last_changed_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Last Changed At"
+        },
+        "states": {
+          "minimum": 0,
+          "title": "States",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "states"
+      ],
+      "title": "History",
+      "type": "object"
+    },
+    "ManifestRef": {
+      "additionalProperties": true,
+      "description": "The manifest the assertion was read from.",
+      "properties": {
+        "digest": {
+          "anyOf": [
+            {
+              "pattern": "^[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Digest"
+        },
+        "path": {
+          "default": "",
+          "title": "Path",
+          "type": "string"
+        }
+      },
+      "title": "ManifestRef",
+      "type": "object"
+    },
+    "NormalizedOutcome": {
+      "description": "What a check found, in five words defined by their preconditions. SPEC 7.10.\n\nThe emitting tool's own word travels beside it in `native_outcome`.",
+      "enum": [
+        "match",
+        "mismatch",
+        "not-found",
+        "not-checked",
+        "error"
+      ],
+      "title": "NormalizedOutcome",
+      "type": "string"
+    },
+    "Passage": {
+      "additionalProperties": true,
+      "description": "A passage one of the claim's quote assertions names, and where it sits.",
+      "properties": {
+        "artifact": {
+          "title": "Artifact",
+          "type": "string"
+        },
+        "assertion": {
+          "title": "Assertion",
+          "type": "integer"
+        },
+        "line": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Line"
+        },
+        "path": {
+          "default": "",
+          "title": "Path",
+          "type": "string"
+        },
+        "text": {
+          "title": "Text",
+          "type": "string"
+        }
+      },
+      "required": [
+        "assertion",
+        "artifact",
+        "text"
+      ],
+      "title": "Passage",
+      "type": "object"
+    },
+    "Reader": {
+      "additionalProperties": true,
+      "description": "What read the bytes: the backend, and the program that extracted from the file.",
+      "properties": {
+        "backend": {
+          "default": "",
+          "title": "Backend",
+          "type": "string"
+        },
+        "backend_version": {
+          "default": "",
+          "title": "Backend Version",
+          "type": "string"
+        },
+        "extraction_digest": {
+          "default": "",
+          "title": "Extraction Digest",
+          "type": "string"
+        },
+        "tool": {
+          "default": "",
+          "title": "Tool",
+          "type": "string"
+        },
+        "tool_version": {
+          "default": "",
+          "title": "Tool Version",
+          "type": "string"
+        }
+      },
+      "title": "Reader",
+      "type": "object"
+    },
+    "Regeneration": {
+      "description": "What happened when a declared command was run again.\n\nThe verdict is about the numbers the manuscript prints from the output, never about its\nbytes: a re-run that names a different file for the same value has reproduced every number\nand matched no digest. Whether the bytes matched is recorded beside the verdict.",
+      "enum": [
+        "reproduced",
+        "changed",
+        "unchecked",
+        "failed",
+        "not_rerun"
+      ],
+      "title": "Regeneration",
+      "type": "string"
+    },
+    "Rerun": {
+      "additionalProperties": true,
+      "description": "One witnessed re-run of a command, as `repro reproduce` recorded it.",
+      "properties": {
+        "checker_version": {
+          "default": "",
+          "title": "Checker Version",
+          "type": "string"
+        },
+        "duration_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Duration Seconds"
+        },
+        "ended_at": {
+          "default": "",
+          "title": "Ended At",
+          "type": "string"
+        },
+        "exit_code": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exit Code"
+        },
+        "output_digest": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Output Digest"
+        },
+        "reason": {
+          "default": "",
+          "title": "Reason",
+          "type": "string"
+        },
+        "started_at": {
+          "default": "",
+          "title": "Started At",
+          "type": "string"
+        },
+        "state": {
+          "$ref": "#/$defs/Regeneration"
+        }
+      },
+      "required": [
+        "state"
+      ],
+      "title": "Rerun",
+      "type": "object"
+    },
+    "Stages": {
+      "additionalProperties": true,
+      "description": "The three stages SPEC 4 reports separately, from which the outcome is derived.",
+      "properties": {
+        "comparison": {
+          "$ref": "#/$defs/ComparisonStatus"
+        },
+        "execution": {
+          "$ref": "#/$defs/ExecutionStatus"
+        },
+        "extraction": {
+          "$ref": "#/$defs/ExtractionStatus"
+        }
+      },
+      "required": [
+        "execution",
+        "extraction",
+        "comparison"
+      ],
+      "title": "Stages",
+      "type": "object"
+    },
+    "Tie": {
+      "additionalProperties": true,
+      "description": "A compared value exactly halfway between two values at the printed precision, either\nof which a manuscript may print.",
+      "properties": {
+        "lower": {
+          "title": "Lower",
+          "type": "string"
+        },
+        "printed": {
+          "title": "Printed",
+          "type": "string"
+        },
+        "upper": {
+          "title": "Upper",
+          "type": "string"
+        }
+      },
+      "required": [
+        "lower",
+        "upper",
+        "printed"
+      ],
+      "title": "Tie",
+      "type": "object"
+    },
+    "Validity": {
+      "description": "Whether a decision describes the artifact the manifest declared.",
+      "enum": [
+        "authoritative",
+        "unpinned_artifact",
+        "broken_pin",
+        "artifact_absent"
+      ],
+      "title": "Validity",
+      "type": "string"
+    }
+  },
+  "additionalProperties": true,
+  "description": "One assertion, as it was checked. Frozen, and carries no verdict.",
+  "properties": {
+    "assertion": {
+      "$ref": "#/$defs/AssertionRef"
+    },
+    "check_type": {
+      "$ref": "#/$defs/CheckType"
+    },
+    "checked_at": {
+      "format": "date-time",
+      "title": "Checked At",
+      "type": "string"
+    },
+    "checker": {
+      "$ref": "#/$defs/Checker"
+    },
+    "claim": {
+      "$ref": "#/$defs/ClaimRef"
+    },
+    "comparison": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Comparison"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "detail": {
+      "default": "",
+      "title": "Detail",
+      "type": "string"
+    },
+    "execution": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Execution"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "history": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/History"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "manifest": {
+      "$ref": "#/$defs/ManifestRef",
+      "default": {
+        "digest": null,
+        "path": ""
+      }
+    },
+    "native_outcome": {
+      "title": "Native Outcome",
+      "type": "string"
+    },
+    "native_reason": {
+      "title": "Native Reason",
+      "type": "string"
+    },
+    "outcome": {
+      "$ref": "#/$defs/NormalizedOutcome"
+    },
+    "printed": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Printed"
+    },
+    "reader": {
+      "$ref": "#/$defs/Reader",
+      "default": {
+        "backend": "",
+        "backend_version": "",
+        "extraction_digest": "",
+        "tool": "",
+        "tool_version": ""
+      }
+    },
+    "reads": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/FileRead"
+      },
+      "title": "Reads",
+      "type": "array"
+    },
+    "record": {
+      "default": "repro.check/0.1-experimental",
+      "title": "Record",
+      "type": "string"
+    },
+    "stages": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Stages"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "warnings": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "title": "Warnings",
+      "type": "array"
+    }
+  },
+  "required": [
+    "checker",
+    "checked_at",
+    "claim",
+    "assertion",
+    "check_type",
+    "outcome",
+    "native_outcome",
+    "native_reason"
+  ],
+  "title": "CheckRecord",
+  "type": "object"
+}

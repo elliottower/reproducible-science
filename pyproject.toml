@@ -38,6 +38,9 @@ dev = [
   # The optional readers `repro` resolves values through, for the same reason as the PDF readers
   # below: a reader tested against a stub of its library is tested against nothing.
   "h5py>=3.12",
+  # Validates an exported record against the JSON Schema its model generates. Tests only;
+  # nothing under `packages/` imports it. MIT.
+  "jsonschema>=4.23",
   "netcdf4>=1.7.2",
   "numpy>=2.2.6",
   # The optional spreadsheet and .docx readers, for the same reason as the PDF readers below.
@@ -246,6 +249,8 @@ source_modules = [
   "repro.stale",
   "repro.why",
   "repro.numbers",
+  "repro.record",
+  "repro.export",
 ]
 forbidden_modules = [ "repro.integrations" ]
 
@@ -257,8 +262,13 @@ layers = [
   # The walkthrough drives the same commands a user types, so it sits above everything it
   # drives and nothing below it may reach for it.
   "repro.demo",
+  # Other formats for the check records. An exporter reads records and nothing below them.
+  "repro.export",
   "repro.renderers.sarif",
   "repro.policy",
+  # One record per checked assertion: the verifier's decision, with what `stale` knows of
+  # the commands upstream.
+  "repro.record",
   # One claim's rows of what `stale` and the verifier report, so it sits on both.
   "repro.why",
   # Appends what `verify` found to the records of checks, with the `results` ledger's writer,

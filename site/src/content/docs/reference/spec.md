@@ -1175,6 +1175,118 @@ The rules are applied in this order, and the first that holds is the one named.
 | `year` | four digits from 1800 to 2099 with no sign, separator, decimal point or percent sign |
 | `the_word_one` | the word `one`, a pronoun more often than a count; every other cardinal written as one word is counted |
 
+## 7.10 The check record
+
+Experimental, and this tool's own export format: `repro.check/0.1-experimental`. A field may
+change before `1.0`, and every record names the version it was written under.
+
+`repro export record` writes one JSON object per line, one per assertion, in the order the
+manifest declares them. A record states an observation and no verdict: this checker, at this
+version, read this file, with this digest, at this address, obtained this value, compared it
+with the value the manuscript reports under this rule, and returned this outcome. It is
+evaluated by the functions `repro verify` uses and by no others.
+
+| field | holds |
+|---|---|
+| `record`, `checker`, `checked_at` | the record version, the tool's name and version, when the check ran |
+| `manifest` | its path and the sha256 of its bytes |
+| `claim` | `id`, `text`, `where`, the claim digest of §1, its line in the manifest, and each passage its quote assertions name, with the line where a text file holds it exactly once |
+| `assertion` | `kind`, `name`, its `position` among the claim's assertions of that kind and name, its `index` among all of them, and its line in the manifest |
+| `check_type` | which proposition was checked; below |
+| `reads` | per file read: artifact id, path, media type, `validity`, the pinned digest and the digest on disk, the `address`, the value `stored` there, that value `converted` where a conversion is declared, and the side for a `correspondence`. An `aggregate` has one entry per member |
+| `printed`, `comparison` | the value as the manuscript prints it (the manifest's `reported`) or the passage a quotation asserts, and the `mode` and `tolerance` of §3.2, with the declared `places` and `conversion`, the `statistic` an `aggregate` computes and what it `computed`, and a `tie` where there was one |
+| `outcome` | one of five words; below |
+| `native_outcome`, `native_reason` | the `Outcome` of §4 and the `Reason` of §4.1, as this tool prints them |
+| `stages`, `reader`, `warnings` | the three stages of §4, the backend and extraction toolchain of §5.1, the warnings of §4.1 |
+| `history` | reserved; below |
+| `execution` | only where a declared command writes a file the assertion reads: its state against the record of re-runs, and each command upstream with its argv, inputs, output and latest recorded re-run |
+
+`validity` stays a fact about a file and its pin, as in §2, and is never folded into the
+outcome. An `address` is the locator of §3.6 as written, tagged by its `kind`; a quotation's is
+`passage`. No path is absolute, and no field is a boolean.
+
+**`check_type` says what was checked.** Two tools can both report `verified` and have checked
+different propositions: one compares a printed value with a stored one, another re-hashes a
+file and never reads a value. The outcome alone does not say which, so the record does.
+Closed.
+
+| `check_type` | the proposition |
+|---|---|
+| `value-comparison` | a value the manuscript prints, against the value at an address in a file (`metric`, `table`, `value`), or against a statistic over the values at several (`aggregate`) |
+| `passage-presence` | a passage occurs in a file (`quote`) |
+| `correspondence` | the values at two addresses, in two files, agree |
+| `artifact-identity` | a file's bytes are the bytes that were recorded; no value in it is compared |
+| `lineage-check` | a file was produced by a recorded process from recorded inputs |
+| `rerun-comparison` | what a command wrote when run again, against what it wrote before |
+| `coverage-check` | whether something the manuscript states has a claim declared for it |
+| `other` | a proposition none of the above names |
+
+This tool emits the first three. The rest are reserved for a record written from another
+tool's result, and nothing here writes one.
+
+**`outcome` is five words defined by their preconditions**, and the checker's own word travels
+beside it in `native_outcome`. `repro verify` prints what it always has.
+
+| `outcome` | holds when | `native_outcome` here |
+|---|---|---|
+| `match` | every file was read, each address resolved, a comparison ran, and the two agreed | `verified` |
+| `mismatch` | every file was read, each address resolved, a comparison ran, and the two differed | `mismatch` |
+| `not-found` | the file was readable and an address did not resolve to exactly one value of the kind the assertion needs; nothing was compared | `not_found` |
+| `not-checked` | no comparison occurred, because something it needed was absent or was skipped | `unchecked` |
+| `error` | the tool failed | `error` |
+
+The mapping is one function, total over `Outcome` by test and never by a default.
+
+A schema says which fields a record may hold; `repro.record.validate` says which records are
+possible, and refuses the rest: an `outcome` that is not what its `native_outcome` normalizes
+to, or that the stages do not give; a `match` or `mismatch` against a file that was not read;
+a `value-comparison` that is a `match` or `mismatch` without both the stored and the printed
+value, a `correspondence` without the value on each side, a `passage-presence` without the
+passage; a stored value on a record that is `not-checked` or an `error`; a pair of values on a
+check type that compares none; a `validity` the two digests do not bear out.
+
+**Unknown stays unknown.** A `native_outcome` from a checker not known to emit it, a
+`check_type` of `other`, and an address `kind` this version has not seen are kept as written
+and never read as success: `repro.record.read_outcome` gives `not-checked` for a `match` it
+does not understand, and every exporter reads the outcome through it. A `match` under an
+unknown native word is refused by the validator outright.
+
+A claim that offers no evidence has no assertion, so no record. `repro verify` reports it.
+
+The JSON Schema generated from the model is `docs/schemas/repro.check-0.1-experimental.schema.json`.
+
+### Relation to `.repro/checks.jsonl`
+
+A project may also keep a history, `.repro/checks.jsonl`, to which `repro verify --record`
+appends what an assertion said each time a check found it changed. A check record is the
+other thing, the present check written out for another program. It is derived when `repro export` runs, from the manifest and
+the files, and this command stores nothing and reads no history.
+
+The two describe some of the same facts, under the same names where the shapes allow:
+
+| fact | check record | `.repro/checks.jsonl` |
+|---|---|---|
+| the assertion's identity | `claim.id`, `assertion.kind`, `assertion.name`, `assertion.position` | `claim_id`, `kind`, `name`, `position` |
+| the claim as it read | `claim.digest` | `claim_digest` |
+| the value or passage | `printed` | `printed` |
+| when | `checked_at` | `checked_at` |
+| the tool's outcome and reason | `native_outcome`, `native_reason` | `outcome`, `reason` |
+| the bytes read | `reads[].on_disk`, per `reads[].artifact` | `digests`, a mapping from artifact to digest |
+| where it looked | `reads[].address`, the locator as an object | `address`, the same locator as one line of text |
+
+`position` follows one rule in both, so a record joins to its history on the four identity
+fields. Three shapes differ on purpose. A record groups what belongs to the claim and to the
+assertion, because it carries more of each than a history line does. `outcome` in a record is
+the normalized word, so the tool's own is `native_outcome`. And a file read is an object, not
+a digest in a mapping, because a record also states the pin and the `validity` of each file,
+and the address is an object so that a program can read it without parsing a sentence.
+
+`history`, where present, is a pointer into that record: how many states it holds for the
+assertion and when the last was recorded. Nothing writes it yet. Once both are in one tree the
+shared fields should come from one model, an assertion identity and a declared state that
+`CheckedAssertion` and `CheckRecord` both embed; that is a follow-up to these two changes and
+is not done by either.
+
 ## 8. What this composes with
 
 | layer | prior art | relation |
