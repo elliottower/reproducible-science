@@ -544,6 +544,7 @@ artifact into agreeing with the claim.
 
 This repository runs the hook on itself, against the `repro.yaml` at its root.
 
+<<<<<<< HEAD
 ## In CI
 
 ```bash
@@ -653,6 +654,39 @@ A workflow is named for the check it runs, `claims` or `reruns`, and not for the
 A run in CI adds three things to a run on the author's machine: the check ran on a machine the author does not control, at a commit the run names, and its log is public. It does not remove the author from the record: the author writes the workflow, the manifest and the list of what each command reads. In a private repository the badge and the summary are visible to whoever has access to the repository, and GitHub's documentation notes that a private repository's badge cannot be embedded on an outside site.
 
 This repository runs `repro ci claims` on its own `repro.yaml`, in `.github/workflows/claims.yml`.
+=======
+## On a pull request, as SARIF
+
+```yaml
+      - run: repro export sarif -o repro.sarif
+      - uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d  # v4.38.3
+        with: {sarif_file: repro.sarif, category: repro}
+```
+
+The job needs `permissions: security-events: write` beside `contents: read`. Run the export from the top of the repository, so that the paths in the log are the paths GitHub knows. Code scanning is enabled for public repositories by default; a private repository needs a GitHub Code Security licence ([About GitHub Advanced Security](https://docs.github.com/en/get-started/learning-about-github/about-github-advanced-security)).
+
+`repro export sarif` writes a SARIF 2.1.0 log from the check records, for display. It is a projection and a lossy one.
+
+| the record says | in the log |
+|---|---|
+| `mismatch` | a result, `kind: fail`, `level: error` |
+| `not-found` | a result, `kind: fail`, `level: warning` |
+| `error` | a result, `kind: fail`, `level: error`, and a notification at `level: error`, which marks the run as failed |
+| `not-checked` | no result: a notification at `level: warning` on the invocation, counted by reason in the run's properties |
+| `match` | no result, unless `--include-matches` asks for one, `kind: pass` |
+
+An assertion that was not checked is neither a finding nor a pass, so it is never a result. A word the exporter does not know is `not-checked`, never a pass.
+
+Each result is shown at one place, the first of these that exists: the line of the sentence, where the claim has a `quote` assertion against a text file (`.md`, `.tex`, `.txt`, `.rst`) that holds the passage exactly once; otherwise the assertion's own line in `repro.yaml`. A line is never estimated. The files the assertion reads are related locations. GitHub annotates a pull request only where that line is in its diff, and lists every alert under Security, Code scanning.
+
+An alert follows its assertion across commits by `partialFingerprints`: a digest over the claim's id, the assertion's kind, name and position, and the address or passage it declares. GitHub reads only `primaryLocationLineHash`, so the same digest is supplied there. Moving a sentence or reordering the manifest keeps the alert; changing an address closes one and opens another.
+
+SARIF has no property for most of what a record holds. The whole record is in each result's `properties` under `repro/checkRecord`, and these fields are there and nowhere else in the log: the record version, the manifest digest, the claim's text, digest, `where` and passages, the assertion's kind, name, position and index, `check_type`, each file's `validity`, pinned digest, side, address and stored value, `printed`, `comparison`, `outcome`, `native_outcome`, `native_reason`, `stages`, `reader`, `warnings`, `execution` and `history`. GitHub ignores the property bag.
+
+GitHub keeps the 5,000 most severe results of a run and rejects a file over 10 MB compressed. The default output holds only what did not match; with `--include-matches` a log over 5,000 results is written whole and a warning says so.
+
+`repro verify --format sarif` is an older log built from the report, graded by `--policy`, and is unchanged.
+>>>>>>> 8fa9689 (repro: `repro export sarif` writes a SARIF log from the check records, for GitHub code scanning)
 
 ## Audit a repository you did not write
 

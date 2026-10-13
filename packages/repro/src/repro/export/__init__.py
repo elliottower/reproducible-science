@@ -7,13 +7,15 @@ reaches every format and is decided once.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
+from collections.abc import Callable
 
-from repro.record import ExportRecord, to_jsonl
+from repro.export.sarif import to_sarif_log
+from repro.record import to_jsonl
 
 #: What `repro export <target>` writes, by target.
-EXPORTS: dict[str, Callable[[Sequence[ExportRecord]], str]] = {
+EXPORTS: dict[str, Callable[..., str]] = {
     "record": to_jsonl,
+    "sarif": to_sarif_log,
 }
 
 __all__ = ["EXPORTS"]
