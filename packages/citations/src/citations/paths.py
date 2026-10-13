@@ -23,6 +23,10 @@ from citations.exceptions import LibraryNotFoundError
 
 DIRNAME = ".citations"
 
+#: The directory `retrieved` keeps its library in, and the variable that names another.
+RETRIEVED_DIRNAME = ".retrieved"
+RETRIEVED_HOME = "RETRIEVED_HOME"
+
 
 def user_library() -> pathlib.Path:
     """The per-user library, in the platform's data directory."""
@@ -82,6 +86,27 @@ def enrichment(start: pathlib.Path | None = None) -> pathlib.Path:
 
 def pdfs(start: pathlib.Path | None = None) -> pathlib.Path:
     return home(start) / "pdfs"
+
+
+def retrieved_library(project: pathlib.Path) -> pathlib.Path:
+    """The `retrieved` library that holds the web pages a project's claims files pin by URL.
+
+        $RETRIEVED_HOME             if set
+        .retrieved/ walking up      from `project`, the directory that holds `claims/`
+        <project>/.retrieved        where there is neither; `citations pin --url` creates it
+
+    The rule `retrieved.store.Library.resolve` applies, started at the project and not at the
+    working directory, so a claims file names the same library wherever the command is run.
+    Written out here, and not asked of `retrieved`, so `verify` reads a pinned page on a machine
+    that has the bytes and not the `web` extra. Nothing is created.
+    """
+    if env := os.environ.get(RETRIEVED_HOME):
+        return pathlib.Path(env).expanduser().resolve()
+    here = project.resolve()
+    for d in [here, *here.parents]:
+        if (d / RETRIEVED_DIRNAME).is_dir():
+            return d / RETRIEVED_DIRNAME
+    return here / RETRIEVED_DIRNAME
 
 
 def record_file(slug: str, start: pathlib.Path | None = None) -> pathlib.Path:

@@ -28,7 +28,7 @@ import pathlib
 from provenance_core import hint
 
 from citations import coverage as C
-from citations import extraction_cache, paths, projects, tracked
+from citations import extraction_cache, paths, projects, tracked, web
 from citations import verify as V
 from citations.entry import DELEGATED
 from citations.entry import delegate as _delegate
@@ -223,7 +223,12 @@ def cmd_verify(a) -> int:
         for cf in files:
             artifact = cf.artifact()
             missing = V.MISSING
-            if artifact is not None and not artifact.exists():
+            if artifact is not None and not artifact.exists() and not cf.source.local:
+                # A web page pinned by its URL, on a machine whose `retrieved` library does
+                # not hold it. Its bytes are named by their digest, so there is no second
+                # place to look, and the reason says which store was asked.
+                missing = web.missing(cf)
+            elif artifact is not None and not artifact.exists():
                 # The path as given first, and the library only where that is empty. A copy
                 # there is read only where it matches the pin: see `verify.library_copy`.
                 held, missing = V.library_copy(

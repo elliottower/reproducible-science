@@ -25,7 +25,9 @@ Outcomes, one per source:
 
     present         already on disk, and it matches the pin
     fetched         downloaded, matched the pin, installed
-    differs         a copy was downloaded and none matched the pin; nothing was written
+    differs         a copy was downloaded and none matched the pin; nothing was written.
+                    For a web page pinned by its URL this is the usual outcome, and the line
+                    says the page may have changed since it was retrieved
     unavailable     no candidate answered with a file
     no location     the claims file records no url, doi or arxiv id, so there was nowhere to ask
     broken          on disk and not matching the pin; left untouched
@@ -269,7 +271,13 @@ def fetch_one(
             return then_text(cf, artifact, Outcome(cf.name, "fetched", f"{who}: {url}"), allowed)
         tried.append(f"{who} gave {got[:12]}")
     if tried:
-        return Outcome(cf.name, "differs", f"pinned {pinned[:12]}; " + ", ".join(tried))
+        detail = f"pinned {pinned[:12]}; " + ", ".join(tried)
+        if cf.source.retrieved:
+            # Not a damaged download. A live page is served anew on every request, and the pin
+            # names the bytes of one moment.
+            when = f" at {cf.source.retrieved_at}" if cf.source.retrieved_at else ""
+            detail += f"; a web page, which may have changed since it was retrieved{when}"
+        return Outcome(cf.name, "differs", detail)
     return Outcome(cf.name, "unavailable", f"{len(candidates)} location(s) asked")
 
 
