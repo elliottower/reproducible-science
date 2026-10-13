@@ -9,16 +9,13 @@
 # The hook checks a repository's own repro.yaml, so it reports on the consumer's manifest.
 # This repository runs it on itself as well, against the repro.yaml at its root: a verifier
 # whose own claims nothing checks is the one project it would be strange to exempt.
-#
-# Both pass `--no-record`: `repro verify` otherwise appends what changed to
-# `.repro/checks.jsonl`, and a hook that writes to a tracked file stops the commit it runs in.
 
 - id: repro-verify
   name: declared evidence assertions verify
   description: >
     Check every declared quotation, reported value and table cell against the artifact it
     names, and fail where a printed number no longer matches the file it came from.
-  entry: repro verify --no-record
+  entry: repro verify
   language: python
   pass_filenames: false
   always_run: true
@@ -28,7 +25,7 @@
   description: >
     As repro-verify, but every outcome other than verified is an error, including a check that
     could not run.
-  entry: repro verify --no-record --policy strict
+  entry: repro verify --policy strict
   language: python
   pass_filenames: false
   always_run: true

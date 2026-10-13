@@ -6,7 +6,7 @@ then lists what nothing in the record covers: a file no command is recorded for,
 no re-run that reproduced, an assertion that was not checked.
 
 Under each assertion it also puts what `repro.checks` recorded of it: what it declared and how
-it came out at each `repro verify` that found it changed.
+it came out at each `repro verify --record` that found it changed.
 
 Nothing is evaluated here that those two do not evaluate. Each assertion goes through
 `repro.verify.check_evidence`, each state comes from `repro.stale.stale`, and the chain is the

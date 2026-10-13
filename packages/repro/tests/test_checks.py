@@ -63,6 +63,11 @@ def manifest(root, *claims):
 
 
 def check(project, *flags):
+    """`repro verify --record`, as someone keeping the record runs it."""
+    return main(["verify", str(project.path), "--record", *flags])
+
+
+def plain(project, *flags):
     return main(["verify", str(project.path), *flags])
 
 
@@ -217,7 +222,7 @@ def test_an_edit_no_recorded_check_has_seen_is_shown_as_now(tmp_path, capsys):
     put(tmp_path)
     assert check(manifest(tmp_path, claim("0.92"))) == 1
     project = manifest(tmp_path, claim("0.91"))
-    assert check(project, "--no-record") == 0
+    assert plain(project) == 0
 
     (before,) = recorded(tmp_path)
     (assertion,) = why(project, "accuracy").assertions
@@ -336,21 +341,33 @@ def test_the_json_account_carries_the_history_and_reads_back(tmp_path, capsys):
     assert (assertion["now"]["address"], assertion["now"]["checked_at"]) == ("/accuracy", "")
 
 
-def test_recording_changes_nothing_verify_prints_or_returns(tmp_path, capsys):
+def test_plain_verify_leaves_the_tree_byte_identical(tmp_path, capsys):
+    put(tmp_path)
+    project = manifest(tmp_path, claim("0.92"))
+    fresh = snapshot(tmp_path)
+    for flags in ((), ("--format", "json"), ("--format", "sarif"), ("--policy", "strict")):
+        assert plain(project, *flags) == 1
+    assert snapshot(tmp_path) == fresh
+
+    # Nor does it add to a record that is there.
+    assert check(project) == 1
+    held = snapshot(tmp_path)
+    plain(manifest(tmp_path, claim("0.91")))
+    assert {k: v for k, v in snapshot(tmp_path).items() if k != "repro.yaml"} == {
+        k: v for k, v in held.items() if k != "repro.yaml"
+    }
+
+
+def test_recording_changes_nothing_verify_prints_or_returns(tmp_path, capfd):
     put(tmp_path)
     project = manifest(tmp_path, claim("0.92"))
     before = snapshot(tmp_path)
-    capsys.readouterr()
-    quiet = [
-        (check(project, "--no-record", *flags), capsys.readouterr().out)
-        for flags in ((), ("--format", "json"), ("--format", "sarif"))
-    ]
-    assert snapshot(tmp_path) == before
-    recording = [
-        (check(project, *flags), capsys.readouterr().out)
-        for flags in ((), ("--format", "json"), ("--format", "sarif"))
-    ]
+    formats = ((), ("--format", "json"), ("--format", "sarif"))
+    capfd.readouterr()
+    quiet = [(plain(project, *flags), capfd.readouterr()) for flags in formats]
+    recording = [(check(project, *flags), capfd.readouterr()) for flags in formats]
     assert recording == quiet
+    assert all(streams.err == "" for _, streams in recording)
     assert set(snapshot(tmp_path)) - set(before) == {RECORD.as_posix()}
     # The library call the command renders writes nothing either way.
     after = snapshot(tmp_path)
@@ -359,24 +376,56 @@ def test_recording_changes_nothing_verify_prints_or_returns(tmp_path, capsys):
     assert snapshot(tmp_path) == after
 
 
-def test_a_record_that_cannot_be_read_leaves_verify_as_it_was_and_stops_why(tmp_path, capsys):
+def test_a_record_that_cannot_be_written_is_said_in_one_line_and_the_exit_code_stands(
+    tmp_path, capfd
+):
+    put(tmp_path)
+    failing, passing = claim("0.92"), claim("0.91")
+    # A file where the record's directory would go.
+    (tmp_path / ".repro").write_text("")
+    for made, code in ((failing, 1), (passing, 0)):
+        project = manifest(tmp_path, made)
+        before = snapshot(tmp_path)
+        capfd.readouterr()
+        assert plain(project) == code
+        wanted = capfd.readouterr()
+        assert check(project) == code
+        got = capfd.readouterr()
+        assert got.out == wanted.out
+        assert got.err == f"record not written: {tmp_path / '.repro'}: File exists\n"
+        assert snapshot(tmp_path) == before
+
+    capfd.readouterr()
+    assert check(project, "--format", "json") == 0
+    got = capfd.readouterr()
+    assert set(json.loads(got.out)) == {"report", "assessment"}
+    assert got.err.startswith("record not written: ")
+
+
+def test_a_record_that_cannot_be_read_is_said_by_verify_and_stops_why(tmp_path, capfd):
     put(tmp_path)
     project = manifest(tmp_path, claim("0.91"))
     (tmp_path / RECORD).parent.mkdir()
     (tmp_path / RECORD).write_text('{"checked_at": 3}\n')
     before = snapshot(tmp_path)
+    capfd.readouterr()
     assert check(project) == 0
+    err = capfd.readouterr().err
+    assert err.startswith(f"record not written: {tmp_path / RECORD}:1: ")
+    assert err.count("\n") == 1
     assert snapshot(tmp_path) == before
+    assert plain(project) == 0
+    assert capfd.readouterr().err == ""
 
     with pytest.raises(ChecksUnreadableError, match=r"checks\.jsonl:1: "):
         why(project, "accuracy")
-    capsys.readouterr()
+    capfd.readouterr()
     assert main(["why", "accuracy", str(project.path)]) == 2
-    assert "checks.jsonl:1: " in capsys.readouterr().out
+    assert "checks.jsonl:1: " in capfd.readouterr().out
 
 
-def test_the_hooks_and_the_audit_check_without_recording():
+def test_the_hooks_and_the_audit_run_the_command_that_writes_nothing():
     hooks = yaml.safe_load((REPOSITORY / ".pre-commit-hooks.yaml").read_text())
-    assert [hook["entry"].split()[:3] for hook in hooks] == [["repro", "verify", "--no-record"]] * 2
+    assert all("--record" not in hook["entry"] for hook in hooks)
     (step,) = (s for s in default_steps(REPOSITORY, Layout()) if s.name == "repro.verify")
-    assert step.argv[:3] == ["repro", "verify", "--no-record"]
+    assert "--record" not in step.argv

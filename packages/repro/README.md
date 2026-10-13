@@ -144,9 +144,17 @@ repro verify
 
 Reads `repro.yaml` and checks every declared evidence assertion against the artifact it names. It spawns nothing: `prereg`, `results` and `citations` are separate commands.
 
-Each run also keeps a record of what it checked. For every assertion whose `reported` value or passage, address, claim text, artifact digest or outcome differs from the last check recorded for it, one entry is appended to `.repro/checks.jsonl`, beside the record of re-runs: what the assertion declared, the digest of each file it read, the outcome, and when. A run that finds every assertion as it was last recorded writes nothing, so the file grows with changes and not with runs, and an earlier line is never rewritten. What the command prints and the code it exits with are the same with the record as without. Commit the file. `repro why <claim-id>` reads it back, and `--no-record` leaves it alone.
+It writes nothing. Asked to, it keeps a record of what it checked:
 
-An assertion is followed across edits by its claim's id, its kind, its name, and its position among the claim's assertions of that kind and name. A claim given another id, or an assertion given another name, starts a new history, and the record does not show a check run with `--no-record` or an assertion removed and put back unchanged.
+```bash
+repro verify --record
+```
+
+For every assertion whose `reported` value or passage, address, claim text, artifact digest or outcome differs from the last check recorded for it, one entry is appended to `.repro/checks.jsonl`, beside the record of re-runs: what the assertion declared, the digest of each file it read, the outcome, and when. A run that finds every assertion as it was last recorded adds nothing, so the file grows with changes and not with runs, and an earlier line is never rewritten. Ask for it before and after editing a claim, or in the project's own CI job that commits the record. Commit the file; `repro why <claim-id>` reads it back.
+
+What the command prints and the code it exits with are the same with `--record` as without. Where the record cannot be written, one line on standard error says so and why, `record not written: .repro: File exists`, and the exit code is still the verification's.
+
+An assertion is followed across edits by its claim's id, its kind, its name, and its position among the claim's assertions of that kind and name. A claim given another id, or an assertion given another name, starts a new history, and the record does not show a check run without `--record` or an assertion removed and put back unchanged.
 
 ## Run it again
 
@@ -239,7 +247,7 @@ not established
   1 assertion: 1 verified; 1 of 1 reads a file with a recorded producer, 1 stale
 ```
 
-Where an assertion has been checked in more than one state, its lines end with the record of those checks. Here the manifest reported `0.92`, `repro verify` found a mismatch, and `reported` was then edited to the value in the file:
+Where an assertion has been checked in more than one state, its lines end with the record of those checks. Here the manifest reported `0.92`, `repro verify --record` found a mismatch, and `reported` was then edited to the value in the file:
 
 ```text
   assertion 1 of 1: metric accuracy
@@ -250,7 +258,7 @@ Where an assertion has been checked in more than one state, its lines end with t
     since 2026-10-13T21:03:22+00:00: reported 0.91 at /acc, results 6eaca0ac7275: verified (after mismatch: reported changed)
 ```
 
-Each line is one state `repro verify` recorded in `.repro/checks.jsonl`: `checked` for an earlier one and `since` for the one that still holds, with what changed from the state before it, out of `claim text`, `reported` or `passage`, `address` and `file`, and the outcome that state had. An assertion edited since the last recorded check is shown as `now`, and says no check of it is recorded. An assertion recorded in one state that still holds prints nothing more. The JSON carries every recorded state under `history` and the unrecorded one under `now`.
+Each line is one state `repro verify --record` recorded in `.repro/checks.jsonl`: `checked` for an earlier one and `since` for the one that still holds, with what changed from the state before it, out of `claim text`, `reported` or `passage`, `address` and `file`, and the outcome that state had. An assertion edited since the last recorded check is shown as `now`, and says no check of it is recorded. An assertion recorded in one state that still holds prints nothing more, and neither does a project with no record. The JSON carries every recorded state under `history` and the unrecorded one under `now`.
 
 Every line under `established` is computed from the files and the record of re-runs when the command runs: the pin of each file an assertion reads, the value at the declared address, the value the manuscript prints with the outcome `repro verify` gives, and then each file in the chain with the command that writes it, the re-run it was compared with, its state and the cause where it is not `current`. A `mismatch` is listed there too.
 
@@ -296,11 +304,10 @@ repos:
 declared number no longer matches the artifact behind it. Use `repro-verify-strict` to fail on
 a check that could not run as well as one that disagreed.
 
-The hook runs `repro verify --no-record`, which writes nothing. `test_read_only.py` asserts
-that a verification creates no files, modifies none, and still writes nothing when it fails,
-which is what makes it safe to run inside a commit: a verifier that could edit an artifact is
-one that could be made to edit an artifact into agreeing with the claim. Run without the flag,
-the one file the command writes is `.repro/checks.jsonl`, and it only ever adds a line to it.
+Verifying writes nothing. `test_read_only.py` asserts that a verification creates no files,
+modifies none, and still writes nothing when it fails, which is what makes it safe to run
+inside a commit: a verifier that could edit an artifact is one that could be made to edit an
+artifact into agreeing with the claim.
 
 This repository runs the hook on itself, against the `repro.yaml` at its root.
 

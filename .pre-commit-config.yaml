@@ -171,11 +171,10 @@ repos:
 
       - id: repro-verify
         name: this repository's own declared claims
-        # The hook published for other repositories, run against ours. With `--no-record`
-        # `verify` writes nothing -- `test_read_only.py` asserts that -- so it is safe at commit
-        # time, and a number that drifts from the measurement behind it fails here rather than
-        # in a review.
-        entry: uv run repro verify --no-record
+        # The hook published for other repositories, run against ours. `verify` writes nothing
+        # -- `test_read_only.py` asserts that five ways -- so it is safe at commit time, and a
+        # number that drifts from the measurement behind it fails here rather than in a review.
+        entry: uv run repro verify
         language: system
         pass_filenames: false
         always_run: true

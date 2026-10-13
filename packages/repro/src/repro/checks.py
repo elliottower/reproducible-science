@@ -2,7 +2,7 @@
 
 `repro verify` reports on a manifest as it is now. After a check does not verify, the
 `reported` value, the address or the claim's text can be edited until it does, and the report
-of the last run shows none of that. `record` appends to `.repro/checks.jsonl`, beside the
+of the last run shows none of that. `repro verify --record` appends to `.repro/checks.jsonl`, beside the
 record of re-runs, each assertion whose declaration, artifact digest or outcome differs from
 the last line recorded for it, so a later reader can say what was checked before.
 
@@ -11,7 +11,7 @@ was last recorded writes nothing, so the file grows with changes and not with ru
 holds only the assertions that changed: an assertion's history is the lines that name it, in
 order, and its state at any time is the last of them.
 
-What the record cannot show: a check run with `--no-record`, an assertion removed and put
+What the record cannot show: a check run without `--record`, an assertion removed and put
 back unchanged, and anything done to the file itself, which is why it is committed.
 """
 
@@ -138,7 +138,7 @@ def history(root: pathlib.Path) -> dict[Identity, tuple[CheckedAssertion, ...]]:
 
 
 def record(manifest: Manifest, report: VerificationReport) -> pathlib.Path | None:
-    """Append what one `repro verify` found to the project's record of checks, and return
+    """Append what one `repro verify --record` found to the project's record of checks, and return
     where. None where every assertion is as it was last recorded, and nothing was written.
 
     Appended, one object per line, so an earlier line is never rewritten.

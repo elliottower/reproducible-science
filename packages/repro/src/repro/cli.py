@@ -23,11 +23,11 @@ from __future__ import annotations
 
 import argparse
 import collections
-import contextlib
 import enum
 import functools
 import importlib
 import json
+import os
 import pathlib
 import shlex
 import subprocess
@@ -356,12 +356,16 @@ def cmd_verify(args: argparse.Namespace) -> int:
     report = run_verify(manifest)
     policy = PROFILES[args.policy]
     assessment = policy.assess(report)
-    if not args.no_record:
-        # The record sits beside the check and never decides it: a tree that cannot be written
-        # to, or a record that cannot be read, leaves the report and the exit code as they
-        # are. `repro why` is where an unreadable record is reported.
-        with contextlib.suppress(OSError, ChecksUnreadableError):
+    if args.record:
+        # The record sits beside the check and never decides it: where it cannot be written,
+        # one line on standard error says so and why, and the report and the exit code are the
+        # verification's. Standard error, so `--format json` still prints one document.
+        try:
             record_checks(manifest, report)
+        except ChecksUnreadableError as e:
+            os.write(2, f"record not written: {e}\n".encode())
+        except OSError as e:
+            os.write(2, f"record not written: {e.filename}: {e.strerror}\n".encode())
 
     if args.format == "sarif":
         print(json.dumps(to_sarif(report, assessment, version=__version__), indent=2))
@@ -982,12 +986,11 @@ def main(argv: list[str] | None = None) -> int:
     p_verify.add_argument("--policy", choices=sorted(PROFILES), default="publication")
     p_verify.add_argument("--format", choices=("text", "json", "sarif"), default="text")
     p_verify.add_argument(
-        "--no-record",
+        "--record",
         action="store_true",
         help=(
-            f"write nothing. By default each assertion whose declaration, artifact digest or "
-            f"outcome differs from the last check recorded for it is appended to "
-            f"{CHECKS.as_posix()}"
+            f"append to {CHECKS.as_posix()} each assertion whose declaration, artifact digest "
+            "or outcome differs from the last check recorded for it (default: write nothing)"
         ),
     )
     p_verify.set_defaults(func=cmd_verify)
