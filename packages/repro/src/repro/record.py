@@ -93,6 +93,9 @@ class CheckType(enum.StrEnum):
     """A passage occurs in a file."""
     CORRESPONDENCE = "correspondence"
     """The values at two addresses, in two files, agree."""
+    AGGREGATE_COMPARISON = "aggregate-comparison"
+    """A value the manuscript prints, against a statistic computed over the values at
+    several addresses. No one stored value is the value compared."""
     ARTIFACT_IDENTITY = "artifact-identity"
     """A file's bytes are the bytes that were recorded. No value in it is compared."""
     LINEAGE_CHECK = "lineage-check"
@@ -127,8 +130,7 @@ class NormalizedOutcome(enum.StrEnum):
 #: The proposition each evidence kind asserts.
 CHECK_TYPES: dict[str, CheckType] = {
     "metric": CheckType.VALUE_COMPARISON,
-    # A printed value against a statistic over the values at several addresses.
-    "aggregate": CheckType.VALUE_COMPARISON,
+    "aggregate": CheckType.AGGREGATE_COMPARISON,
     "table": CheckType.VALUE_COMPARISON,
     "value": CheckType.VALUE_COMPARISON,
     "quote": CheckType.PASSAGE_PRESENCE,
@@ -329,6 +331,8 @@ class Comparison(BaseModel):
     `fraction`. A side of a `correspondence` that declares one says so in its address."""
     statistic: str | None = None
     """What an `aggregate` computes over the values in `reads`."""
+    count: int | None = None
+    """How many members an `aggregate` declares, which is how many entries `reads` has."""
     computed: str | None = None
     """That statistic of the values read, which is what was compared with `printed`."""
     tie: Tie | None = None
@@ -415,7 +419,7 @@ class History(BaseModel):
     """When a check last found it different from the state recorded before."""
 
 
-class CheckRecord(BaseModel):
+class ExportRecord(BaseModel):
     """One assertion, as it was checked. Frozen, and carries no verdict."""
 
     model_config = _CONFIG
@@ -548,6 +552,7 @@ def _comparison(evidence: Evidence, decision: Decision) -> Comparison | None:
         places=getattr(evidence, "places", None),
         conversion=conversion.value if conversion else None,
         statistic=decision.statistic.value if decision.statistic else None,
+        count=evidence.count if isinstance(evidence, AggregateEvidence) else None,
         computed=decision.computed,
         tie=Tie(**decision.tie.model_dump()) if decision.tie else None,
     )
@@ -682,7 +687,7 @@ def check_records(
     manifest: Manifest,
     checked_at: datetime.datetime | None = None,
     backends: tuple[Backend, ...] = DEFAULT_BACKENDS,
-) -> tuple[CheckRecord, ...]:
+) -> tuple[ExportRecord, ...]:
     """Check every assertion in a manifest and return one record for each, in the order the
     manifest declares them.
 
@@ -724,7 +729,7 @@ def check_records(
             ):
                 decision = check_evidence(claim, evidence, manifest, paths, states, registry)
                 records.append(
-                    CheckRecord(
+                    ExportRecord(
                         checker=checker,
                         checked_at=when,
                         manifest=reference,
@@ -791,7 +796,7 @@ def _passages(
     return tuple(found)
 
 
-def to_jsonl(records: Iterable[CheckRecord]) -> str:
+def to_jsonl(records: Iterable[ExportRecord]) -> str:
     """JSON Lines: one record per line, in the order given."""
     return "".join(f"{record.to_json()}\n" for record in records)
 
@@ -836,7 +841,7 @@ def _pin_problems(file: FileState) -> list[str]:
     return []
 
 
-def understood(record: CheckRecord) -> bool:
+def understood(record: ExportRecord) -> bool:
     """Whether this version knows what the record's outcome is an outcome of.
 
     It does where the checker's own word is one that checker is known to emit, the check type
@@ -852,7 +857,7 @@ def understood(record: CheckRecord) -> bool:
     )
 
 
-def read_outcome(record: CheckRecord) -> NormalizedOutcome:
+def read_outcome(record: ExportRecord) -> NormalizedOutcome:
     """The outcome a consumer may act on: the record's, except that a `match` it does not
     understand is `not-checked`.
 
@@ -865,15 +870,45 @@ def read_outcome(record: CheckRecord) -> NormalizedOutcome:
     return record.outcome
 
 
-def _value_problems(record: CheckRecord) -> list[str]:
+def _a(word: str) -> str:
+    return "an" if word[:1] in "aeiou" else "a"
+
+
+def _value_problems(record: ExportRecord) -> list[str]:
     """What each check type has to carry for its outcome to be one a check could reach."""
     values = [read.stored for read in record.reads if read.stored is not None]
+    converted = [read.converted for read in record.reads if read.converted is not None]
     compared = record.outcome in (NormalizedOutcome.MATCH, NormalizedOutcome.MISMATCH)
+    comparison = record.comparison
     word = record.outcome.value
     found = []
+    if comparison is not None and comparison.tie is not None:
+        tie = comparison.tie
+        if record.outcome is NormalizedOutcome.MATCH and tie.printed not in (tie.lower, tie.upper):
+            found.append("a match on a tie prints one of the two values the tie lies between")
     if record.check_type is CheckType.VALUE_COMPARISON:
         if compared and (record.printed is None or not values):
             found.append(f"a value-comparison that is a {word} needs a stored and a printed value")
+        elif compared and comparison is not None and comparison.conversion and not converted:
+            found.append(
+                f"a {word} under the conversion {comparison.conversion!r} needs the converted "
+                f"value that was compared"
+            )
+    elif record.check_type is CheckType.AGGREGATE_COMPARISON:
+        if comparison is None or not comparison.statistic or comparison.count is None:
+            found.append("an aggregate-comparison names its statistic and its count")
+        elif comparison.count != len(record.reads):
+            found.append(
+                f"an aggregate-comparison of {comparison.count} members reads "
+                f"{len(record.reads)} files"
+            )
+        elif compared and (
+            record.printed is None or comparison.computed is None or len(values) != comparison.count
+        ):
+            found.append(
+                f"an aggregate-comparison that is a {word} needs the printed value, every "
+                f"member's stored value and what the statistic computed"
+            )
     elif record.check_type is CheckType.PASSAGE_PRESENCE:
         if compared and not record.printed:
             found.append(f"a passage-presence that is a {word} needs the passage looked for")
@@ -893,7 +928,7 @@ def _value_problems(record: CheckRecord) -> list[str]:
     return found
 
 
-def problems(record: CheckRecord) -> tuple[str, ...]:
+def problems(record: ExportRecord) -> tuple[str, ...]:
     """What a record says that no check could have found. Empty where it is consistent.
 
     A schema says which fields a record may hold. This says which records are possible: an
@@ -919,6 +954,14 @@ def problems(record: CheckRecord) -> tuple[str, ...]:
             )
         if record.stages is not None and _flattened(record.stages).value != record.native_outcome:
             found.append(f"{record.native_outcome!r} does not follow from the stages recorded")
+
+    placed = CHECK_TYPES.get(record.assertion.kind)
+    if record.checker.name == CHECKER and placed is not None and placed is not record.check_type:
+        found.append(
+            f"{_a(record.assertion.kind)} {record.assertion.kind!r} assertion is {_a(placed.value)} "
+            f"{placed.value}, and the record "
+            f"says {record.check_type.value}"
+        )
 
     values = [read.stored for read in record.reads if read.stored is not None]
     stages = record.stages
@@ -961,10 +1004,10 @@ def problems(record: CheckRecord) -> tuple[str, ...]:
     return tuple(found)
 
 
-def validate(data: Mapping[str, Any]) -> CheckRecord:
+def validate(data: Mapping[str, Any]) -> ExportRecord:
     """Read one record, or raise `InvalidRecordError` saying everything wrong with it."""
     try:
-        record = CheckRecord.model_validate(data)
+        record = ExportRecord.model_validate(data)
     except ValidationError as e:
         raise InvalidRecordError(
             tuple(
@@ -987,13 +1030,13 @@ __all__ = [
     "UNDERSTOOD_CHECK_TYPES",
     "Address",
     "AssertionRef",
-    "CheckRecord",
     "CheckType",
     "Checker",
     "ClaimRef",
     "Command",
     "Comparison",
     "Execution",
+    "ExportRecord",
     "FileRead",
     "FileState",
     "History",

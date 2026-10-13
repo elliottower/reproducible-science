@@ -1195,7 +1195,7 @@ evaluated by the functions `repro verify` uses and by no others.
 | `assertion` | `kind`, `name`, its `position` among the claim's assertions of that kind and name, its `index` among all of them, and its line in the manifest |
 | `check_type` | which proposition was checked; below |
 | `reads` | per file read: artifact id, path, media type, `validity`, the pinned digest and the digest on disk, the `address`, the value `stored` there, that value `converted` where a conversion is declared, and the side for a `correspondence`. An `aggregate` has one entry per member |
-| `printed`, `comparison` | the value as the manuscript prints it (the manifest's `reported`) or the passage a quotation asserts, and the `mode` and `tolerance` of §3.2, with the declared `places` and `conversion`, the `statistic` an `aggregate` computes and what it `computed`, and a `tie` where there was one |
+| `printed`, `comparison` | the value as the manuscript prints it (the manifest's `reported`) or the passage a quotation asserts, and the `mode` and `tolerance` of §3.2, with the declared `places` and `conversion`, the `statistic` an `aggregate` computes, the `count` of its members and what it `computed`, and a `tie` where there was one |
 | `outcome` | one of five words; below |
 | `native_outcome`, `native_reason` | the `Outcome` of §4 and the `Reason` of §4.1, as this tool prints them |
 | `stages`, `reader`, `warnings` | the three stages of §4, the backend and extraction toolchain of §5.1, the warnings of §4.1 |
@@ -1213,7 +1213,8 @@ Closed.
 
 | `check_type` | the proposition |
 |---|---|
-| `value-comparison` | a value the manuscript prints, against the value at an address in a file (`metric`, `table`, `value`), or against a statistic over the values at several (`aggregate`) |
+| `value-comparison` | a value the manuscript prints, against the value at an address in a file (`metric`, `table`, `value`) |
+| `aggregate-comparison` | a value the manuscript prints, against a statistic computed over the values at several addresses (`aggregate`); no one stored value is the value compared |
 | `passage-presence` | a passage occurs in a file (`quote`) |
 | `correspondence` | the values at two addresses, in two files, agree |
 | `artifact-identity` | a file's bytes are the bytes that were recorded; no value in it is compared |
@@ -1222,7 +1223,7 @@ Closed.
 | `coverage-check` | whether something the manuscript states has a claim declared for it |
 | `other` | a proposition none of the above names |
 
-This tool emits the first three. The rest are reserved for a record written from another
+This tool emits the first four. The rest are reserved for a record written from another
 tool's result, and nothing here writes one.
 
 **`outcome` is five words defined by their preconditions**, and the checker's own word travels
@@ -1243,7 +1244,9 @@ possible, and refuses the rest: an `outcome` that is not what its `native_outcom
 to, or that the stages do not give; a `match` or `mismatch` against a file that was not read;
 a `value-comparison` that is a `match` or `mismatch` without both the stored and the printed
 value, a `correspondence` without the value on each side, a `passage-presence` without the
-passage; a stored value on a record that is `not-checked` or an `error`; a pair of values on a
+passage; a comparison under a declared conversion without the converted value; an
+`aggregate-comparison` without its statistic, its count, every member's value or what was
+computed; a match on a tie that prints neither of the tie's two values; a stored value on a record that is `not-checked` or an `error`; a pair of values on a
 check type that compares none; a `validity` the two digests do not bear out.
 
 **Unknown stays unknown.** A `native_outcome` from a checker not known to emit it, a
@@ -1257,6 +1260,10 @@ A claim that offers no evidence has no assertion, so no record. `repro verify` r
 The JSON Schema generated from the model is `docs/schemas/repro.check-0.1-experimental.schema.json`.
 
 ### Relation to `.repro/checks.jsonl`
+
+Two models, told apart by name: `repro.record.ExportRecord` is one check written out for
+another program, and `repro.models.CheckRecord` is one entry of the stored history, holding the
+`CheckedAssertion`s a `repro verify --record` found changed.
 
 A project may also keep a history, `.repro/checks.jsonl`, to which `repro verify --record`
 appends what an assertion said each time a check found it changed. A check record is the
@@ -1285,7 +1292,7 @@ and the address is an object so that a program can read it without parsing a sen
 `history`, where present, is a pointer into that record: how many states it holds for the
 assertion and when the last was recorded. Nothing writes it yet. Once both are in one tree the
 shared fields should come from one model, an assertion identity and a declared state that
-`CheckedAssertion` and `CheckRecord` both embed; that is a follow-up to these two changes and
+`CheckedAssertion` and `ExportRecord` both embed; that is a follow-up to these two changes and
 is not done by either.
 
 ## 8. What this composes with

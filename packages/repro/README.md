@@ -377,7 +377,7 @@ Experimental. The format is this tool's own export, `repro.check/0.1-experimenta
 
 The digests above are shortened for the page; a record carries all 64 characters.
 
-`check_type` says which proposition was checked, because two tools can report the same word for different checks: `value-comparison` for a `metric`, `table`, `value` or `aggregate` assertion, `passage-presence` for a `quote`, `correspondence` for two files compared with each other.
+`check_type` says which proposition was checked, because two tools can report the same word for different checks: `value-comparison` for a `metric`, `table` or `value` assertion, `aggregate-comparison` for an `aggregate`, `passage-presence` for a `quote`, `correspondence` for two files compared with each other.
 
 `outcome` is one of five words, and `native_outcome` carries the word `repro verify` prints beside it:
 
