@@ -7,7 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from repro.core.checks import CheckedAssertion
+from repro.core.checks import CheckedAssertion, RecordState
 from repro.core.claims import Availability, Registration
 from repro.core.manifest import RegenerationState
 from repro.core.outcomes import (
@@ -339,6 +339,11 @@ class AssertionAccount(BaseModel):
     """The assertion as evaluated now, where that is not the last entry of `history`: it was
     edited, or a file it reads was, and no recorded check has seen it since. None where the
     record's last entry is how it stands, and where nothing is recorded."""
+    formerly: tuple[CheckedAssertion, ...] = ()
+    """The last recorded state of an assertion of a claim the manifest no longer declares,
+    where that state was not `verified` and it read the same artifacts at the same address
+    as this one. Nothing else is compared, and a quotation, which has no address, is never
+    listed."""
 
 
 class ChainNode(BaseModel):
@@ -409,3 +414,7 @@ class ClaimAccount(BaseModel):
     them. An outcome no assertion has is left out."""
     states: dict[Freshness, int] = Field(default_factory=dict)
     """How many of the claim's assertions are in each state against the record of re-runs."""
+    records: tuple[RecordState, ...] = ()
+    """Each record of checks found for the project: the local one, then the tracked one."""
+    no_local_record: str = ""
+    """Why no local record of checks is kept here. Empty where one is, or would be."""

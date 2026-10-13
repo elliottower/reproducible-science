@@ -260,8 +260,8 @@ layers = [
   "repro.policy",
   # One claim's rows of what `stale` and the verifier report, so it sits on both.
   "repro.why",
-  # Appends what `verify` found to the record of checks and reads it back, so `why` sits on it
-  # and it reaches for nothing but the models.
+  # Appends what `verify` found to the records of checks, with the `results` ledger's writer,
+  # and reads them back, so `why` sits on it and it reaches for nothing of ours but the models.
   "repro.checks",
   # Reads what `reproduce` recorded and executes nothing, so it sits on the record's writer.
   "repro.stale",

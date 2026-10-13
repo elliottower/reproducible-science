@@ -21,7 +21,7 @@ import difflib
 import pathlib
 
 from repro.adapters.reads import reading_once
-from repro.checks import address, checked, history
+from repro.checks import Records, address, checked
 from repro.exceptions import ReproError
 from repro.models import (
     AssertionAccount,
@@ -248,8 +248,19 @@ def why(
     # What the record of checks holds for each assertion, and the assertion as it stands where
     # the record's last entry is something else.
     root = manifest.path.parent if manifest.path else pathlib.Path.cwd()
-    past = history(root)
+    kept = Records(root)
+    past = kept.history
     present = checked(claim, tuple(decisions))
+    # The last state of each assertion of a claim that is no longer declared, where it was
+    # not verified and had an address.
+    declared = {each.id for each in manifest.claims}
+    gone = [
+        states[-1]
+        for identity, states in past.items()
+        if identity[0] not in declared
+        and states[-1].outcome is not Outcome.VERIFIED
+        and states[-1].address
+    ]
 
     freshness = next(node for node in report.claims if node.id == claim.id).assertions
     assertions = tuple(
@@ -266,6 +277,11 @@ def why(
             state=node.state,
             history=recorded,
             now=None if not recorded or now.same_as(recorded[-1]) else now,
+            formerly=tuple(
+                last
+                for last in gone
+                if last.address == now.address and set(last.digests) == set(now.digests)
+            ),
         )
         for evidence, decision, files, node, now in zip(
             claim.evidence, decisions, held, freshness, present, strict=True
@@ -327,6 +343,8 @@ def why(
         ),
         findings=tuple(found for found in report.findings if found.regeneration in on_chain),
         not_established=_not_established(claim, assertions, chain),
+        records=kept.states,
+        no_local_record=kept.no_local_record,
         outcomes={outcome: by_outcome[outcome] for outcome in Outcome if by_outcome[outcome]},
         states={state: by_state[state] for state in Freshness if by_state[state]},
     )

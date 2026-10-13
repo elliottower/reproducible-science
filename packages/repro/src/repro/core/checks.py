@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict
 
 from repro.core.outcomes import Outcome, Reason
@@ -40,7 +42,11 @@ class CheckedAssertion(BaseModel):
     reason: Reason
 
     checked_at: str = ""
-    """When the check that first found the assertion like this started."""
+    """When the check that first found the assertion like this appended it. Read from the
+    entry that holds it and not stored on the assertion."""
+    verifiable: bool = True
+    """False where the record this was read from does not verify at or before the entry
+    holding it. The entry is shown as it reads; the chain no longer vouches for it."""
 
     @property
     def identity(self) -> tuple[str, str, str, int]:
@@ -49,17 +55,47 @@ class CheckedAssertion(BaseModel):
     def same_as(self, other: CheckedAssertion) -> bool:
         """Whether two checks found the assertion saying the same thing with the same outcome,
         whenever they ran."""
-        return self.model_copy(update={"checked_at": ""}) == other.model_copy(
-            update={"checked_at": ""}
-        )
+        unset = {"checked_at": "", "verifiable": True}
+        return self.model_copy(update=unset) == other.model_copy(update=unset)
 
 
 class CheckRecord(BaseModel):
-    """One line of the record of checks: the assertions one `repro verify` found different
-    from the last time each was recorded."""
+    """One entry of a record of checks: the assertions one `repro verify` found different from
+    the last time each was recorded.
+
+    The last three fields are the chain's, under the names the `results` ledger gives them:
+    the entry's position from 0, when it was appended, and the SHA-256 of the entry before it
+    as stored, or of nothing for the first.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     schema_version: str = SCHEMA_VERSION
-    checked_at: str
     assertions: tuple[CheckedAssertion, ...]
+    seq: int
+    timestamp: str
+    prev_hash: str
+
+
+class RecordState(BaseModel):
+    """One record of checks as `repro why` found it: where it is and whether its chain holds."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["local", "tracked"]
+    """`local` is the one in the repository's git directory, written by every `repro verify`
+    and never committed. `tracked` is `.repro/checks.jsonl` in the working tree, written
+    where `repro verify --record` asks."""
+    path: str
+    entries: int
+    status: str
+    """The `results` ledger's word for a chain: `intact`, `edited`, `reordered`, `corrupt`,
+    `truncated`, `extended` or `no_anchor`."""
+    problems: tuple[str, ...] = ()
+    """Each fault found, naming its entry by its line in the file, from 1."""
+    unverifiable_from: int | None = None
+    """The first entry the chain does not vouch for. None where every entry present follows
+    from the one before it."""
+    diverges_at: int | None = None
+    """Of the tracked record: the first entry that is not the local record's entry at that
+    position. None where one record is the other's beginning."""
