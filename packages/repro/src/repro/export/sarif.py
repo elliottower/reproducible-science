@@ -27,7 +27,7 @@ import warnings
 from collections.abc import Sequence
 from typing import Any
 
-from repro.record import ExportRecord, CheckType, NormalizedOutcome, read_outcome
+from repro.record import CheckType, ExportRecord, NormalizedOutcome, read_outcome
 
 SCHEMA = "https://json.schemastore.org/sarif-2.1.0.json"
 VERSION = "2.1.0"
