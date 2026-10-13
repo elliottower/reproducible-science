@@ -42,7 +42,9 @@ from results.ledger import ChainError
 from repro import __version__, audit, crosscheck
 from repro.checks import LOCAL as LOCAL_CHECKS
 from repro.checks import RECORD as CHECKS
+from repro.checks import SET_ASIDE
 from repro.checks import record as record_checks
+from repro.checks import set_aside as set_aside_checks
 from repro.delegate import BY_NAME, TOOLS
 from repro.delegate import check as delegate_check
 from repro.delegate import run as delegate_run
@@ -375,6 +377,20 @@ def cmd_verify(args: argparse.Namespace) -> int:
     # line on standard error says so and why, and the report and the exit code are the
     # verification's. Standard error, so `--format json` still prints one document. Outside a
     # git repository there is no local record and nothing is said.
+    if args.set_aside_record:
+        try:
+            moved = set_aside_checks(manifest, local=args.local_record, tracked=args.record)
+        except (ReproError, ChainError) as e:
+            os.write(2, f"record not set aside: {e}\n".encode())
+        except OSError as e:
+            os.write(2, f"record not set aside: {e.filename}: {e.strerror}\n".encode())
+        else:
+            for note in moved:
+                os.write(
+                    2,
+                    f"record set aside: the {note.kind} record is kept as {note.kept_as}, and "
+                    "a new one starts by saying so\n".encode(),
+                )
     try:
         record_checks(manifest, report, local=args.local_record, tracked=args.record)
     except (ReproError, ChainError) as e:
@@ -826,6 +842,14 @@ def _record_lines(account: ClaimAccount) -> list[str]:
     lines = []
     if account.no_local_record:
         lines.append(f"no local record is kept here: {account.no_local_record}")
+    for note in account.set_aside:
+        vouched = f"its last entry that verified hashes to {note.head[:12]}"
+        lines.append(
+            f"a {note.kind} record of {note.entries} entr{'y' if note.entries == 1 else 'ies'} "
+            f"was set aside on {note.at} as {note.kept_as}: reported {note.status}"
+            + (f" ({'; '.join(note.problems)})" if note.problems else "")
+            + f"; {vouched if note.head.strip('0') else 'none of its entries verified'}"
+        )
     for record in account.records:
         said = []
         if record.unverifiable_from is not None or record.status in ("truncated", "corrupt"):
@@ -1161,6 +1185,15 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
         help=(
             f"also bring the tracked record {CHECKS.as_posix()} up to the local one, which "
             f"every check appends to at {LOCAL_CHECKS.as_posix()} in the git directory"
+        ),
+    )
+    p_verify.add_argument(
+        SET_ASIDE,
+        action="store_true",
+        help=(
+            "where the record of checks does not verify, keep it under a name that says when "
+            "it was set aside and start a new one whose first entry says so; with --record, "
+            "the tracked record as well. Refused where every record verifies"
         ),
     )
     p_verify.set_defaults(func=cmd_verify)

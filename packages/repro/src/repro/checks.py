@@ -40,6 +40,7 @@ can write both files and rewrite the history can rewrite the record.
 from __future__ import annotations
 
 import collections
+import datetime
 import json
 import os
 import pathlib
@@ -47,7 +48,7 @@ from typing import Literal
 
 from provenance_core import ZERO, exclusive_lock, sha256_of_text, try_run
 from pydantic import ValidationError
-from results.ledger import ChainStatus, append_event, read_anchor, write_anchor
+from results.ledger import ANCHOR, ChainStatus, append_event, read_anchor, write_anchor
 
 from repro.exceptions import ReproError
 from repro.models import (
@@ -61,6 +62,7 @@ from repro.models import (
     Locator,
     Manifest,
     QuoteEvidence,
+    RecordSetAside,
     RecordState,
     TableCellEvidence,
     TreeLocator,
@@ -75,6 +77,9 @@ LOCAL = pathlib.Path("repro") / "checks.jsonl"
 
 #: Why no local record is kept, where none is.
 NOT_A_REPOSITORY = "not in a git repository"
+
+#: The flag that sets a damaged record aside. Named in the line that reports one.
+SET_ASIDE = "--set-aside-record"
 
 #: Which assertion an entry is about: the claim's id, the kind, the name and the position.
 Identity = tuple[str, str, str, int]
@@ -103,8 +108,16 @@ class RecordBrokenError(ReproError):
         self.state = state
         super().__init__(
             f"{state.path}: refusing to append to a chain reported as {state.status}: "
-            f"{'; '.join(state.problems)}"
+            f"{'; '.join(state.problems)}; `repro verify {SET_ASIDE}` keeps it and starts anew"
         )
+
+
+class RecordIntactError(ReproError):
+    """Nothing was set aside: every record there is verifies, and the two agree."""
+
+    def __init__(self, root: pathlib.Path) -> None:
+        self.root = root
+        super().__init__(f"{root}: no record here is damaged, so none is set aside")
 
 
 def address(locator: Locator) -> str:
@@ -315,6 +328,11 @@ class Records:
                     )
                 )
         self.history = {identity: tuple(states) for identity, states in found.items()}
+        self.set_aside = tuple(
+            note.model_copy(update={"at": read[raw].timestamp})
+            for raw in (*(raw for raw in here[:shared] if raw in read), *beyond)
+            if (note := read[raw].set_aside) is not None
+        )
 
     def state(self, kind: Kind) -> RecordState | None:
         return next((state for state in self.states if state.kind == kind), None)
@@ -402,6 +420,76 @@ def record(
                 _take(carried, here, len(there))
 
 
+def _move_aside(path: pathlib.Path, state: RecordState, lines: list[str]) -> RecordSetAside:
+    """Rename a record and its head file to names that say when they were set aside, and say
+    what was found in it. Nothing is deleted, and a name already taken is not written over."""
+    stamp = datetime.datetime.now(datetime.UTC).strftime("%Y%m%dT%H%M%SZ")
+    vouched = len(lines) if state.unverifiable_from is None else state.unverifiable_from - 1
+    for name in (path.name, ANCHOR):
+        source, target = path.with_name(name), path.with_name(f"{name}.set-aside-{stamp}")
+        if target.exists():
+            raise FileExistsError(17, "File exists", str(target))
+        if source.exists():
+            os.replace(source, target)
+    problems = state.problems + (
+        (f"diverges from the local record at entry {state.diverges_at}",)
+        if state.diverges_at is not None
+        else ()
+    )
+    return RecordSetAside(
+        kind=state.kind,
+        kept_as=f"{path.name}.set-aside-{stamp}",
+        entries=len(lines),
+        head=sha256_of_text(lines[vouched - 1]) if vouched else ZERO,
+        status=state.status,
+        problems=problems,
+    )
+
+
+def set_aside(
+    manifest: Manifest, local: bool = True, tracked: bool = False
+) -> tuple[RecordSetAside, ...]:
+    """Move a damaged record of checks aside and say so in the chain that goes on.
+
+    The record `repro verify` appends to, where its chain does not verify: the next entry is
+    the first of a new chain and names the old one, the hash of its last entry that verified
+    and what was found. With `tracked`, the tracked record as well, where it does not verify or
+    is not the beginning of the local one; it is then copied afresh by the check that follows.
+    The files are renamed and kept.
+
+    Raises `RecordIntactError` where no record qualifies. Never called except by name.
+    """
+    root = manifest.path.parent if manifest.path else pathlib.Path.cwd()
+    at = git_dir(root) if local else None
+    kept = at / LOCAL if at is not None else None
+    carried = root / RECORD
+    written = kept or carried
+    with exclusive_lock(written):
+        found = Records(root, local)
+        moved = []
+        for kind, path in (("local", kept), ("tracked", carried)):
+            state = found.state(kind)
+            if path is None or state is None or (path != written and not tracked):
+                continue
+            broken = ChainStatus(state.status) not in _SOUND
+            # A tracked record cannot follow a local one that starts again.
+            orphaned = path != written and (state.diverges_at is not None or bool(moved))
+            if broken or orphaned:
+                moved.append(_move_aside(path, state, found.lines[kind]))
+        if not moved:
+            raise RecordIntactError(root)
+        for note in moved:
+            append_event(
+                written,
+                {
+                    "schema_version": CheckRecord.model_fields["schema_version"].default,
+                    "assertions": [],
+                    "set_aside": note.model_dump(mode="json", exclude={"at"}),
+                },
+            )
+    return tuple(moved)
+
+
 __all__ = [
     "LOCAL",
     "NOT_A_REPOSITORY",
@@ -409,9 +497,11 @@ __all__ = [
     "Identity",
     "RecordBrokenError",
     "RecordDivergedError",
+    "RecordIntactError",
     "Records",
     "address",
     "checked",
     "git_dir",
     "record",
+    "set_aside",
 ]
