@@ -67,6 +67,7 @@ NOT_CARRIED_NATIVELY = (
     "reads.side",
     "reads.address",
     "reads.stored",
+    "reads.converted",
     "printed",
     "comparison",
     "outcome",

@@ -331,7 +331,7 @@ def test_documented_loss(project):
         if any(path == name or path.startswith(f"{name}.") for name in NOT_CARRIED_NATIVELY)
     }
     assert found - lost <= native, sorted(found - lost - native)
-    assert set(NOT_CARRIED_NATIVELY) - {"execution", "history"} <= found
+    assert set(NOT_CARRIED_NATIVELY) - {"execution", "history", "reads.converted"} <= found
 
     log = json.loads(to_sarif_log(records))
     for result in log["runs"][0]["results"]:
