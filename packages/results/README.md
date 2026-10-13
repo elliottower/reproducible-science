@@ -162,6 +162,13 @@ An analysis registered after `outcomes seen` is retrospective.
 | `ok` | File matches its recorded hash |
 | `CHANGED` | File was modified since it was recorded |
 | `MISSING` | File no longer exists |
+| `RESEALED` | The path carries more than one recorded hash |
+
+`RESEALED` is drift that no later edit clears. Digests are re-derived from the path they
+were recorded under, so sealing a path a second time leaves the ledger unable to say which
+version of that file a run read. A sealed file that needs to change gets a new path: restore
+the sealed bytes, write the correction beside them, seal the new path, and leave the old one
+in place, since `verify` re-reads it and reports `MISSING` if it is gone.
 
 ## The ledger
 
