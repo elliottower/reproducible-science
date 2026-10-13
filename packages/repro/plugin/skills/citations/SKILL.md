@@ -28,6 +28,7 @@ citations init                      # create a library here
 citations lint                      # BibTeX correctness
 citations lint --claims <dir>       # pinned sources that git tracks
 citations fetch --claims <dir>      # download the pinned sources, keeping only matching bytes
+citations pin <file> --url <URL> --id <id> --quote "<passage>"   # pin against a web page
 ```
 
 ## Pinning a source and a quotation
@@ -44,6 +45,20 @@ citations pin claims/<source>.yaml --id <id> --quote "<passage>"
 
 `pin` resolves the passage against the pinned file first and writes nothing where it does not
 resolve, so the sentence is written from a passage already found in the source.
+
+**A web page is pinned by its URL.** `citations pin <file> --url <URL> --id <id> --quote
+"<passage>"` reads the page from the `retrieved` library, which already holds a page fetched
+earlier in the session where the capture hook is installed, and captures it where the library
+holds none. It writes the claims file with the URL, the sha256, the retrieval time and the
+path of the bytes inside the library; the page is never copied into the project. Never save a
+page by hand and write its path and digest. `--recapture` fetches the page again, and the new
+retrieval goes in a new claims file: a claims file pins one retrieval. Where `retrieved`
+refuses the URL, or the server answers with an error, nothing is written and the reason is
+printed; report it, and never work around a refusal. An HTML page is checked as the text it
+shows: tags dropped, entities decoded, `<script>` and `<style>` left out, and a table row
+written with ` | ` between its cells. The claims file names that reading as `extractor:
+html-text`. Needs `pip install "citations[web]"`. In a clone whose library lacks the page its
+quotations are `unchecked`, and the reason names the retrieved store.
 
 **Give the bibliography entry a DOI or an arXiv id.** A record is keyed by its entry's DOI,
 else its arXiv id, else a hash of the title and first author. An entry with neither becomes a

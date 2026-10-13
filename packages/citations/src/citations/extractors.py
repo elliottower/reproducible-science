@@ -9,11 +9,13 @@ differ, 41 unavailable. 2,688 of its 4,499 quotations are rows of supplementary 
 
 The remedy is to pin the original and name the extraction, which is what a PDF already gets:
 the pin names the publisher's bytes and `pdftotext` is recorded as what read them. These are
-the same thing for three more formats.
+the same thing for four more formats.
 
     sheet-rows   .xlsx, .xls, .csv   one row per line, cells joined with ` | `
     docx-text    .docx               paragraphs in order, then each table one row per line
     jats-text    JATS XML            one block per line, inline markup dropped
+    html-text    HTML                one block per line, tags dropped, entities decoded,
+                                     `<script>` and `<style>` left out
 
 Each has a name a claims file can write and a version. The version is of the output, not of
 the code: it changes when the same bytes would produce different text, because a quotation
@@ -37,6 +39,7 @@ from __future__ import annotations
 import csv
 import dataclasses
 import datetime
+import html.parser
 import pathlib
 import shlex
 import warnings
@@ -309,6 +312,133 @@ def _jats_text(path: pathlib.Path, sheet: str | None, keep_empty: bool) -> str:
     return "\n".join(line for line in lines if line)
 
 
+#: HTML elements that sit inside a sentence. Everything else starts a new line, for the reason
+#: `_JATS_INLINE` gives: an inline element missing from here splits a sentence across two lines,
+#: which the matcher's whitespace folding absorbs, and no element's text is ever dropped for
+#: being unlisted.
+_HTML_INLINE = frozenset(
+    {
+        "a",
+        "abbr",
+        "b",
+        "bdi",
+        "bdo",
+        "cite",
+        "code",
+        "data",
+        "del",
+        "dfn",
+        "em",
+        "font",
+        "i",
+        "ins",
+        "kbd",
+        "label",
+        "mark",
+        "q",
+        "s",
+        "samp",
+        "small",
+        "span",
+        "strong",
+        "sub",
+        "sup",
+        "time",
+        "tt",
+        "u",
+        "var",
+        "wbr",
+    }
+)
+
+#: Elements whose text is a program or a stylesheet and no part of what the page says.
+_HTML_UNREAD = frozenset({"script", "style"})
+
+_HTML_CELLS = frozenset({"td", "th"})
+
+
+class _HTMLText(html.parser.HTMLParser):
+    """The text of an HTML page, gathered a block at a time.
+
+    Character references are decoded by the parser before the text arrives, and a comment
+    never arrives at all.
+    """
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.lines: list[str] = []
+        self._run: list[str] = []
+        self._cells: list[str] | None = None
+        self._unread = 0
+
+    def _flush(self) -> None:
+        text, self._run = _line("".join(self._run)), []
+        if self._cells is not None:
+            self._cells.append(text)
+        elif text:
+            self.lines.append(text)
+
+    def _end_row(self) -> None:
+        self._flush()
+        if self._cells is not None:
+            self.lines += _rows([self._cells], keep_empty=False)
+        self._cells = None
+
+    def _boundary(self, tag: str, opening: bool) -> None:
+        if tag in _HTML_UNREAD:
+            self._unread = max(0, self._unread + (1 if opening else -1))
+        elif tag == "tr":
+            self._end_row()
+            if opening:
+                self._cells = []
+        elif tag in _HTML_CELLS or self._cells is None:
+            self._flush()
+        else:
+            # A block inside a table cell: its text stays in the cell, parted by a space.
+            self._run.append(" ")
+
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
+        if tag not in _HTML_INLINE:
+            self._boundary(tag, opening=True)
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag not in _HTML_INLINE:
+            self._boundary(tag, opening=False)
+
+    def handle_data(self, data: str) -> None:
+        if not self._unread:
+            self._run.append(data)
+
+    def close(self) -> None:
+        super().close()
+        self._end_row()
+
+
+def _html_text(path: pathlib.Path, sheet: str | None, keep_empty: bool) -> str:
+    """An HTML page as the text it shows: one block per line, tags dropped, entities decoded.
+
+    Read as plain text, a page keeps its markup, and a quotation crossing `<a>` or `<em>`, or
+    holding a character the page writes as `&amp;` or `&rsquo;`, does not resolve. On a web
+    page that is most sentences.
+
+    An inline element is dropped and its text kept in place, so a sentence reads through a
+    link. Every other element ends a line, so the last word of one block and the first of the
+    next are never welded into a word neither holds. A line break is white space to the
+    matcher, as it is in any text source, so a quotation running from the end of one block
+    into the start of the next resolves as it does across a line break in a `.txt`. A table is
+    one row per line with cells joined by ` | `, as the other extractors write one, so a
+    quotation spanning two cells resolves only where it shows that it does.
+
+    The text of `<script>` and `<style>` is left out. Nothing else is: navigation, footers and
+    text a stylesheet hides are in the page, and leaving a part out is a decision about what a
+    page may be quoted on. Read as UTF-8, with a byte that is not replaced.
+    """
+    parser = _HTMLText()
+    parser.feed(path.read_text(encoding="utf-8", errors="replace"))
+    parser.close()
+    return "\n".join(parser.lines)
+
+
 @dataclasses.dataclass(frozen=True)
 class Extractor:
     """One built-in extractor: the name a claims file writes, and the version of its output."""
@@ -328,6 +458,7 @@ EXTRACTORS: dict[str, Extractor] = {
         Extractor("sheet-rows", 1, _sheet_rows, takes_options=True),
         Extractor("docx-text", 1, _docx_text),
         Extractor("jats-text", 1, _jats_text),
+        Extractor("html-text", 1, _html_text),
     )
 }
 
@@ -335,7 +466,9 @@ EXTRACTORS: dict[str, Extractor] = {
 #: rule `verify.BY_SUFFIX` applies to `.tex`: without it a workbook reached the PDF readers and
 #: every quotation in it was `unchecked`. `.xml` is not here. An XML source that declares
 #: nothing is read as plain text, as it always was, and quotations already pinned against the
-#: markup go on resolving; `jats-text` is for a source that names it.
+#: markup go on resolving; `jats-text` is for a source that names it. `.html` is not here for
+#: the same reason: `html-text` is for a source that names it, which `citations pin --url`
+#: does for a page it pins.
 BY_SUFFIX: dict[str, str] = {
     ".xlsx": "sheet-rows",
     ".xlsm": "sheet-rows",

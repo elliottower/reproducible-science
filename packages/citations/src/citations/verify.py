@@ -1175,8 +1175,10 @@ def check_one(
     result.fallback_reason = got.fallback_reason
 
     # One reader saying no is not the document saying no. Only on a paginated source: the text
-    # of a `.txt` is its bytes, and there is no second way to read them.
-    if result.state == "not found" and paged:
+    # of a `.txt` is its bytes, and there is no second way to read them. The same holds for a
+    # source read as its bytes under a declared `cat`, whatever its name says: a web page in a
+    # `retrieved` store has no suffix, and the PDF readers have nothing to say about one.
+    if result.state == "not found" and paged and got.extractor != PLAIN_TEXT:
         consulted = [got.extractor]
         rescued = _second_opinion(
             quote, artifact, page if paginated else None, warn, got.extractor, prefix, suffix

@@ -36,6 +36,7 @@ from pydantic import (
     model_validator,
 )
 
+from citations import paths
 from citations.exceptions import ClaimFileError
 
 Verbatim = Annotated[str, StringConstraints(strip_whitespace=False)]
@@ -96,12 +97,25 @@ class ClaimSource(_Base):
     url: str | None = None
     """Where the copy was fetched from."""
 
+    retrieved: str | None = None
+    """Where the pinned bytes are inside a `retrieved` library: `store/<sha256>`.
+
+    For a web page pinned by its URL, in place of `local`. The page is somebody else's text, so
+    it stays in the library that captured it and is never copied into the project. The path is
+    relative to the library, which each machine finds for itself (`paths.retrieved_library`),
+    so a claims file committed to a public repository names no directory of its author's.
+    `citations pin --url` writes it."""
+
+    retrieved_at: str | None = None
+    """When `retrieved` fetched those bytes: the `fetched_at` of its record. A live page
+    changes, and this is the moment the pin describes."""
+
     extract_cmd: str | None = None
     """The command that produced the extracted text the quotations resolve against."""
 
     extractor: str | None = None
     """The built-in extractor that turns the pinned file into the text the quotations resolve
-    against: `sheet-rows`, `docx-text` or `jats-text`. See `citations.extractors`.
+    against: `sheet-rows`, `docx-text`, `jats-text` or `html-text`. See `citations.extractors`.
 
     For a source whose pinned file is the publisher's own -- a workbook, a `.docx`, an article's
     XML -- and not a text somebody made from it. `sha256` then names bytes a reader can
@@ -128,6 +142,24 @@ class ClaimSource(_Base):
 
     note: str | None = None
     """Anything a reader needs in order to interpret the quotations."""
+
+    @field_validator("retrieved")
+    @classmethod
+    def _inside_the_library(cls, v: str | None) -> str | None:
+        """A claims file can arrive from anywhere, and this path is joined onto a library."""
+        if v is not None:
+            inside = pathlib.PurePosixPath(v)
+            if inside.is_absolute() or ".." in inside.parts:
+                raise ValueError(
+                    "`retrieved` is a path inside the retrieved library, such as store/<sha256>"
+                )
+        return v
+
+    @field_validator("retrieved_at", mode="before")
+    @classmethod
+    def _moment_to_str(cls, v: Any) -> str | None:
+        """YAML reads an unquoted timestamp as a datetime. Either is the moment."""
+        return None if v is None else str(v)
 
     @model_validator(mode="after")
     def _one_reading(self) -> ClaimSource:
@@ -283,11 +315,18 @@ class ClaimFile(_Base):
         """The pinned copy on disk, or None when the file names no source.
 
         Resolved against the parent of the claims directory, which is the convention the
-        corpus uses. An absolute `local` resolves to itself.
+        corpus uses. An absolute `local` resolves to itself. A source that names no `local` and
+        was pinned from a web page resolves into the `retrieved` library governing that same
+        directory.
         """
-        if not self.path or not self.source.local:
+        if not self.path:
             return None
-        return (self.path.parent.parent / self.source.local).resolve()
+        if self.source.local:
+            return (self.path.parent.parent / self.source.local).resolve()
+        if self.source.retrieved:
+            project = self.path.resolve().parent.parent
+            return paths.retrieved_library(project) / self.source.retrieved
+        return None
 
 
 class CitedBy(_Base):

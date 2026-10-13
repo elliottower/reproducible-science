@@ -43,6 +43,7 @@ what someone else wrote.
 pip install citations
 pip install "citations[sheets]"   # to read .xlsx and .xls sources
 pip install "citations[docx]"     # to read .docx sources
+pip install "citations[web]"      # to pin a web page by its URL
 ```
 
 ## What a check establishes
@@ -129,7 +130,7 @@ every quote resolved, but against a source that is not the one pinned.
 | Command | What it does |
 |---------|-------------|
 | `citations init` | Create a library here |
-| `citations pin` | Add a quotation to a claims file, refusing one that does not resolve; `--occurrence N` pins one occurrence of a repeated passage |
+| `citations pin` | Add a quotation to a claims file, refusing one that does not resolve; `--occurrence N` pins one occurrence of a repeated passage; `--url` pins against a web page |
 | `citations restore` | Write the source's passage for a quotation that leaves text out, as a separate record |
 | `citations verify` | Do the quotations resolve in their sources? |
 | `citations coverage` | Is every quotation in my manuscript pinned at all? |
@@ -141,6 +142,97 @@ every quote resolved, but against a source that is not the one pinned.
 | `citations link` | Point pdfs/ at the papers' artifacts |
 | `citations fetch` | Download the sources a claims directory pins, keeping only bytes that match the pin |
 | `citations import-paperclip` | Turn a Paperclip paper repo into pinned claim files |
+
+## Pinning a web page by its URL
+
+A documentation page, a policy page or a release note is a source with no file. `citations pin
+--url` pins a quotation against the page at an address, and
+[`retrieved`](https://github.com/elliottower/retrieved) obtains the page and holds its bytes:
+
+```bash
+pip install "citations[web]"
+```
+
+```console
+$ citations pin claims/guide.yaml --url https://docs.example.org/guide --id refusal \
+    --quote "A capture is refused where the host names a private network."
+page      https://docs.example.org/guide
+  the retrieval of 2026-01-05T09:30:00+00:00, already in the library: 98ae199b9a71 in /home/you/.retrieved
+found     A capture is refused where the host names a private network.
+added     refusal to guide.yaml
+```
+
+Where the `retrieved` library already holds a retrieval of that URL, the most recent one is
+read and no request is made; the line under `page` gives its time. Where the library holds
+none, the page is captured then, through `retrieved`'s own denylist, pacing and fetch, and the
+line reads `captured now`. `--recapture` fetches the page again whatever the library holds. A
+URL `retrieved` refuses (a private or internal host, a query string carrying a token), a
+request its pacing declines, a server answer outside 200 to 299 and a failed request each exit
+1 with the reason, and no claims file is written. Without the `web` extra the command names
+the install and writes nothing.
+
+The quotation is then resolved as against any other source, and a passage the page does not
+hold is refused. `--url` is the one case where the claims file need not exist. It is written
+with this `source` block:
+
+```yaml
+source:
+  url: https://docs.example.org/guide
+  sha256: 98ae199b9a71…                    # the bytes retrieved
+  retrieved: store/98ae199b9a71…           # where they are, inside the retrieved library
+  retrieved_at: '2026-01-05T09:30:00+00:00'
+  extractor: html-text                     # what turns the page into the text quoted
+  extractor_version: 1
+  derived_sha256: 5c1d…                    # the text it produced when the quotation was pinned
+```
+
+The block names the reading, so `verify` reads the page the same way later. An HTML page names
+`html-text`: HTML by the content type the retrieval's record gives, or, where the record gives
+none, by a doctype or an `<html>` tag in its first 1,024 bytes. Any other text names
+`extract_cmd: cat {}` and is read as served, and a PDF names nothing and goes to the PDF
+readers.
+
+The page is somebody else's text and is never copied into the project. `retrieved` is a path
+inside the library, so a claims file committed to a public repository names no directory of
+the machine that wrote it, and each machine finds the library itself:
+
+```text
+$RETRIEVED_HOME                 if set
+.retrieved/ walking up          from the directory that holds claims/
+<that directory>/.retrieved/    where there is neither; pin --url creates it
+```
+
+The search starts at the directory holding `claims/` and not at the working directory, so a
+claims file names the same library wherever a command is run. With neither a variable nor a
+library above the project, a capture creates `.retrieved/` beside `claims/`. That directory
+holds the pages, so add it to `.gitignore`; `citations pin` says so where no ignore rule
+covers it.
+
+A claims file pins one retrieval of one page. A later quotation from the same retrieval is
+added with or without `--url`. Where the library's most recent retrieval is another one, or
+`--recapture` fetched other bytes, `--url` on that claims file is refused: leave `--url` out
+to add to the retrieval the file pins, or name a new claims file for the new one. The store
+is addressed by digest, so the earlier retrieval stays in it and the earlier claims file goes
+on verifying.
+
+`citations verify` reads the page from the library by the digest and needs no extra. In a
+clone on a machine whose library does not hold the bytes, each quotation is `unchecked` and
+the reason names the store that was asked:
+
+```text
+  unchecked           1   not in the retrieved store at /home/reader/paper/.retrieved/store: the source is a web page pinned by its URL, and its bytes are kept in the library that captured it
+```
+
+`citations fetch` asks the URL again and keeps the download only where its sha256 is the
+pinned one. A live page is rarely served twice with the same bytes, so the usual outcome is
+`differs`, and the line says the page may have changed since the retrieval time the claims
+file records. Nothing is written in that case.
+
+A quotation from an HTML page is checked against the text the page shows. `html-text` drops
+the tags, decodes character entities, and leaves out the text of `<script>` and `<style>`, so
+a sentence quoted through a link or an emphasis resolves, and so does one typed with the `&`
+or the apostrophe the page writes as `&amp;` or `&rsquo;`. See
+[Reading workbooks, `.docx`, article XML and HTML](#reading-workbooks-docx-article-xml-and-html).
 
 ## Fetching the sources a repository cannot ship
 
@@ -583,20 +675,32 @@ The entries hold text from the sources, so they live with the user and not in a 
 does not know has no version to ask for, and is run every time. `repro verify` reads every
 source every time.
 
-## Reading workbooks, `.docx` and article XML
+## Reading workbooks, `.docx`, article XML and HTML
 
-Three built-in extractors read the formats a supplement or an open-access article arrives in,
-so a claims file can pin the publisher's file and not a text somebody made from it:
+Four built-in extractors read the formats a supplement, an open-access article or a web page
+arrives in, so a claims file can pin the publisher's file and not a text somebody made from it:
 
 | Extractor | Reads | Produces | Install |
 |-----------|-------|----------|---------|
 | `sheet-rows` | `.xlsx`, `.xls`, `.csv` | one row per line, cells joined with `\|` | `pip install "citations[sheets]"` (`.csv` needs nothing) |
 | `docx-text` | `.docx` | body paragraphs in order, then each table one row per line | `pip install "citations[docx]"` |
 | `jats-text` | JATS XML: Europe PMC `fullTextXML`, NCBI `efetch db=pmc` | one block per line, inline markup dropped, entities decoded, table rows as cells | nothing |
+| `html-text` | HTML | one block per line, tags dropped, entities decoded, `<script>` and `<style>` left out, table rows as cells | nothing |
 
 A workbook or a `.docx` that declares nothing is read by the extractor its suffix names. An
 `.xml` that declares nothing is still read as plain text with its markup, so quotations already
 pinned against the XML as served go on resolving; `jats-text` is for a source that names it.
+An `.html` or `.htm` file that declares nothing is likewise still read with its markup, and
+`html-text` is for a source that names it: a local file by `extractor: html-text`, and a page
+pinned with `citations pin --url` in the block that command writes.
+
+`html-text` keeps the text of an inline element (`<a>`, `<em>`, `<code>`, `<span>` and the
+like) in its sentence and ends a line at every other element. A line break is white space to
+the matcher, as in any text source, so a quotation that runs from the end of one paragraph or
+list item into the start of the next resolves, as it does across a line break in a `.txt`. A
+table row is one line with ` | ` between its cells, so a quotation spanning two cells resolves
+only where it writes the ` | `. Navigation, footers and text a stylesheet hides are part of
+the page and are read; only `<script>` and `<style>` are left out. The page is read as UTF-8.
 
 ```yaml
 source:
@@ -948,7 +1052,8 @@ overreaches its quote is for review to catch — the command cannot.
 ## Declaring the extractor
 
 A PDF goes through `pdftotext -layout`; `.txt`, `.md`, `.tei`, `.xml`, `.html`, `.htm` and
-`.rst` are read straight off disk; a workbook or a `.docx` goes through a built-in extractor.
+`.rst` are read straight off disk; a workbook or a `.docx` goes through a built-in extractor;
+a web page pinned with `--url` declares its own reading when it is pinned.
 Anything else — a `.tex` manuscript, a two-column PDF whose columns `-layout` splices
 together — needs a renderer the claims file names:
 

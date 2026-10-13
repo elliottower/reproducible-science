@@ -332,10 +332,9 @@ def _artifact_text(cf: ClaimFile, claims_dir: pathlib.Path, allowed) -> str | No
     from citations.exceptions import SourceUnreadableError
     from citations.verify import extract
 
-    if not cf.source.local:
-        return None
-    path = (claims_dir.parent / cf.source.local).resolve()
-    if not path.is_file():
+    # A page pinned by its URL names no `local`, and is found the way `verify` finds it.
+    path = (claims_dir.parent / cf.source.local).resolve() if cf.source.local else cf.artifact()
+    if path is None or not path.is_file():
         return None
     try:
         return comparable(extract(path, None, cf.source.reader, allowed))

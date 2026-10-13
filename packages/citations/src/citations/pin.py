@@ -44,6 +44,18 @@ A source read by a PDF reader is anchored in the text of the reader that reads i
 passage that reader misses and a fallback reader finds twice is `ambiguous` and cannot be
 pinned with `--occurrence`.
 
+`--url` pins against a web page, and is the one case where the claims file need not exist.
+The page is the most recent retrieval of that URL in the `retrieved` library, or is captured
+now where the library holds none; `--recapture` fetches it again. The claims file is written
+with a `source` block naming the URL, the sha256 of the bytes, when they were retrieved and
+where they are inside the library, and the page itself is never copied into the project. A
+file that already pins that retrieval takes the quotation as any other does. One that pins
+another source, or another retrieval of the page, is refused: a claims file pins one copy of
+one source. Needs the `web` extra. See `web`.
+
+    citations pin claims/guide.yaml --url https://docs.example.org/guide --id scope \
+        --quote "the passage, exactly as the page has it"
+
     citations pin claims/notes2026.yaml --id second-run --occurrence 2 \
         --quote "the model reached an accuracy of 0.94 on the split"
 
@@ -63,11 +75,11 @@ import pathlib
 import yaml
 from provenance_core import atomic_write, exclusive_lock
 
-from . import extractors, tracked
+from . import extractors, tracked, web
 from . import verify as V
 from .exceptions import CitationsError
 from .fetch import has_location
-from .models import ClaimFile
+from .models import ClaimFile, load_claim_file
 
 
 class PinRefused(CitationsError):
@@ -76,6 +88,43 @@ class PinRefused(CitationsError):
 
 def _artifact(cf: ClaimFile) -> pathlib.Path | None:
     return cf.artifact()
+
+
+def from_url(path: pathlib.Path, url: str, recapture: bool) -> tuple[ClaimFile, dict, str]:
+    """The claims file as it will read with the page at `url` as its source.
+
+    Returns it with the `source` fields to write, which are none where the file already pins
+    this retrieval, and one line saying which retrieval was read. A file that is not there, and
+    one whose source records no more than this URL, take the whole block. Raises `PinRefused`
+    where the file pins something else, before anything is fetched where the file alone says
+    so, and `web.WebSourceError` where there is no page to pin.
+    """
+    held = load_claim_file(path) if path.exists() else ClaimFile()
+    source = held.source
+    if source.local or (source.url and source.url != url):
+        raise PinRefused(
+            f"{path.name} already pins {source.local or source.url}, and a claims file pins "
+            f"one source. Name another file for this page."
+        )
+    page = web.obtain(url, path.resolve().parent.parent, recapture)
+    said = (
+        f"captured now, at {page.fetched_at}"
+        if page.captured
+        else f"the retrieval of {page.fetched_at}, already in the library"
+    )
+    said = f"{said}: {page.sha256[:12]} in {page.path.parent.parent}"
+    pinned = (source.sha256 or "").strip().lower()
+    if pinned and pinned != page.sha256:
+        when = f", retrieved at {source.retrieved_at}" if source.retrieved_at else ""
+        raise PinRefused(
+            f"{path.name} pins {pinned[:12]}{when}, and this is another retrieval: {said}. "
+            f"A claims file pins one copy of its source. Leave out --url to add to the copy it "
+            f"pins, or name a new claims file for this one."
+        )
+    block = {} if source.retrieved else page.source()
+    cf = held.model_copy(update={"source": source.model_copy(update=block)})
+    cf.path = path
+    return cf, block, said
 
 
 def resolve(
@@ -180,7 +229,9 @@ def entry(
 def add_to(path: pathlib.Path, claim_id: str, claim: dict, source: dict | None = None) -> None:
     """Append one claim to the file, preserving what is already there.
 
-    `source` is merged into the source block in the same write: see `reading_record`.
+    `source` is merged into the source block in the same write: see `reading_record`. A file
+    that is not there yet is created, which is how a page pinned by `--url` gets its claims
+    file, and a `source` that names a sha256 other than the one the file holds is refused.
 
     The file is re-read and re-written as data rather than patched as text: a claims file is
     the input to a check, and a command that edited it with a regular expression would be the
@@ -192,8 +243,18 @@ def add_to(path: pathlib.Path, claim_id: str, claim: dict, source: dict | None =
     The duplicate-id guard reads that same snapshot, so unlocked it also admits two claims under
     one identifier -- the case it exists to refuse -- because neither caller can see the other's.
     """
+    path.parent.mkdir(parents=True, exist_ok=True)
     with exclusive_lock(path):
-        doc = yaml.safe_load(path.read_text()) or {}
+        doc = (yaml.safe_load(path.read_text()) if path.exists() else None) or {}
+        pinned = (doc.get("source") or {}).get("sha256")
+        if source and pinned and source.get("sha256", pinned) != pinned:
+            # Two `pin --url` calls creating one file, with the page changed between them.
+            raise PinRefused(
+                f"{path.name} was written meanwhile and pins {pinned[:12]}; this quotation was "
+                f"resolved in {source['sha256'][:12]}. Nothing was added."
+            )
+        if source:
+            doc.setdefault("source", {}).update(source)
         claims = doc.setdefault("claims", {})
         if claim_id in claims:
             raise PinRefused(
@@ -201,8 +262,6 @@ def add_to(path: pathlib.Path, claim_id: str, claim: dict, source: dict | None =
                 "Two claims under one identifier are two claims; give this one its own."
             )
         claims[claim_id] = claim
-        if source:
-            doc.setdefault("source", {}).update(source)
         # Atomically: a claims file is the input to every later check, and a truncating write
         # that dies partway through leaves a document that no longer parses as one.
         atomic_write(path, yaml.safe_dump(doc, sort_keys=False, allow_unicode=True, width=100))
@@ -238,6 +297,17 @@ def main(argv: list[str] | None = None) -> int:
         metavar="NAME",
         help="let the file's extract_cmd run this program",
     )
+    ap.add_argument(
+        "--url",
+        help="pin against the web page at this address, as the `retrieved` library holds it "
+        "or captures it now; writes the claims file where there is none "
+        f'(needs pip install "{web.EXTRA}")',
+    )
+    ap.add_argument(
+        "--recapture",
+        action="store_true",
+        help="with --url, fetch the page again and pin that, whatever the library holds",
+    )
     ap.add_argument("--check", action="store_true", help="resolve and report, write nothing")
     a = ap.parse_args(argv)
     # As the claims file will be read back: the model strips `exact` on load, and anchors
@@ -254,13 +324,28 @@ def main(argv: list[str] | None = None) -> int:
         print("--says needs --whose: a characterization with no owner reads as the source's.")
         return 2
 
-    path: pathlib.Path = a.claims_file
-    if not path.exists():
-        print(f"no such claims file: {path}")
+    if a.recapture and not a.url:
+        print("--recapture needs --url: it fetches the page that --url names.")
         return 2
 
-    cf = ClaimFile.model_validate(yaml.safe_load(path.read_text()) or {})
-    cf.path = path
+    path: pathlib.Path = a.claims_file
+    page: dict = {}
+    if a.url:
+        try:
+            cf, page, said = from_url(path, a.url, a.recapture)
+        except (PinRefused, web.WebSourceError) as e:
+            print(f"refused   {a.url}")
+            print(f"  {e}")
+            print("nothing written.")
+            return 1
+        print(f"page      {a.url}")
+        print(f"  {said}")
+    elif not path.exists():
+        print(f"no such claims file: {path}")
+        return 2
+    else:
+        cf = ClaimFile.model_validate(yaml.safe_load(path.read_text()) or {})
+        cf.path = path
 
     allowed = V.DEFAULT_EXTRACTORS | frozenset(a.allow_extractor)
     r = resolve(cf, a.quote, a.page, allowed)
@@ -294,7 +379,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1
 
     claim = entry(a.quote, a.section, a.page, a.says, a.whose, a.status, a.contest, prefix, suffix)
-    record = reading_record(cf, r)
+    record = page | reading_record(cf, r)
     singled = (
         f"  occurrence {a.occurrence}, singled out by the prefix and suffix written with it"
         if prefix or suffix
