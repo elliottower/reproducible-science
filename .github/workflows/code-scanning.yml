@@ -1,0 +1,35 @@
+name: Code scanning
+
+# This repository's own declared claims, as code scanning alerts. `repro export sarif` writes
+# one result for each assertion in `repro.yaml` that does not hold, and the upload shows it
+# under Security and, where its line is in the diff, on the pull request. It exits 0 whatever
+# it finds: the pre-commit hook and `repro verify` are the checks that fail.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  claims:
+    name: declared claims (SARIF)
+    runs-on: ubuntu-latest
+    # A pull request from a fork gets a read-only token, and the upload would fail there.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+      - run: uv sync --all-packages --group dev
+      - run: uv run repro export sarif -o repro.sarif
+      - uses: github/codeql-action/upload-sarif@24c54180a607b1449ed407dd24f251e4e9147c8d  # v4.38.3
+        with:
+          sarif_file: repro.sarif
+          category: repro
