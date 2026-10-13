@@ -7,6 +7,7 @@
     repro reproduce       run the declared commands again and check the numbers still hold
     repro stale           say which claims read a file changed since its recorded re-run
     repro why             say what the record establishes for one claim, and what it does not
+    repro numbers         count every number the manuscript prints, bound to a claim or not
     repro check           run every tool this project uses, in one pass
     repro audit           clone a repository at a pinned commit and run every tool over it
     repro prereg          run `prereg`: freeze a plan, and record what deviated from it
@@ -48,6 +49,7 @@ from repro.models import (
     ChainNode,
     ClaimAccount,
     Freshness,
+    NumbersReport,
     Ordering,
     Outcome,
     Reading,
@@ -55,8 +57,10 @@ from repro.models import (
     StaleCause,
     StaleFinding,
     StalenessReport,
+    Standing,
     Validity,
 )
+from repro.numbers import numbers as run_numbers
 from repro.policy import PROFILES
 from repro.renderers import to_sarif
 from repro.reproduce import RECORD
@@ -791,6 +795,67 @@ def cmd_why(args: argparse.Namespace) -> int:
     return 0
 
 
+def _count_said(counts: collections.Counter[Standing]) -> str:
+    """The four counts, which add up to the number before them."""
+    return (
+        f"{counts[Standing.BOUND]} bound, {counts[Standing.SET_ASIDE_BY_RULE]} set aside by "
+        f"rule, {counts[Standing.SET_ASIDE_WITH_A_REASON]} set aside with a reason, "
+        f"{counts[Standing.UNBOUND]} unbound"
+    )
+
+
+def _numbers_lines(report: NumbersReport) -> list[str]:
+    """Per text the numbers nothing accounts for, then what was set aside and the counts."""
+    lines = []
+    for text in report.texts:
+        lines.append(f"  {_named(text.artifact, {text.artifact: text.path})}")
+        unbound = [number for number in text.numbers if number.standing is Standing.UNBOUND]
+        width = max((len(number.text) for number in unbound), default=0)
+        for number in unbound:
+            where = f"line {number.line}" if number.line else f"offset {number.offset}"
+            note = "  (reported elsewhere)" if number.reported_elsewhere else ""
+            lines.append(f"    {where:<10} {number.text:<{width}}  {number.context}{note}")
+        counts = collections.Counter(number.standing for number in text.numbers)
+        lines += [f"    {len(text.numbers)} numbers: {_count_said(counts)}", ""]
+
+    if report.rules:
+        rules = ", ".join(f"{n} {_said(rule)}" for rule, n in report.rules.items())
+        lines.append(f"  set aside by rule: {rules}")
+    for entry in report.set_aside:
+        passage = entry.text if len(entry.text) <= 60 else f"{entry.text[:60]}..."
+        lines.append(
+            f'  set aside with a reason: {entry.numbers} in {entry.artifact} "{passage}": '
+            f"{entry.reason}"
+        )
+    counts = report.counts
+    total, texts = len(report.numbers), len(report.texts)
+    lines.append(
+        f"  {total} numbers in {texts} text{'' if texts == 1 else 's'}: {_count_said(counts)}"
+    )
+    elsewhere = sum(number.reported_elsewhere for number in report.numbers)
+    lines.append(
+        f"  {elsewhere} of the {counts[Standing.UNBOUND]} unbound print a value an assertion "
+        "reports, outside the passage it reports it for"
+    )
+    return lines
+
+
+def cmd_numbers(args: argparse.Namespace) -> int:
+    path = Path(args.manifest) if args.manifest else find()
+    if path is None:
+        print(f"no {DEFAULT_NAME} here or above.\n")
+        print("write one that pins this project's result files, with example claims to edit:\n")
+        print("    repro manifest init")
+        return 2
+    report = run_numbers(load(path), only=tuple(args.text or ()))
+    if args.format == "json":
+        print(json.dumps(report.model_dump(mode="json"), indent=2))
+        return 0
+    print(f"{path}\n")
+    print("\n".join(_numbers_lines(report)))
+    return 0
+
+
 def cmd_check(args) -> int:
     """Run every applicable tool and report them together."""
     root = pathlib.Path(args.directory or ".").resolve()
@@ -966,6 +1031,30 @@ def main(argv: list[str] | None = None) -> int:
     p_why.add_argument("manifest", nargs="?", help=f"path to {DEFAULT_NAME}")
     p_why.add_argument("--format", choices=("text", "json"), default="text")
     p_why.set_defaults(func=cmd_why)
+
+    p_numbers = sub.add_parser(
+        "numbers",
+        help="count every number the manuscript prints, bound to a claim or not",
+        description=(
+            f"Read the text the claims in {DEFAULT_NAME} read their sentences from and count "
+            "every number in it: bound where an assertion accounts for that occurrence, set "
+            "aside by a named rule (a year, a table's number), set aside with a reason where "
+            "the manifest lists its passage under `set_aside`, and otherwise unbound. Executes "
+            "nothing and writes nothing. Exits 0 whatever it counts."
+        ),
+    )
+    p_numbers.add_argument("manifest", nargs="?", help=f"path to {DEFAULT_NAME}")
+    p_numbers.add_argument(
+        "--text",
+        action="append",
+        metavar="ID",
+        help=(
+            "read this text artifact; repeatable (default: each artifact a `quote` beside "
+            "another assertion, or a prose address, reads)"
+        ),
+    )
+    p_numbers.add_argument("--format", choices=("text", "json"), default="text")
+    p_numbers.set_defaults(func=cmd_numbers)
 
     p_check = sub.add_parser(
         "check",

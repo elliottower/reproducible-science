@@ -20,6 +20,7 @@ from __future__ import annotations
 import decimal
 import pathlib
 import re
+from collections.abc import Iterator
 
 from repro.adapters.base import Found, Resolution, _no, _ok
 from repro.adapters.reads import once
@@ -77,6 +78,24 @@ _SIGNS = "+-\u2212"
 _NUMBER = re.compile(r"\d+(?:_\d+)*(?:[.,]\d+(?:_\d+)*)*(?:[eE][+-]?\d+)?")
 
 
+def numerals(text: str, lo: int = 0, hi: int | None = None) -> Iterator[tuple[int, int, bool]]:
+    """Each run of digits in `text[lo:hi]` that is printed as a number: where it starts, its
+    sign included, where it ends, and whether a letter stands immediately before it.
+
+    The last is the rule above: with a letter before them the digits are part of a name, and
+    no sign is read for a name."""
+    for number in _NUMBER.finditer(text, lo, len(text) if hi is None else hi):
+        first = number.start()
+        if first > 0 and text[first - 1].isalpha():
+            yield first, number.end(), True
+            continue
+        if first > 0 and text[first - 1] in _SIGNS:
+            sign = first - 1
+            if sign == 0 or not text[sign - 1].isalnum():
+                first = sign
+        yield first, number.end(), False
+
+
 def _split(text: str, at: int) -> str:
     """The number `at` falls strictly inside, or the empty string where it splits none."""
     lo = at
@@ -85,16 +104,9 @@ def _split(text: str, at: int) -> str:
     hi = at
     while hi < len(text) and not text[hi].isspace():
         hi += 1
-    for number in _NUMBER.finditer(text, lo, hi):
-        first = number.start()
-        if first > lo and text[first - 1].isalpha():
-            continue
-        if first > lo and text[first - 1] in _SIGNS:
-            sign = first - 1
-            if sign == lo or not text[sign - 1].isalnum():
-                first = sign
-        if first < at < number.end():
-            return text[first : number.end()]
+    for first, end, named in numerals(text, lo, hi):
+        if not named and first < at < end:
+            return text[first:end]
     return ""
 
 
@@ -189,7 +201,14 @@ def _resolve_prose(locator: ProseLocator, path: pathlib.Path) -> Found:
 
 
 def _spans(text: str, before: str, after: str) -> tuple[list[str], list[str]]:
-    """The value after each occurrence of `before`, and the numbers an anchor would have split.
+    """The value after each occurrence of `before`, and the numbers an anchor would have split."""
+    found, split = located(text, before, after)
+    return [text[start:end] for start, end in found], split
+
+
+def located(text: str, before: str, after: str) -> tuple[list[tuple[int, int]], list[str]]:
+    """Where the value after each occurrence of `before` starts and ends, and the numbers an
+    anchor would have split.
 
     The value is a run of non-whitespace characters. With no `after` it is the whole run up to
     the next whitespace. With one, the whole run is taken where `after` begins past it, and
@@ -209,7 +228,7 @@ def _spans(text: str, before: str, after: str) -> tuple[list[str], list[str]]:
     everywhere else: `before: "holds"` and `before: "holds "` address the same value, and a
     manifest should not turn on which one the author typed.
     """
-    found: list[str] = []
+    found: list[tuple[int, int]] = []
     split: list[str] = []
     n, start = len(text), 0
     while (at := text.find(before, start)) != -1:
@@ -229,7 +248,7 @@ def _spans(text: str, before: str, after: str) -> tuple[list[str], list[str]]:
         while tail < n and text[tail].isspace():
             tail += 1
         if not after or text.startswith(after, tail):
-            found.append(text[cursor:end])
+            found.append((cursor, end))
             continue
         for stop in range(cursor + 1, end):
             if not text.startswith(after, stop):
@@ -237,6 +256,6 @@ def _spans(text: str, before: str, after: str) -> tuple[list[str], list[str]]:
             if number := _split(text, stop):
                 split.append(number)
                 continue
-            found.append(text[cursor:stop])
+            found.append((cursor, stop))
             break
     return found, list(dict.fromkeys(split))
