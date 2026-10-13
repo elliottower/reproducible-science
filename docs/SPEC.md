@@ -26,11 +26,12 @@ This is why the outcome vocabulary is `match` and `mismatch` rather than `suppor
 |---|---|---|
 | `Digest` | yes | a content address: `sha256` and 64 lowercase hex characters |
 | `ArtifactRef` | yes | a file the manifest names, pinned or not |
-| `Evidence` | yes | an assertion about one artifact, or two, discriminated on `kind` |
+| `Evidence` | yes | an assertion about one artifact, two, or a declared list, discriminated on `kind` |
 | `Claim` | yes | a manuscript statement and the evidence offered for it |
 | `Manifest` | yes | one project's artifacts and claims |
 | `Decision` | yes | the outcome of evaluating one assertion |
 | `DecisionSide` | yes | what one side of a two-sided assertion read, and where |
+| `DecisionMember` | yes | what one member of an aggregate read, and where |
 | `VerificationReport` | yes | every decision, and the state of every artifact |
 | `Assessment` | yes | a policy's verdict on a report |
 
@@ -241,7 +242,101 @@ revision does not define.
 Both sides being read does not make either side right. Two artifacts agree or they do not, and a
 document and a script can agree on a number that is wrong.
 
-### 3.5 Kinds that are not here
+### 3.5 `aggregate`
+
+```yaml
+kind: aggregate
+name: accuracy
+reported: "0.914"
+statistic: mean             # or median | min | max | sum | count
+count: 3
+members:
+  - {artifact: seed-0, locator: {kind: tree, pointer: /accuracy}}
+  - {artifact: seed-1, locator: {kind: tree, pointer: /accuracy}}
+  - {artifact: seed-2, locator: {kind: tree, pointer: /accuracy}}
+mode: printed_precision     # or absolute | relative
+tolerance: "0"
+conversion: percent         # optional (§3.7), applied to each member
+places: 3                   # optional (§3.8)
+```
+
+Assertion: the printed value is this statistic of the values these members hold.
+
+A sentence reporting a mean over ten seeds, bound with a `metric` to one run's file, rests on
+that run. The manifest reads the same whether the run is the typical one or the best of the
+ten, and the other nine files are read by nothing. An `aggregate` names every member, and the
+assertion is checked only where every member holds a number.
+
+A member is an artifact and a locator of §3.6, so a member resolves to exactly one scalar by
+the rules every other value does. Members may name one artifact each or several addresses in
+one: ten values in one JSON array are ten members, `/scores/0` to `/scores/9`. No locator
+resolves to a list, and an aggregate does not add one, since a member that is a whole array
+is a set whose length the manifest does not state.
+
+**`count` is required and must equal the number of members.** The manuscript's "ten seeds" is
+then a declared quantity, and a member deleted from the list leaves a manifest that states
+ten and lists nine. That manifest does not load. Neither does one listing the same artifact and
+locator twice, which would count one value two times.
+
+| statistic | computed |
+|---|---|
+| `mean` | the sum of the values divided by `count` |
+| `median` | the middle value in sorted order, or half the sum of the two middle values where `count` is even |
+| `min`, `max` | the least and the greatest value |
+| `sum` | the sum of the values |
+| `count` | the number of members, each of which holds a number |
+
+The set is closed. A standard deviation is not in it: it is a square root, which no exact
+decimal or rational holds, and it names two quantities until `sample` or `population` is said.
+
+**A conversion is applied to each member, and places and ties are as for one value.** A
+declared `conversion` converts each member's value, exactly, before the statistic is taken, so
+ten stored fractions printed as a mean percentage are bound with `conversion: percent`. It is
+rejected with `count`, since how many members there are is in no unit. `places` is what §3.8
+defines, checked after every member has resolved. A statistic exactly halfway between two
+printed values agrees with either, decided by the function that decides it for a single value,
+and the decision records the tie.
+
+**The statistic is exact, and is rounded once.** Each stored value is parsed as a decimal and
+held as a rational, and the statistic is computed over rationals: a mean of three values is
+the exact quotient, with no binary float formed and no decimal division rounding it at a
+context's precision. The comparison is the one §3.2 defines, on that exact value. Under
+`printed_precision` the statistic is rounded half-even to the precision `reported` prints and
+must equal `reported`; under `absolute` and `relative` the exact difference is compared with
+the tolerance. Members holding `0.264` and `0.099` have a mean of exactly `0.1815`, which is
+an exact tie at three places, so `0.181` and `0.182` both agree and the decision says so; the
+same mean in binary floating point is a hair below the boundary, where it is no tie and only
+`0.181` would agree.
+
+| situation | reported |
+|---|---|
+| a member's artifact is not declared | `unchecked`, reason `artifact_undeclared` |
+| a member's file is not on disk | `unchecked`, reason `artifact_missing`, naming the path |
+| a member's file cannot be parsed | `unchecked`, reason `artifact_unreadable`, naming the member |
+| a member's format has no adapter | `unchecked`, reason `format_unsupported` |
+| a member's locator does not resolve | `extraction=absent` or `invalid`, with that member's reason |
+| a member holds no finite number | `extraction=invalid`, reason `value_not_numeric` |
+| `count` differs from the number of members, or a member is listed twice | the manifest does not load |
+
+**A statistic over the members that did resolve is never taken.** Where any member fails, no
+comparison is made, the decision carries the first failing member's reason, and its detail
+names every member that failed by its position in the list and its artifact:
+`member 4 of 10 (seed-3): /accuracy does not resolve in seed-3.json`. The assertion's validity
+is the weakest of its members' artifacts.
+
+A decision records one `DecisionMember` per member, in the order the manifest lists them, with
+the artifact digest, the locator digest, the value extracted and its digest, and the value
+converted where a conversion is declared. It records the
+`statistic` and `computed`, the value compared: written exactly where it is a terminating
+decimal, and otherwise rounded half-even to three places past the precision the manuscript
+prints. The decision-level extraction digest covers every member's, in order.
+
+**What it cannot establish.** That the members listed are all the runs there were. An author
+who ran twelve seeds and lists the best ten states `count: 10` and passes. The assertion binds
+the printed value to the declared set, and which runs belong in the set is the author's
+declaration, as an address is.
+
+### Kinds that are not here
 
 `protocol` was specified as a third kind and is not one. Its integrity check is the artifact
 pin, which every artifact already carries; its content check — that a registered document
@@ -377,8 +472,8 @@ pointer: /attrition
 conversion: percent
 ```
 
-`conversion` is an optional field of `metric`, `table` and `value`, and of each side of a
-`correspondence`. It takes one of two names.
+`conversion` is an optional field of `metric`, `table`, `value` and `aggregate` (§3.5), and of
+each side of a `correspondence`. It takes one of two names.
 
 | conversion | the file stores | the manuscript prints | converted value |
 |---|---|---|---|
@@ -430,7 +525,7 @@ pointer: /effect
 places: 1
 ```
 
-`places` is an optional non-negative integer on `metric`, `table` and `value`: the number of
+`places` is an optional non-negative integer on `metric`, `table`, `value` and `aggregate`: the number of
 decimal places the manuscript reports this value to, as the author states it. Where it is
 declared, two things must hold.
 
@@ -477,6 +572,36 @@ A decision at a tie records it as `tie`, with `lower` and `upper`, the two neigh
 told from an ordinary one. `repro verify` prints `[exact tie: 4.2 or 4.3]` beside the
 assertion, and `repro why` prints the tie above the printed value.
 
+## 3.9 The value as stored
+
+An adapter returns the stored value as text, and the comparison reads that text as an exact
+decimal. What the text is depends on what the format holds.
+
+| format | the value as stored |
+|---|---|
+| JSON, YAML | a number with a fraction or an exponent is the characters the file wrote for it, so `0.910` is `0.910`, `1e-7` is `1e-7`, and a value of twenty digits keeps all twenty; an integer is exact at any length; a quoted number is its text |
+| delimited text | the characters of the cell |
+| prose | the run of characters the anchors select in the extracted text |
+| a format that stores numbers in binary: Parquet, Feather, Arrow, Stata, SPSS, `.rds`, a workbook, SQLite, `.npy`, `.npz`, HDF5, NetCDF | the shortest decimal that reads back as the stored number at the width it is stored in |
+
+A tree file's number is never passed through a binary float. Read as one and printed back,
+`0.910` became `0.91`, `9007199254740993.0` became `9007199254740992.0`, a value of twenty
+significant digits became its nearest seventeen, and `1e400` became infinity. Three YAML forms
+have no decimal spelling and are read as the number they denote: `.inf` and `.nan`, which are
+`value_not_numeric`, and base-sixty `1:30.5`.
+
+A binary format holds no trailing zeros to preserve, so none are recovered from one: a
+double written from `0.910` is the double `0.91`.
+
+Trailing zeros in a file are kept and shown. Whether they count as precision follows from the
+comparison and not from the file. Against a literal, the precision is the manuscript's (§3.2):
+a file holding `0.910` verifies a manuscript printing `0.91`, since `0.910` rounded to two
+places is `0.91`, and a file holding `0.91` verifies one printing `0.910`, since the value it
+holds is that one. In a `correspondence` neither side is the manuscript and the comparison is at
+the coarser of the two precisions as written (§3.4), so there a file's trailing zeros are
+precision: `0.910` against `0.914` disagree at three places, and `0.91` against `0.914` agree
+at two.
+
 ## 4. Outcomes
 
 A check must execute, extract, and compare. Each stage fails differently, and the report
@@ -497,6 +622,8 @@ how a file silent on a value becomes one that contradicts it.
 | two sides agree | completed | extracted | match | `verified` |
 | two sides disagree | completed | extracted | mismatch | `mismatch` |
 | one side does not extract | completed | absent or invalid | n/a | `not_found` |
+| a statistic of the members agrees | completed | extracted | match | `verified` |
+| a member does not extract | completed | absent or invalid | n/a | `not_found` |
 | passage absent from a readable source | completed | extracted | mismatch | `mismatch` |
 | passage present, on another page than the one declared | completed | extracted | mismatch | `mismatch` |
 | passage occurs more than once | completed | invalid | n/a | `not_found` |
@@ -624,7 +751,7 @@ class Backend(Protocol):
 ```
 
 `paths` holds one entry per artifact the assertion names, keyed by id. Every kind but
-`correspondence` names one and takes it with `paths[evidence.artifact]`. It is a mapping rather
+`correspondence` and `aggregate` names one and takes it with `paths[evidence.artifact]`. It is a mapping rather
 than a path because an assertion whose two sides are both artifacts has no single file to be
 handed, and handing it one would make the engine choose a side before the backend has read
 either. Widening this was not additive: a backend written against the earlier signature does
@@ -769,6 +896,23 @@ attempts the timestamp, and one it could not make is reported by `prereg check` 
 `prereg timestamp` makes it. This check does not read those proofs; `prereg check` and
 `results verify` do. And the check reads a declared run record rather than observing execution.
 
+A run record says who attests to its `registered_at` in `registration_authority`, and a claim
+takes the weakest authority among the runs that produced its evidence. The default is the
+weakest, which is what an unqualified timestamp in a file is.
+
+| authority | rank |
+|---|---|
+| `self_recorded` | 0 |
+| `git_remote` | 1 |
+| `osf` | 2 |
+| `zenodo` | 2 |
+| `trusted_timestamp` | 3 |
+
+The authority is declared and nothing verifies it: the engine attaches a rank to each name
+and no other meaning. No shipped profile requires one. A `Policy` with `minimum_registration_authority` set grades
+an `ordered` confirmatory claim resting on a lower rank under the rule
+`claim.registration_authority`, a warning unless the policy says otherwise.
+
 OpenTimestamps is used because it needs no account and trusts no party beyond Bitcoin, and
 because a proof names no one, so a stamp made during double-blind review identifies nobody. An
 RFC 3161 timestamp authority or Sigstore's Rekor log would date a digest at once, where a Bitcoin
@@ -863,7 +1007,8 @@ where there are any, the environment variables that bear on determinism, and per
 command, its exit code and duration, the digest each input was pinned at and found at, the
 digest the output was pinned at and produced at, the files the command wrote and did not
 declare, and for each assertion the value in the pinned file, the value in the new file and the
-value the manuscript prints. No field names a host, a user or an absolute path, and none
+value the manuscript prints, with the conversion the assertion declares (§3.7) and both stored
+values under it. No field names a host, a user or an absolute path, and none
 records who ran it, which the tool cannot observe.
 
 Commands run only under `repro reproduce`. `repro verify` executes nothing: verifying a
@@ -875,6 +1020,268 @@ out is reported `not_rerun`, never omitted.
 Regeneration is orthogonal to registration. A `not_applicable` claim need not declare one —
 methods statements and externally sourced facts are inapplicable without being script-generated
 — and a confirmatory claim may declare both.
+
+## 7.7 Staleness
+
+`repro verify` passes a number that sits unchanged in its file after the data or the script
+the file was computed from has been edited: the output is still the pinned one, and a pin says
+nothing of what a file was made from. `repro stale` asks whether each file is still what a
+recorded re-run produced. It executes nothing and writes nothing.
+
+**The reference is the record of re-runs, not the manifest.** A regeneration record carries a
+digest for each input and for its output, and a manifest rebuilt from the files on disk
+rewrites them all, so they agree after a rebuild whether or not any command ran. What a rebuild
+cannot write is `.repro/reproductions.jsonl` (§7.6). From it, only an entry whose command was
+started is read, and only one whose state is `reproduced` is a re-run a file can be compared
+with.
+
+A regeneration is compared with its own re-runs first.
+
+| state | of a regeneration, holds when |
+|---|---|
+| `current` | a re-run that reproduced ran the command the manifest declares now, read each declared input at the digest now on disk, and the output now on disk has the digest that re-run was compared against or the digest it wrote |
+| `stale` | re-runs that reproduced are recorded and none of them satisfies that |
+| `never_rerun` | the record holds no re-run of it that reproduced |
+| `undetermined` | a declared input or the output is not on disk, the regeneration is upstream of itself, or a later re-run of the same command over the same inputs did not reproduce |
+| `no_producer` | of a file only: no declared command writes it |
+| `partly_outside_the_record` | of an assertion or a claim only: some of what it reads is `current` and the rest has no producer |
+
+The output's digest is the one `repro reproduce` compares: the file's own, or the canonical
+one where the record names `volatile` fields. `current` is a statement about the record. It
+says the files are those a re-run that reproduced was made over, and not that the command
+would reproduce now; an input the manifest does not declare is not compared.
+
+A regeneration then takes the gravest state among its own and those of every regeneration
+upstream of it, in the order `stale`, `undetermined`, `never_rerun`. A file takes the state of
+the regeneration that writes it. An assertion takes the gravest state among the files it
+reads, and a claim among its assertions; a file with no producer never outranks a finding.
+
+Each difference is a finding with a cause, stated once at the regeneration where it is,
+however many records and claims lie downstream.
+
+| cause | state | the difference |
+|---|---|---|
+| `input_changed` | `stale` | an input's digest on disk is not the one the latest re-run that reproduced read |
+| `command_changed` | `stale` | the declared command is not the one that re-run started |
+| `output_changed` | `stale` | the output's digest on disk is neither the one that re-run was compared against nor the one it wrote |
+| `upstream_stale` | `stale` | the regeneration matches its own re-run and one upstream of it is stale; the nearest is named with its distance |
+| `input_missing` | `undetermined` | a declared input is not on disk |
+| `output_missing` | `undetermined` | the output is not on disk |
+| `cycle` | `undetermined` | the regeneration is upstream of itself, so it is compared with no re-run |
+| `later_rerun_did_not_reproduce` | `undetermined` | a re-run matches, and a later one of the same command over the same inputs did not reproduce, so two witnessed runs disagree |
+
+A regeneration whose declared digest for an input differs from that artifact's pin is listed as
+`record_disagrees_with_pin`. It is noted and not graded.
+
+A policy grades one violation for each regeneration that is `stale`, `never_rerun` or
+`undetermined`, under the rule `staleness.` and the state. `stale` is a warning under
+`exploratory` and `publication` and an error under `strict`; `never_rerun` and `undetermined`
+are ignored, a warning, and an error. A file with no producer is counted and never graded.
+
+## 7.8 One claim's account
+
+`repro why <claim-id>` puts what `repro verify` and `repro stale` find for one claim side by
+side. It evaluates nothing those two do not, executes nothing and writes nothing, and it
+carries no verdict.
+
+For each assertion the account holds the outcome and reason `repro verify` gives, and for
+each file the assertion reads: whether the file matches its pin, the address the assertion
+looks at, and the value stored there. For each file the claim rests on, the files it reads
+and every file upstream of one, it holds the command that writes the file, the files that
+command reads, the re-run the file was compared with, its state as §7.7 defines it, and each
+finding. A `mismatch` is listed with what is established: the value at the address was read
+and is not the printed one.
+
+Then it lists what the record does not cover, each line with a kind.
+
+| kind | the line says |
+|---|---|
+| `no_producer` | no command is recorded for a file, so its bytes are taken as given, pinned or not |
+| `absent` | nothing is at a file's declared path |
+| `broken_pin` | a file a command writes does not have the pinned bytes |
+| `cycle` | a command is on a cycle of commands, so it is compared with no re-run |
+| `never_rerun` | no re-run of a command that reproduced is recorded |
+| `no_evidence` | the claim offers no evidence, so nothing was checked |
+| `unchecked` | an assertion's outcome is `unchecked`, with its reason |
+| `not_found` | an assertion's outcome is `not_found`, with its reason |
+| `error` | an assertion's outcome is `error`, with its reason |
+| `undeclared_inputs` | where a command is recorded: the inputs it declares are the author's list, and a file it reads and does not declare is invisible |
+| `address` | where an assertion has an address: the address is the author's choice, and nothing checks that it holds the quantity the sentence means |
+| `comparison` | where there is an assertion: a verified one says the declared value or passage is in the file, not that the analysis is right |
+
+The last three hold of the design and not of the record, and an account closes on each that
+applies. A claim id the manifest does not declare is an error naming the nearest ids.
+
+## 7.9 The numbers a manuscript prints
+
+`repro verify` reports on the claims a manifest declares, and the author chose which to
+declare. `repro numbers` counts every number the manuscript's text prints, so the denominator
+is the text's. It executes nothing, writes nothing and carries no verdict.
+
+**Which text.** An artifact a claim reads its own sentence from: one a `quote` reads in a
+claim that also offers an assertion of another kind, or one a `prose` locator reads. A `quote`
+standing alone in its claim is a quotation from a source, and that source is not inventoried.
+
+**What a number is.** The text is the one a quotation resolves against (§3.1). A number is
+digits with an optional sign, grouping commas, a decimal point and an exponent: `2,364` is one
+number, `12,13` is two, and `10-12` is two. A percent sign is kept with its number and is not
+part of its value. A cardinal written as one word is a number with the value a `prose` locator
+reads from it under `cardinal_word`.
+
+Every number has exactly one standing, and none is dropped.
+
+| standing | holds when |
+|---|---|
+| `bound` | a declared assertion accounts for this occurrence |
+| `set_aside_with_a_reason` | it lies in a passage the manifest lists under `set_aside`, with the reason given there |
+| `set_aside_by_rule` | a named rule below reads it as something other than a quantity |
+| `unbound` | it is printed, and nothing in the manifest accounts for it |
+
+**Bound.** An occurrence is bound where it lies inside a place the passage of a `quote`
+occurs and an assertion of the same claim carries a `reported` value that is this number,
+digit for digit, so `0.5` does not bind `0.50`; or where it lies in the value a `prose` locator
+selects. The same digits reported by another claim bind nothing. An unbound number whose value
+some assertion reports is marked `reported_elsewhere` where the value has two digits or a
+decimal point, and counted apart where it is a single digit.
+
+```yaml
+set_aside:
+  - artifact: manuscript
+    text: "between 2019 and 2023"
+    reason: the study period, a fact about the design and not a result
+```
+
+A `set_aside` entry names a passage, matched as a quotation is, and a reason, which is
+required. Every number in each place the passage occurs is set aside unless an assertion binds
+it, and each entry is listed with how many numbers it accounts for.
+
+The rules are applied in this order, and the first that holds is the one named.
+
+| rule | sets aside |
+|---|---|
+| `link` | digits inside a URL |
+| `date` | each part of a date written `2026-10-13` |
+| `document_identifier` | the number a document is known by, as in `rfc 6901` and `arxiv 2609.22111`, and the digits of a DOI |
+| `name` | digits that are part of a name: a letter stands immediately before them, a hyphen or underscore joins them to a part holding a letter (`gpt-4`), or they open a run of letters and digits that holds more digits |
+| `version_or_section` | digits joined by two or more full stops, `0.5.5` |
+| `citation` | whole numbers from 1 up alone in square brackets, `[12]` and `[3, 7]` |
+| `label` | the number of a section, figure, table, equation, appendix, chapter, page, algorithm, listing, theorem, lemma, proposition, corollary, definition, footnote, step or line, following that word |
+| `list_marker` | a whole number of one or two digits alone in parentheses, `(1)` |
+| `ordinal` | digits with `st`, `nd`, `rd` or `th` attached, `95th` |
+| `year` | four digits from 1800 to 2099 with no sign, separator, decimal point or percent sign |
+| `the_word_one` | the word `one`, a pronoun more often than a count; every other cardinal written as one word is counted |
+
+## 7.10 The check record
+
+Experimental, and this tool's own export format: `repro.check/0.1-experimental`. A field may
+change before `1.0`, and every record names the version it was written under.
+
+`repro export record` writes one JSON object per line, one per assertion, in the order the
+manifest declares them. A record states an observation and no verdict: this checker, at this
+version, read this file, with this digest, at this address, obtained this value, compared it
+with the value the manuscript reports under this rule, and returned this outcome. It is
+evaluated by the functions `repro verify` uses and by no others.
+
+| field | holds |
+|---|---|
+| `record`, `checker`, `checked_at` | the record version, the tool's name and version, when the check ran |
+| `manifest` | its path and the sha256 of its bytes |
+| `claim` | `id`, `text`, `where`, the claim digest of §1, its line in the manifest, and each passage its quote assertions name, with the line where a text file holds it exactly once |
+| `assertion` | `kind`, `name`, its `position` among the claim's assertions of that kind and name, its `index` among all of them, and its line in the manifest |
+| `check_type` | which proposition was checked; below |
+| `reads` | per file read: artifact id, path, media type, `validity`, the pinned digest and the digest on disk, the `address`, the value `stored` there, that value `converted` where a conversion is declared, and the side for a `correspondence`. An `aggregate` has one entry per member |
+| `printed`, `comparison` | the value as the manuscript prints it (the manifest's `reported`) or the passage a quotation asserts, and the `mode` and `tolerance` of §3.2, with the declared `places` and `conversion`, the `statistic` an `aggregate` computes and what it `computed`, and a `tie` where there was one |
+| `outcome` | one of five words; below |
+| `native_outcome`, `native_reason` | the `Outcome` of §4 and the `Reason` of §4.1, as this tool prints them |
+| `stages`, `reader`, `warnings` | the three stages of §4, the backend and extraction toolchain of §5.1, the warnings of §4.1 |
+| `history` | reserved; below |
+| `execution` | only where a declared command writes a file the assertion reads: its state against the record of re-runs, and each command upstream with its argv, inputs, output and latest recorded re-run |
+
+`validity` stays a fact about a file and its pin, as in §2, and is never folded into the
+outcome. An `address` is the locator of §3.6 as written, tagged by its `kind`; a quotation's is
+`passage`. No path is absolute, and no field is a boolean.
+
+**`check_type` says what was checked.** Two tools can both report `verified` and have checked
+different propositions: one compares a printed value with a stored one, another re-hashes a
+file and never reads a value. The outcome alone does not say which, so the record does.
+Closed.
+
+| `check_type` | the proposition |
+|---|---|
+| `value-comparison` | a value the manuscript prints, against the value at an address in a file (`metric`, `table`, `value`), or against a statistic over the values at several (`aggregate`) |
+| `passage-presence` | a passage occurs in a file (`quote`) |
+| `correspondence` | the values at two addresses, in two files, agree |
+| `artifact-identity` | a file's bytes are the bytes that were recorded; no value in it is compared |
+| `lineage-check` | a file was produced by a recorded process from recorded inputs |
+| `rerun-comparison` | what a command wrote when run again, against what it wrote before |
+| `coverage-check` | whether something the manuscript states has a claim declared for it |
+| `other` | a proposition none of the above names |
+
+This tool emits the first three. The rest are reserved for a record written from another
+tool's result, and nothing here writes one.
+
+**`outcome` is five words defined by their preconditions**, and the checker's own word travels
+beside it in `native_outcome`. `repro verify` prints what it always has.
+
+| `outcome` | holds when | `native_outcome` here |
+|---|---|---|
+| `match` | every file was read, each address resolved, a comparison ran, and the two agreed | `verified` |
+| `mismatch` | every file was read, each address resolved, a comparison ran, and the two differed | `mismatch` |
+| `not-found` | the file was readable and an address did not resolve to exactly one value of the kind the assertion needs; nothing was compared | `not_found` |
+| `not-checked` | no comparison occurred, because something it needed was absent or was skipped | `unchecked` |
+| `error` | the tool failed | `error` |
+
+The mapping is one function, total over `Outcome` by test and never by a default.
+
+A schema says which fields a record may hold; `repro.record.validate` says which records are
+possible, and refuses the rest: an `outcome` that is not what its `native_outcome` normalizes
+to, or that the stages do not give; a `match` or `mismatch` against a file that was not read;
+a `value-comparison` that is a `match` or `mismatch` without both the stored and the printed
+value, a `correspondence` without the value on each side, a `passage-presence` without the
+passage; a stored value on a record that is `not-checked` or an `error`; a pair of values on a
+check type that compares none; a `validity` the two digests do not bear out.
+
+**Unknown stays unknown.** A `native_outcome` from a checker not known to emit it, a
+`check_type` of `other`, and an address `kind` this version has not seen are kept as written
+and never read as success: `repro.record.read_outcome` gives `not-checked` for a `match` it
+does not understand, and every exporter reads the outcome through it. A `match` under an
+unknown native word is refused by the validator outright.
+
+A claim that offers no evidence has no assertion, so no record. `repro verify` reports it.
+
+The JSON Schema generated from the model is `docs/schemas/repro.check-0.1-experimental.schema.json`.
+
+### Relation to `.repro/checks.jsonl`
+
+A project may also keep a history, `.repro/checks.jsonl`, to which `repro verify --record`
+appends what an assertion said each time a check found it changed. A check record is the
+other thing, the present check written out for another program. It is derived when `repro export` runs, from the manifest and
+the files, and this command stores nothing and reads no history.
+
+The two describe some of the same facts, under the same names where the shapes allow:
+
+| fact | check record | `.repro/checks.jsonl` |
+|---|---|---|
+| the assertion's identity | `claim.id`, `assertion.kind`, `assertion.name`, `assertion.position` | `claim_id`, `kind`, `name`, `position` |
+| the claim as it read | `claim.digest` | `claim_digest` |
+| the value or passage | `printed` | `printed` |
+| when | `checked_at` | `checked_at` |
+| the tool's outcome and reason | `native_outcome`, `native_reason` | `outcome`, `reason` |
+| the bytes read | `reads[].on_disk`, per `reads[].artifact` | `digests`, a mapping from artifact to digest |
+| where it looked | `reads[].address`, the locator as an object | `address`, the same locator as one line of text |
+
+`position` follows one rule in both, so a record joins to its history on the four identity
+fields. Three shapes differ on purpose. A record groups what belongs to the claim and to the
+assertion, because it carries more of each than a history line does. `outcome` in a record is
+the normalized word, so the tool's own is `native_outcome`. And a file read is an object, not
+a digest in a mapping, because a record also states the pin and the `validity` of each file,
+and the address is an object so that a program can read it without parsing a sentence.
+
+`history`, where present, is a pointer into that record: how many states it holds for the
+assertion and when the last was recorded. Nothing writes it yet. Once both are in one tree the
+shared fields should come from one model, an assertion identity and a declared state that
+`CheckedAssertion` and `CheckRecord` both embed; that is a follow-up to these two changes and
+is not done by either.
 
 ## 8. What this composes with
 
@@ -904,7 +1311,8 @@ An implementation conforms when:
 6. Every decision names the claim digest, artifact digest, backend, backend version,
    extraction toolchain, that toolchain's version, and the digest of what it produced. A
    decision over two artifacts names the artifact digest, the locator digest and the
-   extraction digest of each side, since one field cannot hold two.
+   extraction digest of each side, since one field cannot hold two, and a decision over a
+   list of members names them for each member.
 7. A version or digest that was sought and not obtained is recorded as `unknown`, never
    omitted, so it stays distinguishable from one that was never sought.
 8. A broken pin marks every decision against that artifact non-authoritative.
@@ -921,8 +1329,12 @@ An implementation conforms when:
     half to even.
 15. Where `places` is declared, a `reported` written to another number of decimal places is a
     `mismatch` with reason `places_mismatch`, whatever the artifact holds.
+16. An aggregate is compared only where every member it declares resolves to a finite number,
+    its statistic is computed exactly and compared by the rule of a single value, ties
+    included, and its decision records what each member read. A statistic over fewer members
+    than were declared is never a match.
 
-Conformance is executable: `packages/repro/tests/conformance/` holds 33 fixtures, each with
+Conformance is executable: `packages/repro/tests/conformance/` holds 36 fixtures, each with
 canonical expected JSON. They cover `verified`, `mismatch`, `not_found`, `unchecked` and
 `not_offered`, the pointer-escaping and undeclared-artifact cases, an unpinned artifact, a
 broken pin, five table-addressing cases, six over `correspondence` and the prose locator —
@@ -935,11 +1347,14 @@ declare the three stages of §4, as do two over a conversion: a stored fraction 
 with the printed percentage beside the same address with no conversion declared, which does
 not, and a stored fraction that rounds to another percentage at the printed precision; and
 two over §3.8: a value exactly halfway between two printed values, asserted once as each
-neighbor and once as neither, and a value printed to two places where one is declared.
+neighbor and once as neither, and a value printed to two places where one is declared; and
+three over an `aggregate`: a mean with no finite expansion that agrees at the printed
+precision, the best run printed as the mean, and a member that does not resolve where the
+mean of the others is the printed value.
 
 Each fixture declares its outcome, its reason, and the validity of every artifact. The outcome
 alone cannot tell a defect in the tool from a fact about the document: three cases share
-`unchecked` and eleven share `not_found`, and only the reason separates an undeclared artifact
+`unchecked` and twelve share `not_found`, and only the reason separates an undeclared artifact
 from an absent file, or an ambiguous anchor pair from a number written as a word.
 
 Two rows of §4 have no fixture: `error`, which needs a backend defect, and the

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import decimal
 import json
 import pathlib
 
@@ -18,6 +19,22 @@ from repro.models import (
 
 _TREE_SUFFIXES = {".json": "json", ".yaml": "yaml", ".yml": "yaml"}
 _MISSING = object()
+
+
+class Written(str):
+    """A number with a fraction or an exponent, as the characters the file wrote for it.
+
+    Both loaders hand such a number over as a binary float, and the float was then printed
+    back: `0.910` came out as `0.91`, `1e-7` as `1e-07`, a value of twenty significant digits
+    as its nearest seventeen, `9007199254740993.0` as `9007199254740992.0`, and `1e400` as
+    `inf`. A comparison at printed precision in exact decimals was made against digits the
+    file never held. The text is kept in place of the float and is what `decimal.Decimal`
+    reads, so the value compared is the decimal the file wrote, trailing zeros included.
+
+    An integer needs none of this: both loaders read one exactly, at any length.
+    """
+
+    __slots__ = ()
 
 
 def resolve_pointer(document: object, pointer: str) -> object:
@@ -90,6 +107,23 @@ def _no_duplicate_keys(loader, node, deep=False):
 _StrictYaml.add_constructor(yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG, _no_duplicate_keys)
 
 
+def _float_as_written(loader, node):
+    """A YAML float as its text, where the text is a decimal literal.
+
+    YAML has float forms `decimal.Decimal` does not read: `.inf`, `.nan` and base-sixty
+    `1:30.5`. Those stay the floats the loader makes of them, as they were.
+    """
+    text = loader.construct_scalar(node)
+    try:
+        decimal.Decimal(text)
+    except decimal.InvalidOperation:
+        return loader.construct_yaml_float(node)
+    return Written(text)
+
+
+_StrictYaml.add_constructor("tag:yaml.org,2002:float", _float_as_written)
+
+
 def _load_tree(path: pathlib.Path) -> object:
     fmt = _TREE_SUFFIXES.get(path.suffix.lower())
     try:
@@ -98,7 +132,7 @@ def _load_tree(path: pathlib.Path) -> object:
         raise ArtifactUnreadableError(path, str(e)) from e
     if fmt == "json":
         try:
-            return json.loads(text, object_pairs_hook=_no_duplicate_json_keys)
+            return json.loads(text, object_pairs_hook=_no_duplicate_json_keys, parse_float=Written)
         except json.JSONDecodeError as e:
             raise ArtifactUnreadableError(path, f"not valid JSON: {e}") from e
         except ValueError as e:  # raised by the hook below
@@ -125,4 +159,5 @@ def _resolve_tree(locator: TreeLocator, path: pathlib.Path) -> Found:
         )
     if node is None:
         return _no(Resolution.ABSENT, f"{locator.pointer} holds null")
-    return _ok(str(node), type(node).__name__, locator.pointer)
+    native = "float" if isinstance(node, Written) else type(node).__name__
+    return _ok(str(node), native, locator.pointer)

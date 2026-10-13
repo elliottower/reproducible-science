@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from repro.core.checks import CheckedAssertion, RecordSetAside, RecordState
 from repro.core.claims import Availability, Registration
-from repro.core.evidence import Conversion
+from repro.core.evidence import Conversion, Statistic
 from repro.core.manifest import RegenerationState
 from repro.core.outcomes import (
     Decision,
@@ -20,6 +20,7 @@ from repro.core.outcomes import (
     RegistrationAuthority,
     Tie,
     Validity,
+    Warning_,
 )
 
 SCHEMA_VERSION = "repro/1"
@@ -338,10 +339,17 @@ class AssertionAccount(BaseModel):
     """How many decimal places the assertion declares the manuscript reports the value to."""
     tie: Tie | None = None
     """Set where the compared value lay exactly halfway between two printed values."""
+    statistic: Statistic | None = None
+    """What an `aggregate` computes over the values it reads. None for every other kind."""
+    computed: str | None = None
+    """That statistic of the stored values. None where one of them held no number."""
     outcome: Outcome
     reason: Reason
     detail: str = ""
     state: Freshness
+    warnings: tuple[Warning_, ...] = ()
+    """The warnings on the decision, as `repro verify` lists them beside the assertion. A
+    warning qualifies an outcome and is not one: a `verified` assertion may carry any."""
     history: tuple[CheckedAssertion, ...] = ()
     """Each way the record of checks holds this assertion, oldest first: what it declared,
     the digest of each file read and the outcome, with when a check first found it so. Empty

@@ -24,6 +24,7 @@ from repro.adapters.reads import reading_once
 from repro.checks import Records, address, checked
 from repro.exceptions import ReproError
 from repro.models import (
+    AggregateEvidence,
     AssertionAccount,
     ChainNode,
     Claim,
@@ -119,6 +120,16 @@ def _held(evidence: Evidence, decision: Decision, paths: dict[str, pathlib.Path]
                 read[side.name].converted if side.name in read else None,
             )
             for side in evidence.sides
+        ]
+    if isinstance(evidence, AggregateEvidence):
+        # No member was read where a file is absent or undeclared: the engine stops before
+        # the backend, and the decision lists none.
+        read = [(m.extracted, m.converted) for m in decision.members]
+        return [
+            (member.artifact, "", address(member.locator), stored, evidence.conversion, converted)
+            for member, (stored, converted) in zip(
+                evidence.members, read or [(None, None)] * evidence.count, strict=True
+            )
         ]
     if isinstance(evidence, TableCellEvidence) and not evidence.addresses_one_row:
         # Neither `row` nor `where`, or both: there is no one address to show.
@@ -294,10 +305,13 @@ def why(
             reads=tuple(read(*found) for found in files),
             places=getattr(evidence, "places", None),
             tie=decision.tie,
+            statistic=evidence.statistic if isinstance(evidence, AggregateEvidence) else None,
+            computed=decision.computed,
             outcome=decision.outcome,
             reason=decision.reason,
             detail=decision.detail,
             state=node.state,
+            warnings=decision.warnings,
             history=recorded,
             now=None if not recorded or now.same_as(recorded[-1]) else now,
             formerly=tuple(

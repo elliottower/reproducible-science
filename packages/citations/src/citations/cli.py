@@ -49,7 +49,8 @@ WARNINGS = {
     "short": "the source may qualify this in the next clause",
     "normalized": "matched after ignoring punctuation and spacing",
     "page": "found, but not on the page recorded",
-    "page unchecked": "a page is recorded and the declared extractor cannot be asked for one",
+    "page unchecked": "a page is recorded and was not checked: the source has no pages to ask "
+    "for, or the passage matched only with spacing ignored",
 }
 
 

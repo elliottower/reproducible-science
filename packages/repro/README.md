@@ -189,6 +189,13 @@ Runs each command declared under `regenerations` in `repro.yaml`, in a directory
 | `failed` | the command did not finish, or finished and wrote nothing |
 | `not re-run` | never executed: skipped, or an input is not the one that was pinned |
 
+A number that changed is printed as stored then and now beside what the paper prints, and in the printed unit too where the assertion declares a `conversion`:
+
+```text
+  changed     rates  1 of 1 numbers changed
+                attrition  0.044 (4.4 as a percentage) then, 0.042 (4.2 as a percentage) now, paper prints 4.4
+```
+
 `--skip ID` leaves a record out, such as a long training run, and `--only ID` runs the ones named. A record that reads the output of one that did not reproduce still runs, over the pinned copy, and says so. Each invocation appends what it observed to `.repro/reproductions.jsonl`.
 
 This executes what the manifest names. `repro verify` never does.
@@ -353,6 +360,39 @@ set_aside:
 
 `text` is matched as a quotation is, every number inside each place it occurs is set aside, and `reason` is required. An entry whose passage is not in the text is listed with a count of 0. `--format json` prints, per text, every number with the line it is on, its offset in the normalized text, the value read, its standing, and the rule, the claims that bind it or the reason.
 
+## For another program
+
+```bash
+repro export record              # JSON Lines on standard output
+repro export record -o records.jsonl
+```
+
+`repro export record` checks every assertion as `repro verify` does and writes one JSON object per line, one per assertion. Each states what was observed: the checker and its version, the file read with its pinned digest and its digest on disk, the address, the value stored there, the value the manuscript prints, the comparison rule and the outcome. It executes nothing, writes only the output it is asked for, and exits 0 whatever the outcomes, since `repro verify` is the check that fails.
+
+Experimental. The format is this tool's own export, `repro.check/0.1-experimental`, and a field may change before `1.0`; every record names its version.
+
+```json
+{"record": "repro.check/0.1-experimental", "checker": {"name": "repro", "version": "0.5.5"}, "checked_at": "2026-10-13T21:41:43Z", "manifest": {"path": "repro.yaml", "digest": "2ea85eb5..."}, "claim": {"id": "responders", "text": "Thirty-five participants responded.", "digest": "1ccb77d0...", "line": 12}, "assertion": {"kind": "metric", "name": "responders", "position": 0, "index": 0, "line": 15}, "check_type": "value-comparison", "reads": [{"artifact": "totals", "path": "totals.json", "media_type": "application/json", "validity": "authoritative", "pinned": "ce260cfb...", "on_disk": "ce260cfb...", "side": "", "address": {"kind": "tree", "contract": 1, "pointer": "/responders"}, "stored": "36"}], "printed": "35", "comparison": {"mode": "printed_precision", "tolerance": "0"}, "outcome": "mismatch", "native_outcome": "mismatch", "native_reason": "value_mismatch", "detail": "responders: manuscript prints 35, totals.json holds 36 at /responders", "stages": {"execution": "completed", "extraction": "extracted", "comparison": "mismatch"}, "reader": {"backend": "metric", "backend_version": "2", "tool": "reproducible-science", "tool_version": "0.5.5", "extraction_digest": "76a50887..."}, "warnings": []}
+```
+
+The digests above are shortened for the page; a record carries all 64 characters.
+
+`check_type` says which proposition was checked, because two tools can report the same word for different checks: `value-comparison` for a `metric`, `table`, `value` or `aggregate` assertion, `passage-presence` for a `quote`, `correspondence` for two files compared with each other.
+
+`outcome` is one of five words, and `native_outcome` carries the word `repro verify` prints beside it:
+
+| `outcome` | holds when | `repro verify` prints |
+|---|---|---|
+| `match` | the file was read, the address resolved, a comparison ran, and the two agreed | `verified` |
+| `mismatch` | the same, and the two differed | `mismatch` |
+| `not-found` | the file was readable and the address did not resolve to one value | `not_found` |
+| `not-checked` | no comparison occurred: a file, a reader or a format was missing | `unchecked` |
+| `error` | the tool failed | `error` |
+
+Whether the file is the pinned one is `validity` on each file read, apart from the outcome, as in the report. No field is a `true` or a `false`. Where a command under `regenerations` writes a file the assertion reads, the record adds an `execution` block: the state `repro stale` gives, and each command upstream with its inputs and its latest recorded re-run.
+
+`repro.record.validate` reads a record back and refuses one no check could have produced, such as a `mismatch` with no stored value. A reader that meets a word, a check type or an address kind it does not know keeps it and never counts it as a `match`. A record is derived when the command runs, from the manifest and the files, and nothing is stored. An assertion is identified by its claim's id, its kind, its name and its `position` among the claim's assertions of that kind and name. The fields are defined in section 7.10 of [`docs/SPEC.md`](https://github.com/elliottower/reproducible-science/blob/main/docs/SPEC.md), with a JSON Schema beside it.
+
 ## What it reads
 
 A number is checked at an address the manifest declares, in the addressing the format already has:
@@ -440,6 +480,40 @@ A stored value exactly halfway between two printed values has two correct roundi
 ```
 
 A printed value that is neither neighbor is a mismatch, and a tie is exact: `4.2500001` is not one, and only `4.3` verifies against it. In `--format json` a decision at a tie carries `tie`, with `lower`, `upper` and `printed`.
+
+## A number over several runs
+
+Ten runs exist, and the manuscript reports their mean. A `metric` binds the sentence to one file, and passes whichever run that file is. An `aggregate` names every run and checks that the printed value is the stated statistic of all of them:
+
+```yaml
+- kind: aggregate
+  name: accuracy
+  reported: "0.914"
+  statistic: mean
+  count: 10
+  members:
+    - {artifact: seed-0, locator: {kind: tree, pointer: /accuracy}}
+    - {artifact: seed-1, locator: {kind: tree, pointer: /accuracy}}
+    # ... one member per run, ten in all
+```
+
+`statistic` is `mean`, `median`, `min`, `max`, `sum` or `count`. A member is an artifact and a locator from the table above, so the ten values may sit in ten files or at ten addresses in one. `count` is required and must equal the number of members: a manifest stating ten and listing nine does not load, and neither does one listing a member twice.
+
+```text
+  ok    accuracy     aggregate accuracy: mean of 10 = 0.9137
+```
+
+The best of the ten runs printed as their mean is a `mismatch`, `manuscript prints 0.921, mean of 10 is 0.9137`.
+
+The statistic is computed exactly, over rationals, and rounded once to the precision the manuscript prints. Runs holding `0.264` and `0.099` have a mean of exactly `0.1815`, a tie at three places, so `0.181` and `0.182` both verify and the output says `[exact tie: 0.181 or 0.182]`; in floating point the same mean is a hair below the boundary. `mode`, `tolerance`, `conversion` and `places` apply as they do to a `metric`: `conversion: percent` converts each stored fraction before the mean is taken, and is refused with `count`. There is no standard deviation in the set.
+
+Every member must hold a number. A member whose file is missing leaves the assertion `unchecked`, and one whose address does not resolve or holds no number makes it `not_found`, with the member named:
+
+```text
+  GONE  accuracy     aggregate member 4 of 10 (seed-3): /accuracy does not resolve
+```
+
+The statistic of the members that did resolve is never compared. `repro why` lists each member's pin and stored value and then the statistic, `repro stale` treats every member's file as read by the claim, and in `--format json` a decision carries `members`, `statistic` and `computed`. The assertion binds the printed value to the listed runs. Whether those are all the runs there were is the author's declaration.
 
 ## On every commit
 

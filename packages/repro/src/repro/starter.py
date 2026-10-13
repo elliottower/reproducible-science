@@ -16,6 +16,7 @@ Nothing here prints. `repro.cli` renders the `Starter` this returns.
 from __future__ import annotations
 
 import collections
+import decimal
 import itertools
 import math
 import mimetypes
@@ -32,7 +33,7 @@ from repro.adapters.columnar import COLUMNAR_SUFFIXES
 from repro.adapters.sheet import WORKBOOK_SUFFIXES
 from repro.adapters.sqlite import _SQLITE_SUFFIXES
 from repro.adapters.table import _DELIMITERS
-from repro.adapters.tree import _TREE_SUFFIXES, _load_tree
+from repro.adapters.tree import _TREE_SUFFIXES, Written, _load_tree
 from repro.exceptions import ArtifactRefusedError, ArtifactUnreadableError, ManifestExistsError
 from repro.manifest import DEFAULT_NAME
 from repro.models import SCHEMA_VERSION, ArtifactRef, Digest, Manifest, Outcome
@@ -104,8 +105,12 @@ HEADER = """\
 #                     {{kind: correspondence, name: n, sides: [
 #                        {{name: stated, artifact: ID, locator: {{...}}}},
 #                        {{name: measured, artifact: ID, locator: {{...}}}}]}}
+#   aggregate       a mean, median, min, max, sum or count over every member listed
+#                     {{kind: aggregate, members: [{{artifact: ID, locator: {{...}}}},
+#                      {{artifact: ID, locator: {{...}}}}], count: 2, statistic: mean,
+#                      name: acc, reported: '0.914'}}
 #
-# The locators a `value` or a side takes:
+# The locators a `value`, a side or a member takes:
 #
 #   JSON, YAML                     {{kind: tree, pointer: /primary/n}}
 #   CSV, TSV, PSV, Parquet, Feather,
@@ -292,6 +297,10 @@ def _numbers(node: object, pointer: str = "") -> Iterator[tuple[str, str]]:
             if isinstance(key, str):
                 token = key.replace("~", "~0").replace("/", "~1")
                 yield from _numbers(value, f"{pointer}/{token}")
+    elif isinstance(node, Written):
+        # A number with a fraction or an exponent arrives as the text the file wrote.
+        if decimal.Decimal(node).is_finite():
+            yield pointer, str(node)
     elif isinstance(node, (int, float)) and not isinstance(node, bool) and math.isfinite(node):
         yield pointer, str(node)
 

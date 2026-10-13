@@ -19,6 +19,7 @@ from repro.manifest import load
 from repro.models import (
     ArtifactRef,
     Claim,
+    Conversion,
     Digest,
     Manifest,
     MetricEvidence,
@@ -721,6 +722,67 @@ def test_the_command_prints_both_values_of_a_number_that_changed(tmp_path, capsy
     assert "re-ran 1 of 1" in out
     assert "changed" in out and "6 then, " in out and "paper prints 6" in out
     assert len((tmp_path / RECORD).read_text().splitlines()) == 1
+
+
+def converted(tmp_path, script):
+    """The project on disk, with the stored total declared to be a percentage of the fraction
+    the manuscript prints: 6 in the file, 0.06 in the paper."""
+    path = on_disk(tmp_path, script)
+    declared = 'reported: "0.06", pointer: /total, conversion: fraction}'
+    path.write_text(path.read_text().replace('reported: "6", pointer: /total}', declared))
+    assert declared in path.read_text()
+    return path
+
+
+def test_a_number_that_changed_under_a_conversion_is_printed_in_both_units(tmp_path, capsys):
+    path = converted(tmp_path, DRIFTING)
+    assert verify(load(path)).decisions[0].outcome.value == "verified"
+    report = reproduce(load(path))
+    (reading,) = report.regenerations[0].claims
+    assert reading.reading is Reading.CHANGED
+    assert (reading.pinned, reading.conversion, reading.pinned_converted) == (
+        "6",
+        Conversion.FRACTION,
+        "0.06",
+    )
+    drift = int(reading.fresh) - 6
+    assert 1 <= drift <= 9
+    assert reading.fresh_converted == f"0.{6 + drift:02d}"
+    assert reading.printed == "0.06"
+
+    code = main(["reproduce", str(path)])
+    out = capsys.readouterr().out
+    assert code == 1
+    (line,) = [line for line in out.splitlines() if "paper prints" in line]
+    then, now = line.split(" then, ")
+    assert then.endswith("6 (0.06 as a fraction)")
+    stored, _, rest = now.partition(" (")
+    assert rest == f"0.{int(stored):02d} as a fraction) now, paper prints 0.06"
+
+    recorded = json.loads((tmp_path / RECORD).read_text().splitlines()[-1])
+    (claim,) = recorded["regenerations"][0]["claims"]
+    assert (claim["conversion"], claim["pinned_converted"]) == ("fraction", "0.06")
+    assert claim["fresh_converted"] == f"0.{int(claim['fresh']):02d}"
+
+
+def test_a_rerun_that_holds_under_a_conversion_reproduces(tmp_path):
+    result = reproduce(load(converted(tmp_path, NONDETERMINISTIC))).regenerations[0]
+    assert result.state is Regeneration.REPRODUCED
+    assert [reading.reading for reading in result.claims] == [Reading.HOLDS]
+    assert result.claims[0].fresh_converted == "0.06"
+
+
+def test_a_reading_with_no_conversion_is_recorded_and_printed_as_it_was(tmp_path, capsys):
+    report = reproduce(load(on_disk(tmp_path, DRIFTING)))
+    (reading,) = report.regenerations[0].claims
+    assert (reading.conversion, reading.pinned_converted, reading.fresh_converted) == (
+        None,
+        None,
+        None,
+    )
+    assert main(["reproduce", str(tmp_path / "repro.yaml")]) == 1
+    (line,) = [line for line in capsys.readouterr().out.splitlines() if "paper prints" in line]
+    assert "as a" not in line and "6 then, " in line and line.endswith("now, paper prints 6")
 
 
 def test_the_command_passes_a_rerun_whose_numbers_hold(tmp_path, capsys):

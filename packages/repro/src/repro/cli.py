@@ -8,6 +8,7 @@
     repro stale           say which claims read a file changed since its recorded re-run
     repro why             say what the record establishes for one claim, and what it does not
     repro numbers         count every number the manuscript prints, bound to a claim or not
+    repro export          write one record per checked assertion, for another program to read
     repro check           run every tool this project uses, in one pass
     repro audit           clone a repository at a pinned commit and run every tool over it
     repro prereg          run `prereg`: freeze a plan, and record what deviated from it
@@ -49,6 +50,7 @@ from repro.delegate import check as delegate_check
 from repro.delegate import run as delegate_run
 from repro.demo import demo
 from repro.exceptions import ReproError
+from repro.export import EXPORTS
 from repro.manifest import DEFAULT_NAME, find, load
 from repro.models import (
     AssertionAccount,
@@ -69,9 +71,11 @@ from repro.models import (
     StalenessReport,
     Standing,
     Validity,
+    Warning_,
 )
 from repro.numbers import numbers as run_numbers
 from repro.policy import PROFILES
+from repro.record import check_records
 from repro.renderers import to_sarif
 from repro.reproduce import RECORD
 from repro.reproduce import append as append_reproduction
@@ -513,8 +517,13 @@ def cmd_reproduce(args: argparse.Namespace) -> int:
         for claim in state.claims:
             if claim.reading is Reading.HOLDS:
                 continue
+            then, now = claim.pinned, claim.fresh
+            if claim.conversion is not None:
+                unit = claim.conversion.said
+                then = f"{then} ({claim.pinned_converted} {unit})"
+                now = f"{now} ({claim.fresh_converted} {unit})"
             values = (
-                f"{claim.pinned} then, {claim.fresh} now, paper prints {claim.printed}"
+                f"{then} then, {now} now, paper prints {claim.printed}"
                 if claim.pinned is not None and claim.fresh is not None
                 else claim.detail[:60]
             )
@@ -729,7 +738,11 @@ def _assertion_lines(assertion: AssertionAccount, paths: dict[str, str]) -> list
             if file.conversion is not None and file.converted is not None:
                 held += f", {file.converted} {file.conversion.said}"
             lines.append(f"{side}{file.artifact} at {file.address}: {held}")
-
+    if assertion.statistic is not None and assertion.computed is not None:
+        lines.append(
+            f"the {assertion.statistic.value} of the {len(assertion.reads)} values: "
+            f"{assertion.computed}"
+        )
     if assertion.tie is not None:
         lines.append(
             f"an exact tie between {assertion.tie.lower} and {assertion.tie.upper}: "
@@ -756,6 +769,11 @@ def _assertion_lines(assertion: AssertionAccount, paths: dict[str, str]) -> list
         lines.append(f"the manuscript prints {assertion.printed}{declared}: {outcome}")
     else:
         lines.append(f"the two sides compared: {outcome}")
+    # One line a warning, named as `repro verify` names it in brackets. An unchecked page says
+    # why, since that is in the detail and the detail of a verified assertion is not printed.
+    for warning in assertion.warnings:
+        why_not = assertion.detail if warning is Warning_.PAGE_UNCHECKED else ""
+        lines.append(f"warning: {warning.value}" + (f": {why_not}" if why_not else ""))
     return [*lines, *_history_lines(assertion)]
 
 
@@ -1028,6 +1046,21 @@ def cmd_numbers(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_export(args: argparse.Namespace) -> int:
+    path = Path(args.manifest) if args.manifest else find()
+    if path is None:
+        print(f"no {DEFAULT_NAME} here or above.\n")
+        print("write one that pins this project's result files, with example claims to edit:\n")
+        print("    repro manifest init")
+        return 2
+    written = EXPORTS[args.target](check_records(load(path)))
+    if args.output:
+        atomic_write(Path(args.output), written)
+    else:
+        print(written, end="")
+    return 0
+
+
 def cmd_check(args) -> int:
     """Run every applicable tool and report them together."""
     root = pathlib.Path(args.directory or ".").resolve()
@@ -1244,6 +1277,23 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
     )
     p_numbers.add_argument("--format", choices=("text", "json"), default="text")
     p_numbers.set_defaults(func=cmd_numbers)
+
+    p_export = sub.add_parser(
+        "export",
+        help="write one record per checked assertion, for another program to read",
+        description=(
+            f"Check every assertion in {DEFAULT_NAME} as `repro verify` does and write what was "
+            "found in another format. `record` is JSON Lines, one object per assertion: the "
+            "file read and its digests, the address, the value stored there, the value the "
+            "manuscript reports, the comparison and the outcome. Experimental: each record "
+            "names its version. Executes nothing, writes only what it is asked for, and exits "
+            "0 whatever the outcomes; `repro verify` is the check that fails."
+        ),
+    )
+    p_export.add_argument("target", choices=sorted(EXPORTS))
+    p_export.add_argument("manifest", nargs="?", help=f"path to {DEFAULT_NAME}")
+    p_export.add_argument("--output", "-o", help="write to this file (default: standard output)")
+    p_export.set_defaults(func=cmd_export)
 
     p_check = sub.add_parser(
         "check",

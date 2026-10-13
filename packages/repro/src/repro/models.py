@@ -43,6 +43,8 @@ from repro.core.artifacts import SCHEMA_VERSION, ArtifactRef, Digest
 from repro.core.checks import CheckedAssertion, CheckRecord, RecordSetAside, RecordState
 from repro.core.claims import Availability, Claim, Registration
 from repro.core.evidence import (
+    AggregateEvidence,
+    AggregateMember,
     ArrayLocator,
     ComparisonMode,
     Conversion,
@@ -57,6 +59,7 @@ from repro.core.evidence import (
     QuoteEvidence,
     SheetLocator,
     SqliteLocator,
+    Statistic,
     TableCellEvidence,
     TableLocator,
     TablePositionLocator,
@@ -89,6 +92,7 @@ from repro.core.numbers import (
 from repro.core.outcomes import (
     ComparisonStatus,
     Decision,
+    DecisionMember,
     DecisionSide,
     ExecutionStatus,
     ExtractionStatus,
@@ -127,6 +131,8 @@ from repro.core.report import (
 
 __all__ = [
     "SCHEMA_VERSION",
+    "AggregateEvidence",
+    "AggregateMember",
     "ArrayLocator",
     "ArtifactNode",
     "ArtifactRef",
@@ -148,6 +154,7 @@ __all__ = [
     "CorrespondenceEvidence",
     "CorrespondenceSide",
     "Decision",
+    "DecisionMember",
     "DecisionSide",
     "Digest",
     "Edge",
@@ -197,6 +204,7 @@ __all__ = [
     "StaleFinding",
     "StalenessReport",
     "Standing",
+    "Statistic",
     "TableCellEvidence",
     "TableLocator",
     "TablePositionLocator",

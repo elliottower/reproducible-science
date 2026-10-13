@@ -21,7 +21,10 @@ it adds on top of the backends is the part that has to be uniform:
 from __future__ import annotations
 
 import decimal
+import fractions
+import math
 import pathlib
+import statistics
 from collections.abc import Mapping
 from typing import Protocol
 
@@ -32,6 +35,7 @@ from repro.exceptions import (
     UnknownEvidenceKindError,
 )
 from repro.models import (
+    AggregateEvidence,
     ArtifactRef,
     ArtifactState,
     Claim,
@@ -41,6 +45,7 @@ from repro.models import (
     Conversion,
     CorrespondenceEvidence,
     Decision,
+    DecisionMember,
     DecisionSide,
     Digest,
     Evidence,
@@ -53,6 +58,7 @@ from repro.models import (
     QuoteEvidence,
     Reason,
     RegistrationAuthority,
+    Statistic,
     TableCellEvidence,
     Tie,
     Validity,
@@ -119,9 +125,9 @@ def _base(
         "claim_id": claim.id,
         "claim_digest": claim.digest.value,
         "kind": evidence.kind,
-        # Left empty where an assertion reads two files: `artifact_id` is singular, and
-        # filling it with one of them would name a side the engine does not rank. The two are
-        # recorded in `sides`.
+        # Left empty where an assertion reads two files or more: `artifact_id` is singular,
+        # and filling it with one of them would name a side the engine does not rank. They are
+        # recorded in `sides`, or in `members`.
         "artifact_id": named[0] if len(named) == 1 else "",
         "backend": backend.kind,
         "backend_version": backend.version,
@@ -184,19 +190,21 @@ _QUOTE_WARNINGS = {
 def _page_unchecked(page: int | None, state: str, warnings: list[str], paginated: bool) -> str:
     """Why a declared page was not checked on a passage that was found, or empty where it was.
 
-    `citations` says so itself only where a source declares its own extractor, which a
-    manifest cannot do. The two cases a manifest reaches are silent there: a source that is
-    not read page by page has its page dropped before the passage is looked for, and a passage
-    that matches only with spacing ignored is returned before the page is looked at.
+    `citations` gives the warning `page unchecked` for each of these. Before 0.5.6 it gave it
+    only where a source declares its own extractor, which a manifest cannot do, and the two
+    cases a manifest reaches were silent: a source that is not read page by page had its page
+    dropped before the passage was looked for, and a passage that matches only with spacing
+    ignored was returned before the page was looked at. Both are still worked out here, so
+    the answer is the same against an earlier `citations` of the series this package accepts.
     """
     if page is None or state != "found" or "page" in warnings:
         return ""
-    if "page unchecked" in warnings:
-        return f"page {page} was not checked: the declared extractor cannot be asked for one page"
     if not paginated:
         return f"page {page} was not checked: the artifact is not read page by page"
     if "normalized" in warnings:
         return f"page {page} was not checked: the passage matched only with spacing ignored"
+    if "page unchecked" in warnings:
+        return f"page {page} was not checked: the extractor cannot be asked for one page"
     return ""
 
 
@@ -233,7 +241,8 @@ class QuoteBackend:
         result = check_one(
             evidence.text, path, evidence.page, prefix=evidence.prefix, suffix=evidence.suffix
         )
-        named = list(result.warnings)
+        # The page of a passage that was not found is not a second finding beside it.
+        named = [w for w in result.warnings if w != "page unchecked" or result.state == "found"]
         # Asked only of a source that was read: `is_paginated` opens the file to tell text from
         # a format with pages.
         paginated = result.state == "found" and is_paginated(path)
@@ -336,6 +345,21 @@ def _places(count: int) -> str:
     return f"{count} decimal place{'' if count == 1 else 's'}"
 
 
+def _misplaced(
+    evidence: MetricEvidence | TableCellEvidence | ValueEvidence | AggregateEvidence,
+) -> str | None:
+    """What to say where `places` is declared and `reported` is written to another number of
+    them, or None. Two statements about the manuscript disagree, and no rounding of the
+    file's value settles which is meant: `4.20` is not a number reported to one place."""
+    printed_places = -_exponent(evidence.value)
+    if evidence.places is None or printed_places == evidence.places:
+        return None
+    return (
+        f"{evidence.name}: manuscript prints {evidence.reported}, which is "
+        f"{_places(printed_places)}, and {_places(evidence.places)} is declared"
+    )
+
+
 def _plain(converted: decimal.Decimal) -> str:
     """A converted value with no exponent: 0.5 as a percentage is written 50, where `str`
     writes the same decimal as 5E+1."""
@@ -362,37 +386,38 @@ def _exponent(value: decimal.Decimal) -> int:
 
 
 def _tie(
-    stored: decimal.Decimal, reported: decimal.Decimal
+    compared: decimal.Decimal | fractions.Fraction, reported: decimal.Decimal
 ) -> tuple[decimal.Decimal, decimal.Decimal] | None:
-    """The two values at the precision `reported` prints that `stored` lies exactly halfway
+    """The two values at the precision `reported` prints that `compared` lies exactly halfway
     between, lower first, or None where it is nearer one of them.
 
-    Decided on the digits, as integers: the digits of `stored` past the printed precision are
-    a 5 followed by nothing but zeros, or they are not. No float is formed and nothing is
-    within a tolerance of a tie, so 4.25 is one at one place and 4.2500001 is not.
+    Decided in exact rationals, for a stored decimal and for a statistic that may be no
+    decimal at all: the value in units of the printed precision is a whole number and a half,
+    or it is not. No float is formed and nothing is within a tolerance of a tie, so 4.25 is
+    one at one place and 4.2500001 is not.
     """
-    sign, digits, exponent = stored.as_tuple()
+    if isinstance(compared, decimal.Decimal) and not compared.is_finite():
+        return None
     quantum = _exponent(reported)
-    if not isinstance(exponent, int) or exponent >= quantum:
+    units = fractions.Fraction(compared) / fractions.Fraction(10) ** quantum
+    if units.denominator != 2:
         return None
-    coefficient = int("".join(map(str, digits)))
-    below, past = divmod(coefficient, 10 ** (quantum - exponent))
-    if past * 2 != 10 ** (quantum - exponent):
-        return None
+    below = math.floor(units)
 
-    def at_precision(magnitude: int, negative: bool) -> decimal.Decimal:
-        return decimal.Decimal(
-            (int(negative and magnitude != 0), tuple(map(int, str(magnitude))), quantum)
-        )
+    def at_precision(count: int) -> decimal.Decimal:
+        # Zero carries no sign: the neighbor above -0.5 is 0.
+        return decimal.Decimal((int(count < 0), tuple(map(int, str(abs(count)))), quantum))
 
-    if sign:
-        return at_precision(below + 1, True), at_precision(below, True)
-    return at_precision(below, False), at_precision(below + 1, False)
+    return at_precision(below), at_precision(below + 1)
 
 
-def _tied(compared: decimal.Decimal, printed: decimal.Decimal, mode: ComparisonMode) -> Tie | None:
+def _tied(
+    compared: decimal.Decimal | fractions.Fraction,
+    printed: decimal.Decimal,
+    mode: ComparisonMode,
+) -> Tie | None:
     """The record of a tie, where the comparison is at a printed precision and met one."""
-    if mode is not ComparisonMode.PRINTED_PRECISION or not compared.is_finite():
+    if mode is not ComparisonMode.PRINTED_PRECISION:
         return None
     neighbors = _tie(compared, printed)
     if neighbors is None:
@@ -447,6 +472,69 @@ def _agree(
     if mode is ComparisonMode.ABSOLUTE:
         return delta <= tolerance
     return delta <= tolerance * abs(reported)
+
+
+def _agree_exact(
+    computed: fractions.Fraction,
+    reported: decimal.Decimal,
+    mode: ComparisonMode,
+    tolerance: decimal.Decimal,
+) -> bool:
+    """`_agree` for a value that may have no finite decimal expansion.
+
+    A mean of three values is a third of their sum, and dividing in decimals rounds it once
+    at whatever precision the context carries before `printed_precision` rounds it again. A
+    rational is exact, so the one rounding is the rule's own: half-even to the precision
+    `reported` prints, with either neighbor agreeing at an exact tie. On a value that is a
+    decimal the two functions agree.
+    """
+    printed = fractions.Fraction(reported)
+    if mode is ComparisonMode.PRINTED_PRECISION:
+        # The tie rule a single value is held to, by the function that holds it.
+        if (neighbors := _tie(computed, reported)) is not None:
+            return reported in neighbors
+        quantum = fractions.Fraction(10) ** _exponent(reported)
+        # `round` of a rational is exact and takes a tie to the even neighbor.
+        return round(computed / quantum) * quantum == printed
+    delta = abs(computed - printed)
+    if mode is ComparisonMode.ABSOLUTE:
+        return delta <= fractions.Fraction(tolerance)
+    return delta <= fractions.Fraction(tolerance) * abs(printed)
+
+
+def _aggregate(statistic: Statistic, values: list[fractions.Fraction]) -> fractions.Fraction:
+    """One statistic of at least one value, exactly."""
+    if statistic is Statistic.MEAN:
+        return sum(values, fractions.Fraction(0)) / len(values)
+    if statistic is Statistic.MEDIAN:
+        # The middle value, or half the sum of the two middle ones, which a rational holds.
+        return statistics.median(values)
+    if statistic is Statistic.MIN:
+        return min(values)
+    if statistic is Statistic.MAX:
+        return max(values)
+    if statistic is Statistic.SUM:
+        return sum(values, fractions.Fraction(0))
+    return fractions.Fraction(len(values))
+
+
+#: How many places past the printed precision a statistic with no finite expansion is shown to.
+SHOWN_PLACES = 3
+
+
+def _shown(computed: fractions.Fraction, reported: decimal.Decimal) -> str:
+    """A statistic as a report shows it: exactly where it is a terminating decimal, and
+    otherwise rounded half-even to `SHOWN_PLACES` past the precision the manuscript prints."""
+    places = 0
+    scaled = computed
+    while scaled.denominator % 2 == 0 or scaled.denominator % 5 == 0:
+        scaled *= 10
+        places += 1
+    if scaled.denominator != 1:
+        places = max(0, -_exponent(reported)) + SHOWN_PLACES
+        scaled = fractions.Fraction(round(computed * 10**places))
+    sign, digits, _ = decimal.Decimal(scaled.numerator).as_tuple()
+    return format(decimal.Decimal((sign, digits, -places)), "f")
 
 
 class ValueBackend:
@@ -556,20 +644,14 @@ class ValueBackend:
         held = _held(stored, compared, evidence.conversion)
         where = " ".join(extracted.trace) or locator.kind
 
-        printed_places = -_exponent(evidence.value)
-        if evidence.places is not None and printed_places != evidence.places:
-            # Two statements about the manuscript disagree, and no rounding of the file's
-            # value settles which is meant: `4.20` is not a number reported to one place.
+        if (misplaced := _misplaced(evidence)) is not None:
             return Decision(
                 **base,
                 **completed,
                 extraction=ExtractionStatus.EXTRACTED,
                 comparison=ComparisonStatus.MISMATCH,
                 reason=Reason.PLACES_MISMATCH,
-                detail=(
-                    f"{evidence.name}: manuscript prints {evidence.reported}, which is "
-                    f"{_places(printed_places)}, and {_places(evidence.places)} is declared"
-                ),
+                detail=misplaced,
                 warnings=warnings,
             )
 
@@ -762,12 +844,184 @@ class CorrespondenceBackend:
         )
 
 
+# -------------------------------------------------------------------------------- aggregates
+
+
+class AggregateBackend:
+    """Assertion: the printed value is a statistic of the values its members hold.
+
+    As many extractions as there are members precede one comparison. A member that does not
+    extract makes the comparison impossible rather than false, as one side of a correspondence
+    does: a statistic over the members that did resolve is a statistic over a set the manifest
+    did not declare. The decision carries the first failing member's own reason and its detail
+    names every member that failed, by its position in the list and its artifact.
+
+    The statistic is computed over rationals, so a mean is the exact quotient and is rounded
+    once, by the comparison.
+    """
+
+    kind = "aggregate"
+    version = "1"
+    #: As for `CorrespondenceBackend`: one field where the members may be read by more than
+    #: one program, and `DecisionMember.extraction_digest` is what moves when any of them does.
+    tool = ADAPTER_DISTRIBUTION
+
+    @property
+    def tool_version(self) -> str:
+        return distribution_version(self.tool)
+
+    def check(
+        self, claim: Claim, evidence: Evidence, paths: Mapping[str, pathlib.Path]
+    ) -> Decision:
+        if not isinstance(evidence, AggregateEvidence):
+            raise TypeError(f"AggregateBackend received {type(evidence).__name__}")
+        base = _base(claim, evidence, self)
+        base["statistic"] = evidence.statistic
+        base["conversion"] = evidence.conversion
+        no_compare = {"comparison": ComparisonStatus.NOT_APPLICABLE}
+
+        def named(position: int, artifact: str) -> str:
+            return f"member {position} of {evidence.count} ({artifact})"
+
+        readings = []
+        for position, member in enumerate(evidence.members, start=1):
+            try:
+                found = resolve(member.locator, paths[member.artifact])
+            except ArtifactUnreadableError as e:
+                # Still a file that could not be parsed, and the engine reports it as one.
+                # Raised again so that it says which of the members the file is.
+                raise ArtifactUnreadableError(
+                    e.path, f"{named(position, member.artifact)}: {e.detail}"
+                ) from e
+            readings.append((position, member, *found))
+        base["members"] = tuple(
+            DecisionMember(
+                artifact_id=member.artifact,
+                locator_digest=member.locator.digest.value,
+                extracted=extracted.raw if extracted is not None else None,
+                extraction_digest=(
+                    Digest.of_text(extracted.raw).value if extracted is not None else UNKNOWN
+                ),
+            )
+            for _, member, _, extracted, _ in readings
+        )
+        # Over every member's extraction, in the order the manifest lists them, so it moves
+        # whenever any member's extraction moves. Which one moved is on the member.
+        base["extraction_digest"] = Digest.of_text(
+            "\x00".join(m.extraction_digest for m in base["members"])
+        ).value
+        warnings = (
+            (Warning_.POSITIONAL_ADDRESS,)
+            if any(member.locator.kind == "table_position" for member in evidence.members)
+            else ()
+        )
+
+        unsupported = [
+            (p, m, d) for p, m, r, _, d in readings if r is Resolution.FORMAT_UNSUPPORTED
+        ]
+        if unsupported:
+            return Decision(
+                **base,
+                execution=ExecutionStatus.UNAVAILABLE,
+                extraction=ExtractionStatus.NOT_ATTEMPTED,
+                **no_compare,
+                reason=Reason.FORMAT_UNSUPPORTED,
+                detail="; ".join(f"{named(p, m.artifact)}: {d}" for p, m, d in unsupported),
+                warnings=warnings,
+            )
+
+        completed = {"execution": ExecutionStatus.COMPLETED}
+        unresolved = [
+            (p, m, r, d) for p, m, r, e, d in readings if r is not Resolution.RESOLVED or e is None
+        ]
+        if unresolved:
+            _, member, resolution, _ = unresolved[0]
+            extraction, reason = _RESOLUTION_STATE[resolution]
+            return Decision(
+                **base,
+                **completed,
+                **no_compare,
+                extraction=extraction,
+                reason=reason or _ABSENT_REASON[member.locator.kind],
+                detail="; ".join(f"{named(p, m.artifact)}: {d}" for p, m, _, d in unresolved),
+                warnings=warnings,
+            )
+
+        # Each member in the unit the assertion declares, and the statistic is over those.
+        converted: list[decimal.Decimal] = []
+        not_numeric = []
+        for position, member, _, extracted, _ in readings:
+            raw = extracted.raw if extracted is not None else ""
+            try:
+                number = decimal.Decimal(raw)
+            except (decimal.InvalidOperation, ValueError):
+                number = decimal.Decimal("NaN")
+            if number.is_finite():
+                converted.append(_compared(number, evidence.conversion))
+            else:
+                not_numeric.append(f"{named(position, member.artifact)} holds {raw!r}")
+        if not_numeric:
+            return Decision(
+                **base,
+                **completed,
+                **no_compare,
+                extraction=ExtractionStatus.INVALID,
+                reason=Reason.VALUE_NOT_NUMERIC,
+                detail="; ".join(not_numeric),
+                warnings=warnings,
+            )
+        values = [fractions.Fraction(number) for number in converted]
+
+        if evidence.conversion is not None:
+            base["members"] = tuple(
+                recorded.model_copy(update={"converted": _plain(number)})
+                for recorded, number in zip(base["members"], converted, strict=True)
+            )
+
+        if (misplaced := _misplaced(evidence)) is not None:
+            return Decision(
+                **base,
+                **completed,
+                extraction=ExtractionStatus.EXTRACTED,
+                comparison=ComparisonStatus.MISMATCH,
+                reason=Reason.PLACES_MISMATCH,
+                detail=misplaced,
+                warnings=warnings,
+            )
+
+        computed = _aggregate(evidence.statistic, values)
+        agrees = _agree_exact(computed, evidence.value, evidence.mode, evidence.tolerance_value)
+        shown = _shown(computed, evidence.value)
+        base["computed"] = shown
+        tie = _tied(computed, evidence.value, evidence.mode)
+        base["tie"] = tie
+        between = f", an exact tie between {tie.lower} and {tie.upper}" if tie else ""
+        unit = f" {evidence.conversion.said}" if evidence.conversion is not None else ""
+        over = f"{evidence.statistic.value} of {evidence.count}{unit}"
+        return Decision(
+            **base,
+            **completed,
+            extraction=ExtractionStatus.EXTRACTED,
+            comparison=ComparisonStatus.MATCH if agrees else ComparisonStatus.MISMATCH,
+            reason=Reason.VALUE_MATCH if agrees else Reason.VALUE_MISMATCH,
+            detail=(
+                f"{evidence.name}: {over} = {shown}{between}"
+                + (f"; the manuscript prints {evidence.reported}" if tie else "")
+                if agrees
+                else f"{evidence.name}: manuscript prints {evidence.reported}, "
+                f"{over} is {shown}{between}"
+            ),
+            warnings=warnings,
+        )
+
+
 DEFAULT_BACKENDS: tuple[Backend, ...] = (
     QuoteBackend(),
     MetricBackend(),
     TableBackend(),
     ValueBackend(),
     CorrespondenceBackend(),
+    AggregateBackend(),
 )
 
 
@@ -1103,6 +1357,15 @@ def check_evidence(
                     }
                 )
                 for side in decision.sides
+            ),
+            "members": tuple(
+                member.model_copy(
+                    update={
+                        "artifact_digest": states[member.artifact_id].actual,
+                        "validity": states[member.artifact_id].validity,
+                    }
+                )
+                for member in decision.members
             ),
         }
     )

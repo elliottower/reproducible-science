@@ -1,0 +1,21 @@
+{
+  "outcomes": [
+    "mismatch"
+  ],
+  "reasons": [
+    "value_mismatch"
+  ],
+  "artifacts": {
+    "run0": "authoritative",
+    "run1": "authoritative",
+    "run2": "authoritative",
+    "run3": "authoritative"
+  },
+  "stages": [
+    [
+      "completed",
+      "extracted",
+      "mismatch"
+    ]
+  ]
+}
