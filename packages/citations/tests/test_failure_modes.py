@@ -143,6 +143,21 @@ def test_hyphenation_across_a_line_break_is_normalized():
     assert V.passage_fold("inter-\npretable") == "interpretable"
 
 
+@pytest.mark.parametrize(
+    ("source", "folded"),
+    [
+        ("## -----\n## Average effects", "## ----- ## average effects"),
+        ("rows 10-\n12 were kept", "rows 10- 12 were kept"),
+        ("the effect held -\nand then reversed", "the effect held - and then reversed"),
+        ("delta was -\n0.42", "delta was - 0.42"),
+        ("GPT-\n2 small", "gpt- 2 small"),
+    ],
+    ids=["rule-of-dashes", "range", "clause-dash", "sign", "letter-then-digit"],
+)
+def test_a_dash_at_a_line_end_that_does_not_split_a_word_is_kept(source, folded):
+    assert V.passage_fold(source) == folded
+
+
 def test_glyph_codes_from_a_figure_do_not_hide_the_passage(pinned):
     # pdftotext emits a figure's embedded font as raw UTF-16 glyph codes. They land mid-page and
     # must not swallow the surrounding prose.
