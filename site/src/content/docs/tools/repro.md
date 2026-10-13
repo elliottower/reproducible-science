@@ -171,6 +171,35 @@ Runs each command declared under `regenerations` in `repro.yaml`, in a directory
 
 This executes what the manifest names. `repro verify` never does.
 
+## After an edit
+
+```bash
+repro stale
+```
+
+`repro verify` passes a number that sits unchanged in its file after the data or the script that file was computed from has been edited: the output is still the pinned one. `repro stale` compares each command declared under `regenerations` with the re-runs `repro reproduce` recorded in `.repro/reproductions.jsonl`, and says for every claim whether the files it reads are still the ones a re-run was made over. It executes nothing and writes nothing.
+
+| state | what it means |
+|---|---|
+| `current` | a recorded re-run that reproduced ran this command over the inputs now on disk, its output is the one now on disk, and the same holds for every command upstream |
+| `stale` | re-runs are recorded and none matches the files now on disk, here or upstream |
+| `never rerun` | a command writes the file, and no re-run of it that reproduced is recorded |
+| `no producer` | no declared command writes the file, so there is nothing upstream to compare |
+
+A stale file is reported with its cause, at the command where the difference is: `input changed`, with the input, the digest the re-run read and the digest on disk, `command changed`, or `output changed`. Everything downstream is `upstream stale`, with the nearest stale command and how many steps up it is, so one edit is one finding however many claims rest on it. A missing file and a cycle between commands are `undetermined`.
+
+Freshness is relative to the recorded re-runs, never to the digests a manifest carries for its own regenerations: a manifest rebuilt from the files on disk agrees with them whether or not a command ran. Commit `.repro/reproductions.jsonl`, because a clone without it reports every produced file `never rerun`. `current` means consistent with a recorded re-run. Whether the command would reproduce now is what `repro reproduce` establishes. An input the manifest does not declare is invisible here, and an edit to it changes no state.
+
+The summary says what each count is a count of:
+
+```text
+  1 stale, 0 never rerun, 0 undetermined, 2 current of 3 assertions that read a file with a recorded producer
+  4 assertions read 2 files no command is recorded for: nothing upstream to compare
+  6 claims: 1 stale, 0 never rerun, 2 current, 0 partly outside the record, 3 outside the record, 0 undetermined
+```
+
+Under `--policy publication`, the default, a command that is stale, never rerun or undetermined is a warning. `exploratory` ignores the last two and `strict` fails on all three. A file with no producer is counted and never graded. `--format json` prints the report as a graph: claims, artifacts and regenerations, each with its state, the edges between them with the digests compared, and the findings. A pinned file that no longer matches its pin is a `BROKEN PIN`, which `repro verify` reports and this does not.
+
 ## What it reads
 
 A number is checked at an address the manifest declares, in the addressing the format already has:

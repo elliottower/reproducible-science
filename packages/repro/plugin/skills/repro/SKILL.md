@@ -213,6 +213,7 @@ directory, the freeze goes ahead.
 - Before submitting a draft, over the whole manifest
 - After regenerating results, to see which claims moved
 - To run the declared commands again and see whether the printed numbers survive: `repro reproduce`
+- After editing an input or a script, before trusting a green verify: `repro stale`
 - When a reviewer asks where a number came from
 - When a manuscript and its data may have drifted apart
 - In CI, as `repro verify --policy strict`

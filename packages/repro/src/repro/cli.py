@@ -5,6 +5,7 @@
     repro manifest init   write a starter repro.yaml for an existing project
     repro verify          check every evidence assertion in repro.yaml
     repro reproduce       run the declared commands again and check the numbers still hold
+    repro stale           say which claims read a file changed since its recorded re-run
     repro check           run every tool this project uses, in one pass
     repro audit           clone a repository at a pinned commit and run every tool over it
     repro prereg          run `prereg`: freeze a plan, and record what deviated from it
@@ -20,6 +21,7 @@ that exits.
 from __future__ import annotations
 
 import argparse
+import collections
 import functools
 import importlib
 import json
@@ -39,10 +41,13 @@ from repro.exceptions import ReproError
 from repro.manifest import DEFAULT_NAME, find, load
 from repro.models import (
     Availability,
+    Freshness,
     Ordering,
     Outcome,
     Reading,
     Regeneration,
+    StaleCause,
+    StalenessReport,
     Validity,
 )
 from repro.policy import PROFILES
@@ -50,6 +55,7 @@ from repro.renderers import to_sarif
 from repro.reproduce import RECORD
 from repro.reproduce import append as append_reproduction
 from repro.reproduce import reproduce as run_reproduce
+from repro.stale import stale as run_stale
 from repro.starter import CONVENTIONAL, MAX_DISCOVERED, project_root
 from repro.starter import write as write_starter
 from repro.verify import verify as run_verify
@@ -476,6 +482,152 @@ def cmd_reproduce(args: argparse.Namespace) -> int:
     return 0 if assessment.passed else 1
 
 
+def _said(state: Freshness | StaleCause) -> str:
+    return state.value.replace("_", " ")
+
+
+def _stale_lines(report: StalenessReport) -> list[str]:
+    """One line per difference from a recorded re-run, then one per record that takes its state
+    from upstream, then the claims that read them."""
+    paths = {artifact.id: artifact.path for artifact in report.artifacts}
+    outputs = {node.id: node.artifact for node in report.regenerations}
+
+    def named(artifact_id: str) -> str:
+        path = paths.get(artifact_id, "")
+        return f"{artifact_id} ({path})" if path and path != artifact_id else artifact_id
+
+    def digests(verb: str, found) -> str:
+        return (
+            f"the re-run of {found.rerun_at} {verb} {(found.observed or 'nothing')[:12]}, "
+            f"on disk {(found.on_disk or 'nothing')[:12]}"
+        )
+
+    lines = []
+    for found in report.findings:
+        cause = _said(found.cause)
+        if found.cause is StaleCause.INPUT_CHANGED:
+            said = f"{cause}: {named(found.artifact)}: {digests('read', found)}"
+        elif found.cause is StaleCause.OUTPUT_CHANGED:
+            said = f"{cause}: {named(found.artifact)}: {digests('wrote', found)}"
+        elif found.cause is StaleCause.COMMAND_CHANGED:
+            said = f"{cause} since the re-run of {found.rerun_at}"
+        elif found.cause is StaleCause.CYCLE:
+            said = f"{cause}: {found.regeneration} is upstream of itself"
+        else:
+            said = f"{cause}: {named(found.artifact)}"
+        label = (
+            "UNDETERMINED"
+            if found.cause
+            in (StaleCause.INPUT_MISSING, StaleCause.OUTPUT_MISSING, StaleCause.CYCLE)
+            else "STALE"
+        )
+        lines.append(f"  {label:<13} {outputs[found.regeneration]}: {said}")
+    for node in report.regenerations:
+        label = _said(node.state).upper()
+        if node.upstream:
+            steps = f"{node.distance} step{'' if node.distance == 1 else 's'} up"
+            lines.append(
+                f"  {label:<13} {node.artifact}: upstream {_said(node.state)}: "
+                f"{node.upstream}, {steps}"
+            )
+        elif node.state is Freshness.NEVER_RERUN:
+            lines.append(
+                f"  {label:<13} {node.artifact}: no re-run of {node.id} that reproduced is recorded"
+            )
+    for note in report.record_disagrees_with_pin:
+        lines.append(
+            f"  {'note':<13} {note.regeneration}: record disagrees with pin: "
+            f"{named(note.artifact)}: the record names {note.recorded[:12]}, "
+            f"the manifest pins {note.pinned[:12]}"
+        )
+    if lines:
+        lines.append("")
+
+    states = {artifact.id: artifact.state for artifact in report.artifacts}
+    reported = (Freshness.STALE, Freshness.NEVER_RERUN, Freshness.UNDETERMINED)
+    width = max((len(claim.id) for claim in report.claims), default=0)
+    claimed = [
+        f"  {_said(claim.state):<13} {claim.id:<{width}}  reads "
+        + ", ".join(
+            dict.fromkeys(
+                name
+                for assertion in claim.assertions
+                for name in assertion.artifacts
+                if states.get(name) is claim.state
+            )
+        )
+        for claim in report.claims
+        if claim.state in reported
+    ]
+    return [*lines, *claimed, *([""] if claimed else [])]
+
+
+def _stale_summary(report: StalenessReport) -> list[str]:
+    """The three counts, each with what it is a count of. A line saying nothing is stale is
+    never printed without how many assertions could have been."""
+    assertions = [assertion for claim in report.claims for assertion in claim.assertions]
+    outside = (Freshness.NO_PRODUCER, Freshness.PARTLY_OUTSIDE)
+    covered = collections.Counter(a.state for a in assertions if a.state not in outside)
+    produced = {node.artifact for node in report.regenerations}
+    uncovered = [a for a in assertions if a.state in outside]
+    files = {name for a in uncovered for name in a.artifacts if name not in produced}
+    claims = collections.Counter(claim.state for claim in report.claims)
+    return [
+        f"  {covered[Freshness.STALE]} stale, {covered[Freshness.NEVER_RERUN]} never rerun, "
+        f"{covered[Freshness.UNDETERMINED]} undetermined, {covered[Freshness.CURRENT]} current "
+        f"of {sum(covered.values())} assertions that read a file with a recorded producer",
+        f"  {len(uncovered)} assertions read {len(files)} files no command is recorded for: "
+        "nothing upstream to compare",
+        f"  {len(report.claims)} claims: {claims[Freshness.STALE]} stale, "
+        f"{claims[Freshness.NEVER_RERUN]} never rerun, {claims[Freshness.CURRENT]} current, "
+        f"{claims[Freshness.PARTLY_OUTSIDE]} partly outside the record, "
+        f"{claims[Freshness.NO_PRODUCER]} outside the record, "
+        f"{claims[Freshness.UNDETERMINED]} undetermined",
+    ]
+
+
+def cmd_stale(args: argparse.Namespace) -> int:
+    path = Path(args.manifest) if args.manifest else find()
+    if path is None:
+        print(f"no {DEFAULT_NAME} here or above.\n")
+        print("write one that pins this project's result files, with example claims to edit:\n")
+        print("    repro manifest init")
+        return 2
+    manifest = load(path)
+    if not manifest.regenerations:
+        print(f"{path}\n")
+        print("  no command is declared, so no file has a recorded producer to compare it with.")
+        print("  A record under `regenerations` names a command, the files it reads and the")
+        print("  file it writes.")
+        return 2
+
+    report = run_stale(manifest)
+    policy = PROFILES[args.policy]
+    assessment = policy.assess_staleness(report)
+
+    if args.format == "json":
+        print(
+            json.dumps(
+                {
+                    "staleness": report.model_dump(mode="json"),
+                    "assessment": assessment.model_dump(mode="json"),
+                },
+                indent=2,
+            )
+        )
+        return 0 if assessment.passed else 1
+
+    print(f"{path}\n")
+    if not report.reruns:
+        print(f"  {RECORD.as_posix()} holds no re-run; `repro reproduce` records one.\n")
+    print("\n".join([*_stale_lines(report), *_stale_summary(report)]))
+    print(
+        f"  policy {policy.name}: {'passed' if assessment.passed else 'FAILED'}"
+        f"  ({len(assessment.errors)} errors, {len(assessment.warnings)} warnings)"
+    )
+    return 0 if assessment.passed else 1
+
+
 def cmd_check(args) -> int:
     """Run every applicable tool and report them together."""
     root = pathlib.Path(args.directory or ".").resolve()
@@ -618,6 +770,23 @@ def main(argv: list[str] | None = None) -> int:
     p_reproduce.add_argument("--policy", choices=sorted(PROFILES), default="publication")
     p_reproduce.add_argument("--format", choices=("text", "json"), default="text")
     p_reproduce.set_defaults(func=cmd_reproduce)
+
+    p_stale = sub.add_parser(
+        "stale",
+        help="say which claims read a file changed since its recorded re-run",
+        description=(
+            f"Compare each command declared under `regenerations` in {DEFAULT_NAME} with the "
+            f"re-runs `repro reproduce` recorded in {RECORD.as_posix()}, and say for every claim "
+            "whether the files it reads are still the ones a re-run that reproduced was made "
+            "over. Executes nothing and writes nothing. `current` means consistent with a "
+            "recorded re-run, and a file the manifest does not declare as an input is not "
+            "compared."
+        ),
+    )
+    p_stale.add_argument("manifest", nargs="?", help=f"path to {DEFAULT_NAME}")
+    p_stale.add_argument("--policy", choices=sorted(PROFILES), default="publication")
+    p_stale.add_argument("--format", choices=("text", "json"), default="text")
+    p_stale.set_defaults(func=cmd_stale)
 
     p_check = sub.add_parser(
         "check",

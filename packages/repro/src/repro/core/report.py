@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import enum
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict
 
 from repro.core.claims import Availability, Registration
@@ -141,3 +144,149 @@ class ReproductionReport(BaseModel):
         for state in self.regenerations:
             tally[state.state.value] = tally.get(state.state.value, 0) + 1
         return tally
+
+
+# --------------------------------------------------------------------------------- staleness
+
+
+class Freshness(enum.StrEnum):
+    """Whether a file is still what a recorded re-run produced.
+
+    Relative to the record of re-runs, never to the digests a manifest carries for its own
+    regenerations: a manifest rebuilt from the files on disk agrees with them whether or not
+    any command ran. A pin that no longer matches its file is `Validity.BROKEN_PIN`, a
+    different fact that `repro verify` reports.
+    """
+
+    CURRENT = "current"
+    """A recorded re-run of the producing command read the inputs now on disk and its output is
+    the one now on disk, and the same holds for every producer upstream. Consistent with a
+    recorded re-run; nothing was executed to establish it."""
+    STALE = "stale"
+    """Re-runs are recorded and none matches the files now on disk, here or upstream."""
+    NEVER_RERUN = "never_rerun"
+    """A command produces the file and the record holds no re-run of it that reproduced."""
+    NO_PRODUCER = "no_producer"
+    """No declared command writes the file, so there is nothing upstream to compare."""
+    UNDETERMINED = "undetermined"
+    """A file the comparison needs is missing, or the producers form a cycle."""
+    PARTLY_OUTSIDE = "partly_outside_the_record"
+    """Of an assertion or a claim only: some of what it reads is current, and the rest has no
+    producer."""
+
+
+class StaleCause(enum.StrEnum):
+    """Why a regeneration is not current."""
+
+    INPUT_CHANGED = "input_changed"
+    COMMAND_CHANGED = "command_changed"
+    OUTPUT_CHANGED = "output_changed"
+    UPSTREAM_STALE = "upstream_stale"
+    INPUT_MISSING = "input_missing"
+    OUTPUT_MISSING = "output_missing"
+    CYCLE = "cycle"
+
+
+class StaleFinding(BaseModel):
+    """One difference between a regeneration's latest recorded re-run and the files on disk.
+
+    Stated once per regeneration and file, where the difference is, however many records and
+    claims lie downstream of it.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    cause: StaleCause
+    regeneration: str
+    artifact: str
+    observed: str | None = None
+    """The digest the re-run recorded for the file."""
+    on_disk: str | None = None
+    rerun_at: str | None = None
+    """When the re-run compared against started."""
+
+
+class PinDisagreement(BaseModel):
+    """A regeneration whose recorded digest for an input is not that artifact's pin."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    regeneration: str
+    artifact: str
+    recorded: str
+    pinned: str
+
+
+class RegenerationNode(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    id: str
+    artifact: str
+    state: Freshness
+    causes: tuple[StaleCause, ...] = ()
+    upstream: str | None = None
+    """The nearest upstream producer in this state, where the state comes from upstream."""
+    distance: int | None = None
+    """How many producers lie between this record and `upstream`, counting `upstream`."""
+    rerun_at: str | None = None
+    """When the re-run compared against started. None where no re-run is recorded."""
+
+
+class ArtifactNode(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    id: str
+    path: str = ""
+    state: Freshness
+    producer: str | None = None
+    on_disk: str | None = None
+
+
+class AssertionNode(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: str
+    artifacts: tuple[str, ...] = ()
+    state: Freshness
+
+
+class ClaimNode(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    id: str
+    state: Freshness
+    assertions: tuple[AssertionNode, ...] = ()
+
+
+class Edge(BaseModel):
+    """`reads` runs from a claim to an artifact, `produced_by` from an artifact to its
+    regeneration, and `consumes` from a regeneration to an input."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["reads", "produced_by", "consumes"]
+    source: str
+    target: str
+    recorded: str | None = None
+    """The digest the manifest's regeneration record names."""
+    observed: str | None = None
+    """The digest the re-run compared against recorded."""
+    on_disk: str | None = None
+
+
+class StalenessReport(BaseModel):
+    """What `repro stale` found, as the graph it walked. Frozen, and carries no verdict."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    schema_version: str = SCHEMA_VERSION
+    project: str = ""
+    manifest_digest: str = ""
+    reruns: int = 0
+    """How many invocations the record of re-runs holds."""
+    claims: tuple[ClaimNode, ...] = ()
+    artifacts: tuple[ArtifactNode, ...] = ()
+    regenerations: tuple[RegenerationNode, ...] = ()
+    edges: tuple[Edge, ...] = ()
+    findings: tuple[StaleFinding, ...] = ()
+    record_disagrees_with_pin: tuple[PinDisagreement, ...] = ()

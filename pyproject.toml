@@ -242,6 +242,7 @@ source_modules = [
   "repro.policy",
   "repro.regenerate",
   "repro.reproduce",
+  "repro.stale",
 ]
 forbidden_modules = [ "repro.integrations" ]
 
@@ -255,6 +256,8 @@ layers = [
   "repro.demo",
   "repro.renderers.sarif",
   "repro.policy",
+  # Reads what `reproduce` recorded and executes nothing, so it sits on the record's writer.
+  "repro.stale",
   # Runs a declared command and puts the verifier's question to what it wrote, so it sits on
   # the verifier and the verifier never reaches for it.
   "repro.reproduce",

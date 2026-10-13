@@ -28,6 +28,7 @@ below the verification engine it would otherwise have to import.
 
 from __future__ import annotations
 
+import collections
 import hashlib
 import json
 import pathlib
@@ -105,6 +106,27 @@ def canonical_digest(path: pathlib.Path, volatile: tuple[str, ...]) -> Digest:
     return Digest.of_text(
         json.dumps(document, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     )
+
+
+def upstream(
+    record: RegenerationRecord, producers: dict[str, RegenerationRecord]
+) -> dict[str, int]:
+    """Every record upstream of this one, by id, with how many steps away it is.
+
+    `producers` maps an artifact to the record that writes it. Breadth first and each record
+    once, so the distance is the shortest, a record reached by two routes is listed once, and a
+    cycle ends the walk. The record itself is listed only where a cycle leads back to it.
+    """
+    found: dict[str, int] = {}
+    pending = collections.deque([(record, 0)])
+    while pending:
+        current, distance = pending.popleft()
+        for wanted in current.inputs:
+            producer = producers.get(wanted.artifact)
+            if producer is not None and producer.id not in found:
+                found[producer.id] = distance + 1
+                pending.append((producer, distance + 1))
+    return found
 
 
 #: Undeclared files named in a record. A command that unpacks an archive writes thousands, and
