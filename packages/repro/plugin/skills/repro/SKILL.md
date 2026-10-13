@@ -47,6 +47,10 @@ claims:
         reported: "0.031"
 ```
 
+A claim's `text` is the sentence as the manuscript prints it, or the question as it was asked,
+word for word. Your own label for the claim goes in its `id`. A reader matching claims to a
+paper matches on `text`, and a paraphrase has to be matched by hand.
+
 ## What can be declared
 
 Five kinds of evidence. Each names an `artifact` by id, except `correspondence`, which names

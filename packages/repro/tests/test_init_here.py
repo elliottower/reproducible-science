@@ -283,3 +283,12 @@ def test_an_empty_or_untracked_sources_folder_gets_the_rule(project, run_repro, 
     assert code == 0, out
     assert rules(project / ".gitignore") == list(RULES)
     assert "left sources/ out" not in out
+
+
+def test_a_dot_for_the_name_sets_up_this_directory_and_scaffolds_no_new_project(run_repro, project):
+    (project / "results.json").write_text('{"n": 480}\n')
+    code, _ = run_repro("init", ".", cwd=project)
+    assert code == 0
+    assert (project / DEFAULT_NAME).is_file()
+    assert not (project / "CLAUDE.md").exists()
+    assert not any((project / name).exists() for name in ("data", "scripts", "figures"))

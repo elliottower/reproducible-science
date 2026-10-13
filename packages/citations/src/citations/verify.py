@@ -104,6 +104,7 @@ deliberate act with the consequence in view.
 
 from __future__ import annotations
 
+import codecs
 import functools
 import hashlib
 import itertools
@@ -156,6 +157,43 @@ PAGE_SCAN_LIMIT = 200
 #: Suffixes read directly rather than through a PDF extractor. Running `pdftotext` over these
 #: returns nothing, which would read as an unreadable source.
 TEXT_SUFFIXES = (".txt", ".md", ".tei", ".xml", ".html", ".htm", ".rst", ".py")
+
+#: How much of a file `_holds_text` reads to decide.
+_SNIFF_BYTES = 8192
+
+
+def _holds_text(path: pathlib.Path) -> bool:
+    """Whether a file with no reader named for its suffix is text and not a PDF.
+
+    A run log called `output`, a `.log`, an `.out` and an `.Rout` are text, and each reached the
+    PDF chain because its suffix was in no table: `pdftotext` answered `Couldn't read xref
+    table` and every value in the file was `unchecked`. The opening bytes settle it without a
+    list of suffixes that is never complete. A `.pdf` is never asked: its suffix names its
+    reader, and a damaged one should say so.
+    """
+    if path.suffix.lower() == ".pdf":
+        return False
+    try:
+        with path.open("rb") as handle:
+            head = handle.read(_SNIFF_BYTES)
+    except OSError:
+        return False
+    if not head or head.lstrip().startswith(b"%PDF") or b"\x00" in head:
+        return False
+    try:
+        codecs.getincrementaldecoder("utf-8")().decode(head)
+    except UnicodeDecodeError:
+        return False
+    return True
+
+
+def reads_off_disk(path: pathlib.Path) -> bool:
+    """Whether an undeclared source is read as it is on disk: a text suffix, or text by its bytes."""
+    suffix = path.suffix.lower()
+    if suffix in TEXT_SUFFIXES:
+        return True
+    return suffix not in BY_SUFFIX and suffix not in extractors.BY_SUFFIX and _holds_text(path)
+
 
 #: Recorded as the extractor for a source read straight off disk. Naming a program there would
 #: claim one ran.
@@ -797,7 +835,7 @@ def _extract(
         # the PDF chain and every quotation in them was `unchecked`.
         chosen = extractors.Declared(extractors.EXTRACTORS[name])
         return readers.Extraction(chosen.read(pdf), chosen.name)
-    if pdf.suffix.lower() in TEXT_SUFFIXES:
+    if reads_off_disk(pdf):
         try:
             return readers.Extraction(pdf.read_text(errors="replace"), PLAIN_TEXT)
         except OSError as e:
@@ -999,7 +1037,7 @@ def _extractor_name(artifact: pathlib.Path, extract_cmd: str | None) -> str:
         return obvious
     if (name := extractors.BY_SUFFIX.get(artifact.suffix.lower())) is not None:
         return extractors.Declared(extractors.EXTRACTORS[name]).name
-    return PLAIN_TEXT if artifact.suffix.lower() in TEXT_SUFFIXES else DEFAULT_EXTRACTOR
+    return PLAIN_TEXT if reads_off_disk(artifact) else DEFAULT_EXTRACTOR
 
 
 @functools.lru_cache(maxsize=256)
@@ -1982,8 +2020,7 @@ def _cuts_a_token(q: str, doc: str) -> bool:
 
 def is_paginated(artifact: pathlib.Path) -> bool:
     """Whether asking which page a passage is on means anything for this source."""
-    suffix = artifact.suffix.lower()
-    return suffix not in TEXT_SUFFIXES and suffix not in extractors.BY_SUFFIX
+    return artifact.suffix.lower() not in extractors.BY_SUFFIX and not reads_off_disk(artifact)
 
 
 def _find_page(

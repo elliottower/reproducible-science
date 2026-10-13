@@ -274,6 +274,10 @@ def cmd_init(args: argparse.Namespace) -> int:
             return 2
         return _init_here()
     name = args.name
+    # `repro init .` means this directory. Read as a name it scaffolded a new project on top of
+    # the one already here: a `CLAUDE.md` headed `# .` and four folders nobody asked for.
+    if not args.directory and (Path.cwd() / name).resolve() == Path.cwd().resolve():
+        return _init_here()
     target = Path(args.directory) if args.directory else Path.cwd() / name
     target.mkdir(parents=True, exist_ok=True)
     print(f"initializing {target}")
