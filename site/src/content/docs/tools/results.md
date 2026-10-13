@@ -66,6 +66,7 @@ all checks passed.
 | `results review <file>...` | Record that someone examined these files, and what they found |
 | `results annotate <file>...` | Link these files to something outside the ledger; linked, not checked |
 | `results verify` | Check the ledger chain and every hash it names |
+| `results verify --json PATH` | Also write what it found to `PATH` as JSON: the chain's status, the number of events, and each recorded file with its state |
 | `results timestamp` | Date the ledger's head outside the repository, and check earlier dates |
 
 ## The chain

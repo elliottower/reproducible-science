@@ -405,6 +405,11 @@ class Pin:
 @dataclass
 class Report:
     checked: int = 0
+    sources: int = 0
+    """Claims files read, each pinning one source."""
+    absent_sources: int = 0
+    """Sources with no file to read: none at the path the claims file names, and none in the
+    library matching the pin. Every quotation against one is `unchecked`."""
     counts: dict[str, int] = field(default_factory=dict)
     problems: list[tuple[str, str, Result]] = field(default_factory=list)
     broken_pins: list[tuple[str, Pin]] = field(default_factory=list)

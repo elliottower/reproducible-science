@@ -23,6 +23,7 @@ import contextlib
 import datetime
 import hashlib
 import io
+import json
 import pathlib
 import re
 import stat
@@ -1128,16 +1129,19 @@ def cmd_check(a) -> int:
         rc = check_one(path, manuscript)
         if rc == 2 and frozen_digest(path) is None:
             print("\nNothing to check against yet. `prereg freeze` records the hash.")
+        _write_account(a.json, [path], [rc], documents)
         return _report_pinned(documents, rc)
 
     found = ([path] if path is not None else []) + below
     if not found:
+        _write_account(a.json, [], [], documents)
         if not documents:
             print(f"no {PREREG} here, above, or below.")
             return 2
         return _report_pinned(documents, 0)
 
     codes = [check_one(f, manuscript) for f in found]
+    _write_account(a.json, found, codes, documents)
     changed = codes.count(1)
     print(
         f"\n{len(found)} plans: {codes.count(0)} unchanged, {changed} changed, "
@@ -1149,6 +1153,45 @@ def cmd_check(a) -> int:
     # The single-plan branch returns 2 for a plan that was never frozen; this one returned 0,
     # so whether an unfrozen registration passed CI depended on which directory it ran from.
     return _report_pinned(documents, 1 if (changed or codes.count(2)) else 0)
+
+
+#: What `check_one` returns, in words.
+CHECKED = {0: "unchanged", 1: "changed", 2: "not frozen"}
+
+
+def _write_account(
+    where: str | None, plans: list[pathlib.Path], codes: list[int], documents: list[pinned.Pinned]
+) -> None:
+    """With `--json`, what this run found as one JSON object, beside what it printed.
+
+    `check` is `check_one`'s result for a plan together with its amendments and its log, so a
+    frozen plan with an amendment that is still a draft reads `not frozen` there and `frozen:
+    true`. An amendment counts once it has a freeze record; one without is a draft.
+    """
+    if not where:
+        return
+    account = []
+    for plan, code in zip(plans, codes, strict=True):
+        beside = amendment.beside(plan)
+        frozen = [p for p in beside if record.read(p) is not None]
+        digest = frozen_digest(plan)
+        account.append(
+            {
+                "path": str(plan),
+                "frozen": digest is not None,
+                "sha256": digest,
+                "check": CHECKED[code],
+                "amendments": len(frozen),
+                "amendment_drafts": len(beside) - len(frozen),
+                "log_entries": len(_entries(plan)) if plan.is_file() or digest else 0,
+            }
+        )
+    pinned_documents = [
+        {"path": str(d.path), "status": d.status, "commit": d.commit} for d in documents
+    ]
+    atomic_write(
+        where, json.dumps({"plans": account, "commit_pinned": pinned_documents}, indent=2) + "\n"
+    )
 
 
 def _plan_result(path: pathlib.Path) -> int | None:
@@ -1369,6 +1412,12 @@ def _main(argv: list[str] | None = None) -> int:
         "--manuscript",
         metavar="FILE",
         help="also fail a plan whose hypotheses this manuscript never mentions",
+    )
+    c.add_argument(
+        "--json",
+        metavar="PATH",
+        help="also write the findings to this file as JSON: each plan, frozen or not, with "
+        "its amendments and log entries counted",
     )
     c.set_defaults(fn=cmd_check)
 
