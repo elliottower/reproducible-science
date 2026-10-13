@@ -26,6 +26,7 @@ from repro.models import (
     StalenessReport,
     Validity,
     VerificationReport,
+    Warning_,
 )
 
 
@@ -215,6 +216,23 @@ class Policy(BaseModel):
                             rule=f"evidence.{decision.outcome.value}",
                             subject=f"{claim.claim_id}/{decision.kind}",
                             detail=decision.detail or decision.reason.value,
+                        )
+                    )
+                # The one decision warning a policy reads. The others qualify a check that
+                # ran; this one says a declared check did not, so it is graded as an unchecked
+                # assertion is, on a decision whose passage is `verified`.
+                unchecked = table.get(
+                    Outcome.UNCHECKED, self.outcomes.get(Outcome.UNCHECKED, Severity.IGNORE)
+                )
+                if Warning_.PAGE_UNCHECKED in decision.warnings and (
+                    unchecked is not Severity.IGNORE
+                ):
+                    violations.append(
+                        Violation(
+                            severity=unchecked,
+                            rule="evidence.page_unchecked",
+                            subject=f"{claim.claim_id}/{decision.kind}",
+                            detail=decision.detail or "the declared page was not checked",
                         )
                     )
 

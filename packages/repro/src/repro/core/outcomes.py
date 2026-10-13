@@ -203,6 +203,12 @@ class Warning_(enum.StrEnum):
     TRUNCATED = "truncated"
     NORMALIZED = "normalized"
     WRONG_PAGE = "wrong_page"
+    PAGE_UNCHECKED = "page_unchecked"
+    """The quote assertion declares a `page`, the passage was found, and nothing checked the
+    page: the artifact is not read page by page, or the passage matched only with spacing
+    ignored. The passage is in the artifact, so the assertion is `verified`; the page is
+    neither confirmed nor refuted, and a policy grades it as it grades a check that did not
+    run."""
     POSITIONAL_ADDRESS = "positional_address"
     """Addressed by row index, which names a different cell if the table is reordered."""
 
