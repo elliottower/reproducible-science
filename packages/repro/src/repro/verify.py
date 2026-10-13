@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import decimal
 import fractions
+import math
 import pathlib
 import statistics
 from collections.abc import Mapping
@@ -41,6 +42,7 @@ from repro.models import (
     ClaimAssessment,
     ComparisonMode,
     ComparisonStatus,
+    Conversion,
     CorrespondenceEvidence,
     Decision,
     DecisionMember,
@@ -58,6 +60,7 @@ from repro.models import (
     RegistrationAuthority,
     Statistic,
     TableCellEvidence,
+    Tie,
     Validity,
     ValueEvidence,
     VerificationReport,
@@ -172,12 +175,35 @@ _QUOTE_STATE = {
     ),
 }
 
+#: Every warning `citations.verify` can put on a result. `page unchecked` was not here, and a
+#: warning with no entry is dropped, so the one warning that says a check was skipped was the
+#: one `repro verify` never showed.
 _QUOTE_WARNINGS = {
     "short": Warning_.SHORT,
     "truncated": Warning_.TRUNCATED,
     "normalized": Warning_.NORMALIZED,
     "page": Warning_.WRONG_PAGE,
+    "page unchecked": Warning_.PAGE_UNCHECKED,
 }
+
+
+def _page_unchecked(page: int | None, state: str, warnings: list[str], paginated: bool) -> str:
+    """Why a declared page was not checked on a passage that was found, or empty where it was.
+
+    `citations` says so itself only where a source declares its own extractor, which a
+    manifest cannot do. The two cases a manifest reaches are silent there: a source that is
+    not read page by page has its page dropped before the passage is looked for, and a passage
+    that matches only with spacing ignored is returned before the page is looked at.
+    """
+    if page is None or state != "found" or "page" in warnings:
+        return ""
+    if "page unchecked" in warnings:
+        return f"page {page} was not checked: the declared extractor cannot be asked for one page"
+    if not paginated:
+        return f"page {page} was not checked: the artifact is not read page by page"
+    if "normalized" in warnings:
+        return f"page {page} was not checked: the passage matched only with spacing ignored"
+    return ""
 
 
 class QuoteBackend:
@@ -205,7 +231,7 @@ class QuoteBackend:
             # Imported here rather than at module scope so an absent `citations` reports as a
             # backend that could not run, which is what the caller can act on.
             from citations.exceptions import SourceUnreadableError
-            from citations.verify import check_one, extract
+            from citations.verify import check_one, extract, is_paginated
         except ImportError as e:
             raise BackendUnavailableError("quote", f"citations is not installed: {e}") from e
 
@@ -213,7 +239,14 @@ class QuoteBackend:
         result = check_one(
             evidence.text, path, evidence.page, prefix=evidence.prefix, suffix=evidence.suffix
         )
-        warnings = tuple(_QUOTE_WARNINGS[w] for w in result.warnings if w in _QUOTE_WARNINGS)
+        named = list(result.warnings)
+        # Asked only of a source that was read: `is_paginated` opens the file to tell text from
+        # a format with pages.
+        paginated = result.state == "found" and is_paginated(path)
+        unchecked = _page_unchecked(evidence.page, result.state, named, paginated)
+        if unchecked and "page unchecked" not in named:
+            named.append("page unchecked")
+        warnings = tuple(_QUOTE_WARNINGS[w] for w in named if w in _QUOTE_WARNINGS)
 
         if result.state == "unchecked":
             # The extractor could not produce text. Distinguishing this from an absent
@@ -242,7 +275,7 @@ class QuoteBackend:
             extraction=extraction,
             comparison=comparison,
             reason=reason,
-            detail=result.detail,
+            detail=result.detail or unchecked,
             warnings=warnings,
         )
 
@@ -276,8 +309,58 @@ _ABSENT_REASON = {
 def compare_decimal(
     stored: decimal.Decimal, evidence: MetricEvidence | TableCellEvidence | ValueEvidence
 ) -> bool:
-    """Does the stored value agree with the reported one, under the declared mode?"""
-    return _agree(stored, evidence.value, evidence.mode, evidence.tolerance_value)
+    """Does the stored value agree with the reported one, under the declared conversion and
+    mode?"""
+    return _agree(
+        _compared(stored, evidence.conversion),
+        evidence.value,
+        evidence.mode,
+        evidence.tolerance_value,
+    )
+
+
+def _compared(stored: decimal.Decimal, conversion: Conversion | None) -> decimal.Decimal:
+    """The stored value in the unit it is compared in.
+
+    Converted first and rounded after: a file holding 0.0426 printed as a percentage is 4.26,
+    which is 4.3 at one decimal, where rounding the fraction to 0.04 first would print 4. A
+    non-finite value has no unit and is returned as it is, for `_agree` to refuse.
+    """
+    return conversion.apply(stored) if conversion is not None and stored.is_finite() else stored
+
+
+def _held(stored: decimal.Decimal, compared: decimal.Decimal, conversion: Conversion | None) -> str:
+    """A stored value as a detail shows it: with what it is under a declared conversion."""
+    if conversion is None:
+        return f"{stored}"
+    return f"{stored} ({_plain(compared)} {conversion.said})"
+
+
+def _places(count: int) -> str:
+    """A number of decimal places, in words a detail can use. A value printed to the tens
+    has fewer than none, which is said as it is."""
+    return f"{count} decimal place{'' if count == 1 else 's'}"
+
+
+def _misplaced(
+    evidence: MetricEvidence | TableCellEvidence | ValueEvidence | AggregateEvidence,
+) -> str | None:
+    """What to say where `places` is declared and `reported` is written to another number of
+    them, or None. Two statements about the manuscript disagree, and no rounding of the
+    file's value settles which is meant: `4.20` is not a number reported to one place."""
+    printed_places = -_exponent(evidence.value)
+    if evidence.places is None or printed_places == evidence.places:
+        return None
+    return (
+        f"{evidence.name}: manuscript prints {evidence.reported}, which is "
+        f"{_places(printed_places)}, and {_places(evidence.places)} is declared"
+    )
+
+
+def _plain(converted: decimal.Decimal) -> str:
+    """A converted value with no exponent: 0.5 as a percentage is written 50, where `str`
+    writes the same decimal as 5E+1."""
+    return format(converted, "f")
 
 
 def _exponent(value: decimal.Decimal) -> int:
@@ -297,6 +380,47 @@ def _exponent(value: decimal.Decimal) -> int:
             f"so reaching the comparison with one is a defect"
         )
     return exponent
+
+
+def _tie(
+    compared: decimal.Decimal | fractions.Fraction, reported: decimal.Decimal
+) -> tuple[decimal.Decimal, decimal.Decimal] | None:
+    """The two values at the precision `reported` prints that `compared` lies exactly halfway
+    between, lower first, or None where it is nearer one of them.
+
+    Decided in exact rationals, for a stored decimal and for a statistic that may be no
+    decimal at all: the value in units of the printed precision is a whole number and a half,
+    or it is not. No float is formed and nothing is within a tolerance of a tie, so 4.25 is
+    one at one place and 4.2500001 is not.
+    """
+    if isinstance(compared, decimal.Decimal) and not compared.is_finite():
+        return None
+    quantum = _exponent(reported)
+    units = fractions.Fraction(compared) / fractions.Fraction(10) ** quantum
+    if units.denominator != 2:
+        return None
+    below = math.floor(units)
+
+    def at_precision(count: int) -> decimal.Decimal:
+        # Zero carries no sign: the neighbor above -0.5 is 0.
+        return decimal.Decimal((int(count < 0), tuple(map(int, str(abs(count)))), quantum))
+
+    return at_precision(below), at_precision(below + 1)
+
+
+def _tied(
+    compared: decimal.Decimal | fractions.Fraction,
+    printed: decimal.Decimal,
+    mode: ComparisonMode,
+) -> Tie | None:
+    """The record of a tie, where the comparison is at a printed precision and met one."""
+    if mode is not ComparisonMode.PRINTED_PRECISION:
+        return None
+    neighbors = _tie(compared, printed)
+    if neighbors is None:
+        return None
+    lower, upper = neighbors
+    return Tie(lower=_plain(lower), upper=_plain(upper), printed=_plain(printed))
 
 
 def _agree(
@@ -323,6 +447,13 @@ def _agree(
         # thirty-digit integers also exceed the default precision of 28, and were reported as
         # a mismatch. That is a defect in the arithmetic emitted as a contradicted manuscript,
         # which is the one thing this package must never do. Size the context to the operands.
+        #
+        # A value exactly halfway between two printed values is rounded up by half the
+        # software a manuscript's numbers come out of and to the even neighbor by the other
+        # half, so either neighbor agrees. Everywhere else the rounding is half-even, and
+        # which rule is used makes no difference away from a tie.
+        if (neighbors := _tie(stored, reported)) is not None:
+            return reported in neighbors
         with decimal.localcontext() as context:
             context.prec = max(
                 context.prec,
@@ -351,10 +482,14 @@ def _agree_exact(
     A mean of three values is a third of their sum, and dividing in decimals rounds it once
     at whatever precision the context carries before `printed_precision` rounds it again. A
     rational is exact, so the one rounding is the rule's own: half-even to the precision
-    `reported` prints. On a value that is a decimal the two functions agree.
+    `reported` prints, with either neighbor agreeing at an exact tie. On a value that is a
+    decimal the two functions agree.
     """
     printed = fractions.Fraction(reported)
     if mode is ComparisonMode.PRINTED_PRECISION:
+        # The tie rule a single value is held to, by the function that holds it.
+        if (neighbors := _tie(computed, reported)) is not None:
+            return reported in neighbors
         quantum = fractions.Fraction(10) ** _exponent(reported)
         # `round` of a rational is exact and takes a tie to the even neighbor.
         return round(computed / quantum) * quantum == printed
@@ -422,6 +557,7 @@ class ValueBackend:
             raise TypeError(f"{type(self).__name__} received {type(evidence).__name__}")
         path = paths[evidence.artifact]
         base = _base(claim, evidence, self)
+        base["conversion"] = evidence.conversion
         completed = {"execution": ExecutionStatus.COMPLETED}
         no_compare = {"comparison": ComparisonStatus.NOT_APPLICABLE}
 
@@ -472,6 +608,7 @@ class ValueBackend:
         # comparison, and for a value that turns out not to be numeric: what the extractor
         # read is a fact about the extractor whatever the comparison then makes of it.
         base["extraction_digest"] = Digest.of_text(extracted.raw).value
+        base["extracted"] = extracted.raw
 
         try:
             stored = decimal.Decimal(extracted.raw)
@@ -498,8 +635,27 @@ class ValueBackend:
                 warnings=warnings,
             )
 
-        agrees = compare_decimal(stored, evidence)
+        compared = _compared(stored, evidence.conversion)
+        if evidence.conversion is not None:
+            base["converted"] = _plain(compared)
+        held = _held(stored, compared, evidence.conversion)
         where = " ".join(extracted.trace) or locator.kind
+
+        if (misplaced := _misplaced(evidence)) is not None:
+            return Decision(
+                **base,
+                **completed,
+                extraction=ExtractionStatus.EXTRACTED,
+                comparison=ComparisonStatus.MISMATCH,
+                reason=Reason.PLACES_MISMATCH,
+                detail=misplaced,
+                warnings=warnings,
+            )
+
+        agrees = compare_decimal(stored, evidence)
+        tie = _tied(compared, evidence.value, evidence.mode)
+        base["tie"] = tie
+        between = f", an exact tie between {tie.lower} and {tie.upper}" if tie else ""
         return Decision(
             **base,
             **completed,
@@ -507,10 +663,11 @@ class ValueBackend:
             comparison=ComparisonStatus.MATCH if agrees else ComparisonStatus.MISMATCH,
             reason=Reason.VALUE_MATCH if agrees else Reason.VALUE_MISMATCH,
             detail=(
-                f"{where} = {stored}"
+                f"{where} = {held}{between}"
+                + (f"; the manuscript prints {evidence.reported}" if tie else "")
                 if agrees
                 else f"{evidence.name}: manuscript prints {evidence.reported}, "
-                f"{path.name} holds {stored} at {where}"
+                f"{path.name} holds {held} at {where}{between}"
             ),
             warnings=warnings,
         )
@@ -576,6 +733,7 @@ class CorrespondenceBackend:
                 artifact_id=side.artifact,
                 locator_digest=side.locator.digest.value,
                 extracted=extracted.raw if extracted is not None else None,
+                conversion=side.conversion,
                 # Hashed per side before any comparison, and for a value that turns out not
                 # to be numeric: what an extractor read is a fact about the extractor whatever
                 # the comparison then makes of it.
@@ -641,20 +799,40 @@ class CorrespondenceBackend:
                 )
             numbers.append(number)
 
+        # Each side in the unit it declares, and the comparison is over those: a document
+        # printing 4.2 beside a file holding 0.0424 as a percentage compares 4.2 with 4.24.
+        stored = numbers
+        numbers = [
+            _compared(n, side.conversion) for n, side in zip(stored, evidence.sides, strict=True)
+        ]
+        base["sides"] = tuple(
+            recorded.model_copy(update={"converted": _plain(number)})
+            if recorded.conversion is not None
+            else recorded
+            for recorded, number in zip(base["sides"], numbers, strict=True)
+        )
+
         left, right = evidence.sides
         a, b = numbers
+        held = [
+            _held(was, number, side.conversion)
+            for was, number, side in zip(stored, numbers, evidence.sides, strict=True)
+        ]
         # `printed_precision` compares at the coarser of the two precisions, so a document
         # printing 0.65 agrees with a file holding 0.6478 and the answer does not depend on
         # which side the manifest wrote first. A larger exponent is the coarser value.
         coarse, fine = (a, b) if _exponent(a) >= _exponent(b) else (b, a)
         agrees = _agree(fine, coarse, evidence.mode, evidence.tolerance_value)
+        tie = _tied(fine, coarse, evidence.mode)
+        base["tie"] = tie
         return Decision(
             **base,
             **completed,
             extraction=ExtractionStatus.EXTRACTED,
             comparison=ComparisonStatus.MATCH if agrees else ComparisonStatus.MISMATCH,
             reason=Reason.VALUE_MATCH if agrees else Reason.VALUE_MISMATCH,
-            detail=f"{evidence.name}: {left.name} {a}, {right.name} {b}",
+            detail=f"{evidence.name}: {left.name} {held[0]}, {right.name} {held[1]}"
+            + (f", an exact tie between {tie.lower} and {tie.upper}" if tie else ""),
             warnings=(
                 (Warning_.POSITIONAL_ADDRESS,)
                 if any(side.locator.kind == "table_position" for side in evidence.sides)
@@ -696,6 +874,7 @@ class AggregateBackend:
             raise TypeError(f"AggregateBackend received {type(evidence).__name__}")
         base = _base(claim, evidence, self)
         base["statistic"] = evidence.statistic
+        base["conversion"] = evidence.conversion
         no_compare = {"comparison": ComparisonStatus.NOT_APPLICABLE}
 
         def named(position: int, artifact: str) -> str:
@@ -765,7 +944,8 @@ class AggregateBackend:
                 warnings=warnings,
             )
 
-        values: list[fractions.Fraction] = []
+        # Each member in the unit the assertion declares, and the statistic is over those.
+        converted: list[decimal.Decimal] = []
         not_numeric = []
         for position, member, _, extracted, _ in readings:
             raw = extracted.raw if extracted is not None else ""
@@ -774,7 +954,7 @@ class AggregateBackend:
             except (decimal.InvalidOperation, ValueError):
                 number = decimal.Decimal("NaN")
             if number.is_finite():
-                values.append(fractions.Fraction(number))
+                converted.append(_compared(number, evidence.conversion))
             else:
                 not_numeric.append(f"{named(position, member.artifact)} holds {raw!r}")
         if not_numeric:
@@ -787,12 +967,34 @@ class AggregateBackend:
                 detail="; ".join(not_numeric),
                 warnings=warnings,
             )
+        values = [fractions.Fraction(number) for number in converted]
+
+        if evidence.conversion is not None:
+            base["members"] = tuple(
+                recorded.model_copy(update={"converted": _plain(number)})
+                for recorded, number in zip(base["members"], converted, strict=True)
+            )
+
+        if (misplaced := _misplaced(evidence)) is not None:
+            return Decision(
+                **base,
+                **completed,
+                extraction=ExtractionStatus.EXTRACTED,
+                comparison=ComparisonStatus.MISMATCH,
+                reason=Reason.PLACES_MISMATCH,
+                detail=misplaced,
+                warnings=warnings,
+            )
 
         computed = _aggregate(evidence.statistic, values)
         agrees = _agree_exact(computed, evidence.value, evidence.mode, evidence.tolerance_value)
         shown = _shown(computed, evidence.value)
         base["computed"] = shown
-        over = f"{evidence.statistic.value} of {evidence.count}"
+        tie = _tied(computed, evidence.value, evidence.mode)
+        base["tie"] = tie
+        between = f", an exact tie between {tie.lower} and {tie.upper}" if tie else ""
+        unit = f" {evidence.conversion.said}" if evidence.conversion is not None else ""
+        over = f"{evidence.statistic.value} of {evidence.count}{unit}"
         return Decision(
             **base,
             **completed,
@@ -800,9 +1002,11 @@ class AggregateBackend:
             comparison=ComparisonStatus.MATCH if agrees else ComparisonStatus.MISMATCH,
             reason=Reason.VALUE_MATCH if agrees else Reason.VALUE_MISMATCH,
             detail=(
-                f"{evidence.name}: {over} = {shown}"
+                f"{evidence.name}: {over} = {shown}{between}"
+                + (f"; the manuscript prints {evidence.reported}" if tie else "")
                 if agrees
-                else f"{evidence.name}: manuscript prints {evidence.reported}, {over} is {shown}"
+                else f"{evidence.name}: manuscript prints {evidence.reported}, "
+                f"{over} is {shown}{between}"
             ),
             warnings=warnings,
         )

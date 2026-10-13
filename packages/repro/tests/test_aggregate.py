@@ -26,6 +26,7 @@ from repro.models import (
     Claim,
     ComparisonMode,
     ComparisonStatus,
+    Conversion,
     Digest,
     ExecutionStatus,
     ExtractionStatus,
@@ -42,6 +43,7 @@ from repro.models import (
     ReproductionReport,
     RunOutput,
     Statistic,
+    Tie,
     TreeLocator,
     Validity,
     Warning_,
@@ -57,6 +59,7 @@ from repro.verify import (
     _agree,
     _agree_exact,
     _shown,
+    _tie,
     artifact_states,
     verify,
 )
@@ -349,27 +352,53 @@ TEN_ON_A_BOUNDARY += ["0.191", "0.178", "0.130", "0.376", "0.121"]
 
 
 @pytest.mark.parametrize(
-    ("values", "printed", "float_prints"),
+    ("values", "lower", "upper"),
     [
-        (["0.264", "0.099"], "0.182", "0.181"),
+        (["0.264", "0.099"], "0.181", "0.182"),
         (["0.305", "0.016"], "0.160", "0.161"),
-        (["0.394", "0.127", "0.020", "0.081"], "0.156", "0.155"),
-        (
-            TEN_ON_A_BOUNDARY,
-            "0.116",
-            "0.117",
-        ),
+        (["0.394", "0.127", "0.020", "0.081"], "0.155", "0.156"),
+        (TEN_ON_A_BOUNDARY, "0.116", "0.117"),
     ],
 )
-def test_a_mean_on_a_rounding_boundary_does_not_depend_on_binary_error(
-    tmp_path, values, printed, float_prints
+def test_a_mean_exactly_halfway_verifies_as_either_neighbor_and_records_the_tie(
+    tmp_path, values, lower, upper
 ):
-    """Each mean is exactly halfway between two printed values, and goes to the even one. The
-    same mean in binary floating point sits a hair to one side and rounds the other way."""
+    """Each mean is exactly halfway between two printed values. The same mean in binary
+    floating point sits a hair to one side, where it is no tie and only one neighbor agrees."""
+    exact = sum(fractions.Fraction(v) for v in values) / len(values)
     as_float = sum(float(v) for v in values) / len(values)
-    assert f"{round(as_float, 3):.3f}" == float_prints
-    assert only(project(tmp_path, values, printed)).outcome is Outcome.VERIFIED
-    assert only(project(tmp_path, values, float_prints)).outcome is Outcome.MISMATCH
+    assert fractions.Fraction(as_float) != exact
+    assert exact == (fractions.Fraction(lower) + fractions.Fraction(upper)) / 2
+    for printed in (lower, upper):
+        decision = only(project(tmp_path, values, printed))
+        assert decision.outcome is Outcome.VERIFIED
+        assert decision.tie == Tie(lower=lower, upper=upper, printed=printed)
+        assert f", an exact tie between {lower} and {upper}; the manuscript prints" in (
+            decision.detail
+        )
+    beyond = str(decimal.Decimal(upper) + decimal.Decimal("0.001"))
+    missed = only(project(tmp_path, values, beyond))
+    assert missed.outcome is Outcome.MISMATCH
+    assert missed.tie == Tie(lower=lower, upper=upper, printed=beyond)
+
+
+def test_a_mean_beside_a_tie_is_not_one(tmp_path):
+    """A third of 0.00000001 above and below 0.1815, which no decimal holds and which is
+    nearer one neighbor."""
+    above = ["0.1815", "0.1815", "0.18150001"]
+    below = ["0.1815", "0.1815", "0.18149999"]
+    assert only(project(tmp_path, above, "0.182")).outcome is Outcome.VERIFIED
+    assert only(project(tmp_path, above, "0.182")).tie is None
+    assert only(project(tmp_path, above, "0.181")).outcome is Outcome.MISMATCH
+    assert only(project(tmp_path, below, "0.181")).outcome is Outcome.VERIFIED
+    assert only(project(tmp_path, below, "0.182")).outcome is Outcome.MISMATCH
+    assert only(project(tmp_path, ["0.1815"] * 3, "0.182")).tie is not None
+
+
+def test_a_tolerance_has_no_tie_for_an_aggregate(tmp_path):
+    values = ["0.264", "0.099"]
+    inside = only(project(tmp_path, values, "0.181", mode="absolute", tolerance="0.001"))
+    assert (inside.outcome, inside.tie) == (Outcome.VERIFIED, None)
 
 
 def test_a_mean_with_no_finite_expansion_is_rounded_once(tmp_path):
@@ -450,7 +479,7 @@ def test_the_exact_comparison_is_the_decimal_one_on_every_decimal():
     assert agreed > 5000, "the sample must hold agreements as well as disagreements"
 
 
-def test_a_tie_goes_to_the_even_neighbor_as_it_does_for_a_single_value():
+def test_a_tie_agrees_with_either_neighbor_as_it_does_for_a_single_value():
     def exact(value, reported):
         return _agree_exact(
             fractions.Fraction(value),
@@ -459,10 +488,17 @@ def test_a_tie_goes_to_the_even_neighbor_as_it_does_for_a_single_value():
             decimal.Decimal(0),
         )
 
-    assert exact("0.125", "0.12") and not exact("0.125", "0.13")
-    assert exact("0.135", "0.14") and not exact("0.135", "0.13")
-    assert exact("-0.125", "-0.12") and not exact("-0.125", "-0.13")
-    assert exact("25", "2E+1") and exact("35", "4E+1")
+    assert exact("0.125", "0.12") and exact("0.125", "0.13")
+    assert not exact("0.125", "0.11") and not exact("0.125", "0.14")
+    assert exact("-0.125", "-0.12") and exact("-0.125", "-0.13")
+    assert exact("25", "2E+1") and exact("25", "3E+1") and not exact("25", "4E+1")
+    assert exact("0.1251", "0.13") and not exact("0.1251", "0.12")
+    assert exact("0.1249", "0.12") and not exact("0.1249", "0.13")
+    # One function decides a tie for a stored decimal and for a statistic.
+    assert _tie(fractions.Fraction(1, 8), decimal.Decimal("0.12")) == _tie(
+        decimal.Decimal("0.125"), decimal.Decimal("0.12")
+    )
+    assert _tie(fractions.Fraction(1, 3), decimal.Decimal("0.3")) is None
 
 
 def test_a_tolerance_is_compared_against_the_exact_statistic(tmp_path):
@@ -777,3 +813,111 @@ def test_a_rerun_that_rewrites_one_member_is_read_against_the_statistic(tmp_path
     assert moved.printed == "0.914"
     assert moved.detail == "accuracy: manuscript prints 0.914, mean of 10 is 0.9037"
     assert reading('{"loss": 0.2}').reading is Reading.UNREADABLE
+
+
+# -- a conversion, declared places and a tie, as for a single value --------------------------
+
+
+def test_a_mean_of_fractions_printed_as_a_percentage(tmp_path):
+    decision = only(project(tmp_path, reported="91.4", conversion="percent"))
+    assert decision.outcome is Outcome.VERIFIED
+    assert (decision.conversion, decision.computed) == (Conversion.PERCENT, "91.37")
+    assert [(m.extracted, m.converted) for m in decision.members][:3] == [
+        ("0.912", "91.2"),
+        ("0.915", "91.5"),
+        ("0.909", "90.9"),
+    ]
+    assert decision.detail == "accuracy: mean of 10 as a percentage = 91.37"
+
+    assert only(project(tmp_path, reported="91.4")).outcome is Outcome.MISMATCH
+    assert only(project(tmp_path, reported="0.914", conversion="percent")).outcome is (
+        Outcome.MISMATCH
+    )
+    wrong = only(project(tmp_path, reported="92.1", conversion="percent"))
+    assert wrong.detail == ("accuracy: manuscript prints 92.1, mean of 10 as a percentage is 91.37")
+    # The same, the other way: percentages stored, a fraction printed.
+    stored = ["91.2", "91.5", "90.9"]
+    other = only(project(tmp_path, stored, "0.912", conversion="fraction"))
+    assert (other.outcome, other.computed) == (Outcome.VERIFIED, "0.912")
+
+
+def test_a_member_is_converted_before_the_statistic_and_a_count_is_in_no_unit(tmp_path):
+    for statistic, reported in (("max", "92.1"), ("min", "90.8"), ("sum", "913.7")):
+        decision = only(
+            project(tmp_path, reported=reported, statistic=statistic, conversion="percent")
+        )
+        assert decision.outcome is Outcome.VERIFIED, statistic
+    with pytest.raises(ManifestError, match="how many members there are is in no unit"):
+        load(project(tmp_path, reported="10", statistic="count", conversion="percent"))
+    assert only(project(tmp_path, reported="10", statistic="count")).outcome is Outcome.VERIFIED
+
+
+def test_a_member_that_holds_no_number_is_not_converted(tmp_path):
+    path = project(tmp_path, reported="91.4", conversion="percent")
+    (tmp_path / "seed-5.json").write_text('{"accuracy": "diverged"}')
+    decision = only(path)
+    assert decision.reason is Reason.VALUE_NOT_NUMERIC
+    assert [m.converted for m in decision.members] == [None] * 10
+
+
+def test_a_mean_with_declared_places(tmp_path):
+    assert only(project(tmp_path, reported="0.914", places=3)).outcome is Outcome.VERIFIED
+    more = only(project(tmp_path, reported="0.9137", places=3))
+    assert (more.outcome, more.reason) == (Outcome.MISMATCH, Reason.PLACES_MISMATCH)
+    assert more.detail == (
+        "accuracy: manuscript prints 0.9137, which is 4 decimal places, "
+        "and 3 decimal places is declared"
+    )
+    # 0.9137 is the mean, so the printed value is right and only the declaration is not.
+    assert only(project(tmp_path, reported="0.9137")).outcome is Outcome.VERIFIED
+    fewer = only(project(tmp_path, reported="0.91", places=3))
+    assert fewer.reason is Reason.PLACES_MISMATCH
+    assert only(project(tmp_path, reported="0.915", places=3)).reason is Reason.VALUE_MISMATCH
+    assert only(project(tmp_path, reported="91.4", places=1, conversion="percent")).outcome is (
+        Outcome.VERIFIED
+    )
+    with pytest.raises(ManifestError, match="`places` goes with `printed_precision` only"):
+        load(project(tmp_path, reported="0.914", places=3, mode="absolute", tolerance="0.1"))
+
+
+def test_a_member_that_does_not_resolve_is_reported_before_the_places(tmp_path):
+    path = project(tmp_path, reported="0.9137", places=3)
+    (tmp_path / "seed-3.json").write_text('{"loss": 0.2}')
+    assert only(path).reason is Reason.POINTER_ABSENT
+
+
+def test_an_aggregate_declaring_neither_serializes_without_the_fields():
+    dumped = evidence().model_dump()
+    assert "conversion" not in dumped and "places" not in dumped
+    declared = evidence(conversion=Conversion.PERCENT, places=1, reported="1.0")
+    again = AggregateEvidence.model_validate_json(declared.model_dump_json())
+    assert again == declared
+    assert (again.conversion, again.places) == (Conversion.PERCENT, 1)
+
+
+def test_why_shows_a_converted_mean_at_a_tie_with_its_declared_places(tmp_path, capsys):
+    values = ["0.264", "0.099"]
+    path = project(tmp_path, values, "18.2", conversion="percent", places=1)
+    (assertion,) = why(load(path), "c").assertions
+    assert assertion.tie == Tie(lower="18.1", upper="18.2", printed="18.2")
+    assert (assertion.computed, assertion.places) == ("18.15", 1)
+    assert [(r.stored, r.conversion, r.converted) for r in assertion.reads] == [
+        ("0.264", Conversion.PERCENT, "26.4"),
+        ("0.099", Conversion.PERCENT, "9.9"),
+    ]
+
+    assert main(["why", "c", str(path)]) == 0
+    shown = capsys.readouterr().out
+    assert (
+        "    seed-0 at /accuracy: holds 0.264, 26.4 as a percentage\n"
+        "    seed-1 at /accuracy: holds 0.099, 9.9 as a percentage\n"
+        "    the mean of the 2 values: 18.15\n"
+        "    an exact tie between 18.1 and 18.2: rounding half up prints one and half to even "
+        "may print the other\n"
+        "    the manuscript prints 18.2, declared to 1 decimal place: verified\n"
+    ) in shown
+
+    assert main(["verify", str(path), "--policy", "exploratory"]) == 0
+    (line,) = [line for line in capsys.readouterr().out.splitlines() if line.startswith("  ok")]
+    assert "aggregate accuracy: mean of 2 as a percentage = 18.15" in line
+    assert "  [exact tie: 18.1 or 18.2]" in line

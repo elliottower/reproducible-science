@@ -246,6 +246,78 @@ Every line under `established` is computed from the files and the record of re-r
 
 Each line under `not established` names a file no command is recorded for, a command with no re-run that reproduced, or an assertion that was not checked. The last three lines are the same for every claim. `--format json` prints the same account as one document: the assertions, the chain with its edges and findings, and each `not_established` line with a `kind` and the file, command or assertion it names.
 
+## Every number the text prints
+
+```bash
+repro numbers
+```
+
+`repro verify` reports on the claims a manifest declares, and the author chose which to declare. `repro numbers` reads the manuscript's text and counts every number in it, so the denominator is the text's. It executes nothing, writes nothing and exits 0 whatever it counts.
+
+Here `paper.txt` is three lines, one claim quotes `Thirty-five participants responded` and reports `35` from `totals.json`, and the manifest sets one passage aside:
+
+```text
+repro.yaml
+
+  paper (paper.txt)
+    line 1     61%  thirty-five participants responded, 61% of the 57 invited
+    line 1     57   responded, 61% of the 57 invited in 2025. responders
+    line 2     4.2  responders were older by 4.2 years (table 2). the
+    8 numbers: 1 bound, 3 set aside by rule, 1 set aside with a reason, 3 unbound
+
+  set aside by rule: 1 name, 1 label, 1 year
+  set aside with a reason: 1 in paper "took 12 minutes": how long the form takes, not a result
+  8 numbers in 1 text: 1 bound, 3 set aside by rule, 1 set aside with a reason, 3 unbound
+  3 unbound: 3 numerals, 0 number words
+  0 of the 3 unbound print a value an assertion reports, outside the passage it reports it for; 0 more match on one digit and are not marked
+```
+
+Each number stands in exactly one place, so the four counts add up to the total:
+
+| standing | what it means |
+|---|---|
+| `bound` | the occurrence lies in the passage of a `quote` whose claim also carries that value as `reported`, digit for digit at the printed precision (`2,364` and `2364` agree, `0.5` and `0.50` do not), or it is the value a prose address selects |
+| `set aside with a reason` | it lies in a passage the manifest lists under `set_aside` |
+| `set aside by rule` | a named rule reads the digits as something other than a quantity |
+| `unbound` | printed, and nothing in the manifest accounts for it |
+
+The same digits `reported` by a claim about another passage bind nothing. That occurrence is unbound, marked `(reported elsewhere)` on its line, and counted in the last line of the summary. It is marked where the value has two digits or more, or a decimal point. A single digit matches some reported value in most manifests, so a bare `4` is counted in the same line as matching on one digit and is not marked.
+
+A cardinal written as a word is counted as any other number, because `thirty-eight claims are bound` is a claim. The summary says how many of the unbound are numerals and how many are number words.
+
+The text read is each artifact a claim reads its own sentence from: one a `quote` reads in a claim that also offers an assertion of another kind, or one a prose address reads. A `quote` alone in its claim is a quotation from a source, and the source is not counted. `--text <artifact-id>`, repeatable, names the texts instead.
+
+A number is digits with an optional sign, grouping commas, a decimal point and an exponent, as the prose address reads one, and a cardinal below one hundred written as one word. `10-12` is two numbers, `12,13` is two, and a percent sign stays with its number without being part of its value. Nothing is dropped. Digits that are not a quantity are counted under the first of these rules that holds:
+
+| rule | what it sets aside |
+|---|---|
+| `link` | digits inside a URL |
+| `date` | the three parts of a date written `2026-10-13` |
+| `document identifier` | the number after `rfc`, `iso`, `iec`, `ieee`, `ansi`, `ecma`, `fips`, `pep`, `arxiv`, `doi`, `isbn`, `issn`, `pmid` or `pmcid`, as in `rfc 6901` and `arxiv 2609.22111`, and the digits of a DOI |
+| `name` | digits with a letter immediately before them, `v15zw` and `sha256sum`, digits a hyphen or underscore joins to a part that holds a letter, `gpt-4` and `9750` in `i7-9750h`, and digits that open a run of letters and digits holding more digits, as a hexadecimal digest does |
+| `version or section` | digits joined by two or more full stops, `0.5.5` |
+| `citation` | whole numbers from 1 up, alone in square brackets: `[12]`, `[3, 7-9]` |
+| `label` | the number after `section`, `figure`, `table`, `equation`, `appendix`, `chapter`, `page`, `algorithm`, `listing`, `theorem`, `lemma`, `proposition`, `corollary`, `definition`, `footnote`, `step` or `line`, or the usual abbreviation of one, and both ends of a range written `2-4` |
+| `list marker` | a whole number of one or two digits alone in parentheses, `(1)` |
+| `ordinal` | digits with `st`, `nd`, `rd` or `th` attached |
+| `year` | four digits from 1800 to 2099 with no sign, separator, decimal point or percent sign |
+| `the word one` | the word `one`, which is a pronoun more often than a count |
+
+A binding or a `set_aside` entry takes precedence over a rule, so a year a claim reports is bound. An em or en dash before a number is punctuation: `accuracy—92` holds the number 92, joined to no name and carrying no sign.
+
+The rules read characters and not meaning, and where telling two readings apart would take a judgment the rule is left as it is. A bare count of 1,950 printed `1950` is set aside as a year and `[12, 18]` as a citation. A status code, `exit 2`, is counted, because it is a statement the text makes about a program. A number inside a printed listing of code or of a manifest is counted, because the extracted text does not say where a listing starts. A page number alone on its line, which looks like a table cell, is counted. The JSON carries every occurrence with the rule that set it aside, so each rule can be audited.
+
+To declare that a passage holds no claim, list it with the reason:
+
+```yaml
+set_aside:
+- artifact: paper
+  text: took 12 minutes
+  reason: how long the form takes, not a result
+```
+
+`text` is matched as a quotation is, every number inside each place it occurs is set aside, and `reason` is required. An entry whose passage is not in the text is listed with a count of 0. `--format json` prints, per text, every number with the line it is on, its offset in the normalized text, the value read, its standing, and the rule, the claims that bind it or the reason.
+
 ## What it reads
 
 A number is checked at an address the manifest declares, in the addressing the format already has:
@@ -271,6 +343,69 @@ A predicate matching two rows is reported as ambiguous and never resolved to the
 
 Pickles (`.pkl`, `.joblib`, `.pt`) are never opened, because reading one runs code. An `.rds` is parsed by [`rdata`](https://pypi.org/project/rdata/), which starts no R process and evaluates nothing in the file.
 
+## A fraction printed as a percentage
+
+A file holds `0.0424` and the manuscript prints 4.2%. The assertion declares the conversion by name:
+
+```yaml
+- {kind: metric, artifact: results, name: attrition, reported: "4.2", pointer: /attrition, conversion: percent}
+```
+
+| conversion | the file stores | the manuscript prints |
+|---|---|---|
+| `percent` | a fraction, `0.042` | a percentage, `4.2` |
+| `fraction` | a percentage, `4.2` | a fraction, `0.042` |
+
+The stored value is converted exactly, by moving its decimal point, and then compared at the precision the manuscript prints: `0.0424` is 4.24 and agrees with `4.2`, and `0.0426` is 4.26 and does not. A `tolerance` is in the printed unit. `metric`, `table` and `value` take the field, and so does each side of a `correspondence`. The two names are the whole set. No assertion takes a multiplier or an expression, and a manifest naming any other conversion does not load.
+
+`repro verify` and `repro why` show both values:
+
+```text
+  ok    attrition    metric   /attrition = 0.0424 (4.24 as a percentage)
+```
+
+```text
+    results at /attrition: holds 0.0424, 4.24 as a percentage
+    the manuscript prints 4.2: verified
+```
+
+In `--format json` a decision carries `extracted`, `conversion` and `converted`.
+
+## Decimal places, and a value exactly halfway
+
+The precision of a comparison is the precision of `reported` as written: `"3.20"` is compared at two decimal places and `"3.2"` at one, with the stored value rounded half to even. `places` states that precision a second time, where a table or a journal fixes it:
+
+```yaml
+- {kind: metric, artifact: results, name: effect, reported: "4.2", pointer: /effect, places: 1}
+```
+
+`reported` must then be written to exactly that many decimal places, and the stored value must round to it. A value printed as `4.20` in a table declared to one place does not verify, whatever the file holds, and neither does `3.1` declared to two:
+
+```text
+  MISS  effect-two   metric   effect: manuscript prints 4.20, which is 2 decimal p
+```
+
+```text
+    results at /effect: holds 4.2051
+    the manuscript prints 4.20, declared to 1 decimal place: mismatch (places mismatch)
+```
+
+`metric`, `table` and `value` take `places`, under `printed_precision` only: a manifest declaring it with `absolute` or `relative` does not load.
+
+A stored value exactly halfway between two printed values has two correct roundings. `4.25` at one place is `4.3` in a spreadsheet, which rounds half away from zero, and `4.2` in Python or R, which round half to even. Either verifies, and the output says it was a tie:
+
+```text
+  ok    tie-up       metric   /attrition = 0.0425 (4.25 as a percentage), an exact  [exact tie: 4.2 or 4.3]
+```
+
+```text
+    results at /attrition: holds 0.0425, 4.25 as a percentage
+    an exact tie between 4.2 and 4.3: rounding half up prints one and half to even may print the other
+    the manuscript prints 4.3: verified
+```
+
+A printed value that is neither neighbor is a mismatch, and a tie is exact: `4.2500001` is not one, and only `4.3` verifies against it. In `--format json` a decision at a tie carries `tie`, with `lower`, `upper` and `printed`.
+
 ## A number over several runs
 
 Ten runs exist, and the manuscript reports their mean. A `metric` binds the sentence to one file, and passes whichever run that file is. An `aggregate` names every run and checks that the printed value is the stated statistic of all of them:
@@ -295,7 +430,7 @@ Ten runs exist, and the manuscript reports their mean. A `metric` binds the sent
 
 The best of the ten runs printed as their mean is a `mismatch`, `manuscript prints 0.921, mean of 10 is 0.9137`.
 
-The statistic is computed exactly, over rationals, and rounded once to the precision the manuscript prints: runs holding `0.264` and `0.099` have a mean of `0.1815`, which is `0.182` at three places, where the same mean in floating point prints `0.181`. `mode` and `tolerance` apply as they do to a `metric`. There is no standard deviation in the set.
+The statistic is computed exactly, over rationals, and rounded once to the precision the manuscript prints. Runs holding `0.264` and `0.099` have a mean of exactly `0.1815`, a tie at three places, so `0.181` and `0.182` both verify and the output says `[exact tie: 0.181 or 0.182]`; in floating point the same mean is a hair below the boundary. `mode`, `tolerance`, `conversion` and `places` apply as they do to a `metric`: `conversion: percent` converts each stored fraction before the mean is taken, and is refused with `count`. There is no standard deviation in the set.
 
 Every member must hold a number. A member whose file is missing leaves the assertion `unchecked`, and one whose address does not resolve or holds no number makes it `not_found`, with the member named:
 
@@ -311,7 +446,7 @@ The statistic of the members that did resolve is never compared. `repro why` lis
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/elliottower/reproducible-science
-    rev: v0.4.0
+    rev: v0.5.5
     hooks:
       - id: repro-verify
 ```

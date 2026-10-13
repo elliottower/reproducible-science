@@ -8,7 +8,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from repro.core.claims import Availability, Registration
-from repro.core.evidence import Statistic
+from repro.core.evidence import Conversion, Statistic
 from repro.core.manifest import RegenerationState
 from repro.core.outcomes import (
     Decision,
@@ -17,6 +17,7 @@ from repro.core.outcomes import (
     Outcome,
     Reason,
     RegistrationAuthority,
+    Tie,
     Validity,
 )
 
@@ -315,6 +316,11 @@ class FileRead(BaseModel):
     """Where the assertion looks. Empty for a quotation, which addresses no value."""
     stored: str | None = None
     """The value at the address, as stored. None where none was read."""
+    conversion: Conversion | None = None
+    """The conversion the assertion declares for this value, or None."""
+    converted: str | None = None
+    """`stored` under `conversion`, which is the value compared. None where no conversion is
+    declared, or where no number was read to convert."""
 
 
 class AssertionAccount(BaseModel):
@@ -327,6 +333,10 @@ class AssertionAccount(BaseModel):
     printed: str | None = None
     """The value as the manuscript prints it, or the passage a quotation asserts."""
     reads: tuple[FileRead, ...] = ()
+    places: int | None = None
+    """How many decimal places the assertion declares the manuscript reports the value to."""
+    tie: Tie | None = None
+    """Set where the compared value lay exactly halfway between two printed values."""
     statistic: Statistic | None = None
     """What an `aggregate` computes over the values it reads. None for every other kind."""
     computed: str | None = None

@@ -26,7 +26,7 @@ The result -- did the passage appear? Exhaustive, four outcomes:
 The warnings -- is the quote well formed? A quote can be `found` and still carry one:
 
     short        the source may qualify it in the next clause
-    truncated    every occurrence stops mid-word or mid-number
+    truncated    every occurrence begins or stops mid-word or mid-number
     normalized   matched only after ignoring punctuation and spacing
     page         found, but not on the page the record claims
 
@@ -1346,18 +1346,49 @@ def _triangulate(
     return result
 
 
-def _positions(needle: str, doc: str) -> list[int]:
+def _begins_inside(needle: str, doc: str, at: int) -> bool:
+    """Whether the occurrence of `needle` at `at` begins in the middle of a word or a number.
+
+    The mirror of the test `_positions` makes where an occurrence ends. `113 quotations`
+    inside `2113 quotations` is not the document saying `113 quotations`, and `ample size`
+    inside `sample size` is not it saying `ample size`.
+
+    A digit is also inside a number where a separator or a sign ties it to what precedes it:
+    the `113` of `2,113` and of `0.113`, and the `0.42` of `-0.42`, which quoted without its
+    sign states the opposite. A hyphen with a word character before it joins two words or two
+    ends of a range, so `sample size` in `sub-sample size` and `12` in `10-12` begin on a
+    boundary. So does anything after a bracket, a quotation mark, other punctuation, white
+    space, or nothing at all.
+    """
+    if at == 0 or not needle[0].isalnum():
+        return False
+    before = doc[at - 1]
+    if before.isalnum():
+        return True
+    if not needle[0].isdigit():
+        return False
+    earlier = doc[at - 2] if at >= 2 else " "
+    if before in ".,":
+        return earlier.isdigit()
+    return before == "-" and not earlier.isalnum()
+
+
+def _positions(needle: str, doc: str, spaced: bool = True) -> list[int]:
     """Where `needle` occurs in `doc` on a token boundary, in order.
 
     A passage whose last character is alphanumeric and which is followed by another is a
     shared prefix rather than an occurrence: `the catalog` inside `the catalogue` is not the
     document saying `the catalog` a second time. Counting those would report a passage as
-    ambiguous because some longer word happens to begin with it.
+    ambiguous because some longer word happens to begin with it. The same holds at the other
+    end, for a passage that begins inside a word or a number: see `_begins_inside`.
 
     Where no occurrence lands cleanly every occurrence is returned instead. A quotation that only
     ever cuts a word stays `found` and keeps its `truncated` warning, which is the behaviour
     `_cuts_a_token` exists to produce and states as its own rule: a quote that lands cleanly
     somewhere in the document is quoting that place.
+
+    `spaced` is false for a `doc` with its white space removed, where every word follows the
+    one before it with nothing between and where an occurrence begins says nothing.
     """
     if not needle:
         return []
@@ -1368,15 +1399,16 @@ def _positions(needle: str, doc: str) -> list[int]:
     while at >= 0:
         total.append(at)
         after = at + len(needle)
-        if not cuts_matter or after >= len(doc) or not doc[after].isalnum():
+        ends_clean = not cuts_matter or after >= len(doc) or not doc[after].isalnum()
+        if ends_clean and not (spaced and _begins_inside(needle, doc, at)):
             clean.append(at)
         at = doc.find(needle, at + 1)
     return clean or total
 
 
-def _count(needle: str, doc: str) -> int:
+def _count(needle: str, doc: str, spaced: bool = True) -> int:
     """How many occurrences `_positions` finds."""
-    return len(_positions(needle, doc))
+    return len(_positions(needle, doc, spaced))
 
 
 def _occurrences(
@@ -1403,15 +1435,16 @@ def _occurrences(
     q = transform(quote)
     if not q:
         return 0, False
-    n = _count(q, doc)
+    kept = transform is not skeleton
+    n = _count(q, doc, kept)
     if n <= 1:
         return n, n == 1
     if not (prefix or suffix):
         return n, False
-    if _count(transform(prefix + quote + suffix), doc) == 1:
+    if _count(transform(prefix + quote + suffix), doc, kept) == 1:
         return n, True
     spaced = " ".join(part for part in (prefix, quote, suffix) if part)
-    return n, _count(transform(spaced), doc) == 1
+    return n, _count(transform(spaced), doc, kept) == 1
 
 
 @dataclass(frozen=True)
@@ -1474,7 +1507,7 @@ def single_out(quote: str, text: str, occurrence: int) -> tuple[str, str] | None
     """
     for transform in (passage_fold, skeleton):
         q, doc = transform(quote), transform(text)
-        if at := _positions(q, doc):
+        if at := _positions(q, doc, transform is not skeleton):
             break
     else:
         return None
@@ -1492,7 +1525,8 @@ def single_out(quote: str, text: str, occurrence: int) -> tuple[str, str] | None
         if max(len(prefix), len(suffix)) > MAX_ANCHOR_CHARS:
             return None
         s, e = start - len(prefix), end + len(suffix)
-        if transform(prefix + quote + suffix) == doc[s:e] and _positions(doc[s:e], doc) == [s]:
+        anchored = _positions(doc[s:e], doc, transform is not skeleton)
+        if transform(prefix + quote + suffix) == doc[s:e] and anchored == [s]:
             return prefix, suffix
         if width >= len(doc):
             return None
@@ -1996,23 +2030,28 @@ def _page_text(artifact: pathlib.Path, page: int, extractor: str) -> str:
 
 
 def _cuts_a_token(q: str, doc: str) -> bool:
-    """Does every occurrence of the quote stop in the middle of a word or a number?
+    """Does every occurrence of the quote begin or stop in the middle of a word or a number?
 
     `"an accuracy of 0.9"` is genuinely present in a source reporting **0.95**, so it is `found`
     and the reader is told a true thing that misstates the result. The same cut turns
     `"We trained 50"` into `"We trained 5"`. This is not the `short` warning: length is not the
     problem, and a long quote ending one digit early is the more convincing version of it.
 
+    The cut can be at the front as well: `"113 quotations"` is present in a source reporting
+    **2113 quotations**. `_begins_inside` says what counts as one.
+
     Every occurrence must cut, because a quote that lands cleanly somewhere in the document is
     quoting that place.
     """
-    if not q or not q[-1].isalnum():
+    if not q:
         return False
+    stops_matter = q[-1].isalnum()
     at, seen = doc.find(q), False
     while at >= 0:
         seen = True
         after = at + len(q)
-        if after >= len(doc) or not doc[after].isalnum():
+        stops_inside = stops_matter and after < len(doc) and doc[after].isalnum()
+        if not stops_inside and not _begins_inside(q, doc, at):
             return False
         at = doc.find(q, at + 1)
     return seen

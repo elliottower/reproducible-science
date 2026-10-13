@@ -109,7 +109,7 @@ Five results, exhaustive:
 Only `not found` fails a run. `indeterminate`, `ambiguous` and `unchecked` are neither a pass
 nor a failure, and `--strict` fails on all three.
 
-Warnings sit on their own axis. A passage can be `found` and still carry one: `truncated` (stops
+Warnings sit on their own axis. A passage can be `found` and still carry one: `truncated` (begins or stops
 mid-word or mid-number and the source continues it), `short` (the source may qualify it in the next
 clause), `normalized` (matched ignoring punctuation), `page` (found, but not where the record says).
 

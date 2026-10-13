@@ -1,0 +1,23 @@
+schema_version: repro/1
+project: value_match_converted
+artifacts:
+- id: rates
+  path: rates.json
+  digest:
+    algorithm: sha256
+    value: f0054746edbb06d2662d385011333f5b4018ecc5252de9132a1906a67c6f4e24
+claims:
+- id: c
+  text: t
+  evidence:
+  - kind: metric
+    artifact: rates
+    name: m
+    reported: '4.2'
+    pointer: /low
+    conversion: percent
+  - kind: metric
+    artifact: rates
+    name: m
+    reported: '4.2'
+    pointer: /low

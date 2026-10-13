@@ -59,6 +59,7 @@ file is confirmed.
 | digest matches | `authoritative` | the file is the file that was pinned |
 | digest differs | `broken_pin` | the file read is provably not the file declared |
 | no digest | `unpinned_artifact` | nothing about the file is confirmed |
+| no file | `artifact_absent` | nothing is at the declared path, so no assertion against it read anything |
 
 Pins are resolved before any evidence is read. Decisions computed against a broken or unpinned
 artifact still run and are still reported, marked with that validity, because a diagnostic is
@@ -79,14 +80,28 @@ text: "Model A exceeded Model B by 3.2 percentage points"
 prefix: "In the held-out split, "   # optional: the text immediately before the passage
 suffix: " on the primary metric"    # optional: the text immediately after it
 section: "Results"      # recorded, never verified
-page: 4                 # verified when present
+page: 4                 # checked where the artifact is read page by page
 ```
 
-Assertion: this passage occurs in the extracted text of this artifact, after normalization
-that preserves which words appear — NFKC, curly quotes and dashes folded, hyphenation across
-line breaks removed, whitespace collapsed. Normalization never deletes a character without
-substituting a separator, because deleting a control character welds the words on either side
-into one appearing in neither text.
+Assertion: this passage occurs in the extracted text of this artifact, after the passage and
+the text are normalized the same way. Unicode is decomposed to NFKD and combining marks are
+dropped, so a ligature becomes its letters and an accented letter matches its unaccented form:
+`Krzyżosiak` matches `Krzyzosiak`. Dotless `ı` and dotted `İ` become `i` and `I`. Curly
+quotation marks become straight ones, and the em dash, en dash, minus sign and U+2010 hyphen
+become `-`. A hyphen at a line break between two letters is removed with the break and any other dash at
+a line end is kept, runs of whitespace collapse to one space, and case is ignored. A control character becomes a space and is not deleted, because
+deleting one welds the words on either side into one appearing in neither text.
+
+A passage that does not occur under that normalization is looked for once more with all
+whitespace, underscores, and any hyphen joining two word characters removed. One found only
+that way is `verified` and carries the warning `normalized`. Other punctuation is kept in both
+passes, so `p < 0.05` does not match `p = 0.05` and `-0.42` does not match `0.42`.
+
+`page` is checked where the artifact is read page by page and the passage matched under the
+first normalization: a passage found on another page is `comparison=mismatch`, reason
+`wrong_page`. Where neither holds — the artifact is a text file, or the passage matched only
+with spacing ignored — the passage is `verified`, the decision carries the warning
+`page_unchecked`, and its detail says why the page was not checked.
 
 A passage occurring more than once is `extraction=invalid`, reason `quotation_ambiguous`, for the
 reason an ambiguous row selector is: no occurrence is taken as the one meant. The record says
@@ -109,6 +124,8 @@ reported: "3.20"                          # a string, always
 pointer: /comparisons/primary/delta       # RFC 6901
 mode: printed_precision                   # or absolute | relative
 tolerance: "0"                            # a string; ignored for printed_precision
+conversion: percent                       # optional; or fraction (§3.7)
+places: 2                                 # optional; printed_precision only (§3.8)
 ```
 
 Assertion: this artifact holds this value at this location.
@@ -123,7 +140,7 @@ Specifying an escape grammar for a new selector language is work already done.
 
 | mode | agrees when |
 |---|---|
-| `printed_precision` | the stored value, rounded half-even to the precision `reported` prints, equals `reported`. A paper printing `3.2` is not contradicted by `3.20001`; one printing `3.20000` is. |
+| `printed_precision` | the stored value, rounded half-even to the precision `reported` prints, equals `reported`. A paper printing `3.2` is not contradicted by `3.20001`; one printing `3.20000` is. A stored value exactly halfway between two printed values agrees with either (§3.8). |
 | `absolute` | \|stored − reported\| ≤ tolerance |
 | `relative` | \|stored − reported\| ≤ tolerance × \|reported\| |
 
@@ -185,7 +202,9 @@ tolerance: "0"
 
 Assertion: these two artifacts hold the same value.
 
-The first three kinds compare an artifact against a literal written in the manifest. A claim a
+A side may carry a `conversion` (§3.7), and is then compared as converted.
+
+Every other kind compares an artifact against a literal written in the manifest. A claim a
 document makes about the code beside it has an artifact on both sides: `docs/SPEC.md` states a
 fixture count, and `ls -1 packages/repro/tests/conformance/cases` returns one. Expressing that
 with a `metric` requires transcribing one of the two into `reported`, and no assertion reads
@@ -242,6 +261,8 @@ members:
   - {artifact: seed-2, locator: {kind: tree, pointer: /accuracy}}
 mode: printed_precision     # or absolute | relative
 tolerance: "0"
+conversion: percent         # optional (§3.7), applied to each member
+places: 3                   # optional (§3.8)
 ```
 
 Assertion: the printed value is this statistic of the values these members hold.
@@ -273,6 +294,14 @@ locator twice, which would count one value two times.
 The set is closed. A standard deviation is not in it: it is a square root, which no exact
 decimal or rational holds, and it names two quantities until `sample` or `population` is said.
 
+**A conversion is applied to each member, and places and ties are as for one value.** A
+declared `conversion` converts each member's value, exactly, before the statistic is taken, so
+ten stored fractions printed as a mean percentage are bound with `conversion: percent`. It is
+rejected with `count`, since how many members there are is in no unit. `places` is what §3.8
+defines, checked after every member has resolved. A statistic exactly halfway between two
+printed values agrees with either, decided by the function that decides it for a single value,
+and the decision records the tie.
+
 **The statistic is exact, and is rounded once.** Each stored value is parsed as a decimal and
 held as a rational, and the statistic is computed over rationals: a mean of three values is
 the exact quotient, with no binary float formed and no decimal division rounding it at a
@@ -280,8 +309,9 @@ context's precision. The comparison is the one §3.2 defines, on that exact valu
 `printed_precision` the statistic is rounded half-even to the precision `reported` prints and
 must equal `reported`; under `absolute` and `relative` the exact difference is compared with
 the tolerance. Members holding `0.264` and `0.099` have a mean of exactly `0.1815`, which is
-`0.182` at three places; the same mean in binary floating point is a hair below the boundary
-and prints `0.181`.
+an exact tie at three places, so `0.181` and `0.182` both agree and the decision says so; the
+same mean in binary floating point is a hair below the boundary, where it is no tie and only
+`0.181` would agree.
 
 | situation | reported |
 |---|---|
@@ -300,7 +330,8 @@ names every member that failed by its position in the list and its artifact:
 is the weakest of its members' artifacts.
 
 A decision records one `DecisionMember` per member, in the order the manifest lists them, with
-the artifact digest, the locator digest, the value extracted and its digest. It records the
+the artifact digest, the locator digest, the value extracted and its digest, and the value
+converted where a conversion is declared. It records the
 `statistic` and `computed`, the value compared: written exactly where it is a terminating
 decimal, and otherwise rounded half-even to three places past the precision the manuscript
 prints. The decision-level extraction digest covers every member's, in order.
@@ -315,8 +346,8 @@ declaration, as an address is.
 `protocol` was specified as a third kind and is not one. Its integrity check is the artifact
 pin, which every artifact already carries; its content check — that a registered document
 states a given hypothesis — is a `quote` against the plan. What remains distinct about a
-protocol is temporal: whether a confirmatory run postdates its registration. That requires a
-run record, is unimplemented (§7), and is not smuggled in as a third kind in the meantime.
+protocol is temporal: whether a confirmatory run postdates its registration. That is read from
+a run record (§7) and is not an evidence kind.
 
 ## 3.6 Locators
 
@@ -409,6 +440,19 @@ coerced, so `"001"` and `1` address different rows. YAML is read with duplicate 
 rejected, since a file that resolves one way with nothing said about the other is not
 addressable.
 
+`value` is the evidence kind that carries a locator, and addresses every format in the table
+above:
+
+```yaml
+kind: value
+artifact: results-db
+name: n
+reported: "480"
+locator: {kind: sqlite, table: runs, column: n, where: {split: test}}
+mode: printed_precision
+tolerance: "0"
+```
+
 `metric` and `table` evidence remain as shorthand for the two commonest locators and resolve
 through the same adapters, so a manifest never chooses between a convenient spelling and a
 supported one.
@@ -417,6 +461,121 @@ Locators are canonicalized — sorted keys, no whitespace, no coercion — and h
 records that digest beside the artifact digest, so it binds how a value was addressed as well
 as what was read: a selector edited after the fact changes the record even where the file does
 not.
+
+## 3.7 Conversions
+
+A file stores 0.042 and the manuscript prints 4.2, as a percentage. Without a declared
+conversion the two cannot be bound, and an author's alternatives are to transcribe 4.2 into a
+second file or to leave the number unchecked.
+
+```yaml
+kind: metric
+artifact: results
+name: attrition
+reported: "4.2"
+pointer: /attrition
+conversion: percent
+```
+
+`conversion` is an optional field of `metric`, `table`, `value` and `aggregate` (§3.5), and of
+each side of a `correspondence`. It takes one of two names.
+
+| conversion | the file stores | the manuscript prints | converted value |
+|---|---|---|---|
+| `percent` | a fraction, `0.042` | a percentage, `4.2` | stored × 100 |
+| `fraction` | a percentage, `4.2` | a fraction, `0.042` | stored ÷ 100 |
+
+**The set is closed.** There is no multiplier and no expression. An assertion that states its
+own arithmetic can make any stored value agree with any printed one, and nothing checks the
+arithmetic. A name outside the set is a manifest that does not load.
+
+**The stored value is converted exactly, and then compared.** Both conversions move the
+decimal point two places and change no digit, so the converted value is an exact decimal at
+any number of digits: no binary float is formed and no rounding happens in the conversion.
+The comparison of §3.2 then runs on the converted value. Under `printed_precision` the
+converted value is rounded half-even to the precision `reported` prints, so a file holding
+`0.0424` agrees with a manuscript printing `4.2` (4.24 rounds to 4.2) and a file holding
+`0.0426` does not (4.26 rounds to 4.3). Rounding before converting would compare `0.0` with
+`4.2` in both cases. Under `absolute` and `relative` the tolerance is in the unit the
+manuscript prints: `tolerance: "0.1"` under `percent` is a tenth of a percentage point.
+
+In a `correspondence` each side is converted under its own declaration, and the coarser of the
+two precisions is found after converting. A stored `0.04` is 4 as a percentage, with no decimal
+place, so a document printing `4.2` is rounded to it.
+
+With no `conversion`, nothing is converted, and a manifest that declares none is serialized
+without the field, so its digest is the one it had before the field existed. A stored value
+that is not a finite number is `value_not_numeric` before any conversion.
+
+A decision over one artifact records `extracted`, the value as stored; `conversion`, the name
+declared; and `converted`, the value compared. A `DecisionSide` records the same three. The
+conversion is not part of the locator, which says where a value sits and nothing about the
+unit it is printed in, so the locator digest does not move when a conversion is declared.
+
+## 3.8 Places and ties
+
+**How a value is rounded.** Under `printed_precision` the compared value, which is the stored
+value after any declared conversion, is rounded half to even to the precision of `reported`
+and must then equal it. The precision is read off `reported` as written: `"3.20"` is two
+decimal places and `"3.2"` is one.
+
+**`places` declares that precision separately.**
+
+```yaml
+kind: metric
+artifact: results
+name: effect
+reported: "4.2"
+pointer: /effect
+places: 1
+```
+
+`places` is an optional non-negative integer on `metric`, `table`, `value` and `aggregate`: the number of
+decimal places the manuscript reports this value to, as the author states it. Where it is
+declared, two things must hold.
+
+1. `reported` is written to exactly that many decimal places. `"4.20"` under `places: 1` does
+   not satisfy it, and neither does `"3.1"` under `places: 2`. Nothing is rounded to make it
+   so: a rule that rounded to the declared places and left any further printed digit unread
+   would pass a manuscript printing a digit nobody checked.
+2. The compared value, rounded to that many places, equals `reported`. Given the first, this
+   is the comparison §3.2 already makes.
+
+A `reported` written to another number of places is `comparison=mismatch` with reason
+`places_mismatch`, which flattens to `mismatch`. It is an outcome and not a manifest that
+fails to load, for two reasons. The disagreement is between two statements about the
+manuscript, a reporting convention and a printed cell, and a table declared to one place that
+prints two is a finding about that table. And a manifest that does not load reports nothing,
+so one such cell would hide every other assertion's result. The value is extracted first, so
+an address that does not resolve, or a value that is no number, is reported as that.
+
+`places` goes with `printed_precision` only. Under `absolute` and `relative` the comparison is
+a difference against a tolerance and rounds nothing, so there are no places for it to be at,
+and a manifest declaring `places` with either mode does not load. With a `conversion`, the
+places are those of the converted value, which is the value printed. A `correspondence` takes
+no `places`: neither side is the manuscript's printed value.
+
+**An exact tie agrees with either neighbor.** A compared value exactly halfway between two
+values at the printed precision, `4.25` at one place, has two correct roundings. Spreadsheets
+and most hand calculation round half away from zero, to `4.3`; Python, R and IEEE 754 round half to
+even, to `4.2`. A manuscript printing either has rounded its own number correctly, so both
+verify, and a printed value that is neither neighbor is a `mismatch`.
+
+A tie is decided on the digits and nothing else: the digits of the compared value past the
+printed precision are a 5 followed only by zeros, or they are not. No float is formed and no
+value is within a tolerance of a tie, so `4.2500001` is not one: it rounds to `4.3` under
+either rule, and `4.2` is a mismatch. The conversion of §3.7 is applied first, so a stored
+`0.0425` under `percent` is the tie `4.25`. Ties are met under `printed_precision` only, with
+or without `places`, and by a `correspondence` at the coarser of its two precisions.
+
+Away from a tie the two rules give the same answer, so nothing else about the comparison
+changes. There is no option naming a rounding rule: a manifest could then only be right about
+which software produced each number, and the manuscript does not say.
+
+A decision at a tie records it as `tie`, with `lower` and `upper`, the two neighbors, and
+`printed`, the value the manuscript prints, so that an agreement reached by accepting both is
+told from an ordinary one. `repro verify` prints `[exact tie: 4.2 or 4.3]` beside the
+assertion, and `repro why` prints the tie above the printed value.
 
 ## 4. Outcomes
 
@@ -441,12 +600,15 @@ how a file silent on a value becomes one that contradicts it.
 | a statistic of the members agrees | completed | extracted | match | `verified` |
 | a member does not extract | completed | absent or invalid | n/a | `not_found` |
 | passage absent from a readable source | completed | extracted | mismatch | `mismatch` |
+| passage present, on another page than the one declared | completed | extracted | mismatch | `mismatch` |
 | passage occurs more than once | completed | invalid | n/a | `not_found` |
 | pointer does not resolve | completed | absent | n/a | `not_found` |
 | value is not a number | completed | invalid | n/a | `not_found` |
+| value printed to other than its declared places | completed | extracted | mismatch | `mismatch` |
 | independent readers disagree | completed | invalid | n/a | `not_found` |
 | extractor not installed | unavailable | not_attempted | n/a | `unchecked` |
 | artifact missing or unparseable | unavailable | not_attempted | n/a | `unchecked` |
+| format no adapter reads | unavailable | not_attempted | n/a | `unchecked` |
 | backend defect | failed | not_attempted | n/a | `error` |
 
 `Outcome` is derived from the three stages and never assigned, so the flattening cannot drift
@@ -491,26 +653,60 @@ display and is never a `Decision`.
 
 ### 4.1 Reasons and warnings
 
-`Reason` is a typed field carrying why an outcome obtained: `passage_present`, `value_match`,
-`passage_absent`, `value_mismatch`, `pointer_absent`, `value_not_numeric`,
-`extractor_missing`, `artifact_missing`, `artifact_unreadable`, `artifact_undeclared`,
-`backend_defect`, `not_offered`, `extractors_disagree`, `quotation_ambiguous`, and two a prose
-locator adds. `extractors_disagree`: two extractors that both read the artifact reach different
-answers about whether the passage is in it, which asks for a better reader rather than accusing
-the manuscript as `passage_absent` does. `quotation_ambiguous`: the quoted passage occurs more
-than once and the record does not say which occurrence it means, which accuses nothing and asks
-for a `prefix` or `suffix` on the quote assertion (§3.1), as it does where the two are given
-and single out no occurrence. `passage_ambiguous`: one pair of
-anchors selected two different values, so the document states two numbers where the assertion
-addresses one. `number_as_word`: the value is an English cardinal written out under a locator
-that did not ask for one. It is distinct from `value_not_numeric` because the fix differs — the
-value is there and a reader would call it a number, so an author told only that no number was
-found goes looking for a broken anchor.
+`Reason` is a typed field carrying why an outcome obtained. Every value, with the outcome
+it flattens to:
 
-`Warning` is orthogonal to the outcome: `short`, `truncated`, `normalized`, `wrong_page`. A
-decision may be `verified` and carry one. `truncated` exists because *"an accuracy of 0.9"*
-genuinely occurs in a source reporting **0.95**, so the passage is present and the reader is
-told a true thing that misstates the result.
+| reason | outcome | obtained when |
+|---|---|---|
+| `passage_present` | `verified` | the quoted passage occurs in the artifact |
+| `value_match` | `verified` | the stored value agrees with the reported one, or two sides agree |
+| `value_mismatch` | `mismatch` | the stored value disagrees with the reported one, or two sides disagree |
+| `places_mismatch` | `mismatch` | `places` is declared and the reported value is written to another number of decimal places (§3.8) |
+| `passage_absent` | `mismatch`, `not_found` | a quoted passage is not in an artifact that was read, which is `mismatch`; or a prose locator's anchors select nothing, which is `not_found` |
+| `wrong_page` | `mismatch` | the quoted passage occurs, on another page than the one declared |
+| `pointer_absent` | `not_found` | a JSON Pointer or an array index does not resolve |
+| `row_absent` | `not_found` | a row predicate matches no row, or a row index is past the end |
+| `column_absent` | `not_found` | the column is not in the table |
+| `row_ambiguous` | `not_found` | a locator matches more than one value; no first match is taken |
+| `row_selector_invalid` | `not_found` | a `table` assertion gives both `row` and `where`, or neither; or a locator leaves out or adds what the artifact's format needs, such as an `.npz` with no array named |
+| `selector_not_scalar` | `not_found` | the locator resolves to a list or a mapping |
+| `value_not_numeric` | `not_found` | the value addressed is not a finite number |
+| `number_as_word` | `not_found` | the value is an English cardinal written out, under a locator that did not ask for one |
+| `passage_ambiguous` | `not_found` | one pair of prose anchors selects two different values |
+| `quotation_ambiguous` | `not_found` | the quoted passage occurs more than once and no `prefix` or `suffix` singles one occurrence out |
+| `extractors_disagree` | `not_found` | two extractors that both read the artifact disagree about whether the passage is in it |
+| `format_unsupported` | `unchecked` | no adapter reads the artifact's format |
+| `extractor_missing` | `unchecked` | the program or package that reads the artifact is not installed, or produced no text |
+| `artifact_missing` | `unchecked` | nothing is at the declared path |
+| `artifact_unreadable` | `unchecked` | the file is there and could not be parsed |
+| `artifact_undeclared` | `unchecked` | the assertion names an artifact id the manifest does not declare |
+| `backend_defect` | `error` | the backend raised something unexpected |
+| `not_offered` | `not_offered` | reserved for a claim offering no evidence; no decision carries it, since availability is a claim-level fact |
+
+Four of these exist to keep apart cases that share an outcome and need different fixes.
+`extractors_disagree` asks for a better reader rather than accusing the manuscript as
+`passage_absent` does. `quotation_ambiguous` accuses nothing and asks for a `prefix` or
+`suffix` on the quote assertion (§3.1), as it does where the two are given and single out no
+occurrence. `passage_ambiguous` says the document states two numbers where the assertion
+addresses one. `number_as_word` is distinct from `value_not_numeric` because the value is
+there and a reader would call it a number, so an author told only that no number was found
+goes looking for a broken anchor.
+
+`Warning` is orthogonal to the outcome, and a decision may be `verified` and carry one:
+
+| warning | on | says |
+|---|---|---|
+| `short` | `quote` | the passage is under 40 characters or ends on a comma or a connecting word, so the source may qualify it in the next clause |
+| `truncated` | `quote` | every occurrence of the passage stops in the middle of a word or a number |
+| `normalized` | `quote` | the passage matched only with spacing ignored (§3.1) |
+| `wrong_page` | `quote` | the passage is on another page than the one declared; the decision is a `mismatch` with reason `wrong_page` |
+| `page_unchecked` | `quote` | a `page` is declared and was not checked (§3.1) |
+| `positional_address` | `table`, `value` | the cell is addressed by row index, which names another cell once the table is reordered |
+
+`truncated` exists because *"an accuracy of 0.9"* genuinely occurs in a source reporting
+**0.95**, so the passage is present and the reader is told a true thing that misstates the
+result. `page_unchecked` is the one warning a policy reads (§6): the others qualify a check
+that ran, and it says a declared check did not.
 
 ## 5. Backends
 
@@ -607,6 +803,11 @@ to claims marked confirmatory. Three profiles ship:
 | `publication`, confirmatory claims | error | error | **error** | **error** | — |
 | `strict` | error | error | error | error | error |
 
+The `error` outcome is an error under every profile, as is a broken pin. An artifact absent
+from its declared path is a warning under `exploratory` and an error under the other two. A
+`verified` quotation whose declared page was not checked (`page_unchecked`, §4.1) is graded as
+the profile grades `unchecked` for that claim, under the rule `evidence.page_unchecked`.
+
 Every policy requires at least one assertion to have been evaluated. A run that checked
 nothing is not a pass, and without that condition a project with no evidence anywhere
 satisfies every other condition trivially.
@@ -687,8 +888,10 @@ computed against travel with it; and `result.kind` is separate from `result.leve
 that could not run is `notApplicable` rather than a low-severity failure. Most report formats
 cannot express that difference, and it is the one this document exists to preserve.
 
-A policy raises a result's `level` and never changes its `kind`: what happened does not depend
-on what a project considers acceptable.
+A policy raises a decision's `level` and never changes its `kind`: what happened does not depend
+on what a project considers acceptable. A claim offering no evidence has no decision, and its
+result is `informational` at the level `note` and `fail` where a policy grades it a warning or
+an error.
 
 ## 7.6 Regeneration
 
@@ -814,11 +1017,19 @@ An implementation conforms when:
     carries the failing side's reason.
 12. A spelled-out number is converted only where the locator declares `cardinal_word`, and
     refused with `number_as_word` otherwise.
-13. An aggregate is compared only where every member it declares resolves to a finite number,
-    its statistic is computed exactly and rounded once, and its decision records what each
-    member read. A statistic over fewer members than were declared is never a match.
+13. A stored value is converted only where the assertion declares a `conversion`, exactly and
+    before the comparison, and the decision names the conversion and records both values.
+14. A compared value exactly halfway between two values at the printed precision agrees with
+    either, the decision records the tie, and a value that is not exactly halfway is rounded
+    half to even.
+15. Where `places` is declared, a `reported` written to another number of decimal places is a
+    `mismatch` with reason `places_mismatch`, whatever the artifact holds.
+16. An aggregate is compared only where every member it declares resolves to a finite number,
+    its statistic is computed exactly and compared by the rule of a single value, ties
+    included, and its decision records what each member read. A statistic over fewer members
+    than were declared is never a match.
 
-Conformance is executable: `packages/repro/tests/conformance/` holds 32 fixtures, each with
+Conformance is executable: `packages/repro/tests/conformance/` holds 36 fixtures, each with
 canonical expected JSON. They cover `verified`, `mismatch`, `not_found`, `unchecked` and
 `not_offered`, the pointer-escaping and undeclared-artifact cases, an unpinned artifact, a
 broken pin, five table-addressing cases, six over `correspondence` and the prose locator —
@@ -827,9 +1038,14 @@ refused, one pair of anchors selecting two different values, and a prose value a
 literal — and four over a printed table read as text: a cell bound by the row's leading cells
 and its divider, the same cell with no `after`, which is not a number, a leading anchor the
 document does not hold, and a trailing anchor that would split the number. Those four also
-declare the three stages of §4, as do three over an `aggregate`: a mean with no finite
-expansion that agrees at the printed precision, the best run printed as the mean, and a
-member that does not resolve where the mean of the others is the printed value.
+declare the three stages of §4, as do two over a conversion: a stored fraction that agrees
+with the printed percentage beside the same address with no conversion declared, which does
+not, and a stored fraction that rounds to another percentage at the printed precision; and
+two over §3.8: a value exactly halfway between two printed values, asserted once as each
+neighbor and once as neither, and a value printed to two places where one is declared; and
+three over an `aggregate`: a mean with no finite expansion that agrees at the printed
+precision, the best run printed as the mean, and a member that does not resolve where the
+mean of the others is the printed value.
 
 Each fixture declares its outcome, its reason, and the validity of every artifact. The outcome
 alone cannot tell a defect in the tool from a fact about the document: three cases share

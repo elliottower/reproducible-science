@@ -62,7 +62,7 @@ one per side, and `aggregate`, which names one per member. `reported` is the num
 | `metric` | a JSON or YAML file holds this number at a pointer | `name`, `reported`, `pointer` |
 | `table` | a table holds this number in a cell | `name`, `reported`, `column`, and `where` or `row`; optional `delimiter` |
 | `value` | a file holds this number at a locator, in any format below | `name`, `reported`, `locator` |
-| `quote` | this passage occurs in the text of a document | `text`; optional `page` (checked), `section` (recorded only) |
+| `quote` | this passage occurs in the text of a document | `text`; optional `page` (checked where the document has pages, reported as `page_unchecked` where it has none), `section` (recorded only) |
 | `correspondence` | two artifacts hold the same number, neither written in the manifest | `name`, `sides`: two of `{name, artifact, locator}` |
 | `aggregate` | the printed number is a statistic over every member listed | `name`, `reported`, `statistic`, `count`, `members`: `count` of `{artifact, locator}` |
 
@@ -70,9 +70,28 @@ The five that compare a number take `mode` and `tolerance`: `printed_precision` 
 round to the digits `reported` prints), `absolute`, or `relative`, with `tolerance` a quoted
 string. A `correspondence` has no `relative`.
 
+`metric`, `table`, `value` and each side of a `correspondence` take an optional `conversion`,
+for a file that stores a number in one unit where the manuscript prints another: `percent`
+(the file holds the fraction `0.042`, the manuscript prints `4.2`) or `fraction` (the file
+holds `4.2`, the manuscript prints `0.042`). The stored value is converted exactly and then
+rounded to the digits `reported` prints. There is no multiplier and no other name.
+
+`metric`, `table` and `value` take an optional `places`, the number of decimal places the
+manuscript reports the value to. `reported` must then be written to exactly that many:
+`"4.20"` with `places: 1` is a `mismatch` with reason `places_mismatch`, whatever the file
+holds. Declare it where a table or a journal fixes the precision, and only under
+`printed_precision`.
+
+A stored value exactly halfway between two printed values, `4.25` at one place, verifies as
+either `4.2` or `4.3`, because half-up and half-to-even rounding are both in use. The output
+marks it `[exact tie: 4.2 or 4.3]`. Report it as a tie, not as an error and not as an
+ordinary match.
+
 ```yaml
 - {kind: metric, artifact: results, name: p, reported: "0.031", pointer: /primary/p}
 - {kind: table, artifact: models, name: accuracy, reported: "0.648", column: accuracy, where: {model: lasso}}
+- {kind: metric, artifact: results, name: attrition, reported: "4.2", pointer: /primary/attrition, conversion: percent}
+- {kind: metric, artifact: results, name: effect, reported: "0.41", pointer: /primary/effect, places: 2}
 - {kind: quote, artifact: paper, text: "We enrolled eighteen sites across the two regions."}
 - kind: correspondence
   name: participants
@@ -96,7 +115,9 @@ must equal the number of members, so a run left out of the list is a manifest th
 load. Every member must hold a number: a missing file is `unchecked` and a member that does
 not resolve is `not_found`, each naming the member, and the statistic of the remaining members
 is never compared. Binding the sentence to one run's file with a `metric` checks that run and
-nothing about the others. There is no standard deviation.
+nothing about the others. An `aggregate` takes `conversion` and `places` as a `metric` does,
+with the conversion applied to each member, and an exact tie verifies as either neighbor.
+There is no standard deviation.
 
 `metric` is short for a `value` with a `tree` locator, and `table` for one with a `table` or
 `table_position` locator. Everything else is a `value`:
@@ -237,6 +258,7 @@ directory, the freeze goes ahead.
 - To run the declared commands again and see whether the printed numbers survive: `repro reproduce`
 - After editing an input or a script, before trusting a green verify: `repro stale`
 - For one claim, what the record establishes and what it does not: `repro why <claim-id>`
+- To count every number the manuscript prints, and which no claim accounts for: `repro numbers`
 - When a reviewer asks where a number came from
 - When a manuscript and its data may have drifted apart
 - In CI, as `repro verify --policy strict`

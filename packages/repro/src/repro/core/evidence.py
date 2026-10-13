@@ -10,7 +10,14 @@ import enum
 import json
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    model_serializer,
+    model_validator,
+)
 
 from repro.core.artifacts import Digest
 
@@ -296,7 +303,95 @@ class ComparisonMode(enum.StrEnum):
     """Agree when |stored - reported| <= tolerance * |reported|."""
 
 
-class MetricEvidence(_EvidenceBase):
+class Conversion(enum.StrEnum):
+    """A change of unit between the value a file stores and the value the manuscript prints.
+
+    A closed set of names, each a power of ten. There is no multiplier and no expression: an
+    assertion that could state its own arithmetic could make any stored value agree with any
+    printed one, and nothing would check the arithmetic."""
+
+    PERCENT = "percent"
+    """The file stores a fraction and the manuscript prints a percentage: stored x 100."""
+
+    FRACTION = "fraction"
+    """The file stores a percentage and the manuscript prints a fraction: stored / 100."""
+
+    def apply(self, stored: decimal.Decimal) -> decimal.Decimal:
+        """The stored value in the unit the manuscript prints, exactly.
+
+        The decimal point moves and no digit changes, so nothing is rounded and no context
+        precision applies: 0.0424 as a percentage is 4.24, at any number of digits."""
+        sign, digits, exponent = stored.as_tuple()
+        if not isinstance(exponent, int):
+            raise ValueError(f"{stored} is not finite, so it has no unit to convert")
+        return decimal.Decimal((sign, digits, exponent + _PLACES[self]))
+
+    @property
+    def said(self) -> str:
+        return _SAID[self]
+
+
+#: How many places each conversion moves the decimal point to the right.
+_PLACES = {Conversion.PERCENT: 2, Conversion.FRACTION: -2}
+
+_SAID = {Conversion.PERCENT: "as a percentage", Conversion.FRACTION: "as a fraction"}
+
+
+class _Convertible(BaseModel):
+    """A value that may be declared to sit in another unit than the one it is compared in."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    conversion: Conversion | None = None
+    """Applied to the stored value before the comparison. None, the default, compares the
+    value as stored."""
+
+    @model_serializer(mode="wrap")
+    def _omit_no_conversion(self, handler):
+        """Leave the field out where none is declared, so a manifest that declares no
+        conversion serializes, and hashes, as it did before the field existed."""
+        dumped = handler(self)
+        if self.conversion is None:
+            dumped.pop("conversion", None)
+        return dumped
+
+
+class _Reported(_Convertible):
+    """A value compared with one the manuscript prints, which may declare how many decimal
+    places the manuscript reports it to."""
+
+    places: int | None = Field(default=None, ge=0)
+    """How many decimal places the manuscript reports this value to, as the author states it.
+
+    None, the default, takes the precision from `reported` as written. Declared, it is a
+    second statement that must agree with the first: `reported` must be written to exactly
+    this many places, so `"4.20"` under `places: 1` does not verify, whatever the file holds.
+    A table whose caption says one decimal and whose cell prints two is a finding about the
+    manuscript, and it is reported as one. Only under `printed_precision`: a tolerance rounds
+    nothing, so there are no places for it to be at."""
+
+    @model_serializer(mode="wrap")
+    def _omit_what_is_not_declared(self, handler):
+        """Leave `conversion` and `places` out where neither is declared, so a manifest that
+        declares none serializes, and hashes, as it did before the fields existed."""
+        dumped = handler(self)
+        for field in ("conversion", "places"):
+            if getattr(self, field) is None:
+                dumped.pop(field, None)
+        return dumped
+
+    @model_validator(mode="after")
+    def _places_are_of_a_printed_precision(self):
+        mode = getattr(self, "mode", ComparisonMode.PRINTED_PRECISION)
+        if self.places is not None and mode is not ComparisonMode.PRINTED_PRECISION:
+            raise ValueError(
+                f"`places` is declared with mode {mode.value!r}: a tolerance rounds nothing, "
+                f"so `places` goes with `printed_precision` only"
+            )
+        return self
+
+
+class MetricEvidence(_EvidenceBase, _Reported):
     """Assertion: this artifact holds this value at this location."""
 
     kind: Literal["metric"] = "metric"
@@ -335,7 +430,7 @@ class MetricEvidence(_EvidenceBase):
         return TreeLocator(pointer=self.pointer)
 
 
-class TableCellEvidence(_EvidenceBase):
+class TableCellEvidence(_EvidenceBase, _Reported):
     """Assertion: this table holds this value in this cell.
 
     Most published result artifacts are delimited tables rather than JSON, so addressing a
@@ -390,7 +485,7 @@ class TableCellEvidence(_EvidenceBase):
         return TableLocator(column=self.column, where=dict(self.where), delimiter=self.delimiter)
 
 
-class ValueEvidence(_EvidenceBase):
+class ValueEvidence(_EvidenceBase, _Reported):
     """Assertion: this artifact holds this value at this locator.
 
     The general form. `metric` and `table` remain as shorthand for the two commonest cases,
@@ -421,8 +516,11 @@ class ValueEvidence(_EvidenceBase):
         return decimal.Decimal(self.tolerance)
 
 
-class CorrespondenceSide(BaseModel):
-    """One of the two values a correspondence compares."""
+class CorrespondenceSide(_Convertible):
+    """One of the two values a correspondence compares.
+
+    A side may declare a `conversion`, for a document that prints a percentage of a fraction
+    a file stores. The side is then compared as converted."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -517,13 +615,16 @@ class AggregateMember(BaseModel):
     locator: ValueLocator
 
 
-class AggregateEvidence(BaseModel):
+class AggregateEvidence(_Reported):
     """Assertion: the printed value is this statistic of these stored values.
 
     Every other kind rests a number on one stored value. A sentence reporting a mean over ten
     seeds bound to one run's file rests on that run, whichever it is, and the manifest reads
     the same whether the run was the typical one or the best. Here the assertion reads every
     member it declares, and is checked only where all of them hold a number.
+
+    A `conversion` is applied to each member's value before the statistic, and `places` is
+    what it is for a `metric`.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -558,6 +659,15 @@ class AggregateEvidence(BaseModel):
     @property
     def tolerance_value(self) -> decimal.Decimal:
         return decimal.Decimal(self.tolerance)
+
+    @model_validator(mode="after")
+    def _a_count_has_no_unit(self):
+        if self.statistic is Statistic.COUNT and self.conversion is not None:
+            raise ValueError(
+                f"aggregate {self.name!r}: `conversion` is declared with statistic 'count', "
+                f"and how many members there are is in no unit"
+            )
+        return self
 
     @model_validator(mode="after")
     def _members_are_the_declared_count_and_distinct(self):
