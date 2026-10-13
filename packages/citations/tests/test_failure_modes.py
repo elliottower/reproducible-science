@@ -328,3 +328,78 @@ def test_a_multibyte_character_cut_by_the_sniff_window_is_still_text(tmp_path):
     source = tmp_path / "output"
     source.write_bytes(b"a" * (V._SNIFF_BYTES - 1) + "é".encode() + b" tail\n")
     assert V.reads_off_disk(source)
+
+
+# --- a quote can begin mid-word or mid-number as well as end there -----------------------------
+
+BEGINS_INSIDE = [
+    ("113 quotations were pinned", "In total 2113 quotations were pinned to a source."),
+    ("ample size was fixed in advance", "The sample size was fixed in advance of the run."),
+    ("113 quotations were pinned", "In total 2,113 quotations were pinned to a source."),
+    ("113 on the held-out split", "The loss fell to 0.113 on the held-out split."),
+    ("0.42 between the two measures", "We found a correlation of -0.42 between the two measures."),
+    ("0.42 between the two measures", "We found a correlation of −0.42 between the two measures."),
+    ("0.42 between the two measures", "The correlation (r=-0.42 between the two measures) held."),
+]
+
+BEGINS_ON_A_BOUNDARY = [
+    "113 quotations were pinned to a source.",
+    "In total\n113 quotations were pinned to a source.",
+    "In total (113 quotations were pinned) to a source.",
+    'They wrote "113 quotations were pinned" in the log.',
+    "They wrote “113 quotations were pinned” in the log.",
+    "In total: 113 quotations were pinned to a source.",
+    "The count was large—113 quotations were pinned to a source.",
+    "Of rows 10-113 quotations were pinned to a source.",
+    "See section 4. 113 quotations were pinned to a source.",
+    "The count rose, 113 quotations were pinned to a source.",
+]
+
+
+@pytest.mark.parametrize(("quote", "doc"), BEGINS_INSIDE)
+def test_a_quote_beginning_mid_word_or_mid_number_is_found_and_flagged(tmp_path, quote, doc):
+    r = V.check_one(quote, _src(tmp_path, doc), None)
+    assert r.state == "found"
+    assert "truncated" in r.warnings
+
+
+@pytest.mark.parametrize("doc", BEGINS_ON_A_BOUNDARY)
+def test_a_quote_beginning_on_a_token_boundary_is_not_flagged(tmp_path, doc):
+    r = V.check_one("113 quotations were pinned", _src(tmp_path, doc), None)
+    assert r.state == "found"
+    assert "truncated" not in r.warnings
+
+
+def test_a_hyphenated_compound_is_a_boundary_and_not_a_sign(tmp_path):
+    f = _src(tmp_path, "The sub-sample size was fixed in advance of the run.")
+    r = V.check_one("sample size was fixed in advance", f, None)
+    assert r.state == "found"
+    assert "truncated" not in r.warnings
+
+
+def test_a_longer_number_ending_with_the_passage_is_not_a_second_occurrence(tmp_path):
+    doc = "Of 2113 quotations were pinned at first. Later 113 quotations were pinned again."
+    r = V.check_one("113 quotations were pinned", _src(tmp_path, doc), None)
+    assert r.state == "found"
+    assert "truncated" not in r.warnings
+    assert V.resolve_in("113 quotations were pinned", doc).count == 1
+
+
+def test_an_anchor_beginning_mid_word_still_selects_its_occurrence(tmp_path):
+    doc = f"In the sample {LONG} once. In the example {LONG} twice."
+    assert V.resolve_in(LONG, doc).state == "ambiguous"
+    assert V.resolve_in(LONG, doc, prefix="xample ").state == "found"
+
+
+def test_a_passage_matched_with_spacing_ignored_is_not_judged_on_where_it_begins(pinned):
+    # An extractor that drops the space between two words welds the passage to the word before
+    # it, so with spacing ignored there is nothing left to say where a token begins.
+    r = V.check_one("logit difference was large", pinned("thelogit differ ence was large"))
+    assert r.state == "found"
+    assert r.warnings == ["short", "normalized"]
+
+
+def test_two_passages_matched_with_spacing_ignored_are_counted_as_before(pinned):
+    doc = "(logit differ ence was large). thelogit differ ence was large,"
+    r = V.check_one("logit difference was large", pinned(doc))
+    assert r.state == "ambiguous"
