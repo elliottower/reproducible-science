@@ -65,9 +65,16 @@ The four that compare a number take `mode` and `tolerance`: `printed_precision` 
 round to the digits `reported` prints), `absolute`, or `relative`, with `tolerance` a quoted
 string. A `correspondence` has no `relative`.
 
+`metric`, `table`, `value` and each side of a `correspondence` take an optional `conversion`,
+for a file that stores a number in one unit where the manuscript prints another: `percent`
+(the file holds the fraction `0.042`, the manuscript prints `4.2`) or `fraction` (the file
+holds `4.2`, the manuscript prints `0.042`). The stored value is converted exactly and then
+rounded to the digits `reported` prints. There is no multiplier and no other name.
+
 ```yaml
 - {kind: metric, artifact: results, name: p, reported: "0.031", pointer: /primary/p}
 - {kind: table, artifact: models, name: accuracy, reported: "0.648", column: accuracy, where: {model: lasso}}
+- {kind: metric, artifact: results, name: attrition, reported: "4.2", pointer: /primary/attrition, conversion: percent}
 - {kind: quote, artifact: paper, text: "We enrolled eighteen sites across the two regions."}
 - kind: correspondence
   name: participants

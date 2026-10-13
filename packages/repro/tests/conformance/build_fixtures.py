@@ -559,4 +559,50 @@ write(
     claims=printed("0.31", "| 7|", "8|"),
 )
 
+#: A file storing fractions that a manuscript prints as percentages.
+RATES = {"rates.json": json.dumps({"low": 0.0424, "high": 0.0426}, indent=2)}
+RATE = [{"id": "rates", "path": "rates.json"}]
+
+write(
+    "value_match_converted",
+    artifacts=RATE,
+    files=RATES,
+    expected=["verified", "mismatch"],
+    reasons=["value_match", "value_mismatch"],
+    validity={"rates": "authoritative"},
+    stages=[["completed", "extracted", "match"], ["completed", "extracted", "mismatch"]],
+    # 0.0424 is 4.24 as a percentage, which is 4.2 at the one decimal the manuscript prints.
+    # The same address with no conversion declared compares 0.0424 with 4.2: nothing is
+    # converted that the assertion did not name.
+    claims=[
+        {
+            "id": "c",
+            "text": "t",
+            "evidence": [
+                metric("4.2", "/low", artifact="rates", conversion="percent"),
+                metric("4.2", "/low", artifact="rates"),
+            ],
+        }
+    ],
+)
+
+write(
+    "value_mismatch_converted",
+    artifacts=RATE,
+    files=RATES,
+    expected=["mismatch"],
+    reasons=["value_mismatch"],
+    validity={"rates": "authoritative"},
+    stages=[["completed", "extracted", "mismatch"]],
+    # 0.0426 is 4.26 as a percentage, and 4.3 at one decimal. Rounding the stored fraction
+    # before converting it would lose the digit that decides this.
+    claims=[
+        {
+            "id": "c",
+            "text": "t",
+            "evidence": [metric("4.2", "/high", artifact="rates", conversion="percent")],
+        }
+    ],
+)
+
 print(f"  built {len(list(CASES.iterdir()))} fixtures in {CASES}")

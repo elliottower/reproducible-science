@@ -10,7 +10,7 @@ import enum
 import json
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_serializer, model_validator
 
 from repro.core.artifacts import Digest
 
@@ -273,7 +273,60 @@ class ComparisonMode(enum.StrEnum):
     """Agree when |stored - reported| <= tolerance * |reported|."""
 
 
-class MetricEvidence(_EvidenceBase):
+class Conversion(enum.StrEnum):
+    """A change of unit between the value a file stores and the value the manuscript prints.
+
+    A closed set of names, each a power of ten. There is no multiplier and no expression: an
+    assertion that could state its own arithmetic could make any stored value agree with any
+    printed one, and nothing would check the arithmetic."""
+
+    PERCENT = "percent"
+    """The file stores a fraction and the manuscript prints a percentage: stored x 100."""
+
+    FRACTION = "fraction"
+    """The file stores a percentage and the manuscript prints a fraction: stored / 100."""
+
+    def apply(self, stored: decimal.Decimal) -> decimal.Decimal:
+        """The stored value in the unit the manuscript prints, exactly.
+
+        The decimal point moves and no digit changes, so nothing is rounded and no context
+        precision applies: 0.0424 as a percentage is 4.24, at any number of digits."""
+        sign, digits, exponent = stored.as_tuple()
+        if not isinstance(exponent, int):
+            raise ValueError(f"{stored} is not finite, so it has no unit to convert")
+        return decimal.Decimal((sign, digits, exponent + _PLACES[self]))
+
+    @property
+    def said(self) -> str:
+        return _SAID[self]
+
+
+#: How many places each conversion moves the decimal point to the right.
+_PLACES = {Conversion.PERCENT: 2, Conversion.FRACTION: -2}
+
+_SAID = {Conversion.PERCENT: "as a percentage", Conversion.FRACTION: "as a fraction"}
+
+
+class _Convertible(BaseModel):
+    """A value that may be declared to sit in another unit than the one it is compared in."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    conversion: Conversion | None = None
+    """Applied to the stored value before the comparison. None, the default, compares the
+    value as stored."""
+
+    @model_serializer(mode="wrap")
+    def _omit_no_conversion(self, handler):
+        """Leave the field out where none is declared, so a manifest that declares no
+        conversion serializes, and hashes, as it did before the field existed."""
+        dumped = handler(self)
+        if self.conversion is None:
+            dumped.pop("conversion", None)
+        return dumped
+
+
+class MetricEvidence(_EvidenceBase, _Convertible):
     """Assertion: this artifact holds this value at this location."""
 
     kind: Literal["metric"] = "metric"
@@ -312,7 +365,7 @@ class MetricEvidence(_EvidenceBase):
         return TreeLocator(pointer=self.pointer)
 
 
-class TableCellEvidence(_EvidenceBase):
+class TableCellEvidence(_EvidenceBase, _Convertible):
     """Assertion: this table holds this value in this cell.
 
     Most published result artifacts are delimited tables rather than JSON, so addressing a
@@ -367,7 +420,7 @@ class TableCellEvidence(_EvidenceBase):
         return TableLocator(column=self.column, where=dict(self.where), delimiter=self.delimiter)
 
 
-class ValueEvidence(_EvidenceBase):
+class ValueEvidence(_EvidenceBase, _Convertible):
     """Assertion: this artifact holds this value at this locator.
 
     The general form. `metric` and `table` remain as shorthand for the two commonest cases,
@@ -398,8 +451,11 @@ class ValueEvidence(_EvidenceBase):
         return decimal.Decimal(self.tolerance)
 
 
-class CorrespondenceSide(BaseModel):
-    """One of the two values a correspondence compares."""
+class CorrespondenceSide(_Convertible):
+    """One of the two values a correspondence compares.
+
+    A side may declare a `conversion`, for a document that prints a percentage of a fraction
+    a file stores. The side is then compared as converted."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 

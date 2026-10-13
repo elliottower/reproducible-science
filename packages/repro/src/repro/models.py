@@ -44,6 +44,7 @@ from repro.core.claims import Availability, Claim, Registration
 from repro.core.evidence import (
     ArrayLocator,
     ComparisonMode,
+    Conversion,
     CorrespondenceEvidence,
     CorrespondenceSide,
     Evidence,
@@ -130,6 +131,7 @@ __all__ = [
     "ClaimReading",
     "ComparisonMode",
     "ComparisonStatus",
+    "Conversion",
     "CorrespondenceEvidence",
     "CorrespondenceSide",
     "Decision",

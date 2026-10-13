@@ -1,0 +1,25 @@
+{
+  "outcomes": [
+    "verified",
+    "mismatch"
+  ],
+  "reasons": [
+    "value_match",
+    "value_mismatch"
+  ],
+  "artifacts": {
+    "rates": "authoritative"
+  },
+  "stages": [
+    [
+      "completed",
+      "extracted",
+      "match"
+    ],
+    [
+      "completed",
+      "extracted",
+      "mismatch"
+    ]
+  ]
+}
