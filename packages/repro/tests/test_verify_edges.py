@@ -11,20 +11,30 @@ import decimal
 import json
 
 import pytest
+from repro.adapters.tree import _resolve_tree
 from repro.models import (
     ArtifactRef,
     Claim,
     ComparisonMode,
+    CorrespondenceEvidence,
+    CorrespondenceSide,
     Digest,
     Manifest,
     MetricEvidence,
     Outcome,
     Reason,
     TableCellEvidence,
+    TreeLocator,
     Validity,
 )
 from repro.policy import EXPLORATORY, PUBLICATION, STRICT
-from repro.verify import MetricBackend, TableBackend, compare_decimal, verify
+from repro.verify import (
+    CorrespondenceBackend,
+    MetricBackend,
+    TableBackend,
+    compare_decimal,
+    verify,
+)
 
 CLAIM = Claim(id="c", text="t")
 
@@ -231,3 +241,130 @@ def test_a_claim_offering_no_evidence_is_reported_and_not_silently_skipped(tmp_p
     assert not any(v.rule == "claim.no_evidence" for v in EXPLORATORY.assess(report).violations), (
         "a draft may carry a claim it has not evidenced yet"
     )
+
+
+# -- a number in a tree file is the digits the file wrote -----------------------------------
+
+
+def write_tree(tmp_path, literal: str, suffix: str):
+    path = tmp_path / f"results{suffix}"
+    path.write_text(f'{{"x": {literal}}}' if suffix == ".json" else f"x: {literal}\n")
+    return path
+
+
+def stored(path) -> str:
+    _, found, _ = _resolve_tree(TreeLocator(pointer="/x"), path)
+    assert found is not None
+    return found.raw
+
+
+TREES = [".json", ".yaml"]
+
+AS_WRITTEN = [
+    "0.910",
+    "0.12345678901234567890",
+    "1.0",
+    "-0.0",
+    "9007199254740993.0",
+    "123456789012345678901234567890",
+    "1.50e-7",
+    "1.0e400",
+]
+
+
+@pytest.mark.parametrize("suffix", TREES)
+@pytest.mark.parametrize("literal", [*AS_WRITTEN, "1e-7", "1E5"])
+def test_a_json_number_is_read_as_the_digits_the_file_wrote(tmp_path, literal, suffix):
+    if suffix == ".yaml" and "." not in literal:
+        pytest.skip("YAML reads a number with an exponent and no point as a string")
+    assert stored(write_tree(tmp_path, literal, suffix)) == literal
+
+
+@pytest.mark.parametrize("suffix", TREES)
+@pytest.mark.parametrize(
+    ("literal", "reported", "outcome"),
+    [
+        ("0.910", "0.910", Outcome.VERIFIED),
+        ("0.910", "0.91", Outcome.VERIFIED),
+        ("0.914", "0.91", Outcome.VERIFIED),
+        ("0.914", "0.910", Outcome.MISMATCH),
+        ("0.12345678901234567890", "0.12345678901234567890", Outcome.VERIFIED),
+        ("0.12345678901234567890", "0.12345678901234567891", Outcome.MISMATCH),
+        ("0.12345678901234567890", "0.12345678901234568", Outcome.VERIFIED),
+        ("1.0e-7", "0.0000001", Outcome.VERIFIED),
+        ("1.0", "1", Outcome.VERIFIED),
+        ("1", "1.0", Outcome.VERIFIED),
+        ("9007199254740993", "9007199254740993", Outcome.VERIFIED),
+        ("9007199254740993.0", "9007199254740993", Outcome.VERIFIED),
+        ("9007199254740993.0", "9007199254740992", Outcome.MISMATCH),
+        ("-0.0", "0.0", Outcome.VERIFIED),
+        ("-0.0", "-0.0", Outcome.VERIFIED),
+        ("1.0e400", "1e400", Outcome.VERIFIED),
+        ("1.0e-400", "1e-400", Outcome.VERIFIED),
+        ("1.0e-400", "2e-400", Outcome.MISMATCH),
+    ],
+)
+def test_a_tree_number_is_compared_as_the_decimal_the_file_wrote(
+    tmp_path, literal, reported, outcome, suffix
+):
+    path = write_tree(tmp_path, literal, suffix)
+    assert MetricBackend().check(CLAIM, metric(reported), {"a": path}).outcome is outcome
+
+
+@pytest.mark.parametrize("suffix", TREES)
+def test_a_matching_decision_shows_the_trailing_zero_the_file_wrote(tmp_path, suffix):
+    path = write_tree(tmp_path, "0.910", suffix)
+    assert MetricBackend().check(CLAIM, metric("0.91"), {"a": path}).detail == "/x = 0.910"
+
+
+@pytest.mark.parametrize(("literal", "kind"), [("0.910", "float"), ("7", "int"), ("true", "bool")])
+@pytest.mark.parametrize("suffix", TREES)
+def test_the_native_type_of_a_tree_value_is_named_as_before(tmp_path, literal, kind, suffix):
+    _, found, _ = _resolve_tree(TreeLocator(pointer="/x"), write_tree(tmp_path, literal, suffix))
+    assert found is not None and found.native_type == kind
+
+
+@pytest.mark.parametrize("literal", [".inf", "-.inf", ".nan"])
+def test_a_non_finite_yaml_number_is_still_not_a_quantity_to_compare(tmp_path, literal):
+    decision = MetricBackend().check(
+        CLAIM, metric("3.20"), {"a": write_tree(tmp_path, literal, ".yaml")}
+    )
+    assert decision.reason is Reason.VALUE_NOT_NUMERIC
+
+
+@pytest.mark.parametrize(
+    ("literal", "reported"), [("1_000.5", "1000.5"), ("1:30.5", "90.5"), ("0x1F", "31")]
+)
+def test_a_yaml_number_in_a_form_only_yaml_has_is_read_as_its_value(tmp_path, literal, reported):
+    path = write_tree(tmp_path, literal, ".yaml")
+    assert MetricBackend().check(CLAIM, metric(reported), {"a": path}).outcome is Outcome.VERIFIED
+
+
+@pytest.mark.parametrize("suffix", TREES)
+def test_a_quoted_number_in_a_tree_is_still_the_text_it_holds(tmp_path, suffix):
+    assert stored(write_tree(tmp_path, '"0.910"', suffix)) == "0.910"
+
+
+@pytest.mark.parametrize(
+    ("left", "right", "outcome"),
+    [
+        ("0.910", "0.914", Outcome.MISMATCH),
+        ("0.91", "0.914", Outcome.VERIFIED),
+        ("0.910", "0.9104", Outcome.VERIFIED),
+    ],
+)
+def test_two_tree_files_correspond_at_the_coarser_precision_either_wrote(
+    tmp_path, left, right, outcome
+):
+    one, two = tmp_path / "one.json", tmp_path / "two.json"
+    one.write_text(f'{{"x": {left}}}')
+    two.write_text(f'{{"x": {right}}}')
+    evidence = CorrespondenceEvidence(
+        name="n",
+        sides=(
+            CorrespondenceSide(name="one", artifact="one", locator=TreeLocator(pointer="/x")),
+            CorrespondenceSide(name="two", artifact="two", locator=TreeLocator(pointer="/x")),
+        ),
+    )
+    decision = CorrespondenceBackend().check(CLAIM, evidence, {"one": one, "two": two})
+    assert decision.outcome is outcome
