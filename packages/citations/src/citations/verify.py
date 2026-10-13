@@ -524,7 +524,11 @@ def passage_fold(s: str) -> str:
     # no honest quotation of it can match, and the passage reads as absent from a document
     # that contains it. The ligatures need no entry here -- NFKC folds `ﬁ` to `fi` already.
     s = s.replace("ı", "i").replace("İ", "I")
-    s = re.sub(r"-\s*\n\s*", "", s)  # de-hyphenate across a line break
+    # De-hyphenate a word a renderer split across a line break: a hyphen with a letter before
+    # it and a letter opening the next line. Any other dash at a line end is kept. A rule of
+    # dashes in printed output lost its last dash and ran into the next line, `10-` over `12`
+    # became `1012`, and a dash ending a clause was deleted with the break after it.
+    s = re.sub(r"(?<=[^\W\d_])-\s*\n\s*(?=[^\W\d_])", "", s)
     return " ".join(s.split()).lower()
 
 
