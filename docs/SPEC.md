@@ -118,6 +118,8 @@ reported: "3.20"                          # a string, always
 pointer: /comparisons/primary/delta       # RFC 6901
 mode: printed_precision                   # or absolute | relative
 tolerance: "0"                            # a string; ignored for printed_precision
+conversion: percent                       # optional; or fraction (§3.7)
+places: 2                                 # optional; printed_precision only (§3.8)
 ```
 
 Assertion: this artifact holds this value at this location.
@@ -132,7 +134,7 @@ Specifying an escape grammar for a new selector language is work already done.
 
 | mode | agrees when |
 |---|---|
-| `printed_precision` | the stored value, rounded half-even to the precision `reported` prints, equals `reported`. A paper printing `3.2` is not contradicted by `3.20001`; one printing `3.20000` is. |
+| `printed_precision` | the stored value, rounded half-even to the precision `reported` prints, equals `reported`. A paper printing `3.2` is not contradicted by `3.20001`; one printing `3.20000` is. A stored value exactly halfway between two printed values agrees with either (§3.8). |
 | `absolute` | \|stored − reported\| ≤ tolerance |
 | `relative` | \|stored − reported\| ≤ tolerance × \|reported\| |
 
@@ -193,6 +195,8 @@ tolerance: "0"
 ```
 
 Assertion: these two artifacts hold the same value.
+
+A side may carry a `conversion` (§3.7), and is then compared as converted.
 
 Every other kind compares an artifact against a literal written in the manifest. A claim a
 document makes about the code beside it has an artifact on both sides: `docs/SPEC.md` states a
@@ -358,6 +362,121 @@ records that digest beside the artifact digest, so it binds how a value was addr
 as what was read: a selector edited after the fact changes the record even where the file does
 not.
 
+## 3.7 Conversions
+
+A file stores 0.042 and the manuscript prints 4.2, as a percentage. Without a declared
+conversion the two cannot be bound, and an author's alternatives are to transcribe 4.2 into a
+second file or to leave the number unchecked.
+
+```yaml
+kind: metric
+artifact: results
+name: attrition
+reported: "4.2"
+pointer: /attrition
+conversion: percent
+```
+
+`conversion` is an optional field of `metric`, `table` and `value`, and of each side of a
+`correspondence`. It takes one of two names.
+
+| conversion | the file stores | the manuscript prints | converted value |
+|---|---|---|---|
+| `percent` | a fraction, `0.042` | a percentage, `4.2` | stored × 100 |
+| `fraction` | a percentage, `4.2` | a fraction, `0.042` | stored ÷ 100 |
+
+**The set is closed.** There is no multiplier and no expression. An assertion that states its
+own arithmetic can make any stored value agree with any printed one, and nothing checks the
+arithmetic. A name outside the set is a manifest that does not load.
+
+**The stored value is converted exactly, and then compared.** Both conversions move the
+decimal point two places and change no digit, so the converted value is an exact decimal at
+any number of digits: no binary float is formed and no rounding happens in the conversion.
+The comparison of §3.2 then runs on the converted value. Under `printed_precision` the
+converted value is rounded half-even to the precision `reported` prints, so a file holding
+`0.0424` agrees with a manuscript printing `4.2` (4.24 rounds to 4.2) and a file holding
+`0.0426` does not (4.26 rounds to 4.3). Rounding before converting would compare `0.0` with
+`4.2` in both cases. Under `absolute` and `relative` the tolerance is in the unit the
+manuscript prints: `tolerance: "0.1"` under `percent` is a tenth of a percentage point.
+
+In a `correspondence` each side is converted under its own declaration, and the coarser of the
+two precisions is found after converting. A stored `0.04` is 4 as a percentage, with no decimal
+place, so a document printing `4.2` is rounded to it.
+
+With no `conversion`, nothing is converted, and a manifest that declares none is serialized
+without the field, so its digest is the one it had before the field existed. A stored value
+that is not a finite number is `value_not_numeric` before any conversion.
+
+A decision over one artifact records `extracted`, the value as stored; `conversion`, the name
+declared; and `converted`, the value compared. A `DecisionSide` records the same three. The
+conversion is not part of the locator, which says where a value sits and nothing about the
+unit it is printed in, so the locator digest does not move when a conversion is declared.
+
+## 3.8 Places and ties
+
+**How a value is rounded.** Under `printed_precision` the compared value, which is the stored
+value after any declared conversion, is rounded half to even to the precision of `reported`
+and must then equal it. The precision is read off `reported` as written: `"3.20"` is two
+decimal places and `"3.2"` is one.
+
+**`places` declares that precision separately.**
+
+```yaml
+kind: metric
+artifact: results
+name: effect
+reported: "4.2"
+pointer: /effect
+places: 1
+```
+
+`places` is an optional non-negative integer on `metric`, `table` and `value`: the number of
+decimal places the manuscript reports this value to, as the author states it. Where it is
+declared, two things must hold.
+
+1. `reported` is written to exactly that many decimal places. `"4.20"` under `places: 1` does
+   not satisfy it, and neither does `"3.1"` under `places: 2`. Nothing is rounded to make it
+   so: a rule that rounded to the declared places and left any further printed digit unread
+   would pass a manuscript printing a digit nobody checked.
+2. The compared value, rounded to that many places, equals `reported`. Given the first, this
+   is the comparison §3.2 already makes.
+
+A `reported` written to another number of places is `comparison=mismatch` with reason
+`places_mismatch`, which flattens to `mismatch`. It is an outcome and not a manifest that
+fails to load, for two reasons. The disagreement is between two statements about the
+manuscript, a reporting convention and a printed cell, and a table declared to one place that
+prints two is a finding about that table. And a manifest that does not load reports nothing,
+so one such cell would hide every other assertion's result. The value is extracted first, so
+an address that does not resolve, or a value that is no number, is reported as that.
+
+`places` goes with `printed_precision` only. Under `absolute` and `relative` the comparison is
+a difference against a tolerance and rounds nothing, so there are no places for it to be at,
+and a manifest declaring `places` with either mode does not load. With a `conversion`, the
+places are those of the converted value, which is the value printed. A `correspondence` takes
+no `places`: neither side is the manuscript's printed value.
+
+**An exact tie agrees with either neighbor.** A compared value exactly halfway between two
+values at the printed precision, `4.25` at one place, has two correct roundings. Spreadsheets
+and most hand calculation round half away from zero, to `4.3`; Python, R and IEEE 754 round half to
+even, to `4.2`. A manuscript printing either has rounded its own number correctly, so both
+verify, and a printed value that is neither neighbor is a `mismatch`.
+
+A tie is decided on the digits and nothing else: the digits of the compared value past the
+printed precision are a 5 followed only by zeros, or they are not. No float is formed and no
+value is within a tolerance of a tie, so `4.2500001` is not one: it rounds to `4.3` under
+either rule, and `4.2` is a mismatch. The conversion of §3.7 is applied first, so a stored
+`0.0425` under `percent` is the tie `4.25`. Ties are met under `printed_precision` only, with
+or without `places`, and by a `correspondence` at the coarser of its two precisions.
+
+Away from a tie the two rules give the same answer, so nothing else about the comparison
+changes. There is no option naming a rounding rule: a manifest could then only be right about
+which software produced each number, and the manuscript does not say.
+
+A decision at a tie records it as `tie`, with `lower` and `upper`, the two neighbors, and
+`printed`, the value the manuscript prints, so that an agreement reached by accepting both is
+told from an ordinary one. `repro verify` prints `[exact tie: 4.2 or 4.3]` beside the
+assertion, and `repro why` prints the tie above the printed value.
+
 ## 4. Outcomes
 
 A check must execute, extract, and compare. Each stage fails differently, and the report
@@ -383,6 +502,7 @@ how a file silent on a value becomes one that contradicts it.
 | passage occurs more than once | completed | invalid | n/a | `not_found` |
 | pointer does not resolve | completed | absent | n/a | `not_found` |
 | value is not a number | completed | invalid | n/a | `not_found` |
+| value printed to other than its declared places | completed | extracted | mismatch | `mismatch` |
 | independent readers disagree | completed | invalid | n/a | `not_found` |
 | extractor not installed | unavailable | not_attempted | n/a | `unchecked` |
 | artifact missing or unparseable | unavailable | not_attempted | n/a | `unchecked` |
@@ -439,6 +559,7 @@ it flattens to:
 | `passage_present` | `verified` | the quoted passage occurs in the artifact |
 | `value_match` | `verified` | the stored value agrees with the reported one, or two sides agree |
 | `value_mismatch` | `mismatch` | the stored value disagrees with the reported one, or two sides disagree |
+| `places_mismatch` | `mismatch` | `places` is declared and the reported value is written to another number of decimal places (§3.8) |
 | `passage_absent` | `mismatch`, `not_found` | a quoted passage is not in an artifact that was read, which is `mismatch`; or a prose locator's anchors select nothing, which is `not_found` |
 | `wrong_page` | `mismatch` | the quoted passage occurs, on another page than the one declared |
 | `pointer_absent` | `not_found` | a JSON Pointer or an array index does not resolve |
@@ -793,8 +914,15 @@ An implementation conforms when:
     carries the failing side's reason.
 12. A spelled-out number is converted only where the locator declares `cardinal_word`, and
     refused with `number_as_word` otherwise.
+13. A stored value is converted only where the assertion declares a `conversion`, exactly and
+    before the comparison, and the decision names the conversion and records both values.
+14. A compared value exactly halfway between two values at the printed precision agrees with
+    either, the decision records the tie, and a value that is not exactly halfway is rounded
+    half to even.
+15. Where `places` is declared, a `reported` written to another number of decimal places is a
+    `mismatch` with reason `places_mismatch`, whatever the artifact holds.
 
-Conformance is executable: `packages/repro/tests/conformance/` holds 29 fixtures, each with
+Conformance is executable: `packages/repro/tests/conformance/` holds 33 fixtures, each with
 canonical expected JSON. They cover `verified`, `mismatch`, `not_found`, `unchecked` and
 `not_offered`, the pointer-escaping and undeclared-artifact cases, an unpinned artifact, a
 broken pin, five table-addressing cases, six over `correspondence` and the prose locator —
@@ -803,7 +931,11 @@ refused, one pair of anchors selecting two different values, and a prose value a
 literal — and four over a printed table read as text: a cell bound by the row's leading cells
 and its divider, the same cell with no `after`, which is not a number, a leading anchor the
 document does not hold, and a trailing anchor that would split the number. Those four also
-declare the three stages of §4.
+declare the three stages of §4, as do two over a conversion: a stored fraction that agrees
+with the printed percentage beside the same address with no conversion declared, which does
+not, and a stored fraction that rounds to another percentage at the printed precision; and
+two over §3.8: a value exactly halfway between two printed values, asserted once as each
+neighbor and once as neither, and a value printed to two places where one is declared.
 
 Each fixture declares its outcome, its reason, and the validity of every artifact. The outcome
 alone cannot tell a defect in the tool from a fact about the document: three cases share

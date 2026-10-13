@@ -69,9 +69,28 @@ The four that compare a number take `mode` and `tolerance`: `printed_precision` 
 round to the digits `reported` prints), `absolute`, or `relative`, with `tolerance` a quoted
 string. A `correspondence` has no `relative`.
 
+`metric`, `table`, `value` and each side of a `correspondence` take an optional `conversion`,
+for a file that stores a number in one unit where the manuscript prints another: `percent`
+(the file holds the fraction `0.042`, the manuscript prints `4.2`) or `fraction` (the file
+holds `4.2`, the manuscript prints `0.042`). The stored value is converted exactly and then
+rounded to the digits `reported` prints. There is no multiplier and no other name.
+
+`metric`, `table` and `value` take an optional `places`, the number of decimal places the
+manuscript reports the value to. `reported` must then be written to exactly that many:
+`"4.20"` with `places: 1` is a `mismatch` with reason `places_mismatch`, whatever the file
+holds. Declare it where a table or a journal fixes the precision, and only under
+`printed_precision`.
+
+A stored value exactly halfway between two printed values, `4.25` at one place, verifies as
+either `4.2` or `4.3`, because half-up and half-to-even rounding are both in use. The output
+marks it `[exact tie: 4.2 or 4.3]`. Report it as a tie, not as an error and not as an
+ordinary match.
+
 ```yaml
 - {kind: metric, artifact: results, name: p, reported: "0.031", pointer: /primary/p}
 - {kind: table, artifact: models, name: accuracy, reported: "0.648", column: accuracy, where: {model: lasso}}
+- {kind: metric, artifact: results, name: attrition, reported: "4.2", pointer: /primary/attrition, conversion: percent}
+- {kind: metric, artifact: results, name: effect, reported: "0.41", pointer: /primary/effect, places: 2}
 - {kind: quote, artifact: paper, text: "We enrolled eighteen sites across the two regions."}
 - kind: correspondence
   name: participants
@@ -217,6 +236,8 @@ directory, the freeze goes ahead.
 - Before submitting a draft, over the whole manifest
 - After regenerating results, to see which claims moved
 - To run the declared commands again and see whether the printed numbers survive: `repro reproduce`
+- To see what a claim said at each check before it was edited: `repro why <claim-id>`, which reads the record every `repro verify` keeps in the git directory
+- In the project's CI job or before a release, so that record travels with the repository: `repro verify --record`, then commit `.repro/checks.jsonl` and `.repro/ledger.head`
 - After editing an input or a script, before trusting a green verify: `repro stale`
 - For one claim, what the record establishes and what it does not: `repro why <claim-id>`
 - To count every number the manuscript prints, and which no claim accounts for: `repro numbers`
