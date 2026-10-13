@@ -512,7 +512,7 @@ requires-dist = [
     { name = "python-docx", marker = "extra == 'docx'", specifier = ">=1.1" },
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "requests", marker = "extra == 'paperclip'", specifier = ">=2.31" },
-    { name = "retrieved", marker = "extra == 'web'", specifier = ">=0.1,<0.2" },
+    { name = "retrieved", marker = "extra == 'web'", specifier = ">=0.1,<0.3" },
     { name = "xlrd", marker = "extra == 'sheets'", specifier = ">=2.0.1" },
 ]
 provides-extras = ["docx", "lint", "paperclip", "pdf", "pdfplumber", "pypdf", "sheets", "web"]
@@ -3088,7 +3088,7 @@ dev = [
     { name = "pytest-xdist", specifier = ">=3.6" },
     { name = "python-docx", specifier = ">=1.1" },
     { name = "rdata", specifier = ">=1" },
-    { name = "retrieved", specifier = ">=0.1,<0.2" },
+    { name = "retrieved", specifier = ">=0.1,<0.3" },
     { name = "ruff", specifier = ">=0.14" },
     { name = "xlrd", specifier = ">=2.0.1" },
     { name = "xlwt", specifier = ">=1.3" },
@@ -3234,16 +3234,16 @@ dev = [{ name = "pytest", specifier = ">=9.1.1" }]
 
 [[package]]
 name = "retrieved"
-version = "0.1.0"
+version = "0.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "httpx" },
     { name = "pydantic" },
     { name = "pyyaml" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/47/f6/d46ef2cde90158cb0f1e8f46a7df3cbd22db0bb06c8bef4aa9d0fdd50878/retrieved-0.1.0.tar.gz", hash = "sha256:54a66148cac6961f612fbf7995c3cd6ad81a427bc60a5adf602acf352e8b444d", size = 119327, upload-time = "2026-08-31T18:35:32.228Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d7/5c/2520d6e59d274f2ab8ed3da40535fa17f86b02a9586303d0668a9165aa33/retrieved-0.2.0.tar.gz", hash = "sha256:69f0a4b804c990f39b6edd17d32b8cc9668f0af4e010cf58dac181336b121969", size = 178576, upload-time = "2026-10-13T19:25:12.526Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/0c/3e/2d134da935dea61e72cde0db8cf96a8441fbdf7d806628b63515a3a5e76e/retrieved-0.1.0-py3-none-any.whl", hash = "sha256:69fed85c47d8ef73a9fbcc7ab96d176adcfcb71fb74a6957ed43503c90191ad6", size = 28432, upload-time = "2026-08-31T18:35:31.325Z" },
+    { url = "https://files.pythonhosted.org/packages/7b/ea/30605c15c3147d0637234aab35c1137cea779989c61d970a3a89e790b3e3/retrieved-0.2.0-py3-none-any.whl", hash = "sha256:3b0ab5f158c796c62e397253e8fc99357b37454030f70519381f49b5c99a7f6d", size = 61477, upload-time = "2026-10-13T19:25:11.415Z" },
 ]
 
 [[package]]
