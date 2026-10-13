@@ -187,6 +187,7 @@ class StaleCause(enum.StrEnum):
     INPUT_MISSING = "input_missing"
     OUTPUT_MISSING = "output_missing"
     CYCLE = "cycle"
+    LATER_RERUN_DID_NOT_REPRODUCE = "later_rerun_did_not_reproduce"
 
 
 class StaleFinding(BaseModel):
