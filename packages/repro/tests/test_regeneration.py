@@ -14,6 +14,8 @@ import sys
 
 import pytest
 from repro.cli import main
+from repro.exceptions import ManifestError
+from repro.manifest import load
 from repro.models import (
     ArtifactRef,
     Claim,
@@ -710,6 +712,37 @@ def test_the_command_passes_a_rerun_whose_numbers_hold(tmp_path, capsys):
 def test_verify_no_longer_takes_a_flag_that_executes(tmp_path):
     with pytest.raises(SystemExit):
         main(["verify", str(on_disk(tmp_path, SCRIPT)), "--regenerate"])
+
+
+def test_two_regenerations_may_not_share_an_id(tmp_path):
+    record = project(tmp_path).regenerations[0]
+    elsewhere = record.model_copy(update={"output": RunOutput(artifact="inputs")})
+    with pytest.raises(ValueError, match="duplicate regeneration id 'figures'"):
+        Manifest(project="p", regenerations=(record, elsewhere))
+
+
+def test_two_regenerations_may_not_write_one_artifact(tmp_path):
+    record = project(tmp_path).regenerations[0]
+    second = record.model_copy(update={"id": "again"})
+    with pytest.raises(ValueError, match="'figures' and 'again' both write artifact 'figures'"):
+        Manifest(project="p", regenerations=(record, second))
+    apart = second.model_copy(update={"output": RunOutput(artifact="inputs")})
+    assert len(Manifest(project="p", regenerations=(record, apart)).regenerations) == 2
+
+
+def test_a_manifest_on_disk_with_two_producers_of_one_file_does_not_load(tmp_path, capsys):
+    path = on_disk(tmp_path, SCRIPT)
+    path.write_text(
+        path.read_text()
+        + "  - id: again\n"
+        + f'    command: ["{sys.executable}", make.py]\n'
+        + "    output: {artifact: figures}\n"
+    )
+    with pytest.raises(ManifestError, match="'figures' and 'again' both write"):
+        load(path)
+    assert main(["reproduce", str(path)]) == 2
+    assert "both write artifact 'figures'" in capsys.readouterr().out
+    assert not (tmp_path / RECORD).exists()
 
 
 def test_a_manifest_declaring_no_command_has_nothing_to_run(tmp_path, capsys):
