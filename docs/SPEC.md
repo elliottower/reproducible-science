@@ -82,8 +82,8 @@ the text are normalized the same way. Unicode is decomposed to NFKD and combinin
 dropped, so a ligature becomes its letters and an accented letter matches its unaccented form:
 `Krzyżosiak` matches `Krzyzosiak`. Dotless `ı` and dotted `İ` become `i` and `I`. Curly
 quotation marks become straight ones, and the em dash, en dash, minus sign and U+2010 hyphen
-become `-`. A hyphen at a line break is removed with the break, runs of whitespace collapse to
-one space, and case is ignored. A control character becomes a space and is not deleted, because
+become `-`. A hyphen at a line break between two letters is removed with the break and any other dash at
+a line end is kept, runs of whitespace collapse to one space, and case is ignored. A control character becomes a space and is not deleted, because
 deleting one welds the words on either side into one appearing in neither text.
 
 A passage that does not occur under that normalization is looked for once more with all

@@ -388,7 +388,7 @@ twice stays `ambiguous` and cannot be pinned with `--occurrence`.
 
 Matching is exact after folding, and never approximate. Folding removes what a PDF extractor
 changes: case, runs of whitespace, curly quotation marks, the dash variants, ligatures, a
-hyphen at a line break, and accents. Text is decomposed to Unicode NFKD and the combining marks
+hyphen at a line break between two letters, and accents. Text is decomposed to Unicode NFKD and the combining marks
 are dropped, and dotless `ı` is read as `i`, so an accented letter matches its unaccented
 form: `Krzyżosiak` matches `Krzyzosiak`. A passage that matches only once whitespace,
 underscores and a hyphen joining two word characters are ignored altogether is `found` with a
@@ -424,8 +424,9 @@ right and the document's extraction is lossy. Repair it by splitting the quotati
 adjacent fragments either side of the missing character, never by truncating it to the part
 that matches -- a truncated quotation resolves and says something the source does not.
 
-**A hyphen on a line break.** `fold` removes `-\n` because a renderer inserts one when it
-splits a word, and it cannot tell that from a real hyphen that happens to fall at a line end.
+**A hyphen on a line break.** `fold` removes `-\n` between two letters because a renderer
+inserts one when it splits a word, and it cannot tell that from a real hyphen that happens to
+fall at a line end. A dash with anything else on either side of the break is kept.
 The same quotation then resolves everywhere else in the document and fails at that one
 occurrence. Split it there.
 
