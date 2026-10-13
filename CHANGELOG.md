@@ -1,3 +1,43 @@
+## 0.5.4 — 2026-10-13
+
+### citations
+
+No significant changes.
+
+### prereg
+
+#### Fixed
+
+- **The `prereg` plugin recognises a frozen file by the rule the mod uses.** A corrupt or unreadable freeze record let the edit through, and a `**Plan sha256:**` line made any `.md`, `.markdown` or `.txt` file frozen while a file with a freeze record and another suffix was not. `frozen_file_before_edit.py` now denies an `Edit`, `Write` or `MultiEdit` to a file of any name wherever `.prereg/<name>.json` exists beside it, whatever the record holds, and applies the `**Plan sha256:**` rule only to a file named `PREREG.md`. A `PREREG.md` over 2 MB carrying that line was allowed and is now refused: the hook reads a plan of any size. A relative path was read against the directory the hook process ran in; it is now read against the `cwd` of the hook's input, the session's working directory, and a leading `~/` is the home directory. The mod's reason for refusing a plan frozen in place now reads as the plugin's does, so the two refuse in the same words in both cases, and a test compares them. `frozen_plan_changed.py` is unchanged.
+
+#### Changed
+
+- **A draft's `Superseded by` line reads the same from any directory, may name a plan the tool froze, and a withdrawal carries the commit that declared it.** `prereg check` looked a successor up among the documents at or below the directory it ran in, so `exp/DRAFT.md` naming `../PREREGISTRATION.md` was `superseded` from the repository's top level and `pending`, exit 2, from `exp/`. The path is now looked up in the whole repository, read from the draft's own directory, and the draft has one status wherever the check runs. A run in a subfolder lists the documents at or below it, and a successor above or beside it settles the draft; where the document that ends the chain passes it is not listed, and where it is `pending`, `CHANGED` or of an `unknown commit` the run lists it too, once, by its path from the top of the repository, and exits 2 or 1 as a run at the top does. A path that is absolute or leaves the repository leaves the draft `pending` and says so. A draft may name a `PREREG.md` frozen with `prereg freeze`, which used to read as "not a registration checked here": the plan is checked as `prereg check` checks any plan, the draft is `superseded` only where that check passes, and a plan that is not frozen or was changed after its freeze leaves the draft `pending` with the reason. Neither header line is read on a `PREREG.md` itself. A `withdrawn` document's report gains a line naming the commit that added its `**Withdrawn:**` line and that commit's date, followed across renames, or saying the line is not yet committed; the status and the exit code are as they were.
+
+#### Added
+
+- **`prereg check` tells a draft that was replaced, and a plan that was dropped, from a plan awaiting its freeze.** A registration frozen by a commit line whose line holds a placeholder is `pending`, exits 2 and counts against the project for good. That is right for a plan that has not been frozen yet and wrong twice over elsewhere: a plan revised three times before its freeze counted as four, and a plan that was abandoned could only leave the report by having its commit line deleted. A `**Superseded by:** <path>` line in a draft's header, read from the draft's own directory, now lists the draft as `superseded` and follows the chain to the document that ends it, which keeps its own result, so the plan is counted once and a chain ending on an unfrozen or edited document still exits 2 or 1. A `**Withdrawn:** <reason>` line lists a dropped plan as `withdrawn`, with the reason and the words that it is the document's statement and was not checked. A draft naming a file the check does not list, a chain that returns to itself, a `Superseded by` line naming nothing, and a `Withdrawn` line left empty or holding a placeholder such as `N/A` or `TBD` each leave the document `pending` and say why. Neither line excuses a document that names a commit: its header is compared text, so adding either line after the freeze is `CHANGED`. The `repro` mod leaves superseded and withdrawn documents out of the `prereg: n/m frozen` count.
+
+### results-cli
+
+No significant changes.
+
+### reproducible-science
+
+#### Fixed
+
+- **A `prose` locator reads a number printed against the text that follows it.** The value was the whole run of non-whitespace characters after `before`, and `after` had to begin past it, so a cell of a printed table, `| 3| 0.459| 0.124|`, was read as `0.459|` and reported `value_not_numeric` whatever `after` said, and `93.1%` and a number closing a sentence could not be bound either. The value is now the whole run where `after` begins past it, and otherwise the run cut at the first place inside it where `after` begins, so `before: "| 3|", after: "|"` reads `0.459` and `after: "."` reads `3.14.` as `3.14`. With `after` omitted the run is still read whole. An anchor never splits a number: `after` may not begin, and `before` may not end, inside digits joined by a decimal point, a grouping comma or underscore, or an exponent, so `after: "9"` on `0.459` reads nothing where a cut would read `0.45`. A `before` ending inside a number, `before: "0.4"`, read the rest of it, `59`, and is now `passage_absent` with the number named in the detail. Digits attached to a preceding letter, as in `v0.5` or `H10`, are a name and not a number, so `before: "v0."` reads `5` as it did. A sign belongs to its number unless a digit or a letter precedes it: `before: "x=-"` over `x=-0.42` read `0.42` and now reads nothing, and `before: "10-"` over `10-12` reads `12` as it did. Four conformance fixtures cover a printed table, and declare the three stages as well as the outcome.
+- **The plugin recognises a frozen file by the rule the mod uses.** A corrupt or unreadable freeze record let the edit through, and a `**Plan sha256:**` line made any `.md`, `.markdown` or `.txt` file frozen while a file with a freeze record and another suffix was not. `frozen_file_before_edit.py` now denies an `Edit`, `Write` or `MultiEdit` to a file of any name wherever `.prereg/<name>.json` exists beside it, whatever the record holds, and applies the `**Plan sha256:**` rule only to a file named `PREREG.md`. A `PREREG.md` over 2 MB carrying that line was allowed and is now refused: the hook reads a plan of any size. A relative path was read against the directory the hook process ran in; it is now read against the `cwd` of the hook's input, the session's working directory, and a leading `~/` is the home directory. The mod's reason for refusing a plan frozen in place now reads as the plugin's does, so the two refuse in the same words in both cases, and a test compares them. `frozen_plan_changed.py` is unchanged.
+
+#### Changed
+
+- **The `repro` skill and the starter `repro.yaml` list everything a manifest can declare.** Both described `metric` and `quote` and nothing else. The skill now has a row and an example for each of the five evidence kinds and the seven locators, with the fields each takes and the file formats it reads, a section on binding a number in a printed table or running text with a `prose` locator, and one on when a `quote` is the fallback and what it does not establish. The comment `repro manifest init` and `repro init` write at the top of `repro.yaml` carries the same list in short form. A test fails when a kind or locator the engine defines is missing from either.
+- **`repro audit` counts a plan `prereg check` lists as `withdrawn` among what was not measured.** A withdrawal is the document's statement about itself, which the check lists and does not verify, so a repository whose only finding is a withdrawn plan is reported as could-not-check by `repro audit`, exit 2, where `prereg check` on its own exits 0. A draft listed as `superseded` is not counted: the document at the end of its chain is listed with its own result, and that result is what is read.
+
+### provenance-core
+
+No significant changes.
+
 ## 0.5.3 — 2026-10-11
 
 ### citations
