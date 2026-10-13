@@ -214,6 +214,7 @@ directory, the freeze goes ahead.
 - After regenerating results, to see which claims moved
 - To run the declared commands again and see whether the printed numbers survive: `repro reproduce`
 - After editing an input or a script, before trusting a green verify: `repro stale`
+- For one claim, what the record establishes and what it does not: `repro why <claim-id>`
 - When a reviewer asks where a number came from
 - When a manuscript and its data may have drifted apart
 - In CI, as `repro verify --policy strict`

@@ -14,6 +14,7 @@ from repro.core.outcomes import (
     Ordering,
     OrderingReason,
     Outcome,
+    Reason,
     RegistrationAuthority,
     Validity,
 )
@@ -290,3 +291,101 @@ class StalenessReport(BaseModel):
     edges: tuple[Edge, ...] = ()
     findings: tuple[StaleFinding, ...] = ()
     record_disagrees_with_pin: tuple[PinDisagreement, ...] = ()
+
+
+# --------------------------------------------------------------------------------- one claim
+
+
+class FileRead(BaseModel):
+    """One file an assertion reads: its pin, and what sits at the declared address."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    artifact: str
+    path: str = ""
+    side: str = ""
+    """Which side of a `correspondence` this is, in the author's word for it."""
+    validity: Validity | None = None
+    """None where the manifest declares no such artifact."""
+    pinned: str | None = None
+    on_disk: str | None = None
+    address: str = ""
+    """Where the assertion looks. Empty for a quotation, which addresses no value."""
+    stored: str | None = None
+    """The value at the address, as stored. None where none was read."""
+
+
+class AssertionAccount(BaseModel):
+    """One assertion of a claim, as `repro verify` evaluates it now."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: str
+    name: str = ""
+    printed: str | None = None
+    """The value as the manuscript prints it, or the passage a quotation asserts."""
+    reads: tuple[FileRead, ...] = ()
+    outcome: Outcome
+    reason: Reason
+    detail: str = ""
+    state: Freshness
+
+
+class ChainNode(BaseModel):
+    """One file a claim rests on: a file it reads, or a file upstream of one."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    artifact: str
+    path: str = ""
+    steps: int
+    """How many commands lie between the claim and this file. 0 for a file the claim reads."""
+    validity: Validity | None = None
+    state: Freshness
+    command: tuple[str, ...] = ()
+    regeneration: RegenerationNode | None = None
+    """The record that writes the file. None where no command is recorded for it."""
+
+
+class NotEstablishedKind(enum.StrEnum):
+    """What a line under `not established` is about."""
+
+    NO_PRODUCER = "no_producer"
+    NEVER_RERUN = "never_rerun"
+    UNCHECKED = "unchecked"
+    NOT_FOUND = "not_found"
+    ERROR = "error"
+    NO_EVIDENCE = "no_evidence"
+    UNDECLARED_INPUTS = "undeclared_inputs"
+    ADDRESS = "address"
+    COMPARISON = "comparison"
+
+
+class NotEstablished(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: NotEstablishedKind
+    subject: str = ""
+    """The file, record or assertion the line names. Empty for the three that hold of every
+    claim."""
+    said: str
+
+
+class ClaimAccount(BaseModel):
+    """What `repro why` found for one claim. Frozen, and carries no verdict."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    schema_version: str = SCHEMA_VERSION
+    project: str = ""
+    manifest_digest: str = ""
+    claim_id: str
+    text: str = ""
+    where: str | None = None
+    assertions: tuple[AssertionAccount, ...] = ()
+    chain: tuple[ChainNode, ...] = ()
+    """Every file the claim rests on, nearest first."""
+    edges: tuple[Edge, ...] = ()
+    """The edges of the staleness graph that lie on the chain."""
+    findings: tuple[StaleFinding, ...] = ()
+    not_established: tuple[NotEstablished, ...] = ()

@@ -307,8 +307,29 @@ def test_a_skipped_record_is_reported_and_not_run(tmp_path):
 
 def test_only_runs_the_records_it_names(tmp_path):
     manifest = project(tmp_path)
-    other = manifest.regenerations[0].model_copy(update={"id": "other"})
-    both = manifest.model_copy(update={"regenerations": (manifest.regenerations[0], other)})
+    (figures,) = manifest.regenerations
+    script, written = tmp_path / "other.py", tmp_path / "other.json"
+    script.write_text(SCRIPT.replace("figures.json", "other.json"))
+    written.write_bytes((tmp_path / "figures.json").read_bytes())
+    other = RegenerationRecord(
+        id="other",
+        command=(sys.executable, "other.py"),
+        inputs=(figures.inputs[0], RunOutput(artifact="other_py", digest=Digest.of_file(script))),
+        output=RunOutput(artifact="other", digest=Digest.of_file(written)),
+        timeout_seconds=60,
+    )
+    # Built through the constructor, so the manifest is one that loads: two records, two outputs.
+    both = Manifest(
+        project="p",
+        path=manifest.path,
+        artifacts=(
+            *manifest.artifacts,
+            ArtifactRef(id="other_py", path=script, digest=Digest.of_file(script)),
+            ArtifactRef(id="other", path=written, digest=Digest.of_file(written)),
+        ),
+        regenerations=(figures, other),
+        claims=manifest.claims,
+    )
     report = reproduce(both, only=("other",))
     assert [s.state for s in report.regenerations] == [
         Regeneration.NOT_RERUN,

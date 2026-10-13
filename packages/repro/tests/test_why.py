@@ -1,0 +1,424 @@
+"""For one claim: what the record establishes, and what it does not.
+
+Nothing here executes a command. As in `test_stale.py`, the record of re-runs is written with
+the models `repro reproduce` writes it with, and the files are edited afterwards.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+
+import pytest
+from repro.cli import main
+from repro.models import (
+    ArtifactRef,
+    Claim,
+    ClaimAccount,
+    Digest,
+    Freshness,
+    InputReading,
+    Manifest,
+    MetricEvidence,
+    NotEstablishedKind,
+    Outcome,
+    Reason,
+    Regeneration,
+    RegenerationReason,
+    RegenerationRecord,
+    RegenerationState,
+    ReproductionReport,
+    RunOutput,
+    StaleCause,
+    Validity,
+)
+from repro.reproduce import append
+from repro.stale import stale
+from repro.verify import verify
+from repro.why import (
+    ADDRESS_IS_CHOSEN,
+    COMPARISON_ONLY,
+    MAX_LISTED,
+    UNDECLARED_INPUTS,
+    UnknownClaimError,
+    why,
+)
+
+THEN = "2026-01-01T00:00:00+00:00"
+
+ALWAYS = [
+    (NotEstablishedKind.UNDECLARED_INPUTS, "", UNDECLARED_INPUTS),
+    (NotEstablishedKind.ADDRESS, "", ADDRESS_IS_CHOSEN),
+    (NotEstablishedKind.COMPARISON, "", COMPARISON_ONLY),
+]
+
+
+def file(root, name):
+    return root / f"{name}.json"
+
+
+def put(root, name, **fields):
+    file(root, name).write_text(json.dumps({"total": 6, **fields}))
+
+
+def record(root, name, inputs, output):
+    return RegenerationRecord(
+        id=name,
+        command=("make", name),
+        inputs=tuple(RunOutput(artifact=i, digest=Digest.of_file(file(root, i))) for i in inputs),
+        output=RunOutput(artifact=output, digest=Digest.of_file(file(root, output))),
+    )
+
+
+def claim(artifact, reported="6", pointer="/total"):
+    return Claim(
+        id=f"on-{artifact}",
+        text=f"The total in {artifact} is {reported}.",
+        evidence=(
+            MetricEvidence(artifact=artifact, name="total", reported=reported, pointer=pointer),
+        ),
+    )
+
+
+def manifest(root, records, claims):
+    project = Manifest(
+        project="p",
+        path=root / "repro.yaml",
+        artifacts=tuple(
+            ArtifactRef(id=p.stem, path=p, digest=Digest.of_file(p))
+            for p in sorted(root.glob("*.json"))
+        ),
+        regenerations=tuple(records),
+        claims=tuple(claims),
+    )
+    project.path.write_text(project.model_dump_json())
+    return project
+
+
+def rerun(root, made):
+    written = Digest.of_file(file(root, made.output.artifact)).value
+    return RegenerationState(
+        regeneration_id=made.id,
+        artifact_id=made.output.artifact,
+        state=Regeneration.REPRODUCED,
+        reason=RegenerationReason.OUTPUT_MATCHES,
+        expected=written,
+        actual=written,
+        executed=True,
+        bytes_identical=True,
+        command=made.command,
+        inputs=tuple(
+            InputReading(
+                artifact_id=wanted.artifact,
+                path=wanted.artifact,
+                pinned=wanted.digest.value,
+                observed=Digest.of_file(file(root, wanted.artifact)).value,
+            )
+            for wanted in made.inputs
+        ),
+    )
+
+
+def chain(root, length, rerun_them=True):
+    """`a0 -> ra1 -> a1 -> ...`, each record re-run over the files as written."""
+    for i in range(length + 1):
+        put(root, f"a{i}", step=i)
+    records = [record(root, f"ra{i}", (f"a{i - 1}",), f"a{i}") for i in range(1, length + 1)]
+    if rerun_them:
+        append(
+            ReproductionReport(
+                started_at=THEN, regenerations=tuple(rerun(root, made) for made in records)
+            ),
+            root,
+        )
+    return records
+
+
+def said(account):
+    return [(line.kind, line.subject, line.said) for line in account.not_established]
+
+
+def printed(project, claim_id, capsys):
+    """The command's three parts: what it lists as established, as not established, and the
+    summary."""
+    assert main(["why", claim_id, str(project.path)]) == 0
+    head, _, rest = capsys.readouterr().out.partition("\nestablished\n")
+    established, _, rest = rest.partition("\nnot established\n")
+    not_established, _, summary = rest.rstrip().rpartition("\n\n")
+    assert f"{claim_id}\n  The total in " in head
+    return established, not_established.splitlines(), summary.strip()
+
+
+def snapshot(root):
+    return {
+        str(p.relative_to(root)): hashlib.sha256(p.read_bytes()).hexdigest()
+        for p in sorted(root.rglob("*"))
+        if p.is_file()
+    }
+
+
+def test_a_rerun_producer_is_established_and_only_its_input_is_not(tmp_path, capsys):
+    project = manifest(tmp_path, chain(tmp_path, 1), [claim("a1")])
+    account = why(project, "on-a1")
+
+    (assertion,) = account.assertions
+    (read,) = assertion.reads
+    assert (assertion.outcome, assertion.printed, assertion.state) == (
+        Outcome.VERIFIED,
+        "6",
+        Freshness.CURRENT,
+    )
+    assert (read.artifact, read.address, read.stored) == ("a1", "/total", "6")
+    assert read.validity is Validity.AUTHORITATIVE
+    assert read.pinned == read.on_disk == Digest.of_file(file(tmp_path, "a1")).value
+
+    produced, given = account.chain
+    assert (produced.artifact, produced.steps, produced.state) == ("a1", 0, Freshness.CURRENT)
+    assert (produced.command, produced.regeneration.id) == (("make", "ra1"), "ra1")
+    assert produced.regeneration.rerun_at == THEN
+    assert (given.artifact, given.steps, given.state) == ("a0", 1, Freshness.NO_PRODUCER)
+    assert given.regeneration is None and given.command == ()
+
+    a0 = file(tmp_path, "a0").as_posix()
+    assert said(account) == [
+        (
+            NotEstablishedKind.NO_PRODUCER,
+            a0,
+            "no command is recorded for it; its bytes are pinned and taken as given",
+        ),
+        *ALWAYS,
+    ]
+
+    established, not_established, summary = printed(project, "on-a1", capsys)
+    assert f"matches its pinned digest {read.pinned[:12]}" in established
+    assert "a1 at /total: holds 6\n    the manuscript prints 6: verified" in established
+    assert "): current\n      written by ra1: make ra1\n" in established
+    assert f"re-run of {THEN} reproduced, and its output is the bytes now on disk" in established
+    assert "): no producer, 1 step up\n      no command recorded" in established
+    assert not_established == [
+        f"  {a0}: no command is recorded for it; its bytes are pinned and taken as given",
+        f"  {UNDECLARED_INPUTS}",
+        f"  {ADDRESS_IS_CHOSEN}",
+        f"  {COMPARISON_ONLY}",
+    ]
+    assert summary == (
+        "1 assertion: 1 verified; 1 of 1 reads a file with a recorded producer, 1 current"
+    )
+
+
+def test_a_claim_reading_a_file_no_command_writes_has_a_chain_of_that_file(tmp_path, capsys):
+    project = manifest(tmp_path, chain(tmp_path, 1), [claim("a0")])
+    account = why(project, "on-a0")
+    (only,) = account.chain
+    assert (only.artifact, only.steps, only.state) == ("a0", 0, Freshness.NO_PRODUCER)
+    assert only.regeneration is None
+    assert [edge.kind for edge in account.edges] == ["reads"]
+    assert [kind for kind, _, _ in said(account)] == [
+        NotEstablishedKind.NO_PRODUCER,
+        *(kind for kind, _, _ in ALWAYS),
+    ]
+
+    established, _, summary = printed(project, "on-a0", capsys)
+    assert "written by" not in established and "re-run" not in established
+    assert summary == "1 assertion: 1 verified; 0 of 1 read a file with a recorded producer"
+
+
+def test_a_producer_with_no_recorded_rerun_is_named_as_never_rerun(tmp_path, capsys):
+    project = manifest(tmp_path, chain(tmp_path, 1, rerun_them=False), [claim("a1")])
+    account = why(project, "on-a1")
+    assert account.chain[0].state is Freshness.NEVER_RERUN
+    assert account.chain[0].regeneration.rerun_at is None
+    a1 = file(tmp_path, "a1").as_posix()
+    assert said(account)[1] == (
+        NotEstablishedKind.NEVER_RERUN,
+        "ra1",
+        f"never rerun; nothing in the record shows the command produces {a1}",
+    )
+    assert len(account.not_established) == 2 + len(ALWAYS)
+
+    established, _, summary = printed(project, "on-a1", capsys)
+    assert "): never rerun\n      written by ra1: make ra1\n" in established
+    assert "no re-run of ra1 that reproduced is recorded" in established
+    assert "its output is the bytes now on disk" not in established
+    assert summary.endswith("1 of 1 reads a file with a recorded producer, 1 never rerun")
+
+
+def test_an_input_edited_after_the_rerun_is_stale_with_its_cause_under_established(
+    tmp_path, capsys
+):
+    project = manifest(tmp_path, chain(tmp_path, 1), [claim("a1")])
+    before = Digest.of_file(file(tmp_path, "a0")).value
+    put(tmp_path, "a0", step="edited")
+    after = Digest.of_file(file(tmp_path, "a0")).value
+
+    account = why(project, "on-a1")
+    assert account.assertions[0].outcome is Outcome.VERIFIED
+    assert account.assertions[0].state is Freshness.STALE
+    assert account.chain[0].regeneration.causes == (StaleCause.INPUT_CHANGED,)
+    (found,) = account.findings
+    assert (found.regeneration, found.artifact) == ("ra1", "a0")
+    assert (found.observed, found.on_disk) == (before, after)
+    # The edit also broke the pin of the file nothing produces, and the line says so.
+    assert said(account)[0][2] == (
+        "no command is recorded for it; its bytes are not the pinned ones and are taken as given"
+    )
+
+    established, not_established, summary = printed(project, "on-a1", capsys)
+    assert "): stale\n      written by ra1: make ra1\n" in established
+    assert f"the re-run of {THEN} read {before[:12]}, on disk {after[:12]}" in established
+    assert "input changed: a0 (" in established
+    assert not [line for line in not_established if "stale" in line or "input changed" in line]
+    assert summary == (
+        "1 assertion: 1 verified; 1 of 1 reads a file with a recorded producer, 1 stale"
+    )
+
+
+def test_a_value_the_manuscript_does_not_print_is_a_mismatch_under_established(tmp_path, capsys):
+    project = manifest(tmp_path, chain(tmp_path, 1), [claim("a1", reported="7")])
+    account = why(project, "on-a1")
+    (assertion,) = account.assertions
+    assert (assertion.outcome, assertion.printed, assertion.reads[0].stored) == (
+        Outcome.MISMATCH,
+        "7",
+        "6",
+    )
+    assert said(account)[1:] == ALWAYS
+
+    established, not_established, summary = printed(project, "on-a1", capsys)
+    assert "a1 at /total: holds 6\n    the manuscript prints 7: mismatch" in established
+    assert not [line for line in not_established if "mismatch" in line]
+    assert summary.startswith("1 assertion: 1 mismatch; ")
+
+
+def test_an_assertion_that_was_not_checked_is_named_with_its_reason(tmp_path, capsys):
+    records = chain(tmp_path, 1)
+    put(tmp_path, "gone")
+    absent = claim("a1", pointer="/no/such/key")
+    missing = Claim(
+        id="both",
+        text="The total in each is 6.",
+        evidence=(*absent.evidence, *claim("gone").evidence, *claim("a1").evidence),
+    )
+    project = manifest(tmp_path, records, [missing])
+    file(tmp_path, "gone").unlink()
+
+    account = why(project, "both")
+    assert [a.outcome for a in account.assertions] == [
+        Outcome.NOT_FOUND,
+        Outcome.UNCHECKED,
+        Outcome.VERIFIED,
+    ]
+    assert [a.reason for a in account.assertions[:2]] == [
+        Reason.POINTER_ABSENT,
+        Reason.ARTIFACT_MISSING,
+    ]
+    named = [(kind, subject) for kind, subject, _ in said(account)]
+    assert (NotEstablishedKind.NOT_FOUND, "metric total") in named
+    assert (NotEstablishedKind.UNCHECKED, "metric total") in named
+    lines = {kind: line for kind, _, line in said(account)}
+    assert lines[NotEstablishedKind.NOT_FOUND].startswith("not found: pointer absent")
+    assert lines[NotEstablishedKind.UNCHECKED].startswith("unchecked: artifact missing")
+    # The file that is not there is not taken as given, and nothing produces it.
+    assert [s for k, s, _ in said(account) if k is NotEstablishedKind.NO_PRODUCER] == [
+        file(tmp_path, "a0").as_posix()
+    ]
+
+    established, _, summary = printed(project, "both", capsys)
+    assert "a1 at /no/such/key: no value was read" in established
+    assert "the manuscript prints 6: not found (pointer absent)" in established
+    assert "nothing at the declared path" in established
+    assert summary.startswith("3 assertions: 1 not found, 1 unchecked, 1 verified; 2 of 3 read ")
+
+
+def test_a_chain_of_two_commands_lists_both_and_the_file_under_them(tmp_path, capsys):
+    project = manifest(tmp_path, chain(tmp_path, 2), [claim("a2"), claim("a1")])
+    account = why(project, "on-a2")
+    assert [
+        (n.artifact, n.steps, n.regeneration.id if n.regeneration else None) for n in account.chain
+    ] == [
+        ("a2", 0, "ra2"),
+        ("a1", 1, "ra1"),
+        ("a0", 2, None),
+    ]
+    assert [n.command for n in account.chain] == [("make", "ra2"), ("make", "ra1"), ()]
+    assert sorted((e.kind, e.source, e.target) for e in account.edges) == [
+        ("consumes", "ra1", "a0"),
+        ("consumes", "ra2", "a1"),
+        ("produced_by", "a1", "ra1"),
+        ("produced_by", "a2", "ra2"),
+        ("reads", "on-a2", "a2"),
+    ]
+
+    put(tmp_path, "a0", step="edited")
+    account = why(project, "on-a2")
+    near, far, _ = account.chain
+    assert (near.state, near.regeneration.upstream, near.regeneration.distance) == (
+        Freshness.STALE,
+        "ra1",
+        1,
+    )
+    assert far.regeneration.causes == (StaleCause.INPUT_CHANGED,)
+    assert [f.regeneration for f in account.findings] == ["ra1"]
+
+    established, _, _ = printed(project, "on-a2", capsys)
+    assert "): stale\n      written by ra2: make ra2\n" in established
+    assert "upstream stale: ra1, 1 step up" in established
+    assert "): stale, 1 step up\n      written by ra1: make ra1\n" in established
+    assert "): no producer, 2 steps up\n      no command recorded" in established
+
+
+def test_the_json_document_is_the_account(tmp_path, capsys):
+    project = manifest(tmp_path, chain(tmp_path, 2), [claim("a2", reported="7")])
+    put(tmp_path, "a0", step="edited")
+    assert main(["why", "on-a2", str(project.path), "--format", "json"]) == 0
+    document = json.loads(capsys.readouterr().out)
+    account = ClaimAccount.model_validate(document)
+    assert account == why(project, "on-a2")
+    assert ClaimAccount.model_validate_json(account.model_dump_json()) == account
+    assert document["assertions"][0]["outcome"] == "mismatch"
+    assert [node["artifact"] for node in document["chain"]] == ["a2", "a1", "a0"]
+    assert all(set(line) == {"kind", "subject", "said"} for line in document["not_established"])
+    assert [line["kind"] for line in document["not_established"]] == [
+        "no_producer",
+        "undeclared_inputs",
+        "address",
+        "comparison",
+    ]
+
+
+def test_a_claim_the_manifest_does_not_declare_is_an_error_naming_the_near_ones(tmp_path, capsys):
+    put(tmp_path, "a0")
+    many = [claim("a0").model_copy(update={"id": f"claim-{i:02d}"}) for i in range(30)]
+    project = manifest(tmp_path, [], [*many, claim("a0")])
+
+    with pytest.raises(UnknownClaimError, match=r"nearest: on-a0$"):
+        why(project, "on-a")
+    with pytest.raises(UnknownClaimError) as raised:
+        why(project, "zzz")
+    listed = str(raised.value).partition("declared: ")[2]
+    assert listed == ", ".join(f"claim-{i:02d}" for i in range(MAX_LISTED)) + ", and 21 more"
+
+    assert main(["why", "on-a", str(project.path)]) == 2
+    assert capsys.readouterr().out.strip() == (
+        "the manifest declares no claim 'on-a'; nearest: on-a0"
+    )
+
+
+def test_with_no_claim_named_the_ids_are_listed(tmp_path, capsys, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    assert main(["why"]) == 2
+    assert "no repro.yaml here or above" in capsys.readouterr().out
+
+    manifest(tmp_path, chain(tmp_path, 1), [claim("a1"), claim("a0")])
+    assert main(["why"]) == 0
+    assert capsys.readouterr().out == "on-a1\non-a0\n"
+
+
+def test_the_command_writes_nothing_and_changes_no_other_report(tmp_path, capsys):
+    project = manifest(tmp_path, chain(tmp_path, 2), [claim("a2", reported="7")])
+    put(tmp_path, "a0", step="edited")
+    before = snapshot(tmp_path), verify(project), stale(project)
+    why(project, "on-a2")
+    assert main(["why", "on-a2", str(project.path)]) == 0
+    assert main(["why", "on-a2", str(project.path), "--format", "json"]) == 0
+    assert (snapshot(tmp_path), verify(project), stale(project)) == before

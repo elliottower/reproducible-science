@@ -243,6 +243,7 @@ source_modules = [
   "repro.regenerate",
   "repro.reproduce",
   "repro.stale",
+  "repro.why",
 ]
 forbidden_modules = [ "repro.integrations" ]
 
@@ -256,6 +257,8 @@ layers = [
   "repro.demo",
   "repro.renderers.sarif",
   "repro.policy",
+  # One claim's rows of what `stale` and the verifier report, so it sits on both.
+  "repro.why",
   # Reads what `reproduce` recorded and executes nothing, so it sits on the record's writer.
   "repro.stale",
   # Runs a declared command and puts the verifier's question to what it wrote, so it sits on
