@@ -358,6 +358,36 @@ records that digest beside the artifact digest, so it binds how a value was addr
 as what was read: a selector edited after the fact changes the record even where the file does
 not.
 
+## 3.7 The value as stored
+
+An adapter returns the stored value as text, and the comparison reads that text as an exact
+decimal. What the text is depends on what the format holds.
+
+| format | the value as stored |
+|---|---|
+| JSON, YAML | a number with a fraction or an exponent is the characters the file wrote for it, so `0.910` is `0.910`, `1e-7` is `1e-7`, and a value of twenty digits keeps all twenty; an integer is exact at any length; a quoted number is its text |
+| delimited text | the characters of the cell |
+| prose | the run of characters the anchors select in the extracted text |
+| a format that stores numbers in binary: Parquet, Feather, Arrow, Stata, SPSS, `.rds`, a workbook, SQLite, `.npy`, `.npz`, HDF5, NetCDF | the shortest decimal that reads back as the stored number at the width it is stored in |
+
+A tree file's number is never passed through a binary float. Read as one and printed back,
+`0.910` became `0.91`, `9007199254740993.0` became `9007199254740992.0`, a value of twenty
+significant digits became its nearest seventeen, and `1e400` became infinity. Three YAML forms
+have no decimal spelling and are read as the number they denote: `.inf` and `.nan`, which are
+`value_not_numeric`, and base-sixty `1:30.5`.
+
+A binary format holds no trailing zeros to preserve, so none are recovered from one: a
+double written from `0.910` is the double `0.91`.
+
+Trailing zeros in a file are kept and shown. Whether they count as precision follows from the
+comparison and not from the file. Against a literal, the precision is the manuscript's (§3.2):
+a file holding `0.910` verifies a manuscript printing `0.91`, since `0.910` rounded to two
+places is `0.91`, and a file holding `0.91` verifies one printing `0.910`, since the value it
+holds is that one. In a `correspondence` neither side is the manuscript and the comparison is at
+the coarser of the two precisions as written (§3.4), so there a file's trailing zeros are
+precision: `0.910` against `0.914` disagree at three places, and `0.91` against `0.914` agree
+at two.
+
 ## 4. Outcomes
 
 A check must execute, extract, and compare. Each stage fails differently, and the report
