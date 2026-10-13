@@ -20,6 +20,7 @@ from repro.core.outcomes import (
     RegistrationAuthority,
     Tie,
     Validity,
+    Warning_,
 )
 
 SCHEMA_VERSION = "repro/1"
@@ -346,6 +347,9 @@ class AssertionAccount(BaseModel):
     reason: Reason
     detail: str = ""
     state: Freshness
+    warnings: tuple[Warning_, ...] = ()
+    """The warnings on the decision, as `repro verify` lists them beside the assertion. A
+    warning qualifies an outcome and is not one: a `verified` assertion may carry any."""
     history: tuple[CheckedAssertion, ...] = ()
     """Each way the record of checks holds this assertion, oldest first: what it declared,
     the digest of each file read and the outcome, with when a check first found it so. Empty

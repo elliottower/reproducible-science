@@ -311,6 +311,7 @@ def why(
             reason=decision.reason,
             detail=decision.detail,
             state=node.state,
+            warnings=decision.warnings,
             history=recorded,
             now=None if not recorded or now.same_as(recorded[-1]) else now,
             formerly=tuple(
