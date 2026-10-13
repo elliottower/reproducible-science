@@ -649,7 +649,8 @@ def _steps(count: int | None) -> str:
 def _assertion_lines(assertion: AssertionAccount, paths: dict[str, str]) -> list[str]:
     """The pin of each file the assertion reads, the value at each address, and the outcome."""
     lines = []
-    for file in assertion.reads:
+    # A file read at two addresses is pinned once.
+    for file in {file.artifact: file for file in assertion.reads}.values():
         name = _named(file.artifact, paths)
         if file.validity is None:
             lines.append(f"{name}: the manifest declares no such artifact")
@@ -694,6 +695,13 @@ def _chain_lines(node: ChainNode, account: ClaimAccount, paths: dict[str, str]) 
             return ["no command recorded", "nothing at the declared path"]
         return ["no command recorded"]
     lines = [f"written by {record.id}: {shlex.join(node.command)}"]
+    reads = [
+        _named(edge.target, paths)
+        for edge in account.edges
+        if edge.kind == "consumes" and edge.source == record.id
+    ]
+    if reads:
+        lines.append(f"which reads {', '.join(reads)}")
     if StaleCause.CYCLE in record.causes:
         lines.append(f"{record.id} is on a cycle of commands, so it is compared with no re-run")
     elif record.rerun_at is None:
@@ -729,7 +737,7 @@ def _why_lines(account: ClaimAccount) -> list[str]:
     """The claim, what was computed from the record just now, what the record does not cover,
     and the counts."""
     paths = {node.artifact: node.path for node in account.chain}
-    lines = [account.claim_id, f"  {account.text}"]
+    lines = [account.claim_id, *(f"  {line}" for line in account.text.splitlines())]
     if account.where:
         lines.append(f"  {account.where}")
 
@@ -751,10 +759,10 @@ def _why_lines(account: ClaimAccount) -> list[str]:
         for line in account.not_established
     ]
 
-    outcomes = collections.Counter(assertion.outcome for assertion in account.assertions)
-    covered = collections.Counter(
-        a.state for a in account.assertions if a.state is not Freshness.NO_PRODUCER
-    )
+    outcomes = account.outcomes
+    covered = {
+        state: n for state, n in account.states.items() if state is not Freshness.NO_PRODUCER
+    }
     count = sum(covered.values())
     summary = (
         f"  {total} assertion{'' if total == 1 else 's'}: "
