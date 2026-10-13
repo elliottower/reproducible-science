@@ -130,7 +130,7 @@ def environment(root: pathlib.Path) -> Environment:
     )
 
 
-def _stored(evidence: Evidence, path: pathlib.Path) -> str | None:
+def stored(evidence: Evidence, path: pathlib.Path) -> str | None:
     """The value an assertion addresses in one file, as stored, or None where there is none."""
     locator = getattr(evidence, "locator", None)
     if locator is None or not path.is_file():
@@ -167,7 +167,7 @@ def _reading(
     after = check_evidence(
         claim, evidence, manifest, paths | {output: produced}, fresh_states, registry
     )
-    pinned, fresh = _stored(evidence, paths[output]), _stored(evidence, produced)
+    pinned, fresh = stored(evidence, paths[output]), stored(evidence, produced)
 
     if after.outcome is Outcome.VERIFIED:
         reading = Reading.HOLDS
@@ -274,4 +274,11 @@ def append(report: ReproductionReport, root: pathlib.Path) -> pathlib.Path:
     return target
 
 
-__all__ = ["RECORD", "UnknownRegenerationError", "append", "environment", "reproduce"]
+__all__ = [
+    "RECORD",
+    "UnknownRegenerationError",
+    "append",
+    "environment",
+    "reproduce",
+    "stored",
+]

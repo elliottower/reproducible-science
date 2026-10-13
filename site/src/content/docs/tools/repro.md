@@ -200,6 +200,51 @@ The summary says what each count is a count of:
 
 Under `--policy publication`, the default, a command that is stale, never rerun or undetermined is a warning. `exploratory` ignores the last two and `strict` fails on all three. A file with no producer is counted and never graded. `--format json` prints the report as a graph: claims, artifacts and regenerations, each with its state, the edges between them with the digests compared, and the findings. A pinned file that no longer matches its pin is a `BROKEN PIN`, which `repro verify` reports and this does not.
 
+## For one claim
+
+```bash
+repro why responders
+```
+
+`repro why` prints, for one claim, each assertion as `repro verify` evaluates it now and each file the claim rests on as `repro stale` finds it, and then what the record does not cover. It executes nothing, writes nothing and exits 0 for any claim the manifest declares: `repro verify` and `repro stale` are the checks that fail. With no claim id it lists the ids.
+
+Here a command `sum` writes `totals.json` from `counts.json` and `totals.py`, `repro reproduce` recorded one re-run of it, and `counts.json` was edited afterwards:
+
+```text
+repro.yaml
+
+responders
+  Thirty-five participants responded.
+
+established
+  assertion 1 of 1: metric responders
+    totals (totals.json): matches its pinned digest ce260cfba0a8
+    totals at /responders: holds 35
+    the manuscript prints 35: verified
+  chain
+    totals (totals.json): stale
+      written by sum: python3 totals.py
+      re-run of 2026-10-13T19:44:16+00:00 reproduced, and its output is the bytes now on disk
+      input changed: counts (counts.json): the re-run of 2026-10-13T19:44:16+00:00 read dfb342fd85a5, on disk b9109751e9cb
+    counts (counts.json): no producer, 1 step up
+      no command recorded
+    script (totals.py): no producer, 1 step up
+      no command recorded
+
+not established
+  counts.json: no command is recorded for it; its bytes are not the pinned ones and are taken as given
+  totals.py: no command is recorded for it; its bytes are pinned and taken as given
+  the inputs each command declares are the author's list; a file a command reads and does not declare is invisible
+  the address is the author's choice; nothing checks that it holds the quantity the sentence means
+  a verified assertion says the declared value or passage is in the file, not that the analysis is right
+
+  1 assertion: 1 verified; 1 of 1 reads a file with a recorded producer, 1 stale
+```
+
+Every line under `established` is computed from the files and the record of re-runs when the command runs: the pin of each file an assertion reads, the value at the declared address, the value the manuscript prints with the outcome `repro verify` gives, and then each file in the chain with the command that writes it, the re-run it was compared with, its state and the cause where it is not `current`. A `mismatch` is listed there too.
+
+Each line under `not established` names a file no command is recorded for, a command with no re-run that reproduced, or an assertion that was not checked. The last three lines are the same for every claim. `--format json` prints the same account as one document: the assertions, the chain with its edges and findings, and each `not_established` line with a `kind` and the file, command or assertion it names.
+
 ## What it reads
 
 A number is checked at an address the manifest declares, in the addressing the format already has:

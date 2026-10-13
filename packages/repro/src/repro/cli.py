@@ -6,6 +6,7 @@
     repro verify          check every evidence assertion in repro.yaml
     repro reproduce       run the declared commands again and check the numbers still hold
     repro stale           say which claims read a file changed since its recorded re-run
+    repro why             say what the record establishes for one claim, and what it does not
     repro check           run every tool this project uses, in one pass
     repro audit           clone a repository at a pinned commit and run every tool over it
     repro prereg          run `prereg`: freeze a plan, and record what deviated from it
@@ -22,10 +23,12 @@ from __future__ import annotations
 
 import argparse
 import collections
+import enum
 import functools
 import importlib
 import json
 import pathlib
+import shlex
 import subprocess
 from pathlib import Path
 
@@ -40,13 +43,17 @@ from repro.demo import demo
 from repro.exceptions import ReproError
 from repro.manifest import DEFAULT_NAME, find, load
 from repro.models import (
+    AssertionAccount,
     Availability,
+    ChainNode,
+    ClaimAccount,
     Freshness,
     Ordering,
     Outcome,
     Reading,
     Regeneration,
     StaleCause,
+    StaleFinding,
     StalenessReport,
     Validity,
 )
@@ -59,6 +66,7 @@ from repro.stale import stale as run_stale
 from repro.starter import CONVENTIONAL, MAX_DISCOVERED, project_root
 from repro.starter import write as write_starter
 from repro.verify import verify as run_verify
+from repro.why import why as run_why
 
 CLAUDE_MD = """\
 # {name}
@@ -482,8 +490,34 @@ def cmd_reproduce(args: argparse.Namespace) -> int:
     return 0 if assessment.passed else 1
 
 
-def _said(state: Freshness | StaleCause) -> str:
+def _said(state: enum.StrEnum) -> str:
     return state.value.replace("_", " ")
+
+
+def _named(artifact_id: str, paths: dict[str, str]) -> str:
+    path = paths.get(artifact_id, "")
+    return f"{artifact_id} ({path})" if path and path != artifact_id else artifact_id
+
+
+def _finding_said(found: StaleFinding, paths: dict[str, str]) -> str:
+    """One difference from a recorded re-run, as a clause."""
+
+    def digests(verb: str) -> str:
+        return (
+            f"the re-run of {found.rerun_at} {verb} {(found.observed or 'nothing')[:12]}, "
+            f"on disk {(found.on_disk or 'nothing')[:12]}"
+        )
+
+    cause = _said(found.cause)
+    if found.cause is StaleCause.INPUT_CHANGED:
+        return f"{cause}: {_named(found.artifact, paths)}: {digests('read')}"
+    if found.cause is StaleCause.OUTPUT_CHANGED:
+        return f"{cause}: {_named(found.artifact, paths)}: {digests('wrote')}"
+    if found.cause is StaleCause.COMMAND_CHANGED:
+        return f"{cause} since the re-run of {found.rerun_at}"
+    if found.cause is StaleCause.CYCLE:
+        return f"{cause}: {found.regeneration} is upstream of itself"
+    return f"{cause}: {_named(found.artifact, paths)}"
 
 
 def _stale_lines(report: StalenessReport) -> list[str]:
@@ -492,29 +526,9 @@ def _stale_lines(report: StalenessReport) -> list[str]:
     paths = {artifact.id: artifact.path for artifact in report.artifacts}
     outputs = {node.id: node.artifact for node in report.regenerations}
 
-    def named(artifact_id: str) -> str:
-        path = paths.get(artifact_id, "")
-        return f"{artifact_id} ({path})" if path and path != artifact_id else artifact_id
-
-    def digests(verb: str, found) -> str:
-        return (
-            f"the re-run of {found.rerun_at} {verb} {(found.observed or 'nothing')[:12]}, "
-            f"on disk {(found.on_disk or 'nothing')[:12]}"
-        )
-
     lines = []
     for found in report.findings:
-        cause = _said(found.cause)
-        if found.cause is StaleCause.INPUT_CHANGED:
-            said = f"{cause}: {named(found.artifact)}: {digests('read', found)}"
-        elif found.cause is StaleCause.OUTPUT_CHANGED:
-            said = f"{cause}: {named(found.artifact)}: {digests('wrote', found)}"
-        elif found.cause is StaleCause.COMMAND_CHANGED:
-            said = f"{cause} since the re-run of {found.rerun_at}"
-        elif found.cause is StaleCause.CYCLE:
-            said = f"{cause}: {found.regeneration} is upstream of itself"
-        else:
-            said = f"{cause}: {named(found.artifact)}"
+        said = _finding_said(found, paths)
         label = (
             "UNDETERMINED"
             if found.cause
@@ -537,7 +551,7 @@ def _stale_lines(report: StalenessReport) -> list[str]:
     for note in report.record_disagrees_with_pin:
         lines.append(
             f"  {'note':<13} {note.regeneration}: record disagrees with pin: "
-            f"{named(note.artifact)}: the record names {note.recorded[:12]}, "
+            f"{_named(note.artifact, paths)}: the record names {note.recorded[:12]}, "
             f"the manifest pins {note.pinned[:12]}"
         )
     if lines:
@@ -626,6 +640,155 @@ def cmd_stale(args: argparse.Namespace) -> int:
         f"  ({len(assessment.errors)} errors, {len(assessment.warnings)} warnings)"
     )
     return 0 if assessment.passed else 1
+
+
+def _steps(count: int | None) -> str:
+    return f"{count} step{'' if count == 1 else 's'} up"
+
+
+def _assertion_lines(assertion: AssertionAccount, paths: dict[str, str]) -> list[str]:
+    """The pin of each file the assertion reads, the value at each address, and the outcome."""
+    lines = []
+    for file in assertion.reads:
+        name = _named(file.artifact, paths)
+        if file.validity is None:
+            lines.append(f"{name}: the manifest declares no such artifact")
+        elif file.validity is Validity.ARTIFACT_ABSENT:
+            lines.append(f"{name}: nothing at the declared path")
+        elif file.validity is Validity.UNPINNED_ARTIFACT:
+            lines.append(f"{name}: no digest is pinned, on disk {(file.on_disk or '')[:12]}")
+        elif file.validity is Validity.BROKEN_PIN:
+            lines.append(
+                f"{name}: does not match its pinned digest: pinned "
+                f"{(file.pinned or '')[:12]}, on disk {(file.on_disk or '')[:12]}"
+            )
+        else:
+            lines.append(f"{name}: matches its pinned digest {(file.pinned or '')[:12]}")
+    for file in assertion.reads:
+        if file.address:
+            side = f"{file.side}: " if file.side else ""
+            held = f"holds {file.stored}" if file.stored is not None else "no value was read"
+            lines.append(f"{side}{file.artifact} at {file.address}: {held}")
+
+    outcome = _said(assertion.outcome)
+    if assertion.outcome not in (Outcome.VERIFIED, Outcome.MISMATCH):
+        outcome += f" ({_said(assertion.reason)})"
+    if assertion.kind == "quote":
+        passage = assertion.printed or ""
+        shown = passage if len(passage) <= 60 else f"{passage[:60]}..."
+        within = assertion.reads[0].artifact if assertion.reads else "the artifact"
+        lines.append(f'the passage "{shown}" in {within}: {outcome}')
+    elif assertion.printed is not None:
+        lines.append(f"the manuscript prints {assertion.printed}: {outcome}")
+    else:
+        lines.append(f"the two sides compared: {outcome}")
+    return lines
+
+
+def _chain_lines(node: ChainNode, account: ClaimAccount, paths: dict[str, str]) -> list[str]:
+    """One file the claim rests on: what writes it, the re-run it was compared with, and each
+    difference from that re-run."""
+    record = node.regeneration
+    if record is None:
+        if node.validity is Validity.ARTIFACT_ABSENT:
+            return ["no command recorded", "nothing at the declared path"]
+        return ["no command recorded"]
+    lines = [f"written by {record.id}: {shlex.join(node.command)}"]
+    if StaleCause.CYCLE in record.causes:
+        lines.append(f"{record.id} is on a cycle of commands, so it is compared with no re-run")
+    elif record.rerun_at is None:
+        lines.append(f"no re-run of {record.id} that reproduced is recorded")
+    else:
+        wrote = next(
+            edge
+            for edge in account.edges
+            if edge.kind == "produced_by" and edge.target == record.id
+        )
+        lines.append(
+            f"re-run of {record.rerun_at} reproduced"
+            + (
+                ""
+                if wrote.observed != wrote.on_disk
+                else ", and its output is what is now on disk outside the fields "
+                f"{', '.join(node.volatile)}"
+                if node.volatile
+                else ", and its output is the bytes now on disk"
+            )
+        )
+    lines += [
+        _finding_said(found, paths) for found in account.findings if found.regeneration == record.id
+    ]
+    if record.upstream:
+        lines.append(
+            f"upstream {_said(record.state)}: {record.upstream}, {_steps(record.distance)}"
+        )
+    return lines
+
+
+def _why_lines(account: ClaimAccount) -> list[str]:
+    """The claim, what was computed from the record just now, what the record does not cover,
+    and the counts."""
+    paths = {node.artifact: node.path for node in account.chain}
+    lines = [account.claim_id, f"  {account.text}"]
+    if account.where:
+        lines.append(f"  {account.where}")
+
+    lines += ["", "established"]
+    total = len(account.assertions)
+    for number, assertion in enumerate(account.assertions, start=1):
+        lines.append(f"  assertion {number} of {total}: {assertion.kind} {assertion.name}".rstrip())
+        lines += [f"    {line}" for line in _assertion_lines(assertion, paths)]
+    if account.chain:
+        lines.append("  chain")
+    for node in account.chain:
+        where = f", {_steps(node.steps)}" if node.steps else ""
+        lines.append(f"    {_named(node.artifact, paths)}: {_said(node.state)}{where}")
+        lines += [f"      {line}" for line in _chain_lines(node, account, paths)]
+
+    lines += ["", "not established"]
+    lines += [
+        f"  {line.subject}: {line.said}" if line.subject else f"  {line.said}"
+        for line in account.not_established
+    ]
+
+    outcomes = collections.Counter(assertion.outcome for assertion in account.assertions)
+    covered = collections.Counter(
+        a.state for a in account.assertions if a.state is not Freshness.NO_PRODUCER
+    )
+    count = sum(covered.values())
+    summary = (
+        f"  {total} assertion{'' if total == 1 else 's'}: "
+        + (", ".join(f"{n} {_said(outcome)}" for outcome, n in outcomes.items()) or "none")
+        + f"; {count} of {total} read{'s' if count == 1 else ''} a file with a recorded producer"
+        + "".join(f", {n} {_said(state)}" for state, n in covered.items())
+    )
+    return [*lines, "", summary]
+
+
+def cmd_why(args: argparse.Namespace) -> int:
+    # `repro why repro.yaml` names a manifest, as the first argument of the sibling commands
+    # does, and lists its claims.
+    if args.manifest is None and args.claim and Path(args.claim).suffix in (".yaml", ".yml"):
+        args.manifest, args.claim = args.claim, None
+    path = Path(args.manifest) if args.manifest else find()
+    if path is None:
+        print(f"no {DEFAULT_NAME} here or above.\n")
+        print("write one that pins this project's result files, with example claims to edit:\n")
+        print("    repro manifest init")
+        return 2
+    manifest = load(path)
+    if args.claim is None:
+        ids = [claim.id for claim in manifest.claims]
+        print(json.dumps(ids, indent=2) if args.format == "json" else "\n".join(ids))
+        return 0
+
+    account = run_why(manifest, args.claim)
+    if args.format == "json":
+        print(json.dumps(account.model_dump(mode="json"), indent=2))
+        return 0
+    print(f"{path}\n")
+    print("\n".join(_why_lines(account)))
+    return 0
 
 
 def cmd_check(args) -> int:
@@ -787,6 +950,22 @@ def main(argv: list[str] | None = None) -> int:
     p_stale.add_argument("--policy", choices=sorted(PROFILES), default="publication")
     p_stale.add_argument("--format", choices=("text", "json"), default="text")
     p_stale.set_defaults(func=cmd_stale)
+
+    p_why = sub.add_parser(
+        "why",
+        help="say what the record establishes for one claim, and what it does not",
+        description=(
+            f"For one claim in {DEFAULT_NAME}: each assertion as `repro verify` evaluates it now, "
+            "each file the claim reads and each file upstream of one as `repro stale` finds it, "
+            "and then what the record does not cover. Executes nothing and writes nothing. Exits "
+            "0 whatever it finds; `repro verify` and `repro stale` are the checks that fail. With "
+            "no claim, lists the claim ids."
+        ),
+    )
+    p_why.add_argument("claim", nargs="?", help="a claim id (default: list the ids)")
+    p_why.add_argument("manifest", nargs="?", help=f"path to {DEFAULT_NAME}")
+    p_why.add_argument("--format", choices=("text", "json"), default="text")
+    p_why.set_defaults(func=cmd_why)
 
     p_check = sub.add_parser(
         "check",
