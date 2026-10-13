@@ -1,0 +1,1 @@
+The worked example of a number in a printed table, in the `repro` skill, the starter manifest and the specification, uses an invented table. The conformance fixtures for the `prose` locator carry the same table.

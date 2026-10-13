@@ -5,7 +5,7 @@ artifacts:
   path: output.txt
   digest:
     algorithm: sha256
-    value: 0e87dae0cbcf4347251a144fc9e2c59644cc91f66698850f5985584aca2e23c8
+    value: 59c04c12976beb4739a66cfbc20383dbca5303f8f9e3493afebfc2c543de2652
 claims:
 - id: c
   text: t
@@ -13,9 +13,9 @@ claims:
   - kind: value
     artifact: out
     name: delta
-    reported: '0.45'
+    reported: '0.31'
     locator:
       kind: prose
-      before: '| 3|'
-      after: 9|
+      before: '| 7|'
+      after: 8|
       form: decimal

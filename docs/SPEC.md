@@ -257,14 +257,14 @@ locator: {kind: prose, before: "suite holds", after: "fixtures", form: cardinal_
 With no `after`, the value is the whole run up to the next whitespace. With one, it is the
 whole run where `after` begins past it, and otherwise the run cut at the first place inside it
 where `after` begins. A character printed against the value is therefore removed by naming it.
-A cell of a printed table is glued to its divider, `| 3| 0.459| 0.124|`, and is addressed by
+A cell of a printed table is glued to its divider, `| 7| 0.318| 0.107|`, and is addressed by
 the row's leading cells and the divider; a number closing a sentence, `3.14.`, by the full
 stop.
 
 **An anchor never splits a number.** `after` may not begin, and `before` may not end, inside
 a number: digits, with a decimal point, a grouping comma or underscore, or an exponent between
-them. `after: "9"` over `0.459 rows` reads nothing where a cut would read `0.45`, the first
-full stop of `3.14.` is passed over for the second, and `before: "0.4"` does not read `59`. An
+them. `after: "8"` over `0.318 rows` reads nothing where a cut would read `0.31`, the first
+full stop of `3.14.` is passed over for the second, and `before: "0.3"` does not read `18`. An
 occurrence refused this way yields no value, so where no other occurrence resolves the
 assertion is `passage_absent` and its detail names the number the anchor would have split.
 Digits attached to a preceding letter, as in `v0.5` or `H10`, are a name and not a number, so
@@ -273,10 +273,10 @@ it: `before: "x=-"` reads nothing from `x=-0.42`, and `before: "10-"` still read
 `10-12`.
 
 ```yaml
-locator: {kind: prose, before: "| 3|", after: "|"}      # 0.459
+locator: {kind: prose, before: "| 7|", after: "|"}      # 0.318
 ```
 
-With `after` omitted the same cell is the run `0.459|`, which is `value_not_numeric`. Nothing
+With `after` omitted the same cell is the run `0.318|`, which is `value_not_numeric`. Nothing
 is stripped that the locator did not name.
 
 Two alternatives were available and are worse under this document's own rules. A capture-group

@@ -65,7 +65,7 @@ CARDINALS = _cardinals()
 #:
 #: A match counts only where no letter stands immediately before it. Digits attached to a
 #: letter are part of a name -- the version `v0.5`, the label `H10` -- and an anchor may fall
-#: among them. Punctuation does not make a name: `x=0.459`, `(0.459` and `p<0.05` hold numbers,
+#: among them. Punctuation does not make a name: `x=0.318`, `(0.318` and `p<0.05` hold numbers,
 #: and so does a number with letters after it, `5kg`.
 #:
 #: A sign immediately before the digits belongs to the number where it opens the run or follows
@@ -194,12 +194,12 @@ def _spans(text: str, before: str, after: str) -> tuple[list[str], list[str]]:
     The value is a run of non-whitespace characters. With no `after` it is the whole run up to
     the next whitespace. With one, the whole run is taken where `after` begins past it, and
     otherwise the run is cut at the first place inside it where `after` begins: a cell printed
-    against its divider, `0.459|`, or a number closing a sentence, `3.14.`, is delimited by
+    against its divider, `0.318|`, or a number closing a sentence, `3.14.`, is delimited by
     the anchor that touches it and by nothing the engine guessed.
 
-    Neither anchor may fall inside a number. `after: "9"` does not read `0.459` as `0.45`, the
-    first full stop in `3.14.` is passed over for the second, and `before: "0.4"` does not
-    read `59`. An occurrence refused on those grounds yields no value, and the number it
+    Neither anchor may fall inside a number. `after: "8"` does not read `0.318` as `0.31`, the
+    first full stop in `3.14.` is passed over for the second, and `before: "0.3"` does not
+    read `18`. An occurrence refused on those grounds yields no value, and the number it
     would have split is returned so the report can say why. Digits attached to a preceding
     letter are a name, so `before: "v0."` reads `5` from `v0.5`. A sign is part of its number
     unless a digit or a letter precedes it, so `before: "x=-"` reads nothing from `x=-0.42`
