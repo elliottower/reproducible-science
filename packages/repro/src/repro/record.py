@@ -55,14 +55,11 @@ from repro.models import (
     QuoteEvidence,
     Reason,
     Regeneration,
-    RegenerationReason,
     RegenerationState,
-    StaleCause,
     StalenessReport,
     TableCellEvidence,
     Validity,
     ValueEvidence,
-    Warning_,
 )
 from repro.regenerate import upstream
 from repro.reproduce import stored
@@ -340,7 +337,7 @@ class Rerun(BaseModel):
     """When the invocation that ran the command started and ended. The command ran between
     the two; `duration_seconds` is its own."""
     state: Regeneration
-    reason: RegenerationReason
+    reason: str = ""
     checker_version: str = ""
     exit_code: int | None = None
     duration_seconds: float | None = None
@@ -361,7 +358,7 @@ class Command(BaseModel):
     output: FileState
     inputs: tuple[FileState, ...] = ()
     state: Freshness
-    causes: tuple[StaleCause, ...] = ()
+    causes: tuple[str, ...] = ()
     last_rerun: Rerun | None = None
     """The latest re-run of the command that the record of re-runs holds, whatever it found.
     None where none is recorded."""
@@ -418,7 +415,8 @@ class CheckRecord(BaseModel):
     """The three stages this tool derives its outcome from. None in a record written from a
     tool that reports none."""
     reader: Reader = Reader()
-    warnings: tuple[Warning_, ...] = ()
+    warnings: tuple[str, ...] = ()
+    """The checker's own notes on the evidence, as it words them."""
     execution: Execution | None = None
     """Present only where a declared command writes a file the assertion reads."""
     history: History | None = None
@@ -552,7 +550,7 @@ def _rerun(when: tuple[str, str, str], entry: RegenerationState) -> Rerun:
         started_at=started_at,
         ended_at=ended_at,
         state=entry.state,
-        reason=entry.reason,
+        reason=entry.reason.value,
         checker_version=version,
         exit_code=entry.exit_code,
         duration_seconds=entry.duration_seconds,
@@ -595,7 +593,7 @@ def _execution(
                     for wanted in records[record_id].inputs
                 ),
                 state=nodes[record_id].state,
-                causes=nodes[record_id].causes,
+                causes=tuple(cause.value for cause in nodes[record_id].causes),
                 last_rerun=latest.get(record_id),
             )
             for record_id in sorted(steps, key=steps.__getitem__)
@@ -698,7 +696,7 @@ def check_records(
                             tool_version=decision.tool_version,
                             extraction_digest=decision.extraction_digest,
                         ),
-                        warnings=decision.warnings,
+                        warnings=tuple(warning.value for warning in decision.warnings),
                         execution=_execution(
                             evidence, freshness.state, manifest, states, report, latest
                         ),

@@ -157,7 +157,7 @@
         "causes": {
           "default": [],
           "items": {
-            "$ref": "#/$defs/StaleCause"
+            "type": "string"
           },
           "title": "Causes",
           "type": "array"
@@ -607,29 +607,6 @@
       "title": "Regeneration",
       "type": "string"
     },
-    "RegenerationReason": {
-      "enum": [
-        "output_matches",
-        "claims_hold",
-        "claim_changed",
-        "claim_unreadable",
-        "no_claim_reads_output",
-        "skipped",
-        "input_unpinned",
-        "input_changed",
-        "input_missing",
-        "command_failed",
-        "command_timed_out",
-        "output_not_produced",
-        "output_unpinned",
-        "output_not_the_artifact",
-        "output_is_also_an_input",
-        "output_outside_sandbox",
-        "runner_unavailable"
-      ],
-      "title": "RegenerationReason",
-      "type": "string"
-    },
     "Rerun": {
       "additionalProperties": true,
       "description": "One witnessed re-run of a command, as `repro reproduce` recorded it.",
@@ -681,7 +658,9 @@
           "title": "Output Digest"
         },
         "reason": {
-          "$ref": "#/$defs/RegenerationReason"
+          "default": "",
+          "title": "Reason",
+          "type": "string"
         },
         "started_at": {
           "default": "",
@@ -693,8 +672,7 @@
         }
       },
       "required": [
-        "state",
-        "reason"
+        "state"
       ],
       "title": "Rerun",
       "type": "object"
@@ -721,21 +699,6 @@
       "title": "Stages",
       "type": "object"
     },
-    "StaleCause": {
-      "description": "Why a regeneration is not current.",
-      "enum": [
-        "input_changed",
-        "command_changed",
-        "output_changed",
-        "upstream_stale",
-        "input_missing",
-        "output_missing",
-        "cycle",
-        "later_rerun_did_not_reproduce"
-      ],
-      "title": "StaleCause",
-      "type": "string"
-    },
     "Validity": {
       "description": "Whether a decision describes the artifact the manifest declared.",
       "enum": [
@@ -745,19 +708,6 @@
         "artifact_absent"
       ],
       "title": "Validity",
-      "type": "string"
-    },
-    "Warning_": {
-      "description": "Notes about the evidence itself, orthogonal to the outcome.",
-      "enum": [
-        "short",
-        "truncated",
-        "normalized",
-        "wrong_page",
-        "page_unchecked",
-        "positional_address"
-      ],
-      "title": "Warning_",
       "type": "string"
     }
   },
@@ -886,7 +836,7 @@
     "warnings": {
       "default": [],
       "items": {
-        "$ref": "#/$defs/Warning_"
+        "type": "string"
       },
       "title": "Warnings",
       "type": "array"

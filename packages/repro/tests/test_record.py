@@ -597,7 +597,7 @@ def test_an_input_edited_after_the_rerun_leaves_the_assertion_stale(project):
     (project / "counts.json").write_text('{"a": 21, "b": 15}\n')
     _, metric = check_records(load(project / "repro.yaml"), WHEN)
     assert metric.execution.state.value == "stale"
-    assert [cause.value for cause in metric.execution.commands[0].causes] == ["input_changed"]
+    assert metric.execution.commands[0].causes == ("input_changed",)
     assert metric.execution.commands[0].inputs[0].validity.value == "broken_pin"
     assert metric.native_outcome == "verified", "staleness is not an outcome"
 
