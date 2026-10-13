@@ -9,6 +9,8 @@ import enum
 
 from pydantic import BaseModel, ConfigDict
 
+from repro.core.evidence import Conversion
+
 SCHEMA_VERSION = "repro/1"
 
 _SHA256_HEX = r"^[a-f0-9]{64}$"
@@ -162,6 +164,11 @@ class Reason(enum.StrEnum):
     WRONG_PAGE = "wrong_page"
     """The passage occurs in the artifact, on a different page than the one asserted."""
     VALUE_NOT_NUMERIC = "value_not_numeric"
+    PLACES_MISMATCH = "places_mismatch"
+    """The assertion declares how many decimal places the manuscript reports the value to,
+    and the value as printed is written to another number. Distinct from `value_mismatch`
+    because the file is not what disagrees: the two statements about the manuscript do, and
+    the fix is in the manuscript or in the declaration."""
     PASSAGE_AMBIGUOUS = "passage_ambiguous"
     """One pair of prose anchors selected two different values, so the document states two
     numbers where the assertion addresses one. Reported rather than resolved to the first: a
@@ -211,6 +218,26 @@ class Warning_(enum.StrEnum):
     """Addressed by row index, which names a different cell if the table is reordered."""
 
 
+class Tie(BaseModel):
+    """A compared value exactly halfway between two values at the comparison precision.
+
+    Rounding half up prints one neighbor and rounding half to even may print the other, and
+    software is divided between the two, so a manuscript printing either has rounded
+    correctly. Both verify. The record says that it was a tie, so the acceptance is visible
+    and is not mistaken for an ordinary agreement.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    lower: str
+    upper: str
+    """The two values the compared one lies halfway between, at the printed precision."""
+
+    printed: str
+    """The value the manuscript prints. `lower` or `upper` where the assertion verified, and
+    neither where it is a mismatch."""
+
+
 class DecisionSide(BaseModel):
     """What one side of a two-sided assertion read, and where it read it.
 
@@ -230,6 +257,13 @@ class DecisionSide(BaseModel):
     extracted: str | None = None
     """The value read, in the representation the artifact used. `None` where this side did
     not extract, which is why the decision reports no comparison."""
+
+    conversion: Conversion | None = None
+    """The conversion this side declares, or None."""
+
+    converted: str | None = None
+    """`extracted` under `conversion`, which is the value compared. None where no conversion
+    is declared, or where the side read no number to convert."""
 
     extraction_digest: str = ""
     """sha256 of what this side's extractor produced. `unknown` where the side produced
@@ -266,6 +300,22 @@ class Decision(BaseModel):
     """The digest of the canonical locator, so a decision binds how the value was addressed
     as well as what was read. A selector edited after the fact changes this even where the
     artifact is untouched."""
+
+    extracted: str | None = None
+    """The value read from the one artifact, in the representation the artifact used. None
+    where no value was read, and for a kind that reads no value or reads two: a
+    `correspondence` records what each side read in `sides`."""
+
+    conversion: Conversion | None = None
+    """The conversion the assertion declares, or None."""
+
+    converted: str | None = None
+    """`extracted` under `conversion`, which is the value compared with the printed one. None
+    where no conversion is declared, or where no number was read to convert."""
+
+    tie: Tie | None = None
+    """Set where the compared value lay exactly halfway between two values at the printed
+    precision. None otherwise, and under `absolute` and `relative`, which round nothing."""
 
     sides: tuple[DecisionSide, ...] = ()
     """The two values a `correspondence` compared, each with the artifact and locator it came
