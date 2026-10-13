@@ -16,6 +16,7 @@ import random
 import pytest
 import yaml
 from pydantic import ValidationError
+from repro.checks import checked
 from repro.cli import main
 from repro.exceptions import ManifestError
 from repro.manifest import load
@@ -921,3 +922,14 @@ def test_why_shows_a_converted_mean_at_a_tie_with_its_declared_places(tmp_path, 
     (line,) = [line for line in capsys.readouterr().out.splitlines() if line.startswith("  ok")]
     assert "aggregate accuracy: mean of 2 as a percentage = 18.15" in line
     assert "  [exact tie: 18.1 or 18.2]" in line
+
+
+def test_the_check_record_names_every_member_and_the_bytes_it_read(tmp_path):
+    manifest = load(project(tmp_path))
+    (claim,) = manifest.claims
+    (state,) = checked(claim, verify(manifest).claims[0].decisions)
+    assert (state.kind, state.printed, state.outcome) == ("aggregate", "0.914", Outcome.VERIFIED)
+    assert state.address == "; ".join(f"seed-{n} at /accuracy" for n in range(10))
+    assert state.digests == {
+        f"seed-{n}": Digest.of_file(tmp_path / f"seed-{n}.json").value for n in range(10)
+    }

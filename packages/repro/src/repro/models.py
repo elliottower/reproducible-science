@@ -40,6 +40,7 @@ so `from repro.models import X` continues to name the same objects.
 from __future__ import annotations
 
 from repro.core.artifacts import SCHEMA_VERSION, ArtifactRef, Digest
+from repro.core.checks import CheckedAssertion, CheckRecord, RecordState
 from repro.core.claims import Availability, Claim, Registration
 from repro.core.evidence import (
     AggregateEvidence,
@@ -140,6 +141,8 @@ __all__ = [
     "AssertionNode",
     "Availability",
     "ChainNode",
+    "CheckRecord",
+    "CheckedAssertion",
     "Claim",
     "ClaimAccount",
     "ClaimAssessment",
@@ -181,6 +184,7 @@ __all__ = [
     "QuoteEvidence",
     "Reading",
     "Reason",
+    "RecordState",
     "Regeneration",
     "RegenerationNode",
     "RegenerationReason",

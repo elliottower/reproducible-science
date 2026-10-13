@@ -151,6 +151,33 @@ repro verify
 
 Reads `repro.yaml` and checks every declared evidence assertion against the artifact it names. It spawns nothing: `prereg`, `results` and `citations` are separate commands.
 
+It changes nothing in the working tree. It does keep a record of what it checked. For every assertion whose `reported` value or passage, address, claim text, artifact digest or outcome differs from the last entry recorded for it, one entry is appended: what the assertion declared, the digest of each file it read, the outcome, and when. A check that finds every assertion as it was last recorded adds nothing, so the record grows with changes and not with runs. `repro why <claim-id>` reads it back.
+
+| | local record | tracked record |
+|---|---|---|
+| where | `repro/checks.jsonl` in the repository's git directory, the one `git rev-parse --absolute-git-dir` names, so a linked worktree has its own | `.repro/checks.jsonl` in the working tree, beside the record of re-runs |
+| written | by every `repro verify` in a git repository | by `repro verify --record`, which brings it up to the local record entry for entry |
+| reaches | this clone only; it is never committed, as git's reflog is not | whoever has the repository, once committed with its head file `.repro/ledger.head` |
+
+```bash
+repro verify --record
+```
+
+Ask for the tracked record where the history should travel: in the project's own CI job that commits it, or before a release. A clone that finds a tracked record longer than its local one takes the entries it lacks, and goes on from there. Outside a git repository there is no local record, `repro verify` records nothing and says nothing of it, and `--record` appends to the tracked record directly. `repro audit` keeps no record in the clones it reads.
+
+What the command prints on standard output and the code it exits with are the same whatever the record holds. Where a record cannot be written, one line on standard error says so and why, and the exit code is still the verification's:
+
+```text
+record not written: .git/repro/checks.jsonl: refusing to append to a chain reported as edited: entry 2 does not hash to what entry 3 recorded for the entry before it
+record not written: .repro/checks.jsonl: diverges from the local record at entry 2
+```
+
+Each entry carries its position and the SHA-256 of the entry before it, and a head file beside the record holds the number of entries and the hash of the last. These are the fields and the writer of the `results` ledger. An append holds a lock across reading the last entry and writing the next, so two checks at once write one entry after the other, and nothing is appended to a chain that does not verify. `repro why` reports an entry that was edited, removed from the middle or renumbered, with its number, shows the entries from there on as the record holds them, marked `[unverifiable]`, and says where a tracked record stops being the local one's beginning.
+
+The limits are these. The chain shows an edit or a deletion inside a record. Entries cut from the end are found while the head file is as it was. A record and its head file cut back together, or deleted together and grown again, read as a shorter or a new record, and nothing inside the two files can show it. The local record has no witness outside its directory. Committing the tracked record with its head file is what makes a truncation visible, to anyone who has the repository's history and compares the heads in it. Nothing is signed or timestamped by a third party, and whoever can write the files and rewrite the history can rewrite the record. A broken record is reported and never changes what `repro verify` exits with, under any policy.
+
+An assertion is followed across edits by its claim's id, its kind, its name, and its position among the claim's assertions of that kind and name. A claim given another id starts a new history. Where the last recorded state of an assertion of a claim that is no longer declared was not `verified`, `repro why` says so under any assertion that now reads the same artifact at the same address.
+
 ## Run it again
 
 ```bash
@@ -241,6 +268,19 @@ not established
 
   1 assertion: 1 verified; 1 of 1 reads a file with a recorded producer, 1 stale
 ```
+
+Where an assertion has been checked in more than one state, its lines end with the record of those checks. Here the manifest reported `0.92`, `repro verify` found a mismatch, and `reported` was then edited to the value in the file:
+
+```text
+  assertion 1 of 1: metric accuracy
+    results (results.json): matches its pinned digest 28943e35cdd3
+    results at /acc: holds 0.91
+    the manuscript prints 0.91: verified
+    checked 2026-10-13T21:59:49.971111+00:00: reported 0.92 at /acc, results 28943e35cdd3: mismatch
+    since 2026-10-13T21:59:53.664668+00:00: reported 0.91 at /acc, results 28943e35cdd3: verified (after mismatch: reported changed)
+```
+
+Each line is one state `repro verify` recorded: `checked` for an earlier one and `since` for the one that still holds, with what changed from the state before it, out of `claim text`, `reported` or `passage`, `address`, `conversion` and `file`, and the outcome that state had. An assertion edited since the last recorded check is shown as `now`, and says no check of it is recorded. An assertion recorded in one state that still holds prints nothing more, and neither does a repository with no record yet. A claim renamed after a check that did not verify leaves one line under the assertion that took its place, `a claim named accuracy was last checked 2026-10-13T21:58:52.102063+00:00 at this address: mismatch, and is no longer declared`. Outside a git repository the account says `no local record is kept here: not in a git repository`, under `record of checks`, where a record that does not verify is also named. The JSON carries every recorded state under `history`, the unrecorded one under `now`, a renamed claim's last state under `formerly`, and each record's state under `records`.
 
 Every line under `established` is computed from the files and the record of re-runs when the command runs: the pin of each file an assertion reads, the value at the declared address, the value the manuscript prints with the outcome `repro verify` gives, and then each file in the chain with the command that writes it, the re-run it was compared with, its state and the cause where it is not `current`. A `mismatch` is listed there too.
 
@@ -455,7 +495,7 @@ repos:
 declared number no longer matches the artifact behind it. Use `repro-verify-strict` to fail on
 a check that could not run as well as one that disagreed.
 
-Verifying writes nothing. `test_read_only.py` asserts that a verification creates no files,
+Verifying writes nothing to the working tree. `test_read_only.py` asserts that a verification creates no files,
 modifies none, and still writes nothing when it fails, which is what makes it safe to run
 inside a commit: a verifier that could edit an artifact is one that could be made to edit an
 artifact into agreeing with the claim.

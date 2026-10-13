@@ -74,9 +74,12 @@ sources.prereg = { workspace = true }
 sources.results-cli = { workspace = true }
 
 [tool.deptry]
-# invoked as subprocesses by `repro init`, so no import graph can see it. Named
+# invoked as a subprocess by `repro init`, so no import graph can see it. Named
 # here rather than silenced globally: a genuinely unused dependency should still be reported.
-per_rule_ignores.DEP002 = [ "prereg", "results-cli" ]
+per_rule_ignores.DEP002 = [ "prereg" ]
+# `repro.checks` appends with the ledger's writer, and the distribution is not named for its
+# module.
+package_module_name_map = { results-cli = "results" }
 # Without this every intra-package import reads as a transitive dependency on itself.
 known_first_party = [ "repro" ]
 # The Claude Code plugin is not part of this distribution -- it ships through a marketplace,

@@ -256,6 +256,8 @@ directory, the freeze goes ahead.
 - Before submitting a draft, over the whole manifest
 - After regenerating results, to see which claims moved
 - To run the declared commands again and see whether the printed numbers survive: `repro reproduce`
+- To see what a claim said at each check before it was edited: `repro why <claim-id>`, which reads the record every `repro verify` keeps in the git directory
+- In the project's CI job or before a release, so that record travels with the repository: `repro verify --record`, then commit `.repro/checks.jsonl` and `.repro/ledger.head`
 - After editing an input or a script, before trusting a green verify: `repro stale`
 - For one claim, what the record establishes and what it does not: `repro why <claim-id>`
 - To count every number the manuscript prints, and which no claim accounts for: `repro numbers`
