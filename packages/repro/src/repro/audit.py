@@ -215,7 +215,8 @@ def default_steps(root: pathlib.Path, layout: Layout) -> list[StepSpec]:
             )
             for name, rel in bibs.items()
         ),
-        StepSpec(name="repro.verify", argv=["repro", "verify", *manifest]),
+        # An audit reads the clone, so the check is not added to the clone's record of checks.
+        StepSpec(name="repro.verify", argv=["repro", "verify", "--no-record", *manifest]),
     ]
 
 

@@ -6,7 +6,11 @@ the tree it is checking would be intolerable there: it would dirty a working tre
 and worse, a tool that can modify an artifact is a tool that could be made to modify one into
 agreeing with the claim.
 
-The one thing that does write is the adduce rule's sidecar, which exists because a single
+`verify()` is what these tests call. The `repro verify` command appends what changed since the
+last check to `.repro/checks.jsonl` unless it is given `--no-record`, which the published hooks
+pass; `test_checks.py` asserts that with the flag the command writes nothing.
+
+The other thing that writes is the adduce rule's sidecar, which exists because a single
 adduce `Finding` cannot carry thousands of per-assertion outcomes. That is a different entry
 point, invoked by a different tool, and it writes only under `.adduce/`.
 """

@@ -7,6 +7,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from repro.core.checks import CheckedAssertion
 from repro.core.claims import Availability, Registration
 from repro.core.manifest import RegenerationState
 from repro.core.outcomes import (
@@ -329,6 +330,14 @@ class AssertionAccount(BaseModel):
     reason: Reason
     detail: str = ""
     state: Freshness
+    history: tuple[CheckedAssertion, ...] = ()
+    """Each way the record of checks holds this assertion, oldest first: what it declared,
+    the digest of each file read and the outcome, with when a check first found it so. Empty
+    where no check of it is recorded."""
+    now: CheckedAssertion | None = None
+    """The assertion as evaluated now, where that is not the last entry of `history`: it was
+    edited, or a file it reads was, and no recorded check has seen it since. None where the
+    record's last entry is how it stands, and where nothing is recorded."""
 
 
 class ChainNode(BaseModel):

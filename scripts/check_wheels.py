@@ -66,6 +66,7 @@ def main() -> int:
             smoke = run(
                 str(venv / "bin" / "repro"),
                 "verify",
+                "--no-record",
                 str(cases / case / "repro.yaml"),
                 "--policy",
                 "strict",

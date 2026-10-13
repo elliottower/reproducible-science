@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import collections
+import contextlib
 import enum
 import functools
 import importlib
@@ -36,6 +37,9 @@ from provenance_core import atomic_write
 from provenance_core.gitref import try_run
 
 from repro import __version__, audit, crosscheck
+from repro.checks import RECORD as CHECKS
+from repro.checks import ChecksUnreadableError
+from repro.checks import record as record_checks
 from repro.delegate import BY_NAME, TOOLS
 from repro.delegate import check as delegate_check
 from repro.delegate import run as delegate_run
@@ -46,6 +50,7 @@ from repro.models import (
     AssertionAccount,
     Availability,
     ChainNode,
+    CheckedAssertion,
     ClaimAccount,
     Freshness,
     Ordering,
@@ -347,9 +352,16 @@ def cmd_verify(args: argparse.Namespace) -> int:
         print("    repro manifest init")
         return 2
 
-    report = run_verify(load(path))
+    manifest = load(path)
+    report = run_verify(manifest)
     policy = PROFILES[args.policy]
     assessment = policy.assess(report)
+    if not args.no_record:
+        # The record sits beside the check and never decides it: a tree that cannot be written
+        # to, or a record that cannot be read, leaves the report and the exit code as they
+        # are. `repro why` is where an unreadable record is reported.
+        with contextlib.suppress(OSError, ChecksUnreadableError):
+            record_checks(manifest, report)
 
     if args.format == "sarif":
         print(json.dumps(to_sarif(report, assessment, version=__version__), indent=2))
@@ -683,6 +695,58 @@ def _assertion_lines(assertion: AssertionAccount, paths: dict[str, str]) -> list
         lines.append(f"the manuscript prints {assertion.printed}: {outcome}")
     else:
         lines.append(f"the two sides compared: {outcome}")
+    return [*lines, *_history_lines(assertion)]
+
+
+def _checked_said(state: CheckedAssertion, before: CheckedAssertion | None) -> str:
+    """What one check found an assertion declaring, the bytes it read and the outcome, and
+    what differs from the check before it."""
+    if state.kind == "quote":
+        passage = state.printed or ""
+        said = f'the passage "{passage if len(passage) <= 60 else f"{passage[:60]}..."}"'
+    elif state.printed is not None:
+        said = f"reported {state.printed}" + (f" at {state.address}" if state.address else "")
+    else:
+        said = state.address
+    files = ", ".join(
+        f"{name} {digest[:12] if digest else 'absent'}" for name, digest in state.digests.items()
+    )
+    line = f"{said}, {files}: {_said(state.outcome)}"
+    if before is None:
+        return line
+    changed = [
+        label
+        for label, then, now in (
+            ("claim text", before.claim_digest, state.claim_digest),
+            ("passage" if state.kind == "quote" else "reported", before.printed, state.printed),
+            ("address", before.address, state.address),
+            ("file", before.digests, state.digests),
+        )
+        if then != now
+    ]
+    return (
+        f"{line} (after {_said(before.outcome)}: "
+        f"{', '.join(changed) or 'nothing declared'} changed)"
+    )
+
+
+def _history_lines(assertion: AssertionAccount) -> list[str]:
+    """The record of checks for one assertion, where it holds more than how the assertion
+    stands now: each earlier state as `checked`, and the state now as `since` the check that
+    first found it, or as `now` where no recorded check has."""
+    states = assertion.history
+    if len(states) < 2 and assertion.now is None:
+        return []
+    current = len(states) - 1 if assertion.now is None else len(states)
+    lines = [
+        f"{'since' if index == current else 'checked'} {state.checked_at}: "
+        f"{_checked_said(state, states[index - 1] if index else None)}"
+        for index, state in enumerate(states)
+    ]
+    if assertion.now is not None:
+        lines.append(
+            f"now: {_checked_said(assertion.now, states[-1])}; no check of this is recorded"
+        )
     return lines
 
 
@@ -917,6 +981,15 @@ def main(argv: list[str] | None = None) -> int:
     p_verify.add_argument("manifest", nargs="?", help=f"path to {DEFAULT_NAME}")
     p_verify.add_argument("--policy", choices=sorted(PROFILES), default="publication")
     p_verify.add_argument("--format", choices=("text", "json", "sarif"), default="text")
+    p_verify.add_argument(
+        "--no-record",
+        action="store_true",
+        help=(
+            f"write nothing. By default each assertion whose declaration, artifact digest or "
+            f"outcome differs from the last check recorded for it is appended to "
+            f"{CHECKS.as_posix()}"
+        ),
+    )
     p_verify.set_defaults(func=cmd_verify)
 
     p_reproduce = sub.add_parser(
