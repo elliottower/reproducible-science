@@ -17,11 +17,13 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from repro.models import (
     Availability,
+    Freshness,
     Ordering,
     Outcome,
     Regeneration,
     RegistrationAuthority,
     ReproductionReport,
+    StalenessReport,
     Validity,
     VerificationReport,
 )
@@ -104,6 +106,15 @@ class Policy(BaseModel):
     regeneration_not_rerun: Severity = Severity.IGNORE
     """A record that was skipped or refused. Leaving out a week of training is an ordinary
     choice; a project that requires every record to run raises this."""
+
+    stale: Severity = Severity.WARNING
+    """A regeneration whose recorded re-runs no longer match the files on disk, here or
+    upstream. A warning by default: the number may be unchanged, and only a re-run says."""
+    never_rerun: Severity = Severity.WARNING
+    """A regeneration the record holds no reproduced re-run of."""
+    staleness_undetermined: Severity = Severity.WARNING
+    """A regeneration that could not be compared: a file is missing, or the records form a
+    cycle."""
 
     require_one_check: bool = True
     """A run that evaluated nothing is not a pass. Without this a project with no evidence
@@ -248,6 +259,35 @@ class Policy(BaseModel):
             passed=not any(v.severity is Severity.ERROR for v in violations),
         )
 
+    def assess_staleness(self, report: StalenessReport) -> Assessment:
+        """Whether what `repro.stale` found is acceptable. One violation per regeneration
+        that is not current; a file with no producer is counted in the report and never
+        graded."""
+        severities = {
+            Freshness.STALE: self.stale,
+            Freshness.NEVER_RERUN: self.never_rerun,
+            Freshness.UNDETERMINED: self.staleness_undetermined,
+        }
+        violations = tuple(
+            Violation(
+                severity=severities[node.state],
+                rule=f"staleness.{node.state.value}",
+                subject=node.id,
+                detail=(
+                    f"upstream {node.upstream}"
+                    if node.upstream
+                    else ", ".join(cause.value for cause in node.causes) or node.state.value
+                ),
+            )
+            for node in report.regenerations
+            if node.state in severities
+        )
+        return Assessment(
+            policy=self.name,
+            violations=violations,
+            passed=not any(v.severity is Severity.ERROR for v in violations),
+        )
+
 
 EXPLORATORY = Policy(
     name="exploratory",
@@ -262,6 +302,8 @@ EXPLORATORY = Policy(
     # A draft may point at a file the analysis has not written yet.
     artifact_absent=Severity.WARNING,
     ordering_unchecked=Severity.IGNORE,
+    never_rerun=Severity.IGNORE,
+    staleness_undetermined=Severity.IGNORE,
 )
 
 PUBLICATION = Policy(
@@ -290,6 +332,9 @@ STRICT = Policy(
     ordering_unchecked=Severity.ERROR,
     regeneration_unchecked=Severity.ERROR,
     regeneration_not_rerun=Severity.WARNING,
+    stale=Severity.ERROR,
+    never_rerun=Severity.ERROR,
+    staleness_undetermined=Severity.ERROR,
 )
 
 PROFILES = {p.name: p for p in (EXPLORATORY, PUBLICATION, STRICT)}

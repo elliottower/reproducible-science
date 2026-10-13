@@ -45,7 +45,7 @@ from repro.models import (
     RegenerationState,
     ReproductionReport,
 )
-from repro.regenerate import check, skipped
+from repro.regenerate import check, skipped, upstream
 from repro.resolve import resolve
 from repro.toolchain import distribution_version
 from repro.verify import (
@@ -195,15 +195,13 @@ def _rests_on(
     states: dict[str, RegenerationState],
 ) -> tuple[str, ...]:
     """Every record upstream of this one, at any distance, that did not reproduce."""
-    seen: dict[str, RegenerationRecord] = {}
-    pending = [record]
-    while pending:
-        for wanted in pending.pop().inputs:
-            upstream = producers.get(wanted.artifact)
-            if upstream is not None and upstream.id not in seen and upstream.id != record.id:
-                seen[upstream.id] = upstream
-                pending.append(upstream)
-    return tuple(sorted(name for name in seen if states[name].state is not Regeneration.REPRODUCED))
+    return tuple(
+        sorted(
+            name
+            for name in upstream(record, producers)
+            if name != record.id and states[name].state is not Regeneration.REPRODUCED
+        )
+    )
 
 
 def reproduce(
