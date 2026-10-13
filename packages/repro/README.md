@@ -545,37 +545,44 @@ repro ci init
 ```
 
 ```text
-wrote /home/you/work/my_project/.github/workflows/results.yml
-  name: results
-  runs: uvx --from reproducible-science==0.5.6 repro ci results
 wrote /home/you/work/my_project/.github/workflows/claims.yml
   name: claims
   runs: uvx --from reproducible-science==0.5.6 repro ci claims
+wrote /home/you/work/my_project/.github/workflows/reruns.yml
+  name: reproduced
+  runs: uvx --from reproducible-science==0.5.6 repro ci reruns
 skipped prereg: no PREREG.md and no .prereg/ here
+skipped results: no .results/ ledger here
 skipped citations: no claims directory holding a claims file here
-skipped reruns: not asked for; `--reruns` writes it
 each runs on a push to main and on every pull request
 
-add to your README:
+add to your README, one line per check. GitHub's own badge, which also
+works in a private repository:
 
-[![results](https://github.com/you/my_project/actions/workflows/results.yml/badge.svg)](https://github.com/you/my_project/actions/workflows/results.yml)
 [![claims](https://github.com/you/my_project/actions/workflows/claims.yml/badge.svg)](https://github.com/you/my_project/actions/workflows/claims.yml)
+[![reproduced](https://github.com/you/my_project/actions/workflows/reruns.yml/badge.svg)](https://github.com/you/my_project/actions/workflows/reruns.yml)
+
+or, for a public repository, the same status drawn by shields.io with the
+check's icon:
+
+[![claims](https://img.shields.io/github/actions/workflow/status/you/my_project/claims.yml?label=claims&labelColor=24292f&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2Zy...)](https://github.com/you/my_project/actions/workflows/claims.yml)
+[![reproduced](https://img.shields.io/github/actions/workflow/status/you/my_project/reruns.yml?label=reproduced&labelColor=24292f&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2Zy...)](https://github.com/you/my_project/actions/workflows/reruns.yml)
 
 next: commit and push. Each badge prints its workflow's name beside `passing` or
 `failing`, for the latest run on the default branch.
 ```
 
-`repro ci init` writes one workflow for each check the repository keeps a record for, says which it skipped and why, and prints a badge line for each one written, in the order prereg, results, claims, citations. Which records a repository keeps is decided as `repro check` decides it.
+`repro ci init` writes one workflow for each check the repository keeps a record for, says which it skipped and why, and prints two badge lines for each one written, in the order prereg, results, claims, citations, reruns. Which records a repository keeps is decided as `repro check` decides it.
 
-| check | written when the repository has | the workflow runs | which runs |
+| workflow | badge reads | written when the repository has | the workflow runs |
 |---|---|---|---|
-| `prereg` | a `PREREG.md` at the top or up to three levels below, or `.prereg/` | `repro ci prereg` | `prereg check` |
-| `results` | `.results/` | `repro ci results` | `results verify --files` |
-| `claims` | `repro.yaml` | `repro ci claims` | `repro verify`, then `repro stale` |
-| `citations` | a `claims` directory holding a claims file | `repro ci citations` | `citations verify --claims <dir>` |
-| `reruns` | `--reruns` was given, and `repro.yaml` declares a command | `repro ci reruns` | `repro reproduce` |
+| `prereg.yml` | `prereg` | a `PREREG.md` at the top or up to three levels below, or `.prereg/` | `repro ci prereg` |
+| `results.yml` | `results` | `.results/` | `repro ci results` |
+| `claims.yml` | `claims` | `repro.yaml` | `repro ci claims` |
+| `citations.yml` | `citations` | a `claims` directory holding a claims file | `repro ci citations` |
+| `reruns.yml` | `reproduced` | a `repro.yaml` that declares a command, and at least one re-run in `.repro/reproductions.jsonl` | `repro ci reruns` |
 
-The owner and repository in a badge line are read from `git remote get-url origin`; where that names no GitHub repository the line is printed with `OWNER/REPO` in their place. `--readme` puts the badges on one line under the first heading of `README.md` and prints what it added, and adds nothing for a workflow whose badge the README already shows. The command exits 2 and writes nothing outside a git repository, and in a repository that keeps none of the four records.
+The owner and repository in a badge line are read from `git remote get-url origin`; where that names no GitHub repository the lines are printed with `OWNER/REPO` in their place. The command exits 2 and writes nothing outside a git repository, and in a repository that keeps none of these records.
 
 A workflow it writes, in full:
 
@@ -607,39 +614,61 @@ The others differ in the name, the job and the last line. Every workflow install
 
 `citations.yml` has one more step before the check, `sudo apt-get update && sudo apt-get install --yes poppler-utils`, because `citations` reads a PDF with `pdftotext` first and GitHub's Ubuntu runner image does not list poppler-utils among its installed packages.
 
-### What each check exits with
+### prereg in CI
 
-Each command prints what the command under it prints and exits with one of three codes. `repro ci claims` keeps no record of checks: `repro verify` is the command that appends to one.
+`repro ci prereg` runs `prereg check`: every plan at or below the top of the project, with its amendments and its log, against the bytes that were frozen.
 
-| command | 0 | 1 | 2 |
-|---|---|---|---|
-| `repro ci prereg` | every plan, amendment and log is as frozen | a frozen file or a log changed | a plan was never frozen, a commit-pinned registration could not be compared, or there is no plan |
-| `repro ci results` | the chain verifies and every recorded file matches | the chain does not verify, or a recorded file changed or is missing | no ledger |
-| `repro ci claims` | the policy passes the verification, and the staleness report where a command is declared | the policy fails either | no manifest, or one that cannot be read |
-| `repro ci citations` | at least one quotation was found and none was not found | a quotation was not found, or a source is not the pinned bytes | no source could be read, so nothing was checked; or no claims directory |
-| `repro ci reruns` | the policy passes every re-run | the policy fails a re-run: by default one that `changed` or `failed` | no manifest, one that cannot be read, or no command declared |
-| `repro ci init` | the workflows were written | | not in a git repository, no record to check, a workflow already there, `--reruns` with no command declared, or `--readme` with no README or no GitHub remote |
+```markdown
+## prereg
 
-For `prereg`, `results` and `citations` the outcome is the word `repro audit` gives the same command: `passed`, `failed`, `could not check` or `nothing to read`, exiting 0, 1, 2 and 2. `citations` differs in one case. `repro audit` calls a run with any unchecked quotation `could not check`. `repro ci citations` passes a run in which some quotations were found, none was not found and the rest were unchecked, as `citations verify` exits 0 for it, and the summary opens on how many were not checked. A run that read no source does not pass: `citations verify` exits 1 for it and `repro ci citations` exits 2. There is no threshold option. A minimum share of quotations checked would be a number each project picks, and the count on the first line of the summary says what a threshold would hide.
+prereg: each frozen plan, its amendments and its log against the bytes that were frozen. What this means: https://reproducible.science/tools/repro/#prereg-in-ci
 
-`repro ci claims` and `repro ci reruns` take `--policy`, which grades as it does for `repro verify`, `repro stale` and `repro reproduce`. `repro stale` exits 2 for a manifest that declares no command; `repro ci claims` says so in a line and takes its code from the verification alone. Under `--policy publication`, the default, a stale or never-rerun file is a warning and does not fail the job. `--policy strict` fails on it.
+`prereg check`: **passed** (exit 0)
 
-### Sources that are not in the repository
+| checked | found |
+|---|---|
+| plans | 1 of 1 frozen plan unchanged since the freeze |
+| amendments | 0 frozen amendments, 0 drafts |
+| log | 1 log entry |
 
-A cited paper is usually not the author's to redistribute, so a clone holds every pin and few sources, and each quotation against an absent source is `unchecked`. `repro ci init --fetch-sources` writes the citations workflow with `repro ci citations --fetch-sources`, which runs `citations fetch --claims <dir>` before the check. `citations fetch` asks where an open copy of each absent source is, downloads it, and installs it only where its sha256 is the one the claims file pins. A source that could not be fetched does not fail the job. Its quotations stay `unchecked`, and the summary counts the sources fetched, already present, and each other outcome under the word `citations fetch` gives it. This is the one place `repro ci` reaches the network.
+What this checks: each frozen plan, its amendments and its log are the bytes that were frozen. It does not show that the study followed the plan.
+```
 
-### Reruns
+A plan that was never frozen is counted apart from the frozen ones and called a draft, and the run does not pass: there is nothing to compare a draft with. The log row counts entries, because `prereg` keeps notes and deviations in one log.
 
-`repro ci init --reruns` writes `.github/workflows/reruns.yml` as well, and prints its badge last. It is for a project whose commands can run in CI: `repro ci reruns` runs each command declared under `regenerations` on the machine the job runs on, and appends the re-run to `.repro/reproductions.jsonl` as `repro reproduce` does. The workflow has a commented step where the project installs what its commands need, and a command that needs a GPU or a week does not belong in it. `repro ci reruns --skip ID` leaves such a record out, and it is counted as `not re-run`. `init --reruns` refuses a manifest that declares no command.
+### results in CI
 
-### The summary on the run page
+`repro ci results` runs `results verify --files`: the ledger's chain, and each file the ledger records against the hash recorded for it.
 
-Where `GITHUB_STEP_SUMMARY` is set, as it is in every GitHub Actions step, each check appends a Markdown summary to that file, and GitHub shows it on the page of the run. `--summary PATH` names the file instead. The file is appended to and never replaced.
+```markdown
+## results
+
+results: the ledger's chain, and each recorded file against the hash recorded for it. What this means: https://reproducible.science/tools/repro/#results-in-ci
+
+`results verify --files`: **FAILED** (exit 1)
+
+| checked | found |
+|---|---|
+| chain | intact: 3 events |
+| recorded files | 1 of 2 recorded files match the hash recorded, 1 changed |
+
+- `results.json`: changed
+
+What this checks: the ledger's chain is intact and each recorded file is the bytes that were recorded. It does not show that the results are right.
+```
+
+A recorded file the repository does not commit is `missing` in a clone, and the run fails on it.
+
+### claims in CI
+
+`repro ci claims` runs what `repro verify` runs: each value and passage the manifest declares against the file it is declared to come from, and each file against its pin. It executes nothing, writes nothing to the project, and keeps no record of checks: `repro verify` is the command that appends to one. `--policy` grades as it does for `repro verify`.
 
 ```markdown
 ## claims: my_project
 
-`repro ci claims` under policy `publication`: **FAILED** (1 errors, 1 warnings)
+claims: the manuscript's printed values and quoted passages against the files they are declared to come from. What this means: https://reproducible.science/tools/repro/#claims-in-ci
+
+`repro ci claims` under policy `publication`: **FAILED** (1 errors, 0 warnings)
 
 | checked | found |
 |---|---|
@@ -656,37 +685,18 @@ Where `GITHUB_STEP_SUMMARY` is set, as it is in every GitHub Actions step, each 
 What this checks: each declared value or passage is in the file the manifest names, at the address it declares, and each file matches its pin. It does not show that the analysis is right.
 ```
 
-```markdown
-## prereg
+The assertions are the ones the manifest declares, and the row under them is what `repro numbers` counts in the manuscript's text, so `75 of 76 assertions verified` is not read as covering every number printed. Warnings are counted beside the outcomes, as `warnings: 2 short`, and change none of them. An assertion that reads many values, as an `aggregate` does, is listed with the first three and the statistic of all.
 
-`prereg check`: **passed** (exit 0)
+The numbers, re-runs and freshness rows are reported and grade nothing here. The verdict of `repro ci claims` is the verification's alone: a file that is stale or never rerun does not fail it, under any policy. `repro ci reruns` is the check that fails on that.
 
-| checked | found |
-|---|---|
-| plans | 1 of 1 frozen plan unchanged since the freeze |
-| amendments | 0 frozen amendments, 0 drafts |
-| log | 1 log entry |
+### citations in CI
 
-What this checks: each frozen plan, its amendments and its log are the bytes that were frozen. It does not show that the study followed the plan.
-```
-
-```markdown
-## results
-
-`results verify --files`: **FAILED** (exit 1)
-
-| checked | found |
-|---|---|
-| chain | intact: 3 events |
-| recorded files | 1 of 2 recorded files match the hash recorded, 1 changed |
-
-- `results.json`: changed
-
-What this checks: the ledger's chain is intact and each recorded file is the bytes that were recorded. It does not show that the results are right.
-```
+`repro ci citations` runs `citations verify --claims <dir>` over the project's claims directory: each quoted passage against the source its claims file pins.
 
 ```markdown
 ## citations
+
+citations: each quoted passage against the source its claims file pins. What this means: https://reproducible.science/tools/repro/#citations-in-ci
 
 `citations verify --claims claims`: **passed** (exit 0)
 
@@ -700,19 +710,84 @@ What this checks: the ledger's chain is intact and each recorded file is the byt
 What this checks: each quoted passage is in the source its claims file pins. It does not show that the source supports the sentence that quotes it.
 ```
 
-Every count carries what it is a count of, and each summary ends on what its check does not show. The assertions are the ones the manifest declares, and the row under them is what `repro numbers` counts in the manuscript's text, so `75 of 76 assertions verified` is not read as covering every number printed; it grades nothing, and where no claim reads its sentence from a text it says the numbers were not counted. An assertion or a quotation that is `unchecked` or `not found` is counted under that word and never as verified or found. Warnings are counted beside the outcomes, as `warnings: 2 short`, and change none of them. An assertion that reads many values, as an `aggregate` does, is listed with the first three and the statistic of all. A plan that was never frozen is counted apart from the frozen ones and called a draft. The counts of `prereg`, `results` and `citations` are read from the JSON each tool writes with `--json`, and no line of their printed text is parsed for a number. The lists appear only where there is something to list, each stops at 20 lines and says how many more there are, because a manifest can declare thousands of assertions and GitHub refuses a step summary over 1 MiB.
+A cited paper is usually not the author's to redistribute, so a clone holds every pin and few sources, and each quotation against an absent source is `unchecked`. A run in which some quotations were found, none was not found and the rest were unchecked passes, as `citations verify` exits 0 for it, and the summary opens on how many were not checked. `repro audit` calls the same run `could not check`. A run that read no source does not pass: `citations verify` exits 1 for it and `repro ci citations` exits 2. There is no threshold option. A minimum share of quotations checked would be a number each project picks, and the count on the first line says what a threshold would hide.
 
-The summary of `repro ci reruns` counts the commands that reproduced, how many of the ones that ran wrote the pinned bytes, and the system, Python and lockfile of the machine. It ends by saying that `reproduced` means every number the manuscript prints from the output still holds, and that commands the manifest does not declare were not run.
+`repro ci init --fetch-sources` writes the workflow with `repro ci citations --fetch-sources`, which runs `citations fetch --claims <dir>` before the check. `citations fetch` asks where an open copy of each absent source is, downloads it, and installs it only where its sha256 is the one the claims file pins. A source that could not be fetched does not fail the job. Its quotations stay `unchecked`, and a `fetch` row counts the sources fetched, already present, and each other outcome under the word `citations fetch` gives it. This is the one place `repro ci` reaches the network.
 
-### What the badge says
+### reruns in CI
 
-A workflow is named for the check it runs and not for the project, because the badge prints the workflow's name beside `passing`, and no one of these jobs can establish that a study is reproducible. GitHub's badge is per workflow file. Its documentation says "A status badge shows whether a workflow is currently failing or passing", and the badge's address names a workflow file and no job, so each check that gets a badge gets a workflow of its own.
+Most projects cannot run their commands again in a CI job: the data is not public, or the run takes a week on a GPU. What a job can do is read the record. `repro ci reruns` executes nothing. It reads the commands the manifest declares and `.repro/reproductions.jsonl`, as `repro stale` does, and passes where every declared command has a recorded re-run that reproduced, made over the command and the inputs as they are now, whose output is the file now in the repository. It fails where one is `stale`, `never rerun` or `undetermined`, whatever `--policy` says, and names each with its cause.
 
-`--name CHECK=TEXT` gives a check's workflow another name, as `--name "claims=claims match files"` does. `--prefix repro-` writes `repro-claims.yml`, for a repository that already has a `claims.yml`. A workflow this command wrote is replaced only with `--force`. A file of that name that it did not write is never replaced, with or without `--force`.
+```markdown
+## reruns: my_project
 
-A run in CI adds three things to a run on the author's machine: the check ran on a machine the author does not control, at a commit the run names, and its log is public. It does not remove the author from the record: the author writes the workflow, the manifest and the list of what each command reads. In a private repository the badge and the summary are visible to whoever has access to the repository, and GitHub's documentation notes that a private repository's badge cannot be embedded on an outside site.
+reruns: each declared command against the record of its re-runs. What this means: https://reproducible.science/tools/repro/#reruns-in-ci
 
-This repository keeps a `repro.yaml` and none of the other three records, so it runs `repro ci claims` on itself, in `.github/workflows/claims.yml`.
+`repro ci reruns`: **FAILED**
+
+| checked | found |
+|---|---|
+| commands | 6 of 7 declared commands have a recorded re-run over the current files that reproduced, 1 stale |
+| record | `.repro/reproductions.jsonl` holds 3 re-runs |
+
+### Commands with no current re-run on record
+
+- `totals`, written by `sum`: stale: input changed
+
+What this checks: for each declared command, the record holds a re-run that reproduced, made over the command and the input files as they are now, whose output is the file now here. The re-runs were recorded before this job, which read the record and ran no command; the record does not say on which machine. `reproduced` means a command was run again and every number the manuscript prints from its output still holds; whether the output had the same bytes is recorded beside it. Commands the manifest does not declare were not run, and this does not show that a command would reproduce if run now.
+```
+
+The workflow is named `reproduced`, which is what its badge reads, and not "reproducible". It reports that the commands the manifest declares were run again, by whoever recorded the re-runs, and reproduced. It does not report that anyone else has reproduced the study. `reproduced` is the word `repro reproduce` gives a re-run after which every number the manuscript prints from the command's output still holds; whether the bytes matched is recorded beside it and is not what the word means.
+
+`repro ci init` writes `reruns.yml` only where the manifest declares a command and the record holds a re-run. With commands and no re-run on record it writes no such workflow and prints no badge for it, and says that `.repro/reproductions.jsonl` holds no re-run, and to run `repro reproduce` and commit that file. `--reruns` requires the workflow and exits 2 where it cannot be written.
+
+For a project whose commands can run in a job, `repro ci reruns --run` runs what `repro reproduce` runs, on the machine the job runs on, appends the re-run to `.repro/reproductions.jsonl` as that command does, and grades it under `--policy`. `repro ci init --run-reruns` writes `reruns.yml` with that command and a commented step where the project installs what its commands need; it needs no re-run on record. `--skip ID` leaves a record out, and it is counted as `not re-run`. The summary then counts the commands that reproduced, how many of the ones that ran wrote the pinned bytes, and the system, Python and lockfile of the machine, and says the commands were run again in this job.
+
+### Exit codes
+
+| command | 0 | 1 | 2 |
+|---|---|---|---|
+| `repro ci prereg` | every plan, amendment and log is as frozen | a frozen file or a log changed | a plan was never frozen, a commit-pinned registration could not be compared, or there is no plan |
+| `repro ci results` | the chain verifies and every recorded file matches | the chain does not verify, or a recorded file changed or is missing | no ledger |
+| `repro ci claims` | the policy passes the verification | the policy fails the verification | no manifest, or one that cannot be read |
+| `repro ci citations` | at least one quotation was found and none was not found | a quotation was not found, or a source is not the pinned bytes | no source could be read, so nothing was checked; or no claims directory |
+| `repro ci reruns` | every declared command has a current re-run on record | a command is stale, never rerun or undetermined | no manifest, one that cannot be read, or no command declared |
+| `repro ci reruns --run` | the policy passes every re-run | the policy fails a re-run: by default one that `changed` or `failed` | as above |
+| `repro ci init` | the workflows were written | | not in a git repository, no record to check, a workflow already there, `--reruns` with no command declared or no re-run on record, or `--readme` with no README or no GitHub remote |
+
+For `prereg`, `results` and `citations` the outcome is the word `repro audit` gives the same command: `passed`, `failed`, `could not check` or `nothing to read`, exiting 0, 1, 2 and 2, with the one difference for `citations` said above.
+
+### The summary on the run page
+
+Where `GITHUB_STEP_SUMMARY` is set, as it is in every GitHub Actions step, each command appends a Markdown summary to that file, and GitHub shows it on the page of the run. `--summary PATH` names the file instead. The file is appended to and never replaced.
+
+A badge leads to the page of a run, and nothing on that page says what the workflow is. Each summary therefore opens, under its heading, on what the check compares and a link to its section of this page. Every count carries what it is a count of, and each summary ends on what its check does not show. An assertion or a quotation that is `unchecked` or `not found` is counted under that word and never as verified or found. The counts of `prereg`, `results` and `citations` are read from the JSON each tool writes with `--json`, and no line of their printed text is parsed for a number. The lists appear only where there is something to list, each stops at 20 lines and says how many more there are, because a manifest can declare thousands of assertions and GitHub refuses a step summary over 1 MiB.
+
+### The two badge lines
+
+`repro ci init` prints two lines for each workflow, and either goes in a README.
+
+```markdown
+[![claims](https://github.com/you/my_project/actions/workflows/claims.yml/badge.svg)](https://github.com/you/my_project/actions/workflows/claims.yml)
+```
+
+The first is GitHub's own badge. It works in a private repository, for whoever has access to it, and reads the workflow's name beside `passing` or `failing`.
+
+```markdown
+[![claims](https://img.shields.io/github/actions/workflow/status/you/my_project/claims.yml?label=claims&labelColor=24292f&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2Zy...)](https://github.com/you/my_project/actions/workflows/claims.yml)
+```
+
+The second is drawn by [shields.io](https://shields.io/badges/git-hub-actions-workflow-status), which reads GitHub's badge for the workflow and redraws it with the check's icon on a dark label. It shows the same status and links to the same runs. It works only for a public repository: shields.io asks GitHub as anyone would, and for a private one it reads `repo or workflow not found`. The icon is in the address, as a base64 data URI of an SVG of a few hundred bytes.
+
+`--readme` puts the first form of each badge on one line under the first heading of `README.md` and prints what it added, and `--readme --branded` puts the second. It adds nothing for a workflow whose badge the README already shows in either form.
+
+A workflow is named for the one thing it runs and not for the project, because the badge prints the workflow's name beside `passing`, and no one of these jobs can establish that a study is reproducible. GitHub's badge is per workflow file. Its documentation says "A status badge shows whether a workflow is currently failing or passing", and the badge's address names a workflow file and no job, so each badge is a workflow of its own.
+
+`--name WORKFLOW=TEXT` gives a workflow another name, as `--name "claims=claims match files"` does. `--prefix repro-` writes `repro-claims.yml`, for a repository that already has a `claims.yml`. A workflow this command wrote is replaced only with `--force`. A file of that name that it did not write is never replaced, with or without `--force`.
+
+A run in CI adds three things to a run on the author's machine: the check ran on a machine the author does not control, at a commit the run names, and its log is public. It does not remove the author from the record: the author writes the workflow, the manifest and the list of what each command reads.
+
+This repository keeps a `repro.yaml` that declares no command, and none of the other records, so it runs `repro ci claims` on itself, in `.github/workflows/claims.yml`.
 
 ## On a pull request, as SARIF
 

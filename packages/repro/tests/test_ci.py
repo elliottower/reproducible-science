@@ -6,11 +6,13 @@ record of re-runs is needed it is written with the models `repro reproduce` writ
 
 from __future__ import annotations
 
+import base64
 import json
 import pathlib
 import re
 import subprocess
 import sys
+import urllib.parse
 
 import pytest
 import repro
@@ -364,7 +366,6 @@ def test_a_command_never_rerun_is_counted_against_the_assertions_that_read_its_f
         "0 current of 1 assertion that reads a file with a recorded producer, 1 never rerun; "
         "1 read files no command is recorded for"
     )
-    assert "- `figures`, written by `sum`: never rerun" in said
 
 
 def test_a_recorded_rerun_is_named_by_when_it_started_and_what_it_reproduced(tmp_path):
@@ -386,13 +387,11 @@ def test_an_input_edited_after_its_rerun_is_stale_and_the_cause_is_named(tmp_pat
     manifest = project(tmp_path, script=SCRIPT)
     rerun(manifest)
     (tmp_path / "inputs.json").write_text(json.dumps({"xs": [1, 2, 4]}))
-    run = ci.claims(manifest, STRICT)
-    said = ci.claims_summary(run)
-    assert not run.passed
+    said = ci.claims_summary(ci.claims(manifest, STRICT))
     assert row(said, "freshness").startswith(
         "0 current of 1 assertion that reads a file with a recorded producer, 1 stale;"
     )
-    assert "- `figures`, written by `sum`: stale: input changed" in said
+    assert "written by `sum`" not in said
 
 
 def test_thousands_of_failing_assertions_are_listed_up_to_a_cap_and_the_rest_counted(tmp_path):
@@ -416,7 +415,10 @@ def test_a_long_value_is_cut_and_one_holding_a_backtick_stays_code():
 
 def test_the_reruns_summary_counts_commands_and_bytes_apart(tmp_path):
     manifest = project(tmp_path, script=SCRIPT)
-    assert main(["ci", "reruns", str(on_disk(manifest)), "--summary", str(tmp_path / "s.md")]) == 0
+    assert (
+        main(["ci", "reruns", "--run", str(on_disk(manifest)), "--summary", str(tmp_path / "s.md")])
+        == 0
+    )
     said = (tmp_path / "s.md").read_text()
     assert said.startswith("## reruns: study\n")
     assert row(said, "commands") == "1 of 1 command reproduced"
@@ -428,7 +430,10 @@ def test_the_reruns_summary_counts_commands_and_bytes_apart(tmp_path):
 
 def test_a_rerun_that_moved_a_number_fails_and_lists_both_values(tmp_path):
     manifest = project(tmp_path, script=DRIFTING)
-    assert main(["ci", "reruns", str(on_disk(manifest)), "--summary", str(tmp_path / "s.md")]) == 1
+    assert (
+        main(["ci", "reruns", "--run", str(on_disk(manifest)), "--summary", str(tmp_path / "s.md")])
+        == 1
+    )
     said = (tmp_path / "s.md").read_text()
     assert "**FAILED** (1 errors, 0 warnings)" in said
     assert row(said, "commands") == "0 of 1 command reproduced, 1 changed"
@@ -438,7 +443,9 @@ def test_a_rerun_that_moved_a_number_fails_and_lists_both_values(tmp_path):
 
 def test_a_skipped_command_is_counted_as_not_rerun_and_not_as_reproduced(tmp_path):
     path = on_disk(project(tmp_path, script=SCRIPT))
-    code = main(["ci", "reruns", str(path), "--skip", "sum", "--summary", str(tmp_path / "s.md")])
+    code = main(
+        ["ci", "reruns", "--run", str(path), "--skip", "sum", "--summary", str(tmp_path / "s.md")]
+    )
     said = (tmp_path / "s.md").read_text()
     assert code == 0
     assert row(said, "commands") == "0 of 1 command reproduced, 1 not re-run"
@@ -446,8 +453,9 @@ def test_a_skipped_command_is_counted_as_not_rerun_and_not_as_reproduced(tmp_pat
 
 
 def test_reruns_with_no_command_declared_exits_2_and_runs_nothing(tmp_path, capsys):
-    assert main(["ci", "reruns", str(on_disk(project(tmp_path)))]) == 2
-    assert "nothing to run again" in capsys.readouterr().out
+    for flags in ([], ["--run"]):
+        assert main(["ci", "reruns", *flags, str(on_disk(project(tmp_path)))]) == 2
+        assert "no command is declared" in capsys.readouterr().out
     assert not (tmp_path / RECORD).exists()
 
 
@@ -479,12 +487,11 @@ def test_claims_exits_2_with_no_manifest(tmp_path, monkeypatch, capsys):
     assert "repro manifest init" in capsys.readouterr().out
 
 
-def test_claims_fails_a_never_rerun_command_only_under_the_policy_that_grades_it(tmp_path, capsys):
+def test_claims_does_not_fail_on_freshness_which_the_reruns_check_grades(tmp_path, capsys):
     path = on_disk(project(tmp_path, script=SCRIPT))
-    assert main(["ci", "claims", str(path)]) == 0
-    assert main(["ci", "claims", str(path), "--policy", "strict"]) == 1
-    assert main(["stale", str(path), "--policy", "strict"]) == 1
+    assert main(["ci", "claims", str(path), "--policy", "strict"]) == 0
     assert "1 never rerun" in capsys.readouterr().out
+    assert main(["ci", "reruns", str(path)]) == 1
 
 
 def test_the_step_summary_is_appended_to_and_what_was_there_is_kept(tmp_path, monkeypatch):
@@ -517,7 +524,13 @@ def test_bare_ci_prints_its_checks_and_exits_1(capsys):
 
 def test_the_default_names_say_which_check_ran_and_nothing_about_the_study():
     assert ci.CHECKS == ("prereg", "results", "claims", "citations", "reruns")
-    assert ci.NAMES == {check: check for check in ci.CHECKS}
+    assert ci.NAMES == {
+        "prereg": "prereg",
+        "results": "results",
+        "claims": "claims",
+        "citations": "citations",
+        "reruns": "reproduced",
+    }
 
 
 def test_init_writes_only_the_claims_workflow_and_prints_its_badge(repository, capsys):
@@ -527,10 +540,11 @@ def test_init_writes_only_the_claims_workflow_and_prints_its_badge(repository, c
     written = repository / ci.WORKFLOWS / "claims.yml"
     assert f"wrote {written.resolve()}" in out
     runs = "https://github.com/someone/study/actions/workflows/claims.yml"
-    assert [line for line in out.splitlines() if "[![" in line] == [
+    assert [line for line in out.splitlines() if "/badge.svg" in line] == [
         f"[![claims]({runs}/badge.svg)]({runs})"
     ]
-    assert "skipped prereg: " in out and "skipped reruns: not asked for" in out
+    assert "skipped prereg: " in out
+    assert "skipped reruns: repro.yaml declares no command" in out
 
 
 def test_the_claims_workflow_runs_one_pinned_command_with_read_only_permissions(repository):
@@ -557,28 +571,44 @@ def test_the_workflow_pins_the_actions_this_repositorys_own_claims_workflow_pins
         assert f"uses: {pin}\n" in ours
 
 
-def test_init_with_reruns_writes_both_and_leaves_a_place_for_the_environment(
+def test_init_writes_the_record_check_only_where_a_rerun_is_on_record(
     tmp_path, monkeypatch, capsys
+):
+    git(tmp_path, "init", "--quiet")
+    manifest = project(tmp_path, script=SCRIPT)
+    on_disk(manifest)
+    monkeypatch.chdir(tmp_path)
+    assert main(["ci", "init"]) == 0
+    out = capsys.readouterr().out
+    assert [p.name for p in (tmp_path / ci.WORKFLOWS).iterdir()] == ["claims.yml"]
+    assert f"skipped reruns: {RECORD.as_posix()} holds no re-run; run `repro reproduce`" in out
+    assert "reproduced" not in "".join(line for line in out.splitlines() if "[![" in line)
+    assert main(["ci", "init", "--reruns", "--force"]) == 2
+    assert "holds no re-run" in capsys.readouterr().out
+
+    rerun(manifest)
+    assert main(["ci", "init", "--force"]) == 0
+    out = capsys.readouterr().out
+    text = (tmp_path / ci.WORKFLOWS / "reruns.yml").read_text()
+    flow = yaml.safe_load(text)
+    assert flow["name"] == "reproduced"
+    assert [step["run"] for step in flow["jobs"]["reruns"]["steps"] if "run" in step] == [
+        f"uvx --from reproducible-science=={repro.__version__} repro ci reruns"
+    ]
+    assert "uv sync" not in text
+    assert badges(out) == ["claims", "reproduced"]
+
+
+def test_init_can_write_the_workflow_that_runs_the_commands_with_no_record_yet(
+    tmp_path, monkeypatch
 ):
     git(tmp_path, "init", "--quiet")
     on_disk(project(tmp_path, script=SCRIPT))
     monkeypatch.chdir(tmp_path)
-    assert main(["ci", "init", "--reruns"]) == 0
-    out = capsys.readouterr().out
-    assert sorted(p.name for p in (tmp_path / ci.WORKFLOWS).iterdir()) == [
-        "claims.yml",
-        "reruns.yml",
-    ]
+    assert main(["ci", "init", "--run-reruns"]) == 0
     text = (tmp_path / ci.WORKFLOWS / "reruns.yml").read_text()
-    flow = yaml.safe_load(text)
-    assert flow["name"] == "reruns"
     assert "# - run: uv sync\n" in text
-    assert [step["run"] for step in flow["jobs"]["reruns"]["steps"] if "run" in step] == [
-        f"uvx --from reproducible-science=={repro.__version__} repro ci reruns"
-    ]
-    badges = [line for line in out.splitlines() if line.startswith("[![")]
-    assert [line.split("]")[0] for line in badges] == ["[![claims", "[![reruns"]
-    assert all("github.com/OWNER/REPO/" in line for line in badges)
+    assert text.rstrip().endswith("repro ci reruns --run")
 
 
 def test_init_with_reruns_refuses_a_manifest_that_declares_no_command(repository, capsys):
@@ -617,7 +647,9 @@ def test_init_never_replaces_a_workflow_it_did_not_write_and_a_prefix_writes_bes
 
 def test_a_name_for_a_check_there_is_no_workflow_for_is_refused(repository, capsys):
     assert main(["ci", "init", "--name", "study=reproducible"]) == 2
-    assert "CHECK is one of prereg, results, claims, citations, reruns" in capsys.readouterr().out
+    assert (
+        "WORKFLOW is one of prereg, results, claims, citations, reruns" in capsys.readouterr().out
+    )
     assert not (repository / ".github").exists()
 
 
@@ -800,7 +832,7 @@ def test_the_four_checks_of_a_project_holding_every_record(four, capsys):
     code, said = summary_of(four, "citations")
     assert code == 0
     assert "`citations verify --claims claims`: **passed** (exit 0)" in said
-    assert said.splitlines()[4] == (
+    assert said.splitlines()[6] == (
         "1 of 2 quotations were not checked: 1 of 2 sources are not on this machine. "
         "An unchecked quotation is not a found one."
     )
@@ -932,7 +964,9 @@ def test_a_check_with_no_record_to_read_exits_2_and_says_so(tools):
 
 
 def badges(out):
-    return [line.split("]")[0].removeprefix("[![") for line in out.splitlines() if "[![" in line]
+    """The name on each of GitHub's own badge lines printed, in order."""
+    lines = [line for line in out.splitlines() if "/badge.svg" in line]
+    return [line.split("]")[0].removeprefix("[![") for line in lines]
 
 
 def test_init_writes_a_workflow_for_each_record_kept_in_badge_order(four, capsys):
@@ -945,7 +979,7 @@ def test_init_writes_a_workflow_for_each_record_kept_in_badge_order(four, capsys
         "results.yml",
     ]
     assert badges(out) == ["prereg", "results", "claims", "citations"]
-    assert "skipped reruns: not asked for" in out
+    assert "skipped reruns: repro.yaml declares no command" in out
     for check in ("prereg", "results"):
         flow = yaml.safe_load((four / ci.WORKFLOWS / f"{check}.yml").read_text())
         assert flow["name"] == check
@@ -973,3 +1007,158 @@ def test_init_writes_only_the_workflows_whose_records_exist(tools, capsys):
     assert f"skipped claims: {ci.NO_RECORD['claims']}" in out
     text = (tools / ci.WORKFLOWS / "citations.yml").read_text()
     assert text.rstrip().endswith("repro ci citations")
+
+
+# -- the record of re-runs, read and not run -------------------------------------------------
+
+
+def test_every_command_with_a_current_rerun_on_record_passes_and_nothing_is_run(tmp_path):
+    manifest = project(tmp_path, script=SCRIPT)
+    rerun(manifest)
+    before = (tmp_path / RECORD).read_text()
+    code = main(["ci", "reruns", str(on_disk(manifest)), "--summary", str(tmp_path / "s.md")])
+    said = (tmp_path / "s.md").read_text()
+    assert code == 0
+    assert "`repro ci reruns`: **passed**" in said
+    assert row(said, "commands") == (
+        "1 of 1 declared command has a recorded re-run over the current files that reproduced"
+    )
+    assert row(said, "record") == f"`{RECORD.as_posix()}` holds 1 re-run"
+    assert "read the record and ran no command" in said and ci.REPRODUCED in said
+    assert "Commands the manifest does not declare were not run" in said
+    assert (tmp_path / RECORD).read_text() == before
+
+
+def test_an_input_edited_after_its_rerun_fails_the_record_check_and_is_named(tmp_path):
+    manifest = project(tmp_path, script=SCRIPT)
+    rerun(manifest)
+    path = on_disk(manifest)
+    (tmp_path / "inputs.json").write_text(json.dumps({"xs": [1, 2, 4]}))
+    code = main(
+        ["ci", "reruns", str(path), "--policy", "exploratory", "--summary", str(tmp_path / "s.md")]
+    )
+    said = (tmp_path / "s.md").read_text()
+    assert code == 1
+    assert "`repro ci reruns`: **FAILED**" in said
+    assert row(said, "commands") == (
+        "0 of 1 declared command has a recorded re-run over the current files that reproduced, "
+        "1 stale"
+    )
+    assert "- `figures`, written by `sum`: stale: input changed" in said
+
+
+def test_a_command_never_rerun_fails_the_record_check(tmp_path):
+    path = on_disk(project(tmp_path, script=SCRIPT))
+    code = main(["ci", "reruns", str(path), "--summary", str(tmp_path / "s.md")])
+    said = (tmp_path / "s.md").read_text()
+    assert code == 1
+    assert row(said, "commands").endswith("that reproduced, 1 never rerun")
+    assert row(said, "record") == f"`{RECORD.as_posix()}` holds 0 re-runs"
+    assert "- `figures`, written by `sum`: never rerun" in said
+    assert not (tmp_path / RECORD).exists()
+
+
+def test_run_executes_the_commands_and_appends_to_the_record(tmp_path):
+    path = on_disk(project(tmp_path, script=SCRIPT))
+    assert main(["ci", "reruns", "--run", str(path), "--summary", str(tmp_path / "s.md")]) == 0
+    assert "run again in this job" in (tmp_path / "s.md").read_text()
+    assert len((tmp_path / RECORD).read_text().splitlines()) == 1
+    assert main(["ci", "reruns", str(path)]) == 0
+
+
+# -- what a summary opens on, and the badges -------------------------------------------------
+
+
+def slug(heading):
+    return re.sub(r"[^a-z0-9 -]", "", heading.lower()).replace(" ", "-")
+
+
+def test_no_workflow_name_or_file_or_option_says_check(capsys):
+    names = [*ci.CHECKS, *ci.NAMES.values(), *ci.ANCHORS.values()]
+    flow = ci.workflow("claims", "repro ci claims")
+    for command in ("init", "claims", "reruns", "citations"):
+        with pytest.raises(SystemExit):
+            main(["ci", command, "--help"])
+        names += re.findall(r"--[a-z-]+|[A-Z]+=[A-Z]+", capsys.readouterr().out)
+    assert "--run-reruns" in names and "WORKFLOW=TEXT" in names
+    assert not [name for name in [*names, flow.file] if "check" in name.lower()]
+
+
+def test_each_tool_is_reached_through_one_table_and_the_packages_own_discovery(tmp_path):
+    assert tuple(ci.TOOL_COMMANDS) == ci.TOOLS == ("prereg", "results", "citations")
+    assert {name: command.distribution for name, command in ci.TOOL_COMMANDS.items()} == {
+        "prereg": "prereg",
+        "results": "results-cli",
+        "citations": "citations",
+    }
+    assert ci.TOOL_COMMANDS["results"].argv("results", tmp_path) == ["results", "verify", "--files"]
+    assert ci.TOOL_COMMANDS["citations"].said("citations") == "citations verify --claims <dir>"
+    assert ci.TOOL_COMMANDS["prereg"].said("prereg") == "prereg check"
+
+
+def test_each_check_names_a_section_the_readme_has():
+    readme = (ROOT / "packages" / "repro" / "README.md").read_text()
+    anchors = {slug(line.lstrip("# ")) for line in readme.splitlines() if line.startswith("#")}
+    assert set(ci.ANCHORS) == set(ci.CHECKS) == set(ci.ABOUT)
+    assert set(ci.ANCHORS.values()) <= anchors
+    assert len(set(ci.ANCHORS.values())) == len(ci.CHECKS)
+
+
+def test_every_summary_opens_on_what_the_check_is_and_where_it_is_documented(tmp_path):
+    manifest = project(tmp_path, script=SCRIPT)
+    rerun(manifest)
+    record = ci.RecordRun(
+        staleness=ci.stale(manifest), assessment=STRICT.assess_staleness(ci.stale(manifest))
+    )
+    said = {
+        "claims": ci.claims_summary(ci.claims(manifest, PUBLICATION)),
+        "reruns": ci.record_summary(record),
+        **{
+            check: ci.tool_summary(ci.ToolRun(check=check, outcome="nothing to read"))
+            for check in ci.TOOLS
+        },
+    }
+    for check, summary in said.items():
+        assert summary.splitlines()[2] == (
+            f"{check}: {ci.ABOUT[check]}. What this means: "
+            f"https://reproducible.science/tools/repro/#{check}-in-ci"
+        )
+        whole = summary.replace("reproducible.science", "")
+        assert not re.search(r"is (verified|reproducible|correct)\b", whole)
+
+
+@pytest.mark.parametrize("check", ci.CHECKS)
+def test_the_branded_badge_reads_the_workflow_and_carries_the_checks_icon(check):
+    flow = ci.workflow(check, f"repro ci {check}", prefix="repro-")
+    line = flow.branded("someone/study")
+    shown, image, link = re.fullmatch(r"\[!\[([^\]]+)\]\((\S+)\)\]\((\S+)\)", line).groups()
+    address = urllib.parse.urlsplit(image)
+    query = urllib.parse.parse_qs(address.query, strict_parsing=True)
+    icon = (ROOT / "packages" / "repro" / "src" / "repro" / "icons" / f"{check}.svg").read_bytes()
+    assert shown == ci.NAMES[check]
+    assert address.netloc == "img.shields.io"
+    assert address.path == f"/github/actions/workflow/status/someone/study/repro-{check}.yml"
+    assert query["label"] == [ci.NAMES[check]] and query["labelColor"] == ["24292f"]
+    kind, _, encoded = query["logo"][0].partition(",")
+    assert kind == "data:image/svg+xml;base64"
+    assert base64.b64decode(encoded, validate=True) == icon.strip()
+    assert icon.startswith(b"<svg ") and b"<script" not in icon
+    assert link == f"https://github.com/someone/study/actions/workflows/repro-{check}.yml"
+    assert len(image) < ci.MAX_BADGE_URL and " " not in image and "+" not in address.query
+
+
+def test_init_prints_both_badge_lines_and_readme_takes_the_branded_ones_when_asked(
+    repository, capsys
+):
+    (repository / "README.md").write_text("# Study\n")
+    assert main(["ci", "init"]) == 0
+    out = capsys.readouterr().out
+    flow = ci.workflow("claims", "repro ci claims")
+    assert flow.badge("someone/study") in out.splitlines()
+    assert flow.branded("someone/study") in out.splitlines()
+    assert main(["ci", "init", "--force", "--readme", "--branded"]) == 0
+    assert (repository / "README.md").read_text() == (
+        f"# Study\n\n{flow.branded('someone/study')}\n"
+    )
+    assert main(["ci", "init", "--force", "--readme"]) == 0
+    assert (repository / "README.md").read_text().count("[![") == 1
