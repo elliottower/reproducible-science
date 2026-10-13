@@ -28,6 +28,7 @@ import enum
 import functools
 import importlib
 import json
+import os
 import pathlib
 import shlex
 import subprocess
@@ -35,8 +36,12 @@ from pathlib import Path
 
 from provenance_core import atomic_write
 from provenance_core.gitref import try_run
+from results.ledger import ChainError
 
 from repro import __version__, audit, crosscheck
+from repro.checks import LOCAL as LOCAL_CHECKS
+from repro.checks import RECORD as CHECKS
+from repro.checks import record as record_checks
 from repro.delegate import BY_NAME, TOOLS
 from repro.delegate import check as delegate_check
 from repro.delegate import run as delegate_run
@@ -47,6 +52,7 @@ from repro.models import (
     AssertionAccount,
     Availability,
     ChainNode,
+    CheckedAssertion,
     ClaimAccount,
     Freshness,
     NumberForm,
@@ -357,9 +363,20 @@ def cmd_verify(args: argparse.Namespace) -> int:
         print("    repro manifest init")
         return 2
 
-    report = run_verify(load(path))
+    manifest = load(path)
+    report = run_verify(manifest)
     policy = PROFILES[args.policy]
     assessment = policy.assess(report)
+    # The record sits beside the check and never decides it: where it cannot be written, one
+    # line on standard error says so and why, and the report and the exit code are the
+    # verification's. Standard error, so `--format json` still prints one document. Outside a
+    # git repository there is no local record and nothing is said.
+    try:
+        record_checks(manifest, report, local=args.local_record, tracked=args.record)
+    except (ReproError, ChainError) as e:
+        os.write(2, f"record not written: {e}\n".encode())
+    except OSError as e:
+        os.write(2, f"record not written: {e.filename}: {e.strerror}\n".encode())
 
     if args.format == "sarif":
         print(json.dumps(to_sarif(report, assessment, version=__version__), indent=2))
@@ -723,6 +740,85 @@ def _assertion_lines(assertion: AssertionAccount, paths: dict[str, str]) -> list
         lines.append(f"the manuscript prints {assertion.printed}{declared}: {outcome}")
     else:
         lines.append(f"the two sides compared: {outcome}")
+    return [*lines, *_history_lines(assertion)]
+
+
+def _checked_said(state: CheckedAssertion, before: CheckedAssertion | None) -> str:
+    """What one check found an assertion declaring, the bytes it read and the outcome, and
+    what differs from the check before it."""
+    if state.kind == "quote":
+        passage = state.printed or ""
+        said = f'the passage "{passage if len(passage) <= 60 else f"{passage[:60]}..."}"'
+    elif state.printed is not None:
+        said = f"reported {state.printed}" + (f" at {state.address}" if state.address else "")
+    else:
+        said = state.address
+    files = ", ".join(
+        f"{name} {digest[:12] if digest else 'absent'}" for name, digest in state.digests.items()
+    )
+    line = f"{said}, {files}: {_said(state.outcome)}"
+    if before is None:
+        return line
+    changed = [
+        label
+        for label, then, now in (
+            ("claim text", before.claim_digest, state.claim_digest),
+            ("passage" if state.kind == "quote" else "reported", before.printed, state.printed),
+            ("address", before.address, state.address),
+            ("conversion", before.conversion, state.conversion),
+            ("file", before.digests, state.digests),
+        )
+        if then != now
+    ]
+    return (
+        f"{line} (after {_said(before.outcome)}: "
+        f"{', '.join(changed) or 'nothing declared'} changed)"
+    )
+
+
+def _history_lines(assertion: AssertionAccount) -> list[str]:
+    """The record of checks for one assertion, where it holds more than how the assertion
+    stands now: each earlier state as `checked`, and the state now as `since` the check that
+    first found it, or as `now` where no recorded check has."""
+    states = assertion.history
+    renamed = [
+        f"a claim named {last.claim_id} was last checked {last.checked_at} at this address: "
+        f"{_said(last.outcome)}, and is no longer declared"
+        for last in assertion.formerly
+    ]
+    if len(states) < 2 and assertion.now is None and all(s.verifiable for s in states):
+        return renamed
+    current = len(states) - 1 if assertion.now is None else len(states)
+    lines = [
+        f"{'since' if index == current else 'checked'} {state.checked_at}: "
+        f"{_checked_said(state, states[index - 1] if index else None)}"
+        + ("" if state.verifiable else " [unverifiable]")
+        for index, state in enumerate(states)
+    ]
+    if assertion.now is not None:
+        lines.append(
+            f"now: {_checked_said(assertion.now, states[-1])}; no check of this is recorded"
+        )
+    return [*lines, *renamed]
+
+
+def _record_lines(account: ClaimAccount) -> list[str]:
+    """What is to be said of the records of checks themselves: that none is kept here, or
+    that one does not verify or the two disagree. Nothing where both are as they should be."""
+    lines = []
+    if account.no_local_record:
+        lines.append(f"no local record is kept here: {account.no_local_record}")
+    for record in account.records:
+        said = []
+        if record.unverifiable_from is not None or record.status in ("truncated", "corrupt"):
+            said.append(f"{record.status.replace('_', ' ')}: {'; '.join(record.problems)}")
+        if record.unverifiable_from is not None:
+            said.append(f"unverifiable from entry {record.unverifiable_from}")
+        if record.diverges_at is not None:
+            said.append(f"diverges from the local record at entry {record.diverges_at}")
+        if said:
+            count = f"{record.entries} entr{'y' if record.entries == 1 else 'ies'}"
+            lines.append(f"{record.kind} {record.path}: {count}, {'; '.join(said)}")
     return lines
 
 
@@ -792,6 +888,10 @@ def _why_lines(account: ClaimAccount) -> list[str]:
         where = f", {_steps(node.steps)}" if node.steps else ""
         lines.append(f"    {_named(node.artifact, paths)}: {_said(node.state)}{where}")
         lines += [f"      {line}" for line in _chain_lines(node, account, paths)]
+
+    if recorded := _record_lines(account):
+        lines.append("  record of checks")
+        lines += [f"    {line}" for line in recorded]
 
     lines += ["", "not established"]
     lines += [
@@ -951,7 +1051,7 @@ def cmd_check(args) -> int:
     return 0
 
 
-def main(argv: list[str] | None = None) -> int:
+def main(argv: list[str] | None = None, local_record: bool = True) -> int:
     parser = argparse.ArgumentParser(
         prog="repro",
         description=(
@@ -1022,6 +1122,14 @@ def main(argv: list[str] | None = None) -> int:
     p_verify.add_argument("manifest", nargs="?", help=f"path to {DEFAULT_NAME}")
     p_verify.add_argument("--policy", choices=sorted(PROFILES), default="publication")
     p_verify.add_argument("--format", choices=("text", "json", "sarif"), default="text")
+    p_verify.add_argument(
+        "--record",
+        action="store_true",
+        help=(
+            f"also bring the tracked record {CHECKS.as_posix()} up to the local one, which "
+            f"every check appends to at {LOCAL_CHECKS.as_posix()} in the git directory"
+        ),
+    )
     p_verify.set_defaults(func=cmd_verify)
 
     p_reproduce = sub.add_parser(
@@ -1120,7 +1228,11 @@ def main(argv: list[str] | None = None) -> int:
     )
     p_check.set_defaults(func=cmd_check)
 
-    entries = {t.name: functools.partial(delegate_run, t) for t in TOOLS} | {"repro": main}
+    # An audit runs these inside a clone of someone else's repository, and keeps no record of
+    # its checks in that clone's git directory.
+    entries = {t.name: functools.partial(delegate_run, t) for t in TOOLS} | {
+        "repro": functools.partial(main, local_record=False)
+    }
     audit.add_parser(sub).set_defaults(func=functools.partial(audit.command, entries=entries))
 
     # One subcommand per tool, each forwarding its arguments untouched. `parse_known_args`
@@ -1137,6 +1249,7 @@ def main(argv: list[str] | None = None) -> int:
         return delegate_run(BY_NAME[args.tool], rest)
     if rest:
         parser.error(f"unrecognized arguments: {' '.join(rest)}")
+    args.local_record = local_record
     if not hasattr(args, "func") or args.func is None:
         parser.print_help()
         return 1
