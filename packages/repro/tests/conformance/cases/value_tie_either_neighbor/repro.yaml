@@ -1,0 +1,27 @@
+schema_version: repro/1
+project: value_tie_either_neighbor
+artifacts:
+- id: halves
+  path: halves.json
+  digest:
+    algorithm: sha256
+    value: 2ab4dd1f2a05fa58537ed38742b8e79d325b56025dd195628ab4b464fcc32d73
+claims:
+- id: c
+  text: t
+  evidence:
+  - kind: metric
+    artifact: halves
+    name: m
+    reported: '4.2'
+    pointer: /tie
+  - kind: metric
+    artifact: halves
+    name: m
+    reported: '4.3'
+    pointer: /tie
+  - kind: metric
+    artifact: halves
+    name: m
+    reported: '4.4'
+    pointer: /tie

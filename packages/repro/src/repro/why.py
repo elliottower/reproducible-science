@@ -5,6 +5,9 @@ answers for one claim side by side, with the commands and files upstream of what
 then lists what nothing in the record covers: a file no command is recorded for, a command with
 no re-run that reproduced, an assertion that was not checked.
 
+Under each assertion it also puts what `repro.checks` recorded of it: what it declared and how
+it came out at each `repro verify --record` that found it changed.
+
 Nothing is evaluated here that those two do not evaluate. Each assertion goes through
 `repro.verify.check_evidence`, each state comes from `repro.stale.stale`, and the chain is the
 part of that report's graph `repro.regenerate.upstream` reaches from the files the claim reads.
@@ -15,22 +18,22 @@ from __future__ import annotations
 
 import collections
 import difflib
-import json
 import pathlib
 
 from repro.adapters.reads import reading_once
+from repro.checks import Records, address, checked
 from repro.exceptions import ReproError
 from repro.models import (
     AssertionAccount,
     ChainNode,
     Claim,
     ClaimAccount,
+    Conversion,
     CorrespondenceEvidence,
     Decision,
     Evidence,
     FileRead,
     Freshness,
-    Locator,
     Manifest,
     NotEstablished,
     NotEstablishedKind,
@@ -38,7 +41,6 @@ from repro.models import (
     QuoteEvidence,
     StaleCause,
     TableCellEvidence,
-    TreeLocator,
     Validity,
 )
 from repro.regenerate import upstream
@@ -96,32 +98,31 @@ class UnknownClaimError(ReproError):
         )
 
 
-def address(locator: Locator) -> str:
-    """A locator as a reader would write it: a JSON Pointer bare, any other by its fields."""
-    if isinstance(locator, TreeLocator):
-        return locator.pointer
-    fields = locator.model_dump(mode="json", exclude={"contract", "kind"}, exclude_defaults=True)
-    return ", ".join(
-        f"{key} {json.dumps(value, ensure_ascii=False)}" for key, value in fields.items()
-    )
+#: One file an assertion reads: the artifact, the side it is, the address, the value stored
+#: there, and the conversion declared for it with the value under it.
+Held = tuple[str, str, str, str | None, Conversion | None, str | None]
 
 
-def _held(
-    evidence: Evidence, decision: Decision, paths: dict[str, pathlib.Path]
-) -> list[tuple[str, str, str, str | None]]:
-    """Each file an assertion reads: the artifact, the side it is, the address and the value
-    stored there."""
+def _held(evidence: Evidence, decision: Decision, paths: dict[str, pathlib.Path]) -> list[Held]:
+    """Each file an assertion reads, and what was found at the address in it."""
     if isinstance(evidence, QuoteEvidence):
-        return [(evidence.artifact, "", "", None)]
+        return [(evidence.artifact, "", "", None, None, None)]
     if isinstance(evidence, CorrespondenceEvidence):
-        extracted = {side.name: side.extracted for side in decision.sides}
+        read = {side.name: side for side in decision.sides}
         return [
-            (side.artifact, side.name, address(side.locator), extracted.get(side.name))
+            (
+                side.artifact,
+                side.name,
+                address(side.locator),
+                read[side.name].extracted if side.name in read else None,
+                side.conversion,
+                read[side.name].converted if side.name in read else None,
+            )
             for side in evidence.sides
         ]
     if isinstance(evidence, TableCellEvidence) and not evidence.addresses_one_row:
         # Neither `row` nor `where`, or both: there is no one address to show.
-        return [(evidence.artifact, "", "", None)]
+        return [(evidence.artifact, "", "", None, None, None)]
     path = paths.get(evidence.artifact)
     return [
         (
@@ -129,6 +130,8 @@ def _held(
             "",
             address(evidence.locator),
             stored(evidence, path) if path is not None else None,
+            evidence.conversion,
+            decision.converted,
         )
     ]
 
@@ -241,7 +244,14 @@ def why(
             for evidence, decision in zip(claim.evidence, decisions, strict=True)
         ]
 
-    def read(artifact_id: str, side: str, where: str, value: str | None) -> FileRead:
+    def read(
+        artifact_id: str,
+        side: str,
+        where: str,
+        value: str | None,
+        conversion: Conversion | None,
+        converted: str | None,
+    ) -> FileRead:
         declared, state = manifest.artifact(artifact_id), states.get(artifact_id)
         return FileRead(
             artifact=artifact_id,
@@ -252,7 +262,26 @@ def why(
             on_disk=state.actual if state else None,
             address=where,
             stored=value,
+            conversion=conversion,
+            converted=converted,
         )
+
+    # What the record of checks holds for each assertion, and the assertion as it stands where
+    # the record's last entry is something else.
+    root = manifest.path.parent if manifest.path else pathlib.Path.cwd()
+    kept = Records(root)
+    past = kept.history
+    present = checked(claim, tuple(decisions))
+    # The last state of each assertion of a claim that is no longer declared, where it was
+    # not verified and had an address.
+    declared = {each.id for each in manifest.claims}
+    gone = [
+        states[-1]
+        for identity, states in past.items()
+        if identity[0] not in declared
+        and states[-1].outcome is not Outcome.VERIFIED
+        and states[-1].address
+    ]
 
     freshness = next(node for node in report.claims if node.id == claim.id).assertions
     assertions = tuple(
@@ -263,14 +292,24 @@ def why(
             if isinstance(evidence, QuoteEvidence)
             else getattr(evidence, "reported", None),
             reads=tuple(read(*found) for found in files),
+            places=getattr(evidence, "places", None),
+            tie=decision.tie,
             outcome=decision.outcome,
             reason=decision.reason,
             detail=decision.detail,
             state=node.state,
+            history=recorded,
+            now=None if not recorded or now.same_as(recorded[-1]) else now,
+            formerly=tuple(
+                last
+                for last in gone
+                if last.address == now.address and set(last.digests) == set(now.digests)
+            ),
         )
-        for evidence, decision, files, node in zip(
-            claim.evidence, decisions, held, freshness, strict=True
+        for evidence, decision, files, node, now in zip(
+            claim.evidence, decisions, held, freshness, present, strict=True
         )
+        for recorded in (past.get(now.identity, ()),)
     )
 
     # The records upstream of each file the claim reads, by `upstream`, and so the files: each
@@ -327,6 +366,8 @@ def why(
         ),
         findings=tuple(found for found in report.findings if found.regeneration in on_chain),
         not_established=_not_established(claim, assertions, chain),
+        records=kept.states,
+        no_local_record=kept.no_local_record,
         outcomes={outcome: by_outcome[outcome] for outcome in Outcome if by_outcome[outcome]},
         states={state: by_state[state] for state in Freshness if by_state[state]},
     )
