@@ -1012,7 +1012,8 @@ where there are any, the environment variables that bear on determinism, and per
 command, its exit code and duration, the digest each input was pinned at and found at, the
 digest the output was pinned at and produced at, the files the command wrote and did not
 declare, and for each assertion the value in the pinned file, the value in the new file and the
-value the manuscript prints. No field names a host, a user or an absolute path, and none
+value the manuscript prints, with the conversion the assertion declares (§3.7) and both stored
+values under it. No field names a host, a user or an absolute path, and none
 records who ran it, which the tool cannot observe.
 
 Commands run only under `repro reproduce`. `repro verify` executes nothing: verifying a

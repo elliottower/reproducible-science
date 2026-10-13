@@ -34,6 +34,7 @@ from repro.models import (
     ArtifactState,
     Claim,
     ClaimReading,
+    Conversion,
     Digest,
     Environment,
     Evidence,
@@ -142,6 +143,18 @@ def stored(evidence: Evidence, path: pathlib.Path) -> str | None:
     return extracted.raw if extracted is not None else None
 
 
+def _converted(conversion: Conversion | None, value: str | None) -> str | None:
+    """A stored value under a declared conversion, written as `repro verify` writes it, or
+    None where there is no conversion or no finite number to convert."""
+    if conversion is None or value is None:
+        return None
+    try:
+        number = decimal.Decimal(value)
+    except decimal.InvalidOperation:
+        return None
+    return format(conversion.apply(number), "f") if number.is_finite() else None
+
+
 def _difference(pinned: str | None, fresh: str | None) -> str | None:
     try:
         before, after = decimal.Decimal(pinned or ""), decimal.Decimal(fresh or "")
@@ -168,6 +181,8 @@ def _reading(
         claim, evidence, manifest, paths | {output: produced}, fresh_states, registry
     )
     pinned, fresh = stored(evidence, paths[output]), stored(evidence, produced)
+    # A member of an aggregate is converted too, but an aggregate has no one stored value.
+    conversion = None if pinned is None and fresh is None else getattr(evidence, "conversion", None)
 
     if after.outcome is Outcome.VERIFIED:
         reading = Reading.HOLDS
@@ -184,6 +199,9 @@ def _reading(
         pinned=pinned,
         fresh=fresh,
         difference=_difference(pinned, fresh),
+        conversion=conversion,
+        pinned_converted=_converted(conversion, pinned),
+        fresh_converted=_converted(conversion, fresh),
         reading=reading,
         detail="" if reading is Reading.HOLDS else (after.detail or after.reason.value),
     )

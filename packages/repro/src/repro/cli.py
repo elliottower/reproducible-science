@@ -501,8 +501,13 @@ def cmd_reproduce(args: argparse.Namespace) -> int:
         for claim in state.claims:
             if claim.reading is Reading.HOLDS:
                 continue
+            then, now = claim.pinned, claim.fresh
+            if claim.conversion is not None:
+                unit = claim.conversion.said
+                then = f"{then} ({claim.pinned_converted} {unit})"
+                now = f"{now} ({claim.fresh_converted} {unit})"
             values = (
-                f"{claim.pinned} then, {claim.fresh} now, paper prints {claim.printed}"
+                f"{then} then, {now} now, paper prints {claim.printed}"
                 if claim.pinned is not None and claim.fresh is not None
                 else claim.detail[:60]
             )
