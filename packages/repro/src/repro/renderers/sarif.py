@@ -180,8 +180,13 @@ def to_sarif(
             }
             # A correspondence reads two artifacts and names neither in `artifact_id`, so its
             # locations come from the sides. SARIF takes a list, and a finding about two files
-            # that pointed at one of them would send a reader to the wrong half.
-            located = [s.artifact_id for s in decision.sides] or [decision.artifact_id]
+            # that pointed at one of them would send a reader to the wrong half. An aggregate
+            # is located at each file a member reads, once.
+            located = (
+                [s.artifact_id for s in decision.sides]
+                or list(dict.fromkeys(m.artifact_id for m in decision.members))
+                or [decision.artifact_id]
+            )
             entry["locations"] = [
                 {"physicalLocation": {"artifactLocation": {"uri": uri, "index": index[uri]}}}
                 for uri in located

@@ -713,7 +713,11 @@ def _assertion_lines(assertion: AssertionAccount, paths: dict[str, str]) -> list
             if file.conversion is not None and file.converted is not None:
                 held += f", {file.converted} {file.conversion.said}"
             lines.append(f"{side}{file.artifact} at {file.address}: {held}")
-
+    if assertion.statistic is not None and assertion.computed is not None:
+        lines.append(
+            f"the {assertion.statistic.value} of the {len(assertion.reads)} values: "
+            f"{assertion.computed}"
+        )
     if assertion.tie is not None:
         lines.append(
             f"an exact tie between {assertion.tie.lower} and {assertion.tie.upper}: "

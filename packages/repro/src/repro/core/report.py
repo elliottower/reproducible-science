@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from repro.core.checks import CheckedAssertion, RecordState
 from repro.core.claims import Availability, Registration
-from repro.core.evidence import Conversion
+from repro.core.evidence import Conversion, Statistic
 from repro.core.manifest import RegenerationState
 from repro.core.outcomes import (
     Decision,
@@ -338,6 +338,10 @@ class AssertionAccount(BaseModel):
     """How many decimal places the assertion declares the manuscript reports the value to."""
     tie: Tie | None = None
     """Set where the compared value lay exactly halfway between two printed values."""
+    statistic: Statistic | None = None
+    """What an `aggregate` computes over the values it reads. None for every other kind."""
+    computed: str | None = None
+    """That statistic of the stored values. None where one of them held no number."""
     outcome: Outcome
     reason: Reason
     detail: str = ""

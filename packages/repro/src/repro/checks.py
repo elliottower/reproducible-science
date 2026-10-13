@@ -51,6 +51,7 @@ from results.ledger import ChainStatus, append_event, read_anchor, write_anchor
 
 from repro.exceptions import ReproError
 from repro.models import (
+    AggregateEvidence,
     CheckedAssertion,
     CheckRecord,
     Claim,
@@ -123,6 +124,10 @@ def _address(evidence: Evidence) -> str:
         return "; ".join(
             f"{side.name}: {side.artifact} at {address(side.locator)}" for side in evidence.sides
         )
+    if isinstance(evidence, AggregateEvidence):
+        return "; ".join(
+            f"{member.artifact} at {address(member.locator)}" for member in evidence.members
+        )
     if isinstance(evidence, TableCellEvidence) and not evidence.addresses_one_row:
         # Neither `row` nor `where`, or both: there is no one address to record.
         return ""
@@ -159,6 +164,7 @@ def checked(
                 address=_address(evidence),
                 conversion=_conversion(evidence),
                 digests={side.artifact_id: side.artifact_digest for side in decision.sides}
+                or {member.artifact_id: member.artifact_digest for member in decision.members}
                 or dict.fromkeys(evidence.artifacts, decision.artifact_digest),
                 outcome=decision.outcome,
                 reason=decision.reason,

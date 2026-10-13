@@ -1,0 +1,21 @@
+{
+  "outcomes": [
+    "not_found"
+  ],
+  "reasons": [
+    "pointer_absent"
+  ],
+  "artifacts": {
+    "run0": "authoritative",
+    "run1": "authoritative",
+    "run2": "authoritative",
+    "other": "authoritative"
+  },
+  "stages": [
+    [
+      "completed",
+      "absent",
+      "not_applicable"
+    ]
+  ]
+}

@@ -26,11 +26,12 @@ This is why the outcome vocabulary is `match` and `mismatch` rather than `suppor
 |---|---|---|
 | `Digest` | yes | a content address: `sha256` and 64 lowercase hex characters |
 | `ArtifactRef` | yes | a file the manifest names, pinned or not |
-| `Evidence` | yes | an assertion about one artifact, or two, discriminated on `kind` |
+| `Evidence` | yes | an assertion about one artifact, two, or a declared list, discriminated on `kind` |
 | `Claim` | yes | a manuscript statement and the evidence offered for it |
 | `Manifest` | yes | one project's artifacts and claims |
 | `Decision` | yes | the outcome of evaluating one assertion |
 | `DecisionSide` | yes | what one side of a two-sided assertion read, and where |
+| `DecisionMember` | yes | what one member of an aggregate read, and where |
 | `VerificationReport` | yes | every decision, and the state of every artifact |
 | `Assessment` | yes | a policy's verdict on a report |
 
@@ -241,7 +242,101 @@ revision does not define.
 Both sides being read does not make either side right. Two artifacts agree or they do not, and a
 document and a script can agree on a number that is wrong.
 
-### 3.5 Kinds that are not here
+### 3.5 `aggregate`
+
+```yaml
+kind: aggregate
+name: accuracy
+reported: "0.914"
+statistic: mean             # or median | min | max | sum | count
+count: 3
+members:
+  - {artifact: seed-0, locator: {kind: tree, pointer: /accuracy}}
+  - {artifact: seed-1, locator: {kind: tree, pointer: /accuracy}}
+  - {artifact: seed-2, locator: {kind: tree, pointer: /accuracy}}
+mode: printed_precision     # or absolute | relative
+tolerance: "0"
+conversion: percent         # optional (§3.7), applied to each member
+places: 3                   # optional (§3.8)
+```
+
+Assertion: the printed value is this statistic of the values these members hold.
+
+A sentence reporting a mean over ten seeds, bound with a `metric` to one run's file, rests on
+that run. The manifest reads the same whether the run is the typical one or the best of the
+ten, and the other nine files are read by nothing. An `aggregate` names every member, and the
+assertion is checked only where every member holds a number.
+
+A member is an artifact and a locator of §3.6, so a member resolves to exactly one scalar by
+the rules every other value does. Members may name one artifact each or several addresses in
+one: ten values in one JSON array are ten members, `/scores/0` to `/scores/9`. No locator
+resolves to a list, and an aggregate does not add one, since a member that is a whole array
+is a set whose length the manifest does not state.
+
+**`count` is required and must equal the number of members.** The manuscript's "ten seeds" is
+then a declared quantity, and a member deleted from the list leaves a manifest that states
+ten and lists nine. That manifest does not load. Neither does one listing the same artifact and
+locator twice, which would count one value two times.
+
+| statistic | computed |
+|---|---|
+| `mean` | the sum of the values divided by `count` |
+| `median` | the middle value in sorted order, or half the sum of the two middle values where `count` is even |
+| `min`, `max` | the least and the greatest value |
+| `sum` | the sum of the values |
+| `count` | the number of members, each of which holds a number |
+
+The set is closed. A standard deviation is not in it: it is a square root, which no exact
+decimal or rational holds, and it names two quantities until `sample` or `population` is said.
+
+**A conversion is applied to each member, and places and ties are as for one value.** A
+declared `conversion` converts each member's value, exactly, before the statistic is taken, so
+ten stored fractions printed as a mean percentage are bound with `conversion: percent`. It is
+rejected with `count`, since how many members there are is in no unit. `places` is what §3.8
+defines, checked after every member has resolved. A statistic exactly halfway between two
+printed values agrees with either, decided by the function that decides it for a single value,
+and the decision records the tie.
+
+**The statistic is exact, and is rounded once.** Each stored value is parsed as a decimal and
+held as a rational, and the statistic is computed over rationals: a mean of three values is
+the exact quotient, with no binary float formed and no decimal division rounding it at a
+context's precision. The comparison is the one §3.2 defines, on that exact value. Under
+`printed_precision` the statistic is rounded half-even to the precision `reported` prints and
+must equal `reported`; under `absolute` and `relative` the exact difference is compared with
+the tolerance. Members holding `0.264` and `0.099` have a mean of exactly `0.1815`, which is
+an exact tie at three places, so `0.181` and `0.182` both agree and the decision says so; the
+same mean in binary floating point is a hair below the boundary, where it is no tie and only
+`0.181` would agree.
+
+| situation | reported |
+|---|---|
+| a member's artifact is not declared | `unchecked`, reason `artifact_undeclared` |
+| a member's file is not on disk | `unchecked`, reason `artifact_missing`, naming the path |
+| a member's file cannot be parsed | `unchecked`, reason `artifact_unreadable`, naming the member |
+| a member's format has no adapter | `unchecked`, reason `format_unsupported` |
+| a member's locator does not resolve | `extraction=absent` or `invalid`, with that member's reason |
+| a member holds no finite number | `extraction=invalid`, reason `value_not_numeric` |
+| `count` differs from the number of members, or a member is listed twice | the manifest does not load |
+
+**A statistic over the members that did resolve is never taken.** Where any member fails, no
+comparison is made, the decision carries the first failing member's reason, and its detail
+names every member that failed by its position in the list and its artifact:
+`member 4 of 10 (seed-3): /accuracy does not resolve in seed-3.json`. The assertion's validity
+is the weakest of its members' artifacts.
+
+A decision records one `DecisionMember` per member, in the order the manifest lists them, with
+the artifact digest, the locator digest, the value extracted and its digest, and the value
+converted where a conversion is declared. It records the
+`statistic` and `computed`, the value compared: written exactly where it is a terminating
+decimal, and otherwise rounded half-even to three places past the precision the manuscript
+prints. The decision-level extraction digest covers every member's, in order.
+
+**What it cannot establish.** That the members listed are all the runs there were. An author
+who ran twelve seeds and lists the best ten states `count: 10` and passes. The assertion binds
+the printed value to the declared set, and which runs belong in the set is the author's
+declaration, as an address is.
+
+### Kinds that are not here
 
 `protocol` was specified as a third kind and is not one. Its integrity check is the artifact
 pin, which every artifact already carries; its content check — that a registered document
@@ -377,8 +472,8 @@ pointer: /attrition
 conversion: percent
 ```
 
-`conversion` is an optional field of `metric`, `table` and `value`, and of each side of a
-`correspondence`. It takes one of two names.
+`conversion` is an optional field of `metric`, `table`, `value` and `aggregate` (§3.5), and of
+each side of a `correspondence`. It takes one of two names.
 
 | conversion | the file stores | the manuscript prints | converted value |
 |---|---|---|---|
@@ -430,7 +525,7 @@ pointer: /effect
 places: 1
 ```
 
-`places` is an optional non-negative integer on `metric`, `table` and `value`: the number of
+`places` is an optional non-negative integer on `metric`, `table`, `value` and `aggregate`: the number of
 decimal places the manuscript reports this value to, as the author states it. Where it is
 declared, two things must hold.
 
@@ -497,6 +592,8 @@ how a file silent on a value becomes one that contradicts it.
 | two sides agree | completed | extracted | match | `verified` |
 | two sides disagree | completed | extracted | mismatch | `mismatch` |
 | one side does not extract | completed | absent or invalid | n/a | `not_found` |
+| a statistic of the members agrees | completed | extracted | match | `verified` |
+| a member does not extract | completed | absent or invalid | n/a | `not_found` |
 | passage absent from a readable source | completed | extracted | mismatch | `mismatch` |
 | passage present, on another page than the one declared | completed | extracted | mismatch | `mismatch` |
 | passage occurs more than once | completed | invalid | n/a | `not_found` |
@@ -624,7 +721,7 @@ class Backend(Protocol):
 ```
 
 `paths` holds one entry per artifact the assertion names, keyed by id. Every kind but
-`correspondence` names one and takes it with `paths[evidence.artifact]`. It is a mapping rather
+`correspondence` and `aggregate` names one and takes it with `paths[evidence.artifact]`. It is a mapping rather
 than a path because an assertion whose two sides are both artifacts has no single file to be
 handed, and handing it one would make the engine choose a side before the backend has read
 either. Widening this was not additive: a backend written against the earlier signature does
@@ -904,7 +1001,8 @@ An implementation conforms when:
 6. Every decision names the claim digest, artifact digest, backend, backend version,
    extraction toolchain, that toolchain's version, and the digest of what it produced. A
    decision over two artifacts names the artifact digest, the locator digest and the
-   extraction digest of each side, since one field cannot hold two.
+   extraction digest of each side, since one field cannot hold two, and a decision over a
+   list of members names them for each member.
 7. A version or digest that was sought and not obtained is recorded as `unknown`, never
    omitted, so it stays distinguishable from one that was never sought.
 8. A broken pin marks every decision against that artifact non-authoritative.
@@ -921,8 +1019,12 @@ An implementation conforms when:
     half to even.
 15. Where `places` is declared, a `reported` written to another number of decimal places is a
     `mismatch` with reason `places_mismatch`, whatever the artifact holds.
+16. An aggregate is compared only where every member it declares resolves to a finite number,
+    its statistic is computed exactly and compared by the rule of a single value, ties
+    included, and its decision records what each member read. A statistic over fewer members
+    than were declared is never a match.
 
-Conformance is executable: `packages/repro/tests/conformance/` holds 33 fixtures, each with
+Conformance is executable: `packages/repro/tests/conformance/` holds 36 fixtures, each with
 canonical expected JSON. They cover `verified`, `mismatch`, `not_found`, `unchecked` and
 `not_offered`, the pointer-escaping and undeclared-artifact cases, an unpinned artifact, a
 broken pin, five table-addressing cases, six over `correspondence` and the prose locator —
@@ -935,11 +1037,14 @@ declare the three stages of §4, as do two over a conversion: a stored fraction 
 with the printed percentage beside the same address with no conversion declared, which does
 not, and a stored fraction that rounds to another percentage at the printed precision; and
 two over §3.8: a value exactly halfway between two printed values, asserted once as each
-neighbor and once as neither, and a value printed to two places where one is declared.
+neighbor and once as neither, and a value printed to two places where one is declared; and
+three over an `aggregate`: a mean with no finite expansion that agrees at the printed
+precision, the best run printed as the mean, and a member that does not resolve where the
+mean of the others is the printed value.
 
 Each fixture declares its outcome, its reason, and the validity of every artifact. The outcome
 alone cannot tell a defect in the tool from a fact about the document: three cases share
-`unchecked` and eleven share `not_found`, and only the reason separates an undeclared artifact
+`unchecked` and twelve share `not_found`, and only the reason separates an undeclared artifact
 from an absent file, or an ambiguous anchor pair from a number written as a word.
 
 Two rows of §4 have no fixture: `error`, which needs a backend defect, and the

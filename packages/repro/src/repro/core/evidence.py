@@ -40,8 +40,9 @@ class _EvidenceBase(BaseModel):
     def artifacts(self) -> tuple[str, ...]:
         """Every artifact this assertion reads.
 
-        One, for every kind but `correspondence`. The engine resolves pins over this rather
-        than over `artifact`, so an assertion reading two files has both of them checked.
+        One, for every kind but `correspondence` and `aggregate`. The engine resolves pins
+        over this rather than over `artifact`, so an assertion reading two files has both of
+        them checked.
         """
         return (self.artifact,)
 
@@ -588,8 +589,113 @@ class CorrespondenceEvidence(BaseModel):
         return self
 
 
+class Statistic(enum.StrEnum):
+    """What an aggregate computes over its members. A closed set, each exact over decimals.
+
+    A standard deviation is not here. It is a square root, which no exact decimal holds, and
+    it is two quantities under one name until `sample` or `population` is said."""
+
+    MEAN = "mean"
+    MEDIAN = "median"
+    """The middle value, or the mean of the two middle values of an even number."""
+    MIN = "min"
+    MAX = "max"
+    SUM = "sum"
+    COUNT = "count"
+    """How many members hold a number. Every member must, so this is `count` where the
+    assertion is checked at all."""
+
+
+class AggregateMember(BaseModel):
+    """One of the values an aggregate is computed over."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    artifact: str
+    locator: ValueLocator
+
+
+class AggregateEvidence(_Reported):
+    """Assertion: the printed value is this statistic of these stored values.
+
+    Every other kind rests a number on one stored value. A sentence reporting a mean over ten
+    seeds bound to one run's file rests on that run, whichever it is, and the manifest reads
+    the same whether the run was the typical one or the best. Here the assertion reads every
+    member it declares, and is checked only where all of them hold a number.
+
+    A `conversion` is applied to each member's value before the statistic, and `places` is
+    what it is for a `metric`.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: Literal["aggregate"] = "aggregate"
+
+    name: str
+    reported: str
+    """The value exactly as the manuscript prints it, as a string. See `MetricEvidence`."""
+
+    statistic: Statistic
+
+    count: int = Field(ge=1)
+    """How many members the manuscript says the statistic is over. Stated apart from the list
+    so that "ten seeds" is itself declared, and a member deleted from the list is a manifest
+    that no longer says ten rather than a mean over nine."""
+
+    members: tuple[AggregateMember, ...] = Field(min_length=1)
+
+    mode: ComparisonMode = ComparisonMode.PRINTED_PRECISION
+    tolerance: str = "0"
+
+    @property
+    def artifacts(self) -> tuple[str, ...]:
+        """Each artifact a member names, once, in the order the members first name it."""
+        return tuple(dict.fromkeys(member.artifact for member in self.members))
+
+    @property
+    def value(self) -> decimal.Decimal:
+        return decimal.Decimal(self.reported)
+
+    @property
+    def tolerance_value(self) -> decimal.Decimal:
+        return decimal.Decimal(self.tolerance)
+
+    @model_validator(mode="after")
+    def _a_count_has_no_unit(self):
+        if self.statistic is Statistic.COUNT and self.conversion is not None:
+            raise ValueError(
+                f"aggregate {self.name!r}: `conversion` is declared with statistic 'count', "
+                f"and how many members there are is in no unit"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _members_are_the_declared_count_and_distinct(self):
+        if self.count != len(self.members):
+            raise ValueError(
+                f"aggregate {self.name!r}: `count` is {self.count} and {len(self.members)} "
+                f"members are listed"
+            )
+        seen: set[tuple[str, str]] = set()
+        for position, member in enumerate(self.members, start=1):
+            address = (member.artifact, member.locator.canonical())
+            if address in seen:
+                raise ValueError(
+                    f"aggregate {self.name!r}: member {position} addresses a value in "
+                    f"{member.artifact!r} that an earlier member addresses, so one value "
+                    f"would be counted twice"
+                )
+            seen.add(address)
+        return self
+
+
 Evidence = Annotated[
-    QuoteEvidence | MetricEvidence | TableCellEvidence | ValueEvidence | CorrespondenceEvidence,
+    QuoteEvidence
+    | MetricEvidence
+    | TableCellEvidence
+    | ValueEvidence
+    | CorrespondenceEvidence
+    | AggregateEvidence,
     Field(discriminator="kind"),
 ]
 """Every kind of evidence, discriminated on `kind`.

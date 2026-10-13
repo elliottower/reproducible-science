@@ -472,6 +472,75 @@ write(
     ),
 )
 
+# -- a statistic over several stored values --------------------------------------------------
+
+#: Four runs of one model, and a fifth file that reports a loss and no accuracy.
+RUNS = {
+    **{f"run{n}.json": json.dumps({"accuracy": value}) for n, value in enumerate((1, 1, 2, 4))},
+    "other.json": json.dumps({"loss": 0.2}),
+}
+RUN = [{"id": f"run{n}", "path": f"run{n}.json"} for n in range(4)]
+OTHER = [{"id": "other", "path": "other.json"}]
+
+
+def held(artifacts):
+    """The files these artifacts name, and no other: a fixture carries only what it reads."""
+    return {a["path"]: RUNS[a["path"]] for a in artifacts}
+
+
+def over(reported, statistic, artifacts):
+    return {
+        "kind": "aggregate",
+        "name": "m",
+        "reported": reported,
+        "statistic": statistic,
+        "count": len(artifacts),
+        "members": [
+            {"artifact": a["id"], "locator": {"kind": "tree", "pointer": "/accuracy"}}
+            for a in artifacts
+        ],
+    }
+
+
+write(
+    "aggregate_match",
+    artifacts=RUN[:3],
+    files=held(RUN[:3]),
+    expected=["verified"],
+    reasons=["value_match"],
+    validity={a["id"]: "authoritative" for a in RUN[:3]},
+    stages=[["completed", "extracted", "match"]],
+    # 1, 1 and 2 have a mean of four thirds, which no decimal holds. It is rounded once, to
+    # the two places the manifest prints.
+    claims=one(over("1.33", "mean", RUN[:3])),
+)
+
+write(
+    "aggregate_mismatch",
+    artifacts=RUN,
+    files=held(RUN),
+    expected=["mismatch"],
+    reasons=["value_mismatch"],
+    validity={a["id"]: "authoritative" for a in RUN},
+    stages=[["completed", "extracted", "mismatch"]],
+    # The best of the four runs, printed as their mean, which is 2.
+    claims=one(over("4", "mean", RUN)),
+)
+
+write(
+    "aggregate_member_absent",
+    artifacts=RUN[:3] + OTHER,
+    files=held(RUN[:3] + OTHER),
+    expected=["not_found"],
+    reasons=["pointer_absent"],
+    validity={a["id"]: "authoritative" for a in RUN[:3] + OTHER},
+    stages=[["completed", "absent", "not_applicable"]],
+    # Three members hold 1, 1 and 2 and the fourth holds no accuracy. The mean of the three
+    # that resolve is 1.33, which is what the manifest prints, and it is not taken: a
+    # statistic over fewer members than were declared is `not_found` and never a match.
+    claims=one(over("1.33", "mean", RUN[:3] + OTHER)),
+)
+
 # -- a printed table, read as text -----------------------------------------------------------
 
 #: What a script prints and a report keeps: a pipe table, each cell padded on the left and

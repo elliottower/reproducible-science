@@ -9,7 +9,7 @@ import enum
 
 from pydantic import BaseModel, ConfigDict
 
-from repro.core.evidence import Conversion
+from repro.core.evidence import Conversion, Statistic
 
 SCHEMA_VERSION = "repro/1"
 
@@ -274,6 +274,32 @@ class DecisionSide(BaseModel):
     to be told which of two artifacts changed."""
 
 
+class DecisionMember(BaseModel):
+    """What one member of an aggregate read, and where it read it.
+
+    One per member, in the order the manifest lists them, so a report can show every value
+    the statistic was computed over and a deleted or edited member changes the record.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    artifact_id: str
+    artifact_digest: str | None = None
+    locator_digest: str | None = None
+    validity: Validity = Validity.AUTHORITATIVE
+    extracted: str | None = None
+    """The value read, in the representation the artifact used. `None` where this member did
+    not extract, which is why the decision reports no comparison."""
+
+    converted: str | None = None
+    """`extracted` under the assertion's `conversion`, which is the value the statistic is
+    over. None where no conversion is declared, or where a member read no number."""
+
+    extraction_digest: str = ""
+    """sha256 of what this member's extractor produced. `unknown` where it produced nothing
+    to hash."""
+
+
 class Decision(BaseModel):
     """The outcome of evaluating one evidence assertion. Frozen: a decision that can be
     edited after the fact records nothing."""
@@ -321,6 +347,19 @@ class Decision(BaseModel):
     """The two values a `correspondence` compared, each with the artifact and locator it came
     from. Empty for every kind that reads one artifact, which records its single artifact and
     locator in the fields above."""
+
+    members: tuple[DecisionMember, ...] = ()
+    """The values an `aggregate` was computed over, each with the artifact and locator it
+    came from. Empty for every other kind."""
+
+    statistic: Statistic | None = None
+    """What an `aggregate` computed over `members`. None for every other kind."""
+
+    computed: str | None = None
+    """The statistic of the members' values, which is what was compared with the printed
+    value. Written exactly where it is a terminating decimal, and otherwise rounded half-even
+    to three places past the precision the manuscript prints; the comparison is made on the
+    exact value either way. None where a member held no number."""
 
     backend: str = ""
     backend_version: str = ""
