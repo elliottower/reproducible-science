@@ -36,8 +36,8 @@ from repro.models import (
 from repro.record import (
     CHECK_TYPES,
     RECORD_VERSION,
-    CheckRecord,
     CheckType,
+    ExportRecord,
     InvalidRecordError,
     NormalizedOutcome,
     UnmappedError,
@@ -47,6 +47,7 @@ from repro.record import (
     problems,
     read_outcome,
     to_jsonl,
+    understood,
     validate,
 )
 from repro.reproduce import append
@@ -112,10 +113,10 @@ def test_a_record_survives_a_line_of_json_and_fits_the_schema(path):
 
 
 def test_the_schema_on_disk_is_the_one_the_model_gives():
-    generated = json.dumps(CheckRecord.model_json_schema(), indent=2, sort_keys=True) + "\n"
+    generated = json.dumps(ExportRecord.model_json_schema(), indent=2, sort_keys=True) + "\n"
     assert SCHEMA.read_text() == generated, (
         f"{SCHEMA.relative_to(ROOT)} is stale: write "
-        "json.dumps(CheckRecord.model_json_schema(), indent=2, sort_keys=True) to it"
+        "json.dumps(ExportRecord.model_json_schema(), indent=2, sort_keys=True) to it"
     )
 
 
@@ -193,7 +194,8 @@ def test_a_correspondence_carries_both_sides_and_no_reported_value():
 
 def test_an_aggregate_carries_every_member_the_statistic_and_what_it_computed():
     record = one("aggregate_mismatch")
-    assert record.check_type is CheckType.VALUE_COMPARISON
+    assert record.check_type is CheckType.AGGREGATE_COMPARISON
+    assert record.comparison.count == len(record.reads) == 4
     assert [(read.artifact, read.stored) for read in record.reads] == [
         ("run0", "1"),
         ("run1", "1"),
@@ -335,6 +337,54 @@ def test_a_correspondence_missing_one_side_of_a_match_is_refused():
     )
 
 
+def test_a_converted_comparison_without_the_converted_value_is_refused():
+    data = as_dict(check_records(case("value_match_converted"), WHEN)[0])
+    del data["reads"][0]["converted"]
+    assert "needs the converted value that was compared" in refused(data)
+
+
+def test_an_aggregate_without_its_statistic_or_its_count_is_refused():
+    for missing in ("statistic", "count"):
+        data = changed("aggregate_match")
+        del data["comparison"][missing]
+        assert "names its statistic and its count" in refused(data)
+
+
+def test_an_aggregate_whose_count_is_not_its_members_is_refused():
+    data = changed("aggregate_match")
+    data["reads"].pop()
+    assert "members reads" in refused(data)
+
+
+def test_an_aggregate_match_missing_a_member_s_value_or_what_was_computed_is_refused():
+    assert "every member's stored value" in refused(
+        changed("aggregate_match", reads__0__stored=None)
+    )
+    assert "what the statistic computed" in refused(
+        changed("aggregate_match", comparison__computed=None)
+    )
+
+
+def test_an_aggregate_is_not_called_a_comparison_with_one_stored_value():
+    said = refused(changed("aggregate_match", check_type="value-comparison"))
+    assert "an 'aggregate' assertion is an aggregate-comparison" in said
+    record = one("aggregate_match")
+    assert record.check_type.value == "aggregate-comparison"
+    assert understood(record) and read_outcome(record) is NormalizedOutcome.MATCH
+
+
+def test_a_match_on_a_tie_prints_one_of_its_two_values():
+    data = changed("value_match")
+    data["comparison"]["tie"] = {"lower": "3.2", "upper": "3.3", "printed": "3.2"}
+    assert validate(data).comparison.tie.upper == "3.3"
+    data["comparison"]["tie"]["printed"] = "3.4"
+    assert "prints one of the two values" in refused(data)
+
+
+def test_warnings_travel_as_the_tool_words_them():
+    assert one("passage_present").warnings == ("short",)
+
+
 def test_a_passage_presence_that_stores_a_value_is_refused():
     assert "compares no value" in refused(changed("passage_present", reads__0__stored="3.2"))
 
@@ -427,7 +477,7 @@ def test_an_unknown_address_kind_is_kept_and_its_match_is_read_as_not_checked():
 def test_a_native_word_this_version_does_not_know_is_never_a_match():
     data = changed("value_match", native_outcome="confirmed")
     assert "not-checked at best, never a match" in refused(data)
-    record = CheckRecord.model_validate(data)
+    record = ExportRecord.model_validate(data)
     assert read_outcome(record) is NormalizedOutcome.NOT_CHECKED
 
 
@@ -435,11 +485,11 @@ def test_a_word_repro_emits_means_nothing_from_a_checker_that_is_not_known():
     data = changed("value_match")
     data["checker"]["name"] = "another-tool"
     assert "never a match" in refused(data)
-    assert read_outcome(CheckRecord.model_validate(data)) is NormalizedOutcome.NOT_CHECKED
+    assert read_outcome(ExportRecord.model_validate(data)) is NormalizedOutcome.NOT_CHECKED
 
 
 def test_a_check_type_that_is_other_is_never_read_as_a_match():
-    record = CheckRecord.model_validate(
+    record = ExportRecord.model_validate(
         changed("passage_present", check_type="other", printed=None, reads__0__address=None)
     )
     assert read_outcome(record) is NormalizedOutcome.NOT_CHECKED
