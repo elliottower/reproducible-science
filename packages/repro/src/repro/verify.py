@@ -167,12 +167,35 @@ _QUOTE_STATE = {
     ),
 }
 
+#: Every warning `citations.verify` can put on a result. `page unchecked` was not here, and a
+#: warning with no entry is dropped, so the one warning that says a check was skipped was the
+#: one `repro verify` never showed.
 _QUOTE_WARNINGS = {
     "short": Warning_.SHORT,
     "truncated": Warning_.TRUNCATED,
     "normalized": Warning_.NORMALIZED,
     "page": Warning_.WRONG_PAGE,
+    "page unchecked": Warning_.PAGE_UNCHECKED,
 }
+
+
+def _page_unchecked(page: int | None, state: str, warnings: list[str], paginated: bool) -> str:
+    """Why a declared page was not checked on a passage that was found, or empty where it was.
+
+    `citations` says so itself only where a source declares its own extractor, which a
+    manifest cannot do. The two cases a manifest reaches are silent there: a source that is
+    not read page by page has its page dropped before the passage is looked for, and a passage
+    that matches only with spacing ignored is returned before the page is looked at.
+    """
+    if page is None or state != "found" or "page" in warnings:
+        return ""
+    if "page unchecked" in warnings:
+        return f"page {page} was not checked: the declared extractor cannot be asked for one page"
+    if not paginated:
+        return f"page {page} was not checked: the artifact is not read page by page"
+    if "normalized" in warnings:
+        return f"page {page} was not checked: the passage matched only with spacing ignored"
+    return ""
 
 
 class QuoteBackend:
@@ -200,7 +223,7 @@ class QuoteBackend:
             # Imported here rather than at module scope so an absent `citations` reports as a
             # backend that could not run, which is what the caller can act on.
             from citations.exceptions import SourceUnreadableError
-            from citations.verify import check_one, extract
+            from citations.verify import check_one, extract, is_paginated
         except ImportError as e:
             raise BackendUnavailableError("quote", f"citations is not installed: {e}") from e
 
@@ -208,7 +231,14 @@ class QuoteBackend:
         result = check_one(
             evidence.text, path, evidence.page, prefix=evidence.prefix, suffix=evidence.suffix
         )
-        warnings = tuple(_QUOTE_WARNINGS[w] for w in result.warnings if w in _QUOTE_WARNINGS)
+        named = list(result.warnings)
+        # Asked only of a source that was read: `is_paginated` opens the file to tell text from
+        # a format with pages.
+        paginated = result.state == "found" and is_paginated(path)
+        unchecked = _page_unchecked(evidence.page, result.state, named, paginated)
+        if unchecked and "page unchecked" not in named:
+            named.append("page unchecked")
+        warnings = tuple(_QUOTE_WARNINGS[w] for w in named if w in _QUOTE_WARNINGS)
 
         if result.state == "unchecked":
             # The extractor could not produce text. Distinguishing this from an absent
@@ -237,7 +267,7 @@ class QuoteBackend:
             extraction=extraction,
             comparison=comparison,
             reason=reason,
-            detail=result.detail,
+            detail=result.detail or unchecked,
             warnings=warnings,
         )
 

@@ -86,6 +86,7 @@ def test_a_sibling_with_an_extra_is_read_and_bumped_with_the_extra_kept(tmp_path
     monkeypatch.setattr(versions, "PACKAGES", {"prereg": manifest, "provenance-core": manifest})
     monkeypatch.setattr(versions, "PLUGIN_MANIFESTS", ())
     monkeypatch.setattr(versions, "HOOKS", tmp_path / "absent.yaml")
+    monkeypatch.setattr(versions, "HOOK_README", tmp_path / "absent.md")
     monkeypatch.setattr(versions, "CITATION", tmp_path / "absent.cff")
     monkeypatch.setattr(versions, "PROJECT_ROOT", tmp_path)
 
@@ -149,13 +150,19 @@ def test_a_bump_writes_the_citation_version_and_the_date(tmp_path, monkeypatch):
     monkeypatch.setattr(versions, "PACKAGES", {})
     monkeypatch.setattr(versions, "PLUGIN_MANIFESTS", ())
     monkeypatch.setattr(versions, "HOOKS", tmp_path / "absent.yaml")
+    monkeypatch.setattr(versions, "HOOK_README", tmp_path / "absent.md")
 
     # Every path `bump` writes has to be redirected, and the list grew after this test was
     # written: adding HOOKS as a target left this test writing 9.9.9 into the repository's own
     # `.pre-commit-hooks.yaml`, which the next commit then carried. Reading the real files back
     # is what turns the next such omission into a failure here rather than into a commit.
     untouched = {
-        p: p.read_bytes() for p in (ROOT / ".pre-commit-hooks.yaml", ROOT / "CITATION.cff")
+        p: p.read_bytes()
+        for p in (
+            ROOT / ".pre-commit-hooks.yaml",
+            ROOT / "CITATION.cff",
+            ROOT / "packages" / "repro" / "README.md",
+        )
     }
 
     versions.bump("9.9.9", realign=True)
@@ -191,6 +198,29 @@ def test_versions_check_reports_a_stale_hook_snippet(tmp_path, monkeypatch):
 
     hooks.write_text(f"#       rev: v{versions.declared()['citations']}\n- id: repro-verify\n")
     assert not any(".pre-commit-hooks.yaml" in problem for problem in versions.check())
+
+
+def test_the_readme_hook_snippet_pins_the_current_release():
+    assert versions.readme_rev() == versions.declared()["reproducible-science"]
+
+
+def test_versions_check_reports_a_stale_readme_snippet_and_a_bump_rewrites_it(
+    tmp_path, monkeypatch
+):
+    readme = tmp_path / "README.md"
+    readme.write_text("```yaml\nrepos:\n  - repo: https://example.org/x\n    rev: v0.0.1\n```\n")
+    monkeypatch.setattr(versions, "HOOK_README", readme)
+    monkeypatch.setattr(versions, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(versions, "PACKAGES", {})
+    monkeypatch.setattr(versions, "PLUGIN_MANIFESTS", ())
+    monkeypatch.setattr(versions, "HOOKS", tmp_path / "absent.yaml")
+    monkeypatch.setattr(versions, "CITATION", tmp_path / "absent.cff")
+    assert versions.readme_rev() == "0.0.1"
+
+    versions.bump("9.9.9", realign=True)
+
+    assert versions.readme_rev() == "9.9.9"
+    assert "repo: https://example.org/x" in readme.read_text()
 
 
 def test_this_repository_declares_and_verifies_its_own_claims():

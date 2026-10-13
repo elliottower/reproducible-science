@@ -62,7 +62,7 @@ one per side. `reported` is the number as the manuscript prints it, always a quo
 | `metric` | a JSON or YAML file holds this number at a pointer | `name`, `reported`, `pointer` |
 | `table` | a table holds this number in a cell | `name`, `reported`, `column`, and `where` or `row`; optional `delimiter` |
 | `value` | a file holds this number at a locator, in any format below | `name`, `reported`, `locator` |
-| `quote` | this passage occurs in the text of a document | `text`; optional `page` (checked), `section` (recorded only) |
+| `quote` | this passage occurs in the text of a document | `text`; optional `page` (checked where the document has pages, reported as `page_unchecked` where it has none), `section` (recorded only) |
 | `correspondence` | two artifacts hold the same number, neither written in the manifest | `name`, `sides`: two of `{name, artifact, locator}` |
 
 The four that compare a number take `mode` and `tolerance`: `printed_precision` (the default,

@@ -10,9 +10,12 @@ from __future__ import annotations
 
 import decimal
 import json
+import pathlib
 
+import citations.cli
 import pytest
 from pydantic import ValidationError
+from repro import cli
 from repro.models import (
     ArrayLocator,
     ArtifactRef,
@@ -28,8 +31,8 @@ from repro.models import (
     ValueEvidence,
     Warning_,
 )
-from repro.policy import PUBLICATION, STRICT
-from repro.verify import compare_decimal, verify
+from repro.policy import EXPLORATORY, PUBLICATION, STRICT
+from repro.verify import _QUOTE_WARNINGS, compare_decimal, verify
 
 
 def metric(reported="1", pointer="/x", artifact="a") -> MetricEvidence:
@@ -160,7 +163,7 @@ def paginated(monkeypatch, tmp_path):
     return source
 
 
-def quote_manifest(source, page: int):
+def quote_manifest(source, page: int | None):
     return Manifest(
         project="p",
         artifacts=(ArtifactRef(id="s", path=source, digest=Digest.of_file(source)),),
@@ -197,6 +200,103 @@ def test_the_page_the_passage_is_actually_on_verifies(paginated):
     decision = verify(quote_manifest(paginated, page=2)).claims[0].decisions[0]
     assert decision.outcome is Outcome.VERIFIED
     assert Warning_.WRONG_PAGE not in decision.warnings
+
+
+def _page_on_a_text_source(tmp_path, page: int | None):
+    source = tmp_path / "s.txt"
+    source.write_text("an unrelated opening paragraph\nthe effect was large\n")
+    manifest = quote_manifest(source, page=page)
+    return verify(manifest)
+
+
+def test_a_page_declared_on_a_source_with_no_pages_is_verified_and_says_it_was_not_checked(
+    tmp_path,
+):
+    decision = _page_on_a_text_source(tmp_path, page=9999).claims[0].decisions[0]
+    assert decision.outcome is Outcome.VERIFIED
+    assert decision.reason is Reason.PASSAGE_PRESENT
+    assert Warning_.PAGE_UNCHECKED in decision.warnings
+    assert "page 9999 was not checked" in decision.detail
+
+
+def test_a_quote_declaring_no_page_carries_no_page_warning(tmp_path):
+    decision = _page_on_a_text_source(tmp_path, page=None).claims[0].decisions[0]
+    assert decision.outcome is Outcome.VERIFIED
+    assert Warning_.PAGE_UNCHECKED not in decision.warnings
+    assert decision.detail == ""
+
+
+def test_a_page_that_was_checked_carries_no_page_unchecked_warning(paginated):
+    for page in (2, 7):
+        decision = verify(quote_manifest(paginated, page=page)).claims[0].decisions[0]
+        assert Warning_.PAGE_UNCHECKED not in decision.warnings
+
+
+def test_a_passage_matched_only_with_spacing_ignored_says_its_page_was_not_checked(
+    monkeypatch, tmp_path
+):
+    V = pytest.importorskip("citations.verify")
+    source = tmp_path / "s.pdf"
+    source.write_bytes(b"%PDF-1.4 stand-in; the extractor is stubbed")
+    monkeypatch.setattr(V, "extract", lambda artifact, page=None: "the effectwas large\n")
+
+    decision = verify(quote_manifest(source, page=7)).claims[0].decisions[0]
+
+    assert decision.outcome is Outcome.VERIFIED
+    assert Warning_.NORMALIZED in decision.warnings
+    assert Warning_.PAGE_UNCHECKED in decision.warnings
+    assert "spacing ignored" in decision.detail
+
+
+@pytest.mark.parametrize(
+    ("policy", "severity", "passed"),
+    [(EXPLORATORY, "warning", True), (PUBLICATION, "warning", True), (STRICT, "error", False)],
+    ids=lambda v: getattr(v, "name", None),
+)
+def test_an_unchecked_page_is_graded_as_the_policy_grades_an_unchecked_assertion(
+    tmp_path, policy, severity, passed
+):
+    assessment = policy.assess(_page_on_a_text_source(tmp_path, page=3))
+    found = [v for v in assessment.violations if v.rule == "evidence.page_unchecked"]
+    assert [v.severity.value for v in found] == [severity]
+    assert found[0].subject == "c/quote"
+    assert assessment.passed is passed
+
+
+def test_a_quote_with_no_page_raises_no_page_violation_under_strict(tmp_path):
+    assessment = STRICT.assess(_page_on_a_text_source(tmp_path, page=None))
+    assert assessment.violations == ()
+    assert assessment.passed
+
+
+def test_verify_prints_the_unchecked_page_beside_the_verified_passage(tmp_path, capsys):
+    source = tmp_path / "s.txt"
+    source.write_text("the effect was large\n")
+    (tmp_path / "repro.yaml").write_text(
+        "project: p\nartifacts:\n  - id: s\n    path: s.txt\nclaims:\n  - id: c\n    text: t\n"
+        "    evidence:\n      - kind: quote\n        artifact: s\n"
+        "        text: the effect was large\n        page: 3\n"
+    )
+
+    code = cli.main(["verify", str(tmp_path / "repro.yaml"), "--policy", "strict"])
+
+    out = capsys.readouterr().out
+    assert "page 3 was not checked" in out
+    assert "[short,page_unchecked]" in out
+    assert "evidence.page_unchecked" in out
+    assert code == 1
+
+
+def test_every_warning_citations_can_put_on_a_result_is_mapped():
+    assert set(_QUOTE_WARNINGS) == set(citations.cli.WARNINGS)
+
+
+SPEC = (pathlib.Path(__file__).resolve().parents[3] / "docs" / "SPEC.md").read_text()
+
+
+@pytest.mark.parametrize("value", [*Reason, *Warning_], ids=lambda v: f"{type(v).__name__}.{v}")
+def test_the_specification_names_every_reason_and_every_warning(value):
+    assert f"| `{value.value}` |" in SPEC
 
 
 def test_a_wrong_page_fails_publication_rather_than_passing_with_a_warning(paginated):

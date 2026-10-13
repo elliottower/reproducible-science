@@ -349,7 +349,7 @@ Pickles (`.pkl`, `.joblib`, `.pt`) are never opened, because reading one runs co
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/elliottower/reproducible-science
-    rev: v0.4.0
+    rev: v0.5.5
     hooks:
       - id: repro-verify
 ```
