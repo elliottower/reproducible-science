@@ -60,7 +60,7 @@ class Ordering(enum.StrEnum):
 
     The outcome is separate from the reason, on the same principle the evidence stages
     follow: a check that could not run is not a check that failed. `unchecked` carries an
-    `OrderingReason` saying which of eight conditions stopped it, because collapsing a
+    `OrderingReason` saying which of nine conditions stopped it, because collapsing a
     missing run record, an unpinned plan, and an unlinked output into one word loses the
     only information that says what to fix.
     """
