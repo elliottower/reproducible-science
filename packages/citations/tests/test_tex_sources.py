@@ -93,3 +93,13 @@ def test_a_plain_text_source_is_still_read_off_disk(tmp_path):
     r = V.check_one(PASSAGE, p, None)
     assert r.state == "found"
     assert r.extractor == V.PLAIN_TEXT
+
+
+@detex
+@pytest.mark.parametrize("page", [1, 9999])
+def test_a_page_on_a_tex_source_is_not_checked_and_never_called_wrong(tmp_path, page):
+    r = V.check_one(PASSAGE, _tex(tmp_path), page)
+    assert r.state == "found"
+    assert "page" not in r.warnings
+    assert "page unchecked" in r.warnings
+    assert "not on page" not in r.detail

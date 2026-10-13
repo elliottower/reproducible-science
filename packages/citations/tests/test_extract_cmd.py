@@ -11,7 +11,7 @@ import re
 import subprocess
 
 import pytest
-from citations import cli
+from citations import cli, extractors
 from citations import verify as V
 
 PASSAGE = "the measured angle matches the Haar expectation for this ensemble of factors"
@@ -586,12 +586,78 @@ def test_no_page_recorded_means_no_such_warning(tmp_path, monkeypatch):
     assert "page unchecked" not in r.warnings
 
 
-def test_a_text_source_is_not_asked_about_pages_at_all(tmp_path):
-    # `.txt` has no pages, so a page assertion there is not an unchecked one -- it is a field
-    # that does not apply, and warning about it would be noise on every plain-text source.
+def test_a_page_on_a_text_source_is_reported_as_unchecked(tmp_path):
+    # A `.txt` has no pages, and `page: 9999` graded exactly as `page: 1` did with nothing
+    # said. A recorded page that nothing looked at is the same fact under a declared extractor
+    # and on a source with no pages, so it gets the same warning.
     src = tmp_path / "source.txt"
     src.write_text("a passage long enough to carry its own qualifiers without truncation")
     r = V.check_one(
         "a passage long enough to carry its own qualifiers without truncation", src, page=4
     )
+    assert r.state == "found"
+    assert "page unchecked" in r.warnings
+    assert "page" not in r.warnings
+
+
+def test_no_page_recorded_on_a_text_source_means_no_such_warning(tmp_path):
+    src = tmp_path / "source.txt"
+    src.write_text("a passage long enough to carry its own qualifiers without truncation")
+    r = V.check_one("a passage long enough to carry its own qualifiers without truncation", src)
+    assert r.warnings == []
+
+
+def test_a_page_on_a_passage_matched_with_spacing_ignored_is_reported_as_unchecked(
+    tmp_path, monkeypatch
+):
+    src = _pdf_with_pages(tmp_path, monkeypatch, "a passage long enough to carry its quali fiers")
+    r = V.check_one("a passage long enough to carry its qualifiers", src, page=3)
+    assert r.state == "found"
+    assert "normalized" in r.warnings
+    assert "page unchecked" in r.warnings
+
+
+def test_a_page_that_was_looked_at_is_not_reported_as_unchecked(tmp_path, monkeypatch):
+    src = _pdf_with_pages(tmp_path, monkeypatch, "a passage long enough to carry its qualifiers")
+    r = V.check_one("a passage long enough to carry its qualifiers", src, page=3)
+    assert r.state == "found"
     assert "page unchecked" not in r.warnings
+
+
+NOT_PAGINATED = [
+    *V.TEXT_SUFFIXES,
+    *V.BY_SUFFIX,
+    *extractors.BY_SUFFIX,
+    ".log",
+    ".Rout",
+    "",
+]
+
+
+@pytest.mark.parametrize("suffix", NOT_PAGINATED)
+def test_a_source_no_pdf_reader_reads_is_not_paginated(tmp_path, suffix):
+    src = tmp_path / f"source{suffix}"
+    src.write_text("a passage long enough to carry its own qualifiers without truncation")
+    assert not V.is_paginated(src)
+
+
+@pytest.mark.parametrize("suffix", [".pdf", ".PDF", ".bin", ""])
+def test_a_source_the_pdf_readers_are_asked_about_is_paginated(tmp_path, suffix):
+    src = tmp_path / f"source{suffix}"
+    src.write_bytes(b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n")
+    assert V.is_paginated(src)
+
+
+def test_verify_says_a_recorded_page_was_not_checked(tmp_path, capsys):
+    (tmp_path / "claims").mkdir()
+    (tmp_path / "source.txt").write_text(
+        "a passage long enough to carry its own qualifiers without truncation"
+    )
+    (tmp_path / "claims" / "s.yaml").write_text(
+        "source:\n  local: source.txt\nclaims:\n  c:\n    quotes:\n"
+        "      - exact: a passage long enough to carry its own qualifiers without truncation\n"
+        "        page: 4\n"
+    )
+    cli.main(["verify", "--claims", str(tmp_path / "claims"), "--no-cache"])
+    out = capsys.readouterr().out
+    assert "1  page unchecked — a page is recorded and was not checked" in out
