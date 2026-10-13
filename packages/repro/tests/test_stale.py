@@ -547,3 +547,81 @@ def test_the_command_exits_2_where_there_is_nothing_to_compare(tmp_path, capsys,
         handle.write("not a report\n")
     assert main(["stale", str(project.path)]) == 2
     assert "reproductions.jsonl:2" in capsys.readouterr().out
+
+
+LATER = "2026-02-01T00:00:00+00:00"
+
+
+def test_a_later_rerun_over_the_same_inputs_that_did_not_reproduce_is_undetermined(
+    tmp_path, capsys
+):
+    records = chain(tmp_path, "a", 2) + chain(tmp_path, "b", 1) + chain(tmp_path, "c", 1)
+    ra1, _, rb1, _ = records
+    other = "0" * 64
+    log(
+        tmp_path,
+        rerun(tmp_path, ra1, state=Regeneration.CHANGED, actual=other, bytes_identical=False),
+        rerun(tmp_path, rb1, state=Regeneration.FAILED, actual=None, bytes_identical=False),
+        at=LATER,
+    )
+    project = manifest(tmp_path, records, [claim("a1"), claim("a2"), claim("b1"), claim("c1")])
+
+    report = stale(project)
+    nodes = by_id(report.regenerations)
+    written = Digest.of_file(file(tmp_path, "a1")).value
+    for name in ("ra1", "rb1"):
+        assert nodes[name].state is Freshness.UNDETERMINED
+        assert nodes[name].causes == (StaleCause.LATER_RERUN_DID_NOT_REPRODUCE,)
+        # The re-run it is compared with is still the one that reproduced.
+        assert nodes[name].rerun_at == THEN
+    assert (nodes["ra2"].state, nodes["ra2"].upstream) == (Freshness.UNDETERMINED, "ra1")
+    assert nodes["rc1"].state is Freshness.CURRENT
+    assert [c.state for c in report.claims] == [
+        Freshness.UNDETERMINED,
+        Freshness.UNDETERMINED,
+        Freshness.UNDETERMINED,
+        Freshness.CURRENT,
+    ]
+    assert [
+        (f.regeneration, f.artifact, f.observed, f.on_disk, f.rerun_at) for f in report.findings
+    ] == [
+        ("ra1", "a1", other, written, LATER),
+        ("rb1", "b1", None, Digest.of_file(file(tmp_path, "b1")).value, LATER),
+    ]
+
+    main(["stale", on_disk(project)])
+    out = capsys.readouterr().out
+    assert (
+        f"later rerun did not reproduce: the re-run of {LATER} read the same inputs and "
+        f"wrote {other[:12]}, on disk {written[:12]}"
+    ) in out
+    assert f"the re-run of {LATER} read the same inputs and wrote no output" in out
+    assert "0 stale, 0 never rerun, 3 undetermined, 1 current of 4 assertions that read" in out
+
+
+def test_a_rerun_that_did_not_reproduce_says_nothing_of_other_inputs_or_an_earlier_time(tmp_path):
+    for name in ("early", "edited"):
+        put(tmp_path, f"{name}0", step=0)
+        put(tmp_path, f"{name}1", step=1)
+    early = record(tmp_path, "rearly", ("early0",), "early1")
+    edited = record(tmp_path, "redited", ("edited0",), "edited1")
+
+    # One failed before it reproduced. The other reproduced, failed over an edited input, and
+    # the input was put back.
+    log(tmp_path, rerun(tmp_path, early, state=Regeneration.FAILED, actual=None), at=THEN)
+    log(tmp_path, rerun(tmp_path, early), rerun(tmp_path, edited), at=LATER)
+    put(tmp_path, "edited0", step="edited")
+    log(
+        tmp_path,
+        rerun(tmp_path, edited, state=Regeneration.CHANGED, actual="0" * 64),
+        at="2026-03-01T00:00:00+00:00",
+    )
+    put(tmp_path, "edited0", step=0)
+    project = manifest(tmp_path, [early, edited], [claim("early1"), claim("edited1")])
+
+    report = stale(project)
+    assert {node.id: node.state for node in report.regenerations} == {
+        "rearly": Freshness.CURRENT,
+        "redited": Freshness.CURRENT,
+    }
+    assert report.findings == ()

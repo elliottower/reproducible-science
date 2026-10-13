@@ -155,7 +155,18 @@ def access(note: str, level: str) -> int:
     return 0
 
 
-def run(files: list[str], run_id: str, note: str | None, anyway: bool) -> int:
+#: What a run's outputs can be declared to hold where they hold no outcome. A run recorded
+#: without one is taken to hold results, which is what a run meant before the field existed.
+RUN_HOLDS = ["metadata only", "structure seen"]
+
+
+def run(
+    files: list[str], run_id: str, note: str | None, anyway: bool, holds: str | None = None
+) -> int:
+    if holds is not None and holds not in RUN_HOLDS:
+        print(f"--holds must be one of: {', '.join(RUN_HOLDS)}")
+        print("a run whose outputs hold outcomes is recorded without --holds.")
+        return 1
     root = require_root()
     lp = ledger_path(root)
     existing = ledger.read_ledger(lp)
@@ -176,18 +187,53 @@ def run(files: list[str], run_id: str, note: str | None, anyway: bool) -> int:
             return 1
         digest = ledger.sha256_of_file(p)
         outputs.append({"path": record_path(p, root), "sha256": digest})
-    ledger.append_event(
-        lp,
-        {
-            "event": "run",
-            "run_id": run_id,
-            "outputs": outputs,
-            "note": note or "",
-        },
-    )
-    print(f"run {run_id}: {len(outputs)} output(s)")
+    event = {
+        "event": "run",
+        "run_id": run_id,
+        "outputs": outputs,
+        "note": note or "",
+    }
+    if holds is not None:
+        # Written with the run and never afterwards: no command labels a run already recorded,
+        # so the declaration is in the chain before anything that reads it.
+        event["holds"] = holds
+    ledger.append_event(lp, event)
+    print(f"run {run_id}: {len(outputs)} output(s){f', holding {holds}' if holds else ''}")
     for o in outputs:
         print(f"  {o['sha256'][:16]}…  {o['path']}")
+    return 0
+
+
+def label(run_id: str, holds: str, note: str) -> int:
+    """Declare, after the fact, that a recorded run's outputs hold no outcome.
+
+    For the run recorded without `--holds` by oversight. The declaration is an event of its
+    own, so the ledger shows it was made after the run and what else had been recorded by
+    then; the run event is not rewritten. A run is declared once and a label is never changed.
+    """
+    if holds not in RUN_HOLDS:
+        print(f"--holds must be one of: {', '.join(RUN_HOLDS)}")
+        return 1
+    if not note.strip():
+        print("a note is required: say why the run was not labelled when it was recorded.")
+        return 1
+    root = require_root()
+    lp = ledger_path(root)
+    events = ledger.read_ledger(lp)
+    runs = [e for e in events if e.get("event") == "run" and e.get("run_id") == run_id]
+    if not runs:
+        print(f"no run '{run_id}' in the ledger.")
+        return 1
+    if len(runs) > 1:
+        print(f"run id '{run_id}' names {len(runs)} runs, and a label has to name one.")
+        return 1
+    declared = [e for e in events if e.get("event") == "label" and e.get("run_id") == run_id]
+    if "holds" in runs[0] or declared:
+        print(f"run '{run_id}' already says what it holds; a label is not changed.")
+        return 1
+    ledger.append_event(lp, {"event": "label", "run_id": run_id, "holds": holds, "note": note})
+    print(f"run {run_id}: declared after the fact as holding {holds}")
+    print("`prereg freeze` reports a declaration made after the run was recorded as such.")
     return 0
 
 

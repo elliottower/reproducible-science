@@ -421,8 +421,9 @@ right and the document's extraction is lossy. Repair it by splitting the quotati
 adjacent fragments either side of the missing character, never by truncating it to the part
 that matches -- a truncated quotation resolves and says something the source does not.
 
-**A hyphen on a line break.** `fold` removes `-\n` because a renderer inserts one when it
-splits a word, and it cannot tell that from a real hyphen that happens to fall at a line end.
+**A hyphen on a line break.** `fold` removes `-\n` between two letters because a renderer
+inserts one when it splits a word, and it cannot tell that from a real hyphen that happens to
+fall at a line end. A dash with anything else on either side of the break is kept.
 The same quotation then resolves everywhere else in the document and fails at that one
 occurrence. Split it there.
 

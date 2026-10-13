@@ -179,7 +179,7 @@ repro stale
 | `never rerun` | a command writes the file, and no re-run of it that reproduced is recorded |
 | `no producer` | no declared command writes the file, so there is nothing upstream to compare |
 
-A stale file is reported with its cause, at the command where the difference is: `input changed`, with the input, the digest the re-run read and the digest on disk, `command changed`, or `output changed`. Everything downstream is `upstream stale`, with the nearest stale command and how many steps up it is, so one edit is one finding however many claims rest on it. A missing file and a cycle between commands are `undetermined`.
+A stale file is reported with its cause, at the command where the difference is: `input changed`, with the input, the digest the re-run read and the digest on disk, `command changed`, or `output changed`. Everything downstream is `upstream stale`, with the nearest stale command and how many steps up it is, so one edit is one finding however many claims rest on it. A missing file and a cycle between commands are `undetermined`, and so is a command whose re-run reproduced and whose later re-run over the same inputs did not (`later rerun did not reproduce`): the record holds two runs that disagree.
 
 Freshness is relative to the recorded re-runs, never to the digests a manifest carries for its own regenerations: a manifest rebuilt from the files on disk agrees with them whether or not a command ran. Commit `.repro/reproductions.jsonl`, because a clone without it reports every produced file `never rerun`. `current` means consistent with a recorded re-run. Whether the command would reproduce now is what `repro reproduce` establishes. An input the manifest does not declare is invisible here, and an edit to it changes no state.
 
@@ -217,6 +217,7 @@ established
   chain
     totals (totals.json): stale
       written by sum: python3 totals.py
+      which reads counts (counts.json), script (totals.py)
       re-run of 2026-10-13T19:44:16+00:00 reproduced, and its output is the bytes now on disk
       input changed: counts (counts.json): the re-run of 2026-10-13T19:44:16+00:00 read dfb342fd85a5, on disk b9109751e9cb
     counts (counts.json): no producer, 1 step up
