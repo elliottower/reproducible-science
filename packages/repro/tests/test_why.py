@@ -36,6 +36,7 @@ from repro.models import (
     TableCellEvidence,
     TreeLocator,
     Validity,
+    Warning_,
 )
 from repro.regenerate import canonical_digest
 from repro.reproduce import append
@@ -740,3 +741,61 @@ def test_a_later_rerun_that_did_not_reproduce_is_shown_beside_the_one_that_did(t
         f"later rerun did not reproduce: the re-run of {later} read the same inputs" in established
     )
     assert summary.endswith("1 of 1 reads a file with a recorded producer, 1 undetermined")
+
+
+def test_the_warnings_on_an_assertion_are_listed_under_it_and_carried_in_the_json(tmp_path, capsys):
+    put(tmp_path, "a0")
+    (tmp_path / "notes.txt").write_text("The model reached an accuracy of 0.95 on the split.\n")
+    quoted = Claim(
+        id="quoted",
+        text="The total in notes is 0.9.",
+        evidence=(
+            QuoteEvidence(artifact="notes", text="The model reached an accuracy of 0.9"),
+            QuoteEvidence(
+                artifact="notes", text="The model reached an accuracy of 0.95 on the split", page=3
+            ),
+            QuoteEvidence(
+                artifact="notes", text="The model reached an accuracy of 0.95 on the split"
+            ),
+        ),
+    )
+    project = manifest(tmp_path, [], [quoted])
+    cut, paged, clean = why(project, "quoted").assertions
+    assert cut.outcome is paged.outcome is Outcome.VERIFIED
+    assert cut.warnings == (Warning_.SHORT, Warning_.TRUNCATED)
+    assert paged.warnings == (Warning_.PAGE_UNCHECKED,)
+    assert clean.warnings == ()
+
+    established, _, summary = printed(project, "quoted", capsys)
+    lines = [line.strip() for line in established.splitlines()]
+    assert lines.count("warning: short") == 1
+    assert lines.count("warning: truncated") == 1
+    assert (
+        "warning: page_unchecked: page 3 was not checked: the artifact is not read page by page"
+    ) in lines
+    assert sum(line.startswith("warning:") for line in lines) == 3
+    assert summary == ("3 assertions: 3 verified; 0 of 3 read a file with a recorded producer")
+
+    assert main(["why", "quoted", str(project.path), "--format", "json"]) == 0
+    document = json.loads(capsys.readouterr().out)
+    assert [a["warnings"] for a in document["assertions"]] == [
+        ["short", "truncated"],
+        ["page_unchecked"],
+        [],
+    ]
+
+
+def test_a_row_addressed_by_position_carries_its_warning_into_the_account(tmp_path, capsys):
+    (tmp_path / "t.csv").write_text("model,accuracy\nlasso,0.648\n")
+    cell = Claim(
+        id="cell",
+        text="The total in t is 0.648.",
+        evidence=(
+            TableCellEvidence(artifact="t", name="acc", reported="0.648", column="accuracy", row=0),
+        ),
+    )
+    project = manifest(tmp_path, [], [cell])
+    (assertion,) = why(project, "cell").assertions
+    assert assertion.warnings == (Warning_.POSITIONAL_ADDRESS,)
+    established, _, _ = printed(project, "cell", capsys)
+    assert "warning: positional_address" in established

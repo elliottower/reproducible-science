@@ -29,6 +29,7 @@ The warnings -- is the quote well formed? A quote can be `found` and still carry
     truncated    every occurrence begins or stops mid-word or mid-number
     normalized   matched only after ignoring punctuation and spacing
     page         found, but not on the page the record claims
+    page unchecked  found, and nothing could check the page the record claims
 
 One warning is about the source and not about any quotation: a source read from a file git
 tracks is listed after these, because publishing the repository then republishes its text. It
@@ -1204,9 +1205,14 @@ def check_one(
     # A built-in extractor has no pages either, and no second reader: a workbook's rows are
     # what they are, and sending the PDF readers after one would name four programs that
     # cannot open it as having looked.
+    #
+    # The same holds for a source with no pages at all. `page: 9999` on a `.txt` graded as
+    # `page: 1` did, and on a `.tex` every page was reported as the wrong one, because `detex`
+    # was asked for a page it cannot give. A recorded page that nothing looked at is one fact
+    # whatever the reason, so it gets one warning.
     paged = is_paginated(artifact) and not extractors.is_builtin(got.extractor)
     paginated = extract_cmd is None and paged
-    if page and not paginated and paged:
+    if page and not paginated:
         warn.append("page unchecked")
     result = _verdict(
         quote, got.text, artifact, page if paginated else None, warn, got.extractor, prefix, suffix
@@ -1990,7 +1996,10 @@ def _verdict(
         return Result("not found", _not_found(quote, full), warn)
     if m.normalized:
         # The skeleton dropped the whitespace the token check reads, so neither a cut word
-        # nor a page number means anything against it.
+        # nor a page number means anything against it. A page that was recorded is said to
+        # have gone unchecked, where it used to be dropped.
+        if page:
+            warn.append("page unchecked")
         return Result("found", "", warn)
     if _cuts_a_token(q, doc):
         warn.append("truncated")
@@ -2058,8 +2067,19 @@ def _cuts_a_token(q: str, doc: str) -> bool:
 
 
 def is_paginated(artifact: pathlib.Path) -> bool:
-    """Whether asking which page a passage is on means anything for this source."""
-    return artifact.suffix.lower() not in extractors.BY_SUFFIX and not reads_off_disk(artifact)
+    """Whether asking which page a passage is on means anything for this source.
+
+    It does where a PDF reader reads the source, since those are the readers that can be asked
+    for one page: a `.pdf`, and a file whose suffix names no other reader and whose bytes are
+    not text. It does not for a source read off disk as text, for a workbook or a `.docx`
+    read by a built-in extractor, or for LaTeX read by `detex`, which prints one text and has
+    no pages to give. `.tex` was answered yes, so `detex` was asked for page N, could not be,
+    and every recorded page was reported as the wrong one.
+    """
+    suffix = artifact.suffix.lower()
+    if suffix in BY_SUFFIX or suffix in extractors.BY_SUFFIX:
+        return False
+    return not reads_off_disk(artifact)
 
 
 def _find_page(

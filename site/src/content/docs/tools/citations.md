@@ -340,8 +340,9 @@ A quotation carries the passage and, optionally, where it sits:
 | `section` | the section, as the source names it | no, recorded only |
 
 A `page` the passage is not on leaves the result `found` with a `page` warning and the page it
-was found on. Under a declared `extract_cmd` there is no page to ask for, and the warning is
-`page unchecked`.
+was found on. Where there is no page to ask for, the result is `found` with the warning
+`page unchecked`: under a declared `extract_cmd`, on a source that has no pages (text, LaTeX, a
+workbook, a `.docx`), and where the passage matched only with spacing ignored.
 
 A passage the source has more than once is `ambiguous` until the record says which occurrence
 it quotes, and `citations pin` refuses it. `--occurrence N` pins the Nth, counting from 1 in the
@@ -399,9 +400,9 @@ Punctuation that carries meaning is kept, so `p < 0.05` does not match a source 
 | Warning | Meaning |
 |---------|---------|
 | `short` | under 40 characters, or ending on a comma or a connecting word, so the source may qualify it in the next clause |
-| `truncated` | every occurrence stops mid-word or mid-number |
+| `truncated` | every occurrence begins or stops mid-word or mid-number |
 | `normalized` | matched only after ignoring spacing, underscores and hyphens inside a word |
-| `page`, `page unchecked` | found on another page, or the page could not be asked for |
+| `page`, `page unchecked` | found on another page, or a page is recorded and was not checked |
 
 A match is relative to the extractor. Two readers produce two texts from one PDF, so a result
 names the reader, and `not found` means not found in the text that reader produced.

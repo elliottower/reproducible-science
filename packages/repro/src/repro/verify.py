@@ -190,19 +190,21 @@ _QUOTE_WARNINGS = {
 def _page_unchecked(page: int | None, state: str, warnings: list[str], paginated: bool) -> str:
     """Why a declared page was not checked on a passage that was found, or empty where it was.
 
-    `citations` says so itself only where a source declares its own extractor, which a
-    manifest cannot do. The two cases a manifest reaches are silent there: a source that is
-    not read page by page has its page dropped before the passage is looked for, and a passage
-    that matches only with spacing ignored is returned before the page is looked at.
+    `citations` gives the warning `page unchecked` for each of these. Before 0.5.6 it gave it
+    only where a source declares its own extractor, which a manifest cannot do, and the two
+    cases a manifest reaches were silent: a source that is not read page by page had its page
+    dropped before the passage was looked for, and a passage that matches only with spacing
+    ignored was returned before the page was looked at. Both are still worked out here, so
+    the answer is the same against an earlier `citations` of the series this package accepts.
     """
     if page is None or state != "found" or "page" in warnings:
         return ""
-    if "page unchecked" in warnings:
-        return f"page {page} was not checked: the declared extractor cannot be asked for one page"
     if not paginated:
         return f"page {page} was not checked: the artifact is not read page by page"
     if "normalized" in warnings:
         return f"page {page} was not checked: the passage matched only with spacing ignored"
+    if "page unchecked" in warnings:
+        return f"page {page} was not checked: the extractor cannot be asked for one page"
     return ""
 
 
@@ -239,7 +241,8 @@ class QuoteBackend:
         result = check_one(
             evidence.text, path, evidence.page, prefix=evidence.prefix, suffix=evidence.suffix
         )
-        named = list(result.warnings)
+        # The page of a passage that was not found is not a second finding beside it.
+        named = [w for w in result.warnings if w != "page unchecked" or result.state == "found"]
         # Asked only of a source that was read: `is_paginated` opens the file to tell text from
         # a format with pages.
         paginated = result.state == "found" and is_paginated(path)

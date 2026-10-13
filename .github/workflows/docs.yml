@@ -8,15 +8,16 @@ on:
     paths: ["site/**", "jupyterlite/**"]
   workflow_dispatch:
 
-# Pages needs these; nothing else in this workflow writes anything.
+# Nothing in this workflow writes to the repository. The deploy job alone asks for what Pages
+# needs.
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
-# One deployment at a time, and let a newer push win rather than queueing behind an old one.
+# One run at a time per ref, and let a newer push to that ref win rather than queueing behind
+# an old one. The group names the ref because one shared group let a pull request's build cancel
+# the deployment running on main, and one pull request's build cancel another's.
 concurrency:
-  group: pages
+  group: pages-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -68,6 +69,9 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

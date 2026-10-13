@@ -572,6 +572,36 @@ A decision at a tie records it as `tie`, with `lower` and `upper`, the two neigh
 told from an ordinary one. `repro verify` prints `[exact tie: 4.2 or 4.3]` beside the
 assertion, and `repro why` prints the tie above the printed value.
 
+## 3.9 The value as stored
+
+An adapter returns the stored value as text, and the comparison reads that text as an exact
+decimal. What the text is depends on what the format holds.
+
+| format | the value as stored |
+|---|---|
+| JSON, YAML | a number with a fraction or an exponent is the characters the file wrote for it, so `0.910` is `0.910`, `1e-7` is `1e-7`, and a value of twenty digits keeps all twenty; an integer is exact at any length; a quoted number is its text |
+| delimited text | the characters of the cell |
+| prose | the run of characters the anchors select in the extracted text |
+| a format that stores numbers in binary: Parquet, Feather, Arrow, Stata, SPSS, `.rds`, a workbook, SQLite, `.npy`, `.npz`, HDF5, NetCDF | the shortest decimal that reads back as the stored number at the width it is stored in |
+
+A tree file's number is never passed through a binary float. Read as one and printed back,
+`0.910` became `0.91`, `9007199254740993.0` became `9007199254740992.0`, a value of twenty
+significant digits became its nearest seventeen, and `1e400` became infinity. Three YAML forms
+have no decimal spelling and are read as the number they denote: `.inf` and `.nan`, which are
+`value_not_numeric`, and base-sixty `1:30.5`.
+
+A binary format holds no trailing zeros to preserve, so none are recovered from one: a
+double written from `0.910` is the double `0.91`.
+
+Trailing zeros in a file are kept and shown. Whether they count as precision follows from the
+comparison and not from the file. Against a literal, the precision is the manuscript's (§3.2):
+a file holding `0.910` verifies a manuscript printing `0.91`, since `0.910` rounded to two
+places is `0.91`, and a file holding `0.91` verifies one printing `0.910`, since the value it
+holds is that one. In a `correspondence` neither side is the manuscript and the comparison is at
+the coarser of the two precisions as written (§3.4), so there a file's trailing zeros are
+precision: `0.910` against `0.914` disagree at three places, and `0.91` against `0.914` agree
+at two.
+
 ## 4. Outcomes
 
 A check must execute, extract, and compare. Each stage fails differently, and the report
@@ -866,6 +896,23 @@ attempts the timestamp, and one it could not make is reported by `prereg check` 
 `prereg timestamp` makes it. This check does not read those proofs; `prereg check` and
 `results verify` do. And the check reads a declared run record rather than observing execution.
 
+A run record says who attests to its `registered_at` in `registration_authority`, and a claim
+takes the weakest authority among the runs that produced its evidence. The default is the
+weakest, which is what an unqualified timestamp in a file is.
+
+| authority | rank |
+|---|---|
+| `self_recorded` | 0 |
+| `git_remote` | 1 |
+| `osf` | 2 |
+| `zenodo` | 2 |
+| `trusted_timestamp` | 3 |
+
+The authority is declared and nothing verifies it: the engine attaches a rank to each name
+and no other meaning. No shipped profile requires one. A `Policy` with `minimum_registration_authority` set grades
+an `ordered` confirmatory claim resting on a lower rank under the rule
+`claim.registration_authority`, a warning unless the policy says otherwise.
+
 OpenTimestamps is used because it needs no account and trusts no party beyond Bitcoin, and
 because a proof names no one, so a stamp made during double-blind review identifies nobody. An
 RFC 3161 timestamp authority or Sigstore's Rekor log would date a digest at once, where a Bitcoin
@@ -973,6 +1020,156 @@ out is reported `not_rerun`, never omitted.
 Regeneration is orthogonal to registration. A `not_applicable` claim need not declare one —
 methods statements and externally sourced facts are inapplicable without being script-generated
 — and a confirmatory claim may declare both.
+
+## 7.7 Staleness
+
+`repro verify` passes a number that sits unchanged in its file after the data or the script
+the file was computed from has been edited: the output is still the pinned one, and a pin says
+nothing of what a file was made from. `repro stale` asks whether each file is still what a
+recorded re-run produced. It executes nothing and writes nothing.
+
+**The reference is the record of re-runs, not the manifest.** A regeneration record carries a
+digest for each input and for its output, and a manifest rebuilt from the files on disk
+rewrites them all, so they agree after a rebuild whether or not any command ran. What a rebuild
+cannot write is `.repro/reproductions.jsonl` (§7.6). From it, only an entry whose command was
+started is read, and only one whose state is `reproduced` is a re-run a file can be compared
+with.
+
+A regeneration is compared with its own re-runs first.
+
+| state | of a regeneration, holds when |
+|---|---|
+| `current` | a re-run that reproduced ran the command the manifest declares now, read each declared input at the digest now on disk, and the output now on disk has the digest that re-run was compared against or the digest it wrote |
+| `stale` | re-runs that reproduced are recorded and none of them satisfies that |
+| `never_rerun` | the record holds no re-run of it that reproduced |
+| `undetermined` | a declared input or the output is not on disk, the regeneration is upstream of itself, or a later re-run of the same command over the same inputs did not reproduce |
+| `no_producer` | of a file only: no declared command writes it |
+| `partly_outside_the_record` | of an assertion or a claim only: some of what it reads is `current` and the rest has no producer |
+
+The output's digest is the one `repro reproduce` compares: the file's own, or the canonical
+one where the record names `volatile` fields. `current` is a statement about the record. It
+says the files are those a re-run that reproduced was made over, and not that the command
+would reproduce now; an input the manifest does not declare is not compared.
+
+A regeneration then takes the gravest state among its own and those of every regeneration
+upstream of it, in the order `stale`, `undetermined`, `never_rerun`. A file takes the state of
+the regeneration that writes it. An assertion takes the gravest state among the files it
+reads, and a claim among its assertions; a file with no producer never outranks a finding.
+
+Each difference is a finding with a cause, stated once at the regeneration where it is,
+however many records and claims lie downstream.
+
+| cause | state | the difference |
+|---|---|---|
+| `input_changed` | `stale` | an input's digest on disk is not the one the latest re-run that reproduced read |
+| `command_changed` | `stale` | the declared command is not the one that re-run started |
+| `output_changed` | `stale` | the output's digest on disk is neither the one that re-run was compared against nor the one it wrote |
+| `upstream_stale` | `stale` | the regeneration matches its own re-run and one upstream of it is stale; the nearest is named with its distance |
+| `input_missing` | `undetermined` | a declared input is not on disk |
+| `output_missing` | `undetermined` | the output is not on disk |
+| `cycle` | `undetermined` | the regeneration is upstream of itself, so it is compared with no re-run |
+| `later_rerun_did_not_reproduce` | `undetermined` | a re-run matches, and a later one of the same command over the same inputs did not reproduce, so two witnessed runs disagree |
+
+A regeneration whose declared digest for an input differs from that artifact's pin is listed as
+`record_disagrees_with_pin`. It is noted and not graded.
+
+A policy grades one violation for each regeneration that is `stale`, `never_rerun` or
+`undetermined`, under the rule `staleness.` and the state. `stale` is a warning under
+`exploratory` and `publication` and an error under `strict`; `never_rerun` and `undetermined`
+are ignored, a warning, and an error. A file with no producer is counted and never graded.
+
+## 7.8 One claim's account
+
+`repro why <claim-id>` puts what `repro verify` and `repro stale` find for one claim side by
+side. It evaluates nothing those two do not, executes nothing and writes nothing, and it
+carries no verdict.
+
+For each assertion the account holds the outcome and reason `repro verify` gives, and for
+each file the assertion reads: whether the file matches its pin, the address the assertion
+looks at, and the value stored there. For each file the claim rests on, the files it reads
+and every file upstream of one, it holds the command that writes the file, the files that
+command reads, the re-run the file was compared with, its state as §7.7 defines it, and each
+finding. A `mismatch` is listed with what is established: the value at the address was read
+and is not the printed one.
+
+Then it lists what the record does not cover, each line with a kind.
+
+| kind | the line says |
+|---|---|
+| `no_producer` | no command is recorded for a file, so its bytes are taken as given, pinned or not |
+| `absent` | nothing is at a file's declared path |
+| `broken_pin` | a file a command writes does not have the pinned bytes |
+| `cycle` | a command is on a cycle of commands, so it is compared with no re-run |
+| `never_rerun` | no re-run of a command that reproduced is recorded |
+| `no_evidence` | the claim offers no evidence, so nothing was checked |
+| `unchecked` | an assertion's outcome is `unchecked`, with its reason |
+| `not_found` | an assertion's outcome is `not_found`, with its reason |
+| `error` | an assertion's outcome is `error`, with its reason |
+| `undeclared_inputs` | where a command is recorded: the inputs it declares are the author's list, and a file it reads and does not declare is invisible |
+| `address` | where an assertion has an address: the address is the author's choice, and nothing checks that it holds the quantity the sentence means |
+| `comparison` | where there is an assertion: a verified one says the declared value or passage is in the file, not that the analysis is right |
+
+The last three hold of the design and not of the record, and an account closes on each that
+applies. A claim id the manifest does not declare is an error naming the nearest ids.
+
+## 7.9 The numbers a manuscript prints
+
+`repro verify` reports on the claims a manifest declares, and the author chose which to
+declare. `repro numbers` counts every number the manuscript's text prints, so the denominator
+is the text's. It executes nothing, writes nothing and carries no verdict.
+
+**Which text.** An artifact a claim reads its own sentence from: one a `quote` reads in a
+claim that also offers an assertion of another kind, or one a `prose` locator reads. A `quote`
+standing alone in its claim is a quotation from a source, and that source is not inventoried.
+
+**What a number is.** The text is the one a quotation resolves against (§3.1). A number is
+digits with an optional sign, grouping commas, a decimal point and an exponent: `2,364` is one
+number, `12,13` is two, and `10-12` is two. A percent sign is kept with its number and is not
+part of its value. A cardinal written as one word is a number with the value a `prose` locator
+reads from it under `cardinal_word`.
+
+Every number has exactly one standing, and none is dropped.
+
+| standing | holds when |
+|---|---|
+| `bound` | a declared assertion accounts for this occurrence |
+| `set_aside_with_a_reason` | it lies in a passage the manifest lists under `set_aside`, with the reason given there |
+| `set_aside_by_rule` | a named rule below reads it as something other than a quantity |
+| `unbound` | it is printed, and nothing in the manifest accounts for it |
+
+**Bound.** An occurrence is bound where it lies inside a place the passage of a `quote`
+occurs and an assertion of the same claim carries a `reported` value that is this number,
+digit for digit, so `0.5` does not bind `0.50`; or where it lies in the value a `prose` locator
+selects. The same digits reported by another claim bind nothing. An unbound number whose value
+some assertion reports is marked `reported_elsewhere` where the value has two digits or a
+decimal point, and counted apart where it is a single digit.
+
+```yaml
+set_aside:
+  - artifact: manuscript
+    text: "between 2019 and 2023"
+    reason: the study period, a fact about the design and not a result
+```
+
+A `set_aside` entry names a passage, matched as a quotation is, and a reason, which is
+required. Every number in each place the passage occurs is set aside unless an assertion binds
+it, and each entry is listed with how many numbers it accounts for.
+
+The rules are applied in this order, and the first that holds is the one named.
+
+| rule | sets aside |
+|---|---|
+| `link` | digits inside a URL |
+| `date` | each part of a date written `2026-10-13` |
+| `document_identifier` | the number a document is known by, as in `rfc 6901` and `arxiv 2609.22111`, and the digits of a DOI |
+| `name` | digits that are part of a name: a letter stands immediately before them, a hyphen or underscore joins them to a part holding a letter (`gpt-4`), or they open a run of letters and digits that holds more digits |
+| `version_or_section` | digits joined by two or more full stops, `0.5.5` |
+| `citation` | whole numbers from 1 up alone in square brackets, `[12]` and `[3, 7]` |
+| `label` | the number of a section, figure, table, equation, appendix, chapter, page, algorithm, listing, theorem, lemma, proposition, corollary, definition, footnote, step or line, following that word |
+| `list_marker` | a whole number of one or two digits alone in parentheses, `(1)` |
+| `ordinal` | digits with `st`, `nd`, `rd` or `th` attached, `95th` |
+| `year` | four digits from 1800 to 2099 with no sign, separator, decimal point or percent sign |
+| `the_word_one` | the word `one`, a pronoun more often than a count; every other cardinal written as one word is counted |
 
 ## 8. What this composes with
 
