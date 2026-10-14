@@ -39,6 +39,8 @@ import tempfile
 import urllib.parse
 from collections.abc import Callable
 
+from citations import ClaimFileError, load_claim_file
+from citations.tracked import committed, tracked
 from claims.exceptions import ReproError
 from claims.manifest import DEFAULT_NAME, find, load
 from claims.models import (
@@ -71,7 +73,7 @@ from pydantic import BaseModel, ConfigDict
 
 from repro import __version__, audit
 from repro.delegate import BY_NAME
-from repro.reproduce import RECORD, append, reproduce
+from repro.reproduce import LOCKFILES, RECORD, append, reproduce
 
 #: The checks a workflow can run, in the order their badges are printed, and the name each
 #: workflow takes: the word GitHub's badge prints beside `passing`. A name says which check
@@ -197,11 +199,15 @@ POPPLER = """\
 """
 
 #: Where the reruns workflow installs what the project's commands need. A comment, because
-#: only the project knows what that is.
+#: only the project knows what that is. The line suggested is the one its lockfile is installed
+#: with, where the lockfile is one of these two.
 ENVIRONMENT = """\
       # Install what this project's commands need here, before they are run again:
-      # - run: uv sync
-"""
+{suggested}"""
+INSTALLS = {
+    "uv.lock": "      # - run: uv sync\n",
+    "requirements.txt": "      # - run: uv pip install --system -r requirements.txt\n",
+}
 
 #: Lines in each list of a summary. GitHub refuses a step summary over 1 MiB, and a manifest
 #: can declare thousands of assertions.
@@ -1183,6 +1189,43 @@ def under_heading(lines: list[str], block: list[str], blank: str = "") -> list[s
     return lines
 
 
+def environment(root: pathlib.Path) -> str:
+    """The reruns workflow's comment on installing what the commands need, from the first of
+    `repro.reproduce.LOCKFILES` at the top of the project. `uv sync` is suggested only where
+    there is a `uv.lock` for it to install from: in a project with none it installs nothing the
+    commands need, and fails on one with no `pyproject.toml`."""
+    lockfile = next((name for name in LOCKFILES if (root / name).is_file()), None)
+    if lockfile in INSTALLS:
+        suggested = INSTALLS[lockfile]
+    elif lockfile is not None:
+        suggested = f"      # from {lockfile}, with the tool that installs it\n"
+    else:
+        suggested = "      # (this project has no lockfile to install from)\n"
+    return ENVIRONMENT.format(suggested=suggested)
+
+
+def sources_in_git(root: pathlib.Path) -> tuple[int, int]:
+    """Of the sources the claims directory `repro ci citations` reads pins, how many there are
+    and how many git holds, in the index or the last commit. A checkout on a runner holds only
+    what git holds, so a source that is only on this machine is absent there.
+
+    A claims file that does not load, or names no source on disk, is not counted: `citations
+    verify` reports it."""
+    found = BY_NAME["citations"].data_dir(root)
+    if found is None:
+        return 0, 0
+    pinned = []
+    for path in sorted(found.glob("*.yaml")):
+        try:
+            artifact = load_claim_file(path).artifact()
+        except ClaimFileError:
+            continue
+        if artifact is not None:
+            pinned.append(artifact)
+    held = tracked(pinned) | committed(pinned)
+    return len(set(pinned)), len(held)
+
+
 def init(
     cwd: pathlib.Path,
     *,
@@ -1221,7 +1264,7 @@ def init(
         "citations": "repro ci citations" + (" --fetch-sources" if fetch_sources else ""),
         "reruns": f"repro ci reruns{named}" + (" --run" if run_reruns else ""),
     }
-    steps = {"citations": POPPLER, "reruns": ENVIRONMENT if run_reruns else ""}
+    steps = {"citations": POPPLER, "reruns": environment(root) if run_reruns else ""}
     kept = {check: BY_NAME[check].used_by(root) for check in TOOLS}
     kept |= {"claims": path is not None, "reruns": declared and (recorded or run_reruns)}
     if not any(kept.values()):
@@ -1270,6 +1313,10 @@ def init(
     print(f"each runs on a push to {branch} and on every pull request")
     if run_reruns:
         print(f"edit {(WORKFLOWS / wanted[-1].file).as_posix()} to install what the commands need")
+    elif kept["reruns"] and path is not None:
+        _say_reruns_not_current(path, prefix)
+    if kept["citations"] and not fetch_sources:
+        _say_sources_absent(root, prefix)
 
     if readme and slug:
         text, added = with_badges(target.read_text(encoding="utf-8"), wanted, slug, branded=branded)
@@ -1292,6 +1339,38 @@ def init(
     print("\nnext: commit and push. Each badge prints its workflow's name beside `passing` or")
     print("`failing`, for the latest run on the default branch.")
     return 0
+
+
+def _say_reruns_not_current(path: pathlib.Path, prefix: str) -> None:
+    """Warn where the record-only reruns workflow would fail on its first run: a declared
+    command has no current re-run on record, which `repro ci reruns` fails under `strict`."""
+    report = stale(load(path))
+    nodes = [node for node in report.regenerations if node.state is not Freshness.CURRENT]
+    if not nodes:
+        return
+    total = len(report.regenerations)
+    print(
+        f"\nwarning: {len(nodes)} of {_count(total, 'declared command')} "
+        f"{'has' if len(nodes) == 1 else 'have'} no current re-run in {RECORD.as_posix()}, so "
+        f"{prefix}reruns.yml fails until each is run again and the record committed:"
+    )
+    for node in nodes:
+        print(f"  {node.id}: {_said(node.state.value)}")
+    print("\n    repro reproduce")
+
+
+def _say_sources_absent(root: pathlib.Path, prefix: str) -> None:
+    """Say where the citations workflow will read no source: none of the sources the claims
+    files pin is in git, so a checkout holds none and every quotation is unchecked there."""
+    pinned, held = sources_in_git(root)
+    if not pinned or held:
+        return
+    print(
+        f"\nnote: none of the {_count(pinned, 'source')} the claims files pin is in git, so a "
+        f"checkout holds none, and {prefix}citations.yml can only report `could not check`. "
+        "`repro ci init --fetch-sources` has it fetch each from the open copy its claims file "
+        "names and keep only bytes matching the pin."
+    )
 
 
 # ---------------------------------------------------------------------------------- commands

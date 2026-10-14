@@ -599,6 +599,40 @@ def test_init_writes_the_record_check_only_where_a_rerun_is_on_record(
     ]
     assert "uv sync" not in text
     assert badges(out) == ["claims", "reproduced"]
+    assert "warning" not in out
+
+
+def test_init_warns_where_the_record_holds_no_current_rerun_for_a_declared_command(
+    tmp_path, monkeypatch, capsys
+):
+    git(tmp_path, "init", "--quiet")
+    manifest = project(tmp_path, script=SCRIPT)
+    rerun(manifest)
+    (tmp_path / "make.py").write_text(SCRIPT + "\n# edited after the re-run\n")
+    on_disk(manifest)
+    monkeypatch.chdir(tmp_path)
+    assert main(["ci", "init"]) == 0
+    out = capsys.readouterr().out
+    assert (tmp_path / ci.WORKFLOWS / "reruns.yml").is_file()
+    assert (
+        f"warning: 1 of 1 declared command has no current re-run in {RECORD.as_posix()}, so "
+        "reruns.yml fails until each is run again and the record committed:"
+    ) in out
+    assert "\n  sum: stale\n" in out
+    assert main(["ci", "reruns"]) == 1
+
+
+def test_init_warns_of_no_rerun_when_it_writes_the_workflow_that_runs_them(
+    tmp_path, monkeypatch, capsys
+):
+    git(tmp_path, "init", "--quiet")
+    manifest = project(tmp_path, script=SCRIPT)
+    rerun(manifest)
+    (tmp_path / "make.py").write_text(SCRIPT + "\n# edited after the re-run\n")
+    on_disk(manifest)
+    monkeypatch.chdir(tmp_path)
+    assert main(["ci", "init", "--run-reruns"]) == 0
+    assert "warning" not in capsys.readouterr().out
 
 
 def test_init_can_write_the_workflow_that_runs_the_commands_with_no_record_yet(
@@ -609,8 +643,31 @@ def test_init_can_write_the_workflow_that_runs_the_commands_with_no_record_yet(
     monkeypatch.chdir(tmp_path)
     assert main(["ci", "init", "--run-reruns"]) == 0
     text = (tmp_path / ci.WORKFLOWS / "reruns.yml").read_text()
-    assert "# - run: uv sync\n" in text
+    assert "uv sync" not in text
+    assert "# (this project has no lockfile to install from)\n" in text
     assert text.rstrip().endswith("repro ci reruns --run")
+
+
+@pytest.mark.parametrize(
+    ("lockfile", "suggested"),
+    [
+        ("uv.lock", "# - run: uv sync\n"),
+        ("requirements.txt", "# - run: uv pip install --system -r requirements.txt\n"),
+        ("poetry.lock", "# from poetry.lock, with the tool that installs it\n"),
+    ],
+)
+def test_the_rerun_workflow_suggests_installing_from_the_lockfile_the_project_has(
+    tmp_path, monkeypatch, lockfile, suggested
+):
+    git(tmp_path, "init", "--quiet")
+    on_disk(project(tmp_path, script=SCRIPT))
+    (tmp_path / lockfile).write_text("\n")
+    monkeypatch.chdir(tmp_path)
+    assert main(["ci", "init", "--run-reruns"]) == 0
+    text = (tmp_path / ci.WORKFLOWS / "reruns.yml").read_text()
+    assert f"      {suggested}" in text
+    assert ("uv sync" in text) is (lockfile == "uv.lock")
+    yaml.safe_load(text)
 
 
 def test_init_with_reruns_refuses_a_manifest_that_declares_no_command(repository, capsys):
@@ -1051,6 +1108,40 @@ def test_init_writes_a_workflow_for_each_record_kept_in_badge_order(four, capsys
         "sudo apt-get update && sudo apt-get install --yes poppler-utils",
         f"uvx --from reproducible-science=={repro.__version__} repro ci citations --fetch-sources",
     ]
+
+
+NO_SOURCE_IN_GIT = "note: none of the 2 sources the claims files pin is in git"
+
+
+def test_init_says_the_citations_workflow_can_read_no_source_none_of_which_is_in_git(tools, capsys):
+    pin(tools, "here")
+    pin(tools, "gone", there=False)
+    assert main(["ci", "init"]) == 0
+    out = capsys.readouterr().out
+    assert NO_SOURCE_IN_GIT in out
+    assert "citations.yml can only report `could not check`" in out
+    assert "`repro ci init --fetch-sources`" in out
+    text = (tools / ci.WORKFLOWS / "citations.yml").read_text()
+    assert text.rstrip().endswith("repro ci citations")
+
+    assert main(["ci", "init", "--force", "--fetch-sources"]) == 0
+    assert "note: none" not in capsys.readouterr().out
+
+
+def test_init_says_nothing_of_sources_where_git_holds_one(tools, capsys):
+    pin(tools, "here")
+    pin(tools, "gone", there=False)
+    git(tools, "add", "sources/here.txt")
+    assert main(["ci", "init"]) == 0
+    assert "note: none" not in capsys.readouterr().out
+
+
+def test_a_source_in_the_last_commit_and_out_of_the_index_is_in_a_checkout(tools, capsys):
+    pin(tools, "here")
+    git(tools, "add", "sources/here.txt")
+    git(tools, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "--quiet", "-m", "s")
+    git(tools, "rm", "--cached", "--quiet", "sources/here.txt")
+    assert ci.sources_in_git(tools) == (1, 1)
 
 
 def test_init_writes_only_the_workflows_whose_records_exist(tools, capsys):
