@@ -9,6 +9,7 @@
     claims export          write the check records in another format
     claims from-clew       read a SciTeX Clew claims.json into check records
     claims open-items      count what a reader of another tool's files left open, and what is filled
+    claims from-codecheck  read a CODECHECK configuration file into a draft manifest and open items
 
 Each but `open-items` and the `from-` readers is also the `repro` command of the same name: `repro.cli` adds these functions to its
 parser with `add_manifest` through `add_origins`, and `main` here adds them to the parser of
@@ -74,6 +75,8 @@ from claims.policy import PROFILES, Assessment, Policy
 from claims.record import check_records, to_jsonl
 from claims.renderers import survey_to_sarif, to_sarif
 from claims.reruns import RECORD
+from claims.sources import Written
+from claims.sources.codecheck import from_codecheck
 from claims.stale import stale as run_stale
 from claims.starter import (
     CONVENTIONAL,
@@ -1098,6 +1101,41 @@ def cmd_open_items(args: argparse.Namespace) -> int:
     return 0
 
 
+def _reading_lines(reading: Written, program: str) -> list[str]:
+    lines = [
+        f"wrote {reading.draft} and {reading.open_items}",
+        f"  {reading.artifacts} artifacts, {reading.pinned} pinned by sha256",
+        f"  {reading.claims} claims, {reading.items} open items for an author or an agent to fill",
+    ]
+    lines += [
+        f"  passed over: {passed.file or '(no file)'}: {passed.reason}"
+        for passed in reading.passed_over
+    ]
+    lines += [f"  not checked: {unread.file}: {unread.reason}" for unread in reading.not_checked]
+    lines += [f"  not pinned: {missing.file}: {missing.reason}" for missing in reading.unpinned]
+    return [*lines, "", f"next: {program} open-items {reading.open_items}"]
+
+
+def _print_reading(reading: Written, args: argparse.Namespace) -> int:
+    if args.format == "json":
+        print(json.dumps(reading.model_dump(mode="json"), indent=2))
+    else:
+        print("\n".join(_reading_lines(reading, _program(args))))
+    return 0
+
+
+def cmd_from_codecheck(args: argparse.Namespace) -> int:
+    reading = from_codecheck(
+        args.source,
+        Path(args.output),
+        register=Path(args.register) if args.register else None,
+        register_sha256=args.register_sha256,
+        bundle=Path(args.bundle) if args.bundle else None,
+        fetch=fetch_url if args.fetch else None,
+    )
+    return _print_reading(reading, args)
+
+
 def add_manifest(sub, program: str = REPRO) -> None:
     """`manifest init`: write a starter manifest. Added to `repro`'s parser and to `claims`'s, each under its own name."""
     p_manifest = sub.add_parser("manifest", help=f"write a starter {DEFAULT_NAME}")
@@ -1338,6 +1376,44 @@ def add_open_items(sub, program: str = CLAIMS) -> None:
     p_open.set_defaults(func=cmd_open_items, program=program)
 
 
+def add_from_codecheck(sub, program: str = CLAIMS) -> None:
+    """`from-codecheck`: read a CODECHECK configuration file. Added to `claims`'s parser."""
+    p_from = sub.add_parser(
+        "from-codecheck",
+        help="read a CODECHECK configuration file into a draft manifest and its open items",
+        description=(
+            "Read a codecheck.yml, by its path or by its certificate's identifier, and write "
+            "repro.draft.yaml and open-items.json into the output directory, never over an "
+            "existing file. Each output file becomes an artifact, pinned where it is on disk. "
+            "Each output a backend reads a value from becomes a claim whose text is the "
+            "output's comment, with two open items: the passage of the paper it supports and "
+            "a value the paper prints from it, which the configuration file does not state. "
+            "An identifier is looked up in a copy of the register's register.json, whose sha256 "
+            "is recorded; its configuration file is read from --bundle, or with --fetch from "
+            "GitHub at the commit its default branch points to. Writes no certificate field and "
+            "names nothing of the draft by the certificate's identifier."
+        ),
+    )
+    p_from.add_argument("source", help="a codecheck.yml, or a certificate identifier YYYY-NNN")
+    p_from.add_argument("--output", "-o", default=".", help="where to write (default: here)")
+    p_from.add_argument("--register", help="a copy of the register's register.json")
+    p_from.add_argument("--register-sha256", help="refuse a register.json whose sha256 is not this")
+    p_from.add_argument(
+        "--bundle",
+        help=(
+            "a local copy of the certificate's repository, or the folder the outputs are in "
+            "(default for a path: the folder the codecheck.yml is in)"
+        ),
+    )
+    p_from.add_argument(
+        "--fetch",
+        action="store_true",
+        help="for an identifier with no --bundle, fetch the codecheck.yml from GitHub",
+    )
+    p_from.add_argument("--format", choices=("text", "json"), default="text")
+    p_from.set_defaults(func=cmd_from_codecheck, program=program)
+
+
 def main(argv: list[str] | None = None, local_record: bool = True) -> int:
     """The `claims` command: the commands above, and nothing that runs one of yours."""
     parser = argparse.ArgumentParser(
@@ -1365,6 +1441,7 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
     add_origins(sub, CLAIMS)
     add_from_clew(sub, CLAIMS)
     add_open_items(sub, CLAIMS)
+    add_from_codecheck(sub, CLAIMS)
 
     args = parser.parse_args(argv)
     args.local_record = local_record

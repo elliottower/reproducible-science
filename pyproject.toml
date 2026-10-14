@@ -286,6 +286,11 @@ layers = [
   # The commands of the claims side and how each prints. `repro.cli` and this module's own
   # `main` build a parser over them, and they reach for nothing that runs a command.
   "claims.cli",
+  # Readers of other tools' files. Each writes a draft and its open items, checks nothing,
+  # and reaches the network only through a fetch the command hands it.
+  "claims.sources",
+  # What a reader left open, and how much is filled: checks the draft with the verifier.
+  "claims.open_items",
   # Other checkers' results, read into check records. Each sits on the record and the
   # verifier, and nothing below reaches for it.
   "claims.foreign",
