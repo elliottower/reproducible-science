@@ -211,6 +211,17 @@ MAX_SHOWN = 80
 #: Files shown for one assertion.
 MAX_READS = 3
 
+#: The states `results verify --files --json` gives a recorded file that fail the check.
+RESULTS_FAILING = ("changed", "missing", "reverted", "not a tree", "not a file")
+#: The states that pass besides `ok`, each said on a line of its own and listed as no problem:
+#: a path that holds the latest of its records, a plan frozen in place whose log only grew, and
+#: one of the ledger's own files, which is not compared.
+RESULTS_PASSING = {
+    "resealed": "resealed, matching their latest record",
+    "appended": "appended, a plan frozen in place whose log only grew",
+    "ignored": "ignored, the ledger's own files, not compared",
+}
+
 CLAIMS_SHOWS = (
     "What this checks: each declared value or passage is in the file the manifest names, at "
     "the address it declares, and each file matches its pin. It does not show that the "
@@ -942,13 +953,21 @@ def _results_rows(account: dict) -> tuple[list[tuple[str, str]], list[str]]:
         (
             "recorded files",
             f"{states['ok']} of {_count(len(files), 'recorded file')} match "
-            f"the hash recorded"
-            + _nonzero(states, ("changed", "missing", "resealed", "not a tree", "not a file"))
+            f"the hash recorded" + _nonzero(states, RESULTS_FAILING)
             if "events" in account
             else "not compared: the chain did not verify",
         ),
     ]
-    listed = [f"- `{file['path']}`: {file['state']}" for file in files if file["state"] != "ok"]
+    rows += [
+        (state, f"{states[state]} {said}")
+        for state, said in RESULTS_PASSING.items()
+        if states[state]
+    ]
+    listed = [
+        f"- `{file['path']}`: {file['state']}"
+        for file in files
+        if file["state"] != "ok" and file["state"] not in RESULTS_PASSING
+    ]
     return rows, listed
 
 

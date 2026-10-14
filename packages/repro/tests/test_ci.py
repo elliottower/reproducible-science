@@ -915,6 +915,23 @@ def test_a_recorded_file_that_changed_and_one_that_is_gone_fail_and_are_named(to
     assert "- `results.json`: changed" in said and "- `inputs.json`: missing" in said
 
 
+def test_states_that_pass_are_counted_on_their_own_lines_and_a_reverted_file_is_named():
+    states = ["ok", "resealed", "resealed", "appended", "ignored", "reverted"]
+    files = [{"path": f"f{i}", "state": state} for i, state in enumerate(states)]
+    run = ci.ToolRun(
+        check="results", command=("results", "verify", "--files"), exit=1, outcome="failed",
+        account={"chain": "intact", "events": 9, "files": files},
+    )  # fmt: skip
+    said = ci.tool_summary(run)
+    assert row(said, "recorded files") == (
+        "1 of 6 recorded files match the hash recorded, 1 reverted"
+    )
+    assert row(said, "resealed") == "2 resealed, matching their latest record"
+    assert row(said, "appended") == "1 appended, a plan frozen in place whose log only grew"
+    assert row(said, "ignored") == "1 ignored, the ledger's own files, not compared"
+    assert [line for line in said.splitlines() if line.startswith("- ")] == ["- `f5`: reverted"]
+
+
 def test_a_ledger_whose_chain_does_not_verify_fails_and_compares_no_file(tools):
     ledger(tools)
     path = tools / ".results" / "ledger.jsonl"
