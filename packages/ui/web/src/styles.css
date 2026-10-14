@@ -351,3 +351,5 @@ tr.sec-head.clickable:hover td { background: #eceef4; }
 /* one row per interpretation: its quotes beside it, a thin rule between interpretations */
 .cite-table tr.interp-row td { border-top: 1px dashed #e6e8ee; }
 .cite-table .src-words { border-left: 2px solid #e3e1fb; padding-left: 8px; }
+.doi { color: #3a4256; margin-top: 1px; }
+.doi .mono { font-size: 10.5px; user-select: all; }

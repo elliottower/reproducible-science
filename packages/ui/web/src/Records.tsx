@@ -144,6 +144,11 @@ function linkLabel(url: string): string {
   }
 }
 
+/** The source's DOI: the .bib entry's, or the one in the claims file's address when that is a doi.org link. */
+function doiOf(s: Source): string {
+  return s.bib.doi || (s.url.match(/doi\.org\/(10\.[^\s?#]+)/)?.[1] ?? '')
+}
+
 function SourceCell({ s, files, onOpen }: { s: Source; files?: Source[]; onOpen: (s: Source) => void }) {
   const all = files ?? [s]
   const pinned = all.every((f) => f.sha256)
@@ -152,6 +157,7 @@ function SourceCell({ s, files, onOpen }: { s: Source; files?: Source[]; onOpen:
       <button className="src-title" onClick={() => onOpen(s)} title="Details">{s.bib.title || s.citation}</button>
       <div className="small muted">{byline(s)}</div>
       {s.link && <div className="small"><a className="src-link" href={s.link} target="_blank" rel="noreferrer">↗ {linkLabel(s.link)}</a></div>}
+      <div className="small doi">{doiOf(s) ? <>DOI <span className="mono">{doiOf(s)}</span></> : <span className="muted">No DOI</span>}</div>
       <div className="src-meta">
         <span className="mono">{s.citation}</span>
         {pinned ? (
