@@ -36,7 +36,7 @@ dependencies = [
   "results-cli>=0.6,<0.7",
 ]
 # Only needed to run the rule inside `adduce check`. repro itself never imports adduce.
-optional-dependencies.adduce = [ "adduce>=0.1.2" ]
+optional-dependencies.adduce = [ "adduce>=0.2" ]
 # The optional readers are `claims-cli`'s, which holds the adapters. Each extra here asks for
 # the one of the same name there, so `reproducible-science[sheets]` installs what it did. No
 # range on these: the dependency above carries it.
@@ -57,7 +57,7 @@ entry-points."adduce.rules".repro = "repro.integrations.adduce"
 
 [dependency-groups]
 dev = [
-  "adduce>=0.1.2",
+  "adduce>=0.2",
   "numpy>=2.2.6",
   "pytest>=9.1.1",
 ]

@@ -1052,9 +1052,12 @@ pip install "reproducible-science[adduce]"
 adduce check .
 ```
 
-The rule reports an aggregate — every assertion holding is a pass, some holding is partial, a
-pinned artifact having changed is a failure naming it — and writes the full per-assertion
-report to `.adduce/repro-report.json`, since one finding cannot carry thousands of outcomes.
+The rule reports one finding for the manifest — every assertion holding is a pass, some
+holding is partial, a pinned artifact having changed is a failure naming it — with one item
+per checked assertion under it: its status, the printed and stored values, the comparison
+rule, and the manifest line and files it read. adduce never scores an item on its own, so the
+finding weighs what it did. Past adduce's envelope of 10,000 items the finding says how many
+more there are, and the full report is written to `.adduce/repro-report.json` in every case.
 A repository with no manifest is out of scope rather than failing, and a verifier that cannot
 run reports `UNKNOWN`: a missing toolchain is not the repository's fault.
 

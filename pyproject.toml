@@ -34,7 +34,7 @@ urls.Homepage = "https://github.com/elliottower/reproducible-science"
 [dependency-groups]
 # Fast enough to run on every commit.
 dev = [
-  "adduce>=0.1.2",
+  "adduce>=0.2",
   "coverage>=7.6",
   # The optional readers `repro` resolves values through, for the same reason as the PDF readers
   # below: a reader tested against a stub of its library is tested against nothing.
