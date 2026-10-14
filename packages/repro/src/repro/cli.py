@@ -10,6 +10,7 @@
     repro numbers         count every number the manuscript prints, bound to a claim or not
     repro export          write one record per checked assertion, for another program to read
     repro ci              run the checks in a workflow, with a summary on the run page
+    repro badges          print a badge per check, each a count from a run on this machine
     repro check           run every tool this project uses, in one pass
     repro audit           clone a repository at a pinned commit and run every tool over it
     repro prereg          run `prereg`: freeze a plan, and record what deviated from it
@@ -35,7 +36,7 @@ from pathlib import Path
 from provenance_core import atomic_write
 from provenance_core.gitref import try_run
 
-from repro import __version__, audit, ci, crosscheck
+from repro import __version__, audit, badges, ci, crosscheck
 from repro.checks import LOCAL as LOCAL_CHECKS
 from repro.checks import RECORD as CHECKS
 from repro.checks import SET_ASIDE
@@ -669,6 +670,7 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
     p_check.set_defaults(func=cmd_check)
 
     ci.add_parser(sub, verify=_verify_text, reproduce=_reproduce_text, stale=_stale_text)
+    badges.add_parser(sub)
 
     # An audit runs these inside a clone of someone else's repository, and keeps no record of
     # its checks in that clone's git directory.
