@@ -16,6 +16,7 @@ from claims.core.outcomes import (
     Ordering,
     OrderingReason,
     Outcome,
+    PairTie,
     Reason,
     RegistrationAuthority,
     Tie,
@@ -401,6 +402,10 @@ class AssertionAccount(BaseModel):
     """How many decimal places the assertion declares the manuscript reports the value to."""
     tie: Tie | None = None
     """Set where the compared value lay exactly halfway between two printed values."""
+    ties: tuple[PairTie, ...] = ()
+    """Each pair of places that met a tie, in a `correspondence` of three places or more."""
+    disagreements: tuple[tuple[str, str], ...] = ()
+    """Each pair of places that disagree, in a `correspondence` of three places or more."""
     statistic: Statistic | None = None
     """What an `aggregate` computes over the values it reads. None for every other kind."""
     computed: str | None = None

@@ -28,7 +28,7 @@ import statistics
 from collections.abc import Mapping
 from typing import Protocol
 
-from claims.adapters.prose import GROUPED
+from claims.adapters.prose import GROUPED, placed
 from claims.adapters.reads import reading_once
 from claims.exceptions import (
     ArtifactUnreadableError,
@@ -338,7 +338,9 @@ def _compared(stored: decimal.Decimal, conversion: Conversion | None) -> decimal
     return conversion.apply(stored) if conversion is not None and stored.is_finite() else stored
 
 
-def _held(stored: decimal.Decimal, compared: decimal.Decimal, conversion: Conversion | None) -> str:
+def _held(
+    stored: decimal.Decimal | str, compared: decimal.Decimal, conversion: Conversion | None
+) -> str:
     """A stored value as a detail shows it: with what it is under a declared conversion."""
     if conversion is None:
         return f"{stored}"
@@ -380,6 +382,47 @@ def _grouping(locator: Locator, raw: str) -> str:
             f"read it as {raw.replace(',', '')}"
         )
     return ""
+
+
+def _one_place(readings: list) -> str | None:
+    """What to say where two sides read a value at one place in one artifact, or None.
+
+    Two locators that differ only in `form`, or in anchors one of which contains the other,
+    can select the same printed value. The value is then compared with itself and agrees
+    whatever the document prints, and the place the manifest meant for one of the sides is
+    never read. The static check on canonical locators cannot see this, so it is made on what
+    the sides selected."""
+    read = [
+        (side, extracted)
+        for side, _, extracted, _ in readings
+        if extracted is not None and extracted.occurrences
+    ]
+    for at, (left, mine) in enumerate(read):
+        for right, theirs in read[at + 1 :]:
+            if left.artifact != right.artifact:
+                continue
+            for here in mine.occurrences:
+                for there in theirs.occurrences:
+                    if here.start < there.end and there.start < here.end:
+                        return (
+                            f"sides {left.name} and {right.name} read the same place in "
+                            f"{left.artifact}, {placed(here)}, so the value would be compared "
+                            f"with itself; give each side anchors that select a place of its own"
+                        )
+    return None
+
+
+def _as_printed(side: CorrespondenceSide, printed: str, raw: str) -> str | decimal.Decimal:
+    """A side's value as a detail shows it: as printed under `grouped`, and otherwise as the
+    decimal it was read as, which is how it was always shown."""
+    if isinstance(side.locator, ProseLocator) and side.locator.form is NumberForm.GROUPED:
+        return printed
+    return decimal.Decimal(raw)
+
+
+def _unit(raw: str, conversion: Conversion | None) -> tuple[decimal.Decimal, Conversion | None]:
+    """A value under its side's conversion, and the conversion, as `_held` takes them."""
+    return _compared(decimal.Decimal(raw), conversion), conversion
 
 
 def _plain(converted: decimal.Decimal) -> str:
@@ -807,6 +850,16 @@ class CorrespondenceBackend:
                 detail="; ".join(f"{s.name} ({s.artifact}): {d}" for s, _, d in unresolved),
             )
 
+        if (shared := _one_place(readings)) is not None:
+            return Decision(
+                **base,
+                **completed,
+                **no_compare,
+                extraction=ExtractionStatus.EXTRACTED,
+                reason=Reason.SIDES_READ_ONE_PLACE,
+                detail=shared,
+            )
+
         numbers: list[decimal.Decimal] = []
         for side, _, extracted, _ in readings:
             raw = extracted.raw if extracted is not None else ""
@@ -839,53 +892,81 @@ class CorrespondenceBackend:
             for recorded, number in zip(base["sides"], numbers, strict=True)
         )
 
-        held = [
-            _held(was, number, side.conversion)
-            for was, number, side in zip(stored, numbers, evidence.sides, strict=True)
-        ]
-        # Every pair of sides, each compared as two sides are. `printed_precision` compares a
-        # pair at the coarser of its two precisions, so a document printing 0.65 agrees with a
-        # file holding 0.6478 and the answer does not depend on which side the manifest wrote
-        # first. A larger exponent is the coarser value. Pairs and not one reference: an
-        # abstract printing 8.3 and a section printing 8.4 each agree with a stored 8.35, and
-        # disagree with each other.
-        disagree: list[tuple[CorrespondenceSide, CorrespondenceSide]] = []
+        # One place per side, or one per spelling where a side's anchors select one number
+        # printed to several precisions: `8.3` in an abstract and `8.30` in a table are one
+        # number and two precisions, and each is compared at its own.
+        places: list[tuple[CorrespondenceSide, str, str, decimal.Decimal]] = []
+        for side, _, extracted, _ in readings:
+            occurrences = extracted.occurrences if extracted is not None else ()
+            spelled = list({o.printed: o for o in reversed(occurrences)}.values())[::-1]
+            if len(spelled) > 1:
+                places += [
+                    (
+                        side,
+                        f"{side.name} at line {o.line}"
+                        if o.line is not None
+                        else f"{side.name} printing {o.printed}",
+                        _held(_as_printed(side, o.printed, o.raw), *_unit(o.raw, side.conversion)),
+                        _compared(decimal.Decimal(o.raw), side.conversion),
+                    )
+                    for o in spelled
+                ]
+                continue
+            raw = extracted.raw if extracted is not None else ""
+            printed = occurrences[0].printed if occurrences else raw
+            places.append(
+                (
+                    side,
+                    side.name,
+                    _held(_as_printed(side, printed, raw), *_unit(raw, side.conversion)),
+                    _compared(decimal.Decimal(raw), side.conversion),
+                )
+            )
+
+        # Every pair of places on different sides, each compared as two sides are.
+        # `printed_precision` compares a pair at the coarser of its two precisions, so a
+        # document printing 0.65 agrees with a file holding 0.6478 and the answer does not
+        # depend on which side the manifest wrote first. A larger exponent is the coarser value.
+        # Pairs and not one reference: an abstract printing 8.3 and a section printing 8.4 each
+        # agree with a stored 8.35, and disagree with each other. A declared tolerance applies
+        # to every pair, place against place as well as place against file.
+        disagree: list[tuple[str, str]] = []
         ties: list[PairTie] = []
-        for at, (left, a) in enumerate(zip(evidence.sides, numbers, strict=True)):
-            for right, b in zip(evidence.sides[at + 1 :], numbers[at + 1 :], strict=True):
+        for at, (left, named, _, a) in enumerate(places):
+            for right, other, _, b in places[at + 1 :]:
+                if right is left:
+                    continue
                 coarse, fine = (a, b) if _exponent(a) >= _exponent(b) else (b, a)
                 if not _agree(fine, coarse, evidence.mode, evidence.tolerance_value):
-                    disagree.append((left, right))
+                    disagree.append((named, other))
                 if (tie := _tied(fine, coarse, evidence.mode)) is not None:
-                    ties.append(PairTie(sides=(left.name, right.name), tie=tie))
+                    ties.append(PairTie(sides=(named, other), tie=tie))
         agrees = not disagree
         # `tie` is the first, as it was the only one when a correspondence had two sides.
         base["tie"] = ties[0].tie if ties else None
-        if len(evidence.sides) == 2:
-            (left, right), (a, b) = evidence.sides, held
+        if len(places) == 2:
+            (_, left, a, _), (_, right, b, _) = places
             between = (
                 f", an exact tie between {ties[0].tie.lower} and {ties[0].tie.upper}"
                 if ties
                 else ""
             )
-            detail = f"{evidence.name}: {left.name} {a}, {right.name} {b}{between}"
+            detail = f"{evidence.name}: {left} {a}, {right} {b}{between}"
         else:
             base["ties"] = tuple(ties)
-            # Each side with its artifact, since several sides may be places in one document,
+            base["disagreements"] = tuple(disagree)
+            # Each place with its artifact, since several sides may be places in one document,
             # then each pair that met a tie, and each pair that disagrees, so the report says
             # which places to reconcile.
             detail = f"{evidence.name}: " + ", ".join(
-                f"{side.name} ({side.artifact}) {value}"
-                for side, value in zip(evidence.sides, held, strict=True)
+                f"{named} ({side.artifact}) {value}" for side, named, value, _ in places
             )
             detail += "".join(
                 f"; {paired.sides[0]} and {paired.sides[1]} an exact tie between "
                 f"{paired.tie.lower} and {paired.tie.upper}"
                 for paired in ties
             )
-            detail += "".join(
-                f"; {left.name} and {right.name} disagree" for left, right in disagree
-            )
+            detail += "".join(f"; {left} and {right} disagree" for left, right in disagree)
         return Decision(
             **base,
             **completed,

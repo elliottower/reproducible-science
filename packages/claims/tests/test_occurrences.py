@@ -14,6 +14,7 @@ import json
 
 import pytest
 import yaml
+from claims.cli import main
 from claims.manifest import load
 from claims.models import (
     CorrespondenceEvidence,
@@ -150,6 +151,39 @@ def test_the_outcome_does_not_depend_on_the_order_of_the_sides(tmp_path):
         for order in itertools.permutations([ABSTRACT, RESULTS, MEASURED])
     }
     assert outcomes == {Outcome.MISMATCH}
+
+
+def test_a_tolerance_holds_place_against_place_as_well_as_place_against_file(tmp_path):
+    """8.30 and 8.36 are each within 0.05 of a stored 8.33 and 0.06 from each other."""
+    sides = [
+        {
+            "name": "a",
+            "artifact": "paper",
+            "locator": {"kind": "prose", "before": "a", "after": "x"},
+        },
+        {
+            "name": "b",
+            "artifact": "paper",
+            "locator": {"kind": "prose", "before": "b", "after": "x"},
+        },
+        {
+            "name": "file",
+            "artifact": "results",
+            "locator": {"kind": "tree", "pointer": "/accuracy"},
+        },
+    ]
+    decision = only(
+        project(
+            tmp_path,
+            sides,
+            paper="a 8.30 x. b 8.36 x.",
+            stored={"accuracy": 8.33},
+            mode="absolute",
+            tolerance="0.05",
+        )
+    )
+    assert decision.outcome is Outcome.MISMATCH
+    assert decision.disagreements == (("a", "b"),)
 
 
 def test_a_declared_tolerance_applies_to_every_pair(tmp_path):
@@ -329,15 +363,39 @@ def test_an_ambiguous_anchor_says_where_each_value_sits(tmp_path):
     )
 
 
-@pytest.mark.parametrize(("second", "extracted"), [("8.3", "8.3"), ("8.30", "8.30")])
-def test_occurrences_equal_as_numbers_are_one_value(tmp_path, second, extracted):
+@pytest.mark.parametrize("second", ["8.3", "8.30"])
+def test_occurrences_equal_as_numbers_are_one_value(tmp_path, second):
     decision = stated(tmp_path, TWICE.format(second))
     assert decision.outcome is Outcome.VERIFIED
-    assert decision.extracted == extracted, "the finest spelling is the one compared"
+    assert decision.extracted == "8.3", "the value is what the first place prints"
 
 
-def test_the_finest_spelling_is_held_to_its_places(tmp_path):
-    assert stated(tmp_path, TWICE.format("8.30"), reported="8.31").outcome is Outcome.MISMATCH
+SPELLED = "Abstract: an accuracy of 8.3 x.\n\nTable: an accuracy of 8.30 x.\n"
+SPELLED_SIDE = {
+    "name": "abstract",
+    "artifact": "paper",
+    "locator": {"kind": "prose", "before": "an accuracy of", "after": "x"},
+}
+FILE = {"name": "file", "artifact": "results", "locator": {"kind": "tree", "pointer": "/accuracy"}}
+
+
+def test_each_spelling_of_one_number_is_compared_at_its_own_precision(tmp_path):
+    """8.3 against a stored 8.35 is a tie; 8.30 against it is a mismatch, at its own line."""
+    decision = only(
+        project(tmp_path, [SPELLED_SIDE, FILE], paper=SPELLED, stored={"accuracy": 8.35})
+    )
+    assert decision.outcome is Outcome.MISMATCH
+    assert decision.disagreements == (("abstract at line 3", "file"),)
+    assert [paired.sides for paired in decision.ties] == [("abstract at line 1", "file")]
+    assert "abstract at line 3 (paper) 8.30" in decision.detail
+    assert decision.sides[0].extracted == "8.3", "the abstract is not recorded as printing 8.30"
+
+
+def test_one_number_printed_to_two_precisions_agrees_with_a_file_both_round_to(tmp_path):
+    decision = only(
+        project(tmp_path, [SPELLED_SIDE, FILE], paper=SPELLED, stored={"accuracy": 8.301})
+    )
+    assert decision.outcome is Outcome.VERIFIED
 
 
 @pytest.mark.parametrize("second", ["8.34", "8.4", "-8.3"])
@@ -355,3 +413,65 @@ def test_a_word_and_a_numeral_are_one_value_under_cardinal_word(tmp_path):
     paper = TWICE.replace("8.3%", "eighteen%").format("18")
     decision = stated(tmp_path, paper, reported="18", form="cardinal_word")
     assert decision.outcome is Outcome.VERIFIED
+
+
+# -- two sides reading one place ---------------------------------------------------------------
+
+ONE_PLACE = "Abstract: an accuracy of 8.4 x.\n\nResults: acc2 8.3 x.\n"
+
+
+@pytest.mark.parametrize(
+    "other",
+    [
+        {"kind": "prose", "before": "an accuracy of", "after": "x", "form": "grouped"},
+        {"kind": "prose", "before": "an accuracy of", "after": "x", "form": "cardinal_word"},
+        {"kind": "prose", "before": "accuracy of", "after": "x"},
+    ],
+)
+def test_two_sides_reading_one_place_are_not_a_pass(tmp_path, other):
+    sides = [SPELLED_SIDE, {"name": "results", "artifact": "paper", "locator": other}]
+    decision = only(project(tmp_path, sides, paper=ONE_PLACE, stored={"accuracy": 8.3}))
+    assert decision.outcome is Outcome.UNCHECKED
+    assert decision.reason is Reason.SIDES_READ_ONE_PLACE
+    assert decision.detail.startswith(
+        "sides abstract and results read the same place in paper, 8.4 at line 1"
+    )
+
+
+def test_two_sides_reading_two_places_in_one_document_are_compared(tmp_path):
+    other = {"kind": "prose", "before": "acc2", "after": "x"}
+    sides = [SPELLED_SIDE, {"name": "results", "artifact": "paper", "locator": other}]
+    decision = only(project(tmp_path, sides, paper=ONE_PLACE, stored={"accuracy": 8.3}))
+    assert decision.outcome is Outcome.MISMATCH
+
+
+# -- what a reader sees ------------------------------------------------------------------------
+
+
+def test_why_names_each_tied_pair_and_each_disagreeing_pair(tmp_path, capsys):
+    path = project(tmp_path, [ABSTRACT, RESULTS, MEASURED])
+    assert main(["why", "accuracy", str(path)]) == 0
+    out = capsys.readouterr().out
+    assert "abstract and measured: an exact tie between 8.3 and 8.4" in out
+    assert "results and measured: an exact tie between 8.3 and 8.4" in out
+    assert "abstract and results disagree" in out
+
+
+def test_a_full_stop_closing_a_sentence_is_not_part_of_the_number(tmp_path):
+    paper = "acc 8.3 y. acc 8.3. y"
+    side = {"name": "p", "artifact": "paper", "locator": {"kind": "prose", "before": "acc"}}
+    decision = only(project(tmp_path, [side, FILE], paper=paper, stored={"accuracy": 8.3}))
+    assert decision.outcome is Outcome.VERIFIED
+    assert decision.sides[0].extracted == "8.3"
+
+
+def test_a_grouped_value_is_shown_as_printed(tmp_path):
+    side = {
+        "name": "n",
+        "artifact": "paper",
+        "locator": {"kind": "prose", "before": "n", "after": "x", "form": "grouped"},
+    }
+    paper = "n 1,062e3 x."
+    decision = only(project(tmp_path, [side, FILE], paper=paper, stored={"accuracy": 1062000}))
+    assert decision.outcome is Outcome.VERIFIED
+    assert decision.detail == "accuracy: n 1,062e3, file 1062000"

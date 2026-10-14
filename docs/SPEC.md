@@ -235,9 +235,26 @@ section printing `8.4` each agree with it and disagree with each other. The deci
 exact tie, then each pair that disagrees: `accuracy: abstract (paper) 8.3, results (paper) 8.4,
 measured (results) 0.0835 (8.35 as a percentage); abstract and measured an exact tie between
 8.3 and 8.4; results and measured an exact tie between 8.3 and 8.4; abstract and results
-disagree`. The decision records every tied pair in `ties`, each with the names of its two sides
-(§3.8). A
-place printing the value in another unit declares a `conversion` on its side, so `8.3%` with
+disagree`. The decision records every tied pair in `ties` and every disagreeing pair in
+`disagreements`, each by the names of its two places (§3.8), and `repro why` prints a line for
+each. A declared tolerance applies to every pair, place against place as well as place against
+file: under `absolute` with `tolerance: "0.05"`, places printing `8.30` and `8.36` disagree
+though each is within the tolerance of a stored `8.33`.
+
+A side whose anchors select one number printed to several precisions, `8.3` in an abstract and
+`8.30` in a table, is a place per spelling, named by the side and the line, and each is compared
+at its own precision: against a stored `8.35` the first is an exact tie and the second a
+mismatch, reported as `abstract at line 3 and file disagree`. The side records the value its
+first place prints.
+
+Two sides reading one place in one artifact are not compared. Locators that differ only in
+`form`, or in anchors one of which contains the other, `accuracy of` and `an accuracy of`, can
+select the same printed value, which then agrees with itself whatever the document prints while
+the place one side was meant for is never read. The canonical locators differ, so the manifest
+loads; the decision is `unchecked`, reason `sides_read_one_place`, and its detail names the two
+sides, the line and the words around the value.
+
+A place printing the value in another unit declares a `conversion` on its side, so `8.3%` with
 `conversion: fraction` agrees with a table cell printing `0.083`, and a place printing
 `1,062` declares `form: grouped` on its locator (§3.6). An anchor pair that occurs twice
 already requires its occurrences to agree (§3.6); sides are for places whose anchors differ.
@@ -409,7 +426,9 @@ and the value is the run of non-whitespace characters between them.
 locator: {kind: prose, before: "suite holds", after: "fixtures", form: cardinal_word}
 ```
 
-With no `after`, the value is the whole run up to the next whitespace. With one, it is the
+With no `after`, the value is the whole run up to the next whitespace, less a full stop closing
+it after a digit: `8.3.` at the end of a sentence reads `8.3`, since no number ends on a decimal
+point. With one, it is the
 whole run where `after` begins past it, and otherwise the run cut at the first place inside it
 where `after` begins. A character printed against the value is therefore removed by naming it.
 A cell of a printed table is glued to its divider, `| 7| 0.318| 0.107|`, and is addressed by
@@ -447,15 +466,20 @@ Whitespace at an anchor boundary is ignored, on the grounds that normalization c
 everywhere else. An anchor pair selecting two occurrences of one value resolves to that value;
 selecting two *different* values is `passage_ambiguous`. Occurrences are one value where each
 reads as a number under the locator's `form` and the numbers are equal: `8.3` and `8.30`, `18`
-and `eighteen` under `cardinal_word`, `1,062` and `1062` under `grouped`. The value compared is
-then the finest spelling, the first where several are as fine, so a document printing `8.30`
-anywhere is held to two places. `8.3` and `8.34` are different numbers and stay
+and `eighteen` under `cardinal_word`, `1,062` and `1062` under `grouped`. The value is what the first
+occurrence prints, and each occurrence is kept with its line: a `correspondence` compares each
+spelling at its own precision (§3.4), and every other kind compares at the precision of
+`reported`, where the spelling read makes no difference. `8.3` and `8.34` are different numbers
+and stay
 `passage_ambiguous`, and where any occurrence is no number the occurrences are compared as text.
 The detail of `passage_ambiguous` gives each occurrence, its line where the extracted text's
 lines can be mapped onto the normalized text, and the words around it:
 `"an accuracy of" ... "%" selects 2 different values in paper.md: 8.3 at line 1 ("reached an
 accuracy of 8.3% on the held-out split."), 8.4 at line 3 ("reached an accuracy of 8.4% on the
-same split.")`. A repeated count is ordinary prose and
+same split.")`. Where places are sides of one `correspondence`, its `mode` and `tolerance`
+apply to every pair of places, place against place as well as place against file, so two
+places each within the tolerance of the file can still disagree with each other (§3.4). A
+repeated count is ordinary prose and
 a document stating two counts is a defect, which is the distinction a `quote` cannot draw:
 a quotation is satisfied by any occurrence, so editing one of two statements of a number leaves
 the assertion satisfied by the other.
@@ -471,7 +495,8 @@ addressable this way whatever the table holds. Under `grouped`, digits grouped i
 commas are read as the number without the commas: `1,062` is 1062. Under `decimal` the same
 text is `value_not_numeric`, since a decimal parser refuses the comma, and the detail says to
 declare `form: grouped`; under either form a
-comma between digits that do not group in threes, `12,13` or `1,0620`, is not grouping. `form`
+comma between digits that do not group in threes, `12,13` or `1,0620`, is not grouping. A
+grouped value is shown in a detail as printed, `1,062e3`. `form`
 is part of the canonical locator, so the decision digest binds what the manifest authorized.
 
 Predicates are typed key-value mappings, not a string expression language: a string predicate
@@ -747,6 +772,7 @@ it flattens to:
 | `value_not_numeric` | `not_found` | the value addressed is not a finite number |
 | `number_as_word` | `not_found` | the value is an English cardinal written out, under a locator that did not ask for one |
 | `passage_ambiguous` | `not_found` | one pair of prose anchors selects two different values |
+| `sides_read_one_place` | `unchecked` | two sides of a `correspondence` select a value at one place in one artifact |
 | `quotation_ambiguous` | `not_found` | the quoted passage occurs more than once and no `prefix` or `suffix` singles one occurrence out |
 | `extractors_disagree` | `not_found` | two extractors that both read the artifact disagree about whether the passage is in it |
 | `format_unsupported` | `unchecked` | no adapter reads the artifact's format |

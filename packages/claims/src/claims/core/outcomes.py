@@ -173,6 +173,11 @@ class Reason(enum.StrEnum):
     """One pair of prose anchors selected two different values, so the document states two
     numbers where the assertion addresses one. Reported rather than resolved to the first: a
     document contradicting itself is a finding."""
+    SIDES_READ_ONE_PLACE = "sides_read_one_place"
+    """Two sides of a correspondence selected a value at one place in one artifact, through
+    locators that differ only in `form` or in anchors one of which contains the other. The
+    value would be compared with itself, so no comparison is made and the outcome is
+    `unchecked`: the place one of the sides was meant for was never read."""
     NUMBER_AS_WORD = "number_as_word"
     """The locator selected an English cardinal written out, under a locator that did not ask
     for one. Distinct from `value_not_numeric` because the fix is different: the value is
@@ -244,7 +249,8 @@ class PairTie(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     sides: tuple[str, str]
-    """The names of the two sides, in the order the manifest declares them."""
+    """The two places, by side name, or by side name and line where a side reads one number
+    printed to several precisions, in the order the manifest declares the sides."""
 
     tie: Tie
 
@@ -355,9 +361,16 @@ class Decision(BaseModel):
     precision. None otherwise, and under `absolute` and `relative`, which round nothing."""
 
     ties: tuple[PairTie, ...] = ()
-    """Every pair of sides that met an exact tie, in a `correspondence` of three sides or more,
-    in the order the pairs were compared. `tie` is the first of them. Empty for every other
-    assertion, whose one comparison is recorded in `tie`."""
+    """Every pair of places that met an exact tie, in a `correspondence` of three places or
+    more, in the order the pairs were compared. A place is a side, named as the manifest names
+    it, or one spelling of a side's value, named with its line, where the side's anchors
+    select one number printed to several precisions. `tie` is the first of them. Empty for
+    every other assertion, whose one comparison is recorded in `tie`."""
+
+    disagreements: tuple[tuple[str, str], ...] = ()
+    """Every pair of places that disagree, in a `correspondence` of three places or more, by
+    the names `ties` uses. Empty for every other assertion, whose one comparison is its
+    `comparison`."""
 
     sides: tuple[DecisionSide, ...] = ()
     """The two values a `correspondence` compared, each with the artifact and locator it came
@@ -409,11 +422,12 @@ class Decision(BaseModel):
 
     @model_serializer(mode="wrap")
     def _omit_no_ties(self, handler):
-        """Leave `ties` out where it is empty, so a decision on any other assertion serializes
+        """Leave `ties` and `disagreements` out where empty, so a decision on any other assertion serializes
         as it did before the field existed."""
         dumped = handler(self)
-        if not self.ties:
-            dumped.pop("ties", None)
+        for field in ("ties", "disagreements"):
+            if not getattr(self, field):
+                dumped.pop(field, None)
         return dumped
 
     @property

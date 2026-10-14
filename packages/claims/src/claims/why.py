@@ -305,6 +305,8 @@ def why(
             reads=tuple(read(*found) for found in files),
             places=getattr(evidence, "places", None),
             tie=decision.tie,
+            ties=decision.ties,
+            disagreements=decision.disagreements,
             statistic=evidence.statistic if isinstance(evidence, AggregateEvidence) else None,
             computed=decision.computed,
             outcome=decision.outcome,

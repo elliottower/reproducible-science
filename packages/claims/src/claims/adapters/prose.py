@@ -23,7 +23,7 @@ import pathlib
 import re
 from collections.abc import Callable, Iterator
 
-from claims.adapters.base import Found, Resolution, _no, _ok
+from claims.adapters.base import Found, Occurrence, Resolution, _no, _ok
 from claims.adapters.reads import once
 from claims.exceptions import ArtifactUnreadableError, BackendUnavailableError
 from claims.models import NumberForm, ProseLocator
@@ -137,12 +137,6 @@ def _number(value: str, form: NumberForm) -> decimal.Decimal | None:
     return number if number.is_finite() else None
 
 
-def _exponent(number: decimal.Decimal) -> int:
-    """The power of ten a finite decimal's last digit sits at. `_number` returns no other."""
-    exponent = number.as_tuple().exponent
-    return exponent if isinstance(exponent, int) else 0
-
-
 def line_starts(raw: str, folded: str, fold: Callable[[str], str]) -> list[int] | None:
     """Where each line of the extracted text starts in the normalized text.
 
@@ -245,29 +239,60 @@ def _resolve_prose(locator: ProseLocator, path: pathlib.Path) -> Found:
     read = [_number(hit, locator.form) for hit in hits]
     numbers = [number for number in read if number is not None]
     distinct = len(set(numbers)) if len(numbers) == len(hits) else len(set(hits))
+    starts = once(("prose lines", path), lambda: line_starts(raw, text, passage_fold))
+    occurrences = tuple(
+        Occurrence(
+            printed=hit,
+            raw=_spelled(hit, locator.form),
+            start=start,
+            end=end,
+            line=bisect.bisect_right(starts, start) if starts else None,
+            context=context(text, start, end),
+        )
+        for hit, (start, end) in zip(hits, spans, strict=True)
+    )
     if distinct > 1:
-        starts = line_starts(raw, text, passage_fold)
-        where = [
-            (f"{hit} at line {bisect.bisect_right(starts, start)}" if starts else hit)
-            + f' ("{context(text, start, end)}")'
-            for hit, (start, end) in zip(hits, spans, strict=True)
-        ]
         return _no(
             Resolution.PASSAGE_AMBIGUOUS,
-            f"{address} selects {distinct} different values in {path.name}: {', '.join(where)}",
+            f"{address} selects {distinct} different values in {path.name}: "
+            + ", ".join(placed(occurrence) for occurrence in occurrences),
         )
 
-    # The finest of equal spellings, the first where they are as fine: `8.30` printed anywhere
-    # states two places, and the comparison is held to them.
+    # The first occurrence is the value. Equal numbers spelled to other precisions are each
+    # kept in `occurrences`, and an assertion whose comparison depends on the precision, a
+    # `correspondence`, compares each at its own: `8.3` and `8.30` are one number, and a
+    # stored `8.35` is a tie for the first and a mismatch for the second.
     value = hits[0]
-    if len(numbers) == len(hits):
-        value = hits[min(range(len(hits)), key=lambda at: _exponent(numbers[at]))]
     printed = list(dict.fromkeys(hits))
     seen = f"{len(hits)} occurrence(s)" if len(hits) > 1 else ""
     if len(printed) > 1:
         seen += f", printed as {', '.join(printed)}"
     trace = (address, seen) if seen else (address,)
+    resolution, extracted, detail = _first(locator, address, path, value, trace)
+    if extracted is None:
+        return resolution, extracted, detail
+    return resolution, extracted.model_copy(update={"occurrences": occurrences}), detail
 
+
+def placed(occurrence: Occurrence) -> str:
+    """An occurrence as a report names it: its value, its line and the words around it."""
+    line = f" at line {occurrence.line}" if occurrence.line is not None else ""
+    return f'{occurrence.printed}{line} ("{occurrence.context}")'
+
+
+def _spelled(value: str, form: NumberForm) -> str:
+    """The value a selected text is read as under `form`, as text."""
+    if form is NumberForm.CARDINAL_WORD and value in CARDINALS:
+        return str(CARDINALS[value])
+    if form is NumberForm.GROUPED and GROUPED.fullmatch(value):
+        return value.replace(",", "")
+    return value
+
+
+def _first(
+    locator: ProseLocator, address: str, path: pathlib.Path, value: str, trace: tuple[str, ...]
+) -> Found:
+    """The value of the first occurrence, read under the locator's form."""
     if locator.form is NumberForm.CARDINAL_WORD:
         if (number := CARDINALS.get(value)) is not None:
             return _ok(str(number), "cardinal_word", *trace, f'the word "{value}"')
@@ -296,7 +321,8 @@ def located(text: str, before: str, after: str) -> tuple[list[tuple[int, int]], 
     anchor would have split.
 
     The value is a run of non-whitespace characters. With no `after` it is the whole run up to
-    the next whitespace. With one, the whole run is taken where `after` begins past it, and
+    the next whitespace, less a full stop that closes it after a digit: `8.3.` ends a sentence
+    and reads `8.3`. With one, the whole run is taken where `after` begins past it, and
     otherwise the run is cut at the first place inside it where `after` begins: a cell printed
     against its divider, `0.318|`, or a number closing a sentence, `3.14.`, is delimited by
     the anchor that touches it and by nothing the engine guessed.
@@ -332,7 +358,14 @@ def located(text: str, before: str, after: str) -> tuple[list[tuple[int, int]], 
         tail = end
         while tail < n and text[tail].isspace():
             tail += 1
-        if not after or text.startswith(after, tail):
+        if not after:
+            # A full stop closing the run after a digit ends the sentence, and no number
+            # ends on a decimal point: `8.3.` is `8.3`, as it is to a reader.
+            if end - cursor > 1 and text[end - 1] == "." and text[end - 2].isdigit():
+                end -= 1
+            found.append((cursor, end))
+            continue
+        if text.startswith(after, tail):
             found.append((cursor, end))
             continue
         for stop in range(cursor + 1, end):
