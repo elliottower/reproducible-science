@@ -11,9 +11,10 @@ Builds every package, installs the wheels into a throwaway environment with thir
 dependencies resolved from PyPI, and runs the manifest the repository audits itself with.
 
 Then installs `claims-cli` by itself, with only the two wheels it declares, into a second
-environment. That one must hold no `repro`, `results` or `prereg`, and `claims verify` must
-check a conformance case in it: the distribution exists to be installed without the rest, and
-a workspace in which everything is always present cannot show that it can be.
+environment. That one must hold no `repro`, `results` or `prereg`, `claims verify` must check
+a conformance case in it, and its own test suite must pass in it with pytest and nothing else
+added: the distribution exists to be installed without the rest, and a workspace in which
+everything is always present cannot show that it can be.
 """
 
 from __future__ import annotations
@@ -101,6 +102,28 @@ def alone(scratch: pathlib.Path, found: list[pathlib.Path], cases: pathlib.Path)
         print(f"  FAIL claims-cli alone: {named.stdout}{named.stderr}")
         return 1
     print("  claims-cli installs and checks a manifest by itself")
+
+    # Its own tests, run in that environment with nothing added but pytest: a test that
+    # passes only beside the wrapper, or only with an optional reader present, fails here.
+    added = run("uv", "pip", "install", "--python", str(python), "pytest")
+    if added.returncode:
+        print(f"  FAIL install pytest beside claims-cli\n{added.stderr}")
+        return 1
+    suite = run(
+        str(python),
+        "-m",
+        "pytest",
+        "-q",
+        "-p",
+        "no:cacheprovider",
+        str(ROOT / "packages" / "claims" / "tests"),
+        cwd=ROOT / "packages" / "claims",
+    )
+    summary = [ln for ln in suite.stdout.splitlines() if ln.strip()][-1:] or [""]
+    print(f"  claims-cli alone, its tests: {summary[0].strip()}")
+    if suite.returncode:
+        print(suite.stdout[-4000:])
+        return 1
     return 0
 
 

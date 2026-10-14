@@ -16,7 +16,12 @@ import claims
 import pytest
 from claims.cli import CLAIMS, REPRO, _reproduce, main
 
-MODULES = sorted(name for _, name, _ in pkgutil.walk_packages(claims.__path__, prefix="claims."))
+#: Every module, but `claims.__main__`, which runs the command when it is imported.
+MODULES = sorted(
+    name
+    for _, name, _ in pkgutil.walk_packages(claims.__path__, prefix="claims.")
+    if name != "claims.__main__"
+)
 
 #: Top-level packages a claims-only installation does not have.
 NOT_INSTALLED_ALONE = ("repro", "results", "prereg")
@@ -42,7 +47,11 @@ def test_importing_every_module_of_claims_loads_nothing_it_does_not_install():
 
 
 def test_the_check_can_fail():
-    assert "results" in loaded_after("results.ledger")
+    """The same reading finds a package it was asked to load, so an empty list above is a
+    finding and not a reading that cannot see. `citations` is installed wherever this is."""
+    loaded = loaded_after("citations.verify")
+    assert "citations.verify" in loaded
+    assert sorted(name for name in loaded if name.split(".")[0] == "citations")
 
 
 def project(root, claims_declared=True):
@@ -117,3 +126,44 @@ def test_the_help_names_claims_for_its_own_commands_and_repro_for_the_rest(capsy
     assert "{manifest,verify,stale,why,numbers,export}" in listed
     for absent in ("reproduce", "check", "audit", "demo"):
         assert f"\n    {absent} " not in listed
+
+
+def git(root, *args):
+    subprocess.run(["git", *args], cwd=root, check=True, capture_output=True)
+
+
+def test_a_broken_record_of_checks_is_kept_by_claims_own_command(tmp_path, monkeypatch, capfd):
+    path = project(tmp_path)
+    git(tmp_path, "init", "-q")
+    monkeypatch.chdir(tmp_path)
+    assert main(["verify", str(path), "--policy", "exploratory"]) == 0
+    record = tmp_path / ".git" / "repro" / "checks.jsonl"
+    record.write_text(record.read_text().replace('"seq":0', '"seq":7'))
+    (tmp_path / "results.json").write_text(json.dumps({"n": 7}))
+    main(["verify", str(path), "--policy", "exploratory"])
+    err = capfd.readouterr().err
+    assert "record not written:" in err
+    assert "`claims verify --set-aside-record` keeps it and starts anew" in err
+    assert "repro verify" not in err
+
+
+def test_the_sarif_export_s_help_names_claims_own_command(tmp_path, capsys):
+    path = project(tmp_path)
+    (tmp_path / "results.json").write_text(json.dumps({"n": 7}))
+    assert main(["export", "sarif", str(path)]) == 0
+    rules = json.loads(capsys.readouterr().out)["runs"][0]["tool"]["driver"]["rules"]
+    helps = [rule["help"]["text"] for rule in rules]
+    assert any("`claims why <claim>` prints the stored value" in text for text in helps)
+    assert not any("repro why" in text for text in helps)
+
+
+def test_the_starter_claims_writes_names_claims_where_it_names_a_command(tmp_path, monkeypatch):
+    (tmp_path / "results").mkdir()
+    (tmp_path / "results" / "metrics.json").write_text(json.dumps({"n": 6}))
+    monkeypatch.chdir(tmp_path)
+    assert main(["manifest", "init"]) == 0
+    text = (tmp_path / "repro.yaml").read_text()
+    assert "read by `claims verify`." in text
+    assert "were written by `claims manifest init` to show" in text
+    assert "#     claims verify\n" in text
+    assert "repro verify" not in text and "repro manifest init" not in text

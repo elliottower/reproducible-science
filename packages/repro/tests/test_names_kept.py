@@ -22,6 +22,8 @@ import repro
 MOVED = sorted(
     name.removeprefix("claims.")
     for _, name, _ in pkgutil.walk_packages(claims.__path__, prefix="claims.")
+    # `__main__` runs the command when imported, and each package has its own.
+    if name != "claims.__main__"
 )
 
 #: What `repro` itself exported before, from its `__all__` as it stood.

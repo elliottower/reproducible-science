@@ -9,6 +9,7 @@ depend on the name at all.
 
 from __future__ import annotations
 
+import importlib
 import json
 
 import pytest
@@ -136,9 +137,17 @@ def test_manifest_init_differs_only_in_the_commands_it_names(tmp_path, monkeypat
     assert outputs["claims"] == outputs["repro"].replace(
         "repro manifest init", "claims manifest init"
     ).replace("next: repro verify", "next: claims verify")
-    # The manifest written is the same file whichever command wrote it.
-    written = {name: (tmp_path / name / "project" / "repro.yaml").read_bytes() for name in outputs}
-    assert written["repro"] == written["claims"]
+    # The same file, but for the three comment lines that name a command.
+    written = {name: (tmp_path / name / "project" / "repro.yaml").read_text() for name in outputs}
+    assert "read by `repro verify`." in written["repro"]
+    assert "#     repro verify\n" in written["repro"]
+    assert written["claims"] == (
+        written["repro"]
+        .replace("read by `repro verify`.", "read by `claims verify`.")
+        .replace("written by `repro manifest init`", "written by `claims manifest init`")
+        .replace("#     repro verify\n", "#     claims verify\n")
+    )
+    assert written["claims"] != written["repro"]
 
 
 def test_the_handlers_are_the_same_functions():
@@ -155,3 +164,29 @@ def test_the_handlers_are_the_same_functions():
         "SYMBOL",
     ):
         assert getattr(repro_cli, name) is getattr(claims_cli, name), name
+
+
+def test_the_repro_starter_is_the_file_main_wrote():
+    """`repro manifest init` writes the header as it stood, naming `repro`: the three places
+    that name a command are the only ones that vary, and under `repro` they read as before."""
+    header = importlib.import_module("claims.starter").HEADER
+    assert header.count("{program}") == 3
+    shown = header.format(project="P", program="repro")
+    assert shown.startswith("# The evidence manifest for P, read by `repro verify`.\n")
+    assert "were written by `repro manifest init` to show" in shown
+    assert "#     repro verify\n#\n" in shown
+
+
+def test_a_sarif_export_s_help_names_repro_under_repro(tmp_path, capsys):
+    path = project(tmp_path)
+    (tmp_path / "results.json").write_text(json.dumps({"n": 7, "rate": 0.0425}))
+    assert repro_main(["export", "sarif", path]) == 0
+    rules = json.loads(capsys.readouterr().out)["runs"][0]["tool"]["driver"]["rules"]
+    assert any(
+        rule["help"]["text"]
+        == (
+            "Either the manuscript or the file is out of date. `repro why <claim>` prints the "
+            "stored value beside the reported one, and what produced the file."
+        )
+        for rule in rules
+    )

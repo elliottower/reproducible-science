@@ -67,7 +67,7 @@ from claims.models import (
     Warning_,
 )
 from claims.resolve import Resolution, resolve
-from claims.toolchain import DISTRIBUTION, UNKNOWN, binary_version, distribution_version
+from claims.toolchain import DISTRIBUTION, UNKNOWN, adapter_version, binary_version
 
 #: The distribution that ships `claims.adapters`, which is what reads a JSON pointer, a
 #: delimited cell, a SQLite row or an array element. Its name on PyPI, because that is what
@@ -551,7 +551,7 @@ class ValueBackend:
 
     @property
     def tool_version(self) -> str:
-        return distribution_version(self.tool)
+        return adapter_version()
 
     def check(
         self, claim: Claim, evidence: Evidence, paths: Mapping[str, pathlib.Path]
@@ -719,7 +719,7 @@ class CorrespondenceBackend:
 
     @property
     def tool_version(self) -> str:
-        return distribution_version(self.tool)
+        return adapter_version()
 
     def check(
         self, claim: Claim, evidence: Evidence, paths: Mapping[str, pathlib.Path]
@@ -868,7 +868,7 @@ class AggregateBackend:
 
     @property
     def tool_version(self) -> str:
-        return distribution_version(self.tool)
+        return adapter_version()
 
     def check(
         self, claim: Claim, evidence: Evidence, paths: Mapping[str, pathlib.Path]

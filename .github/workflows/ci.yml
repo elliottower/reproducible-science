@@ -22,6 +22,8 @@ jobs:
       - run: uv run ruff check --output-format=github .
       - run: uv run ruff format --check .
       - run: uv lock --check
+      # The boundaries the packages exist for: `claims` imports nothing of `repro`.
+      - run: uv run --group audit lint-imports
 
   tests:
     name: tests (py${{ matrix.python }})

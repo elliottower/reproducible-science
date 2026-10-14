@@ -14,11 +14,11 @@ happened.
 | Trigger | a single annotated tag `vX.Y.Z` |
 | Result | six workflow runs, six PyPI uploads |
 
-Per-package tags (`citations-v*`, `prereg-v*`, `results-v*`, `claims-v*`, `repro-v*`,
-`provenance-core-v*`)
-still work and still
-publish one distribution each. They exist for a repair — republishing one package after a
-partial failure — and not for an ordinary release.
+Per-package tags (`citations-v*`, `prereg-v*`, `results-v*`, `repro-v*`,
+`provenance-core-v*`) start one workflow each, for a repair -- republishing one package after
+a partial failure -- and not for an ordinary release. Both jobs of a publish workflow run in the
+`release` environment, which admits only tags matching `v*`, so a run started by one of these
+cannot publish until that rule admits its tag. `publish-claims.yml` takes `v*` alone.
 
 ## 1. Set the version
 
@@ -156,13 +156,9 @@ on `File already exists`, and the only way forward is a new version.
 
 ## A distribution PyPI has never seen
 
-`claims-cli` is new in 0.6.0. PyPI has no project of that name, so it has no trusted publisher
-for one, and the `binding` job in `publish-claims.yml` is refused until there is. A trusted
-publisher for a project that does not exist yet is a *pending* publisher, and only the
-account that will own the project can create it, by hand, before any tag is pushed.
-
-On PyPI, signed in as the owner: **Your account → Publishing → Add a new pending publisher →
-GitHub**. The form asks for five things.
+`claims-cli` is new in 0.6.0. PyPI has no project of that name, so its upload is accepted only
+through a *pending* trusted publisher, which the account that will own the project creates by
+hand: **Your account → Publishing → Add a new pending publisher → GitHub**.
 
 | field | value |
 |---|---|
@@ -172,35 +168,76 @@ GitHub**. The form asks for five things.
 | Workflow name | `publish-claims.yml` |
 | Environment name | `release` |
 
-The workflow name is the file's name, not the `name:` inside it. The environment is the one
-every publish workflow names on both of its jobs, and the one that admits version tags only.
-A pending publisher reserves nothing: the name can still be taken by someone else until the
-first upload, so create it close to the release and not weeks ahead.
+The workflow name is the file's name, not the `name:` inside it. A pending publisher reserves
+nothing: until the first upload anyone can take the name.
 
-Then, with the tag that is about to be released, or any existing version tag, ask PyPI
-without publishing:
+**The binding is first checked at the candidate's tag.** `gh workflow run publish-claims.yml
+--ref <tag>` asks PyPI without publishing, but only from a tag whose tree holds
+`publish-claims.yml`, and no tag does until `v0.6.0rc1`. So the first `binding` job of
+`claims-cli` runs when `v0.6.0rc1` is pushed. If it is refused there, the other five
+distributions have published `0.6.0rc1`, `claims-cli` has not, and the cost is that candidate
+number and no more: a pre-release is installed only by someone who asks for it, so nothing that
+resolves `>=0.6,<0.7` or an unpinned name picks it up. Correct the publisher and cut
+`v0.6.0rc2`.
+
+**Cut a release candidate first.** A candidate is all six distributions at `X.Y.Zrc1`, tagged
+`vX.Y.Zrc1`, published by the same six workflows. `bump` writes `>=X.Y.Zrc1,<X.(Y+1)` as each
+sibling range during a candidate, because a range that names no pre-release admits none, and
+`>=X.Y,<X.(Y+1)` for the release.
+
+### The candidate, in order
 
 ```bash
-gh workflow run publish-claims.yml --ref vX.Y.Z
+git switch -c release/0.6.0rc1 origin/main
+uv run python scripts/versions.py bump 0.6.0rc1
+uv run python scripts/versions.py check
+uv lock
+make qa                          # not release-check: check_publishers fails until a first binding
+git add -u && git commit -m "Release 0.6.0rc1"
+gh pr create --fill              # wait for every job, then squash-merge
+git switch main && git pull --ff-only
+git tag -a v0.6.0rc1 -m "Release candidate 0.6.0rc1"
+git push origin v0.6.0rc1
+gh run list --limit 6            # six publish runs; watch publish-claims.yml's binding job
+```
+
+No `make changelog` for a candidate: it consumes the fragments, which belong to the release,
+and no `gh release create`, which Zenodo would archive as a version.
+
+If `publish-claims.yml`'s `binding` job fails, check the pending publisher on PyPI against the
+table above, field by field: project `claims-cli`, owner `elliottower`, repository
+`reproducible-science`, workflow `publish-claims.yml`, environment `release`. Correct it and cut
+`v0.6.0rc2` the same way (`bump 0.6.0rc2`, merge, tag, push).
+
+Once all six candidates are on PyPI, install them in a clean environment, from PyPI:
+
+```bash
+uv run --isolated --no-project --prerelease allow \
+  --with "reproducible-science==0.6.0rc1" repro --version
+uv run --isolated --no-project --prerelease allow \
+  --with "claims-cli==0.6.0rc1" claims --version
 uv run python scripts/check_publishers.py
 ```
 
-**Cut a release candidate first.** `reproducible-science` X.Y.Z declares
-`claims-cli>=X.Y,<X.(Y+1)`. If the six uploads go out together and PyPI refuses only the new
-one, the wrapper is published and cannot be installed, and its version is consumed. A
-candidate of the new distribution alone finds that out with nothing at stake:
+### The release, in order
 
 ```bash
-git tag -a claims-vX.Y.Zrc1 -m "claims-cli X.Y.Zrc1"
-git push origin claims-vX.Y.Zrc1
+git switch -c release/0.6.0 origin/main
+uv run python scripts/versions.py bump 0.6.0
+uv run python scripts/versions.py check
+uv lock
+make changelog VERSION=0.6.0
+make release-check
+git add -u CHANGELOG.md && git add changes && git commit -m "Release 0.6.0"
+gh pr create --fill              # wait for every job, then squash-merge
+git switch main && git pull --ff-only
+git tag -a v0.6.0 -m "Release all packages at 0.6.0"
+git push origin v0.6.0
+gh run list --limit 6            # six publish runs, each to completion
+gh release create v0.6.0 --title v0.6.0 --notes "<one short paragraph>"
 ```
 
-The per-package tag starts `publish-claims.yml` and no other workflow. The version it uploads
-is the one in `packages/claims/pyproject.toml` at that commit, so the candidate is cut from a
-commit that sets that one manifest to `X.Y.Zrc1`, on a branch, and is never merged: `bump`
-writes all six manifests and `check` wants them equal, which is right for a release and not
-for this. Once the candidate is on PyPI the pending publisher has become an ordinary one, and
-the release of all six proceeds from step 1.
+Then steps 6 to 10 below, for six distributions.
 
 ## 6. Verify the version is unclaimed
 

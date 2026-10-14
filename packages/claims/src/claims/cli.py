@@ -1,17 +1,18 @@
 """The commands that check what a manifest declares, and how each prints what it found.
 
-    repro manifest init   write a starter repro.yaml for an existing project
-    repro verify          check every evidence assertion in repro.yaml
-    repro stale           say which claims read a file changed since its recorded re-run
-    repro why             say what the record establishes for one claim, and what it does not
-    repro numbers         count every number the manuscript prints, and which a claim binds
-    repro export          write the check records in another format
+    claims manifest init   write a starter repro.yaml for an existing project
+    claims verify          check every evidence assertion in repro.yaml
+    claims stale           say which claims read a file changed since its recorded re-run
+    claims why             say what the record establishes for one claim, and what it does not
+    claims numbers         count every number the manuscript prints, and which a claim binds
+    claims export          write the check records in another format
 
-Each is a renderer over the library, as `repro.cli` says of the whole command. They are apart
-from the rest because nothing here runs a declared command, writes the record of re-runs or
-drives another tool: this module imports the claims side and none of the wrapper side, and an
-import-linter contract holds it to that. `repro.cli` builds the parser, and has every name
-defined here under the name it had there.
+Each is also the `repro` command of the same name: `repro.cli` adds these functions to its
+parser with `add_manifest` through `add_export`, and `main` here adds them to the parser of
+`claims`. Each handler reads the name the user typed off the parsed arguments, so a message that
+says what to run next names a command that user has. Nothing here runs a declared command,
+writes the record of re-runs or drives another tool, and an import-linter contract holds this
+package to importing nothing of `repro`.
 """
 
 from __future__ import annotations
@@ -99,7 +100,7 @@ SYMBOL = {
 
 
 def cmd_manifest_init(args: argparse.Namespace) -> int:
-    starter = write_starter(project_root(Path.cwd()), args.files, Path.cwd())
+    starter = write_starter(project_root(Path.cwd()), args.files, Path.cwd(), _program(args))
     print(f"wrote {starter.path}")
 
     count = f"{len(starter.artifacts)} artifact{'' if len(starter.artifacts) == 1 else 's'}"
@@ -171,7 +172,13 @@ def cmd_verify(args: argparse.Namespace) -> int:
                     "a new one starts by saying so\n".encode(),
                 )
     try:
-        record_checks(manifest, report, local=args.local_record, tracked=args.record)
+        record_checks(
+            manifest,
+            report,
+            local=args.local_record,
+            tracked=args.record,
+            program=_program(args),
+        )
     except (ReproError, ChainError) as e:
         os.write(2, f"record not written: {e}\n".encode())
     except OSError as e:
@@ -771,7 +778,10 @@ def cmd_export(args: argparse.Namespace) -> int:
     if args.include_matches and args.target != "sarif":
         print(f"--include-matches is an option of `{_program(args)} export sarif`.")
         return 2
-    options = {"include_matches": True} if args.include_matches else {}
+    options: dict[str, bool | str] = {"include_matches": True} if args.include_matches else {}
+    if args.target == "sarif":
+        # The log's help text names the command to run next, as the user's command names it.
+        options["program"] = _program(args)
     written = EXPORTS[args.target](check_records(load(path)), **options)
     if args.output:
         target = Path(args.output)

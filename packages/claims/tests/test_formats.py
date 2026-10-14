@@ -25,6 +25,7 @@ from claims.models import (
     Warning_,
 )
 from claims.resolve import Resolution, resolve
+from claims.toolchain import DISTRIBUTION
 from claims.verify import ValueBackend, verify
 
 CLAIM = Claim(id="c", text="t")
@@ -90,7 +91,9 @@ def test_a_missing_reader_is_unchecked_and_names_its_extra(
     decision = engine(locator, corrupt(tmp_path, name))
     assert decision.outcome is Outcome.UNCHECKED
     assert decision.reason is Reason.EXTRACTOR_MISSING
-    assert f"reproducible-science[{extra}]" in decision.detail
+    # The distribution installed: `reproducible-science` under a full install, whose extras
+    # forward to `claims-cli`'s, and `claims-cli` where it is installed alone.
+    assert f'pip install "{DISTRIBUTION}[{extra}]"' in decision.detail
 
 
 @pytest.mark.parametrize("name", ["r.pkl", "r.pickle", "r.joblib", "r.pt"])

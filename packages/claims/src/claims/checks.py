@@ -104,11 +104,11 @@ class RecordDivergedError(ReproError):
 class RecordBrokenError(ReproError):
     """A record's chain does not verify, so nothing is appended to it."""
 
-    def __init__(self, state: RecordState) -> None:
+    def __init__(self, state: RecordState, program: str = "repro") -> None:
         self.state = state
         super().__init__(
             f"{state.path}: refusing to append to a chain reported as {state.status}: "
-            f"{'; '.join(state.problems)}; `repro verify {SET_ASIDE}` keeps it and starts anew"
+            f"{'; '.join(state.problems)}; `{program} verify {SET_ASIDE}` keeps it and starts anew"
         )
 
 
@@ -350,7 +350,11 @@ def _take(behind: pathlib.Path, lines: list[str], held: int) -> None:
 
 
 def record(
-    manifest: Manifest, report: VerificationReport, local: bool = True, tracked: bool = False
+    manifest: Manifest,
+    report: VerificationReport,
+    local: bool = True,
+    tracked: bool = False,
+    program: str = "repro",
 ) -> None:
     """Append what one `repro verify` found to the project's records of checks.
 
@@ -387,7 +391,7 @@ def record(
             found = Records(root, local)
         state = found.state("local" if kept is not None else "tracked")
         if state is not None and ChainStatus(state.status) not in _SOUND:
-            raise RecordBrokenError(state)
+            raise RecordBrokenError(state, program)
         changed = [
             assertion
             for claim, assessed in zip(manifest.claims, report.claims, strict=True)
@@ -415,7 +419,7 @@ def record(
                 raise RecordDivergedError(carried, shared + 1)
             state = _chain(carried, "tracked", there)
             if there and ChainStatus(state.status) not in _SOUND:
-                raise RecordBrokenError(state)
+                raise RecordBrokenError(state, program)
             if len(here) > len(there):
                 _take(carried, here, len(there))
 

@@ -1,12 +1,13 @@
-# Releases are per package. The tag names which one, so publishing claims-cli never ships a
-# preregistration tool. Trusted publishing on PyPI is bound to this repository AND this
-# workflow filename: a package moved here needs its publisher reconfigured before the first
-# release, or the upload is rejected.
+# Publishes claims-cli at a release tag. Trusted publishing on PyPI is bound to this repository
+# AND this workflow filename AND the `release` environment: the first upload of this project is
+# accepted only through a pending publisher with those three values, created by hand on PyPI.
+# `docs/RELEASING.md` says how. Only `v*` tags start it: the `release` environment admits no
+# other, so a per-package tag would start a run that cannot publish.
 name: Publish claims-cli
 
 on:
   push:
-    tags: ["claims-v*", "v*"]
+    tags: ["v*"]
   workflow_dispatch:
 
 jobs:

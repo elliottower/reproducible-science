@@ -64,9 +64,8 @@ from claims.models import (
 from claims.reruns import reruns, upstream
 from claims.resolve import stored
 from claims.stale import stale
-from claims.toolchain import distribution_version
+from claims.toolchain import adapter_version
 from claims.verify import (
-    ADAPTER_DISTRIBUTION,
     DEFAULT_BACKENDS,
     Backend,
     artifact_states,
@@ -701,9 +700,7 @@ def check_records(
     and writes nothing.
     """
     when = checked_at or datetime.datetime.now(datetime.UTC).replace(microsecond=0)
-    checker = Checker(
-        name=CHECKER, version=distribution_version(ADAPTER_DISTRIBUTION), url=CHECKER_URL
-    )
+    checker = Checker(name=CHECKER, version=adapter_version(), url=CHECKER_URL)
     reference = _manifest_ref(manifest)
     lines = _declared_lines(manifest.path) if manifest.path else {}
 

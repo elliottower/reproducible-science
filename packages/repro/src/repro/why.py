@@ -2,7 +2,9 @@
 
 The code that checks what a manifest declares is the `claims` package. This module is that
 one's `why` for anything that imports it from here: every name, private ones included,
-is the same object.
+reads as the same object. Writing is another matter. An assignment here, or a monkeypatch of a
+name here, rebinds it in this module and not in `claims.why`, whose code goes on using its own,
+so a patch meant to reach that code targets `claims.why`.
 """
 
 import importlib

@@ -62,8 +62,20 @@ def _installed_as() -> str:
 
 
 DISTRIBUTION = _installed_as()
-"""What a decision names as its tool, what its version is the version of, and what an
-install hint for an optional reader names. Resolved once, from what is installed."""
+"""What a decision names as its tool, and what an install hint for an optional reader names.
+Resolved once, from what is installed. The version recorded beside it is `adapter_version()`,
+which is this code's own whichever name is recorded."""
+
+
+def adapter_version() -> str:
+    """The version of the code that read the artifact: `claims-cli`'s, always.
+
+    Not `DISTRIBUTION`'s. Beside a `reproducible-science` of another version the name a
+    decision records stays the one every record has carried, and the version is that of the
+    adapters that ran, which are this distribution's. In a lockstep release the two are one
+    number. `UNKNOWN` where nothing installed provides this package.
+    """
+    return distribution_version(ALONE)
 
 
 @functools.cache
@@ -102,6 +114,7 @@ __all__ = [
     "UNKNOWN",
     "VERSION_TIMEOUT",
     "WRAPPER",
+    "adapter_version",
     "binary_version",
     "distribution_version",
 ]

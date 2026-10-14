@@ -5,9 +5,8 @@ typed value asserted to be extractable from a pinned artifact. This package veri
 assertion -- and nothing beyond it. Whether the evidence *supports* the sentence citing it is
 a question about entailment, addressed elsewhere with model-based methods.
 
-    from repro import load, verify
-    from claims.renderers import to_sarif
-from claims.policy import PUBLICATION
+    from claims import load, verify
+    from claims.policy import PUBLICATION
 
     report = verify(load("repro.yaml"))       # facts
     verdict = PUBLICATION.assess(report)      # judgment
@@ -58,7 +57,7 @@ from claims.models import (
 from claims.policy import EXPLORATORY, PROFILES, PUBLICATION, STRICT, Assessment, Policy, Severity
 from claims.renderers import to_sarif
 from claims.resolve import Resolution, read_table, resolve, resolve_pointer, sniff_delimiter
-from claims.toolchain import DISTRIBUTION
+from claims.toolchain import ALONE
 from claims.verify import (
     DEFAULT_BACKENDS,
     Backend,
@@ -69,11 +68,10 @@ from claims.verify import (
     verify,
 )
 
-# The version of the distribution this installation names itself by: `reproducible-science`
-# where that is installed, which is what a SARIF file has always carried, and `claims-cli`
-# where this package is installed alone.
+# This package's own version, `claims-cli`'s, whatever else is installed: what `claims
+# --version` prints and what a SARIF log names as its driver's version.
 try:
-    __version__ = _version(DISTRIBUTION)
+    __version__ = _version(ALONE)
 except PackageNotFoundError:  # a source tree with nothing installed
     __version__ = "0+unknown"
 

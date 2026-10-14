@@ -113,7 +113,7 @@ _SAID = {
 _HELP = {
     NormalizedOutcome.MATCH: "Nothing to do.",
     NormalizedOutcome.MISMATCH: (
-        "Either the manuscript or the file is out of date. `repro why <claim>` prints the "
+        "Either the manuscript or the file is out of date. `{program} why <claim>` prints the "
         "stored value beside the reported one, and what produced the file."
     ),
     NormalizedOutcome.NOT_FOUND: (
@@ -131,7 +131,9 @@ def _rule_id(outcome: NormalizedOutcome, record: ExportRecord) -> str:
     return f"repro/{outcome.value}/{record.native_reason}"
 
 
-def _descriptor(outcome: NormalizedOutcome, record: ExportRecord) -> dict[str, Any]:
+def _descriptor(
+    outcome: NormalizedOutcome, record: ExportRecord, program: str = "repro"
+) -> dict[str, Any]:
     reason = record.native_reason.replace("_", " ")
     descriptor: dict[str, Any] = {
         "id": _rule_id(outcome, record),
@@ -141,7 +143,7 @@ def _descriptor(outcome: NormalizedOutcome, record: ExportRecord) -> dict[str, A
         ),
         "shortDescription": {"text": f"{outcome.value}: {reason}"},
         "fullDescription": {"text": _SAID[outcome]},
-        "help": {"text": _HELP[outcome]},
+        "help": {"text": _HELP[outcome].format(program=program)},
     }
     if outcome in _RESULT and _RESULT[outcome][0] == "fail":
         descriptor["defaultConfiguration"] = {"level": _RESULT[outcome][1]}
@@ -242,7 +244,9 @@ def _properties(record: ExportRecord) -> dict[str, Any]:
     return {RECORD_PROPERTY: record.model_dump(mode="json", exclude_none=True)}
 
 
-def to_sarif_log(records: Sequence[ExportRecord], include_matches: bool = False) -> str:
+def to_sarif_log(
+    records: Sequence[ExportRecord], include_matches: bool = False, program: str = "repro"
+) -> str:
     """One SARIF run over the records, as JSON text.
 
     A result for each `mismatch`, `not-found` and `error`, and for each `match` where
@@ -262,10 +266,14 @@ def to_sarif_log(records: Sequence[ExportRecord], include_matches: bool = False)
         if outcome in (NormalizedOutcome.NOT_CHECKED, NormalizedOutcome.ERROR)
     ]
 
-    rules = {_rule_id(outcome, record): _descriptor(outcome, record) for record, outcome in shown}
+    rules = {
+        _rule_id(outcome, record): _descriptor(outcome, record, program)
+        for record, outcome in shown
+    }
     rule_index = {rule: index for index, rule in enumerate(sorted(rules))}
     descriptors = {
-        _rule_id(outcome, record): _descriptor(outcome, record) for record, outcome in noted
+        _rule_id(outcome, record): _descriptor(outcome, record, program)
+        for record, outcome in noted
     }
     descriptor_index = {name: index for index, name in enumerate(sorted(descriptors))}
 

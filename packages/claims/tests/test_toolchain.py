@@ -30,7 +30,7 @@ from claims.models import (
 )
 from claims.policy import PUBLICATION, STRICT
 from claims.renderers import to_sarif
-from claims.toolchain import UNKNOWN, binary_version, distribution_version
+from claims.toolchain import DISTRIBUTION, UNKNOWN, binary_version, distribution_version
 from claims.verify import MetricBackend, QuoteBackend, TableBackend, verify
 
 SOURCE = "The measured angle matches the Haar expectation for this ensemble.\n"
@@ -125,7 +125,10 @@ def test_a_quote_decision_names_the_program_that_read_the_artifact(tmp_path):
 
 def test_a_value_decision_names_the_distribution_that_read_the_artifact(tmp_path):
     decision = verify(metric_manifest(tmp_path, {"delta": 3.2}, "3.2")).decisions[0]
-    assert decision.tool == "reproducible-science"
+    # `reproducible-science` under a full install, as every record has said; `claims-cli`
+    # where this package is installed alone.
+    assert decision.tool == DISTRIBUTION
+    assert DISTRIBUTION in ("reproducible-science", "claims-cli")
     assert decision.tool_version
 
 

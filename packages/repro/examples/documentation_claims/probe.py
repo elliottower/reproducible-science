@@ -26,7 +26,11 @@ from datetime import UTC, datetime
 HERE = pathlib.Path(__file__).resolve().parent
 OUT = HERE / "probe.json"
 
-CASES = "packages/repro/tests/conformance/cases"
+#: Where the suite is now. It moved with the code that checks a manifest, into `claims-cli`.
+CASES = "packages/claims/tests/conformance/cases"
+
+#: Where it was at `BASELINE`, which is the path `git ls-tree` has to be given for that tree.
+CASES_AT_BASELINE = "packages/repro/tests/conformance/cases"
 
 #: The revision whose specification says *eighteen* where the suite held nineteen case
 #: directories. A literal commit rather than `origin/main`, because `main` is where this gets
@@ -61,7 +65,10 @@ def main() -> int:
         ("fixtures_at_head", ["ls", "-1", CASES]),
         # What it held at the revision whose specification says eighteen. `ls-tree` on the
         # directory lists its entries, one per fixture.
-        ("fixtures_at_baseline", ["git", "ls-tree", "--name-only", f"{BASELINE}:{CASES}"]),
+        (
+            "fixtures_at_baseline",
+            ["git", "ls-tree", "--name-only", f"{BASELINE}:{CASES_AT_BASELINE}"],
+        ),
     ):
         code, stdout = run(argv, root)
         probes[name] = {

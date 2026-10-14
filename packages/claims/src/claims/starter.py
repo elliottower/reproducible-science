@@ -80,14 +80,14 @@ _MEDIA_TYPE_OVERRIDES = {
 }
 
 HEADER = """\
-# The evidence manifest for {project}, read by `repro verify`.
+# The evidence manifest for {project}, read by `{program} verify`.
 #
 # `artifacts` pins files by sha256. An edited file is reported as a broken pin until the
 # digest recorded here is replaced with the output of `shasum -a 256 <path>`.
 #
 # `claims` says what the manuscript states and where a pinned artifact holds it. To add a
 # claim, copy an entry under `claims`, give it a new id, and point its evidence at the id of
-# an artifact. Claims whose id begins `example-` were written by `repro manifest init` to show
+# an artifact. Claims whose id begins `example-` were written by `{program} manifest init` to show
 # the shape, and are there to be edited or removed.
 #
 # The kinds of evidence. `reported` is the number as the manuscript prints it, in quotes.
@@ -136,7 +136,7 @@ HEADER = """\
 #
 # Check it:
 #
-#     repro verify
+#     {program} verify
 #
 """
 
@@ -373,7 +373,9 @@ def _first_verified(
     return None
 
 
-def write(root: pathlib.Path, names: list[str], cwd: pathlib.Path) -> Starter:
+def write(
+    root: pathlib.Path, names: list[str], cwd: pathlib.Path, program: str = "repro"
+) -> Starter:
     """Write a starter manifest at `root`, pinning `names` as given relative to `cwd`.
 
     Raises `ManifestExistsError` rather than overwrite one, and `ArtifactRefusedError` for a
@@ -394,7 +396,7 @@ def write(root: pathlib.Path, names: list[str], cwd: pathlib.Path) -> Starter:
     claims = [claim for claim in (metric, quote) if claim is not None]
 
     document: dict = {"schema_version": SCHEMA_VERSION, "project": root.name}
-    provenance = of_tree(root, generated_by="repro manifest init")
+    provenance = of_tree(root, generated_by=f"{program} manifest init")
     if provenance.commit:
         document["provenance"] = provenance.model_dump()
     document["artifacts"] = pins
@@ -404,7 +406,9 @@ def write(root: pathlib.Path, names: list[str], cwd: pathlib.Path) -> Starter:
 
     # Comments are written around the dumped document, because `safe_dump` carries none.
     # `claims` is the last key, so a commented entry sits where uncommenting it declares it.
-    text = HEADER.format(project=root.name) + yaml.safe_dump(document, sort_keys=False, width=100)
+    text = HEADER.format(project=root.name, program=program) + yaml.safe_dump(
+        document, sort_keys=False, width=100
+    )
     commented = (COMMENTED_METRIC if metric is None else "") + (
         COMMENTED_QUOTE if quote is None else ""
     )
