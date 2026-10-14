@@ -330,3 +330,99 @@ def test_a_license_on_disk_settles_no_choice(full):
 def test_a_settled_choice_is_marked_draft_in_every_format(full):
     assert "Answer: **Yes** (DRAFT, settled by `CITATION.cff`)" in markdown(full)
     assert r"Yes \textbf{[DRAFT, settled by \texttt{CITATION.cff}]}" in acm.latex(full)
+
+
+# -- archived and publicly available, offline ------------------------------------------------
+
+SWH = "swh:1:dir:" + "d" * 40
+
+
+def archive_and_public(root):
+    draft = acm.appendix(Project.at(root))
+    return draft.answer("archived"), draft.answer("publicly-available")
+
+
+def test_a_doi_in_codemeta_settles_archived(tmp_path):
+    (tmp_path / "codemeta.json").write_text(
+        json.dumps({"identifier": "https://doi.org/10.5281/zenodo.7"})
+    )
+    archived, public = archive_and_public(tmp_path)
+    assert (archived.choice, said(archived)) == (
+        "Yes",
+        [("codemeta.json", "names DOI 10.5281/zenodo.7")],
+    )
+    assert (public.choice, public.choice_from) == ("Yes", ("codemeta.json",))
+
+
+@pytest.mark.parametrize(
+    ("name", "text"),
+    [
+        ("CITATION.cff", yaml.safe_dump({"identifiers": [{"type": "swh", "value": SWH}]})),
+        ("codemeta.json", json.dumps({"identifier": [SWH]})),
+        ("README.md", f"# Demo\n\nArchived as {SWH};origin=https://github.com/a/b\n"),
+    ],
+)
+def test_a_software_heritage_id_settles_archived_wherever_it_is(tmp_path, name, text):
+    (tmp_path / name).write_text(text)
+    archived, _ = archive_and_public(tmp_path)
+    assert (archived.choice, said(archived)) == (
+        "Yes",
+        [(name, f"names Software Heritage ID {SWH}")],
+    )
+
+
+@pytest.mark.parametrize(
+    ("name", "text", "said_as"),
+    [
+        (
+            "CITATION.cff",
+            yaml.safe_dump({"repository-code": "https://gitlab.com/a/b"}),
+            "names repository-code https://gitlab.com/a/b",
+        ),
+        (
+            "codemeta.json",
+            json.dumps({"codeRepository": "https://github.com/a/b"}),
+            "names codeRepository https://github.com/a/b",
+        ),
+    ],
+)
+def test_a_repository_settles_publicly_available_for_the_author_to_confirm(
+    tmp_path, name, text, said_as
+):
+    (tmp_path / name).write_text(text)
+    archived, public = archive_and_public(tmp_path)
+    assert (public.choice, public.choice_note) == (
+        "Yes",
+        "author: confirm this repository is public",
+    )
+    assert said(public) == [(name, f"{said_as}; author: confirm this repository is public")]
+    assert archived.status is Status.TODO
+
+
+def test_an_origin_repository_settles_publicly_available(tmp_path):
+    write_project(tmp_path)
+    (tmp_path / "CITATION.cff").unlink()
+    manifest = yaml.safe_load((tmp_path / "repro.yaml").read_text())
+    manifest["artifacts"][1]["origin"] = {
+        "repository": "https://github.com/a/data",
+        "commit": "e" * 40,
+        "path": "raw.csv",
+    }
+    (tmp_path / "repro.yaml").write_text(yaml.safe_dump(manifest))
+    archived, public = archive_and_public(tmp_path)
+    assert (public.choice, public.choice_from) == ("Yes", ("repro.yaml",))
+    assert archived.status is Status.TODO
+
+
+def test_a_github_url_alone_is_publicly_available_and_not_archived(tmp_path):
+    (tmp_path / "CITATION.cff").write_text(
+        yaml.safe_dump({"repository-code": "https://github.com/a/b"})
+    )
+    (tmp_path / "README.md").write_text("# Demo\n\nCode: https://github.com/a/b\n")
+    archived, public = archive_and_public(tmp_path)
+    assert public.choice == "Yes"
+    assert (archived.status, archived.choice, archived.findings) == (Status.TODO, "", ())
+    assert "A GitHub or GitLab URL alone is not an archive." in archived.todo_note
+    text = markdown(acm.appendix(Project.at(tmp_path)))
+    assert "**TODO** (authors): no record here names an archived copy" in text
+    assert "(DRAFT, settled by `CITATION.cff`; author: confirm this repository is public)" in text

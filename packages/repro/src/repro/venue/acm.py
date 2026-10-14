@@ -16,6 +16,7 @@ import textwrap
 
 from repro.venue.draft import (
     Draft,
+    Settle,
     Status,
     fill,
     latex_escape,
@@ -23,7 +24,7 @@ from repro.venue.draft import (
     latex_marker,
     questionnaire,
 )
-from repro.venue.records import Project
+from repro.venue.records import CONFIRM_PUBLIC, Project
 
 NAME = "acm_appendix"
 
@@ -41,19 +42,30 @@ READS: dict[str, tuple[str, ...]] = {
     "code-licenses": ("license",),
     "workflow-framework": ("regenerations",),
     "archived": ("archive",),
-    "how-to-access": ("remote", "archive"),
+    "how-to-access": ("remote", "archive", "repository"),
     "software-dependencies": ("environment",),
     "experiment-workflow": ("regenerations", "plans", "ledger"),
     "evaluation": ("claims", "reruns", "origins"),
 }
 
 
-#: Fields a record settles with no judgment involved: the choice, and the reader whose findings
-#: settle it. A DOI names an archived copy; a declared command is run by `repro reproduce`.
-SETTLES: dict[str, tuple[str, str]] = {
-    "archived": ("Yes", "archive"),
-    "publicly-available": ("Yes", "archive"),
-    "workflow-framework": ("Yes", "regenerations"),
+#: Fields a record settles with no judgment involved. An archived copy is a DOI or a Software
+#: Heritage ID; a repository address is public only if the authors say so, and GitHub or GitLab
+#: alone is not an archive. A declared command is run by `repro reproduce`.
+SETTLES: dict[str, Settle] = {
+    "archived": Settle(
+        choice="Yes",
+        readers=("archive",),
+        unsettled=(
+            "no record here names an archived copy: a DOI in CITATION.cff or codemeta.json, or "
+            "a Software Heritage ID (swh:1:...) in either or in the README. A GitHub or GitLab "
+            "URL alone is not an archive."
+        ),
+    ),
+    "publicly-available": Settle(
+        choice="Yes", readers=("archive", "repository"), note=CONFIRM_PUBLIC
+    ),
+    "workflow-framework": Settle(choice="Yes", readers=("regenerations",)),
 }
 
 

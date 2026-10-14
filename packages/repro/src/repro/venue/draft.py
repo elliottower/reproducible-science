@@ -99,6 +99,19 @@ class Status(enum.StrEnum):
     """No record answers this question. The authors write the answer."""
 
 
+class Settle(BaseModel):
+    """A choice a record settles: made where any of `readers` finds anything."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    choice: str
+    readers: tuple[str, ...]
+    note: str = ""
+    """Shown with the choice: what the authors must still confirm."""
+    unsettled: str = ""
+    """Shown where nothing settles it, in place of the plain TODO."""
+
+
 class Answer(BaseModel):
     """One question and what the records say that bears on it."""
 
@@ -111,6 +124,10 @@ class Answer(BaseModel):
     """A yes or no a record settles, as the venue words it. Empty where the authors choose."""
     choice_from: tuple[str, ...] = ()
     """The records that settle `choice`."""
+    choice_note: str = ""
+    """What the authors must still confirm about `choice`, which no record can settle."""
+    todo_note: str = ""
+    """Why the question is left to do, where the venue says more than that no record answers it."""
 
     @computed_field
     @property
@@ -158,35 +175,37 @@ def fill(
     stored: Questionnaire,
     reads: Mapping[str, tuple[str, ...]],
     project: Project,
-    settles: Mapping[str, tuple[str, str]] | None = None,
+    settles: Mapping[str, Settle] | None = None,
 ) -> Draft:
     """Each question, with the findings of the readers `reads` names for it. A question with
     no finding is left to do.
 
-    `settles` maps a question to a choice and the reader whose findings settle it: where that
-    reader finds anything, the choice is made, and its findings are listed with the rest."""
+    `settles` maps a question to a choice and the readers whose findings settle it: where any
+    of them finds anything, the choice is made, and its findings are listed with the rest."""
     settles = settles or {}
-    check_reads(stored, {**reads, **{q: (reader,) for q, (_, reader) in settles.items()}})
+    check_reads(stored, {**reads, **{q: settle.readers for q, settle in settles.items()}})
     wanted = dict.fromkeys(
-        [*(r for readers in reads.values() for r in readers), *(r for _, r in settles.values())]
+        [
+            *(r for readers in reads.values() for r in readers),
+            *(r for settle in settles.values() for r in settle.readers),
+        ]
     )
     found = {reader: READERS[reader](project) for reader in wanted}
     answers = []
     for question in stored.questions:
         findings = tuple(f for reader in reads.get(question.id, ()) for f in found[reader])
-        choice, settling = "", tuple[Finding, ...]()
-        if question.id in settles:
-            said, reader = settles[question.id]
-            if found[reader]:
-                choice, settling = said, found[reader]
-                findings += tuple(f for f in settling if f not in findings)
+        settle = settles.get(question.id)
+        settling = tuple(f for r in settle.readers for f in found[r]) if settle else ()
+        findings += tuple(f for f in settling if f not in findings)
         answers.append(
             Answer(
                 question=question,
                 status=Status.DRAFT if findings else Status.TODO,
                 findings=findings,
-                choice=choice,
+                choice=settle.choice if settle and settling else "",
                 choice_from=tuple(dict.fromkeys(f.record for f in settling)),
+                choice_note=settle.note if settle and settling else "",
+                todo_note=settle.unsettled if settle and not settling else "",
             )
         )
     return Draft(
@@ -204,7 +223,8 @@ def fill(
 
 def _marker(answer: Answer) -> str:
     if answer.status is Status.TODO:
-        return "**TODO** (authors): no record in this repository answers this."
+        why = answer.todo_note or "no record in this repository answers this."
+        return f"**TODO** (authors): {why}"
     named = ", ".join(f"`{record}`" for record in answer.records)
     return f"**DRAFT**, generated from {named}; not written by the authors."
 
@@ -212,7 +232,8 @@ def _marker(answer: Answer) -> str:
 def choice_line(answer: Answer) -> str:
     """The answer a record settles, marked as a draft and naming the record."""
     named = ", ".join(f"`{record}`" for record in answer.choice_from)
-    return f"Answer: **{answer.choice}** (DRAFT, settled by {named})"
+    note = f"; {answer.choice_note}" if answer.choice_note else ""
+    return f"Answer: **{answer.choice}** (DRAFT, settled by {named}{note})"
 
 
 def _finding_line(finding: Finding) -> str:
@@ -285,13 +306,17 @@ def latex_said(text: str) -> str:
 
 def latex_marker(answer: Answer) -> str:
     if answer.status is Status.TODO:
-        return r"\textbf{[TODO (authors): no record in this repository answers this.]}"
+        why = latex_escape(answer.todo_note or "no record in this repository answers this.")
+        return rf"\textbf{{[TODO (authors): {why}]}}"
     named = ", ".join(latex_code(record) for record in answer.records)
     marker = rf"\textbf{{[DRAFT, generated from {named}; not written by the authors.]}}"
     if answer.choice:
         settled = ", ".join(latex_code(record) for record in answer.choice_from)
         marker = (
-            rf"{latex_escape(answer.choice)} \textbf{{[DRAFT, settled by {settled}]}} " + marker
+            rf"{latex_escape(answer.choice)} \textbf{{[DRAFT, settled by {settled}"
+            + (f"; {latex_escape(answer.choice_note)}" if answer.choice_note else "")
+            + "]} "
+            + marker
         )
     return marker
 
@@ -314,6 +339,7 @@ __all__ = [
     "Draft",
     "Question",
     "Questionnaire",
+    "Settle",
     "Source",
     "Status",
     "UnknownQuestionError",

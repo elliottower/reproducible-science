@@ -14,7 +14,9 @@ questions. Reaches no network: an origin is compared only with a local clone.
 
 from __future__ import annotations
 
+import json
 import pathlib
+import re
 import shlex
 from collections.abc import Callable
 
@@ -39,6 +41,15 @@ LEDGER = badges.LEDGER
 
 #: The file a project names its archived release in, where it names one.
 CITATION = "CITATION.cff"
+CODEMETA = "codemeta.json"
+
+#: A DOI, as `CITATION.cff` or `codemeta.json` writes one, bare or as a doi.org address.
+DOI = re.compile(r"\b10\.\d{4,9}/[^\s\"'<>]+")
+#: A Software Heritage persistent identifier, without its qualifiers.
+SWHID = re.compile(r"\bswh:1:(?:cnt|dir|rev|rel|snp):[0-9a-f]{40}\b")
+
+#: Said beside every repository a record names: whether it is public is not in any record.
+CONFIRM_PUBLIC = "author: confirm this repository is public"
 
 #: Files that pin or describe a software environment, by the name they are found under at the
 #: top of a project. Presence is what is recorded; what they pin is not read.
@@ -350,16 +361,83 @@ def _citation(project: Project) -> dict:
     return data if isinstance(data, dict) else {}
 
 
+def _codemeta(project: Project) -> dict:
+    path = project.root / CODEMETA
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _strings(value: object) -> list[str]:
+    """Every string in a value read from YAML or JSON, however nested."""
+    if isinstance(value, str):
+        return [value]
+    if isinstance(value, dict):
+        return [s for item in value.values() for s in _strings(item)]
+    if isinstance(value, list):
+        return [s for item in value for s in _strings(item)]
+    return []
+
+
+def _readme(project: Project) -> tuple[str, str]:
+    for name in README_FILES:
+        path = project.root / name
+        if path.is_file():
+            return name, path.read_text(encoding="utf-8", errors="replace")
+    return "", ""
+
+
 def archive(project: Project) -> tuple[Finding, ...]:
-    """The DOI `CITATION.cff` names, at its top level or among its identifiers."""
-    data = _citation(project)
-    dois = [str(data["doi"])] if data.get("doi") else []
-    for identifier in data.get("identifiers") or ():
+    """An archived copy the records name: a DOI in `CITATION.cff` (`doi`, or an identifier of
+    type `doi`) or in `codemeta.json` (`identifier`), and a Software Heritage ID anywhere in
+    either or in the README. A GitHub or GitLab address is not an archive and is not read."""
+    found = []
+    citation = _citation(project)
+    dois = [str(citation["doi"])] if citation.get("doi") else []
+    for identifier in citation.get("identifiers") or ():
         if isinstance(identifier, dict) and identifier.get("type") == "doi":
-            value = str(identifier.get("value", ""))
-            if value and value not in dois:
-                dois.append(value)
-    return tuple(Finding(record=CITATION, said=f"names DOI {doi}") for doi in dois)
+            dois.append(str(identifier.get("value", "")))
+    found += [Finding(record=CITATION, said=f"names DOI {d}") for d in dict.fromkeys(dois) if d]
+    codemeta = [
+        m.group(0) for s in _strings(_codemeta(project).get("identifier")) for m in DOI.finditer(s)
+    ]
+    found += [Finding(record=CODEMETA, said=f"names DOI {d}") for d in dict.fromkeys(codemeta)]
+    readme_name, readme = _readme(project)
+    for record, text in (
+        (CITATION, "\n".join(_strings(citation))),
+        (CODEMETA, "\n".join(_strings(_codemeta(project)))),
+        (readme_name, readme),
+    ):
+        for swhid in dict.fromkeys(m.group(0) for m in SWHID.finditer(text)):
+            found.append(Finding(record=record, said=f"names Software Heritage ID {swhid}"))
+    return tuple(found)
+
+
+def repository(project: Project) -> tuple[Finding, ...]:
+    """The repositories the records name: `repository-code` in `CITATION.cff`,
+    `codeRepository` in `codemeta.json`, and each origin repository in the manifest. None of
+    them can be checked to be public without the network."""
+    found = []
+    if url := _citation(project).get("repository-code"):
+        found.append(
+            Finding(record=CITATION, said=f"names repository-code {url}; {CONFIRM_PUBLIC}")
+        )
+    for url in dict.fromkeys(_strings(_codemeta(project).get("codeRepository"))):
+        found.append(Finding(record=CODEMETA, said=f"names codeRepository {url}; {CONFIRM_PUBLIC}"))
+    if project.manifest is not None:
+        repositories = (a.origin.repository for a in project.manifest.artifacts if a.origin)
+        for url in dict.fromkeys(repositories):
+            found.append(
+                Finding(
+                    record=project.manifest_record,
+                    said=f"names origin repository {url}; {CONFIRM_PUBLIC}",
+                )
+            )
+    return tuple(found)
 
 
 def _first_line(path: pathlib.Path) -> str:
@@ -427,6 +505,7 @@ READERS: dict[str, Callable[[Project], tuple[Finding, ...]]] = {
     "ledger": ledger,
     "plans": plans,
     "archive": archive,
+    "repository": repository,
     "license": licenses,
     "environment": environment,
     "documentation": documentation,
