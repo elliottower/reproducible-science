@@ -95,7 +95,74 @@ export function ResultsTab({ graph, query }: { graph: Graph; query: string }) {
   )
 }
 
+const STOP = new Set(['about', 'after', 'their', 'there', 'these', 'those', 'which', 'while', 'where', 'other', 'being', 'paper', 'results'])
+
+/** The quote with every word it shares with the manuscript's sentences marked, so a reader sees at a
+ * glance which words the paper carried over. Words of five letters or more, common ones left out. */
+function Marked({ text, against }: { text: string; against: Set<string> }) {
+  const parts = text.split(/(\s+)/)
+  return (
+    <>
+      {parts.map((w, i) => {
+        const key = w.toLowerCase().replace(/[^a-z0-9-]/g, '')
+        return key.length >= 5 && !STOP.has(key) && against.has(key) ? <mark key={i}>{w}</mark> : <span key={i}>{w}</span>
+      })}
+    </>
+  )
+}
+
+function CitationsByClaim({ graph, query }: { graph: Graph; query: string }) {
+  const q = query.trim().toLowerCase()
+  const sources = (graph.tabs?.citations.sources ?? []).filter((s) => !q || JSON.stringify(s).toLowerCase().includes(q))
+  return (
+    <table className="cite-table">
+      <thead><tr><th>Source</th><th style={{ width: '27%' }}>Manuscript text</th><th style={{ width: '22%' }}>Reading of the source</th><th style={{ width: '32%' }}>Source's words</th><th>Pinned</th></tr></thead>
+      <tbody>
+        {sources.map((s) => {
+          const words = new Set(s.cited_in.flatMap((c) => c.text.toLowerCase().split(/\s+/).map((w) => w.replace(/[^a-z0-9-]/g, ''))))
+          return s.statements.map((st, i) => (
+            <tr key={`${s.file}-${st.id}`} className={`static ${i === 0 ? 'src-start' : ''}`}>
+              {i === 0 && (
+                <td rowSpan={s.statements.length}>{s.url ? <a className="mono src-link" href={s.url} target="_blank" rel="noreferrer">{s.citation}</a> : <span className="mono">{s.citation}</span>}</td>
+              )}
+              {i === 0 && (
+                <td rowSpan={s.statements.length} className="small">
+                  {s.cited_in.length ? s.cited_in.map((c, k) => (
+                    <div key={k} className="ms-sentence">
+                      “{c.text}”
+                      {c.section && <div className="muted">{c.section}</div>}
+                    </div>
+                  )) : <span className="muted">Not cited in the manuscript files repro.yaml pins.</span>}
+                </td>
+              )}
+              <td className="small">
+                {st.statement}
+                {st.notes && <div className="cite-note">{st.notes}</div>}
+              </td>
+              <td>
+                {st.quotes.map((qq, k) => (
+                  <div key={k} className="src-words">
+                    <span className="quote">“<Marked text={qq.exact} against={words} />”</span>
+                    {qq.section && <span className="muted small"> · {qq.section}</span>}
+                  </div>
+                ))}
+              </td>
+              {i === 0 && (
+                <td rowSpan={s.statements.length}>{s.sha256 ? <span className="pill good" title={`${s.local} · sha256 ${s.sha256.slice(0, 12)}…`}>Pinned</span> : <span className="pill bad">Not pinned</span>}</td>
+              )}
+            </tr>
+          ))
+        })}
+      </tbody>
+    </table>
+  )
+}
+
 export function CitationsTab({ graph, query }: { graph: Graph; query: string }) {
+  const [view, setView] = useState<'quote' | 'claim'>(() => {
+    try { return (localStorage.getItem('citations-view') as 'quote' | 'claim') ?? 'claim' } catch { return 'claim' }
+  })
+  const pick = (v: 'quote' | 'claim') => { setView(v); try { localStorage.setItem('citations-view', v) } catch { /* private window */ } }
   const sources = graph.tabs?.citations.sources ?? []
   const q = query.trim().toLowerCase()
   // One row per quote, in the claims files' own order: source, then statement, then quote.
@@ -116,7 +183,12 @@ export function CitationsTab({ graph, query }: { graph: Graph; query: string }) 
   return (
     <div className="rec">
       <Head cmd="citations" line={graph.status?.citations.text ?? '—'}
-        what="Passages quoted from other people's work. Each row is one quotation: the source and the section it comes from, the exact words, and the statement the paper reads into them. A source is pinned when its file is saved with a hash, so the words can be checked against it; citations verify does that check, which reads every source and takes minutes." />
+        what="Passages quoted from other people's work, the statement the paper reads into them, and the sentences of the manuscript that cite each source. Highlighted words appear in both the source and the manuscript. A source is pinned when its file is saved with a hash; citations verify checks every passage against it, which takes minutes." />
+      <div className="seg">
+        <button className={view === 'claim' ? 'on' : ''} onClick={() => pick('claim')}>By claim</button>
+        <button className={view === 'quote' ? 'on' : ''} onClick={() => pick('quote')}>By quote</button>
+      </div>
+      {view === 'claim' ? <CitationsByClaim graph={graph} query={query} /> : (
       <table className="cite-table">
         <thead><tr><th>Source</th><th>Section</th><th style={{ width: '38%' }}>Quoted text</th><th>Statement</th><th>Pinned</th></tr></thead>
         <tbody>
@@ -144,7 +216,8 @@ export function CitationsTab({ graph, query }: { graph: Graph; query: string }) 
           })}
         </tbody>
       </table>
-      {rows.length === 0 && <div className="empty muted">Nothing here{q ? ` matches “${query}”` : ''}.</div>}
+      )}
+      {view === 'quote' && rows.length === 0 && <div className="empty muted">Nothing here{q ? ` matches “${query}”` : ''}.</div>}
     </div>
   )
 }

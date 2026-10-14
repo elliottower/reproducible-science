@@ -304,6 +304,38 @@ def status_lines(project: pathlib.Path, report: dict) -> dict:
     return fields
 
 
+def citing_sentences(project: pathlib.Path, tex_paths: list[str]) -> dict[str, list[dict]]:
+    """Citation key -> the sentences of the manuscript that cite it, with the section each is in.
+    Read from the pinned .tex files, so only the current version is searched. The LaTeX is reduced
+    to its text: commands dropped, a citation shown as [key]."""
+    out: dict[str, list[dict]] = collections.defaultdict(list)
+    cite = re.compile(r"\\cite[a-zA-Z]*\*?(?:\[[^\]]*\])*\{([^}]*)\}")
+    for rel in tex_paths:
+        f = project / rel
+        if not f.is_file():
+            continue
+        src = re.sub(r"(?<!\\)%.*", "", f.read_text(errors="replace"))
+        sections = [(m.start(), re.sub(r"\\[a-zA-Z]+\{?|[{}]", "", m.group(2)).strip())
+                    for m in re.finditer(r"\\(section|subsection)\*?\{([^}]*)\}", src)]
+        for m in cite.finditer(src):
+            start = max(src.rfind(". ", 0, m.start()), src.rfind("\n\n", 0, m.start()), src.rfind("}.", 0, m.start()))
+            end_dot = src.find(". ", m.end())
+            end_par = src.find("\n\n", m.end())
+            end = min(x for x in (end_dot, end_par, len(src)) if x != -1)
+            raw = src[start + 2 if start >= 0 else 0:end + 1]
+            text = cite.sub(lambda c: "[" + c.group(1) + "]", raw)
+            text = re.sub(r"\\(?:emph|textit|textbf|code|tVerify|texttt)\{([^}]*)\}", r"\1", text)
+            text = re.sub(r"\\[a-zA-Z]+\*?(\[[^\]]*\])?(\{[^}]*\})?", "", text).replace("~", " ")
+            text = text.replace("\\\\", " ").replace("&", "|")
+            text = re.sub(r"[{}$]", "", re.sub(r"\s+", " ", text)).strip(" |")
+            section = next((name for pos, name in reversed(sections) if pos < m.start()), "")
+            for key in (k.strip() for k in m.group(1).split(",")):
+                entry = {"text": text, "section": section, "file": rel}
+                if entry not in out[key]:
+                    out[key].append(entry)
+    return out
+
+
 def record_tabs(project: pathlib.Path, manifest: dict, ledger: list[dict], staleness: dict) -> dict:
     """What the Prereg, Results, Citations and Reproduce tabs list, read from the records themselves."""
     # prereg: what `prereg check` printed, one line per plan.
@@ -321,7 +353,10 @@ def record_tabs(project: pathlib.Path, manifest: dict, ledger: list[dict], stale
     bound = [{"run_id": e.get("run_id"), "timestamp": e.get("timestamp"), "claim": e.get("claim", ""),
               "location": e.get("location", "")} for e in ledger if e.get("event") == "claim"]
 
-    # citations: every claims file under a `claims` folder, with its source and quotations.
+    # citations: every claims file under a `claims` folder, with its source and quotations, and
+    # the sentences of the manuscript that cite it.
+    tex_paths = [x["path"] for x in manifest["artifacts"] if x.get("media_type") == "application/x-tex"]
+    cited_in = citing_sentences(project, tex_paths)
     sources = []
     for d in sorted(project.rglob("claims")):
         if not d.is_dir() or ".git" in d.parts or "node_modules" in d.parts or len(d.relative_to(project).parts) > 4:
@@ -339,6 +374,7 @@ def record_tabs(project: pathlib.Path, manifest: dict, ledger: list[dict], stale
                                    "notes": (c or {}).get("notes", "")})
             sources.append({"file": str(f.relative_to(project)), "citation": src.get("citation", f.stem),
                             "url": src.get("url", ""), "local": src.get("local", ""), "sha256": src.get("sha256", ""),
+                            "cited_in": cited_in.get(src.get("citation", f.stem), []),
                             "pinned": sum(len(s["quotes"]) for s in statements), "statements": statements})
 
     # reproduce: every declared rebuild step with its state, and every recorded re-run.

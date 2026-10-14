@@ -80,6 +80,7 @@ export interface Graph {
     citations: {
       sources: {
         file: string; citation: string; url: string; local: string; sha256: string; pinned: number
+        cited_in: { text: string; section: string; file: string }[]
         statements: { id: string; statement: string; notes: string; quotes: { exact: string; section: string }[] }[]
       }[]
     }
