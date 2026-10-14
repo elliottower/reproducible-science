@@ -1,0 +1,6 @@
+node_modules/
+dist/
+# Built from a project's private records; never committed.
+web/public/graph.json
+.DS_Store
+__pycache__/
