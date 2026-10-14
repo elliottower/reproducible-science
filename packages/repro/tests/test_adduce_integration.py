@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import dataclasses
+import datetime
 import hashlib
+import importlib
 import json
 
+import claims
 import pytest
 import yaml
 
@@ -12,6 +15,8 @@ pytest.importorskip("adduce", reason="install the adduce extra to exercise the r
 from adduce.evidence import collect
 from adduce.model import scan_repository
 from adduce.rules import Status
+from claims.exceptions import ReproError
+from claims.record import check_records
 from repro.integrations import adduce as adapter
 from repro.integrations.adduce import ReproEvidenceRule, candidates
 from repro.models import VerificationReport
@@ -355,6 +360,41 @@ def test_past_the_envelope_the_finding_says_how_many_items_it_left_out(build, mo
     assert "The first 2 assertions are items; 1 more are in .adduce/repro-report.json." in (
         finding.message
     )
+
+
+def test_the_rule_checks_each_assertion_once(build, monkeypatch):
+    verify_module = importlib.import_module("claims.verify")
+    record_module = importlib.import_module("claims.record")
+    calls = []
+    original = verify_module.check_evidence
+
+    def counted(claim, evidence, *rest):
+        calls.append((claim.id, evidence.kind))
+        return original(claim, evidence, *rest)
+
+    monkeypatch.setattr(verify_module, "check_evidence", counted)
+    monkeypatch.setattr(record_module, "check_evidence", counted)
+    finding = RULE.evaluate(build(two_assertions({"a": "1.0", "b": "9.9"}))[1])
+    assert sorted(calls) == [("c0", "metric"), ("c1", "metric")]
+    assert len(finding.items) == 2
+
+
+def test_records_built_from_the_report_are_the_records_a_fresh_check_gives(build, tmp_path):
+    build(two_assertions({"a": "1.0", "absent": "1.0"}))
+    manifest = claims.load(tmp_path / "repro.yaml")
+    when = datetime.datetime(2026, 10, 14, tzinfo=datetime.UTC)
+    fresh = check_records(manifest, checked_at=when)
+    reused = check_records(manifest, checked_at=when, verified=claims.verify(manifest))
+    assert [r.to_json() for r in reused] == [r.to_json() for r in fresh]
+
+
+def test_a_report_of_another_manifest_is_refused(build, tmp_path):
+    build(two_assertions({"a": "1.0", "b": "2.0"}))
+    manifest = claims.load(tmp_path / "repro.yaml")
+    (tmp_path / "other.yaml").write_text(metric_manifest("p", {"a": 1.0}, {"a": "1.0"}))
+    other = claims.verify(claims.load(tmp_path / "other.yaml"))
+    with pytest.raises(ReproError, match="not verify's report of this manifest"):
+        check_records(manifest, verified=other)
 
 
 def test_within_the_envelope_the_finding_says_nothing_of_one(build):

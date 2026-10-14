@@ -177,7 +177,8 @@ class ReproEvidenceRule(Rule):
         try:
             loaded = load(manifest)
             report = verify(loaded)
-            records = check_records(loaded)
+            # The items state the report's decisions; nothing is checked twice.
+            records = check_records(loaded, verified=report)
         except ReproError as e:
             # A verifier that could not run has found nothing about this repository. Reporting
             # it as a failure would blame the repository for a missing toolchain.
