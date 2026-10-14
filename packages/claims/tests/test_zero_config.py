@@ -6,9 +6,10 @@ import subprocess
 
 import claims.starter
 import pytest
+from claims.adapters.tree import Written
 from claims.cli import main
 from claims.models import Conversion, Manifest, Outcome
-from claims.starter import _pins, survey
+from claims.starter import _numbers, _pins, survey
 from claims.verify import verify
 
 PAPER = (
@@ -192,13 +193,23 @@ def test_an_unreadable_manuscript_is_a_note_and_verify_still_exits_2(project, ca
     assert "verified: 0." in out
 
 
-def test_json_nested_deeper_than_the_interpreter_recurses_is_read(project):
+def test_the_walk_over_a_tree_reaches_a_number_deeper_than_python_recurses():
+    tree: object = Written("0.931")
+    for _ in range(5000):
+        tree = {"a": tree}
+    assert list(_numbers(tree)) == [("/a" * 5000, "0.931")]
+
+
+def test_json_nested_3000_deep_is_read_or_is_a_note_and_verify_exits_2(project, capsys):
     (project / "results" / "metrics.json").write_text('{"a":' * 3000 + "0.931" + "}" * 3000)
     (project / "results" / "table.csv").unlink()
     found = survey(project)
-    (candidate,) = found.candidates
-    assert candidate.locator == {"kind": "tree", "pointer": "/a" * 3000}
+    # Python 3.11 decodes JSON recursively and refuses this depth; 3.12 and later read it.
+    read = [c.locator for c in found.candidates] == [{"kind": "tree", "pointer": "/a" * 3000}]
+    noted = any(n.startswith("results/metrics.json could not be read") for n in found.notes)
+    assert read != noted
     assert main(["verify"]) == 2
+    assert "verified: 0." in capsys.readouterr().out
 
 
 def test_numbers_in_json_lists_are_read_at_their_index(project):
