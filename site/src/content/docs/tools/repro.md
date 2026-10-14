@@ -1090,6 +1090,30 @@ repro venue acm-evidence --format json
 
 Each criterion's standing is `records listed`, `no record found` or `not determinable by this tool`, shown as `DRAFT: records listed` where records are listed and `TODO: ...` otherwise, and the page and the JSON open with a DRAFT notice. The last two criteria are always the third: the policy asks for the results to be obtained by a person or team other than the authors, which nothing in the authors' repository can show. acm.org refuses scripted requests, so the policy page was saved from a browser on 2026-10-11 and converted to text. Each criterion's words are quoted from that text verbatim, ACM's spelling *publically* included, and stored in the package with the page's address, the retrieval date, the sha256 of the saved text and of the saved page, the line each quotation is on, and the sha256 of each quotation, so a copy saved independently can be checked against them. There is no SARIF output: SARIF reports results of an analysis, and a list of records under a criterion is not a result.
 
+### NeurIPS and ACL checklists
+
+```bash
+repro venue neurips --format latex -o checklist-draft.tex
+repro venue acl
+```
+
+`repro venue neurips` drafts the NeurIPS Paper Checklist from `checklist.tex` in the [NeurIPS 2026 formatting archive](https://media.neurips.cc/Conferences/NeurIPS2026/Formatting_Instructions_For_NeurIPS_2026.zip); `repro venue acl` drafts the [ACL Responsible NLP Research checklist](https://aclrollingreview.org/responsibleNLPresearch/). The question text of each is stored in the package, verbatim, with the address and the day it was read, 2026-10-14.
+
+A NeurIPS question asks what the paper discloses, and no record can say that, so a NeurIPS answer stays `\answerTODO{}`, with one exception: open access (5) is `\answerYes{}` followed by a mark that prints, such as **(DRAFT: from `CITATION.cff`; author: confirm this repository is public)**, where the project's own DOI, Software Heritage ID or code repository is recorded, as for ACM's *Publicly available?*. No ACL answer is chosen: no ACL question asks whether code or data were released, and whether a file a claim reads is a scientific artifact in ACL's sense is the authors' judgment, so question B lists the artifacts `repro.yaml` declares and leaves the answer TODO. Where a record bears on a question, the justification is a draft listing what the record says, marked DRAFT with the record named, for the authors to check against the paper and rewrite:
+
+| question | records |
+|---|---|
+| NeurIPS 1, claims | the claims in `repro.yaml` and the ledger |
+| NeurIPS 4, experimental result reproducibility | the declared commands, their last re-runs, the frozen plans |
+| NeurIPS 5, open access to data and code | the DOI, origins, commands, lockfiles and license |
+| NeurIPS 8, compute resources; ACL C1 | the duration and environment of the last re-runs |
+| NeurIPS 12, licenses for existing assets; ACL B1 | each artifact's `origin` |
+| NeurIPS 13, new assets; ACL B5 | the README, `docs/` and `CITATION.cff` (with the license, for NeurIPS) |
+| ACL B2 | `LICENSE` and the license `CITATION.cff` names |
+| ACL C4 | the lockfiles at the top of the project |
+
+The LaTeX for NeurIPS keeps the shape of `checklist.tex` without the guidelines under each question, which stay as that file has them. ACL's checklist is filled in on the submission form, so its draft is Markdown or JSON.
+
 ## Audit a repository you did not write
 
 ```bash

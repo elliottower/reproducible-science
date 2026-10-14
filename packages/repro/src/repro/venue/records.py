@@ -247,6 +247,20 @@ def claims(project: Project) -> tuple[Finding, ...]:
     return tuple(found)
 
 
+def artifacts(project: Project) -> tuple[Finding, ...]:
+    """How many files the manifest declares as artifacts its claims read, where it declares
+    any."""
+    manifest = project.manifest
+    if manifest is None or not manifest.artifacts:
+        return ()
+    return (
+        Finding(
+            record=project.manifest_record,
+            said=f"declares {_plural(len(manifest.artifacts), 'artifact')} its claims read",
+        ),
+    )
+
+
 def regenerations(project: Project) -> tuple[Finding, ...]:
     """Each command the manifest declares, with the file it writes."""
     manifest = project.manifest
@@ -616,6 +630,7 @@ def remote(project: Project) -> tuple[Finding, ...]:
 #: Every reader, by the name a venue uses for it.
 READERS: dict[str, Callable[[Project], tuple[Finding, ...]]] = {
     "claims": claims,
+    "artifacts": artifacts,
     "regenerations": regenerations,
     "origins": origins,
     "reruns": reruns,
