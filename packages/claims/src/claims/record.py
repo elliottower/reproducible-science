@@ -878,11 +878,14 @@ def _pin_problems(file: FileState) -> list[str]:
 def understood(record: ExportRecord) -> bool:
     """Whether this version knows what the record's outcome is an outcome of.
 
-    It does where the checker's own word is one that checker is known to emit, the check type
-    is one whose comparison this version can read, and every address is of a kind it knows.
+    It does where the record carries a version this reader knows, the checker's own word is one
+    that checker is known to emit, the check type is one whose comparison this version can
+    read, and every address is of a kind it knows. A version it does not know may give any
+    field another meaning, so a record under one is understood in no part.
     """
     return (
-        record.native_outcome in NATIVE_OUTCOMES.get(record.checker.name, frozenset())
+        record.record in READ_RECORD_VERSIONS
+        and record.native_outcome in NATIVE_OUTCOMES.get(record.checker.name, frozenset())
         and record.check_type in UNDERSTOOD_CHECK_TYPES
         and all(
             read.address is None or read.address.kind in KNOWN_ADDRESS_KINDS
@@ -895,8 +898,8 @@ def read_outcome(record: ExportRecord) -> NormalizedOutcome:
     """The outcome a consumer may act on: the record's, except that a `match` it does not
     understand is `not-checked`.
 
-    Unknown stays unknown. A word, a check type or an address kind this version has never
-    seen may be a success in the tool that wrote it, and nothing here can tell, so it is never
+    Unknown stays unknown. A record version, a word, a check type or an address kind this
+    version has never seen may be a success in the tool that wrote it, and nothing here can tell, so it is never
     passed on as one. Every exporter reads the outcome through this.
     """
     if record.outcome is NormalizedOutcome.MATCH and not understood(record):
