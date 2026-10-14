@@ -23,6 +23,11 @@ const SYNCED = [
   ["packages/claims/README.md", "tools/claims.md", "Claims"],
 ];
 
+// Schemas published under the URL their `$id` names: `docs/schemas/X` is served at
+// `https://reproducible.science/schemas/X`.
+const SCHEMAS = ["claim-check-0.1-experimental.schema.json"];
+const PUBLIC = resolve(HERE, "..", "public");
+
 /** Insert a line after the slogan -- the first paragraph of the README body. */
 function afterSlogan(body, line) {
   const end = body.indexOf("\n\n");
@@ -72,4 +77,19 @@ for (const [source, target, title, demo] of SYNCED) {
   written += 1;
   console.log(`  ${source}  ->  ${target}`);
 }
-console.log(`\n  synced ${written}/${SYNCED.length}`);
+for (const name of SCHEMAS) {
+  const source = join("docs", "schemas", name);
+  let body;
+  try {
+    body = readFileSync(join(REPO, source), "utf8");
+  } catch {
+    console.error(`  MISSING  ${source}`);
+    process.exitCode = 1;
+    continue;
+  }
+  const out = join(PUBLIC, "schemas", name);
+  mkdirSync(dirname(out), { recursive: true });
+  writeFileSync(out, body);
+  console.log(`  ${source}  ->  public/schemas/${name}`);
+}
+console.log(`\n  synced ${written}/${SYNCED.length}, and ${SCHEMAS.length} schema(s)`);

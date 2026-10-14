@@ -59,7 +59,7 @@ CASES = sorted(
         pathlib.Path(__file__).resolve().parents[2] / "claims" / "tests" / "conformance" / "cases"
     ).iterdir()
 )
-SCHEMA = ROOT / "docs" / "schemas" / "repro.check-0.1-experimental.schema.json"
+SCHEMA = ROOT / "docs" / "schemas" / "claim-check-0.1-experimental.schema.json"
 WHEN = datetime.datetime(2026, 10, 13, 12, 0, tzinfo=datetime.UTC)
 
 
@@ -129,6 +129,16 @@ def test_the_schema_on_disk_is_the_one_the_model_gives():
     assert SCHEMA.read_text() == generated, (
         f"{SCHEMA.relative_to(ROOT)} is stale: write "
         "json.dumps(ExportRecord.model_json_schema(), indent=2, sort_keys=True) to it"
+    )
+
+
+def test_the_schema_is_published_at_the_address_its_id_names():
+    schema = json.loads(SCHEMA.read_text())
+    published = schema["$id"].removeprefix("https://reproducible.science/")
+    assert published == f"schemas/{SCHEMA.name}"
+    served = ROOT / "site" / "public" / published
+    assert served.read_text() == SCHEMA.read_text(), (
+        f"{served.relative_to(ROOT)} is stale: run `npm run sync` in site/"
     )
 
 

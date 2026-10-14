@@ -73,7 +73,21 @@ from claims.verify import (
     check_evidence,
 )
 
-RECORD_VERSION = "repro.check/0.1-experimental"
+RECORD_VERSION = "reproducible.science/claim-check/0.1-experimental"
+"""The version every record written here carries. A common format for claim checks, named
+under the domain that publishes its schema and its RO-Crate profile."""
+
+LEGACY_RECORD_VERSION = "repro.check/0.1-experimental"
+"""The version 0.5.6 wrote, for the same format under its earlier name. Read throughout the
+0.6 series and never written. The next minor release after 0.6 drops it, and a record that
+carries it is then a record of a version this reader does not know."""
+
+#: Every version a record may carry and be read here.
+READ_RECORD_VERSIONS = (RECORD_VERSION, LEGACY_RECORD_VERSION)
+
+#: Where the JSON Schema of the record is published. `docs/schemas/` holds the file and the
+#: site serves a copy of it under `/schemas/`.
+SCHEMA_URL = "https://reproducible.science/schemas/claim-check-0.1-experimental.schema.json"
 
 CHECKER = "repro"
 
@@ -431,9 +445,19 @@ class History(BaseModel):
 class ExportRecord(BaseModel):
     """One assertion, as it was checked. Frozen, and carries no verdict."""
 
-    model_config = _CONFIG
+    model_config = ConfigDict(
+        frozen=True,
+        extra="allow",
+        json_schema_extra={
+            "$schema": "https://json-schema.org/draft/2020-12/schema",
+            "$id": SCHEMA_URL,
+        },
+    )
 
-    record: str = RECORD_VERSION
+    record: str = Field(
+        default=RECORD_VERSION, json_schema_extra={"enum": list(READ_RECORD_VERSIONS)}
+    )
+    """Any string is held as written, and `problems` names one this reader does not know."""
     checker: Checker
     checked_at: AwareDatetime
     manifest: ManifestRef = ManifestRef()
@@ -946,8 +970,9 @@ def problems(record: ExportRecord) -> tuple[str, ...]:
     cannot have, a `match` under a word this version does not know.
     """
     found = []
-    if record.record != RECORD_VERSION:
-        found.append(f"record is {record.record!r}; this reader knows {RECORD_VERSION!r}")
+    if record.record not in READ_RECORD_VERSIONS:
+        versions = " and ".join(repr(version) for version in READ_RECORD_VERSIONS)
+        found.append(f"record is {record.record!r}; this reader knows {versions}")
 
     known = record.native_outcome in NATIVE_OUTCOMES.get(record.checker.name, frozenset())
     if not known and record.outcome is NormalizedOutcome.MATCH:
@@ -1035,9 +1060,12 @@ __all__ = [
     "CHECKER_URL",
     "CHECK_TYPES",
     "KNOWN_ADDRESS_KINDS",
+    "LEGACY_RECORD_VERSION",
     "NATIVE_OUTCOMES",
     "PASSAGE",
+    "READ_RECORD_VERSIONS",
     "RECORD_VERSION",
+    "SCHEMA_URL",
     "UNDERSTOOD_CHECK_TYPES",
     "Address",
     "AssertionRef",
