@@ -45,7 +45,7 @@ from provenance_core import atomic_write
 
 from citations import paperclip, paths
 from citations.models import Record, load_record
-from citations.services import SERVICES, Service, Work, user_agent
+from citations.services import SERVICES, Candidate, Service, Work, user_agent
 from citations.text import name_fold as norm
 from citations.text import surname_variants
 
@@ -137,7 +137,13 @@ def year_ok(ours: str, theirs: int | None) -> bool:
 
 
 def match(rec: Work, candidates) -> tuple[str, str] | None:
-    """The best acceptable candidate's identifier, or None if none is acceptable.
+    """The best acceptable candidate's identifier, or None if none is acceptable."""
+    found = best(rec, candidates)
+    return found.identifier if found else None
+
+
+def best(rec: Work, candidates) -> Candidate | None:
+    """The best acceptable candidate, or None if none is acceptable.
 
     Acceptability and ranking are separate. A candidate that fails any guard is out regardless
     of how well it scores; among those that pass, the venue decides which version of the same
@@ -145,7 +151,7 @@ def match(rec: Work, candidates) -> tuple[str, str] | None:
     """
     first = rec.authors[0] if rec.authors else ""
     want = surname_variants(first)
-    best: tuple[float, tuple[str, str]] | None = None
+    top: tuple[float, Candidate] | None = None
 
     # `want` is empty when the record lists no authors, and `year_ok` returns True for an
     # empty year, so a record with neither was matched on title similarity alone. Those are
@@ -168,9 +174,9 @@ def match(rec: Work, candidates) -> tuple[str, str] | None:
             continue
         venue_score = close(c.venue, rec.venue) if (rec.venue and c.venue) else 0.0
         score = title_score + VENUE_WEIGHT * venue_score
-        if best is None or score > best[0]:
-            best = (score, c.identifier)
-    return best[1] if best else None
+        if top is None or score > top[0]:
+            top = (score, c)
+    return top[1] if top else None
 
 
 def search(service: Service, rec: Work) -> tuple[str, str] | None:

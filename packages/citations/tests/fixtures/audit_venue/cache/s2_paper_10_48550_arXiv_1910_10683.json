@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://api.semanticscholar.org/graph/v1/paper/ARXIV:1910.10683?fields=venue,publicationVenue,journal",
+  "fetched_at": "2026-10-14T20:56:48Z",
+  "sha256": "0b79da04342d70f04076a0d42ca421017667c7005efc3879edd81654c8ace68e",
+  "body": "{\"paperId\": \"6c4b76232bb72897685d19b3d264c6ee3005bc2b\", \"publicationVenue\": {\"id\": \"c22e7c36-3bfa-43e1-bb7b-edccdea2a780\", \"name\": \"Journal of machine learning research\", \"type\": \"journal\", \"alternate_names\": [\"Journal of Machine Learning Research\", \"J mach learn res\", \"J Mach Learn Res\"], \"issn\": \"1532-4435\", \"alternate_issns\": [\"1533-7928\"], \"url\": \"http://www.ai.mit.edu/projects/jmlr/\", \"alternate_urls\": [\"http://jmlr.csail.mit.edu/\", \"http://www.jmlr.org/\", \"http://portal.acm.org/affiliated/jmlr\"]}, \"venue\": \"Journal of machine learning research\", \"journal\": {\"name\": \"J. Mach. Learn. Res.\", \"pages\": \"140:1-140:67\", \"volume\": \"21\"}}"
+}

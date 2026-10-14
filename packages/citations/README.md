@@ -43,8 +43,8 @@ pip install "citations[web]"      # to pin a web page by its URL
 
 `citations verify` establishes one fact about each quotation: the passage occurs in the pinned
 copy of the source, as read by the extractor the report names. `citations audit` establishes one
-fact about each reference: its authors, title, year, volume and pages agree with the record its
-identifier resolves to.
+fact about each reference: its authors, title, year, venue, volume and pages agree with the record
+its identifier resolves to.
 
 Neither establishes that the source is correct, or that the passage supports the sentence it
 is quoted for. In a claims file `statement` is yours and `exact` is theirs, and only `exact` is
@@ -769,7 +769,7 @@ spaces between cells, which `jats-text` renders with `|` between them.
 ## Audit output
 
 `verify` asks whether a quotation is in the source. `audit` asks a different question: does the
-author list, year, volume and page range stored beside an identifier match the record that
+author list, year, venue, volume and page range stored beside an identifier match the record that
 identifier resolves to?
 
 ```bash
@@ -816,6 +816,41 @@ An identifier found by title can belong to another version of the work, such as 
 a journal article, so a year or venue disagreement on a `by search` entry is read before it is
 corrected. `--no-search` asks no search service and counts these entries under `no id`, as in
 the report above.
+
+### Venue
+
+The entry's `journal` or `booktitle`, and its `series`, are compared with every name the record
+gives the venue: Crossref's container titles, short titles and event name and acronym, PubMed's
+journal title and ISO abbreviation, and the venue names and alternate names Semantic Scholar and
+OpenAlex return for a work found by title. A wrong venue is a disagreement like a wrong year,
+reported as `venue: ours 'Nature' vs registry 'Nature Communications'`.
+
+Case, accents, punctuation, stop words, years, ordinals and volume numbers are folded away
+first, so `Proceedings of the 38th International Conference on Machine Learning` and
+`International Conference on Machine Learning` are one name. Two names then agree as the same
+words, as an abbreviation word for word (`Nat. Commun.`, `Proc. Natl. Acad. Sci. U.S.A.`), as
+an acronym (`ICML`, `JMLR`, `TPAMI`, or `KDD` inside `KDD '16`), or through a small alias table
+of the venues no rule connects, such as `NeurIPS` and `Advances in Neural Information Processing
+Systems`, or `NAACL-HLT` and the full NAACL title. The table and its sources are in
+`citations/venue.py`.
+
+A venue that cannot be settled is `not comparable`, counted under `venue n/c`, and never a
+disagreement:
+
+| Reason | Example |
+|---|---|
+| the entry names no venue, or the record names none | a `@book`, a Crossref record with no container title |
+| the entry cites a preprint | `journal = {arXiv preprint arXiv:1907.11692}`, `CoRR`, `bioRxiv` |
+| the record is a preprint | an arXiv id found by title, whose DataCite record names only arXiv |
+| a workshop or findings volume against the main track | `ICML Workshop on ...` against `International Conference on Machine Learning` |
+| an abbreviation the alias table does not expand | `SIGMOD` against the full SIGMOD title |
+| the names partly agree | `Proc. Conf. Empirical Methods in NLP` against the full EMNLP title |
+
+Before a venue is reported as different, or left uncompared because the record names only a
+preprint server, OpenAlex and Semantic Scholar are asked for the other names they file the
+venue under, so an agreeing venue costs no request. Two journal titles that agree under no rule
+are a mismatch; two conference names are a mismatch only when they map to different venues in
+the alias table or share less than half their distinctive words.
 
 Fetched payloads and search answers are cached beside the file audited, so a re-run is offline
 and the report is reproducible from what was fetched rather than from the network. A refusal is

@@ -89,7 +89,14 @@ class Candidate(BaseModel):
     """Publication year, where the service reports one."""
 
     venue: str = ""
-    """Journal, conference or repository, used only to break ties between versions."""
+    """Journal, conference or repository, used to break ties between versions."""
+
+    venues: tuple[str, ...] = ()
+    """Every name the service gives the venue: `venue`, and short and alternate names where the
+    service has them. `citations audit` compares an entry's venue with these."""
+
+    venue_kind: str = ""
+    """`journal`, `proceedings`, `preprint`, or empty where the service does not say."""
 
     identifier: tuple[str, str] | None = None
     """`(kind, value)` -- e.g. `("doi", "10.1145/3442188")`. A candidate without one cannot be
@@ -133,6 +140,34 @@ def _crossref_url(rec: Work) -> str:
     return f"https://api.crossref.org/works?{q}"
 
 
+#: Crossref work types, read as the kind of venue the work appeared in.
+CROSSREF_KINDS = {
+    "journal-article": "journal",
+    "proceedings-article": "proceedings",
+    "posted-content": "preprint",
+}
+
+
+def crossref_venues(item: dict) -> list[str]:
+    """Every venue name a Crossref work carries: container titles, short titles, the event.
+
+    A Springer conference paper has two container titles, the series (`Lecture Notes in
+    Computer Science`) and the volume (`Computer Vision – ECCV 2020`), and an ACM one names its
+    event's acronym (`KDD '16`) only under `event`. A preprint names its server only under
+    `institution`.
+    """
+    event = item.get("event") or {}
+    names = [
+        *(item.get("container-title") or []),
+        *(item.get("short-container-title") or []),
+        event.get("name") or "",
+        event.get("acronym") or "",
+    ]
+    if item.get("type") == "posted-content":
+        names += [i.get("name") or "" for i in item.get("institution") or []]
+    return [n for n in dict.fromkeys(names) if n]
+
+
 def _crossref_candidates(payload) -> Iterator[Candidate]:
     for item in (payload or {}).get("message", {}).get("items", []):
         parts = ((item.get("issued") or {}).get("date-parts") or [[None]])[0]
@@ -145,6 +180,8 @@ def _crossref_candidates(payload) -> Iterator[Candidate]:
             ),
             year=parts[0] if parts else None,
             venue=(item.get("container-title") or [""])[0],
+            venues=tuple(crossref_venues(item)),
+            venue_kind=CROSSREF_KINDS.get(item.get("type") or "", ""),
             identifier=("doi", doi) if doi else None,
         )
 
@@ -156,9 +193,52 @@ def _crossref_candidates(payload) -> Iterator[Candidate]:
 
 def _s2_url(rec: Work) -> str:
     q = urllib.parse.urlencode(
-        {"query": rec.title[:250], "limit": 6, "fields": "title,externalIds,authors,year,venue"}
+        {
+            "query": rec.title[:250],
+            "limit": 6,
+            "fields": "title,externalIds,authors,year,venue,publicationVenue,journal",
+        }
     )
     return f"https://api.semanticscholar.org/graph/v1/paper/search?{q}"
+
+
+#: Semantic Scholar's `publicationVenue.type`, read as a kind of venue.
+S2_KINDS = {"journal": "journal", "conference": "proceedings"}
+
+
+def s2_venues(item: dict) -> tuple[list[str], str]:
+    """Every venue name a Semantic Scholar paper carries, and the kind of venue.
+
+    `publicationVenue.alternate_names` is where the short forms live: `NeurIPS`, `NIPS` and
+    `Neural Inf Process Syst` for `Neural Information Processing Systems`.
+    """
+    pv = item.get("publicationVenue") or {}
+    names = [
+        item.get("venue") or "",
+        pv.get("name") or "",
+        *(pv.get("alternate_names") or []),
+        (item.get("journal") or {}).get("name") or "",
+    ]
+    return [n for n in dict.fromkeys(names) if n], S2_KINDS.get(pv.get("type") or "", "")
+
+
+#: OpenAlex `source.type`, read as a kind of venue.
+OPENALEX_KINDS = {"journal": "journal", "conference": "proceedings", "repository": "preprint"}
+
+
+def openalex_venues(work: dict) -> tuple[list[str], str, str]:
+    """The venue names of an OpenAlex work's primary location, its kind, and the source id.
+
+    The source id is where the alternate titles are: a work carries only the display name.
+    """
+    loc = work.get("primary_location") or {}
+    source = loc.get("source") or {}
+    names = [source.get("display_name") or "", loc.get("raw_source_name") or ""]
+    return (
+        [n for n in dict.fromkeys(names) if n],
+        OPENALEX_KINDS.get(source.get("type") or "", ""),
+        (source.get("id") or "").rsplit("/", 1)[-1],
+    )
 
 
 def _s2_candidates(payload) -> Iterator[Candidate]:
@@ -179,6 +259,8 @@ def _s2_candidates(payload) -> Iterator[Candidate]:
             ),
             year=item.get("year"),
             venue=item.get("venue") or "",
+            venues=tuple(s2_venues(item)[0]),
+            venue_kind=s2_venues(item)[1],
             identifier=ident,
         )
 
@@ -215,6 +297,8 @@ def _openalex_candidates(payload) -> Iterator[Candidate]:
             year=work.get("publication_year"),
             venue=((work.get("primary_location") or {}).get("source") or {}).get("display_name")
             or "",
+            venues=tuple(openalex_venues(work)[0]),
+            venue_kind=openalex_venues(work)[1],
             identifier=ident,
         )
 
@@ -251,6 +335,8 @@ def _arxiv_candidates(payload) -> Iterator[Candidate]:
             # service, because the rule lives in one place.
             year=int(ym.group(1)) if ym else None,
             venue="arXiv",
+            venues=("arXiv",),
+            venue_kind="preprint",
             identifier=("arxiv", re.sub(r"v\d+$", "", im.group(1).split("/abs/")[-1])),
         )
 

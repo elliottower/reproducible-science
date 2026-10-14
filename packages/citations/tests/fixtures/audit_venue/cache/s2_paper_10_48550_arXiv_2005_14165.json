@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://api.semanticscholar.org/graph/v1/paper/ARXIV:2005.14165?fields=venue,publicationVenue,journal",
+  "fetched_at": "2026-10-14T20:52:57Z",
+  "sha256": "5adfbbb8076e6577ed595ce77bf6b38590c33e9cb270470287d788230d477f61",
+  "body": "{\"paperId\": \"90abbc2cf38462b954ae1b772fac9532e2ccd8b0\", \"publicationVenue\": {\"id\": \"d9720b90-d60b-48bc-9df8-87a30b9a60dd\", \"name\": \"Neural Information Processing Systems\", \"type\": \"conference\", \"alternate_names\": [\"Neural Inf Process Syst\", \"NeurIPS\", \"NIPS\"], \"url\": \"http://neurips.cc/\"}, \"venue\": \"Neural Information Processing Systems\", \"journal\": {\"name\": \"ArXiv\", \"volume\": \"abs/2005.14165\"}}"
+}

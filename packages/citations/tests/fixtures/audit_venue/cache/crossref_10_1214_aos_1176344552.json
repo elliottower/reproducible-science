@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://api.crossref.org/works/10.1214%2Faos%2F1176344552",
+  "fetched_at": "2026-10-14T20:47:26Z",
+  "sha256": "ea8b43f7807b767f8cf56ac5cb5eb34f2362242f2822c62dcb01a822ed0abbf1",
+  "body": "{\"status\": \"ok\", \"message-type\": \"work\", \"message-version\": \"1.0.0\", \"message\": {\"reference-count\": 0, \"publisher\": \"Institute of Mathematical Statistics\", \"issue\": \"1\", \"short-container-title\": [\"Ann. Statist.\"], \"published-print\": {\"date-parts\": [[1979, 1, 1]]}, \"DOI\": \"10.1214/aos/1176344552\", \"type\": \"journal-article\", \"created\": {\"date-parts\": [[2007, 12, 17]], \"date-time\": \"2007-12-17T15:20:07Z\", \"timestamp\": 1197904807000}, \"source\": \"Crossref\", \"is-referenced-by-count\": 13072, \"title\": [\"Bootstrap Methods: Another Look at the Jackknife\"], \"prefix\": \"10.1214\", \"volume\": \"7\", \"author\": [{\"given\": \"B.\", \"family\": \"Efron\", \"sequence\": \"first\", \"affiliation\": [], \"role\": [{\"vocabulary\": \"crossref\", \"role\": \"author\"}]}], \"member\": \"108\", \"container-title\": [\"The Annals of Statistics\"], \"original-title\": [], \"score\": 1, \"subtitle\": [], \"short-title\": [], \"issued\": {\"date-parts\": [[1979, 1, 1]]}, \"journal-issue\": {\"issue\": \"1\", \"published-online\": {\"date-parts\": [[1979, 1, 1]]}}, \"URL\": \"https://doi.org/10.1214/aos/1176344552\", \"ISSN\": [\"0090-5364\"], \"issn-type\": [{\"value\": \"0090-5364\", \"type\": \"print\"}], \"subject\": [], \"published\": {\"date-parts\": [[1979, 1, 1]]}}}"
+}
