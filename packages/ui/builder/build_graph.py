@@ -422,6 +422,78 @@ def landing_url(url: str, doi: str, cache: dict[str, str]) -> str:
     return target
 
 
+WANDB_URL = re.compile(r"https?://(?:[\w-]+\.)*wandb\.ai/[^\s\"'<>)\]]+")
+HISTORY_CAP = 50
+
+
+def commit_url(project: pathlib.Path) -> str | None:
+    """`https://github.com/owner/repo/commit/` from the origin remote, or None without one.
+    `git remote get-url` reads the local config; nothing is fetched."""
+    remote = (run_text(["git", "remote", "get-url", "origin"], project) or "").strip()
+    m = re.match(r"^(?:git@([^:]+):|ssh://git@([^/]+)/|https?://(?:[^@/]+@)?([^/]+)/)(.+?)(?:\.git)?/?$", remote)
+    return f"https://{m.group(1) or m.group(2) or m.group(3)}/{m.group(4)}/commit/" if m else None
+
+
+def run_commits(project: pathlib.Path, runs: list[dict], out_dir: pathlib.Path) -> None:
+    """Add to each run the commit that holds its outputs: per output, the oldest commit whose copy of
+    the file has exactly the recorded sha256, checking at most HISTORY_CAP commits per path. With
+    several outputs, the latest of their commits. A run is `committed` when every output was found.
+
+    Found commits are cached beside graph.json by path and sha256; a miss is cached against HEAD,
+    so it is looked for again once the project has new commits."""
+    head = (run_text(["git", "rev-parse", "HEAD"], project) or "").strip()
+    if not head:  # not a git repository, or one with no commits
+        for run in runs:
+            run.pop("_outputs")
+            run.update(commit=None, committed=False, remote_url=None)
+        return
+    base = commit_url(project)
+    cache_path = out_dir / "run_commits.json"
+    cache = json.loads(cache_path.read_text()) if cache_path.exists() else {}
+    pending = {(path, digest) for run in runs for path, digest in run["_outputs"]
+               if "commit" not in cache.get(f"{path}@{digest}", {}) and cache.get(f"{path}@{digest}", {}).get("head") != head}
+    if pending:
+        # One walk of the history for every path still to look up, rather than a `git log` per path.
+        paths = sorted({path for path, _ in pending})
+        log = run_text(["git", "-c", "core.quotePath=false", "log", "--format=@%H %ct", "--name-only", "--no-renames", "--", *paths], project) or ""
+        history: dict[str, list[tuple[str, int]]] = collections.defaultdict(list)
+        commit = None
+        for line in log.splitlines():
+            if line.startswith("@"):
+                sha, ct = line[1:].split()
+                commit = (sha, int(ct))
+            elif line.strip() and commit:
+                history[line.strip()].append(commit)
+        blobs = subprocess.Popen(["git", "cat-file", "--batch"], cwd=project, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        top = (run_text(["git", "rev-parse", "--show-prefix"], project) or "").strip()
+        for path, digest in sorted(pending):
+            hit = {"head": head}
+            for sha, ct in list(reversed(history.get(top + path, [])))[:HISTORY_CAP]:  # oldest first
+                blobs.stdin.write(f"{sha}:./{path}\n".encode())
+                blobs.stdin.flush()
+                header = blobs.stdout.readline().split()
+                if len(header) < 3:  # "<object> missing": the commit deleted the file
+                    continue
+                body = blobs.stdout.read(int(header[2]))
+                blobs.stdout.read(1)
+                if hashlib.sha256(body).hexdigest() == digest:
+                    hit = {"commit": sha, "time": ct}
+                    break
+            cache[f"{path}@{digest}"] = hit
+        blobs.stdin.close()
+        blobs.wait()
+
+    for run in runs:
+        found = [cache[f"{path}@{digest}"] for path, digest in run.pop("_outputs")]
+        hits = [f for f in found if "commit" in f]
+        latest = max(hits, key=lambda f: f["time"]) if hits else None
+        run["commit"] = latest and latest["commit"]
+        run["committed"] = bool(found) and len(hits) == len(found)
+        run["remote_url"] = latest and base and base + latest["commit"]
+    out_dir.mkdir(parents=True, exist_ok=True)
+    cache_path.write_text(json.dumps(cache, indent=1))
+
+
 def record_tabs(project: pathlib.Path, manifest: dict, ledger: list[dict], staleness: dict, out_dir: pathlib.Path) -> dict:
     """What the Prereg, Results, Citations and Reproduce tabs list, read from the records themselves."""
     # prereg: what `prereg check` printed, one line per plan.
@@ -435,7 +507,11 @@ def record_tabs(project: pathlib.Path, manifest: dict, ledger: list[dict], stale
             seals += 1
         elif e.get("event") == "run":
             runs.append({"run_id": e.get("run_id"), "timestamp": e.get("timestamp"), "note": e.get("note", ""),
-                         "outputs": [o["path"] for o in e.get("outputs", [])], "sealed_before": sealed_yet})
+                         "outputs": [o["path"] for o in e.get("outputs", [])], "sealed_before": sealed_yet,
+                         # A W&B run only where the ledger names one; never looked up or made up.
+                         "wandb_url": next(iter(WANDB_URL.findall(json.dumps(e))), None),
+                         "_outputs": [(o["path"], o["sha256"]) for o in e.get("outputs", [])]})
+    run_commits(project, runs, out_dir)
     bound = [{"run_id": e.get("run_id"), "timestamp": e.get("timestamp"), "claim": e.get("claim", ""),
               "location": e.get("location", "")} for e in ledger if e.get("event") == "claim"]
 

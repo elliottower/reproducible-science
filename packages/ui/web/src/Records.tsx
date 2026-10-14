@@ -53,7 +53,7 @@ export function ResultsTab({ graph, query }: { graph: Graph; query: string }) {
       <Head cmd="results" line={graph.status?.results.counts ? `${fmt(graph.status.results.counts.sealed)}/${fmt(graph.status.results.counts.runs)} runs sealed` : graph.status?.results.text ?? '—'}
         what="The results ledger, a hash chain of events. results seal hashes a run's inputs before it runs; results run records the files the run wrote, with their hashes. Click a file to read it." />
       <table>
-        <thead><tr><th>Run</th><th>Recorded</th><th>Inputs</th><th>Outputs</th><th>Files written</th></tr></thead>
+        <thead><tr><th>Run</th><th>Recorded</th><th>Inputs</th><th>Outputs</th><th>Files written</th><th>Commit</th></tr></thead>
         <tbody>
           {runs.map((r) => (
             <tr key={`${r.run_id}${r.timestamp}`} className="static">
@@ -66,6 +66,7 @@ export function ResultsTab({ graph, query }: { graph: Graph; query: string }) {
                   <div key={o}><button className="file-link" onClick={() => setViewing(o)}>{o}</button></div>
                 ))}
               </td>
+              <td className="mono small nowrap"><CommitCell r={r} /></td>
             </tr>
           ))}
         </tbody>
@@ -92,6 +93,23 @@ export function ResultsTab({ graph, query }: { graph: Graph; query: string }) {
         </>
       )}
     </div>
+  )
+}
+
+type Run = NonNullable<Graph['tabs']>['results']['runs'][number]
+
+/** The commit holding the bytes the run recorded, linked when the project has a remote, and the
+ * run's W&B page when the ledger names one. A run whose bytes no commit holds says so. */
+function CommitCell({ r }: { r: Run }) {
+  const short = r.commit?.slice(0, 7)
+  return (
+    <>
+      {!short ? <span className="muted">not committed</span>
+        : r.remote_url ? <a className="src-link" href={r.remote_url} target="_blank" rel="noreferrer" title={r.commit ?? ''}>{short}</a>
+        : <span title={r.commit ?? ''}>{short}</span>}
+      {short && !r.committed && <div className="muted">some outputs not committed</div>}
+      {r.wandb_url && <div><a className="src-link" href={r.wandb_url} target="_blank" rel="noreferrer" title={r.wandb_url}>W&amp;B</a></div>}
+    </>
   )
 }
 

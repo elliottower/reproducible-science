@@ -73,7 +73,16 @@ export interface Graph {
   tabs?: {
     prereg: { lines: string[] }
     results: {
-      runs: { run_id: string; timestamp: string; note: string; outputs: string[]; sealed_before: boolean }[]
+      runs: {
+        run_id: string; timestamp: string; note: string; outputs: string[]; sealed_before: boolean
+        /** The commit holding the run's output bytes (the latest, when outputs differ); null when none does. */
+        commit?: string | null
+        /** Every output's recorded bytes are in some commit. */
+        committed?: boolean
+        remote_url?: string | null
+        /** A W&B run named in the ledger event; never looked up. */
+        wandb_url?: string | null
+      }[]
       seals: number
       bound: { run_id: string; timestamp: string; claim: string; location: string }[]
     }
