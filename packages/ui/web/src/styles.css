@@ -168,3 +168,22 @@ tr.sel { background: #f3f2fe !important; }
 .split-main:only-child { border-radius: 6px; }
 .split-arrow { border: 1px solid #6c62f0; border-left: 1px solid #3f34c4; background: #4f43dd; color: #fff; border-radius: 0 6px 6px 0; padding: 4px 8px; font-size: 12px; }
 .split-main:hover, .split-arrow:hover { background: #3f34c4; }
+.error-note { color: #ffb4a6; font-size: 11.5px; }
+.overview { flex: 1; overflow: auto; padding: 24px 28px 40px; }
+.ov-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 16px; max-width: 1200px; }
+.ov-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; }
+.ov-card.bad { border-color: #efb4aa; }
+.ov-head { display: flex; align-items: center; gap: 8px; }
+.ov-head h3 { margin: 0; font-size: 14px; }
+.ov-tool { margin-left: auto; font-size: 11px; color: var(--muted); }
+.ov-head .dot.none { background: #b8bdcb; }
+.ov-body { margin: 12px 0 8px; }
+.ov-big { font-size: 26px; font-weight: 600; letter-spacing: -0.01em; }
+.ov-big span { font-size: 14px; font-weight: 400; color: var(--muted); }
+.ov-big.small-big { font-size: 17px; }
+.ov-sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.ov-what { color: #3a4256; font-size: 12px; line-height: 1.5; margin: 8px 0 0; }
+.ov-next { font-size: 12px; margin: 8px 0 0; color: #a15c00; }
+.ov-link { border: none; background: none; color: var(--accent); padding: 6px 0 0; font-size: 12px; }
+.ov-card.warn { border-color: #e9c27a; }
+.ov-head .dot.warn { background: #e0a43a; }

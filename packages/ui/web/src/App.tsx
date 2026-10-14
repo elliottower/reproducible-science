@@ -1,39 +1,18 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Background, Controls, ReactFlow, ReactFlowProvider, useReactFlow, type Edge, type Node } from '@xyflow/react'
 import Catalog from './Catalog'
+import Overview from './Overview'
 import { ClaudeButton, FixCtx, projectPrompt } from './fix'
 import { layout, summarize } from './layout'
 import { nodeTypes, UiCtx } from './nodes'
 import { fmt, Panel, when } from './shared'
-import type { Graph, StatusField } from './types'
+import type { Graph } from './types'
 
 interface Recheck {
   available: boolean
   busy: 'refresh' | 'verify' | null
   message: string | null
   run: (kind: 'refresh' | 'verify') => void
-}
-
-const ORDER = ['prereg', 'results', 'citations', 'repro'] as const
-
-function StatusStrip({ graph }: { graph: Graph }) {
-  if (!graph.status) return null
-  return (
-    <div className="strip">
-      {ORDER.map((k) => {
-        const f: StatusField | undefined = graph.status?.[k]
-        if (!f) return null
-        return (
-          <span key={k} className={`field ${f.ok === true ? 'good' : f.ok === false ? 'bad' : 'none'}`}>
-            <span className="dot" />
-            <span className="key">{k}</span> {f.text}
-            {f.next && <span className="next"> → {f.next}</span>}
-          </span>
-        )
-      })}
-      {graph.checked_at && <span className="when">claims checked {when(graph.checked_at)}</span>}
-    </div>
-  )
 }
 
 function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
@@ -43,7 +22,9 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
   )
   const [selected, setSelected] = useState<string | null>(initial.get('sel'))
   const [query, setQuery] = useState('')
-  const [mode, setMode] = useState<'graph' | 'catalog'>(initial.get('view') === 'catalog' ? 'catalog' : 'graph')
+  const [mode, setMode] = useState<'overview' | 'graph' | 'catalog'>(
+    (['overview', 'catalog'] as const).find((v) => v === initial.get('view')) ?? 'graph',
+  )
   const [flow, setFlow] = useState<{ nodes: Node[]; edges: Edge[] }>({ nodes: [], edges: [] })
   const rf = useReactFlow()
 
@@ -120,7 +101,7 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
     const h = new URLSearchParams()
     if (open.size) h.set('open', [...open].join('|'))
     if (selected) h.set('sel', selected)
-    if (mode === 'catalog') h.set('view', 'catalog')
+    if (mode !== 'graph') h.set('view', mode)
     window.history.replaceState(null, '', `#${h.toString()}`)
   }, [open, selected, mode])
 
@@ -132,10 +113,10 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
         <header className="top">
           <div className="brand">Claim lineage</div>
           <div className="tabs">
+            <button className={mode === 'overview' ? 'on' : ''} onClick={() => setMode('overview')}>Overview</button>
             <button className={mode === 'graph' ? 'on' : ''} onClick={() => setMode('graph')}>Graph</button>
             <button className={mode === 'catalog' ? 'on' : ''} onClick={() => setMode('catalog')}>Catalog</button>
           </div>
-          <div className="proj muted">{graph.project}</div>
           <div className="spacer" />
           <span
             className={`pill big ${failing ? 'bad' : 'good'}`}
@@ -161,10 +142,9 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
             </>
           )}
           <ClaudeButton prompt={projectPrompt(graph, graph.project_dir ?? null)} subject="project" />
-          {recheck.message && <span className="muted small">{recheck.message}</span>}
+          {recheck.message && <span className="error-note">{recheck.message}</span>}
         </header>
-        <StatusStrip graph={graph} />
-        <div className="toolbar">
+        <div className="toolbar" style={mode === 'overview' ? { display: 'none' } : undefined}>
           <input
             className="search"
             placeholder="Search files, sections, claim text… (e.g. 1,062 or timings)"
@@ -177,7 +157,9 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
           {mode === 'graph' && <button onClick={() => setOpen(new Set(graph.groups.map((g) => g.id)))}>Expand all</button>}
           {mode === 'graph' && <button onClick={() => setOpen(new Set())}>Collapse all</button>}
         </div>
-        {mode === 'catalog' ? (
+        {mode === 'overview' ? (
+          <Overview graph={graph} onOpen={setMode} />
+        ) : mode === 'catalog' ? (
           <Catalog graph={graph} query={query} />
         ) : (
           <div className="body">
@@ -246,7 +228,7 @@ export default function App() {
     fetch(`api/${kind}`, { method: 'POST' })
       .then((r) => r.json())
       .then((res) => {
-        setMessage(res.ok ? `${kind === 'verify' ? 'Verified' : 'Refreshed'} in ${res.seconds}s` : `${kind} failed: ${res.error}`)
+        setMessage(res.ok ? null : `${kind === 'verify' ? 'repro verify' : 'Refresh'} failed: ${res.error}`)
         return res.ok ? load() : undefined
       })
       .catch((e) => setMessage(`${kind} failed: ${e}`))
