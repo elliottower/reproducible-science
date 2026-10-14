@@ -314,7 +314,7 @@ def test_a_column_named_for_an_index_is_listed_last_tagged_and_counted_apart(pro
     assert main(["verify"]) == 2
     out = capsys.readouterr().out
     assert "guessed: 1 of the 2 numbers compared" in out
-    assert "and 1 more number agree only with index-like columns or keys, listed last." in out
+    assert "and 1 more number agrees only with index-like columns or keys, listed last." in out
     assert "results/table.csv column seed, row 1 holds 12  [index-like column]" in out
     assert out.count("[index-like column]") == 1
 
@@ -432,3 +432,65 @@ def test_a_mapping_key_named_for_an_index_is_demoted_at_any_depth(project, capsy
     assert "guessed: 2 of the 4 numbers compared" in out
     assert "and 2 more numbers agree only with index-like columns or keys" in out
     assert "results/metrics.json /seed holds 42  [index-like key]" in out
+
+
+def test_a_name_is_index_like_only_as_a_whole_word(project):
+    (project / "results" / "metrics.json").write_text(
+        json.dumps(
+            {
+                "id_acc": 0.912,
+                "step_size": 0.003,
+                "gini_index": 0.412,
+                "row_count": 1234,
+                "Global-Step": 4000,
+                "ID": 77,
+            }
+        )
+    )
+    (project / "results" / "table.csv").unlink()
+    (project / "paper.md").write_text("0.912, 0.003, 0.412, 1,234 rows, 4,000 steps, run 77.\n")
+    found = survey(project)
+    demoted = {c.locator["pointer"] for c in found.candidates if c.index_like}
+    assert demoted == {"/Global-Step", "/ID"}
+    assert len(found.candidates) == 6
+
+
+def test_a_counter_that_starts_again_for_each_run_is_index_like(project):
+    rows = "".join(
+        f"r{run},{5 * i},{0.5 + i * i / 997:.4f}\n" for run in range(3) for i in range(30)
+    )
+    write_table(project, "run,minute,acc\n" + rows)
+    history = [{"history": [{"minute": 5 * i, "acc": i * i / 997} for i in range(30)]}] * 3
+    (project / "results" / "metrics.json").write_text(json.dumps({"runs": history}))
+    found = survey(project)
+    assert found.index_like == (
+        "results/metrics.json /runs/*/history/*/minute",
+        "results/table.csv column minute",
+    )
+
+
+def test_a_metric_that_rises_by_a_constant_amount_is_not_index_like(project):
+    write_table(project, "acc\n" + "".join(f"{0.5 + i / 100:.2f}\n" for i in range(20)))
+    assert survey(project).index_like == ()
+
+
+def test_one_other_place_is_said_in_the_singular(project, capsys):
+    write_table(project, "model,auc,seed\nlasso,0.71,3\nridge,0.71,12\n")
+    (project / "paper.md").write_text("The AUC was 0.71 over 12 runs.\n")
+    assert main(["verify"]) == 2
+    out = capsys.readouterr().out
+    assert "column auc, row 0 holds 0.71; row 1 holds the same" in out
+    assert "and 1 more number agrees only with index-like columns or keys" in out
+    (project / "results" / "table.csv").unlink()
+    history = [{"acc": 0.52}, {"acc": 0.523}]
+    (project / "results" / "metrics.json").write_text(json.dumps({"history": history}))
+    (project / "paper.md").write_text("Accuracy was 0.52.\n")
+    assert main(["verify"]) == 2
+    assert "/history/0/acc holds 0.52; 1 more list element holds 0.523" in capsys.readouterr().out
+
+
+def test_a_printed_unit_suffix_is_not_scaled(project):
+    (project / "results" / "metrics.json").write_text(json.dumps({"params": 25557032}))
+    (project / "results" / "table.csv").unlink()
+    (project / "paper.md").write_text("ResNet-50 has 25.6M parameters.\n")
+    assert survey(project).candidates == ()

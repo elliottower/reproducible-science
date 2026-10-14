@@ -112,11 +112,19 @@ FORMAT_NAMES = {key: name for key, name, _ in FORMATS}
 SURVEY_SCHEMA = "reproducible.science/survey/0.1-experimental"
 
 #: A column, a key repeated across the elements of a list, or any other mapping key, is
-#: index-like where one word of its name is one of these or its name is empty; a column or a
-#: repeated key also where its values step by one constant amount over `INDEX_MIN_ROWS` rows. A survey lists its guesses after the others and
-#: counts them apart, and hides none.
-INDEX_NAMES = frozenset({"step", "epoch", "iter", "iteration", "idx", "index", "row", "id", "seed"})
+#: index-like where its whole name, lowercased with each run of other characters read as `_`,
+#: is one of these, or it has no name (pandas writes one as `Unnamed: 0`). `step_size`,
+#: `gini_index`, `id_acc` and `row_count` are not. A column or a repeated key is index-like
+#: also where it holds at least `INDEX_MIN_ROWS` values, every one a whole number, and at
+#: least `INDEX_STEP_SHARE` of its consecutive pairs step by one nonzero amount: a counter,
+#: including one that starts again for each run of a long table or each element of an outer
+#: list. A metric that happens to rise linearly is not a whole number at each step. A survey lists its guesses
+#: after the others and counts them apart, and hides none.
+INDEX_NAMES = frozenset(
+    {"id", "idx", "index", "step", "global_step", "epoch", "iter", "iteration", "row", "seed"}
+)
 INDEX_MIN_ROWS = 10
+INDEX_STEP_SHARE = decimal.Decimal("0.75")
 
 #: Text output shortens a pointer longer than this; JSON keeps it whole.
 POINTER_SHOWN = 60
@@ -617,18 +625,23 @@ def _finite(cell: object) -> bool:
 
 
 def _index_name(name: str) -> bool:
-    """A name that is empty, or one of whose words names an index."""
-    words = re.split(r"[^a-z0-9]+", name.strip().lower())
-    return not name.strip() or name.startswith("Unnamed:") or any(w in INDEX_NAMES for w in words)
+    """A name that is empty, a pandas index's, or as a whole one of `INDEX_NAMES`."""
+    normalized = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
+    return not normalized or normalized.startswith("unnamed_") or normalized in INDEX_NAMES
 
 
 def _progression(values: list[str]) -> bool:
-    """At least `INDEX_MIN_ROWS` values, each the one before plus the same nonzero amount."""
+    """At least `INDEX_MIN_ROWS` whole numbers, and at least `INDEX_STEP_SHARE` of the
+    consecutive pairs among them step by the same nonzero amount. A counter that starts again for each run
+    breaks the step once a run, so it still holds."""
     if len(values) < INDEX_MIN_ROWS:
         return False
     numbers = [decimal.Decimal(v) for v in values]
-    steps = {b - a for a, b in itertools.pairwise(numbers)}
-    return len(steps) == 1 and steps != {0}
+    if any(n != n.to_integral_value() for n in numbers):
+        return False
+    steps = collections.Counter(b - a for a, b in itertools.pairwise(numbers))
+    step, count = max(steps.items(), key=lambda item: item[1])
+    return step != 0 and count >= INDEX_STEP_SHARE * (len(numbers) - 1)
 
 
 def _grouped(held: list[_Held], names: dict[str, tuple[str, str]]) -> _Read:

@@ -173,14 +173,15 @@ def _also_said(c: Candidate) -> str:
         shown = values[:SHOWN_ALSO]
         held = ", ".join(shown[:-1]) + f" and {shown[-1]}" if len(shown) > 1 else shown[0]
         held += " among others" if len(values) > SHOWN_ALSO else ""
+    one = len(c.also) == 1
+    verb = "holds" if one else "hold"
     if c.locator["kind"] == "table_position":
         rows = [str(a.locator["row"]) for a in c.also]
         named = ", ".join(rows[:SHOWN_ALSO])
         if len(rows) > SHOWN_ALSO:
             named += f" and {len(rows) - SHOWN_ALSO} more"
-        return f"; row{'' if len(rows) == 1 else 's'} {named} hold {held}"
-    count = len(c.also)
-    return f"; {count} more list element{'' if count == 1 else 's'} hold {held}"
+        return f"; row{'' if one else 's'} {named} {verb} {held}"
+    return f"; {len(c.also)} more list element{'' if one else 's'} {verb} {held}"
 
 
 def _survey_lines(found: Survey) -> list[str]:
@@ -217,8 +218,9 @@ def _survey_lines(found: Survey) -> list[str]:
         lines.append(f"  the {found.values} values read from {files}, at the precision printed.")
         if index_only:
             lines.append(
-                f"  and {len(index_only)} more number{'' if len(index_only) == 1 else 's'} "
-                "agree only with index-like columns or keys, listed last."
+                f"  and {len(index_only)} more "
+                + ("number agrees" if len(index_only) == 1 else "numbers agree")
+                + " only with index-like columns or keys, listed last."
             )
         if found.not_compared:
             printed = found.compared + found.not_compared
