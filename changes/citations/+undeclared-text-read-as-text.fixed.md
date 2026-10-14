@@ -1,1 +1,0 @@
-A file holding text is read as text when its suffix names no reader. A run log called `output`, a `.log` and an `.Rout` reached the PDF reader, which answered `Couldn't read xref table`, and every quotation and every number in the file was `unchecked`. A file with a `.pdf` suffix is still read as a PDF.
