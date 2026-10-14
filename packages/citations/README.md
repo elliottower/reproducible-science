@@ -848,7 +848,9 @@ disagreement:
 
 Before a venue is reported as different, or left uncompared because the record names only a
 preprint server, OpenAlex and Semantic Scholar are asked for the other names they file the
-venue under, so an agreeing venue costs no request. Two journal titles that agree under no rule
+venue under, so an agreeing venue costs no request. Semantic Scholar refuses many anonymous
+requests, and a refused lookup leaves an arXiv-only record not comparable; an operator who sets
+`SEMANTIC_SCHOLAR_API_KEY` gets more of those venues compared. The key is never required. Two journal titles that agree under no rule
 are a mismatch; two conference names are a mismatch only when they map to different venues in
 the alias table or share less than half their distinctive words.
 
