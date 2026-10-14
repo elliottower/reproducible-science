@@ -324,7 +324,7 @@ export function CitationsTab({ graph, query }: { graph: Graph; query: string }) 
   return (
     <div className="rec">
       <Head cmd="citations" line={graph.status?.citations.text ?? '—'}
-        what="Passages quoted from other people's work, the paper's interpretation of them, and the sentences of the manuscript that cite each source. Click a title for the source's details. Highlighted words appear in both the source and the manuscript. A source is pinned when its file is saved with a hash; citations verify checks every passage against it, which takes minutes." />
+        what="Passages quoted from other people's work, the paper's interpretation of them, and the sentences of the manuscript that cite each source. Click a title for the source's details. Highlighted words appear in both the source and the manuscript. The interpretations and notes are ours; citations verify checks only the quoted passages. A source is pinned when its file is saved with a hash." />
       <CitationsByClaim graph={graph} query={query} onOpen={setPanel} />
       {panel && <SourcePanel s={panel} onClose={() => setPanel(null)} />}
     </div>
