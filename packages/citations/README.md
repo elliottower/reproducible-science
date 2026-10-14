@@ -864,7 +864,7 @@ the report above.
 
 ### Venue
 
-The entry's `journal` or `booktitle`, and its `series`, are compared with every name the record
+The entry's `journal` or `booktitle`, or its `series` where it names neither, is compared with every name the record
 gives the venue: Crossref's container titles, short titles and event name and acronym, PubMed's
 journal title and ISO abbreviation, and the venue names and alternate names Semantic Scholar and
 OpenAlex return for a work found by title. A wrong venue is a disagreement like a wrong year,
@@ -877,7 +877,11 @@ words, as an abbreviation word for word (`Nat. Commun.`, `Proc. Natl. Acad. Sci.
 an acronym (`ICML`, `JMLR`, `TPAMI`, or `KDD` inside `KDD '16`), or through a small alias table
 of the venues no rule connects, such as `NeurIPS` and `Advances in Neural Information Processing
 Systems`, or `NAACL-HLT` and the full NAACL title. The table and its sources are in
-`citations/venue.py`.
+`citations/venue.py`. A journal whose title is its parent's plus `Open`, `Nexus`, `Reports`,
+`Advances`, `Communications`, `Letters` or the like (`BMJ Open`, `Cell Reports`) is a venue of
+its own, a Findings volume is compared by the conference it belongs to, and a series such as
+`Lecture Notes in Computer Science` is never shown as the record's venue where the volume is
+named.
 
 A venue that cannot be settled is `not comparable`, counted under `venue n/c`, and never a
 disagreement:
@@ -889,11 +893,20 @@ disagreement:
 | the record is a preprint | an arXiv id found by title, whose DataCite record names only arXiv |
 | a workshop or findings volume against the main track | `ICML Workshop on ...` against `International Conference on Machine Learning` |
 | an abbreviation the alias table does not expand | `SIGMOD` against the full SIGMOD title |
-| the names partly agree | `Proc. Conf. Empirical Methods in NLP` against the full EMNLP title |
+| the names partly agree | `Conference on Robot Learning` against `International Conference on Machine Learning` |
+| a venue name is garbled | a registry name carrying the replacement character `�` |
+| other names could not be fetched | the names disagree on no settled rule, and OpenAlex or Semantic Scholar did not answer |
+
+A venue that is not comparable never fails `--strict`, and never makes an entry `could not
+check`: the entry's status rests on its other fields. Where the reason is that other names
+could not be fetched, `--json` names the services that did not answer under the entry's
+`refused`.
 
 Before a venue is reported as different, or left uncompared because the record names only a
 preprint server, OpenAlex and Semantic Scholar are asked for the other names they file the
-venue under, so an agreeing venue costs no request. Semantic Scholar refuses many anonymous
+venue under, so an agreeing venue costs no request. When one of them does not answer, a
+mismatch stands only if no other name could undo it: two venues the alias table holds apart,
+two journal titles that agree under no rule, or a derivative journal against its parent. Semantic Scholar refuses many anonymous
 requests, and a refused lookup leaves an arXiv-only record not comparable; an operator who sets
 `SEMANTIC_SCHOLAR_API_KEY` gets more of those venues compared. The key is never required. Two journal titles that agree under no rule
 are a mismatch; two conference names are a mismatch only when they map to different venues in

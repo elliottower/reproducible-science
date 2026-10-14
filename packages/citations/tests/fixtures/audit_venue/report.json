@@ -119,7 +119,7 @@
       "venue": {
         "outcome": "match",
         "ours": "European Conference on Computer Vision (ECCV)",
-        "theirs": "Lecture Notes in Computer Science",
+        "theirs": "Computer Vision – ECCV 2020",
         "why": "acronym: 'ECCV' ~ 'Computer Vision – ECCV 2020'"
       },
       "searched": []
@@ -329,6 +329,28 @@
         "ours": "Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR)",
         "theirs": "2016 IEEE Conference on Computer Vision and Pattern Recognition (CVPR)",
         "why": "same name: 'Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR)' ~ '2016 IEEE Conference on Computer Vision and Pattern Recognition (CVPR)'"
+      },
+      "searched": []
+    },
+    "heisenberg1927": {
+      "status": "mismatch",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
+      "checked_against": "crossref",
+      "doi": "10.1007/BF01397280",
+      "pmid": "",
+      "problems": [
+        "title: ours '{\\\\\"U}ber den anschaulichen Inhalt der quantentheoretischen Kinematik und Mechanik' vs registry '�ber den anschaulichen Inhalt der quantentheoretischen Kinematik und Mechanik'"
+      ],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "match",
+        "ours": "Zeitschrift f{\\\"u}r Physik",
+        "theirs": "Z. Physik",
+        "why": "abbreviation: 'Zeitschrift f{\\\\\"u}r Physik' ~ 'Z. Physik'"
       },
       "searched": []
     },
@@ -966,6 +988,26 @@
       },
       "searched": []
     },
+    "rives2021esm": {
+      "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
+      "checked_against": "crossref",
+      "doi": "10.1073/pnas.2016239118",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "match",
+        "ours": "Proc. Natl. Acad. Sci. USA",
+        "theirs": "Proceedings of the National Academy of Sciences",
+        "why": "abbreviation: 'Proc. Natl. Acad. Sci. USA' ~ 'Proc. Natl. Acad. Sci. U.S.A.'"
+      },
+      "searched": []
+    },
     "rombach2022ldm": {
       "status": "ok",
       "not_found_by": "",
@@ -1001,7 +1043,7 @@
       "venue": {
         "outcome": "match",
         "ours": "Medical Image Computing and Computer-Assisted Intervention -- MICCAI 2015",
-        "theirs": "Lecture Notes in Computer Science",
+        "theirs": "Medical Image Computing and Computer-Assisted Intervention – MICCAI 2015",
         "why": "same name: 'Medical Image Computing and Computer-Assisted Intervention -- MICCAI 2015' ~ 'Medical Image Computing and Computer-Assisted Intervention – MICCAI 2015'"
       },
       "searched": []

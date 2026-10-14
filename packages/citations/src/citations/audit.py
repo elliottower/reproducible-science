@@ -95,9 +95,11 @@ from citations.venue import (
     MISMATCH,
     NOT_COMPARABLE,
     PREPRINT_RECORD,
+    UNCONFIRMED,
     VenueCheck,
     decide,
     is_repository,
+    settled,
 )
 
 #: Crossref's polite-pool rate limit is 50 requests a second; this is far under it and keeps
@@ -272,7 +274,9 @@ class EntryAudit(BaseModel):
     """The registries or search services that did not answer. On `could not check`, every one
     asked, or none when no service was asked after several entries in a row were refused. On a
     `not found` by title search, the services that refused while the others answered: the
-    verdict rests on the ones under `searched`."""
+    verdict rests on the ones under `searched`. On `ok` or `mismatch`, the services asked for a
+    venue's other names that refused, where that left the venue not comparable; a status is
+    never changed by this field."""
 
     checked_by_hand: bool = False
     """The key is on the list of entries the author checked by hand. Changes no status; a
@@ -734,17 +738,23 @@ def from_pubmed(pmid: str, cache: pathlib.Path) -> RegistryRecord | None:
 
 
 def venue_check(entry: Entry, record: RegistryRecord) -> VenueCheck:
-    """The entry's venue against every name the record gives its venue."""
+    """The entry's venue against every name the record gives its venue.
+
+    The series is read only where the entry names no journal or booktitle: `MICCAI 2016` in
+    `Lecture Notes in Computer Science` is not the ECCV volume of the same series."""
     return decide(
-        [entry.venue, entry.series],
+        [entry.venue or entry.series],
         record.venues or [record.venue],
         entry.venue_kind,
         record.venue_kind,
     )
 
 
-def compare(entry: Entry, record: RegistryRecord) -> list[str]:
-    """Every field of `entry` that disagrees with `record`, as one message each."""
+def compare(entry: Entry, record: RegistryRecord, venue: VenueCheck | None = None) -> list[str]:
+    """Every field of `entry` that disagrees with `record`, as one message each.
+
+    `venue` is the venue verdict already reached, where `audit` settled it with lookups this
+    function does not make."""
     problems = []
 
     our_title = name_fold(entry.title)
@@ -762,7 +772,7 @@ def compare(entry: Entry, record: RegistryRecord) -> list[str]:
     if entry.volume and record.volume and entry.volume != record.volume:
         problems.append(f"volume: ours {entry.volume} vs registry {record.volume}")
 
-    check = venue_check(entry, record)
+    check = venue or venue_check(entry, record)
     if check.outcome == MISMATCH:
         problems.append(f"venue: ours {check.ours!r} vs registry {check.theirs!r}")
 
@@ -799,8 +809,17 @@ def compare(entry: Entry, record: RegistryRecord) -> list[str]:
 VENUE_TRIES = 3
 
 
-def _ask(url: str, cache: pathlib.Path, name: str, headers: dict | None = None) -> dict:
-    """A cached JSON answer, or an empty one when the service had nothing or refused.
+class OtherNames(BaseModel):
+    """What the services that keep a venue's other names said about one work."""
+
+    names: list[str] = Field(default_factory=list)
+    refused: list[str] = Field(default_factory=list)
+    """The services that did not answer. A mismatch they might have rescued is not settled."""
+
+
+def _ask(url: str, cache: pathlib.Path, name: str, headers: dict | None = None) -> dict | None:
+    """A cached JSON answer, an empty one when the service had nothing, or None when it
+    refused or could not be reached.
 
     Paced and retried as a title search is, because the services asked here are the ones that
     rate-limit. A refusal is not cached, so the next run asks again.
@@ -810,7 +829,7 @@ def _ask(url: str, cache: pathlib.Path, name: str, headers: dict | None = None) 
         try:
             body = resolve.get(url, as_json=False, tries=VENUE_TRIES, headers=headers)
         except resolve.Throttled:
-            body = None
+            return None
         finally:
             time.sleep(DELAY)
         if body:
@@ -822,7 +841,7 @@ def _ask(url: str, cache: pathlib.Path, name: str, headers: dict | None = None) 
     return answer if isinstance(answer, dict) else {}
 
 
-def other_venue_names(doi: str, cache: pathlib.Path) -> list[str]:
+def other_venue_names(doi: str, cache: pathlib.Path) -> OtherNames:
     """The names OpenAlex and Semantic Scholar file this work's venue under.
 
     Asked only before a venue would be reported as a mismatch, or when the record names only a
@@ -830,20 +849,26 @@ def other_venue_names(doi: str, cache: pathlib.Path) -> list[str]:
     deposits a container title and often no short form; OpenAlex keeps a source's alternate
     titles (`CVPR` among 21 for the CVPR proceedings) and Semantic Scholar its alternate names
     (`NeurIPS`, `NIPS`), and Semantic Scholar names the published venue of an arXiv preprint.
-    A service that does not answer adds nothing, and the verdict stands on the names already
-    held.
+    A service that does not answer adds nothing and is named in `refused`, so a mismatch it
+    might have rescued is not reported as settled.
     """
+    refused: list[str] = []
     safe = re.sub(r"[^A-Za-z0-9]", "_", doi)
     work = _ask(
         f"https://api.openalex.org/works/doi:{urllib.parse.quote(doi, safe='/')}",
         cache,
         f"openalex_work_{safe}.json",
     )
-    names, _kind, source = openalex_venues(work)
+    if work is None:
+        refused.append("openalex")
+    names, _kind, source = openalex_venues(work or {})
     if source:
         src = _ask(
             f"https://api.openalex.org/sources/{source}", cache, f"openalex_source_{source}.json"
         )
+        if src is None:
+            refused.append("openalex")
+        src = src or {}
         names += [src.get("abbreviated_title") or "", *(src.get("alternate_titles") or [])]
     arxiv = re.fullmatch(r"10\.48550/arxiv\.(.+)", doi, re.IGNORECASE)
     paper = f"ARXIV:{arxiv.group(1)}" if arxiv else f"DOI:{doi}"
@@ -855,8 +880,12 @@ def other_venue_names(doi: str, cache: pathlib.Path) -> list[str]:
         f"s2_paper_{safe}.json",
         headers={"x-api-key": key} if key else None,
     )
-    names += s2_venues(s2)[0]
-    return [n for n in dict.fromkeys(names) if n]
+    if s2 is None:
+        refused.append("semanticscholar")
+    names += s2_venues(s2 or {})[0]
+    return OtherNames(
+        names=[n for n in dict.fromkeys(names) if n], refused=list(dict.fromkeys(refused))
+    )
 
 
 def with_names(record: RegistryRecord, names: list[str], kind: str = "") -> RegistryRecord:
@@ -1028,12 +1057,18 @@ def audit(
             record = with_names(record, list(found.venues), found.venue_kind)
         # Before a venue is reported as different, or left uncompared because the record is
         # only a preprint, the services that keep a venue's other names are asked for them.
-        first = venue_check(e, record)
-        if doi and (first.outcome == MISMATCH or first.why == PREPRINT_RECORD):
-            record = with_names(record, other_venue_names(doi, cache))
+        check = venue_check(e, record)
+        if doi and (check.outcome == MISMATCH or check.why == PREPRINT_RECORD):
+            other = other_venue_names(doi, cache)
+            record = with_names(record, other.names)
+            check = venue_check(e, record)
+            if check.outcome == MISMATCH and other.refused and not settled(check):
+                # Precision first: the names a refused service holds might have agreed.
+                check = check.model_copy(update={"outcome": NOT_COMPARABLE, "why": UNCONFIRMED})
+                verdict.refused = other.refused
         verdict.checked_against = record.source
-        verdict.venue = venue_check(e, record)
-        verdict.problems = compare(e, record)
+        verdict.venue = check
+        verdict.problems = compare(e, record, check)
         verdict.status = "mismatch" if verdict.problems else "ok"
     if report.checked_list is not None:
         report.checked_list.identifier_does_not_resolve = [

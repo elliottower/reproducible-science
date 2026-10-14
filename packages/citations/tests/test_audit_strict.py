@@ -325,3 +325,38 @@ def test_the_report_never_calls_an_entry_fake(tmp_path, monkeypatch, capsys, rou
 
     said = (capsys.readouterr().out + json.dumps(report)).lower()
     assert not [word for word in BANNED if word in said]
+
+
+# --- a venue not comparable ---------------------------------------------------------------------
+
+UAI = json.dumps(
+    {
+        "message": {
+            "title": [TITLE],
+            "type": "proceedings-article",
+            "container-title": ["Proceedings of the 2016 Conference on Uncertainty in AI"],
+            "issued": {"date-parts": [[2012]]},
+            "author": [{"family": "Naitza", "given": "Silvia"}],
+        }
+    }
+)
+
+
+def test_a_venue_left_unconfirmed_by_refused_lookups_never_fails_strict(tmp_path, monkeypatch):
+    serve(
+        monkeypatch,
+        {
+            "api.crossref.org/works/": UAI,
+            "api.openalex.org/works/doi": 403,
+            "api.semanticscholar.org/graph": 403,
+        },
+    )
+    entry = identified().replace("year", "booktitle = {Robotics: Science and Systems},\n  year")
+
+    code, report = run(tmp_path, bib(tmp_path, entry), "--strict")
+
+    verdict = report["entries"]["naitza2012"]
+    assert verdict["venue"]["outcome"] == "not comparable"
+    assert verdict["status"] == "ok"
+    assert verdict["refused"] == ["openalex", "semanticscholar"]
+    assert code == 0
