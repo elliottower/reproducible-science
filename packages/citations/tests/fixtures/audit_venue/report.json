@@ -4,6 +4,7 @@
     "altschul1990blast": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",
@@ -24,6 +25,7 @@
     "benjamini1995fdr": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",
@@ -44,6 +46,7 @@
     "bojanowski2017fasttext": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",
@@ -64,6 +67,7 @@
     "breiman2001rf": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",
@@ -84,6 +88,7 @@
     "brown2020gpt3": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "datacite",
@@ -107,6 +112,7 @@
     "carion2020detr": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",
@@ -127,6 +133,7 @@
     "chen2016xgboost": {
       "status": "mismatch",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",
@@ -149,6 +156,7 @@
     "clark2019bertlook": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",
@@ -169,6 +177,7 @@
     "cox1972regression": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",
@@ -189,6 +198,7 @@
     "dempster1977em": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",
@@ -209,6 +219,7 @@
     "devlin2019bert": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",
@@ -229,6 +240,7 @@
     "dosovitskiy2021vit": {
       "status": "mismatch",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "datacite",
@@ -254,6 +266,7 @@
     "efron1979bootstrap": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",
@@ -274,6 +287,7 @@
     "friedman2010glmnet": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",
@@ -294,6 +308,7 @@
     "goodfellow2014gan": {
       "status": "not found",
       "not_found_by": "title search",
+      "rejected": [],
       "refused": [
         "semanticscholar"
       ],
@@ -315,6 +330,7 @@
     "he2016resnet": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",
@@ -335,6 +351,7 @@
     "heisenberg1927": {
       "status": "mismatch",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",
@@ -357,6 +374,7 @@
     "ho2020ddpm": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "datacite",
@@ -379,6 +397,7 @@
     "ioffe2015batchnorm": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "datacite",
@@ -402,6 +421,7 @@
     "jinek2012crispr": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",
@@ -422,6 +442,7 @@
     "jumper2021alphafold": {
       "status": "could not check",
       "not_found_by": "",
+      "rejected": [],
       "refused": [
         "crossref",
         "datacite"
@@ -440,6 +461,7 @@
     "kaplan1958km": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",
@@ -460,6 +482,7 @@
     "kingma2015adam": {
       "status": "mismatch",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "datacite",
@@ -485,6 +508,7 @@
     "kipf2017gcn": {
       "status": "mismatch",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "datacite",
@@ -510,6 +534,7 @@
     "korsunsky2019harmony": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",
@@ -530,6 +555,7 @@
     "krizhevsky2012imagenet": {
       "status": "found",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": null,
@@ -548,6 +574,7 @@
     "lecun2015deep": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",
@@ -568,6 +595,7 @@
     "lewis2020bart": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",
@@ -588,6 +616,7 @@
     "li2009bwa": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",
@@ -608,6 +637,7 @@
     "lin2017focal": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",
@@ -628,6 +658,7 @@
     "lin2022esmfold": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",
@@ -648,6 +679,7 @@
     "liu2019roberta": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "datacite",
@@ -672,6 +704,7 @@
     "love2014deseq2": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",
@@ -692,6 +725,7 @@
     "lundberg2017shap": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "datacite",
@@ -715,6 +749,7 @@
     "mikolov2013word2vec": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "datacite",
@@ -738,6 +773,7 @@
     "mnih2015dqn": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",
@@ -758,6 +794,7 @@
     "papineni2002bleu": {
       "status": "mismatch",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",
@@ -781,6 +818,7 @@
     "pennington2014glove": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",
@@ -801,6 +839,7 @@
     "peters2018elmo": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",
@@ -821,6 +860,7 @@
     "polack2020bnt162b2": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",
@@ -841,6 +881,7 @@
     "radford2021clip": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "datacite",
@@ -864,6 +905,7 @@
     "raffel2020t5": {
       "status": "mismatch",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "datacite",
@@ -889,6 +931,7 @@
     "razavian2014offtheshelf": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",
@@ -909,6 +952,7 @@
     "redmon2016yolo": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",
@@ -929,6 +973,7 @@
     "reimers2019sbert": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",
@@ -949,6 +994,7 @@
     "ribeiro2016lime": {
       "status": "mismatch",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",
@@ -971,6 +1017,7 @@
     "ritchie2015limma": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "pubmed",
@@ -991,6 +1038,7 @@
     "rives2021esm": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",
@@ -1011,6 +1059,7 @@
     "rombach2022ldm": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",
@@ -1031,6 +1080,7 @@
     "ronneberger2015unet": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",
@@ -1051,6 +1101,7 @@
     "rosenbaum1983propensity": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",
@@ -1071,6 +1122,7 @@
     "sennrich2016bpe": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",
@@ -1091,6 +1143,7 @@
     "silver2016go": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",
@@ -1111,6 +1164,7 @@
     "srivastava2014dropout": {
       "status": "found",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": null,
@@ -1129,6 +1183,7 @@
     "stuart2019seurat": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",
@@ -1149,6 +1204,7 @@
     "subramanian2005gsea": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",
@@ -1169,6 +1225,7 @@
     "sundararajan2017ig": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "datacite",
@@ -1192,6 +1249,7 @@
     "tibshirani1996lasso": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",
@@ -1212,6 +1270,7 @@
     "vanhasselt2016double": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",
@@ -1232,6 +1291,7 @@
     "vaswani2017attention": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "datacite",
@@ -1254,6 +1314,7 @@
     "wolf2020transformers": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",
@@ -1274,6 +1335,7 @@
     "zheng2017chromium": {
       "status": "ok",
       "not_found_by": "",
+      "rejected": [],
       "refused": [],
       "checked_by_hand": false,
       "checked_against": "crossref",

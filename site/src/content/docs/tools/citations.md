@@ -817,25 +817,34 @@ the report lists that identifier so it can be added to the entry.
 |---|---|---|
 | `by search` | The search found a DOI or an arXiv id and the entry was compared with its record. An arXiv id is read as the DataCite DOI `10.48550/arXiv.<id>`. These entries are counted in `checked`. | on a disagreement, exit 1 |
 | `found` | The search matched an OpenAlex record that has no DOI, so there is no registry record to compare with. | no |
-| `not found` | At least one search service answered and none had a matching record, or every registry asked answered that the entry's own DOI or PMID has no record (a 404). A book, a report and a thesis land here, and so does a reference to a work that does not exist. | exit 1, unless the key is on the checked list |
+| `not found` | A title search that Crossref or OpenAlex answered matched no record, or every registry asked answered that the entry's own DOI or PMID names no record (a 404 or 410, or a 400 or 422 rejecting the identifier as malformed). A book, a report and a thesis land here, and so does a reference to a work that does not exist. | exit 1, unless the key is on the checked list |
 | `marked` | Of those not found, the keys on the checked list. Each is still listed under `not found`, as `(marked as checked)`. | no |
-| `could not check` | A registry, or every search service, refused or did not answer: a 401 or 403, a rate limit, a timeout, a 5xx, a body that is not a record. No measurement was made. | exit 2, when nothing else fails |
+| `could not check` | A registry refused or did not answer (a 401 or 403, a rate limit, a timeout, a 5xx, a body that is not a record), or a title search in which neither Crossref nor OpenAlex answered. No measurement was made. | exit 2, when nothing else fails |
 
 Without `--strict` every row is reported and the command exits 0. With it, the exit code is 1
 for a disagreement or an unlisted not found, 2 when the only failures are lookups that could
 not be made, and 0 otherwise. A failed lookup exits 2 rather than 1 so that a CI job can retry
 it instead of sending the author after a citation that may be correct, and a disagreement
-outranks it, because no retry changes a disagreement. An audit with nothing to check also
-exits 2.
+outranks it, because no retry changes a disagreement. An audit that checked nothing also exits
+2 under `--strict`, and says `nothing was checked`: an empty bibliography, or one whose every
+entry is `no id` or `could not check`, as under `--no-search`. An entry searched for and not
+found counts as checked, so a bibliography of listed works no registry holds can pass.
 
-Only a 404 or 410 counts as a registry or search service answering that it has nothing. Every
-other refusal, including the 403 Semantic Scholar gives many anonymous requests, leaves that
-service out of the ones a `not found` rests on, which `--json` lists under `searched`. An entry
-that some services refused and the rest answered with nothing is still `not found`, because
-most indexed works are in Crossref or OpenAlex; the services that refused are listed under
-`refused`, and the report line says so: `not found by title search (crossref, openalex,
-arxiv); Semantic Scholar could not be asked`. Only when every service refuses is the entry
-`could not check`.
+A service answers a title search in one of three ways besides a match:
+
+| Answer | Status codes | Counted as |
+|---|---|---|
+| it has nothing | 200 with no match, 404, 410 | answered; listed under `searched` |
+| it rejected the query | 400, 422 | neither answered nor refused; listed under `rejected`, and the report line says `Crossref rejected the query` |
+| it did not answer | 401, 403, 429, 5xx, a timeout, a body that does not parse | refused; listed under `refused`, and the report line says `Semantic Scholar could not be asked` |
+
+A title search is `not found` when nothing matched and Crossref or OpenAlex answered, whatever
+the other services did, because most indexed works are in one of the two:
+`not found by title search (crossref, openalex, arxiv); Semantic Scholar could not be asked`.
+When neither Crossref nor OpenAlex answered, because each refused or rejected the query, the
+entry is `could not check`, even where Semantic Scholar or arXiv answered with nothing. A
+rejected query is asked again on every run with the same result, so it never counts toward
+giving up on the search services after several entries in a row are refused.
 
 ### Entries checked by hand
 
@@ -851,7 +860,7 @@ smith2019thesis       # PhD thesis, University of Edinburgh
 who2021report
 ```
 
-One key per line; `#` starts a note. A line with two words before a `#` is refused, so a key
+One key per line, in UTF-8 (a byte-order mark is ignored); `#` starts a note. A file in another encoding is refused, naming the file. A line with two words before a `#` is refused, so a key
 is never half read. A listed key is still reported as `not found`, marked as checked, and does
 not fail `--strict`. The list excuses nothing else: a listed key that is found and disagrees on
 a field fails as any other does, and a listed key that is found at all is printed as a warning,

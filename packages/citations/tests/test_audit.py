@@ -706,14 +706,16 @@ def test_a_second_run_reads_the_search_from_the_cache(tmp_path, monkeypatch, cap
     assert verdict["searched"] == ["semanticscholar", "crossref"]
 
 
-def test_no_search_leaves_an_entry_with_no_identifier_unchecked(tmp_path, monkeypatch, capsys):
+def test_no_search_leaves_every_entry_unchecked_and_strict_says_nothing_was_checked(
+    tmp_path, monkeypatch, capsys
+):
     monkeypatch.setattr(A.resolve, "get", _no_network)
     monkeypatch.setattr(A.urllib.request, "urlopen", _no_network)
     bib = tmp_path / "refs.bib"
     bib.write_text(BIB.split("@book")[0].replace("doi", "note") + "@book" + BIB.split("@book")[1])
     out = tmp_path / "report.json"
 
-    assert A.main(["--bib", str(bib), "--json", str(out), "--no-search", "--strict"]) == 0
+    assert A.main(["--bib", str(bib), "--json", str(out), "--no-search", "--strict"]) == 2
 
     printed = capsys.readouterr().out
     assert printed.split("2 entries\n\n")[1].split("\n\nwrote")[0] == (
@@ -722,7 +724,8 @@ def test_no_search_leaves_an_entry_with_no_identifier_unchecked(tmp_path, monkey
         "  disagree          0\n"
         "  no id             2   nothing can check these until they have a DOI or PMID\n"
         "\n"
-        "every checked entry matches its registry record."
+        "nothing was checked: no entry was compared with a registry record or searched for. "
+        "--strict exits 2."
     )
     assert {v["status"] for v in json.loads(out.read_text())["entries"].values()} == {
         "no identifier"

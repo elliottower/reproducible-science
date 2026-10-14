@@ -603,6 +603,8 @@ def registry_authors(
             payload = resolve.get(registry.url(kind, identifier), as_json=registry.json)
         except resolve.Throttled:
             continue  # refused, which is not the same as having nothing
+        except resolve.Rejected:
+            continue  # the identifier is one this registry will not look up
         names = registry.authors(payload) if payload is not None else []
         if not names:
             continue

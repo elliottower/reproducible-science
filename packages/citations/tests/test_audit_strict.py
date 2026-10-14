@@ -360,3 +360,125 @@ def test_a_venue_left_unconfirmed_by_refused_lookups_never_fails_strict(tmp_path
     assert verdict["status"] == "ok"
     assert verdict["refused"] == ["openalex", "semanticscholar"]
     assert code == 0
+
+
+# --- a rejected query, and what a not found rests on --------------------------------------------
+
+
+def test_a_service_that_rejected_the_query_is_named_and_not_counted(tmp_path, monkeypatch, capsys):
+    serve(monkeypatch, {**EMPTY_SEARCH, "api.crossref.org/works?": 400})
+
+    code, report = run(tmp_path, bib(tmp_path, unidentified()), "--strict")
+
+    verdict = report["entries"]["naitza2012"]
+    assert verdict["status"] == "not found", "OpenAlex answered"
+    assert verdict["searched"] == ["semanticscholar", "openalex", "arxiv"]
+    assert (verdict["rejected"], verdict["refused"]) == (["crossref"], [])
+    assert code == 1
+    assert "; Crossref rejected the query" in capsys.readouterr().out
+
+
+def test_every_service_rejecting_is_could_not_check_and_never_stops_the_search(
+    tmp_path, monkeypatch
+):
+    asked = serve(monkeypatch, dict.fromkeys(EMPTY_SEARCH, 400))
+    entries = [unidentified(f"k{i}").replace(TITLE, f"{TITLE} {i}") for i in range(4)]
+
+    code, report = run(tmp_path, bib(tmp_path, *entries), "--strict")
+
+    assert {v["status"] for v in report["entries"].values()} == {"could not check"}
+    assert len(asked) == 4 * len(A.SERVICES), "a rejected query counted toward giving up"
+    assert code == 2
+
+
+def test_a_not_found_needs_crossref_or_openalex_to_have_answered(tmp_path, monkeypatch):
+    serve(
+        monkeypatch,
+        {**EMPTY_SEARCH, "api.crossref.org/works?": 403, "api.openalex.org/works?": 503},
+    )
+
+    code, report = run(tmp_path, bib(tmp_path, unidentified()), "--strict")
+
+    verdict = report["entries"]["naitza2012"]
+    assert verdict["status"] == "could not check"
+    assert verdict["searched"] == ["semanticscholar", "arxiv"]
+    assert verdict["refused"] == ["crossref", "openalex"]
+    assert code == 2
+
+
+def test_crossref_alone_answering_nothing_is_still_not_found(tmp_path, monkeypatch, capsys):
+    serve(
+        monkeypatch,
+        {
+            "api.crossref.org/works?": EMPTY_SEARCH["api.crossref.org/works?"],
+            "semanticscholar.org": 403,
+            "api.openalex.org/works?": 503,
+            "export.arxiv.org": 503,
+        },
+    )
+
+    code, report = run(tmp_path, bib(tmp_path, unidentified()), "--strict")
+
+    verdict = report["entries"]["naitza2012"]
+    assert (verdict["status"], verdict["searched"]) == ("not found", ["crossref"])
+    assert code == 1
+    assert "Semantic Scholar, OpenAlex, arXiv could not be asked" in capsys.readouterr().out
+
+
+def test_a_registry_that_rejects_the_doi_is_a_doi_that_names_nothing(tmp_path, monkeypatch):
+    serve(monkeypatch, {"api.crossref.org/works/": 400, "api.datacite.org": 404})
+
+    code, report = run(tmp_path, bib(tmp_path, identified()), "--strict")
+
+    verdict = report["entries"]["naitza2012"]
+    assert (verdict["status"], verdict["not_found_by"]) == ("not found", "identifier")
+    assert code == 1
+
+
+# --- the checked list's encoding ----------------------------------------------------------------
+
+
+def test_a_byte_order_mark_is_not_read_into_the_first_key(tmp_path, monkeypatch):
+    serve(monkeypatch, EMPTY_SEARCH)
+    (tmp_path / "references.checked.txt").write_bytes(b"\xef\xbb\xbfnaitza2012\n")
+
+    code, report = run(tmp_path, bib(tmp_path, unidentified()), "--strict")
+
+    assert report["checked_list"]["keys"] == ["naitza2012"]
+    assert report["checked_list"]["stale"] == []
+    assert code == 0
+
+
+def test_a_list_that_is_not_utf8_is_refused_naming_the_file(tmp_path, monkeypatch):
+    serve(monkeypatch, EMPTY_SEARCH)
+    listed = tmp_path / "references.checked.txt"
+    listed.write_bytes(b"naitza2012 # M\xfcller\n")
+
+    with pytest.raises(CitationsError, match=r"references\.checked\.txt: not UTF-8"):
+        run(tmp_path, bib(tmp_path, unidentified()), "--strict")
+
+
+# --- nothing checked ----------------------------------------------------------------------------
+
+
+def test_strict_with_nothing_checked_exits_2_and_says_so(tmp_path, monkeypatch, capsys):
+    serve(monkeypatch, EMPTY_SEARCH)
+    path = bib(tmp_path, unidentified())
+
+    assert run(tmp_path, path, "--no-search")[0] == 0
+    code, _ = run(tmp_path, path, "--strict", "--no-search")
+
+    printed = capsys.readouterr().out
+    assert code == 2
+    assert "nothing was checked" in printed
+    assert "every checked entry matches" not in printed
+
+
+def test_a_bibliography_of_listed_works_nobody_indexes_passes_strict(tmp_path, monkeypatch):
+    serve(monkeypatch, EMPTY_SEARCH)
+    (tmp_path / "references.checked.txt").write_text("naitza2012\n")
+
+    code, report = run(tmp_path, bib(tmp_path, unidentified()), "--strict")
+
+    assert report["entries"]["naitza2012"]["status"] == "not found"
+    assert code == 0, "every entry was searched for, so something was checked"
