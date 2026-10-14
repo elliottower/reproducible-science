@@ -24,6 +24,17 @@ export default function Overview({ graph, onOpen }: { graph: Graph; onOpen: (m: 
   const r = s?.results?.counts
   const rp = graph.reproduce
   const staleFiles = graph.nodes.filter((n) => n.type === 'artifact' && n.freshness === 'stale').length
+  const needRerun = graph.nodes.filter((n) => n.type === 'artifact' && (n.freshness === 'stale' || n.freshness === 'never_rerun')).length
+  const day = (ts: string) => new Date(ts).toLocaleDateString('en-US', { day: 'numeric', month: 'short' })
+  const summary: [string, string, Tone, string?][] = [
+    ['prereg', s?.prereg?.text ?? '—', tone(s?.prereg), s?.prereg?.next],
+    ['results', r ? `${fmt(r.sealed)}/${fmt(r.runs)} runs sealed` : s?.results?.text ?? '—', tone(s?.results)],
+    ['citations', s?.citations?.counts ? `${fmt(s.citations.counts.pinned)} quotes pinned, not verified` : s?.citations?.text ?? '—', tone(s?.citations), s?.citations?.next],
+    ['repro verify', `${fmt(t.claims - t.failing)}/${fmt(t.claims)} claims verified (${fmt(t.assertions)} checks)`, t.failing ? 'bad' : 'good'],
+    ['repro reproduce', rp?.runs
+      ? `${fmt(rp.last.reproduced ?? 0)}/${fmt(rp.last_steps)} reproduced ${rp.last_at ? day(rp.last_at) : ''}${needRerun ? ` · ${needRerun} of ${fmt(rp.declared)} steps need re-running` : ''}`
+      : 'never run', needRerun ? 'warn' : rp?.runs ? 'good' : 'none'],
+  ]
   const failedReruns = rp ? Object.entries(rp.last).filter(([k]) => k !== 'reproduced').reduce((a, [, v]) => a + v, 0) : 0
 
   const columns: { title: string; sub: string; rows: Row[] }[] = [
@@ -40,7 +51,7 @@ export default function Overview({ graph, onOpen }: { graph: Graph; onOpen: (m: 
         {
           tool: 'results', tone: tone(s?.results),
           headline: r ? `${fmt(r.sealed)}/${fmt(r.runs)} runs sealed` : s?.results?.text ?? '—',
-          detail: `${fmt(t.run_backed ?? 0)} of ${fmt(t.claims)} claims read a file a recorded run wrote${r?.changed ? ` · ${fmt(r.changed)} sealed files changed` : ''}`,
+          detail: r?.changed ? `${fmt(r.changed)} sealed files changed` : undefined,
           what: 'The runs recorded in the ledger. A sealed run had its inputs hashed before it ran.',
         },
         {
@@ -63,9 +74,10 @@ export default function Overview({ graph, onOpen }: { graph: Graph; onOpen: (m: 
           link: ['Open the catalog', () => onOpen('catalog')],
         },
         {
-          tool: 'repro stale', tone: staleFiles ? 'warn' : 'good',
-          headline: staleFiles ? `${staleFiles} rebuild steps changed since their last re-run` : 'every rebuild step matches its last re-run',
-          what: 'Compares each declared rebuild step with the last re-run, without running anything: a step is stale when its command, inputs or output changed since.',
+          tool: 'repro stale', tone: needRerun ? 'warn' : 'good',
+          headline: needRerun ? `${needRerun} of ${fmt(rp?.declared ?? 0)} steps need re-running` : 'every rebuild step matches its last re-run',
+          detail: needRerun ? `${staleFiles} changed since the last re-run · ${needRerun - staleFiles} added since and never run` : undefined,
+          what: 'A rebuild step is a declared command that turns input files into an output file, such as detex.py or a derive script. This compares each step with the last re-run without running anything.',
           link: ['Open the graph', () => onOpen('graph')],
         },
       ],
@@ -78,7 +90,7 @@ export default function Overview({ graph, onOpen }: { graph: Graph; onOpen: (m: 
           tool: 'repro reproduce',
           tone: !rp?.runs ? 'none' : failedReruns ? 'bad' : 'good',
           headline: rp?.runs
-            ? `${fmt(rp.last.reproduced ?? 0)}/${fmt(rp.last_steps)} steps reproduced`
+            ? `${fmt(rp.last.reproduced ?? 0)}/${fmt(rp.last_steps)} steps reproduced on ${rp.last_at ? day(rp.last_at) : '—'}`
             : 'never run',
           detail: rp?.runs
             ? `last re-run ${rp.last_at ? when(rp.last_at) : ''} · ${fmt(rp.runs)} recorded · ${fmt(rp.declared)} steps declared now`
@@ -91,6 +103,15 @@ export default function Overview({ graph, onOpen }: { graph: Graph; onOpen: (m: 
 
   return (
     <div className="overview">
+      <div className="ov-summary mono">
+        {summary.map(([cmd, text, tn, next]) => (
+          <div key={cmd} className={`ov-line ${tn}`}>
+            <span className={`dot ${tn}`} />
+            <span className="ov-cmd">{cmd}:</span> {text}
+            {next && <span className="ov-next"> → {next}</span>}
+          </div>
+        ))}
+      </div>
       <div className="ov-cols">
         {columns.map((col, i) => (
           <div key={col.title} className="ov-col">

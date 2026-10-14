@@ -242,3 +242,11 @@ tr.sel { background: #f3f2fe !important; }
   .ov-cols { grid-template-columns: minmax(0, 760px); justify-content: center; gap: 18px; }
   .ov-arrow { display: none; }
 }
+.ov-summary { max-width: 1280px; margin: 0 auto 22px; background: #0f1424; color: #d6dbea; border-radius: 10px; padding: 12px 16px; font-size: 12.5px; line-height: 1.75; }
+.ov-line { display: flex; align-items: center; gap: 8px; white-space: pre-wrap; }
+.ov-cmd { color: #8f98b3; }
+.ov-line.good .dot { background: #5fd394; }
+.ov-line.warn .dot { background: #e0a43a; }
+.ov-line.bad .dot { background: #f07a64; }
+.ov-line.none .dot { background: #6b7489; }
+.ov-summary .ov-next { color: #f2b84b; margin: 0; font-size: inherit; }

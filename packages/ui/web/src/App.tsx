@@ -121,6 +121,7 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
   }, [open, selected, mode, openFiles])
 
   const failing = graph.totals.failing
+  const needRerun = graph.nodes.filter((n) => n.type === 'artifact' && (n.freshness === 'stale' || n.freshness === 'never_rerun')).length
 
   return (
     <UiCtx.Provider value={{ selected, matches, related, toggle, openFiles, toggleFile }}>
@@ -139,9 +140,9 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
           >
             ● {failing ? `${fmt(failing)} claims failing` : `${fmt(graph.totals.claims)} claims verified`}
           </span>
-          {graph.totals.stale_steps > 0 && (
-            <span className="pill big stale" title="rebuild steps whose command, inputs or output changed since their last recorded re-run (repro stale)">
-              ◐ {graph.totals.stale_steps} rebuild step{graph.totals.stale_steps === 1 ? '' : 's'} stale
+          {needRerun > 0 && (
+            <span className="pill big stale" title="rebuild steps changed since the last repro reproduce, or added since and never run">
+              ◐ {needRerun} step{needRerun === 1 ? '' : 's'} need re-running
             </span>
           )}
           {recheck.available && (
