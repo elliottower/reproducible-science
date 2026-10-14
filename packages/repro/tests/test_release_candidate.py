@@ -73,7 +73,7 @@ def test_every_sibling_range_admits_the_version_the_packages_are_bumped_to(tree,
 def test_the_ranges_a_candidate_writes_open_when_the_release_is_cut(tree):
     versions.bump("0.6.0rc1")
     candidate = {(n, s): spec for n, s, spec in ranges(tree)}
-    assert set(candidate.values()) == {">=0.6.0rc1,<0.7"}
+    assert set(candidate.values()) == {">=0.6rc1,<0.7"}
     versions.bump("0.6.0")
     final = {(n, s): spec for n, s, spec in ranges(tree)}
     assert set(final.values()) == {">=0.6,<0.7"}

@@ -4,7 +4,7 @@ requires = [ "hatchling" ]
 
 [project]
 name = "claims-cli"
-version = "0.5.6"
+version = "0.6.0rc1"
 description = "Check what a manuscript states against the files it names: numbers, table cells and quotations"
 readme = "README.md"
 keywords = [ "citations", "manuscript", "open science", "provenance", "reproducibility" ]
@@ -25,8 +25,8 @@ classifiers = [
 dependencies = [
   # A quotation is checked by `citations`, and a prose locator and the count of a text's
   # numbers read a document through its extractors, so it is needed to import this package.
-  "citations>=0.5,<0.6",
-  "provenance-core>=0.5,<0.6",
+  "citations>=0.6rc1,<0.7",
+  "provenance-core>=0.6rc1,<0.7",
   # Floors, not bare names: without them a fresh install resolves whatever is oldest on
   # PyPI, which is not the combination the tests exercise.
   "pydantic>=2.9",
