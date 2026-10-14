@@ -87,13 +87,37 @@ Counts every number the manuscript's text prints and says which a claim accounts
 claims export record
 ```
 
-Writes one record per checked assertion, for another program to read. `sarif` and `ro-crate` write the same records in those formats.
+Writes one record per checked assertion, for another program to read. `sarif` and `ro-crate` write the same records in those formats. Each record names its version, `reproducible.science/claim-check/0.1-experimental`, and 0.6 also reads records under `repro.check/0.1-experimental`, the name 0.5.6 wrote. The JSON Schema is at <https://reproducible.science/schemas/claim-check-0.1-experimental.schema.json>, and the [check record](https://reproducible.science/concepts/check-record/) page describes the format.
 
 ```bash
 claims origins --repo https://github.com/owner/study=../study
 ```
 
-For each artifact copied from another repository, which the manifest says with `origin: {repository, commit, path}`, compares the pinned digest with the bytes of that path at that commit: `same`, `differs`, `absent`, `unknown commit` or `not checked`, each with the reason. A clone given with `--repo` is read with `git cat-file`, so committed bytes are compared and never a working tree. With `--fetch`, a GitHub repository no clone is given for is read from `raw.githubusercontent.com`; without it nothing touches the network. `claims verify` never reads an origin.
+For each artifact copied from another repository, compares the pinned digest with the bytes of that path at that commit. The artifact names its source with `origin`:
+
+```yaml
+artifacts:
+  - id: indices
+    path: artifacts/indices.json
+    digest: {algorithm: sha256, value: 3db72e39...}
+    origin:
+      repository: https://github.com/owner/study
+      commit: d4d6909cd7a99bec2416c2fe561b1a04d5bf5802
+      path: results/indices.json
+```
+
+`commit` is the full 40-character id, and `path` is relative to that repository's root; a branch, a tag, a short id or a path with `..` is refused when the manifest is read. Here the copy was edited after it was taken:
+
+```text
+  DIFFERS        indices: https://github.com/owner/study d4d6909cd7a9:results/indices.json
+                 the origin's bytes do not have the pinned digest (read from /home/you/work/study)
+                 pinned    3db72e396caeafded64ab436f341936577b90ad3767a6edb59dea9045d20c5e0
+                 at origin 2ec7fab1cf2458f30591cc157b23cc50380644ee085a46b9b23237650456e4c4
+
+  1 origins: 0 same, 1 differs, 0 absent, 0 unknown commit, 0 not checked
+```
+
+Each origin is `same`, `differs`, `absent`, `unknown commit` or `not checked`, with the reason. A clone given with `--repo REPOSITORY=PATH`, or a repository named by a local path, is read with `git cat-file`, so committed bytes are compared and never a working tree. With `--fetch`, a GitHub repository no clone is given for is read from `raw.githubusercontent.com`; without it nothing touches the network. It exits 0 where every origin is `same`, 1 where one differs or is absent, and 2 where one could not be checked and none failed, or where no artifact declares an origin. `claims verify` never reads an origin, and `claims export record` carries the declared origin on each file it read.
 
 ## With `repro`
 

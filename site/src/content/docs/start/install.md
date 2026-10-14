@@ -14,7 +14,12 @@ That installs the verifier and the three tools it works with. To install one alo
 pip install citations     # quotation checking only
 pip install prereg        # preregistration only
 pip install results-cli   # the run ledger only
+pip install claims-cli    # claims checking only
 ```
+
+`claims-cli` is the code behind `repro verify`, `stale`, `why`, `numbers`, `export` and
+`origins`, under the command `claims`. It runs no command a manifest names, so it suits a
+machine that should only read a project's files.
 
 Python 3.11 or newer. Every package carries the same version and is released the same day, so
 `0.2.0` of one works with `0.2.0` of the others.

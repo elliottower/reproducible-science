@@ -362,6 +362,50 @@ set_aside:
 
 `text` is matched as a quotation is, every number inside each place it occurs is set aside, and `reason` is required. An entry whose passage is not in the text is listed with a count of 0. `--format json` prints, per text, every number with the line it is on, its offset in the normalized text, the value read, its standing, and the rule, the claims that bind it or the reason.
 
+## A file copied from another repository
+
+A results file is often copied into a manuscript's repository from the repository of the study that computed it. The pin says which bytes the manuscript reads and nothing of where they came from. An artifact may say, with `origin`:
+
+```yaml
+artifacts:
+  - id: indices
+    path: artifacts/indices.json
+    digest: {algorithm: sha256, value: 3db72e39...}
+    origin:
+      repository: https://github.com/owner/study
+      commit: d4d6909cd7a99bec2416c2fe561b1a04d5bf5802
+      path: results/indices.json
+```
+
+`repository` is a URL or a local path, `commit` is the full 40-character id, and `path` is relative to that repository's root. A branch, a tag, a short id, an absolute path or a path with `..` is refused when the manifest is read, because each can come to name other bytes.
+
+```bash
+repro origins --repo https://github.com/owner/study=../study
+```
+
+For each artifact that declares an origin, `repro origins` reads the bytes of that path at that commit and compares their sha256 with the pinned digest. Here the copy was edited after it was taken:
+
+```text
+  DIFFERS        indices: https://github.com/owner/study d4d6909cd7a9:results/indices.json
+                 the origin's bytes do not have the pinned digest (read from /home/you/work/study)
+                 pinned    3db72e396caeafded64ab436f341936577b90ad3767a6edb59dea9045d20c5e0
+                 at origin 2ec7fab1cf2458f30591cc157b23cc50380644ee085a46b9b23237650456e4c4
+
+  1 origins: 0 same, 1 differs, 0 absent, 0 unknown commit, 0 not checked
+```
+
+| state | holds when |
+|---|---|
+| `same` | the bytes at the origin have the pinned digest |
+| `differs` | they have another; both digests are printed |
+| `absent` | the clone holds the commit, and the commit holds no file at the path |
+| `unknown commit` | the clone holds no such commit |
+| `not checked` | no bytes were obtained: no clone was given and `--fetch` was not, the repository is not on GitHub, the fetch failed, or the artifact has no pin |
+
+A clone is named with `--repo REPOSITORY=PATH`, repeatable, or by an origin whose repository is a local path. It is read with `git cat-file`, so the committed bytes are compared and never the clone's working tree. With `--fetch`, a GitHub repository no clone is given for is read from `raw.githubusercontent.com` at the commit, with no credentials. A failed fetch is `not checked`, because GitHub answers a missing path, a missing commit and a private repository alike; a clone tells them apart. Without `--fetch` nothing touches the network. `--format json` prints the same report as one document, with the states written `unknown_commit` and `not_checked`.
+
+It exits 0 where every origin is `same`, 1 where one differs or is absent, and 2 where one could not be checked and none failed, or where no artifact declares an origin. `same` is a statement about the pin and the origin: where the file on disk is not the pinned bytes, the command says so beside the state, and `repro verify` reports the broken pin. `repro verify` never reads an origin and stays offline. `repro export record` carries the declared origin on each file it read, and `repro export ro-crate` on the file's `File` entity as `isBasedOn`.
+
 ## For another program
 
 ```bash
@@ -371,7 +415,7 @@ repro export record -o records.jsonl
 
 `repro export record` checks every assertion as `repro verify` does and writes one JSON object per line, one per assertion. Each states what was observed: the checker and its version, the file read with its pinned digest and its digest on disk, the address, the value stored there, the value the manuscript prints, the comparison rule and the outcome. It executes nothing, writes only the output it is asked for, and exits 0 whatever the outcomes, since `repro verify` is the check that fails.
 
-Experimental. Every record names its version, `reproducible.science/claim-check/0.1-experimental`, and a field may change before `1.0`. Releases in the 0.6 series also read a record under `repro.check/0.1-experimental`, the name 0.5.6 wrote; the next minor release reads only the new one. The JSON Schema is [`docs/schemas/claim-check-0.1-experimental.schema.json`](https://reproducible.science/schemas/claim-check-0.1-experimental.schema.json).
+Experimental. Every record names its version, `reproducible.science/claim-check/0.1-experimental`, and a field may change before `1.0`. Releases in the 0.6 series also read a record under `repro.check/0.1-experimental`, the name 0.5.6 wrote; the next minor release reads only the new one. The JSON Schema is [`docs/schemas/claim-check-0.1-experimental.schema.json`](https://reproducible.science/schemas/claim-check-0.1-experimental.schema.json), and the [check record](https://reproducible.science/concepts/check-record/) page summarizes the format.
 
 ```json
 {"record": "reproducible.science/claim-check/0.1-experimental", "checker": {"name": "repro", "version": "0.6.0", "url": "https://github.com/elliottower/reproducible-science"}, "checked_at": "2026-10-13T21:41:43Z", "manifest": {"path": "repro.yaml", "digest": "2ea85eb5..."}, "claim": {"id": "responders", "text": "Thirty-five participants responded.", "digest": "1ccb77d0...", "line": 12}, "assertion": {"kind": "metric", "name": "responders", "position": 0, "index": 0, "line": 15}, "check_type": "value-comparison", "reads": [{"artifact": "totals", "path": "totals.json", "media_type": "application/json", "validity": "authoritative", "pinned": "ce260cfb...", "on_disk": "ce260cfb...", "side": "", "address": {"kind": "tree", "contract": 1, "pointer": "/responders"}, "stored": "36"}], "printed": "35", "comparison": {"mode": "printed_precision", "tolerance": "0"}, "outcome": "mismatch", "native_outcome": "mismatch", "native_reason": "value_mismatch", "detail": "responders: manuscript prints 35, totals.json holds 36 at /responders", "stages": {"execution": "completed", "extraction": "extracted", "comparison": "mismatch"}, "reader": {"backend": "metric", "backend_version": "2", "tool": "reproducible-science", "tool_version": "0.6.0", "extraction_digest": "76a50887..."}, "warnings": []}

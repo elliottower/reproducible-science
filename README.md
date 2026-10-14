@@ -57,7 +57,9 @@ install.
 | [`repro`](packages/repro) | that every declared claim holds against its pinned artifact, and which ones do not |
 
 `pip install reproducible-science` brings all four. Each is also its own distribution —
-`prereg`, `citations`, `results-cli` — so installing one brings only that one.
+`prereg`, `citations`, `results-cli` — so installing one brings only that one. The code behind
+`repro verify` is a fifth, [`claims-cli`](packages/claims), with the command `claims`: it checks
+a manifest's claims and runs nothing the manifest names.
 
 ## Getting started
 
@@ -97,6 +99,24 @@ does not pass.
 
 Preregistration is optional — you mark a claim confirmatory, exploratory, or not applicable,
 and only the first kind needs a plan behind it.
+
+## For other programs
+
+`repro export record` writes one JSON object per checked assertion: the file read and its
+digests, the address, the stored and printed values, the comparison and the outcome. Each
+record names its version, `reproducible.science/claim-check/0.1-experimental`, and the format
+is experimental until `1.0`. Releases in the 0.6 series also read records under
+`repro.check/0.1-experimental`, the name 0.5.6 wrote. The JSON Schema is published at
+<https://reproducible.science/schemas/claim-check-0.1-experimental.schema.json>.
+`repro export ro-crate` writes the same records as an RO-Crate, under the
+[claim-check profile](https://reproducible.science/ro-crate/claim-check/0.1/), and
+`repro export sarif` as a SARIF log for GitHub code scanning. The
+[check record](https://reproducible.science/concepts/check-record/) page says more.
+
+A results file copied in from another repository can name where it came from, as
+`origin: {repository, commit, path}` on its artifact. `repro origins` compares the pinned
+digest with the bytes at that path and commit, read from a local clone or, with `--fetch`,
+from GitHub. `repro verify` never reads an origin and stays offline.
 
 ## Contributing
 
