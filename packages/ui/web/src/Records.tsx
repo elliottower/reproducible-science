@@ -98,45 +98,53 @@ export function ResultsTab({ graph, query }: { graph: Graph; query: string }) {
 export function CitationsTab({ graph, query }: { graph: Graph; query: string }) {
   const sources = graph.tabs?.citations.sources ?? []
   const q = query.trim().toLowerCase()
-  const [openSrc, setOpenSrc] = useState<Set<string>>(new Set())
-  const flip = (f: string) => setOpenSrc((prev) => { const n = new Set(prev); if (n.has(f)) n.delete(f); else n.add(f); return n })
-  const shown = sources.filter((s) => !q || JSON.stringify(s).toLowerCase().includes(q))
+  // One row per quote, in the claims files' own order: source, then statement, then quote.
+  const rows = sources.flatMap((s) =>
+    s.statements.flatMap((st) =>
+      st.quotes.map((qq, i) => ({ s, st, qq, first: i === 0 })),
+    ),
+  ).filter(({ s, st, qq }) => !q || `${s.citation} ${qq.section} ${qq.exact} ${st.statement} ${st.notes}`.toLowerCase().includes(q))
+  // A source, and a statement, is written once and spans the rows of its quotes.
+  const span = (i: number, key: (r: (typeof rows)[number]) => string) => {
+    if (i > 0 && key(rows[i - 1]) === key(rows[i])) return 0
+    let n = 1
+    while (i + n < rows.length && key(rows[i + n]) === key(rows[i])) n += 1
+    return n
+  }
+  const bySource = (r: (typeof rows)[number]) => r.s.file
+  const byStatement = (r: (typeof rows)[number]) => `${r.s.file}::${r.st.id}`
   return (
     <div className="rec">
       <Head cmd="citations" line={graph.status?.citations.text ?? '—'}
-        what="Passages quoted from other people's work, each pinned to the source it comes from: a file with its hash, and the exact words. citations verify reads every source and checks each passage is in it, which takes minutes, so this page lists them without re-checking." />
-      <table>
-        <thead><tr><th>Source</th><th className="num">Quotes</th><th>Claims file</th></tr></thead>
+        what="Passages quoted from other people's work. Each row is one quotation: the source and the section it comes from, the exact words, and the statement the paper reads into them. A source is pinned when its file is saved with a hash, so the words can be checked against it; citations verify does that check, which reads every source and takes minutes." />
+      <table className="cite-table">
+        <thead><tr><th>Source</th><th>Section</th><th style={{ width: '38%' }}>Quoted text</th><th>Statement</th><th>Pinned</th></tr></thead>
         <tbody>
-          {shown.map((s) => (
-            <Fragment key={s.file}>
-              <tr onClick={() => flip(s.file)} className={openSrc.has(s.file) ? 'sel' : ''}>
-                <td>
-                  <div className="mono strong">{openSrc.has(s.file) ? '▾' : '▸'} {s.citation}</div>
-                  {s.url && <a className="small src-link" href={s.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>{s.url}</a>}
-                </td>
-                <td className="num">{s.pinned}</td>
-                <td className="mono small muted">{s.file}</td>
-              </tr>
-              {openSrc.has(s.file) && (
-                <tr className="static">
-                  <td colSpan={3}>
-                    {s.statements.map((st) => (
-                      <div key={st.id} className="cite-stmt">
-                        <div className="mono small strong">{st.id}</div>
-                        {st.statement && <div className="small">{st.statement}</div>}
-                        {st.quotes.map((qq, i) => (
-                          <div key={i} className="cite-q">“{qq.exact}”{qq.section && <span className="muted"> · {qq.section}</span>}</div>
-                        ))}
-                      </div>
-                    ))}
+          {rows.map(({ s, st, qq }, i) => {
+            const srcSpan = span(i, bySource)
+            const stSpan = span(i, byStatement)
+            return (
+              <tr key={`${s.file}-${st.id}-${i}`} className={`static ${srcSpan ? 'src-start' : ''}`}>
+                {srcSpan > 0 && (
+                  <td rowSpan={srcSpan}>{s.url ? <a className="mono src-link" href={s.url} target="_blank" rel="noreferrer">{s.citation}</a> : <span className="mono">{s.citation}</span>}</td>
+                )}
+                <td className="small">{qq.section || <span className="muted">—</span>}</td>
+                <td className="quote">“{qq.exact}”</td>
+                {stSpan > 0 && (
+                  <td className="small" rowSpan={stSpan}>
+                    {st.statement}
+                    {st.notes && <div className="cite-note">{st.notes}</div>}
                   </td>
-                </tr>
-              )}
-            </Fragment>
-          ))}
+                )}
+                {srcSpan > 0 && (
+                  <td rowSpan={srcSpan}>{s.sha256 ? <span className="pill good" title={`${s.local} · sha256 ${s.sha256.slice(0, 12)}…`}>Pinned</span> : <span className="pill bad">Not pinned</span>}</td>
+                )}
+              </tr>
+            )
+          })}
         </tbody>
       </table>
+      {rows.length === 0 && <div className="empty muted">Nothing here{q ? ` matches “${query}”` : ''}.</div>}
     </div>
   )
 }

@@ -335,9 +335,10 @@ def record_tabs(project: pathlib.Path, manifest: dict, ledger: list[dict], stale
             statements = []
             for sid, c in (doc.get("claims", {}) or {}).items():
                 quotes = [{"exact": q.get("exact", ""), "section": q.get("section", "")} for q in (c or {}).get("quotes", []) or [] if isinstance(q, dict)]
-                statements.append({"id": sid, "statement": (c or {}).get("statement", ""), "quotes": quotes})
+                statements.append({"id": sid, "statement": (c or {}).get("statement", ""), "quotes": quotes,
+                                   "notes": (c or {}).get("notes", "")})
             sources.append({"file": str(f.relative_to(project)), "citation": src.get("citation", f.stem),
-                            "url": src.get("url", ""), "local": src.get("local", ""),
+                            "url": src.get("url", ""), "local": src.get("local", ""), "sha256": src.get("sha256", ""),
                             "pinned": sum(len(s["quotes"]) for s in statements), "statements": statements})
 
     # reproduce: every declared rebuild step with its state, and every recorded re-run.

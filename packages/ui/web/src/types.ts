@@ -79,8 +79,8 @@ export interface Graph {
     }
     citations: {
       sources: {
-        file: string; citation: string; url: string; local: string; pinned: number
-        statements: { id: string; statement: string; quotes: { exact: string; section: string }[] }[]
+        file: string; citation: string; url: string; local: string; sha256: string; pinned: number
+        statements: { id: string; statement: string; notes: string; quotes: { exact: string; section: string }[] }[]
       }[]
     }
     reproduce: {
