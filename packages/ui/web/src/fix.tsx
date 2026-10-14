@@ -37,28 +37,10 @@ export function stalePrompt(n: GNode, project: string | null): string {
   ].join('\n')
 }
 
-export function FixButtons({ subject, kind, prompt }: { subject: string; kind: 'claim' | 'stale'; prompt: string }) {
-  const { available, project } = useContext(FixCtx)
-  const [note, setNote] = useState<string | null>(null)
-  const copy = () =>
-    navigator.clipboard.writeText(prompt).then(
-      () => setNote('Copied'),
-      () => setNote('Could not copy'),
-    )
-  const send = () =>
-    fetch('api/fix-request', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project, subject, kind, prompt }),
-    })
-      .then((r) => r.json())
-      .then((res) => setNote(res.ok ? 'Sent to Claude Code' : `Not sent: ${res.error}`))
-      .catch((e) => setNote(`Not sent: ${e}`))
+export function FixButtons({ subject, prompt }: { subject: string; kind: 'claim' | 'stale'; prompt: string }) {
   return (
     <div className="fix">
-      <button onClick={copy}>Copy fix prompt</button>
-      {available && <button className="primary-sm" onClick={send}>Send to Claude Code</button>}
-      {note && <span className="muted small">{note}</span>}
+      <ClaudeButton prompt={prompt} subject={subject} small />
     </div>
   )
 }
@@ -85,44 +67,47 @@ export function projectPrompt(g: Graph, project: string | null): string {
   ].join('\n')
 }
 
-/** Claude Code button: sends the prompt to the queue the repro-fixes mod reads, or copies it. The
- * arrow switches which; the choice is remembered in this browser. */
-export function ClaudeButton({ prompt, subject }: { prompt: string; subject: string }) {
+/** Fix with Claude Code: a menu of two ways to hand the prompt over. Sending queues it for the
+ * repro-fixes mod, which shows it above the prompt of the Claude Code session open in the project;
+ * copying puts it on the clipboard. Without the local server only copying is offered. */
+export function ClaudeButton({ prompt, subject, small }: { prompt: string; subject: string; small?: boolean }) {
   const { available, project } = useContext(FixCtx)
-  const [mode, setMode] = useState<'send' | 'copy'>(() => {
-    try {
-      return (localStorage.getItem('claude-mode') as 'send' | 'copy') ?? 'send'
-    } catch {
-      return 'send'
-    }
-  })
+  const [open, setOpen] = useState(false)
   const [note, setNote] = useState<string | null>(null)
-  const effective = available ? mode : 'copy'
-  const act = () => {
-    if (effective === 'copy') {
-      navigator.clipboard.writeText(prompt).then(() => setNote('Copied'), () => setNote('Could not copy'))
-      return
-    }
+  const done = (text: string) => {
+    setNote(text)
+    setOpen(false)
+    setTimeout(() => setNote(null), 2500)
+  }
+  const copy = () => navigator.clipboard.writeText(prompt).then(() => done('Prompt copied'), () => done('Could not copy'))
+  const send = () =>
     fetch('api/fix-request', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project, subject, kind: 'claim', prompt }),
+      body: JSON.stringify({ project, subject, kind: subject === 'project' ? 'claim' : 'claim', prompt }),
     })
       .then((r) => r.json())
-      .then((res) => setNote(res.ok ? 'Sent' : `Not sent: ${res.error}`))
-      .catch((e) => setNote(`Not sent: ${e}`))
-  }
-  const flip = () => {
-    const next = mode === 'send' ? 'copy' : 'send'
-    setMode(next)
-    try { localStorage.setItem('claude-mode', next) } catch { /* private window */ }
-  }
+      .then((res) => done(res.ok ? 'Sent to Claude Code' : `Not sent: ${res.error}`))
+      .catch((e) => done(`Not sent: ${e}`))
   return (
-    <span className="split">
-      <button className="split-main" onClick={act} title={note ?? undefined}>
-        {note ?? (effective === 'send' ? 'Send to Claude Code' : 'Copy prompt')}
+    <span className={`fixmenu ${small ? 'small' : ''}`}>
+      <button className="fix-main" onClick={() => setOpen((o) => !o)}>
+        {note ?? 'Fix with Claude Code'} <span className="caret">▾</span>
       </button>
-      {available && <button className="split-arrow" onClick={flip} title={mode === 'send' ? 'Switch to copying the prompt' : 'Switch to sending it to Claude Code'}>⇄</button>}
+      {open && (
+        <div className="menu" onMouseLeave={() => setOpen(false)}>
+          {available && (
+            <button onClick={send}>
+              <b>Send to Claude Code</b>
+              <span>Appears above the prompt of the session open in this project</span>
+            </button>
+          )}
+          <button onClick={copy}>
+            <b>Copy the prompt</b>
+            <span>Paste it into any Claude Code session yourself</span>
+          </button>
+        </div>
+      )}
     </span>
   )
 }

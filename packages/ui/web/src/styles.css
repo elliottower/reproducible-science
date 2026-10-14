@@ -187,3 +187,29 @@ tr.sel { background: #f3f2fe !important; }
 .ov-link { border: none; background: none; color: var(--accent); padding: 6px 0 0; font-size: 12px; }
 .ov-card.warn { border-color: #e9c27a; }
 .ov-head .dot.warn { background: #e0a43a; }
+/* overview: vertical, in the order the work happens */
+.ov-list { max-width: 820px; margin: 0 auto; display: flex; flex-direction: column; gap: 10px; }
+.ov-row { display: flex; gap: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 14px 18px; }
+.ov-row.warn { border-color: #e9c27a; }
+.ov-row.bad { border-color: #efb4aa; }
+.ov-step { width: 26px; height: 26px; border-radius: 50%; background: #f0f1f4; color: var(--muted); display: grid; place-items: center; font-size: 12px; font-weight: 600; flex-shrink: 0; }
+.ov-main { flex: 1; min-width: 0; }
+.ov-title { display: flex; align-items: center; gap: 8px; }
+.ov-title h3 { margin: 0; font-size: 13px; color: var(--muted); font-weight: 500; }
+.ov-headline { font-size: 17px; font-weight: 600; margin-top: 4px; }
+.ov-row .dot.warn { background: #e0a43a; }
+.ov-row .dot.none { background: #b8bdcb; }
+.ov-actions { display: flex; gap: 16px; align-items: center; }
+.ov-actions:empty { display: none; }
+/* Fix with Claude Code menu */
+.fixmenu { position: relative; display: inline-block; }
+.fix-main { border: 1px solid #6c62f0; background: #4f43dd; color: #fff; border-radius: 6px; padding: 4px 12px; font-size: 12px; }
+.fix-main:hover { background: #3f34c4; }
+.fixmenu.small .fix-main { font-size: 11.5px; padding: 3px 10px; }
+.caret { opacity: 0.8; margin-left: 2px; }
+.menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 20; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 6px 20px rgba(15, 20, 36, 0.15); min-width: 290px; padding: 4px; }
+.fixmenu.small .menu { left: 0; right: auto; }
+.menu button { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; text-align: left; border: none; background: none; padding: 8px 10px; border-radius: 6px; color: var(--text); }
+.menu button:hover { background: #f3f2fe; }
+.menu b { font-size: 12.5px; font-weight: 500; }
+.menu span { font-size: 11px; color: var(--muted); }

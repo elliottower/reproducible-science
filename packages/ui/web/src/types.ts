@@ -78,6 +78,7 @@ export interface Graph {
     failing: number
     reruns: number
     stale_steps: number
+    run_backed?: number
     checks: number
     last_check: string | null
   }
@@ -90,4 +91,5 @@ export interface StatusField {
   text: string
   ok: boolean | null
   next?: string
+  counts?: Record<string, number>
 }

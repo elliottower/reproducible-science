@@ -278,6 +278,7 @@ def status_lines(project: pathlib.Path, report: dict) -> dict:
                 "text": (f"{changed} changed, " if changed else "") + (f"{sealed}/{runs} runs sealed" if runs else "0 runs")
                 + f", {plural(len(claims), 'claim')} bound",
                 "ok": not changed and sealed == runs,
+                "counts": {"runs": runs, "sealed": sealed, "bound": len(claims), "changed": changed},
             }
         else:
             m = re.match(r"^(?:CHAIN|NO)\s+(\w+)", head)
@@ -292,7 +293,7 @@ def status_lines(project: pathlib.Path, report: dict) -> dict:
         for f in d.rglob("*"):
             if f.is_file():
                 pinned_n += len(re.findall(r"^[ \t]*-?[ \t]*exact:", f.read_text(errors="replace"), flags=re.M))
-    fields["citations"] = ({"text": f"{pinned_n:,} pinned, not verified", "ok": None} if folders
+    fields["citations"] = ({"text": f"{pinned_n:,} pinned, not verified", "ok": None, "counts": {"pinned": pinned_n}} if folders
                            else {"text": "none pinned", "ok": None, "next": "citations pin"})
 
     outcomes = collections.Counter("verified" if d["comparison"] == "match" and d["execution"] == "completed" else d["comparison"]
@@ -470,6 +471,12 @@ def build(project: pathlib.Path, out_path: pathlib.Path, groups_file: pathlib.Pa
     for (art, sec), n in edge_counts.items():
         edges.append({"source": art, "target": f"sec:{sec}", "kind": "supports", "count": n})
 
+    # A claim is backed by a run when a file it reads a number from was written by a run the
+    # ledger recorded. Derived from the files, so no sentence has to be bound by hand.
+    by_id = {n["id"]: n for n in nodes if n["type"] == "artifact"}
+    run_backed = sum(
+        1 for c in report["claims"]
+        if any(by_id.get(d["artifact_id"], {}).get("run") for d in c["decisions"] if d["kind"] != "quote"))
     out = {
         "project": report["project"],
         "built_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
@@ -485,6 +492,7 @@ def build(project: pathlib.Path, out_path: pathlib.Path, groups_file: pathlib.Pa
             "reruns": int(staleness.get("reruns") or 0),
             "stale_steps": sum(1 for r in staleness["regenerations"] if r["state"] == "stale"),
             "checks": len(checks),
+            "run_backed": run_backed,
             "relabelled_tables": fixed_tables,
             "last_check": checks[-1]["timestamp"] if checks else None,
         },

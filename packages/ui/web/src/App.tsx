@@ -141,7 +141,7 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
               </button>
             </>
           )}
-          <ClaudeButton prompt={projectPrompt(graph, graph.project_dir ?? null)} subject="project" />
+          <ClaudeButton prompt={projectPrompt(graph, graph.project_dir ?? null)} subject="whole project" />
           {recheck.message && <span className="error-note">{recheck.message}</span>}
         </header>
         <div className="toolbar" style={mode === 'overview' ? { display: 'none' } : undefined}>
