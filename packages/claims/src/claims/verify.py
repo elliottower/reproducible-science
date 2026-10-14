@@ -74,7 +74,13 @@ from claims.models import (
     Warning_,
 )
 from claims.resolve import Resolution, resolve
-from claims.toolchain import DISTRIBUTION, UNKNOWN, adapter_version, binary_version
+from claims.toolchain import (
+    DISTRIBUTION,
+    UNKNOWN,
+    adapter_version,
+    binary_version,
+    text_reader,
+)
 
 #: The distribution that ships `claims.adapters`, which is what reads a JSON pointer, a
 #: delimited cell, a SQLite row or an array element. Its name on PyPI, because that is what
@@ -119,15 +125,25 @@ _VALIDITY_RANK = {
 
 
 def _base(
-    claim: Claim, evidence: Evidence, backend: Backend, extraction_digest: str = UNKNOWN
+    claim: Claim,
+    evidence: Evidence,
+    backend: Backend,
+    extraction_digest: str = UNKNOWN,
+    text: pathlib.Path | None = None,
 ) -> dict:
     """The fields every decision carries, whichever stage it stopped at.
 
     `extraction_digest` defaults to `unknown` rather than to an empty string: a decision the
     engine produced was one an extraction was sought for, and the empty value is reserved for
     a decision no backend produced.
+
+    `text` is the file the assertion reads as text, where it reads one. A text that a library
+    reads in this process, a `.docx`, names that library and its version as the tool in place
+    of the backend's own.
     """
     named = evidence.artifacts
+    reader = text_reader(text) if text is not None else None
+    tool, tool_version = reader or (backend.tool, backend.tool_version)
     return {
         "claim_id": claim.id,
         "claim_digest": claim.digest.value,
@@ -138,10 +154,20 @@ def _base(
         "artifact_id": named[0] if len(named) == 1 else "",
         "backend": backend.kind,
         "backend_version": backend.version,
-        "tool": backend.tool,
-        "tool_version": backend.tool_version,
+        "tool": tool,
+        "tool_version": tool_version,
         "extraction_digest": extraction_digest,
     }
+
+
+def _text(evidence: Evidence, paths: Mapping[str, pathlib.Path]) -> pathlib.Path | None:
+    """The file an assertion reads as text: a quotation's, or a prose address's. None for
+    every other assertion, and for one whose file is not in `paths`."""
+    if isinstance(evidence, QuoteEvidence) or (
+        isinstance(evidence, ValueEvidence) and isinstance(evidence.locator, ProseLocator)
+    ):
+        return paths.get(evidence.artifact)
+    return None
 
 
 # -------------------------------------------------------------------------------- quotations
@@ -272,7 +298,7 @@ class QuoteBackend:
         except SourceUnreadableError:
             extraction_digest = UNKNOWN
 
-        base = _base(claim, evidence, self, extraction_digest)
+        base = _base(claim, evidence, self, extraction_digest, text=path)
         extraction, comparison, reason = _QUOTE_STATE[result.state]
         if Warning_.WRONG_PAGE in warnings:
             # `page` is documented as verified when present, and the passage is not on the
@@ -700,7 +726,7 @@ class ValueBackend:
         if not isinstance(evidence, (MetricEvidence, TableCellEvidence, ValueEvidence)):
             raise TypeError(f"{type(self).__name__} received {type(evidence).__name__}")
         path = paths[evidence.artifact]
-        base = _base(claim, evidence, self)
+        base = _base(claim, evidence, self, text=_text(evidence, paths))
         base["conversion"] = evidence.conversion
         completed = {"execution": ExecutionStatus.COMPLETED}
         no_compare = {"comparison": ComparisonStatus.NOT_APPLICABLE}
@@ -1543,7 +1569,7 @@ def check_evidence(
     if backend is None:
         raise UnknownEvidenceKindError(evidence.kind, tuple(registry))
 
-    base = _base(claim, evidence, backend)
+    base = _base(claim, evidence, backend, text=_text(evidence, paths))
     unchecked = {
         "execution": ExecutionStatus.UNAVAILABLE,
         "extraction": ExtractionStatus.NOT_ATTEMPTED,

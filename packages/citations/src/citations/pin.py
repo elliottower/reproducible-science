@@ -59,9 +59,10 @@ one source. Needs the `web` extra. See `web`.
     citations pin claims/notes2026.yaml --id second-run --occurrence 2 \
         --quote "the model reached an accuracy of 0.94 on the split"
 
-Where the source names a built-in `extractor`, the first quotation pinned also records
-`extractor_version` and `derived_sha256` in the source block: the version that read the file
-and the digest of the text it produced. Nobody computes that digest by hand, and a field
+Where a built-in extractor reads the source, named in it or chosen by its suffix, the first
+quotation pinned also records `extractor` where the source names none, `extractor_version`
+and `derived_sha256` in the source block: the extractor and version that read the file and the
+digest of the text it produced. Nobody computes that digest by hand, and a field
 nobody fills in is a check nobody runs. A later quotation is refused where the extractor no
 longer produces that text, because the file would then hold quotations taken from two
 different readings under one digest.
@@ -171,23 +172,29 @@ def anchors(cf: ClaimFile, quote: str, occurrence: int, allowed: frozenset[str])
 def reading_record(cf: ClaimFile, r: V.Result) -> dict:
     """What the source block gains from this pin: the extractor's version and its text's digest.
 
-    Empty for a source naming no built-in extractor, and for one that already records both.
-    Raises `PinRefused` where the recorded digest is not the digest of the text this passage
-    was just found in.
+    The version recorded is the one that read the file for this pin, which `r` names. A source
+    naming no extractor that a built-in extractor read by its suffix gains the extractor's name
+    too, so a later version of it never reads quotations pinned under this one. Empty for a
+    source no built-in extractor read, and for one that already records all of it. Raises
+    `PinRefused` where the recorded digest is not the digest of the text this passage was just
+    found in.
     """
-    if not cf.source.extractor:
+    if not (cf.source.extractor or extractors.is_builtin(r.extractor)):
         return {}
+    name, _, version = r.extractor.split()[0].partition("@") if r.extractor else ("", "", "")
     recorded = (cf.source.derived_sha256 or "").strip().lower()
     if recorded and recorded != r.extraction_digest:
         raise PinRefused(
-            f"{cf.source.extractor} now produces other text from this source than the text its "
-            f"quotations were pinned in (recorded {recorded[:12]}, produced "
+            f"{cf.source.extractor or name} now produces other text from this source than the "
+            f"text its quotations were pinned in (recorded {recorded[:12]}, produced "
             f"{r.extraction_digest[:12]}). Run `citations verify` to see which quotations still "
             f"resolve before adding another."
         )
     record: dict = {}
-    if cf.source.extractor_version is None:
-        record["extractor_version"] = extractors.EXTRACTORS[cf.source.extractor].version
+    if not cf.source.extractor and name:
+        record["extractor"] = name
+    if cf.source.extractor_version is None and version.isdigit():
+        record["extractor_version"] = int(version)
     if not recorded:
         record["derived_sha256"] = r.extraction_digest
     return record
@@ -349,6 +356,8 @@ def main(argv: list[str] | None = None) -> int:
 
     allowed = V.DEFAULT_EXTRACTORS | frozenset(a.allow_extractor)
     r = resolve(cf, a.quote, a.page, allowed)
+    if cf.version_inferred:
+        print(cf.version_inferred)
 
     prefix = suffix = ""
     if a.occurrence is not None and r.state in ("found", "ambiguous"):

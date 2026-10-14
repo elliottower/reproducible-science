@@ -348,7 +348,7 @@ A number is digits with an optional sign, grouping commas, a decimal point and a
 | `name` | digits with a letter immediately before them, `v15zw` and `sha256sum`, digits a hyphen or underscore joins to a part that holds a letter, `gpt-4` and `9750` in `i7-9750h`, and digits that open a run of letters and digits holding more digits, as a hexadecimal digest does |
 | `version or section` | digits joined by two or more full stops, `0.5.5` |
 | `citation` | whole numbers from 1 up, alone in square brackets: `[12]`, `[3, 7-9]` |
-| `label` | the number after `section`, `figure`, `table`, `equation`, `appendix`, `chapter`, `page`, `algorithm`, `listing`, `theorem`, `lemma`, `proposition`, `corollary`, `definition`, `footnote`, `step` or `line`, or the usual abbreviation of one, and both ends of a range written `2-4` |
+| `label` | the number after `section`, `figure`, `table`, `equation`, `appendix`, `chapter`, `page`, `algorithm`, `listing`, `theorem`, `lemma`, `proposition`, `corollary`, `definition`, `footnote`, `endnote`, `step` or `line`, or the usual abbreviation of one, and both ends of a range written `2-4` |
 | `list marker` | a whole number of one or two digits alone in parentheses, `(1)` |
 | `ordinal` | digits with `st`, `nd`, `rd` or `th` attached |
 | `year` | four digits from 1800 to 2099 with no sign, separator, decimal point or percent sign |
@@ -462,12 +462,15 @@ A number is checked at an address the manifest declares, in the addressing the f
 | NumPy `.npy`, `.npz` | `array` | array name and index | `arrays` |
 | HDF5 `.h5`, NetCDF `.nc` | `array` | dataset path and index, `/runs/accuracy` | `hdf5`, `netcdf` |
 | PDF, text | `prose` | the literal text on either side of the value | |
+| Word `.docx` | `prose` | the literal text on either side of the value | |
 
 ```bash
 pip install "reproducible-science[parquet,sheets]"
 ```
 
 A predicate matching two rows is reported as ambiguous and never resolved to the first. Without the extra a format needs, its checks are `unchecked` and name the extra to install. A file that is not what its suffix says is `unchecked` as unreadable. A NetCDF value is the one a NetCDF reader reports, unpacked by its `scale_factor` and `add_offset`, and a fill value is absent.
+
+A Word manuscript is read by version 2 of the `docx-text` extractor of `citations`, for a `quote`, a prose address and `repro numbers` alike: the body in document order, with tables, text boxes, content controls and field results where they stand, then footnotes and endnotes marked `Footnote 1.` and `Endnote 1.`, then each header and footer once. Tracked changes are read as accepted. Comments are not read, so a quotation never verifies against a reviewer's note. The full order is in the [citations page](/tools/citations/#reading-workbooks-docx-article-xml-and-html). A decision on a `.docx` names `citations` and its version as its tool, beside the digest of the text it produced. A `quote` or a prose address in a workbook names `openpyxl` for `.xlsx` and `.xlsm`, `xlrd` for `.xls` and `citations` for `.csv`, whose `sheet-rows` extractor reads it with the standard library.
 
 Pickles (`.pkl`, `.joblib`, `.pt`) are never opened, because reading one runs code. An `.rds` is parsed by [`rdata`](https://pypi.org/project/rdata/), which starts no R process and evaluates nothing in the file.
 
