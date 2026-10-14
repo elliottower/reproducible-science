@@ -794,6 +794,45 @@ A run in CI adds three things to a run on the author's machine: the check ran on
 
 This repository keeps a `repro.yaml` that declares no command, and none of the other records, so it runs `repro ci claims` on itself, in `.github/workflows/claims.yml`.
 
+## Badges with counts
+
+```bash
+cd my_project
+repro badges
+```
+
+```text
+[![prereg: 1 plan frozen](https://img.shields.io/static/v1?label=prereg&message=1%20plan%20frozen&color=2da44e&labelColor=24292f&logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2Zy...)](https://reproducible.science/tools/repro/#prereg-in-ci)
+[![results: 19/19 runs sealed](https://img.shields.io/static/v1?label=results&message=19%2F19%20runs%20sealed&color=2da44e&labelColor=24292f&logo=...)](https://reproducible.science/tools/repro/#results-in-ci)
+[![claims: 74/76 verified](https://img.shields.io/static/v1?label=claims&message=74%2F76%20verified&color=cf222e&labelColor=24292f&logo=...)](https://reproducible.science/tools/repro/#claims-in-ci)
+[![citations: 199 pinned](https://img.shields.io/static/v1?label=citations&message=199%20pinned&color=0969da&labelColor=24292f&logo=...)](https://reproducible.science/tools/repro/#citations-in-ci)
+[![reproduced: 6/7](https://img.shields.io/static/v1?label=reproduced&message=6%2F7&color=bf8700&labelColor=24292f&logo=...)](https://reproducible.science/tools/repro/#reruns-in-ci)
+```
+
+`repro badges` runs each check the project keeps a record for, as the matching `repro ci` command runs it, and prints one badge per check whose message is what that check counted. A badge is a static shields.io image: the label, the count and the colour are in its address, so it draws for a private repository, and the command reaches no network. Each badge links to the section of this page that says what its check compares.
+
+| badge | counts | green | amber | red |
+|---|---|---|---|---|
+| `prereg` | plans frozen | every plan frozen and unchanged | a plan or an amendment never frozen | a frozen plan changed |
+| `results` | runs with a seal before them, of the ledger's runs; runs named `smoke_`, `prefreeze_`, `test_` or `dryrun_` are left out | every run sealed and every recorded file as recorded | a run with no seal before it | the chain does not verify, or a recorded file changed, is missing or was resealed, each counted on the badge as `2 changed` or `1 resealed` |
+| `claims` | assertions verified, of every assertion | every assertion verified | none mismatched, and some were not found, not checked or could not be read | an assertion mismatched |
+| `citations` | quotations found, of every quotation pinned | every quotation found | none not found, and some unchecked | a quotation not found, or a source not the pinned bytes |
+| `reproduced` | declared commands with a current re-run on record, as `repro stale` reports them | every command current | a command stale, never re-run or undetermined | |
+
+Where no source of any pinned quotation is on the machine, nothing was checked, and the `citations` badge reads `199 pinned` in blue. A check the project keeps no record for has no badge, and standard error says which were left out and why, in the words `repro ci init` uses. `--all` gives each of those a gray `none declared` badge instead.
+
+`repro badges --readme` writes the badges on one line between two marker lines in `README.md`, under the first heading, where `repro ci init --readme` puts its line:
+
+```markdown
+<!-- repro badges: start -->
+[![prereg: 1 plan frozen](...)](...) [![results: 19/19 runs sealed](...)](...) ...
+<!-- repro badges: end -->
+```
+
+A second run replaces what is between the markers and changes no other byte of the file. `repro badges --check` writes nothing, exits 0 where the block holds what the project gives now, and exits 1 where it does not, or where `README.md` has no block, naming each badge that is out of date and the command that refreshes it. It exits 2 where there is no `README.md` or a block is not closed. Run in a pre-commit hook, it stops a commit whose badges no longer say what the files say.
+
+A badge from `repro badges` is a count written from a run on the author's machine, with the files that machine holds; a badge from `repro ci init` is a status GitHub computed on its runner from the files in the repository.
+
 ## On a pull request, as SARIF
 
 ```yaml
