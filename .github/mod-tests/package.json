@@ -1,0 +1,8 @@
+{
+  "name": "mod-tests",
+  "description": "Pins the Claude Code that CI runs the mod's tests with. Nothing here is published.",
+  "private": true,
+  "devDependencies": {
+    "@anthropic-ai/claude-code": "2.1.296"
+  }
+}
