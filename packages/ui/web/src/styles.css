@@ -310,3 +310,11 @@ td .pill { white-space: nowrap; }
 .src-words { margin-bottom: 6px; line-height: 1.45; }
 .src-words .quote { font-family: Georgia, serif; font-size: 13px; }
 mark { background: #fff1b8; padding: 0 1px; border-radius: 2px; }
+.note-wrap { margin-top: 4px; }
+.note-btn { border: none; background: #fdf2dc; color: #a15c00; border-radius: 4px; padding: 0 6px; font-size: 10.5px; cursor: pointer; }
+.seg-right { float: right; display: flex; gap: 12px; margin-top: 6px; }
+.link-btn { border: none; background: none; color: var(--accent); font-size: 12px; cursor: pointer; padding: 0; }
+.link-btn:hover { text-decoration: underline; }
+.fold-btn { border: none; background: none; color: var(--muted); cursor: pointer; padding: 0 4px 0 0; font-size: 11px; }
+tr.folded { cursor: pointer; }
+tr.folded:hover { background: #fafbfc; }

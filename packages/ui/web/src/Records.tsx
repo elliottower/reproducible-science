@@ -111,39 +111,71 @@ function Marked({ text, against }: { text: string; against: Set<string> }) {
   )
 }
 
+function Note({ text }: { text: string }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="note-wrap">
+      <button className="note-btn" onClick={() => setOpen((o) => !o)}>note {open ? '▾' : '▸'}</button>
+      {open && <div className="cite-note">{text}</div>}
+    </div>
+  )
+}
+
 function CitationsByClaim({ graph, query }: { graph: Graph; query: string }) {
   const q = query.trim().toLowerCase()
   const sources = (graph.tabs?.citations.sources ?? []).filter((s) => !q || JSON.stringify(s).toLowerCase().includes(q))
+  const [closed, setClosed] = useState<Set<string>>(new Set())
+  const flip = (f: string) => setClosed((prev) => { const n = new Set(prev); if (n.has(f)) n.delete(f); else n.add(f); return n })
   return (
+    <>
+    <div className="seg-right">
+      <button className="link-btn" onClick={() => setClosed(new Set())}>Expand all</button>
+      <button className="link-btn" onClick={() => setClosed(new Set(sources.map((s) => s.file)))}>Collapse all</button>
+    </div>
     <table className="cite-table">
       <thead><tr><th>Source</th><th style={{ width: '27%' }}>Manuscript text</th><th style={{ width: '22%' }}>Reading of the source</th><th style={{ width: '32%' }}>Source's words</th><th>Pinned</th></tr></thead>
       <tbody>
         {sources.map((s) => {
           const words = new Set(s.cited_in.flatMap((c) => c.text.toLowerCase().split(/\s+/).map((w) => w.replace(/[^a-z0-9-]/g, ''))))
+          if (closed.has(s.file)) {
+            return (
+              <tr key={s.file} className="src-start folded" onClick={() => flip(s.file)}>
+                <td><span className="mono src-link">▸ {s.citation}</span></td>
+                <td colSpan={3} className="small muted">
+                  {s.statements.length} statement{s.statements.length === 1 ? '' : 's'} · {s.pinned} quote{s.pinned === 1 ? '' : 's'}
+                  {s.cited_in.length ? ` · cited ${s.cited_in.length === 1 ? 'once' : `${s.cited_in.length} times`}` : ' · not cited in any pinned .tex file'}
+                </td>
+                <td>{s.sha256 ? <span className="pill good">Pinned</span> : <span className="pill bad">Not pinned</span>}</td>
+              </tr>
+            )
+          }
           return s.statements.map((st, i) => (
             <tr key={`${s.file}-${st.id}`} className={`static ${i === 0 ? 'src-start' : ''}`}>
               {i === 0 && (
-                <td rowSpan={s.statements.length}>{s.url ? <a className="mono src-link" href={s.url} target="_blank" rel="noreferrer">{s.citation}</a> : <span className="mono">{s.citation}</span>}</td>
+                <td rowSpan={s.statements.length}>
+                  <button className="fold-btn" onClick={() => flip(s.file)} title="Collapse">▾</button>
+                  {s.url ? <a className="mono src-link" href={s.url} target="_blank" rel="noreferrer">{s.citation}</a> : <span className="mono">{s.citation}</span>}
+                </td>
               )}
               {i === 0 && (
                 <td rowSpan={s.statements.length} className="small">
                   {s.cited_in.length ? s.cited_in.map((c, k) => (
                     <div key={k} className="ms-sentence">
                       “{c.text}”
-                      {c.section && <div className="muted">{c.section}</div>}
+                      {c.section && <div className="muted">(section: {c.section})</div>}
                     </div>
-                  )) : <span className="muted">Not cited in the manuscript files repro.yaml pins.</span>}
+                  )) : <span className="muted">Not cited in any .tex file pinned in repro.yaml.</span>}
                 </td>
               )}
               <td className="small">
                 {st.statement}
-                {st.notes && <div className="cite-note">{st.notes}</div>}
+                {st.notes && <Note text={st.notes} />}
               </td>
               <td>
                 {st.quotes.map((qq, k) => (
                   <div key={k} className="src-words">
                     <span className="quote">“<Marked text={qq.exact} against={words} />”</span>
-                    {qq.section && <span className="muted small"> · {qq.section}</span>}
+                    {qq.section && <div className="muted small">(section: {qq.section})</div>}
                   </div>
                 ))}
               </td>
@@ -155,6 +187,7 @@ function CitationsByClaim({ graph, query }: { graph: Graph; query: string }) {
         })}
       </tbody>
     </table>
+    </>
   )
 }
 
@@ -205,7 +238,7 @@ export function CitationsTab({ graph, query }: { graph: Graph; query: string }) 
                 {stSpan > 0 && (
                   <td className="small" rowSpan={stSpan}>
                     {st.statement}
-                    {st.notes && <div className="cite-note">{st.notes}</div>}
+                    {st.notes && <Note text={st.notes} />}
                   </td>
                 )}
                 {srcSpan > 0 && (
