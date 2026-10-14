@@ -142,7 +142,17 @@ function Canvas({ graph }: { graph: Graph }) {
                 nodes={flow.nodes}
                 edges={edges}
                 nodeTypes={nodeTypes}
-                onNodeClick={(_, n) => setSelected(n.type === 'groupOpen' ? null : n.id)}
+                onNodeClick={(_, n) => {
+                if (n.type === 'groupOpen') return setSelected(null)
+                setSelected(n.id)
+                // Pan so the clicked node sits at the centre; the zoom stays where the reader left it.
+                const inner = rf.getInternalNode(n.id)
+                if (!inner) return
+                const pos = inner.internals.positionAbsolute
+                const w = inner.measured.width ?? 0
+                const h = inner.measured.height ?? 0
+                rf.setCenter(pos.x + w / 2, pos.y + h / 2, { zoom: rf.getZoom(), duration: 250 })
+              }}
                 onPaneClick={() => setSelected(null)}
                 onNodeDoubleClick={(_, n) => n.id.startsWith('group:') && toggle(n.id.slice(6))}
                 nodesDraggable={false}
