@@ -638,6 +638,7 @@ establishes that the file has not changed and establishes nothing about the read
 | `pdftotext` | the same binary, poppler's reading order | (as above) |
 | pypdf | its own content-stream parser | `pip install "citations[pypdf]"` |
 | pdfplumber | pdfminer.six plus its own layout layer | `pip install "citations[pdfplumber]"` |
+| `pdftotext -tsv`, by column | poppler's word boxes, each line split at the gutter | poppler 22.08 or later |
 
 Poppler is preferred and recommended. Where it is absent, or fails on a document, the chain
 falls through to whichever pure-Python reader is installed and records the substitution as a
@@ -652,6 +653,15 @@ while reading order preserves the sentence and misplaces the subscripts beside i
 passage checks, reading order resolved 59 that `-layout` missed and missed 29 it resolved.
 Neither is right in general, so `-layout` reads a document by default and both are consulted
 under `--triangulate`, where a disagreement between them is reported rather than resolved.
+
+Where a gutter is narrow, every one of those readers joins a line of the left column to the line
+beside it, so a sentence that wraps inside a column comes out with the other column's words
+spliced into it. Before a passage is called `not found`, one more reading is asked: poppler's
+word boxes, with each line split at the page's gutter and every left half read before any right
+half, between lines that span it. A page with no gutter at least six points wide reads top to
+bottom. A passage found this way is recorded as a fallback naming `pdftotext -tsv, by column`.
+It is not consulted under `--triangulate`, because it is poppler's own glyphs in another order,
+and it does not apply to a source that declares `extract_cmd`.
 
 A source that declares `extract_cmd` does not enter that chain. Its author has named the
 program that produces the text they quote, so it runs or the check is `unchecked` with its

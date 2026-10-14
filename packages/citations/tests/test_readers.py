@@ -502,6 +502,122 @@ def test_the_two_poppler_modes_are_both_consulted_and_are_not_the_same_reading(t
     assert PROSE[0].lower() in V.passage_fold(flow.text)
 
 
+def two_column_pdf(
+    path: pathlib.Path, rows: list[tuple[str, str] | str], right_x: int
+) -> pathlib.Path:
+    """A single-page PDF set in two columns, the right one starting at `right_x` points.
+
+    A row is a pair of lines set side by side at one height, or a single line set across the
+    page from the left margin. Built like `one_page_pdf`, with each line positioned by `Tm`.
+    """
+    body = ["BT", "/F1 10 Tf"]
+    y = 720
+    for row in rows:
+        pair = (row, None) if isinstance(row, str) else row
+        body += [f"1 0 0 1 72 {y} Tm", f"({pair[0]}) Tj"]
+        if pair[1] is not None:
+            body += [f"1 0 0 1 {right_x} {y} Tm", f"({pair[1]}) Tj"]
+        y -= 12
+    body.append("ET")
+    stream = zlib.compress("\n".join(body).encode())
+    objects = [
+        b"<< /Type /Catalog /Pages 2 0 R >>",
+        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R "
+        b"/Resources << /Font << /F1 5 0 R >> >> >>",
+        b"<< /Length %d /Filter /FlateDecode >>\nstream\n" % len(stream) + stream + b"\nendstream",
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+    ]
+    out = bytearray(b"%PDF-1.4\n")
+    offsets = []
+    for i, obj in enumerate(objects, start=1):
+        offsets.append(len(out))
+        out += b"%d 0 obj\n" % i + obj + b"\nendobj\n"
+    xref = len(out)
+    out += b"xref\n0 %d\n" % (len(objects) + 1)
+    out += b"0000000000 65535 f \n"
+    for offset in offsets:
+        out += b"%010d 00000 n \n" % offset
+    out += b"trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n" % (
+        len(objects) + 1,
+        xref,
+    )
+    path.write_bytes(bytes(out))
+    return path
+
+
+#: Two columns 9 points apart, the left one filled to within a point of the middle of the page.
+#: Every reader here joins each left line to the right line beside it.
+NARROW = [
+    (
+        "The measured angle matches the Haar expectation",
+        "A second column carries its own text about the",
+    ),
+    (
+        "for this ensemble of unitaries, and the residual is",
+        "next subject entirely, and is read beside the first",
+    ),
+    (
+        "small against the sampling error in that section.",
+        "one by anyone who opens the page in a viewer.",
+    ),
+]
+WRAPPED = (
+    "The measured angle matches the Haar expectation for this ensemble of unitaries, and the "
+    "residual is small"
+)
+
+
+def needs_poppler() -> None:
+    if shutil.which("pdftotext") is None:
+        pytest.skip("poppler is not installed")
+
+
+@pytest.mark.integration
+def test_a_sentence_wrapping_inside_a_narrow_column_is_found_by_reading_the_column(tmp_path):
+    needs_poppler()
+    source = two_column_pdf(tmp_path / "narrow.pdf", NARROW, right_x=308)
+    for name in V.available_extractors():
+        text = V.passage_fold(V.reading_with(source, extractor=name).text)
+        assert WRAPPED.lower() not in text, f"{name} already reads the column; the case is moot"
+    r = V.check_one(WRAPPED, source)
+    assert (r.state, r.extractor, r.fallback) == ("found", V.COLUMNS, True)
+    assert V.DEFAULT_EXTRACTOR in r.fallback_reason
+
+
+@pytest.mark.integration
+def test_the_column_reading_puts_the_left_column_before_the_right_one(tmp_path):
+    needs_poppler()
+    source = two_column_pdf(tmp_path / "narrow.pdf", NARROW, right_x=308)
+    lines = V.reading_with(source, extractor=V.COLUMNS).text.splitlines()
+    assert lines == [left for left, _ in NARROW] + [right for _, right in NARROW]
+
+
+@pytest.mark.integration
+def test_a_line_spanning_the_gutter_divides_the_columns_above_it_from_those_below(tmp_path):
+    needs_poppler()
+    across = "A heading set across the whole width of the page, from one margin to the other margin"
+    rows = [*NARROW[:2], across, NARROW[2]]
+    source = two_column_pdf(tmp_path / "spanning.pdf", rows, right_x=308)
+    lines = V.reading_with(source, extractor=V.COLUMNS).text.splitlines()
+    assert lines == [NARROW[0][0], NARROW[1][0], NARROW[0][1], NARROW[1][1], across, *NARROW[2]]
+
+
+@pytest.mark.integration
+def test_a_page_in_one_column_reads_top_to_bottom_by_column_too(tmp_path):
+    needs_poppler()
+    source = one_page_pdf(tmp_path / "prose.pdf", PROSE)
+    assert V.reading_with(source, extractor=V.COLUMNS).text.splitlines() == PROSE
+
+
+def test_the_column_reading_is_asked_last_and_never_triangulates(monkeypatch):
+    # It is poppler's own glyphs in another order, so its agreeing with the two poppler modes
+    # would count one reading three times.
+    monkeypatch.setattr(V.shutil, "which", lambda name: f"/x/{name}")
+    assert V.COLUMNS not in V.available_extractors()
+    assert V.rescuers()[-1] == V.COLUMNS
+
+
 # --- a failure is an answer, and answers are cached -------------------------------------------
 
 
