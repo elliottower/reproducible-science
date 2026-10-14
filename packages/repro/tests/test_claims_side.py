@@ -31,6 +31,7 @@ CLAIMS = (
     "repro.corpus",
     "repro.regression",
     "repro.provenance",
+    "repro.cli_claims",
 )
 
 #: Modules that run a command, write the record of re-runs, or drive another tool.
