@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_serializer
 
 from claims.core.checks import CheckedAssertion, RecordSetAside, RecordState
 from claims.core.claims import Availability, Registration
-from claims.core.evidence import Conversion, Statistic
+from claims.core.evidence import Basis, Conversion, Statistic
 from claims.core.manifest import RegenerationState
 from claims.core.outcomes import (
     Decision,
@@ -108,10 +108,17 @@ class VerificationReport(BaseModel):
 
     @property
     def counts(self) -> dict[str, int]:
+        """Assertions by outcome. An inferred assertion nobody reviewed is counted under
+        `inferred_` and its outcome, a match as `inferred_matched`, so a total of `verified`
+        counts declared and reviewed assertions only."""
         tally: dict[str, int] = {}
         for claim in self.claims:
-            for outcome in claim.outcomes:
-                tally[outcome.value] = tally.get(outcome.value, 0) + 1
+            if claim.availability is Availability.NOT_OFFERED:
+                tally[Outcome.NOT_OFFERED.value] = tally.get(Outcome.NOT_OFFERED.value, 0) + 1
+                continue
+            for decision in claim.decisions:
+                key = f"inferred_{decision.said}" if decision.inferred else decision.outcome.value
+                tally[key] = tally.get(key, 0) + 1
         return tally
 
     def artifacts_with(self, validity: Validity) -> tuple[str, ...]:
@@ -426,6 +433,9 @@ class AssertionAccount(BaseModel):
     """That statistic of the stored values. None where one of them held no number."""
     outcome: Outcome
     reason: Reason
+    basis: Basis = Basis.DECLARED
+    """`inferred` where nobody accepted the assertion: its outcome is not counted as
+    verified, and `outcomes` leaves it out."""
     detail: str = ""
     state: Freshness
     warnings: tuple[Warning_, ...] = ()
@@ -476,6 +486,7 @@ class NotEstablishedKind(enum.StrEnum):
     NOT_FOUND = "not_found"
     ERROR = "error"
     NO_EVIDENCE = "no_evidence"
+    INFERRED = "inferred"
     UNDECLARED_INPUTS = "undeclared_inputs"
     ADDRESS = "address"
     COMPARISON = "comparison"
@@ -510,8 +521,10 @@ class ClaimAccount(BaseModel):
     findings: tuple[StaleFinding, ...] = ()
     not_established: tuple[NotEstablished, ...] = ()
     outcomes: dict[Outcome, int] = Field(default_factory=dict)
-    """How many of the claim's assertions have each outcome, in the order `Outcome` declares
-    them. An outcome no assertion has is left out."""
+    """How many of the claim's declared assertions have each outcome, in the order `Outcome`
+    declares them. An outcome no assertion has is left out."""
+    inferred: dict[Outcome, int] = Field(default_factory=dict)
+    """The same, for the claim's inferred assertions, which are never counted as verified."""
     states: dict[Freshness, int] = Field(default_factory=dict)
     """How many of the claim's assertions are in each state against the record of re-runs."""
     records: tuple[RecordState, ...] = ()

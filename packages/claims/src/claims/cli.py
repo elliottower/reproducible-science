@@ -8,8 +8,9 @@
     claims origins         compare each artifact copied from another repository with its origin
     claims export          write the check records in another format
     claims from-clew       read a SciTeX Clew claims.json into check records
+    claims open-items      count what a reader of another tool's files left open, and what is filled
 
-Each but the `from-` readers is also the `repro` command of the same name: `repro.cli` adds these functions to its
+Each but `open-items` and the `from-` readers is also the `repro` command of the same name: `repro.cli` adds these functions to its
 parser with `add_manifest` through `add_origins`, and `main` here adds them to the parser of
 `claims`. Each handler reads the name the user typed off the parsed arguments, so a message that
 says what to run next names a command that user has. Nothing here runs a declared command,
@@ -46,6 +47,7 @@ from claims.manifest import DEFAULT_NAME, find, load
 from claims.models import (
     AssertionAccount,
     Availability,
+    Basis,
     ChainNode,
     CheckedAssertion,
     ClaimAccount,
@@ -64,6 +66,8 @@ from claims.models import (
     Warning_,
 )
 from claims.numbers import numbers as run_numbers
+from claims.open_items import ClaimState, Tally, tally_json
+from claims.open_items import tally as run_tally
 from claims.origins import OriginCheck, OriginsReport, OriginState, fetch_url
 from claims.origins import origins as run_origins
 from claims.policy import PROFILES, Assessment, Policy
@@ -114,6 +118,11 @@ SYMBOL = {
     Outcome.ERROR: "ERR ",
     Outcome.NOT_OFFERED: "none",
 }
+
+
+#: Beside an inferred assertion, whatever its comparison found: a proposal nobody accepted is
+#: never shown as `ok`.
+INFERRED_SYMBOL = "inf "
 
 
 def cmd_manifest_init(args: argparse.Namespace) -> int:
@@ -373,16 +382,20 @@ def _verify_text(
             )
         for d in claim.decisions:
             mark = "" if d.is_authoritative else f"  <{d.validity.value}>"
+            mark += "  <inferred>" if d.inferred else ""
             note = f"  [{','.join(w.value for w in d.warnings)}]" if d.warnings else ""
             # Said outside the detail, which is cut short and would lose it.
             tie = f"  [exact tie: {d.tie.lower} or {d.tie.upper}]" if d.tie else ""
             print(
-                f"  {SYMBOL[d.outcome]}  {d.claim_id:<12} {d.kind:<8} "
+                f"  {INFERRED_SYMBOL if d.inferred else SYMBOL[d.outcome]}  {d.claim_id:<12} {d.kind:<8} "
                 f"{d.detail[:52]}{tie}{note}{mark}"
             )
 
     counts = report.counts
     print(f"\n  {', '.join(f'{v} {k}' for k, v in sorted(counts.items()))}")
+    if inferred := [d for d in report.decisions if d.inferred]:
+        matched = sum(d.outcome is Outcome.VERIFIED for d in inferred)
+        print(f"  {len(inferred)} inferred, {matched} of them matched, counted apart from verified")
     print(
         f"  policy {policy.name}: {'passed' if assessment.passed else 'FAILED'}"
         f"  ({len(assessment.errors)} errors, {len(assessment.warnings)} warnings)"
@@ -615,7 +628,11 @@ def _assertion_lines(assertion: AssertionAccount, paths: dict[str, str]) -> list
             "rounding half up prints one and half to even may print the other"
         )
     outcome = _said(assertion.outcome)
-    if (
+    if assertion.basis is Basis.INFERRED:
+        # Said as what the comparison found, never as `verified`: nobody accepted the address.
+        found = "matched" if assertion.outcome is Outcome.VERIFIED else outcome
+        outcome = f"{found}, inferred: not counted as verified"
+    elif (
         assertion.outcome not in (Outcome.VERIFIED, Outcome.MISMATCH)
         or assertion.reason is Reason.PLACES_MISMATCH
     ):
@@ -814,9 +831,14 @@ def _why_lines(account: ClaimAccount) -> list[str]:
         state: n for state, n in account.states.items() if state is not Freshness.NO_PRODUCER
     }
     count = sum(covered.values())
+    found = [f"{n} {_said(outcome)}" for outcome, n in outcomes.items()] + [
+        f"{n} inferred "
+        + ("that matched" if outcome is Outcome.VERIFIED else f"and {_said(outcome)}")
+        for outcome, n in account.inferred.items()
+    ]
     summary = (
         f"  {total} assertion{'' if total == 1 else 's'}: "
-        + (", ".join(f"{n} {_said(outcome)}" for outcome, n in outcomes.items()) or "none")
+        + (", ".join(found) or "none")
         + f"; {count} of {total} read{'s' if count == 1 else ''} a file with a recorded producer"
         + "".join(f", {n} {_said(state)}" for state, n in covered.items())
     )
@@ -1036,6 +1058,43 @@ def cmd_from_clew(args: argparse.Namespace) -> int:
         atomic_write(target, written)
     else:
         print(written, end="")
+    return 0
+
+
+def _tally_lines(found: Tally) -> list[str]:
+    """The claims by state, the items, and the assertions by basis and outcome."""
+    states = ", ".join(f"{n} {_said(state)}" for state, n in found.claims.items())
+    items = found.items
+    lines = [
+        f"  {found.total} claims: {states}",
+        f"  {found.claims[ClaimState.READER]} bound from the source alone, "
+        f"{found.left_open_by_reader} left open by the reader",
+        f"  {items['total']} items: {items['open']} open, {items['filled_by_inferred']} filled by "
+        f"an inferred assertion, {items['filled_by_declared_only']} by declared ones only",
+        f"  candidates: {items['with_unique_candidate']} items with a unique one, "
+        f"{items['with_several_candidates']} with several, "
+        f"{items['with_one_not_passing']} with one that fails the guards, "
+        f"{items['with_no_candidate']} with none",
+        f"  {items['filled']} filled, {items['filled_and_passing']} of them passing the check",
+    ]
+    for basis, outcomes in found.assertions.items():
+        counted = (
+            ", ".join(f"{n} {said.replace('_', ' ')}" for said, n in outcomes.items()) or "none"
+        )
+        lines.append(f"  {basis.value} assertions: {counted}")
+    if found.manifest_changed:
+        lines.append(f"  {found.manifest} has changed since the reader wrote it")
+    return lines
+
+
+def cmd_open_items(args: argparse.Namespace) -> int:
+    found = run_tally(Path(args.open_items))
+    if args.format == "json":
+        print(tally_json(found))
+        return 0
+    source = found.source
+    print(f"{found.open_items}: {found.manifest}, read by {source.reader} from {source.path}\n")
+    print("\n".join(_tally_lines(found)))
     return 0
 
 
@@ -1260,6 +1319,25 @@ def add_from_clew(sub, program: str = CLAIMS) -> None:
     p_from.set_defaults(func=cmd_from_clew, program=program)
 
 
+def add_open_items(sub, program: str = CLAIMS) -> None:
+    """`open-items`: count what a reader left open. Added to `claims`'s parser."""
+    p_open = sub.add_parser(
+        "open-items",
+        help="count what a reader of another tool's files left open, and what has been filled",
+        description=(
+            "Read an open-items file a reader wrote beside its draft manifest, check the draft "
+            f"as `{program} verify` does, and count each claim once: bound from the source "
+            "alone, every item filled by assertions that matched, filled by one that did not, "
+            "an item still open, or outside the items. Assertions are counted by basis and "
+            "outcome, and an inferred assertion that matched is never counted as verified. "
+            "Executes nothing, writes nothing, and exits 0 whatever it counts."
+        ),
+    )
+    p_open.add_argument("open_items", help="the open-items.json a reader wrote")
+    p_open.add_argument("--format", choices=("text", "json"), default="text")
+    p_open.set_defaults(func=cmd_open_items, program=program)
+
+
 def main(argv: list[str] | None = None, local_record: bool = True) -> int:
     """The `claims` command: the commands above, and nothing that runs one of yours."""
     parser = argparse.ArgumentParser(
@@ -1286,6 +1364,7 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
     add_export(sub, CLAIMS)
     add_origins(sub, CLAIMS)
     add_from_clew(sub, CLAIMS)
+    add_open_items(sub, CLAIMS)
 
     args = parser.parse_args(argv)
     args.local_record = local_record

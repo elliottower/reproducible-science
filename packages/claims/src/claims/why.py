@@ -26,6 +26,7 @@ from claims.exceptions import ReproError
 from claims.models import (
     AggregateEvidence,
     AssertionAccount,
+    Basis,
     ChainNode,
     Claim,
     ClaimAccount,
@@ -209,6 +210,23 @@ def _not_established(
             )
         )
     for assertion in assertions:
+        if assertion.basis is Basis.INFERRED:
+            lines.append(
+                NotEstablished(
+                    kind=NotEstablishedKind.INFERRED,
+                    subject=f"{assertion.kind} {assertion.name}".strip(),
+                    said="inferred, and "
+                    + (
+                        "matched"
+                        if assertion.outcome is Outcome.VERIFIED
+                        else assertion.outcome.value.replace("_", " ")
+                    )
+                    + ": proposed "
+                    "and not accepted by an author, so nothing establishes that the address is "
+                    "the claim's, and it is not counted as verified",
+                )
+            )
+    for assertion in assertions:
         if assertion.outcome in _NOT_CHECKED:
             reason = assertion.reason.value.replace("_", " ")
             lines.append(
@@ -311,6 +329,7 @@ def why(
             computed=decision.computed,
             outcome=decision.outcome,
             reason=decision.reason,
+            basis=decision.basis,
             detail=decision.detail,
             state=node.state,
             warnings=decision.warnings,
@@ -362,7 +381,8 @@ def why(
         for declared in (manifest.artifact(name),)
     )
     on_chain = {node.regeneration.id for node in chain if node.regeneration}
-    by_outcome = collections.Counter(assertion.outcome for assertion in assertions)
+    by_outcome = collections.Counter(a.outcome for a in assertions if a.basis is Basis.DECLARED)
+    by_inferred = collections.Counter(a.outcome for a in assertions if a.basis is Basis.INFERRED)
     by_state = collections.Counter(assertion.state for assertion in assertions)
 
     return ClaimAccount(
@@ -386,6 +406,7 @@ def why(
         set_aside=kept.set_aside,
         no_local_record=kept.no_local_record,
         outcomes={outcome: by_outcome[outcome] for outcome in Outcome if by_outcome[outcome]},
+        inferred={outcome: by_inferred[outcome] for outcome in Outcome if by_inferred[outcome]},
         states={state: by_state[state] for state in Freshness if by_state[state]},
     )
 
