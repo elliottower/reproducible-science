@@ -44,6 +44,9 @@ def tree(tmp_path, monkeypatch):
         monkeypatch.setattr(versions, name, copied(getattr(versions, name)))
     # `bump` names what it touched relative to the root, so the root is the copy too.
     monkeypatch.setattr(versions, "PROJECT_ROOT", tmp_path)
+    # The copies start where the tree stood before the candidate, whatever the tree holds now:
+    # once the release is cut, every candidate is below it and `bump` rightly refuses one.
+    versions.bump(versions.LAST_BEFORE_FLOOR, realign=True)
     return versions.PACKAGES
 
 
