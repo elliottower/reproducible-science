@@ -19,7 +19,7 @@ import re
 from provenance_core import sha256_of_tree
 
 from results import ledger, timeline
-from results.paths import RESULTS_DIR, ledger_path, record_path, require_root
+from results.paths import RESULTS_DIR, ledger_own, ledger_path, record_path, require_root
 
 ACCESS_LEVELS = [
     "nothing seen",
@@ -76,6 +76,21 @@ def init() -> int:
     return 0
 
 
+def own_files(p: pathlib.Path, root: pathlib.Path) -> str | None:
+    """Why `p` cannot be sealed or recorded as an output, where it is or holds the ledger's own
+    files; None where it is neither.
+
+    The ledger, its anchor `ledger.head` and the timestamp proofs change with every event, so a
+    seal of one is out of date at the next command and `verify --files` would report it as
+    changed for good. A directory holding `.results/` has the same defect through its digest.
+    """
+    if ledger_own(record_path(p, root)):
+        return "is one of the ledger's own files, which change with every event"
+    if p.is_dir() and root.resolve().is_relative_to(p):
+        return f"holds {RESULTS_DIR}/, whose files change with every event"
+    return None
+
+
 def seal(files: list[str], role: str) -> int:
     root = require_root()
     lp = ledger_path(root)
@@ -84,6 +99,10 @@ def seal(files: list[str], role: str) -> int:
     sealed: list[dict[str, str | int | list[str]]] = []
     for name in files:
         p = pathlib.Path(name).resolve()
+        if refusal := own_files(p, root):
+            print(f"not sealed: {name} {refusal}")
+            print("nothing was written. Seal the files the work reads and writes.")
+            return 1
         if p.is_dir():
             # A dataset is a directory. Sealing it meant naming every file, and a file added
             # afterwards was then simply absent from the record with nothing to notice -- a seal
@@ -182,6 +201,10 @@ def run(
     outputs = []
     for name in files:
         p = pathlib.Path(name).resolve()
+        if refusal := own_files(p, root):
+            print(f"not recorded: {name} {refusal}")
+            print("nothing was written. Record the files the run wrote.")
+            return 1
         if not p.is_file():
             print(f"not a file: {name}")
             return 1

@@ -463,19 +463,56 @@ def test_a_sealed_file_that_was_edited_is_reported_as_changed(tmp_path):
     assert "CHANGED" in v.stdout
 
 
-def test_a_path_sealed_under_two_hashes_is_reported_even_when_it_matches_one(tmp_path):
+def test_a_path_resealed_that_holds_its_latest_seal_is_reported_and_passes(tmp_path):
     """Seal, edit, seal again: the file on disk matches the second seal.
 
-    Keyed by path, the later seal replaced the earlier one and the run read as clean, so
-    "seal your inputs before the run" was not what the command checked.
+    Keyed by path, the later seal replaced the earlier one and nothing was said. The path is
+    named for having been sealed twice, and does not fail: the disk is what the last record says.
     """
     path = seal_one(tmp_path)
     path.write_text("a,b\n9,9\n")
     run_cli("seal", "data.csv", "--role", "input", cwd=tmp_path)
     v = run_cli("verify", "--files", cwd=tmp_path)
+    assert v.returncode == 0, v.stdout
+    assert "RESEALED   data.csv\n    matches the latest of 2 hashes recorded" in v.stdout
+    assert "all checks passed" in v.stdout
+
+
+def test_a_path_resealed_that_holds_an_earlier_seal_fails(tmp_path):
+    path = seal_one(tmp_path)
+    path.write_text("a,b\n9,9\n")
+    run_cli("seal", "data.csv", "--role", "input", cwd=tmp_path)
+    path.write_text("a,b\n1,2\n")
+    v = run_cli("verify", "--files", cwd=tmp_path)
     assert v.returncode == 1, v.stdout
-    assert "RESEALED" in v.stdout
-    assert "2 different hashes" in v.stdout
+    assert (
+        "REVERTED   data.csv\n    matches hash 1 of 2 recorded for this path, not the latest"
+        in (v.stdout)
+    )
+    assert "1 file(s) changed or missing" in v.stdout
+
+
+def test_the_latest_record_decides_where_a_path_returned_to_its_first_hash(tmp_path):
+    path = seal_one(tmp_path)
+    path.write_text("a,b\n9,9\n")
+    run_cli("seal", "data.csv", "--role", "input", cwd=tmp_path)
+    path.write_text("a,b\n1,2\n")
+    run_cli("seal", "data.csv", "--role", "input", cwd=tmp_path)
+    assert run_cli("verify", "--files", cwd=tmp_path).returncode == 0
+    path.write_text("a,b\n9,9\n")
+    v = run_cli("verify", "--files", cwd=tmp_path)
+    assert v.returncode == 1 and "REVERTED   data.csv" in v.stdout, v.stdout
+
+
+def test_a_resealed_path_that_matches_no_record_is_changed(tmp_path):
+    path = seal_one(tmp_path)
+    path.write_text("a,b\n9,9\n")
+    run_cli("seal", "data.csv", "--role", "input", cwd=tmp_path)
+    path.write_text("a,b\n5,5\n")
+    v = run_cli("verify", "--files", cwd=tmp_path)
+    assert v.returncode == 1, v.stdout
+    assert "CHANGED    data.csv" in v.stdout
+    assert "matches none of the 2 hashes recorded for this path" in v.stdout
 
 
 def test_an_untouched_sealed_file_still_passes(tmp_path):
