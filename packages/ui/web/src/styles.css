@@ -353,3 +353,6 @@ tr.sec-head.clickable:hover td { background: #eceef4; }
 .cite-table .src-words { border-left: 2px solid #e3e1fb; padding-left: 8px; }
 .doi { color: #3a4256; margin-top: 1px; }
 .doi .mono { font-size: 10.5px; user-select: all; }
+.src-rows { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 6px; margin-top: 4px; align-items: baseline; }
+.src-rows .lab { color: var(--muted); }
+.src-rows .mono { font-size: 10.5px; word-break: break-all; }

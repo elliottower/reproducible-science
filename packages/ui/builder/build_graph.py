@@ -15,6 +15,7 @@ import json
 import pathlib
 import re
 import subprocess
+import urllib.error
 import urllib.request
 
 import yaml
@@ -378,15 +379,23 @@ def landing_url(url: str, doi: str, cache: dict[str, str]) -> str:
     target = url or (f"https://doi.org/{doi}" if doi else "")
     if not target or "doi.org/" not in target:
         return target
-    if target in cache:
+    if target in cache and "doi.org/" not in cache[target]:
         return cache[target]
-    try:
-        req = urllib.request.Request(target, method="HEAD", headers={"User-Agent": "reproducible-science-graph"})
-        with urllib.request.urlopen(req, timeout=8) as r:
-            cache[target] = r.geturl()
-    except Exception:  # a publisher that refuses HEAD or blocks scripts; keep the DOI address
-        cache[target] = target
-    return cache[target]
+    # HEAD first; a publisher that refuses it (ACM, OUP, BMC…) often still redirects a GET, of which
+    # only the final address is read. A failure is not cached, so the next build tries again.
+    for method in ("HEAD", "GET"):
+        try:
+            req = urllib.request.Request(target, method=method, headers={"User-Agent": "reproducible-science-graph"})
+            with urllib.request.urlopen(req, timeout=8) as r:
+                cache[target] = r.geturl()
+                return cache[target]
+        except urllib.error.HTTPError as e:  # a 403 after the redirect still names the landing page
+            if e.url and "doi.org/" not in e.url:
+                cache[target] = e.url
+                return cache[target]
+        except Exception:  # timeout, refused connection: try the next method
+            continue
+    return target
 
 
 def record_tabs(project: pathlib.Path, manifest: dict, ledger: list[dict], staleness: dict, out_dir: pathlib.Path) -> dict:
@@ -435,6 +444,10 @@ def record_tabs(project: pathlib.Path, manifest: dict, ledger: list[dict], stale
                             "cited_in": cited_in.get(src.get("citation", f.stem), []),
                             "bib": bib.get(src.get("citation", f.stem), {}),
                             "link": landing_url(src.get("url", ""), bib.get(src.get("citation", f.stem), {}).get("doi", ""), cache),
+                            # The DOI's own landing page, which is the publisher's record; the link above
+                            # is the copy that was pinned and may be a preprint elsewhere.
+                            "doi_link": landing_url("", bib.get(src.get("citation", f.stem), {}).get("doi", "")
+                                                    or (re.search(r"doi\.org/(10\.[^\s?#]+)", src.get("url", "")) or [None, ""])[1], cache),
                             "pinned": sum(len(s["quotes"]) for s in statements), "statements": statements})
 
     # reproduce: every declared rebuild step with its state, and every recorded re-run.

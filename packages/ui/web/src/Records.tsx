@@ -156,10 +156,19 @@ function SourceCell({ s, files, onOpen }: { s: Source; files?: Source[]; onOpen:
     <div className="src-cell">
       <button className="src-title" onClick={() => onOpen(s)} title="Details">{s.bib.title || s.citation}</button>
       <div className="small muted">{byline(s)}</div>
-      {s.link && <div className="small"><a className="src-link" href={s.link} target="_blank" rel="noreferrer">↗ {linkLabel(s.link)}</a></div>}
-      <div className="small doi">{doiOf(s) ? <>DOI <span className="mono">{doiOf(s)}</span></> : <span className="muted">No DOI</span>}</div>
-      <div className="src-meta">
+      <div className="src-rows small">
+        <span className="lab">Link:</span>
+        {s.link ? <a className="src-link" href={s.link} target="_blank" rel="noreferrer" title={s.link}>{linkLabel(s.link)}</a> : <span className="muted">none</span>}
+        <span className="lab">DOI:</span>
+        {doiOf(s)
+          ? (s.doi_link && !/doi\.org\//.test(s.doi_link)
+              ? <a className="src-link mono" href={s.doi_link} target="_blank" rel="noreferrer" title={s.doi_link}>{doiOf(s)}</a>
+              : <span className="mono">{doiOf(s)}</span>)
+          : <span className="muted">No DOI</span>}
+        <span className="lab">Key:</span>
         <span className="mono">{s.citation}</span>
+      </div>
+      <div className="src-meta">
         {pinned ? (
           <span className="pin" title={all.map((f) => `${f.local} · sha256 ${f.sha256.slice(0, 12)}…`).join('\n')}>
             {all.length > 1 ? `${all.length} files pinned` : 'Pinned'}
