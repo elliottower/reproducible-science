@@ -378,7 +378,8 @@ def test_a_page_number_field_is_not_read_and_its_neighbours_are(tmp_path):
         {"word/footer1.xml": f"<w:ftr {NS}>{footer}</w:ftr>"},
         {"rIdF": "footer footer1.xml"},
     )
-    assert read(path) == ["See the methods on page .", "Page of , section page"]
+    # The page a sentence refers the reader to is the author's; the footer's are the layout's.
+    assert read(path) == ["See the methods on page 9.", "Page of , section page"]
 
 
 def test_a_field_that_never_ends_hides_nothing_after_its_paragraph(tmp_path):
@@ -514,6 +515,10 @@ def test_a_docx_source_recording_no_version_is_read_with_version_1(tmp_path, cap
     assert cli.main(["verify", "--claims", str(path.parent), "--strict"]) == 0
     out = capsys.readouterr().out
     assert "docx-text@1" in out and "no longer extract" not in out
+    assert (
+        "supp: read with docx-text@1, inferred: no version recorded; set extractor_version to "
+        "choose" in out
+    )
 
 
 def test_a_new_pin_in_a_docx_records_version_2_and_its_text(tmp_path):
@@ -526,3 +531,108 @@ def test_a_new_pin_in_a_docx_records_version_2_and_its_text(tmp_path):
     assert (written.extractor, written.extractor_version) == ("docx-text", 2)
     assert written.derived_sha256 == hashlib.sha256(v2.encode()).hexdigest()
     assert written.reader == "docx-text@2"
+
+
+def test_a_page_reference_inside_a_table_of_contents_is_not_read(tmp_path):
+    entry = p(r("Methods "), field("PAGEREF _Toc1 \\h", "3"))
+    styled = p(
+        r("Results "),
+        field("PAGEREF _Toc2 \\h", "5"),
+        mark='<w:pPr><w:pStyle w:val="TOC1"/></w:pPr>',
+    )
+    contents = (
+        p(
+            '<w:r><w:fldChar w:fldCharType="begin"/></w:r>',
+            '<w:r><w:instrText> TOC \\o "1-3" </w:instrText></w:r>',
+            '<w:r><w:fldChar w:fldCharType="separate"/></w:r>',
+            r("Introduction "),
+            field("PAGEREF _Toc0 \\h", "1"),
+        )
+        + entry
+        + p('<w:r><w:fldChar w:fldCharType="end"/></w:r>')
+    )
+    body = contents + styled + p(r("As shown on page "), field("PAGEREF _Toc1 \\h", "3"), r("."))
+    assert read(write(tmp_path / "paper.docx", body)) == [
+        "Introduction",
+        "Methods",
+        "Results",
+        "As shown on page 3.",
+    ]
+
+
+def test_a_formula_over_the_page_number_is_not_read(tmp_path):
+    nested = (
+        '<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText>= </w:instrText></w:r>'
+        + field("PAGE", "4")
+        + '<w:r><w:instrText> - 1</w:instrText></w:r><w:r><w:fldChar w:fldCharType="separate"/></w:r>'
+        + r("3")
+        + '<w:r><w:fldChar w:fldCharType="end"/></w:r>'
+    )
+    simple = '<w:fldSimple w:instr=" = NUMPAGES - 2 ">' + r("15") + "</w:fldSimple>"
+    sums = '<w:fldSimple w:instr=" = 2 + 2 ">' + r("4") + "</w:fldSimple>"
+    body = p(r("Page "), nested, r(" of "), simple, r(", and "), sums, r("."))
+    assert read(write(tmp_path / "paper.docx", body)) == ["Page of , and 4."]
+
+
+@pytest.mark.parametrize("encoding", ["utf-16-le", "utf-16-be"])
+def test_a_utf16_part_with_no_byte_order_mark_declaring_entities_is_refused(tmp_path, encoding):
+    entities = '<!ENTITY a "AAAAAAAAAA">' + "".join(
+        f'<!ENTITY {chr(98 + i)} "' + f"&{chr(97 + i)};" * 10 + '">' for i in range(4)
+    )
+    xml = (
+        f'<?xml version="1.0" encoding="UTF-16"?><!DOCTYPE w:document [{entities}]>'
+        f'<w:document xmlns:w="{W}"><w:body>{p(r("&e;"))}</w:body></w:document>'
+    )
+    path = tmp_path / "bomb.docx"
+    with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as z:
+        z.writestr("word/document.xml", xml.encode(encoding))
+    r_ = V.check_one("AAAAAAAAAA", path)
+    assert r_.state == "unchecked"
+    assert "declares a document type" in r_.detail
+
+
+@pytest.mark.parametrize(
+    ("declared", "encoding"),
+    [("UTF-16", "utf-16-le"), ("UTF-16", "utf-16-be"), ("ISO-8859-1", "latin-1")],
+)
+def test_a_part_is_decoded_as_the_parser_detects_its_encoding(tmp_path, declared, encoding):
+    body = p(r("Na\u00efve readers \u00e9crit."))
+    xml = (
+        f'<?xml version="1.0" encoding="{declared}"?>'
+        f'<w:document xmlns:w="{W}"><w:body>{body}</w:body></w:document>'
+    )
+    path = tmp_path / "encoded.docx"
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("word/document.xml", xml.encode(encoding))
+    assert read(path) == ["Na\u00efve readers \u00e9crit."]
+
+
+def test_a_part_holding_a_nul_is_refused(tmp_path):
+    path = tmp_path / "nul.docx"
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr(
+            "word/document.xml", f'<w:document xmlns:w="{W}"><w:body>\x00</w:body></w:document>'
+        )
+    assert "holds a NUL" in V.check_one("anything at all", path).detail
+
+
+def test_a_source_written_by_hand_with_no_version_and_no_digest_is_read_with_version_2(
+    tmp_path, capsys
+):
+    (tmp_path / "sources").mkdir()
+    source = manuscript(tmp_path / "sources" / "supp.docx")
+    footnote = "Participants were paid for their time."
+    path = pinned_claims(
+        tmp_path,
+        [footnote],
+        sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
+        extractor="docx-text",
+    )
+    cf = load_claim_file(path)
+    assert (cf.source.reader, cf.version_inferred) == ("docx-text", "")
+    assert cli.main(["verify", "--claims", str(path.parent), "--strict"]) == 0
+    out = capsys.readouterr().out
+    assert "docx-text@2" in out and "inferred" not in out
+    assert (
+        pin.main([str(path), "--id", "second", "--quote", "held in every cohort", "--check"]) == 0
+    )

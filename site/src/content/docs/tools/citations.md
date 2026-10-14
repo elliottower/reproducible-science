@@ -729,20 +729,27 @@ sections name them. Footnotes and endnotes are numbered 1, 2, 3 in reference ord
 Word shows; Word numbers endnotes i, ii, iii by default. Within a paragraph it reads hyperlink
 text, a symbol as the character it draws, a ruby's base text, the result of a field and not its
 instruction (so a reference manager's citation reads as printed), and an equation's characters
-in order. The result of a `PAGE`, `NUMPAGES`, `SECTIONPAGES` or `PAGEREF` field is not read: it
-is a page number from Word's last layout, not a number the document states. Tracked changes
-are read as accepted: an insertion is read and a deletion is not, in an equation too. Comments are not read, so a quotation never resolves against a reviewer's
-note, and neither are automatic list numbers, which Word does not store. A part declaring a
-document type, and a file whose XML inflates past 128 MiB, are refused unread. A part is
-decoded by its byte-order mark, UTF-8 or UTF-16.
+in order. The result of a `PAGE`, `NUMPAGES` or `SECTIONPAGES` field, of a formula over one
+(`= PAGE - 1`), and of a `PAGEREF` inside a table of contents is not read: it is a page number
+from Word's last layout, not a number the document states. A `PAGEREF` in prose is read, since
+`see page 14` is a page the author refers to. Tracked changes are read as accepted: an
+insertion is read and a deletion is not, in an equation too. Comments are not read, so a
+quotation never resolves against a reviewer's note, and neither are automatic list numbers,
+which Word does not store. A part is decoded as an XML parser detects its encoding (a
+byte-order mark, UTF-16 with no mark, the declaration's encoding, else UTF-8), and the parser
+is given that decoded text, so the check for a document type reads what is parsed. A part
+declaring a document type, one that does not decode or holds a NUL, and a file whose XML
+inflates past 128 MiB, are refused unread.
 
 Version 1, which reads the body's paragraphs and then its tables through `python-docx`, stays
 for sources pinned under it: a source block recording `extractor_version: 1` is read by
-version 1, and so is a source that records no version but already holds quotations or a
-`derived_sha256`, since only version 1 existed when it was pinned. That includes a `.docx`
-source naming no extractor. A source with nothing pinned in it yet is read by version 2, and
-`citations pin` records `extractor: docx-text` and `extractor_version: 2` with its first
-quotation.
+version 1, and so is a source that records a `derived_sha256` and no version.
+`citations pin` has recorded the version beside the digest since both fields were added, so a
+digest with no version was written before that, by version 1. That includes a `.docx` source
+naming no extractor. The output says so, as `read with docx-text@1, inferred: no version
+recorded; set extractor_version to choose`. Any other source that records no version, such as
+one written by hand, is read by version 2, and `citations pin` records the extractor and the
+version that read it with its next quotation.
 
 `sheet-rows` takes two more fields: `sheet: ST1` reads that sheet alone, where the default is
 every sheet in workbook order, and `empty_cells: keep` keeps a row's empty cells, where the

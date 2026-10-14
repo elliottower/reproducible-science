@@ -37,6 +37,7 @@ or block with no text produces no line. Nothing is reordered and nothing is summ
 
 from __future__ import annotations
 
+import codecs
 import csv
 import dataclasses
 import datetime
@@ -281,9 +282,29 @@ _DOCX_TRANSPARENT = frozenset(
 _DOCX_REMOVED = frozenset({"w:del", "w:moveFrom", "w:sdtPr", "w:sdtEndPr"})
 
 #: Fields whose result is a page number as Word last laid the document out: the page a header
-#: is on, the page count, a cross-reference's page. The result is a stale number from one
-#: layout, not something the document states, so it is not read.
-_DOCX_LAYOUT_FIELDS = frozenset({"PAGE", "NUMPAGES", "SECTIONPAGES", "PAGEREF"})
+#: is on, the page count, the pages of a section. The result is a stale number from one layout,
+#: not something the document states, so it is not read, and neither is a formula field
+#: (`= PAGE - 1`) computed from one.
+_DOCX_LAYOUT_FIELDS = frozenset({"PAGE", "NUMPAGES", "SECTIONPAGES"})
+
+_FIELD_WORD = re.compile(r"[A-Za-z]+")
+
+
+def _docx_layout(instruction: str, in_contents: bool) -> bool:
+    """Whether a field's result is a page number from the layout and not a statement.
+
+    `PAGEREF` is one only inside a table of contents, where Word fills each entry's page in; in
+    prose, `see page 14` is a page the author refers the reader to, and it is read.
+    """
+    words = instruction.split()
+    if not words:
+        return False
+    first = words[0].upper()
+    if first in _DOCX_LAYOUT_FIELDS or (first == "PAGEREF" and in_contents):
+        return True
+    named = {word.upper() for word in _FIELD_WORD.findall(instruction)}
+    return instruction.lstrip().startswith("=") and bool(named & _DOCX_LAYOUT_FIELDS)
+
 
 #: `w:sym` in the Symbol font, by the low byte of its private-use code: the Greek alphabet and
 #: the mathematical signs a manuscript uses. A code not listed here is written as it is stored.
@@ -327,6 +348,31 @@ _WINGDINGS_FONT = {0x6C: "●", 0x6E: "■", 0x9F: "•", 0xA7: "▪", 0xFB: "�
 _SYMBOL_FONTS = {"symbol": _SYMBOL_FONT, "wingdings": _WINGDINGS_FONT}
 
 _DOCTYPE = re.compile(r"<!(?:doctype|entity)", re.IGNORECASE)
+_XML_ENCODING = re.compile(rb"""<\?xml[^>]*?encoding\s*=\s*["']([A-Za-z0-9._-]+)["']""")
+
+
+def _xml_decoded(data: bytes) -> str:
+    """A part's text, decoded the way an XML parser detects its encoding (XML 1.0, appendix F):
+    a byte-order mark, else the pattern of `<?` in UTF-16 with no mark, else the encoding the
+    declaration names, else UTF-8.
+
+    The text is what the parser is then given, so the check for a document type reads exactly
+    what is parsed. Given the bytes, the parser would detect UTF-16 with no mark itself, while a
+    check that decoded them as UTF-8 saw `<` and a NUL where `<!DOCTYPE` was. UTF-32 is
+    refused: no Word part is written in it.
+    """
+    if data[:4] in (b"\x00\x00\xfe\xff", b"\xff\xfe\x00\x00", b"\x00\x00\x00<", b"<\x00\x00\x00"):
+        raise UnicodeError("UTF-32")
+    if data.startswith(codecs.BOM_UTF8):
+        return data[3:].decode("utf-8")
+    if data.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
+        return data.decode("utf-16")
+    if data[:2] == b"<\x00":
+        return data.decode("utf-16-le")
+    if data[:2] == b"\x00<":
+        return data.decode("utf-16-be")
+    named = _XML_ENCODING.match(data)
+    return data.decode(named.group(1).decode("ascii") if named else "utf-8")
 
 
 def _docx_symbol(font: str | None, code: str | None) -> str:
@@ -366,14 +412,18 @@ class _Field:
     """One complex field open: its instruction so far, and whether its result is being read."""
 
     instruction: list[str] = dataclasses.field(default_factory=list)
+    """Its own instruction text and that of any field nested in it, so a formula over `PAGE`
+    is known as one."""
     reading: str = "instruction"
     """`instruction`, then `result` once its `separate` is reached, or `hidden` for a field
     whose result is a page number."""
 
-    def settle(self) -> None:
-        words = "".join(self.instruction).split()
-        layout = bool(words) and words[0].upper() in _DOCX_LAYOUT_FIELDS
-        self.reading = "hidden" if layout else "result"
+    @property
+    def code(self) -> str:
+        return "".join(self.instruction)
+
+    def settle(self, in_contents: bool) -> None:
+        self.reading = "hidden" if _docx_layout(self.code, in_contents) else "result"
 
 
 #: What a note that is not one of the document's notes is: the rule and the continuation rule
@@ -416,9 +466,9 @@ class _DocxPackage:
         """The root of a part, or None where the package holds no part of that name.
 
         A part that declares a document type is refused: no Office part carries one, and a
-        declaration is where entity expansion lives. A part is decoded by its byte-order mark,
-        UTF-16 or UTF-8, and as UTF-8 where it has none; one that does not decode is refused,
-        since the check for a declaration reads the text.
+        declaration is where entity expansion lives. The part is decoded as `_xml_decoded`
+        says and the parser is given that text, so the check reads what is parsed; one that
+        does not decode, or holds a NUL, is refused.
         """
         try:
             info = self.archive.getinfo(name)
@@ -432,18 +482,19 @@ class _DocxPackage:
                 f"its XML inflates past {DOCX_MAX_XML_BYTES:,} bytes; it is refused unread",
             )
         self.left -= len(data)
-        encoding = "utf-16" if data[:2] in (b"\xff\xfe", b"\xfe\xff") else "utf-8-sig"
         try:
-            declared = _DOCTYPE.search(data.decode(encoding))
-        except UnicodeDecodeError as e:
-            raise SourceUnreadableError(self.path, f"{name} is not UTF-8 or UTF-16") from e
-        if declared:
+            text = _xml_decoded(data)
+        except (UnicodeError, LookupError) as e:
+            raise SourceUnreadableError(self.path, f"{name} does not decode: {e}") from e
+        if _DOCTYPE.search(text):
             raise SourceUnreadableError(
                 self.path, f"{name} declares a document type, which no Word part does"
             )
+        if "\x00" in text:
+            raise SourceUnreadableError(self.path, f"{name} holds a NUL, which XML forbids")
         try:
-            # The bytes, not the text: the parser reads the encoding from the mark itself.
-            return ET.fromstring(data)
+            # The decoded text, never the bytes, so the parser reads what was checked.
+            return ET.fromstring(text)
         except ET.ParseError as e:
             raise SourceUnreadableError(self.path, f"{name} is not well-formed XML: {e}") from e
 
@@ -476,6 +527,15 @@ class _DocxText:
         """The id of each note the text refers to, in the order it first refers to it."""
         self.carry = ""
         """The text of a paragraph whose mark a tracked change deletes, which joins the next."""
+        self.contents_style = False
+        """Whether the paragraph being read has a table-of-contents style, `TOC1` and so on."""
+
+    def in_contents(self) -> bool:
+        """Whether the text being read is a table of contents: a paragraph in a TOC style, or
+        the result of an open `TOC` field."""
+        return self.contents_style or any(
+            field.code.split()[:1] == ["TOC"] for field in self.fields if field.reading == "result"
+        )
 
     @property
     def shown(self) -> bool:
@@ -486,7 +546,7 @@ class _DocxText:
         if kind == "begin":
             self.fields.append(_Field())
         elif kind == "separate" and self.fields:
-            self.fields[-1].settle()
+            self.fields[-1].settle(self.in_contents())
         elif kind == "end" and self.fields:
             self.fields.pop()
 
@@ -524,10 +584,22 @@ class _DocxText:
         carry, self.carry = self.carry, ""
         parts: list[str] = []
         boxes: list[str] = []
+        mark = next((c for c in p if _docx_key(c) == "w:pPr"), None)
+        style = (
+            next((c for c in mark if _docx_key(c) == "w:pStyle"), None)
+            if mark is not None
+            else None
+        )
+        outer, self.contents_style = (
+            self.contents_style,
+            (_docx_attr(style, "val") or "").upper().startswith("TOC")
+            if style is not None
+            else False,
+        )
         self.inline(p, parts, boxes)
+        self.contents_style = outer
         self.end_paragraph()
         text = carry + "".join(parts)
-        mark = next((c for c in p if _docx_key(c) == "w:pPr"), None)
         deleted = mark is not None and any(
             _docx_key(c) == "w:del" for r in mark if _docx_key(r) == "w:rPr" for c in r
         )
@@ -551,8 +623,7 @@ class _DocxText:
             elif key in _DOCX_REMOVED:
                 continue
             elif key == "w:fldSimple":
-                words = (_docx_attr(child, "instr") or "").split()
-                if not (words and words[0].upper() in _DOCX_LAYOUT_FIELDS):
+                if not _docx_layout(_docx_attr(child, "instr") or "", self.in_contents()):
                     self.inline(child, parts, boxes)
             elif key in _DOCX_TRANSPARENT:
                 self.inline(child, parts, boxes)
@@ -568,8 +639,11 @@ class _DocxText:
             if key == "w:fldChar":
                 self.field_char(child)
             elif key == "w:instrText":
-                if self.fields and self.fields[-1].reading == "instruction":
-                    self.fields[-1].instruction.append(child.text or "")
+                # To every field whose instruction is open: a nested field's code is part of
+                # the formula around it.
+                for field in self.fields:
+                    if field.reading == "instruction":
+                        field.instruction.append(child.text or "")
             elif not self.shown:
                 continue
             elif key == "w:t":
@@ -669,8 +743,11 @@ def _docx_xml_text(path: pathlib.Path, sheet: str | None, keep_empty: bool) -> s
     stored), a simple field's result and a complex field's result (the text between its
     `separate` and its `end`; the instruction is left out), and an equation's characters in
     order (OMML `m:t`, with no fraction, script or radical rendered). The result of a `PAGE`,
-    `NUMPAGES`, `SECTIONPAGES` or `PAGEREF` field is not read: it is a page number from the
-    layout Word last made, not a number the document states. A field instruction, and a page
+    `NUMPAGES` or `SECTIONPAGES` field, of a formula field computed from one (`= PAGE - 1`), and
+    of a `PAGEREF` inside a table of contents (a `TOC` field's result, or a paragraph in a TOC
+    style) is not read: it is a page number from the layout Word last made, not a number the
+    document states. A `PAGEREF` elsewhere is read, since `see page 14` is a page the author
+    refers to. A field instruction, and a page
     number field, ends with its paragraph, so a field whose end never comes hides nothing after
     it. Tracked changes are read as the accepted view: an insertion and a move's destination
     are read, a deletion and a move's origin are not, in an equation too, a row a change
@@ -684,9 +761,11 @@ def _docx_xml_text(path: pathlib.Path, sheet: str | None, keep_empty: bool) -> s
     image shows. Hidden text (`w:vanish`) is read.
 
     Parsed with the standard library from the zip, never through a file path inside it and
-    with nothing fetched. A part is decoded by its byte-order mark. A part that declares a
-    document type, or does not decode, is refused, and so is a package whose XML inflates past
-    `DOCX_MAX_XML_BYTES`.
+    with nothing fetched. A part is decoded as an XML parser detects its encoding (a byte-order
+    mark, UTF-16 with no mark, the declaration's encoding, else UTF-8), and the parser is given
+    that text, so the check for a document type reads what is parsed. A part that declares a
+    document type, does not decode or holds a NUL is refused, and so is a package whose XML
+    inflates past `DOCX_MAX_XML_BYTES`.
     """
     try:
         archive = zipfile.ZipFile(path)
@@ -978,8 +1057,10 @@ EXTRACTORS: dict[str, Extractor] = {
 #: Earlier versions of an extractor that a claims file may still name, by name and version. A
 #: source pinned under one goes on being read by it, so its `derived_sha256` still describes the
 #: text it gets: a newer rendering is a different text, and quotations pinned against the older
-#: one say nothing about it. A source that names no version, and one read by its suffix, gets the
-#: version in `EXTRACTORS`; `citations pin` records that version on the first quotation.
+#: one say nothing about it. A source that records no version but a `derived_sha256` was pinned
+#: before versions were recorded and is read with version 1 (`ClaimFile`); any other source
+#: that names no version, and one read by its suffix, gets the version in `EXTRACTORS`, and
+#: `citations pin` records the version that read it with the first quotation.
 EARLIER: dict[tuple[str, str], Extractor] = {
     (e.name, str(e.version)): e
     for e in (

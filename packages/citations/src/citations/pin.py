@@ -356,6 +356,8 @@ def main(argv: list[str] | None = None) -> int:
 
     allowed = V.DEFAULT_EXTRACTORS | frozenset(a.allow_extractor)
     r = resolve(cf, a.quote, a.page, allowed)
+    if cf.version_inferred:
+        print(cf.version_inferred)
 
     prefix = suffix = ""
     if a.occurrence is not None and r.state in ("found", "ambiguous"):
