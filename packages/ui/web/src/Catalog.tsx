@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ClaimList, fmt, Freshness, HistoryStrip, Panel, when } from './shared'
+import { ClaimList, ClaimText, fmt, Freshness, HistoryStrip, Panel, when } from './shared'
 import type { ClaimRow, GNode, Graph } from './types'
 
 type View =
@@ -149,7 +149,7 @@ export default function Catalog({ graph, query }: { graph: Graph; query: string 
                 <tr key={c.id} className={selected === c.id ? 'sel' : ''} onClick={() => setSelected(c.id)}>
                   <td>
                     <div className="mono strong">{c.id}</div>
-                    <div className="small claim-cell">{c.text}</div>
+                    <div className="small claim-cell"><ClaimText text={c.text} /></div>
                   </td>
                   <td className="small nowrap">{c.where}</td>
                   <td>{c.ok ? <span className="pill good">Verified</span> : <span className="pill bad">Failing</span>}</td>

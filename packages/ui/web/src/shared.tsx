@@ -73,6 +73,18 @@ function StaleFix({ node }: { node: GNode }) {
   return <FixButtons subject={node.id} kind="stale" prompt={stalePrompt(node, project)} />
 }
 
+/** A generated claim text reads "The manuscript states 2364 for corpus-quotations."; the value and the
+ * claim's name are shown as code, so a reader sees which part is data. Other texts are shown as written. */
+export function ClaimText({ text }: { text: string }) {
+  const m = /^The manuscript states (.+) for ([\w.-]+)\.$/.exec(text.trim())
+  if (!m) return <>{text}</>
+  return (
+    <>
+      The manuscript states <code className="inline-code">{m[1]}</code> for <code className="inline-code">{m[2]}</code>
+    </>
+  )
+}
+
 export function ClaimList({ claims, limit = 40 }: { claims: ClaimRow[]; limit?: number }) {
   const [all, setAll] = useState(false)
   const sorted = useMemo(() => [...claims].sort((a, b) => Number(a.ok) - Number(b.ok)), [claims])
@@ -86,7 +98,7 @@ export function ClaimList({ claims, limit = 40 }: { claims: ClaimRow[]; limit?: 
             <span className="mono small">{c.id}</span>
             <span className="where">{c.where}</span>
           </div>
-          <div className="claim-text">{c.text}</div>
+          <div className="claim-text"><ClaimText text={c.text} /></div>
           {c.assertions.map((a, i) => (
             <div key={i} className="assertion mono">
               <span className={a.ok ? 'ok' : 'no'}>{a.ok ? '✓' : '✗'}</span> {a.kind} · {a.artifact}
