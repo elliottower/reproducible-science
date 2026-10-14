@@ -1,0 +1,19 @@
+# Paths in this repository's history that the submission guard flags and that were read and
+# found to hold no submission or review material. One path per line, matched against a file's
+# path in any commit. None of these files is on main.
+
+# Planning notes from August 2026 that use the words in passing, about no decision received.
+research/exposure/SPEC_v1.md
+research/planning/04_normative.md
+research/planning/04_normative_v1.md
+exposure/SPEC_v1.md
+planning/04_normative.md
+planning/04_normative_v1.md
+
+# Reviews of this software: an audit of the code, and a request for one.
+docs/reviews/AUDIT_FINDINGS.md
+docs/reviews/MONOREPO_REVIEW_PACKET.md
+
+# A bibliographic record whose DOI has the shape of a manuscript number. The pattern stops short
+# of the number, which this file would otherwise be flagged for spelling out.
+records/doi-10-1175-bams-*.yaml
