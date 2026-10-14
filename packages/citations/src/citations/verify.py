@@ -225,6 +225,28 @@ BY_SUFFIX: dict[str, str] = {".tex": "detex", ".latex": "detex"}
 #: layout mode missed and missed 29 it resolved, so neither is preferred and both are read.
 READING_ORDER = "pdftotext"
 
+#: Poppler's word boxes, put back together one column at a time. Reading order joins a line of
+#: the left column to the line beside it in the right column wherever the gutter is narrow, so a
+#: sentence that wraps inside a column comes out with the other column's words spliced into it
+#: and resolves under no reader: a page with columns 6 points apart reads "the Haar expectation
+#: forA second column" under `pdftotext`, and `-layout`, pypdf and pdfplumber all keep the two
+#: columns on one line. This reading splits each line at the page's gutter instead, the vertical
+#: band near the middle that the fewest words cross, and reads every left half before any right
+#: half between two lines that span the gutter. A page with no gutter has every line spanning it
+#: and reads top to bottom as before.
+#:
+#: Not a triangulation participant: it is poppler's own glyphs in another order, so its
+#: agreement with the two poppler modes is not independent evidence. It is the last reader asked
+#: before a passage is called absent, and a passage it resolves is recorded as a fallback naming it.
+COLUMNS = "pdftotext -tsv, by column"
+
+#: How far either side of the middle of a page the gutter is looked for, as a share of its width.
+GUTTER_BAND = 0.1
+
+#: The narrowest gutter, in points. Wider than the space between two words, which in a justified
+#: line of 10-point type rarely passes four points.
+MIN_GUTTER = 6.0
+
 #: Recorded as the extractor when a caller replaced `extract`. Naming the substitution keeps
 #: the promise the rest of this module makes: a result says what produced the text it was
 #: checked against, and "a stub did" is an answer where inventing an extractor name is not.
@@ -828,6 +850,98 @@ def _poppler(pdf: pathlib.Path, page: int | None, layout: bool = True) -> str:
     return _run(pdf, cmd, "pdftotext is not on PATH -- install poppler-utils")
 
 
+#: A word's box and text: left edge, right edge, top, bottom, text.
+_Word = tuple[float, float, float, float, str]
+
+
+def _gutter(lines: list[list[_Word]], width: float) -> float | None:
+    """Where a page's columns divide, or None for a page set in one column. See `COLUMNS`.
+
+    A candidate is the middle of any space between two words near the middle of the page. It is
+    the gutter where the lines with words on both sides of it all leave at least `MIN_GUTTER`
+    clear there, more than one line does so, and fewer than half the lines cross it. The space
+    between two words is narrower than that, so a page in one column, where such a space can
+    line up down a few lines, has no gutter.
+    """
+    low, high = width * (0.5 - GUTTER_BAND), width * (0.5 + GUTTER_BAND)
+    candidates = {
+        (a[1] + b[0]) / 2
+        for line in lines
+        for a, b in itertools.pairwise(line)
+        if low <= (a[1] + b[0]) / 2 <= high
+    }
+    best: tuple[int, float, float] | None = None
+    for x in candidates:
+        crossing, clear, sides = 0, float("inf"), 0
+        for line in lines:
+            if any(w[0] < x < w[1] for w in line):
+                crossing += 1
+                continue
+            left = [w[1] for w in line if w[1] <= x]
+            right = [w[0] for w in line if w[0] >= x]
+            if left and right:
+                sides += 1
+                clear = min(clear, min(right) - max(left))
+        if sides < 2 or clear < MIN_GUTTER or 2 * crossing >= len(lines):
+            continue
+        if best is None or (crossing, -clear) < (best[0], -best[1]):
+            best = (crossing, clear, x)
+    return None if best is None else best[2]
+
+
+def _page_by_column(words: list[_Word], width: float) -> str:
+    """One page's words, each line split at the gutter and the halves read column by column."""
+    lines: list[list[_Word]] = []
+    for word in sorted(words, key=lambda w: (w[2], w[0])):
+        if lines and abs(word[2] - lines[-1][0][2]) <= (word[3] - word[2]) / 2:
+            lines[-1].append(word)
+        else:
+            lines.append([word])
+    for line in lines:
+        line.sort(key=lambda w: w[0])
+    gutter = _gutter(lines, width)
+    out: list[str] = []
+    left: list[str] = []
+    right: list[str] = []
+    for line in lines:
+        if gutter is None or any(w[0] < gutter < w[1] for w in line):
+            out += left + right + [" ".join(w[4] for w in line)]
+            left, right = [], []
+            continue
+        if halves := [w[4] for w in line if w[1] <= gutter]:
+            left.append(" ".join(halves))
+        if halves := [w[4] for w in line if w[0] >= gutter]:
+            right.append(" ".join(halves))
+    return "\n".join(out + left + right)
+
+
+def _poppler_columns(pdf: pathlib.Path, page: int | None) -> str:
+    """`pdftotext -tsv` over a source, or one page of it, read one column at a time.
+
+    `-tsv` rather than `-bbox`: poppler 26.04 aborts on `-bbox` and `-bbox-layout` over 16 of
+    39 published PDFs in one corpus, and reads all 39 with `-tsv`. A poppler older than 22.08
+    has no `-tsv`, exits nonzero, and this reading is reported unavailable like any other.
+    """
+    cmd = ["pdftotext", "-tsv"]
+    if page:
+        cmd += ["-f", str(page), "-l", str(page)]
+    cmd += [str(pdf), "-"]
+    rows = _run(pdf, cmd, "pdftotext is not on PATH -- install poppler-utils").splitlines()
+    pages: list[tuple[float, list[_Word]]] = []
+    for row in rows[1:]:
+        cells = row.split("\t")
+        if len(cells) < 12:
+            continue
+        if cells[0] == "1":
+            pages.append((float(cells[8]), []))
+        elif cells[0] == "5" and pages:
+            left, top, w, h = (float(c) for c in cells[6:10])
+            pages[-1][1].append((left, left + w, top, top + h, cells[11]))
+    if rows and not pages:
+        raise SourceUnreadableError(pdf, "pdftotext -tsv gave no pages")
+    return "\f".join(_page_by_column(words, width) for width, words in pages)
+
+
 def _chain(pdf: pathlib.Path, page: int | None) -> readers.Extraction:
     """The first extractor that reads this source, and what it took to get there.
 
@@ -1057,6 +1171,8 @@ def _reading_with_uncached(
     if extractor in (DEFAULT_EXTRACTOR, READING_ORDER):
         layout = extractor == DEFAULT_EXTRACTOR
         return readers.Extraction(_poppler(pdf, page, layout), extractor)
+    if extractor == COLUMNS:
+        return readers.Extraction(_poppler_columns(pdf, page), extractor)
     if extractor in readers.READERS:
         return readers.Extraction(readers.READERS[extractor].read(pdf, page), extractor)
     raise SourceUnreadableError(pdf, f"no such extractor: {extractor}")
@@ -1085,6 +1201,11 @@ def available_extractors() -> list[str]:
     """
     poppler = [DEFAULT_EXTRACTOR, READING_ORDER] if shutil.which("pdftotext") else []
     return poppler + readers.available()
+
+
+def rescuers() -> list[str]:
+    """Who is asked before a passage is called absent: every extractor, then `COLUMNS` last."""
+    return available_extractors() + ([COLUMNS] if shutil.which("pdftotext") else [])
 
 
 @functools.lru_cache(maxsize=64)
@@ -1307,7 +1428,7 @@ def check_one(
         )
         if rescued is not None:
             return rescued
-        consulted += [n for n in available_extractors() if n != got.extractor]
+        consulted += [n for n in rescuers() if n != got.extractor]
         # Appended, not substituted. Which readers looked and where the passage stopped matching
         # answer different questions, and the second is the one that says what to do next.
         result.detail = (
@@ -1336,9 +1457,11 @@ def _second_opinion(
     was wrong with the quotations, and an audit reported 110 failures against a claim whose
     source contains the text.
 
-    Detecting the column layout was the alternative and is a worse instrument: it guesses at a
-    property this measures. Asking the next reader answers the same question exactly, and only
-    on the path where the first answer was going to be an accusation.
+    Detecting the column layout was the alternative and is a worse instrument as a first resort:
+    it guesses at a property this measures. Asking the next reader answers the same question
+    exactly, and only on the path where the first answer was going to be an accusation. Where
+    every reader merges the columns, which a narrow gutter makes them do, `COLUMNS` splits each
+    line at the gutter and is asked last.
 
     Reached on `not found` alone. Never on `ambiguous`: a passage occurring twice is in the
     document, and a reader that merges columns could "resolve" the ambiguity by hiding an
@@ -1347,7 +1470,7 @@ def _second_opinion(
     A rescued passage is recorded as a fallback naming both readers, so it never becomes
     indistinguishable from one the declared reader found itself.
     """
-    for name in available_extractors():
+    for name in rescuers():
         if name == missed_by:
             continue
         try:
