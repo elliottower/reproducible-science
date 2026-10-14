@@ -48,16 +48,17 @@ export function Status({ ok, fail, problem }: { ok: number; fail: number; proble
   )
 }
 
-/** One mark per recorded check of a claim, oldest to newest, as Dagster draws asset-check history. */
+/** A claim's recorded checks, in words: how many, when the last was, and any that failed. */
 export function HistoryStrip({ points }: { points: HistoryPoint[] }) {
   if (!points.length) return <span className="muted small">no recorded checks</span>
-  const shown = points.slice(-24)
+  const last = points[points.length - 1]
+  const failed = points.filter((p) => p.outcome !== 'verified' && p.outcome !== 'unchecked')
   return (
-    <span className="history" title={`${points.length} recorded check${points.length === 1 ? '' : 's'}`}>
-      {shown.map((p, i) => (
-        <span key={i} className={`tick ${p.outcome === 'verified' ? 'good' : p.outcome === 'unchecked' ? 'none' : 'bad'}`} title={`${when(p.t)} · ${p.outcome}`} />
-      ))}
-      <span className="muted small"> last {when(points[points.length - 1].t)}</span>
+    <span className="small muted">
+      checked {points.length === 1 ? 'once' : `${points.length} times`}, last {when(last.t)}
+      {failed.length > 0 && (
+        <span className="hist-bad"> · failed {failed.length === 1 ? 'once' : `${failed.length} times`}, last {when(failed[failed.length - 1].t)}</span>
+      )}
     </span>
   )
 }
@@ -108,7 +109,13 @@ export function ClaimList({ claims, limit = 40 }: { claims: ClaimRow[]; limit?: 
   )
 }
 
-export function Panel({ graph, id, onClose, onExpand }: { graph: Graph; id: string; onClose: () => void; onExpand?: (g: string) => void }) {
+export function Panel({ graph, id, onClose, onExpand, onPick }: {
+  graph: Graph
+  id: string
+  onClose: () => void
+  onExpand?: (g: string) => void
+  onPick?: (node: string, group: string) => void
+}) {
   const node = graph.nodes.find((n) => n.id === id)
   if (id.startsWith('claim:')) {
     const owner = id.slice(6, id.indexOf('::'))
@@ -134,7 +141,7 @@ export function Panel({ graph, id, onClose, onExpand }: { graph: Graph; id: stri
         <h2>{gid}</h2>
         {onExpand && <button className="primary" onClick={() => onExpand(gid)}>Expand group</button>}
         {members.map((m) => (
-          <div key={m.id} className="member">
+          <div key={m.id} className="member clickable" onClick={() => onPick?.(m.id, gid)} title="Show it in the graph">
             <span className={`dot ${m.fail ? 'bad' : 'good'}`} />
             <span className="mono small">{m.type === 'section' ? m.label : m.id}</span>
             {m.type === 'artifact' && <Freshness node={m} />}

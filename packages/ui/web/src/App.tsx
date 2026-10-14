@@ -217,7 +217,19 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
                 <Controls showInteractive={false} />
               </ReactFlow>
             </div>
-            {selected && <Panel graph={graph} id={selected} onClose={() => setSelected(null)} onExpand={toggle} />}
+            {selected && (
+              <Panel
+                graph={graph}
+                id={selected}
+                onClose={() => setSelected(null)}
+                onExpand={toggle}
+                onPick={(node, group) => {
+                  setOpen((prev) => new Set([...prev, group]))
+                  setSelected(node)
+                  if (graph.nodes.find((n) => n.id === node)?.claims.length) setOpenFiles((prev) => new Set([...prev, node]))
+                }}
+              />
+            )}
           </div>
         )}
       </div>

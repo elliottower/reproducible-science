@@ -32,7 +32,7 @@ export default function Overview({ graph, onOpen }: { graph: Graph; onOpen: (m: 
             <span className={`dot ${tn}`} />
             <span className="ov-cmd">{cmd}:</span> {text}
             {next && <span className="ov-next"> → {next}</span>}
-            <span className="ov-go">open →</span>
+            <span className="ov-go">{({ prereg: 'Prereg', results: 'Results', citations: 'Citations', claims: 'Claims', reproduce: 'Reproduce' } as Record<string, string>)[tab]} →</span>
           </button>
         ))}
       </div>

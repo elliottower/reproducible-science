@@ -275,3 +275,7 @@ tr.static { cursor: default; }
 .top .tabs { flex-shrink: 1; overflow-x: auto; }
 .pill, .recheck, .fix-main { white-space: nowrap; }
 td .pill { white-space: nowrap; }
+.hist-bad { color: var(--bad); }
+.member.clickable { cursor: pointer; border-radius: 6px; padding-left: 6px; padding-right: 6px; margin: 0 -6px; }
+.member.clickable:hover { background: #f3f2fe; }
+.ov-go { opacity: 1 !important; color: #8b93f5 !important; text-decoration: underline; text-underline-offset: 2px; }
