@@ -1072,6 +1072,24 @@ repro venue acm --format latex -o ae.tex # in the layout of the template, as LaT
 
 Each such field is marked **DRAFT** and names the records it was generated from. Every other field is marked **TODO** and left empty for the authors: the abstract, the algorithm, the data sets, installation and the rest are not in any record, and generated prose in their place would read as the authors' own. A yes or no is filled in only where a record settles it with no judgment involved, marked DRAFT with the record named, and only from the project's own identifiers: `doi`, `identifiers` and `repository-code` at the top of `CITATION.cff`, and `identifier` and `codeRepository` in `codemeta.json`. A DOI or Software Heritage ID (`swh:1:...`) there answers Yes to *Archived (provide DOI)?*; a GitHub or GitLab address alone does not. Any of those, or the code repository, answers Yes to *Publicly available?*, with "author: confirm this repository is public", since whether it is public cannot be seen offline. A declared command answers Yes to *Workflow automation framework used?*. References, cited works, the README and the origins of copied files are never read for these. Every other yes or no is left to the authors. Plans are found as `prereg check` finds them, leaving out any under a folder named `tests`, `test`, `testdata`, `fixtures`, `fixture` or `examples`; `--plan PATH` names one instead, and must exist. A ledger whose chain does not verify is said to, and a claim in it counts as bound only where the run it names is recorded. `--format json` gives every answer with its status and its records. `-o FILE` refuses to replace a file that exists, since the authors may have edited it; `--force` replaces it.
 
+### Evidence against the badging criteria
+
+```bash
+repro venue acm-evidence -o evidence.html     # one page, no images
+repro venue acm-evidence --format json
+```
+
+`repro venue acm-evidence` lists, for each criterion of [ACM Artifact Review and Badging](https://www.acm.org/publications/policies/artifact-review-and-badging-current) version 1.1, the records in the repository that bear on it, under the policy's own words for the criterion. It is labelled, in every format, "Evidence mapped to ACM Artifact Review and Badging v1.1 criteria; not an ACM badge." It never says whether a criterion is met, which is the evaluators' decision, and it uses no badge's name or image as a label or a status.
+
+| criterion | records listed |
+|---|---|
+| placed on an archival repository, with an identifier | a DOI or Software Heritage ID among the project's own identifiers in `CITATION.cff` or `codemeta.json`; never the origin of a copied file, which is someone else's repository |
+| documented, consistent, complete and exercisable | the declared commands, the last re-run of each, the claims in `repro.yaml` and the ledger, the README, `docs/` and `CITATION.cff` |
+| documented and structured for reuse | all of those, the license, and the lockfiles at the top of the project |
+| main results obtained by others, with or without the authors' artifacts | none: `not determinable by this tool` |
+
+Each criterion's standing is `records listed`, `no record found` or `not determinable by this tool`, shown as `DRAFT: records listed` where records are listed and `TODO: ...` otherwise, and the page and the JSON open with a DRAFT notice. The last two criteria are always the third: the policy asks for the results to be obtained by a person or team other than the authors, which nothing in the authors' repository can show. acm.org refuses scripted requests, so the policy page was saved from a browser on 2026-10-11 and converted to text. Each criterion's words are quoted from that text verbatim, ACM's spelling *publically* included, and stored in the package with the page's address, the retrieval date, the sha256 of the saved text and of the saved page, the line each quotation is on, and the sha256 of each quotation, so a copy saved independently can be checked against them. There is no SARIF output: SARIF reports results of an analysis, and a list of records under a criterion is not a result.
+
 ## Audit a repository you did not write
 
 ```bash

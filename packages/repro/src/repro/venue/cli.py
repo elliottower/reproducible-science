@@ -1,6 +1,7 @@
 """`repro venue`: the commands that draft what a venue asks for from the records.
 
-    repro venue acm       an Artifact Appendix, in Markdown, LaTeX or JSON
+    repro venue acm           an Artifact Appendix, in Markdown, LaTeX or JSON
+    repro venue acm-evidence  the records bearing on each ACM badging criterion, in HTML or JSON
 
 Each writes to standard output, or to `--output`, which is never overwritten without
 `--force`: a draft the authors have started editing is theirs, and regenerating over it would
@@ -16,7 +17,7 @@ from collections.abc import Callable
 from provenance_core import atomic_write
 
 from repro.exceptions import ReproError
-from repro.venue import acm
+from repro.venue import acm, acm_evidence
 from repro.venue.draft import Draft, Status, as_json, markdown
 from repro.venue.records import Project
 
@@ -68,19 +69,36 @@ def command_acm(args: argparse.Namespace) -> int:
     return code
 
 
-def _output_options(parser: argparse.ArgumentParser, formats: list[str]) -> None:
+EVIDENCE_FORMATS: dict[str, Callable[[acm_evidence.EvidenceMap], str]] = {
+    "html": acm_evidence.as_html,
+    "json": acm_evidence.as_json,
+}
+
+
+def command_acm_evidence(args: argparse.Namespace) -> int:
+    made = acm_evidence.evidence_map(Project.at(pathlib.Path.cwd()))
+    code = emit(EVIDENCE_FORMATS[args.format](made), args.output, args.force)
+    if args.output is not None:
+        print(f"  {acm_evidence.LABEL}")
+        for mapped in made.criteria:
+            print(f"  {mapped.criterion.id}: {mapped.standing.value}")
+    return code
+
+
+def _output_options(parser: argparse.ArgumentParser, formats: list[str], plan: bool = True) -> None:
     parser.add_argument("--format", choices=formats, default=formats[0])
     parser.add_argument("--output", "-o", metavar="FILE", help="write here instead of printing")
     parser.add_argument(
         "--force", action="store_true", help="replace the file --output names where it exists"
     )
-    parser.add_argument(
-        "--plan",
-        type=pathlib.Path,
-        metavar="PATH",
-        help="the preregistration to read, in place of every PREREG.md `prereg check` finds "
-        "outside folders of tests, fixtures and examples",
-    )
+    if plan:
+        parser.add_argument(
+            "--plan",
+            type=pathlib.Path,
+            metavar="PATH",
+            help="the preregistration to read, in place of every PREREG.md `prereg check` finds "
+            "outside folders of tests, fixtures and examples",
+        )
 
 
 def add_parser(sub: argparse._SubParsersAction) -> None:
@@ -113,6 +131,18 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     )
     _output_options(p_acm, list(ACM_FORMATS))
     p_acm.set_defaults(func=command_acm)
+    p_evidence = venues.add_parser(
+        "acm-evidence",
+        help="the records bearing on each criterion of ACM Artifact Review and Badging v1.1",
+        description=(
+            f"{acm_evidence.LABEL} For each criterion of the policy, list the records in this "
+            "repository that bear on it, with the policy's own text for the criterion. Whether "
+            "a criterion is met is not said: evaluators decide that. The two criteria about "
+            "results obtained by others are not determinable by this tool."
+        ),
+    )
+    _output_options(p_evidence, list(EVIDENCE_FORMATS), plan=False)
+    p_evidence.set_defaults(func=command_acm_evidence)
 
 
 __all__ = ["OutputExistsError", "add_parser", "emit"]
