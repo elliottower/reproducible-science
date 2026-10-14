@@ -153,6 +153,7 @@ function SourcePanel({ s, onClose }: { s: Source; onClose: () => void }) {
       <button className="close" onClick={onClose}>×</button>
       <div className="kicker">SOURCE</div>
       <h2>{s.bib.title || s.citation}</h2>
+      {s.link && <p><a className="src-link" href={s.link} target="_blank" rel="noreferrer">Open the source ↗</a></p>}
       <dl>
         {s.bib.author && (<><dt>Authors</dt><dd>{s.bib.author.split(/\s+and\s+/).join('; ')}</dd></>)}
         {s.bib.year && (<><dt>Year</dt><dd>{s.bib.year}</dd></>)}
@@ -171,70 +172,121 @@ function SourcePanel({ s, onClose }: { s: Source; onClose: () => void }) {
   )
 }
 
+function Quotes({ st, words }: { st: Source['statements'][number]; words: Set<string> }) {
+  return (
+    <>
+      {st.quotes.map((qq, k) => (
+        <div key={k} className="src-words">
+          <span className="quote">“<Marked text={qq.exact} against={words} />”</span>
+          {qq.section && <div className="muted small">(section: {qq.section})</div>}
+        </div>
+      ))}
+    </>
+  )
+}
+
+function Interpretation({ st }: { st: Source['statements'][number] }) {
+  return (
+    <>
+      {st.statement}
+      {st.notes && <Note text={st.notes} />}
+    </>
+  )
+}
+
+const sentenceWords = (texts: string[]) =>
+  new Set(texts.flatMap((t) => t.toLowerCase().split(/\s+/).map((w) => w.replace(/[^a-z0-9-]/g, ''))))
+
 function CitationsByClaim({ graph, query, onOpen }: { graph: Graph; query: string; onOpen: (s: Source) => void }) {
   const q = query.trim().toLowerCase()
   const sources = (graph.tabs?.citations.sources ?? []).filter((s) => !q || JSON.stringify(s).toLowerCase().includes(q))
-  const [closed, setClosed] = useState<Set<string>>(new Set())
-  const flip = (f: string) => setClosed((prev) => { const n = new Set(prev); if (n.has(f)) n.delete(f); else n.add(f); return n })
+  const [groupBy, setGroupBy] = useState<'source' | 'section'>('source')
+  const head = (
+    <thead><tr><th style={{ width: '16%' }}>Source</th><th style={{ width: '28%' }}>Source quotations</th><th style={{ width: '20%' }}>Interpretation</th><th>
+      <div className="ms-grid ms-grid-head"><span>Manuscript text</span><span>Manuscript section</span></div>
+    </th></tr></thead>
+  )
+  const switcher = (
+    <div className="seg-right">
+      <span className="muted small">Group by</span>
+      <div className="seg small-seg">
+        <button className={groupBy === 'source' ? 'on' : ''} onClick={() => setGroupBy('source')}>Source</button>
+        <button className={groupBy === 'section' ? 'on' : ''} onClick={() => setGroupBy('section')}>Manuscript section</button>
+      </div>
+    </div>
+  )
+
+  if (groupBy === 'section') {
+    // Every citing sentence, in reading order, under the section it sits in.
+    const items = sources.flatMap((s) => s.cited_in.map((c) => ({ s, c })))
+      .sort((a, b) => a.c.order[0] - b.c.order[0] || a.c.order[1] - b.c.order[1])
+    const sections: { name: string; items: typeof items }[] = []
+    for (const it of items) {
+      const name = it.c.section || 'Before the first section'
+      const last = sections[sections.length - 1]
+      if (last && last.name === name) last.items.push(it)
+      else sections.push({ name, items: [it] })
+    }
+    const uncited = sources.filter((s) => s.cited_in.length === 0)
+    return (
+      <>
+        {switcher}
+        <table className="cite-table">
+          {head}
+          <tbody>
+            {sections.map((sec, si) => (
+              <>
+                <tr key={`h-${si}`} className="sec-head"><td colSpan={4}>{sec.name}</td></tr>
+                {sec.items.map(({ s, c }, k) => {
+                  const words = sentenceWords([c.text])
+                  return (
+                    <tr key={`${si}-${k}`} className="static src-start">
+                      <td><SourceCell s={s} onOpen={onOpen} /></td>
+                      <td>{s.statements.map((st) => <Quotes key={st.id} st={st} words={words} />)}</td>
+                      <td className="small">{s.statements.map((st) => <div key={st.id} className="interp-block"><Interpretation st={st} /></div>)}</td>
+                      <td className="small"><div className="ms-sentence">“{c.text}”</div></td>
+                    </tr>
+                  )
+                })}
+              </>
+            ))}
+            {uncited.length > 0 && (
+              <tr className="sec-head"><td colSpan={4}>Not cited in any .tex file pinned in repro.yaml: {uncited.map((s) => s.citation).join(', ')}</td></tr>
+            )}
+          </tbody>
+        </table>
+      </>
+    )
+  }
+
   return (
     <>
-    <div className="seg-right">
-      <button className="link-btn" onClick={() => setClosed(new Set())}>Expand all</button>
-      <button className="link-btn" onClick={() => setClosed(new Set(sources.map((s) => s.file)))}>Collapse all</button>
-    </div>
-    <table className="cite-table">
-      <thead><tr><th style={{ width: '18%' }}>Source</th><th style={{ width: '27%' }}>Manuscript text</th><th style={{ width: '22%' }}>Interpretation</th><th>Source quotations</th></tr></thead>
-      <tbody>
-        {sources.map((s) => {
-          const words = new Set(s.cited_in.flatMap((c) => c.text.toLowerCase().split(/\s+/).map((w) => w.replace(/[^a-z0-9-]/g, ''))))
-          if (closed.has(s.file)) {
-            return (
-              <tr key={s.file} className="src-start folded" onClick={() => flip(s.file)}>
-                <td><span className="src-folded">▸ {s.bib.title || s.citation}</span><div className="small muted">{byline(s)}</div></td>
-                <td colSpan={3} className="small muted">
-                  {s.statements.length} statement{s.statements.length === 1 ? '' : 's'} · {s.pinned} quote{s.pinned === 1 ? '' : 's'}
-                  {s.cited_in.length ? ` · cited ${s.cited_in.length === 1 ? 'once' : `${s.cited_in.length} times`}` : ' · not cited in any pinned .tex file'}
-                </td>
+      {switcher}
+      <table className="cite-table">
+        {head}
+        <tbody>
+          {sources.map((s) => {
+            const words = sentenceWords(s.cited_in.map((c) => c.text))
+            return s.statements.map((st, i) => (
+              <tr key={`${s.file}-${st.id}`} className={`static ${i === 0 ? 'src-start' : ''}`}>
+                {i === 0 && <td rowSpan={s.statements.length}><SourceCell s={s} onOpen={onOpen} /></td>}
+                <td><Quotes st={st} words={words} /></td>
+                <td className="small"><Interpretation st={st} /></td>
+                {i === 0 && (
+                  <td rowSpan={s.statements.length} className="small">
+                    {s.cited_in.length ? s.cited_in.map((c, k) => (
+                      <div key={k} className="ms-grid">
+                        <span className="ms-sentence">“{c.text}”</span>
+                        <span className="ms-section">{c.section || '—'}</span>
+                      </div>
+                    )) : <span className="muted">Not cited in any .tex file pinned in repro.yaml.</span>}
+                  </td>
+                )}
               </tr>
-            )
-          }
-          return s.statements.map((st, i) => (
-            <tr key={`${s.file}-${st.id}`} className={`static ${i === 0 ? 'src-start' : ''}`}>
-              {i === 0 && (
-                <td rowSpan={s.statements.length}>
-                  <div className="src-row">
-                    <button className="fold-btn" onClick={() => flip(s.file)} title="Collapse">▾</button>
-                    <SourceCell s={s} onOpen={onOpen} />
-                  </div>
-                </td>
-              )}
-              {i === 0 && (
-                <td rowSpan={s.statements.length} className="small">
-                  {s.cited_in.length ? s.cited_in.map((c, k) => (
-                    <div key={k} className="ms-sentence">
-                      “{c.text}”
-                      {c.section && <div className="muted">(section: {c.section})</div>}
-                    </div>
-                  )) : <span className="muted">Not cited in any .tex file pinned in repro.yaml.</span>}
-                </td>
-              )}
-              <td className="small">
-                {st.statement}
-                {st.notes && <Note text={st.notes} />}
-              </td>
-              <td>
-                {st.quotes.map((qq, k) => (
-                  <div key={k} className="src-words">
-                    <span className="quote">“<Marked text={qq.exact} against={words} />”</span>
-                    {qq.section && <div className="muted small">(section: {qq.section})</div>}
-                  </div>
-                ))}
-              </td>
-            </tr>
-          ))
-        })}
-      </tbody>
-    </table>
+            ))
+          })}
+        </tbody>
+      </table>
     </>
   )
 }

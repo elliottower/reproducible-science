@@ -311,7 +311,7 @@ def citing_sentences(project: pathlib.Path, tex_paths: list[str]) -> dict[str, l
     to its text: commands dropped, a citation shown as [key]."""
     out: dict[str, list[dict]] = collections.defaultdict(list)
     cite = re.compile(r"\\cite[a-zA-Z]*\*?(?:\[[^\]]*\])*\{([^}]*)\}")
-    for rel in tex_paths:
+    for file_index, rel in enumerate(tex_paths):
         f = project / rel
         if not f.is_file():
             continue
@@ -332,8 +332,9 @@ def citing_sentences(project: pathlib.Path, tex_paths: list[str]) -> dict[str, l
             section = next((name for pos, name in reversed(sections) if pos < m.start()), "")
             for key in (k.strip() for k in m.group(1).split(",")):
                 entry = {"text": text, "section": section, "file": rel}
-                if entry not in out[key]:
-                    out[key].append(entry)
+                if not any(e["text"] == text and e["file"] == rel for e in out[key]):
+                    # Where the sentence falls in reading order: which pinned .tex file, then where in it.
+                    out[key].append({**entry, "order": [file_index, m.start()]})
     return out
 
 

@@ -329,3 +329,16 @@ tr.folded:hover { background: #fafbfc; }
 .pin.bad { background: var(--bad-bg); color: var(--bad); }
 .src-folded { font-weight: 600; font-size: 12.5px; }
 .rec .panel { position: fixed; right: 0; top: 52px; bottom: 0; z-index: 30; box-shadow: -8px 0 24px rgba(15, 20, 36, 0.08); }
+.src-key { font-size: 12px; font-weight: 500; color: var(--text); }
+.src-cell .src-title { font-weight: 500; font-size: 12px; margin-top: 3px; }
+.src-meta { margin-top: 0; margin-bottom: 2px; }
+.seg-right { display: flex; align-items: center; gap: 8px; float: right; margin-top: -2px; }
+.small-seg { margin-bottom: 0; }
+.small-seg button { padding: 4px 10px; font-size: 11.5px; }
+tr.sec-head td { background: #f4f5f8; font-weight: 600; font-size: 12px; padding: 8px 10px; border-top: 1px solid var(--border); }
+.interp-block { margin-bottom: 8px; }
+.ms-grid { display: grid; grid-template-columns: minmax(0, 1fr) 120px; gap: 12px; margin-bottom: 10px; }
+.ms-grid-head { margin-bottom: 0; }
+.ms-section { font-size: 11.5px; color: #3a4256; }
+.src-cell .src-title { font-weight: 600; font-size: 12.5px; margin-top: 0; }
+.src-meta { margin-top: 4px; }
