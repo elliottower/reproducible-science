@@ -212,7 +212,7 @@ function CitationsByClaim({ graph, query, onOpen }: { graph: Graph; query: strin
     <div className="seg-right">
       {groupBy === 'section' && (
         <>
-          <button className="link-btn" onClick={() => setOpenSecs(new Set(Array.from({ length: 200 }, (_, i) => `${i}`)))}>Expand all</button>
+          <button className="link-btn" onClick={() => setOpenSecs(new Set([...Array.from({ length: 200 }, (_, i) => `${i}`), 'uncited']))}>Expand all</button>
           <button className="link-btn" onClick={() => setOpenSecs(new Set())}>Collapse all</button>
         </>
       )}
@@ -264,7 +264,22 @@ function CitationsByClaim({ graph, query, onOpen }: { graph: Graph; query: strin
               </Fragment>
             ))}
             {uncited.length > 0 && (
-              <tr className="sec-head"><td colSpan={4}>Not cited in any .tex file pinned in repro.yaml: {uncited.map((s) => s.citation).join(', ')}</td></tr>
+              <Fragment key="uncited">
+                <tr className={`sec-head clickable ${openSecs.has('uncited') ? 'open' : ''}`} onClick={() => flipSec('uncited')}>
+                  <td colSpan={4}>
+                    <span className="sec-caret">{openSecs.has('uncited') ? '▾' : '▸'}</span> Not cited in any .tex file
+                    <span className="sec-count"> · {uncited.length} source{uncited.length === 1 ? '' : 's'} · {uncited.reduce((a, s) => a + s.pinned, 0)} quotations</span>
+                  </td>
+                </tr>
+                {openSecs.has('uncited') && uncited.map((s) => (
+                  <tr key={s.file} className="static src-start">
+                    <td><SourceCell s={s} onOpen={onOpen} /></td>
+                    <td>{s.statements.map((st) => <Quotes key={st.id} st={st} words={new Set()} />)}</td>
+                    <td className="small">{s.statements.map((st) => <div key={st.id} className="interp-block"><Interpretation st={st} /></div>)}</td>
+                    <td className="small muted">Not cited in any .tex file repro.yaml pins.</td>
+                  </tr>
+                ))}
+              </Fragment>
             )}
           </tbody>
         </table>
