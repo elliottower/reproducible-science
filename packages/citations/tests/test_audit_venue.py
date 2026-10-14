@@ -303,6 +303,51 @@ def test_a_derivative_journal_matches_itself(ours, theirs):
     assert check.outcome == V.MATCH, check.why
 
 
+PAIRS = json.loads((FIXTURE / "journal_pairs.json").read_text())
+
+
+@pytest.mark.parametrize("ours,theirs", PAIRS["same_journal"] + PAIRS["german_same"])
+@pytest.mark.parametrize("kind", ["journal", ""])
+def test_a_journal_written_another_way_is_the_same_journal(ours, theirs, kind):
+    # `Neural Netw.`, `Comput. Netw.` and `IEEE/ACM Trans. Netw.` once read `Netw` as the
+    # derivative ending `Network` while their registry titles say `Networks` and `Networking`.
+    for a, b in ((ours, theirs), (theirs, ours)):
+        check = V.decide([a], [b], kind, kind)
+        assert check.outcome == V.MATCH, (a, b, check.why)
+
+
+@pytest.mark.parametrize("ours,theirs", PAIRS["german_distinct"])
+def test_german_journals_sharing_a_stop_word_stay_apart(ours, theirs):
+    assert V.decide([ours], [theirs], "journal", "journal").outcome == V.MISMATCH
+
+
+def test_every_alias_name_reads_as_its_own_entry_and_no_other():
+    collisions = {
+        f"{alias.key}: {n}": sorted(V.keys(V.read(n)))
+        for alias in V.ALIASES
+        for n in alias.names
+        if V.keys(V.read(n)) != {alias.key}
+    }
+    assert collisions == {}
+
+
+@pytest.mark.parametrize(
+    "ours,theirs",
+    [
+        ("ASIA CCS", "ACM Conference on Computer and Communications Security"),
+        (
+            "CCS",
+            "Proceedings of the 2017 ACM on Asia Conference on Computer and Communications "
+            "Security",
+        ),
+        ("JMLR", "Proceedings of Machine Learning Research"),
+    ],
+)
+def test_an_alias_contained_in_another_s_name_is_not_that_alias(ours, theirs):
+    check = V.decide([ours], [theirs], "proceedings", "proceedings")
+    assert check.outcome != V.MATCH, check.why
+
+
 # --- Findings volumes -----------------------------------------------------------------------
 
 

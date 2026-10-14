@@ -46,9 +46,27 @@ MISMATCH = "mismatch"
 NOT_COMPARABLE = "not comparable"
 
 #: `a` is not here: in a venue name it is nearly always a letter, as in `U.S.A.` or `Series A`.
-#: `fur` and `fuer` are German `für`, which an abbreviation drops: `Z. Physik` for
-#: `Zeitschrift für Physik`.
-STOP = frozenset({"an", "and", "at", "for", "in", "of", "on", "the", "to", "fur", "fuer"})
+#: `fur`, `fuer`, `die`, `der`, `des` and `und` are German words an abbreviation drops: `Z. Physik`
+#: for `Zeitschrift für Physik`, `Arch. Math.` for `Archiv der Mathematik`.
+STOP = frozenset(
+    {
+        "an",
+        "and",
+        "at",
+        "for",
+        "in",
+        "of",
+        "on",
+        "the",
+        "to",
+        "fur",
+        "fuer",
+        "die",
+        "der",
+        "des",
+        "und",
+    }
+)
 
 #: Words that, ending a title, make a journal of its own from a parent's name: `Science
 #: Advances`, `Cell Reports`, `BMJ Open`, `JAMA Network Open`, `PNAS Nexus`, `Nature
@@ -337,6 +355,15 @@ ALIASES: tuple[Alias, ...] = (
         source="sigsac.org, proceedings title",
     ),
     Alias(
+        key="asiaccs",
+        names=(
+            "AsiaCCS",
+            "ASIA CCS",
+            "ACM Asia Conference on Computer and Communications Security",
+        ),
+        source="sigsac.org, proceedings title; a conference distinct from CCS",
+    ),
+    Alias(
         key="usenix-security",
         names=("USENIX Security", "USENIX Security Symposium"),
         source="usenix.org, proceedings title",
@@ -377,6 +404,11 @@ ALIASES: tuple[Alias, ...] = (
         source="proceedings.mlr.press, which publishes ICML, AISTATS, COLT and UAI among others",
     ),
 )
+
+#: An entry whose names contain another entry's: `ACM Asia Conference on Computer and
+#: Communications Security` holds the CCS title, and `JMLR W&CP` the JMLR acronym. Where the
+#: specific entry is found, the general one is not.
+SUBSUMES = {"asiaccs": "ccs", "pmlr": "jmlr"}
 
 #: Entries of `ALIASES` that are a publication series rather than one venue. A paper is in
 #: PMLR and at ICML at once, so a series never establishes a mismatch.
@@ -539,36 +571,33 @@ def _aligned(a: tuple[str, ...], b: tuple[str, ...]) -> bool:
     return walk(0, 0)
 
 
-def _derivatives(name: Name) -> tuple[str, ...]:
-    """The trailing run of `DERIVATIVE` words, abbreviated or not: `open` in `BMJ Open`,
-    `adv` in `Sci. Adv.`. Empty where the name is nothing but such words."""
-    words = name.words
-    n = len(words)
-    # Truncations of three letters or more only: the `a` of `U.S.A.` is not `Advances`, and
-    # the contraction rule would read `Res` as `Reports`.
-    while n and any(
-        words[n - 1] == d or (len(words[n - 1]) >= 3 and d.startswith(words[n - 1]))
-        for d in DERIVATIVE
-    ):
-        n -= 1
-    return words[n:] if n else ()
+def _derivative_like(word: str) -> bool:
+    """`word` is a `DERIVATIVE` word, or a truncation of one, or one with an ending added:
+    `netw`, `network`, `networks` and `networking` are one word here, as `lett` and `letters`
+    are. Three letters at least for a truncation: the `a` of `U.S.A.` is not `Advances`."""
+    if word in DERIVATIVE:
+        return True
+    return len(word) >= 3 and any(d.startswith(word) or word.startswith(d) for d in DERIVATIVE)
+
+
+def _adds_ending(longer: Name, shorter: Name) -> bool:
+    """`longer` is `shorter` with derivative words added after it: `BMJ Open` against `BMJ`,
+    `PNAS Nexus` against the full PNAS title. Only a trailing addition counts, and the words
+    before it must be the other name under the ordinary rules, so `Neural Netw.` is not a
+    derivative of `Neural Networks`: the two have the same words."""
+    words = longer.words
+    for k in range(1, len(words)):
+        ending, stem = words[len(words) - k :], words[: len(words) - k]
+        if not all(map(_derivative_like, ending)):
+            break
+        if _same_base(read(" ".join(stem)), shorter):
+            return True
+    return False
 
 
 def _parent_and_derivative(a: Name, b: Name) -> bool:
-    """One name is the other plus a derivative ending: `BMJ Open` and `BMJ`, `PNAS Nexus` and
-    `Proceedings of the National Academy of Sciences`."""
-    x, y = _derivatives(a), _derivatives(b)
-    if _same_family_member(a, b) or (x and y):
-        return False
-    stem_a = read(" ".join(a.words[: len(a.words) - len(x)]))
-    stem_b = read(" ".join(b.words[: len(b.words) - len(y)]))
-    return bool(same(stem_a, stem_b))
-
-
-def _same_family_member(a: Name, b: Name) -> bool:
-    """Neither name carries a derivative ending the other lacks."""
-    x, y = _derivatives(a), _derivatives(b)
-    return len(x) == len(y) and all(map(_word_agrees, x, y))
+    """One name is the other plus a derivative ending: `Nature Communications` and `Nature`."""
+    return _adds_ending(a, b) or _adds_ending(b, a)
 
 
 def _initials_of(acronym: str, name: Name) -> bool:
@@ -592,8 +621,18 @@ def same(a: Name, b: Name) -> str:
     for x, y in ((a, b), (b, a)):
         if len(x.core) == 1 and _initials_of(x.core[0], y):
             return "acronym"
-    if not _same_family_member(a, b):
+    if _parent_and_derivative(a, b):
         return ""
+    return _same_base(a, b)
+
+
+def _same_base(a: Name, b: Name) -> str:
+    """`same` without the family rule, which reads this to compare a derivative's stem."""
+    if not a.words or not b.words:
+        return ""
+    for x, y in ((a, b), (b, a)):
+        if len(x.core) == 1 and _initials_of(x.core[0], y):
+            return "acronym"
     if a.words == b.words or a.core == b.core:
         return "same name"
     if _aligned(a.words, b.words) or _aligned(a.core, b.core):
@@ -613,20 +652,22 @@ def keys(name: Name) -> frozenset[str]:
     """Every `ALIASES` entry this name is written as, or contains."""
     found = set()
     for alias, known in _ALIAS_NAMES:
-        if not _same_family_member(known, name):
+        if _parent_and_derivative(known, name):
             continue  # `PNAS Nexus` is not PNAS
         if len(known.words) == 1:
             hit = known.words[0] in name.words
         else:
             # Read as one name only on one track: `JMLR Workshop and Conference Proceedings`
-            # is PMLR, and its acronym is not the journal's.
-            alike = known.track == name.track and bool(same(known, name))
+            # is PMLR, and its acronym is not the journal's. A bare acronym inside a longer
+            # alias name is not that alias either: `JMLR` is not `JMLR W&CP`.
+            inside = len(name.core) == 1 and len(known.words) > 1 and name.core[0] in known.words
+            alike = known.track == name.track and not inside and bool(same(known, name))
             hit = alike or _contains(name.words, known.words)
         if hit:
             found.add(alias.key)
-    if "pmlr" in found:
-        # `JMLR W&CP` is the earlier name of PMLR, not the journal.
-        found.discard("jmlr")
+    for specific, general in SUBSUMES.items():
+        if specific in found:
+            found.discard(general)
     return frozenset(found)
 
 
