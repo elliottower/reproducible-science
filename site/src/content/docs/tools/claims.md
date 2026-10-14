@@ -63,7 +63,7 @@ Writes a starter `repro.yaml` at the top of the project: each file it finds or i
 claims verify
 ```
 
-Checks every declared assertion against the file it names and prints one line per assertion: `ok`, `MISS` where the file holds another value, `GONE` where the address does not resolve, `--` where the check could not run. It exits 1 where the policy fails, and `--format json` and `--format sarif` print the report as a document.
+Checks every declared assertion against the file it names and prints one line per assertion: `ok`, `MISS` where the file holds another value, `GONE` where the address does not resolve, `--` where the check could not run. It exits 1 where the policy fails, and `--format json` and `--format sarif` print the report as a document. With no `repro.yaml` it reports the result files and the manuscript `claims manifest init` would pin, and lists as guesses the numbers the manuscript prints that agree with a value in one of those files. It writes nothing, verifies nothing, and exits 2.
 
 ```bash
 claims stale

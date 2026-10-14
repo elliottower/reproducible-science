@@ -64,10 +64,17 @@ from claims.origins import OriginCheck, OriginsReport, OriginState, fetch_url
 from claims.origins import origins as run_origins
 from claims.policy import PROFILES, Assessment, Policy
 from claims.record import check_records
-from claims.renderers import to_sarif
+from claims.renderers import survey_to_sarif, to_sarif
 from claims.reruns import RECORD
 from claims.stale import stale as run_stale
-from claims.starter import CONVENTIONAL, MAX_DISCOVERED, Survey, project_root, survey
+from claims.starter import (
+    CONVENTIONAL,
+    MAX_DISCOVERED,
+    Survey,
+    address_said,
+    project_root,
+    survey,
+)
 from claims.starter import write as write_starter
 from claims.verify import verify as run_verify
 from claims.why import why as run_why
@@ -164,28 +171,26 @@ def _survey_lines(found: Survey) -> list[str]:
             f"    more than {MAX_DISCOVERED} were found; these are the first {MAX_DISCOVERED}"
         )
     lines.append(f"  manuscript: {found.manuscript or 'none found'}")
-    lines += [f"  passed over: {note}" for note in found.notes]
+    lines += [f"  note: {note}" for note in found.notes]
 
     lines.append("")
     if found.manuscript is None or not found.values:
-        missing = (
-            "no manuscript" if found.manuscript is None else "no number in a JSON or YAML file"
-        )
+        missing = "no manuscript" if found.manuscript is None else "no number in a result file"
         lines.append(f"  candidate bindings: none, because there is {missing} to compare")
     else:
         agreeing = len({c.offset for c in found.candidates})
         lines += [
             f"  candidate bindings, guessed: {agreeing} of the {found.compared} numbers "
             f"{found.manuscript} prints agree",
-            f"  with one of the {found.values} values the project's JSON and YAML files hold, "
-            "at the precision printed.",
+            f"  with one of the {found.values} values read from {len(found.read_from)} result "
+            f"file{'' if len(found.read_from) == 1 else 's'}, at the precision printed.",
             "  A guess says the digits agree, never that the sentence reports that value.",
         ]
         shown = found.candidates[:SHOWN_CANDIDATES]
         width = max((len(c.printed) for c in shown), default=0)
         for c in shown:
             where = f"line {c.line}" if c.line else "line ?"
-            held = f"{c.path} {c.pointer or '/'} holds {c.stored}"
+            held = f"{c.path} {address_said(c.locator)} holds {c.stored}"
             if c.conversion is not None:
                 held += f", {c.conversion.said}"
             lines.append(f"    guess  {where:<8}  {c.printed:<{width}}  {held}")
@@ -207,9 +212,20 @@ def cmd_verify(args: argparse.Namespace) -> int:
     if path is None:
         # Exits 2 as every command does with nothing to read: a project with no manifest has
         # checked nothing, which is neither a pass (0) nor a finding against it (1).
+        found = survey(project_root(Path.cwd()))
+        if args.format == "json":
+            print(
+                json.dumps(
+                    {"manifest": None, "verified": 0, "survey": found.model_dump(mode="json")},
+                    indent=2,
+                )
+            )
+            return 2
+        if args.format == "sarif":
+            print(json.dumps(survey_to_sarif(found, version=__version__), indent=2))
+            return 2
         print(f"no {DEFAULT_NAME} here or above.\n")
-        if args.format == "text":
-            print("\n".join(_survey_lines(survey(project_root(Path.cwd())))))
+        print("\n".join(_survey_lines(found)))
         print("write one that pins this project's result files, with example claims to edit:\n")
         print(f"    {_program(args)} manifest init")
         return 2

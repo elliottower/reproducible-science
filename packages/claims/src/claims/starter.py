@@ -37,14 +37,18 @@ from claims.adapters.array import _ARRAY_SUFFIXES
 from claims.adapters.columnar import COLUMNAR_SUFFIXES
 from claims.adapters.sheet import WORKBOOK_SUFFIXES
 from claims.adapters.sqlite import _SQLITE_SUFFIXES
-from claims.adapters.table import _DELIMITERS
+from claims.adapters.table import _DELIMITERS, read_cells
 from claims.adapters.tree import _TREE_SUFFIXES, Written, _load_tree
-from claims.exceptions import ArtifactRefusedError, ArtifactUnreadableError, ManifestExistsError
+from claims.exceptions import (
+    ArtifactRefusedError,
+    ArtifactUnreadableError,
+    BackendUnavailableError,
+    ManifestExistsError,
+)
 from claims.manifest import DEFAULT_NAME
 from claims.models import (
     SCHEMA_VERSION,
     ArtifactRef,
-    ComparisonMode,
     Conversion,
     Digest,
     Manifest,
@@ -55,7 +59,7 @@ from claims.models import (
 from claims.numbers import numbers as printed_numbers
 from claims.numbers import telling
 from claims.provenance import of_tree
-from claims.verify import _agree, _compared, verify
+from claims.verify import agrees, verify
 
 #: Where discovery looks for result files, relative to the project top.
 CONVENTIONAL = ("results", "paper/artifacts", "outputs", "data")
@@ -83,6 +87,10 @@ MAX_ENTRIES = 1000
 """A directory holding more entries than this is a large tree, and is not searched."""
 MAX_BYTES = 50 * 1024 * 1024
 MAX_QUOTE_TRIES = 5
+MAX_VALUES_PER_FILE = 10_000
+"""A survey reads at most this many numbers from one result file."""
+MAX_COMPARISONS = 1_000_000
+"""A survey compares at most this many pairs of a printed number and a stored one."""
 
 _NOT_SEARCHED = {"node_modules", "__pycache__", "venv", "env", "site-packages"}
 
@@ -91,7 +99,7 @@ _NOT_SEARCHED = {"node_modules", "__pycache__", "venv", "env", "site-packages"}
 FORMATS = (
     ("JSON and YAML", frozenset(_TREE_SUFFIXES)),
     ("CSV, TSV and PSV", frozenset(_DELIMITERS)),
-    ("Parquet, Feather, Arrow, Stata, SPSS and .rds", frozenset(COLUMNAR_SUFFIXES)),
+    ("Parquet, Feather, Stata, SPSS, .rds", frozenset(COLUMNAR_SUFFIXES)),
     ("Excel", frozenset(WORKBOOK_SUFFIXES)),
     ("SQLite", frozenset(_SQLITE_SUFFIXES)),
     ("NumPy, HDF5 and NetCDF", frozenset(_ARRAY_SUFFIXES)),
@@ -225,9 +233,11 @@ class Candidate(BaseModel):
     context: str
     path: str
     """The result file, relative to the project."""
-    pointer: str
+    locator: dict[str, str | int]
+    """Where the file holds the value, as a `value` assertion's locator would say it: `tree`
+    with a pointer, or `table_position` with a column and a row from 0."""
     stored: str
-    """The value at `pointer`, as the file writes it."""
+    """The value there, as the file writes it."""
     conversion: Conversion | None = None
 
 
@@ -243,12 +253,18 @@ class Survey(BaseModel):
     """Discovery found more than `MAX_DISCOVERED` result files and kept the first of them."""
     manuscript: str | None = None
     notes: tuple[str, ...] = ()
-    """What discovery passed over, and what could not be read."""
+    """What discovery passed over, what could not be read, and where a cap was reached."""
+    read_from: tuple[str, ...] = ()
+    """The result files values were read from: JSON, YAML, and tables a table locator reads."""
     values: int = 0
-    """How many numbers the JSON and YAML files hold."""
+    """How many numbers were read from those files, at most `MAX_VALUES_PER_FILE` from each."""
+    cut: tuple[str, ...] = ()
+    """The files holding more than `MAX_VALUES_PER_FILE` numbers, of which the first were read."""
     compared: int = 0
     """How many numbers the manuscript prints were compared with those values: the ones no
     rule sets aside, printed in digits, with two digits or a decimal point."""
+    not_compared: int = 0
+    """How many such numbers were left uncompared because `MAX_COMPARISONS` was reached."""
     candidates: tuple[Candidate, ...] = ()
 
 
@@ -509,14 +525,49 @@ def _format(path: pathlib.Path) -> str:
     return next(name for name, suffixes in FORMATS if path.suffix.lower() in suffixes)
 
 
+def _held(path: pathlib.Path) -> Iterator[tuple[dict[str, str | int], str]]:
+    """Every finite number a result file holds, with the locator that reads it, in file order.
+
+    A JSON or YAML file is read as the example `metric` claim reads it, and a delimited or
+    columnar table by the table adapter, cell by cell. Other formats yield nothing: a workbook
+    or a database holds several tables, and an array no column names.
+    """
+    suffix = path.suffix.lower()
+    if suffix in _TREE_SUFFIXES:
+        for pointer, value in _numbers(_load_tree(path)):
+            yield {"kind": "tree", "pointer": pointer}, value
+    elif suffix in _DELIMITERS or suffix in COLUMNAR_SUFFIXES:
+        header, rows = read_cells(path)
+        for row_number, row in enumerate(rows):
+            for column in header:
+                cell = row.get(column)
+                if not isinstance(cell, str):
+                    continue
+                try:
+                    finite = decimal.Decimal(cell).is_finite()
+                except (decimal.InvalidOperation, ValueError):
+                    continue
+                if finite:
+                    yield {"kind": "table_position", "column": column, "row": row_number}, cell
+
+
+def address_said(locator: dict[str, str | int]) -> str:
+    """A `Candidate` locator as a report prints it."""
+    if locator["kind"] == "tree":
+        return str(locator["pointer"]) or "/"
+    return f"column {locator['column']}, row {locator['row']}"
+
+
 def survey(root: pathlib.Path) -> Survey:
     """What `repro verify` could check at `root`, found as `write` finds it, writing nothing.
 
     The manuscript's numbers are those `claims.numbers` counts, read through a manifest held in
     memory that pins the manuscript and declares no claim. Each one that no rule sets aside is
-    compared with every number a discovered JSON or YAML file holds, by the comparison a
-    `metric` assertion makes at the precision printed; a number printed with a percent sign is
-    also compared as a percentage of the stored value. Every agreement is a `Candidate`.
+    compared with every number `_held` reads from a discovered result file, by
+    `claims.verify.agrees`, the comparison a numeric assertion makes, at the precision printed;
+    a number printed with a percent sign is also compared as a percentage of the stored value.
+    Every agreement is a `Candidate`. At most `MAX_VALUES_PER_FILE` numbers are read from one
+    file and `MAX_COMPARISONS` comparisons made, and where either is reached a note says so.
     """
     found, capped, notes = discover(root)
     manuscripts = [path for path in found if path.suffix.lower() in TEXT_SUFFIXES]
@@ -526,15 +577,25 @@ def survey(root: pathlib.Path) -> Survey:
     for path in results:
         grouped.setdefault(_format(path), []).append(path.relative_to(root).as_posix())
 
-    held: list[tuple[str, str, str]] = []
+    held: list[tuple[str, dict[str, str | int], str]] = []
+    read_from, cut = [], []
     for path in results:
-        if path.suffix.lower() not in _TREE_SUFFIXES:
-            continue
         relative = path.relative_to(root).as_posix()
         try:
-            held += [(relative, pointer, value) for pointer, value in _numbers(_load_tree(path))]
-        except ArtifactUnreadableError as e:
+            values = list(itertools.islice(_held(path), MAX_VALUES_PER_FILE + 1))
+        except (ArtifactUnreadableError, BackendUnavailableError) as e:
             notes.append(f"{relative} could not be read: {e}")
+            continue
+        if len(values) > MAX_VALUES_PER_FILE:
+            values = values[:MAX_VALUES_PER_FILE]
+            cut.append(relative)
+            notes.append(
+                f"{relative} holds more than {MAX_VALUES_PER_FILE} numbers; the first "
+                f"{MAX_VALUES_PER_FILE} were compared"
+            )
+        if values:
+            read_from.append(relative)
+        held += [(relative, locator, value) for locator, value in values]
 
     manuscript = manuscripts[0] if manuscripts else None
     printed = []
@@ -556,27 +617,35 @@ def survey(root: pathlib.Path) -> Survey:
             ]
 
     candidates = []
+    compared = comparisons = 0
     for number in printed:
-        reported = decimal.Decimal(number.value or "")
         conversions = (None, Conversion.PERCENT) if number.text.endswith("%") else (None,)
-        for relative, pointer, value in held:
+        if comparisons + len(held) * len(conversions) > MAX_COMPARISONS:
+            break
+        comparisons += len(held) * len(conversions)
+        compared += 1
+        reported = decimal.Decimal(number.value or "")
+        for relative, locator, value in held:
             stored = decimal.Decimal(value)
-            for conversion in conversions:
-                compared = _compared(stored, conversion)
-                if _agree(compared, reported, ComparisonMode.PRINTED_PRECISION, decimal.Decimal(0)):
-                    candidates.append(
-                        Candidate(
-                            printed=number.text,
-                            offset=number.offset,
-                            line=number.line,
-                            context=number.context,
-                            path=relative,
-                            pointer=pointer,
-                            stored=value,
-                            conversion=conversion,
-                        )
+            agreeing = [c for c in conversions if agrees(stored, reported, c)]
+            if agreeing:
+                candidates.append(
+                    Candidate(
+                        printed=number.text,
+                        offset=number.offset,
+                        line=number.line,
+                        context=number.context,
+                        path=relative,
+                        locator=locator,
+                        stored=value,
+                        conversion=agreeing[0],
                     )
-                    break
+                )
+    if compared < len(printed):
+        notes.append(
+            f"comparisons stop at {MAX_COMPARISONS}: {len(printed) - compared} of the "
+            f"{len(printed)} numbers the manuscript prints were not compared"
+        )
 
     return Survey(
         root=root,
@@ -584,7 +653,10 @@ def survey(root: pathlib.Path) -> Survey:
         capped=capped,
         manuscript=manuscript.relative_to(root).as_posix() if manuscript is not None else None,
         notes=tuple(notes),
+        read_from=tuple(read_from),
         values=len(held),
-        compared=len(printed),
+        cut=tuple(cut),
+        compared=compared,
+        not_compared=len(printed) - compared,
         candidates=tuple(candidates),
     )

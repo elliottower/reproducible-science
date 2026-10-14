@@ -81,6 +81,19 @@ def _delimited(path: pathlib.Path, delimiter: str) -> tuple[list[str], list[dict
     return header, text
 
 
+def read_cells(path: pathlib.Path) -> tuple[list[str], list[dict[str, Cell]]]:
+    """Every column of a delimited or columnar table, each cell as a table locator reads it.
+
+    A columnar reader reads only the columns it is asked for, so the header is read first and
+    then every column it names once. Raises `ArtifactUnreadableError`, and for a columnar file
+    whose reader is not installed `BackendUnavailableError`.
+    """
+    if path.suffix.lower() in COLUMNAR_SUFFIXES:
+        header, _ = read_columnar(path, set())
+        return read_columnar(path, set(header))
+    return _delimited(path, "")
+
+
 def _load(path: pathlib.Path, delimiter: str, wanted: set[str]) -> tuple[tuple, Found | None]:
     """A table's header and rows from whichever reader its suffix names, or why not.
 

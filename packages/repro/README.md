@@ -112,10 +112,44 @@ A project with no `.gitignore` gets one holding those lines. An existing `.gitig
 
 ## Write a manifest
 
-`repro verify` reads `repro.yaml`, the manifest that pins a project's files and declares what the manuscript claims about them. In a project that has none:
+`repro verify` reads `repro.yaml`, the manifest that pins a project's files and declares what the manuscript claims about them. In a project that has none, `repro verify` reports what one could check, and writes nothing:
 
 ```bash
 cd my_experiment
+repro verify
+```
+
+```text
+no repro.yaml here or above.
+
+found by looking under results/, paper/artifacts/, outputs/, data/ and for one manuscript:
+
+  result files: 2
+    JSON and YAML     results/metrics.json
+    CSV, TSV and PSV  results/table.csv
+  manuscript: paper.md
+
+  candidate bindings, guessed: 2 of the 4 numbers paper.md prints agree
+  with one of the 4 values read from 2 result files, at the precision printed.
+  A guess says the digits agree, never that the sentence reports that value.
+    guess  line 4    0.931  results/metrics.json /scores/accuracy holds 0.9312
+                            ...participants. held-out accuracy was 0.931, and the error rate...
+    guess  line 5    0.71   results/table.csv column auc, row 0 holds 0.71
+                            ...seeds; the auc was 0.71, not 0.55....
+
+  verified: 0. With no manifest no claim is declared, so nothing was checked, and
+  nothing was written.
+
+write one that pins this project's result files, with example claims to edit:
+
+    repro manifest init
+```
+
+The files are the ones `repro manifest init` would pin, found as it finds them. The numbers the manuscript prints are the ones `repro numbers` would count as unbound, in digits, with two digits or a decimal point, so years, labels, citations and single digits are left out. Each is compared with every number a JSON or YAML file holds and every cell of a CSV, TSV, PSV or columnar table, by the comparison a numeric assertion makes at the precision printed; a number printed with a percent sign is also compared as a percentage. A match is a guess and is never counted as verified. At most 10,000 numbers are read from one file and 1,000,000 comparisons made, and where either limit is reached a note says so. The command exits 2, as every command does with nothing to read: nothing was checked, which is neither a pass nor a failure. `--format json` prints the same survey as one document, and `--format sarif` a run with no results, a warning that nothing was verified, and the survey in its properties.
+
+To write the manifest:
+
+```bash
 repro manifest init
 ```
 

@@ -5,6 +5,58 @@ description: Changelog — Reproducible Science
 
 <!-- Generated from CHANGELOG.md. Edit that file, not this one. -->
 
+## 0.6.1 — 2026-10-14
+
+### citations
+
+No significant changes.
+
+### claims-cli
+
+#### Fixed
+
+- **A `match` in a record under a version this reader does not know is read as `not-checked`.** `claims.record.understood` read the checker's word, the check type and each address kind, and not the record's version, so a record that carried a future or misspelled `record` string and a `match` was passed on as a match by `read_outcome`, and by every exporter that reads the outcome through it, wherever the record was read without `validate`. `understood` now also requires the version to be one of `READ_RECORD_VERSIONS`. `validate` refused such a record before and refuses it now.
+- **`repro verify` and `claims verify` take the same time however long the record of checks has grown.** Each check read the record in the git directory whole to find what each assertion said when last checked, verified its chain, and then verified it again before appending, so every check paid for every check before it. A check now reads `checks.index.sqlite`, an index beside the record in the git directory. It holds the last recorded state of each assertion and where each entry starts, keyed to the record's head, length and size. A check compares the record's last entry with its head file, reads from the index only the assertions it found, appends, and copies the new entry to the tracked record with `--record` as bytes. Where the index does not describe the record as it is (none yet, an older head, or a record grown, cut or edited at its end), the record is read whole and its chain checked as before, and the index is written again. On a 49,362,725-byte record, recording the check of a 100-assertion project took 5.119–5.381 s before and 0.047–0.050 s after. The first check after a large one took 0.167 s, since it reads the large last entry. An entry edited in the middle of the record is no longer found by every check: `repro why`, `repro verify --set-aside-record` and the next check that reads the record whole find it, with its number, as before. An entry edited at the end is still refused by every check.
+
+#### Added
+
+- **The documentation covers `claims-cli`, the check record and origins.** The installation page lists `pip install claims-cli` for claims checking alone. A new page, [The check record](https://reproducible.science/concepts/check-record/), gives the record's version string `reproducible.science/claim-check/0.1-experimental`, says that 0.6 also reads records under `repro.check/0.1-experimental`, links the JSON Schema and the RO-Crate profile, and shows how `repro export record`, `ro-crate` and `sarif` write it. The `repro` README has a section on `repro origins` and the `origin` field, the `claims` README shows an `origin` with the output of `claims origins` and its exit codes, and the top-level README names `claims-cli`, the export record and origins.
+
+### prereg
+
+No significant changes.
+
+### results-cli
+
+#### Added
+
+- **`results retire PATH... --note TEXT` records that recorded paths are no longer part of the project, and `results verify --files` passes them as `RETIRED`.** A file deleted, moved or folded into another was `MISSING` for good, and nothing short of editing the ledger cleared it. `retire` appends an event naming the paths and the note, and with `--superseded-by NEWPATH` the replacement, with the digest it holds now where the ledger records it too; the seals and runs before it are left as they were. It refuses a path no seal or run recorded, a path already retired, an empty note and a replacement that does not exist, and writes nothing. `verify --files` shows a retired path as `RETIRED` with its note and replacement, and passes it where the path is gone or still holds bytes one of its records names; a retired path holding bytes no record names, or a file where a directory was sealed or the reverse, is `REAPPEARED` and fails. A seal or a run of the path after its retirement makes it part of the project again. `--json` gives `retired`, with `note`, `superseded_by` where given and `present` where the file is still on disk, and `reappeared`, with `note`.
+
+### reproducible-science
+
+#### Fixed
+
+- **A re-run whose command writes into a folder holding none of its inputs runs, and `repro ci init` says what its workflows will find.** The sandbox `repro reproduce` and `repro ci reruns --run` run a command in held only the folders of its declared inputs, so a command writing `out/table.csv` with nothing else under `out/` failed on a folder the repository has; the output's folder is now created before the command runs. A message from a failed command on macOS could keep `/private.` in place of the temporary directory, because `/var/...` was removed before `/private/var/...`; the longer spelling is now removed first. `repro ci init --run-reruns` suggested `uv sync` in every project; the commented install step now follows the lockfile the project has (`uv.lock`, `requirements.txt`, or the name of any other). `repro ci init` warns where it writes `reruns.yml` and a declared command has no current re-run on record, naming each, and notes where none of the sources the claims files pin is in git, so the citations workflow can only report `could not check` without `--fetch-sources`.
+
+#### Changed
+
+- **`repro ci citations` gives a run with quotations unchecked as a count, not as `passed`.** Where `citations verify` exits 0 because some quotations were found, none was not found and the rest could not be checked against a source on the machine, the summary's verdict reads `**1/2 verified** (exit 0)` where it read `**passed**`, and the command's last line says how many were not checked. The exit code is unchanged, so the job and GitHub's workflow badge still pass. The `citations` badge of `repro badges` draws the same run amber with `N/M verified`, as before; both now take the count from one place, `repro.ci.verified`.
+- **`repro ci results`, `repro badges` and the mod's band read `retired` as passing and `reappeared` as failing.** `repro ci results` counts retired paths on a row of their own and lists a reappeared one by path; the `results` badge stays green over retired paths and goes amber over a reappeared one; the band counts `REAPPEARED` as changed and `RETIRED` as nothing.
+
+#### Added
+
+- **`repro badges init` writes a workflow that keeps the count badges current on GitHub.** The workflow, `.github/workflows/repro.yml`, runs on each push to the default branch. It runs `repro ci endpoints`, which writes one shields.io endpoint file per check with the label, count, colour and icon `repro badges` draws, and force-pushes those files as the only commit of a `badges` branch. It pushes to no other branch. `init` puts a badge block in `README.md` whose badges read those files, reading the owner and repository from `git remote get-url origin`, and never rewrites a block already there without `--force`. The badges draw for a public repository only. Because a clone does not hold the cited sources, the citations badge in CI is read from `.repro/citations-verified.json`, which `repro badges --record` writes on the author's machine with the counts and the sha256 of every claims file. Where a claims file changed since, the badge reads `re-verify locally`, and `repro badges --check` exits 1.
+
+### provenance-core
+
+#### Fixed
+
+- **A chain is split into lines at line feeds only, so an event holding U+2028, U+2029 or U+0085 reads back as one line.** The reader split with `str.splitlines`, which also breaks at those characters, and the writer leaves them as themselves inside a JSON string. An event quoting a passage that held one, such as a `results` claim or a `repro verify` check of a quotation, read back as two lines, and `verify` called the chain corrupt and refused every later append. `\r\n` line endings are read as before. The record of checks `claims` keeps is read the same way.
+
+#### Changed
+
+- **`append_event` can check only a chain's last line before appending, so an append no longer costs time in proportion to the chain.** With `whole_chain=False` it reads the last line from the end of the file and appends where that line hashes to the head `ledger.head` records and holds the position its count gives; any other chain is verified whole, as every append was before, and refused where it does not verify. An edited, cut or anchorless tail is therefore still refused or handled as before. A line edited further back is not looked for at append time and stays where `verify` finds it, since an append rewrites no earlier line. The default stays `whole_chain=True`, which the `results` ledger uses.
+
 ## 0.6.0 — 2026-10-14
 
 ### citations
