@@ -46,7 +46,23 @@ MISMATCH = "mismatch"
 NOT_COMPARABLE = "not comparable"
 
 #: `a` is not here: in a venue name it is nearly always a letter, as in `U.S.A.` or `Series A`.
-STOP = frozenset({"an", "and", "at", "for", "in", "of", "on", "the", "to"})
+#: `fur` and `fuer` are German `für`, which an abbreviation drops: `Z. Physik` for
+#: `Zeitschrift für Physik`.
+STOP = frozenset({"an", "and", "at", "for", "in", "of", "on", "the", "to", "fur", "fuer"})
+
+#: Words that, ending a title, make a journal of its own from a parent's name: `Science
+#: Advances`, `Cell Reports`, `BMJ Open`, `JAMA Network Open`, `PNAS Nexus`, `Nature
+#: Communications`, `Physical Review Letters`, `PLOS ONE`. Two names whose trailing run of
+#: these differs are two venues, whatever else they share. Leading, they do not count:
+#: `Advances in Neural Information Processing Systems` is not a derivative of anything.
+DERIVATIVE = frozenset(
+    {"open", "nexus", "reports", "advances", "communications", "network", "plus", "letters", "one"}
+)
+
+#: The character a registry deposits where it could not decode one. A name carrying it cannot
+#: be read, so it is never the ground for a mismatch.
+GARBLED = "\ufffd"
+GARBLED_RECORD = "a venue name is garbled"
 
 #: Words a venue name carries that do not tell one venue from another. Set aside when the
 #: distinctive words are compared, kept when initials are read off a name.
@@ -116,6 +132,35 @@ REPOSITORY_PHRASES = (("research", "square"), ("cold", "spring", "harbor", "labo
 #: Why a record that names only a preprint server is not comparable. `citations audit` asks
 #: other services for the published venue before settling on it.
 PREPRINT_RECORD = "the record is a preprint"
+
+#: Why a would-be mismatch is not comparable when a service that keeps a venue's other names
+#: did not answer and the mismatch rests on names alone.
+UNCONFIRMED = "other names could not be fetched"
+
+#: Mismatches no other name can undo: two venues the alias table holds apart, or two journal
+#: titles that agree under no rule.
+SETTLED = (
+    "different venues",
+    "two journal titles that do not agree",
+    "a derivative journal against its parent",
+)
+
+
+def settled(check: VenueCheck) -> bool:
+    """The mismatch holds whatever other names the venue goes by."""
+    return check.outcome == MISMATCH and any(reason in check.why for reason in SETTLED)
+
+
+#: Series that publish many venues' proceedings. Shown in a mismatch only when nothing more
+#: specific is named, because `Lecture Notes in Computer Science` does not say which
+#: conference the record is of.
+SERIES_NAMES = (
+    "Lecture Notes in Computer Science",
+    "Lecture Notes in Artificial Intelligence",
+    "Lecture Notes in Bioinformatics",
+    "Communications in Computer and Information Science",
+    "Proceedings of Machine Learning Research",
+)
 
 #: Where at least this share of the shorter name's distinctive words is in the longer, two names
 #: that matched under no rule are not comparable rather than different.
@@ -249,6 +294,67 @@ ALIASES: tuple[Alias, ...] = (
         key="eccv",
         names=("ECCV", "European Conference on Computer Vision"),
         source="Crossref container title of the Springer ECCV 2020 volume",
+    ),
+    Alias(
+        key="miccai",
+        names=(
+            "MICCAI",
+            "Medical Image Computing and Computer-Assisted Intervention",
+            "Medical Image Computing and Computer Assisted Intervention",
+        ),
+        source="miccai.org; Crossref container title of the Springer MICCAI 2015 volume",
+    ),
+    Alias(
+        key="icassp",
+        names=(
+            "ICASSP",
+            "International Conference on Acoustics, Speech and Signal Processing",
+            "International Conference on Acoustics, Speech, and Signal Processing",
+        ),
+        source="Crossref container title of IEEE ICASSP 2013; Semantic Scholar: ICASSP",
+    ),
+    Alias(
+        key="interspeech",
+        names=(
+            "Interspeech",
+            "Annual Conference of the International Speech Communication Association",
+        ),
+        source="isca-archive.org, proceedings title",
+    ),
+    Alias(
+        key="sp",
+        names=("IEEE S&P", "IEEE Symposium on Security and Privacy", "Oakland"),
+        source="ieee-security.org, proceedings title; `Oakland` is its customary name",
+    ),
+    Alias(
+        key="ccs",
+        names=(
+            "CCS",
+            "ACM CCS",
+            "ACM SIGSAC Conference on Computer and Communications Security",
+            "Conference on Computer and Communications Security",
+        ),
+        source="sigsac.org, proceedings title",
+    ),
+    Alias(
+        key="usenix-security",
+        names=("USENIX Security", "USENIX Security Symposium"),
+        source="usenix.org, proceedings title",
+    ),
+    Alias(
+        key="ndss",
+        names=("NDSS", "Network and Distributed System Security Symposium"),
+        source="ndss-symposium.org, proceedings title",
+    ),
+    Alias(
+        key="jmlr",
+        names=("JMLR", "Journal of Machine Learning Research"),
+        source="jmlr.org; Semantic Scholar: J Mach Learn Res",
+    ),
+    Alias(
+        key="tmlr",
+        names=("TMLR", "Transactions on Machine Learning Research"),
+        source="jmlr.org/tmlr",
     ),
     Alias(
         key="pnas",
@@ -405,8 +511,64 @@ def _word_agrees(a: str, b: str) -> bool:
     return _abbreviates(a, b) or _abbreviates(b, a)
 
 
+def _spells(word: str, run: tuple[str, ...]) -> bool:
+    """`word` is written out by `run`: the letters of `U S A` for `USA`, or the initials of
+    `United States America`."""
+    return len(run) >= 2 and len(word) == len(run) and word == "".join(w[0] for w in run)
+
+
 def _aligned(a: tuple[str, ...], b: tuple[str, ...]) -> bool:
-    return bool(a) and len(a) == len(b) and all(map(_word_agrees, a, b))
+    """Word for word, where one word may also stand for a run of the other's: `USA` against
+    `U.S.A.` or against `United States of America`."""
+    if not a or not b:
+        return False
+
+    def walk(i: int, j: int) -> bool:
+        if i == len(a) or j == len(b):
+            return i == len(a) and j == len(b)
+        if _word_agrees(a[i], b[j]) and walk(i + 1, j + 1):
+            return True
+        for k in range(2, len(b) - j + 1):
+            if _spells(a[i], b[j : j + k]) and walk(i + 1, j + k):
+                return True
+        for k in range(2, len(a) - i + 1):
+            if _spells(b[j], a[i : i + k]) and walk(i + k, j + 1):
+                return True
+        return False
+
+    return walk(0, 0)
+
+
+def _derivatives(name: Name) -> tuple[str, ...]:
+    """The trailing run of `DERIVATIVE` words, abbreviated or not: `open` in `BMJ Open`,
+    `adv` in `Sci. Adv.`. Empty where the name is nothing but such words."""
+    words = name.words
+    n = len(words)
+    # Truncations of three letters or more only: the `a` of `U.S.A.` is not `Advances`, and
+    # the contraction rule would read `Res` as `Reports`.
+    while n and any(
+        words[n - 1] == d or (len(words[n - 1]) >= 3 and d.startswith(words[n - 1]))
+        for d in DERIVATIVE
+    ):
+        n -= 1
+    return words[n:] if n else ()
+
+
+def _parent_and_derivative(a: Name, b: Name) -> bool:
+    """One name is the other plus a derivative ending: `BMJ Open` and `BMJ`, `PNAS Nexus` and
+    `Proceedings of the National Academy of Sciences`."""
+    x, y = _derivatives(a), _derivatives(b)
+    if _same_family_member(a, b) or (x and y):
+        return False
+    stem_a = read(" ".join(a.words[: len(a.words) - len(x)]))
+    stem_b = read(" ".join(b.words[: len(b.words) - len(y)]))
+    return bool(same(stem_a, stem_b))
+
+
+def _same_family_member(a: Name, b: Name) -> bool:
+    """Neither name carries a derivative ending the other lacks."""
+    x, y = _derivatives(a), _derivatives(b)
+    return len(x) == len(y) and all(map(_word_agrees, x, y))
 
 
 def _initials_of(acronym: str, name: Name) -> bool:
@@ -426,6 +588,12 @@ def same(a: Name, b: Name) -> str:
     """The rule under which two names are one venue, or empty if none applies."""
     if not a.words or not b.words:
         return ""
+    # Initials spell a derivative ending too (`PRL`), so they are read before the family rule.
+    for x, y in ((a, b), (b, a)):
+        if len(x.core) == 1 and _initials_of(x.core[0], y):
+            return "acronym"
+    if not _same_family_member(a, b):
+        return ""
     if a.words == b.words or a.core == b.core:
         return "same name"
     if _aligned(a.words, b.words) or _aligned(a.core, b.core):
@@ -433,8 +601,6 @@ def same(a: Name, b: Name) -> str:
     for x, y in ((a, b), (b, a)):
         if len(x.core) == 1:
             token = x.core[0]
-            if _initials_of(token, y):
-                return "acronym"
             if token in x.acronyms and token in y.words:
                 return "acronym"
     return ""
@@ -447,12 +613,20 @@ def keys(name: Name) -> frozenset[str]:
     """Every `ALIASES` entry this name is written as, or contains."""
     found = set()
     for alias, known in _ALIAS_NAMES:
+        if not _same_family_member(known, name):
+            continue  # `PNAS Nexus` is not PNAS
         if len(known.words) == 1:
             hit = known.words[0] in name.words
         else:
-            hit = bool(same(known, name)) or _contains(name.words, known.words)
+            # Read as one name only on one track: `JMLR Workshop and Conference Proceedings`
+            # is PMLR, and its acronym is not the journal's.
+            alike = known.track == name.track and bool(same(known, name))
+            hit = alike or _contains(name.words, known.words)
         if hit:
             found.add(alias.key)
+    if "pmlr" in found:
+        # `JMLR W&CP` is the earlier name of PMLR, not the journal.
+        found.discard("jmlr")
     return frozenset(found)
 
 
@@ -462,6 +636,26 @@ def _share(a: tuple[str, ...], b: tuple[str, ...]) -> float:
     if not short:
         return 0.0
     return sum(any(_word_agrees(w, v) for v in long) for w in short) / len(short)
+
+
+def _findings_conference(text: str) -> str:
+    """The conference a Findings volume belongs to: `EMNLP 2020` from `Findings of the
+    Association for Computational Linguistics: EMNLP 2020`. Empty where the name gives only the
+    series, as `Findings of the ACL` does."""
+    if ":" in text:
+        return text.split(":", 1)[1].strip()
+    rest = re.sub(r"^\s*findings\s+(of\s+)?(the\s+)?", "", text, flags=re.IGNORECASE).strip()
+    series = {"acl", "association computational linguistics"}
+    return "" if " ".join(read(rest).words) in series else rest
+
+
+def _specific(names: list[str]) -> str:
+    """The first name that is not a series, or the first name where all are."""
+    series = [read(n) for n in SERIES_NAMES]
+    for n in names:
+        if not any(read(n).words == s.words for s in series):
+            return n
+    return names[0]
 
 
 def _acronyms_only(names: list[Name]) -> bool:
@@ -477,13 +671,18 @@ def decide(
 ) -> VenueCheck:
     """Compare the venue names an entry gives with those its record gives.
 
-    `ours[0]` and `theirs[0]` are the names a mismatch reports. A kind is `journal`,
+    `ours` is the entry's names in order of preference (journal or booktitle, then series);
+    the first non-empty one is compared. A mismatch reports it and the record's most specific
+    name. A kind is `journal`,
     `proceedings`, `preprint` or empty for unknown; two journals are held to the stricter rule,
     because journal titles are standardized and `Nature` against `Nature Communications` is
     the error, while a conference is written so many ways that partial agreement is not
     evidence of a different one.
     """
-    ours = [n for n in ours if n and n.strip()]
+    # Only the first name the entry gives is compared, and a later one only where it is empty:
+    # an entry's series (`Lecture Notes in Computer Science`) must not vouch for a wrong
+    # booktitle.
+    ours = [n for n in ours if n and n.strip()][:1]
     theirs = [n for n in theirs if n and n.strip()]
     if not ours:
         return VenueCheck(outcome=NOT_COMPARABLE, why="the entry names no venue")
@@ -491,6 +690,7 @@ def decide(
     if ours_kind == "preprint" or is_repository(first):
         return VenueCheck(outcome=NOT_COMPARABLE, ours=first, why="the entry cites a preprint")
     published = [n for n in theirs if not is_repository(n)]
+    garbled = any(GARBLED in n for n in [*ours, *theirs])
     if not published:
         why = PREPRINT_RECORD if theirs else "the record names no venue"
         return VenueCheck(
@@ -498,13 +698,29 @@ def decide(
         )
     if theirs_kind == "preprint":
         theirs_kind = ""
-    record = published[0]
+    record = _specific([n for n in published if GARBLED not in n] or published)
 
-    mine = [read(f) for n in ours if not is_repository(n) for f in forms(n)]
-    yours = [read(f) for n in published for f in forms(n)]
+    readable_ours = [n for n in ours if not is_repository(n) and GARBLED not in n]
+    readable_theirs = [n for n in published if GARBLED not in n]
+    mine = [read(f) for n in readable_ours for f in forms(n)]
+    yours = [read(f) for n in readable_theirs for f in forms(n)]
 
     def verdict(outcome: str, why: str) -> VenueCheck:
+        if outcome == MISMATCH and garbled:
+            outcome, why = NOT_COMPARABLE, GARBLED_RECORD
         return VenueCheck(outcome=outcome, ours=first, theirs=record, why=why)
+
+    if not mine or not yours:
+        return verdict(NOT_COMPARABLE, GARBLED_RECORD)
+
+    # A Findings volume is compared by its conference. `Findings of the ACL: EMNLP 2020` and
+    # `Findings of the ACL: ACL-IJCNLP 2021` share every word before the colon.
+    if read(first).track == read(record).track == "findings":
+        a, b = _findings_conference(first), _findings_conference(record)
+        if not a or not b:
+            return verdict(NOT_COMPARABLE, "a Findings volume that names no conference")
+        inner = decide([a], [b], "proceedings", "proceedings")
+        return verdict(inner.outcome, f"findings: {inner.why}")
 
     # Names are matched within a track: `ICCV Workshops`, one of Semantic Scholar's alternate
     # names for ICCV, is not the main conference.
@@ -519,6 +735,11 @@ def decide(
             if shared:
                 return verdict(MATCH, f"alias: {sorted(shared)[0]}")
 
+    for a in mine:
+        for b in yours:
+            if a.track == b.track and _parent_and_derivative(a, b):
+                return verdict(MISMATCH, "a derivative journal against its parent")
+
     # A registry files a workshop paper under the main proceedings often enough, and Semantic
     # Scholar merges the versions of a work, that a workshop against a main track is no
     # evidence of a wrong venue.
@@ -529,8 +750,12 @@ def decide(
     my_keys = frozenset().union(*(keys(n) for n in mine))
     your_keys = frozenset().union(*(keys(n) for n in yours))
 
-    if my_keys and your_keys and not (SERIES & (my_keys | your_keys)):
-        return verdict(MISMATCH, f"different venues: {sorted(my_keys)} vs {sorted(your_keys)}")
+    # A series is no venue: a paper is in PMLR and at ICML at once.
+    if (my_keys - SERIES) and (your_keys - SERIES):
+        return verdict(
+            MISMATCH,
+            f"different venues: {sorted(my_keys - SERIES)} vs {sorted(your_keys - SERIES)}",
+        )
 
     for side, side_keys in ((mine, my_keys), (yours, your_keys)):
         if not side_keys and _acronyms_only(side):
