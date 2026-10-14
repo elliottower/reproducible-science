@@ -133,14 +133,32 @@ function byline(s: Source): string {
   return [who, s.bib.year].filter(Boolean).join(' ')
 }
 
-function SourceCell({ s, onOpen }: { s: Source; onOpen: (s: Source) => void }) {
+/** Where a link goes: the site's base address (github.com, aclanthology.org, arxiv.org), so a
+ * reader sees the site itself. A raw file on GitHub reads as github.com. */
+function linkLabel(url: string): string {
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, '')
+    return /githubusercontent\.com$/.test(host) ? 'github.com' : host
+  } catch {
+    return 'link'
+  }
+}
+
+function SourceCell({ s, files, onOpen }: { s: Source; files?: Source[]; onOpen: (s: Source) => void }) {
+  const all = files ?? [s]
+  const pinned = all.every((f) => f.sha256)
   return (
     <div className="src-cell">
       <button className="src-title" onClick={() => onOpen(s)} title="Details">{s.bib.title || s.citation}</button>
-      <div className="small muted">{byline(s)}{s.link && <> · <a className="src-link" href={s.link} target="_blank" rel="noreferrer">open ↗</a></>}</div>
+      <div className="small muted">{byline(s)}</div>
+      {s.link && <div className="small"><a className="src-link" href={s.link} target="_blank" rel="noreferrer">↗ {linkLabel(s.link)}</a></div>}
       <div className="src-meta">
         <span className="mono">{s.citation}</span>
-        {s.sha256 ? <span className="pin" title={`${s.local} · sha256 ${s.sha256.slice(0, 12)}…`}>Pinned</span> : <span className="pin bad">Not pinned</span>}
+        {pinned ? (
+          <span className="pin" title={all.map((f) => `${f.local} · sha256 ${f.sha256.slice(0, 12)}…`).join('\n')}>
+            {all.length > 1 ? `${all.length} files pinned` : 'Pinned'}
+          </span>
+        ) : <span className="pin bad">Not pinned</span>}
       </div>
     </div>
   )
@@ -215,10 +233,20 @@ function CitationsByClaim({ graph, query, onOpen }: { graph: Graph; query: strin
   )
 
   if (groupBy === 'section') {
-    // Every citing sentence, in reading order, under the section it sits in.
-    const items = sources.flatMap((s) => s.cited_in.map((c) => ({ s, c })))
-      .sort((a, b) => a.c.order[0] - b.c.order[0] || a.c.order[1] - b.c.order[1])
-    const sections: { name: string; items: typeof items }[] = []
+    // Every citing sentence, in reading order, under the section it sits in. A key whose quotes live
+    // in several claims files (Paperclip's docs, map and README) is one source here.
+    type Item = { key: string; c: Source['cited_in'][number]; files: Source[] }
+    const byKey = new Map<string, Item>()
+    for (const s of sources) {
+      for (const c of s.cited_in) {
+        const k = `${s.citation}::${c.file}::${c.order.join(',')}`
+        const it = byKey.get(k)
+        if (it) it.files.push(s)
+        else byKey.set(k, { key: s.citation, c, files: [s] })
+      }
+    }
+    const items = [...byKey.values()].sort((a, b) => a.c.order[0] - b.c.order[0] || a.c.order[1] - b.c.order[1])
+    const sections: { name: string; items: Item[] }[] = []
     for (const it of items) {
       const name = it.c.section || 'Before the first section'
       const last = sections[sections.length - 1]
@@ -226,6 +254,7 @@ function CitationsByClaim({ graph, query, onOpen }: { graph: Graph; query: strin
       else sections.push({ name, items: [it] })
     }
     const uncited = sources.filter((s) => s.cited_in.length === 0)
+    const rowsFor = (files: Source[]) => files.flatMap((s) => s.statements.map((st) => ({ s, st })))
     return (
       <>
         {switcher}
@@ -237,19 +266,20 @@ function CitationsByClaim({ graph, query, onOpen }: { graph: Graph; query: strin
                 <tr className={`sec-head clickable ${openSecs.has(`${si}`) ? 'open' : ''}`} onClick={() => flipSec(`${si}`)}>
                   <td colSpan={4}>
                     <span className="sec-caret">{openSecs.has(`${si}`) ? '▾' : '▸'}</span> {sec.name}
-                    <span className="sec-count"> · {sec.items.length} citation{sec.items.length === 1 ? '' : 's'} · {new Set(sec.items.map((x) => x.s.citation)).size} source{new Set(sec.items.map((x) => x.s.citation)).size === 1 ? '' : 's'}</span>
+                    <span className="sec-count"> · {sec.items.length} citation{sec.items.length === 1 ? '' : 's'} · {new Set(sec.items.map((x) => x.key)).size} source{new Set(sec.items.map((x) => x.key)).size === 1 ? '' : 's'}</span>
                   </td>
                 </tr>
-                {openSecs.has(`${si}`) && sec.items.map(({ s, c }, k) => {
-                  const words = sentenceWords([c.text])
-                  return (
-                    <tr key={`${si}-${k}`} className="static src-start">
-                      <td><SourceCell s={s} onOpen={onOpen} /></td>
-                      <td>{s.statements.map((st) => <Quotes key={st.id} st={st} words={words} />)}</td>
-                      <td className="small">{s.statements.map((st) => <div key={st.id} className="interp-block"><Interpretation st={st} /></div>)}</td>
-                      <td className="small"><div className="ms-sentence">“{c.text}”</div></td>
+                {openSecs.has(`${si}`) && sec.items.map((it, k) => {
+                  const words = sentenceWords([it.c.text])
+                  const rows = rowsFor(it.files)
+                  return rows.map(({ s, st }, i) => (
+                    <tr key={`${si}-${k}-${i}`} className={`static ${i === 0 ? 'src-start' : 'interp-row'}`}>
+                      {i === 0 && <td rowSpan={rows.length}><SourceCell s={it.files[0]} files={it.files} onOpen={onOpen} /></td>}
+                      <td><Quotes st={st} words={words} /></td>
+                      <td className="small"><Interpretation st={st} /></td>
+                      {i === 0 && <td rowSpan={rows.length} className="small"><div className="ms-sentence">“{it.c.text}”</div></td>}
                     </tr>
-                  )
+                  ))
                 })}
               </Fragment>
             ))}
@@ -261,14 +291,14 @@ function CitationsByClaim({ graph, query, onOpen }: { graph: Graph; query: strin
                     <span className="sec-count"> · {uncited.length} source{uncited.length === 1 ? '' : 's'} · {uncited.reduce((a, s) => a + s.pinned, 0)} quotations</span>
                   </td>
                 </tr>
-                {openSecs.has('uncited') && uncited.map((s) => (
-                  <tr key={s.file} className="static src-start">
-                    <td><SourceCell s={s} onOpen={onOpen} /></td>
-                    <td>{s.statements.map((st) => <Quotes key={st.id} st={st} words={new Set()} />)}</td>
-                    <td className="small">{s.statements.map((st) => <div key={st.id} className="interp-block"><Interpretation st={st} /></div>)}</td>
-                    <td className="small muted">Not cited in any .tex file repro.yaml pins.</td>
+                {openSecs.has('uncited') && uncited.map((s) => s.statements.map((st, i) => (
+                  <tr key={`${s.file}-${st.id}`} className={`static ${i === 0 ? 'src-start' : 'interp-row'}`}>
+                    {i === 0 && <td rowSpan={s.statements.length}><SourceCell s={s} onOpen={onOpen} /></td>}
+                    <td><Quotes st={st} words={new Set()} /></td>
+                    <td className="small"><Interpretation st={st} /></td>
+                    {i === 0 && <td rowSpan={s.statements.length} className="small muted">Not cited in any .tex file repro.yaml pins.</td>}
                   </tr>
-                ))}
+                )))}
               </Fragment>
             )}
           </tbody>

@@ -348,3 +348,6 @@ tr.sec-head.clickable { cursor: pointer; }
 tr.sec-head.clickable:hover td { background: #eceef4; }
 .sec-caret { color: var(--muted); display: inline-block; width: 14px; }
 .sec-count { font-weight: 400; color: var(--muted); font-size: 11.5px; }
+/* one row per interpretation: its quotes beside it, a thin rule between interpretations */
+.cite-table tr.interp-row td { border-top: 1px dashed #e6e8ee; }
+.cite-table .src-words { border-left: 2px solid #e3e1fb; padding-left: 8px; }
