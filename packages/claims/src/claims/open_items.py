@@ -143,16 +143,21 @@ class OpenItems(BaseModel):
 
 
 def write_draft(
-    directory: pathlib.Path, document: dict, source: Source, items: tuple[OpenItem, ...]
+    directory: pathlib.Path,
+    document: dict,
+    source: Source,
+    items: tuple[OpenItem, ...],
+    overwrite: bool = False,
 ) -> pathlib.Path:
-    """Write a reader's draft and its open items into `directory`, refusing to overwrite either.
+    """Write a reader's draft and its open items into `directory`, refusing to overwrite either
+    unless `overwrite` is given, as `repro init --force` gives it.
 
     Returns the path of the open-items file, which names the draft and the digest of the bytes
     written.
     """
     draft, listed = directory / DRAFT_NAME, directory / ITEMS_NAME
     for target in (draft, listed):
-        if target.exists():
+        if target.exists() and not overwrite:
             raise OpenItemsError(f"{target} exists, and a reader never overwrites a file")
     text = yaml.safe_dump(document, sort_keys=False, width=100, allow_unicode=True)
     # Validated before anything is written, so a reader that builds a manifest this package

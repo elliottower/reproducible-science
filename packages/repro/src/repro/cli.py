@@ -83,7 +83,10 @@ from claims.models import (
     Regeneration,
     ReproductionReport,
 )
+from claims.open_items import DRAFT_NAME, ITEMS_NAME
 from claims.policy import PROFILES, Assessment, Policy
+from claims.sources.project import NothingToScaffoldError, ScaffoldExistsError
+from claims.sources.project import from_project as scaffold_claims
 from claims.starter import CONVENTIONAL as CONVENTIONAL
 from claims.starter import MAX_DISCOVERED as MAX_DISCOVERED
 from claims.starter import project_root
@@ -208,7 +211,32 @@ def _shown(path: Path, root: Path) -> str:
     return f"{path.relative_to(root).as_posix()}/" if path.is_relative_to(root) else str(path)
 
 
-def _init_here() -> int:
+def _scaffold(root: Path, manifest_present: bool, force: bool) -> tuple[list[str], bool]:
+    """Draft the claims of a project with result files and a manuscript and no `repro.yaml`:
+    the lines to print, and whether a draft was written. `repro.yaml` is never touched."""
+    if manifest_present:
+        return [
+            f"claims: {DEFAULT_NAME} exists and was left alone, so nothing was scaffolded"
+        ], False
+    try:
+        made = scaffold_claims(root, overwrite=force)
+    except ScaffoldExistsError as e:
+        return [f"claims: {e}, and neither was replaced; --force replaces both"], False
+    except NothingToScaffoldError as e:
+        return [f"claims: {e}, so nothing was scaffolded"], False
+    lines = [
+        f"scaffolded, nothing verified: {made.open} numbers left open, "
+        f"{made.unique} with one candidate",
+        f"  {DRAFT_NAME:<18} {len(made.results)} result "
+        f"{'file' if len(made.results) == 1 else 'files'} and {made.manuscript} pinned, "
+        "a claim per number, no assertion",
+        f"  {ITEMS_NAME:<18} an item per number, with the places the result files hold it",
+    ]
+    lines += [f"  not checked: {p.file}, {p.reason}" for p in made.written.not_checked]
+    return lines, True
+
+
+def _init_here(scaffold: bool = True, force: bool = False) -> int:
     """Set up whichever of the four records this project lacks, and touch none it has."""
     root = project_root(Path.cwd())
     print(f"{root}\n")
@@ -265,6 +293,11 @@ def _init_here() -> int:
         else:
             print(f"  {label:<12} NOT CREATED")
 
+    scaffolded = False
+    if scaffold:
+        said, scaffolded = _scaffold(root, bool(present["manifest"]), force)
+        print("\n" + "\n".join(f"  {line}" for line in said))
+
     # After the records: `prereg new .` writes a `.gitignore` holding the sidecar rules where
     # the project has none, and this adds to that file only what it lacks.
     ignored, left_out = _ignore(root)
@@ -276,7 +309,7 @@ def _init_here() -> int:
         else:
             print("\neverything is already set up; nothing was created.")
         return 0
-    if created:
+    if created or scaffolded:
         print("\nnext:")
     for label, step in (
         ("plan", "fill in PREREG.md, then `prereg freeze`"),
@@ -286,6 +319,11 @@ def _init_here() -> int:
     ):
         if label in created:
             print(f"  {label:<12} {step}")
+    if scaffolded:
+        print(
+            f"  {'draft':<12} fill {ITEMS_NAME} with an agent (the open-items skill, or the tools\n"
+            f"  {'':<12} of `repro mcp`), review {DRAFT_NAME}, and rename it to {DEFAULT_NAME}"
+        )
     return 0 if all(present[label] or label in created for label in present) else 1
 
 
@@ -296,12 +334,12 @@ def cmd_init(args: argparse.Namespace) -> int:
             print(f"    repro init <name> --directory {args.directory}\n")
             print("to set up an existing project, run `repro init` inside it.")
             return 2
-        return _init_here()
+        return _init_here(scaffold=not args.no_scaffold, force=args.force)
     name = args.name
     # `repro init .` means this directory. Read as a name it scaffolded a new project on top of
     # the one already here: a `CLAUDE.md` headed `# .` and four folders nobody asked for.
     if not args.directory and (Path.cwd() / name).resolve() == Path.cwd().resolve():
-        return _init_here()
+        return _init_here(scaffold=not args.no_scaffold, force=args.force)
     target = Path(args.directory) if args.directory else Path.cwd() / name
     target.mkdir(parents=True, exist_ok=True)
     print(f"initializing {target}")
@@ -495,11 +533,25 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
             "With a name, scaffold a new experiment directory: a plan, a results ledger, a "
             f"citations library and a starter {DEFAULT_NAME}. With no name, run inside an "
             "existing project, create whichever of those four it lacks at the top of the "
-            "project and leave the ones it has untouched."
+            "project and leave the ones it has untouched. Where that project has result files "
+            f"and a manuscript and no {DEFAULT_NAME}, also scaffold its claims: "
+            f"{DRAFT_NAME}, with a claim per number the manuscript prints and no assertion, "
+            f"and {ITEMS_NAME}, with an item per number and the places the result files hold "
+            "it. Nothing in them is verified."
         ),
     )
     p_init.add_argument("name", nargs="?", help="a new directory (default: set up this project)")
     p_init.add_argument("--directory", "-d", help="target directory (default: ./<name>)")
+    p_init.add_argument(
+        "--no-scaffold",
+        action="store_true",
+        help=f"write no {DRAFT_NAME} or {ITEMS_NAME}, and read no result file",
+    )
+    p_init.add_argument(
+        "--force",
+        action="store_true",
+        help=f"replace a {DRAFT_NAME} and {ITEMS_NAME} already in the project",
+    )
     p_init.set_defaults(func=cmd_init)
 
     p_demo = sub.add_parser(

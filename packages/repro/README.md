@@ -66,24 +66,31 @@ my_experiment/
 ## Set up a project that already exists
 
 ```bash
-cd my_project
+cd my_experiment
 repro init
 ```
 
 ```text
-/home/you/work/my_project
+/home/you/work/my_experiment
 
-  plan         already present  PREREG.md
+  plan         created          PREREG.md
   ledger       created          .results/
   citations    created          .citations/, claims/
   manifest     created          repro.yaml (artifacts pinned: 3, example claims: 2)
 
-  wrote .gitignore: *.provenance-lock, *.provenance-tmp, sources/
+  scaffolded, nothing verified: 5 numbers left open, 1 with one candidate
+    repro.draft.yaml   2 result files and paper.md pinned, a claim per number, no assertion
+    open-items.json    an item per number, with the places the result files hold it
+
+  added to .gitignore: sources/
 
 next:
+  plan         fill in PREREG.md, then `prereg freeze`
   ledger       `results seal <inputs>` before a run, `results run <outputs>` after it
   citations    `citations pin` writes a quotation into claims/ once it resolves
   manifest     edit the claims in repro.yaml, then `repro verify`
+  draft        fill open-items.json with an agent (the open-items skill, or the tools
+               of `repro mcp`), review repro.draft.yaml, and rename it to repro.yaml
 ```
 
 With no name, `init` works at the top of the project it is run in (the git root, or the working directory outside a repository). It creates whichever of the four records are missing and never edits one that exists, so a second run creates nothing and says everything is already set up.
@@ -109,6 +116,21 @@ sources/
 ```
 
 A project with no `.gitignore` gets one holding those lines. An existing `.gitignore` keeps every line it has and gains only the rules it lacks, at its end; a rule written another way, such as `/sources/`, counts as present. The `sources/` rule is left out where git already tracks a file under `sources/`, because the project keeps its own files there and the rule would hide each new one; the output says so, as `left sources/ out of .gitignore: git tracks 2 file(s) there.`, and the sidecar rules are still added. A second run adds nothing, and prints no `.gitignore` line unless that rule was left out. `sources/` is where the examples in the `citations` documentation keep the files a claims file pins, and no command creates it here.
+
+### Claims scaffolded from the result files
+
+The project above is the one under [Write a manifest](#write-a-manifest): `results/metrics.json`, `results/table.csv` and a `paper.md` that prints five numbers. Where a project has result files and a manuscript and no `repro.yaml`, `init` also drafts its claims, and verifies none of them. It writes two files at the top of the project, in the format the readers of CODECHECK, CORE-Bench and ClawBio files write (`claims from-codecheck`, `claims from-corebench`, `claims from-clawbio`):
+
+| file | holds |
+|---|---|
+| `repro.draft.yaml` | the result files and the manuscript, pinned by sha256 under the ids `repro manifest init` gives them, and one claim per number the manuscript prints, with its line as the claim's text and no assertion |
+| `open-items.json` | one item per claim, asking for the address of its value in a result file, with the candidates: every place the result files hold the number, each written as the inferred `value` assertion that would read it there |
+
+The files and the numbers are the ones `repro verify` reports with no manifest: the same discovery, the same numbers (unbound, in digits, with two digits or a decimal point) and the same comparison at the precision printed. An item is `unique` where exactly one candidate passes the guards the CORE-Bench reader applies: the value has at least three significant digits and is not an integer below 1000, where the line names a key, column name or row label from the set the address belongs to, it names the address's own, and every split the line names (test, train, validation) is among the address's words. A candidate in an index-like column or key never passes. `1 with one candidate` counts the unique items. Above, 0.931 is unique at `/scores/accuracy`; 480, 4.3% and 0.71 each match one place and have fewer than three significant digits; 0.55 matches none.
+
+No candidate is written into the draft, so every claim stays open, and `repro verify repro.draft.yaml --policy strict` fails with `claim offers no evidence` until each is filled. An agent fills them with the `open-items` skill or the tools of `repro mcp`, writing each assertion with `basis: inferred`. An author then reviews the draft and renames it to `repro.yaml`, replacing the starter `init` wrote.
+
+`init` never writes or edits `repro.yaml` for this. Where one exists it scaffolds nothing and says `claims: repro.yaml exists and was left alone, so nothing was scaffolded`. Where `repro.draft.yaml` or `open-items.json` is already there, it replaces neither and says so; `--force` replaces both. `--no-scaffold` reads no result file and writes neither. `repro manifest init` writes `repro.yaml` alone, as before.
 
 ## Write a manifest
 

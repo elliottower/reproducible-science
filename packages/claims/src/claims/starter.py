@@ -56,6 +56,7 @@ from claims.models import (
     Manifest,
     NumberForm,
     Outcome,
+    PrintedNumber,
     Standing,
 )
 from claims.numbers import numbers as printed_numbers
@@ -773,7 +774,24 @@ def _scrubbed(note: str, root: pathlib.Path) -> str:
     return note
 
 
+class Scan(BaseModel):
+    """A `Survey`, and the numbers of the manuscript it compared."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    survey: Survey
+    printed: tuple[PrintedNumber, ...] = ()
+    """Every number of the manuscript no rule sets aside, printed in digits, with two digits or
+    a decimal point, in manuscript order: the first `survey.compared` were compared, and any
+    after them were left uncompared at `MAX_COMPARISONS`."""
+
+
 def survey(root: pathlib.Path) -> Survey:
+    """What `repro verify` could check at `root`. See `scan`."""
+    return scan(root).survey
+
+
+def scan(root: pathlib.Path) -> Scan:
     """What `repro verify` could check at `root`, found as `write` finds it, writing nothing.
 
     The manuscript's numbers are those `claims.numbers` counts, read through a manifest held in
@@ -874,7 +892,7 @@ def survey(root: pathlib.Path) -> Survey:
             f"{len(printed)} numbers the manuscript prints were not compared"
         )
 
-    return Survey(
+    found_here = Survey(
         results={key: tuple(grouped[key]) for key, _, _ in FORMATS if key in grouped},
         capped=capped,
         manuscript=manuscript.relative_to(root).as_posix() if manuscript is not None else None,
@@ -887,3 +905,4 @@ def survey(root: pathlib.Path) -> Survey:
         not_compared=len(printed) - compared,
         candidates=tuple(_collapsed(candidates)),
     )
+    return Scan(survey=found_here, printed=tuple(printed))
