@@ -21,6 +21,11 @@ format under the name `repro.check/0.1-experimental`. Releases in the 0.6 series
 under either name, and the next minor release reads only the new one. A program that compares
 the `record` field with the old string has to accept the new one too.
 
+A record under any other version is refused by `claims.record.validate`. Where a program reads
+one without validating it, a `match` it carries is read as `not-checked`: every exporter reads
+the outcome through `claims.record.read_outcome`, and a version this reader does not know may
+mean something else by any field.
+
 ## Schema
 
 The JSON Schema is generated from the model and kept in the repository as

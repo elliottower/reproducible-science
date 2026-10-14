@@ -1290,8 +1290,9 @@ passage; a comparison under a declared conversion without the converted value; a
 computed; a match on a tie that prints neither of the tie's two values; a stored value on a record that is `not-checked` or an `error`; a pair of values on a
 check type that compares none; a `validity` the two digests do not bear out.
 
-**Unknown stays unknown.** A `native_outcome` from a checker not known to emit it, a
-`check_type` of `other`, and an address `kind` this version has not seen are kept as written
+**Unknown stays unknown.** A `record` version this reader does not know, a `native_outcome`
+from a checker not known to emit it, a `check_type` of `other`, and an address `kind` this
+version has not seen are kept as written
 and never read as success: `repro.record.read_outcome` gives `not-checked` for a `match` it
 does not understand, and every exporter reads the outcome through it. A `match` under an
 unknown native word is refused by the validator outright.

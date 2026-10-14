@@ -20,6 +20,7 @@ from claims import load
 from claims.export.rocrate import from_ro_crate, to_ro_crate
 from claims.export.sarif import RECORD_PROPERTY, to_sarif_log
 from claims.record import (
+    ExportRecord,
     InvalidRecordError,
     NormalizedOutcome,
     check_records,
@@ -77,6 +78,22 @@ def test_a_record_under_any_other_version_is_refused(version):
         validate(data)
     (said,) = caught.value.problems
     assert said == f"record is {version!r}; this reader knows {NEW!r} and {OLD!r}"
+
+
+@pytest.mark.parametrize(
+    "version", ["reproducible.science/claim-check/0.2-experimental", "repro.check/9.9", ""]
+)
+def test_a_match_under_a_version_this_reader_does_not_know_is_not_checked(version):
+    record = ExportRecord.model_validate(fresh() | {"record": version})
+    assert record.outcome is NormalizedOutcome.MATCH
+    assert not understood(record)
+    assert read_outcome(record) is NormalizedOutcome.NOT_CHECKED
+
+
+def test_a_mismatch_under_a_version_this_reader_does_not_know_stays_a_mismatch():
+    data = fresh("value_mismatch") | {"record": "reproducible.science/claim-check/0.2-experimental"}
+    record = ExportRecord.model_validate(data)
+    assert read_outcome(record) is NormalizedOutcome.MISMATCH
 
 
 def test_the_released_records_are_the_ones_0_5_6_wrote():
