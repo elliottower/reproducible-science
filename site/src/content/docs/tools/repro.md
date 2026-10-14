@@ -886,6 +886,51 @@ A second run replaces what is between the markers and changes no other byte of t
 
 A badge from `repro badges` is a count written from a run on the author's machine, with the files that machine holds; a badge from `repro ci init` is a status GitHub computed on its runner from the files in the repository.
 
+## Badges that update themselves
+
+```bash
+repro badges init
+```
+
+`repro badges --readme` writes counts into the README, and they hold until the next time someone runs it. `repro badges init` writes one workflow, `.github/workflows/repro.yml`, that recomputes them on GitHub. On every push to the default branch it runs `repro ci endpoints`, which runs each check the repository keeps a record for, as `repro badges` does, and writes one [shields.io endpoint file](https://shields.io/badges/endpoint-badge) per check:
+
+```json
+{
+  "color": "2da44e",
+  "label": "claims",
+  "labelColor": "24292f",
+  "logoSvg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\">...</svg>",
+  "message": "76/76 verified",
+  "schemaVersion": 1
+}
+```
+
+The label, message, colours and icon are the ones `repro badges` draws, so the two kinds of badge look the same. The workflow force-pushes the five files as the only commit of a branch named `badges`, which it makes on its first run. It has `contents: write` for that push and pushes nothing else: the push names `refs/heads/badges`, and the job stops where the default branch is itself called `badges`, which `init` refuses too. The actions are pinned by commit, as in the workflows `repro ci init` writes.
+
+`init` puts the badge block under the first heading of `README.md`, between the markers `repro badges --readme` uses, with one badge per check the repository keeps a record for, each reading its file from the `badges` branch and linking to the workflow's runs:
+
+```markdown
+<!-- repro badges: start -->
+[![claims](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/OWNER/REPO/badges/claims.json)](https://github.com/OWNER/REPO/actions/workflows/repro.yml) ...
+<!-- repro badges: end -->
+```
+
+`OWNER/REPO` is read from `git remote get-url origin`, and `init` writes nothing where that names no GitHub repository. A block already in the README is left as it is, and a workflow already at `repro.yml` is never replaced; `--force` replaces both where this command wrote them, and a `repro.yml` it did not write is never replaced. It then prints what is left to do: commit, push, and allow the workflow to write if the repository's settings forbid it. Until the first run has made the branch, the badges draw as `resource not found`. shields.io reads the files from `raw.githubusercontent.com`, which serves public repositories only, so in a private repository the badges do not draw; `repro badges --readme` writes static badges that do. A badge can lag a push by the few minutes `raw.githubusercontent.com` and shields.io cache a file.
+
+### citations, from the record of a local check
+
+A clone does not hold the sources a claims directory pins, so `citations verify` in the job would find every quotation `unchecked`. The job reads instead what a check on the author's machine found. `repro badges --record` runs `citations verify` as `repro ci citations` runs it and writes `.repro/citations-verified.json`: the counts, the outcome, the version of `citations` and the time, and for every claims file its sha256 and the digest of the source it pins. `init` writes it too. Commit it. The record is written by `repro`, and `citations verify` writes nothing it was not asked to.
+
+The citations endpoint file is read from that record and from no run in the job:
+
+| record | badge |
+|---|---|
+| every claims file is the one the record covers | what the local run gave, said `locally`: `203/203 verified locally`, in the colour `repro badges` gives it |
+| a claims file was added, removed or changed since | `re-verify locally`, amber |
+| no record | `not verified locally`, gray, and the job's log names `repro badges --record` |
+
+A claims file pins its source by digest, so a source swapped under a pin changes the claims file and the record goes stale. `repro badges --check`, run against the block `init` wrote, compares that record with the claims files and exits 1 where it no longer covers them, naming each file; in a pre-commit hook it stops a commit whose citations badge would read `re-verify locally`. `repro badges --readme` refuses to replace the block `init` wrote.
+
 ## On a pull request, as SARIF
 
 ```yaml
