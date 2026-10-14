@@ -15,6 +15,7 @@ import json
 import pathlib
 import re
 import subprocess
+import unicodedata
 import urllib.error
 import urllib.request
 
@@ -325,7 +326,7 @@ def citing_sentences(project: pathlib.Path, tex_paths: list[str]) -> dict[str, l
             end_par = src.find("\n\n", m.end())
             end = min(x for x in (end_dot, end_par, len(src)) if x != -1)
             raw = src[start + 2 if start >= 0 else 0:end + 1]
-            text = cite.sub(lambda c: "[" + c.group(1) + "]", raw)
+            text = latex_text(cite.sub(lambda c: "[" + c.group(1) + "]", raw))
             text = re.sub(r"\\(?:emph|textit|textbf|code|tVerify|texttt)\{([^}]*)\}", r"\1", text)
             text = re.sub(r"\\[a-zA-Z]+\*?(\[[^\]]*\])?(\{[^}]*\})?", "", text).replace("~", " ")
             text = text.replace("\\%", "%").replace("\\&", "and")
@@ -338,6 +339,24 @@ def citing_sentences(project: pathlib.Path, tex_paths: list[str]) -> dict[str, l
                     # Where the sentence falls in reading order: which pinned .tex file, then where in it.
                     out[key].append({**entry, "order": [file_index, m.start()]})
     return out
+
+
+ACCENTS = {'"': "\u0308", "'": "\u0301", "`": "\u0300", "^": "\u0302", "~": "\u0303", "=": "\u0304",
+           ".": "\u0307", "u": "\u0306", "v": "\u030c", "H": "\u030b", "c": "\u0327", "k": "\u0328"}
+LETTERS = {"o": "ø", "O": "Ø", "ae": "æ", "AE": "Æ", "aa": "å", "AA": "Å", "ss": "ß", "l": "ł", "L": "Ł", "i": "ı"}
+
+
+def latex_text(s: str) -> str:
+    """LaTeX accents and special letters as the characters they print: N\\"ust -> Nüst,
+    Vicentt\\'{\\i}n -> Vicenttín, {\\o} -> ø. Applied before commands are stripped."""
+    def accent(m: re.Match) -> str:
+        base = {"\\i": "i", "\\j": "j"}.get(m.group(2), m.group(2))
+        return unicodedata.normalize("NFC", base + ACCENTS[m.group(1)])
+
+    s = re.sub(r"\\([\"'`^~=.uvHck])\s*\{?(\\[ij]|[A-Za-z])\}?", accent, s)
+    s = re.sub(r"\{\\(ae|AE|aa|AA|ss|o|O|l|L)\}|\\(ae|AE|aa|AA|ss|o|O|l|L)(?![A-Za-z])",
+               lambda m: LETTERS[m.group(1) or m.group(2)], s)
+    return s
 
 
 def parse_bib(paths: list[pathlib.Path]) -> dict[str, dict[str, str]]:
@@ -367,7 +386,7 @@ def parse_bib(paths: list[pathlib.Path]) -> dict[str, dict[str, str]]:
                     value = body[j + 1:k]
                 else:
                     value = re.match(r"[^,\n]*", body[j:]).group(0)
-                value = re.sub(r"\\[a-zA-Z]+\s*", "", value).replace("{", "").replace("}", "").replace("--", "–")
+                value = re.sub(r"\\[a-zA-Z]+\s*", "", latex_text(value)).replace("{", "").replace("}", "").replace("--", "–")
                 fields[f.group(1).lower()] = re.sub(r"\s+", " ", value).strip()
             out[m.group(2)] = fields
     return out
