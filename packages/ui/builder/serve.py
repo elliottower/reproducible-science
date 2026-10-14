@@ -23,6 +23,7 @@ import json
 import pathlib
 import threading
 import time
+import urllib.parse
 import uuid
 
 import build_graph
@@ -34,6 +35,7 @@ DIST = ROOT / "web" / "dist"
 DATA = ROOT / ".data"
 QUEUE = pathlib.Path.home() / ".claude" / "repro-fixes" / "queue.jsonl"
 MAX_PROMPT = 8000
+MAX_FILE = 2_000_000
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -52,6 +54,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self) -> None:
         if self.path == "/api/health":
             return self._json(200, {"recheck": True, "project": str(self.project)})
+        if self.path.startswith("/api/file?"):
+            return self._file(urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("path", [""])[0])
         if self.path.split("?")[0] == "/graph.json":
             self.send_response(200)
             data = (DATA / "graph.json").read_bytes()
@@ -62,6 +66,19 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.wfile.write(data)
             return
         super().do_GET()
+
+    def _file(self, rel: str) -> None:
+        """A file the records name (a run's output, or a file the manifest pins), read-only, from
+        inside the project. Anything else is refused, so this cannot read the rest of the disk."""
+        graph = json.loads((DATA / "graph.json").read_text())
+        named = {o for r in graph.get("tabs", {}).get("results", {}).get("runs", []) for o in r["outputs"]}
+        named |= {n["path"] for n in graph["nodes"] if n.get("type") == "artifact" and n.get("path")}
+        target = (self.project / rel).resolve()
+        if rel not in named or not target.is_relative_to(self.project) or not target.is_file():
+            return self._json(404, {"ok": False, "error": "not a file the records name"})
+        if target.stat().st_size > MAX_FILE:
+            return self._json(200, {"ok": False, "error": f"{target.stat().st_size:,} bytes; too large to show here"})
+        return self._json(200, {"ok": True, "text": target.read_text(errors="replace")})
 
     def _fix_request(self) -> None:
         length = int(self.headers.get("Content-Length") or 0)

@@ -30,36 +30,47 @@ export function PreregTab({ graph }: { graph: Graph }) {
   return (
     <div className="rec">
       <Head cmd="prereg" line={graph.status?.prereg.text ?? '—'}
-        what="A preregistration is the analysis plan, frozen against a commit and a content hash before the analysis it governs runs, with every later change logged as an amendment or a deviation. Optional: a project without one is not failing." />
+        what="A preregistration is the analysis plan, frozen against a commit and a content hash before the analysis runs. Every later change is logged as an amendment or a deviation. Optional: a project without a plan is not failing." />
       {graph.status?.prereg.next && (
-        <p className="rec-next">To write one: <span className="mono">prereg new</span>, then <span className="mono">prereg freeze</span> before the run it governs.</p>
+        <p className="rec-next">To preregister: <span className="mono">prereg new</span>, then <span className="mono">prereg freeze</span>.</p>
       )}
-      <pre className="rec-pre">{lines.join('\n') || 'prereg check printed nothing.'}</pre>
+      <pre className="rec-pre">{lines.map((l) => (/^no PREREG\.md/i.test(l) ? 'No PREREG.md' : l)).join('\n') || 'No PREREG.md'}</pre>
     </div>
   )
 }
 
-export function ResultsTab({ graph }: { graph: Graph }) {
+export function ResultsTab({ graph, query }: { graph: Graph; query: string }) {
   const t = graph.tabs?.results
   const [showBound, setShowBound] = useState(false)
-  const runs = useMemo(() => [...(t?.runs ?? [])].reverse(), [t])
+  const [viewing, setViewing] = useState<string | null>(null)
+  const q = query.trim().toLowerCase()
+  const runs = useMemo(
+    () => [...(t?.runs ?? [])].reverse().filter((r) => !q || `${r.run_id} ${r.note} ${r.outputs.join(' ')}`.toLowerCase().includes(q)),
+    [t, q],
+  )
   return (
     <div className="rec">
       <Head cmd="results" line={graph.status?.results.counts ? `${fmt(graph.status.results.counts.sealed)}/${fmt(graph.status.results.counts.runs)} runs sealed` : graph.status?.results.text ?? '—'}
-        what="The results ledger: a hash chain of events. results seal hashes a run's inputs before it runs, and results run records the files it wrote. A run is sealed when a seal came before it." />
+        what="The results ledger, a hash chain of events. results seal hashes a run's inputs before it runs; results run records the files the run wrote, with their hashes. Click a file to read it." />
       <table>
-        <thead><tr><th>Run</th><th>Recorded</th><th>Sealed first</th><th>Files written</th></tr></thead>
+        <thead><tr><th>Run</th><th>Recorded</th><th>Inputs</th><th>Outputs</th><th>Files written</th></tr></thead>
         <tbody>
           {runs.map((r) => (
             <tr key={`${r.run_id}${r.timestamp}`} className="static">
               <td><div className="mono strong">{r.run_id}</div><div className="small muted claim-cell">{r.note}</div></td>
               <td className="small nowrap">{when(r.timestamp)}</td>
               <td>{r.sealed_before ? <span className="pill good">Sealed</span> : <span className="pill bad">Not sealed</span>}</td>
-              <td className="mono small muted">{r.outputs.map((o) => <div key={o}>{o}</div>)}</td>
+              <td>{r.outputs.length ? <span className="pill good">Recorded</span> : <span className="pill bad">None</span>}</td>
+              <td className="mono small">
+                {r.outputs.map((o) => (
+                  <div key={o}><button className="file-link" onClick={() => setViewing(o)}>{o}</button></div>
+                ))}
+              </td>
             </tr>
           ))}
         </tbody>
       </table>
+      {viewing && <FileViewer path={viewing} onClose={() => setViewing(null)} />}
       <button className="more rec-more" onClick={() => setShowBound((v) => !v)}>
         {showBound ? 'Hide' : 'Show'} the {fmt(t?.bound.length ?? 0)} sentences bound with results claim
       </button>
@@ -87,7 +98,8 @@ export function ResultsTab({ graph }: { graph: Graph }) {
 export function CitationsTab({ graph, query }: { graph: Graph; query: string }) {
   const sources = graph.tabs?.citations.sources ?? []
   const q = query.trim().toLowerCase()
-  const [openSrc, setOpenSrc] = useState<string | null>(null)
+  const [openSrc, setOpenSrc] = useState<Set<string>>(new Set())
+  const flip = (f: string) => setOpenSrc((prev) => { const n = new Set(prev); if (n.has(f)) n.delete(f); else n.add(f); return n })
   const shown = sources.filter((s) => !q || JSON.stringify(s).toLowerCase().includes(q))
   return (
     <div className="rec">
@@ -98,12 +110,15 @@ export function CitationsTab({ graph, query }: { graph: Graph; query: string }) 
         <tbody>
           {shown.map((s) => (
             <Fragment key={s.file}>
-              <tr onClick={() => setOpenSrc(openSrc === s.file ? null : s.file)} className={openSrc === s.file ? 'sel' : ''}>
-                <td><div className="mono strong">{s.citation}</div>{s.url && <div className="small muted">{s.url}</div>}</td>
+              <tr onClick={() => flip(s.file)} className={openSrc.has(s.file) ? 'sel' : ''}>
+                <td>
+                  <div className="mono strong">{openSrc.has(s.file) ? '▾' : '▸'} {s.citation}</div>
+                  {s.url && <a className="small src-link" href={s.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>{s.url}</a>}
+                </td>
                 <td className="num">{s.pinned}</td>
                 <td className="mono small muted">{s.file}</td>
               </tr>
-              {openSrc === s.file && (
+              {openSrc.has(s.file) && (
                 <tr className="static">
                   <td colSpan={3}>
                     {s.statements.map((st) => (
@@ -126,9 +141,10 @@ export function CitationsTab({ graph, query }: { graph: Graph; query: string }) 
   )
 }
 
-export function ReproduceTab({ graph }: { graph: Graph }) {
+export function ReproduceTab({ graph, query }: { graph: Graph; query: string }) {
   const t = graph.tabs?.reproduce
-  const steps = [...(t?.steps ?? [])].sort((a, b) => (a.state === 'current' ? 1 : 0) - (b.state === 'current' ? 1 : 0) || a.id.localeCompare(b.id))
+  const q = query.trim().toLowerCase()
+  const steps = [...(t?.steps ?? [])].filter((s) => !q || `${s.id} ${s.command} ${s.state}`.toLowerCase().includes(q)).sort((a, b) => (a.state === 'current' ? 1 : 0) - (b.state === 'current' ? 1 : 0) || a.id.localeCompare(b.id))
   const need = steps.filter((s) => s.state !== 'current').length
   const rp = graph.reproduce
   return (
@@ -165,6 +181,36 @@ export function ReproduceTab({ graph }: { graph: Graph }) {
           ))}
         </tbody>
       </table>
+    </div>
+  )
+}
+
+/** A recorded file, read through the local server: JSON indented, anything else as text. */
+function FileViewer({ path, onClose }: { path: string; onClose: () => void }) {
+  const [text, setText] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  useMemo(() => {
+    fetch(`api/file?path=${encodeURIComponent(path)}`)
+      .then((r) => r.json())
+      .then((res) => {
+        if (!res.ok) return setError(res.error)
+        try {
+          setText(JSON.stringify(JSON.parse(res.text), null, 2))
+        } catch {
+          setText(res.text)
+        }
+      })
+      .catch((e) => setError(String(e)))
+  }, [path])
+  return (
+    <div className="viewer-back" onClick={onClose}>
+      <div className="viewer" onClick={(e) => e.stopPropagation()}>
+        <div className="viewer-head">
+          <span className="mono">{path}</span>
+          <button className="close" onClick={onClose}>×</button>
+        </div>
+        <pre className="viewer-body">{error ?? text ?? 'Loading…'}</pre>
+      </div>
     </div>
   )
 }

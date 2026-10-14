@@ -98,6 +98,11 @@ export default function Catalog({ graph, query }: { graph: Graph; query: string 
       </nav>
 
       <main className="table-wrap">
+        <div className="rec-head">
+          <div className="mono rec-line">
+            <span className="ov-cmd">repro verify:</span> {fmt(claims.filter((x) => x.ok).length)}/{fmt(claims.length)} claims verified ({fmt(graph.totals.assertions)} checks)
+          </div>
+        </div>
         {view.kind === 'files' ? (
           <table>
             <thead>

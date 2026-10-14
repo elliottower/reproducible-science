@@ -63,13 +63,15 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [graph, open, openFiles])
 
-  const toggle = (g: string) =>
+  const toggle = (g: string) => {
+    if (selected === `group:${g}`) setSelected(null)
     setOpen((prev) => {
       const next = new Set(prev)
       if (next.has(g)) next.delete(g)
       else next.add(g)
       return next
     })
+  }
 
   const toggleFile = (f: string) =>
     setOpenFiles((prev) => {
@@ -80,12 +82,15 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
     })
 
   // Highlight the selected node's upstream and downstream lineage.
+  // A selection that is not drawn (a group just opened, a claim folded away) highlights nothing,
+  // rather than dimming everything.
+  const shown = selected && flow.nodes.some((n) => n.id === selected) ? selected : null
   const related = useMemo(() => {
     const r = new Set<string>()
-    if (!selected) return r
-    r.add(selected)
+    if (!shown) return r
+    r.add(shown)
     const walk = (dir: 'up' | 'down') => {
-      const stack = [selected]
+      const stack = [shown]
       while (stack.length) {
         const cur = stack.pop()!
         for (const e of flow.edges) {
@@ -96,19 +101,19 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
     }
     walk('up'); walk('down')
     return r
-  }, [selected, flow.edges])
+  }, [shown, flow.edges])
 
   const edges = useMemo(
     () =>
       flow.edges.map((e) => {
-        const on = selected && related.has(e.source) && related.has(e.target)
+        const on = shown && related.has(e.source) && related.has(e.target)
         return {
           ...e,
           label: on ? e.label : undefined,
-          className: `${e.className} ${on ? 'edge-on' : selected ? 'edge-dim' : ''}`,
+          className: `${e.className} ${on ? 'edge-on' : shown ? 'edge-dim' : ''}`,
         }
       }),
-    [flow.edges, selected, related],
+    [flow.edges, shown, related],
   )
 
   const expandMatches = () =>
@@ -127,7 +132,7 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
   const needRerun = graph.nodes.filter((n) => n.type === 'artifact' && (n.freshness === 'stale' || n.freshness === 'never_rerun')).length
 
   return (
-    <UiCtx.Provider value={{ selected, matches, related, toggle, openFiles, toggleFile }}>
+    <UiCtx.Provider value={{ selected: shown, matches, related, toggle, openFiles, toggleFile }}>
       <div className="app">
         <header className="top">
           <div className="brand mono">{graph.project_name ?? 'Claim lineage'}</div>
@@ -137,6 +142,9 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
             ))}
           </div>
           <div className="spacer" />
+          {mode !== 'overview' && (
+            <input className="search top-search" placeholder="Search" value={query} onChange={(e) => setQuery(e.target.value)} />
+          )}
           <span
             className={`pill big ${failing ? 'bad' : 'good'}`}
             title={graph.totals.last_check ? `${fmt(graph.totals.assertions)} assertions over ${fmt(graph.totals.artifacts)} files · last check ${when(graph.totals.last_check)}` : undefined}
@@ -163,13 +171,12 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
           <ClaudeButton prompt={projectPrompt(graph, graph.project_dir ?? null)} subject="whole project" />
           {recheck.message && <span className="error-note">{recheck.message}</span>}
         </header>
-        <div className="toolbar" style={['claims', 'citations', 'graph'].includes(mode) ? undefined : { display: 'none' }}>
-          <input
-            className="search"
-            placeholder="Search files, sections, claim text… (e.g. 1,062 or timings)"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
+        <div className="toolbar" style={mode === 'graph' ? undefined : { display: 'none' }}>
+          <div className="mono rec-line graph-line">
+            <span className="ov-cmd">graph:</span> where each number comes from
+            <span className="muted small graph-key"> · files left, paper sections right · solid: claims read this file · dashed: a rebuild step makes it</span>
+          </div>
+          <div className="spacer" />
           {mode === 'graph' && matches.size > 0 && (
             <button onClick={expandMatches}>Open {matches.size} match{matches.size === 1 ? '' : 'es'}</button>
           )}
@@ -181,11 +188,11 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
         ) : mode === 'prereg' ? (
           <PreregTab graph={graph} />
         ) : mode === 'results' ? (
-          <ResultsTab graph={graph} />
+          <ResultsTab graph={graph} query={query} />
         ) : mode === 'citations' ? (
           <CitationsTab graph={graph} query={query} />
         ) : mode === 'reproduce' ? (
-          <ReproduceTab graph={graph} />
+          <ReproduceTab graph={graph} query={query} />
         ) : mode === 'claims' ? (
           <Catalog graph={graph} query={query} />
         ) : (

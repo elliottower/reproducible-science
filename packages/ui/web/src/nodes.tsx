@@ -45,7 +45,9 @@ function ArtifactNode({ data, id }: NodeProps) {
       </div>
       <div className="card-foot">
         <Freshness node={n} />
-        <span>{n.last_checked ? `checked ${when(n.last_checked)}` : ''}</span>
+        <span title={n.last_checked ? `last checked ${when(n.last_checked)}` : undefined}>
+          {n.last_checked ? `checked ${new Date(n.last_checked).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : ''}
+        </span>
       </div>
       <Handle type="source" position={Position.Right} />
     </div>
