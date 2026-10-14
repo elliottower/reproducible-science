@@ -117,13 +117,61 @@ function Marked({ text, against }: { text: string; against: Set<string> }) {
 function Note({ text }: { text: string }) {
   return (
     <div className="note-wrap">
-      <span className="note-label">Reader's note</span>
+      <span className="note-label">Note</span>
       <div className="cite-note">{text}</div>
     </div>
   )
 }
 
-function CitationsByClaim({ graph, query }: { graph: Graph; query: string }) {
+type Source = NonNullable<Graph['tabs']>['citations']['sources'][number]
+
+/** "Abeysooriya et al. 2021" from a .bib author field, or the organization's name when it is one. */
+function byline(s: Source): string {
+  const names = (s.bib.author ?? '').split(/\s+and\s+/).filter(Boolean)
+  const surname = (n: string) => (n.includes(',') ? n.split(',')[0] : n.split(' ').slice(-1)[0]).trim()
+  const who = names.length === 0 ? '' : names.length === 1 ? (names[0].includes(',') ? surname(names[0]) : names[0]) : names.length === 2 ? `${surname(names[0])} and ${surname(names[1])}` : `${surname(names[0])} et al.`
+  return [who, s.bib.year].filter(Boolean).join(' ')
+}
+
+function SourceCell({ s, onOpen }: { s: Source; onOpen: (s: Source) => void }) {
+  return (
+    <div className="src-cell">
+      <button className="src-title" onClick={() => onOpen(s)} title="Details">{s.bib.title || s.citation}</button>
+      <div className="small muted">{byline(s)}{s.link && <> · <a className="src-link" href={s.link} target="_blank" rel="noreferrer">open ↗</a></>}</div>
+      <div className="src-meta">
+        <span className="mono">{s.citation}</span>
+        {s.sha256 ? <span className="pin" title={`${s.local} · sha256 ${s.sha256.slice(0, 12)}…`}>Pinned</span> : <span className="pin bad">Not pinned</span>}
+      </div>
+    </div>
+  )
+}
+
+function SourcePanel({ s, onClose }: { s: Source; onClose: () => void }) {
+  const venue = s.bib.journal || s.bib.booktitle || s.bib.publisher || s.bib.howpublished || s.bib.organization || ''
+  return (
+    <aside className="panel">
+      <button className="close" onClick={onClose}>×</button>
+      <div className="kicker">SOURCE</div>
+      <h2>{s.bib.title || s.citation}</h2>
+      <dl>
+        {s.bib.author && (<><dt>Authors</dt><dd>{s.bib.author.split(/\s+and\s+/).join('; ')}</dd></>)}
+        {s.bib.year && (<><dt>Year</dt><dd>{s.bib.year}</dd></>)}
+        {venue && (<><dt>Venue</dt><dd>{venue}</dd></>)}
+        {s.bib.doi && (<><dt>DOI</dt><dd className="mono small">{s.bib.doi}</dd></>)}
+        {s.link && (<><dt>Link</dt><dd><a className="src-link" href={s.link} target="_blank" rel="noreferrer">{s.link}</a></dd></>)}
+        <dt>Key</dt><dd className="mono">{s.citation}</dd>
+        <dt>Pinned</dt><dd>{s.sha256 ? <><span className="mono small">{s.local}</span><div className="mono small muted">sha256 {s.sha256}</div></> : 'Not pinned'}</dd>
+        <dt>Claims file</dt><dd className="mono small">{s.file}</dd>
+      </dl>
+      <h3>{s.pinned} quotation{s.pinned === 1 ? '' : 's'} · cited {s.cited_in.length === 1 ? 'once' : `${s.cited_in.length} times`}</h3>
+      {s.cited_in.map((c, k) => (
+        <div key={k} className="ms-sentence">“{c.text}”{c.section && <div className="muted">(section: {c.section})</div>}</div>
+      ))}
+    </aside>
+  )
+}
+
+function CitationsByClaim({ graph, query, onOpen }: { graph: Graph; query: string; onOpen: (s: Source) => void }) {
   const q = query.trim().toLowerCase()
   const sources = (graph.tabs?.citations.sources ?? []).filter((s) => !q || JSON.stringify(s).toLowerCase().includes(q))
   const [closed, setClosed] = useState<Set<string>>(new Set())
@@ -135,19 +183,18 @@ function CitationsByClaim({ graph, query }: { graph: Graph; query: string }) {
       <button className="link-btn" onClick={() => setClosed(new Set(sources.map((s) => s.file)))}>Collapse all</button>
     </div>
     <table className="cite-table">
-      <thead><tr><th>Source</th><th style={{ width: '27%' }}>Manuscript text</th><th style={{ width: '22%' }}>Reading of the source</th><th style={{ width: '32%' }}>Source's words</th><th>Pinned</th></tr></thead>
+      <thead><tr><th style={{ width: '18%' }}>Source</th><th style={{ width: '27%' }}>Manuscript text</th><th style={{ width: '22%' }}>Interpretation</th><th>Source quotations</th></tr></thead>
       <tbody>
         {sources.map((s) => {
           const words = new Set(s.cited_in.flatMap((c) => c.text.toLowerCase().split(/\s+/).map((w) => w.replace(/[^a-z0-9-]/g, ''))))
           if (closed.has(s.file)) {
             return (
               <tr key={s.file} className="src-start folded" onClick={() => flip(s.file)}>
-                <td><span className="mono src-link">▸ {s.citation}</span></td>
+                <td><span className="src-folded">▸ {s.bib.title || s.citation}</span><div className="small muted">{byline(s)}</div></td>
                 <td colSpan={3} className="small muted">
                   {s.statements.length} statement{s.statements.length === 1 ? '' : 's'} · {s.pinned} quote{s.pinned === 1 ? '' : 's'}
                   {s.cited_in.length ? ` · cited ${s.cited_in.length === 1 ? 'once' : `${s.cited_in.length} times`}` : ' · not cited in any pinned .tex file'}
                 </td>
-                <td>{s.sha256 ? <span className="pill good">Pinned</span> : <span className="pill bad">Not pinned</span>}</td>
               </tr>
             )
           }
@@ -155,8 +202,10 @@ function CitationsByClaim({ graph, query }: { graph: Graph; query: string }) {
             <tr key={`${s.file}-${st.id}`} className={`static ${i === 0 ? 'src-start' : ''}`}>
               {i === 0 && (
                 <td rowSpan={s.statements.length}>
-                  <button className="fold-btn" onClick={() => flip(s.file)} title="Collapse">▾</button>
-                  {s.url ? <a className="mono src-link" href={s.url} target="_blank" rel="noreferrer">{s.citation}</a> : <span className="mono">{s.citation}</span>}
+                  <div className="src-row">
+                    <button className="fold-btn" onClick={() => flip(s.file)} title="Collapse">▾</button>
+                    <SourceCell s={s} onOpen={onOpen} />
+                  </div>
                 </td>
               )}
               {i === 0 && (
@@ -181,9 +230,6 @@ function CitationsByClaim({ graph, query }: { graph: Graph; query: string }) {
                   </div>
                 ))}
               </td>
-              {i === 0 && (
-                <td rowSpan={s.statements.length}>{s.sha256 ? <span className="pill good" title={`${s.local} · sha256 ${s.sha256.slice(0, 12)}…`}>Pinned</span> : <span className="pill bad">Not pinned</span>}</td>
-              )}
             </tr>
           ))
         })}
@@ -199,6 +245,7 @@ export function CitationsTab({ graph, query }: { graph: Graph; query: string }) 
   })
   const pick = (v: 'quote' | 'claim') => { setView(v); try { localStorage.setItem('citations-view', v) } catch { /* private window */ } }
   const sources = graph.tabs?.citations.sources ?? []
+  const [panel, setPanel] = useState<Source | null>(null)
   const q = query.trim().toLowerCase()
   // One row per quote, in the claims files' own order: source, then statement, then quote.
   const rows = sources.flatMap((s) =>
@@ -218,14 +265,14 @@ export function CitationsTab({ graph, query }: { graph: Graph; query: string }) 
   return (
     <div className="rec">
       <Head cmd="citations" line={graph.status?.citations.text ?? '—'}
-        what="Passages quoted from other people's work, the statement the paper reads into them, and the sentences of the manuscript that cite each source. Highlighted words appear in both the source and the manuscript. A source is pinned when its file is saved with a hash; citations verify checks every passage against it, which takes minutes." />
+        what="Passages quoted from other people's work, the paper's interpretation of them, and the sentences of the manuscript that cite each source. Click a title for the source's details. Highlighted words appear in both the source and the manuscript. A source is pinned when its file is saved with a hash; citations verify checks every passage against it, which takes minutes." />
       <div className="seg">
         <button className={view === 'claim' ? 'on' : ''} onClick={() => pick('claim')}>By claim</button>
         <button className={view === 'quote' ? 'on' : ''} onClick={() => pick('quote')}>By quote</button>
       </div>
-      {view === 'claim' ? <CitationsByClaim graph={graph} query={query} /> : (
+      {view === 'claim' ? <CitationsByClaim graph={graph} query={query} onOpen={setPanel} /> : (
       <table className="cite-table">
-        <thead><tr><th>Source</th><th>Section</th><th style={{ width: '38%' }}>Quoted text</th><th>Statement</th><th>Pinned</th></tr></thead>
+        <thead><tr><th style={{ width: '18%' }}>Source</th><th>Section</th><th style={{ width: '38%' }}>Quoted text</th><th>Interpretation</th></tr></thead>
         <tbody>
           {rows.map(({ s, st, qq }, i) => {
             const srcSpan = span(i, bySource)
@@ -233,7 +280,7 @@ export function CitationsTab({ graph, query }: { graph: Graph; query: string }) 
             return (
               <tr key={`${s.file}-${st.id}-${i}`} className={`static ${srcSpan ? 'src-start' : ''}`}>
                 {srcSpan > 0 && (
-                  <td rowSpan={srcSpan}>{s.url ? <a className="mono src-link" href={s.url} target="_blank" rel="noreferrer">{s.citation}</a> : <span className="mono">{s.citation}</span>}</td>
+                  <td rowSpan={srcSpan}><SourceCell s={s} onOpen={setPanel} /></td>
                 )}
                 <td className="small">{qq.section || <span className="muted">—</span>}</td>
                 <td className="quote">“{qq.exact}”</td>
@@ -243,9 +290,7 @@ export function CitationsTab({ graph, query }: { graph: Graph; query: string }) 
                     {st.notes && <Note text={st.notes} />}
                   </td>
                 )}
-                {srcSpan > 0 && (
-                  <td rowSpan={srcSpan}>{s.sha256 ? <span className="pill good" title={`${s.local} · sha256 ${s.sha256.slice(0, 12)}…`}>Pinned</span> : <span className="pill bad">Not pinned</span>}</td>
-                )}
+
               </tr>
             )
           })}
@@ -253,6 +298,7 @@ export function CitationsTab({ graph, query }: { graph: Graph; query: string }) 
       </table>
       )}
       {view === 'quote' && rows.length === 0 && <div className="empty muted">Nothing here{q ? ` matches “${query}”` : ''}.</div>}
+      {panel && <SourcePanel s={panel} onClose={() => setPanel(null)} />}
     </div>
   )
 }

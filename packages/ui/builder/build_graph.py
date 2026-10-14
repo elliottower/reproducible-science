@@ -15,6 +15,7 @@ import json
 import pathlib
 import re
 import subprocess
+import urllib.request
 
 import yaml
 
@@ -336,7 +337,57 @@ def citing_sentences(project: pathlib.Path, tex_paths: list[str]) -> dict[str, l
     return out
 
 
-def record_tabs(project: pathlib.Path, manifest: dict, ledger: list[dict], staleness: dict) -> dict:
+def parse_bib(paths: list[pathlib.Path]) -> dict[str, dict[str, str]]:
+    """Citation key -> its fields, from the .bib files the manuscript names. Braces are balanced by
+    counting, so a title like {{Gene name errors}} comes out whole; LaTeX in a field is reduced to text."""
+    out: dict[str, dict[str, str]] = {}
+    for path in paths:
+        if not path.is_file():
+            continue
+        src = path.read_text(errors="replace")
+        for m in re.finditer(r"@(\w+)\s*\{\s*([^,\s]+)\s*,", src):
+            i, depth = m.end(), 1
+            while i < len(src) and depth:
+                depth += {"{": 1, "}": -1}.get(src[i], 0)
+                i += 1
+            body, fields = src[m.end():i - 1], {"type": m.group(1).lower()}
+            for f in re.finditer(r"(\w+)\s*=\s*", body):
+                j = f.end()
+                if j < len(body) and body[j] == "{":
+                    k, d = j + 1, 1
+                    while k < len(body) and d:
+                        d += {"{": 1, "}": -1}.get(body[k], 0)
+                        k += 1
+                    value = body[j + 1:k - 1]
+                elif j < len(body) and body[j] == '"':
+                    k = body.find('"', j + 1)
+                    value = body[j + 1:k]
+                else:
+                    value = re.match(r"[^,\n]*", body[j:]).group(0)
+                value = re.sub(r"\\[a-zA-Z]+\s*", "", value).replace("{", "").replace("}", "").replace("--", "–")
+                fields[f.group(1).lower()] = re.sub(r"\s+", " ", value).strip()
+            out[m.group(2)] = fields
+    return out
+
+
+def landing_url(url: str, doi: str, cache: dict[str, str]) -> str:
+    """The page a reader lands on: a doi.org address is resolved once to the publisher's page and
+    cached, because a doi.org link says nothing about where it goes. Unresolvable: left as given."""
+    target = url or (f"https://doi.org/{doi}" if doi else "")
+    if not target or "doi.org/" not in target:
+        return target
+    if target in cache:
+        return cache[target]
+    try:
+        req = urllib.request.Request(target, method="HEAD", headers={"User-Agent": "reproducible-science-graph"})
+        with urllib.request.urlopen(req, timeout=8) as r:
+            cache[target] = r.geturl()
+    except Exception:  # a publisher that refuses HEAD or blocks scripts; keep the DOI address
+        cache[target] = target
+    return cache[target]
+
+
+def record_tabs(project: pathlib.Path, manifest: dict, ledger: list[dict], staleness: dict, out_dir: pathlib.Path) -> dict:
     """What the Prereg, Results, Citations and Reproduce tabs list, read from the records themselves."""
     # prereg: what `prereg check` printed, one line per plan.
     plans = [ln for ln in (run_text(["prereg", "check"], project) or "").splitlines() if ln.strip()]
@@ -357,6 +408,11 @@ def record_tabs(project: pathlib.Path, manifest: dict, ledger: list[dict], stale
     # the sentences of the manuscript that cite it.
     tex_paths = [x["path"] for x in manifest["artifacts"] if x.get("media_type") == "application/x-tex"]
     cited_in = citing_sentences(project, tex_paths)
+    main_tex = next((project / x["path"] for x in manifest["artifacts"] if x["id"] == "manuscript"), None)
+    bib_names = re.findall(r"\\bibliography\{([^}]*)\}", main_tex.read_text(errors="replace")) if main_tex and main_tex.is_file() else []
+    bib = parse_bib([main_tex.parent / f"{n.strip()}.bib" for names in bib_names for n in names.split(",")]) if main_tex else {}
+    cache_path = out_dir / "landing_urls.json"
+    cache = json.loads(cache_path.read_text()) if cache_path.exists() else {}
     sources = []
     for d in sorted(project.rglob("claims")):
         if not d.is_dir() or ".git" in d.parts or "node_modules" in d.parts or len(d.relative_to(project).parts) > 4:
@@ -375,6 +431,8 @@ def record_tabs(project: pathlib.Path, manifest: dict, ledger: list[dict], stale
             sources.append({"file": str(f.relative_to(project)), "citation": src.get("citation", f.stem),
                             "url": src.get("url", ""), "local": src.get("local", ""), "sha256": src.get("sha256", ""),
                             "cited_in": cited_in.get(src.get("citation", f.stem), []),
+                            "bib": bib.get(src.get("citation", f.stem), {}),
+                            "link": landing_url(src.get("url", ""), bib.get(src.get("citation", f.stem), {}).get("doi", ""), cache),
                             "pinned": sum(len(s["quotes"]) for s in statements), "statements": statements})
 
     # reproduce: every declared rebuild step with its state, and every recorded re-run.
@@ -394,6 +452,8 @@ def record_tabs(project: pathlib.Path, manifest: dict, ledger: list[dict], stale
                 reruns.append({"started_at": e.get("started_at"), "ended_at": e.get("ended_at"), "tool_version": e.get("tool_version"),
                                "counts": dict(collections.Counter(r.get("state") for r in e.get("regenerations", []))),
                                "steps": len(e.get("regenerations", []))})
+    out_dir.mkdir(parents=True, exist_ok=True)
+    cache_path.write_text(json.dumps(cache, indent=1))
     return {"prereg": {"lines": plans}, "results": {"runs": runs, "seals": seals, "bound": bound},
             "citations": {"sources": sources}, "reproduce": {"steps": steps, "reruns": reruns}}
 
@@ -591,7 +651,7 @@ def build(project: pathlib.Path, out_path: pathlib.Path, groups_file: pathlib.Pa
         "status": status_lines(project, report),
         "reproduce": reproduce,
         "project_name": project.name,
-        "tabs": record_tabs(project, manifest, ledger, staleness),
+        "tabs": record_tabs(project, manifest, ledger, staleness, out_path.parent),
         "manifest_digest": report["manifest_digest"],
         "totals": {
             "claims": len(report["claims"]),

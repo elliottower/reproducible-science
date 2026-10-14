@@ -81,6 +81,8 @@ export interface Graph {
       sources: {
         file: string; citation: string; url: string; local: string; sha256: string; pinned: number
         cited_in: { text: string; section: string; file: string }[]
+        bib: Record<string, string>
+        link: string
         statements: { id: string; statement: string; notes: string; quotes: { exact: string; section: string }[] }[]
       }[]
     }
