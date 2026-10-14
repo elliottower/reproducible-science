@@ -155,7 +155,7 @@ def test_each_claim_proposes_its_line_as_an_inferred_quote_and_holds_no_value(tm
         ]
     report = verify_draft(out)
     # Each quote matches its own line, which binds no value, so none is counted as verified.
-    assert report.counts == {"inferred_verified": 5}
+    assert report.counts == {"inferred_matched": 5}
 
 
 def test_a_fresh_draft_fails_strict_and_publication_and_passes_exploratory(tmp_path):
@@ -208,7 +208,7 @@ def test_open_items_counts_an_inferred_fill_that_matches_as_bound_and_never_veri
     after = tally(out / "open-items.json")
     assert after.claims[ClaimState.BOUND] == 1 and after.claims[ClaimState.OPEN] == 4
     assert after.items["filled_by_inferred"] == 1 and after.items["with_unique_candidate"] == 0
-    assert after.assertions[Basis.INFERRED] == {Outcome.VERIFIED: 6}
+    assert after.assertions[Basis.INFERRED] == {"matched": 6}
     assert Outcome.VERIFIED.value not in verify_draft(out).counts
 
 
