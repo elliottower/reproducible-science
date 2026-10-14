@@ -9,15 +9,16 @@ happened.
 
 | | |
 |---|---|
-| Distributions | `citations`, `prereg`, `results-cli`, `reproducible-science`, `provenance-core` |
-| Version | one number, identical across all five |
+| Distributions | `citations`, `prereg`, `results-cli`, `claims-cli`, `reproducible-science`, `provenance-core` |
+| Version | one number, identical across all six |
 | Trigger | a single annotated tag `vX.Y.Z` |
-| Result | five workflow runs, five PyPI uploads |
+| Result | six workflow runs, six PyPI uploads |
 
-Per-package tags (`citations-v*`, `prereg-v*`, `results-v*`, `repro-v*`, `provenance-core-v*`)
-still work and still
-publish one distribution each. They exist for a repair — republishing one package after a
-partial failure — and not for an ordinary release.
+Per-package tags (`citations-v*`, `prereg-v*`, `results-v*`, `repro-v*`,
+`provenance-core-v*`) start one workflow each, for a repair -- republishing one package after
+a partial failure -- and not for an ordinary release. Both jobs of a publish workflow run in the
+`release` environment, which admits only tags matching `v*`, so a run started by one of these
+cannot publish until that rule admits its tag. `publish-claims.yml` takes `v*` alone.
 
 ## 1. Set the version
 
@@ -26,13 +27,13 @@ uv run python scripts/versions.py bump X.Y.Z
 uv run python scripts/versions.py check
 ```
 
-`bump` writes the version into all five manifests and rewrites the sibling dependency ranges
+`bump` writes the version into all six manifests and rewrites the sibling dependency ranges
 to `>=X.Y,<X.(Y+1)`. It refuses a version below one already declared, because PyPI rejects a
 version that goes backwards and never permits reuse of one that goes forwards. A first
 lockstep release, where the highest declared version was never published, passes `--realign`
 to allow the deliberate downward move.
 
-The range is a range rather than an exact `==`. This release is run by hand, so the four
+The range is a range rather than an exact `==`. This release is run by hand, so the six
 uploads land seconds apart; an exact pin makes the set briefly uninstallable in between.
 
 Both refuse a version below the floor `scripts/versions.py` names as `SERIES_FLOOR`, which is
@@ -125,7 +126,7 @@ uv run python scripts/check_publishers.py
 PyPI binds a trusted publisher to a repository, a workflow *filename*, and an environment. A
 package that moved between repositories keeps its old binding and the upload is rejected.
 
-This used to say: open five settings pages in a browser. That is a check with no command, and
+This used to say: open a settings page per distribution in a browser. That is a check with no command, and
 a check with no command is one nobody runs. Each publish workflow now answers the question
 itself. Its `binding` job exchanges an OIDC claim for a short-lived upload token and throws
 the token away — the same exchange the publish action makes, refused by PyPI for exactly the
@@ -148,10 +149,95 @@ gh run watch $(gh run list --workflow publish-citations.yml --limit 1 --json dat
 A dispatch publishes nothing. The `publish` job requires a pushed tag, tested on the event as
 well as the ref, because `github.ref` on a dispatch is the branch it was launched from.
 
-Check all five before tagging, not after the first failure. A rejected upload does not consume
+Check all six before tagging, not after the first failure. A rejected upload does not consume
 the version, so a wholly failed release is recoverable — but a *partial* one is not: if two
 packages upload and two are rejected, re-pushing the tag retries the successful two and fails
 on `File already exists`, and the only way forward is a new version.
+
+## A distribution PyPI has never seen
+
+`claims-cli` is new in 0.6.0. PyPI has no project of that name, so its upload is accepted only
+through a *pending* trusted publisher, which the account that will own the project creates by
+hand: **Your account → Publishing → Add a new pending publisher → GitHub**.
+
+| field | value |
+|---|---|
+| PyPI Project Name | `claims-cli` |
+| Owner | `elliottower` |
+| Repository name | `reproducible-science` |
+| Workflow name | `publish-claims.yml` |
+| Environment name | `release` |
+
+The workflow name is the file's name, not the `name:` inside it. A pending publisher reserves
+nothing: until the first upload anyone can take the name.
+
+**The binding is first checked at the candidate's tag.** `gh workflow run publish-claims.yml
+--ref <tag>` asks PyPI without publishing, but only from a tag whose tree holds
+`publish-claims.yml`, and no tag does until `v0.6.0rc1`. So the first `binding` job of
+`claims-cli` runs when `v0.6.0rc1` is pushed. If it is refused there, the other five
+distributions have published `0.6.0rc1`, `claims-cli` has not, and the cost is that candidate
+number and no more: a pre-release is installed only by someone who asks for it, so nothing that
+resolves `>=0.6,<0.7` or an unpinned name picks it up. Correct the publisher and cut
+`v0.6.0rc2`.
+
+**Cut a release candidate first.** A candidate is all six distributions at `X.Y.Zrc1`, tagged
+`vX.Y.Zrc1`, published by the same six workflows. `bump` writes `>=X.Y.Zrc1,<X.(Y+1)` as each
+sibling range during a candidate, because a range that names no pre-release admits none, and
+`>=X.Y,<X.(Y+1)` for the release.
+
+### The candidate, in order
+
+```bash
+git switch -c release/0.6.0rc1 origin/main
+uv run python scripts/versions.py bump 0.6.0rc1
+uv run python scripts/versions.py check
+uv lock
+make qa                          # not release-check: check_publishers fails until a first binding
+git add -u && git commit -m "Release 0.6.0rc1"
+gh pr create --fill              # wait for every job, then squash-merge
+git switch main && git pull --ff-only
+git tag -a v0.6.0rc1 -m "Release candidate 0.6.0rc1"
+git push origin v0.6.0rc1
+gh run list --limit 6            # six publish runs; watch publish-claims.yml's binding job
+```
+
+No `make changelog` for a candidate: it consumes the fragments, which belong to the release,
+and no `gh release create`, which Zenodo would archive as a version.
+
+If `publish-claims.yml`'s `binding` job fails, check the pending publisher on PyPI against the
+table above, field by field: project `claims-cli`, owner `elliottower`, repository
+`reproducible-science`, workflow `publish-claims.yml`, environment `release`. Correct it and cut
+`v0.6.0rc2` the same way (`bump 0.6.0rc2`, merge, tag, push).
+
+Once all six candidates are on PyPI, install them in a clean environment, from PyPI:
+
+```bash
+uv run --isolated --no-project --prerelease allow \
+  --with "reproducible-science==0.6.0rc1" repro --version
+uv run --isolated --no-project --prerelease allow \
+  --with "claims-cli==0.6.0rc1" claims --version
+uv run python scripts/check_publishers.py
+```
+
+### The release, in order
+
+```bash
+git switch -c release/0.6.0 origin/main
+uv run python scripts/versions.py bump 0.6.0
+uv run python scripts/versions.py check
+uv lock
+make changelog VERSION=0.6.0
+make release-check
+git add -u CHANGELOG.md && git add changes && git commit -m "Release 0.6.0"
+gh pr create --fill              # wait for every job, then squash-merge
+git switch main && git pull --ff-only
+git tag -a v0.6.0 -m "Release all packages at 0.6.0"
+git push origin v0.6.0
+gh run list --limit 6            # six publish runs, each to completion
+gh release create v0.6.0 --title v0.6.0 --notes "<one short paragraph>"
+```
+
+Then steps 6 to 10 below, for six distributions.
 
 ## 6. Verify the version is unclaimed
 
@@ -160,7 +246,7 @@ git tag -l vX.Y.Z                                  # local
 git ls-remote --tags origin refs/tags/vX.Y.Z       # remote
 ```
 
-And on PyPI, for each of the five distributions, that `X.Y.Z` is absent from `releases`.
+And on PyPI, for each of the six distributions, that `X.Y.Z` is absent from `releases`.
 
 ## 7. Check the artifacts, not the source tree
 
@@ -169,12 +255,13 @@ uv run --isolated --no-project \
   --with dist/citations-X.Y.Z-py3-none-any.whl \
   --with dist/prereg-X.Y.Z-py3-none-any.whl \
   --with dist/results_cli-X.Y.Z-py3-none-any.whl \
+  --with dist/claims_cli-X.Y.Z-py3-none-any.whl \
   --with dist/reproducible_science-X.Y.Z-py3-none-any.whl \
   --with dist/provenance_core-X.Y.Z-py3-none-any.whl \
-  python -c "import citations, prereg, results, repro, provenance_core"
+  python -c "import citations, prereg, results, claims, repro, provenance_core"
 ```
 
-Install all five together in a clean environment, invoke each console script, and re-run the
+Install all six together in a clean environment, invoke each console script, and re-run the
 release's headline regression against the installed wheel rather than against `src/`. A fix
 that is present in the working tree and absent from the artifact is the failure mode this
 catches, and it is invisible to every test that imports from source.
@@ -221,7 +308,7 @@ before pushing.
 
 ## 10. Confirm the release landed
 
-Watch all five workflow runs to completion, then confirm each distribution reports the new
+Watch all six workflow runs to completion, then confirm each distribution reports the new
 version on PyPI and installs from PyPI — not from `dist/` — in a clean environment.
 
 Only then archive or update anything downstream. A standalone repository that has been
@@ -237,6 +324,7 @@ Each entry is something that happened, not something imagined.
 | Version numbers drifting apart across packages | step 1, `versions.py check` |
 | A changelog entry asserting a fix that was never a defect | step 2, tracing each claim to a commit |
 | A trusted publisher still bound to an old repository | step 5 |
-| A partially published release with versions consumed | step 6, checking all five first |
+| A partially published release with versions consumed | step 6, checking all six first |
+| A new distribution whose first upload PyPI refuses | the section on a first release |
 | A fix present in source and absent from the wheel | step 7 |
 | An interop claim falsified by someone else's release | step 8 |

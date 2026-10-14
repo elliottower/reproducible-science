@@ -3,9 +3,9 @@
 `repro verify` compares what a manuscript prints with what its files hold, and executes
 nothing. This does the other half: it runs each declared regeneration in a directory holding
 only its declared inputs, then puts the question `verify` asks to the file the command has just
-written. Five outcomes per record, defined on `repro.models.Regeneration`.
+written. Five outcomes per record, defined on `claims.models.Regeneration`.
 
-The comparison is `repro.verify.check_evidence`, handed the fresh file's path in place of the
+The comparison is `claims.verify.check_evidence`, handed the fresh file's path in place of the
 pinned one. There is no second comparator, so a number that verifies under `repro verify` and a
 number that holds here are held to one rule, at the precision the manuscript prints.
 
@@ -30,8 +30,8 @@ import shutil
 import subprocess
 from collections.abc import Mapping
 
-from repro.exceptions import ReproError
-from repro.models import (
+from claims.exceptions import ReproError
+from claims.models import (
     ArtifactState,
     Claim,
     ClaimReading,
@@ -48,18 +48,19 @@ from repro.models import (
     ReproductionReport,
     Witness,
 )
-from repro.regenerate import check, skipped
-from repro.reruns import RECORD as RECORD
-from repro.reruns import upstream
-from repro.resolve import stored as stored
-from repro.toolchain import distribution_version
-from repro.verify import (
+from claims.reruns import RECORD as RECORD
+from claims.reruns import upstream
+from claims.resolve import stored as stored
+from claims.toolchain import distribution_version
+from claims.verify import (
     ADAPTER_DISTRIBUTION,
     DEFAULT_BACKENDS,
     Backend,
     artifact_states,
     check_evidence,
 )
+
+from repro.regenerate import check, skipped
 
 #: Looked for at the top of the project, in this order. The first found is named and hashed:
 #: which packages were installed is the part of an environment a later reader can rebuild.

@@ -36,7 +36,7 @@ import tempfile
 import time
 from collections.abc import Callable
 
-from repro.models import (
+from claims.models import (
     ArtifactState,
     ClaimReading,
     InputReading,
@@ -48,8 +48,8 @@ from repro.models import (
     RegenerationState,
     Validity,
 )
-from repro.reruns import canonical_digest as canonical_digest
-from repro.reruns import upstream as upstream
+from claims.reruns import canonical_digest as canonical_digest
+from claims.reruns import upstream as upstream
 
 _MISSING = object()
 

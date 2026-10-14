@@ -9,7 +9,7 @@
     repro ci init       write the workflows that run those, and print the README lines
 
 Nothing is evaluated here that those commands do not evaluate. `claims` calls
-`repro.verify.verify`, `reruns` calls `repro.stale.stale` and with `--run`
+`claims.verify.verify`, `reruns` calls `claims.stale.stale` and with `--run`
 `repro.reproduce.reproduce`, and the policy grades each as it does there. `prereg`, `results` and `citations` run the tool's own
 check in this process, found and pointed as `repro check` finds and points it, and read the
 counts from the JSON the tool writes with `--json`. The text printed is the text those commands
@@ -39,15 +39,9 @@ import tempfile
 import urllib.parse
 from collections.abc import Callable
 
-from provenance_core import atomic_write
-from provenance_core.gitref import try_run
-from pydantic import BaseModel, ConfigDict
-
-from repro import __version__, audit
-from repro.delegate import BY_NAME
-from repro.exceptions import ReproError
-from repro.manifest import DEFAULT_NAME, find, load
-from repro.models import (
+from claims.exceptions import ReproError
+from claims.manifest import DEFAULT_NAME, find, load
+from claims.models import (
     AssertionAccount,
     ClaimAccount,
     Freshness,
@@ -64,14 +58,20 @@ from repro.models import (
     VerificationReport,
     Witness,
 )
-from repro.numbers import NoTextError, numbers
-from repro.policy import PROFILES, STRICT, Assessment, Policy
+from claims.numbers import NoTextError, numbers
+from claims.policy import PROFILES, STRICT, Assessment, Policy
+from claims.stale import reruns as recorded_reruns
+from claims.stale import stale
+from claims.starter import project_root
+from claims.verify import verify
+from claims.why import why
+from provenance_core import atomic_write
+from provenance_core.gitref import try_run
+from pydantic import BaseModel, ConfigDict
+
+from repro import __version__, audit
+from repro.delegate import BY_NAME
 from repro.reproduce import RECORD, append, reproduce
-from repro.stale import reruns as recorded_reruns
-from repro.stale import stale
-from repro.starter import project_root
-from repro.verify import verify
-from repro.why import why
 
 #: The checks a workflow can run, in the order their badges are printed, and the name each
 #: workflow takes: the word GitHub's badge prints beside `passing`. A name says which check
@@ -227,7 +227,7 @@ CLAIMS_SHOWS = (
     "the address it declares, and each file matches its pin. It does not show that the "
     "analysis is right."
 )
-#: What the word on the reruns badge means, as `repro.models.Regeneration` defines it.
+#: What the word on the reruns badge means, as `claims.models.Regeneration` defines it.
 REPRODUCED = (
     "`reproduced` means a command was run again and every number the manuscript prints from "
     "its output still holds; whether the output had the same bytes is recorded beside it."

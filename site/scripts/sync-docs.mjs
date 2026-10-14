@@ -20,6 +20,7 @@ const SYNCED = [
   ["packages/citations/README.md", "tools/citations.md", "Citations", "citations"],
   ["packages/results/README.md", "tools/results.md", "Results", "results"],
   ["packages/repro/README.md", "tools/repro.md", "Repro", "end-to-end"],
+  ["packages/claims/README.md", "tools/claims.md", "Claims"],
 ];
 
 /** Insert a line after the slogan -- the first paragraph of the README body. */

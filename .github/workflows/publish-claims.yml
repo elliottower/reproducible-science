@@ -1,0 +1,94 @@
+# Publishes claims-cli at a release tag. Trusted publishing on PyPI is bound to this repository
+# AND this workflow filename AND the `release` environment: the first upload of this project is
+# accepted only through a pending publisher with those three values, created by hand on PyPI.
+# `docs/RELEASING.md` says how. Only `v*` tags start it: the `release` environment admits no
+# other, so a per-package tag would start a run that cannot publish.
+name: Publish claims-cli
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+
+  # Whether PyPI will accept a release from this workflow, asked without publishing one.
+  #
+  # PyPI binds a trusted publisher to a repository, a workflow *filename* and an environment,
+  # and none of that is visible from a checkout: `docs/RELEASING.md` said to open five
+  # settings pages in a browser before tagging, which is a check nobody can run in CI and
+  # everybody skips. The exchange this job performs is the same one the publish action makes
+  # -- an OIDC claim for a short-lived upload token -- and PyPI refuses it for exactly the
+  # misconfigurations that would break a release. Minting one and throwing it away answers
+  # the question with no artifact and no upload.
+  #
+  # The `release` environment admits version tags only, so this runs on a tag: at a release,
+  # or on demand with `gh workflow run <file> --ref vX.Y.Z`. It cannot run weekly from the
+  # default branch, because the environment refuses that ref -- which is the protection
+  # working. `publisher-config.yml` covers the drift a weekly run was there to catch.
+  binding:
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write
+    steps:
+      - name: PyPI accepts a release of claims-cli from this workflow
+        env:
+          PROJECT: claims-cli
+        run: |
+          set -euo pipefail
+          claim=$(curl -sS --fail \
+            -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=pypi" | jq -r '.value')
+          # The body of a success holds an upload token. It is written to a file rather than
+          # a variable, never echoed, and deleted before this step ends.
+          code=$(curl -sS -o /tmp/mint.json -w '%{http_code}' \
+            -X POST https://pypi.org/_/oidc/mint-token \
+            -d "{\"token\": \"${claim}\"}")
+          if [ "$code" = "200" ]; then
+            rm -f /tmp/mint.json
+            echo "${PROJECT}: PyPI would accept a release from this workflow."
+            exit 0
+          fi
+          echo "PyPI refused to mint an upload token for ${PROJECT} (HTTP ${code})."
+          cat /tmp/mint.json || true
+          rm -f /tmp/mint.json
+          echo
+          echo "The trusted publisher for ${PROJECT} must name:"
+          echo "  repository   ${GITHUB_REPOSITORY}"
+          echo "  workflow     $(basename "${GITHUB_WORKFLOW_REF%%@*}")"
+          echo "  environment  release"
+          echo "https://pypi.org/manage/project/${PROJECT}/settings/publishing/"
+          exit 1
+
+  publish:
+    # Only a pushed tag releases. A manual dispatch verifies the binding and publishes
+    # nothing, so this tests the event as well as the ref -- a dispatch can now name a tag,
+    # and a gate reading the ref alone would upload from one.
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    needs: binding
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write
+      contents: read
+    defaults:
+      run:
+        working-directory: packages/claims
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+        with:
+          # No cache on a release run: a poisoned cache entry would be baked into a wheel
+          # that then gets signed and published.
+          enable-cache: false
+      - run: uv sync --all-packages
+        working-directory: .
+      - run: uv run pytest
+        working-directory: .
+      - run: uv build --package claims-cli --out-dir dist
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33  # release/v1
+        with:
+          packages-dir: packages/claims/dist

@@ -1,23 +1,24 @@
-"""Other formats for the check records.
+"""`claims.export`, under the name it had in this package.
 
-An exporter reads `repro.record.ExportRecord` and nothing else: not the manifest, not a
-verification report. A fact a format needs that a record lacks is added to the record, so it
-reaches every format and is decided once.
+The code that checks what a manifest declares is the `claims` package. This module is that
+one's `export` for anything that imports it from here: every name, private ones included,
+reads as the same object. Writing is another matter. An assignment here, or a monkeypatch of a
+name here, rebinds it in this module and not in `claims.export`, whose code goes on using its own,
+so a patch meant to reach that code targets `claims.export`.
 """
 
-from __future__ import annotations
+import importlib
 
-from collections.abc import Callable
+from claims.export import *  # noqa: F403
 
-from repro.export.rocrate import to_ro_crate
-from repro.export.sarif import to_sarif_log
-from repro.record import to_jsonl
+# By name: `claims` exports functions called `verify` and `resolve`, which as attributes
+# of the package hide the modules of the same names.
+_home = importlib.import_module("claims.export")
 
-#: What `repro export <target>` writes, by target.
-EXPORTS: dict[str, Callable[..., str]] = {
-    "ro-crate": to_ro_crate,
-    "record": to_jsonl,
-    "sarif": to_sarif_log,
-}
 
-__all__ = ["EXPORTS"]
+def __getattr__(name: str) -> object:
+    return getattr(_home, name)
+
+
+def __dir__() -> list[str]:
+    return dir(_home)

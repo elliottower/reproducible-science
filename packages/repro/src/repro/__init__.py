@@ -18,55 +18,74 @@ draft and not in a submission, and one project's standard should not be everyone
 Nothing here prints, exits, or reads global state.
 """
 
+import importlib
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _version
 
-from repro.exceptions import (
-    ArtifactMissingError,
-    ArtifactUnreadableError,
-    BackendUnavailableError,
-    DigestMismatchError,
-    ManifestError,
-    ReproError,
-    UnknownEvidenceKindError,
-)
-from repro.manifest import DEFAULT_NAME, find, load
-from repro.models import (
+# The contract and the engine are the `claims` package, which this one depends on and adds
+# the commands that run things to. Every name this package has always exported is that
+# package's, the same object under the same name.
+import claims as _claims
+from claims import (
+    DEFAULT_BACKENDS,
+    DEFAULT_NAME,
+    EXPLORATORY,
+    PROFILES,
+    PUBLICATION,
     SCHEMA_VERSION,
+    STRICT,
+    ArtifactMissingError,
     ArtifactRef,
     ArtifactState,
+    ArtifactUnreadableError,
+    Assessment,
     Availability,
+    Backend,
+    BackendUnavailableError,
     Claim,
     ClaimAssessment,
     ComparisonMode,
     ComparisonStatus,
     Decision,
     Digest,
+    DigestMismatchError,
     Evidence,
     ExecutionStatus,
     ExtractionStatus,
     Manifest,
+    ManifestError,
+    MetricBackend,
     MetricEvidence,
     Outcome,
+    Policy,
+    QuoteBackend,
     QuoteEvidence,
     Reason,
+    ReproError,
+    Resolution,
+    Severity,
+    TableBackend,
     TableCellEvidence,
+    UnknownEvidenceKindError,
     Validity,
+    ValueBackend,
     VerificationReport,
     Warning_,
+    find,
+    load,
+    read_table,
+    resolve_pointer,
+    sniff_delimiter,
+    to_sarif,
 )
-from repro.policy import EXPLORATORY, PROFILES, PUBLICATION, STRICT, Assessment, Policy, Severity
-from repro.renderers import to_sarif
-from repro.resolve import Resolution, read_table, resolve, resolve_pointer, sniff_delimiter
-from repro.verify import (
-    DEFAULT_BACKENDS,
-    Backend,
-    MetricBackend,
-    QuoteBackend,
-    TableBackend,
-    ValueBackend,
-    verify,
-)
+
+# `repro.resolve` and `repro.verify` have always been these two functions, though modules of
+# the same names exist. Importing a submodule binds it on the package under its name, so the
+# modules are loaded here first and the functions bound after them, for good.
+importlib.import_module("repro.resolve")
+importlib.import_module("repro.verify")
+resolve = _claims.resolve
+verify = _claims.verify
 
 try:
     __version__ = _version("reproducible-science")

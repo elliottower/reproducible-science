@@ -1,59 +1,24 @@
-"""Reading a manifest off disk.
+"""`claims.manifest`, under the name it had in this package.
 
-Validation happens once, here, at the edge. A malformed file names itself and the field at
-fault rather than raising a `KeyError` from inside the engine, because the person who has to
-fix it is looking at the file, not at the traceback.
+The code that checks what a manifest declares is the `claims` package. This module is that
+one's `manifest` for anything that imports it from here: every name, private ones included,
+reads as the same object. Writing is another matter. An assignment here, or a monkeypatch of a
+name here, rebinds it in this module and not in `claims.manifest`, whose code goes on using its own,
+so a patch meant to reach that code targets `claims.manifest`.
 """
 
-from __future__ import annotations
+import importlib
 
-import pathlib
-from typing import Any
+from claims.manifest import *  # noqa: F403
 
-import yaml
-from pydantic import ValidationError
-
-from repro.exceptions import ManifestError
-from repro.models import Manifest
-
-DEFAULT_NAME = "repro.yaml"
-
-#: libyaml's loader where PyYAML was built with it, which every published wheel is. It reads the
-#: same documents as the Python loader and reads a manifest of a thousand claims in a tenth of
-#: the time, which was most of what verifying one took.
-_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+# By name: `claims` exports functions called `verify` and `resolve`, which as attributes
+# of the package hide the modules of the same names.
+_home = importlib.import_module("claims.manifest")
 
 
-def load(path: pathlib.Path | str) -> Manifest:
-    """Read one manifest, or raise `ManifestError` naming the file and the field."""
-    path = pathlib.Path(path)
-    try:
-        raw: Any = yaml.load(path.read_text(), Loader=_LOADER) or {}
-    except yaml.YAMLError as e:
-        raise ManifestError(path, f"not valid YAML: {e}") from e
-    except OSError as e:
-        raise ManifestError(path, f"could not be read: {e}") from e
-    if not isinstance(raw, dict):
-        raise ManifestError(
-            path, f"expected a mapping at the top level, found {type(raw).__name__}"
-        )
-    # `path` is set at construction because a Manifest is frozen: where it was read from is
-    # part of what it is, and an object that can be repointed afterwards resolves relative
-    # artifact paths against whichever directory was assigned last.
-    raw["path"] = path
-    try:
-        return Manifest.model_validate(raw)
-    except ValidationError as e:
-        first = e.errors()[0]
-        where = ".".join(str(x) for x in first["loc"]) or "(top level)"
-        raise ManifestError(path, f"{where}: {first['msg']}") from e
+def __getattr__(name: str) -> object:
+    return getattr(_home, name)
 
 
-def find(start: pathlib.Path | None = None) -> pathlib.Path | None:
-    """The manifest governing `start`, found by walking up the way git finds `.git`."""
-    here = (start or pathlib.Path.cwd()).resolve()
-    for directory in [here, *here.parents]:
-        candidate = directory / DEFAULT_NAME
-        if candidate.is_file():
-            return candidate
-    return None
+def __dir__() -> list[str]:
+    return dir(_home)

@@ -38,7 +38,7 @@ default_stages: [pre-commit]
 # repositories, which carry their own copy of this guard.
 exclude: |
   (?x)^(
-    packages/repro/tests/conformance/cases/.*|
+    packages/claims/tests/conformance/cases/.*|
     packages/repro/examples/.*|
     packages/prereg/tests/data/frozen_in_place\.md|
     research/.*/(frame\.json|published\.bib)|
@@ -184,7 +184,7 @@ repos:
       # whatever copy is on PATH.
       - id: types
         name: type checks
-        entry: uv run --group types pyrefly check packages/repro/src packages/citations/src packages/results/src packages/prereg/src
+        entry: uv run --group types pyrefly check packages/repro/src packages/claims/src packages/citations/src packages/results/src packages/prereg/src
         language: system
         pass_filenames: false
         stages: [pre-push]

@@ -1,9 +1,24 @@
-"""The evidence contract, one module per concept.
+"""`claims.core`, under the name it had in this package.
 
-Split out of a single 1,000-line `models.py` that held five unrelated groups: the artifacts a
-manifest declares, the evidence a claim offers, the verdict vocabulary, the manifest itself,
-and what a run reports. Each is now its own module.
-
-Nothing is re-exported here. `repro.models` is the public path and names every type; importing
-`repro.core.outcomes` directly is for code inside this package that wants one group.
+The code that checks what a manifest declares is the `claims` package. This module is that
+one's `core` for anything that imports it from here: every name, private ones included,
+reads as the same object. Writing is another matter. An assignment here, or a monkeypatch of a
+name here, rebinds it in this module and not in `claims.core`, whose code goes on using its own,
+so a patch meant to reach that code targets `claims.core`.
 """
+
+import importlib
+
+from claims.core import *  # noqa: F403
+
+# By name: `claims` exports functions called `verify` and `resolve`, which as attributes
+# of the package hide the modules of the same names.
+_home = importlib.import_module("claims.core")
+
+
+def __getattr__(name: str) -> object:
+    return getattr(_home, name)
+
+
+def __dir__() -> list[str]:
+    return dir(_home)

@@ -18,11 +18,11 @@ import json
 import pathlib
 
 from adduce.rules import Category, Location, Rule, Status
+from claims.exceptions import ReproError
+from claims.models import Outcome, Validity
 from provenance_core import atomic_write
 
 from repro import load, verify
-from repro.exceptions import ReproError
-from repro.models import Outcome, Validity
 
 MANIFEST = "repro.yaml"
 SIDECAR = ".adduce/repro-report.json"

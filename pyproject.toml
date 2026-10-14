@@ -24,6 +24,7 @@ classifiers = [
 ]
 dependencies = [
   "citations>=0.2",
+  "claims-cli>=0.5",
   "prereg>=0.2",
   "reproducible-science>=0.3",
   "results-cli>=0.3",
@@ -92,6 +93,7 @@ build.targets.wheel.bypass-selection = true
 
 [tool.uv]
 sources.citations = { workspace = true }
+sources.claims-cli = { workspace = true }
 sources.prereg = { workspace = true }
 sources.provenance-core = { workspace = true }
 sources.reproducible-science = { workspace = true }
@@ -139,7 +141,7 @@ ini_options.markers = [
 # Package names, not paths: a CLI test runs the command in a temporary directory, and a
 # relative source path matches nothing from there -- so every CLI reported 0% while its
 # tests passed.
-run.source_pkgs = [ "citations", "prereg", "repro", "results" ]
+run.source_pkgs = [ "citations", "claims", "prereg", "repro", "results" ]
 run.omit = [ "*/tests/*" ]
 run.branch = true
 run.parallel = true
@@ -179,6 +181,10 @@ name = "citations"
 path = "citations"
 
 [[tool.towncrier.section]]
+name = "claims-cli"
+path = "claims"
+
+[[tool.towncrier.section]]
 name = "prereg"
 path = "prereg"
 
@@ -202,6 +208,7 @@ path = "provenance-core"
 # editable workspace install maps these same directories into it.
 project_includes = [
   "packages/citations/src",
+  "packages/claims/src",
   "packages/prereg/src",
   "packages/repro/src",
   "packages/results/src",
@@ -218,94 +225,47 @@ min_confidence = 100
 adduce = "0.2.0"
 
 [tool.importlinter]
-root_packages = [ "repro", "citations", "results", "prereg", "provenance_core" ]
+root_packages = [ "repro", "claims", "citations", "results", "prereg", "provenance_core" ]
 include_external_packages = false
 
 [[tool.importlinter.contracts]]
 name = "The shared primitives depend on nothing of ours"
 type = "forbidden"
 source_modules = [ "provenance_core" ]
-forbidden_modules = [ "repro", "citations", "results", "prereg" ]
+forbidden_modules = [ "repro", "claims", "citations", "results", "prereg" ]
 
 [[tool.importlinter.contracts]]
 name = "The three tools do not depend on the verifier"
 type = "forbidden"
 source_modules = [ "citations", "results", "prereg" ]
-forbidden_modules = [ "repro" ]
+forbidden_modules = [ "repro", "claims" ]
 
 [[tool.importlinter.contracts]]
 name = "The verifier runs the ledger's command and imports none of its code"
 type = "forbidden"
-source_modules = [ "repro" ]
+source_modules = [ "repro", "claims" ]
 forbidden_modules = [ "results" ]
 
+# `claims` checks what a manifest declares and reads the record of re-runs. `repro` runs
+# commands, writes that record and drives the other tools. `repro` imports `claims` and never
+# the reverse, directly or through another module: `claims-cli` installs without
+# `reproducible-science`, and nothing in it may need what it does not install. It runs no plan
+# and keeps no ledger, so it imports neither tool that does.
+
 [[tool.importlinter.contracts]]
-name = "The verifier's core does not import its integrations"
+name = "The claims package imports nothing of the wrapper, the ledger or the plan"
 type = "forbidden"
-source_modules = [
-  "repro.core",
-  "repro.models",
-  "repro.adapters",
-  "repro.resolve",
-  "repro.verify",
-  "repro.policy",
-  "repro.regenerate",
-  "repro.reproduce",
-  "repro.reruns",
-  "repro.checks",
-  "repro.stale",
-  "repro.why",
-  "repro.numbers",
-  "repro.record",
-  "repro.export",
-]
+source_modules = [ "claims" ]
+forbidden_modules = [ "repro", "results", "prereg" ]
+
+[[tool.importlinter.contracts]]
+name = "What runs a declared command does not import the integrations"
+type = "forbidden"
+source_modules = [ "repro.regenerate", "repro.reproduce" ]
 forbidden_modules = [ "repro.integrations" ]
 
-# The claims side checks what a manifest declares and reads the record of re-runs. The wrapper
-# side runs commands, writes that record and drives the other tools. The wrapper may import
-# the claims side and never the reverse, directly or through another module, so that the
-# claims side can be installed without anything that executes.
-
 [[tool.importlinter.contracts]]
-name = "The claims side imports nothing that runs a command or drives another tool"
-type = "forbidden"
-source_modules = [
-  "repro.core",
-  "repro.models",
-  "repro.manifest",
-  "repro.exceptions",
-  "repro.toolchain",
-  "repro.adapters",
-  "repro.resolve",
-  "repro.reruns",
-  "repro.verify",
-  "repro.policy",
-  "repro.checks",
-  "repro.stale",
-  "repro.why",
-  "repro.numbers",
-  "repro.record",
-  "repro.export",
-  "repro.renderers",
-  "repro.provenance",
-  "repro.starter",
-  "repro.corpus",
-  "repro.regression",
-  "repro.cli_claims",
-]
-forbidden_modules = [
-  "repro.cli",
-  "repro.ci",
-  "repro.audit",
-  "repro.delegate",
-  "repro.demo",
-  "repro.crosscheck",
-  "repro.reproduce",
-  "repro.regenerate",
-]
-
-[[tool.importlinter.contracts]]
-name = "The verifier is layered"
+name = "The wrapper is layered"
 type = "layers"
 layers = [
   "repro.cli",
@@ -317,34 +277,40 @@ layers = [
   "repro.reproduce",
   # Runs one declared command in a directory holding its declared inputs.
   "repro.regenerate",
-  # The commands of the claims side and how each prints. `repro.cli` builds the parser over
-  # them, and they reach for nothing that runs a command.
-  "repro.cli_claims",
+]
+
+[[tool.importlinter.contracts]]
+name = "The claims package is layered"
+type = "layers"
+layers = [
+  # The commands of the claims side and how each prints. `repro.cli` and this module's own
+  # `main` build a parser over them, and they reach for nothing that runs a command.
+  "claims.cli",
   # Other formats for the check records. An exporter reads records and nothing below them.
-  "repro.export",
-  "repro.renderers.sarif",
-  "repro.policy",
+  "claims.export",
+  "claims.renderers.sarif",
+  "claims.policy",
   # One record per checked assertion: the verifier's decision, with what `stale` knows of
   # the commands upstream.
-  "repro.record",
+  "claims.record",
   # One claim's rows of what `stale` and the verifier report, so it sits on both.
-  "repro.why",
+  "claims.why",
   # Appends what `verify` found to the records of checks, with the writer of a hash chain
   # that `provenance_core` holds and the `results` ledger is written with too,
   # and reads them back, so `why` sits on it and it reaches for nothing of ours but the models.
-  "repro.checks",
+  "claims.checks",
   # Reads the record of re-runs against the files on disk and executes nothing.
-  "repro.stale",
-  "repro.verify",
+  "claims.stale",
+  "claims.verify",
   # Where the record of re-runs is and what it holds, read back. The writer is far above.
-  "repro.reruns",
-  "repro.resolve",
+  "claims.reruns",
+  "claims.resolve",
   # Reads a text with the prose adapter's rule for a number and evaluates no assertion, so it
   # sits on the adapters and reaches for nothing above them.
-  "repro.numbers",
-  "repro.adapters",
-  "repro.models",
-  "repro.core",
-  "repro.exceptions",
-  "repro.toolchain",
+  "claims.numbers",
+  "claims.adapters",
+  "claims.models",
+  "claims.core",
+  "claims.exceptions",
+  "claims.toolchain",
 ]

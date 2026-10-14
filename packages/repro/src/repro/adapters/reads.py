@@ -1,47 +1,24 @@
-"""Reading each artifact once in a verification.
+"""`claims.adapters.reads`, under the name it had in this package.
 
-An adapter resolves one locator against one file, and a manifest of a thousand claims over one
-table asked for that table to be read and parsed a thousand times. Within `reading_once()` a
-load is kept under its key and returned to every later locator that asks for it.
-
-The scope is one verification and nothing longer. The engine hashes every artifact at the start
-of a run, and a decision records that digest as describing what was read; a file read once in
-the run is read as close to that hash as it can be. Outside the scope nothing is kept, so a
-second verification in the same process reads the file again, whatever the first one saw. A
-cache keyed on the path alone and living as long as the process returned the first run's text
-to the second.
+The code that checks what a manifest declares is the `claims` package. This module is that
+one's `reads` for anything that imports it from here: every name, private ones included,
+reads as the same object. Writing is another matter. An assignment here, or a monkeypatch of a
+name here, rebinds it in this module and not in `claims.adapters.reads`, whose code goes on using its own,
+so a patch meant to reach that code targets `claims.adapters.reads`.
 """
 
-from __future__ import annotations
+import importlib
 
-import contextlib
-from collections.abc import Callable, Hashable, Iterator
-from contextvars import ContextVar
-from typing import TypeVar, cast
+from claims.adapters.reads import *  # noqa: F403
 
-T = TypeVar("T")
-
-_HELD: ContextVar[dict[Hashable, object] | None] = ContextVar("repro_reads", default=None)
+# By name: `claims` exports functions called `verify` and `resolve`, which as attributes
+# of the package hide the modules of the same names.
+_home = importlib.import_module("claims.adapters.reads")
 
 
-@contextlib.contextmanager
-def reading_once() -> Iterator[None]:
-    """Keep each load made inside the block until the block ends."""
-    token = _HELD.set({})
-    try:
-        yield
-    finally:
-        _HELD.reset(token)
+def __getattr__(name: str) -> object:
+    return getattr(_home, name)
 
 
-def once(key: Hashable, load: Callable[[], T]) -> T:
-    """`load()`, or what it returned earlier in this run under the same key.
-
-    A load that raises is not kept: every locator over an unreadable file reports it.
-    """
-    held = _HELD.get()
-    if held is None:
-        return load()
-    if key not in held:
-        held[key] = load()
-    return cast(T, held[key])
+def __dir__() -> list[str]:
+    return dir(_home)

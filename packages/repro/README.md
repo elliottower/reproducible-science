@@ -15,7 +15,7 @@ Part of [reproducible-science](https://github.com/elliottower/reproducible-scien
 pip install reproducible-science
 ```
 
-This installs `repro` and its three dependencies: [`prereg`](https://pypi.org/project/prereg/), [`citations`](https://pypi.org/project/citations/), [`results-cli`](https://pypi.org/project/results-cli/).
+This installs `repro` and its three dependencies: [`prereg`](https://pypi.org/project/prereg/), [`citations`](https://pypi.org/project/citations/), [`results-cli`](https://pypi.org/project/results-cli/). The code behind `repro verify`, `stale`, `why`, `numbers` and `export` is [`claims-cli`](https://pypi.org/project/claims-cli/), which this depends on and which installs by itself where nothing is to be run.
 
 ## Try it
 

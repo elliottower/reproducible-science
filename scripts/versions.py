@@ -7,12 +7,13 @@ made under time pressure and reliably wrong. The second is the hand-maintained f
 repository shipped `pyyaml>=6` and `pydantic>=2` for months, both too low to install, and
 nothing noticed because no gate resolved the declared minimum.
 
-So the version lives in one place as far as a human is concerned -- `bump` writes it to all
-four manifests and rewrites the cross-package ranges to match -- and `check` refuses a tree
+So the version lives in one place as far as a human is concerned -- `bump` writes it to every
+manifest and rewrites the cross-package ranges to match -- and `check` refuses a tree
 where they disagree. A rule with no gate is a comment.
 
     python scripts/versions.py check
     python scripts/versions.py bump 0.4.0
+    python scripts/versions.py bump 0.6.0rc1     # a release candidate, PEP 440
 """
 
 from __future__ import annotations
@@ -31,6 +32,7 @@ PACKAGES = {
     "prereg": PROJECT_ROOT / "packages" / "prereg" / "pyproject.toml",
     "results-cli": PROJECT_ROOT / "packages" / "results" / "pyproject.toml",
     "reproducible-science": PROJECT_ROOT / "packages" / "repro" / "pyproject.toml",
+    "claims-cli": PROJECT_ROOT / "packages" / "claims" / "pyproject.toml",
     "provenance-core": PROJECT_ROOT / "packages" / "provenance-core" / "pyproject.toml",
 }
 
@@ -74,6 +76,13 @@ CFF_DATE = re.compile(r'^(?P<head>date-released:\s*")(?P<date>[^"]+)(?P<tail>")'
 VERSION_LINE = re.compile(r'^version = "([^"]+)"$', re.M)
 JSON_VERSION = re.compile(r'(?P<head>"version":\s*")(?P<version>[^"]+)(?P<tail>")')
 SEMVER = re.compile(r"^\d+\.\d+\.\d+([ab]\d+|rc\d+)?$")
+
+#: A version this scheme writes, in its parts: the release and an optional PEP 440 pre-release.
+VERSION_PARTS = re.compile(r"^(\d+)\.(\d+)\.(\d+)(?:(a|b|rc)(\d+))?$")
+
+#: How a pre-release sorts against the others of its release, and against the release itself,
+#: which comes after every one of them.
+PRE_RANK = {"a": 0, "b": 1, "rc": 2, None: 3}
 
 
 class VersionError(Exception):
@@ -130,8 +139,22 @@ def plugin_versions() -> dict[pathlib.Path, str]:
 
 
 def parts(version: str) -> tuple[int, ...]:
-    """Numeric comparison. `"0.10.0" < "0.9.0"` is true as strings and false as versions."""
-    return tuple(int(n) for n in version.split(".")[:3])
+    """Numeric comparison. `"0.10.0" < "0.9.0"` is true as strings and false as versions.
+
+    The release's three numbers, then where a pre-release sorts: `0.6.0rc1` before `0.6.0`,
+    which is how PEP 440 orders them, and `0.6.0rc1` after every 0.5.
+    """
+    m = VERSION_PARTS.match(version)
+    if not m:
+        raise VersionError(f"{version!r} is not a version this scheme writes (want 1.2.3)")
+    major, minor, patch, pre, number = m.groups()
+    return (int(major), int(minor), int(patch), PRE_RANK[pre], int(number or 0))
+
+
+def release(version: str) -> tuple[int, int, int]:
+    """The three numbers of a version, without any pre-release: `0.6.0` for `0.6.0rc1`."""
+    major, minor, patch, *_ = parts(version)
+    return major, minor, patch
 
 
 #: The first version a release cut from this tree may carry, and the last one published before
@@ -148,7 +171,8 @@ def below_floor(version: str) -> str | None:
 
     The version already published stays valid, because the tree sits at it between releases.
     """
-    if version == LAST_BEFORE_FLOOR or parts(version) >= parts(SERIES_FLOOR):
+    # A candidate of the floor is in its series: `0.6.0rc1` opens 0.6 as `0.6.0` does.
+    if version == LAST_BEFORE_FLOOR or release(version) >= release(SERIES_FLOOR):
         return None
     return (
         f"{version} is below {SERIES_FLOOR}: this tree imports `provenance_core.chain`, which "
@@ -163,9 +187,17 @@ def series(version: str) -> str:
     A range rather than an exact `==`, following langchain rather than opentelemetry: an
     exact pin makes any hand-run release that publishes packages seconds apart briefly
     uninstallable, and this release is run by hand.
+
+    A candidate pins its siblings from itself: `>=0.6.0rc1,<0.7`. A specifier admits a
+    pre-release only where it names one, so `>=0.6,<0.7` would refuse the candidate the six
+    packages are released as together, and the set would not install. The final release goes
+    back to `>=0.6,<0.7`, which admits 0.6.0 and every patch after it.
     """
-    major, minor, *_ = version.split(".")
-    return f">={major}.{minor},<{major}.{int(minor) + 1}"
+    major, minor, _patch, pre, _number = parts(version)
+    upper = f"<{major}.{minor + 1}"
+    if pre == PRE_RANK[None]:
+        return f">={major}.{minor},{upper}"
+    return f">={version},{upper}"
 
 
 #: The start of the dependencies array. Its end is found by balancing brackets rather than by

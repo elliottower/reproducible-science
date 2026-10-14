@@ -25,6 +25,6 @@ trim_trailing_whitespace = false
 indent_style = tab
 
 # Conformance fixtures are pinned by digest; their bytes are the fixture.
-[packages/repro/tests/conformance/cases/**]
+[packages/claims/tests/conformance/cases/**]
 insert_final_newline = false
 trim_trailing_whitespace = false

@@ -30,7 +30,7 @@ from repro.models import Digest
 from repro.record import check_records
 from repro.verify import DEFAULT_BACKENDS, MetricBackend
 
-CASES = pathlib.Path(__file__).parent / "conformance" / "cases"
+CASES = pathlib.Path(__file__).resolve().parents[2] / "claims" / "tests" / "conformance" / "cases"
 WHEN = datetime.datetime(2026, 10, 13, 12, 0, tzinfo=datetime.UTC)
 
 #: The official SARIF 2.1.0 JSON Schema is OASIS's, published under its IPR policy and with no
