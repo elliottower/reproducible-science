@@ -738,17 +738,20 @@ reruns: each declared command against the record of its re-runs. What this means
 |---|---|
 | commands | 6 of 7 declared commands have a recorded re-run over the current files that reproduced, 1 stale |
 | record | `.repro/reproductions.jsonl` holds 3 re-runs |
+| where | of the 7 re-runs compared: 2 recorded in GitHub Actions [run 123456](https://github.com/you/my_project/actions/runs/123456) of you/my_project, as the environment said; 5 recorded with no witness, which is how a re-run on someone's own machine is recorded |
 
 ### Commands with no current re-run on record
 
 - `totals`, written by `sum`: stale: input changed
 
-What this checks: for each declared command, the record holds a re-run that reproduced, made over the command and the input files as they are now, whose output is the file now here. The re-runs were recorded before this job, which read the record and ran no command; the record does not say on which machine. `reproduced` means a command was run again and every number the manuscript prints from its output still holds; whether the output had the same bytes is recorded beside it. Commands the manifest does not declare were not run, and this does not show that a command would reproduce if run now.
+What this checks: for each declared command, the record holds a re-run that reproduced, made over the command and the input files as they are now, whose output is the file now here. The re-runs were recorded before this job, which read the record and ran no command; where each was recorded is what the record holds of it, in the table. `reproduced` means a command was run again and every number the manuscript prints from its output still holds; whether the output had the same bytes is recorded beside it. Commands the manifest does not declare were not run, and this does not show that a command would reproduce if run now.
 ```
 
 The workflow is named `reproduced`, which is what its badge reads, and not "reproducible". It reports that the commands the manifest declares were run again, by whoever recorded the re-runs, and reproduced. It does not report that anyone else has reproduced the study. `reproduced` is the word `repro reproduce` gives a re-run after which every number the manuscript prints from the command's output still holds; whether the bytes matched is recorded beside it and is not what the word means.
 
 `repro ci init` writes `reruns.yml` only where the manifest declares a command and the record holds a re-run. With commands and no re-run on record it writes no such workflow and prints no badge for it, and says that `.repro/reproductions.jsonl` holds no re-run, and to run `repro reproduce` and commit that file. `--reruns` requires the workflow and exits 2 where it cannot be written.
+
+The record shows three levels, and the summary says which each re-run is at. A re-run recorded with no witness is how one made on someone's own machine is recorded, and the summary says only that it has none. A re-run recorded under GitHub Actions carries the run's repository and id, as the job's environment gave them and unchecked, and the summary links the run's page. A re-run made in this job, with `--run`, is recorded the same way and links this run. The `re-runs` row of `repro ci claims` names the run of the last recorded re-run where the record holds one.
 
 For a project whose commands can run in a job, `repro ci reruns --run` runs what `repro reproduce` runs, on the machine the job runs on, appends the re-run to `.repro/reproductions.jsonl` as that command does, and grades it under `--policy`. `repro ci init --run-reruns` writes `reruns.yml` with that command and a commented step where the project installs what its commands need; it needs no re-run on record. `--skip ID` leaves a record out, and it is counted as `not re-run`. The summary then counts the commands that reproduced, how many of the ones that ran wrote the pinned bytes, and the system, Python and lockfile of the machine, and says the commands were run again in this job.
 

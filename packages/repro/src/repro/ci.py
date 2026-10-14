@@ -62,6 +62,7 @@ from repro.models import (
     Standing,
     Validity,
     VerificationReport,
+    Witness,
 )
 from repro.numbers import NoTextError, numbers
 from repro.policy import PROFILES, STRICT, Assessment, Policy
@@ -229,7 +230,7 @@ RECORD_SHOWS = (
     "What this checks: for each declared command, the record holds a re-run that reproduced, "
     "made over the command and the input files as they are now, whose output is the file now "
     "here. The re-runs were recorded before this job, which read the record and ran no "
-    "command; the record does not say on which machine. "
+    "command; where each was recorded is what the record holds of it, in the table. "
     + REPRODUCED
     + " Commands the manifest does not declare were not run, and this does not show that a "
     "command would reproduce if run now."
@@ -624,14 +625,43 @@ def _reproduced(report: ReproductionReport) -> str:
     return found
 
 
+def _where(witness: Witness) -> str:
+    """Where a re-run happened, as its entry in the record says, with the run linked. The
+    clause is `Witness.said`, which `repro why` and `repro stale` print."""
+    said = witness.said
+    if witness.repository and witness.run_id:
+        page = f"https://github.com/{witness.repository}/actions/runs/{witness.run_id}"
+        said = said.replace(f"run {witness.run_id}", f"[run {witness.run_id}]({page})", 1)
+    return f"{said}, as the environment said"
+
+
+def _witnesses_found(report: StalenessReport) -> str:
+    """Of the re-runs the commands were compared with, how many the record places in a run,
+    and how many it places nowhere."""
+    compared = [node for node in report.regenerations if node.rerun_at is not None]
+    if not compared:
+        return "no re-run was compared"
+    placed = collections.Counter(_where(node.witness) for node in compared if node.witness)
+    unplaced = len(compared) - sum(placed.values())
+    parts = [f"{n} recorded {where}" for where, n in placed.items()]
+    if unplaced:
+        parts.append(
+            f"{unplaced} recorded with no witness, which is how a re-run on someone's own "
+            "machine is recorded"
+        )
+    return f"of the {_count(len(compared), 're-run')} compared: " + "; ".join(parts)
+
+
 def _reruns_found(run: ClaimsRun) -> str:
     if run.staleness is None:
         return "no command is declared"
     if run.last_rerun is None:
         return f"not re-run in this job; `{RECORD.as_posix()}` holds no re-run"
+    witness = run.last_rerun.witness
     return (
-        f"not re-run in this job; the last recorded re-run, started {run.last_rerun.started_at}: "
-        f"{_reproduced(run.last_rerun)}"
+        f"not re-run in this job; the last recorded re-run, started {run.last_rerun.started_at}"
+        + (f" {_where(witness)}" if witness else "")
+        + f": {_reproduced(run.last_rerun)}"
     )
 
 
@@ -766,6 +796,7 @@ def record_summary(run: RecordRun) -> str:
             [
                 ("commands", found),
                 ("record", f"`{RECORD.as_posix()}` holds {_count(report.reruns, 're-run')}"),
+                ("where", _witnesses_found(report)),
             ]
         ),
     ]
@@ -802,6 +833,12 @@ def reruns_summary(run: RerunsRun) -> str:
                     "pinned bytes",
                 ),
                 ("machine", machine),
+                (
+                    "where",
+                    f"recorded {_where(report.witness)}"
+                    if report.witness
+                    else "recorded with no witness: the environment named no GitHub Actions run",
+                ),
             ]
         ),
     ]
