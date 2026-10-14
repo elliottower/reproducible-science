@@ -186,6 +186,7 @@ function SourcePanel({ s, onClose, onGo }: { s: Source; onClose: () => void; onG
       <button className="close" onClick={onClose}>×</button>
       <div className="kicker">SOURCE</div>
       <h2>{s.bib.title || s.citation}</h2>
+      {s.link && <p><a className="src-link" href={s.link} target="_blank" rel="noreferrer" title={s.link}>View source ↗</a></p>}
       <dl>
         {s.bib.author && (<><dt>Authors</dt><dd>{s.bib.author.split(/\s+and\s+/).join('; ')}</dd></>)}
         {s.bib.year && (<><dt>Year</dt><dd>{s.bib.year}</dd></>)}
