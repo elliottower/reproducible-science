@@ -27,7 +27,7 @@ import re
 import urllib.parse
 
 from provenance_core import atomic_write_bytes
-from provenance_core.chain import read_ledger
+from provenance_core.chain import ChainError, read_ledger
 from pydantic import BaseModel, ConfigDict
 
 from repro import audit, ci
@@ -195,28 +195,26 @@ def prereg_badge(run: ci.ToolRun) -> Badge:
 
 
 def results_badge(run: ci.ToolRun, counted: Runs) -> Badge:
-    """Runs sealed, and the files `results verify --files` found not as recorded. Red where
-    `repro ci results` fails."""
-    color = RED if run.outcome == audit.FAILED else AMBER
-    if "events" not in run.account:
-        chain = run.account.get("chain", "")
-        return Badge(
-            check="results",
-            message=f"chain {ci._said(chain)}" if chain else "ledger not read",
-            color=color,
-        )
-    message = f"{counted.sealed}/{counted.runs} runs sealed" if counted.runs else "0 runs"
-    # A file missing, or no longer the kind of path it was sealed as, is counted as changed, as
-    # the mod's band counts it. A resealed file is the bytes of one of several hashes recorded
-    # for its path, and is counted apart.
-    states = collections.Counter(file["state"] for file in run.account.get("files", []))
-    if changed := states.total() - states["ok"] - states["resealed"]:
-        message += f", {changed} changed"
-    if states["resealed"]:
-        message += f", {states['resealed']} resealed"
-    if run.outcome == audit.PASSED and counted.runs and counted.sealed == counted.runs:
+    """Runs sealed, of the ledger's runs. The colour reads what `results verify --files`
+    reported and decides nothing of its own.
+
+    Red where the chain did not verify: the account carries no event count, or the check
+    failed with every recorded file `ok`, which is a timestamp that contradicts the chain.
+    Amber where the check failed over recorded files in another state, or not every run was
+    sealed. Which file states fail is the tool's to say, and the badge follows its exit.
+    """
+    files = run.account.get("files", [])
+    if "events" not in run.account or (
+        run.outcome == audit.FAILED and all(file["state"] == "ok" for file in files)
+    ):
+        color = RED
+    elif run.outcome == audit.PASSED and counted.runs and counted.sealed == counted.runs:
         color = GREEN
-    return Badge(check="results", message=message, color=color)
+    else:
+        color = AMBER
+    return Badge(
+        check="results", message=f"{counted.sealed}/{counted.runs} runs sealed", color=color
+    )
 
 
 def claims_badge(report: VerificationReport) -> Badge:
@@ -274,6 +272,14 @@ def reruns_badge(report: StalenessReport) -> Badge:
 # ---------------------------------------------------------------------------------- project
 
 
+def _counted(ledger: pathlib.Path) -> Runs:
+    """The ledger's runs, or none where a line of it is not an event."""
+    try:
+        return runs(read_ledger(ledger))
+    except ChainError:
+        return Runs()
+
+
 def found(cwd: pathlib.Path, *, every: bool = False) -> Found:
     """The badges for the project holding `cwd`. With `every`, a check the project keeps no
     record for has a gray badge; without, it is left out and said to be."""
@@ -290,8 +296,7 @@ def found(cwd: pathlib.Path, *, every: bool = False) -> Found:
         elif check == "citations":
             made[check] = citations_badge(run)
         else:
-            counted = runs(read_ledger(root / LEDGER)) if "events" in run.account else Runs()
-            made[check] = results_badge(run, counted)
+            made[check] = results_badge(run, _counted(root / LEDGER))
 
     path = find(cwd)
     if path is None:

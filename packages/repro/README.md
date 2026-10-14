@@ -814,12 +814,12 @@ repro badges
 | badge | counts | green | amber | red |
 |---|---|---|---|---|
 | `prereg` | plans frozen | every plan frozen and unchanged | a plan or an amendment never frozen | a frozen plan changed |
-| `results` | runs with a seal before them, of the ledger's runs; runs named `smoke_`, `prefreeze_`, `test_` or `dryrun_` are left out | every run sealed and every recorded file as recorded | a run with no seal before it | the chain does not verify, or a recorded file changed, is missing or was resealed, each counted on the badge as `2 changed` or `1 resealed` |
+| `results` | runs with a seal before them, of the ledger's runs; runs named `smoke_`, `prefreeze_`, `test_` or `dryrun_` are left out | `results verify --files` passes and every run is sealed | a run with no seal before it, or `results verify --files` fails over recorded files: changed, missing or resealed | the ledger's chain does not verify, or a timestamp contradicts it |
 | `claims` | assertions verified, of every assertion | every assertion verified | none mismatched, and some were not found, not checked or could not be read | an assertion mismatched |
 | `citations` | quotations found, of every quotation pinned | every quotation found | none not found, and some unchecked | a quotation not found, or a source not the pinned bytes |
 | `reproduced` | declared commands with a current re-run on record, as `repro stale` reports them | every command current | a command stale, never re-run or undetermined | |
 
-Where no source of any pinned quotation is on the machine, nothing was checked, and the `citations` badge reads `199 pinned` in blue. A check the project keeps no record for has no badge, and standard error says which were left out and why, in the words `repro ci init` uses. `--all` gives each of those a gray `none declared` badge instead.
+The `results` badge reads `19/19 runs sealed` whatever its colour; which files `results verify --files` found not as recorded is in that command's output and in the `repro ci results` summary the badge links to. Where no source of any pinned quotation is on the machine, nothing was checked, and the `citations` badge reads `199 pinned` in blue. A check the project keeps no record for has no badge, and standard error says which were left out and why, in the words `repro ci init` uses. `--all` gives each of those a gray `none declared` badge instead.
 
 `repro badges --readme` writes the badges on one line between two marker lines in `README.md`, under the first heading, where `repro ci init --readme` puts its line:
 

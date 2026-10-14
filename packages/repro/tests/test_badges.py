@@ -102,24 +102,36 @@ def test_a_ledger_whose_runs_are_all_sealed_and_files_match_is_green(tools):
     assert given(tools)["results"] == ("1/1 runs sealed", GREEN)
 
 
-def test_a_recorded_file_that_changed_is_red_and_counted(tools):
+def test_a_recorded_file_that_changed_or_went_missing_is_amber_and_the_message_is_runs_only(tools):
     ledger(tools)
     (tools / "results.json").write_text(json.dumps({"total": 7}))
-    assert given(tools)["results"] == ("1/1 runs sealed, 1 changed", RED)
+    assert given(tools)["results"] == ("1/1 runs sealed", AMBER)
+    (tools / "inputs.json").unlink()
+    assert given(tools)["results"] == ("1/1 runs sealed", AMBER)
 
 
-def test_missing_files_count_as_changed_and_resealed_files_are_counted_apart():
-    files = [
-        {"path": "a", "state": "ok"},
-        {"path": "b", "state": "changed"},
-        {"path": "c", "state": "missing"},
-        {"path": "d", "state": "resealed"},
-    ]
-    run = ci.ToolRun(
-        check="results", outcome="failed", account={"chain": "intact", "events": 9, "files": files}
+def results_run(outcome, states, events=True):
+    account = {
+        "chain": "intact",
+        "files": [{"path": f"f{i}", "state": s} for i, s in enumerate(states)],
+    }
+    return ci.ToolRun(
+        check="results", outcome=outcome, account=account | ({"events": 9} if events else {})
     )
-    assert badges.results_badge(run, badges.Runs(runs=2, sealed=2)) == Badge(
-        check="results", message="2/2 runs sealed, 2 changed, 1 resealed", color=RED
+
+
+def test_the_colour_follows_what_verify_reported_and_not_the_file_states_themselves():
+    sealed = badges.Runs(runs=2, sealed=2)
+    # A state verify reports and does not fail on is green, whatever its name.
+    assert badges.results_badge(results_run("passed", ["ok", "resealed"]), sealed).color == GREEN
+    assert badges.results_badge(results_run("failed", ["ok", "resealed"]), sealed).color == AMBER
+    assert (
+        badges.results_badge(results_run("failed", ["changed", "missing"]), sealed).color == AMBER
+    )
+    # Failed with every recorded file as recorded: the timestamp contradicts the chain.
+    assert badges.results_badge(results_run("failed", ["ok", "ok"]), sealed).color == RED
+    assert badges.results_badge(results_run("failed", [], events=False), sealed) == Badge(
+        check="results", message="2/2 runs sealed", color=RED
     )
 
 
@@ -130,11 +142,18 @@ def test_a_run_with_no_seal_before_it_is_amber(tools):
     assert given(tools)["results"] == ("0/1 runs sealed", AMBER)
 
 
-def test_a_chain_that_does_not_verify_is_red_and_says_how(tools):
+def test_a_chain_that_does_not_verify_is_red(tools):
     ledger(tools)
     path = tools / ".results" / "ledger.jsonl"
     path.write_text(path.read_text().replace("r1", "r2"))
-    assert given(tools)["results"] == ("chain edited", RED)
+    assert given(tools)["results"] == ("1/1 runs sealed", RED)
+
+
+def test_a_ledger_with_a_line_that_is_not_an_event_is_red_with_no_run_counted(tools):
+    ledger(tools)
+    with (tools / ".results" / "ledger.jsonl").open("a") as handle:
+        handle.write("not an event\n")
+    assert given(tools)["results"] == ("0/0 runs sealed", RED)
 
 
 # -- claims --------------------------------------------------------------------------------
