@@ -3,6 +3,8 @@
 `fixtures/records-0.5.6.jsonl` is the output of the released wheel, `uvx --from
 reproducible-science==0.5.6 repro export record`, over seven conformance cases, unedited. It
 is what a project that exported records before 0.6 holds, and 0.6 has to keep reading it.
+The schemas are checked against it in `packages/repro/tests/test_record.py`, since this suite
+also runs with `claims-cli` installed alone, and `jsonschema` is not a dependency of it.
 """
 
 from __future__ import annotations
@@ -13,7 +15,6 @@ import datetime
 import json
 import pathlib
 
-import jsonschema
 import pytest
 from claims import load
 from claims.export.rocrate import from_ro_crate, to_ro_crate
@@ -29,10 +30,8 @@ from claims.record import (
 )
 
 HERE = pathlib.Path(__file__).parent
-ROOT = HERE.parents[2]
 CASES = HERE / "conformance" / "cases"
 RELEASED = HERE / "fixtures" / "records-0.5.6.jsonl"
-SCHEMAS = ROOT / "docs" / "schemas"
 WHEN = datetime.datetime(2026, 10, 14, 12, 0, tzinfo=datetime.UTC)
 
 NEW = "reproducible.science/claim-check/0.1-experimental"
@@ -51,9 +50,6 @@ def fresh(name="value_match"):
 def test_a_record_is_written_under_the_new_version():
     data = fresh()
     assert data["record"] == NEW
-    jsonschema.validate(
-        data, json.loads((SCHEMAS / "claim-check-0.1-experimental.schema.json").read_text())
-    )
 
 
 @pytest.mark.parametrize("version", [NEW, OLD])
@@ -81,9 +77,6 @@ def test_a_record_under_any_other_version_is_refused(version):
         validate(data)
     (said,) = caught.value.problems
     assert said == f"record is {version!r}; this reader knows {NEW!r} and {OLD!r}"
-    schema = json.loads((SCHEMAS / "claim-check-0.1-experimental.schema.json").read_text())
-    with pytest.raises(jsonschema.ValidationError):
-        jsonschema.validate(data, schema)
 
 
 def test_the_released_records_are_the_ones_0_5_6_wrote():
@@ -106,16 +99,6 @@ def test_every_released_record_validates_and_reads_its_own_outcome():
         assert record.record == OLD
         assert problems(record) == ()
         assert read_outcome(record).value == data["outcome"]
-
-
-@pytest.mark.parametrize(
-    "schema",
-    ["claim-check-0.1-experimental.schema.json", "repro.check-0.1-experimental.schema.json"],
-)
-def test_every_released_record_fits_the_new_schema_and_the_one_it_was_written_under(schema):
-    loaded = json.loads((SCHEMAS / schema).read_text())
-    for data in released():
-        jsonschema.validate(data, loaded)
 
 
 def test_the_released_records_survive_an_ro_crate_unchanged():
