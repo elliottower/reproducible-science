@@ -186,13 +186,20 @@ function SourcePanel({ s, onClose, onGo }: { s: Source; onClose: () => void; onG
       <button className="close" onClick={onClose}>×</button>
       <div className="kicker">SOURCE</div>
       <h2>{s.bib.title || s.citation}</h2>
-      {s.link && <p><a className="src-link" href={s.link} target="_blank" rel="noreferrer">Open the source ↗</a></p>}
       <dl>
         {s.bib.author && (<><dt>Authors</dt><dd>{s.bib.author.split(/\s+and\s+/).join('; ')}</dd></>)}
         {s.bib.year && (<><dt>Year</dt><dd>{s.bib.year}</dd></>)}
         {venue && (<><dt>Venue</dt><dd>{venue}</dd></>)}
-        {s.bib.doi && (<><dt>DOI</dt><dd className="mono small">{s.bib.doi}</dd></>)}
-        {s.link && (<><dt>Link</dt><dd><a className="src-link" href={s.link} target="_blank" rel="noreferrer">{s.link}</a></dd></>)}
+        <dt>Link</dt>
+        <dd>{s.link ? <a className="src-link" href={s.link} target="_blank" rel="noreferrer" title={s.link}>{linkLabel(s.link)}</a> : <span className="muted">none</span>}</dd>
+        <dt>DOI</dt>
+        <dd>
+          {doiOf(s)
+            ? (s.doi_link && !/doi\.org\//.test(s.doi_link)
+                ? <a className="src-link mono small" href={s.doi_link} target="_blank" rel="noreferrer" title={s.doi_link}>{doiOf(s)}</a>
+                : <span className="mono small">{doiOf(s)}</span>)
+            : <span className="muted">No DOI</span>}
+        </dd>
         <dt>Key</dt><dd className="mono">{s.citation}</dd>
         <dt>Pinned</dt><dd>{s.sha256 ? <><span className="mono small">{s.local}</span><div className="mono small muted">sha256 {s.sha256}</div></> : 'Not pinned'}</dd>
         <dt>Claims file</dt><dd className="mono small">{s.file}</dd>
