@@ -411,3 +411,24 @@ def test_no_note_holds_an_absolute_path(project):
     found = survey(project)
     assert any(n.startswith("results/metrics.json could not be read") for n in found.notes)
     assert not any(str(project) in n or str(project.resolve()) in n for n in found.notes)
+
+
+def test_a_mapping_key_named_for_an_index_is_demoted_at_any_depth(project, capsys):
+    (project / "results" / "metrics.json").write_text(
+        json.dumps({"seed": 42, "run": {"epoch": 12, "accuracy": 0.9312, "epochs": 100}})
+    )
+    (project / "results" / "table.csv").unlink()
+    (project / "paper.md").write_text("Seed 42, 12 epochs of 100; accuracy 0.931.\n")
+    found = survey(project)
+    assert found.index_like == ("results/metrics.json /seed", "results/metrics.json /run/epoch")
+    assert [(c.locator["pointer"], c.index_like) for c in found.candidates] == [
+        ("/run/epochs", False),
+        ("/run/accuracy", False),
+        ("/seed", True),
+        ("/run/epoch", True),
+    ]
+    assert main(["verify"]) == 2
+    out = capsys.readouterr().out
+    assert "guessed: 2 of the 4 numbers compared" in out
+    assert "and 2 more numbers agree only with index-like columns or keys" in out
+    assert "results/metrics.json /seed holds 42  [index-like key]" in out

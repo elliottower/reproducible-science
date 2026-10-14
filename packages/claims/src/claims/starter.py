@@ -111,9 +111,9 @@ FORMAT_NAMES = {key: name for key, name, _ in FORMATS}
 #: What a survey's JSON document is, and the revision of its shape.
 SURVEY_SCHEMA = "reproducible.science/survey/0.1-experimental"
 
-#: A column, or a key repeated across the elements of a list, is index-like where one word of
-#: its name is one of these, where its name is empty, or where its values step by one constant
-#: amount over at least `INDEX_MIN_ROWS` rows. A survey lists its guesses after the others and
+#: A column, a key repeated across the elements of a list, or any other mapping key, is
+#: index-like where one word of its name is one of these or its name is empty; a column or a
+#: repeated key also where its values step by one constant amount over `INDEX_MIN_ROWS` rows. A survey lists its guesses after the others and
 #: counts them apart, and hides none.
 INDEX_NAMES = frozenset({"step", "epoch", "iter", "iteration", "idx", "index", "row", "id", "seed"})
 INDEX_MIN_ROWS = 10
@@ -644,8 +644,11 @@ def _grouped(held: list[_Held], names: dict[str, tuple[str, str]]) -> _Read:
         for group, values in members.items()
         if _index_name(names[group][1]) or _progression(values)
     ]
-    marked = tuple(v.model_copy(update={"index_like": v.group in index}) for v in held)
-    return _Read(values=marked, index_like=tuple(names[group][0] for group in index))
+    marked = tuple(
+        v.model_copy(update={"index_like": v.index_like or v.group in index}) for v in held
+    )
+    alone = [str(v.locator["pointer"]) for v in held if v.group is None and v.index_like]
+    return _Read(values=marked, index_like=(*(names[group][0] for group in index), *alone))
 
 
 def _read_values(path: pathlib.Path, cap: int) -> _Read:
@@ -670,7 +673,9 @@ def _read_values(path: pathlib.Path, cap: int) -> _Read:
             if group is not None:
                 names[group] = (pattern, pattern.rpartition("/")[2])
             locator: dict[str, str | int] = {"kind": "tree", "pointer": pointer}
-            held.append(_Held(locator=locator, stored=value, group=group))
+            # A key outside any list is read by its name alone; `_grouped` reads a group's.
+            named = group is None and _index_name(pointer.rpartition("/")[2])
+            held.append(_Held(locator=locator, stored=value, group=group, index_like=named))
     elif suffix in _DELIMITERS or suffix in COLUMNAR_SUFFIXES:
         header, rows = read_cells(path)
         names = {column: (f"column {column or '(no name)'}", column) for column in header}
