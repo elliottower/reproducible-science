@@ -875,7 +875,7 @@
     }
   },
   "additionalProperties": true,
-  "description": "One assertion, as it was checked. Frozen, and carries no verdict.",
+  "description": "One assertion, as it was checked. Frozen, and carries no verdict.\n\nSuperseded by docs/schemas/claim-check-0.1-experimental.schema.json, published at https://reproducible.science/schemas/claim-check-0.1-experimental.schema.json, which accepts a record under this version, repro.check/0.1-experimental, and under reproducible.science/claim-check/0.1-experimental, the version written from 0.6.0. This file describes records written by 0.5.6 and is kept so that links to it resolve.",
   "properties": {
     "assertion": {
       "$ref": "#/$defs/AssertionRef"

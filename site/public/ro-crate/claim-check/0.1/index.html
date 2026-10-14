@@ -34,9 +34,12 @@ at an address inside a file was compared with the value a manuscript prints, and
 was found. This profile adds the terms for that and no others. A crate that conforms to it
 holds one entity per checked assertion, and each entity states an observation. It states no
 verdict on whether a claim is true.</p>
-<p>The profile is a projection of the tool's check record,
-<code>repro.check/0.1-experimental</code>, which section 7.10 of the
-<a href="https://reproducible.science/reference/spec/">specification</a> defines. Every field
+<p>The profile is a projection of the check record,
+<code>reproducible.science/claim-check/0.1-experimental</code>, which section 7.10 of the
+<a href="https://reproducible.science/reference/spec/">specification</a> defines and whose
+<a href="https://reproducible.science/schemas/claim-check-0.1-experimental.schema.json">JSON
+Schema</a> is published beside this page. Records written by 0.5.6 carry the same format under
+the name <code>repro.check/0.1-experimental</code>. Every field
 of a record has a place in the crate, and the tool reads its own crates back into the records
 they were written from.</p>
 
@@ -132,7 +135,7 @@ Crate only where it holds a re-run.</li>
 <section id="recordVersion">
 <h3><code>recordVersion</code></h3>
 <dl><dt>Permalink</dt><dd><code>https://reproducible.science/ro-crate/claim-check/0.1/#recordVersion</code></dd></dl>
-<p>The version of the check record the entity was written from, such as <code>repro.check/0.1-experimental</code>.</p>
+<p>The version of the check record the entity was written from, as the record states it: <code>reproducible.science/claim-check/0.1-experimental</code>, or <code>repro.check/0.1-experimental</code> for a record written by 0.5.6.</p>
 </section>
 <section id="manifest">
 <h3><code>manifest</code></h3>

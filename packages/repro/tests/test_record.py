@@ -59,7 +59,16 @@ CASES = sorted(
         pathlib.Path(__file__).resolve().parents[2] / "claims" / "tests" / "conformance" / "cases"
     ).iterdir()
 )
-SCHEMA = ROOT / "docs" / "schemas" / "repro.check-0.1-experimental.schema.json"
+SCHEMA = ROOT / "docs" / "schemas" / "claim-check-0.1-experimental.schema.json"
+LEGACY_SCHEMA = ROOT / "docs" / "schemas" / "repro.check-0.1-experimental.schema.json"
+#: Records the released 0.5.6 wheel wrote; `claims/tests/test_record_versions.py` says how.
+RELEASED = (
+    pathlib.Path(__file__).resolve().parents[2]
+    / "claims"
+    / "tests"
+    / "fixtures"
+    / "records-0.5.6.jsonl"
+)
 WHEN = datetime.datetime(2026, 10, 13, 12, 0, tzinfo=datetime.UTC)
 
 
@@ -130,6 +139,33 @@ def test_the_schema_on_disk_is_the_one_the_model_gives():
         f"{SCHEMA.relative_to(ROOT)} is stale: write "
         "json.dumps(ExportRecord.model_json_schema(), indent=2, sort_keys=True) to it"
     )
+
+
+def test_the_schema_is_published_at_the_address_its_id_names():
+    schema = json.loads(SCHEMA.read_text())
+    published = schema["$id"].removeprefix("https://reproducible.science/")
+    assert published == f"schemas/{SCHEMA.name}"
+    served = ROOT / "site" / "public" / published
+    assert served.read_text() == SCHEMA.read_text(), (
+        f"{served.relative_to(ROOT)} is stale: run `npm run sync` in site/"
+    )
+
+
+@pytest.mark.parametrize("schema", [SCHEMA, LEGACY_SCHEMA], ids=lambda p: p.name)
+def test_a_record_0_5_6_wrote_fits_the_new_schema_and_the_one_it_was_written_under(schema):
+    loaded = json.loads(schema.read_text())
+    lines = RELEASED.read_text().splitlines()
+    assert len(lines) == 8
+    for line in lines:
+        jsonschema.validate(json.loads(line), loaded)
+
+
+@pytest.mark.parametrize(
+    "version", ["reproducible.science/claim-check/0.2-experimental", "repro.check/9", ""]
+)
+def test_the_schema_refuses_a_version_this_reader_does_not_know(version):
+    with pytest.raises(jsonschema.ValidationError, match="is not one of"):
+        jsonschema.validate(changed("value_match", record=version), json.loads(SCHEMA.read_text()))
 
 
 def booleans(value, path=""):

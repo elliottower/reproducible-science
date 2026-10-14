@@ -1210,8 +1210,12 @@ The rules are applied in this order, and the first that holds is the one named.
 
 ## 7.10 The check record
 
-Experimental, and this tool's own export format: `repro.check/0.1-experimental`. A field may
-change before `1.0`, and every record names the version it was written under.
+Experimental. A record is written under the version
+`reproducible.science/claim-check/0.1-experimental`, a format for claim checks that other tools
+may read and write. A field may change before `1.0`, and every record names the version it was
+written under. Releases in the 0.6 series also read a record under
+`repro.check/0.1-experimental`, the name 0.5.6 wrote the same format under, and the next minor
+release reads only the new name.
 
 `repro export record` writes one JSON object per line, one per assertion, in the order the
 manifest declares them. A record states an observation and no verdict: this checker, at this
@@ -1289,7 +1293,10 @@ unknown native word is refused by the validator outright.
 
 A claim that offers no evidence has no assertion, so no record. `repro verify` reports it.
 
-The JSON Schema generated from the model is `docs/schemas/repro.check-0.1-experimental.schema.json`.
+The JSON Schema generated from the model is `docs/schemas/claim-check-0.1-experimental.schema.json`,
+published at `https://reproducible.science/schemas/claim-check-0.1-experimental.schema.json`,
+and its `record` accepts either version. `docs/schemas/repro.check-0.1-experimental.schema.json`
+describes the records 0.5.6 wrote and is kept so that links to it resolve.
 
 ### Relation to `.repro/checks.jsonl`
 
@@ -1351,6 +1358,9 @@ for the check type or for the outcome. Those are terms of a profile of this tool
 `https://reproducible.science/ro-crate/claim-check/0.1/`, version `0.1-experimental`, declared
 with `conformsTo` on the root data entity and mapped in `@context`. The profile's page defines
 each term. Conformance to Process Run Crate is declared only where the records hold a re-run.
+A check's `recordVersion` is the record's version as written:
+`reproducible.science/claim-check/0.1-experimental`, or `repro.check/0.1-experimental` for a
+crate written from a record of 0.5.6.
 
 The projection loses nothing: `repro.export.rocrate.from_ro_crate` reads a crate back into the
 records it was written from, for every record this version understands. A `match` it does not
