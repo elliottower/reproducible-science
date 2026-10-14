@@ -19,10 +19,11 @@
 default_install_hook_types: [pre-commit, pre-push, commit-msg]
 default_stages: [pre-commit]
 
-# Nothing here may modify a file whose bytes are pinned. Three kinds:
+# Nothing here may modify a file whose bytes are pinned. Four kinds:
 #
 #   * conformance fixtures, whose exact bytes are the fixture -- a trailing newline breaks
 #     every pin in the corpus, which happened the first time these hooks ran;
+#   * another tool's files copied unedited, whose digest that tool's report records;
 #   * a plan as `prereg freeze` once wrote it, whose template lines end in a space the digest
 #     written in the file covers;
 #   * registrations, codebooks and frames, where a digest has been cited and any edit
@@ -39,6 +40,7 @@ default_stages: [pre-commit]
 exclude: |
   (?x)^(
     packages/claims/tests/conformance/cases/.*|
+    packages/claims/tests/fixtures/paperdelta/(report\.json|paperdelta\.yaml)|
     packages/repro/examples/.*|
     packages/prereg/tests/data/frozen_in_place\.md|
     research/.*/(frame\.json|published\.bib)|

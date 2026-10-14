@@ -1,6 +1,7 @@
 {
   "Exclude": [
     "^packages/claims/tests/conformance/cases/",
+    "^packages/claims/tests/fixtures/paperdelta/(report\\.json|paperdelta\\.yaml)$",
     "uv\\.lock$"
   ],
   "Disable": {
