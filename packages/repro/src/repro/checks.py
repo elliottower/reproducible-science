@@ -19,11 +19,11 @@ appends to the tracked one directly.
 **A chain.** Each entry carries its position, `seq`, and the SHA-256 of the entry before it as
 stored, `prev_hash`, and a head file beside the record, `ledger.head`, holds the number of
 entries and the hash of the last. These are the `results` ledger's fields and its writer:
-`results.ledger.append_event` appends under a lock held across reading the last entry and
+`provenance_core.chain.append_event` appends under a lock held across reading the last entry and
 writing the next, so two checks running at once write two entries in a row and not two
 claiming one position, and it refuses to append to a chain that does not verify.
 
-Reading is done here and not by `results.ledger.verify`, which takes a lock by creating a file
+Reading is done here and not by `provenance_core.chain.verify`, which takes a lock by creating a file
 beside the record: `repro verify` and `repro why` must leave the working tree as it is.
 
 **What the chain shows, and what it does not.** An entry edited, removed from the middle or
@@ -47,8 +47,8 @@ import pathlib
 from typing import Literal
 
 from provenance_core import ZERO, exclusive_lock, sha256_of_text, try_run
+from provenance_core.chain import ANCHOR, ChainStatus, append_event, read_anchor, write_anchor
 from pydantic import ValidationError
-from results.ledger import ANCHOR, ChainStatus, append_event, read_anchor, write_anchor
 
 from repro.exceptions import ReproError
 from repro.models import (

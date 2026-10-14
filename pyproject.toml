@@ -234,6 +234,12 @@ source_modules = [ "citations", "results", "prereg" ]
 forbidden_modules = [ "repro" ]
 
 [[tool.importlinter.contracts]]
+name = "The verifier runs the ledger's command and imports none of its code"
+type = "forbidden"
+source_modules = [ "repro" ]
+forbidden_modules = [ "results" ]
+
+[[tool.importlinter.contracts]]
 name = "The verifier's core does not import its integrations"
 type = "forbidden"
 source_modules = [
@@ -271,7 +277,8 @@ layers = [
   "repro.record",
   # One claim's rows of what `stale` and the verifier report, so it sits on both.
   "repro.why",
-  # Appends what `verify` found to the records of checks, with the `results` ledger's writer,
+  # Appends what `verify` found to the records of checks, with the writer of a hash chain
+  # that `provenance_core` holds and the `results` ledger is written with too,
   # and reads them back, so `why` sits on it and it reaches for nothing of ours but the models.
   "repro.checks",
   # Reads what `reproduce` recorded and executes nothing, so it sits on the record's writer.

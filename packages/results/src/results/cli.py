@@ -261,7 +261,7 @@ def _main(argv: list[str] | None = None) -> int:
         if a.cmd == "init":
             return cmd_init(a)
         return a.fn(a)
-    except ledger.ResultsError as e:
+    except (ledger.ResultsError, ledger.ChainError) as e:
         # The process boundary. Library code raises; only here does a failure become a code.
         print(str(e))
         return 2
