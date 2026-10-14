@@ -28,7 +28,7 @@ from collections.abc import Sequence
 from typing import Any
 
 from claims.exceptions import ReproError
-from claims.models import Regeneration
+from claims.models import Origin, Regeneration
 from claims.record import (
     CheckType,
     Command,
@@ -250,8 +250,33 @@ class _Graph:
                     "sha256": state.on_disk,
                     "pinnedDigest": state.pinned,
                     "validity": state.validity.value if state.validity else None,
+                    "isBasedOn": _ref(self.origin(state.artifact, state.origin))
+                    if state.origin
+                    else None,
                 }
             )
+        )
+
+    def origin(self, artifact: str, origin: Origin) -> str:
+        """The file an artifact's bytes were copied from: its path, as `name`, at a commit, as
+        `version`, of a repository it `isPartOf`. RO-Crate 1.3 names no property for a copy,
+        so the file entity points at this with schema.org's `isBasedOn`."""
+        repository = self.add(
+            {
+                "@id": _local("repository", origin.repository),
+                "@type": "SoftwareSourceCode",
+                "name": origin.repository,
+                "codeRepository": origin.repository,
+            }
+        )
+        return self.add(
+            {
+                "@id": _local("origin", artifact),
+                "@type": "CreativeWork",
+                "name": origin.path,
+                "version": origin.commit,
+                "isPartOf": _ref(repository),
+            }
         )
 
     def term(self, word: str, said: str) -> dict[str, str]:
@@ -525,8 +550,9 @@ def to_ro_crate(records: Sequence[ExportRecord]) -> str:
 # ----------------------------------------------------------------------------- reading back
 
 
-def _file_state(entity: Entity) -> dict[str, Any]:
+def _file_state(entity: Entity, entities: dict[str, Entity]) -> dict[str, Any]:
     identifier = entity["@id"]
+    origin = entities[entity["isBasedOn"]["@id"]] if "isBasedOn" in entity else None
     return {
         "artifact": entity["identifier"],
         "path": entity.get("alternateName")
@@ -535,6 +561,13 @@ def _file_state(entity: Entity) -> dict[str, Any]:
         "validity": entity.get("validity"),
         "pinned": entity.get("pinnedDigest"),
         "on_disk": entity.get("sha256"),
+        "origin": {
+            "repository": entities[origin["isPartOf"]["@id"]]["codeRepository"],
+            "commit": origin["version"],
+            "path": origin["name"],
+        }
+        if origin
+        else None,
     }
 
 
@@ -575,9 +608,9 @@ def _commands(
                 "id": command["identifier"],
                 "command": json.loads(command["argv"]),
                 "steps": steps[command["@id"]],
-                "output": _file_state(entities[command["declaredOutput"]["@id"]]),
+                "output": _file_state(entities[command["declaredOutput"]["@id"]], entities),
                 "inputs": [
-                    _file_state(entities[ref["@id"]])
+                    _file_state(entities[ref["@id"]], entities)
                     for ref in _unpacked(command.get("declaredInput"))
                 ],
                 "state": command["freshness"],
@@ -622,7 +655,7 @@ def from_ro_crate(text: str) -> tuple[ExportRecord, ...]:
     for check in checks:
         if check["assertionKind"] == "quote":
             read = entities[_unpacked(check["fileRead"])[0]["@id"]]
-            file = _file_state(entities[read["readsFile"]["@id"]])
+            file = _file_state(entities[read["readsFile"]["@id"]], entities)
             passages.setdefault(check["object"]["@id"], []).append(
                 {
                     "assertion": check["assertionIndex"],
@@ -642,7 +675,7 @@ def from_ro_crate(text: str) -> tuple[ExportRecord, ...]:
             read = entities[ref["@id"]]
             reads.append(
                 {
-                    **_file_state(entities[read["readsFile"]["@id"]]),
+                    **_file_state(entities[read["readsFile"]["@id"]], entities),
                     "side": read.get("side", ""),
                     "address": json.loads(read["canonicalAddress"])
                     if "canonicalAddress" in read

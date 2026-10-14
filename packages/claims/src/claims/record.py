@@ -51,6 +51,7 @@ from claims.models import (
     Freshness,
     Manifest,
     MetricEvidence,
+    Origin,
     Outcome,
     QuoteEvidence,
     Reason,
@@ -294,6 +295,9 @@ class FileState(BaseModel):
     """None where the manifest declares no such artifact."""
     pinned: str | None = None
     on_disk: str | None = None
+    origin: Origin | None = None
+    """The repository, commit and path the manifest says the bytes were copied from. Recorded
+    as declared; whether the bytes there are the pinned ones is `claims origins`'s question."""
 
 
 class FileRead(FileState):
@@ -478,6 +482,7 @@ def _state(artifact_id: str, manifest: Manifest, states: dict[str, ArtifactState
         "validity": state.validity if state else None,
         "pinned": state.expected if state else None,
         "on_disk": state.actual if state else None,
+        "origin": declared.origin if declared else None,
     }
 
 

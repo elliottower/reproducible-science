@@ -286,6 +286,9 @@ layers = [
   # The commands of the claims side and how each prints. `repro.cli` and this module's own
   # `main` build a parser over them, and they reach for nothing that runs a command.
   "claims.cli",
+  # Reads an artifact's origin, with git or over the network when asked, and evaluates no
+  # assertion, so nothing below reaches for it.
+  "claims.origins",
   # Other formats for the check records. An exporter reads records and nothing below them.
   "claims.export",
   "claims.renderers.sarif",
