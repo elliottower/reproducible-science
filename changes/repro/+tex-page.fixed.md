@@ -1,1 +1,0 @@
-**A `page` on a LaTeX artifact is `page_unchecked`, where it was a `wrong_page` mismatch for every page.** `citations` no longer treats a `.tex` source as paginated, so a `quote` assertion with a `page` against one is `verified` with the warning `page_unchecked`, as it is against a text file. A quotation that is not found no longer carries a page warning beside its mismatch.
