@@ -564,7 +564,13 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
     )
     p_check.set_defaults(func=cmd_check)
 
-    ci.add_parser(sub, verify=_verify_text, reproduce=_reproduce_text, stale=_stale_text)
+    ci.add_parser(
+        sub,
+        verify=_verify_text,
+        reproduce=_reproduce_text,
+        stale=_stale_text,
+        endpoints=badges.command_endpoints,
+    )
     badges.add_parser(sub)
 
     # An audit runs these inside a clone of someone else's repository, and keeps no record of

@@ -6,13 +6,15 @@ from the same records the `repro ci` checks read.
 
 from __future__ import annotations
 
+import base64
 import importlib.util
 import json
 import pathlib
 import urllib.parse
 
 import pytest
-from repro import badges, ci
+import yaml
+from repro import badges, ci, citations_record
 from repro.badges import AMBER, BLUE, END, GRAY, GREEN, RED, START, Badge
 from repro.cli import main
 from repro.models import Claim
@@ -415,3 +417,201 @@ def test_check_names_a_badge_gone_one_added_and_one_drawn_in_another_colour(tmp_
         "  reproduced: not in README.md; now `1/1`",
         "  prereg: README.md shows `1 plan frozen`; no badge is given now",
     ]
+
+
+# -- endpoint files ------------------------------------------------------------------------
+
+
+def test_an_endpoint_file_draws_what_the_static_badge_draws():
+    badge = Badge(check="citations", message="203/203 verified", color=GREEN)
+    endpoint = badge.endpoint
+    query = urllib.parse.parse_qs(urllib.parse.urlsplit(badge.image).query)
+    assert endpoint["schemaVersion"] == 1
+    assert [endpoint[key] for key in ("label", "message", "color", "labelColor")] == [
+        query[key][0] for key in ("label", "message", "color", "labelColor")
+    ]
+    # The static badge carries the icon as a data URI; the endpoint file as the SVG text.
+    encoded = query["logo"][0].removeprefix("data:image/svg+xml;base64,")
+    assert base64.b64decode(encoded).decode() == endpoint["logoSvg"]
+    assert endpoint["logoSvg"].startswith("<svg") and endpoint["logoSvg"].endswith("</svg>")
+
+
+# -- the citations record ------------------------------------------------------------------
+
+
+def test_the_record_covers_each_claims_file_and_goes_stale_when_one_changes(tools):
+    pin(tools, "here")
+    pin(tools, "gone", there=False)
+    made = citations_record.write(tools)
+    assert made.quotes == 2 and made.counts["found"] == 1 and made.counts["unchecked"] == 1
+    assert sorted(made.claims) == ["claims/gone.yaml", "claims/here.yaml"]
+    assert made.claims["claims/here.yaml"].source == helpers.Digest.of_text(helpers.TEXT).value
+    stored = json.loads((tools / citations_record.RECORD).read_text())
+    assert stored["record"] == citations_record.VERSION
+    assert stored["claims"]["claims/gone.yaml"]["sha256"] == made.claims["claims/gone.yaml"].sha256
+
+    compared = citations_record.compare(tools)
+    assert compared.standing is citations_record.Standing.CURRENT
+    assert badges.recorded_citations_badge(compared) == Badge(
+        check="citations", message="1/2 verified locally", color=AMBER
+    )
+
+    edited = tools / "claims" / "gone.yaml"
+    edited.write_text(edited.read_text().replace("quick brown", "quick red"))
+    compared = citations_record.compare(tools)
+    assert compared.standing is citations_record.Standing.STALE
+    assert compared.differing == ("claims/gone.yaml",)
+    assert badges.recorded_citations_badge(compared) == Badge(
+        check="citations", message="re-verify locally", color=AMBER
+    )
+
+
+def test_a_claims_file_added_or_removed_since_the_record_makes_it_stale(tools):
+    pin(tools, "here")
+    citations_record.write(tools)
+    pin(tools, "there")
+    assert citations_record.compare(tools).differing == ("claims/there.yaml",)
+    citations_record.write(tools)
+    (tools / "claims" / "here.yaml").unlink()
+    assert citations_record.compare(tools).differing == ("claims/here.yaml",)
+
+
+def test_no_record_is_gray_and_every_quotation_found_is_green_locally(tools):
+    pin(tools, "here")
+    pin(tools, "there")
+    compared = citations_record.compare(tools)
+    assert compared.standing is citations_record.Standing.ABSENT
+    assert badges.recorded_citations_badge(compared) == Badge(
+        check="citations", message="not verified locally", color=GRAY
+    )
+    citations_record.write(tools)
+    assert badges.recorded_citations_badge(citations_record.compare(tools)) == Badge(
+        check="citations", message="2/2 verified locally", color=GREEN
+    )
+
+
+def test_ci_endpoints_writes_every_check_and_reads_citations_from_the_record_alone(tools, capsys):
+    ledger(tools)
+    on_disk(project(tools))
+    pin(tools, "here")
+    assert main(["badges", "--record"]) == 0
+    # A clone does not hold the source; the record says what the author's machine found.
+    (tools / "sources" / "here.txt").unlink()
+    out = tools / "out"
+    assert main(["ci", "endpoints", str(out)]) == 0
+    written = {path.stem: json.loads(path.read_text()) for path in out.iterdir()}
+    assert sorted(written) == sorted(ci.CHECKS)
+    said = {check: (data["message"], data["color"]) for check, data in written.items()}
+    assert said == {
+        "prereg": ("none declared", GRAY),
+        "results": ("1/1 runs sealed", GREEN),
+        "claims": ("1/1 verified", GREEN),
+        "citations": ("1/1 verified locally", GREEN),
+        "reruns": ("none declared", GRAY),
+    }
+    assert all(data["labelColor"] == ci.LABEL_COLOR for data in written.values())
+    assert written["citations"]["logoSvg"] == ci.icon("citations")
+
+
+def test_ci_endpoints_names_the_command_where_no_citations_record_is_committed(tools, capsys):
+    pin(tools, "here")
+    assert main(["ci", "endpoints", str(tools / "out")]) == 0
+    assert json.loads((tools / "out" / "citations.json").read_text())["color"] == GRAY
+    assert badges.REFRESH_RECORD in capsys.readouterr().out
+
+
+# -- repro badges init ---------------------------------------------------------------------
+
+
+@pytest.fixture
+def github(tools):
+    """A repository with a GitHub remote, a README, a ledger, a manifest and a pinned source."""
+    helpers.git(tools, "remote", "add", "origin", "git@github.com:someone/study.git")
+    (tools / "README.md").write_text("# Study\n\nText.\n")
+    ledger(tools)
+    on_disk(project(tools))
+    pin(tools, "here")
+    return tools
+
+
+def test_init_writes_one_workflow_that_pushes_only_to_the_badges_branch(github, capsys):
+    assert main(["badges", "init"]) == 0
+    text = (github / badges.WORKFLOW_FILE).read_text()
+    assert text.startswith(badges.MARKER)
+    flow = yaml.safe_load(text)
+    # `on` is read by YAML 1.1 as True.
+    assert flow[True] == {"push": {"branches": ["main"]}, "workflow_dispatch": None}
+    assert flow["permissions"] == {"contents": "write"}
+    steps = flow["jobs"]["badges"]["steps"]
+    assert [step.get("uses") for step in steps[:2]] == [
+        ci.CHECKOUT.split()[0],
+        ci.SETUP_UV.split()[0],
+    ]
+    assert steps[0]["with"] == {"persist-credentials": False}
+    assert steps[2]["run"].startswith(f"uvx --from {ci.DISTRIBUTION}==")
+    assert steps[2]["run"].endswith('repro ci endpoints "$OUT"')
+    pushes = [line for line in steps[3]["run"].splitlines() if "refs/heads/" in line]
+    assert [line.strip() for line in pushes] == ["HEAD:refs/heads/badges"]
+    assert 'test "$DEFAULT" != badges' in steps[3]["run"]
+    assert "pull_request" not in text
+
+    readme = (github / "README.md").read_text()
+    runs = "https://github.com/someone/study/actions/workflows/repro.yml"
+    line = " ".join(
+        f"[![{name}](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/"
+        f"someone/study/badges/{check}.json)]({runs})"
+        for check, name in (
+            ("results", "results"),
+            ("claims", "claims"),
+            ("citations", "citations"),
+        )
+    )
+    assert readme == f"# Study\n\n{START}\n{line}\n{END}\n\nText.\n"
+    assert citations_record.compare(github).standing is citations_record.Standing.CURRENT
+    out = capsys.readouterr().out
+    assert "left out prereg" in out and "public repository" in out and "next:" in out
+
+
+def test_init_never_rewrites_a_block_or_its_workflow_without_force(github, capsys):
+    readme = github / "README.md"
+    readme.write_text(f"# Study\n\n{START}\nmine\n{END}\n")
+    assert main(["badges", "init"]) == 0
+    assert readme.read_text() == f"# Study\n\n{START}\nmine\n{END}\n"
+    assert "left as it is" in capsys.readouterr().out
+
+    assert main(["badges", "init"]) == 2
+    assert "`--force` replaces" in capsys.readouterr().out
+    assert main(["badges", "init", "--force"]) == 0
+    assert badges.is_endpoint_block(badges.shown(readme.read_text(), readme))
+
+
+def test_init_leaves_a_workflow_it_did_not_write_and_a_repository_off_github(github, capsys):
+    target = github / badges.WORKFLOW_FILE
+    target.parent.mkdir(parents=True)
+    target.write_text("name: theirs\n")
+    assert main(["badges", "init", "--force"]) == 2
+    assert "did not write it" in capsys.readouterr().out
+    assert target.read_text() == "name: theirs\n"
+    target.unlink()
+
+    helpers.git(github, "remote", "set-url", "origin", "https://gitlab.com/someone/study.git")
+    assert main(["badges", "init"]) == 2
+    assert "names no GitHub repository" in capsys.readouterr().out
+    assert not target.exists() and START not in (github / "README.md").read_text()
+
+
+def test_check_of_the_block_init_wrote_compares_the_citations_record(github, capsys):
+    assert main(["badges", "init"]) == 0
+    before = (github / "README.md").read_text()
+    capsys.readouterr()
+    assert main(["badges", "--check"]) == 0
+    claims = github / "claims" / "here.yaml"
+    claims.write_text(claims.read_text().replace("quick brown", "quick red"))
+    assert main(["badges", "--check"]) == 1
+    out = capsys.readouterr().out
+    assert "claims/here.yaml" in out and badges.REFRESH_RECORD in out
+    assert main(["badges", "--readme"]) == 2
+    assert "`repro badges init` wrote" in capsys.readouterr().out
+    assert (github / "README.md").read_text() == before
+    assert main(["badges", "--record"]) == 0
+    assert main(["badges", "--check"]) == 0

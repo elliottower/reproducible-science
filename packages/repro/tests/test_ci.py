@@ -518,7 +518,7 @@ def test_a_named_summary_file_is_written_in_place_of_the_environments(tmp_path, 
 
 def test_bare_ci_prints_its_checks_and_exits_1(capsys):
     assert main(["ci"]) == 1
-    assert "{prereg,results,claims,citations,reruns,init}" in capsys.readouterr().out
+    assert "{prereg,results,claims,citations,reruns,endpoints,init}" in capsys.readouterr().out
 
 
 # -- the workflows ---------------------------------------------------------------------------

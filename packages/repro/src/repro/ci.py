@@ -6,6 +6,7 @@
     repro ci citations  what `citations verify --claims <dir>` checks
     repro ci reruns     what `repro stale` reports of each declared command, running none;
                         with `--run`, what `repro reproduce` runs
+    repro ci endpoints  write a shields.io endpoint file per check, for `repro badges init`
     repro ci init       write the workflows that run those, and print the README lines
 
 Nothing is evaluated here that those commands do not evaluate. `claims` calls
@@ -1103,10 +1104,15 @@ class Workflow(BaseModel):
         return f"[![{self.name}]({SHIELDS}/{slug}/{self.file}?{query})]({runs})"
 
 
+def icon(check: str) -> str:
+    """A check's icon, as SVG text."""
+    svg = importlib.resources.files("repro").joinpath("icons", f"{check}.svg").read_bytes()
+    return svg.strip().decode("utf-8")
+
+
 def logo(check: str) -> str:
     """A check's icon as the data URI shields.io takes for a custom logo."""
-    icon = importlib.resources.files("repro").joinpath("icons", f"{check}.svg").read_bytes()
-    return "data:image/svg+xml;base64," + base64.b64encode(icon.strip()).decode("ascii")
+    return "data:image/svg+xml;base64," + base64.b64encode(icon(check).encode()).decode("ascii")
 
 
 def _scalar(text: str) -> str:
@@ -1226,6 +1232,39 @@ def sources_in_git(root: pathlib.Path) -> tuple[int, int]:
     return len(set(pinned)), len(held)
 
 
+def located(cwd: pathlib.Path) -> tuple[pathlib.Path, pathlib.Path | None]:
+    """The top of the git repository holding `cwd`, and the manifest found from `cwd` where it
+    is inside that repository."""
+    top = try_run("rev-parse", "--show-toplevel", cwd=cwd)
+    if not top:
+        raise NotARepositoryError(cwd)
+    root = pathlib.Path(top.strip()).resolve()
+    path = find(cwd)
+    if path is not None and not path.is_relative_to(root):
+        path = None
+    return root, path
+
+
+def kept(
+    root: pathlib.Path, path: pathlib.Path | None, *, run_reruns: bool = False
+) -> dict[str, bool]:
+    """Which checks the repository keeps a record for, in `CHECKS` order: what `init` writes
+    a workflow for. The record check is kept only where the manifest declares a command and the
+    record of re-runs holds one, or where the workflow runs the commands itself: without a
+    record the workflow could only fail, and its badge would say so from the first run."""
+    declared = bool(path and load(path).regenerations)
+    recorded = bool(path and declared and recorded_reruns(path.parent))
+    found = {check: BY_NAME[check].used_by(root) for check in TOOLS}
+    found |= {"claims": path is not None, "reruns": declared and (recorded or run_reruns)}
+    return {check: found[check] for check in CHECKS}
+
+
+def default_branch(root: pathlib.Path) -> str:
+    """The branch `origin/HEAD` names, or `main` where it names none."""
+    head = try_run("symbolic-ref", "--short", "refs/remotes/origin/HEAD", cwd=root)
+    return head.strip().removeprefix("origin/") if head else "main"
+
+
 def init(
     cwd: pathlib.Path,
     *,
@@ -1240,13 +1279,7 @@ def init(
 ) -> int:
     """Write a workflow for each check the repository holding `cwd` keeps a record for, and
     print the README lines."""
-    top = try_run("rev-parse", "--show-toplevel", cwd=cwd)
-    if not top:
-        raise NotARepositoryError(cwd)
-    root = pathlib.Path(top.strip()).resolve()
-    path = find(cwd)
-    if path is not None and not path.is_relative_to(root):
-        path = None
+    root, path = located(cwd)
     declared = bool(path and load(path).regenerations)
     if (reruns or run_reruns) and not declared:
         raise NothingToRerunError(path or root / DEFAULT_NAME)
@@ -1265,12 +1298,10 @@ def init(
         "reruns": f"repro ci reruns{named}" + (" --run" if run_reruns else ""),
     }
     steps = {"citations": POPPLER, "reruns": environment(root) if run_reruns else ""}
-    kept = {check: BY_NAME[check].used_by(root) for check in TOOLS}
-    kept |= {"claims": path is not None, "reruns": declared and (recorded or run_reruns)}
-    if not any(kept.values()):
+    keeps = kept(root, path, run_reruns=run_reruns)
+    if not any(keeps.values()):
         raise NothingToCheckError(root)
-    head = try_run("symbolic-ref", "--short", "refs/remotes/origin/HEAD", cwd=root)
-    branch = head.strip().removeprefix("origin/") if head else "main"
+    branch = default_branch(root)
     wanted = [
         workflow(
             check,
@@ -1281,7 +1312,7 @@ def init(
             environment=steps.get(check, ""),
         )
         for check in CHECKS
-        if kept[check]
+        if keeps[check]
     ]
 
     there = [root / WORKFLOWS / flow.file for flow in wanted]
@@ -1307,15 +1338,15 @@ def init(
         print(f"  name: {flow.name}")
         print(f"  runs: {flow.text.rstrip().splitlines()[-1].split('run: ', 1)[1]}")
     for check in CHECKS:
-        if not kept[check]:
+        if not keeps[check]:
             why_not = NO_RERUN if check == "reruns" and declared else NO_RECORD[check]
             print(f"skipped {check}: {why_not}")
     print(f"each runs on a push to {branch} and on every pull request")
     if run_reruns:
         print(f"edit {(WORKFLOWS / wanted[-1].file).as_posix()} to install what the commands need")
-    elif kept["reruns"] and path is not None:
+    elif keeps["reruns"] and path is not None:
         _say_reruns_not_current(path, prefix)
-    if kept["citations"] and not fetch_sources:
+    if keeps["citations"] and not fetch_sources:
         _say_sources_absent(root, prefix)
 
     if readme and slug:
@@ -1478,8 +1509,15 @@ def command_init(args: argparse.Namespace) -> int:
 
 
 def add_parser(
-    sub: argparse._SubParsersAction, *, verify: Shown, reproduce: Shown, stale: Shown
+    sub: argparse._SubParsersAction,
+    *,
+    verify: Shown,
+    reproduce: Shown,
+    stale: Shown,
+    endpoints: Callable[[argparse.Namespace], int],
 ) -> None:
+    """`endpoints` is `repro.badges.command_endpoints`, passed in because `repro.badges` reads
+    this module."""
     p = sub.add_parser(
         "ci",
         help="run the checks in a workflow, with a summary on the run page",
@@ -1584,6 +1622,23 @@ def add_parser(
     )
     p_reruns.set_defaults(func=lambda args: command_reruns(args, reproduce, stale))
 
+    p_endpoints = actions.add_parser(
+        "endpoints",
+        help="write one shields.io endpoint file per check, for badges that update themselves",
+        description=(
+            "Run each check the repository keeps a record for, as `repro badges` runs it, and "
+            "write DIRECTORY/<check>.json for each of prereg, results, claims, citations and "
+            "reruns: a shields.io endpoint file holding the label, message, colour and icon "
+            "`repro badges` would draw. A check with no record is written gray, `none "
+            "declared`. The citations file is read from the record `repro badges --record` "
+            "commits, never from a run here, because a clone does not hold the sources. The "
+            "workflow `repro badges init` writes runs this. Exits 0 once the files are "
+            "written, whatever the checks found: the files carry that."
+        ),
+    )
+    p_endpoints.add_argument("directory", help="where to write the files; made if absent")
+    p_endpoints.set_defaults(func=endpoints)
+
     p_init = actions.add_parser(
         "init",
         help="write the workflows and print the README lines",
@@ -1655,7 +1710,10 @@ __all__ = [
     "Workflow",
     "claims",
     "claims_summary",
+    "default_branch",
     "init",
+    "kept",
+    "located",
     "repository",
     "reruns_summary",
     "tool",
