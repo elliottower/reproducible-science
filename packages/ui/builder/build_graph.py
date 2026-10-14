@@ -327,6 +327,7 @@ def citing_sentences(project: pathlib.Path, tex_paths: list[str]) -> dict[str, l
             text = cite.sub(lambda c: "[" + c.group(1) + "]", raw)
             text = re.sub(r"\\(?:emph|textit|textbf|code|tVerify|texttt)\{([^}]*)\}", r"\1", text)
             text = re.sub(r"\\[a-zA-Z]+\*?(\[[^\]]*\])?(\{[^}]*\})?", "", text).replace("~", " ")
+            text = text.replace("\\%", "%").replace("\\&", "and")
             text = text.replace("\\\\", " ").replace("&", "|")
             text = re.sub(r"[{}$]", "", re.sub(r"\s+", " ", text)).strip(" |")
             section = next((name for pos, name in reversed(sections) if pos < m.start()), "")

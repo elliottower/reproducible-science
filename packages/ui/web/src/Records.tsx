@@ -200,27 +200,17 @@ const sentenceWords = (texts: string[]) =>
 function CitationsByClaim({ graph, query, onOpen }: { graph: Graph; query: string; onOpen: (s: Source) => void }) {
   const q = query.trim().toLowerCase()
   const sources = (graph.tabs?.citations.sources ?? []).filter((s) => !q || JSON.stringify(s).toLowerCase().includes(q))
-  const [groupBy, setGroupBy] = useState<'source' | 'section'>('source')
-  const [openSecs, setOpenSecs] = useState<Set<string>>(new Set())
+  const groupBy = 'section' as 'source' | 'section'
+  // The first section (the introduction) starts open; every other section starts closed.
+  const [openSecs, setOpenSecs] = useState<Set<string>>(new Set(['0']))
   const flipSec = (n: string) => setOpenSecs((prev) => { const x = new Set(prev); if (x.has(n)) x.delete(n); else x.add(n); return x })
   const head = (
-    <thead><tr><th style={{ width: '16%' }}>Source</th><th style={{ width: '28%' }}>Source quotations</th><th style={{ width: '20%' }}>Interpretation</th><th>
-      <div className="ms-grid ms-grid-head"><span>Manuscript text</span><span>Manuscript section</span></div>
-    </th></tr></thead>
+    <thead><tr><th style={{ width: '16%' }}>Source</th><th style={{ width: '28%' }}>Source quotations</th><th style={{ width: '20%' }}>Interpretation</th><th>Manuscript text</th></tr></thead>
   )
   const switcher = (
     <div className="seg-right">
-      {groupBy === 'section' && (
-        <>
-          <button className="link-btn" onClick={() => setOpenSecs(new Set([...Array.from({ length: 200 }, (_, i) => `${i}`), 'uncited']))}>Expand all</button>
-          <button className="link-btn" onClick={() => setOpenSecs(new Set())}>Collapse all</button>
-        </>
-      )}
-      <span className="muted small">Group by</span>
-      <div className="seg small-seg">
-        <button className={groupBy === 'source' ? 'on' : ''} onClick={() => setGroupBy('source')}>Source</button>
-        <button className={groupBy === 'section' ? 'on' : ''} onClick={() => setGroupBy('section')}>Manuscript section</button>
-      </div>
+      <button className="link-btn" onClick={() => setOpenSecs(new Set([...Array.from({ length: 200 }, (_, i) => `${i}`), 'uncited']))}>Expand all</button>
+      <button className="link-btn" onClick={() => setOpenSecs(new Set())}>Collapse all</button>
     </div>
   )
 
