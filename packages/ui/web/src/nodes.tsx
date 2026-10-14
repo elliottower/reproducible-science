@@ -2,15 +2,19 @@ import { createContext, useContext } from 'react'
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 import type { GroupSummary } from './layout'
 import { fmt, Freshness, Status, when } from './shared'
-import type { GNode } from './types'
+import type { ClaimRow, GNode } from './types'
 
 export interface Ctx {
   selected: string | null
   matches: Set<string>
   related: Set<string>
   toggle: (group: string) => void
+  openFiles: Set<string>
+  toggleFile: (file: string) => void
 }
-export const UiCtx = createContext<Ctx>({ selected: null, matches: new Set(), related: new Set(), toggle: () => {} })
+export const UiCtx = createContext<Ctx>({
+  selected: null, matches: new Set(), related: new Set(), toggle: () => {}, openFiles: new Set(), toggleFile: () => {},
+})
 
 function nodeClass(id: string, ctx: Ctx, extra = '') {
   const c = ['card', extra]
@@ -32,7 +36,13 @@ function ArtifactNode({ data, id }: NodeProps) {
         <span className="mono name">{n.id}</span>
       </div>
       <div className="card-sub mono">{n.path}</div>
-      <Status ok={n.ok} fail={n.fail} problem={problem} />
+      <div
+        className={`status-click ${ctx.openFiles.has(n.id) ? 'opened' : ''}`}
+        onClick={(e) => { if (n.claims.length) { e.stopPropagation(); ctx.toggleFile(n.id) } }}
+        title={n.claims.length ? (ctx.openFiles.has(n.id) ? 'Hide its claims' : 'Show its claims in the graph') : undefined}
+      >
+        <Status ok={n.ok} fail={n.fail} problem={problem} />
+      </div>
       <div className="card-foot">
         <Freshness node={n} />
         <span>{n.last_checked ? `checked ${when(n.last_checked)}` : ''}</span>
@@ -52,7 +62,13 @@ function SectionNode({ data, id }: NodeProps) {
         <span className="icon">§</span>
         <span className="name">{n.label}</span>
       </div>
-      <Status ok={n.ok} fail={n.fail} />
+      <div
+        className={`status-click ${ctx.openFiles.has(n.id) ? 'opened' : ''}`}
+        onClick={(e) => { if (n.claims.length) { e.stopPropagation(); ctx.toggleFile(n.id) } }}
+        title={ctx.openFiles.has(n.id) ? 'Hide its claims' : 'Show its claims in the graph'}
+      >
+        <Status ok={n.ok} fail={n.fail} />
+      </div>
       <Handle type="source" position={Position.Right} />
     </div>
   )
@@ -109,4 +125,36 @@ function GroupOpen({ data }: NodeProps) {
   )
 }
 
-export const nodeTypes = { artifact: ArtifactNode, section: SectionNode, groupCollapsed: GroupCollapsed, groupOpen: GroupOpen }
+function ClaimNode({ data, id }: NodeProps) {
+  const ctx = useContext(UiCtx)
+  const c = (data as { claim: ClaimRow }).claim
+  return (
+    <div className={nodeClass(id, ctx, `claim-card ${c.ok ? '' : 'bad'}`)} style={{ width: 240 }}>
+      <Handle type="target" position={Position.Left} />
+      <div className="claim-card-top">
+        <span className={`dot ${c.ok ? 'good' : 'bad'}`} />
+        <span className="mono name">{c.id}</span>
+      </div>
+      <div className="claim-card-sub">
+        <span>{c.where}</span>
+        <span>{c.assertions.filter((a) => a.kind !== 'quote').map((a) => a.extracted).filter(Boolean)[0] ?? ''}</span>
+      </div>
+      <Handle type="source" position={Position.Right} />
+    </div>
+  )
+}
+
+function MoreNode({ data, id }: NodeProps) {
+  const ctx = useContext(UiCtx)
+  const d = data as { more: number }
+  return (
+    <div className={nodeClass(id, ctx, 'more-card')} style={{ width: 240 }}>
+      <Handle type="target" position={Position.Left} />
+      +{d.more} more claims · open the panel
+    </div>
+  )
+}
+
+export const nodeTypes = {
+  claim: ClaimNode,
+  more: MoreNode, artifact: ArtifactNode, section: SectionNode, groupCollapsed: GroupCollapsed, groupOpen: GroupOpen }

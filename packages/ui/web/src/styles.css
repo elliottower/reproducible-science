@@ -216,3 +216,13 @@ tr.sel { background: #f3f2fe !important; }
 .ov-headline { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-top: 2px; }
 .ov-headline .dot { align-self: center; }
 .ov-name { color: var(--accent); font-weight: 500; }
+.status-click { cursor: pointer; }
+.status-click:hover .status { filter: brightness(0.96); text-decoration: underline; }
+.status-click.opened .status { box-shadow: inset 3px 0 0 currentColor; }
+.claim-card { border-radius: 7px; }
+.claim-card.bad { border-color: #efb4aa; }
+.claim-card-top { display: flex; align-items: center; gap: 6px; padding: 7px 10px 2px; }
+.claim-card-top .name { font-size: 11px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.claim-card-sub { display: flex; justify-content: space-between; padding: 2px 10px 7px 23px; font-size: 10.5px; color: var(--muted); }
+.more-card { padding: 11px 12px; font-size: 11px; color: var(--accent); border-style: dashed; }
+.edge-reads .react-flow__edge-path { stroke: #c9c4f5; }

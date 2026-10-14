@@ -1,6 +1,6 @@
 import ELK from 'elkjs/lib/elk.bundled.js'
 import type { Edge, Node } from '@xyflow/react'
-import type { GNode, Graph } from './types'
+import type { ClaimRow, GNode, Graph } from './types'
 
 const elk = new ELK()
 
@@ -8,7 +8,11 @@ export const SIZE = {
   artifact: { w: 270, h: 92 },
   section: { w: 210, h: 66 },
   collapsed: { w: 270, h: 96 },
+  claim: { w: 240, h: 58 },
 }
+
+/** Claims drawn under an opened file; the rest are one "+N more" card that opens the panel. */
+export const CLAIMS_SHOWN = 12
 
 export interface GroupSummary {
   id: string
@@ -57,12 +61,34 @@ export async function layout(
   graph: Graph,
   open: Set<string>,
   groups: Map<string, GroupSummary>,
+  openFiles: Set<string> = new Set(),
 ): Promise<{ nodes: Node[]; edges: Edge[] }> {
   const byId = new Map(graph.nodes.map((n) => [n.id, n]))
+  const sectionId = (section: string) => `sec:${section}`
+
+  // An opened file or paper section draws its claims as cards in its own group. A file's cards are
+  // wired file -> claim -> section, a section's cards file -> claim -> section; either replaces the
+  // opened node's direct edges.
+  type Card = { owner: string; group: string; claim?: ClaimRow; more?: number }
+  const claimCards = new Map<string, Card[]>()
+  const replacedFrom = new Set<string>()
+  const replacedTo = new Set<string>()
+  for (const oid of openFiles) {
+    const o = byId.get(oid)
+    if (!o || !open.has(o.group) || o.claims.length === 0) continue
+    if (o.type === 'artifact') replacedFrom.add(oid)
+    else replacedTo.add(oid)
+    const sorted = [...o.claims].sort((a, b) => Number(a.ok) - Number(b.ok))
+    const cards: Card[] = sorted.slice(0, CLAIMS_SHOWN).map((c) => ({ owner: oid, group: o.group, claim: c }))
+    if (sorted.length > CLAIMS_SHOWN) cards.push({ owner: oid, group: o.group, more: sorted.length - CLAIMS_SHOWN })
+    claimCards.set(oid, cards)
+  }
+  const cardId = (owner: string, c: { claim?: ClaimRow; more?: number }) => (c.claim ? `claim:${owner}::${c.claim.id}` : `more:${owner}`)
 
   // Visible edges, with parallel edges between the same visible pair merged and counted.
   const merged = new Map<string, { source: string; target: string; kinds: Set<string>; count: number }>()
   for (const e of graph.edges) {
+    if (e.kind === 'supports' && (replacedFrom.has(e.source) || replacedTo.has(e.target))) continue
     const s = byId.get(e.source)
     const t = byId.get(e.target)
     if (!s || !t) continue
@@ -76,6 +102,34 @@ export async function layout(
     merged.set(key, m)
   }
 
+  const addEdge = (source: string, target: string, kind: string, count = 0) => {
+    const key = `${source}->${target}`
+    const m = merged.get(key) ?? { source, target, kinds: new Set(), count: 0 }
+    m.kinds.add(kind)
+    m.count += count
+    merged.set(key, m)
+  }
+  for (const [oid, cards] of claimCards) {
+    const owner = byId.get(oid)!
+    for (const c of cards) {
+      const id = cardId(oid, c)
+      if (owner.type === 'artifact') {
+        addEdge(oid, id, 'reads')
+        if (c.claim) {
+          const sec = byId.get(sectionId(c.claim.section))
+          if (sec) addEdge(id, visibleId(sec, open), 'supports')
+        }
+      } else {
+        addEdge(id, oid, 'supports')
+        const files = new Set((c.claim?.assertions ?? []).filter((a) => a.kind !== 'quote').map((a) => a.artifact))
+        for (const f of files) {
+          const fn = byId.get(f)
+          if (fn) addEdge(visibleId(fn, open), id, 'reads')
+        }
+      }
+    }
+  }
+
   const children: any[] = []
   for (const g of graph.groups) {
     const s = groups.get(g.id)!
@@ -83,11 +137,12 @@ export async function layout(
       children.push({
         id: `group:${g.id}`,
         layoutOptions: { 'elk.padding': '[top=48,left=16,bottom=16,right=16]' },
-        children: s.members.map((n) => ({
-          id: n.id,
-          width: SIZE[n.type].w,
-          height: SIZE[n.type].h,
-        })),
+        children: [
+          ...s.members.map((n) => ({ id: n.id, width: SIZE[n.type].w, height: SIZE[n.type].h })),
+          ...[...claimCards.entries()]
+            .filter(([oid]) => byId.get(oid)?.group === g.id)
+            .flatMap(([oid, cards]) => cards.map((c) => ({ id: cardId(oid, c), width: SIZE.claim.w, height: c.more ? 40 : SIZE.claim.h }))),
+        ],
       })
     } else {
       children.push({ id: `group:${g.id}`, width: SIZE.collapsed.w, height: SIZE.collapsed.h })
@@ -123,6 +178,19 @@ export async function layout(
         selectable: false,
       })
       for (const k of c.children ?? []) {
+        if (k.id.startsWith('claim:') || k.id.startsWith('more:')) {
+          const fid = k.id.startsWith('more:') ? k.id.slice(5) : k.id.slice(6, k.id.indexOf('::'))
+          const card = claimCards.get(fid)!.find((x) => cardId(fid, x) === k.id)!
+          nodes.push({
+            id: k.id,
+            type: card.more ? 'more' : 'claim',
+            parentId: c.id,
+            extent: 'parent',
+            position: { x: k.x ?? 0, y: k.y ?? 0 },
+            data: { claim: card.claim, file: fid, more: card.more },
+          })
+          continue
+        }
         const n = byId.get(k.id)!
         nodes.push({
           id: k.id,
@@ -145,6 +213,7 @@ export async function layout(
 
   const edges: Edge[] = [...merged.values()].map((m) => {
     const regen = m.kinds.has('regenerates') && !m.kinds.has('supports')
+    const reads = m.kinds.has('reads')
     return {
       id: `${m.source}->${m.target}`,
       source: m.source,
@@ -152,7 +221,7 @@ export async function layout(
       type: 'default',
       label: m.count ? `${m.count} claim${m.count === 1 ? '' : 's'}` : undefined,
       data: { regen },
-      className: regen ? 'edge-regen' : 'edge-supports',
+      className: regen ? 'edge-regen' : reads ? 'edge-reads' : 'edge-supports',
     }
   })
   return { nodes, edges }

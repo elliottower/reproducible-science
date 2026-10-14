@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Background, Controls, ReactFlow, ReactFlowProvider, useReactFlow, type Edge, type Node } from '@xyflow/react'
 import Catalog from './Catalog'
 import Overview from './Overview'
@@ -21,12 +21,14 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
     new Set((initial.get('open') ?? '').split('|').filter((g) => graph.groups.some((x) => x.id === g))),
   )
   const [selected, setSelected] = useState<string | null>(initial.get('sel'))
+  const [openFiles, setOpenFiles] = useState<Set<string>>(new Set((initial.get('files') ?? '').split('|').filter(Boolean)))
   const [query, setQuery] = useState('')
   const [mode, setMode] = useState<'overview' | 'graph' | 'catalog'>(
     (['overview', 'catalog'] as const).find((v) => v === initial.get('view')) ?? 'graph',
   )
   const [flow, setFlow] = useState<{ nodes: Node[]; edges: Edge[] }>({ nodes: [], edges: [] })
   const rf = useReactFlow()
+  const fitted = useRef(false)
 
   const matches = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -44,21 +46,33 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
 
   useEffect(() => {
     let live = true
-    layout(graph, open, groups).then((r) => {
+    layout(graph, open, groups, openFiles).then((r) => {
       if (!live) return
       setFlow(r)
-      requestAnimationFrame(() => rf.fitView({ padding: 0.08, duration: 300 }))
+      // Fit once, when the graph first appears; afterwards the zoom is the reader's.
+      if (!fitted.current) {
+        fitted.current = true
+        requestAnimationFrame(() => rf.fitView({ padding: 0.08, duration: 300 }))
+      }
     })
     return () => { live = false }
     // groups changes with every search keystroke; layout only depends on which groups are open.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graph, open])
+  }, [graph, open, openFiles])
 
   const toggle = (g: string) =>
     setOpen((prev) => {
       const next = new Set(prev)
       if (next.has(g)) next.delete(g)
       else next.add(g)
+      return next
+    })
+
+  const toggleFile = (f: string) =>
+    setOpenFiles((prev) => {
+      const next = new Set(prev)
+      if (next.has(f)) next.delete(f)
+      else next.add(f)
       return next
     })
 
@@ -101,14 +115,15 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
     const h = new URLSearchParams()
     if (open.size) h.set('open', [...open].join('|'))
     if (selected) h.set('sel', selected)
+    if (openFiles.size) h.set('files', [...openFiles].join('|'))
     if (mode !== 'graph') h.set('view', mode)
     window.history.replaceState(null, '', `#${h.toString()}`)
-  }, [open, selected, mode])
+  }, [open, selected, mode, openFiles])
 
   const failing = graph.totals.failing
 
   return (
-    <UiCtx.Provider value={{ selected, matches, related, toggle }}>
+    <UiCtx.Provider value={{ selected, matches, related, toggle, openFiles, toggleFile }}>
       <div className="app">
         <header className="top">
           <div className="brand">Claim lineage</div>
@@ -170,7 +185,8 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
                 nodeTypes={nodeTypes}
                 onNodeClick={(_, n) => {
                 if (n.type === 'groupOpen') return setSelected(null)
-                setSelected(n.id)
+                setSelected(n.type === 'more' ? (n.data as { file: string }).file : n.id)
+                if (n.type === 'more') return
                 // Pan so the clicked node sits at the centre; the zoom stays where the reader left it.
                 const inner = rf.getInternalNode(n.id)
                 if (!inner) return

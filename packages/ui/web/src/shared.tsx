@@ -110,6 +110,20 @@ export function ClaimList({ claims, limit = 40 }: { claims: ClaimRow[]; limit?: 
 
 export function Panel({ graph, id, onClose, onExpand }: { graph: Graph; id: string; onClose: () => void; onExpand?: (g: string) => void }) {
   const node = graph.nodes.find((n) => n.id === id)
+  if (id.startsWith('claim:')) {
+    const owner = id.slice(6, id.indexOf('::'))
+    const cid = id.slice(id.indexOf('::') + 2)
+    const claim = graph.nodes.find((n) => n.id === owner)?.claims.find((c) => c.id === cid)
+    if (!claim) return null
+    return (
+      <aside className="panel">
+        <button className="close" onClick={onClose}>×</button>
+        <div className="kicker">CLAIM</div>
+        <h2 className="mono">{claim.id}</h2>
+        <ClaimList claims={[claim]} />
+      </aside>
+    )
+  }
   if (id.startsWith('group:')) {
     const gid = id.slice(6)
     const members = graph.nodes.filter((n) => n.group === gid)
