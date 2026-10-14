@@ -17,19 +17,6 @@ import subprocess
 
 import yaml
 
-# Files are grouped by topic, first match wins; anything unmatched is grouped by directory.
-# This list is specific to the reproducible-science paper and moves to a config file next.
-TOPICS = [
-    ("Manuscript", r"^(manuscript|appendix|failure-cases|certified-reproductions|reexecution-precedents|literature-census|figures)"),
-    ("CODECHECK register", r"^codecheck"),
-    ("CORE-Bench", r"^corebench"),
-    ("Timing", r"(timings|performance)"),
-    ("Literature census", r"^(census|corpus|unions|extractor-spread|audit-record-census|conformance)"),
-    ("Audits of our papers", r"(knockout|cross-design|catch-log|command-counts|audit-counts)"),
-    ("Bibliography audit", r"^bibliography"),
-    ("RNA worked example", r"^rna-"),
-    ("Coverage of this paper", r"^(layout|split|body-claims|number-coverage)"),
-]
 PAPER_GROUPS = {"Section": "Paper: body", "Table": "Paper: tables", "Appendix": "Paper: appendices"}
 MANUSCRIPT_IDS = {"manuscript", "manuscript-text", "appendix", "appendix-text"}
 # Worst first, for collapsing several assertions into one outcome per check.
@@ -56,11 +43,167 @@ def section_of(where: str) -> str:
     return f"Section {m.group(1)}" if m else first
 
 
-def topic_of(aid: str, path: str) -> str:
-    for name, pat in TOPICS:
-        if re.search(pat, aid):
-            return name
-    return str(pathlib.PurePosixPath(path).parent)
+def auto_groups(artifacts: dict, regenerations: list, readers: dict[str, set[str]], places: dict[str, set[str]],
+                overrides: list[dict]) -> dict[str, str]:
+    """Group files with no configuration, the way Dagster groups assets by the code that owns them.
+
+    Joined, in order: a file matching an override's pattern goes to that group; every .tex file and
+    the text rendered from it form the manuscript; a file joins the step it feeds, unless it feeds
+    more than two; files whose ids share a first word join; a file still alone joins the group
+    whose files back claims in the most of the same places in the paper. A group is named for its members'
+    common first word, or for its largest member.
+    """
+    ids = list(artifacts)
+    parent = {a: a for a in ids}
+
+    def find(x: str) -> str:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(a: str, b: str) -> None:
+        parent[find(a)] = find(b)
+
+    fixed: dict[str, str] = {}
+    for a in ids:
+        for o in overrides:
+            if re.search(o["match"], a):
+                fixed[a] = o["group"]
+                break
+
+    tex = {a for a in ids if artifacts[a].get("media_type") == "application/x-tex"}
+    rendered = {r["output"]["artifact"] for r in regenerations if any(i["artifact"] in tex for i in r["inputs"])}
+    manuscript = (tex | rendered) - set(fixed)
+
+    outdeg = collections.Counter(i["artifact"] for r in regenerations for i in r["inputs"])
+    for r in regenerations:
+        out = r["output"]["artifact"]
+        for i in r["inputs"]:
+            src = i["artifact"]
+            if src in parent and out in parent and not {src, out} & (manuscript | set(fixed)) and outdeg[src] <= 2:
+                union(src, out)
+    by_word = collections.defaultdict(list)
+    for a in ids:
+        if a not in manuscript and a not in fixed:
+            by_word[a.split("-")[0]].append(a)
+    for members in by_word.values():
+        for m in members[1:]:
+            union(m, members[0])
+
+    def members_of() -> dict[str, list[str]]:
+        out = collections.defaultdict(list)
+        for a in ids:
+            if a not in manuscript and a not in fixed:
+                out[find(a)].append(a)
+        return out
+
+    for root, members in list(members_of().items()):
+        if len(members) > 1:
+            continue
+        a = members[0]
+        best, score = None, 0
+        for other_root, others in members_of().items():
+            if other_root == root or len(others) < 2:
+                continue
+            shared = sum(len(places.get(a, set()) & places.get(o, set())) for o in others)
+            if shared > score:
+                best, score = other_root, shared
+        if best:
+            union(a, best)
+
+    names: dict[str, str] = {}
+    for root, members in members_of().items():
+        words = collections.Counter(m.split("-")[0] for m in members)
+        word, n = words.most_common(1)[0]
+        names[root] = word if n > 1 or len(members) == 1 else max(members, key=lambda m: len(readers.get(m, ())))
+    group = {a: names[find(a)] for a in ids if a not in manuscript and a not in fixed}
+    group.update({a: "manuscript" for a in manuscript})
+    group.update(fixed)
+    return group
+
+
+def read_labels(project: pathlib.Path, manuscript_path: str | None) -> tuple[dict[str, str], dict[str, str]]:
+    """From the .aux LaTeX wrote beside the manuscript: label -> number (`tab:timing` -> `15`),
+    and table number -> normalized caption text."""
+    if not manuscript_path:
+        return {}, {}
+    aux = (project / manuscript_path).with_suffix(".aux")
+    if not aux.is_file():
+        return {}, {}
+    labels, captions = {}, {}
+    for line in aux.read_text(errors="replace").splitlines():
+        m = re.match(r"\\newlabel\{([^}]+)\}\{\{([^}]*)\}\{[^}]*\}\{(.*)\}\{[^}]*\}\{\}\}$", line)
+        if not m:
+            continue
+        labels[m.group(1)] = m.group(2)
+        if m.group(1).startswith("tab:"):
+            captions[m.group(2)] = normalize(m.group(3))
+    return labels, captions
+
+
+def table_texts(project: pathlib.Path, tex_paths: list[str], labels: dict[str, str]) -> dict[str, str]:
+    """Table number -> normalized text of the whole table environment (caption and cells), from
+    every .tex file the manifest pins. Cells are joined with ` | `, as a text rendering prints them."""
+    out: dict[str, str] = {}
+    for rel in tex_paths:
+        f = project / rel
+        if not f.is_file():
+            continue
+        src = f.read_text(errors="replace")
+        for block in re.findall(r"\\begin\{table\*?\}(.*?)\\end\{table\*?\}", src, flags=re.S):
+            m = re.search(r"\\label\{(tab:[^}]+)\}", block)
+            if m and m.group(1) in labels:
+                out[labels[m.group(1)]] = out.get(labels[m.group(1)], "") + " " + normalize(block.replace("&", " | "))
+    return out
+
+
+def normalize(tex: str) -> str:
+    s = tex.replace("{,}", ",").replace("~", " ").replace("\\relax", "").replace("\\\\", " ")
+    s = re.sub(r"\\[a-zA-Z]+\s*", "", s)
+    s = re.sub(r"[{}$^]", "", s)
+    return re.sub(r"\s+", " ", s).strip().lower()
+
+
+def correct_tables(claims: list[dict], labels: dict[str, str], captions: dict[str, str]) -> dict[str, str]:
+    """Declared `Table N` -> the table whose caption holds the passages its claims quote.
+
+    A manifest's `where` is written by hand and nothing checks it, so table numbers drift when a
+    paper is renumbered. A claim that quotes a caption names its table: vote over those claims."""
+    votes: dict[str, collections.Counter] = collections.defaultdict(collections.Counter)
+    for c in claims:
+        for part in c.get("where", "").split(","):
+            part = part.strip()
+            if not part.startswith("Table "):
+                continue
+            for ev in c.get("evidence", []):
+                q = normalize(ev.get("text", "")) if ev.get("kind") == "quote" else ""
+                if len(q) < 12:
+                    continue
+                for num, cap in captions.items():
+                    if q in cap:
+                        votes[part][num] += 1
+    fixed = {}
+    for declared, v in votes.items():
+        num, n = v.most_common(1)[0]
+        if f"Table {num}" != declared:
+            fixed[declared] = f"Table {num}"
+    return fixed
+
+
+def resolve_where(where: str, labels: dict[str, str], fixed: dict[str, str]) -> str:
+    """`Table fc-cases` -> `Table 10` where the .aux knows the label, and a drifted table number
+    to the table its quoted caption is in; anything else unchanged."""
+    def one(part: str) -> str:
+        if part.strip() in fixed:
+            return fixed[part.strip()]
+        m = re.match(r"(Table|Figure|Section|Appendix)\s+(\S+)$", part.strip())
+        if not m or re.match(r"^[A-Z0-9.]+$", m.group(2)):
+            return part.strip()
+        prefix = {"Table": "tab:", "Figure": "fig:", "Section": "sec:", "Appendix": "sec:"}[m.group(1)]
+        num = labels.get(prefix + m.group(2))
+        return f"{m.group(1)} {num}" if num else part.strip()
+    return ", ".join(one(p) for p in where.split(","))
 
 
 def worst(outcomes: list[str]) -> str:
@@ -83,6 +226,8 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("project", type=pathlib.Path)
     ap.add_argument("out", type=pathlib.Path)
+    ap.add_argument("--groups", type=pathlib.Path,
+                    help="optional YAML list of {group, match}: a file whose id matches the regex goes to that group")
     a = ap.parse_args()
     project = a.project.resolve()
 
@@ -96,6 +241,21 @@ def main() -> None:
     artifacts = {x["id"]: x for x in manifest["artifacts"]}
     is_code = {aid for aid, x in artifacts.items() if x.get("media_type") == "text/x-python"}
     claim_decl = {c["id"]: c for c in manifest["claims"]}
+    labels, captions = read_labels(project, artifacts.get("manuscript", {}).get("path"))
+    tex_paths = [x["path"] for x in artifacts.values() if x.get("media_type") == "application/x-tex"]
+    for num, body in table_texts(project, tex_paths, labels).items():
+        captions[num] = captions.get(num, "") + " " + body
+    fixed_tables = correct_tables(manifest["claims"], labels, captions)
+    readers: dict[str, set[str]] = collections.defaultdict(set)
+    places: dict[str, set[str]] = collections.defaultdict(set)
+    for c in manifest["claims"]:
+        for ev in c.get("evidence", []):
+            if ev.get("artifact"):
+                readers[ev["artifact"]].add(c["id"])
+                places[ev["artifact"]].add(resolve_where(c.get("where", ""), labels, fixed_tables))
+    overrides = yaml.safe_load(a.groups.read_text()) if a.groups else []
+    group_of = auto_groups({k: v for k, v in artifacts.items() if k not in is_code},
+                           manifest.get("regenerations", []), readers, places, overrides)
 
     last_run: dict[str, dict] = {}
     for e in ledger:
@@ -130,7 +290,8 @@ def main() -> None:
     edge_counts = collections.Counter()
     for c in report["claims"]:
         decl = claim_decl.get(c["claim_id"], {})
-        where = decl.get("where", "unplaced")
+        declared = decl.get("where", "unplaced")
+        where = resolve_where(declared, labels, fixed_tables)
         sec = section_of(where)
         st = stale_claim.get(c["claim_id"], {})
         st_assert = st.get("assertions", [])
@@ -144,7 +305,7 @@ def main() -> None:
                 "stale": st_assert[i]["state"] if i < len(st_assert) else None,
             })
         row = {
-            "id": c["claim_id"], "where": where, "section": sec, "text": decl.get("text", ""),
+            "id": c["claim_id"], "where": where, "declared_where": declared, "section": sec, "text": decl.get("text", ""),
             "ok": all(r["ok"] for r in rows), "stale": st.get("state"),
             "history": history.get(c["claim_id"], []),
         }
@@ -168,7 +329,7 @@ def main() -> None:
         run = last_run.get(path)
         current = sha256(project / path)
         pinned = art.get("digest", {}).get("value")
-        group = topic_of(aid, path)
+        group = group_of[aid]
         groups.setdefault(group, {"id": group, "kind": "files"})
         regen = regen_of.get(aid)
         sr = stale_regen.get(aid)
@@ -190,7 +351,9 @@ def main() -> None:
 
     def sec_key(s: str) -> tuple:
         order = {"Section": 0, "Table": 1, "Appendix": 2}
-        return (order.get(s.split()[0], 3), s)
+        head, _, rest = s.partition(" ")
+        nums = tuple(int(x) if x.isdigit() else x for x in re.split(r"[.\s]", rest))
+        return (order.get(head, 3), tuple((0, x) if isinstance(x, int) else (1, x) for x in nums))
 
     for g in PAPER_GROUPS.values():
         groups[g] = {"id": g, "kind": "sections"}
@@ -220,6 +383,7 @@ def main() -> None:
             "reruns": int(staleness.get("reruns") or 0),
             "stale_steps": sum(1 for r in staleness["regenerations"] if r["state"] == "stale"),
             "checks": len(checks),
+            "relabelled_tables": fixed_tables,
             "last_check": checks[-1]["timestamp"] if checks else None,
         },
         "groups": list(groups.values()),

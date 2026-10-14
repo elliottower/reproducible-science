@@ -70,13 +70,6 @@ function Canvas({ graph }: { graph: Graph }) {
     return r
   }, [selected, flow.edges])
 
-  // Zoom to the selected node's lineage, as Dagster does when an asset is focused.
-  useEffect(() => {
-    if (!selected || mode !== 'graph' || !related.size) return
-    const ids = [...related].filter((id) => flow.nodes.some((n) => n.id === id))
-    if (ids.length) rf.fitView({ nodes: ids.map((id) => ({ id })), padding: 0.2, maxZoom: 1.1, duration: 300 })
-  }, [selected, related, mode, flow.nodes, rf])
-
   const edges = useMemo(
     () =>
       flow.edges.map((e) => {
