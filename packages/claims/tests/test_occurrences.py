@@ -18,6 +18,7 @@ from claims.cli import main
 from claims.manifest import load
 from claims.models import (
     CorrespondenceEvidence,
+    Digest,
     ExtractionStatus,
     Outcome,
     Reason,
@@ -517,37 +518,105 @@ def aliased(tmp_path, second_path="paper.md", second_text=None):
 
 
 @pytest.mark.parametrize(
-    ("second_path", "second_text"),
-    [("paper.md", None), ("./sub/../paper.md", None), ("copy.md", ONE_PLACE)],
+    ("second_path", "second_text", "said"),
+    [
+        ("paper.md", None, "which are one file"),
+        ("./sub/../paper.md", None, "which are one file"),
+        ("copy.md", ONE_PLACE, "which hold the same bytes"),
+    ],
 )
-def test_one_file_under_two_ids_is_not_compared_with_itself(tmp_path, second_path, second_text):
+def test_one_file_under_two_ids_is_not_compared_with_itself(
+    tmp_path, second_path, second_text, said
+):
     (tmp_path / "sub").mkdir()
     report = aliased(tmp_path, second_path, second_text)
     decision = report.decisions[0]
     assert decision.outcome is Outcome.UNCHECKED
     assert decision.reason is Reason.SIDES_READ_ONE_PLACE
-    assert "in paper and paper_again, which are one file, 8.4 at line 1" in decision.detail
+    assert f"in paper and paper_again, {said}, 8.4 at line 1" in decision.detail
 
 
 @pytest.mark.parametrize(
-    ("second_path", "second_text", "said"),
+    ("second_path", "second_text", "rule", "said", "strict"),
     [
-        ("paper.md", None, "paper and paper_again name the same file"),
-        ("copy.md", ONE_PLACE, "paper and paper_again hold the same bytes"),
+        (
+            "paper.md",
+            None,
+            "artifact.alias",
+            "paper and paper_again name the same file",
+            Severity.ERROR,
+        ),
+        (
+            "copy.md",
+            ONE_PLACE,
+            "artifact.same_bytes",
+            "paper and paper_again hold the same bytes",
+            Severity.WARNING,
+        ),
     ],
 )
 def test_two_ids_for_one_file_are_a_policy_finding_naming_both(
-    tmp_path, second_path, second_text, said
+    tmp_path, second_path, second_text, rule, said, strict
 ):
     report = aliased(tmp_path, second_path, second_text)
-    found = [v for v in PUBLICATION.assess(report).violations if v.rule == "artifact.alias"]
-    assert len(found) == 1, "one finding per pair"
+    aliases = ("artifact.alias", "artifact.same_bytes")
+    found = [v for v in PUBLICATION.assess(report).violations if v.rule in aliases]
+    assert [v.rule for v in found] == [rule], "one finding per pair, under its own rule"
     assert found[0].severity is Severity.WARNING
     assert found[0].subject == "paper"
     assert found[0].detail.startswith(said)
-    assert [v.severity for v in STRICT.assess(report).violations if v.rule == "artifact.alias"] == [
-        Severity.ERROR
+    assert [v.severity for v in STRICT.assess(report).violations if v.rule == rule] == [strict]
+
+
+def test_comparing_two_files_reuses_the_digests_their_pins_were_checked_with(tmp_path, monkeypatch):
+    """Two files of one size are compared by digest, and the digests are the pins'."""
+    for name, value in (("a.md", "8.3"), ("b.md", "8.4")):
+        (tmp_path / name).write_text(
+            "".join(f"in case {n} the accuracy was {value} x.\n" for n in range(40))
+        )
+    claims = [
+        {
+            "id": f"c{n}",
+            "text": "t",
+            "evidence": [
+                {
+                    "kind": "correspondence",
+                    "name": "c",
+                    "sides": [
+                        {
+                            "name": side,
+                            "artifact": side,
+                            "locator": {
+                                "kind": "prose",
+                                "before": f"in case {n} the accuracy was",
+                                "after": "x",
+                            },
+                        }
+                        for side in ("a", "b")
+                    ],
+                }
+            ],
+        }
+        for n in range(40)
     ]
+    manifest = {
+        "schema_version": "repro/1",
+        "project": "t",
+        "artifacts": [{"id": "a", "path": "a.md"}, {"id": "b", "path": "b.md"}],
+        "claims": claims,
+    }
+    (tmp_path / "repro.yaml").write_text(yaml.safe_dump(manifest, sort_keys=False))
+    hashed = []
+    original = Digest.of_file
+
+    def counting(path):
+        hashed.append(path)
+        return original(path)
+
+    monkeypatch.setattr(Digest, "of_file", counting)
+    report = verify(load(tmp_path / "repro.yaml"))
+    assert {d.outcome for d in report.decisions} == {Outcome.MISMATCH}
+    assert len(hashed) == 2, "one hash per artifact, for its pin"
 
 
 def test_two_files_with_different_bytes_are_neither_aliased_nor_refused(tmp_path):
@@ -560,6 +629,32 @@ def test_two_files_with_different_bytes_are_neither_aliased_nor_refused(tmp_path
 # -- one side matching more places than the other ----------------------------------------------
 
 PARTLY = "Title\nAbstract: the accuracy was 8.4 x.\n\n\n\nTable\nResults: the accuracy was 8.3 x.\n"
+
+
+def test_where_both_sides_match_places_of_their_own_both_are_named(tmp_path):
+    paper = PARTLY.replace("8.4", "8.3").replace(
+        "Results: the accuracy was 8.3 x.", "Results: the accuracy was 8.3 x y."
+    )
+    paper += "Appendix: was 8.3 x y.\n"
+    sides = [
+        {
+            "name": "abstract",
+            "artifact": "paper",
+            "locator": {"kind": "prose", "before": "the accuracy was", "after": "x"},
+        },
+        {
+            "name": "results",
+            "artifact": "paper",
+            "locator": {"kind": "prose", "before": "was", "after": "x y"},
+        },
+    ]
+    decision = only(project(tmp_path, sides, paper=paper, stored={"accuracy": 8.3}))
+    assert decision.reason is Reason.SIDES_READ_ONE_PLACE
+    assert decision.detail == (
+        "sides abstract and results read the same place in paper: both match line 7; "
+        "abstract also matches line 2; results also matches line 8. Narrow the anchors of "
+        "abstract and results so each selects only the place it is meant for"
+    )
 
 
 def test_a_side_whose_anchors_also_match_the_other_sides_place_is_refused_and_says_where(

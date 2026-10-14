@@ -81,8 +81,12 @@ class Policy(BaseModel):
     broken_pin: Severity = Severity.ERROR
     unpinned_artifact: Severity = Severity.WARNING
     artifact_alias: Severity = Severity.WARNING
-    """Two artifact ids naming one file, or two files holding the same bytes. An assertion
-    comparing the two compares a file with itself, so it agrees whatever the file holds."""
+    """Two artifact ids whose paths resolve to one file. An assertion comparing the two
+    compares the file with itself, so it agrees whatever the file holds."""
+    artifact_same_bytes: Severity = Severity.WARNING
+    """Two files at different paths holding the same bytes. A warning under every profile:
+    identical outputs can be legitimate, two seeds that converged, and a correspondence that
+    reads one place through both is `sides_read_one_place` whatever this says."""
     artifact_absent: Severity = Severity.ERROR
     """Nothing at the declared path. Without this the assertions against it are merely
     unchecked, which the publication profile tolerates, so a manifest naming a result file
@@ -175,8 +179,8 @@ class Policy(BaseModel):
                 if other in later:
                     violations.append(
                         Violation(
-                            severity=self.artifact_alias,
-                            rule="artifact.alias",
+                            severity=self.artifact_same_bytes,
+                            rule="artifact.same_bytes",
                             subject=artifact.artifact_id,
                             detail=f"{artifact.artifact_id} and {other} hold the same bytes "
                             f"({(artifact.actual or '')[:12]}), so an assertion comparing them "

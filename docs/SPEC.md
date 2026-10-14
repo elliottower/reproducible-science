@@ -68,9 +68,13 @@ digest, so there is one source of truth per file.
 files hold the same bytes, are one file to every assertion: a correspondence with a side on
 each compares the file with itself. Each `ArtifactState` lists the other ids that name its file
 in `same_path_as`, and those at another path holding its bytes in `same_digest_as`, compared
-with the digest computed for the pin, and leaves both out where they are empty. A policy
-reports each such pair once, as rule `artifact.alias` on the id declared first, naming both
-ids: a warning under `exploratory` and `publication`, an error under `strict`.
+with the digest computed for the pin, so nothing is hashed twice, and leaves both out where
+they are empty. A policy reports each such pair once, on the id declared first and naming both
+ids. One file under two ids is rule `artifact.alias`, a warning under `exploratory` and
+`publication` and an error under `strict`. Two files at different paths holding the same bytes
+are rule `artifact.same_bytes`, a warning under every profile: identical outputs can be
+legitimate, and a correspondence reading one place through both is refused whatever the policy
+says.
 
 An artifact copied from another repository may also declare where it was copied from, as
 `origin: {repository, commit, path}` (§7.12). An origin is never read by `repro verify`, which
@@ -261,14 +265,19 @@ select the same printed value, which then agrees with itself whatever the docume
 the place one side was meant for is never read. The canonical locators differ, so the manifest
 loads; the decision is `unchecked`, reason `sides_read_one_place`, and its detail names the two
 sides, the line and the words around the value. Sides are in one artifact where they name one
-id, or two ids whose files are one file (§2): one path once resolved, or the same bytes.
+id, or two ids whose files are one file (§2): one path once resolved, said as `which are one
+file`, or the same bytes, said as `which hold the same bytes`. Two files are compared by their
+sizes and then by the digests their pins were checked with.
 
 Where one side's anchors also match places the other side does not read, the pair is still
 `sides_read_one_place`. No occurrence is dropped to force a comparison, since the place left
 would be one the manifest did not single out. The detail says which place is shared and which
 are not, and which side to narrow: `sides abstract and results read the same place in paper:
 results reads line 7, which abstract's anchors also match at line 7; abstract also matches
-line 2. Narrow abstract's anchors so they select only the place abstract is meant for`.
+line 2. Narrow abstract's anchors so they select only the place abstract is meant for`. Where
+each side also matches places the other does not, both are named: `both match line 7; abstract
+also matches line 2; results also matches line 8. Narrow the anchors of abstract and results so
+each selects only the place it is meant for`.
 
 A place printing the value in another unit declares a `conversion` on its side, so `8.3%` with
 `conversion: fraction` agrees with a table cell printing `0.083`, and a place printing
@@ -924,7 +933,8 @@ from its declared path is a warning under `exploratory` and an error under the o
 `verified` quotation whose declared page was not checked (`page_unchecked`, §4.1) is graded as
 the profile grades `unchecked` for that claim, under the rule `evidence.page_unchecked`. Two
 artifact ids for one file (§2) are the rule `artifact.alias`, a warning under `exploratory` and
-`publication` and an error under `strict`.
+`publication` and an error under `strict`; two files holding the same bytes are the rule
+`artifact.same_bytes`, a warning under every profile.
 
 Every policy requires at least one assertion to have been evaluated. A run that checked
 nothing is not a pass, and without that condition a project with no evidence anywhere

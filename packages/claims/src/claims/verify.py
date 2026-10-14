@@ -30,7 +30,7 @@ from typing import Protocol
 
 from claims.adapters.base import Occurrence
 from claims.adapters.prose import GROUPED, placed
-from claims.adapters.reads import reading_once
+from claims.adapters.reads import once, reading_once
 from claims.exceptions import (
     ArtifactUnreadableError,
     BackendUnavailableError,
@@ -385,19 +385,28 @@ def _grouping(locator: Locator, raw: str) -> str:
     return ""
 
 
-def same_file(left: pathlib.Path, right: pathlib.Path) -> bool:
-    """Whether two declared paths are one file: one path once resolved, or the same bytes.
+def _digest(path: pathlib.Path) -> str:
+    """The sha256 of a file, computed once per file in a verification.
+
+    The pins are hashed through this, so a comparison of two files later in the same
+    verification reads the digests the pins were checked against and hashes nothing again."""
+    return once(("digest", path.resolve()), lambda: Digest.of_file(path).value)
+
+
+def same_file(left: pathlib.Path, right: pathlib.Path) -> str | None:
+    """`path` where two declared paths resolve to one file, `bytes` where two files hold the
+    same bytes, and None otherwise.
 
     Two artifact ids may name one file, or two copies of it, and a value read through each is
-    then one value read twice. Sizes are compared before any byte is hashed."""
+    then one value read twice. Sizes are compared before any digest is looked up."""
     try:
         if left.resolve() == right.resolve():
-            return True
+            return "path"
         if left.stat().st_size != right.stat().st_size:
-            return False
-        return Digest.of_file(left).value == Digest.of_file(right).value
+            return None
+        return "bytes" if _digest(left) == _digest(right) else None
     except OSError:
-        return False
+        return None
 
 
 def _line(occurrence: Occurrence) -> str:
@@ -429,7 +438,8 @@ def _one_place(readings: list, paths: Mapping[str, pathlib.Path]) -> str | None:
     for at, (left, mine) in enumerate(read):
         for right, theirs in read[at + 1 :]:
             one = left.artifact == right.artifact
-            if not one and not same_file(paths[left.artifact], paths[right.artifact]):
+            alias = None if one else same_file(paths[left.artifact], paths[right.artifact])
+            if not one and alias is None:
                 continue
             shared = [
                 (here, there)
@@ -443,6 +453,8 @@ def _one_place(readings: list, paths: Mapping[str, pathlib.Path]) -> str | None:
                 left.artifact
                 if one
                 else f"{left.artifact} and {right.artifact}, which are one file"
+                if alias == "path"
+                else f"{left.artifact} and {right.artifact}, which hold the same bytes"
             )
             here, there = shared[0]
             said = f"sides {left.name} and {right.name} read the same place in {where}"
@@ -456,15 +468,22 @@ def _one_place(readings: list, paths: Mapping[str, pathlib.Path]) -> str | None:
                     f"{said}, {placed(here)}, so the value would be compared with itself; "
                     f"give each side anchors that select a place of its own"
                 )
+            also = "; ".join(
+                f"{name} also matches {', '.join(_line(o) for o in extra[name])}" for name in broad
+            )
+            if len(broad) == 2:
+                return (
+                    f"{said}: both match {_line(here)}; {also}. Narrow the anchors of "
+                    f"{left.name} and {right.name} so each selects only the place it is meant for"
+                )
             wide = broad[0]
             narrow, (theirs_at, mine_at) = (
                 (right.name, (there, here)) if wide == left.name else (left.name, (here, there))
             )
-            also = ", ".join(_line(o) for o in extra[wide])
             return (
                 f"{said}: {narrow} reads {_line(theirs_at)}, which {wide}'s anchors also match "
-                f"at {_line(mine_at)}; {wide} also matches {also}. Narrow {wide}'s anchors so "
-                f"they select only the place {wide} is meant for"
+                f"at {_line(mine_at)}; {also}. Narrow {wide}'s anchors so they select only the "
+                f"place {wide} is meant for"
             )
     return None
 
@@ -1241,7 +1260,7 @@ def _artifact_state(artifact: ArtifactRef, path: pathlib.Path) -> ArtifactState:
     # symlink -- is a fact about that artifact. Raising suppressed the report for every other
     # claim in the manifest because of one bad path.
     try:
-        actual = Digest.of_file(path).value
+        actual = _digest(path)
     except OSError as e:
         return ArtifactState(
             artifact_id=artifact.id,
@@ -1469,11 +1488,11 @@ def verify(
     them is `repro.reproduce`, which has to be asked for by name.
     """
     registry: dict[str, Backend] = {b.kind: b for b in backends}
-    states, paths = artifact_states(manifest)
-
     assessments = []
-    # Each artifact is parsed once for the whole manifest, just after it was hashed.
+    # Each artifact is hashed once and parsed once for the whole manifest: the pins are
+    # resolved inside the same scope, so a comparison of two files reads their pin digests.
     with reading_once():
+        states, paths = artifact_states(manifest)
         for claim in manifest.claims:
             decisions = tuple(
                 check_evidence(claim, evidence, manifest, paths, states, registry)
