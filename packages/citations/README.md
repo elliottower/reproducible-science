@@ -126,7 +126,8 @@ every quote resolved, but against a source that is not the one pinned.
 | `citations pin` | Add a quotation to a claims file, refusing one that does not resolve; `--occurrence N` pins one occurrence of a repeated passage; `--url` pins against a web page |
 | `citations restore` | Write the source's passage for a quotation that leaves text out, as a separate record |
 | `citations verify` | Do the quotations resolve in their sources? |
-| `citations verify --json PATH` | Also write the counts to `PATH` as JSON: quotations by outcome, sources read and sources absent |
+| `citations verify --json PATH` | Also write the counts to `PATH` as JSON: quotations by outcome, sources read and sources absent, and under `warnings` each warning with the quotations carrying it |
+| `citations verify --verbose` | Also list, under each warning, the claims file, claim and quotation carrying it |
 | `citations coverage` | Is every quotation in my manuscript pinned at all? |
 | `citations audit` | Does the stored metadata match the record the identifier resolves to? |
 | `citations resolve` | Backfill missing DOIs and arXiv ids |
@@ -392,6 +393,19 @@ underscores and a hyphen joining two word characters are ignored altogether is `
 Punctuation that carries meaning is kept, so `p < 0.05` does not match a source reading
 `p = 0.05`, and `-0.42` does not match `0.42`.
 
+A passage folding does not find is looked for verbatim once more, in a second reading of the
+source, before spacing is ignored. That reading keeps a hyphen at a line break between two
+letters, so `open-access` matches a source that broke it as `open-` over `access`, and it
+closes a space before a closing mark or after an opening one, so `dvc.lock, including` matches
+a page rendering `dvc.lock , including`. Only white space is removed, and every word and mark
+stays. Where the source is a page's text read off disk (`.md`, `.markdown`, `.rst`, `.txt`),
+the second reading also drops what the page does not show: a MyST or Verso role keeps its text
+(`{kw}`#print axioms`` reads `#print axioms`) and an HTML tag goes, so a quotation can be
+written as the page renders it. A quotation that kept the markup still resolves in the first
+reading. HTML is read by `html-text` and XML by `jats-text`, and neither is changed by this.
+A passage found in either reading is `truncated` only where it cuts a word in both, so a
+quotation ending on `some` where layout set `some-` at a line end beside `class` is not.
+
 | Warning | Meaning |
 |---------|---------|
 | `short` | under 40 characters, or ending on a comma or a connecting word, so the source may qualify it in the next clause |
@@ -422,9 +436,9 @@ that matches -- a truncated quotation resolves and says something the source doe
 
 **A hyphen on a line break.** `fold` removes `-\n` between two letters because a renderer
 inserts one when it splits a word, and it cannot tell that from a real hyphen that happens to
-fall at a line end. A dash with anything else on either side of the break is kept.
-The same quotation then resolves everywhere else in the document and fails at that one
-occurrence. Split it there.
+fall at a line end. A dash with anything else on either side of the break is kept. The second
+reading keeps the hyphen, so a quotation written either way resolves; one that crosses two
+such breaks, one a split word and one a real hyphen, does not, and is split there.
 
 **The wrong reader.** `pdftotext -layout` preserves a page's geometry, so on a two-column paper
 it interleaves the columns and shreds every sentence crossing the gutter. A block of failures

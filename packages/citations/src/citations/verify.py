@@ -108,6 +108,7 @@ from __future__ import annotations
 import codecs
 import functools
 import hashlib
+import html
 import itertools
 import os
 import pathlib
@@ -537,6 +538,61 @@ class Report:
 @functools.lru_cache(maxsize=256)
 def passage_fold(s: str) -> str:
     """Normalize the way a PDF extractor mangles text, without changing which words appear."""
+    return _fold(s, line_hyphen="")
+
+
+@functools.lru_cache(maxsize=256)
+def spacing_fold(s: str) -> str:
+    """`passage_fold`, keeping a hyphen at a line break and closing the space before punctuation.
+
+    The second reading of a source at the exact tier, asked only where `passage_fold` finds
+    nothing. Two things `passage_fold` gets wrong in a direction it cannot know:
+
+    A hyphen at a line break between two letters is a renderer splitting a word or a real
+    hyphen that happens to fall there, and the text alone does not say which. `passage_fold`
+    takes it as a split, so `open-` over `access` reads `openaccess` and a quotation of
+    `open-access` was found only on the skeleton, as `normalized`. Here it is taken as real:
+    the hyphen is kept and the break goes. Between digits nothing changes in either reading.
+
+    A page renders `dvc.lock , including` with a space before the comma, which nobody types.
+    The space before a closing mark and after an opening one is removed, on both sides of the
+    comparison. That deletes only white space, and every word and every mark stays where it was.
+    """
+    s = _fold(s, line_hyphen="-")
+    s = re.sub(r" (?=[,.;:!?)\]}])", "", s)
+    return re.sub(r"(?<=[(\[{]) ", "", s)
+
+
+#: A MyST or Verso role, `{lean}`Quot.sound``: the name in braces and the text in backticks.
+#: The page shows the text alone.
+_ROLE = re.compile(r"\{[A-Za-z][\w.:+-]*\}`([^`]*)`")
+#: An HTML tag, opening, closing or empty. Entities are decoded after the tags go, so text
+#: written as `&lt;b&gt;` stays text.
+_TAG = re.compile(r"</?[A-Za-z][^<>]*>")
+
+#: Suffixes of a page's source, whose roles and tags a reader of the page does not see. Not an
+#: article's XML, whose elements are blocks as well as styling and which `jats-text` reads as
+#: such; not HTML, whose reader is `html-text`, which drops a script's text as well as the tags;
+#: not a page served as plain text, which shows its tags; and not a file with no suffix, such
+#: as a run log, whose text is what it says. A Lean book's chapter is kept as `.lean.txt`.
+RENDERED = (".md", ".markdown", ".rst", ".txt")
+
+
+@functools.lru_cache(maxsize=256)
+def rendered_fold(s: str) -> str:
+    """`spacing_fold` over text with its roles and HTML tags taken out, as a page renders it.
+
+    For a source read off disk as text, never for a PDF. A Lean book writes `{kw}`#print
+    axioms``, a Markdown page writes `<b>Clew</b>`, and a reader quotes `#print axioms` and
+    `Clew`, so a sentence carrying either could be pinned only with its markup. A quotation
+    that kept the markup still resolves: `passage_fold` reads the source as written first.
+    """
+    s = html.unescape(_TAG.sub("", _ROLE.sub(r"\1", s)))
+    return spacing_fold(s)
+
+
+def _fold(s: str, line_hyphen: str) -> str:
+    """`passage_fold`, with what replaces a hyphen at a line break between two letters."""
     # NFKD and not NFKC, then the combining marks dropped. A renderer typesets `naïve` as a
     # dotless i carrying a combining diaeresis, which is how LaTeX writes it, and the quotation
     # is typed with the precomposed `ï`. Composing leaves those two different strings and the
@@ -575,7 +631,8 @@ def passage_fold(s: str) -> str:
     # it and a letter opening the next line. Any other dash at a line end is kept. A rule of
     # dashes in printed output lost its last dash and ran into the next line, `10-` over `12`
     # became `1012`, and a dash ending a clause was deleted with the break after it.
-    s = re.sub(r"(?<=[^\W\d_])-\s*\n\s*(?=[^\W\d_])", "", s)
+    # `spacing_fold` keeps the hyphen instead, for a real one that fell at a line end.
+    s = re.sub(r"(?<=[^\W\d_])-\s*\n\s*(?=[^\W\d_])", line_hyphen, s)
     return " ".join(s.split()).lower()
 
 
@@ -1061,7 +1118,16 @@ def clear_caches() -> None:
     One call rather than five, because a caller that clears four of them and forgets the fifth
     gets a stale answer that looks like a fresh one.
     """
-    for cached in (_extraction, _reading_with, passage_fold, skeleton, _digest, sha256):
+    for cached in (
+        _extraction,
+        _reading_with,
+        passage_fold,
+        spacing_fold,
+        rendered_fold,
+        skeleton,
+        _digest,
+        sha256,
+    ):
         cached.cache_clear()
     _PROVENANCE.clear()
 
@@ -1473,7 +1539,17 @@ class Match:
     match and is reported as a warning wherever a `Result` is produced."""
 
 
-def resolve_in(quote: str, text: str, prefix: str = "", suffix: str = "") -> Match:
+def exact_folds(rendered: bool = False) -> tuple[Callable[[str], str], ...]:
+    """The readings of a source a passage is matched in verbatim, in the order they are asked.
+
+    `rendered` for a source read off disk as text, whose roles and tags a reader does not see.
+    """
+    return (passage_fold, rendered_fold if rendered else spacing_fold)
+
+
+def resolve_in(
+    quote: str, text: str, prefix: str = "", suffix: str = "", rendered: bool = False
+) -> Match:
     """Does this passage occur in this text, and does it occur exactly once?
 
     The verdict without a file. `check_one` reads an artifact and then decides; this decides
@@ -1482,14 +1558,16 @@ def resolve_in(quote: str, text: str, prefix: str = "", suffix: str = "") -> Mat
     them is how a second normalizer ends up folding `-0.42` and `0.42` together while the
     first one does not.
 
-    Verbatim first, then the whitespace-stripped skeleton. Never `unchecked` or
-    `indeterminate`: both are facts about reading a source, and this one was handed a text.
+    Verbatim first, under each of `exact_folds`, then the whitespace-stripped skeleton. Never
+    `unchecked` or `indeterminate`: both are facts about reading a source, and this one was
+    handed a text. `rendered` says the text is a page's source, see `rendered_fold`.
     """
     if not passage_fold(quote):
         return Match("not found", 0, False)
-    n, singled = _occurrences(quote, passage_fold(text), prefix, suffix, passage_fold)
-    if n:
-        return Match("found" if singled else "ambiguous", n, False)
+    for fold in exact_folds(rendered):
+        n, singled = _occurrences(quote, fold(text), prefix, suffix, fold)
+        if n:
+            return Match("found" if singled else "ambiguous", n, False)
     k, k_singled = _occurrences(quote, skeleton(text), prefix, suffix, skeleton)
     if k:
         return Match("found" if k_singled else "ambiguous", k, True)
@@ -1519,7 +1597,7 @@ def single_out(quote: str, text: str, occurrence: int) -> tuple[str, str] | None
     does. That is a quotation with white space at either end, or one matched on the skeleton
     whose own edge is a hyphen, which folds differently beside a neighbour than alone.
     """
-    for transform in (passage_fold, skeleton):
+    for transform in (*exact_folds(), skeleton):
         q, doc = transform(quote), transform(text)
         if at := _positions(q, doc, transform is not skeleton):
             break
@@ -1980,12 +2058,14 @@ def _verdict(
     page or section attached to it is asserted about a passage nobody identified.
     """
     warn = list(warn)
-    q, doc = passage_fold(quote), passage_fold(full)
-    if not q:
+    if not passage_fold(quote):
         # `"" in doc` is True. A quotation that folds away entirely is not a quotation.
         return Result("not found", "the quotation is empty after normalization", warn)
 
-    m = resolve_in(quote, full, prefix, suffix)
+    # A page's source read off disk, with whatever markup the page hides. See `RENDERED`.
+    rendered = extractor == PLAIN_TEXT and artifact.suffix.lower() in RENDERED
+    folds = exact_folds(rendered)
+    m = resolve_in(quote, full, prefix, suffix, rendered)
     if m.normalized:
         warn.append("normalized")
     if m.state == "ambiguous":
@@ -2009,11 +2089,11 @@ def _verdict(
         if page:
             warn.append("page unchecked")
         return Result("found", "", warn)
-    if _cuts_a_token(q, doc):
+    if _truncated(quote, full, folds):
         warn.append("truncated")
-    if page and not _on_page(artifact, q, page, extractor):
+    if page and not _on_page(artifact, quote, page, extractor):
         warn.append("page")
-        found_at, capped = _find_page(artifact, q, reader=extractor)
+        found_at, capped = _find_page(artifact, quote, reader=extractor)
         detail = f"not on page {page}"
         if found_at is None and capped:
             detail += f"; searched the first {PAGE_SCAN_LIMIT} pages"
@@ -2021,7 +2101,12 @@ def _verdict(
     return Result("found", "", warn)
 
 
-def _on_page(artifact: pathlib.Path, folded_quote: str, page: int, extractor: str = "") -> bool:
+def _in(quote: str, text: str) -> bool:
+    """Whether the passage is in this text under any of `exact_folds`, as on a paginated source."""
+    return any(fold(quote) in fold(text) for fold in exact_folds())
+
+
+def _on_page(artifact: pathlib.Path, quote: str, page: int, extractor: str = "") -> bool:
     """Is the quote on the page the record claims? An unreadable page is not a match.
 
     Read with the extractor that produced the document's text. Asking a second one which page
@@ -2029,7 +2114,7 @@ def _on_page(artifact: pathlib.Path, folded_quote: str, page: int, extractor: st
     record got wrong.
     """
     try:
-        return folded_quote in passage_fold(_page_text(artifact, page, extractor))
+        return _in(quote, _page_text(artifact, page, extractor))
     except SourceUnreadableError:
         return False
 
@@ -2044,6 +2129,18 @@ def _page_text(artifact: pathlib.Path, page: int, extractor: str) -> str:
     if extractor in ("", PLAIN_TEXT, SUBSTITUTED, DEFAULT_EXTRACTOR):
         return extract(artifact, page)
     return reading_with(artifact, page, extractor=extractor).text
+
+
+def _truncated(quote: str, full: str, folds: tuple[Callable[[str], str], ...]) -> bool:
+    """Does the quote cut a token in every reading of the source it occurs in?
+
+    One reading is not enough to say so. A two-column page set as layout puts `some-` at the
+    end of one column's line and `class` at the start of the next line, so `passage_fold` joins
+    them into `someclass` and a quotation ending on `some` reads as cut short; `spacing_fold`
+    keeps the hyphen, and there the quotation ends on a whole word.
+    """
+    cuts = [_cuts_a_token(fold(quote), fold(full)) for fold in folds if fold(quote) in fold(full)]
+    return bool(cuts) and all(cuts)
 
 
 def _cuts_a_token(q: str, doc: str) -> bool:
@@ -2092,7 +2189,7 @@ def is_paginated(artifact: pathlib.Path) -> bool:
 
 def _find_page(
     artifact: pathlib.Path,
-    folded_quote: str,
+    quote: str,
     limit: int = PAGE_SCAN_LIMIT,
     reader: str = "",
 ) -> tuple[int | None, bool]:
@@ -2115,6 +2212,6 @@ def _find_page(
             return None, False
         if not text:
             return None, False  # ran off the end of the document
-        if folded_quote in passage_fold(text):
+        if _in(quote, text):
             return p, False
     return None, True  # still going when the limit ran out

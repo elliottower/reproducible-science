@@ -109,7 +109,14 @@ become `-`. A hyphen at a line break between two letters is removed with the bre
 a line end is kept, runs of whitespace collapse to one space, and case is ignored. A control character becomes a space and is not deleted, because
 deleting one welds the words on either side into one appearing in neither text.
 
-A passage that does not occur under that normalization is looked for once more with all
+A passage that does not occur under that normalization is looked for in a second reading,
+the same normalization with a hyphen at a line break between two letters kept rather than
+removed and the space before a closing mark or after an opening one removed, and, where the
+artifact is a page's text read as it is on disk (`.md`, `.markdown`, `.rst`, `.txt`), with each
+MyST or Verso role reduced to its text and each HTML tag removed. A passage found there is
+`verified` with no warning, since only white space and markup a reader does not see differ.
+
+A passage that occurs in neither is looked for once more with all
 whitespace, underscores, and any hyphen joining two word characters removed. One found only
 that way is `verified` and carries the warning `normalized`. Other punctuation is kept in both
 passes, so `p < 0.05` does not match `p = 0.05` and `-0.42` does not match `0.42`.
