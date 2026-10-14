@@ -494,3 +494,40 @@ def test_a_printed_unit_suffix_is_not_scaled(project):
     (project / "results" / "table.csv").unlink()
     (project / "paper.md").write_text("ResNet-50 has 25.6M parameters.\n")
     assert survey(project).candidates == ()
+
+
+def test_a_count_with_one_irregular_step_is_ordinary_beside_its_counter(project, capsys):
+    ns = [100, 200, 300, 400, 500, 600, 725, 800, 900, 1000, 1100, 1200]
+    write_table(project, "wave,n\n" + "".join(f"{i + 1},{n}\n" for i, n in enumerate(ns)))
+    (project / "paper.md").write_text(
+        "Wave 7 enrolled 725 participants and wave 10 enrolled 1,000, reaching 1,200 by wave 12.\n"
+    )
+    found = survey(project)
+    assert found.index_like == ("results/table.csv column wave",)
+    ordinary = [c.stored for c in found.candidates if not c.index_like]
+    assert ordinary == ["725", "1000", "1200"]
+    assert main(["verify"]) == 2
+    assert "guessed: 3 of the 5 numbers compared" in capsys.readouterr().out
+
+
+def test_a_cumulative_count_with_short_months_is_ordinary(project):
+    totals = [40, 80, 120, 160, 191, 231, 271, 311, 351, 379, 419, 459, 499, 539]
+    rows = "".join(f"{month},{total}\n" for month, total in enumerate(totals, start=1))
+    write_table(project, "month,cumulative_enrolled\n" + rows)
+    (project / "paper.md").write_text("By month 14 we had enrolled 539; 311 by month 8.\n")
+    found = survey(project)
+    assert found.index_like == ("results/table.csv column month",)
+    assert [c.stored for c in found.candidates if not c.index_like] == ["539", "311"]
+
+
+def test_a_counter_that_restarts_at_its_first_value_or_its_least_is_index_like(project):
+    # Back to its first value each run, and back to a new least value once.
+    restarts_at_first = [5 * i for i in range(12)] * 2
+    restarts_at_least = list(range(5, 17)) + list(range(12))
+    pairs = zip(restarts_at_first, restarts_at_least, strict=True)
+    rows = "".join(f"{a},{b}\n" for a, b in pairs)
+    write_table(project, "minute,tick\n" + rows)
+    assert survey(project).index_like == (
+        "results/table.csv column minute",
+        "results/table.csv column tick",
+    )

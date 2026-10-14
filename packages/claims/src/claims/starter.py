@@ -116,9 +116,12 @@ SURVEY_SCHEMA = "reproducible.science/survey/0.1-experimental"
 #: is one of these, or it has no name (pandas writes one as `Unnamed: 0`). `step_size`,
 #: `gini_index`, `id_acc` and `row_count` are not. A column or a repeated key is index-like
 #: also where it holds at least `INDEX_MIN_ROWS` values, every one a whole number, and at
-#: least `INDEX_STEP_SHARE` of its consecutive pairs step by one nonzero amount: a counter,
-#: including one that starts again for each run of a long table or each element of an outer
-#: list. A metric that happens to rise linearly is not a whole number at each step. A survey lists its guesses
+#: least `INDEX_STEP_SHARE` of its consecutive pairs step by one nonzero amount, every other
+#: pair dropping back to the first value or the least: a counter, including one that starts
+#: again for each run of a long table or each element of an outer list. A metric that rises
+#: linearly is not a whole number at each step; a count with one irregular step breaks the
+#: step without a reset. An exactly linear column of whole numbers, a dose series or a power
+#: table's n, cannot be told from a counter by its values, and is demoted. A survey lists its guesses
 #: after the others and counts them apart, and hides none.
 INDEX_NAMES = frozenset(
     {"id", "idx", "index", "step", "global_step", "epoch", "iter", "iteration", "row", "seed"}
@@ -631,17 +634,22 @@ def _index_name(name: str) -> bool:
 
 
 def _progression(values: list[str]) -> bool:
-    """At least `INDEX_MIN_ROWS` whole numbers, and at least `INDEX_STEP_SHARE` of the
-    consecutive pairs among them step by the same nonzero amount. A counter that starts again for each run
-    breaks the step once a run, so it still holds."""
+    """At least `INDEX_MIN_ROWS` whole numbers, at least `INDEX_STEP_SHARE` of whose
+    consecutive pairs step by the same nonzero amount, and every other pair a reset: a drop
+    back to the first value or to the least. A counter that starts again for each run breaks
+    its step only there; a count with one irregular step breaks it elsewhere and is not one."""
     if len(values) < INDEX_MIN_ROWS:
         return False
     numbers = [decimal.Decimal(v) for v in values]
     if any(n != n.to_integral_value() for n in numbers):
         return False
-    steps = collections.Counter(b - a for a, b in itertools.pairwise(numbers))
+    pairs = list(itertools.pairwise(numbers))
+    steps = collections.Counter(b - a for a, b in pairs)
     step, count = max(steps.items(), key=lambda item: item[1])
-    return step != 0 and count >= INDEX_STEP_SHARE * (len(numbers) - 1)
+    if step == 0 or count < INDEX_STEP_SHARE * len(pairs):
+        return False
+    restarts = {numbers[0], min(numbers)}
+    return all(b - a == step or b in restarts for a, b in pairs)
 
 
 def _grouped(held: list[_Held], names: dict[str, tuple[str, str]]) -> _Read:
