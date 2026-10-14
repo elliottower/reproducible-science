@@ -18,7 +18,7 @@ that cannot load it still loads the plugin.
 | Notes an analysis with no ledger | The same, once per project, when a command runs an analysis. |
 | Notes a downloaded source | After `curl` or `wget` saves a PDF, the model is told the address to record as `url:` in the claims file, so `citations fetch` can retrieve the same bytes for a reader. |
 | Puts the gates in the system prompt | Seal before a run, claim before a number, freeze before a confirmatory analysis, with the state of the project's records as of the last turn. |
-| Shows the state | One dim row above the prompt, refreshed at the end of each turn, with one field per tool. |
+| Shows the state | One dim row above the prompt, refreshed at the end of each turn, with one field per tool and one for re-runs of the declared commands. |
 | Warns | The pinned line under the prompt appears only when something is wrong, a few words per problem. |
 | `/repro-status` | The same readout on demand, with the sealed files hashed. Instant, and no model turn. |
 | `/repro-verify` | Checks every pinned quotation of the working project against its source, which takes minutes on a large project, and keeps the count for the readout. |
@@ -57,6 +57,23 @@ assertion and some did not verify, the field gives the tool's own words: `repro:
 33 verified`. The check takes under a second on a manifest of
 56 assertions, so it runs with the others at the end of each turn.
 
+A manifest that declares commands under `regenerations` adds a second `repro` row, for the
+re-runs of those commands that `repro reproduce` has recorded in `.repro/reproductions.jsonl`:
+
+    repro: 7/7 reproduced, last 13 Oct
+    repro: 5/7 reproduced, 2 stale since 13 Oct  →  repro reproduce
+    repro: 0/7 reproduced  →  repro reproduce
+
+The numbers count declared commands, not assertions. A command is reproduced where `repro stale`
+calls it `current`: a recorded re-run that reproduced ran today's command over the files now on
+disk, and the same holds for every command upstream. A command `repro stale` calls `stale` or
+`undetermined` is counted under that word, and a command never re-run only lowers the first
+number. The date is the day the latest of the re-runs compared against started, in the
+machine's time zone, and `in CI` follows it where that re-run's entry carries a `witness`. The
+row is read from `repro stale --format json`, which executes nothing and takes about as long as
+`repro verify`, and it is not run for a manifest with no `regenerations`, which draws no row.
+Neither does a record of re-runs with a line `repro stale` cannot read.
+
 A row whose tool has a next step still to take names the command that takes it, directly after
 the row:
 
@@ -64,8 +81,8 @@ the row:
     repro: no manifest  →  repro manifest init
 
 `prereg: none drafted` points at `prereg new`, an unfrozen draft at `prereg freeze`, a missing
-ledger at `results init`, a ledger with no runs at `results seal`, and a manifest with no claims
-at adding some. A project with none of the four set up shows one hint, `repro init`, which
+ledger at `results init`, a ledger with no runs at `results seal`, a manifest with no claims
+at adding some, and declared commands not all reproduced at `repro reproduce`. A project with none of the four set up shows one hint, `repro init`, which
 creates all four. A row with something to report carries no hint.
 
 The warnings, each on the pinned line as `repro: ...`:
@@ -106,12 +123,12 @@ The model can set it too, through the `set_project` tool the mod registers.
     /plugin marketplace add elliottower/reproducible-science
     /plugin install repro@reproducible-science
 
-It needs the `results`, `prereg` and `citations` commands on `PATH`, and `repro` for the fourth field.
+It needs the `results`, `prereg` and `citations` commands on `PATH`, and `repro` for the fourth and fifth fields.
 
 ## Develop
 
     claude plugin validate packages/repro/mod
     claude plugin test packages/repro/mod
 
-The tests stand in for the engine and need no network. They do not run in this repository's
-CI, which has no Claude Code.
+The tests stand in for the engine and need no network or account. The `mod tests` job of this
+repository's CI installs the Claude Code pinned in `.github/mod-tests` and runs both commands.

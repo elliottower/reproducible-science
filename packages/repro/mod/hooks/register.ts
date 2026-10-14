@@ -26,6 +26,8 @@ const HINTS: [state: RegExp, next: string][] = [
   [/^citations: none pinned$/, 'citations pin'],
   [/^repro: no manifest$/, 'repro manifest init'],
   [/^repro: no claims declared$/, 'add claims to repro.yaml'],
+  // Fewer commands reproduced than declared: the two numbers differ.
+  [/^repro: (\d+)\/(?!\1 )\d+ reproduced/, 'repro reproduce'],
 ]
 /** The rows of a project with nothing set up, which `repro init` starts in one command. */
 const NOTHING = [/prereg: none drafted$/, /^results: no ledger$/, /^citations: none pinned$/, /^repro: no manifest$/]
@@ -214,6 +216,67 @@ function assertions(printed: string | undefined) {
   }
 }
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+/** What `repro stale --format json` says of one declared command. */
+type Rerun = { state?: string; rerun_at?: string | null; witness?: { kind?: string } | null }
+
+/**
+ * The field for re-runs of the commands the manifest declares, from `repro stale`:
+ *
+ *     repro: 7/7 reproduced, last 13 Oct
+ *     repro: 5/7 reproduced, 2 stale since 13 Oct
+ *     repro: 0/7 reproduced
+ *
+ * The counts are declared commands, one per record under `regenerations`. A command is counted
+ * as reproduced where `repro stale` calls it `current`: a recorded re-run that reproduced ran
+ * today's command over the files now on disk. The date is when the latest re-run those states
+ * were read against started, in this machine's time zone, and `in CI` follows where that
+ * re-run's entry carries a witness.
+ *
+ * Undefined, and no row, where the manifest declares no command, and where `repro stale` did
+ * not finish or printed no report: a record of re-runs with a line it cannot read, or a `repro`
+ * with no `stale` command. `repro stale` executes nothing and hashes the files `repro verify`
+ * has just hashed, so it costs what the row above costs, and it is not run at all for a manifest
+ * with no `regenerations`.
+ */
+async function reruns($: EngineInterface, root: string, manifest: string) {
+  let declared = ''
+  try {
+    declared = await $.fs.read(manifest)
+  } catch {
+    return undefined
+  }
+  if (!/^regenerations\s*:/m.test(declared)) {
+    return undefined
+  }
+  let commands: Rerun[] = []
+  try {
+    const report = JSON.parse((await output($, ['repro', 'stale', '--format', 'json'], root, 60_000)) ?? '')
+    commands = report.staleness.regenerations
+  } catch {
+    return undefined
+  }
+  if (!Array.isArray(commands) || commands.length === 0) {
+    return undefined
+  }
+  const count = (state: string) => commands.filter(command => command.state === state).length
+  const stale = count('stale')
+  const undetermined = count('undetermined')
+  const last = commands
+    .filter(command => !Number.isNaN(Date.parse(command.rerun_at ?? '')))
+    .sort((a, b) => Date.parse(b.rerun_at ?? '') - Date.parse(a.rerun_at ?? ''))[0]
+  const at = last ? new Date(last.rerun_at ?? '') : undefined
+  const when = at ? `${at.getDate()} ${MONTHS[at.getMonth()]}${last?.witness ? ' in CI' : ''}` : undefined
+
+  return [
+    `repro: ${count('current')}/${commands.length} reproduced`,
+    ...(stale ? [`${stale} stale${when ? ` since ${when}` : ''}`] : []),
+    ...(undetermined ? [`${undetermined} undetermined`] : []),
+    ...(!stale && when ? [`last ${when}`] : []),
+  ].join(', ')
+}
+
 /**
  * Every `claims` folder in the project, relative to its root. A paper keeps its pinned quotations
  * beside the manuscript as often as at the top (`paper/prior_art/claims`), and looking only at
@@ -268,7 +331,8 @@ let warnings: string[] = []
  *
  *     study · prereg: 1/1 frozen · results: 2/3 runs sealed, 4 claims bound · citations: 120/120 quotes found · repro: 34/34 checks verified
  *
- * The `repro` field is there only in a project with a manifest. Fractions only where there is a real total. The project's name stays, because the project
+ * The `repro` field is there only in a project with a manifest, and a second one follows it where
+ * the manifest declares commands: `repro: 7/7 reproduced, last 13 Oct`. Fractions only where there is a real total. The project's name stays, because the project
  * followed is the one whose files the session touches, which need not be where it started.
  *
  * `withFiles` also hashes every sealed file, which is the check that finds a changed input and
@@ -423,10 +487,19 @@ async function status($: EngineInterface, root: string, withFiles: boolean) {
   // that is the only manifest looked for. It takes under a second on 34 assertions, and runs here.
   // With no manifest the field says so, as the others do for a missing ledger or plan: a row
   // left out reads the same as nothing to check.
-  if (await above($, root, MANIFEST)) {
-    const checked = assertions(await output($, ['repro', 'verify'], root, 60_000))
+  const manifest = await above($, root, MANIFEST)
+  if (manifest) {
+    // The two read the same files and neither waits on the other.
+    const [printed, rerun] = await Promise.all([
+      output($, ['repro', 'verify'], root, 60_000),
+      reruns($, root, manifest),
+    ])
+    const checked = assertions(printed)
     fields.push(checked.field)
     wrong.push(...checked.wrong)
+    if (rerun) {
+      fields.push(rerun)
+    }
   } else {
     fields.push('repro: no manifest')
   }
@@ -768,7 +841,8 @@ export const register: Register = on => {
     // Unpadded, a line wrapping there lost the characters under it: `4 sealed, 0 claims` showed
     // as `4 sealed,` then `claims`.
     // One field per row, always: the project's name with the plans, then the runs, then the
-    // quotations, then the manifest's assertions where there is a manifest. Laid side by side they read differently at every window width.
+    // quotations, then the manifest's assertions where there is a manifest,
+    // then the re-runs of its commands where it declares any. Laid side by side they read differently at every window width.
     const [name, first, ...rest] = line.split(' · ')
     const fields = first === undefined ? [name ?? ''] : [`${name} · ${first}`, ...rest]
 
