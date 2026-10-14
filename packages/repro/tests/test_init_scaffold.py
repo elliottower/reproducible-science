@@ -18,8 +18,12 @@ SCAFFOLDED = """\
     repro.draft.yaml   2 result files and paper.md pinned, a claim per number, no assertion
     open-items.json    an item per number, with the places the result files hold it
 """
+ROW = (
+    "  manifest     created          repro.draft.yaml, open-items.json "
+    "(a draft; no repro.yaml written)\n"
+)
 NEXT = """\
-  draft        fill open-items.json with an agent (the open-items skill, or the tools
+  manifest     fill open-items.json with an agent (the open-items skill, or the tools
                of `repro mcp`), review repro.draft.yaml, and rename it to repro.yaml
 """
 
@@ -64,15 +68,17 @@ def project(tmp_path):
 def test_init_scaffolds_the_claims_and_says_nothing_is_verified(project, run_repro):
     code, out = run_repro("init", cwd=project)
     assert code == 0, out
-    assert SCAFFOLDED in out
-    assert NEXT in out
+    assert ROW in out and SCAFFOLDED in out and NEXT in out
+    assert "edit the claims in repro.yaml" not in out
+    # One manifest to rename: no starter is written beside the draft.
+    assert not (project / DEFAULT_NAME).exists()
     items = read(project / ITEMS_NAME)
     assert items.manifest == DRAFT_NAME
     assert items.source.reader == "repro init"
     assert [item.unique for item in items.items] == [False, True, False, False, False]
     # The block and the next step, as the documentation shows them.
     docs = DOCS.read_text()
-    assert SCAFFOLDED in docs and NEXT in docs
+    assert ROW in docs and SCAFFOLDED in docs and NEXT in docs
 
 
 def test_the_fresh_draft_fails_strict(project, run_repro):
@@ -97,7 +103,6 @@ def test_an_existing_manifest_is_left_alone_and_nothing_is_scaffolded(project, r
 
 def test_a_draft_is_never_overwritten_without_force(project, run_repro):
     assert run_repro("init", cwd=project)[0] == 0
-    (project / DEFAULT_NAME).unlink()
     (project / DRAFT_NAME).write_text("edited by hand\n")
     items = (project / ITEMS_NAME).read_bytes()
 
@@ -107,12 +112,24 @@ def test_a_draft_is_never_overwritten_without_force(project, run_repro):
     assert (project / ITEMS_NAME).read_bytes() == items
     assert "neither was replaced; --force replaces both" in out
     assert "scaffolded, nothing verified" not in out
+    assert "already present  repro.draft.yaml (a draft" in out
+    assert not (project / DEFAULT_NAME).exists()
 
-    (project / DEFAULT_NAME).unlink()
     code, out = run_repro("init", "--force", cwd=project)
     assert code == 0, out
     assert SCAFFOLDED in out
     assert (project / DRAFT_NAME).read_text().startswith("schema_version:")
+    assert not (project / DEFAULT_NAME).exists()
+
+
+def test_with_nothing_to_scaffold_the_starter_is_written(project, run_repro):
+    (project / "paper.md").unlink()
+    code, out = run_repro("init", cwd=project)
+    assert code == 0, out
+    assert "claims: no manuscript found, so nothing was scaffolded" in out
+    assert "created          repro.yaml (artifacts pinned: 2" in out
+    assert (project / DEFAULT_NAME).is_file()
+    assert not (project / DRAFT_NAME).exists()
 
 
 def test_no_scaffold_writes_neither_file(project, run_repro):

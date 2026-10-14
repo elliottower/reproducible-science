@@ -83,7 +83,7 @@ repro init
   plan         created          PREREG.md
   ledger       created          .results/
   citations    created          .citations/, claims/
-  manifest     created          repro.yaml (artifacts pinned: 3, example claims: 2)
+  manifest     created          repro.draft.yaml, open-items.json (a draft; no repro.yaml written)
 
   scaffolded, nothing verified: 5 numbers left open, 1 with one candidate
     repro.draft.yaml   2 result files and paper.md pinned, a claim per number, no assertion
@@ -95,8 +95,7 @@ next:
   plan         fill in PREREG.md, then `prereg freeze`
   ledger       `results seal <inputs>` before a run, `results run <outputs>` after it
   citations    `citations pin` writes a quotation into claims/ once it resolves
-  manifest     edit the claims in repro.yaml, then `repro verify`
-  draft        fill open-items.json with an agent (the open-items skill, or the tools
+  manifest     fill open-items.json with an agent (the open-items skill, or the tools
                of `repro mcp`), review repro.draft.yaml, and rename it to repro.yaml
 ```
 
@@ -135,9 +134,9 @@ The project above is the one under [Write a manifest](#write-a-manifest): `resul
 
 The files and the numbers are the ones `repro verify` reports with no manifest: the same discovery, the same numbers (unbound, in digits, with two digits or a decimal point) and the same comparison at the precision printed. An item is `unique` where exactly one candidate passes the guards the CORE-Bench reader applies: the value has at least three significant digits and is not an integer below 1000, where the line names a key, column name or row label from the set the address belongs to, it names the address's own, and every split the line names (test, train, validation) is among the address's words. A candidate in an index-like column or key never passes. `1 with one candidate` counts the unique items. Above, 0.931 is unique at `/scores/accuracy`; 480, 4.3% and 0.71 each match one place and have fewer than three significant digits; 0.55 matches none.
 
-No candidate is written into the draft, so every claim stays open, and `repro verify repro.draft.yaml --policy strict` fails with `claim offers no evidence` until each is filled. An agent fills them with the `open-items` skill or the tools of `repro mcp`, writing each assertion with `basis: inferred`. An author then reviews the draft and renames it to `repro.yaml`, replacing the starter `init` wrote.
+No candidate is written into the draft, so every claim stays open, and `repro verify repro.draft.yaml --policy strict` fails with `claim offers no evidence` until each is filled. An agent fills them with the `open-items` skill or the tools of `repro mcp`, writing each assertion with `basis: inferred`. An author then reviews the draft and renames it to `repro.yaml`. `init` writes no starter `repro.yaml` beside a draft, so there is one manifest to rename. Where there is nothing to scaffold, or with `--no-scaffold`, it writes the starter as `repro manifest init` does.
 
-`init` never writes or edits `repro.yaml` for this. Where one exists it scaffolds nothing and says `claims: repro.yaml exists and was left alone, so nothing was scaffolded`. Where `repro.draft.yaml` or `open-items.json` is already there, it replaces neither and says so; `--force` replaces both. `--no-scaffold` reads no result file and writes neither. `repro manifest init` writes `repro.yaml` alone, as before.
+`init` never writes or edits `repro.yaml` for this. Where one exists it scaffolds nothing and says `claims: repro.yaml exists and was left alone, so nothing was scaffolded`. Where `repro.draft.yaml` or `open-items.json` is already there, it replaces neither and says so, and counts the draft as the manifest record; `--force` replaces both. `--no-scaffold` reads no result file and writes neither. `repro manifest init` writes `repro.yaml` alone, as before.
 
 ## Write a manifest
 

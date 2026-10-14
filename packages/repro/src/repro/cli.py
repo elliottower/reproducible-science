@@ -271,7 +271,17 @@ def _init_here(scaffold: bool = True, force: bool = False) -> int:
             made.append("claims/")
         return ", ".join(made) if library or ".citations/" in made else None
 
+    # The claims are drafted first, so that a project given a draft gets no starter beside it:
+    # one manifest to rename, and nothing to replace.
+    said, scaffolded = (
+        _scaffold(root, bool(present["manifest"]), force) if scaffold else ([], False)
+    )
+    if scaffold and not scaffolded and not present["manifest"] and (root / DRAFT_NAME).exists():
+        present["manifest"] = f"{DRAFT_NAME} (a draft, not yet renamed to {DEFAULT_NAME})"
+
     def manifest() -> str | None:
+        if scaffolded:
+            return f"{DRAFT_NAME}, {ITEMS_NAME} (a draft; no {DEFAULT_NAME} written)"
         starter = write_starter(root, [], root)
         return (
             f"{DEFAULT_NAME} (artifacts pinned: {len(starter.artifacts)}, "
@@ -293,9 +303,7 @@ def _init_here(scaffold: bool = True, force: bool = False) -> int:
         else:
             print(f"  {label:<12} NOT CREATED")
 
-    scaffolded = False
-    if scaffold:
-        said, scaffolded = _scaffold(root, bool(present["manifest"]), force)
+    if said:
         print("\n" + "\n".join(f"  {line}" for line in said))
 
     # After the records: `prereg new .` writes a `.gitignore` holding the sidecar rules where
@@ -309,21 +317,22 @@ def _init_here(scaffold: bool = True, force: bool = False) -> int:
         else:
             print("\neverything is already set up; nothing was created.")
         return 0
-    if created or scaffolded:
+    if created:
         print("\nnext:")
+    manifest_step = (
+        f"fill {ITEMS_NAME} with an agent (the open-items skill, or the tools\n"
+        f"  {'':<12} of `repro mcp`), review {DRAFT_NAME}, and rename it to {DEFAULT_NAME}"
+        if scaffolded
+        else f"edit the claims in {DEFAULT_NAME}, then `repro verify`"
+    )
     for label, step in (
         ("plan", "fill in PREREG.md, then `prereg freeze`"),
         ("ledger", "`results seal <inputs>` before a run, `results run <outputs>` after it"),
         ("citations", "`citations pin` writes a quotation into claims/ once it resolves"),
-        ("manifest", f"edit the claims in {DEFAULT_NAME}, then `repro verify`"),
+        ("manifest", manifest_step),
     ):
         if label in created:
             print(f"  {label:<12} {step}")
-    if scaffolded:
-        print(
-            f"  {'draft':<12} fill {ITEMS_NAME} with an agent (the open-items skill, or the tools\n"
-            f"  {'':<12} of `repro mcp`), review {DRAFT_NAME}, and rename it to {DEFAULT_NAME}"
-        )
     return 0 if all(present[label] or label in created for label in present) else 1
 
 
