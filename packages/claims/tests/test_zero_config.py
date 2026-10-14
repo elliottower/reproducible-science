@@ -164,7 +164,9 @@ def test_a_file_over_the_value_cap_is_cut_and_said_to_be(project, monkeypatch):
     found = survey(project)
     assert found.cut == ("results/metrics.json",)
     assert found.values == 2 + 1
-    assert any("results/metrics.json was read no further than 2 values" in n for n in found.notes)
+    assert (
+        "results/metrics.json holds more than 2 numbers; the first 2 were compared" in found.notes
+    )
     # /scores/rate is the third number, so the percentage is no longer found.
     assert "0.0426" not in {c.stored for c in found.candidates}
 
@@ -226,36 +228,6 @@ def write_table(project, text):
     (project / "results" / "metrics.json").unlink()
 
 
-def test_an_index_column_and_an_unnamed_one_are_compared_with_nothing_and_named(project):
-    rows = "".join(f"{i},{i * 2},{1 / (i + 1):.4f}\n" for i in range(2000))
-    write_table(project, ",step,loss\n" + rows)
-    (project / "paper.md").write_text("A 12-layer model, 768 units, batch 512; loss 0.0213.\n")
-    found = survey(project)
-    assert [(c.printed, c.locator["column"]) for c in found.candidates] == [("0.0213", "loss")]
-    assert found.skipped_columns == (
-        "results/table.csv: a column with no name was compared with nothing",
-        "results/table.csv: column step was compared with nothing, as an index: its values "
-        "are whole numbers that only increase",
-    )
-    assert set(found.skipped_columns) <= set(found.notes)
-
-
-def test_a_column_that_only_decreases_or_repeats_is_still_compared(project):
-    write_table(project, "epochs\n100\n100\n100\n")
-    (project / "paper.md").write_text("We trained for 100 epochs.\n")
-    (candidate,) = survey(project).candidates
-    assert (candidate.locator["row"], candidate.more_rows) == (0, 2)
-
-
-def test_one_number_matching_many_rows_of_a_column_is_one_guess(project, capsys):
-    write_table(project, "epochs,f1\n100,0.5\n100,0.6\n100,0.7\n12,0.8\n")
-    (project / "paper.md").write_text("We trained for 100 epochs.\n")
-    assert main(["verify"]) == 2
-    out = capsys.readouterr().out
-    assert "results/table.csv column epochs, row 0 holds 100, and 2 more rows" in out
-    assert out.count("    guess  ") == 1
-
-
 def test_guesses_in_json_and_yaml_come_before_guesses_in_tables(project):
     (project / "paper.md").write_text("The AUC was 0.71 and accuracy 0.931.\n")
     kinds = [c.locator["kind"] for c in survey(project).candidates]
@@ -298,4 +270,144 @@ def test_a_delimited_file_is_read_no_further_than_the_value_cap(project, monkeyp
     cut = survey(project)
     assert cut.cut == ("results/table.csv",)
     assert not any("could not be read" in n for n in cut.notes)
-    assert "results/table.csv was read no further than 10 values" in " ".join(cut.notes)
+    assert "results/table.csv holds more than 10 numbers; the first 10 were compared" in cut.notes
+
+
+COHORT = (
+    "wave,followup_years,n_enrolled,cumulative_events,dose_mg,hazard\n"
+    "1,1,1204,37,10,0.91\n2,2,1388,81,20,0.87\n3,5,1502,143,40,0.81\n4,10,1650,212,80,0.74\n"
+)
+
+
+def test_columns_that_only_increase_are_compared_like_any_other(project, capsys):
+    write_table(project, COHORT)
+    (project / "paper.md").write_text(
+        "By ten years of follow-up, 212 events had accrued among 1,650 participants; at 80 mg "
+        "the hazard ratio was 0.74, and 143 events by year 5.\n"
+    )
+    found = survey(project)
+    assert found.index_like == ()
+    assert [(c.printed, c.locator["column"]) for c in found.candidates] == [
+        ("212", "cumulative_events"),
+        ("1,650", "n_enrolled"),
+        ("80", "dose_mg"),
+        ("0.74", "hazard"),
+        ("143", "cumulative_events"),
+    ]
+    assert main(["verify"]) == 2
+    assert "guessed: 5 of the 5 numbers compared" in capsys.readouterr().out
+
+
+def test_a_column_named_for_an_index_is_listed_last_tagged_and_counted_apart(project, capsys):
+    rows = "".join(f"{i},{seed},{1 / (i + 1):.4f}\n" for i, seed in enumerate((3, 12, 5, 9, 1)))
+    write_table(project, ",seed,loss\n" + rows)
+    (project / "paper.md").write_text("Over 12 runs; loss 0.3333 at seed 4.\n")
+    found = survey(project)
+    assert found.index_like == (
+        "results/table.csv column (no name)",
+        "results/table.csv column seed",
+    )
+    assert [(c.printed, c.index_like) for c in found.candidates] == [
+        ("0.3333", False),
+        ("12", True),
+    ]
+    assert main(["verify"]) == 2
+    out = capsys.readouterr().out
+    assert "guessed: 1 of the 2 numbers compared" in out
+    assert "and 1 more number agree only with index-like columns or keys, listed last." in out
+    assert "results/table.csv column seed, row 1 holds 12  [index-like column]" in out
+    assert out.count("[index-like column]") == 1
+
+
+def test_a_column_stepping_by_a_constant_over_ten_rows_is_index_like_and_not_hidden(project):
+    rows = "".join(f"{5 * i},{0.5 + i * i / 1000:.3f}\n" for i in range(12))
+    write_table(project, "minute,acc\n" + rows)
+    (project / "paper.md").write_text("At minute 45 accuracy was 0.581.\n")
+    found = survey(project)
+    assert found.index_like == ("results/table.csv column minute",)
+    kinds = [(c.locator["column"], c.index_like) for c in found.candidates]
+    assert kinds == [("acc", False), ("minute", True)]
+
+
+def test_a_constant_step_over_fewer_than_ten_rows_is_not_index_like(project):
+    write_table(project, "minute,acc\n" + "".join(f"{5 * i},0.5\n" for i in range(9)))
+    assert survey(project).index_like == ()
+
+
+def test_one_number_in_many_rows_is_one_guess_whose_place_holds_it_exactly(project, capsys):
+    write_table(project, "model,auc\nlasso,0.708\nridge,0.71\nrf,0.712\n")
+    (project / "paper.md").write_text("The AUC was 0.71.\n")
+    (candidate,) = survey(project).candidates
+    assert (candidate.locator["row"], candidate.stored) == (1, "0.71")
+    assert [(a.locator["row"], a.stored) for a in candidate.also] == [(0, "0.708"), (2, "0.712")]
+    assert main(["verify"]) == 2
+    out = capsys.readouterr().out
+    assert "column auc, row 1 holds 0.71; rows 0, 2 hold 0.708 and 0.712" in out
+    assert out.count("    guess  ") == 1
+
+
+def test_rows_holding_the_same_value_are_said_to(project, capsys):
+    write_table(project, "epochs,f1\n100,0.5\n100,0.6\n100,0.7\n12,0.8\n")
+    (project / "paper.md").write_text("We trained for 100 epochs.\n")
+    assert main(["verify"]) == 2
+    assert "column epochs, row 0 holds 100; rows 1, 2 hold the same" in capsys.readouterr().out
+
+
+def test_a_key_repeated_across_list_elements_is_grouped_and_an_index_name_demoted(project):
+    history = [{"step": i, "loss": round(1 / (i + 1), 4)} for i in range(800)]
+    history[3]["loss"] = 0.25
+    history[9]["loss"] = 0.25
+    (project / "results" / "metrics.json").write_text(json.dumps({"history": history}))
+    (project / "results" / "table.csv").unlink()
+    (project / "paper.md").write_text("A model at 512 steps; loss 0.25.\n")
+    found = survey(project)
+    assert found.index_like == ("results/metrics.json /history/*/step",)
+    assert [(c.locator["pointer"], c.index_like) for c in found.candidates] == [
+        ("/history/3/loss", False),
+        ("/history/512/step", True),
+    ]
+    (loss, _) = found.candidates
+    assert [a.locator["pointer"] for a in loss.also] == ["/history/9/loss"]
+
+
+def test_list_values_stepping_by_a_constant_are_index_like(project):
+    (project / "results" / "metrics.json").write_text(
+        json.dumps({"epochs": list(range(10, 130, 10)), "acc": 0.931})
+    )
+    found = survey(project)
+    assert found.index_like == ("results/metrics.json /epochs/*",)
+    assert not next(c for c in found.candidates if c.stored == "0.931").index_like
+
+
+def test_a_long_pointer_is_shortened_in_text_and_whole_in_json(project, capsys):
+    key = "k" * 100
+    (project / "results" / "metrics.json").write_text(json.dumps({key: {"accuracy": 0.9312}}))
+    assert main(["verify"]) == 2
+    text = capsys.readouterr().out
+    assert f"/{key}/accuracy" not in text
+    assert "..." in next(line for line in text.splitlines() if "holds 0.9312" in line)
+    assert main(["verify", "--format", "json"]) == 2
+    document = json.loads(capsys.readouterr().out)
+    pointers = [c["locator"].get("pointer") for c in document["survey"]["candidates"]]
+    assert f"/{key}/accuracy" in pointers
+
+
+def test_an_unreadable_directory_under_results_is_a_note(project):
+    if os.geteuid() == 0:
+        pytest.skip("root lists a mode-000 directory")
+    locked = project / "results" / "locked"
+    locked.mkdir()
+    (locked / "z.json").write_text('{"x": 0.71}')
+    locked.chmod(0)
+    try:
+        found = survey(project)
+    finally:
+        locked.chmod(0o755)
+    assert "results/locked/ could not be listed" in found.notes
+
+
+def test_no_note_holds_an_absolute_path(project):
+    (project / "results" / "metrics.json").write_bytes(b"\xff\xfe")
+    found = survey(project)
+    assert any(n.startswith("results/metrics.json could not be read") for n in found.notes)
+    assert not any(str(project) in n or str(project.resolve()) in n for n in found.notes)

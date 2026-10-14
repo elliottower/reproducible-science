@@ -72,6 +72,7 @@ from claims.starter import (
     FORMAT_NAMES,
     MAX_DISCOVERED,
     SURVEY_SCHEMA,
+    Candidate,
     Survey,
     address_said,
     project_root,
@@ -157,6 +158,31 @@ def cmd_manifest_init(args: argparse.Namespace) -> int:
 SHOWN_CANDIDATES = 20
 
 
+#: How many other rows, and how many distinct values among them, a collapsed guess names.
+SHOWN_ALSO = 6
+
+
+def _also_said(c: Candidate) -> str:
+    """The other places a collapsed guess stands for, and what they hold where it differs."""
+    if not c.also:
+        return ""
+    values = list(dict.fromkeys(a.stored for a in c.also))
+    if values == [c.stored]:
+        held = "the same"
+    else:
+        shown = values[:SHOWN_ALSO]
+        held = ", ".join(shown[:-1]) + f" and {shown[-1]}" if len(shown) > 1 else shown[0]
+        held += " among others" if len(values) > SHOWN_ALSO else ""
+    if c.locator["kind"] == "table_position":
+        rows = [str(a.locator["row"]) for a in c.also]
+        named = ", ".join(rows[:SHOWN_ALSO])
+        if len(rows) > SHOWN_ALSO:
+            named += f" and {len(rows) - SHOWN_ALSO} more"
+        return f"; row{'' if len(rows) == 1 else 's'} {named} hold {held}"
+    count = len(c.also)
+    return f"; {count} more list element{'' if count == 1 else 's'} hold {held}"
+
+
 def _survey_lines(found: Survey) -> list[str]:
     """What a project with no manifest holds that a manifest could pin, and the numbers its
     manuscript prints that agree with a stored value, each said to be a guess."""
@@ -181,13 +207,19 @@ def _survey_lines(found: Survey) -> list[str]:
         missing = "no manuscript" if found.manuscript is None else "no number in a result file"
         lines.append(f"  candidate bindings: none, because there is {missing} to compare")
     else:
-        agreeing = len({c.offset for c in found.candidates})
+        agreeing = {c.offset for c in found.candidates if not c.index_like}
+        index_only = {c.offset for c in found.candidates if c.index_like} - agreeing
         files = f"{len(found.read_from)} result file{'' if len(found.read_from) == 1 else 's'}"
         lines.append(
-            f"  candidate bindings, guessed: {agreeing} of the {found.compared} numbers "
+            f"  candidate bindings, guessed: {len(agreeing)} of the {found.compared} numbers "
             "compared agree with one of"
         )
         lines.append(f"  the {found.values} values read from {files}, at the precision printed.")
+        if index_only:
+            lines.append(
+                f"  and {len(index_only)} more number{'' if len(index_only) == 1 else 's'} "
+                "agree only with index-like columns or keys, listed last."
+            )
         if found.not_compared:
             printed = found.compared + found.not_compared
             lines.append(
@@ -202,8 +234,10 @@ def _survey_lines(found: Survey) -> list[str]:
             held = f"{c.path} {address_said(c.locator)} holds {c.stored}"
             if c.conversion is not None:
                 held += f", {c.conversion.said}"
-            if c.more_rows:
-                held += f", and {c.more_rows} more row{'' if c.more_rows == 1 else 's'}"
+            held += _also_said(c)
+            if c.index_like:
+                kind = "column" if c.locator["kind"] == "table_position" else "key"
+                held += f"  [index-like {kind}]"
             lines.append(f"    guess  {where:<8}  {c.printed:<{width}}  {held}")
             lines.append(f"           {'':<8}  {'':<{width}}  ...{c.context}...")
         if len(found.candidates) > SHOWN_CANDIDATES:

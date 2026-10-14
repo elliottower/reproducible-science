@@ -25,6 +25,7 @@ import decimal
 import itertools
 import math
 import mimetypes
+import os
 import pathlib
 import re
 from collections.abc import Iterator
@@ -110,9 +111,15 @@ FORMAT_NAMES = {key: name for key, name, _ in FORMATS}
 #: What a survey's JSON document is, and the revision of its shape.
 SURVEY_SCHEMA = "reproducible.science/survey/0.1-experimental"
 
-#: A table column with at least this many rows, every one a whole number and each greater than
-#: the one before, is an index or a step count, and a survey compares nothing with it.
-INDEX_MIN_ROWS = 3
+#: A column, or a key repeated across the elements of a list, is index-like where one word of
+#: its name is one of these, where its name is empty, or where its values step by one constant
+#: amount over at least `INDEX_MIN_ROWS` rows. A survey lists its guesses after the others and
+#: counts them apart, and hides none.
+INDEX_NAMES = frozenset({"step", "epoch", "iter", "iteration", "idx", "index", "row", "id", "seed"})
+INDEX_MIN_ROWS = 10
+
+#: Text output shortens a pointer longer than this; JSON keeps it whole.
+POINTER_SHOWN = 60
 
 #: The standard library's own table, never the host's `mime.types`, so one file gets one media
 #: type on every machine. The overrides are suffixes that table lacks in some supported Python:
@@ -225,6 +232,16 @@ class Starter(BaseModel):
     """Ids of the example claims written as comments."""
 
 
+class Also(BaseModel):
+    """Another place in the same column, or at the same key of another list element, that the
+    number a `Candidate` names also agrees with."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    locator: dict[str, str | int]
+    stored: str
+
+
 class Candidate(BaseModel):
     """A number the manuscript prints that agrees with a value a result file holds.
 
@@ -244,13 +261,15 @@ class Candidate(BaseModel):
     """The result file, relative to the project."""
     locator: dict[str, str | int]
     """Where the file holds the value, as a `value` assertion's locator would say it: `tree`
-    with a pointer, or `table_position` with a column and a row from 0."""
+    with a pointer, or `table_position` with a column and a row from 0. Where the number
+    agrees with several rows of one column, or one key of several list elements, this is one
+    whose value equals the number exactly if any does, and `also` holds the rest."""
     stored: str
     """The value there, as the file writes it."""
     conversion: Conversion | None = None
-    more_rows: int = 0
-    """How many later rows of the same column the same number also agrees with. One guess
-    stands for all of them, and `locator` names the first."""
+    also: tuple[Also, ...] = ()
+    index_like: bool = False
+    """The value is in an index-like column or key, so the agreement says less."""
 
 
 class Survey(BaseModel):
@@ -265,23 +284,24 @@ class Survey(BaseModel):
     """Discovery found more than `MAX_DISCOVERED` result files and kept the first of them."""
     manuscript: str | None = None
     notes: tuple[str, ...] = ()
-    """What discovery passed over, what could not be read, what was skipped, and where a cap
-    was reached."""
+    """What discovery passed over, what could not be read, and where a cap was reached. Paths
+    are relative to the project."""
     read_from: tuple[str, ...] = ()
     """The result files values were read from: JSON, YAML, and tables a table locator reads."""
     values: int = 0
     """How many numbers were read from those files, at most `MAX_VALUES_PER_FILE` from each."""
     cut: tuple[str, ...] = ()
     """The files holding more than `MAX_VALUES_PER_FILE` numbers, of which the first were read."""
-    skipped_columns: tuple[str, ...] = ()
-    """Table columns compared with nothing, as `path: column`: unnamed, or index-like."""
+    index_like: tuple[str, ...] = ()
+    """The index-like columns and keys, as `path column` or `path pattern`."""
     compared: int = 0
     """How many numbers the manuscript prints were compared with those values: the ones no
     rule sets aside, printed in digits, with two digits or a decimal point."""
     not_compared: int = 0
     """How many such numbers were left uncompared because `MAX_COMPARISONS` was reached."""
     candidates: tuple[Candidate, ...] = ()
-    """Matches in JSON and YAML files first, then in tables, each in manuscript order."""
+    """Guesses outside index-like columns and keys first, those in JSON and YAML before those
+    in tables, each in manuscript order; then the guesses in index-like ones, in that order."""
 
 
 def project_root(start: pathlib.Path) -> pathlib.Path:
@@ -301,7 +321,11 @@ def _shallowest(directory: pathlib.Path, notes: list[str]) -> list[pathlib.Path]
         files: list[pathlib.Path] = []
         below: list[pathlib.Path] = []
         for parent in level:
-            entries = list(itertools.islice(parent.iterdir(), MAX_ENTRIES + 1))
+            try:
+                entries = list(itertools.islice(parent.iterdir(), MAX_ENTRIES + 1))
+            except OSError as e:
+                notes.append(f"{parent.name}/ could not be listed: {e.strerror}")
+                continue
             if len(entries) > MAX_ENTRIES:
                 notes.append(f"{parent.name}/ holds more than {MAX_ENTRIES} entries")
                 continue
@@ -309,7 +333,9 @@ def _shallowest(directory: pathlib.Path, notes: list[str]) -> list[pathlib.Path]
                 if entry.name.startswith(".") or entry.is_symlink():
                     continue
                 if entry.is_dir():
-                    if entry.name not in _NOT_SEARCHED:
+                    if not os.access(entry, os.R_OK | os.X_OK):
+                        notes.append(f"{parent.name}/{entry.name}/ could not be listed")
+                    elif entry.name not in _NOT_SEARCHED:
                         below.append(entry)
                 elif entry.suffix.lower() in DATA_SUFFIXES:
                     if entry.stat().st_size > MAX_BYTES:
@@ -394,27 +420,36 @@ def _pins(paths: list[pathlib.Path], root: pathlib.Path) -> list[dict]:
     return pins
 
 
-def _numbers(node: object) -> Iterator[tuple[str, str]]:
+def _walk(node: object) -> Iterator[tuple[str, str, str]]:
     """Every finite number reachable through mappings and lists, in document order, with its
-    RFC 6901 pointer. Walked with a stack of its own, so no nesting depth exhausts Python's."""
-    stack: list[tuple[str, object]] = [("", node)]
+    RFC 6901 pointer and its pattern: the pointer with each list index written `*`. Walked
+    with a stack of its own, so no nesting depth exhausts Python's."""
+    stack: list[tuple[str, str, object]] = [("", "", node)]
     while stack:
-        pointer, node = stack.pop()
+        pointer, pattern, node = stack.pop()
         if isinstance(node, dict):
-            children = [
-                (f"{pointer}/{key.replace('~', '~0').replace('/', '~1')}", value)
-                for key, value in node.items()
-                if isinstance(key, str)
-            ]
+            children = []
+            for key, value in node.items():
+                if isinstance(key, str):
+                    token = key.replace("~", "~0").replace("/", "~1")
+                    children.append((f"{pointer}/{token}", f"{pattern}/{token}", value))
             stack.extend(reversed(children))
         elif isinstance(node, list):
-            stack.extend(reversed([(f"{pointer}/{i}", value) for i, value in enumerate(node)]))
+            stack.extend(
+                reversed([(f"{pointer}/{i}", f"{pattern}/*", v) for i, v in enumerate(node)])
+            )
         elif isinstance(node, Written):
             # A number with a fraction or an exponent arrives as the text the file wrote.
             if decimal.Decimal(node).is_finite():
-                yield pointer, str(node)
+                yield pointer, pattern, str(node)
         elif isinstance(node, (int, float)) and not isinstance(node, bool) and math.isfinite(node):
-            yield pointer, str(node)
+            yield pointer, pattern, str(node)
+
+
+def _numbers(node: object) -> Iterator[tuple[str, str]]:
+    """Every finite number reachable through mappings and lists, with its pointer."""
+    for pointer, _, value in _walk(node):
+        yield pointer, value
 
 
 def _metric_examples(pins: list[dict], root: pathlib.Path) -> Iterator[tuple[dict, dict]]:
@@ -549,15 +584,27 @@ def _format(path: pathlib.Path) -> str:
     return next(key for key, _, suffixes in FORMATS if path.suffix.lower() in suffixes)
 
 
+class _Held(BaseModel):
+    """One number read from a result file: where, what, and the group of places it repeats
+    over, a table's column or a pointer pattern with a list index in it."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    locator: dict[str, str | int]
+    stored: str
+    group: str | None = None
+    index_like: bool = False
+
+
 class _Read(BaseModel):
     """The numbers read from one result file, and what was left out of them."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    values: tuple[tuple[dict[str, str | int], str], ...] = ()
+    values: tuple[_Held, ...] = ()
     cut: bool = False
-    skipped: tuple[str, ...] = ()
-    """Columns compared with nothing, each with why."""
+    index_like: tuple[str, ...] = ()
+    """The index-like groups, as a report names them."""
 
 
 def _finite(cell: object) -> bool:
@@ -569,88 +616,135 @@ def _finite(cell: object) -> bool:
         return False
 
 
-def _index_like(cells: list[object]) -> bool:
-    """Every cell a whole number, each greater than the one before, over enough rows."""
-    if len(cells) < INDEX_MIN_ROWS or not all(_finite(c) for c in cells):
+def _index_name(name: str) -> bool:
+    """A name that is empty, or one of whose words names an index."""
+    words = re.split(r"[^a-z0-9]+", name.strip().lower())
+    return not name.strip() or name.startswith("Unnamed:") or any(w in INDEX_NAMES for w in words)
+
+
+def _progression(values: list[str]) -> bool:
+    """At least `INDEX_MIN_ROWS` values, each the one before plus the same nonzero amount."""
+    if len(values) < INDEX_MIN_ROWS:
         return False
-    numbers = [decimal.Decimal(str(c)) for c in cells]
-    if any(n != n.to_integral_value() for n in numbers):
-        return False
-    return all(a < b for a, b in itertools.pairwise(numbers))
+    numbers = [decimal.Decimal(v) for v in values]
+    steps = {b - a for a, b in itertools.pairwise(numbers)}
+    return len(steps) == 1 and steps != {0}
+
+
+def _grouped(held: list[_Held], names: dict[str, tuple[str, str]]) -> _Read:
+    """Each value marked index-like where its group is. `names` gives each group the name a
+    report shows and the name `_index_name` reads: a pattern and its last key, or `column x`
+    and `x`."""
+    members: dict[str, list[str]] = {}
+    for value in held:
+        if value.group is not None:
+            members.setdefault(value.group, []).append(value.stored)
+    index = [
+        group
+        for group, values in members.items()
+        if _index_name(names[group][1]) or _progression(values)
+    ]
+    marked = tuple(v.model_copy(update={"index_like": v.group in index}) for v in held)
+    return _Read(values=marked, index_like=tuple(names[group][0] for group in index))
 
 
 def _read_values(path: pathlib.Path, cap: int) -> _Read:
     """At most `cap` finite numbers from one result file, each with the locator that reads it.
 
     A JSON or YAML file is read as the example `metric` claim reads it, and a delimited or
-    columnar table by the table adapter. Delimited text is read only as far as `cap` cells, so
-    a large file is never held whole. A column with no name or an index-like one is left out.
-    Other formats give nothing: a workbook or a database holds several tables, and an array no
-    column names.
+    columnar table by the table adapter, a row at a time, so a large delimited file is read no
+    further than `cap` numbers. Other formats give nothing: a workbook or a database holds
+    several tables, and an array no column names.
     """
     suffix = path.suffix.lower()
+    held: list[_Held] = []
+    names: dict[str, tuple[str, str]] = {}
+    cut = False
     if suffix in _TREE_SUFFIXES:
-        values = [
-            ({"kind": "tree", "pointer": pointer}, value)
-            for pointer, value in itertools.islice(_numbers(_load_tree(path)), cap + 1)
-        ]
-        return _Read(values=tuple(values[:cap]), cut=len(values) > cap)
-    if suffix not in _DELIMITERS and suffix not in COLUMNAR_SUFFIXES:
-        return _Read()
+        for pointer, pattern, value in _walk(_load_tree(path)):
+            if len(held) == cap:
+                cut = True
+                break
+            # A key repeated across list elements is a group, as a column is.
+            group = pattern if "*" in pattern else None
+            if group is not None:
+                names[group] = (pattern, pattern.rpartition("/")[2])
+            locator: dict[str, str | int] = {"kind": "tree", "pointer": pointer}
+            held.append(_Held(locator=locator, stored=value, group=group))
+    elif suffix in _DELIMITERS or suffix in COLUMNAR_SUFFIXES:
+        header, rows = read_cells(path)
+        names = {column: (f"column {column or '(no name)'}", column) for column in header}
+        for number, row in enumerate(rows):
+            numeric = [(c, str(row.get(c))) for c in header if _finite(row.get(c))]
+            if len(held) + len(numeric) > cap:
+                cut = True
+                break
+            held += [
+                _Held(
+                    locator={"kind": "table_position", "column": column, "row": number},
+                    stored=cell,
+                    group=column,
+                )
+                for column, cell in numeric
+            ]
+        rows.close()
+    return _grouped(held, names).model_copy(update={"cut": cut})
 
-    header, rows = read_cells(path)
-    width = max(len(header), 1)
-    kept = list(itertools.islice(rows, cap // width + 1))
-    more = next(rows, None) is not None
-    rows.close()
-    skipped, columns = [], []
-    for column in header:
-        if not column.strip():
-            skipped.append("a column with no name was compared with nothing")
-        elif _index_like([row.get(column) for row in kept]):
-            skipped.append(
-                f"column {column} was compared with nothing, as an index: its values are "
-                "whole numbers that only increase"
-            )
-        else:
-            columns.append(column)
-    values = [
-        ({"kind": "table_position", "column": column, "row": number}, str(row[column]))
-        for number, row in enumerate(kept)
-        for column in columns
-        if _finite(row.get(column))
-    ]
-    return _Read(
-        values=tuple(values[:cap]),
-        cut=more or len(values) > cap,
-        skipped=tuple(skipped),
-    )
+
+def _shortened(pointer: str) -> str:
+    if len(pointer) <= POINTER_SHOWN:
+        return pointer
+    half = (POINTER_SHOWN - 3) // 2
+    return f"{pointer[:half]}...{pointer[-half:]}"
 
 
 def address_said(locator: dict[str, str | int]) -> str:
-    """A `Candidate` locator as a report prints it."""
+    """A `Candidate` locator as a report prints it, a long pointer shortened in its middle."""
     if locator["kind"] == "tree":
-        return str(locator["pointer"]) or "/"
-    return f"column {locator['column']}, row {locator['row']}"
+        return _shortened(str(locator["pointer"])) or "/"
+    column = str(locator["column"]) or "(no name)"
+    return f"column {column}, row {locator['row']}"
 
 
-def _collapsed(candidates: list[Candidate]) -> list[Candidate]:
-    """One guess per printed number, table column and conversion, counting the other rows;
-    then those in JSON and YAML files before those in tables, each in manuscript order."""
-    first: dict[tuple, int] = {}
-    kept: list[Candidate] = []
-    for c in candidates:
-        if c.locator["kind"] != "table_position":
-            kept.append(c)
-            continue
-        key = (c.offset, c.path, c.locator["column"], c.conversion)
-        if key in first:
-            index = first[key]
-            kept[index] = kept[index].model_copy(update={"more_rows": kept[index].more_rows + 1})
-        else:
-            first[key] = len(kept)
-            kept.append(c)
-    return sorted(kept, key=lambda c: (c.locator["kind"] == "table_position", c.offset))
+def _exact(stored: str, printed: str, conversion: Conversion | None) -> bool:
+    value = decimal.Decimal(stored)
+    value = conversion.apply(value) if conversion is not None else value
+    return value == decimal.Decimal(printed.rstrip("%").replace(",", ""))
+
+
+def _collapsed(found: list[tuple[Candidate, str | None]]) -> list[Candidate]:
+    """One guess per printed number, group of places and conversion, standing for the rest of
+    the group in `also`: the first whose value equals the number exactly, or else the first.
+    Then ordered: outside index-like places first, trees before tables, by manuscript order."""
+    groups: dict[tuple, list[Candidate]] = {}
+    order: list[tuple] = []
+    for candidate, group in found:
+        key = (
+            (candidate.offset, candidate.path, group, candidate.conversion)
+            if group is not None
+            else (candidate.offset, candidate.path, id(candidate))
+        )
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(candidate)
+    kept = []
+    for key in order:
+        members = groups[key]
+        first = next((c for c in members if _exact(c.stored, c.printed, c.conversion)), members[0])
+        also = tuple(Also(locator=c.locator, stored=c.stored) for c in members if c is not first)
+        kept.append(first.model_copy(update={"also": also}))
+    return sorted(
+        kept,
+        key=lambda c: (c.index_like, c.locator["kind"] == "table_position", c.offset),
+    )
+
+
+def _scrubbed(note: str, root: pathlib.Path) -> str:
+    """A note with the project's absolute path taken out, under every spelling of it."""
+    for spelling in sorted({str(root), str(root.resolve())}, key=len, reverse=True):
+        note = note.replace(f"{spelling}/", "").replace(spelling, ".")
+    return note
 
 
 def survey(root: pathlib.Path) -> Survey:
@@ -676,14 +770,14 @@ def survey(root: pathlib.Path) -> Survey:
     for path in results:
         grouped.setdefault(_format(path), []).append(path.relative_to(root).as_posix())
 
-    held: list[tuple[str, dict[str, str | int], str]] = []
-    read_from, cut, skipped_columns = [], [], []
+    held: list[tuple[str, _Held]] = []
+    read_from, cut, index_like = [], [], []
     for path in results:
         relative = path.relative_to(root).as_posix()
         try:
             read = _read_values(path, MAX_VALUES_PER_FILE)
         except (ArtifactUnreadableError, BackendUnavailableError) as e:
-            notes.append(f"{relative} could not be read: {e}")
+            notes.append(f"{relative} could not be read: {e.detail}")
             continue
         except OSError as e:
             notes.append(f"{relative} could not be read: {e.strerror or e}")
@@ -691,15 +785,13 @@ def survey(root: pathlib.Path) -> Survey:
         if read.cut:
             cut.append(relative)
             notes.append(
-                f"{relative} was read no further than {MAX_VALUES_PER_FILE} values; the "
-                f"{len(read.values)} numbers read from it were compared"
+                f"{relative} holds more than {MAX_VALUES_PER_FILE} numbers; the first "
+                f"{len(read.values)} were compared"
             )
-        for why in read.skipped:
-            skipped_columns.append(f"{relative}: {why}")
-            notes.append(f"{relative}: {why}")
+        index_like += [f"{relative} {name}" for name in read.index_like]
         if read.values:
             read_from.append(relative)
-        held += [(relative, locator, value) for locator, value in read.values]
+        held += [(relative, value) for value in read.values]
 
     manuscript = manuscripts[0] if manuscripts else None
     printed = []
@@ -709,8 +801,10 @@ def survey(root: pathlib.Path) -> Survey:
             pins = _pins([manuscript], root)
             in_memory = Manifest.model_validate({"artifacts": pins, "path": root / DEFAULT_NAME})
             report = printed_numbers(in_memory, only=(pins[0]["id"],))
-        except (ArtifactUnreadableError, ArtifactMissingError) as e:
-            notes.append(f"{relative} could not be read: {e}")
+        except ArtifactUnreadableError as e:
+            notes.append(f"{relative} could not be read: {e.detail}")
+        except ArtifactMissingError:
+            notes.append(f"{relative} could not be read: it is not on disk")
         except OSError as e:
             notes.append(f"{relative} could not be read: {e.strerror or e}")
         else:
@@ -732,22 +826,22 @@ def survey(root: pathlib.Path) -> Survey:
         comparisons += len(held) * len(conversions)
         compared += 1
         reported = decimal.Decimal(number.value or "")
-        for relative, locator, value in held:
-            stored = decimal.Decimal(value)
+        for relative, value in held:
+            stored = decimal.Decimal(value.stored)
             agreeing = [c for c in conversions if agrees(stored, reported, c)]
             if agreeing:
-                candidates.append(
-                    Candidate(
-                        printed=number.text,
-                        offset=number.offset,
-                        line=number.line,
-                        context=number.context,
-                        path=relative,
-                        locator=locator,
-                        stored=value,
-                        conversion=agreeing[0],
-                    )
+                candidate = Candidate(
+                    printed=number.text,
+                    offset=number.offset,
+                    line=number.line,
+                    context=number.context,
+                    path=relative,
+                    locator=value.locator,
+                    stored=value.stored,
+                    conversion=agreeing[0],
+                    index_like=value.index_like,
                 )
+                candidates.append((candidate, value.group))
     if compared < len(printed):
         notes.append(
             f"comparisons stop at {MAX_COMPARISONS}: {len(printed) - compared} of the "
@@ -758,11 +852,11 @@ def survey(root: pathlib.Path) -> Survey:
         results={key: tuple(grouped[key]) for key, _, _ in FORMATS if key in grouped},
         capped=capped,
         manuscript=manuscript.relative_to(root).as_posix() if manuscript is not None else None,
-        notes=tuple(notes),
+        notes=tuple(_scrubbed(note, root) for note in notes),
         read_from=tuple(read_from),
         values=len(held),
         cut=tuple(cut),
-        skipped_columns=tuple(skipped_columns),
+        index_like=tuple(index_like),
         compared=compared,
         not_compared=len(printed) - compared,
         candidates=tuple(_collapsed(candidates)),
