@@ -67,7 +67,7 @@ from claims.record import check_records
 from claims.renderers import to_sarif
 from claims.reruns import RECORD
 from claims.stale import stale as run_stale
-from claims.starter import CONVENTIONAL, MAX_DISCOVERED, project_root
+from claims.starter import CONVENTIONAL, MAX_DISCOVERED, Survey, project_root, survey
 from claims.starter import write as write_starter
 from claims.verify import verify as run_verify
 from claims.why import why as run_why
@@ -144,10 +144,72 @@ def cmd_manifest_init(args: argparse.Namespace) -> int:
     return 0
 
 
+#: How many candidate bindings `verify` prints with no manifest. The survey holds every one.
+SHOWN_CANDIDATES = 20
+
+
+def _survey_lines(found: Survey) -> list[str]:
+    """What a project with no manifest holds that a manifest could pin, and the numbers its
+    manuscript prints that agree with a stored value, each said to be a guess."""
+    places = ", ".join(f"{name}/" for name in CONVENTIONAL)
+    lines = [f"found by looking under {places} and for one manuscript:", ""]
+
+    count = sum(len(paths) for paths in found.results.values())
+    lines.append(f"  result files: {count}")
+    width = max((len(name) for name in found.results), default=0)
+    for name, paths in found.results.items():
+        lines += [f"    {name if i == 0 else '':<{width}}  {p}" for i, p in enumerate(paths)]
+    if found.capped:
+        lines.append(
+            f"    more than {MAX_DISCOVERED} were found; these are the first {MAX_DISCOVERED}"
+        )
+    lines.append(f"  manuscript: {found.manuscript or 'none found'}")
+    lines += [f"  passed over: {note}" for note in found.notes]
+
+    lines.append("")
+    if found.manuscript is None or not found.values:
+        missing = (
+            "no manuscript" if found.manuscript is None else "no number in a JSON or YAML file"
+        )
+        lines.append(f"  candidate bindings: none, because there is {missing} to compare")
+    else:
+        agreeing = len({c.offset for c in found.candidates})
+        lines += [
+            f"  candidate bindings, guessed: {agreeing} of the {found.compared} numbers "
+            f"{found.manuscript} prints agree",
+            f"  with one of the {found.values} values the project's JSON and YAML files hold, "
+            "at the precision printed.",
+            "  A guess says the digits agree, never that the sentence reports that value.",
+        ]
+        shown = found.candidates[:SHOWN_CANDIDATES]
+        width = max((len(c.printed) for c in shown), default=0)
+        for c in shown:
+            where = f"line {c.line}" if c.line else "line ?"
+            held = f"{c.path} {c.pointer or '/'} holds {c.stored}"
+            if c.conversion is not None:
+                held += f", {c.conversion.said}"
+            lines.append(f"    guess  {where:<8}  {c.printed:<{width}}  {held}")
+            lines.append(f"           {'':<8}  {'':<{width}}  ...{c.context}...")
+        if len(found.candidates) > SHOWN_CANDIDATES:
+            lines.append(f"    and {len(found.candidates) - SHOWN_CANDIDATES} more guesses")
+
+    lines += [
+        "",
+        "  verified: 0. With no manifest no claim is declared, so nothing was checked, and",
+        "  nothing was written.",
+        "",
+    ]
+    return lines
+
+
 def cmd_verify(args: argparse.Namespace) -> int:
     path = Path(args.manifest) if args.manifest else find()
     if path is None:
+        # Exits 2 as every command does with nothing to read: a project with no manifest has
+        # checked nothing, which is neither a pass (0) nor a finding against it (1).
         print(f"no {DEFAULT_NAME} here or above.\n")
+        if args.format == "text":
+            print("\n".join(_survey_lines(survey(project_root(Path.cwd())))))
         print("write one that pins this project's result files, with example claims to edit:\n")
         print(f"    {_program(args)} manifest init")
         return 2

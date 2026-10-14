@@ -160,6 +160,12 @@ def _read(value: str | None) -> decimal.DecimalTuple | None:
         return None
 
 
+def telling(value: decimal.DecimalTuple | None) -> bool:
+    """Whether a value has two digits or more, or a decimal point. One digit with no decimal
+    point matches some value in most files, so a match on it says nothing."""
+    return value is not None and (len(value.digits) > 1 or value.exponent != 0)
+
+
 def _line_starts(raw: str, folded: str) -> list[int] | None:
     """Where each line of the extracted text starts in the normalized text.
 
@@ -389,8 +395,7 @@ def _inventory(
             NumberRule.VERSION_OR_SECTION,
         )
         elsewhere = standing is Standing.UNBOUND and value in reported
-        # One digit with no decimal point matches some reported value in most manifests.
-        telling = value is not None and (len(value.digits) > 1 or value.exponent != 0)
+        told = telling(value)
         numbers.append(
             PrintedNumber(
                 text=folded[start : end + 1 if percent else end],
@@ -403,8 +408,8 @@ def _inventory(
                 claims=claims,
                 reason=reason,
                 form=NumberForm.CARDINAL_WORD if folded[start].isalpha() else NumberForm.DECIMAL,
-                reported_elsewhere=elsewhere and telling,
-                reported_elsewhere_one_digit=elsewhere and not telling,
+                reported_elsewhere=elsewhere and told,
+                reported_elsewhere_one_digit=elsewhere and not told,
             )
         )
 
@@ -450,4 +455,4 @@ def numbers(manifest: Manifest, only: tuple[str, ...] = ()) -> NumbersReport:
     )
 
 
-__all__ = ["CONTEXT_WORDS", "NoTextError", "UnknownArtifactError", "numbers", "texts"]
+__all__ = ["CONTEXT_WORDS", "NoTextError", "UnknownArtifactError", "numbers", "telling", "texts"]

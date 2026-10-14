@@ -10,7 +10,12 @@ file, and a line read out of a pinned text source. Each is run through the engin
 written and kept only if every assertion verifies. An example that cannot be made real is
 written as a YAML comment, so a starter never declares a claim that fails on its first run.
 
-Nothing here prints. `repro.cli` renders the `Starter` this returns.
+`survey` reports what the same discovery finds without writing anything, for `repro verify`
+in a project with no manifest: the result files, the manuscript, and the numbers the
+manuscript prints that agree with a value a JSON or YAML file holds. Those agreements are
+guesses, and no decision is made from one.
+
+Nothing here prints. `repro.cli` renders the `Starter` and the `Survey` these return.
 """
 
 from __future__ import annotations
@@ -36,9 +41,21 @@ from claims.adapters.table import _DELIMITERS
 from claims.adapters.tree import _TREE_SUFFIXES, Written, _load_tree
 from claims.exceptions import ArtifactRefusedError, ArtifactUnreadableError, ManifestExistsError
 from claims.manifest import DEFAULT_NAME
-from claims.models import SCHEMA_VERSION, ArtifactRef, Digest, Manifest, Outcome
+from claims.models import (
+    SCHEMA_VERSION,
+    ArtifactRef,
+    ComparisonMode,
+    Conversion,
+    Digest,
+    Manifest,
+    NumberForm,
+    Outcome,
+    Standing,
+)
+from claims.numbers import numbers as printed_numbers
+from claims.numbers import telling
 from claims.provenance import of_tree
-from claims.verify import verify
+from claims.verify import _agree, _compared, verify
 
 #: Where discovery looks for result files, relative to the project top.
 CONVENTIONAL = ("results", "paper/artifacts", "outputs", "data")
@@ -68,6 +85,17 @@ MAX_BYTES = 50 * 1024 * 1024
 MAX_QUOTE_TRIES = 5
 
 _NOT_SEARCHED = {"node_modules", "__pycache__", "venv", "env", "site-packages"}
+
+#: The formats discovery finds, each named as a reader knows it, with the suffixes its adapter
+#: reads. A survey groups the result files under these names, in this order.
+FORMATS = (
+    ("JSON and YAML", frozenset(_TREE_SUFFIXES)),
+    ("CSV, TSV and PSV", frozenset(_DELIMITERS)),
+    ("Parquet, Feather, Arrow, Stata, SPSS and .rds", frozenset(COLUMNAR_SUFFIXES)),
+    ("Excel", frozenset(WORKBOOK_SUFFIXES)),
+    ("SQLite", frozenset(_SQLITE_SUFFIXES)),
+    ("NumPy, HDF5 and NetCDF", frozenset(_ARRAY_SUFFIXES)),
+)
 
 #: The standard library's own table, never the host's `mime.types`, so one file gets one media
 #: type on every machine. The overrides are suffixes that table lacks in some supported Python:
@@ -178,6 +206,50 @@ class Starter(BaseModel):
     """Ids of the example claims declared in the manifest. Each verifies."""
     commented: tuple[str, ...] = ()
     """Ids of the example claims written as comments."""
+
+
+class Candidate(BaseModel):
+    """A number the manuscript prints that agrees with a value a result file holds.
+
+    A guess. The digits agree at the precision printed, under `conversion` where one is named,
+    and nothing says the sentence reports that value. It is never a decision.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    printed: str
+    """As the manuscript prints it, with a percent sign where it has one."""
+    offset: int
+    """Where it starts in the manuscript's normalized text, as `claims.numbers` counts it."""
+    line: int | None
+    context: str
+    path: str
+    """The result file, relative to the project."""
+    pointer: str
+    stored: str
+    """The value at `pointer`, as the file writes it."""
+    conversion: Conversion | None = None
+
+
+class Survey(BaseModel):
+    """What `survey` found. Nothing was written and nothing was verified."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    root: pathlib.Path
+    results: dict[str, tuple[str, ...]]
+    """Each result file found, relative to the project, under the name of its format."""
+    capped: bool = False
+    """Discovery found more than `MAX_DISCOVERED` result files and kept the first of them."""
+    manuscript: str | None = None
+    notes: tuple[str, ...] = ()
+    """What discovery passed over, and what could not be read."""
+    values: int = 0
+    """How many numbers the JSON and YAML files hold."""
+    compared: int = 0
+    """How many numbers the manuscript prints were compared with those values: the ones no
+    rule sets aside, printed in digits, with two digits or a decimal point."""
+    candidates: tuple[Candidate, ...] = ()
 
 
 def project_root(start: pathlib.Path) -> pathlib.Path:
@@ -429,4 +501,90 @@ def write(
             for name, claim in (("example-number", metric), ("example-quote", quote))
             if claim is None
         ),
+    )
+
+
+def _format(path: pathlib.Path) -> str:
+    """The name of the format a discovered result file is in."""
+    return next(name for name, suffixes in FORMATS if path.suffix.lower() in suffixes)
+
+
+def survey(root: pathlib.Path) -> Survey:
+    """What `repro verify` could check at `root`, found as `write` finds it, writing nothing.
+
+    The manuscript's numbers are those `claims.numbers` counts, read through a manifest held in
+    memory that pins the manuscript and declares no claim. Each one that no rule sets aside is
+    compared with every number a discovered JSON or YAML file holds, by the comparison a
+    `metric` assertion makes at the precision printed; a number printed with a percent sign is
+    also compared as a percentage of the stored value. Every agreement is a `Candidate`.
+    """
+    found, capped, notes = discover(root)
+    manuscripts = [path for path in found if path.suffix.lower() in TEXT_SUFFIXES]
+    results = [path for path in found if path not in manuscripts]
+
+    grouped: dict[str, list[str]] = {}
+    for path in results:
+        grouped.setdefault(_format(path), []).append(path.relative_to(root).as_posix())
+
+    held: list[tuple[str, str, str]] = []
+    for path in results:
+        if path.suffix.lower() not in _TREE_SUFFIXES:
+            continue
+        relative = path.relative_to(root).as_posix()
+        try:
+            held += [(relative, pointer, value) for pointer, value in _numbers(_load_tree(path))]
+        except ArtifactUnreadableError as e:
+            notes.append(f"{relative} could not be read: {e}")
+
+    manuscript = manuscripts[0] if manuscripts else None
+    printed = []
+    if manuscript is not None:
+        pins = _pins([manuscript], root)
+        in_memory = Manifest.model_validate({"artifacts": pins, "path": root / DEFAULT_NAME})
+        try:
+            report = printed_numbers(in_memory, only=(pins[0]["id"],))
+        except ArtifactUnreadableError as e:
+            notes.append(f"{pins[0]['path']} could not be read: {e}")
+        else:
+            printed = [
+                number
+                for number in report.numbers
+                if number.standing is Standing.UNBOUND
+                and number.form is NumberForm.DECIMAL
+                and number.value is not None
+                and telling(decimal.Decimal(number.value).as_tuple())
+            ]
+
+    candidates = []
+    for number in printed:
+        reported = decimal.Decimal(number.value or "")
+        conversions = (None, Conversion.PERCENT) if number.text.endswith("%") else (None,)
+        for relative, pointer, value in held:
+            stored = decimal.Decimal(value)
+            for conversion in conversions:
+                compared = _compared(stored, conversion)
+                if _agree(compared, reported, ComparisonMode.PRINTED_PRECISION, decimal.Decimal(0)):
+                    candidates.append(
+                        Candidate(
+                            printed=number.text,
+                            offset=number.offset,
+                            line=number.line,
+                            context=number.context,
+                            path=relative,
+                            pointer=pointer,
+                            stored=value,
+                            conversion=conversion,
+                        )
+                    )
+                    break
+
+    return Survey(
+        root=root,
+        results={name: tuple(grouped[name]) for name, _ in FORMATS if name in grouped},
+        capped=capped,
+        manuscript=manuscript.relative_to(root).as_posix() if manuscript is not None else None,
+        notes=tuple(notes),
+        values=len(held),
+        compared=len(printed),
+        candidates=tuple(candidates),
     )

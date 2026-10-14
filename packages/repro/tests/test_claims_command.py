@@ -115,11 +115,15 @@ def test_with_no_manifest_each_name_tells_the_user_its_own_command(
     code, under_repro, _ = run(repro_main, argv, capsys)
     again, under_claims, _ = run(claims_main, argv, capsys)
     assert code == again == 2
-    assert under_repro == (
-        "no repro.yaml here or above.\n\n"
+    head = "no repro.yaml here or above.\n\n"
+    tail = (
         "write one that pins this project's result files, with example claims to edit:\n\n"
         "    repro manifest init\n"
     )
+    # `verify` reports between the two what it found to check; the others say nothing more.
+    assert under_repro.startswith(head) and under_repro.endswith(tail)
+    if command != "verify":
+        assert under_repro == head + tail
     assert under_claims == under_repro.replace("repro manifest init", "claims manifest init")
 
 
