@@ -291,6 +291,7 @@ source_modules = [
   "repro.starter",
   "repro.corpus",
   "repro.regression",
+  "repro.cli_claims",
 ]
 forbidden_modules = [
   "repro.cli",
@@ -316,6 +317,9 @@ layers = [
   "repro.reproduce",
   # Runs one declared command in a directory holding its declared inputs.
   "repro.regenerate",
+  # The commands of the claims side and how each prints. `repro.cli` builds the parser over
+  # them, and they reach for nothing that runs a command.
+  "repro.cli_claims",
   # Other formats for the check records. An exporter reads records and nothing below them.
   "repro.export",
   "repro.renderers.sarif",
