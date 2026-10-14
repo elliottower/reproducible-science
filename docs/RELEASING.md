@@ -183,7 +183,9 @@ resolves `>=0.6,<0.7` or an unpinned name picks it up. Correct the publisher and
 **Cut a release candidate first.** A candidate is all six distributions at `X.Y.Zrc1`, tagged
 `vX.Y.Zrc1`, published by the same six workflows. `bump` writes `>=X.Y.Zrc1,<X.(Y+1)` as each
 sibling range during a candidate, because a range that names no pre-release admits none, and
-`>=X.Y,<X.(Y+1)` for the release.
+`>=X.Y,<X.(Y+1)` for the release. It drops trailing zeros from the candidate's bound
+(`>=0.6rc1,<0.7` for `0.6.0rc1`), the spelling `pyproject-fmt` gives it on commit, so the hook
+leaves the range as `bump` wrote it and `versions.py check` accepts it.
 
 ### The candidate, in order
 
