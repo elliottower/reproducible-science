@@ -136,8 +136,8 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
                 {recheck.busy === 'refresh' ? 'Refreshing…' : '⟳ Refresh'}
               </button>
               <button className="recheck" onClick={() => recheck.run('verify')} disabled={recheck.busy !== null}
-                title="Run repro verify: check every claim again. Records the check in the project's history.">
-                {recheck.busy === 'verify' ? 'Verifying…' : '✓ Run repro verify'}
+                title="claims verify (the same check as repro verify): check every claim again. Records the check in the project's history.">
+                {recheck.busy === 'verify' ? 'Verifying…' : '✓ Verify claims'}
               </button>
             </>
           )}
