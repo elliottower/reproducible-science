@@ -89,15 +89,28 @@ def write_project(root):
     (root / ".results" / "ledger.jsonl").write_text(
         "".join(json.dumps(event) + "\n" for event in events)
     )
-    (root / "PREREG.md").write_text("# Plan\n")
-    (root / ".prereg").mkdir()
-    (root / ".prereg" / "PREREG.md.json").write_text(json.dumps({"commit": COMMIT}))
+    freeze(root)
     (root / "CITATION.cff").write_text(
         yaml.safe_dump({"cff-version": "1.2.0", "doi": "10.5281/zenodo.42", "license": "MIT"})
     )
     (root / "LICENSE").write_text("\nMIT License\n\nCopyright (c) 2026\n")
     (root / "uv.lock").write_text("version = 1\n")
     return root
+
+
+def freeze(directory, commit=COMMIT):
+    """A `PREREG.md` in `directory`, frozen whole: the record `prereg freeze` writes beside it."""
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / "PREREG.md").write_text("# Plan\n")
+    (directory / ".prereg").mkdir()
+    record = {
+        "file": "PREREG.md",
+        "sha256": SHA,
+        "commit": commit,
+        "frozen_at": "2026-09-01T00:00:00+00:00",
+        "access": "no data",
+    }
+    (directory / ".prereg" / "PREREG.md.json").write_text(json.dumps(record))
 
 
 @pytest.fixture
@@ -179,7 +192,7 @@ def test_the_license_field_reads_the_first_line_that_is_not_blank(full):
 
 def test_every_field_no_reader_is_named_for_is_left_to_do(full):
     for answer in full.answers:
-        if answer.question.id not in acm.READS:
+        if answer.question.id not in {*acm.READS, *acm.SETTLES}:
             assert answer.status is Status.TODO
             assert answer.findings == ()
 
@@ -254,3 +267,66 @@ def test_json_carries_the_status_and_records_of_each_answer(tmp_path, monkeypatc
     assert archived["records"] == ["CITATION.cff"]
     assert data["notice"].startswith("DRAFT.")
     assert Finding.model_validate(archived["findings"][0]).said == "names DOI 10.5281/zenodo.42"
+
+
+# -- plans ---------------------------------------------------------------------------------
+
+
+def test_a_plan_under_tests_fixtures_or_examples_is_not_the_projects(tmp_path):
+    for folder in ("tests/data", "packages/x/fixtures", "examples/demo"):
+        freeze(tmp_path / folder, commit="b" * 40)
+    draft = acm.appendix(Project.at(tmp_path))
+    assert draft.answer("experiment-workflow").findings == ()
+    freeze(tmp_path / "study")
+    assert said(acm.appendix(Project.at(tmp_path)).answer("experiment-workflow")) == [
+        ("study/PREREG.md", f"frozen at commit {COMMIT[:12]}")
+    ]
+
+
+def test_a_plan_never_frozen_is_not_listed(tmp_path):
+    (tmp_path / "PREREG.md").write_text("# Plan\n")
+    assert acm.appendix(Project.at(tmp_path)).answer("experiment-workflow").findings == ()
+
+
+def test_a_plan_named_explicitly_is_read_wherever_it_is(tmp_path):
+    freeze(tmp_path / "tests" / "kept", commit="c" * 40)
+    project = Project.at(tmp_path, plan=tmp_path / "tests" / "kept" / "PREREG.md")
+    assert said(acm.appendix(project).answer("experiment-workflow")) == [
+        ("tests/kept/PREREG.md", f"frozen at commit {'c' * 12}")
+    ]
+
+
+# -- choices a record settles --------------------------------------------------------------
+
+
+def test_a_doi_settles_archived_and_publicly_available_as_yes(full):
+    for field in ("archived", "publicly-available"):
+        answer = full.answer(field)
+        assert answer.status is Status.DRAFT
+        assert (answer.choice, answer.choice_from) == ("Yes", ("CITATION.cff",))
+        assert said(answer) == [("CITATION.cff", "names DOI 10.5281/zenodo.42")]
+
+
+def test_a_declared_command_settles_the_workflow_framework_as_yes(full):
+    answer = full.answer("workflow-framework")
+    assert (answer.choice, answer.choice_from) == ("Yes", ("repro.yaml",))
+
+
+def test_with_no_doi_nothing_is_chosen_and_the_fields_stay_to_do(tmp_path):
+    write_project(tmp_path)
+    (tmp_path / "CITATION.cff").write_text(yaml.safe_dump({"license": "MIT"}))
+    draft = acm.appendix(Project.at(tmp_path))
+    for field in ("archived", "publicly-available"):
+        assert (draft.answer(field).choice, draft.answer(field).status) == ("", Status.TODO)
+
+
+def test_a_license_on_disk_settles_no_choice(full):
+    assert full.answer("code-licenses").status is Status.DRAFT
+    assert all(
+        answer.choice == "" for answer in full.answers if answer.question.id not in acm.SETTLES
+    )
+
+
+def test_a_settled_choice_is_marked_draft_in_every_format(full):
+    assert "Answer: **Yes** (DRAFT, settled by `CITATION.cff`)" in markdown(full)
+    assert r"Yes \textbf{[DRAFT, settled by \texttt{CITATION.cff}]}" in acm.latex(full)

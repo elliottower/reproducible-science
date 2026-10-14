@@ -61,7 +61,7 @@ ACM_FORMATS: dict[str, Callable[[Draft], str]] = {
 
 
 def command_acm(args: argparse.Namespace) -> int:
-    draft = acm.appendix(Project.at(pathlib.Path.cwd()))
+    draft = acm.appendix(Project.at(pathlib.Path.cwd(), plan=args.plan))
     code = emit(ACM_FORMATS[args.format](draft), args.output, args.force)
     if args.output is not None:
         print(f"  {summary(draft)}")
@@ -73,6 +73,13 @@ def _output_options(parser: argparse.ArgumentParser, formats: list[str]) -> None
     parser.add_argument("--output", "-o", metavar="FILE", help="write here instead of printing")
     parser.add_argument(
         "--force", action="store_true", help="replace the file --output names where it exists"
+    )
+    parser.add_argument(
+        "--plan",
+        type=pathlib.Path,
+        metavar="PATH",
+        help="the preregistration to read, in place of every PREREG.md `prereg check` finds "
+        "outside folders of tests, fixtures and examples",
     )
 
 

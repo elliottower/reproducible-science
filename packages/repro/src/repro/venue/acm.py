@@ -48,8 +48,17 @@ READS: dict[str, tuple[str, ...]] = {
 }
 
 
+#: Fields a record settles with no judgment involved: the choice, and the reader whose findings
+#: settle it. A DOI names an archived copy; a declared command is run by `repro reproduce`.
+SETTLES: dict[str, tuple[str, str]] = {
+    "archived": ("Yes", "archive"),
+    "publicly-available": ("Yes", "archive"),
+    "workflow-framework": ("Yes", "regenerations"),
+}
+
+
 def appendix(project: Project) -> Draft:
-    return fill(questionnaire(NAME), READS, project)
+    return fill(questionnaire(NAME), READS, project, SETTLES)
 
 
 def latex(draft: Draft) -> str:

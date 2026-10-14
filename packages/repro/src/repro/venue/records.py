@@ -25,6 +25,9 @@ from claims.origins import origins as check_origins
 from claims.reruns import RECORD as RERUNS
 from claims.reruns import reruns as read_reruns
 from claims.starter import project_root
+from prereg import record as prereg_record
+from prereg.cli import _plans_below as plans_below
+from prereg.cli import frozen_digest
 from provenance_core.chain import ChainError, read_ledger
 from provenance_core.gitref import try_run
 from pydantic import BaseModel, ConfigDict
@@ -54,6 +57,10 @@ ENVIRONMENT_FILES = (
     "Dockerfile",
 )
 
+#: Folders whose plans are not the project's own: a test fixture or a worked example is frozen
+#: to exercise the tool, and reporting it would register a study nobody ran.
+NOT_THE_PROJECTS = frozenset({"tests", "test", "testdata", "fixtures", "fixture", "examples"})
+
 LICENSE_FILES = ("LICENSE", "LICENSE.md", "LICENSE.txt", "COPYING")
 README_FILES = ("README.md", "README.rst", "README.txt", "README")
 
@@ -76,13 +83,30 @@ class Project(BaseModel):
 
     root: pathlib.Path
     manifest: Manifest | None = None
+    plan: pathlib.Path | None = None
+    """The plan named on the command line. None to find plans as `prereg check` does."""
 
     @classmethod
-    def at(cls, cwd: pathlib.Path) -> Project:
+    def at(cls, cwd: pathlib.Path, plan: pathlib.Path | None = None) -> Project:
         """The project holding `cwd`, with the manifest that governs it, if any."""
         root = project_root(cwd)
         path = find(cwd)
-        return cls(root=root, manifest=load(path) if path is not None else None)
+        return cls(
+            root=root,
+            manifest=load(path) if path is not None else None,
+            plan=plan.resolve() if plan is not None else None,
+        )
+
+    def plans(self) -> list[pathlib.Path]:
+        """The plan named, or every `PREREG.md` `prereg check` finds at or below the top,
+        leaving out those under a folder of tests, fixtures or examples."""
+        if self.plan is not None:
+            return [self.plan]
+        return [
+            path
+            for path in plans_below(self.root)
+            if not NOT_THE_PROJECTS & set(path.relative_to(self.root).parts[:-1])
+        ]
 
     def shown(self, path: pathlib.Path) -> str:
         """A path as named from the top of the project."""
@@ -291,14 +315,25 @@ def ledger(project: Project) -> tuple[Finding, ...]:
 
 
 def plans(project: Project) -> tuple[Finding, ...]:
-    """Each plan frozen with `prereg`, and the commit it was frozen at."""
-    return tuple(
-        Finding(
-            record=project.shown(freeze.path),
-            said=f"frozen at commit {freeze.ref[:12]}",
-        )
-        for freeze in crosscheck.frozen_plans(project.root)
-    )
+    """Each plan frozen with `prereg`, and the commit it was frozen at. A plan never frozen
+    is not listed."""
+    found = []
+    for path in project.plans():
+        try:
+            if frozen_digest(path) is None:
+                continue
+            whole = prereg_record.read(path)
+        except prereg_record.RecordError as e:
+            found.append(Finding(record=project.shown(path), said=f"freeze record unreadable: {e}"))
+            continue
+        if whole is not None:
+            commit = whole.commit
+        else:
+            status = crosscheck.FROZEN_AT.search(path.read_text(encoding="utf-8"))
+            commit = status.group(1) if status else ""
+        said = f"frozen at commit {commit[:12]}" if commit else "frozen"
+        found.append(Finding(record=project.shown(path), said=said))
+    return tuple(found)
 
 
 # ----------------------------------------------------------------------- files at the top

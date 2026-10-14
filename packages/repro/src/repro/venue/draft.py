@@ -5,8 +5,10 @@ the day it was copied: the text of each question is the venue's, never this pack
 pairs each question with the findings the venue's readers return for it. A question with
 findings is a `draft`: every line under it was generated from the record it names, and the
 authors have yet to read it. A question with none is a `todo`, left for the authors and never
-filled with generated prose. No question is ever answered: where a venue asks for yes or no,
-the choice is the authors'.
+filled with generated prose. Where a venue asks for yes or no, the choice is the authors',
+except where a record settles it with no judgment involved: a DOI in `CITATION.cff` settles
+whether the artifacts are archived. Such a choice is named in the venue's `SETTLES`, is still a
+draft, and names the record that settles it.
 
 A draft that reads as authored is the defect this exists to prevent, the same defect as an
 inferred claim counted as verified, so every rendering marks every generated line.
@@ -105,6 +107,10 @@ class Answer(BaseModel):
     question: Question
     status: Status
     findings: tuple[Finding, ...] = ()
+    choice: str = ""
+    """A yes or no a record settles, as the venue words it. Empty where the authors choose."""
+    choice_from: tuple[str, ...] = ()
+    """The records that settle `choice`."""
 
     @computed_field
     @property
@@ -148,20 +154,39 @@ def check_reads(stored: Questionnaire, reads: Mapping[str, tuple[str, ...]]) -> 
                 raise UnknownReaderError(stored.venue, reader)
 
 
-def fill(stored: Questionnaire, reads: Mapping[str, tuple[str, ...]], project: Project) -> Draft:
+def fill(
+    stored: Questionnaire,
+    reads: Mapping[str, tuple[str, ...]],
+    project: Project,
+    settles: Mapping[str, tuple[str, str]] | None = None,
+) -> Draft:
     """Each question, with the findings of the readers `reads` names for it. A question with
-    no finding is left to do."""
-    check_reads(stored, reads)
-    wanted = dict.fromkeys(reader for readers in reads.values() for reader in readers)
+    no finding is left to do.
+
+    `settles` maps a question to a choice and the reader whose findings settle it: where that
+    reader finds anything, the choice is made, and its findings are listed with the rest."""
+    settles = settles or {}
+    check_reads(stored, {**reads, **{q: (reader,) for q, (_, reader) in settles.items()}})
+    wanted = dict.fromkeys(
+        [*(r for readers in reads.values() for r in readers), *(r for _, r in settles.values())]
+    )
     found = {reader: READERS[reader](project) for reader in wanted}
     answers = []
     for question in stored.questions:
         findings = tuple(f for reader in reads.get(question.id, ()) for f in found[reader])
+        choice, settling = "", tuple[Finding, ...]()
+        if question.id in settles:
+            said, reader = settles[question.id]
+            if found[reader]:
+                choice, settling = said, found[reader]
+                findings += tuple(f for f in settling if f not in findings)
         answers.append(
             Answer(
                 question=question,
                 status=Status.DRAFT if findings else Status.TODO,
                 findings=findings,
+                choice=choice,
+                choice_from=tuple(dict.fromkeys(f.record for f in settling)),
             )
         )
     return Draft(
@@ -182,6 +207,12 @@ def _marker(answer: Answer) -> str:
         return "**TODO** (authors): no record in this repository answers this."
     named = ", ".join(f"`{record}`" for record in answer.records)
     return f"**DRAFT**, generated from {named}; not written by the authors."
+
+
+def choice_line(answer: Answer) -> str:
+    """The answer a record settles, marked as a draft and naming the record."""
+    named = ", ".join(f"`{record}`" for record in answer.choice_from)
+    return f"Answer: **{answer.choice}** (DRAFT, settled by {named})"
 
 
 def _finding_line(finding: Finding) -> str:
@@ -210,6 +241,8 @@ def markdown(draft: Draft) -> str:
             lines += ["", f"### {question.title}"]
         if question.text:
             lines += ["", f"*{question.text}*"]
+        if answer.choice:
+            lines += ["", choice_line(answer)]
         lines += ["", _marker(answer)]
         if answer.findings:
             lines += ["", *(_finding_line(f) for f in answer.findings)]
@@ -254,7 +287,13 @@ def latex_marker(answer: Answer) -> str:
     if answer.status is Status.TODO:
         return r"\textbf{[TODO (authors): no record in this repository answers this.]}"
     named = ", ".join(latex_code(record) for record in answer.records)
-    return rf"\textbf{{[DRAFT, generated from {named}; not written by the authors.]}}"
+    marker = rf"\textbf{{[DRAFT, generated from {named}; not written by the authors.]}}"
+    if answer.choice:
+        settled = ", ".join(latex_code(record) for record in answer.choice_from)
+        marker = (
+            rf"{latex_escape(answer.choice)} \textbf{{[DRAFT, settled by {settled}]}} " + marker
+        )
+    return marker
 
 
 def latex_findings(answer: Answer) -> str:
