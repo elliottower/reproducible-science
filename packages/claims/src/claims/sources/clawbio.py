@@ -18,7 +18,8 @@ table. So the reader writes what the folder states and opens an item for each nu
   list it, and to the sha256 of the bytes read otherwise. That digest, and those of
   `commands.sh` and `environment.yml`, are pinned in the open items' source;
 - every number `report.md` prints outside code is read under the rule `claims numbers` reads a
-  manuscript with (`claims.numbers.printed`). Each quantity becomes a claim whose text is its
+  manuscript with (`claims.numbers.printed`). Each quantity, up to `MAX_CLAIMS` of them, the rest
+  counted, becomes a claim whose text is its
   line as printed, with a `quote` of that line in `report.md` marked `basis: inferred`, and one
   item asking for the address of the value in a pinned table. The quote is the reader's
   proposal that the line is the claim: a draft whose claims hold only such quotes fails
@@ -89,6 +90,10 @@ DELIMITED = frozenset({".csv", ".tsv", ".psv"})
 MAX_SEARCHED_BYTES = 5_000_000
 #: At most this many candidates are listed for one item; the count says how many there were.
 MAX_CANDIDATES = 20
+#: At most this many numbers of one report become claims, in the order the report prints them;
+#: the reading says how many more there were. A draft is written and read back in one YAML
+#: document, which takes seconds per thousand claims.
+MAX_CLAIMS = 500
 
 #: `<sha256>  <label>`, or `<sha256> *<label>` as `sha256sum --binary` writes it.
 _LINE = re.compile(r"(?P<digest>[0-9a-fA-F]{64}) [ *](?P<label>.+)")
@@ -312,7 +317,11 @@ def from_clawbio(folder: pathlib.Path, directory: pathlib.Path) -> Written:
                 searched[label] = _stored(path)
             except (Refused, RefusedYamlError) as e:
                 not_checked.append(
-                    PassedOver(file=label, reason=f"refused: {e}, so no candidate is read from it")
+                    PassedOver(
+                        file=label,
+                        reason="not searched for candidates: "
+                        + str(e).removesuffix(", which is refused here"),
+                    )
                 )
 
     tables = folder / TABLES
@@ -338,6 +347,7 @@ def from_clawbio(folder: pathlib.Path, directory: pathlib.Path) -> Written:
     lines = text.split("\n")
     masked, fenced = _code_masked(lines)
     claims, items = [], []
+    beyond = 0
     for number, (line, readable) in enumerate(zip(lines, masked, strict=True), start=1):
         where = f"{REPORT}, line {number}"
         if number in fenced:
@@ -381,6 +391,9 @@ def from_clawbio(folder: pathlib.Path, directory: pathlib.Path) -> Written:
                 )
                 continue
             quantities += 1
+            if len(claims) >= MAX_CLAIMS:
+                beyond += 1
+                continue
             claim_id = f"line-{number}-{quantities}"
             claims.append(
                 {
@@ -427,6 +440,14 @@ def from_clawbio(folder: pathlib.Path, directory: pathlib.Path) -> Written:
                 )
             )
 
+    if beyond:
+        passed.append(
+            PassedOver(
+                file=REPORT,
+                reason=f"{beyond} more number(s) past the first {MAX_CLAIMS}, which are not made "
+                "claims",
+            )
+        )
     draft = {
         "schema_version": SCHEMA_VERSION,
         "project": _project(lines, folder),

@@ -22,6 +22,7 @@ from claims.models import Basis, Outcome, Validity
 from claims.open_items import ClaimState, OpenItemsError, tally
 from claims.open_items import read as read_items
 from claims.policy import EXPLORATORY, PUBLICATION, STRICT
+from claims.sources import clawbio
 from claims.sources.clawbio import ClawbioError, from_clawbio
 from claims.verify import verify
 
@@ -234,7 +235,7 @@ def test_a_table_nested_deeper_than_the_parser_reads_is_not_searched_and_does_no
     checksums.write_text(checksums.read_text() + f"{_sha(deep)}  tables/deep.json\n")
     written = from_clawbio(folder, out)
     assert {p.file: p.reason for p in written.not_checked}["tables/deep.json"].startswith(
-        "refused: nested deeper than 64"
+        "not searched for candidates: nested deeper than 64"
     )
     assert written.items == 5
 
@@ -282,3 +283,20 @@ def test_the_command_prints_what_it_wrote(tmp_path, capsys):
     assert main(["from-clawbio", str(folder), "-o", str(out), "--format", "json"]) == 0
     printed = json.loads(capsys.readouterr().out)
     assert (printed["claims"], printed["items"], printed["pinned"]) == (5, 5, 3)
+
+
+def test_a_reason_for_a_refused_table_reads_as_one_sentence(tmp_path):
+    folder, out = _folder(tmp_path), tmp_path / "out"
+    _listed(folder, "bomb.yaml", "a: &a [1]\nb: *a\n")
+    reason = {p.file: p.reason for p in from_clawbio(folder, out).not_checked}["tables/bomb.yaml"]
+    assert reason == "not searched for candidates: line 2: an alias"
+
+
+def test_past_the_cap_numbers_are_counted_and_not_made_claims(tmp_path, monkeypatch):
+    monkeypatch.setattr(clawbio, "MAX_CLAIMS", 3)
+    folder, out = _folder(tmp_path), tmp_path / "out"
+    written = from_clawbio(folder, out)
+    assert written.claims == written.items == 3
+    assert "2 more number(s) past the first 3, which are not made claims" in {
+        p.reason for p in written.passed_over
+    }
