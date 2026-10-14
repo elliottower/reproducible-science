@@ -109,19 +109,15 @@ class VerificationReport(BaseModel):
     @property
     def counts(self) -> dict[str, int]:
         """Assertions by outcome. An inferred assertion nobody reviewed is counted under
-        `inferred_` and its outcome, so a total of `verified` counts declared and reviewed
-        assertions only."""
+        `inferred_` and its outcome, a match as `inferred_matched`, so a total of `verified`
+        counts declared and reviewed assertions only."""
         tally: dict[str, int] = {}
         for claim in self.claims:
             if claim.availability is Availability.NOT_OFFERED:
                 tally[Outcome.NOT_OFFERED.value] = tally.get(Outcome.NOT_OFFERED.value, 0) + 1
                 continue
             for decision in claim.decisions:
-                key = (
-                    f"inferred_{decision.outcome.value}"
-                    if decision.inferred
-                    else decision.outcome.value
-                )
+                key = f"inferred_{decision.said}" if decision.inferred else decision.outcome.value
                 tally[key] = tally.get(key, 0) + 1
         return tally
 

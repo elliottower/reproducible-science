@@ -229,8 +229,8 @@ class Tally(BaseModel):
     left_open_by_reader: int
     """Claims with at least one item: what the reader could not bind alone."""
     items: dict[str, int]
-    assertions: dict[Basis, dict[Outcome, int]]
-    """Every assertion of the draft by basis and outcome."""
+    assertions: dict[Basis, dict[str, int]]
+    """Every assertion of the draft by basis and outcome, an inferred match as `matched`."""
     per_claim: tuple[ClaimTally, ...]
 
 
@@ -292,10 +292,10 @@ def tally(path: pathlib.Path) -> Tally:
 
     states = collections.Counter(entry.state for entry in per_claim)
     fills = [fill for entry in per_claim for fill in entry.items]
-    assertions: dict[Basis, dict[Outcome, int]] = {basis: {} for basis in Basis}
+    assertions: dict[Basis, dict[str, int]] = {basis: {} for basis in Basis}
     for decision in report.decisions:
         row = assertions[decision.basis]
-        row[decision.outcome] = row.get(decision.outcome, 0) + 1
+        row[decision.said] = row.get(decision.said, 0) + 1
     return Tally(
         open_items=path.as_posix(),
         manifest=draft.as_posix(),

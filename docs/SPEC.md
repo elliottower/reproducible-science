@@ -1377,6 +1377,12 @@ beside it in `native_outcome`. `repro verify` prints what it always has.
 
 The mapping is one function, total over `Outcome` by test and never by a default.
 
+An assertion the manifest marks `basis: inferred`, and nobody reviewed, is the exception: its
+record is `not-checked` whatever the comparison found, with `assertion.basis: inferred` and the
+finding in `native_outcome` as `inferred_matched`, `inferred_mismatch`, `inferred_not_found`,
+`inferred_unchecked` or `inferred_error`. A reader that knows nothing of `basis` reads the
+`outcome` and passes on no match; the stored values and stages of the comparison are kept.
+
 A schema says which fields a record may hold; `repro.record.validate` says which records are
 possible, and refuses the rest: an `outcome` that is not what its `native_outcome` normalizes
 to, or that the stages do not give; a `match` or `mismatch` against a file that was not read;

@@ -110,6 +110,11 @@ SYMBOL = {
 }
 
 
+#: Beside an inferred assertion, whatever its comparison found: a proposal nobody accepted is
+#: never shown as `ok`.
+INFERRED_SYMBOL = "inf "
+
+
 def cmd_manifest_init(args: argparse.Namespace) -> int:
     starter = write_starter(project_root(Path.cwd()), args.files, Path.cwd(), _program(args))
     print(f"wrote {starter.path}")
@@ -252,7 +257,7 @@ def _verify_text(
             # Said outside the detail, which is cut short and would lose it.
             tie = f"  [exact tie: {d.tie.lower} or {d.tie.upper}]" if d.tie else ""
             print(
-                f"  {SYMBOL[d.outcome]}  {d.claim_id:<12} {d.kind:<8} "
+                f"  {INFERRED_SYMBOL if d.inferred else SYMBOL[d.outcome]}  {d.claim_id:<12} {d.kind:<8} "
                 f"{d.detail[:52]}{tie}{note}{mark}"
             )
 
@@ -943,7 +948,9 @@ def _tally_lines(found: Tally) -> list[str]:
         f"  {items['filled']} filled, {items['filled_and_passing']} of them passing the check",
     ]
     for basis, outcomes in found.assertions.items():
-        counted = ", ".join(f"{n} {_said(outcome)}" for outcome, n in outcomes.items()) or "none"
+        counted = (
+            ", ".join(f"{n} {said.replace('_', ' ')}" for said, n in outcomes.items()) or "none"
+        )
         lines.append(f"  {basis.value} assertions: {counted}")
     if found.manifest_changed:
         lines.append(f"  {found.manifest} has changed since the reader wrote it")

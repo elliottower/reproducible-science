@@ -29,7 +29,7 @@ from claims.open_items import (
     write_draft,
 )
 from claims.policy import EXPLORATORY, PUBLICATION, STRICT, Severity
-from claims.record import NormalizedOutcome, check_records, read_outcome
+from claims.record import NormalizedOutcome, check_records, read_outcome, validate
 from claims.renderers import to_sarif
 from claims.verify import verify
 from claims.why import why
@@ -73,7 +73,7 @@ def test_an_inferred_match_is_counted_apart_and_fails_publication(tmp_path):
     (decision,) = report.decisions
     assert decision.outcome is Outcome.VERIFIED
     assert decision.inferred
-    assert report.counts == {"inferred_verified": 1}
+    assert report.counts == {"inferred_matched": 1}
 
     published = PUBLICATION.assess(report)
     assert not published.passed
@@ -137,6 +137,15 @@ def test_why_never_lists_an_inferred_match_as_verified(tmp_path, capsys):
     assert "2 assertions: 1 verified, 1 inferred that matched;" in shown
 
 
+def test_no_word_verify_prints_calls_an_inferred_match_verified(tmp_path, capsys):
+    manifest = project(tmp_path, metric("0.912", "/auc", basis="inferred"))
+    assert main(["verify", str(manifest.path), "--policy", "exploratory"]) == 0
+    shown = capsys.readouterr().out
+    assert "verified" not in shown.replace("counted apart from verified", "")
+    assert "inf " in shown and "ok  " not in shown
+    assert "1 inferred_matched" in shown
+
+
 def test_an_inferred_mismatch_is_still_a_mismatch(tmp_path):
     report = verify(project(tmp_path, metric("0.913", "/auc", basis="inferred")))
 
@@ -162,9 +171,17 @@ def test_the_record_marks_an_inferred_match_and_a_reader_does_not_pass_it_on(tmp
     inferred, declared = check_records(manifest, checked_at=WHEN)
 
     assert inferred.assertion.basis is Basis.INFERRED
-    assert inferred.outcome is NormalizedOutcome.MATCH
+    # A reader that knows nothing of `basis` reads `outcome` and sees no match.
+    line = json.loads(inferred.to_json())
+    assert (line["outcome"], line["native_outcome"]) == ("not-checked", "inferred_matched")
+    assert line["assertion"]["basis"] == "inferred"
+    assert "verified" not in json.dumps(
+        {key: line[key] for key in ("outcome", "native_outcome", "assertion")}
+    )
     assert read_outcome(inferred) is NormalizedOutcome.NOT_CHECKED
-    assert json.loads(inferred.to_json())["assertion"]["basis"] == "inferred"
+    # The comparison is kept: what was stored, under the stages that found it.
+    assert line["reads"][0]["stored"] == "0.912"
+    assert validate(line) == inferred
 
     assert declared.assertion.basis is None
     assert read_outcome(declared) is NormalizedOutcome.MATCH
@@ -253,8 +270,8 @@ def test_filled_items_split_by_whether_the_inferred_assertion_matched(tmp_path):
     }
     assert found.items["filled_by_inferred"] == 2
     assert (found.items["filled"], found.items["filled_and_passing"]) == (2, 1)
-    assert found.assertions[Basis.INFERRED] == {Outcome.VERIFIED: 1, Outcome.MISMATCH: 1}
-    assert found.assertions[Basis.DECLARED] == {Outcome.VERIFIED: 1}
+    assert found.assertions[Basis.INFERRED] == {"matched": 1, "mismatch": 1}
+    assert found.assertions[Basis.DECLARED] == {"verified": 1}
     assert found.manifest_changed
 
 

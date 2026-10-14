@@ -215,7 +215,13 @@ def _not_established(
                 NotEstablished(
                     kind=NotEstablishedKind.INFERRED,
                     subject=f"{assertion.kind} {assertion.name}".strip(),
-                    said=f"inferred, and {assertion.outcome.value.replace('_', ' ')}: proposed "
+                    said="inferred, and "
+                    + (
+                        "matched"
+                        if assertion.outcome is Outcome.VERIFIED
+                        else assertion.outcome.value.replace("_", " ")
+                    )
+                    + ": proposed "
                     "and not accepted by an author, so nothing establishes that the address is "
                     "the claim's, and it is not counted as verified",
                 )

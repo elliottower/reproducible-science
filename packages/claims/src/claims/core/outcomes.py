@@ -432,6 +432,14 @@ class Decision(BaseModel):
     def inferred(self) -> bool:
         return self.basis is Basis.INFERRED
 
+    @property
+    def said(self) -> str:
+        """The outcome in words that never call an inferred match verified: `matched` for one,
+        and the outcome's own word for everything else."""
+        if self.inferred and self.outcome is Outcome.VERIFIED:
+            return "matched"
+        return self.outcome.value
+
     @model_serializer(mode="wrap")
     def _omit_no_ties(self, handler):
         """Leave `ties` and `disagreements` out where empty, so a decision on any other assertion serializes

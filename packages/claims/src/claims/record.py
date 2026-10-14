@@ -292,8 +292,10 @@ class AssertionRef(BaseModel):
     """The line of the manifest the assertion is declared on."""
     basis: Basis | None = None
     """`inferred` where the manifest marks the assertion as proposed and nobody has reviewed
-    it, and absent where it is declared or reviewed. A `match` on an inferred assertion is read
-    as `not-checked`: the check ran, and nobody vouches that the address is the claim's."""
+    it, and absent where it is declared or reviewed. The record of an inferred assertion has
+    `outcome: not-checked` whatever its comparison found, which `native_outcome` gives as
+    `inferred_matched`, `inferred_mismatch` and so on: the check ran, and nobody vouches that
+    the address is the claim's."""
     reviewed: Review | None = None
     """Who accepted an inferred assertion, and when."""
 
@@ -814,8 +816,15 @@ def check_records(
                         if isinstance(evidence, QuoteEvidence)
                         else getattr(evidence, "reported", None),
                         comparison=_comparison(evidence, decision),
-                        outcome=normalized(decision.outcome),
-                        native_outcome=decision.outcome.value,
+                        # An inferred assertion's record says `not-checked` in the field every
+                        # reader reads, so one that knows nothing of `basis` passes on no match;
+                        # what the comparison found is in `native_outcome`.
+                        outcome=NormalizedOutcome.NOT_CHECKED
+                        if decision.inferred
+                        else normalized(decision.outcome),
+                        native_outcome=f"inferred_{decision.said}"
+                        if decision.inferred
+                        else decision.outcome.value,
                         native_reason=decision.reason.value,
                         detail=decision.detail,
                         stages=Stages(
@@ -1050,7 +1059,8 @@ def problems(record: ExportRecord) -> tuple[str, ...]:
             or stages.comparison.value != record.outcome.value
         ):
             found.append(f"a {record.outcome.value} needs a comparison that ran and found one")
-    else:
+    elif record.assertion.basis is not Basis.INFERRED:
+        # An inferred assertion is compared, and its record says not-checked all the same.
         if stages is not None and stages.comparison is not ComparisonStatus.NOT_APPLICABLE:
             found.append(f"{record.outcome.value} means nothing was compared")
     if record.outcome is NormalizedOutcome.NOT_FOUND:
@@ -1058,7 +1068,14 @@ def problems(record: ExportRecord) -> tuple[str, ...]:
             found.append("not-found needs a readable file; an absent one is not-checked")
         if stages is not None and stages.execution is not ExecutionStatus.COMPLETED:
             found.append("not-found needs a check that ran")
-    if record.outcome in (NormalizedOutcome.NOT_CHECKED, NormalizedOutcome.ERROR) and values:
+    inferred = record.assertion.basis is Basis.INFERRED
+    if inferred and record.outcome is not NormalizedOutcome.NOT_CHECKED:
+        found.append("an inferred assertion's record is not-checked, whatever it compared")
+    if (
+        record.outcome in (NormalizedOutcome.NOT_CHECKED, NormalizedOutcome.ERROR)
+        and values
+        and not inferred
+    ):
         found.append(f"{record.outcome.value} means no check ran, so no stored value was read")
     if (
         record.outcome is NormalizedOutcome.ERROR

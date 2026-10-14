@@ -68,6 +68,7 @@ each result's properties.
 | `reads` | each file read: its path, `validity`, pinned digest, digest on disk, the address, the value stored there, and the `origin` where the manifest declares one |
 | `printed`, `comparison` | the value the manuscript prints, and the rule it was compared under |
 | `outcome`, `native_outcome` | one of `match`, `mismatch`, `not-found`, `not-checked` and `error`, and the word `repro verify` prints beside it |
+| `assertion.basis` | `inferred` where the manifest marks the assertion as proposed and nobody reviewed it; its `outcome` is then `not-checked`, and `native_outcome` says what the comparison found, such as `inferred_matched` |
 
 A reader that meets an outcome, a check type or an address kind it does not know keeps it as
 written and never counts it as a `match`. Section

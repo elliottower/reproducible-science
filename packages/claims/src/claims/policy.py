@@ -263,8 +263,8 @@ class Policy(BaseModel):
                             severity=self.inferred,
                             rule="evidence.inferred",
                             subject=f"{claim.claim_id}/{decision.kind}",
-                            detail=f"inferred, not declared: {decision.outcome.value} is not "
-                            "counted as verified until an author accepts it",
+                            detail=f"inferred, not declared, and {decision.said}: no author has "
+                            "accepted the address, so nothing is counted for it",
                         )
                     )
                 # The one decision warning a policy reads. The others qualify a check that
