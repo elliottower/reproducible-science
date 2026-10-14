@@ -122,14 +122,24 @@ def results_run(outcome, states, events=True):
 
 def test_the_colour_follows_what_verify_reported_and_not_the_file_states_themselves():
     sealed = badges.Runs(runs=2, sealed=2)
-    # A state verify reports and does not fail on is green, whatever its name.
-    assert badges.results_badge(results_run("passed", ["ok", "resealed"]), sealed).color == GREEN
-    assert badges.results_badge(results_run("failed", ["ok", "resealed"]), sealed).color == AMBER
+    # States verify reports and passes are green.
+    assert badges.results_badge(results_run("passed", ["resealed"]), sealed).color == GREEN
+    assert badges.results_badge(results_run("passed", ["ok", "appended"]), sealed).color == GREEN
+    assert badges.results_badge(results_run("passed", ["ok", "ignored"]), sealed).color == GREEN
+    # A state verify fails on is amber.
+    assert badges.results_badge(results_run("failed", ["ok", "reverted"]), sealed).color == AMBER
     assert (
         badges.results_badge(results_run("failed", ["changed", "missing"]), sealed).color == AMBER
     )
-    # Failed with every recorded file as recorded: the timestamp contradicts the chain.
+    # Failed with every recorded file in a state that passes: the timestamp contradicts the
+    # chain.
     assert badges.results_badge(results_run("failed", ["ok", "ok"]), sealed).color == RED
+    assert (
+        badges.results_badge(
+            results_run("failed", ["resealed", "appended", "ignored"]), sealed
+        ).color
+        == RED
+    )
     assert badges.results_badge(results_run("failed", [], events=False), sealed) == Badge(
         check="results", message="2/2 runs sealed", color=RED
     )

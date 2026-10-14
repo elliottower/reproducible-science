@@ -593,3 +593,27 @@ test('a missing subject of a review or an annotation is not counted as a sealed 
   expect(moved.text).toContain('results: 1 changed, 1/1 runs sealed')
   await $.command.run({ command: 'repro-status', args: 'auto' })
 })
+
+test('a file state that passes verify is not counted as changed, and a reverted file is', async ($, on) => {
+  const ledger =
+    '{"event":"init","seq":0}\n' +
+    '{"event":"seal","seq":1,"files":[{"path":"a.csv"},{"path":"PREREG.md"},{"path":".results/ledger.head"}]}\n' +
+    '{"event":"run","seq":2,"run_id":"s1"}\n'
+  let hashes =
+    'file hashes:\n' +
+    '  RESEALED   a.csv\n    matches the latest of 2 hashes recorded for this path\n' +
+    '  APPENDED   PREREG.md\n    a plan frozen in place, unchanged; 1 log entry appended since the latest seal\n' +
+    "  IGNORED    .results/ledger.head\n    the ledger's own file, which changes with every event; not compared\n"
+  project(on, { '/work/study/.results/ledger.jsonl': ledger }, argv =>
+    argv[0] === 'results' ? `chain intact: 3 events, anchored\n\n${hashes}` : '',
+  )
+
+  const passing = await $.command.run({ command: 'repro-status', args: 'study' })
+  expect(passing.text).toContain('results: 1/1 runs sealed, 0 claims bound')
+  expect(passing.text).not.toContain('changed')
+
+  hashes = 'file hashes:\n  REVERTED   a.csv\n    matches hash 1 of 2 recorded for this path, not the latest\n'
+  const reverted = await $.command.run({ command: 'repro-status', args: 'study' })
+  expect(reverted.text).toContain('results: 1 changed, 1/1 runs sealed')
+  await $.command.run({ command: 'repro-status', args: 'auto' })
+})

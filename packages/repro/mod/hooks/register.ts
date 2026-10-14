@@ -426,8 +426,9 @@ async function status($: EngineInterface, root: string, withFiles: boolean) {
         }
       }
       // Two spaces exactly: a sealed file under `file hashes:`. A review's or an annotation's
-      // subject is listed four deep with the same word, and is not a seal.
-      const changed = (verified.match(/^ {2}(CHANGED|MISSING)\s/gm) ?? []).length
+      // subject is listed four deep with the same word, and is not a seal. RESEALED, APPENDED and
+      // IGNORED pass `results verify --files` and are not counted; REVERTED fails it.
+      const changed = (verified.match(/^ {2}(CHANGED|MISSING|REVERTED)\s/gm) ?? []).length
       const onTests = claims.filter(event => isTest(event.run_id)).length
       fields.push(
         `results: ${changed ? `${changed} changed, ` : ''}` +

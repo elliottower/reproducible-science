@@ -199,13 +199,15 @@ def results_badge(run: ci.ToolRun, counted: Runs) -> Badge:
     reported and decides nothing of its own.
 
     Red where the chain did not verify: the account carries no event count, or the check
-    failed with every recorded file `ok`, which is a timestamp that contradicts the chain.
-    Amber where the check failed over recorded files in another state, or not every run was
-    sealed. Which file states fail is the tool's to say, and the badge follows its exit.
+    failed with every recorded file in a state that passes (`ok`, `resealed`, `appended`,
+    `ignored`), which is a timestamp that contradicts the chain. Amber where the check failed
+    over a recorded file in a state that fails, or not every run was sealed. Which file states
+    fail is the tool's to say, and the badge follows its exit.
     """
     files = run.account.get("files", [])
+    passing = ("ok", *ci.RESULTS_PASSING)
     if "events" not in run.account or (
-        run.outcome == audit.FAILED and all(file["state"] == "ok" for file in files)
+        run.outcome == audit.FAILED and all(file["state"] in passing for file in files)
     ):
         color = RED
     elif run.outcome == audit.PASSED and counted.runs and counted.sealed == counted.runs:

@@ -169,8 +169,31 @@ An analysis registered after `outcomes seen` is retrospective.
 | `chain intact` | Every event's prev_hash matches the line before it |
 | `CHAIN BROKEN` | The ledger was edited after it was written |
 | `ok` | File matches its recorded hash |
-| `CHANGED` | File was modified since it was recorded |
-| `MISSING` | File no longer exists |
+| `RESEALED` | Recorded under more than one hash, and the file matches the latest record. Reported; passes |
+| `APPENDED` | A plan `prereg freeze` froze in place, which `prereg check` finds unchanged, and which differs from its latest seal only by entries `prereg log` appended and the `**Log:**` line it recounts. Passes |
+| `IGNORED` | One of the ledger's own files (`.results/`, a lock sidecar), recorded by an earlier version. Not compared; passes |
+| `REVERTED` | Recorded under more than one hash, and the file matches an earlier record and not the latest. Fails |
+| `CHANGED` | File was modified since it was recorded. Fails |
+| `MISSING` | File no longer exists. Fails |
+| `NOT A TREE`, `NOT A FILE` | Sealed as a directory and now a file, or the reverse. Fails |
+
+A path is meant to be sealed once, and a new version is a new file, so `RESEALED` stays in the
+report although it does not fail. `APPENDED` reads the sealed bytes from the repository's
+history, since the ledger holds only their hash; where no commit holds them, the plan is
+`CHANGED`. Whether the two versions differ only in what `prereg log` writes is decided by
+`prereg.inplace.entries_appended`, the rule `prereg check` applies. A plan frozen whole never
+changes and keeps its log beside it.
+
+`results seal` and `results run` refuse the ledger's own files, and a directory holding
+`.results/`: each changes with every event, so a seal of one is out of date at the next command.
+
+With `--json PATH`, each recorded file is `{"path", "state"}`, with `state` one of `ok`,
+`resealed`, `appended`, `ignored`, `reverted`, `changed`, `missing`, `not a tree` and
+`not a file`. `resealed` and `reverted` also carry `hashes`, the number of distinct hashes
+recorded for the path, and `reverted` carries `matches`, the position of the one the file holds,
+counted from 1 in the order recorded; `appended` carries `entries`, the log entries added since
+the seal; `ignored` carries `note`. The top-level `exit` is the command's exit code, so a reader
+that does not know a state can still tell whether the run passed.
 
 ## The ledger
 
