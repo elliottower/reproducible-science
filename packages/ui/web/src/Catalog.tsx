@@ -20,7 +20,7 @@ function ClaimPanel({ claim, onClose }: { claim: ClaimRow; onClose: () => void }
 }
 
 export default function Catalog({ graph, query }: { graph: Graph; query: string }) {
-  const [view, setView] = useState<View>({ kind: 'files', group: null })
+  const [view, setView] = useState<View>({ kind: 'claims', filter: 'all' })
   const [selected, setSelected] = useState<string | null>(null)
   const q = query.trim().toLowerCase()
 
@@ -63,6 +63,23 @@ export default function Catalog({ graph, query }: { graph: Graph; query: string 
   return (
     <div className="catalog">
       <nav className="side">
+        <div className="side-head">CLAIMS</div>
+        <button className={is({ kind: 'claims', filter: 'all' }) ? 'on' : ''} onClick={() => go({ kind: 'claims', filter: 'all' })}>
+          All claims <span className="count">{fmt(claims.length)}</span>
+        </button>
+        <button className={is({ kind: 'claims', filter: 'failing' }) ? 'on' : ''} onClick={() => go({ kind: 'claims', filter: 'failing' })}>
+          Failing <span className="count">{claims.filter((c) => !c.ok).length}</span>
+        </button>
+        <button className={is({ kind: 'claims', filter: 'stale' }) ? 'on' : ''} onClick={() => go({ kind: 'claims', filter: 'stale' })} title="Claims reading a data file whose rebuild step is stale (the manuscript text itself is left out)">
+          Reading a stale file <span className="count">{claims.filter(readsStale).length}</span>
+        </button>
+        <div className="side-head">PAPER</div>
+        {paperGroups.map((g) => (
+          <button key={g.id} className={is({ kind: 'claims', filter: 'all', group: g.id }) ? 'on' : ''} onClick={() => go({ kind: 'claims', filter: 'all', group: g.id })}>
+            {g.id.replace('Paper: ', '')}
+            <span className="count">{graph.nodes.filter((n) => n.group === g.id).reduce((a, n) => a + n.ok + n.fail, 0)}</span>
+          </button>
+        ))}
         <div className="side-head">FILES</div>
         <button className={is({ kind: 'files', group: null }) ? 'on' : ''} onClick={() => go({ kind: 'files', group: null })}>
           All files <span className="count">{files.length}</span>
@@ -78,23 +95,6 @@ export default function Catalog({ graph, query }: { graph: Graph; query: string 
             </button>
           )
         })}
-        <div className="side-head">PAPER</div>
-        {paperGroups.map((g) => (
-          <button key={g.id} className={is({ kind: 'claims', filter: 'all', group: g.id }) ? 'on' : ''} onClick={() => go({ kind: 'claims', filter: 'all', group: g.id })}>
-            {g.id.replace('Paper: ', '')}
-            <span className="count">{graph.nodes.filter((n) => n.group === g.id).reduce((a, n) => a + n.ok + n.fail, 0)}</span>
-          </button>
-        ))}
-        <div className="side-head">CLAIMS</div>
-        <button className={is({ kind: 'claims', filter: 'all' }) ? 'on' : ''} onClick={() => go({ kind: 'claims', filter: 'all' })}>
-          All claims <span className="count">{fmt(claims.length)}</span>
-        </button>
-        <button className={is({ kind: 'claims', filter: 'failing' }) ? 'on' : ''} onClick={() => go({ kind: 'claims', filter: 'failing' })}>
-          Failing <span className="count">{claims.filter((c) => !c.ok).length}</span>
-        </button>
-        <button className={is({ kind: 'claims', filter: 'stale' }) ? 'on' : ''} onClick={() => go({ kind: 'claims', filter: 'stale' })} title="Claims reading a data file whose rebuild step is stale (the manuscript text itself is left out)">
-          Reading a stale file <span className="count">{claims.filter(readsStale).length}</span>
-        </button>
       </nav>
 
       <main className="table-wrap">

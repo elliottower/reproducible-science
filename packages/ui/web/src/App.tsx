@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Background, Controls, ReactFlow, ReactFlowProvider, useReactFlow, type Edge, type Node } from '@xyflow/react'
 import Catalog from './Catalog'
-import Overview from './Overview'
+import Overview, { type Tab } from './Overview'
+import { CitationsTab, PreregTab, ReproduceTab, ResultsTab } from './Records'
 import { ClaudeButton, FixCtx, projectPrompt } from './fix'
 import { layout, summarize } from './layout'
 import { nodeTypes, UiCtx } from './nodes'
@@ -23,9 +24,11 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
   const [selected, setSelected] = useState<string | null>(initial.get('sel'))
   const [openFiles, setOpenFiles] = useState<Set<string>>(new Set((initial.get('files') ?? '').split('|').filter(Boolean)))
   const [query, setQuery] = useState('')
-  const [mode, setMode] = useState<'overview' | 'graph' | 'catalog'>(
-    (['overview', 'catalog'] as const).find((v) => v === initial.get('view')) ?? 'graph',
-  )
+  const TABS: [Tab, string][] = [
+    ['overview', 'Overview'], ['prereg', 'Prereg'], ['results', 'Results'], ['citations', 'Citations'],
+    ['claims', 'Claims'], ['reproduce', 'Reproduce'], ['graph', 'Graph'],
+  ]
+  const [mode, setMode] = useState<Tab>(TABS.map(([k]) => k).find((v) => v === initial.get('view')) ?? 'overview')
   const [flow, setFlow] = useState<{ nodes: Node[]; edges: Edge[] }>({ nodes: [], edges: [] })
   const rf = useReactFlow()
   const fitted = useRef(false)
@@ -127,22 +130,22 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
     <UiCtx.Provider value={{ selected, matches, related, toggle, openFiles, toggleFile }}>
       <div className="app">
         <header className="top">
-          <div className="brand">Claim lineage</div>
+          <div className="brand mono">{graph.project_name ?? 'Claim lineage'}</div>
           <div className="tabs">
-            <button className={mode === 'overview' ? 'on' : ''} onClick={() => setMode('overview')}>Overview</button>
-            <button className={mode === 'graph' ? 'on' : ''} onClick={() => setMode('graph')}>Graph</button>
-            <button className={mode === 'catalog' ? 'on' : ''} onClick={() => setMode('catalog')}>Catalog</button>
+            {TABS.map(([k, label]) => (
+              <button key={k} className={mode === k ? 'on' : ''} onClick={() => setMode(k)}>{label}</button>
+            ))}
           </div>
           <div className="spacer" />
           <span
             className={`pill big ${failing ? 'bad' : 'good'}`}
             title={graph.totals.last_check ? `${fmt(graph.totals.assertions)} assertions over ${fmt(graph.totals.artifacts)} files · last check ${when(graph.totals.last_check)}` : undefined}
           >
-            ● {failing ? `${fmt(failing)} claims failing` : `${fmt(graph.totals.claims)} claims verified`}
+            ● {failing ? `${fmt(failing)} failing` : `${fmt(graph.totals.claims)} verified`}
           </span>
           {needRerun > 0 && (
             <span className="pill big stale" title="rebuild steps changed since the last repro reproduce, or added since and never run">
-              ◐ {needRerun} step{needRerun === 1 ? '' : 's'} need re-running
+              ◐ {needRerun} need re-run
             </span>
           )}
           {recheck.available && (
@@ -160,7 +163,7 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
           <ClaudeButton prompt={projectPrompt(graph, graph.project_dir ?? null)} subject="whole project" />
           {recheck.message && <span className="error-note">{recheck.message}</span>}
         </header>
-        <div className="toolbar" style={mode === 'overview' ? { display: 'none' } : undefined}>
+        <div className="toolbar" style={['claims', 'citations', 'graph'].includes(mode) ? undefined : { display: 'none' }}>
           <input
             className="search"
             placeholder="Search files, sections, claim text… (e.g. 1,062 or timings)"
@@ -175,7 +178,15 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
         </div>
         {mode === 'overview' ? (
           <Overview graph={graph} onOpen={setMode} />
-        ) : mode === 'catalog' ? (
+        ) : mode === 'prereg' ? (
+          <PreregTab graph={graph} />
+        ) : mode === 'results' ? (
+          <ResultsTab graph={graph} />
+        ) : mode === 'citations' ? (
+          <CitationsTab graph={graph} query={query} />
+        ) : mode === 'reproduce' ? (
+          <ReproduceTab graph={graph} />
+        ) : mode === 'claims' ? (
           <Catalog graph={graph} query={query} />
         ) : (
           <div className="body">

@@ -304,6 +304,63 @@ def status_lines(project: pathlib.Path, report: dict) -> dict:
     return fields
 
 
+def record_tabs(project: pathlib.Path, manifest: dict, ledger: list[dict], staleness: dict) -> dict:
+    """What the Prereg, Results, Citations and Reproduce tabs list, read from the records themselves."""
+    # prereg: what `prereg check` printed, one line per plan.
+    plans = [ln for ln in (run_text(["prereg", "check"], project) or "").splitlines() if ln.strip()]
+
+    # results: every run, whether a seal came before it, and the sentences bound with `results claim`.
+    runs, sealed_yet, seals = [], False, 0
+    for e in ledger:
+        if e.get("event") == "seal":
+            sealed_yet = True
+            seals += 1
+        elif e.get("event") == "run":
+            runs.append({"run_id": e.get("run_id"), "timestamp": e.get("timestamp"), "note": e.get("note", ""),
+                         "outputs": [o["path"] for o in e.get("outputs", [])], "sealed_before": sealed_yet})
+    bound = [{"run_id": e.get("run_id"), "timestamp": e.get("timestamp"), "claim": e.get("claim", ""),
+              "location": e.get("location", "")} for e in ledger if e.get("event") == "claim"]
+
+    # citations: every claims file under a `claims` folder, with its source and quotations.
+    sources = []
+    for d in sorted(project.rglob("claims")):
+        if not d.is_dir() or ".git" in d.parts or "node_modules" in d.parts or len(d.relative_to(project).parts) > 4:
+            continue
+        for f in sorted(d.glob("*.y*ml")):
+            try:
+                doc = yaml.safe_load(f.read_text()) or {}
+            except yaml.YAMLError:
+                continue
+            src = doc.get("source", {}) or {}
+            statements = []
+            for sid, c in (doc.get("claims", {}) or {}).items():
+                quotes = [{"exact": q.get("exact", ""), "section": q.get("section", "")} for q in (c or {}).get("quotes", []) or [] if isinstance(q, dict)]
+                statements.append({"id": sid, "statement": (c or {}).get("statement", ""), "quotes": quotes})
+            sources.append({"file": str(f.relative_to(project)), "citation": src.get("citation", f.stem),
+                            "url": src.get("url", ""), "local": src.get("local", ""),
+                            "pinned": sum(len(s["quotes"]) for s in statements), "statements": statements})
+
+    # reproduce: every declared rebuild step with its state, and every recorded re-run.
+    causes = collections.defaultdict(list)
+    for f in staleness["findings"]:
+        causes[f["regeneration"]].append({"cause": f["cause"], "artifact": f["artifact"]})
+    regen = {r["id"]: r for r in manifest.get("regenerations", [])}
+    steps = [{"id": r["id"], "artifact": r["artifact"], "state": r["state"], "rerun_at": r.get("rerun_at"),
+              "command": " ".join(regen.get(r["id"], {}).get("command", [])), "causes": causes.get(r["id"], [])}
+             for r in staleness["regenerations"]]
+    rr_path = project / ".repro" / "reproductions.jsonl"
+    reruns = []
+    if rr_path.exists():
+        for line in rr_path.read_text().splitlines():
+            if line.strip():
+                e = json.loads(line)
+                reruns.append({"started_at": e.get("started_at"), "ended_at": e.get("ended_at"), "tool_version": e.get("tool_version"),
+                               "counts": dict(collections.Counter(r.get("state") for r in e.get("regenerations", []))),
+                               "steps": len(e.get("regenerations", []))})
+    return {"prereg": {"lines": plans}, "results": {"runs": runs, "seals": seals, "bound": bound},
+            "citations": {"sources": sources}, "reproduce": {"steps": steps, "reruns": reruns}}
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("project", type=pathlib.Path)
@@ -496,6 +553,8 @@ def build(project: pathlib.Path, out_path: pathlib.Path, groups_file: pathlib.Pa
         "project_dir": str(project),
         "status": status_lines(project, report),
         "reproduce": reproduce,
+        "project_name": project.name,
+        "tabs": record_tabs(project, manifest, ledger, staleness),
         "manifest_digest": report["manifest_digest"],
         "totals": {
             "claims": len(report["claims"]),

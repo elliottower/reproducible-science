@@ -69,6 +69,25 @@ export interface Graph {
   built_at?: string
   checked_at?: string
   project_dir?: string
+  project_name?: string
+  tabs?: {
+    prereg: { lines: string[] }
+    results: {
+      runs: { run_id: string; timestamp: string; note: string; outputs: string[]; sealed_before: boolean }[]
+      seals: number
+      bound: { run_id: string; timestamp: string; claim: string; location: string }[]
+    }
+    citations: {
+      sources: {
+        file: string; citation: string; url: string; local: string; pinned: number
+        statements: { id: string; statement: string; quotes: { exact: string; section: string }[] }[]
+      }[]
+    }
+    reproduce: {
+      steps: { id: string; artifact: string; state: string; rerun_at: string | null; command: string; causes: { cause: string; artifact: string }[] }[]
+      reruns: { started_at: string; ended_at: string; tool_version: string; counts: Record<string, number>; steps: number }[]
+    }
+  }
   status?: Record<'prereg' | 'results' | 'citations' | 'repro', StatusField>
   reproduce?: { runs: number; declared: number; last_at: string | null; last: Record<string, number>; last_steps: number }
   manifest_digest: string
