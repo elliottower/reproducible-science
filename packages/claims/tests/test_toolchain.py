@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import json
 import subprocess
+from importlib.metadata import version
 
 import pytest
+from citations import extractors
 from claims.models import (
     ArtifactRef,
     Claim,
@@ -30,7 +32,13 @@ from claims.models import (
 )
 from claims.policy import PUBLICATION, STRICT
 from claims.renderers import to_sarif
-from claims.toolchain import DISTRIBUTION, UNKNOWN, binary_version, distribution_version
+from claims.toolchain import (
+    DISTRIBUTION,
+    TEXT_LIBRARIES,
+    UNKNOWN,
+    binary_version,
+    distribution_version,
+)
 from claims.verify import MetricBackend, QuoteBackend, TableBackend, verify
 
 SOURCE = "The measured angle matches the Haar expectation for this ensemble.\n"
@@ -130,6 +138,59 @@ def test_a_value_decision_names_the_distribution_that_read_the_artifact(tmp_path
     assert decision.tool == DISTRIBUTION
     assert DISTRIBUTION in ("reproducible-science", "claims-cli")
     assert decision.tool_version
+
+
+ROW = ("LASSO-Cox", "0.648")
+
+
+def workbook(path):
+    """A sheet of one row, in the format the suffix names. Writing and reading a workbook take
+    the optional readers, which `claims-cli` alone does not install, so a test of one is
+    skipped there; a `.csv` needs none."""
+    if path.suffix == ".xls":
+        xlwt = pytest.importorskip("xlwt")
+        pytest.importorskip("xlrd")
+        book = xlwt.Workbook()
+        sheet = book.add_sheet("results")
+        for column, cell in enumerate(ROW):
+            sheet.write(0, column, cell)
+        book.save(str(path))
+    elif path.suffix == ".csv":
+        path.write_text(",".join(ROW) + "\n")
+    else:
+        openpyxl = pytest.importorskip("openpyxl")
+        book = openpyxl.Workbook()
+        book.active.append(ROW)
+        book.save(path)
+    return path
+
+
+@pytest.mark.parametrize(
+    ("suffix", "library"),
+    [(".xlsx", "openpyxl"), (".xlsm", "openpyxl"), (".xls", "xlrd"), (".csv", "citations")],
+)
+def test_a_quote_in_a_workbook_names_the_library_that_read_it(tmp_path, suffix, library):
+    path = workbook(tmp_path / f"table{suffix}")
+    manifest = Manifest(
+        project="p",
+        artifacts=(ArtifactRef(id="tab", path=path, digest=Digest.of_file(path)),),
+        claims=(
+            Claim(
+                id="c",
+                text="t",
+                evidence=(QuoteEvidence(artifact="tab", text="LASSO-Cox | 0.648"),),
+            ),
+        ),
+    )
+    decision = verify(manifest).decisions[0]
+    assert decision.outcome is Outcome.VERIFIED
+    assert (decision.tool, decision.tool_version) == (library, version(library))
+
+
+def test_every_format_citations_reads_in_process_names_its_library():
+    # A suffix `citations` gains a built-in extractor for and this table lacks would be
+    # recorded as read by `pdftotext` again.
+    assert set(extractors.BY_SUFFIX) <= set(TEXT_LIBRARIES)
 
 
 class StubbedExtractor(MetricBackend):

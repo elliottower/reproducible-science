@@ -30,6 +30,7 @@ subprocess per quotation.
 from __future__ import annotations
 
 import functools
+import pathlib
 import subprocess
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _installed_version
@@ -78,6 +79,29 @@ def adapter_version() -> str:
     return distribution_version(ALONE)
 
 
+#: The library that reads a text of each suffix `citations` reads with a built-in extractor in
+#: this process, by its distribution name. A quotation or a prose address in such a text is
+#: read by no binary, so naming `pdftotext` would record a program that never ran, and an
+#: upgrade of the library that changes the text would leave no trace in the decision. A `.docx`
+#: is read by `citations`' own `docx-text`, which parses the document's XML, and a `.csv` by its
+#: `sheet-rows` with the standard library's `csv`, so the code that reads each is `citations`
+#: and its version is the one to record.
+TEXT_LIBRARIES = {
+    ".docx": "citations",
+    ".xlsx": "openpyxl",
+    ".xlsm": "openpyxl",
+    ".xls": "xlrd",
+    ".csv": "citations",
+}
+
+
+def text_reader(path: pathlib.Path) -> tuple[str, str] | None:
+    """The library that reads `path` as text and its installed version, or None where
+    `TEXT_LIBRARIES` names none for its suffix."""
+    library = TEXT_LIBRARIES.get(path.suffix.lower())
+    return (library, distribution_version(library)) if library else None
+
+
 @functools.cache
 def binary_version(name: str, flag: str = "-v") -> str:
     """The version string `name` prints, as it prints it, or `UNKNOWN`.
@@ -111,10 +135,12 @@ def distribution_version(name: str) -> str:
 __all__ = [
     "ALONE",
     "DISTRIBUTION",
+    "TEXT_LIBRARIES",
     "UNKNOWN",
     "VERSION_TIMEOUT",
     "WRAPPER",
     "adapter_version",
     "binary_version",
     "distribution_version",
+    "text_reader",
 ]

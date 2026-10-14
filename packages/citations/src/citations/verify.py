@@ -419,6 +419,9 @@ class Report:
     than was quoted, so every result against that source describes a reading the record
     does not."""
     unpinned: list[str] = field(default_factory=list)
+    inferred: list[tuple[str, str]] = field(default_factory=list)
+    """Claims files whose extractor version was inferred, with what was inferred. See
+    `ClaimFile.version_inferred`."""
     """Sources with no recorded digest. Their quotations resolve against whatever is on disk."""
     from_library: list[tuple[str, pathlib.Path]] = field(default_factory=list)
     """Sources absent at the path their record names and read from the library instead, with

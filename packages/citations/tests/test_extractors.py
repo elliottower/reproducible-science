@@ -250,13 +250,13 @@ def test_a_paragraph_and_a_table_row_of_a_docx_both_resolve(tmp_path):
     paragraph = V.check_one("Cohorts were genotyped on the OncoArray.", source)
     row = V.check_one("BCAC | 61,282 | 45,494", source)
     assert paragraph.state == row.state == "found"
-    assert row.extractor == "docx-text@1"
+    assert row.extractor == "docx-text@2"
     assert V.check_one("BCAC | 9,414", source).state == "not found"
 
 
-def test_a_docx_reads_as_its_paragraphs_then_its_table_rows(tmp_path):
+def test_a_docx_read_by_version_1_reads_as_its_paragraphs_then_its_table_rows(tmp_path):
     # The merged heading spans three columns and is returned once per column; printed once.
-    assert E.Declared(E.EXTRACTORS["docx-text"]).read(
+    assert E.declared(tmp_path, "docx-text@1").read(
         document(tmp_path / "note.docx")
     ).splitlines() == [
         "Supplementary Note. Cohorts were genotyped on the OncoArray.",
@@ -267,10 +267,14 @@ def test_a_docx_reads_as_its_paragraphs_then_its_table_rows(tmp_path):
     ]
 
 
-def test_a_docx_with_no_reader_installed_is_unchecked_and_names_the_install(tmp_path, monkeypatch):
+def test_a_docx_pinned_under_version_1_with_no_reader_installed_is_unchecked_and_names_the_install(
+    tmp_path, monkeypatch
+):
     source = document(tmp_path / "note.docx")
     monkeypatch.setattr(E, "docx", None)
-    r = V.check_one("Cohorts were genotyped on the OncoArray.", source)
+    # Version 2 reads the XML itself and needs no library.
+    assert V.check_one("Cohorts were genotyped on the OncoArray.", source).state == "found"
+    r = V.check_one("Cohorts were genotyped on the OncoArray.", source, None, "docx-text@1")
     assert r.state == "unchecked"
     assert "python-docx is not installed" in r.detail and "citations[docx]" in r.detail
 

@@ -250,6 +250,8 @@ def cmd_verify(a) -> int:
             else:
                 rep.absent_sources += 1
             _check_reading(rep, cf, artifact, allowed)
+            if cf.version_inferred:
+                rep.inferred.append((cf.name, cf.version_inferred))
             for cid, claim in cf.claims.items():
                 if claim.interpretation is not None:
                     rep.interpretations += 1
@@ -383,6 +385,10 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
         for name, n in sorted(rep.extractors.items(), key=lambda kv: (-kv[1], kv[0])):
             why = rep.fallback_reasons.get(name, "")
             print(f"  {n:>7,}  {name}" + (f"   fallback: {why[:50]}" if why else ""))
+    # A version this run chose for a source that records none, said where it was chosen: a
+    # reader who expected another version learns which one read the file and how to name it.
+    for name, said in rep.inferred:
+        print(f"  {name}: {said}")
     # Which readings no extractor produced in this run.
     if rep.from_cache:
         n = rep.from_cache
