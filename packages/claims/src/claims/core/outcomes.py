@@ -211,6 +211,10 @@ class Warning_(enum.StrEnum):
 
     SHORT = "short"
     TRUNCATED = "truncated"
+    LINE_END_HYPHEN = "line_end_hyphen"
+    """The passage begins or ends where its source breaks a word across lines with a hyphen.
+    Read one way the passage cuts that word and read the other it does not, and the text does
+    not say which, so it is neither `truncated` nor clean."""
     NORMALIZED = "normalized"
     WRONG_PAGE = "wrong_page"
     PAGE_UNCHECKED = "page_unchecked"

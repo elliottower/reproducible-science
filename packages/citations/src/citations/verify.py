@@ -27,6 +27,8 @@ The warnings -- is the quote well formed? A quote can be `found` and still carry
 
     short        the source may qualify it in the next clause
     truncated    every occurrence begins or stops mid-word or mid-number
+    line-end hyphen  begins or ends where the source breaks a word across lines with a hyphen,
+                 which may cut a word
     normalized   matched only after ignoring punctuation and spacing
     page         found, but not on the page the record claims
     page unchecked  found, and nothing could check the page the record claims
@@ -2212,8 +2214,11 @@ def _verdict(
         if page:
             warn.append("page unchecked")
         return Result("found", "", warn)
-    if _truncated(quote, full, folds):
+    cuts = _cuts(quote, full, folds)
+    if cuts and all(cuts):
         warn.append("truncated")
+    elif any(cuts) and LINE_END_HYPHEN.search(full):
+        warn.append("line-end hyphen")
     if page and not _on_page(artifact, quote, page, extractor):
         warn.append("page")
         found_at, capped = _find_page(artifact, quote, reader=extractor)
@@ -2254,16 +2259,24 @@ def _page_text(artifact: pathlib.Path, page: int, extractor: str) -> str:
     return reading_with(artifact, page, extractor=extractor).text
 
 
-def _truncated(quote: str, full: str, folds: tuple[Callable[[str], str], ...]) -> bool:
-    """Does the quote cut a token in every reading of the source it occurs in?
+#: A hyphen at a line break between two letters, the break `passage_fold` joins and
+#: `spacing_fold` keeps.
+LINE_END_HYPHEN = re.compile(r"(?<=[^\W\d_])-\s*\n\s*(?=[^\W\d_])")
 
-    One reading is not enough to say so. A two-column page set as layout puts `some-` at the
-    end of one column's line and `class` at the start of the next line, so `passage_fold` joins
-    them into `someclass` and a quotation ending on `some` reads as cut short; `spacing_fold`
-    keeps the hyphen, and there the quotation ends on a whole word.
+
+def _cuts(quote: str, full: str, folds: tuple[Callable[[str], str], ...]) -> list[bool]:
+    """Whether the quote cuts a token, in each reading of the source it occurs in.
+
+    One reading is not enough to call it `truncated`. A two-column page set as layout puts
+    `some-` at the end of one column's line and `class` at the start of the next line, so
+    `passage_fold` joins them into `someclass` and a quotation ending on `some` reads as cut
+    short; `spacing_fold` keeps the hyphen, and there the quotation ends on a whole word. Every
+    reading cutting is `truncated`. Some cutting and some not, in a source with a hyphen at a
+    line break, is `line-end hyphen`: the quotation begins or ends where the source breaks a
+    word across lines, and the text cannot say whether that is a word a renderer split, which
+    the quotation cuts, or two words a layout set side by side, which it does not.
     """
-    cuts = [_cuts_a_token(fold(quote), fold(full)) for fold in folds if fold(quote) in fold(full)]
-    return bool(cuts) and all(cuts)
+    return [_cuts_a_token(fold(quote), fold(full)) for fold in folds if fold(quote) in fold(full)]
 
 
 def _cuts_a_token(q: str, doc: str) -> bool:

@@ -411,12 +411,17 @@ the second reading also drops what the page does not show: a MyST or Verso role 
 written as the page renders it. A quotation that kept the markup still resolves in the first
 reading. HTML is read by `html-text` and XML by `jats-text`, and neither is changed by this.
 A passage found in either reading is `truncated` only where it cuts a word in both, so a
-quotation ending on `some` where layout set `some-` at a line end beside `class` is not.
+quotation ending on `some` where layout set `some-` at a line end beside `class` is not. Where
+one reading cuts and the other does not, the quotation carries `line-end hyphen` instead: it
+begins or ends at a hyphen the source puts at a line break, and the text cannot say whether
+that hyphen splits one word, which the quotation then cuts, or ends a line beside an unrelated
+one.
 
 | Warning | Meaning |
 |---------|---------|
 | `short` | under 40 characters, or ending on a comma or a connecting word, so the source may qualify it in the next clause |
 | `truncated` | every occurrence begins or stops mid-word or mid-number |
+| `line-end hyphen` | begins or ends at a hyphen the source puts at a line break, so it may cut a word; check it |
 | `normalized` | matched only after ignoring spacing, underscores and hyphens inside a word |
 | `page`, `page unchecked` | found on another page, or a page is recorded and was not checked |
 

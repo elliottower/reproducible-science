@@ -47,6 +47,8 @@ RESULTS = ["found", "not found", "ambiguous", "indeterminate", "unchecked"]
 OUTCOME_WIDTH = max(len(r) for r in RESULTS) + 1
 WARNINGS = {
     "truncated": "begins or stops mid-word or mid-number — the source continues it",
+    "line-end hyphen": "begins or ends where the source breaks a word across lines with a hyphen "
+    "— check it does not cut the word",
     "short": "the source may qualify this in the next clause",
     "normalized": "matched after ignoring punctuation and spacing",
     "page": "found, but not on the page recorded",

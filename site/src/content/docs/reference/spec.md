@@ -835,6 +835,7 @@ goes looking for a broken anchor.
 |---|---|---|
 | `short` | `quote` | the passage is under 40 characters or ends on a comma or a connecting word, so the source may qualify it in the next clause |
 | `truncated` | `quote` | every occurrence of the passage stops in the middle of a word or a number |
+| `line_end_hyphen` | `quote` | the passage begins or ends at a hyphen its source puts at a line break; read with the hyphen it cuts no word, read without it it does, and the text does not say which reading is the source's |
 | `normalized` | `quote` | the passage matched only with spacing ignored (§3.1) |
 | `wrong_page` | `quote` | the passage is on another page than the one declared; the decision is a `mismatch` with reason `wrong_page` |
 | `page_unchecked` | `quote` | a `page` is declared and was not checked (§3.1) |
@@ -1252,6 +1253,7 @@ Then it lists what the record does not cover, each line with a kind.
 | `cycle` | a command is on a cycle of commands, so it is compared with no re-run |
 | `never_rerun` | no re-run of a command that reproduced is recorded |
 | `no_evidence` | the claim offers no evidence, so nothing was checked |
+| `inferred` | an assertion is `basis: inferred` and nobody reviewed it, so its outcome is not counted as verified |
 | `unchecked` | an assertion's outcome is `unchecked`, with its reason |
 | `not_found` | an assertion's outcome is `not_found`, with its reason |
 | `error` | an assertion's outcome is `error`, with its reason |
@@ -1387,6 +1389,12 @@ beside it in `native_outcome`. `repro verify` prints what it always has.
 | `error` | the tool failed | `error` |
 
 The mapping is one function, total over `Outcome` by test and never by a default.
+
+An assertion the manifest marks `basis: inferred`, and nobody reviewed, is the exception: its
+record is `not-checked` whatever the comparison found, with `assertion.basis: inferred` and the
+finding in `native_outcome` as `inferred_matched`, `inferred_mismatch`, `inferred_not_found`,
+`inferred_unchecked` or `inferred_error`. A reader that knows nothing of `basis` reads the
+`outcome` and passes on no match; the stored values and stages of the comparison are kept.
 
 A schema says which fields a record may hold; `repro.record.validate` says which records are
 possible, and refuses the rest: an `outcome` that is not what its `native_outcome` normalizes
