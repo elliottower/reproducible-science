@@ -725,16 +725,24 @@ row per line with cells joined by ` | `, a table inside a cell after the row hol
 text box after the paragraph it is anchored in, and a content control's content in place;
 (2) each footnote and then each endnote, in the order the text first refers to it, marked
 `Footnote 1.` or `Endnote 1.` in that order; (3) each header and footer once, in the order the
-sections name them. Within a paragraph it reads hyperlink text, the result of a field and not
-its instruction (so a reference manager's citation reads as printed), and an equation's
-characters in order. Tracked changes are read as accepted: an insertion is read and a
-deletion is not. Comments are not read, so a quotation never resolves against a reviewer's
+sections name them. Footnotes and endnotes are numbered 1, 2, 3 in reference order whatever
+Word shows; Word numbers endnotes i, ii, iii by default. Within a paragraph it reads hyperlink
+text, a symbol as the character it draws, a ruby's base text, the result of a field and not its
+instruction (so a reference manager's citation reads as printed), and an equation's characters
+in order. The result of a `PAGE`, `NUMPAGES`, `SECTIONPAGES` or `PAGEREF` field is not read: it
+is a page number from Word's last layout, not a number the document states. Tracked changes
+are read as accepted: an insertion is read and a deletion is not, in an equation too. Comments are not read, so a quotation never resolves against a reviewer's
 note, and neither are automatic list numbers, which Word does not store. A part declaring a
-document type, and a file whose XML inflates past 128 MiB, are refused unread.
+document type, and a file whose XML inflates past 128 MiB, are refused unread. A part is
+decoded by its byte-order mark, UTF-8 or UTF-16.
 
 Version 1, which reads the body's paragraphs and then its tables through `python-docx`, stays
 for sources pinned under it: a source block recording `extractor_version: 1` is read by
-version 1. A `.docx` that names no version, and one pinned from now on, is read by version 2.
+version 1, and so is a source that records no version but already holds quotations or a
+`derived_sha256`, since only version 1 existed when it was pinned. That includes a `.docx`
+source naming no extractor. A source with nothing pinned in it yet is read by version 2, and
+`citations pin` records `extractor: docx-text` and `extractor_version: 2` with its first
+quotation.
 
 `sheet-rows` takes two more fields: `sheet: ST1` reads that sheet alone, where the default is
 every sheet in workbook order, and `empty_cells: keep` keeps a row's empty cells, where the

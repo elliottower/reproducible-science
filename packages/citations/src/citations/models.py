@@ -306,6 +306,29 @@ class ClaimFile(_Base):
     path: pathlib.Path | None = Field(default=None, exclude=True)
     """Where this file was read from. Set by the loader, never present in the YAML."""
 
+    @model_validator(mode="after")
+    def _pinned_before_versions(self) -> ClaimFile:
+        """A source that holds quotations or a digest and records no extractor version was
+        pinned before versions were recorded, and only an extractor's first version existed
+        then. It is read with version 1 whatever version is now current, so a reading that a
+        later version changes does not break the pin. That covers a `.docx` that names no
+        extractor: its suffix chose `docx-text`, and version 1 was the only one.
+
+        A source with nothing pinned in it yet keeps reading with the current version, and
+        `citations pin` records that version with the first quotation.
+        """
+        source = self.source
+        pinned = bool(source.derived_sha256) or any(c.quotes for c in self.claims.values())
+        if source.extract_cmd or source.extractor_version is not None or not pinned:
+            return self
+        if source.extractor:
+            self.source = source.model_copy(update={"extractor_version": 1})
+        elif source.local and pathlib.PurePosixPath(source.local).suffix.lower() == ".docx":
+            self.source = source.model_copy(
+                update={"extractor": "docx-text", "extractor_version": 1}
+            )
+        return self
+
     @property
     def name(self) -> str:
         """The file's stem, used to label a quotation in a report."""

@@ -13,7 +13,7 @@ import zipfile
 import docx
 import pytest
 import yaml
-from citations import cli
+from citations import cli, pin
 from citations import extractors as E
 from citations import verify as V
 from citations.models import load_claim_file
@@ -138,8 +138,8 @@ def manuscript(path):
                 "<w:sdt><w:sdtPr/><w:sdtContent>" + r("(Jones 2021)") + "</w:sdtContent></w:sdt>",
                 r(", see "),
                 f'<w:hyperlink r:id="rId9">{r("the registry")}</w:hyperlink>',
-                r(" on page "),
-                f'<w:fldSimple w:instr=" PAGE ">{r("12")}</w:fldSimple>',
+                r(" in table "),
+                f'<w:fldSimple w:instr=" SEQ Table ">{r("12")}</w:fldSimple>',
                 r("."),
             ),
             p(
@@ -197,7 +197,7 @@ def test_version_2_reads_the_body_in_document_order_then_the_notes_then_headers_
         "Responders were older by 4.2 years.",
         "A text box beside the figure.",
         "A block inside a content control.",
-        "As reported (Smith 2020) and (Jones 2021), see the registry on page 12.",
+        "As reported (Smith 2020) and (Jones 2021), see the registry in table 12.",
         "The effect held in every cohort at p<0.05.",
         "A paragraph whose mark is deleted joins the next.",
         "Footnote 1. Participants were paid for their time.",
@@ -285,7 +285,7 @@ def test_a_source_pinned_under_version_1_still_verifies_with_version_1(tmp_path,
 def test_a_version_no_build_ships_names_every_version_this_one_does(tmp_path):
     r_ = V.check_one("held", manuscript(tmp_path / "paper.docx"), None, "docx-text@3")
     assert r_.state == "unchecked"
-    assert "ships version 1 and 2" in r_.detail
+    assert "ships versions 1 and 2. Each version produces different text" in r_.detail
 
 
 # --- a hostile file -----------------------------------------------------------------------------
@@ -344,3 +344,185 @@ def test_a_file_that_is_not_a_docx_is_unchecked_with_the_reason(tmp_path, body, 
     r_ = V.check_one("anything at all", path)
     assert r_.state == "unchecked"
     assert reason in r_.detail
+
+
+# --- what Word writes that a first reading got wrong -----------------------------------------
+
+
+def field(instruction: str, result: str) -> str:
+    """A complex field, as Word writes one: begin, instruction, separate, result, end."""
+    return (
+        '<w:r><w:fldChar w:fldCharType="begin"/></w:r>'
+        f'<w:r><w:instrText xml:space="preserve"> {instruction} </w:instrText></w:r>'
+        '<w:r><w:fldChar w:fldCharType="separate"/></w:r>'
+        + r(result)
+        + '<w:r><w:fldChar w:fldCharType="end"/></w:r>'
+    )
+
+
+def test_a_page_number_field_is_not_read_and_its_neighbours_are(tmp_path):
+    footer = p(
+        r("Page "),
+        field("PAGE \\* MERGEFORMAT", "3"),
+        r(" of "),
+        f'<w:fldSimple w:instr=" NUMPAGES ">{r("17")}</w:fldSimple>',
+        r(", section page "),
+        field("SECTIONPAGES", "4"),
+    )
+    body = p(r("See the methods on page "), field("PAGEREF _Ref1 \\h", "9"), r(".")) + (
+        '<w:sectPr><w:footerReference w:type="default" r:id="rIdF"/></w:sectPr>'
+    )
+    path = write(
+        tmp_path / "paper.docx",
+        body,
+        {"word/footer1.xml": f"<w:ftr {NS}>{footer}</w:ftr>"},
+        {"rIdF": "footer footer1.xml"},
+    )
+    assert read(path) == ["See the methods on page .", "Page of , section page"]
+
+
+def test_a_field_that_never_ends_hides_nothing_after_its_paragraph(tmp_path):
+    unended = '<w:r><w:fldChar w:fldCharType="begin"/></w:r>' + (
+        "<w:r><w:instrText>REF x</w:instrText></w:r>"
+    )
+    end_deleted = (
+        '<w:r><w:fldChar w:fldCharType="begin"/></w:r><w:r><w:instrText>REF x</w:instrText></w:r>'
+        '<w:r><w:fldChar w:fldCharType="separate"/></w:r>'
+        + r("res")
+        + '<w:del w:id="1" w:author="a"><w:r><w:fldChar w:fldCharType="end"/></w:r></w:del>'
+    )
+    body = p(r("Before "), unended) + p(r("following paragraph")) + p(end_deleted) + p(r("last"))
+    assert read(write(tmp_path / "paper.docx", body)) == [
+        "Before",
+        "following paragraph",
+        "res",
+        "last",
+    ]
+
+
+def test_text_a_change_deletes_inside_an_equation_is_not_read(tmp_path):
+    math = (
+        "<m:oMath><m:r><m:t>a</m:t></m:r>"
+        '<w:del w:id="1" w:author="a"><m:r><m:t>DELETED</m:t></m:r></w:del>'
+        '<m:r><w:rPr><w:del w:id="2" w:author="a"/></w:rPr><m:t>GONE</m:t></m:r>'
+        '<w:ins w:id="3" w:author="a"><m:r><m:t>b</m:t></m:r></w:ins></m:oMath>'
+    )
+    assert read(write(tmp_path / "paper.docx", p(r("Eq: "), math))) == ["Eq: ab"]
+
+
+def test_a_paragraph_whose_mark_is_deleted_before_a_table_stays_out_of_the_table(tmp_path):
+    body = (
+        p(r("first half"), mark='<w:pPr><w:rPr><w:del w:id="1" w:author="a"/></w:rPr></w:pPr>')
+        + table(row(cell(p(r("cell")))))
+        + p(r("second half"))
+    )
+    assert read(write(tmp_path / "paper.docx", body)) == ["first half", "cell", "second half"]
+
+
+@pytest.mark.parametrize(
+    ("font", "code", "shown"),
+    [
+        ("Symbol", "F0A3", "≤"),
+        ("Symbol", "F0B3", "≥"),
+        ("Symbol", "F0B1", "±"),
+        ("Symbol", "F0B4", "×"),
+        ("Symbol", "F0B8", "÷"),
+        ("Symbol", "F0B9", "≠"),
+        ("Symbol", "F0BB", "≈"),
+        ("Symbol", "F06D", "μ"),
+        ("Symbol", "F061", "α"),
+        ("Symbol", "F044", "Δ"),
+        ("Wingdings", "F0FC", "✓"),
+        ("Times New Roman", "00B5", "µ"),
+    ],
+)
+def test_a_symbol_is_read_as_the_character_it_draws(tmp_path, font, code, shown):
+    sym = f'<w:r><w:sym w:font="{font}" w:char="{code}"/></w:r>'
+    assert read(write(tmp_path / "paper.docx", p(r("p "), sym, r(" 0.05")))) == [f"p {shown} 0.05"]
+
+
+def test_a_ruby_is_read_as_its_base_text_and_not_its_reading(tmp_path):
+    ruby = (
+        "<w:r><w:ruby><w:rubyPr/><w:rt>"
+        + r("kan")
+        + "</w:rt><w:rubyBase>"
+        + r("BASE")
+        + "</w:rubyBase></w:ruby></w:r>"
+    )
+    assert read(write(tmp_path / "paper.docx", p(r("See "), ruby, r(" here")))) == ["See BASE here"]
+
+
+@pytest.mark.parametrize("encoding", ["utf-16-le", "utf-16-be", "utf-8-sig"])
+def test_a_part_is_decoded_by_its_byte_order_mark(tmp_path, encoding):
+    xml = f'<?xml version="1.0" encoding="{"UTF-8" if encoding == "utf-8-sig" else "UTF-16"}"?>'
+    xml += f'<w:document xmlns:w="{W}"><w:body>{p(r("Read in either encoding."))}</w:body></w:document>'
+    mark = {"utf-16-le": b"\xff\xfe", "utf-16-be": b"\xfe\xff", "utf-8-sig": b""}[encoding]
+    path = tmp_path / "encoded.docx"
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("word/document.xml", mark + xml.encode(encoding))
+    assert read(path) == ["Read in either encoding."]
+
+
+def test_a_utf16_part_declaring_entities_is_still_refused(tmp_path):
+    xml = f'<?xml version="1.0" encoding="UTF-16"?><!DOCTYPE d [<!ENTITY e "x">]><w:document xmlns:w="{W}"/>'
+    path = tmp_path / "bomb.docx"
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("word/document.xml", xml.encode("utf-16"))
+    assert "declares a document type" in V.check_one("anything at all", path).detail
+
+
+# --- a source pinned before versions were recorded -----------------------------------------------
+
+
+def toc_document(path):
+    """A table of contents, which version 1 reads without its field result's page numbers in
+    place and version 2 reads as Word shows it: the two readings differ."""
+    entry = p(field("TOC \\o", "Methods"), r(" and results"))
+    return write(path, p(r("Contents")) + entry + table(row(cell(p(r("n"))))) + p(r("Methods.")))
+
+
+def pinned_claims(tmp_path, quotes, **source):
+    claims = tmp_path / "claims"
+    claims.mkdir(exist_ok=True)
+    path = claims / "supp.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "source": {"local": "sources/supp.docx"} | source,
+                "claims": {f"c{i}": {"quotes": [{"exact": q}]} for i, q in enumerate(quotes)},
+            }
+        )
+    )
+    return path
+
+
+@pytest.mark.parametrize("declared", [True, False])
+def test_a_docx_source_recording_no_version_is_read_with_version_1(tmp_path, capsys, declared):
+    (tmp_path / "sources").mkdir()
+    source = toc_document(tmp_path / "sources" / "supp.docx")
+    v1 = E.declared(source, "docx-text@1").read(source)
+    assert v1 != E.Declared(E.EXTRACTORS["docx-text"]).read(source)
+    named = {"extractor": "docx-text"} if declared else {}
+    path = pinned_claims(
+        tmp_path,
+        ["Contents"],
+        sha256=hashlib.sha256(source.read_bytes()).hexdigest(),
+        derived_sha256=hashlib.sha256(v1.encode()).hexdigest(),
+        **named,
+    )
+    assert load_claim_file(path).source.reader == "docx-text@1"
+    assert cli.main(["verify", "--claims", str(path.parent), "--strict"]) == 0
+    out = capsys.readouterr().out
+    assert "docx-text@1" in out and "no longer extract" not in out
+
+
+def test_a_new_pin_in_a_docx_records_version_2_and_its_text(tmp_path):
+    (tmp_path / "sources").mkdir()
+    source = toc_document(tmp_path / "sources" / "supp.docx")
+    path = pinned_claims(tmp_path, [], sha256=hashlib.sha256(source.read_bytes()).hexdigest())
+    assert pin.main([str(path), "--id", "toc", "--quote", "Methods and results"]) == 0
+    written = load_claim_file(path).source
+    v2 = E.Declared(E.EXTRACTORS["docx-text"]).read(source)
+    assert (written.extractor, written.extractor_version) == ("docx-text", 2)
+    assert written.derived_sha256 == hashlib.sha256(v2.encode()).hexdigest()
+    assert written.reader == "docx-text@2"
