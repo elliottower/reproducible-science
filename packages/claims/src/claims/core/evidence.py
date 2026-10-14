@@ -5,12 +5,14 @@ value a manuscript reports for it."""
 
 from __future__ import annotations
 
+import datetime
 import decimal
 import enum
 import json
 from typing import Annotated, Literal
 
 from pydantic import (
+    AwareDatetime,
     BaseModel,
     ConfigDict,
     Field,
@@ -29,7 +31,75 @@ _SHA256_HEX = r"^[a-f0-9]{64}$"
 # ---------------------------------------------------------------------------------- evidence
 
 
-class _EvidenceBase(BaseModel):
+class Basis(enum.StrEnum):
+    """Who states an assertion: the manifest's author, or a proposal nobody has accepted.
+
+    A check of an inferred assertion runs as any other and reports what it found. What it
+    cannot establish is that the address is the one the sentence means, which is the part an
+    author vouches for and a proposal does not, so an inferred assertion is never counted as
+    verified: a policy grades it as a draft, a report counts it apart, and a check record
+    passes on none of its matches. A search that finds a value at one address proposes it like
+    anything else; it never binds it.
+    """
+
+    DECLARED = "declared"
+    """Written by the author, or read from another tool's file where that file states it. The
+    default, and left out of a manifest where it holds."""
+    INFERRED = "inferred"
+    """Proposed by a program or a model and not yet accepted by an author. Accepting one is
+    deleting the field, or recording who reviewed it under `reviewed`."""
+
+
+class Review(BaseModel):
+    """Who accepted an inferred assertion, and when. An assertion carrying one is counted as
+    declared."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    who: str = Field(min_length=1)
+    when: AwareDatetime | datetime.date
+
+
+def _omit_undeclared(model: BaseModel, dumped: dict) -> dict:
+    """Leave out what was not declared: `basis` where it is `declared`, and `conversion`,
+    `places` and `reviewed` where they are None. A manifest that declares none of them
+    serializes, and so hashes, as it did before each field existed."""
+    for field in ("conversion", "places", "reviewed"):
+        if field in dumped and getattr(model, field, None) is None:
+            dumped.pop(field)
+    if getattr(model, "basis", None) is Basis.DECLARED:
+        dumped.pop("basis", None)
+    return dumped
+
+
+class _Stated(BaseModel):
+    """Who states an assertion, and who accepted it where its author did not write it."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    basis: Basis = Basis.DECLARED
+    reviewed: Review | None = None
+
+    @model_serializer(mode="wrap")
+    def _omit_what_is_declared(self, handler):
+        return _omit_undeclared(self, handler(self))
+
+    @model_validator(mode="after")
+    def _a_review_is_of_an_inferred_assertion(self):
+        if self.reviewed is not None and self.basis is not Basis.INFERRED:
+            raise ValueError(
+                "`reviewed` records who accepted an inferred assertion; a declared one is its "
+                "author's already"
+            )
+        return self
+
+    @property
+    def counted(self) -> Basis:
+        """The basis the assertion is counted under: declared once someone has reviewed it."""
+        return Basis.DECLARED if self.reviewed is not None else self.basis
+
+
+class _EvidenceBase(_Stated):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     artifact: str
@@ -357,10 +427,7 @@ class _Convertible(BaseModel):
     def _omit_no_conversion(self, handler):
         """Leave the field out where none is declared, so a manifest that declares no
         conversion serializes, and hashes, as it did before the field existed."""
-        dumped = handler(self)
-        if self.conversion is None:
-            dumped.pop("conversion", None)
-        return dumped
+        return _omit_undeclared(self, handler(self))
 
 
 class _Reported(_Convertible):
@@ -381,11 +448,7 @@ class _Reported(_Convertible):
     def _omit_what_is_not_declared(self, handler):
         """Leave `conversion` and `places` out where neither is declared, so a manifest that
         declares none serializes, and hashes, as it did before the fields existed."""
-        dumped = handler(self)
-        for field in ("conversion", "places"):
-            if getattr(self, field) is None:
-                dumped.pop(field, None)
-        return dumped
+        return _omit_undeclared(self, handler(self))
 
     @model_validator(mode="after")
     def _places_are_of_a_printed_precision(self):
@@ -540,7 +603,7 @@ class CorrespondenceSide(_Convertible):
     locator: ValueLocator
 
 
-class CorrespondenceEvidence(BaseModel):
+class CorrespondenceEvidence(_Stated):
     """Assertion: these artifacts, or these places in one artifact, hold the same value.
 
     Every other kind compares an artifact against a literal written in the manifest. A
@@ -632,7 +695,7 @@ class AggregateMember(BaseModel):
     locator: ValueLocator
 
 
-class AggregateEvidence(_Reported):
+class AggregateEvidence(_Reported, _Stated):
     """Assertion: the printed value is this statistic of these stored values.
 
     Every other kind rests a number on one stored value. A sentence reporting a mean over ten

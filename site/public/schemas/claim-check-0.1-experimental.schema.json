@@ -18,6 +18,17 @@
     "AssertionRef": {
       "additionalProperties": true,
       "properties": {
+        "basis": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Basis"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "index": {
           "minimum": 0,
           "title": "Index",
@@ -50,6 +61,17 @@
           "minimum": 0,
           "title": "Position",
           "type": "integer"
+        },
+        "reviewed": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Review"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         }
       },
       "required": [
@@ -58,6 +80,15 @@
       ],
       "title": "AssertionRef",
       "type": "object"
+    },
+    "Basis": {
+      "description": "Who states an assertion: the manifest's author, or a proposal nobody has accepted.\n\nA check of an inferred assertion runs as any other and reports what it found. What it\ncannot establish is that the address is the one the sentence means, which is the part an\nauthor vouches for and a proposal does not, so an inferred assertion is never counted as\nverified: a policy grades it as a draft, a report counts it apart, and a check record\npasses on none of its matches. A search that finds a value at one address proposes it like\nanything else; it never binds it.",
+      "enum": [
+        "declared",
+        "inferred"
+      ],
+      "title": "Basis",
+      "type": "string"
     },
     "CheckType": {
       "description": "Which proposition a record is about. Closed, and defined once, in SPEC 7.10.\n\nTwo tools can both say `verified` and have checked different things, so a record names\nthe proposition as well as the outcome. The first three are the ones this tool checks. The\nrest are reserved for a record written from another tool's result, and this tool emits\nnone of them.",
@@ -813,6 +844,36 @@
         "state"
       ],
       "title": "Rerun",
+      "type": "object"
+    },
+    "Review": {
+      "additionalProperties": false,
+      "description": "Who accepted an inferred assertion, and when. An assertion carrying one is counted as\ndeclared.",
+      "properties": {
+        "when": {
+          "anyOf": [
+            {
+              "format": "date-time",
+              "type": "string"
+            },
+            {
+              "format": "date",
+              "type": "string"
+            }
+          ],
+          "title": "When"
+        },
+        "who": {
+          "minLength": 1,
+          "title": "Who",
+          "type": "string"
+        }
+      },
+      "required": [
+        "who",
+        "when"
+      ],
+      "title": "Review",
       "type": "object"
     },
     "Stages": {

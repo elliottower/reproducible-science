@@ -124,6 +124,11 @@ class Policy(BaseModel):
     """A regeneration that could not be compared: a file is missing, or the records form a
     cycle."""
 
+    inferred: Severity = Severity.ERROR
+    """An assertion the manifest marks `basis: inferred`: proposed by a program or a model and
+    not accepted by an author. Graded whatever its outcome, so a draft binding that happens to
+    match never passes as a verified one."""
+
     require_one_check: bool = True
     """A run that evaluated nothing is not a pass. Without this a project with no evidence
     anywhere satisfies every other condition trivially."""
@@ -252,6 +257,16 @@ class Policy(BaseModel):
                             detail=decision.detail or decision.reason.value,
                         )
                     )
+                if decision.inferred and self.inferred is not Severity.IGNORE:
+                    violations.append(
+                        Violation(
+                            severity=self.inferred,
+                            rule="evidence.inferred",
+                            subject=f"{claim.claim_id}/{decision.kind}",
+                            detail=f"inferred, not declared: {decision.outcome.value} is not "
+                            "counted as verified until an author accepts it",
+                        )
+                    )
                 # The one decision warning a policy reads. The others qualify a check that
                 # ran; this one says a declared check did not, so it is graded as an unchecked
                 # assertion is, on a decision whose passage is `verified`.
@@ -351,6 +366,8 @@ EXPLORATORY = Policy(
         Outcome.NOT_OFFERED: Severity.IGNORE,
     },
     unpinned_artifact=Severity.IGNORE,
+    # A draft is what a proposal is for.
+    inferred=Severity.WARNING,
     # A draft may point at a file the analysis has not written yet.
     artifact_absent=Severity.WARNING,
     ordering_unchecked=Severity.IGNORE,

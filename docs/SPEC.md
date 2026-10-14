@@ -1240,6 +1240,7 @@ Then it lists what the record does not cover, each line with a kind.
 | `cycle` | a command is on a cycle of commands, so it is compared with no re-run |
 | `never_rerun` | no re-run of a command that reproduced is recorded |
 | `no_evidence` | the claim offers no evidence, so nothing was checked |
+| `inferred` | an assertion is `basis: inferred` and nobody reviewed it, so its outcome is not counted as verified |
 | `unchecked` | an assertion's outcome is `unchecked`, with its reason |
 | `not_found` | an assertion's outcome is `not_found`, with its reason |
 | `error` | an assertion's outcome is `error`, with its reason |

@@ -145,10 +145,18 @@ def to_sarif(
             )
             continue
         for decision in claim.decisions:
-            kind, level = _KIND[decision.outcome]
+            # An inferred assertion's match says the file holds the value at the proposed
+            # address, not that the address is the claim's: no comparison is credited, as a
+            # check record's reader credits none.
+            shown = (
+                Outcome.UNCHECKED
+                if decision.inferred and decision.outcome is Outcome.VERIFIED
+                else decision.outcome
+            )
+            kind, level = _KIND[shown]
             subject = f"{claim.claim_id}/{decision.kind}"
             entry: dict[str, Any] = {
-                "ruleId": f"repro/{decision.outcome.value}",
+                "ruleId": f"repro/{shown.value}",
                 "kind": kind,
                 "level": by_subject.get(subject, level),
                 "message": {
@@ -159,6 +167,7 @@ def to_sarif(
                     "extraction": decision.extraction.value,
                     "comparison": decision.comparison.value,
                     "reason": decision.reason.value,
+                    "basis": decision.basis.value,
                     "validity": decision.validity.value,
                     "backend": f"{decision.backend}/{decision.backend_version}",
                     # The toolchain that read the bytes, kept apart from the backend's

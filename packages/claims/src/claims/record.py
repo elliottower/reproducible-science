@@ -39,6 +39,7 @@ from claims.exceptions import ReproError
 from claims.models import (
     AggregateEvidence,
     ArtifactState,
+    Basis,
     Claim,
     ComparisonMode,
     ComparisonStatus,
@@ -57,6 +58,7 @@ from claims.models import (
     Reason,
     Regeneration,
     RegenerationState,
+    Review,
     StalenessReport,
     TableCellEvidence,
     Validity,
@@ -288,6 +290,12 @@ class AssertionRef(BaseModel):
     """Where it is among all of the claim's assertions, from 0, as the manifest orders them."""
     line: int | None = Field(default=None, ge=1)
     """The line of the manifest the assertion is declared on."""
+    basis: Basis | None = None
+    """`inferred` where the manifest marks the assertion as proposed and nobody has reviewed
+    it, and absent where it is declared or reviewed. A `match` on an inferred assertion is read
+    as `not-checked`: the check ran, and nobody vouches that the address is the claim's."""
+    reviewed: Review | None = None
+    """Who accepted an inferred assertion, and when."""
 
 
 class Address(BaseModel):
@@ -522,7 +530,7 @@ def _address(
 ) -> Address | None:
     if isinstance(evidence, QuoteEvidence):
         named = evidence.model_dump(
-            mode="json", exclude={"kind", "artifact", "text"}, exclude_defaults=True
+            mode="json", exclude={"kind", "artifact", "text", "basis"}, exclude_defaults=True
         )
         return Address(kind=PASSAGE, **named)
     if isinstance(evidence, TableCellEvidence) and not evidence.addresses_one_row:
@@ -797,6 +805,8 @@ def check_records(
                             position=seen[evidence.kind, getattr(evidence, "name", "")],
                             index=index,
                             line=evidence_lines[index] if index < len(evidence_lines) else None,
+                            basis=Basis.INFERRED if decision.inferred else None,
+                            reviewed=decision.reviewed,
                         ),
                         check_type=check_type(evidence.kind),
                         reads=_reads(evidence, decision, manifest, states, paths),
@@ -919,13 +929,17 @@ def understood(record: ExportRecord) -> bool:
 
 def read_outcome(record: ExportRecord) -> NormalizedOutcome:
     """The outcome a consumer may act on: the record's, except that a `match` it does not
-    understand is `not-checked`.
+    understand, or a `match` on an inferred assertion, is `not-checked`.
 
     Unknown stays unknown. A record version, a word, a check type or an address kind this
     version has never seen may be a success in the tool that wrote it, and nothing here can tell, so it is never
-    passed on as one. Every exporter reads the outcome through this.
+    passed on as one. An inferred assertion's match says the file holds the value at the
+    proposed address, and not that the address is the one the claim means, so it is not passed
+    on as a match either. Every exporter reads the outcome through this.
     """
-    if record.outcome is NormalizedOutcome.MATCH and not understood(record):
+    if record.outcome is NormalizedOutcome.MATCH and (
+        not understood(record) or record.assertion.basis is Basis.INFERRED
+    ):
         return NormalizedOutcome.NOT_CHECKED
     return record.outcome
 
