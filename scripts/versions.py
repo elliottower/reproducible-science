@@ -134,6 +134,29 @@ def parts(version: str) -> tuple[int, ...]:
     return tuple(int(n) for n in version.split(".")[:3])
 
 
+#: The first version a release cut from this tree may carry, and the last one published before
+#: it. `reproducible-science` and `results-cli` import `provenance_core.chain`, which no
+#: `provenance-core` up to 0.5.6 holds. A sibling range names a series and not a patch, so a
+#: 0.5.7 of either would declare `provenance-core>=0.5,<0.6` and install beside a core that
+#: lacks the module. Opening a new series is what makes the range exclude those.
+SERIES_FLOOR = "0.6.0"
+LAST_BEFORE_FLOOR = "0.5.6"
+
+
+def below_floor(version: str) -> str | None:
+    """Why a release may not carry this version, or None where it may.
+
+    The version already published stays valid, because the tree sits at it between releases.
+    """
+    if version == LAST_BEFORE_FLOOR or parts(version) >= parts(SERIES_FLOOR):
+        return None
+    return (
+        f"{version} is below {SERIES_FLOOR}: this tree imports `provenance_core.chain`, which "
+        f"no provenance-core up to {LAST_BEFORE_FLOOR} has, and a sibling range of "
+        f"{series(version)} would accept one. The next release opens {SERIES_FLOOR}"
+    )
+
+
 def series(version: str) -> str:
     """The range a lockstep release pins its siblings to: `>=0.4,<0.5`.
 
@@ -214,6 +237,8 @@ def check() -> list[str]:
         problems.append(f"versions are not in lockstep: {listed}")
     version = max(versions.values(), key=parts)
     want = series(version)
+    if (refused := below_floor(version)) is not None:
+        problems.append(refused)
 
     for name, path in PACKAGES.items():
         for dep, spec in cross_refs(path.read_text()).items():
@@ -255,6 +280,8 @@ def check() -> list[str]:
 def bump(version: str, realign: bool = False) -> list[str]:
     if not SEMVER.match(version):
         raise VersionError(f"{version!r} is not a version this scheme writes (want 1.2.3)")
+    if (refused := below_floor(version)) is not None:
+        raise VersionError(refused)
     # Aligning is not advancing. The first lockstep release sets every package to the highest
     # version already declared, so packages that are already there do not move; refusing an
     # equal version would make that first alignment impossible. What is refused is any package
