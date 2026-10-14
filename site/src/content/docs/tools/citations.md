@@ -42,7 +42,7 @@ what someone else wrote.
 ```bash
 pip install citations
 pip install "citations[sheets]"   # to read .xlsx and .xls sources
-pip install "citations[docx]"     # to read .docx sources
+pip install "citations[docx]"     # to read .docx sources pinned under docx-text version 1
 pip install "citations[web]"      # to pin a web page by its URL
 ```
 
@@ -690,7 +690,7 @@ arrives in, so a claims file can pin the publisher's file and not a text somebod
 | Extractor | Reads | Produces | Install |
 |-----------|-------|----------|---------|
 | `sheet-rows` | `.xlsx`, `.xls`, `.csv` | one row per line, cells joined with `\|` | `pip install "citations[sheets]"` (`.csv` needs nothing) |
-| `docx-text` | `.docx` | body paragraphs in order, then each table one row per line | `pip install "citations[docx]"` |
+| `docx-text` | `.docx` | the body in document order (paragraphs, tables, text boxes, content controls, field results), then footnotes and endnotes, then headers and footers; tracked changes as accepted | nothing (`citations[docx]` for version 1) |
 | `jats-text` | JATS XML: Europe PMC `fullTextXML`, NCBI `efetch db=pmc` | one block per line, inline markup dropped, entities decoded, table rows as cells | nothing |
 | `html-text` | HTML | one block per line, tags dropped, entities decoded, `<script>` and `<style>` left out, table rows as cells | nothing |
 
@@ -718,6 +718,23 @@ source:
   extractor_version: 1          # which rendering of it
   derived_sha256: 7d8f…         # the text it produced when the quotations were pinned
 ```
+
+`docx-text` version 2 parses the document's own XML from the zip. It reads, in this order:
+(1) the body in document order, each paragraph one line and each table where it stands, one
+row per line with cells joined by ` | `, a table inside a cell after the row holding it, a
+text box after the paragraph it is anchored in, and a content control's content in place;
+(2) each footnote and then each endnote, in the order the text first refers to it, marked
+`Footnote 1.` or `Endnote 1.` in that order; (3) each header and footer once, in the order the
+sections name them. Within a paragraph it reads hyperlink text, the result of a field and not
+its instruction (so a reference manager's citation reads as printed), and an equation's
+characters in order. Tracked changes are read as accepted: an insertion is read and a
+deletion is not. Comments are not read, so a quotation never resolves against a reviewer's
+note, and neither are automatic list numbers, which Word does not store. A part declaring a
+document type, and a file whose XML inflates past 128 MiB, are refused unread.
+
+Version 1, which reads the body's paragraphs and then its tables through `python-docx`, stays
+for sources pinned under it: a source block recording `extractor_version: 1` is read by
+version 1. A `.docx` that names no version, and one pinned from now on, is read by version 2.
 
 `sheet-rows` takes two more fields: `sheet: ST1` reads that sheet alone, where the default is
 every sheet in workbook order, and `empty_cells: keep` keeps a row's empty cells, where the

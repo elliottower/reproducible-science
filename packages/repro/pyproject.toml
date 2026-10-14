@@ -41,7 +41,6 @@ optional-dependencies.adduce = [ "adduce>=0.1.2" ]
 # the one of the same name there, so `reproducible-science[sheets]` installs what it did. No
 # range on these: the dependency above carries it.
 optional-dependencies.arrays = [ "claims-cli[arrays]" ]
-optional-dependencies.docx = [ "claims-cli[docx]" ]
 optional-dependencies.hdf5 = [ "claims-cli[hdf5]" ]
 optional-dependencies.netcdf = [ "claims-cli[netcdf]" ]
 optional-dependencies.parquet = [ "claims-cli[parquet]" ]

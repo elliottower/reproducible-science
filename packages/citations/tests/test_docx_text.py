@@ -1,0 +1,346 @@
+"""`docx-text` version 2 reads a `.docx` from its own XML.
+
+Each document is written part by part into a zip in the test's directory, so a fixture holds
+exactly the markup a test is about and no binary is committed. A claims file pinned under
+version 1 goes on being read by version 1.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import zipfile
+
+import docx
+import pytest
+import yaml
+from citations import cli
+from citations import extractors as E
+from citations import verify as V
+from citations.models import load_claim_file
+
+W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+RELS = "http://schemas.openxmlformats.org/package/2006/relationships"
+KINDS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+NS = (
+    f'xmlns:w="{W}" xmlns:r="{R}" '
+    'xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math" '
+    'xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006" '
+    'xmlns:wps="http://schemas.microsoft.com/office/word/2010/wordprocessingShape" '
+    'xmlns:v="urn:schemas-microsoft-com:vml"'
+)
+TYPES = (
+    '<?xml version="1.0" encoding="UTF-8"?>'
+    '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+    '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+    '<Default Extension="xml" ContentType="application/xml"/>'
+    '<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-'
+    'officedocument.wordprocessingml.document.main+xml"/>'
+    "</Types>"
+)
+
+
+@pytest.fixture(autouse=True)
+def _no_cache():
+    V.clear_caches()
+
+
+def p(*runs: str, mark: str = "") -> str:
+    return f"<w:p>{mark}{''.join(runs)}</w:p>"
+
+
+def r(text: str) -> str:
+    return f'<w:r><w:t xml:space="preserve">{text}</w:t></w:r>'
+
+
+def cell(*paragraphs: str) -> str:
+    return f"<w:tc>{''.join(paragraphs)}</w:tc>"
+
+
+def row(*cells: str, deleted: bool = False) -> str:
+    properties = '<w:trPr><w:del w:id="9" w:author="a"/></w:trPr>' if deleted else ""
+    return f"<w:tr>{properties}{''.join(cells)}</w:tr>"
+
+
+def table(*rows: str) -> str:
+    return f"<w:tbl>{''.join(rows)}</w:tbl>"
+
+
+def note(kind: str, number: int, text: str) -> str:
+    return f'<w:{kind} w:id="{number}">{p(r(text))}</w:{kind}>'
+
+
+def write(path, body: str, parts: dict[str, str] | None = None, rels: dict[str, str] | None = None):
+    """A `.docx` of `body`, with each extra part named in `parts` and related by `rels`, which
+    maps a relationship id to `type target`."""
+    related = "".join(
+        f'<Relationship Id="{rid}" Type="{KINDS}/{kind}" Target="{target}"/>'
+        for rid, (kind, target) in ((k, v.split()) for k, v in (rels or {}).items())
+    )
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("[Content_Types].xml", TYPES)
+        z.writestr(
+            "_rels/.rels",
+            f'<Relationships xmlns="{RELS}"><Relationship Id="rId1" '
+            f'Type="{KINDS}/officeDocument" Target="word/document.xml"/></Relationships>',
+        )
+        z.writestr("word/document.xml", f"<w:document {NS}><w:body>{body}</w:body></w:document>")
+        z.writestr(
+            "word/_rels/document.xml.rels",
+            f'<Relationships xmlns="{RELS}">{related}</Relationships>',
+        )
+        for name, xml in (parts or {}).items():
+            z.writestr(name, xml)
+    return path
+
+
+def read(path) -> list[str]:
+    return E.Declared(E.EXTRACTORS["docx-text"]).read(path).splitlines()
+
+
+def manuscript(path):
+    """Every kind of content version 2 reads, and a comment it does not."""
+    footnote_ref = '<w:r><w:footnoteReference w:id="2"/></w:r>'
+    endnote_ref = '<w:r><w:endnoteReference w:id="5"/></w:r>'
+    textbox = (
+        '<w:r><mc:AlternateContent><mc:Choice Requires="wps"><w:drawing><wps:txbx>'
+        f"<w:txbxContent>{p(r('A text box beside the figure.'))}</w:txbxContent>"
+        "</wps:txbx></w:drawing></mc:Choice><mc:Fallback><w:pict><v:textbox>"
+        f"<w:txbxContent>{p(r('A text box beside the figure.'))}</w:txbxContent>"
+        "</v:textbox></w:pict></mc:Fallback></mc:AlternateContent></w:r>"
+    )
+    complex_field = (
+        '<w:r><w:fldChar w:fldCharType="begin"/></w:r>'
+        '<w:r><w:instrText> ZOTERO_ITEM CSL_CITATION {"citationID":"x"} </w:instrText></w:r>'
+        '<w:r><w:fldChar w:fldCharType="separate"/></w:r>'
+        + r("(Smith 2020)")
+        + '<w:r><w:fldChar w:fldCharType="end"/></w:r>'
+    )
+    body = "".join(
+        [
+            p(r("Thirty-five participants responded"), footnote_ref, r(".")),
+            table(
+                row(cell(p(r("Arm"))), cell(p(r("n")))),
+                row(
+                    cell(p(r("Treated"))),
+                    cell(p(r("1,204")), table(row(cell(p(r("inner"))), cell(p(r("7")))))),
+                ),
+                row(cell(p(r("Withdrawn"))), cell(p(r("3"))), deleted=True),
+            ),
+            p(r("Responders were older"), endnote_ref, r(" by 4.2 years."), textbox),
+            '<w:sdt><w:sdtPr><w:alias w:val="Abstract"/></w:sdtPr><w:sdtContent>'
+            + p(r("A block inside a content control."))
+            + "</w:sdtContent></w:sdt>",
+            p(
+                r("As reported "),
+                complex_field,
+                r(" and "),
+                "<w:sdt><w:sdtPr/><w:sdtContent>" + r("(Jones 2021)") + "</w:sdtContent></w:sdt>",
+                r(", see "),
+                f'<w:hyperlink r:id="rId9">{r("the registry")}</w:hyperlink>',
+                r(" on page "),
+                f'<w:fldSimple w:instr=" PAGE ">{r("12")}</w:fldSimple>',
+                r("."),
+            ),
+            p(
+                r("The effect "),
+                '<w:ins w:id="1" w:author="a">' + r("held in every cohort ") + "</w:ins>",
+                '<w:del w:id="2" w:author="a"><w:r><w:delText>vanished </w:delText></w:r></w:del>',
+                r("at "),
+                "<m:oMath><m:r><m:t>p</m:t></m:r><m:r><m:t>&lt;0.05</m:t></m:r></m:oMath>",
+                r("."),
+                '<w:commentRangeStart w:id="0"/>',
+                '<w:r><w:commentReference w:id="0"/></w:r>',
+            ),
+            p(
+                r("A paragraph whose mark is deleted "),
+                mark='<w:pPr><w:rPr><w:del w:id="3" w:author="a"/></w:rPr></w:pPr>',
+            ),
+            p(r("joins the next.")),
+            '<w:p><w:pPr><w:sectPr><w:headerReference w:type="default" r:id="rIdH"/>'
+            '<w:footerReference w:type="default" r:id="rIdF"/></w:sectPr></w:pPr></w:p>',
+            '<w:sectPr><w:headerReference w:type="default" r:id="rIdH"/>'
+            '<w:footerReference w:type="default" r:id="rIdF"/></w:sectPr>',
+        ]
+    )
+    parts = {
+        "word/footnotes.xml": f"<w:footnotes {NS}>"
+        '<w:footnote w:type="separator" w:id="-1"><w:p><w:r><w:separator/></w:r></w:p></w:footnote>'
+        + note("footnote", 2, "Participants were paid for their time.")
+        + "</w:footnotes>",
+        "word/endnotes.xml": f"<w:endnotes {NS}>"
+        + note("endnote", 5, "Age at enrolment.")
+        + "</w:endnotes>",
+        "word/header1.xml": f"<w:hdr {NS}>{p(r('Running head'))}</w:hdr>",
+        "word/footer1.xml": f"<w:ftr {NS}>{p(r('Draft of 14 October'))}</w:ftr>",
+        "word/comments.xml": f'<w:comments {NS}><w:comment w:id="0" w:author="a">'
+        f"{p(r('This claim is not supported by the data.'))}</w:comment></w:comments>",
+    }
+    rels = {
+        "rIdFn": "footnotes footnotes.xml",
+        "rIdEn": "endnotes endnotes.xml",
+        "rIdH": "header header1.xml",
+        "rIdF": "footer footer1.xml",
+        "rIdC": "comments comments.xml",
+    }
+    return write(path, body, parts, rels)
+
+
+def test_version_2_reads_the_body_in_document_order_then_the_notes_then_headers_and_footers(
+    tmp_path,
+):
+    assert read(manuscript(tmp_path / "paper.docx")) == [
+        "Thirty-five participants responded.",
+        "Arm | n",
+        "Treated | 1,204",
+        "inner | 7",
+        "Responders were older by 4.2 years.",
+        "A text box beside the figure.",
+        "A block inside a content control.",
+        "As reported (Smith 2020) and (Jones 2021), see the registry on page 12.",
+        "The effect held in every cohort at p<0.05.",
+        "A paragraph whose mark is deleted joins the next.",
+        "Footnote 1. Participants were paid for their time.",
+        "Endnote 1. Age at enrolment.",
+        "Running head",
+        "Draft of 14 October",
+    ]
+
+
+def test_an_undeclared_docx_is_read_by_version_2(tmp_path):
+    r_ = V.check_one("held in every cohort", manuscript(tmp_path / "paper.docx"))
+    assert (r_.state, r_.extractor) == ("found", "docx-text@2")
+
+
+@pytest.mark.parametrize(
+    ("passage", "state"),
+    [
+        ("The effect held in every cohort at", "found"),
+        ("The effect vanished at", "not found"),
+        ("Footnote 1. Participants were paid for their time.", "found"),
+        ("Participants were paid for their time.", "found"),
+        ("This claim is not supported by the data.", "not found"),
+        ("ZOTERO_ITEM CSL_CITATION", "not found"),
+        ("Withdrawn | 3", "not found"),
+        ("Running head", "found"),
+    ],
+)
+def test_what_a_quotation_resolves_against(tmp_path, passage, state):
+    assert V.check_one(passage, manuscript(tmp_path / "paper.docx")).state == state
+
+
+def test_a_header_two_sections_share_is_read_once(tmp_path):
+    assert read(manuscript(tmp_path / "paper.docx")).count("Running head") == 1
+
+
+def test_strict_namespaces_are_read_as_transitional_ones(tmp_path):
+    strict = "http://purl.oclc.org/ooxml/wordprocessingml/main"
+    path = tmp_path / "strict.docx"
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr(
+            "word/document.xml",
+            f'<w:document xmlns:w="{strict}"><w:body>{p(r("Strict text."))}</w:body></w:document>',
+        )
+    assert read(path) == ["Strict text."]
+
+
+# --- a source pinned under version 1 ------------------------------------------------------------
+
+
+def test_a_source_pinned_under_version_1_still_verifies_with_version_1(tmp_path, capsys):
+    document = docx.Document()
+    document.add_paragraph("Before the table.")
+    document.add_table(rows=1, cols=2).rows[0].cells[0].text = "Cohort"
+    document.add_paragraph("After the table.")
+    source = tmp_path / "sources" / "supp.docx"
+    source.parent.mkdir()
+    document.save(str(source))
+    v1 = E.declared(source, "docx-text@1").read(source)
+    # The two versions read these bytes differently, so a v1 pin read by v2 would fail.
+    assert v1 != E.Declared(E.EXTRACTORS["docx-text"]).read(source)
+
+    claims = tmp_path / "claims"
+    claims.mkdir()
+    (claims / "supp.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "source": {
+                    "local": "sources/supp.docx",
+                    "sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+                    "extractor": "docx-text",
+                    "extractor_version": 1,
+                    "derived_sha256": hashlib.sha256(v1.encode()).hexdigest(),
+                },
+                "claims": {"c": {"quotes": [{"exact": "After the table."}]}},
+            }
+        )
+    )
+    assert load_claim_file(claims / "supp.yaml").source.reader == "docx-text@1"
+    assert cli.main(["verify", "--claims", str(claims), "--strict"]) == 0
+    out = capsys.readouterr().out
+    assert "docx-text@1" in out and "all found." in out
+    assert "no longer extract" not in out
+
+
+def test_a_version_no_build_ships_names_every_version_this_one_does(tmp_path):
+    r_ = V.check_one("held", manuscript(tmp_path / "paper.docx"), None, "docx-text@3")
+    assert r_.state == "unchecked"
+    assert "ships version 1 and 2" in r_.detail
+
+
+# --- a hostile file -----------------------------------------------------------------------------
+
+
+def test_a_part_declaring_entities_is_refused_unread(tmp_path):
+    bomb = (
+        '<?xml version="1.0"?><!DOCTYPE lolz [<!ENTITY lol "lol">'
+        '<!ENTITY lol2 "&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;">]>'
+        f'<w:document xmlns:w="{W}"><w:body><w:p><w:r><w:t>&lol2;</w:t></w:r></w:p></w:body></w:document>'
+    )
+    path = tmp_path / "bomb.docx"
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("word/document.xml", bomb)
+    r_ = V.check_one("lol", path)
+    assert r_.state == "unchecked"
+    assert "declares a document type" in r_.detail
+
+
+def test_a_package_whose_xml_inflates_past_the_cap_is_refused_unread(tmp_path, monkeypatch):
+    path = write(tmp_path / "big.docx", p(r("x" * 5000)))
+    monkeypatch.setattr(E, "DOCX_MAX_XML_BYTES", 1000)
+    r_ = V.check_one("xxxx", path)
+    assert r_.state == "unchecked"
+    assert "inflates past 1,000 bytes" in r_.detail
+
+
+def test_a_compressed_part_is_capped_on_what_it_inflates_to_not_what_it_claims(
+    tmp_path, monkeypatch
+):
+    path = tmp_path / "bomb.docx"
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as z:
+        z.writestr(
+            "word/document.xml",
+            f'<w:document xmlns:w="{W}"><w:body>' + " " * 2_000_000 + "</w:body></w:document>",
+        )
+    assert path.stat().st_size < 10_000
+    monkeypatch.setattr(E, "DOCX_MAX_XML_BYTES", 1_000_000)
+    assert "inflates past" in V.check_one("anything at all", path).detail
+
+
+@pytest.mark.parametrize(
+    ("body", "reason"),
+    [
+        (b"not a zip archive at all", "not a zip archive"),
+        (None, "holds no word/document.xml"),
+    ],
+)
+def test_a_file_that_is_not_a_docx_is_unchecked_with_the_reason(tmp_path, body, reason):
+    path = tmp_path / "fake.docx"
+    if body is None:
+        with zipfile.ZipFile(path, "w") as z:
+            z.writestr("other.xml", "<a/>")
+    else:
+        path.write_bytes(body)
+    r_ = V.check_one("anything at all", path)
+    assert r_.state == "unchecked"
+    assert reason in r_.detail

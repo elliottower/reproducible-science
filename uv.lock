@@ -537,9 +537,6 @@ arrays = [
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
 ]
-docx = [
-    { name = "citations", extra = ["docx"] },
-]
 hdf5 = [
     { name = "h5py" },
 ]
@@ -570,7 +567,6 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "citations", editable = "packages/citations" },
-    { name = "citations", extras = ["docx"], marker = "extra == 'docx'", editable = "packages/citations" },
     { name = "h5py", marker = "extra == 'hdf5'", specifier = ">=3.12" },
     { name = "netcdf4", marker = "extra == 'netcdf'", specifier = ">=1.7.2" },
     { name = "numpy", marker = "extra == 'arrays'", specifier = ">=2.2.6" },
@@ -583,7 +579,7 @@ requires-dist = [
     { name = "rdata", marker = "extra == 'rds'", specifier = ">=1" },
     { name = "xlrd", marker = "extra == 'sheets'", specifier = ">=2.0.1" },
 ]
-provides-extras = ["arrays", "docx", "hdf5", "netcdf", "parquet", "rds", "sheets", "stata-spss"]
+provides-extras = ["arrays", "hdf5", "netcdf", "parquet", "rds", "sheets", "stata-spss"]
 
 [package.metadata.requires-dev]
 dev = [
@@ -3235,9 +3231,6 @@ adduce = [
 arrays = [
     { name = "claims-cli", extra = ["arrays"] },
 ]
-docx = [
-    { name = "claims-cli", extra = ["docx"] },
-]
 hdf5 = [
     { name = "claims-cli", extra = ["hdf5"] },
 ]
@@ -3271,7 +3264,6 @@ requires-dist = [
     { name = "citations", editable = "packages/citations" },
     { name = "claims-cli", editable = "packages/claims" },
     { name = "claims-cli", extras = ["arrays"], marker = "extra == 'arrays'", editable = "packages/claims" },
-    { name = "claims-cli", extras = ["docx"], marker = "extra == 'docx'", editable = "packages/claims" },
     { name = "claims-cli", extras = ["hdf5"], marker = "extra == 'hdf5'", editable = "packages/claims" },
     { name = "claims-cli", extras = ["netcdf"], marker = "extra == 'netcdf'", editable = "packages/claims" },
     { name = "claims-cli", extras = ["parquet"], marker = "extra == 'parquet'", editable = "packages/claims" },
@@ -3284,7 +3276,7 @@ requires-dist = [
     { name = "pyyaml", specifier = ">=6.0.2" },
     { name = "results-cli", editable = "packages/results" },
 ]
-provides-extras = ["adduce", "arrays", "docx", "hdf5", "netcdf", "parquet", "rds", "sheets", "stata-spss"]
+provides-extras = ["adduce", "arrays", "hdf5", "netcdf", "parquet", "rds", "sheets", "stata-spss"]
 
 [package.metadata.requires-dev]
 dev = [

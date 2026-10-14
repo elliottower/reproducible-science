@@ -29,7 +29,6 @@ from collections.abc import Mapping
 from typing import Protocol
 
 from claims.adapters.reads import reading_once
-from claims.adapters.word import refuse_tracked_changes
 from claims.exceptions import (
     ArtifactUnreadableError,
     BackendUnavailableError,
@@ -266,9 +265,6 @@ class QuoteBackend:
             raise BackendUnavailableError("quote", f"citations is not installed: {e}") from e
 
         path = paths[evidence.artifact]
-        # A tracked change is read as neither its accepted nor its original text, so a passage
-        # it touches would be `not found` in a manuscript that prints it.
-        refuse_tracked_changes(path)
         result = check_one(
             evidence.text, path, evidence.page, prefix=evidence.prefix, suffix=evidence.suffix
         )

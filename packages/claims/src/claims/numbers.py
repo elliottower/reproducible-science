@@ -8,8 +8,8 @@ Executes nothing and writes nothing.
 **Which text.** An artifact a claim reads its own sentence from: one a `quote` reads in a claim
 that also offers an assertion of another kind, or one a prose address reads. A `quote` standing
 alone in its claim is a quotation from a source, and that source is not inventoried. A `.docx`
-is read as `claims.adapters.word` describes: paragraphs, then table rows, and no footnotes;
-one holding a tracked change of text is refused as unreadable.
+is read by `citations`' `docx-text` extractor, whose docstring gives what it reads and in
+what order.
 
 **What a number is.** The text is the one a quotation resolves against, `passage_fold` over
 what `citations` extracts, and a number is what `claims.adapters.prose.numerals` reads in it:
@@ -40,7 +40,6 @@ from citations.exceptions import SourceUnreadableError
 from citations.verify import extract_uncached, passage_fold
 
 from claims.adapters.prose import CARDINALS, located, numerals
-from claims.adapters.word import refuse_tracked_changes
 from claims.exceptions import ArtifactMissingError, ArtifactUnreadableError, ReproError
 from claims.models import (
     AggregateEvidence,
@@ -86,7 +85,7 @@ _LIST_MARKER = re.compile(r"\(\d{1,2}\)")
 _LABEL = re.compile(
     r"(?<![a-z])(?:sections?|sec\.|§|figures?|figs?\.?|tables?|tab\.|equations?|eqs?\.?|eqn\.?"
     r"|appendix|appendices|chapters?|pages?|pp?\.|algorithms?|listings?|theorems?|lemmas?"
-    r"|propositions?|corollary|corollaries|definitions?|footnotes?|steps?|lines?)"
+    r"|propositions?|corollary|corollaries|definitions?|footnotes?|endnotes?|steps?|lines?)"
     r" ?\(?(\d+(?:\.\d+)*(?:-\d+(?:\.\d+)*)?)"
 )
 #: Letters and then a digit, immediately after a number: the digits open a longer name.
@@ -328,7 +327,6 @@ def _inventory(
     artifact_id, path = artifact.id, manifest.resolve(artifact)
     if not path.is_file():
         raise ArtifactMissingError(artifact_id, path)
-    refuse_tracked_changes(path)
     try:
         raw = extract_uncached(path)
     except SourceUnreadableError as e:
