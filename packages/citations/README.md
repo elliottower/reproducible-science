@@ -129,6 +129,7 @@ every quote resolved, but against a source that is not the one pinned.
 | `citations verify --json PATH` | Also write the counts to `PATH` as JSON: quotations by outcome, sources read and sources absent |
 | `citations coverage` | Is every quotation in my manuscript pinned at all? |
 | `citations audit` | Does the stored metadata match the record the identifier resolves to? |
+| `citations audit --strict` | Exit 1 on a disagreement or on an entry not found that is not on the checked list, 2 when a lookup failed and nothing else did |
 | `citations resolve` | Backfill missing DOIs and arXiv ids |
 | `citations build` | Rebuild records from bibliographies |
 | `citations lint` | BibTeX correctness, repeated keys, and author lists in a `.bib` |
@@ -807,10 +808,45 @@ the report lists that identifier so it can be added to the entry.
 
 | Row | Meaning | Fails `--strict` |
 |---|---|---|
-| `by search` | The search found a DOI or an arXiv id and the entry was compared with its record. An arXiv id is read as the DataCite DOI `10.48550/arXiv.<id>`. These entries are counted in `checked`. | on a disagreement |
+| `by search` | The search found a DOI or an arXiv id and the entry was compared with its record. An arXiv id is read as the DataCite DOI `10.48550/arXiv.<id>`. These entries are counted in `checked`. | on a disagreement, exit 1 |
 | `found` | The search matched an OpenAlex record that has no DOI, so there is no registry record to compare with. | no |
-| `not found` | At least one service answered and none had a matching record. A book, a report and a thesis land here, and so does a reference to a work that does not exist. | no |
-| `unresolved` | A registry did not return the record, or every search service refused. No measurement was made. | yes |
+| `not found` | At least one search service answered and none had a matching record, or every registry asked answered that the entry's own DOI or PMID has no record (a 404). A book, a report and a thesis land here, and so does a reference to a work that does not exist. | exit 1, unless the key is on the checked list |
+| `marked` | Of those not found, the keys on the checked list. Each is still listed under `not found`, as `(marked as checked)`. | no |
+| `could not check` | A registry, or every search service, refused or did not answer: a 401 or 403, a rate limit, a timeout, a 5xx, a body that is not a record. No measurement was made. | exit 2, when nothing else fails |
+
+Without `--strict` every row is reported and the command exits 0. With it, the exit code is 1
+for a disagreement or an unlisted not found, 2 when the only failures are lookups that could
+not be made, and 0 otherwise. A failed lookup exits 2 rather than 1 so that a CI job can retry
+it instead of sending the author after a citation that may be correct, and a disagreement
+outranks it, because no retry changes a disagreement. An audit with nothing to check also
+exits 2.
+
+Only a 404 or 410 counts as a registry or search service answering that it has nothing. Every
+other refusal, including the 403 Semantic Scholar gives many anonymous requests, leaves that
+service out of the ones a `not found` rests on, which `--json` lists under `searched`.
+
+### Entries checked by hand
+
+A thesis, a book chapter, a report or a dataset is often in no registry, and `--strict` cannot
+tell it from a reference to a work that does not exist. Once an author has checked such an
+entry by hand, its key goes in a plain file beside the bibliography, named for it:
+`references.checked.txt` for `references.bib`, or `checked.txt` at the root of a library.
+`--checked PATH` names another file.
+
+```text
+# entries checked by hand: in no registry, confirmed against the printed copy
+smith2019thesis       # PhD thesis, University of Edinburgh
+who2021report
+```
+
+One key per line; `#` starts a note. A line with two words before a `#` is refused, so a key
+is never half read. A listed key is still reported as `not found`, marked as checked, and does
+not fail `--strict`. The list excuses nothing else: a listed key that is found and disagrees on
+a field fails as any other does, and a listed key that is found at all is printed as a warning,
+since it may no longer need to be on the list. A listed key the bibliography does not have is
+warned about as stale. The report prints the file's path and SHA-256, and `--json` carries both
+with the keys read and the stale ones under `checked_list`, so a run's reliance on the list is
+on record.
 
 An identifier found by title can belong to another version of the work, such as the preprint of
 a journal article, so a year or venue disagreement on a `by search` entry is read before it is

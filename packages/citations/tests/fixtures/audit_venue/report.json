@@ -3,6 +3,9 @@
   "entries": {
     "altschul1990blast": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "crossref",
       "doi": "10.1016/S0022-2836(05)80360-2",
       "pmid": "",
@@ -20,6 +23,9 @@
     },
     "benjamini1995fdr": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "crossref",
       "doi": "10.1111/j.2517-6161.1995.tb02031.x",
       "pmid": "",
@@ -37,6 +43,9 @@
     },
     "bojanowski2017fasttext": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "crossref",
       "doi": "10.1162/tacl_a_00051",
       "pmid": "",
@@ -54,6 +63,9 @@
     },
     "breiman2001rf": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "crossref",
       "doi": "10.1023/A:1010933404324",
       "pmid": "",
@@ -71,6 +83,9 @@
     },
     "brown2020gpt3": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "datacite",
       "doi": "",
       "pmid": "",
@@ -91,6 +106,9 @@
     },
     "carion2020detr": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "crossref",
       "doi": "10.1007/978-3-030-58452-8_13",
       "pmid": "",
@@ -108,6 +126,9 @@
     },
     "chen2016xgboost": {
       "status": "mismatch",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "crossref",
       "doi": "10.1145/2939672.2939785",
       "pmid": "",
@@ -127,6 +148,9 @@
     },
     "clark2019bertlook": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "crossref",
       "doi": "10.18653/v1/W19-4828",
       "pmid": "",
@@ -144,6 +168,9 @@
     },
     "cox1972regression": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "crossref",
       "doi": "10.1111/j.2517-6161.1972.tb00899.x",
       "pmid": "",
@@ -161,6 +188,9 @@
     },
     "dempster1977em": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "crossref",
       "doi": "10.1111/j.2517-6161.1977.tb01600.x",
       "pmid": "",
@@ -178,6 +208,9 @@
     },
     "devlin2019bert": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "crossref",
       "doi": "10.18653/v1/N19-1423",
       "pmid": "",
@@ -195,6 +228,9 @@
     },
     "dosovitskiy2021vit": {
       "status": "mismatch",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "datacite",
       "doi": "",
       "pmid": "",
@@ -217,6 +253,9 @@
     },
     "efron1979bootstrap": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "crossref",
       "doi": "10.1214/aos/1176344552",
       "pmid": "",
@@ -234,6 +273,9 @@
     },
     "friedman2010glmnet": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "crossref",
       "doi": "10.18637/jss.v033.i01",
       "pmid": "",
@@ -251,6 +293,9 @@
     },
     "goodfellow2014gan": {
       "status": "not found",
+      "not_found_by": "title search",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": null,
       "doi": "",
       "pmid": "",
@@ -267,6 +312,9 @@
     },
     "he2016resnet": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "crossref",
       "doi": "10.1109/CVPR.2016.90",
       "pmid": "",
@@ -284,6 +332,9 @@
     },
     "ho2020ddpm": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "datacite",
       "doi": "",
       "pmid": "",
@@ -303,6 +354,9 @@
     },
     "ioffe2015batchnorm": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "datacite",
       "doi": "",
       "pmid": "",
@@ -323,6 +377,9 @@
     },
     "jinek2012crispr": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "crossref",
       "doi": "10.1126/science.1225829",
       "pmid": "",
@@ -339,7 +396,13 @@
       "searched": []
     },
     "jumper2021alphafold": {
-      "status": "unresolved",
+      "status": "could not check",
+      "not_found_by": "",
+      "refused": [
+        "crossref",
+        "datacite"
+      ],
+      "checked_by_hand": false,
       "checked_against": null,
       "doi": "10.1038/s41586-021-03819-3",
       "pmid": "",
@@ -352,6 +415,9 @@
     },
     "kaplan1958km": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "crossref",
       "doi": "10.1080/01621459.1958.10501452",
       "pmid": "",
@@ -369,6 +435,9 @@
     },
     "kingma2015adam": {
       "status": "mismatch",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "datacite",
       "doi": "",
       "pmid": "",
@@ -391,6 +460,9 @@
     },
     "kipf2017gcn": {
       "status": "mismatch",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "datacite",
       "doi": "",
       "pmid": "",
@@ -413,6 +485,9 @@
     },
     "korsunsky2019harmony": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "crossref",
       "doi": "10.1038/s41592-019-0619-0",
       "pmid": "",
@@ -430,6 +505,9 @@
     },
     "krizhevsky2012imagenet": {
       "status": "found",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": null,
       "doi": "",
       "pmid": "",
@@ -445,6 +523,9 @@
     },
     "lecun2015deep": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "crossref",
       "doi": "10.1038/nature14539",
       "pmid": "",
@@ -462,6 +543,9 @@
     },
     "lewis2020bart": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "crossref",
       "doi": "10.18653/v1/2020.acl-main.703",
       "pmid": "",
@@ -479,6 +563,9 @@
     },
     "li2009bwa": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "crossref",
       "doi": "10.1093/bioinformatics/btp324",
       "pmid": "",
@@ -496,6 +583,9 @@
     },
     "lin2017focal": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "crossref",
       "doi": "10.1109/ICCV.2017.324",
       "pmid": "",
@@ -513,6 +603,9 @@
     },
     "lin2022esmfold": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "crossref",
       "doi": "10.1101/2022.07.20.500902",
       "pmid": "",
@@ -530,6 +623,9 @@
     },
     "liu2019roberta": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "datacite",
       "doi": "",
       "pmid": "",
@@ -551,6 +647,9 @@
     },
     "love2014deseq2": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "crossref",
       "doi": "10.1186/s13059-014-0550-8",
       "pmid": "",
@@ -568,6 +667,9 @@
     },
     "lundberg2017shap": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "datacite",
       "doi": "",
       "pmid": "",
@@ -588,6 +690,9 @@
     },
     "mikolov2013word2vec": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "datacite",
       "doi": "",
       "pmid": "",
@@ -608,6 +713,9 @@
     },
     "mnih2015dqn": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "crossref",
       "doi": "10.1038/nature14236",
       "pmid": "",
@@ -625,6 +733,9 @@
     },
     "papineni2002bleu": {
       "status": "mismatch",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "crossref",
       "doi": "10.3115/1073083.1073135",
       "pmid": "",
@@ -645,6 +756,9 @@
     },
     "pennington2014glove": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "crossref",
       "doi": "10.3115/v1/D14-1162",
       "pmid": "",
@@ -662,6 +776,9 @@
     },
     "peters2018elmo": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "crossref",
       "doi": "10.18653/v1/N18-1202",
       "pmid": "",
@@ -679,6 +796,9 @@
     },
     "polack2020bnt162b2": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "crossref",
       "doi": "10.1056/NEJMoa2034577",
       "pmid": "",
@@ -696,6 +816,9 @@
     },
     "radford2021clip": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "datacite",
       "doi": "",
       "pmid": "",
@@ -716,6 +839,9 @@
     },
     "raffel2020t5": {
       "status": "mismatch",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "datacite",
       "doi": "",
       "pmid": "",
@@ -738,6 +864,9 @@
     },
     "razavian2014offtheshelf": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "crossref",
       "doi": "10.1109/CVPRW.2014.131",
       "pmid": "",
@@ -755,6 +884,9 @@
     },
     "redmon2016yolo": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "crossref",
       "doi": "10.1109/CVPR.2016.91",
       "pmid": "",
@@ -772,6 +904,9 @@
     },
     "reimers2019sbert": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "crossref",
       "doi": "10.18653/v1/D19-1410",
       "pmid": "",
@@ -789,6 +924,9 @@
     },
     "ribeiro2016lime": {
       "status": "mismatch",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "crossref",
       "doi": "10.1145/2939672.2939778",
       "pmid": "",
@@ -808,6 +946,9 @@
     },
     "ritchie2015limma": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "pubmed",
       "doi": "",
       "pmid": "25605792",
@@ -825,6 +966,9 @@
     },
     "rombach2022ldm": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "crossref",
       "doi": "10.1109/CVPR52688.2022.01042",
       "pmid": "",
@@ -842,6 +986,9 @@
     },
     "ronneberger2015unet": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "crossref",
       "doi": "10.1007/978-3-319-24574-4_28",
       "pmid": "",
@@ -859,6 +1006,9 @@
     },
     "rosenbaum1983propensity": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "crossref",
       "doi": "10.1093/biomet/70.1.41",
       "pmid": "",
@@ -876,6 +1026,9 @@
     },
     "sennrich2016bpe": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "crossref",
       "doi": "10.18653/v1/P16-1162",
       "pmid": "",
@@ -893,6 +1046,9 @@
     },
     "silver2016go": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "crossref",
       "doi": "10.1038/nature16961",
       "pmid": "",
@@ -910,6 +1066,9 @@
     },
     "srivastava2014dropout": {
       "status": "found",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": null,
       "doi": "",
       "pmid": "",
@@ -925,6 +1084,9 @@
     },
     "stuart2019seurat": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "crossref",
       "doi": "10.1016/j.cell.2019.05.031",
       "pmid": "",
@@ -942,6 +1104,9 @@
     },
     "subramanian2005gsea": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "crossref",
       "doi": "10.1073/pnas.0506580102",
       "pmid": "",
@@ -959,6 +1124,9 @@
     },
     "sundararajan2017ig": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "datacite",
       "doi": "",
       "pmid": "",
@@ -979,6 +1147,9 @@
     },
     "tibshirani1996lasso": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "crossref",
       "doi": "10.1111/j.2517-6161.1996.tb02080.x",
       "pmid": "",
@@ -996,6 +1167,9 @@
     },
     "vanhasselt2016double": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "crossref",
       "doi": "10.1609/aaai.v30i1.10295",
       "pmid": "",
@@ -1013,6 +1187,9 @@
     },
     "vaswani2017attention": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "datacite",
       "doi": "",
       "pmid": "",
@@ -1032,6 +1209,9 @@
     },
     "wolf2020transformers": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "crossref",
       "doi": "10.18653/v1/2020.emnlp-demos.6",
       "pmid": "",
@@ -1049,6 +1229,9 @@
     },
     "zheng2017chromium": {
       "status": "ok",
+      "not_found_by": "",
+      "refused": [],
+      "checked_by_hand": false,
       "checked_against": "crossref",
       "doi": "10.1038/ncomms14049",
       "pmid": "",

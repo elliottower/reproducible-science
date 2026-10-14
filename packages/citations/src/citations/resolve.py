@@ -67,8 +67,15 @@ NETWORK_ERRORS = (
     UnicodeDecodeError,
 )
 
-#: Status codes that mean "ask again later" rather than "no such work".
+#: Status codes that mean "ask again later" rather than "no such work". Any other 5xx is
+#: retried too.
 RETRY_CODES = (429, 503, 504)
+
+#: The only status codes that mean the service answered and has no such work. Every other
+#: refusal -- 401 or 403 for a missing or rejected key, 400 for a query it would not run, a 5xx
+#: -- is a question that was not answered. Reading those as "nothing here" is how a Semantic
+#: Scholar 403 was counted as a search that found nothing.
+ABSENT_CODES = (404, 410)
 
 
 class Throttled(Exception):
@@ -106,11 +113,13 @@ def get(url: str, as_json: bool, tries: int = 4, headers: dict | None = None):
                 body = r.read().decode()
             return json.loads(body) if as_json else body
         except urllib.error.HTTPError as e:
-            if e.code in RETRY_CODES:
+            if e.code in ABSENT_CODES:
+                return None
+            if e.code in RETRY_CODES or e.code >= 500:
                 time.sleep(delay)
                 delay *= 2
                 continue
-            return None
+            raise Throttled(url) from e
         except NETWORK_ERRORS:
             time.sleep(delay)
             delay *= 2
