@@ -205,6 +205,8 @@ def stale(manifest: Manifest) -> StalenessReport:
     log = reruns(root)
     recorded: dict[str, list[Rerun]] = collections.defaultdict(list)
     attempted: dict[str, list[Rerun]] = collections.defaultdict(list)
+    # Where each invocation ran, by when it started, which is how a re-run is named.
+    ran_in = {report.started_at: report.witness for report in log}
     for report in log:
         for entry in report.regenerations:
             if not entry.executed:
@@ -264,6 +266,7 @@ def stale(manifest: Manifest) -> StalenessReport:
             upstream=nearest[1] if nearest else None,
             distance=nearest[0] if nearest else None,
             rerun_at=rerun[0] if rerun else None,
+            witness=ran_in.get(rerun[0]) if rerun else None,
         )
 
     def of(artifact_id: str) -> Freshness:
@@ -347,7 +350,13 @@ def stale(manifest: Manifest) -> StalenessReport:
         ),
         regenerations=tuple(nodes.values()),
         edges=tuple(edges),
-        findings=tuple(found for each in differences.values() for found in each),
+        findings=tuple(
+            found.model_copy(update={"witness": ran_in.get(found.rerun_at)})
+            if found.rerun_at is not None
+            else found
+            for each in differences.values()
+            for found in each
+        ),
         record_disagrees_with_pin=tuple(disagreements),
     )
 

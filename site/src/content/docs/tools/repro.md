@@ -205,6 +205,8 @@ A number that changed is printed as stored then and now beside what the paper pr
 
 `--skip ID` leaves a record out, such as a long training run, and `--only ID` runs the ones named. A record that reads the output of one that did not reproduce still runs, over the pinned copy, and says so. Each invocation appends what it observed to `.repro/reproductions.jsonl`.
 
+Run under GitHub Actions, an entry also says where: a `witness` with `kind`, `repository`, `workflow`, `run_id`, `run_attempt`, `sha`, `ref` and `runner_os`, copied from the `GITHUB_*` and `RUNNER_OS` variables when `GITHUB_ACTIONS` is `true`, and absent from every other run. The command prints `witnessed in GitHub Actions run 123456 of owner/repo, as the environment said`, and `repro stale` and `repro why` name the run beside the re-run they compare with. The variables are whatever the process was given and nothing is checked against GitHub: the run's page and log, at `https://github.com/<repository>/actions/runs/<run_id>`, are what a reader checks the entry against.
+
 This executes what the manifest names. `repro verify` never does.
 
 ## After an edit

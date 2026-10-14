@@ -563,6 +563,8 @@ def _reproduce_text(
         f"  ({len(assessment.errors)} errors, {len(assessment.warnings)} warnings)"
     )
     print(f"  recorded in {recorded.relative_to(path.resolve().parent).as_posix()}")
+    if report.witness is not None:
+        print(f"  witnessed {report.witness.said}, as the environment said")
 
 
 def _said(state: enum.StrEnum) -> str:
@@ -584,19 +586,21 @@ def _finding_said(found: StaleFinding, paths: dict[str, str]) -> str:
         )
 
     cause = _said(found.cause)
+    # Appended, and only where the re-run's entry says where it ran.
+    where = f"; that re-run was {found.witness.said}" if found.witness else ""
     if found.cause is StaleCause.INPUT_CHANGED:
-        return f"{cause}: {_named(found.artifact, paths)}: {digests('read')}"
+        return f"{cause}: {_named(found.artifact, paths)}: {digests('read')}{where}"
     if found.cause is StaleCause.OUTPUT_CHANGED:
-        return f"{cause}: {_named(found.artifact, paths)}: {digests('wrote')}"
+        return f"{cause}: {_named(found.artifact, paths)}: {digests('wrote')}{where}"
     if found.cause is StaleCause.COMMAND_CHANGED:
-        return f"{cause} since the re-run of {found.rerun_at}"
+        return f"{cause} since the re-run of {found.rerun_at}{where}"
     if found.cause is StaleCause.CYCLE:
         return f"{cause}: {found.regeneration} is upstream of itself"
     if found.cause is StaleCause.LATER_RERUN_DID_NOT_REPRODUCE:
         wrote = f"wrote {found.observed[:12]}" if found.observed else "wrote no output"
         return (
             f"{cause}: the re-run of {found.rerun_at} read the same inputs and {wrote}, "
-            f"on disk {(found.on_disk or 'nothing')[:12]}"
+            f"on disk {(found.on_disk or 'nothing')[:12]}{where}"
         )
     return f"{cause}: {_named(found.artifact, paths)}"
 
@@ -918,6 +922,7 @@ def _chain_lines(node: ChainNode, account: ClaimAccount, paths: dict[str, str]) 
         )
         lines.append(
             f"re-run of {record.rerun_at} reproduced"
+            + (f" {record.witness.said}" if record.witness else "")
             + (
                 ""
                 if wrote.observed != wrote.on_disk
