@@ -102,6 +102,31 @@ def _lines(ledger: pathlib.Path) -> list[str]:
     ]
 
 
+#: Bytes read at a time when reading a chain's last line from the end.
+_TAIL_BLOCK = 1 << 16
+
+
+def last_line(ledger: pathlib.Path) -> str | None:
+    """The last non-blank line as `_lines` gives it, read from the end of the file, or None
+    where there is none. Reads the bytes of that line and of the blank lines after it, and no
+    others, so its cost does not grow with the chain."""
+    if not ledger.exists():
+        return None
+    with ledger.open("rb") as handle:
+        end = handle.seek(0, os.SEEK_END)
+        held = b""
+        while end > 0:
+            start = max(0, end - _TAIL_BLOCK)
+            handle.seek(start)
+            held = handle.read(end - start) + held
+            end = start
+            content = held.rstrip()
+            # The line is whole once a line break precedes it, or the file begins with it.
+            if content and (b"\n" in content or end == 0):
+                return content.rsplit(b"\n", 1)[-1].decode("utf-8").strip() or None
+    return None
+
+
 def last_hash(ledger: pathlib.Path) -> str:
     """The hash of the last line as stored, or a zero hash if the ledger is empty."""
     if not ledger.exists() or ledger.stat().st_size == 0:
@@ -167,9 +192,21 @@ def write_anchor(ledger: pathlib.Path, count: int, head: str) -> dict:
 # --------------------------------------------------------------------------------- writing
 
 
-def append_event(ledger: pathlib.Path, event: dict) -> dict:
+def append_event(
+    ledger: pathlib.Path, event: dict, *, whole_chain: bool = True
+) -> dict:
     """Write one event and advance the anchor. Returns a new event; the argument is not
     mutated, so the object a caller holds cannot drift from the line on disk.
+
+    Before writing, the chain is checked so that nothing is built on a damaged one. With
+    `whole_chain`, every line is read and the chain verified, as `verify` does. Without it, only
+    the last line is read: where it hashes to the head the anchor records and holds the position
+    the anchor's count gives it, the append goes ahead, and otherwise the whole chain is verified
+    as before. A tail that was edited, cut or grown without its anchor is refused or handled as
+    the whole-chain check handles it; a line edited or removed further back is not looked for,
+    and stays as evidence that `verify` reports, because an append neither rewrites a line nor
+    changes the `prev_hash` of the line after the edit. The record of checks `repro verify`
+    keeps grows with every check and passes False; the `results` ledger keeps the default.
 
     An event's position and `prev_hash` come from the lines already on disk, so two callers that
     read the same tail write two lines claiming one position. The chain then reports `edited`,
@@ -178,11 +215,43 @@ def append_event(ledger: pathlib.Path, event: dict) -> dict:
     as the write, because reading early is what makes the second line wrong.
     """
     with exclusive_lock(ledger):
-        return _append_locked(ledger, event)
+        return _append_locked(ledger, event, whole_chain=whole_chain)
 
 
-def _append_locked(ledger: pathlib.Path, event: dict) -> dict:
+def _tail_agrees(ledger: pathlib.Path) -> tuple[int, str] | None:
+    """`(count, head)` where the anchor is current and the ledger's last line is the one it
+    records: it hashes to the anchor's head and holds position `count - 1`. None otherwise, or
+    where there is no anchor or no line."""
+    try:
+        anchor = read_anchor(ledger)
+    except ChainError:
+        return None
+    if anchor is None or anchor.get("canon_version") != CANON_VERSION:
+        return None
+    count, head = anchor.get("count"), anchor.get("head")
+    if not isinstance(count, int) or count < 1 or not isinstance(head, str):
+        return None
+    try:
+        line = last_line(ledger)
+    except UnicodeDecodeError:
+        return None
+    if line is None or sha256_of_text(line) != head:
+        return None
+    try:
+        seq = json.loads(line).get("seq")
+    except (json.JSONDecodeError, AttributeError):
+        return None
+    return (count, head) if seq == count - 1 else None
+
+
+def _append_locked(
+    ledger: pathlib.Path, event: dict, *, whole_chain: bool = True
+) -> dict:
     """The append itself. Assumes the caller holds the lock for `ledger`."""
+    agreed = None if whole_chain else _tail_agrees(ledger)
+    if agreed is not None:
+        count, head = agreed
+        return _write(ledger, event, count, head)
     lines = _lines(ledger) if ledger.exists() else []
 
     # The anchor is the only witness to the last line, and appending overwrites it. An edited
@@ -204,12 +273,14 @@ def _append_locked(ledger: pathlib.Path, event: dict) -> dict:
                 f"{'; '.join(problems) or 'the recorded history does not verify'}",
             )
 
-    record = {
-        **event,
-        "seq": len(lines),
-        "timestamp": now_iso(),
-        "prev_hash": sha256_of_text(lines[-1]) if lines else ZERO,
-    }
+    return _write(
+        ledger, event, len(lines), sha256_of_text(lines[-1]) if lines else ZERO
+    )
+
+
+def _write(ledger: pathlib.Path, event: dict, seq: int, prev_hash: str) -> dict:
+    """Write `event` at position `seq` after the line hashing to `prev_hash`, then anchor it."""
+    record = {**event, "seq": seq, "timestamp": now_iso(), "prev_hash": prev_hash}
     line = canonical(record)
     # Append then anchor: a crash between them under-counts, which verification reports as
     # `extended` and a re-anchor repairs. The reverse would report a whole ledger as truncated.
@@ -217,7 +288,7 @@ def _append_locked(ledger: pathlib.Path, event: dict) -> dict:
         f.write(line + "\n")
         f.flush()
         os.fsync(f.fileno())
-    write_anchor(ledger, len(lines) + 1, sha256_of_text(line))
+    write_anchor(ledger, seq + 1, sha256_of_text(line))
     return record
 
 

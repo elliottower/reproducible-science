@@ -21,7 +21,9 @@ stored, `prev_hash`, and a head file beside the record, `ledger.head`, holds the
 entries and the hash of the last. These are the `results` ledger's fields and its writer:
 `provenance_core.chain.append_event` appends under a lock held across reading the last entry and
 writing the next, so two checks running at once write two entries in a row and not two
-claiming one position, and it refuses to append to a chain that does not verify.
+claiming one position. `record` reads and checks the whole chain once, under that lock, and
+refuses to append to one that does not verify; the append then reads only the last entry and
+the head file, so a check does not grow slower by re-reading a record it has just read.
 
 Reading is done here and not by `provenance_core.chain.verify`, which takes a lock by creating a file
 beside the record: `repro verify` and `repro why` must leave the working tree as it is.
@@ -41,6 +43,7 @@ from __future__ import annotations
 
 import collections
 import datetime
+import functools
 import json
 import os
 import pathlib
@@ -209,12 +212,18 @@ def _parsed(raw: str) -> CheckRecord | None:
         return None
 
 
-def _chain(path: pathlib.Path, kind: Kind, lines: list[str]) -> RecordState:
+def _chain(
+    path: pathlib.Path,
+    kind: Kind,
+    lines: list[str],
+    parsed: dict[str, CheckRecord | None] | None = None,
+) -> RecordState:
     """Whether each entry follows from the one before it, and whether the head file agrees.
 
     The status is the first fault's, as in the `results` ledger: a chain edited and then cut
-    is edited.
+    is edited. `parsed` holds entries already read, by line, so a line is parsed once.
     """
+    parsed = {} if parsed is None else parsed
     status, problems, first = ChainStatus.INTACT, [], None
 
     def fault(found: ChainStatus, entry: int, said: str) -> None:
@@ -226,7 +235,9 @@ def _chain(path: pathlib.Path, kind: Kind, lines: list[str]) -> RecordState:
 
     prev = ZERO
     for number, raw in enumerate(lines, start=1):
-        entry = _parsed(raw)
+        if raw not in parsed:
+            parsed[raw] = _parsed(raw)
+        entry = parsed[raw]
         if entry is None:
             fault(ChainStatus.CORRUPT, number, f"entry {number} is not one `repro verify` wrote")
         else:
@@ -298,10 +309,13 @@ class Records:
 
         states = []
         vouched: dict[str, bool] = {}
+        # Each line parsed once, here and in `_chain`: a record shared by a repository's
+        # projects grows to megabytes, and its entries are the largest lines it holds.
+        parsed: dict[str, CheckRecord | None] = {}
         for kind, path, lines in (("local", self.local, here), ("tracked", self.tracked, there)):
             if path is None or not (lines or read_anchor(path)):
                 continue
-            state = _chain(path, kind, lines)
+            state = _chain(path, kind, lines, parsed)
             if kind == "tracked" and here and shared < min(len(here), len(there)):
                 state = state.model_copy(update={"diverges_at": shared + 1})
             states.append(state)
@@ -313,26 +327,45 @@ class Records:
 
         # What the two share, then what each holds beyond it, in the order appended.
         # An entry that does not parse is counted as a fault above and holds nothing to show.
-        read = {raw: entry for raw in (*here, *there) if (entry := _parsed(raw)) is not None}
+        read = {
+            raw: entry
+            for raw in (*here, *there)
+            if (entry := parsed[raw] if raw in parsed else _parsed(raw)) is not None
+        }
         beyond = sorted(
             (raw for raw in dict.fromkeys(here[shared:] + there[shared:]) if raw in read),
             key=lambda raw: read[raw].timestamp,
         )
+        self._read = read
+        self._vouched = vouched
+        self._order = (*(raw for raw in here[:shared] if raw in read), *beyond)
+        # The last way an entry holds each assertion, as stored: what `record` compares a
+        # check with. `history` is built from the same entries only where it is asked for.
+        self.latest: dict[Identity, CheckedAssertion] = {
+            assertion.identity: assertion
+            for raw in self._order
+            for assertion in read[raw].assertions
+        }
+        self.set_aside = tuple(
+            note.model_copy(update={"at": read[raw].timestamp})
+            for raw in self._order
+            if (note := read[raw].set_aside) is not None
+        )
+
+    @functools.cached_property
+    def history(self) -> dict[Identity, tuple[CheckedAssertion, ...]]:
+        """Each way an entry holds each assertion, oldest first, with when it was checked and
+        whether the chain vouches for the entry."""
         found: dict[Identity, list[CheckedAssertion]] = collections.defaultdict(list)
-        for raw in (*(raw for raw in here[:shared] if raw in read), *beyond):
-            entry = read[raw]
+        for raw in self._order:
+            entry = self._read[raw]
             for assertion in entry.assertions:
                 found[assertion.identity].append(
                     assertion.model_copy(
-                        update={"checked_at": entry.timestamp, "verifiable": vouched[raw]}
+                        update={"checked_at": entry.timestamp, "verifiable": self._vouched[raw]}
                     )
                 )
-        self.history = {identity: tuple(states) for identity, states in found.items()}
-        self.set_aside = tuple(
-            note.model_copy(update={"at": read[raw].timestamp})
-            for raw in (*(raw for raw in here[:shared] if raw in read), *beyond)
-            if (note := read[raw].set_aside) is not None
-        )
+        return {identity: tuple(states) for identity, states in found.items()}
 
     def state(self, kind: Kind) -> RecordState | None:
         return next((state for state in self.states if state.kind == kind), None)
@@ -396,10 +429,12 @@ def record(
             assertion
             for claim, assessed in zip(manifest.claims, report.claims, strict=True)
             for assertion in checked(claim, assessed.decisions)
-            if assertion.identity not in found.history
-            or not assertion.same_as(found.history[assertion.identity][-1])
+            if assertion.identity not in found.latest
+            or not assertion.same_as(found.latest[assertion.identity])
         ]
         if changed:
+            # `Records` has just read the whole chain under this lock and found it sound, so
+            # the append checks only that the last entry is the one the head file records.
             append_event(
                 written,
                 {
@@ -409,6 +444,7 @@ def record(
                         for assertion in changed
                     ],
                 },
+                whole_chain=False,
             )
 
     if tracked and kept is not None:
