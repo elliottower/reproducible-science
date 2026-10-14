@@ -10,6 +10,7 @@
     claims from-clew       read a SciTeX Clew claims.json into check records
     claims open-items      count what a reader of another tool's files left open, and what is filled
     claims from-codecheck  read a CODECHECK configuration file into a draft manifest and open items
+    claims from-corebench  read a CORE-Bench capsule and its task into a draft manifest and open items
 
 Each but `open-items` and the `from-` readers is also the `repro` command of the same name: `repro.cli` adds these functions to its
 parser with `add_manifest` through `add_origins`, and `main` here adds them to the parser of
@@ -77,6 +78,7 @@ from claims.renderers import survey_to_sarif, to_sarif
 from claims.reruns import RECORD
 from claims.sources import Written
 from claims.sources.codecheck import from_codecheck
+from claims.sources.corebench import from_corebench
 from claims.stale import stale as run_stale
 from claims.starter import (
     CONVENTIONAL,
@@ -1136,6 +1138,13 @@ def cmd_from_codecheck(args: argparse.Namespace) -> int:
     return _print_reading(reading, args)
 
 
+def cmd_from_corebench(args: argparse.Namespace) -> int:
+    reading = from_corebench(
+        Path(args.capsule), Path(args.tasks), Path(args.output), capsule_id=args.capsule_id
+    )
+    return _print_reading(reading, args)
+
+
 def add_manifest(sub, program: str = REPRO) -> None:
     """`manifest init`: write a starter manifest. Added to `repro`'s parser and to `claims`'s, each under its own name."""
     p_manifest = sub.add_parser("manifest", help=f"write a starter {DEFAULT_NAME}")
@@ -1414,6 +1423,32 @@ def add_from_codecheck(sub, program: str = CLAIMS) -> None:
     p_from.set_defaults(func=cmd_from_codecheck, program=program)
 
 
+def add_from_corebench(sub, program: str = CLAIMS) -> None:
+    """`from-corebench`: read a CORE-Bench capsule and its task. Added to `claims`'s parser."""
+    p_from = sub.add_parser(
+        "from-corebench",
+        help="read a CORE-Bench capsule and its task into a draft manifest and its open items",
+        description=(
+            "Read a capsule folder and the CORE-Bench task for it, and write repro.draft.yaml "
+            "and open-items.json into the output directory, never over an existing file. Each "
+            "file under the capsule's results/ in a format a backend reads becomes an artifact, "
+            "pinned by sha256. Each question becomes a claim whose text is the question, with "
+            "one open item: the address in a result file of the value the task states, or for "
+            "an answer that is not a number the passage that prints it. The addresses at which "
+            "a check of the task's value would match are listed in the item as candidates and "
+            "never written into the draft. Runs nothing in the capsule."
+        ),
+    )
+    p_from.add_argument("capsule", help="the capsule's folder, holding results/")
+    p_from.add_argument("tasks", help="a task file holding this capsule's task, or a list of tasks")
+    p_from.add_argument(
+        "--capsule-id", help="the capsule's id in the task file (default: the folder's name)"
+    )
+    p_from.add_argument("--output", "-o", default=".", help="where to write (default: here)")
+    p_from.add_argument("--format", choices=("text", "json"), default="text")
+    p_from.set_defaults(func=cmd_from_corebench, program=program)
+
+
 def main(argv: list[str] | None = None, local_record: bool = True) -> int:
     """The `claims` command: the commands above, and nothing that runs one of yours."""
     parser = argparse.ArgumentParser(
@@ -1442,6 +1477,7 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
     add_from_clew(sub, CLAIMS)
     add_open_items(sub, CLAIMS)
     add_from_codecheck(sub, CLAIMS)
+    add_from_corebench(sub, CLAIMS)
 
     args = parser.parse_args(argv)
     args.local_record = local_record
