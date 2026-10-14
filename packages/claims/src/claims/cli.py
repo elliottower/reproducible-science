@@ -46,6 +46,7 @@ from claims.export.rocrate import METADATA_FILE
 from claims.foreign.clew import records as clew_records
 from claims.foreign.clew import summary as clew_summary
 from claims.foreign.common import OFFSET_HELP, offset
+from claims.foreign.common import Parser as OffsetParser
 from claims.foreign.common import write as write_records
 from claims.foreign.paperdelta import PaperDeltaReading, from_paperdelta
 from claims.manifest import DEFAULT_NAME, find, load
@@ -1518,7 +1519,9 @@ def add_from_corebench(sub, program: str = CLAIMS) -> None:
 
 def main(argv: list[str] | None = None, local_record: bool = True) -> int:
     """The `claims` command: the commands above, and nothing that runs one of yours."""
-    parser = argparse.ArgumentParser(
+    # Reads `--offset -05:30` as an option and its value; the parsers of the subcommands share
+    # the class.
+    parser = OffsetParser(
         prog=CLAIMS,
         description=(
             "Check what a manuscript states against the files it names: numbers, table cells "

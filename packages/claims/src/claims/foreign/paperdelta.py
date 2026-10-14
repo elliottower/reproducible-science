@@ -306,18 +306,11 @@ def checked_at(created_at: str, given: datetime.timezone | None) -> datetime.dat
     return aware(created_at, given, "created_at")
 
 
-#: The subjects of PaperDelta's findings about one item: one number, one comparative claim, one
-#: metric, one figure, fragment or producer record, one export. A finding on any other subject,
-#: such as `project` or a manuscript file, is about the run, and no item's result explains it.
-ITEM_SUBJECTS = (
-    "occurrence:",
-    "claim:",
-    "metric:",
-    "figure:",
-    "fragment:",
-    "provenance:",
-    "export:",
-)
+#: The subjects of PaperDelta's findings about one item a record states: one number, one
+#: comparative claim, or a metric one of them reads, whose failure is that item's own. A finding
+#: on any other subject, such as `project`, a manuscript file, a figure, a fragment, a producer
+#: record or an export, is stated by no record, and no record's result explains it.
+ITEM_SUBJECTS = ("occurrence:", "claim:", "metric:")
 
 #: The exit code each severity makes, as PaperDelta derives it.
 _EXIT = {"unknown": 2, "error": 1}
@@ -330,8 +323,8 @@ def unsettled(report: Report) -> tuple[str, str] | None:
     PaperDelta reports a failure of the whole run, such as `INPUT_CHANGED` (a file changed
     while it was being checked) or `INCOMPLETE_COVERAGE`, as a finding on the subject
     `project`, and leaves every occurrence's status as it was. Any finding of severity
-    `unknown` or `error` on a subject that is no one item is read the same way, whether or not
-    the report carries an exit code. An exit code above the one the items' own findings make (2
+    `unknown` or `error` on a subject no record states (a figure, a fragment, a producer record or
+    an export among them) is read the same way, whether or not the report carries an exit code. An exit code above the one the items' own findings make (2
     for an `unknown`, 1 for an `error`, 0 for none) is a failure nothing in the report names.
     An exit code the items' findings account for leaves each number's pass as reported.
     """
@@ -343,7 +336,7 @@ def unsettled(report: Report) -> tuple[str, str] | None:
     if run:
         rules = ", ".join(dict.fromkeys(found.rule for found in run))
         subjects = ", ".join(dict.fromkeys(found.subject for found in run))
-        return rules, f"PaperDelta reports {rules} for {subjects}, not for one item"
+        return rules, f"PaperDelta reports {rules} for {subjects}, which no number or claim here is"
     explained = max(
         (_EXIT[found.severity] for found in report.diagnostics if found.severity in _EXIT),
         default=0,

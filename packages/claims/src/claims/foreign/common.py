@@ -3,9 +3,9 @@ offset its offset, and one rule for where the records are written.
 
 A time is read as ISO 8601, with `Z` for UTC. One that carries an offset keeps it. One that
 carries none was written in a local time nothing in the file names, so it is refused unless the
-caller states the offset, `+HH:MM` or `-HH:MM`, and UTC is never assumed. On a command line a
-negative offset is written `--offset=-05:30`, since a value that starts with `-` is otherwise
-read as an option. The offset applies to
+caller states the offset, `+HH:MM` or `-HH:MM`, and UTC is never assumed. On a command line
+`--offset -05:30` and `--offset=-05:30` are one option and its value: `Parser` reads a value of
+that form as a value, where argparse would read it as another option. The offset applies to
 every naive time of one reading, so times on either side of a daylight-saving change are read an
 hour apart from what the clock said for one side.
 
@@ -15,6 +15,7 @@ file.
 
 from __future__ import annotations
 
+import argparse
 import datetime
 import pathlib
 import re
@@ -27,10 +28,22 @@ _OFFSET = re.compile(r"(?P<sign>[+-])(?P<hours>\d{2}):(?P<minutes>\d{2})")
 
 
 #: The help every reader's `--offset` gives.
-OFFSET_HELP = (
-    "the UTC offset, +HH:MM or -HH:MM, of the local times the file holds without one; write a "
-    "negative one --offset=-05:30"
-)
+OFFSET_HELP = "the UTC offset, +HH:MM or -HH:MM, of the local times the file holds without one"
+
+
+class Parser(argparse.ArgumentParser):
+    """An argument parser that reads `-05:30` as a value, as it reads `-5`.
+
+    argparse takes an argument that starts with `-` for an option unless it looks like a
+    negative number, which it decides with the pattern `_negative_number_matcher`; a negative
+    UTC offset is added to that pattern. The subcommands' parsers are of the parent's class, so
+    every one of them reads it the same way."""
+
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self._negative_number_matcher = re.compile(
+            rf"{self._negative_number_matcher.pattern}|^-\d{{2}}:\d{{2}}$"
+        )
 
 
 class ForeignError(ReproError):
@@ -73,4 +86,5 @@ def write(text: str, output: pathlib.Path | None) -> None:
     try:
         atomic_write(output, text)
     except OSError as e:
-        raise ForeignError(f"{output} could not be written: {e}") from e
+        # The error names the temporary file the write goes through, not the one asked for.
+        raise ForeignError(f"{output} could not be written: {e.strerror}") from e

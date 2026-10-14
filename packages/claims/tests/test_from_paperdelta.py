@@ -530,3 +530,24 @@ def test_a_finding_on_no_one_item_unsettles_every_pass_with_no_exit_code_given()
     assert passed.outcome is NormalizedOutcome.NOT_CHECKED
     assert passed.native_reason == "DYNAMIC_TEX"
     assert "paper.tex" in passed.detail
+
+
+@pytest.mark.parametrize(
+    "subject", ["provenance:notebook", "figure:fig1", "fragment:table2", "export:pdf"]
+)
+def test_a_failure_of_something_no_record_states_unsettles_every_pass(subject):
+    config = CONFIG_TEXT.encode()
+    report = _report(config, exit_code=2)
+    report["diagnostics"].append(
+        {
+            "id": f"{subject}/PROVENANCE_UNKNOWN",
+            "rule": "PROVENANCE_UNKNOWN",
+            "subject": subject,
+            "severity": "unknown",
+            "message": "",
+        }
+    )
+    passed = _by_id(read(_dump(report), config))["finer_printed"]
+    assert passed.outcome is NormalizedOutcome.NOT_CHECKED
+    assert passed.native_reason == "PROVENANCE_UNKNOWN"
+    assert subject in passed.detail

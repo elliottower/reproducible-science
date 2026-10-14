@@ -68,17 +68,43 @@ def test_both_readers_refuse_the_same_offset_and_an_existing_output_the_same_way
 def test_an_output_in_a_folder_that_does_not_exist_is_refused_without_a_traceback(tmp_path, capsys):
     target = tmp_path / "missing" / "records.jsonl"
     assert main(["from-clew", _clew_export(tmp_path), "--output", str(target)]) == 2
-    assert "could not be written" in capsys.readouterr().out
+    said = capsys.readouterr().out
+    assert said.startswith(f"{target} could not be written: No such file or directory")
+    assert ".tmp" not in said
     assert not target.exists()
 
 
-def test_a_negative_offset_is_taken_in_the_form_the_help_gives(tmp_path, capsys):
-    source = _clew_export(tmp_path)
-    assert main(["from-clew", source, "--offset=-05:30", "--format", "text"]) == 0
-    capsys.readouterr()
-    with pytest.raises(SystemExit):
-        main(["from-clew", "--help"])
-    assert "--offset=-05:30" in capsys.readouterr().out
-    with pytest.raises(SystemExit):
-        main(["from-paperdelta", "--help"])
-    assert "--offset=-05:30" in capsys.readouterr().out
+def test_a_negative_offset_is_taken_after_a_space_or_an_equals_sign(tmp_path, capsys):
+    path = tmp_path / ".scitex" / "clew" / "runtime" / "claims.json"
+    path.parent.mkdir(parents=True)
+    (tmp_path / "paper.tex").write_text("x\n")
+    (tmp_path / "r.csv").write_text("a\n1\n")
+    path.write_text(
+        json.dumps(
+            {
+                "schema_version": "1.4",
+                "generated_at": "2026-10-03T08:00:00Z",
+                "attestation": {"tool": "scitex-clew", "version": "0.21.0"},
+                "claims": [
+                    {
+                        "claim_id": "c",
+                        "file_path": str(tmp_path / "paper.tex"),
+                        "claim_type": "value",
+                        "source_file": str(tmp_path / "r.csv"),
+                        "source_hash": "0" * 64,
+                        "registered_at": "2026-10-01T09:00:00",
+                        "verified_at": "2026-10-02T09:00:00",
+                        "status": "verified",
+                    }
+                ],
+            }
+        )
+    )
+    offsets = []
+    for argv in (["--offset", "-05:30"], ["--offset=-05:30"]):
+        assert main(["from-clew", str(path), *argv]) == 0
+        record = json.loads(capsys.readouterr().out.splitlines()[0])
+        offsets.append(datetime.datetime.fromisoformat(record["checked_at"]).utcoffset())
+    assert offsets == [datetime.timedelta(hours=-5, minutes=-30)] * 2
+    assert main(["from-clew", str(path), "--offset", "-0530"]) == 2
+    assert "+HH:MM" in capsys.readouterr().out
