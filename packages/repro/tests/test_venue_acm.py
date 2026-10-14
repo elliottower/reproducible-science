@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import subprocess
 
 import pytest
 import yaml
@@ -33,7 +34,7 @@ from repro.venue.draft import (
     markdown,
     questionnaire,
 )
-from repro.venue.records import Finding, Project
+from repro.venue.records import Finding, Project, spans, without_userinfo
 
 SHA = "a" * 64
 COMMIT = "0123456789abcdef0123456789abcdef01234567"
@@ -524,7 +525,7 @@ def test_a_claim_naming_no_recorded_run_is_not_counted_as_bound(tmp_path):
     )
     assert (
         ".results/ledger.jsonl",
-        "binds 1 claim to runs it records, 1 of them confirmatory; 1 more name a run it does "
+        "binds 1 claim to runs it records, 1 of them confirmatory; 1 more names a run it does "
         "not record",
     ) in said(acm.appendix(Project.at(tmp_path)).answer("evaluation"))
 
@@ -568,3 +569,86 @@ def test_the_help_says_which_fields_are_answered(capsys):
     with pytest.raises(SystemExit):
         main(["venue", "--help"])
     assert "No question is answered yes or no" not in " ".join(capsys.readouterr().out.split())
+
+
+# -- second review ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "citation",
+    [{"doi": "TBD"}, {"identifiers": [{"type": "doi", "value": "to be assigned"}]}],
+)
+def test_a_citation_doi_that_is_not_a_doi_settles_nothing(tmp_path, citation):
+    (tmp_path / "CITATION.cff").write_text(yaml.safe_dump(citation))
+    archived, public = archive_and_public(tmp_path)
+    assert (archived.status, archived.choice) == (Status.TODO, "")
+    assert (public.status, public.choice) == (Status.TODO, "")
+
+
+def test_the_remote_is_shown_without_credentials_and_for_the_author_to_confirm(tmp_path):
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    subprocess.run(
+        [
+            "git",
+            "-C",
+            str(tmp_path),
+            "remote",
+            "add",
+            "origin",
+            "https://alice:ghp_secret123@github.com/a/b.git",
+        ],
+        check=True,
+    )
+    answer = acm.appendix(Project.at(tmp_path)).answer("how-to-access")
+    assert said(answer) == [
+        (
+            "git config",
+            "remote `origin` is https://github.com/a/b.git; author: confirm this repository is "
+            "public",
+        )
+    ]
+    assert "ghp_secret123" not in markdown(acm.appendix(Project.at(tmp_path)))
+
+
+@pytest.mark.parametrize(
+    ("url", "shown"),
+    [
+        ("ssh://git:pw@example.org/a.git", "ssh://example.org/a.git"),
+        ("git@github.com:a/b.git", "github.com:a/b.git"),
+        ("https://github.com/a/b", "https://github.com/a/b"),
+    ],
+)
+def test_userinfo_is_taken_out_of_every_kind_of_address(url, shown):
+    assert without_userinfo(url) == shown
+
+
+def test_a_plan_outside_the_project_is_shown_by_its_name(tmp_path):
+    project_dir = tmp_path / "project"
+    project_dir.mkdir()
+    freeze(tmp_path / "elsewhere")
+    project = Project.at(project_dir, plan=tmp_path / "elsewhere" / "PREREG.md")
+    assert said(acm.appendix(project).answer("experiment-workflow")) == [
+        ("PREREG.md", f"frozen at commit {COMMIT[:12]}")
+    ]
+
+
+def test_a_backtick_in_a_command_keeps_the_code_span_whole(tmp_path):
+    write_project(tmp_path)
+    manifest = yaml.safe_load((tmp_path / "repro.yaml").read_text())
+    manifest["regenerations"][0]["command"] = ["sh", "-c", "echo `date`"]
+    (tmp_path / "repro.yaml").write_text(yaml.safe_dump(manifest))
+    draft = acm.appendix(Project.at(tmp_path))
+    first = draft.answer("experiments").findings[0].said
+    assert first == "`table-2` runs ``sh -c 'echo `date`'`` and writes results/table_2.json"
+    assert spans(first)[2] == (True, "sh -c 'echo `date`'")
+    assert r"\texttt{sh -c 'echo `date`'}" in acm.latex(draft)
+
+
+def test_one_claim_naming_no_recorded_run_reads_names(tmp_path):
+    write_project(tmp_path)
+    append_event(
+        tmp_path / ".results" / "ledger.jsonl",
+        {"event": "claim", "claim": "x", "run_id": "never", "confirmatory": False},
+    )
+    evaluation = [text for _, text in said(acm.appendix(Project.at(tmp_path)).answer("evaluation"))]
+    assert any(text.endswith("; 1 more names a run it does not record") for text in evaluation)

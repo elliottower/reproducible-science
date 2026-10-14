@@ -1066,7 +1066,7 @@ repro venue acm --format latex -o ae.tex # in the layout of the template, as LaT
 | Experiments, Workflow automation framework | each command under `regenerations`, with the file it writes |
 | Code licenses | `LICENSE` by its first line, and the license `CITATION.cff` names |
 | Archived (provide DOI)? | the DOI `CITATION.cff` names |
-| How to access | `git remote get-url origin`, and that DOI |
+| How to access | `git remote get-url origin` with any user name, password or token taken out and "author: confirm this repository is public", that DOI, and the project's own code repository |
 | Experiment workflow | the commands, each plan frozen with `prereg` and its commit, and the ledger's count of seals and runs |
 | Evaluation and expected results | the claims, whether each declared command's output is current, stale or never re-run as `repro stale` decides it, and each origin as `repro origins` finds it with no network |
 

@@ -26,7 +26,7 @@ from pydantic import BaseModel, ConfigDict, computed_field
 
 from repro import __version__
 from repro.exceptions import ReproError
-from repro.venue.records import READERS, Finding, Project
+from repro.venue.records import READERS, Finding, Project, code, spans
 
 #: The banner every rendering opens with.
 DRAFT_NOTICE = (
@@ -225,19 +225,19 @@ def _marker(answer: Answer) -> str:
     if answer.status is Status.TODO:
         why = answer.todo_note or "no record in this repository answers this."
         return f"**TODO** (authors): {why}"
-    named = ", ".join(f"`{record}`" for record in answer.records)
+    named = ", ".join(code(record) for record in answer.records)
     return f"**DRAFT**, generated from {named}; not written by the authors."
 
 
 def choice_line(answer: Answer) -> str:
     """The answer a record settles, marked as a draft and naming the record."""
-    named = ", ".join(f"`{record}`" for record in answer.choice_from)
+    named = ", ".join(code(record) for record in answer.choice_from)
     note = f"; {answer.choice_note}" if answer.choice_note else ""
     return f"Answer: **{answer.choice}** (DRAFT, settled by {named}{note})"
 
 
 def _finding_line(finding: Finding) -> str:
-    return f"- `{finding.record}` {finding.said}"
+    return f"- {code(finding.record)} {finding.said}"
 
 
 def markdown(draft: Draft) -> str:
@@ -298,19 +298,20 @@ def latex_code(text: str) -> str:
 
 def latex_said(text: str) -> str:
     """A finding's words, with each backtick-quoted span in typewriter type."""
-    parts = text.split("`")
     return "".join(
-        latex_code(part) if index % 2 else latex_escape(part) for index, part in enumerate(parts)
+        latex_code(part) if is_code else latex_escape(part) for is_code, part in spans(text)
     )
 
 
-def latex_marker(answer: Answer) -> str:
+def latex_marker(answer: Answer, with_choice: bool = True) -> str:
+    """The marker under a question. `with_choice` puts a settled choice before it; a venue
+    that prints the choice on a line of its own passes False, so it is said once."""
     if answer.status is Status.TODO:
         why = latex_escape(answer.todo_note or "no record in this repository answers this.")
         return rf"\textbf{{[TODO (authors): {why}]}}"
     named = ", ".join(latex_code(record) for record in answer.records)
     marker = rf"\textbf{{[DRAFT, generated from {named}; not written by the authors.]}}"
-    if answer.choice:
+    if answer.choice and with_choice:
         settled = ", ".join(latex_code(record) for record in answer.choice_from)
         marker = (
             rf"{latex_escape(answer.choice)} \textbf{{[DRAFT, settled by {settled}"

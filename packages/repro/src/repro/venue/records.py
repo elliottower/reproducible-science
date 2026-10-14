@@ -18,6 +18,7 @@ import json
 import pathlib
 import re
 import shlex
+import urllib.parse
 from collections.abc import Callable
 
 import yaml
@@ -138,16 +139,48 @@ class Project(BaseModel):
         ]
 
     def shown(self, path: pathlib.Path) -> str:
-        """A path as named from the top of the project."""
+        """A path as named from the top of the project, or by its name alone where it lies
+        outside, so no absolute local path reaches a draft."""
         path = path.resolve()
         return (
-            path.relative_to(self.root).as_posix() if path.is_relative_to(self.root) else str(path)
+            path.relative_to(self.root).as_posix() if path.is_relative_to(self.root) else path.name
         )
 
     @property
     def manifest_record(self) -> str:
         assert self.manifest is not None and self.manifest.path is not None
         return self.shown(self.manifest.path)
+
+
+def code(text: str) -> str:
+    """`text` as a Markdown code span: fenced by one more backtick than the longest run inside
+    it, and padded with a space where it starts or ends with one, so a backtick in a command
+    cannot close the span early."""
+    longest = max((len(run) for run in re.findall(r"`+", text)), default=0)
+    fence = "`" * (longest + 1)
+    pad = " " if text.startswith("`") or text.endswith("`") else ""
+    return f"{fence}{pad}{text}{pad}{fence}"
+
+
+#: A Markdown code span: a run of backticks, the content, and a run of the same length.
+_SPAN = re.compile(r"(?<!`)(`+)(?!`)(.+?)(?<!`)\1(?!`)", re.S)
+
+
+def spans(text: str) -> list[tuple[bool, str]]:
+    """Text split into its code spans and the text between, each marked whether it is code,
+    as `code` writes them. A renderer other than Markdown sets each part in its own way."""
+    parts, at = [], 0
+    for match in _SPAN.finditer(text):
+        if match.start() > at:
+            parts.append((False, text[at : match.start()]))
+        inner = match.group(2)
+        if len(inner) > 1 and inner.startswith(" ") and inner.endswith(" "):
+            inner = inner[1:-1]
+        parts.append((True, inner))
+        at = match.end()
+    if at < len(text):
+        parts.append((False, text[at:]))
+    return parts
 
 
 def _plural(n: int, noun: str) -> str:
@@ -185,7 +218,8 @@ def claims(project: Project) -> tuple[Finding, ...]:
             f"{confirmatory} of them confirmatory"
         )
         if len(named) < len(bound):
-            said += f"; {len(bound) - len(named)} more name a run it does not record"
+            more = len(bound) - len(named)
+            said += f"; {more} more {'names' if more == 1 else 'name'} a run it does not record"
         found.append(Finding(record=LEDGER.as_posix(), said=said))
     return tuple(found)
 
@@ -202,7 +236,7 @@ def regenerations(project: Project) -> tuple[Finding, ...]:
         found.append(
             Finding(
                 record=project.manifest_record,
-                said=f"`{record.id}` runs `{shlex.join(record.command)}` and writes {writes}",
+                said=f"{code(record.id)} runs {code(shlex.join(record.command))} and writes {writes}",
             )
         )
     if found:
@@ -226,7 +260,7 @@ def origins(project: Project) -> tuple[Finding, ...]:
         Finding(
             record=project.manifest_record,
             said=(
-                f"`{check.artifact_id}` was copied from {check.origin.repository} at commit "
+                f"{code(check.artifact_id)} was copied from {check.origin.repository} at commit "
                 f"{check.origin.commit[:12]}, path {check.origin.path}; origin check: "
                 f"{check.state.value} ({check.reason})"
             ),
@@ -278,13 +312,11 @@ def reruns(project: Project) -> tuple[Finding, ...]:
                 if entry is not None and entry.duration_seconds is not None
                 else ""
             )
-            said = (
-                f"`{node.id}`: current; reproduced by the re-run on {report.started_at[:10]}{took}"
-            )
+            said = f"{code(node.id)}: current; reproduced by the re-run on {report.started_at[:10]}{took}"
         elif node.rerun_at:
-            said = f"`{node.id}`: {state}; the re-run compared was on {node.rerun_at[:10]}"
+            said = f"{code(node.id)}: {state}; the re-run compared was on {node.rerun_at[:10]}"
         else:
-            said = f"`{node.id}`: {state}"
+            said = f"{code(node.id)}: {state}"
         found.append(Finding(record=_rerun_record(project), said=said))
     return tuple(found)
 
@@ -456,9 +488,10 @@ def archive(project: Project) -> tuple[Finding, ...]:
     citation = _citation(project)
     own = citation.get("identifiers")
     own = [item for item in own if isinstance(item, dict)] if isinstance(own, list) else []
-    dois = [str(citation["doi"])] if isinstance(citation.get("doi"), str | int | float) else []
-    dois += [str(item.get("value", "")) for item in own if item.get("type") == "doi"]
-    found += [Finding(record=CITATION, said=f"names DOI {d}") for d in dict.fromkeys(dois) if d]
+    named = [str(citation["doi"])] if isinstance(citation.get("doi"), str | int | float) else []
+    named += [str(item.get("value", "")) for item in own if item.get("type") == "doi"]
+    dois = [m.group(0) for value in named if (m := DOI.search(value))]
+    found += [Finding(record=CITATION, said=f"names DOI {d}") for d in dict.fromkeys(dois)]
     swh = _swhids([str(item.get("value", "")) for item in own if item.get("type") == "swh"])
     found += [Finding(record=CITATION, said=f"names Software Heritage ID {i}") for i in swh]
     identifier = _strings(_codemeta(project).get("identifier"))
@@ -497,7 +530,7 @@ def licenses(project: Project) -> tuple[Finding, ...]:
     """The license file at the top of the project, by its first line, and the license
     `CITATION.cff` names."""
     found = [
-        Finding(record=name, said=f"is present; its first line reads `{_first_line(path)}`")
+        Finding(record=name, said=f"is present; its first line reads {code(_first_line(path))}")
         for name in LICENSE_FILES
         if (path := project.root / name).is_file()
     ]
@@ -533,10 +566,28 @@ def documentation(project: Project) -> tuple[Finding, ...]:
     return tuple(found)
 
 
+#: `user@host:path`, the scp-like address git accepts for ssh.
+_SCP = re.compile(r"[^/@\s]+@([^:/\s]+):(.*)")
+
+
+def without_userinfo(url: str) -> str:
+    """A repository address with any user name, password or token taken out."""
+    if scp := _SCP.fullmatch(url):
+        return f"{scp.group(1)}:{scp.group(2)}"
+    parts = urllib.parse.urlsplit(url)
+    if parts.scheme and "@" in parts.netloc:
+        return urllib.parse.urlunsplit(parts._replace(netloc=parts.netloc.rsplit("@", 1)[1]))
+    return url
+
+
 def remote(project: Project) -> tuple[Finding, ...]:
-    """The repository `git remote get-url origin` names."""
+    """The repository `git remote get-url origin` names, with any credentials taken out.
+    Whether it is public cannot be checked offline."""
     url = (try_run("remote", "get-url", "origin", cwd=project.root) or "").strip()
-    return (Finding(record="git config", said=f"remote `origin` is {url}"),) if url else ()
+    if not url:
+        return ()
+    shown = without_userinfo(url)
+    return (Finding(record="git config", said=f"remote `origin` is {shown}; {CONFIRM_PUBLIC}"),)
 
 
 #: Every reader, by the name a venue uses for it.
