@@ -105,7 +105,29 @@ def test_the_report_reads_as_the_specification_shows_it(tmp_path):
     decision = only(project(tmp_path, [ABSTRACT, RESULTS, MEASURED]))
     assert decision.detail == (
         "accuracy: abstract (paper) 8.3, results (paper) 8.4, measured (results) 0.0835 "
-        "(8.35 as a percentage), an exact tie between 8.3 and 8.4; abstract and results disagree"
+        "(8.35 as a percentage); abstract and measured an exact tie between 8.3 and 8.4; "
+        "results and measured an exact tie between 8.3 and 8.4; abstract and results disagree"
+    )
+
+
+def test_every_tied_pair_is_recorded_with_its_sides(tmp_path):
+    decision = only(project(tmp_path, [ABSTRACT, RESULTS, MEASURED]))
+    assert [(paired.sides, paired.tie.lower, paired.tie.upper) for paired in decision.ties] == [
+        (("abstract", "measured"), "8.3", "8.4"),
+        (("results", "measured"), "8.3", "8.4"),
+    ]
+    assert decision.tie == decision.ties[0].tie, "`tie` stays the first, as with two sides"
+
+
+def test_a_two_sided_decision_records_its_tie_as_before_and_no_ties(tmp_path):
+    decision = only(project(tmp_path, [ABSTRACT, MEASURED]))
+    assert decision.tie is not None
+    assert (decision.tie.lower, decision.tie.upper) == ("8.3", "8.4")
+    assert decision.ties == ()
+    assert "ties" not in decision.model_dump(), "it serializes as before the field existed"
+    assert decision.detail == (
+        "accuracy: abstract 8.3, measured 0.0835 (8.35 as a percentage), "
+        "an exact tie between 8.3 and 8.4"
     )
 
 
@@ -208,6 +230,7 @@ def test_a_grouped_number_is_not_numeric_unless_the_locator_asks_for_grouping(tm
     decision = only(project(tmp_path, [plain, CELL], paper=GROUPED_PAPER))
     assert decision.reason is Reason.VALUE_NOT_NUMERIC
     assert decision.outcome is Outcome.NOT_FOUND
+    assert "declare `form: grouped` on the locator to read it as 1062" in decision.detail
 
 
 @pytest.mark.parametrize("printed", ["12,13", "1,0620"])
@@ -216,6 +239,7 @@ def test_commas_that_do_not_group_in_threes_are_not_read_as_grouping(tmp_path, p
         project(tmp_path, [ENROLLED, CELL], paper=GROUPED_PAPER.replace("1,062", printed))
     )
     assert decision.reason is Reason.VALUE_NOT_NUMERIC
+    assert "form: grouped" not in decision.detail, "these are not grouped digits"
 
 
 # -- what the manifest accepts -----------------------------------------------------------------
@@ -249,3 +273,85 @@ def test_every_place_binds_the_number_it_prints(tmp_path):
     for value in ("8.3", "8.4"):
         assert printed[value].standing is Standing.BOUND
         assert printed[value].claims == ("accuracy",)
+
+
+# -- one anchor pair, several occurrences ------------------------------------------------------
+
+
+def stated(tmp_path, paper, reported="8.3", form="decimal"):
+    """The decision for one value read at one anchor pair that may occur more than once."""
+    (tmp_path / "paper.md").write_text(paper)
+    manifest = {
+        "schema_version": "repro/1",
+        "project": "t",
+        "artifacts": [{"id": "paper", "path": "paper.md"}],
+        "claims": [
+            {
+                "id": "c",
+                "text": "t",
+                "evidence": [
+                    {
+                        "kind": "value",
+                        "artifact": "paper",
+                        "name": "accuracy",
+                        "reported": reported,
+                        "locator": {
+                            "kind": "prose",
+                            "before": "an accuracy of",
+                            "after": "%",
+                            "form": form,
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+    path = tmp_path / "repro.yaml"
+    path.write_text(yaml.safe_dump(manifest, sort_keys=False))
+    return only(path)
+
+
+TWICE = (
+    "Abstract. The classifier reached an accuracy of 8.3% on the held-out split.\n"
+    "\n"
+    "Results. After tuning it reached an accuracy of {}% on the same split.\n"
+)
+
+
+def test_an_ambiguous_anchor_says_where_each_value_sits(tmp_path):
+    decision = stated(tmp_path, TWICE.format("8.4"))
+    assert decision.reason is Reason.PASSAGE_AMBIGUOUS
+    assert decision.outcome is Outcome.NOT_FOUND
+    assert decision.detail == (
+        '"an accuracy of" ... "%" selects 2 different values in paper.md: '
+        '8.3 at line 1 ("reached an accuracy of 8.3% on the held-out split."), '
+        '8.4 at line 3 ("reached an accuracy of 8.4% on the same split.")'
+    )
+
+
+@pytest.mark.parametrize(("second", "extracted"), [("8.3", "8.3"), ("8.30", "8.30")])
+def test_occurrences_equal_as_numbers_are_one_value(tmp_path, second, extracted):
+    decision = stated(tmp_path, TWICE.format(second))
+    assert decision.outcome is Outcome.VERIFIED
+    assert decision.extracted == extracted, "the finest spelling is the one compared"
+
+
+def test_the_finest_spelling_is_held_to_its_places(tmp_path):
+    assert stated(tmp_path, TWICE.format("8.30"), reported="8.31").outcome is Outcome.MISMATCH
+
+
+@pytest.mark.parametrize("second", ["8.34", "8.4", "-8.3"])
+def test_occurrences_that_are_different_numbers_stay_ambiguous(tmp_path, second):
+    assert stated(tmp_path, TWICE.format(second)).reason is Reason.PASSAGE_AMBIGUOUS
+
+
+def test_a_grouped_and_an_ungrouped_spelling_are_one_value_under_grouped(tmp_path):
+    paper = TWICE.replace("8.3%", "1,062%").format("1062")
+    assert stated(tmp_path, paper, reported="1062", form="grouped").outcome is Outcome.VERIFIED
+    assert stated(tmp_path, paper, reported="1062").reason is Reason.PASSAGE_AMBIGUOUS
+
+
+def test_a_word_and_a_numeral_are_one_value_under_cardinal_word(tmp_path):
+    paper = TWICE.replace("8.3%", "eighteen%").format("18")
+    decision = stated(tmp_path, paper, reported="18", form="cardinal_word")
+    assert decision.outcome is Outcome.VERIFIED

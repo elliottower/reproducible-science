@@ -236,9 +236,12 @@ Every pair of sides is compared, each as two sides are, and the assertion holds 
 pair agrees. Comparing each place with the file alone is not enough: a stored `0.0835` is
 `8.35` as a percentage, an exact tie at one decimal, so an abstract printing `8.3` and a
 section printing `8.4` each agree with it and disagree with each other. The decision is
-`mismatch` and its detail names each side with its artifact and value and then each pair that
-disagrees: `accuracy: abstract (paper) 8.3, results (paper) 8.4, measured (results) 0.0835
-(8.35 as a percentage), an exact tie between 8.3 and 8.4; abstract and results disagree`. A
+`mismatch`. Its detail names each side with its artifact and value, then each pair that met an
+exact tie, then each pair that disagrees: `accuracy: abstract (paper) 8.3, results (paper) 8.4,
+measured (results) 0.0835 (8.35 as a percentage); abstract and measured an exact tie between
+8.3 and 8.4; results and measured an exact tie between 8.3 and 8.4; abstract and results
+disagree`. The decision records every tied pair in `ties`, each with the names of its two sides
+(§3.8). A
 place printing the value in another unit declares a `conversion` on its side, so `8.3%` with
 `conversion: fraction` agrees with a table cell printing `0.083`, and a place printing
 `1,062` declares `form: grouped` on its locator (§3.6). An anchor pair that occurs twice
@@ -447,7 +450,17 @@ Anchors are matched against the text a `quote` resolves against, under the same 
 so an anchor and a quotation over one document cannot disagree about what the document says.
 Whitespace at an anchor boundary is ignored, on the grounds that normalization collapses it
 everywhere else. An anchor pair selecting two occurrences of one value resolves to that value;
-selecting two *different* values is `passage_ambiguous`. A repeated count is ordinary prose and
+selecting two *different* values is `passage_ambiguous`. Occurrences are one value where each
+reads as a number under the locator's `form` and the numbers are equal: `8.3` and `8.30`, `18`
+and `eighteen` under `cardinal_word`, `1,062` and `1062` under `grouped`. The value compared is
+then the finest spelling, the first where several are as fine, so a document printing `8.30`
+anywhere is held to two places. `8.3` and `8.34` are different numbers and stay
+`passage_ambiguous`, and where any occurrence is no number the occurrences are compared as text.
+The detail of `passage_ambiguous` gives each occurrence, its line where the extracted text's
+lines can be mapped onto the normalized text, and the words around it:
+`"an accuracy of" ... "%" selects 2 different values in paper.md: 8.3 at line 1 ("reached an
+accuracy of 8.3% on the held-out split."), 8.4 at line 3 ("reached an accuracy of 8.4% on the
+same split.")`. A repeated count is ordinary prose and
 a document stating two counts is a defect, which is the distinction a `quote` cannot draw:
 a quotation is satisfied by any occurrence, so editing one of two statements of a number leaves
 the assertion satisfied by the other.
@@ -461,7 +474,8 @@ on its own. The bound is not arbitrary: the value is one run of non-whitespace c
 every cardinal above ninety-nine is several words, so `one hundred and forty-five` is not
 addressable this way whatever the table holds. Under `grouped`, digits grouped in threes by
 commas are read as the number without the commas: `1,062` is 1062. Under `decimal` the same
-text is `value_not_numeric`, since a decimal parser refuses the comma, and under either form a
+text is `value_not_numeric`, since a decimal parser refuses the comma, and the detail says to
+declare `form: grouped`; under either form a
 comma between digits that do not group in threes, `12,13` or `1,0620`, is not grouping. `form`
 is part of the canonical locator, so the decision digest binds what the manifest authorized.
 
@@ -607,7 +621,10 @@ which software produced each number, and the manuscript does not say.
 A decision at a tie records it as `tie`, with `lower` and `upper`, the two neighbors, and
 `printed`, the value the manuscript prints, so that an agreement reached by accepting both is
 told from an ordinary one. `repro verify` prints `[exact tie: 4.2 or 4.3]` beside the
-assertion, and `repro why` prints the tie above the printed value.
+assertion, and `repro why` prints the tie above the printed value. A `correspondence` of three
+sides or more compares several pairs, and records each pair that met a tie in `ties`, with the
+names of its two sides, in the order the pairs were compared; `tie` is the first of them. A
+decision with no such pairs carries no `ties` field.
 
 ## 3.9 The value as stored
 

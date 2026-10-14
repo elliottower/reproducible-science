@@ -17,10 +17,11 @@ document cannot disagree about what the document says.
 
 from __future__ import annotations
 
+import bisect
 import decimal
 import pathlib
 import re
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 
 from claims.adapters.base import Found, Resolution, _no, _ok
 from claims.adapters.reads import once
@@ -123,6 +124,65 @@ def _is_decimal(text: str) -> bool:
     return True
 
 
+def _number(value: str, form: NumberForm) -> decimal.Decimal | None:
+    """The finite number a selected text is read as under `form`, or None where it is none."""
+    if form is NumberForm.CARDINAL_WORD and value in CARDINALS:
+        value = str(CARDINALS[value])
+    elif form is NumberForm.GROUPED and GROUPED.fullmatch(value):
+        value = value.replace(",", "")
+    try:
+        number = decimal.Decimal(value)
+    except (decimal.InvalidOperation, ValueError):
+        return None
+    return number if number.is_finite() else None
+
+
+def _exponent(number: decimal.Decimal) -> int:
+    """The power of ten a finite decimal's last digit sits at. `_number` returns no other."""
+    exponent = number.as_tuple().exponent
+    return exponent if isinstance(exponent, int) else 0
+
+
+def line_starts(raw: str, folded: str, fold: Callable[[str], str]) -> list[int] | None:
+    """Where each line of the extracted text starts in the normalized text.
+
+    `fold` is `passage_fold`, passed in because `citations` is imported where a check runs and
+    not where this module loads. It joins the lines with one space, and joins a word a hyphen
+    splits across a line break with nothing. This walks the lines under that rule, and returns
+    None where what it walked is not the normalized text, so no line number is ever a guess.
+    """
+    pieces = [fold(line) for line in raw.split("\n")]
+    starts, at = [], 0
+    for number, piece in enumerate(pieces):
+        starts.append(at)
+        if not piece:
+            continue
+        after = next((later for later in pieces[number + 1 :] if later), "")
+        # A word split across the break: a letter before the hyphen and one opening the next
+        # line that holds anything.
+        broken = piece.endswith("-") and piece[-2:-1].isalpha() and after[:1].isalpha()
+        if broken:
+            piece = piece[:-1]
+        if not folded.startswith(piece.rstrip(), at):
+            return None
+        at += len(piece) + (0 if broken else 1)
+    return starts
+
+
+def context(text: str, start: int, end: int, words: int = 4) -> str:
+    """The run `text[start:end]` is in and `words` runs on either side."""
+    lo, hi = start, end - 1
+    for _ in range(words + 1):
+        lo = text.rfind(" ", 0, lo)
+        if lo == -1:
+            break
+    for _ in range(words + 1):
+        hi = text.find(" ", hi + 1)
+        if hi == -1:
+            break
+    return text[lo + 1 : len(text) if hi == -1 else hi]
+
+
 def _resolve_prose(locator: ProseLocator, path: pathlib.Path) -> Found:
     # Imported here for the reason `QuoteBackend` imports it here: an installation without a
     # working extractor must report a check that did not run, not fail to import the package.
@@ -140,15 +200,19 @@ def _resolve_prose(locator: ProseLocator, path: pathlib.Path) -> Found:
     # artifact digest does not describe the text it was computed from. `fold` is cached on the
     # string it is given, which is content, and stays as it is. `once` keeps the read for the
     # verification in progress and no longer, so the next verification reads the file again.
+    def read() -> tuple[str, str]:
+        raw = extract_uncached(path)
+        return raw, passage_fold(raw)
+
     try:
-        text = once(("prose", path), lambda: passage_fold(extract_uncached(path)))
+        raw, text = once(("prose", path), read)
     except SourceUnreadableError as e:
         raise ArtifactUnreadableError(path, e.detail) from e
     if not text:
         raise ArtifactUnreadableError(path, "no text extracted")
 
     # `fold` trims and collapses whitespace, which is what an anchor wants: the boundary
-    # spaces are supplied by `_spans`, and an anchor written across a line break in the
+    # spaces are supplied by `located`, and an anchor written across a line break in the
     # manifest matches a document that wrapped it somewhere else.
     before, after = passage_fold(locator.before), passage_fold(locator.after)
     if not before:
@@ -157,7 +221,8 @@ def _resolve_prose(locator: ProseLocator, path: pathlib.Path) -> Found:
             "`before` is empty after normalization, so it anchors nothing",
         )
 
-    hits, split = _spans(text, before, after)
+    spans, split = located(text, before, after)
+    hits = [text[start:end] for start, end in spans]
     address = (
         f'"{locator.before}" ... "{locator.after}"' if locator.after else f'"{locator.before}"'
     )
@@ -172,19 +237,35 @@ def _resolve_prose(locator: ProseLocator, path: pathlib.Path) -> Found:
             f"no value sits between {address} in {path.name}; anchors are literal text, "
             f"matched after the same normalization a quotation is matched under{refused}",
         )
-    values = sorted(set(hits))
-    if len(values) > 1:
-        # Repetition is normal in a document and is not ambiguity: a count stated in an
-        # abstract and again in a section is one value. Two *different* values between the
-        # same anchors is a document contradicting itself, which is a finding rather than a
-        # thing to resolve by taking the first.
+    # Repetition is normal in a document and is not ambiguity: a count stated in an abstract
+    # and again in a section is one value, and so is `8.3` beside `8.30`, or `1,062` beside
+    # `1062` under `grouped`. Two *different* numbers between the same anchors is a document
+    # contradicting itself, which is a finding rather than a thing to resolve by taking the
+    # first. Where any occurrence is no number, occurrences are compared as text.
+    read = [_number(hit, locator.form) for hit in hits]
+    numbers = [number for number in read if number is not None]
+    distinct = len(set(numbers)) if len(numbers) == len(hits) else len(set(hits))
+    if distinct > 1:
+        starts = line_starts(raw, text, passage_fold)
+        where = [
+            (f"{hit} at line {bisect.bisect_right(starts, start)}" if starts else hit)
+            + f' ("{context(text, start, end)}")'
+            for hit, (start, end) in zip(hits, spans, strict=True)
+        ]
         return _no(
             Resolution.PASSAGE_AMBIGUOUS,
-            f"{address} selects {len(values)} different values in {path.name}: {', '.join(values)}",
+            f"{address} selects {distinct} different values in {path.name}: {', '.join(where)}",
         )
 
-    value = values[0]
+    # The finest of equal spellings, the first where they are as fine: `8.30` printed anywhere
+    # states two places, and the comparison is held to them.
+    value = hits[0]
+    if len(numbers) == len(hits):
+        value = hits[min(range(len(hits)), key=lambda at: _exponent(numbers[at]))]
+    printed = list(dict.fromkeys(hits))
     seen = f"{len(hits)} occurrence(s)" if len(hits) > 1 else ""
+    if len(printed) > 1:
+        seen += f", printed as {', '.join(printed)}"
     trace = (address, seen) if seen else (address,)
 
     if locator.form is NumberForm.CARDINAL_WORD:
@@ -208,12 +289,6 @@ def _resolve_prose(locator: ProseLocator, path: pathlib.Path) -> Found:
             f"`form: cardinal_word` on the locator to ask for it",
         )
     return _ok(value, "decimal" if _is_decimal(value) else "text", *trace)
-
-
-def _spans(text: str, before: str, after: str) -> tuple[list[str], list[str]]:
-    """The value after each occurrence of `before`, and the numbers an anchor would have split."""
-    found, split = located(text, before, after)
-    return [text[start:end] for start, end in found], split
 
 
 def located(text: str, before: str, after: str) -> tuple[list[tuple[int, int]], list[str]]:

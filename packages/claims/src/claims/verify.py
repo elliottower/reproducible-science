@@ -28,6 +28,7 @@ import statistics
 from collections.abc import Mapping
 from typing import Protocol
 
+from claims.adapters.prose import GROUPED
 from claims.adapters.reads import reading_once
 from claims.exceptions import (
     ArtifactUnreadableError,
@@ -44,6 +45,7 @@ from claims.models import (
     ComparisonStatus,
     Conversion,
     CorrespondenceEvidence,
+    CorrespondenceSide,
     Decision,
     DecisionMember,
     DecisionSide,
@@ -51,10 +53,14 @@ from claims.models import (
     Evidence,
     ExecutionStatus,
     ExtractionStatus,
+    Locator,
     Manifest,
     MetricEvidence,
+    NumberForm,
     Ordering,
     OrderingReason,
+    PairTie,
+    ProseLocator,
     QuoteEvidence,
     Reason,
     RegistrationAuthority,
@@ -360,6 +366,22 @@ def _misplaced(
     )
 
 
+def _grouping(locator: Locator, raw: str) -> str:
+    """What to add where a prose locator read digits grouped by commas without being asked to.
+
+    The outcome is `value_not_numeric` either way; this only says what would read it."""
+    if (
+        isinstance(locator, ProseLocator)
+        and locator.form is NumberForm.DECIMAL
+        and GROUPED.fullmatch(raw)
+    ):
+        return (
+            f"; the commas group its digits, so declare `form: grouped` on the locator to "
+            f"read it as {raw.replace(',', '')}"
+        )
+    return ""
+
+
 def _plain(converted: decimal.Decimal) -> str:
     """A converted value with no exponent: 0.5 as a percentage is written 50, where `str`
     writes the same decimal as 5E+1."""
@@ -622,7 +644,8 @@ class ValueBackend:
                 **no_compare,
                 extraction=ExtractionStatus.INVALID,
                 reason=Reason.VALUE_NOT_NUMERIC,
-                detail=f"{' '.join(extracted.trace)} holds {extracted.raw!r}",
+                detail=f"{' '.join(extracted.trace)} holds {extracted.raw!r}"
+                + _grouping(locator, extracted.raw),
                 warnings=warnings,
             )
         if not stored.is_finite():
@@ -798,7 +821,8 @@ class CorrespondenceBackend:
                     **no_compare,
                     extraction=ExtractionStatus.INVALID,
                     reason=Reason.VALUE_NOT_NUMERIC,
-                    detail=f"{side.name} ({side.artifact}) holds {raw!r}",
+                    detail=f"{side.name} ({side.artifact}) holds {raw!r}"
+                    + _grouping(side.locator, raw),
                 )
             numbers.append(number)
 
@@ -825,27 +849,41 @@ class CorrespondenceBackend:
         # first. A larger exponent is the coarser value. Pairs and not one reference: an
         # abstract printing 8.3 and a section printing 8.4 each agree with a stored 8.35, and
         # disagree with each other.
-        disagree, tie = [], None
+        disagree: list[tuple[CorrespondenceSide, CorrespondenceSide]] = []
+        ties: list[PairTie] = []
         for at, (left, a) in enumerate(zip(evidence.sides, numbers, strict=True)):
             for right, b in zip(evidence.sides[at + 1 :], numbers[at + 1 :], strict=True):
                 coarse, fine = (a, b) if _exponent(a) >= _exponent(b) else (b, a)
                 if not _agree(fine, coarse, evidence.mode, evidence.tolerance_value):
                     disagree.append((left, right))
-                tie = tie or _tied(fine, coarse, evidence.mode)
+                if (tie := _tied(fine, coarse, evidence.mode)) is not None:
+                    ties.append(PairTie(sides=(left.name, right.name), tie=tie))
         agrees = not disagree
-        base["tie"] = tie
-        between = f", an exact tie between {tie.lower} and {tie.upper}" if tie else ""
+        # `tie` is the first, as it was the only one when a correspondence had two sides.
+        base["tie"] = ties[0].tie if ties else None
         if len(evidence.sides) == 2:
             (left, right), (a, b) = evidence.sides, held
+            between = (
+                f", an exact tie between {ties[0].tie.lower} and {ties[0].tie.upper}"
+                if ties
+                else ""
+            )
             detail = f"{evidence.name}: {left.name} {a}, {right.name} {b}{between}"
         else:
+            base["ties"] = tuple(ties)
             # Each side with its artifact, since several sides may be places in one document,
-            # and then each pair that disagrees, so the report says which places to reconcile.
+            # then each pair that met a tie, and each pair that disagrees, so the report says
+            # which places to reconcile.
             detail = f"{evidence.name}: " + ", ".join(
                 f"{side.name} ({side.artifact}) {value}"
                 for side, value in zip(evidence.sides, held, strict=True)
             )
-            detail += between + "".join(
+            detail += "".join(
+                f"; {paired.sides[0]} and {paired.sides[1]} an exact tie between "
+                f"{paired.tie.lower} and {paired.tie.upper}"
+                for paired in ties
+            )
+            detail += "".join(
                 f"; {left.name} and {right.name} disagree" for left, right in disagree
             )
         return Decision(
@@ -978,7 +1016,10 @@ class AggregateBackend:
             if number.is_finite():
                 converted.append(_compared(number, evidence.conversion))
             else:
-                not_numeric.append(f"{named(position, member.artifact)} holds {raw!r}")
+                not_numeric.append(
+                    f"{named(position, member.artifact)} holds {raw!r}"
+                    + _grouping(member.locator, raw)
+                )
         if not_numeric:
             return Decision(
                 **base,

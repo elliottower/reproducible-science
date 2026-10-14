@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import enum
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_serializer
 
 from claims.core.evidence import Conversion, Statistic
 
@@ -238,6 +238,17 @@ class Tie(BaseModel):
     neither where it is a mismatch."""
 
 
+class PairTie(BaseModel):
+    """An exact tie one pair of a correspondence's sides met, with the two sides named."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    sides: tuple[str, str]
+    """The names of the two sides, in the order the manifest declares them."""
+
+    tie: Tie
+
+
 class DecisionSide(BaseModel):
     """What one side of a two-sided assertion read, and where it read it.
 
@@ -343,6 +354,11 @@ class Decision(BaseModel):
     """Set where the compared value lay exactly halfway between two values at the printed
     precision. None otherwise, and under `absolute` and `relative`, which round nothing."""
 
+    ties: tuple[PairTie, ...] = ()
+    """Every pair of sides that met an exact tie, in a `correspondence` of three sides or more,
+    in the order the pairs were compared. `tie` is the first of them. Empty for every other
+    assertion, whose one comparison is recorded in `tie`."""
+
     sides: tuple[DecisionSide, ...] = ()
     """The two values a `correspondence` compared, each with the artifact and locator it came
     from. Empty for every kind that reads one artifact, which records its single artifact and
@@ -390,6 +406,15 @@ class Decision(BaseModel):
     way a changed artifact does is a policy question, and `claims.policy` decides policy."""
 
     warnings: tuple[Warning_, ...] = ()
+
+    @model_serializer(mode="wrap")
+    def _omit_no_ties(self, handler):
+        """Leave `ties` out where it is empty, so a decision on any other assertion serializes
+        as it did before the field existed."""
+        dumped = handler(self)
+        if not self.ties:
+            dumped.pop("ties", None)
+        return dumped
 
     @property
     def outcome(self) -> Outcome:
