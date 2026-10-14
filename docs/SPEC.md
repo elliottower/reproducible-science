@@ -64,6 +64,11 @@ on the pin alone.
 An artifact declares its digest once. Evidence refers to an artifact by id and never repeats a
 digest, so there is one source of truth per file.
 
+An artifact copied from another repository may also declare where it was copied from, as
+`origin: {repository, commit, path}` (§7.12). An origin is never read by `repro verify`, which
+stays offline, and is left out of a manifest's serialization where it is absent, so the
+manifest digest of a manifest that declares none is what it was before the field existed.
+
 ## 3. Evidence kinds
 
 ### 3.1 `quote`
@@ -1221,7 +1226,7 @@ evaluated by the functions `repro verify` uses and by no others.
 | `claim` | `id`, `text`, `where`, the claim digest of §1, its line in the manifest, and each passage its quote assertions name, with the line where a text file holds it exactly once |
 | `assertion` | `kind`, `name`, its `position` among the claim's assertions of that kind and name, its `index` among all of them, and its line in the manifest |
 | `check_type` | which proposition was checked; below |
-| `reads` | per file read: artifact id, path, media type, `validity`, the pinned digest and the digest on disk, the `address`, the value `stored` there, that value `converted` where a conversion is declared, and the side for a `correspondence`. An `aggregate` has one entry per member |
+| `reads` | per file read: artifact id, path, media type, `validity`, the pinned digest and the digest on disk, the `address`, the value `stored` there, that value `converted` where a conversion is declared, the side for a `correspondence`, and the `origin` of §7.12 where the manifest declares one. An `aggregate` has one entry per member |
 | `printed`, `comparison` | the value as the manuscript prints it (the manifest's `reported`) or the passage a quotation asserts, and the `mode` and `tolerance` of §3.2, with the declared `places` and `conversion`, the `statistic` an `aggregate` computes, the `count` of its members and what it `computed`, and a `tie` where there was one |
 | `outcome` | one of five words; below |
 | `native_outcome`, `native_reason` | the `Outcome` of §4 and the `Reason` of §4.1, as this tool prints them |
@@ -1356,6 +1361,71 @@ same records give the same bytes.
 A record carries no license, and RO-Crate requires the root data entity to have one, so the
 crate says in words that none is stated. A check refers to the commands upstream of what it
 reads and does not restate them.
+
+## 7.12 Origins
+
+A results file is often copied into a manuscript's repository from the repository of the
+study that computed it. The copy is pinned by its digest like any artifact, and the pin says
+nothing of where the bytes came from. An artifact may say:
+
+```yaml
+artifacts:
+  - id: indices
+    path: artifacts/indices.json
+    digest: {algorithm: sha256, value: 9f635f9a...}
+    origin:
+      repository: https://github.com/owner/study
+      commit: 3c1f0a9e5b7d2c4e6f8a0b1c3d5e7f9a1b3c5d7e
+      path: results/indices.json
+```
+
+| field | holds |
+|---|---|
+| `repository` | a URL (https or ssh), or a local path; a relative path is read from the manifest's directory |
+| `commit` | the full commit id, 40 lowercase hex characters |
+| `path` | the file's path in that repository, with `/`, relative to its root, without `..` |
+
+**An origin names immutable bytes.** A branch or a tag moves and a short id can come to name
+two commits, so a manifest that gives one for `commit` is refused when it is read, as is a
+path that is absolute or climbs out of the repository.
+
+**`repro verify` never reads an origin.** It stays offline and its outcomes are unchanged. An
+origin is not part of what the record of checks (§7.10) stores for an assertion, and the
+claim digest of §1 does not cover it. A check record carries it on each file entry that has
+one, as declared, and the RO-Crate export (§7.11) on the file's `File` entity as `isBasedOn`, a
+`CreativeWork` whose `name` is the path and whose `version` is the commit, and which `isPartOf`
+a `SoftwareSourceCode` whose `codeRepository` is the repository. RO-Crate 1.3 names no
+property for a copy; `isBasedOn` is schema.org's.
+
+**`repro origins` compares a pin with its origin.** For each artifact that declares one, it
+obtains the bytes of `<commit>:<path>` and compares their sha256 with the artifact's pinned
+digest. The bytes are obtained in one of two ways:
+
+1. From a local clone, named with `--repo REPOSITORY=PATH` or by an origin whose repository is
+   a local path. The blob is read with `git cat-file`, so what is compared is the committed
+   bytes and never the clone's working tree.
+2. With `--fetch` and no clone, for a repository on GitHub, from
+   `https://raw.githubusercontent.com/<owner>/<repo>/<commit>/<path>`, with no credentials and
+   a timeout. Without `--fetch` nothing touches the network.
+
+Anything else is not checked, and says why.
+
+| state | holds when |
+|---|---|
+| `same` | the bytes at the origin have the pinned digest |
+| `differs` | they have another; both digests are printed |
+| `absent` | the clone holds the commit, and the commit holds no file at the path |
+| `unknown_commit` | the clone holds no such commit |
+| `not_checked` | no bytes were obtained: no clone was given and no fetch asked for, the repository is not on GitHub, the fetch failed, the directory is not a clone, or the artifact has no pin to compare with |
+
+A fetch that fails cannot tell a missing path from a missing commit or a private repository,
+since GitHub answers all three with 404, so it is `not_checked`; a clone tells them apart.
+Where the file on disk is not the pinned bytes, the command says so beside the state. That is
+a broken pin, which `repro verify` reports, and `same` is a statement about the pin and the
+origin only.
+
+It exits 0 where every declared origin is `same`, 1 where one is `differs` or `absent`, and 2
+where one could not be checked and none failed, or where no artifact declares an origin.
 
 ## 8. What this composes with
 

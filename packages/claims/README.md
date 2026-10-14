@@ -84,6 +84,12 @@ claims export record
 
 Writes one record per checked assertion, for another program to read. `sarif` and `ro-crate` write the same records in those formats.
 
+```bash
+claims origins --repo https://github.com/owner/study=../study
+```
+
+For each artifact copied from another repository, which the manifest says with `origin: {repository, commit, path}`, compares the pinned digest with the bytes of that path at that commit: `same`, `differs`, `absent`, `unknown commit` or `not checked`, each with the reason. A clone given with `--repo` is read with `git cat-file`, so committed bytes are compared and never a working tree. With `--fetch`, a GitHub repository no clone is given for is read from `raw.githubusercontent.com`; without it nothing touches the network. `claims verify` never reads an origin.
+
 ## With `repro`
 
 [`reproducible-science`](https://pypi.org/project/reproducible-science/) depends on this package and adds the commands that run things: `repro reproduce`, which runs each declared command again and writes the record `claims stale` reads, `repro check` and `repro audit`, which drive `prereg`, `results` and `citations`, and `repro ci`. Under `repro`, every command above has the same name, does the same thing and prints the same output: `repro verify` and `claims verify` are one function. A project that uses `repro` has no reason to install this by itself. It is separate so that checking a manuscript's claims does not require installing something that executes commands a manifest names.

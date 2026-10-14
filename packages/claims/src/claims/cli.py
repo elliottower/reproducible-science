@@ -5,10 +5,11 @@
     claims stale           say which claims read a file changed since its recorded re-run
     claims why             say what the record establishes for one claim, and what it does not
     claims numbers         count every number the manuscript prints, and which a claim binds
+    claims origins         compare each artifact copied from another repository with its origin
     claims export          write the check records in another format
 
 Each is also the `repro` command of the same name: `repro.cli` adds these functions to its
-parser with `add_manifest` through `add_export`, and `main` here adds them to the parser of
+parser with `add_manifest` through `add_origins`, and `main` here adds them to the parser of
 `claims`. Each handler reads the name the user typed off the parsed arguments, so a message that
 says what to run next names a command that user has. Nothing here runs a declared command,
 writes the record of re-runs or drives another tool, and an import-linter contract holds this
@@ -59,6 +60,8 @@ from claims.models import (
     Warning_,
 )
 from claims.numbers import numbers as run_numbers
+from claims.origins import OriginCheck, OriginsReport, OriginState, fetch_url
+from claims.origins import origins as run_origins
 from claims.policy import PROFILES, Assessment, Policy
 from claims.record import check_records
 from claims.renderers import to_sarif
@@ -768,6 +771,78 @@ def cmd_numbers(args: argparse.Namespace) -> int:
     return 0
 
 
+def _origin_lines(check: OriginCheck) -> list[str]:
+    """One artifact's origin: the state and why, both digests where they differ, and the file
+    on disk where it is not the pinned bytes."""
+    origin = check.origin
+    lines = [
+        f"  {_said(check.state).upper() if check.state is not OriginState.SAME else 'same':<14} "
+        f"{check.artifact_id}: {origin.repository} {origin.commit[:12]}:{origin.path}",
+        f"  {'':<14} {check.reason}"
+        + (f" (read from {check.read_from})" if check.read_from else ""),
+    ]
+    if check.state is OriginState.DIFFERS:
+        lines.append(f"  {'':<14} pinned    {check.pinned}")
+        lines.append(f"  {'':<14} at origin {check.at_origin}")
+    if check.disk_disagrees:
+        found = f"on disk {check.on_disk}" if check.on_disk else "nothing is at the declared path"
+        lines.append(
+            f"  {'':<14} note: {check.path} is not the pinned bytes ({found}); "
+            "`verify` reports that, and this compares the pin with the origin"
+        )
+    return lines
+
+
+def _origins_exit(report: OriginsReport) -> int:
+    """0 where every declared origin holds the pinned bytes, 1 where one does not or lacks
+    the path, 2 where something could not be checked and nothing failed."""
+    states = {check.state for check in report.origins}
+    if states & {OriginState.DIFFERS, OriginState.ABSENT}:
+        return 1
+    if not states or states != {OriginState.SAME}:
+        return 2
+    return 0
+
+
+def cmd_origins(args: argparse.Namespace) -> int:
+    path = Path(args.manifest) if args.manifest else find()
+    if path is None:
+        print(f"no {DEFAULT_NAME} here or above.\n")
+        print("write one that pins this project's result files, with example claims to edit:\n")
+        print(f"    {_program(args)} manifest init")
+        return 2
+    clones: dict[str, Path] = {}
+    for given in args.repo or ():
+        repository, sep, clone = given.partition("=")
+        if not sep or not repository or not clone:
+            print(f"--repo {given}: expected REPOSITORY=PATH, a repository as an origin names it")
+            return 2
+        clones[repository] = Path(clone).expanduser().resolve()
+
+    report = run_origins(load(path), clones, fetch_url if args.fetch else None)
+    code = _origins_exit(report)
+    if args.format == "json":
+        print(json.dumps({"origins": report.model_dump(mode="json")}, indent=2))
+        return code
+
+    print(f"{path}\n")
+    if not report.origins:
+        print("  no artifact declares an origin, so nothing was compared.")
+        print("  `origin: {repository, commit, path}` on an artifact names the file it was")
+        print("  copied from.")
+        return code
+    for check in report.origins:
+        print("\n".join(_origin_lines(check)))
+    counts = report.counts
+    print(
+        f"\n  {len(report.origins)} origins: "
+        + ", ".join(f"{counts.get(state.value, 0)} {_said(state)}" for state in OriginState)
+    )
+    if report.without_origin:
+        print(f"  {len(report.without_origin)} artifacts declare no origin")
+    return code
+
+
 def cmd_export(args: argparse.Namespace) -> int:
     path = Path(args.manifest) if args.manifest else find()
     if path is None:
@@ -947,6 +1022,45 @@ def add_export(sub, program: str = REPRO) -> None:
     p_export.set_defaults(func=cmd_export, program=program)
 
 
+def add_origins(sub, program: str = REPRO) -> None:
+    """`origins`: compare copied artifacts with their origins. Added to `repro`'s parser and to `claims`'s, each under its own name."""
+    p_origins = sub.add_parser(
+        "origins",
+        help="compare each artifact copied from another repository with its origin",
+        description=(
+            f"For each artifact in {DEFAULT_NAME} that declares `origin: {{repository, commit, "
+            "path}`, read the bytes of that path at that commit and compare their sha256 with "
+            "the artifact's pinned digest. A clone is read with `git cat-file`, so committed "
+            "bytes are compared and never a working tree. Without a clone, a public GitHub "
+            "repository is fetched only with --fetch; otherwise nothing touches the network "
+            "and the origin is `not checked`. States: same, differs, absent (the commit has no "
+            "such path), unknown commit (the clone has no such commit), not checked. Exits 0 "
+            "where every origin is the same, 1 where one differs or is absent, 2 where one "
+            f"could not be checked and none failed. `{program} verify` never reads an origin."
+        ),
+    )
+    p_origins.add_argument("manifest", nargs="?", help=f"path to {DEFAULT_NAME}")
+    p_origins.add_argument(
+        "--repo",
+        action="append",
+        metavar="REPOSITORY=PATH",
+        help=(
+            "read this repository, as an origin names it, from the clone at PATH; repeatable. "
+            "An origin whose repository is a local path is read from there"
+        ),
+    )
+    p_origins.add_argument(
+        "--fetch",
+        action="store_true",
+        help=(
+            "for a GitHub repository no clone is given for, fetch the file from "
+            "raw.githubusercontent.com at the commit (default: no network)"
+        ),
+    )
+    p_origins.add_argument("--format", choices=("text", "json"), default="text")
+    p_origins.set_defaults(func=cmd_origins, program=program)
+
+
 def main(argv: list[str] | None = None, local_record: bool = True) -> int:
     """The `claims` command: the commands above, and nothing that runs one of yours."""
     parser = argparse.ArgumentParser(
@@ -971,6 +1085,7 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
     add_why(sub, CLAIMS)
     add_numbers(sub, CLAIMS)
     add_export(sub, CLAIMS)
+    add_origins(sub, CLAIMS)
 
     args = parser.parse_args(argv)
     args.local_record = local_record

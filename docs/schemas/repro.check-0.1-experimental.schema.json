@@ -418,6 +418,17 @@
           "default": null,
           "title": "On Disk"
         },
+        "origin": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Origin"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
         "path": {
           "default": "",
           "title": "Path",
@@ -494,6 +505,17 @@
           ],
           "default": null,
           "title": "On Disk"
+        },
+        "origin": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Origin"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "path": {
           "default": "",
@@ -608,6 +630,32 @@
       ],
       "title": "NormalizedOutcome",
       "type": "string"
+    },
+    "Origin": {
+      "additionalProperties": false,
+      "description": "The place an artifact's bytes were copied from: one file, at one commit, of one\nrepository.\n\nAn origin names immutable bytes or it names nothing. A branch moves and a short id can\ncome to name two commits, so `commit` is the full 40-character id and nothing else. The\norigin is a statement about where the bytes came from; `claims origins` is what checks it,\nand `claims verify` never reads it.",
+      "properties": {
+        "commit": {
+          "title": "Commit",
+          "type": "string"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "repository": {
+          "minLength": 1,
+          "title": "Repository",
+          "type": "string"
+        }
+      },
+      "required": [
+        "repository",
+        "commit",
+        "path"
+      ],
+      "title": "Origin",
+      "type": "object"
     },
     "Passage": {
       "additionalProperties": true,

@@ -9,6 +9,7 @@
     repro why             say what the record establishes for one claim, and what it does not
     repro numbers         count every number the manuscript prints, bound to a claim or not
     repro export          write one record per checked assertion, for another program to read
+    repro origins         compare each artifact copied from another repository with its origin
     repro ci              run the checks in a workflow, with a summary on the run page
     repro badges          print a badge per check, each a count from a run on this machine
     repro check           run every tool this project uses, in one pass
@@ -57,7 +58,15 @@ from claims.cli import _stale_text as _stale_text
 from claims.cli import _steps as _steps
 from claims.cli import _verify_text as _verify_text
 from claims.cli import _why_lines as _why_lines
-from claims.cli import add_export, add_manifest, add_numbers, add_stale, add_verify, add_why
+from claims.cli import (
+    add_export,
+    add_manifest,
+    add_numbers,
+    add_origins,
+    add_stale,
+    add_verify,
+    add_why,
+)
 from claims.cli import cmd_export as cmd_export
 from claims.cli import cmd_manifest_init as cmd_manifest_init
 from claims.cli import cmd_numbers as cmd_numbers
@@ -536,6 +545,8 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
     add_numbers(sub)
 
     add_export(sub)
+
+    add_origins(sub)
 
     p_check = sub.add_parser(
         "check",

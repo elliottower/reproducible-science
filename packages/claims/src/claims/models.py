@@ -39,7 +39,7 @@ so `from claims.models import X` continues to name the same objects.
 
 from __future__ import annotations
 
-from claims.core.artifacts import SCHEMA_VERSION, ArtifactRef, Digest
+from claims.core.artifacts import SCHEMA_VERSION, ArtifactRef, Digest, Origin
 from claims.core.checks import CheckedAssertion, CheckRecord, RecordSetAside, RecordState
 from claims.core.claims import Availability, Claim, Registration
 from claims.core.evidence import (
@@ -176,6 +176,7 @@ __all__ = [
     "NumbersReport",
     "Ordering",
     "OrderingReason",
+    "Origin",
     "Outcome",
     "PinDisagreement",
     "PredicateValue",
