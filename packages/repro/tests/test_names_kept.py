@@ -52,7 +52,7 @@ def test_every_name_of_a_moved_module_is_the_object_claims_holds(module):
         if not name.startswith("__") and not isinstance(value, types.ModuleType)
     ]
     # A package that only holds modules has no names of its own.
-    assert names or module in ("adapters", "core")
+    assert names or module in ("adapters", "core", "foreign")
     for name in names:
         assert getattr(here, name) is getattr(home, name), name
     # Private names as well, which a star import leaves out.

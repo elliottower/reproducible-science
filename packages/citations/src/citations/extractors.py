@@ -12,7 +12,8 @@ the pin names the publisher's bytes and `pdftotext` is recorded as what read the
 the same thing for four more formats.
 
     sheet-rows   .xlsx, .xls, .csv   one row per line, cells joined with ` | `
-    docx-text    .docx               paragraphs in order, then each table one row per line
+    docx-text    .docx               the body in document order, then notes, then headers
+                                     and footers; tracked changes accepted (version 2)
     jats-text    JATS XML            one block per line, inline markup dropped
     html-text    HTML                one block per line, tags dropped, entities decoded,
                                      `<script>` and `<style>` left out
@@ -25,7 +26,7 @@ build does not ship is `unchecked`, with the reason.
 They run in this process and execute nothing, so they are outside the `extract_cmd` allowlist:
 a claims file naming one names a reader this package ships, not a program on the machine.
 
-`openpyxl`, `xlrd` and `python-docx` are optional, as the PDF readers are. A missing one is
+`openpyxl`, `xlrd` and `python-docx` (which only `docx-text` version 1 needs) are optional, as the PDF readers are. A missing one is
 reported and never raised as an `ImportError` out of a check; the quotation is `unchecked`,
 which is the outcome for a source nothing here could read.
 
@@ -36,14 +37,18 @@ or block with no text produces no line. Nothing is reordered and nothing is summ
 
 from __future__ import annotations
 
+import codecs
 import csv
 import dataclasses
 import datetime
 import html.parser
 import pathlib
+import posixpath
+import re
 import shlex
 import warnings
 import xml.etree.ElementTree as ET
+import zipfile
 from collections.abc import Callable, Iterable
 
 from citations.exceptions import SourceUnreadableError
@@ -232,6 +237,614 @@ def _docx_text(path: pathlib.Path, sheet: str | None, keep_empty: bool) -> str:
                     cells.append(cell.text)
                 last = cell._tc
             lines += _rows([cells], keep_empty)
+    return "\n".join(line for line in lines if line)
+
+
+# --- docx-text version 2: the document's own XML ---------------------------------------------
+
+#: The most XML, uncompressed, read from one `.docx` across every part. Generous for a
+#: manuscript or a supplement, whose body is a few megabytes; a part that inflates past it is
+#: refused rather than read into memory, which is what a zip bomb relies on.
+DOCX_MAX_XML_BYTES = 128 * 1024 * 1024
+
+#: The namespaces a part may be written in, transitional and strict, by the prefix used below.
+_DOCX_NS = {
+    "http://schemas.openxmlformats.org/wordprocessingml/2006/main": "w",
+    "http://purl.oclc.org/ooxml/wordprocessingml/main": "w",
+    "http://schemas.openxmlformats.org/officeDocument/2006/math": "m",
+    "http://purl.oclc.org/ooxml/officeDocument/math": "m",
+    "http://schemas.openxmlformats.org/markup-compatibility/2006": "mc",
+}
+_DOCX_RELS_NS = (
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+    "http://purl.oclc.org/ooxml/officeDocument/relationships",
+)
+
+#: Inside a paragraph: elements whose children are read as if they stood in its place. An
+#: insertion and a move's destination are read, because the text is the accepted view.
+_DOCX_TRANSPARENT = frozenset(
+    {
+        "w:hyperlink",
+        "w:ins",
+        "w:moveTo",
+        "w:smartTag",
+        "w:customXml",
+        "w:fldSimple",
+        "w:sdt",
+        "w:sdtContent",
+        "w:dir",
+        "w:bdo",
+    }
+)
+
+#: Never read: a deletion and a move's origin, which the accepted view removes, and the
+#: properties of a content control, which hold its settings and not its text.
+_DOCX_REMOVED = frozenset({"w:del", "w:moveFrom", "w:sdtPr", "w:sdtEndPr"})
+
+#: Fields whose result is a page number as Word last laid the document out: the page a header
+#: is on, the page count, the pages of a section. The result is a stale number from one layout,
+#: not something the document states, so it is not read, and neither is a formula field
+#: (`= PAGE - 1`) computed from one.
+_DOCX_LAYOUT_FIELDS = frozenset({"PAGE", "NUMPAGES", "SECTIONPAGES"})
+
+_FIELD_WORD = re.compile(r"[A-Za-z]+")
+
+
+def _docx_layout(instruction: str, in_contents: bool) -> bool:
+    """Whether a field's result is a page number from the layout and not a statement.
+
+    `PAGEREF` is one only inside a table of contents, where Word fills each entry's page in; in
+    prose, `see page 14` is a page the author refers the reader to, and it is read.
+    """
+    words = instruction.split()
+    if not words:
+        return False
+    first = words[0].upper()
+    if first in _DOCX_LAYOUT_FIELDS or (first == "PAGEREF" and in_contents):
+        return True
+    named = {word.upper() for word in _FIELD_WORD.findall(instruction)}
+    return instruction.lstrip().startswith("=") and bool(named & _DOCX_LAYOUT_FIELDS)
+
+
+#: `w:sym` in the Symbol font, by the low byte of its private-use code: the Greek alphabet and
+#: the mathematical signs a manuscript uses. A code not listed here is written as it is stored.
+_SYMBOL_FONT = {
+    **dict(zip(range(0x41, 0x5B), "ΑΒΧΔΕΦΓΗΙϑΚΛΜΝΟΠΘΡΣΤΥςΩΞΨΖ", strict=True)),
+    **dict(zip(range(0x61, 0x7B), "αβχδεφγηιϕκλμνοπθρστυϖωξψζ", strict=True)),
+    0x22: "∀",
+    0x24: "∃",
+    0x2D: "−",
+    0x40: "≅",
+    0x5C: "∴",
+    0x5E: "⊥",
+    0xA2: "′",
+    0xA3: "≤",
+    0xA5: "∞",
+    0xAC: "←",
+    0xAE: "→",
+    0xB0: "°",
+    0xB1: "±",
+    0xB2: "″",
+    0xB3: "≥",
+    0xB4: "×",
+    0xB5: "∝",
+    0xB6: "∂",
+    0xB7: "•",
+    0xB8: "÷",
+    0xB9: "≠",
+    0xBA: "≡",
+    0xBB: "≈",
+    0xBC: "…",
+    0xC7: "∩",
+    0xC8: "∪",
+    0xCE: "∈",
+    0xD1: "∇",
+    0xD5: "∏",
+    0xD6: "√",
+    0xE5: "∑",
+}
+#: The Wingdings marks a table uses for yes, no and a bullet.
+_WINGDINGS_FONT = {0x6C: "●", 0x6E: "■", 0x9F: "•", 0xA7: "▪", 0xFB: "✗", 0xFC: "✓"}
+_SYMBOL_FONTS = {"symbol": _SYMBOL_FONT, "wingdings": _WINGDINGS_FONT}
+
+_DOCTYPE = re.compile(r"<!(?:doctype|entity)", re.IGNORECASE)
+#: The encodings a declaration may name, as `codecs` names them. Word writes UTF-8; the rest are
+#: what another program that writes the format plausibly declares. Any other is refused by name:
+#: a codec such as `unicode_escape` or `utf-7` turns plain ASCII into markup the check never saw.
+_XML_ENCODINGS = frozenset(
+    {"utf-8", "utf-16", "utf-16-le", "utf-16-be", "iso8859-1", "ascii"}
+    | {f"cp{n}" for n in range(1250, 1259)}
+)
+_XML_ENCODING = re.compile(rb"""<\?xml[^>]*?encoding\s*=\s*["']([A-Za-z0-9._-]+)["']""")
+
+
+def _xml_decoded(data: bytes) -> str:
+    """A part's text, decoded the way an XML parser detects its encoding (XML 1.0, appendix F):
+    a byte-order mark, else the pattern of `<?` in UTF-16 with no mark, else the encoding the
+    declaration names, else UTF-8.
+
+    The text is what the parser is then given, so the check for a document type reads exactly
+    what is parsed. Given the bytes, the parser would detect UTF-16 with no mark itself, while a
+    check that decoded them as UTF-8 saw `<` and a NUL where `<!DOCTYPE` was. UTF-32 is
+    refused: no Word part is written in it.
+    """
+    if data[:4] in (b"\x00\x00\xfe\xff", b"\xff\xfe\x00\x00", b"\x00\x00\x00<", b"<\x00\x00\x00"):
+        raise UnicodeError("UTF-32")
+    if data.startswith(codecs.BOM_UTF8):
+        return data[3:].decode("utf-8")
+    if data.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
+        return data.decode("utf-16")
+    if data[:2] == b"<\x00":
+        return data.decode("utf-16-le")
+    if data[:2] == b"\x00<":
+        return data.decode("utf-16-be")
+    named = _XML_ENCODING.match(data)
+    if named is None:
+        return data.decode("utf-8")
+    declared = named.group(1).decode("ascii")
+    try:
+        codec = codecs.lookup(declared).name
+    except LookupError as e:
+        raise UnicodeError(f"it declares {declared}, an encoding nothing here reads") from e
+    if codec.startswith("utf-32"):
+        raise UnicodeError("UTF-32")
+    if codec not in _XML_ENCODINGS:
+        raise UnicodeError(f"it declares {declared}, which is not an encoding a Word part is in")
+    return data.decode(codec)
+
+
+def _docx_symbol(font: str | None, code: str | None) -> str:
+    """The character a `w:sym` shows. Symbol and Wingdings store a private-use code
+    (U+F000 plus the font's own byte); the common ones are mapped to the character they draw."""
+    try:
+        value = int(code or "", 16)
+    except ValueError:
+        return ""
+    low = value - 0xF000 if 0xF000 <= value <= 0xF0FF else value
+    mapped = _SYMBOL_FONTS.get((font or "").strip().lower(), {}).get(low)
+    if mapped is not None:
+        return mapped
+    return chr(value) if 0 < value < 0x110000 else ""
+
+
+def _docx_math(element: ET.Element) -> str:
+    """An equation's characters in order, leaving out a run a tracked change deletes."""
+    out = []
+    for child in element:
+        key = _docx_key(child)
+        if key in ("w:del", "w:moveFrom"):
+            continue
+        if key == "m:r":
+            properties = [c for c in child if _docx_key(c) == "w:rPr"]
+            if any(_docx_key(c) in ("w:del", "w:moveFrom") for r in properties for c in r):
+                continue
+        if key == "m:t":
+            out.append(child.text or "")
+        else:
+            out.append(_docx_math(child))
+    return "".join(out)
+
+
+@dataclasses.dataclass
+class _Field:
+    """One complex field open: its instruction so far, and whether its result is being read."""
+
+    instruction: list[str] = dataclasses.field(default_factory=list)
+    """Its own instruction text and that of any field nested in it, so a formula over `PAGE`
+    is known as one."""
+    reading: str = "instruction"
+    """`instruction`, then `result` once its `separate` is reached, or `hidden` for a field
+    whose result is a page number."""
+
+    @property
+    def code(self) -> str:
+        return "".join(self.instruction)
+
+    def settle(self, in_contents: bool) -> None:
+        self.reading = "hidden" if _docx_layout(self.code, in_contents) else "result"
+
+
+#: What a note that is not one of the document's notes is: the rule and the continuation rule
+#: Word draws above the notes on a page.
+_DOCX_NOTE_FURNITURE = frozenset({"separator", "continuationSeparator", "continuationNotice"})
+
+
+def _docx_key(element: ET.Element) -> str:
+    """`w:p`, `m:t` or `mc:Choice` for an element in a namespace read here, else empty."""
+    namespace, _, local = element.tag.rpartition("}")
+    prefix = _DOCX_NS.get(namespace.lstrip("{"))
+    return f"{prefix}:{local}" if prefix else ""
+
+
+def _docx_attr(element: ET.Element, name: str) -> str | None:
+    """A `w:` attribute, in whichever namespace the part is written."""
+    for namespace, prefix in _DOCX_NS.items():
+        if prefix == "w" and (value := element.get(f"{{{namespace}}}{name}")) is not None:
+            return value
+    return None
+
+
+def _docx_rid(element: ET.Element) -> str | None:
+    """The relationship an element points at with `r:id`."""
+    for namespace in _DOCX_RELS_NS:
+        if (value := element.get(f"{{{namespace}}}id")) is not None:
+            return value
+    return None
+
+
+class _DocxPackage:
+    """The parts of a `.docx`, each read once, under one budget of uncompressed bytes."""
+
+    def __init__(self, path: pathlib.Path, archive: zipfile.ZipFile) -> None:
+        self.path = path
+        self.archive = archive
+        self.left = DOCX_MAX_XML_BYTES
+
+    def xml(self, name: str) -> ET.Element | None:
+        """The root of a part, or None where the package holds no part of that name.
+
+        A part that declares a document type is refused: no Office part carries one, and a
+        declaration is where entity expansion lives. The part is decoded as `_xml_decoded`
+        says and the parser is given that text, so the check reads what is parsed; one that
+        does not decode, or holds a NUL, is refused.
+        """
+        try:
+            info = self.archive.getinfo(name)
+        except KeyError:
+            return None
+        with self.archive.open(info) as handle:
+            data = handle.read(self.left + 1)
+        if len(data) > self.left:
+            raise SourceUnreadableError(
+                self.path,
+                f"its XML inflates past {DOCX_MAX_XML_BYTES:,} bytes; it is refused unread",
+            )
+        self.left -= len(data)
+        try:
+            text = _xml_decoded(data)
+        except (UnicodeError, LookupError) as e:
+            raise SourceUnreadableError(self.path, f"{name} does not decode: {e}") from e
+        if _DOCTYPE.search(text):
+            raise SourceUnreadableError(
+                self.path, f"{name} declares a document type, which no Word part does"
+            )
+        if "\x00" in text:
+            raise SourceUnreadableError(self.path, f"{name} holds a NUL, which XML forbids")
+        try:
+            # The decoded text, never the bytes, so the parser reads what was checked. A lone
+            # surrogate in it cannot be handed to the parser, which takes UTF-8.
+            return ET.fromstring(text)
+        except UnicodeEncodeError as e:
+            raise SourceUnreadableError(self.path, f"{name} holds a lone surrogate") from e
+        except ET.ParseError as e:
+            raise SourceUnreadableError(self.path, f"{name} is not well-formed XML: {e}") from e
+
+    def related(self, part: str) -> dict[str, tuple[str, str]]:
+        """A part's relationships: id to (type, the part it names inside the package).
+
+        A target outside the package, `TargetMode="External"`, is left out: nothing here is
+        fetched.
+        """
+        folder, _, file = part.rpartition("/")
+        root = self.xml(f"{folder}/_rels/{file}.rels" if folder else f"_rels/{file}.rels")
+        found: dict[str, tuple[str, str]] = {}
+        for rel in root if root is not None else ():
+            target, kind = rel.get("Target", ""), rel.get("Type", "")
+            if rel.get("TargetMode") == "External" or not target:
+                continue
+            inside = target.lstrip("/") if target.startswith("/") else f"{folder}/{target}"
+            found[rel.get("Id", "")] = (kind, posixpath.normpath(inside).lstrip("/"))
+        return found
+
+
+class _DocxText:
+    """The walk over a part's XML that writes its text, one block per line."""
+
+    def __init__(self) -> None:
+        self.fields: list[_Field] = []
+        """The complex fields open, outermost first. Text is written only where every one is
+        reading its result."""
+        self.notes: dict[str, list[str]] = {"footnote": [], "endnote": []}
+        """The id of each note the text refers to, in the order it first refers to it."""
+        self.carry = ""
+        """The text of a paragraph whose mark a tracked change deletes, which joins the next."""
+        self.contents_style = False
+        """Whether the paragraph being read has a table-of-contents style, `TOC1` and so on."""
+
+    def in_contents(self) -> bool:
+        """Whether the text being read is a table of contents: a paragraph in a TOC style, or
+        the result of an open `TOC` field."""
+        return self.contents_style or any(
+            field.code.split()[:1] == ["TOC"] for field in self.fields if field.reading == "result"
+        )
+
+    @property
+    def shown(self) -> bool:
+        return all(field.reading == "result" for field in self.fields)
+
+    def field_char(self, char: ET.Element) -> None:
+        kind = _docx_attr(char, "fldCharType")
+        if kind == "begin":
+            self.fields.append(_Field())
+        elif kind == "separate" and self.fields:
+            self.fields[-1].settle(self.in_contents())
+        elif kind == "end" and self.fields:
+            self.fields.pop()
+
+    def end_paragraph(self) -> None:
+        """A field still in its instruction, or still on a page number, at the end of a
+        paragraph is read as a result from here on. An instruction and a page number end in
+        their paragraph; a field whose `separate` or `end` never comes, or comes inside a
+        deletion that was not written as one, would otherwise hide the rest of the document."""
+        for field in self.fields:
+            field.reading = "result"
+
+    def blocks(self, container: ET.Element, out: list[str], tables: list[str] | None = None):
+        """Paragraphs and tables, in the order they stand. A table inside a table cell goes to
+        `tables`, where one is given, so its rows are not welded into the cell."""
+        for child in container:
+            key = _docx_key(child)
+            if key == "w:p":
+                self.paragraph(child, out)
+            elif key == "w:tbl":
+                # A paragraph whose mark is deleted joins the paragraph after it, and a table
+                # is not one: the text stays a line of its own and out of the first cell.
+                if self.carry:
+                    out.append(_line(self.carry))
+                    self.carry = ""
+                self.table(child, out if tables is None else tables)
+            elif key in ("w:sdt", "w:sdtContent", "w:customXml", "w:ins", "w:moveTo"):
+                self.blocks(child, out, tables)
+            elif key == "mc:AlternateContent" and (chosen := self.choice(child)) is not None:
+                self.blocks(chosen, out, tables)
+        if self.carry:
+            out.append(_line(self.carry))
+            self.carry = ""
+
+    def paragraph(self, p: ET.Element, out: list[str]) -> None:
+        carry, self.carry = self.carry, ""
+        parts: list[str] = []
+        boxes: list[str] = []
+        mark = next((c for c in p if _docx_key(c) == "w:pPr"), None)
+        style = (
+            next((c for c in mark if _docx_key(c) == "w:pStyle"), None)
+            if mark is not None
+            else None
+        )
+        outer, self.contents_style = (
+            self.contents_style,
+            (_docx_attr(style, "val") or "").upper().startswith("TOC")
+            if style is not None
+            else False,
+        )
+        self.inline(p, parts, boxes)
+        self.contents_style = outer
+        self.end_paragraph()
+        text = carry + "".join(parts)
+        deleted = mark is not None and any(
+            _docx_key(c) == "w:del" for r in mark if _docx_key(r) == "w:rPr" for c in r
+        )
+        if deleted:
+            self.carry = text
+        else:
+            out.append(_line(text))
+        out.extend(boxes)
+
+    def inline(self, element: ET.Element, parts: list[str], boxes: list[str]) -> None:
+        for child in element:
+            key = _docx_key(child)
+            if key == "w:r":
+                self.run(child, parts, boxes)
+            elif key in ("w:del", "w:moveFrom"):
+                # Its text is not read, and a field's markers in it still open and close the
+                # field, so a field whose end a change deleted does not run on.
+                for char in child.iter():
+                    if _docx_key(char) == "w:fldChar":
+                        self.field_char(char)
+            elif key in _DOCX_REMOVED:
+                continue
+            elif key == "w:fldSimple":
+                if not _docx_layout(_docx_attr(child, "instr") or "", self.in_contents()):
+                    self.inline(child, parts, boxes)
+            elif key in _DOCX_TRANSPARENT:
+                self.inline(child, parts, boxes)
+            elif key in ("m:oMath", "m:oMathPara"):
+                if self.shown:
+                    parts.append(_docx_math(child))
+            elif key == "mc:AlternateContent" and (chosen := self.choice(child)) is not None:
+                self.inline(chosen, parts, boxes)
+
+    def run(self, r: ET.Element, parts: list[str], boxes: list[str]) -> None:
+        for child in r:
+            key = _docx_key(child)
+            if key == "w:fldChar":
+                self.field_char(child)
+            elif key == "w:instrText":
+                # To every field whose instruction is open: a nested field's code is part of
+                # the formula around it.
+                for field in self.fields:
+                    if field.reading == "instruction":
+                        field.instruction.append(child.text or "")
+            elif not self.shown:
+                continue
+            elif key == "w:t":
+                parts.append(child.text or "")
+            elif key in ("w:tab", "w:ptab", "w:br", "w:cr"):
+                parts.append(" ")
+            elif key == "w:noBreakHyphen":
+                parts.append("-")
+            elif key == "w:sym":
+                parts.append(_docx_symbol(_docx_attr(child, "font"), _docx_attr(child, "char")))
+            elif key == "w:ruby":
+                # The base text and not the reading set above it.
+                for base in child:
+                    if _docx_key(base) == "w:rubyBase":
+                        self.inline(base, parts, boxes)
+            elif key in ("w:footnoteReference", "w:endnoteReference"):
+                ids = self.notes[key[2:-9]]
+                if (note := _docx_attr(child, "id")) is not None and note not in ids:
+                    ids.append(note)
+            elif key in ("m:oMath", "m:oMathPara"):
+                parts.append(_docx_math(child))
+            elif key == "mc:AlternateContent":
+                if (chosen := self.choice(child)) is not None:
+                    self.text_boxes(chosen, boxes)
+            elif key not in ("w:rPr", "w:instrText", "w:delText", "w:delInstrText"):
+                # A drawing, a VML shape or an embedded object: the text boxes inside it.
+                self.text_boxes(child, boxes)
+
+    def text_boxes(self, element: ET.Element, out: list[str]) -> None:
+        for child in element:
+            key = _docx_key(child)
+            if key == "w:txbxContent":
+                self.blocks(child, out)
+            elif key == "mc:AlternateContent":
+                if (chosen := self.choice(child)) is not None:
+                    self.text_boxes(chosen, out)
+            else:
+                self.text_boxes(child, out)
+
+    def table(self, tbl: ET.Element, out: list[str]) -> None:
+        nested: list[str] = []
+        for row in self._rows_of(tbl):
+            properties = next((c for c in row if _docx_key(c) == "w:trPr"), None)
+            if properties is not None and any(_docx_key(c) == "w:del" for c in properties):
+                continue  # a row the accepted view deletes
+            cells = []
+            for cell in self._cells_of(row):
+                lines: list[str] = []
+                self.blocks(cell, lines, nested)
+                cells.append(" ".join(line for line in lines if line))
+            out.extend(_rows([cells], keep_empty=False))
+            out.extend(nested)
+            nested.clear()
+
+    def _rows_of(self, element: ET.Element) -> Iterable[ET.Element]:
+        for child in element:
+            key = _docx_key(child)
+            if key == "w:tr":
+                yield child
+            elif key in ("w:sdt", "w:sdtContent", "w:customXml", "w:ins", "w:moveTo"):
+                yield from self._rows_of(child)
+
+    def _cells_of(self, row: ET.Element) -> Iterable[ET.Element]:
+        for child in row:
+            key = _docx_key(child)
+            if key == "w:tc":
+                yield child
+            elif key in ("w:sdt", "w:sdtContent", "w:customXml", "w:ins", "w:moveTo"):
+                yield from self._cells_of(child)
+
+    @staticmethod
+    def choice(alternate: ET.Element) -> ET.Element | None:
+        """The one branch of `mc:AlternateContent` to read: the first `mc:Choice`, else the
+        `mc:Fallback`. The branches are two encodings of one object, and reading both would
+        print a text box twice."""
+        branches = [c for c in alternate if _docx_key(c) in ("mc:Choice", "mc:Fallback")]
+        chosen = [c for c in branches if _docx_key(c) == "mc:Choice"] or branches
+        return chosen[0] if chosen else None
+
+
+def _docx_xml_text(path: pathlib.Path, sheet: str | None, keep_empty: bool) -> str:
+    """`docx-text` version 2: a `.docx` read from its own XML, in this order.
+
+      1. The body, in document order: each paragraph one line, and each table where it stands,
+         one row per line, cells left to right joined with ` | `, a merged cell once. A table
+         inside a cell follows the row holding it. A text box follows the paragraph its shape
+         is anchored in. A content control's content stands where the control does.
+      2. Each footnote, then each endnote, in the order the text first refers to it, numbered
+         1, 2, 3 in that order and marked `Footnote 1.` or `Endnote 1.`, whatever Word shows:
+         Word numbers endnotes i, ii, iii by default, and a custom start, format or mark is not
+         rendered. The reference mark in the body is not written there.
+      3. Each header and footer part once, in the order the sections name them.
+
+    Within a paragraph: the runs, a hyperlink's text, a content control's text, a ruby's base
+    text, a symbol (`w:sym`; the Symbol font's Greek letters and mathematical signs and a few
+    Wingdings marks are mapped to the characters they draw, and any other code is written as
+    stored), a simple field's result and a complex field's result (the text between its
+    `separate` and its `end`; the instruction is left out), and an equation's characters in
+    order (OMML `m:t`, with no fraction, script or radical rendered). The result of a `PAGE`,
+    `NUMPAGES` or `SECTIONPAGES` field, of a formula field computed from one (`= PAGE - 1`), and
+    of a `PAGEREF` inside a table of contents (a `TOC` field's result, or a paragraph in a TOC
+    style) is not read: it is a page number from the layout Word last made, not a number the
+    document states. A `PAGEREF` elsewhere is read, since `see page 14` is a page the author
+    refers to. A field instruction, and a page
+    number field, ends with its paragraph, so a field whose end never comes hides nothing after
+    it. Tracked changes are read as the accepted view: an insertion and a move's destination
+    are read, a deletion and a move's origin are not, in an equation too, a row a change
+    deletes is left out, and a paragraph whose mark a change deletes joins the next paragraph,
+    or stands alone where a table follows it. A tab or a line break is a space, and whitespace
+    is collapsed as every extractor here collapses it.
+
+    Not read: comments, which are a reviewer's text and not the document's; automatic list and
+    heading numbers, which Word computes and does not store; a footnote nothing refers to; the
+    glossary; an embedded document (`w:altChunk`) or object's own contents; and anything an
+    image shows. Hidden text (`w:vanish`) is read.
+
+    Parsed with the standard library from the zip, never through a file path inside it and
+    with nothing fetched. A part is decoded as an XML parser detects its encoding (a byte-order
+    mark, UTF-16 with no mark, the declaration's encoding, else UTF-8), and the parser is given
+    that text, so the check for a document type reads what is parsed. A part that declares a
+    document type, does not decode or holds a NUL is refused, and so is a package whose XML
+    inflates past `DOCX_MAX_XML_BYTES`.
+    """
+    try:
+        archive = zipfile.ZipFile(path)
+    except zipfile.BadZipFile as e:
+        raise SourceUnreadableError(path, "not a .docx: it is not a zip archive") from e
+    with archive:
+        package = _DocxPackage(path, archive)
+        main = next(
+            (
+                target
+                for kind, target in package.related("").values()
+                if kind.endswith("/officeDocument")
+            ),
+            "word/document.xml",
+        )
+        document = package.xml(main)
+        if document is None:
+            raise SourceUnreadableError(path, f"not a .docx: it holds no {main}")
+        related = package.related(main)
+        walk = _DocxText()
+        lines: list[str] = []
+        body = next((c for c in document if _docx_key(c) == "w:body"), None)
+        if body is not None:
+            walk.blocks(body, lines)
+
+        for kind, label in (("footnote", "Footnote"), ("endnote", "Endnote")):
+            part = next((t for k, t in related.values() if k.endswith(f"/{kind}s")), None)
+            root = package.xml(part) if part else None
+            if root is None:
+                continue
+            notes = {
+                _docx_attr(note, "id"): note
+                for note in root
+                if _docx_key(note) == f"w:{kind}"
+                and _docx_attr(note, "type") not in _DOCX_NOTE_FURNITURE
+            }
+            for number, note_id in enumerate(walk.notes[kind], start=1):
+                if (note := notes.get(note_id)) is None:
+                    continue
+                walk.fields = []
+                text: list[str] = []
+                walk.blocks(note, text)
+                text = [line for line in text if line]
+                if text:
+                    lines.append(f"{label} {number}. {text[0]}")
+                    lines += text[1:]
+
+        # Each header and footer once, in the order the sections name them.
+        seen: list[str] = []
+        for reference in document.iter():
+            if _docx_key(reference) in ("w:headerReference", "w:footerReference"):
+                target = related.get(_docx_rid(reference) or "", ("", ""))[1]
+                if target and target not in seen:
+                    seen.append(target)
+        for target in seen:
+            if (root := package.xml(target)) is not None:
+                walk.fields = []
+                walk.blocks(root, lines)
     return "\n".join(line for line in lines if line)
 
 
@@ -456,9 +1069,26 @@ EXTRACTORS: dict[str, Extractor] = {
     e.name: e
     for e in (
         Extractor("sheet-rows", 1, _sheet_rows, takes_options=True),
-        Extractor("docx-text", 1, _docx_text),
+        Extractor("docx-text", 2, _docx_xml_text),
         Extractor("jats-text", 1, _jats_text),
         Extractor("html-text", 1, _html_text),
+    )
+}
+
+#: Earlier versions of an extractor that a claims file may still name, by name and version. A
+#: source pinned under one goes on being read by it, so its `derived_sha256` still describes the
+#: text it gets: a newer rendering is a different text, and quotations pinned against the older
+#: one say nothing about it. A source that records no version but a `derived_sha256` was pinned
+#: before versions were recorded and is read with version 1 (`ClaimFile`); any other source
+#: that names no version, and one read by its suffix, gets the version in `EXTRACTORS`, and
+#: `citations pin` records the version that read it with the first quotation.
+EARLIER: dict[tuple[str, str], Extractor] = {
+    (e.name, str(e.version)): e
+    for e in (
+        # Body paragraphs, then tables, through `python-docx`: no notes, headers, text boxes,
+        # content controls, field results or tracked insertions. Kept for the sources pinned
+        # under it.
+        Extractor("docx-text", 1, _docx_text),
     )
 }
 
@@ -546,13 +1176,24 @@ def declared(path: pathlib.Path, text: str) -> Declared | None:
     if extractor is None:
         return None
     if version and version != str(extractor.version):
-        raise SourceUnreadableError(
-            path,
-            f"the source names {name} version {version} and this build ships version "
-            f"{extractor.version}. The two produce different text from the same bytes, so "
-            f"nothing was read: install the citations release that ships version {version}, "
-            f"or pin the quotations again under version {extractor.version}",
-        )
+        earlier = EARLIER.get((name, version))
+        if earlier is None:
+            shipped = sorted(
+                [extractor.version, *(e.version for k, e in EARLIER.items() if k[0] == name)]
+            )
+            ships = (
+                f"version {shipped[0]}"
+                if len(shipped) == 1
+                else f"versions {', '.join(map(str, shipped[:-1]))} and {shipped[-1]}"
+            )
+            raise SourceUnreadableError(
+                path,
+                f"the source names {name} version {version} and this build ships {ships}. "
+                f"Each version produces different text from the same bytes, so nothing was "
+                f"read: install the citations release that ships version {version}, or pin the "
+                f"quotations again under version {extractor.version}",
+            )
+        extractor = earlier
     sheet, keep_empty, rest = None, False, words[1:]
     while rest:
         word = rest.pop(0)
@@ -568,6 +1209,8 @@ def declared(path: pathlib.Path, text: str) -> Declared | None:
 __all__ = [
     "BY_SUFFIX",
     "CELL_SEPARATOR",
+    "DOCX_MAX_XML_BYTES",
+    "EARLIER",
     "EXTRACTORS",
     "Declared",
     "Extractor",

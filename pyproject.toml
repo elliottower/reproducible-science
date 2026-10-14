@@ -34,7 +34,7 @@ urls.Homepage = "https://github.com/elliottower/reproducible-science"
 [dependency-groups]
 # Fast enough to run on every commit.
 dev = [
-  "adduce>=0.1.2",
+  "adduce>=0.2",
   "coverage>=7.6",
   # The optional readers `repro` resolves values through, for the same reason as the PDF readers
   # below: a reader tested against a stub of its library is tested against nothing.
@@ -286,6 +286,9 @@ layers = [
   # The commands of the claims side and how each prints. `repro.cli` and this module's own
   # `main` build a parser over them, and they reach for nothing that runs a command.
   "claims.cli",
+  # Other checkers' results, read into check records. Each sits on the record and the
+  # verifier, and nothing below reaches for it.
+  "claims.foreign",
   # Reads an artifact's origin, with git or over the network when asked, and evaluates no
   # assertion, so nothing below reaches for it.
   "claims.origins",

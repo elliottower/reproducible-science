@@ -61,6 +61,7 @@ from claims.models import (
     TableCellEvidence,
     Validity,
     ValueEvidence,
+    VerificationReport,
 )
 from claims.reruns import reruns, upstream
 from claims.resolve import stored
@@ -167,6 +168,12 @@ KNOWN_ADDRESS_KINDS = frozenset(
 #: that is not listed here is not understood, whatever it looks like.
 NATIVE_OUTCOMES: dict[str, frozenset[str]] = {
     CHECKER: frozenset(outcome.value for outcome in Outcome),
+    # SciTeX Clew's stored claim statuses, and the resolved ones its chain flags give a
+    # verified claim (`claims.foreign.clew`).
+    "scitex-clew": frozenset(
+        {"verified", "suspect", "mismatch", "missing", "registered", "superseded"}
+        | {"exception", "frozen", "unsourced"}
+    ),
 }
 
 
@@ -721,12 +728,15 @@ def check_records(
     manifest: Manifest,
     checked_at: datetime.datetime | None = None,
     backends: tuple[Backend, ...] = DEFAULT_BACKENDS,
+    verified: VerificationReport | None = None,
 ) -> tuple[ExportRecord, ...]:
     """Check every assertion in a manifest and return one record for each, in the order the
     manifest declares them.
 
-    `checked_at` is the time every record carries; now, where none is given. Executes nothing
-    and writes nothing.
+    `checked_at` is the time every record carries; now, where none is given. `verified`,
+    where given, is `verify`'s report of this manifest: each record then states the report's
+    decision and artifact states instead of checking the assertion again. Executes nothing and
+    writes nothing.
     """
     when = checked_at or datetime.datetime.now(datetime.UTC).replace(microsecond=0)
     checker = Checker(name=CHECKER, version=adapter_version(), url=CHECKER_URL)
@@ -742,7 +752,16 @@ def check_records(
             if entry.executed:
                 latest[entry.regeneration_id] = _rerun(stamp, entry)
 
-    states, paths = artifact_states(manifest)
+    if verified is None:
+        states, paths = artifact_states(manifest)
+    else:
+        if [claim.claim_id for claim in verified.claims] != [c.id for c in manifest.claims] or any(
+            len(assessed.decisions) != len(claim.evidence)
+            for assessed, claim in zip(verified.claims, manifest.claims, strict=True)
+        ):
+            raise ReproError("the report given is not verify's report of this manifest")
+        states = {state.artifact_id: state for state in verified.artifacts}
+        paths = {artifact.id: manifest.resolve(artifact) for artifact in manifest.artifacts}
     registry: dict[str, Backend] = {b.kind: b for b in backends}
     texts: dict[pathlib.Path, str | None] = {}
     records = []
@@ -761,7 +780,11 @@ def check_records(
             for index, (evidence, freshness) in enumerate(
                 zip(claim.evidence, node.assertions, strict=True)
             ):
-                decision = check_evidence(claim, evidence, manifest, paths, states, registry)
+                decision = (
+                    check_evidence(claim, evidence, manifest, paths, states, registry)
+                    if verified is None
+                    else verified.claims[position].decisions[index]
+                )
                 records.append(
                     ExportRecord(
                         checker=checker,

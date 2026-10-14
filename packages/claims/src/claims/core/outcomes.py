@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import enum
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_serializer
 
 from claims.core.evidence import Conversion, Statistic
 
@@ -173,6 +173,11 @@ class Reason(enum.StrEnum):
     """One pair of prose anchors selected two different values, so the document states two
     numbers where the assertion addresses one. Reported rather than resolved to the first: a
     document contradicting itself is a finding."""
+    SIDES_READ_ONE_PLACE = "sides_read_one_place"
+    """Two sides of a correspondence selected a value at one place in one artifact, through
+    locators that differ only in `form` or in anchors one of which contains the other. The
+    value would be compared with itself, so no comparison is made and the outcome is
+    `unchecked`: the place one of the sides was meant for was never read."""
     NUMBER_AS_WORD = "number_as_word"
     """The locator selected an English cardinal written out, under a locator that did not ask
     for one. Distinct from `value_not_numeric` because the fix is different: the value is
@@ -236,6 +241,18 @@ class Tie(BaseModel):
     printed: str
     """The value the manuscript prints. `lower` or `upper` where the assertion verified, and
     neither where it is a mismatch."""
+
+
+class PairTie(BaseModel):
+    """An exact tie one pair of a correspondence's sides met, with the two sides named."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    sides: tuple[str, str]
+    """The two places, by side name, or by side name and line where a side reads one number
+    printed to several precisions, in the order the manifest declares the sides."""
+
+    tie: Tie
 
 
 class DecisionSide(BaseModel):
@@ -343,6 +360,18 @@ class Decision(BaseModel):
     """Set where the compared value lay exactly halfway between two values at the printed
     precision. None otherwise, and under `absolute` and `relative`, which round nothing."""
 
+    ties: tuple[PairTie, ...] = ()
+    """Every pair of places that met an exact tie, in a `correspondence` of three places or
+    more, in the order the pairs were compared. A place is a side, named as the manifest names
+    it, or one spelling of a side's value, named with its line, where the side's anchors
+    select one number printed to several precisions. `tie` is the first of them. Empty for
+    every other assertion, whose one comparison is recorded in `tie`."""
+
+    disagreements: tuple[tuple[str, str], ...] = ()
+    """Every pair of places that disagree, in a `correspondence` of three places or more, by
+    the names `ties` uses. Empty for every other assertion, whose one comparison is its
+    `comparison`."""
+
     sides: tuple[DecisionSide, ...] = ()
     """The two values a `correspondence` compared, each with the artifact and locator it came
     from. Empty for every kind that reads one artifact, which records its single artifact and
@@ -390,6 +419,16 @@ class Decision(BaseModel):
     way a changed artifact does is a policy question, and `claims.policy` decides policy."""
 
     warnings: tuple[Warning_, ...] = ()
+
+    @model_serializer(mode="wrap")
+    def _omit_no_ties(self, handler):
+        """Leave `ties` and `disagreements` out where empty, so a decision on any other assertion serializes
+        as it did before the field existed."""
+        dumped = handler(self)
+        for field in ("ties", "disagreements"):
+            if not getattr(self, field):
+                dumped.pop(field, None)
+        return dumped
 
     @property
     def outcome(self) -> Outcome:

@@ -196,6 +196,13 @@ class NumberForm(enum.StrEnum):
     decision, and the engine makes none on its own: under `decimal` a recognized cardinal is
     refused with its own reason rather than converted."""
 
+    GROUPED = "grouped"
+    """Digits grouped in threes by commas, `1,062`, read as the number without the commas.
+
+    Declared per assertion, as `cardinal_word` is. Under `decimal` a grouped number is not
+    numeric, because `decimal.Decimal` refuses the comma, and a comma between digits that do
+    not group in threes, `12,13`, separates two numbers under either form."""
+
 
 class ProseLocator(Locator):
     """The value between two literal anchors in the extracted text of a document.
@@ -534,7 +541,7 @@ class CorrespondenceSide(_Convertible):
 
 
 class CorrespondenceEvidence(BaseModel):
-    """Assertion: these two artifacts hold the same value.
+    """Assertion: these artifacts, or these places in one artifact, hold the same value.
 
     Every other kind compares an artifact against a literal written in the manifest. A
     documentation claim compares an artifact against an artifact -- a sentence saying the
@@ -542,7 +549,12 @@ class CorrespondenceEvidence(BaseModel):
     a literal requires transcribing one side into the manifest, where nothing checks the
     transcription.
 
-    Neither side is privileged. When the two disagree the decision reports both values and
+    Two sides or more. A manuscript printing one number in its abstract, its results and a
+    caption names each place as a side, beside the file the number came from, and every pair
+    of sides must agree. Each place compared with the file alone can agree with it while two
+    places disagree with each other: 8.3 and 8.4 both round a stored 8.35.
+
+    Neither side is privileged. When sides disagree the decision reports every value and
     does not say which is wrong, because nothing in a byte comparison establishes that. The
     same discipline governs the outcome vocabulary in §0.
     """
@@ -552,7 +564,7 @@ class CorrespondenceEvidence(BaseModel):
     kind: Literal["correspondence"] = "correspondence"
 
     name: str
-    sides: tuple[CorrespondenceSide, CorrespondenceSide]
+    sides: tuple[CorrespondenceSide, ...] = Field(min_length=2)
 
     mode: ComparisonMode = ComparisonMode.PRINTED_PRECISION
     """`relative` is rejected: its tolerance is a fraction of the reported value, and with no
@@ -570,17 +582,22 @@ class CorrespondenceEvidence(BaseModel):
 
     @model_validator(mode="after")
     def _sides_are_distinct(self):
-        left, right = self.sides
-        if left.name == right.name:
-            raise ValueError(
-                f"correspondence {self.name!r}: both sides are named {left.name!r}, so a "
-                f"report cannot say which held what"
-            )
-        if (left.artifact, left.locator.canonical()) == (right.artifact, right.locator.canonical()):
-            raise ValueError(
-                f"correspondence {self.name!r}: both sides address the same value in "
-                f"{left.artifact!r}, which agrees with itself whatever it holds"
-            )
+        for at, left in enumerate(self.sides):
+            for right in self.sides[at + 1 :]:
+                if left.name == right.name:
+                    raise ValueError(
+                        f"correspondence {self.name!r}: two sides are named {left.name!r}, so "
+                        f"a report cannot say which held what"
+                    )
+                if (left.artifact, left.locator.canonical()) == (
+                    right.artifact,
+                    right.locator.canonical(),
+                ):
+                    raise ValueError(
+                        f"correspondence {self.name!r}: sides {left.name!r} and "
+                        f"{right.name!r} address the same value in {left.artifact!r}, which "
+                        f"agrees with itself whatever it holds"
+                    )
         if self.mode is ComparisonMode.RELATIVE:
             raise ValueError(
                 f"correspondence {self.name!r}: `relative` needs a value to take a fraction "
