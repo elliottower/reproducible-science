@@ -144,3 +144,16 @@ def test_a_last_line_whose_position_is_not_the_anchors_count_is_not_built_on(tmp
     chain.anchor_path(path).write_text(json.dumps(anchor | {"count": 9}))
     with pytest.raises(ChainError, match="truncated"):
         chain.append_event(path, {"event": "x"}, whole_chain=False)
+
+
+@pytest.mark.parametrize("whole_chain", [True, False])
+def test_an_event_holding_unicode_line_separators_reads_back_as_one_line(
+    tmp_path, whole_chain
+):
+    path = tmp_path / "ledger.jsonl"
+    text = "a b c\x85d\r"
+    chain.append_event(path, {"event": "quote", "text": text})
+    chain.append_event(path, {"event": "next"}, whole_chain=whole_chain)
+    assert [event.get("text") for event in chain.read_ledger(path)] == [text, None]
+    assert len(chain.line_hashes(path)) == 2
+    assert chain.verify(path) == (ChainStatus.INTACT, [])

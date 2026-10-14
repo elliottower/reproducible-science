@@ -95,9 +95,16 @@ def canonical(event: dict) -> str:
 
 
 def _lines(ledger: pathlib.Path) -> list[str]:
+    """Each non-blank line, split at line feeds only.
+
+    `str.splitlines` also breaks at U+2028, U+2029, U+0085 and the other separators Unicode
+    names, and `canonical` writes those as themselves inside a string, so an event quoting a
+    passage that held one read back as two lines and its chain as corrupt. Reading the file as
+    text turns `\\r\\n` into `\\n` first, as before.
+    """
     return [
         ln.strip()
-        for ln in ledger.read_text(encoding="utf-8").splitlines()
+        for ln in ledger.read_text(encoding="utf-8").split("\n")
         if ln.strip()
     ]
 
@@ -112,19 +119,28 @@ def last_line(ledger: pathlib.Path) -> str | None:
     others, so its cost does not grow with the chain."""
     if not ledger.exists():
         return None
+    blocks: list[bytes] = []
     with ledger.open("rb") as handle:
         end = handle.seek(0, os.SEEK_END)
-        held = b""
+        seen = False
         while end > 0:
             start = max(0, end - _TAIL_BLOCK)
             handle.seek(start)
-            held = handle.read(end - start) + held
+            block = handle.read(end - start)
             end = start
-            content = held.rstrip()
-            # The line is whole once a line break precedes it, or the file begins with it.
-            if content and (b"\n" in content or end == 0):
-                return content.rsplit(b"\n", 1)[-1].decode("utf-8").strip() or None
-    return None
+            if not seen:
+                # Blank lines and trailing whitespace after the last line are not part of it.
+                block = block.rstrip()
+                if not block:
+                    continue
+                seen = True
+            cut = block.rfind(b"\n")
+            if cut >= 0:
+                blocks.append(block[cut + 1 :])
+                break
+            blocks.append(block)
+    line = b"".join(reversed(blocks)).decode("utf-8").strip()
+    return line or None
 
 
 def last_hash(ledger: pathlib.Path) -> str:
@@ -218,7 +234,7 @@ def append_event(
         return _append_locked(ledger, event, whole_chain=whole_chain)
 
 
-def _tail_agrees(ledger: pathlib.Path) -> tuple[int, str] | None:
+def tail_agrees(ledger: pathlib.Path) -> tuple[int, str] | None:
     """`(count, head)` where the anchor is current and the ledger's last line is the one it
     records: it hashes to the anchor's head and holds position `count - 1`. None otherwise, or
     where there is no anchor or no line."""
@@ -248,7 +264,7 @@ def _append_locked(
     ledger: pathlib.Path, event: dict, *, whole_chain: bool = True
 ) -> dict:
     """The append itself. Assumes the caller holds the lock for `ledger`."""
-    agreed = None if whole_chain else _tail_agrees(ledger)
+    agreed = None if whole_chain else tail_agrees(ledger)
     if agreed is not None:
         count, head = agreed
         return _write(ledger, event, count, head)

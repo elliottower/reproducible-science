@@ -16,8 +16,11 @@ import sys
 import threading
 
 import pytest
+from claims import checks as claims_checks
+from provenance_core import chain
 from provenance_core import run as git
 from repro.checks import (
+    INDEX,
     LOCAL,
     NOT_A_REPOSITORY,
     RECORD,
@@ -45,6 +48,7 @@ from repro.why import why
 
 IDENTITY = ("accuracy", "metric", "accuracy", 0)
 EDITED = "entry 2 does not hash to what entry 3 recorded for the entry before it"
+EDITED_LAST = "entry 3 does not hash to what the head file records"
 
 
 @pytest.fixture
@@ -133,6 +137,11 @@ def rewrite(path, change):
 def forge(lines):
     """Make the second entry say another value was reported."""
     lines[1] = lines[1].replace('"0.91"', '"0.99"')
+
+
+def forge_last(lines):
+    """Make the last entry say another value was reported."""
+    lines[-1] = lines[-1].replace('"0.93"', '"0.99"')
 
 
 def three_states(root, *flags):
@@ -525,8 +534,9 @@ def test_verify_prints_and_returns_the_same_whatever_the_record(repo, capfd):
     assert all(streams.err == "" for _, streams in wanted)
     assert [run(*flags) for flags in formats] == wanted
 
-    # A record that does not verify is said on standard error and appended to no further.
-    rewrite(local(repo), forge)
+    # A record whose last entry was edited is said on standard error and appended to no
+    # further.
+    rewrite(local(repo), forge_last)
     project = manifest(repo, claim("0.94"))
     held = entries(local(repo))
     wanted = [run(*flags, local_record=False) for flags in formats]
@@ -535,9 +545,25 @@ def test_verify_prints_and_returns_the_same_whatever_the_record(repo, capfd):
         assert (got_code, got.out) == (code, streams.out)
         assert got.err == (
             f"record not written: {local(repo)}: refusing to append to a chain reported as "
-            f"edited: {EDITED}; `repro verify --set-aside-record` keeps it and starts anew\n"
+            f"edited: {EDITED_LAST}; `repro verify --set-aside-record` keeps it and starts anew\n"
         )
     assert entries(local(repo)) == held
+
+
+def test_an_entry_edited_in_the_middle_is_appended_past_and_found_by_why(repo, capsys):
+    project = three_states(repo)
+    rewrite(local(repo), forge)
+    held = entries(local(repo))
+    # A check reads the record only at its end, so it appends; the edit stays where it was.
+    check(manifest(repo, claim("0.94")))
+    assert entries(local(repo))[:3] == held and len(entries(local(repo))) == 4
+    (state,) = why(project, "accuracy").records
+    assert (state.status, state.unverifiable_from, state.problems) == ("edited", 2, (EDITED,))
+    # The next check whose index no longer describes the record reads it whole, and refuses.
+    (git_dir(repo) / "repro" / INDEX).unlink()
+    capsys.readouterr()
+    check(manifest(repo, claim("0.95")))
+    assert len(entries(local(repo))) == 4
 
 
 def test_a_git_directory_that_cannot_be_written_to_is_said_in_one_line(repo, capfd):
@@ -645,11 +671,12 @@ def test_a_checkout_whose_git_directory_is_inside_another_repositorys_records_th
 
 
 def kept(directory):
-    """Every file in a record's directory by digest, the lock beside it left out."""
+    """Every file in a record's directory by digest, the lock and the index beside it left
+    out."""
     return {
         p.name: hashlib.sha256(p.read_bytes()).hexdigest()
         for p in sorted(directory.iterdir())
-        if not p.name.endswith(".provenance-lock")
+        if not p.name.endswith(".provenance-lock") and p.name != INDEX
     }
 
 
@@ -748,3 +775,44 @@ def test_a_tracked_record_follows_a_local_one_that_started_again_only_when_set_a
         ("local", "intact", None),
         ("tracked", "intact", None),
     ]
+
+
+def test_a_check_reads_no_entry_of_the_record_where_the_index_describes_it(repo, monkeypatch):
+    for reported in ("0.92", "0.91", "0.93", "0.94", "0.95"):
+        check(manifest(repo, claim(reported)), "--record")
+    project = manifest(repo, claim("0.96"))
+
+    def refused(*_, **__):
+        raise AssertionError("the record was read whole")
+
+    for name in ("Records", "_raw", "_entries", "_chain"):
+        monkeypatch.setattr(claims_checks, name, refused)
+    monkeypatch.setattr(chain, "_lines", refused)
+    check(project, "--record")
+    monkeypatch.undo()
+
+    assert len(entries(local(repo))) == 6
+    # The tracked record took the new entry as copied bytes, and both chains verify.
+    assert entries(repo / RECORD) == entries(local(repo))
+    assert [state.status for state in Records(repo).states] == ["intact", "intact"]
+    assert recorded(repo)[-1].printed == "0.96"
+
+
+def test_an_index_that_describes_an_earlier_head_is_written_again_from_the_record(repo):
+    check(manifest(repo, claim("0.92")))
+    index = git_dir(repo) / "repro" / INDEX
+    earlier = index.read_bytes()
+    check(manifest(repo, claim("0.91")))
+    # The index from before the second check holds 0.92 as the last state, and is not used.
+    index.write_bytes(earlier)
+    check(manifest(repo, claim("0.91")))
+    assert len(entries(local(repo))) == 2
+    check(manifest(repo, claim("0.92")))
+    assert [state.printed for state in recorded(repo)] == ["0.92", "0.91", "0.92"]
+
+
+def test_an_index_that_is_not_a_database_is_read_past(repo):
+    check(manifest(repo, claim("0.92")))
+    (git_dir(repo) / "repro" / INDEX).write_bytes(b"not a database")
+    check(manifest(repo, claim("0.91")))
+    assert [state.printed for state in recorded(repo)] == ["0.92", "0.91"]
