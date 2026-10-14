@@ -35,6 +35,10 @@ to allow the deliberate downward move.
 The range is a range rather than an exact `==`. This release is run by hand, so the four
 uploads land seconds apart; an exact pin makes the set briefly uninstallable in between.
 
+Both refuse a version below the floor `scripts/versions.py` names as `SERIES_FLOOR`, which is
+0.6.0: `reproducible-science` and `results-cli` import `provenance_core.chain`, no
+`provenance-core` up to 0.5.6 has it, and a 0.5 range would accept one that lacks it.
+
 `check` runs in `make qa` and in CI. A version scheme that is documented rather than enforced
 drifts: this repository shipped `pyyaml>=6` and `pydantic>=2` for months, both too low to
 install on current Python, and nothing noticed until a gate resolved the declared minimum.

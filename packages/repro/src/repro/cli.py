@@ -37,8 +37,8 @@ import subprocess
 from pathlib import Path
 
 from provenance_core import atomic_write
+from provenance_core.chain import ChainError
 from provenance_core.gitref import try_run
-from results.ledger import ChainError
 
 from repro import __version__, audit, ci, crosscheck
 from repro.checks import LOCAL as LOCAL_CHECKS

@@ -1,0 +1,3 @@
+{"event":"init","prev_hash":"0000000000000000000000000000000000000000000000000000000000000000","seq":0,"timestamp":"2026-01-01T00:00:00+00:00"}
+{"event":"seal","files":[{"path":"analysis.py","sha256":"abababababababababababababababababababababababababababababababab"}],"prev_hash":"2e536c4f2032be4b2b42db60a7651faa3497ebf5321a4beafbcc775331b81fe1","seq":1,"timestamp":"2026-01-01T00:00:02+00:00"}
+{"event":"run","note":"naïve — ünïcode","prev_hash":"93937defc818929f344cfb602bbbfd2dc46dbfe2674de94be303fabaab9b7555","run_id":"exp_001","seq":2,"timestamp":"2026-01-01T00:00:04+00:00"}
