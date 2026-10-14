@@ -66,6 +66,7 @@ export interface GEdge {
 
 export interface Graph {
   project: string
+  built_at?: string
   manifest_digest: string
   totals: {
     claims: number

@@ -144,3 +144,7 @@ tr.sel { background: #f3f2fe !important; }
 .nowrap { white-space: nowrap; }
 .claim-cell { color: #3a4256; margin-top: 2px; max-width: 520px; }
 .empty { padding: 30px; text-align: center; }
+.pill.big { font-size: 12px; padding: 4px 12px; }
+.recheck { border: 1px solid #39415f; background: transparent; color: #d6dbea; border-radius: 6px; padding: 4px 12px; font-size: 12px; }
+.recheck:hover:not(:disabled) { background: #1d2338; }
+.recheck:disabled { opacity: 0.6; cursor: default; }

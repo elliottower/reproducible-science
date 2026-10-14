@@ -6,7 +6,14 @@ import { nodeTypes, UiCtx } from './nodes'
 import { fmt, Panel, when } from './shared'
 import type { Graph } from './types'
 
-function Canvas({ graph }: { graph: Graph }) {
+interface Recheck {
+  available: boolean
+  busy: boolean
+  message: string | null
+  run: () => void
+}
+
+function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
   const initial = useMemo(() => new URLSearchParams(window.location.hash.slice(1)), [])
   const [open, setOpen] = useState<Set<string>>(
     new Set((initial.get('open') ?? '').split('|').filter((g) => graph.groups.some((x) => x.id === g))),
@@ -107,18 +114,22 @@ function Canvas({ graph }: { graph: Graph }) {
           </div>
           <div className="proj muted">{graph.project}</div>
           <div className="spacer" />
-          <span className={`pill ${failing ? 'bad' : 'good'}`}>
-            {failing ? `${fmt(failing)} claims failing` : 'All claims verified'}
+          <span
+            className={`pill big ${failing ? 'bad' : 'good'}`}
+            title={graph.totals.last_check ? `${fmt(graph.totals.assertions)} assertions over ${fmt(graph.totals.artifacts)} files · last check ${when(graph.totals.last_check)}` : undefined}
+          >
+            ● {failing ? `${fmt(failing)} claims failing` : `${fmt(graph.totals.claims)} claims verified`}
           </span>
           {graph.totals.stale_steps > 0 && (
-            <span className="pill stale" title="rebuild steps whose command, inputs or output changed since their last recorded re-run (repro stale)">
+            <span className="pill big stale" title="rebuild steps whose command, inputs or output changed since their last recorded re-run (repro stale)">
               ◐ {graph.totals.stale_steps} rebuild step{graph.totals.stale_steps === 1 ? '' : 's'} stale
             </span>
           )}
-          <span className="muted small">
-            {fmt(graph.totals.claims)} claims · {fmt(graph.totals.assertions)} assertions · {fmt(graph.totals.artifacts)} files
-            {graph.totals.last_check ? ` · last check ${when(graph.totals.last_check)}` : ''}
-          </span>
+          {recheck.available && (
+            <button className="recheck" onClick={recheck.run} disabled={recheck.busy} title={recheck.message ?? 'Run repro verify and repro stale again'}>
+              {recheck.busy ? 'Checking…' : '⟳ Re-check'}
+            </button>
+          )}
         </header>
         <div className="toolbar">
           <input
@@ -174,17 +185,42 @@ function Canvas({ graph }: { graph: Graph }) {
 export default function App() {
   const [graph, setGraph] = useState<Graph | null>(null)
   const [error, setError] = useState<string | null>(null)
-  useEffect(() => {
-    fetch('graph.json')
+  const [available, setAvailable] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const [message, setMessage] = useState<string | null>(null)
+
+  const load = () =>
+    fetch(`graph.json?t=${Date.now()}`)
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`graph.json: ${r.status}`))))
       .then(setGraph)
       .catch((e) => setError(String(e)))
+
+  useEffect(() => {
+    load()
+    fetch('api/health')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((h) => setAvailable(Boolean(h?.recheck)))
+      .catch(() => setAvailable(false))
   }, [])
+
+  const run = () => {
+    setBusy(true)
+    setMessage(null)
+    fetch('api/recheck', { method: 'POST' })
+      .then((r) => r.json())
+      .then((res) => {
+        setMessage(res.ok ? `Checked in ${res.seconds}s` : `Re-check failed: ${res.error}`)
+        return res.ok ? load() : undefined
+      })
+      .catch((e) => setMessage(`Re-check failed: ${e}`))
+      .finally(() => setBusy(false))
+  }
+
   if (error) return <div className="center">{error}</div>
   if (!graph) return <div className="center muted">Loading…</div>
   return (
     <ReactFlowProvider>
-      <Canvas graph={graph} />
+      <Canvas graph={graph} recheck={{ available, busy, message, run }} />
     </ReactFlowProvider>
   )
 }

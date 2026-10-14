@@ -9,6 +9,7 @@ results ledger and the local record of checks. Writes one JSON file the web app 
 
 import argparse
 import collections
+import datetime
 import hashlib
 import json
 import pathlib
@@ -229,7 +230,12 @@ def main() -> None:
     ap.add_argument("--groups", type=pathlib.Path,
                     help="optional YAML list of {group, match}: a file whose id matches the regex goes to that group")
     a = ap.parse_args()
-    project = a.project.resolve()
+    print(build(a.project, a.out, a.groups))
+
+
+def build(project: pathlib.Path, out_path: pathlib.Path, groups_file: pathlib.Path | None = None) -> str:
+    """Write graph.json for `project` to `out_path` and return a one-line summary."""
+    project = project.resolve()
 
     manifest = yaml.safe_load((project / "repro.yaml").read_text())
     report = repro_json(project, "verify")["report"]
@@ -253,7 +259,7 @@ def main() -> None:
             if ev.get("artifact"):
                 readers[ev["artifact"]].add(c["id"])
                 places[ev["artifact"]].add(resolve_where(c.get("where", ""), labels, fixed_tables))
-    overrides = yaml.safe_load(a.groups.read_text()) if a.groups else []
+    overrides = yaml.safe_load(groups_file.read_text()) if groups_file else []
     group_of = auto_groups({k: v for k, v in artifacts.items() if k not in is_code},
                            manifest.get("regenerations", []), readers, places, overrides)
 
@@ -374,6 +380,7 @@ def main() -> None:
 
     out = {
         "project": report["project"],
+        "built_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         "manifest_digest": report["manifest_digest"],
         "totals": {
             "claims": len(report["claims"]),
@@ -390,9 +397,9 @@ def main() -> None:
         "nodes": nodes,
         "edges": edges,
     }
-    a.out.parent.mkdir(parents=True, exist_ok=True)
-    a.out.write_text(json.dumps(out, indent=1))
-    print(f"{len(nodes)} nodes, {len(edges)} edges, {len(groups)} groups -> {a.out}")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps(out, indent=1))
+    return f"{len(nodes)} nodes, {len(edges)} edges, {len(groups)} groups -> {out_path}"
 
 
 if __name__ == "__main__":
