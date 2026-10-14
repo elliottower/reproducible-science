@@ -63,6 +63,10 @@ class Need(enum.StrEnum):
     """The passage of the manuscript that makes the claim: a `quote`."""
 
 
+#: What the check found for a filling assertion whose comparison held: `verified` for a
+#: declared or reviewed one, `matched` for an inferred one.
+PASSED = frozenset({Outcome.VERIFIED.value, "matched"})
+
 #: The evidence kinds that fill each need.
 FILLS: dict[Need, frozenset[str]] = {
     Need.VALUE: frozenset({"metric", "table", "value", "aggregate", "correspondence"}),
@@ -199,8 +203,9 @@ class ItemFill(BaseModel):
     filled: bool
     by: tuple[Basis, ...] = ()
     """The basis of each assertion that fills it."""
-    outcomes: tuple[Outcome, ...] = ()
-    """The outcome of each assertion that fills it, in the same order."""
+    outcomes: tuple[str, ...] = ()
+    """What the check found for each assertion that fills it, in the same order: an inferred
+    match is `matched`, and nothing inferred is ever `verified`."""
     candidates: int = 0
     unique: bool = False
 
@@ -245,7 +250,7 @@ def _fill(item: OpenItem, evidence: tuple, decisions: tuple[Decision, ...]) -> I
         need=item.need,
         filled=bool(filling),
         by=tuple(found.counted for found, _ in filling),
-        outcomes=tuple(decision.outcome for _, decision in filling),
+        outcomes=tuple(decision.said for _, decision in filling),
         candidates=len(item.candidates),
         unique=item.unique,
     )
@@ -258,7 +263,7 @@ def _state(claim_items: tuple[ItemFill, ...], evidence: tuple) -> ClaimState:
         return ClaimState.OUTSIDE
     if not all(fill.filled for fill in claim_items):
         return ClaimState.OPEN
-    if all(outcome is Outcome.VERIFIED for fill in claim_items for outcome in fill.outcomes):
+    if all(said in PASSED for fill in claim_items for said in fill.outcomes):
         return ClaimState.BOUND
     return ClaimState.NOT_MATCHING
 
@@ -309,7 +314,7 @@ def tally(path: pathlib.Path) -> Tally:
             "open": sum(not fill.filled for fill in fills),
             "filled": sum(fill.filled for fill in fills),
             "filled_and_passing": sum(
-                fill.filled and all(o is Outcome.VERIFIED for o in fill.outcomes) for fill in fills
+                fill.filled and all(said in PASSED for said in fill.outcomes) for fill in fills
             ),
             "filled_by_inferred": sum(fill.filled and Basis.INFERRED in fill.by for fill in fills),
             "filled_by_declared_only": sum(

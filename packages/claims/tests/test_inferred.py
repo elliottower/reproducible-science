@@ -146,6 +146,12 @@ def test_no_word_verify_prints_calls_an_inferred_match_verified(tmp_path, capsys
     assert "1 inferred_matched" in shown
 
 
+def test_why_says_a_claim_of_one_inferred_match_plainly(tmp_path, capsys):
+    manifest = project(tmp_path, metric("0.912", "/auc", basis="inferred"))
+    assert main(["why", "auc", str(manifest.path)]) == 0
+    assert "  1 assertion: 1 inferred that matched;" in capsys.readouterr().out
+
+
 def test_an_inferred_mismatch_is_still_a_mismatch(tmp_path):
     report = verify(project(tmp_path, metric("0.913", "/auc", basis="inferred")))
 
@@ -351,3 +357,6 @@ def test_open_items_prints_the_tally_as_json(tmp_path, capsys):
         "outside": 0,
     }
     assert "inferred_counted_as_verified" not in printed
+    filled = next(c for c in printed["per_claim"] if c["claim"] == "auc")["items"][0]
+    assert filled["outcomes"] == ["matched"]
+    assert "verified" not in json.dumps(filled)

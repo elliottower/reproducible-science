@@ -701,14 +701,14 @@ def _why_lines(account: ClaimAccount) -> list[str]:
         state: n for state, n in account.states.items() if state is not Freshness.NO_PRODUCER
     }
     count = sum(covered.values())
+    found = [f"{n} {_said(outcome)}" for outcome, n in outcomes.items()] + [
+        f"{n} inferred "
+        + ("that matched" if outcome is Outcome.VERIFIED else f"and {_said(outcome)}")
+        for outcome, n in account.inferred.items()
+    ]
     summary = (
         f"  {total} assertion{'' if total == 1 else 's'}: "
-        + (", ".join(f"{n} {_said(outcome)}" for outcome, n in outcomes.items()) or "none")
-        + "".join(
-            f", {n} inferred "
-            + ("that matched" if outcome is Outcome.VERIFIED else f"and {_said(outcome)}")
-            for outcome, n in account.inferred.items()
-        )
+        + (", ".join(found) or "none")
         + f"; {count} of {total} read{'s' if count == 1 else ''} a file with a recorded producer"
         + "".join(f", {n} {_said(state)}" for state, n in covered.items())
     )
