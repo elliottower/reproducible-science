@@ -142,9 +142,6 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
             ))}
           </div>
           <div className="spacer" />
-          {mode !== 'overview' && (
-            <input className="search top-search" placeholder="Search" value={query} onChange={(e) => setQuery(e.target.value)} />
-          )}
           <span
             className={`pill big ${failing ? 'bad' : 'good'}`}
             title={graph.totals.last_check ? `${fmt(graph.totals.assertions)} assertions over ${fmt(graph.totals.artifacts)} files · last check ${when(graph.totals.last_check)}` : undefined}
@@ -171,12 +168,16 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
           <ClaudeButton prompt={projectPrompt(graph, graph.project_dir ?? null)} subject="whole project" />
           {recheck.message && <span className="error-note">{recheck.message}</span>}
         </header>
-        <div className="toolbar" style={mode === 'graph' ? undefined : { display: 'none' }}>
-          <div className="mono rec-line graph-line">
-            <span className="ov-cmd">graph:</span> where each number comes from
-            <span className="muted small graph-key"> · files left, paper sections right · solid: claims read this file · dashed: a rebuild step makes it</span>
-          </div>
-          <div className="spacer" />
+        <div className="toolbar" style={mode === 'overview' ? { display: 'none' } : undefined}>
+          <input
+            className="search"
+            placeholder={({
+              prereg: 'Search the plan', results: 'Search runs, notes and files', citations: 'Search sources, quotations and interpretations',
+              claims: 'Search claims, sections and files', reproduce: 'Search rebuild steps and commands', graph: 'Search files, sections, claim text… (e.g. 1,062 or timings)',
+            } as Record<string, string>)[mode] ?? 'Search'}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
           {mode === 'graph' && matches.size > 0 && (
             <button onClick={expandMatches}>Open {matches.size} match{matches.size === 1 ? '' : 'es'}</button>
           )}
@@ -198,6 +199,10 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
         ) : (
           <div className="body">
             <div className="canvas">
+              <div className="graph-key-box">
+                <span className="mono"><span className="ov-cmd">graph:</span> where each number comes from</span>
+                <span className="muted small">files left, paper sections right · solid: claims read this file · dashed: a rebuild step makes it</span>
+              </div>
               <ReactFlow
                 nodes={flow.nodes}
                 edges={edges}
