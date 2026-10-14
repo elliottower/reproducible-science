@@ -112,10 +112,23 @@ A project with no `.gitignore` gets one holding those lines. An existing `.gitig
 
 ## Write a manifest
 
-`repro verify` reads `repro.yaml`, the manifest that pins a project's files and declares what the manuscript claims about them. In a project that has none, `repro verify` reports what one could check, and writes nothing:
+`repro verify` reads `repro.yaml`, the manifest that pins a project's files and declares what the manuscript claims about them. In a project that has none, `repro verify` reports what one could check, and writes nothing. For a project holding three files:
+
+```text
+results/metrics.json  {"model": "lasso", "scores": {"accuracy": 0.9312, "n": 480, "rate": 0.0426}}
+results/table.csv     model,auc
+                      lasso,0.71
+```
+
+```markdown
+# Results
+
+In 2024 we fit the lasso to 480 participants.
+Held-out accuracy was 0.931, and the error rate was 4.3% (Table 2).
+We ran 3 seeds; the AUC was 0.71, not 0.55.
+```
 
 ```bash
-cd my_experiment
 repro verify
 ```
 
@@ -129,11 +142,15 @@ found by looking under results/, paper/artifacts/, outputs/, data/ and for one m
     CSV, TSV and PSV  results/table.csv
   manuscript: paper.md
 
-  candidate bindings, guessed: 2 of the 4 numbers paper.md prints agree
-  with one of the 4 values read from 2 result files, at the precision printed.
+  candidate bindings, guessed: 4 of the 5 numbers compared agree with one of
+  the 4 values read from 2 result files, at the precision printed.
   A guess says the digits agree, never that the sentence reports that value.
+    guess  line 3    480    results/metrics.json /scores/n holds 480
+                            ...fit the lasso to 480 participants. held-out accuracy was...
     guess  line 4    0.931  results/metrics.json /scores/accuracy holds 0.9312
                             ...participants. held-out accuracy was 0.931, and the error rate...
+    guess  line 4    4.3%   results/metrics.json /scores/rate holds 0.0426, as a percentage
+                            ...the error rate was 4.3% (table 2). we ran...
     guess  line 5    0.71   results/table.csv column auc, row 0 holds 0.71
                             ...seeds; the auc was 0.71, not 0.55....
 
@@ -145,7 +162,26 @@ write one that pins this project's result files, with example claims to edit:
     repro manifest init
 ```
 
-The files are the ones `repro manifest init` would pin, found as it finds them. The numbers the manuscript prints are the ones `repro numbers` would count as unbound, in digits, with two digits or a decimal point, so years, labels, citations and single digits are left out. Each is compared with every number a JSON or YAML file holds and every cell of a CSV, TSV, PSV or columnar table, by the comparison a numeric assertion makes at the precision printed; a number printed with a percent sign is also compared as a percentage. A match is a guess and is never counted as verified. At most 10,000 numbers are read from one file and 1,000,000 comparisons made, and where either limit is reached a note says so. The command exits 2, as every command does with nothing to read: nothing was checked, which is neither a pass nor a failure. `--format json` prints the same survey as one document, and `--format sarif` a run with no results, a warning that nothing was verified, and the survey in its properties.
+The files are the ones `repro manifest init` would pin, found as it finds them. The numbers the manuscript prints are the ones `repro numbers` would count as unbound, in digits, with two digits or a decimal point, so years, labels, citations and single digits are left out. Each is compared with every number a JSON or YAML file holds, in mappings and in lists, and every cell of a CSV, TSV, PSV or columnar table, by the comparison a numeric assertion makes at the precision printed. A number printed with a percent sign is also compared as a percentage. A column with no name, and a column of at least three whole numbers each greater than the one before (an index or a step count), are compared with nothing, and a note names each. One number agreeing with several rows of one column is one guess, with the count of the other rows. Guesses in JSON and YAML files are listed before guesses in tables.
+
+A guess is never counted as verified. At most 10,000 numbers are read from one file, and a delimited file is read no further than that. At most 1,000,000 comparisons are made. A note says where either limit was reached, and the headline counts the numbers compared and how many were not. A file that cannot be read is a note. The command exits 2, as every command does with nothing to read: nothing was checked, which is neither a pass nor a failure.
+
+`--format json` prints one document:
+
+| key | holds |
+|---|---|
+| `schema_version` | `reproducible.science/survey/0.1-experimental` |
+| `manifest` | `null` |
+| `verified` | `0` |
+| `survey.results` | the result files, relative to the project, under `tree`, `delimited`, `columnar`, `workbook`, `sqlite` or `array` |
+| `survey.manuscript` | the manuscript's path, or `null` |
+| `survey.notes` | what was passed over, could not be read, was skipped, or reached a limit |
+| `survey.read_from`, `survey.values` | the files numbers were read from, and how many numbers |
+| `survey.cut`, `survey.skipped_columns` | files cut at the limit, and columns compared with nothing |
+| `survey.compared`, `survey.not_compared` | numbers the manuscript prints that were compared, and that the limit left uncompared |
+| `survey.candidates` | each guess: `printed`, `line`, `offset`, `context`, `path`, `locator` (`{kind: tree, pointer}` or `{kind: table_position, column, row}`), `stored`, `conversion`, `more_rows` |
+
+`--format sarif` prints a run with no results, a warning notification in its invocation saying nothing was verified, and `schema_version`, `verified` and `survey` in the run's properties.
 
 To write the manifest:
 

@@ -18,7 +18,7 @@ from typing import Any
 
 from claims.models import Ordering, Outcome, Validity, VerificationReport
 from claims.policy import Assessment, Severity
-from claims.starter import Survey
+from claims.starter import SURVEY_SCHEMA, Survey
 
 SCHEMA = "https://json.schemastore.org/sarif-2.1.0.json"
 VERSION = "2.1.0"
@@ -334,6 +334,7 @@ def survey_to_sarif(found: Survey, version: str = "0") -> dict[str, Any]:
                 ],
                 "results": [],
                 "properties": {
+                    "schema_version": SURVEY_SCHEMA,
                     "verified": 0,
                     "survey": found.model_dump(mode="json"),
                 },

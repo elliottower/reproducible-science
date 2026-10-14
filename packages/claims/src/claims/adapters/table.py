@@ -9,7 +9,10 @@ from __future__ import annotations
 
 import csv
 import io
+import itertools
 import pathlib
+from collections.abc import Generator
+from typing import IO
 
 from claims.adapters.base import Found, Resolution, _no
 from claims.adapters.cells import Cell, render
@@ -81,17 +84,46 @@ def _delimited(path: pathlib.Path, delimiter: str) -> tuple[list[str], list[dict
     return header, text
 
 
-def read_cells(path: pathlib.Path) -> tuple[list[str], list[dict[str, Cell]]]:
-    """Every column of a delimited or columnar table, each cell as a table locator reads it.
+def read_cells(path: pathlib.Path) -> tuple[list[str], Generator[dict[str, Cell], None, None]]:
+    """Every column of a delimited or columnar table, each cell as a table locator reads it,
+    with the rows as an iterator.
 
-    A columnar reader reads only the columns it is asked for, so the header is read first and
-    then every column it names once. Raises `ArtifactUnreadableError`, and for a columnar file
-    whose reader is not installed `BackendUnavailableError`.
+    Delimited text is read a row at a time, so a caller that stops early reads no further into
+    the file. A columnar reader reads only the columns it is asked for, so its header is read
+    first and then every column it names, whole. Raises `ArtifactUnreadableError`, and for a
+    columnar file whose reader is not installed `BackendUnavailableError`.
     """
     if path.suffix.lower() in COLUMNAR_SUFFIXES:
         header, _ = read_columnar(path, set())
-        return read_columnar(path, set(header))
-    return _delimited(path, "")
+        header, rows = read_columnar(path, set(header))
+        return header, (row for row in rows)
+    try:
+        handle = path.open(encoding="utf-8-sig", newline="")
+        first = handle.readline()
+    except (OSError, UnicodeDecodeError) as e:
+        raise ArtifactUnreadableError(path, str(e)) from e
+    if not first.strip():
+        handle.close()
+        raise ArtifactUnreadableError(path, "file is empty")
+    reader = csv.DictReader(
+        itertools.chain([first], handle), delimiter=sniff_delimiter(path, first)
+    )
+    if reader.fieldnames is None:  # pragma: no cover - a non-blank first line is a header
+        handle.close()
+        raise ArtifactUnreadableError(path, "no header row")
+    return list(reader.fieldnames), _streamed(path, handle, reader)
+
+
+def _streamed(
+    path: pathlib.Path, handle: IO[str], reader: csv.DictReader
+) -> Generator[dict[str, Cell], None, None]:
+    """The rows of an open delimited file as `_delimited` gives them, closing it when done."""
+    with handle:
+        try:
+            for row in reader:
+                yield {k: (v or "").strip() for k, v in row.items() if k is not None}
+        except (OSError, UnicodeDecodeError, csv.Error) as e:
+            raise ArtifactUnreadableError(path, str(e)) from e
 
 
 def _load(path: pathlib.Path, delimiter: str, wanted: set[str]) -> tuple[tuple, Found | None]:

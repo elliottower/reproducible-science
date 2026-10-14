@@ -69,7 +69,9 @@ from claims.reruns import RECORD
 from claims.stale import stale as run_stale
 from claims.starter import (
     CONVENTIONAL,
+    FORMAT_NAMES,
     MAX_DISCOVERED,
+    SURVEY_SCHEMA,
     Survey,
     address_said,
     project_root,
@@ -163,8 +165,9 @@ def _survey_lines(found: Survey) -> list[str]:
 
     count = sum(len(paths) for paths in found.results.values())
     lines.append(f"  result files: {count}")
-    width = max((len(name) for name in found.results), default=0)
-    for name, paths in found.results.items():
+    names = {FORMAT_NAMES[key]: paths for key, paths in found.results.items()}
+    width = max((len(name) for name in names), default=0)
+    for name, paths in names.items():
         lines += [f"    {name if i == 0 else '':<{width}}  {p}" for i, p in enumerate(paths)]
     if found.capped:
         lines.append(
@@ -179,13 +182,19 @@ def _survey_lines(found: Survey) -> list[str]:
         lines.append(f"  candidate bindings: none, because there is {missing} to compare")
     else:
         agreeing = len({c.offset for c in found.candidates})
-        lines += [
+        files = f"{len(found.read_from)} result file{'' if len(found.read_from) == 1 else 's'}"
+        lines.append(
             f"  candidate bindings, guessed: {agreeing} of the {found.compared} numbers "
-            f"{found.manuscript} prints agree",
-            f"  with one of the {found.values} values read from {len(found.read_from)} result "
-            f"file{'' if len(found.read_from) == 1 else 's'}, at the precision printed.",
-            "  A guess says the digits agree, never that the sentence reports that value.",
-        ]
+            "compared agree with one of"
+        )
+        lines.append(f"  the {found.values} values read from {files}, at the precision printed.")
+        if found.not_compared:
+            printed = found.compared + found.not_compared
+            lines.append(
+                f"  {found.not_compared} of the {printed} numbers {found.manuscript} prints were "
+                "not compared: the cap on comparisons was reached."
+            )
+        lines.append("  A guess says the digits agree, never that the sentence reports that value.")
         shown = found.candidates[:SHOWN_CANDIDATES]
         width = max((len(c.printed) for c in shown), default=0)
         for c in shown:
@@ -193,6 +202,8 @@ def _survey_lines(found: Survey) -> list[str]:
             held = f"{c.path} {address_said(c.locator)} holds {c.stored}"
             if c.conversion is not None:
                 held += f", {c.conversion.said}"
+            if c.more_rows:
+                held += f", and {c.more_rows} more row{'' if c.more_rows == 1 else 's'}"
             lines.append(f"    guess  {where:<8}  {c.printed:<{width}}  {held}")
             lines.append(f"           {'':<8}  {'':<{width}}  ...{c.context}...")
         if len(found.candidates) > SHOWN_CANDIDATES:
@@ -216,7 +227,12 @@ def cmd_verify(args: argparse.Namespace) -> int:
         if args.format == "json":
             print(
                 json.dumps(
-                    {"manifest": None, "verified": 0, "survey": found.model_dump(mode="json")},
+                    {
+                        "schema_version": SURVEY_SCHEMA,
+                        "manifest": None,
+                        "verified": 0,
+                        "survey": found.model_dump(mode="json"),
+                    },
                     indent=2,
                 )
             )

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 
 import claims.starter
@@ -46,8 +47,8 @@ def snapshot(root):
 def test_a_printed_number_that_a_result_file_holds_is_a_candidate_and_no_other_is(project):
     found = survey(project)
     assert found.results == {
-        "JSON and YAML": ("results/metrics.json",),
-        "CSV, TSV and PSV": ("results/table.csv",),
+        "tree": ("results/metrics.json",),
+        "delimited": ("results/table.csv",),
     }
     assert found.manuscript == "paper.md"
     bound = {
@@ -98,7 +99,7 @@ def test_verify_with_no_manifest_reports_guesses_verifies_nothing_and_exits_2(pr
     out = capsys.readouterr().out
     assert out.startswith("no repro.yaml here or above.\n")
     assert out.rstrip().endswith("    claims manifest init")
-    assert "candidate bindings, guessed: 4 of the 5 numbers paper.md prints agree" in out
+    assert "candidate bindings, guessed: 4 of the 5 numbers compared agree with one of" in out
     assert "results/metrics.json /scores/accuracy holds 0.9312" in out
     assert "results/table.csv column auc, row 0 holds 0.71" in out
     assert "verified: 0." in out
@@ -120,7 +121,7 @@ def test_with_every_printed_number_matching_verify_still_does_not_pass(project, 
     (project / "paper.md").write_text("Held-out accuracy was 0.931 over 480 people.\n")
     assert main(["verify"]) == 2
     out = capsys.readouterr().out
-    assert "2 of the 2 numbers" in out
+    assert "2 of the 2 numbers compared" in out
     assert "passed" not in out
 
 
@@ -162,7 +163,7 @@ def test_a_file_over_the_value_cap_is_cut_and_said_to_be(project, monkeypatch):
     found = survey(project)
     assert found.cut == ("results/metrics.json",)
     assert found.values == 2 + 1
-    assert any("results/metrics.json holds more than 2 numbers" in n for n in found.notes)
+    assert any("results/metrics.json was read no further than 2 values" in n for n in found.notes)
     # /scores/rate is the third number, so the percentage is no longer found.
     assert "0.0426" not in {c.stored for c in found.candidates}
 
@@ -176,3 +177,114 @@ def test_comparisons_stop_at_the_cap_and_say_how_many_were_not_made(project, mon
     assert any(
         "4 of the 5 numbers the manuscript prints were not compared" in n for n in found.notes
     )
+
+
+def test_an_unreadable_manuscript_is_a_note_and_verify_still_exits_2(project, capsys):
+    if os.geteuid() == 0:
+        pytest.skip("root reads a mode-000 file")
+    (project / "paper.md").chmod(0)
+    try:
+        assert main(["verify"]) == 2
+        out = capsys.readouterr().out
+    finally:
+        (project / "paper.md").chmod(0o644)
+    assert "note: paper.md could not be read:" in out
+    assert "verified: 0." in out
+
+
+def test_json_nested_deeper_than_the_interpreter_recurses_is_read(project):
+    (project / "results" / "metrics.json").write_text('{"a":' * 3000 + "0.931" + "}" * 3000)
+    (project / "results" / "table.csv").unlink()
+    found = survey(project)
+    (candidate,) = found.candidates
+    assert candidate.locator == {"kind": "tree", "pointer": "/a" * 3000}
+    assert main(["verify"]) == 2
+
+
+def test_numbers_in_json_lists_are_read_at_their_index(project):
+    (project / "results" / "metrics.json").write_text(
+        json.dumps({"runs": [{"acc": 0.9}, {"acc": 0.931}]})
+    )
+    found = survey(project)
+    tree = [c.locator for c in found.candidates if c.locator["kind"] == "tree"]
+    assert tree == [{"kind": "tree", "pointer": "/runs/1/acc"}]
+
+
+def write_table(project, text):
+    (project / "results" / "table.csv").write_text(text)
+    (project / "results" / "metrics.json").unlink()
+
+
+def test_an_index_column_and_an_unnamed_one_are_compared_with_nothing_and_named(project):
+    rows = "".join(f"{i},{i * 2},{1 / (i + 1):.4f}\n" for i in range(2000))
+    write_table(project, ",step,loss\n" + rows)
+    (project / "paper.md").write_text("A 12-layer model, 768 units, batch 512; loss 0.0213.\n")
+    found = survey(project)
+    assert [(c.printed, c.locator["column"]) for c in found.candidates] == [("0.0213", "loss")]
+    assert found.skipped_columns == (
+        "results/table.csv: a column with no name was compared with nothing",
+        "results/table.csv: column step was compared with nothing, as an index: its values "
+        "are whole numbers that only increase",
+    )
+    assert set(found.skipped_columns) <= set(found.notes)
+
+
+def test_a_column_that_only_decreases_or_repeats_is_still_compared(project):
+    write_table(project, "epochs\n100\n100\n100\n")
+    (project / "paper.md").write_text("We trained for 100 epochs.\n")
+    (candidate,) = survey(project).candidates
+    assert (candidate.locator["row"], candidate.more_rows) == (0, 2)
+
+
+def test_one_number_matching_many_rows_of_a_column_is_one_guess(project, capsys):
+    write_table(project, "epochs,f1\n100,0.5\n100,0.6\n100,0.7\n12,0.8\n")
+    (project / "paper.md").write_text("We trained for 100 epochs.\n")
+    assert main(["verify"]) == 2
+    out = capsys.readouterr().out
+    assert "results/table.csv column epochs, row 0 holds 100, and 2 more rows" in out
+    assert out.count("    guess  ") == 1
+
+
+def test_guesses_in_json_and_yaml_come_before_guesses_in_tables(project):
+    (project / "paper.md").write_text("The AUC was 0.71 and accuracy 0.931.\n")
+    kinds = [c.locator["kind"] for c in survey(project).candidates]
+    assert kinds == ["tree", "table_position"]
+
+
+def test_with_the_comparison_cap_reached_the_headline_counts_what_was_compared(
+    project, monkeypatch, capsys
+):
+    monkeypatch.setattr(claims.starter, "MAX_COMPARISONS", 20)
+    (project / "paper.md").write_text(" ".join(f"{i}.5" for i in range(10, 60)) + "\n")
+    assert main(["verify"]) == 2
+    out = capsys.readouterr().out
+    # Four values are held, so the cap allows five numbers.
+    assert "guessed: 0 of the 5 numbers compared" in out
+    assert "45 of the 50 numbers paper.md prints were not compared" in out
+
+
+def test_json_names_its_schema_keys_formats_by_a_stable_key_and_holds_no_absolute_path(
+    project, capsys
+):
+    assert main(["verify", "--format", "json"]) == 2
+    text = capsys.readouterr().out
+    document = json.loads(text)
+    assert document["schema_version"] == "reproducible.science/survey/0.1-experimental"
+    assert set(document["survey"]["results"]) == {"tree", "delimited"}
+    assert "root" not in document["survey"]
+    assert str(project) not in text
+
+
+def test_a_delimited_file_is_read_no_further_than_the_value_cap(project, monkeypatch):
+    # Bytes that are not UTF-8 far past the first rows: a reader that reads the whole file
+    # refuses it, and one that stops at the cap never reaches them.
+    rows = "".join(f"run{i},0.{i:05d}\n" for i in range(20_000)).encode()
+    (project / "results" / "table.csv").write_bytes(b"model,auc\n" + rows + b"\xff\xfe\n")
+    monkeypatch.setattr(claims.starter, "MAX_VALUES_PER_FILE", 10**6)
+    whole = survey(project)
+    assert any(n.startswith("results/table.csv could not be read") for n in whole.notes)
+    monkeypatch.setattr(claims.starter, "MAX_VALUES_PER_FILE", 10)
+    cut = survey(project)
+    assert cut.cut == ("results/table.csv",)
+    assert not any("could not be read" in n for n in cut.notes)
+    assert "results/table.csv was read no further than 10 values" in " ".join(cut.notes)

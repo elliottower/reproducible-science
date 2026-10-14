@@ -40,6 +40,7 @@ from claims.adapters.sqlite import _SQLITE_SUFFIXES
 from claims.adapters.table import _DELIMITERS, read_cells
 from claims.adapters.tree import _TREE_SUFFIXES, Written, _load_tree
 from claims.exceptions import (
+    ArtifactMissingError,
     ArtifactRefusedError,
     ArtifactUnreadableError,
     BackendUnavailableError,
@@ -94,16 +95,24 @@ MAX_COMPARISONS = 1_000_000
 
 _NOT_SEARCHED = {"node_modules", "__pycache__", "venv", "env", "site-packages"}
 
-#: The formats discovery finds, each named as a reader knows it, with the suffixes its adapter
-#: reads. A survey groups the result files under these names, in this order.
+#: The formats discovery finds: the key a survey groups result files under, the name a reader
+#: knows the format by, and the suffixes its adapter reads, in the order a survey lists them.
 FORMATS = (
-    ("JSON and YAML", frozenset(_TREE_SUFFIXES)),
-    ("CSV, TSV and PSV", frozenset(_DELIMITERS)),
-    ("Parquet, Feather, Stata, SPSS, .rds", frozenset(COLUMNAR_SUFFIXES)),
-    ("Excel", frozenset(WORKBOOK_SUFFIXES)),
-    ("SQLite", frozenset(_SQLITE_SUFFIXES)),
-    ("NumPy, HDF5 and NetCDF", frozenset(_ARRAY_SUFFIXES)),
+    ("tree", "JSON and YAML", frozenset(_TREE_SUFFIXES)),
+    ("delimited", "CSV, TSV and PSV", frozenset(_DELIMITERS)),
+    ("columnar", "Parquet, Feather, Stata, SPSS, .rds", frozenset(COLUMNAR_SUFFIXES)),
+    ("workbook", "Excel", frozenset(WORKBOOK_SUFFIXES)),
+    ("sqlite", "SQLite", frozenset(_SQLITE_SUFFIXES)),
+    ("array", "NumPy, HDF5 and NetCDF", frozenset(_ARRAY_SUFFIXES)),
 )
+FORMAT_NAMES = {key: name for key, name, _ in FORMATS}
+
+#: What a survey's JSON document is, and the revision of its shape.
+SURVEY_SCHEMA = "reproducible.science/survey/0.1-experimental"
+
+#: A table column with at least this many rows, every one a whole number and each greater than
+#: the one before, is an index or a step count, and a survey compares nothing with it.
+INDEX_MIN_ROWS = 3
 
 #: The standard library's own table, never the host's `mime.types`, so one file gets one media
 #: type on every machine. The overrides are suffixes that table lacks in some supported Python:
@@ -239,6 +248,9 @@ class Candidate(BaseModel):
     stored: str
     """The value there, as the file writes it."""
     conversion: Conversion | None = None
+    more_rows: int = 0
+    """How many later rows of the same column the same number also agrees with. One guess
+    stands for all of them, and `locator` names the first."""
 
 
 class Survey(BaseModel):
@@ -246,26 +258,30 @@ class Survey(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    root: pathlib.Path
     results: dict[str, tuple[str, ...]]
-    """Each result file found, relative to the project, under the name of its format."""
+    """Each result file found, relative to the project, under the key of its format in
+    `FORMATS`: `tree`, `delimited`, `columnar`, `workbook`, `sqlite` or `array`."""
     capped: bool = False
     """Discovery found more than `MAX_DISCOVERED` result files and kept the first of them."""
     manuscript: str | None = None
     notes: tuple[str, ...] = ()
-    """What discovery passed over, what could not be read, and where a cap was reached."""
+    """What discovery passed over, what could not be read, what was skipped, and where a cap
+    was reached."""
     read_from: tuple[str, ...] = ()
     """The result files values were read from: JSON, YAML, and tables a table locator reads."""
     values: int = 0
     """How many numbers were read from those files, at most `MAX_VALUES_PER_FILE` from each."""
     cut: tuple[str, ...] = ()
     """The files holding more than `MAX_VALUES_PER_FILE` numbers, of which the first were read."""
+    skipped_columns: tuple[str, ...] = ()
+    """Table columns compared with nothing, as `path: column`: unnamed, or index-like."""
     compared: int = 0
     """How many numbers the manuscript prints were compared with those values: the ones no
     rule sets aside, printed in digits, with two digits or a decimal point."""
     not_compared: int = 0
     """How many such numbers were left uncompared because `MAX_COMPARISONS` was reached."""
     candidates: tuple[Candidate, ...] = ()
+    """Matches in JSON and YAML files first, then in tables, each in manuscript order."""
 
 
 def project_root(start: pathlib.Path) -> pathlib.Path:
@@ -378,19 +394,27 @@ def _pins(paths: list[pathlib.Path], root: pathlib.Path) -> list[dict]:
     return pins
 
 
-def _numbers(node: object, pointer: str = "") -> Iterator[tuple[str, str]]:
-    """Every finite number reachable through mappings, in document order, with its pointer."""
-    if isinstance(node, dict):
-        for key, value in node.items():
-            if isinstance(key, str):
-                token = key.replace("~", "~0").replace("/", "~1")
-                yield from _numbers(value, f"{pointer}/{token}")
-    elif isinstance(node, Written):
-        # A number with a fraction or an exponent arrives as the text the file wrote.
-        if decimal.Decimal(node).is_finite():
+def _numbers(node: object) -> Iterator[tuple[str, str]]:
+    """Every finite number reachable through mappings and lists, in document order, with its
+    RFC 6901 pointer. Walked with a stack of its own, so no nesting depth exhausts Python's."""
+    stack: list[tuple[str, object]] = [("", node)]
+    while stack:
+        pointer, node = stack.pop()
+        if isinstance(node, dict):
+            children = [
+                (f"{pointer}/{key.replace('~', '~0').replace('/', '~1')}", value)
+                for key, value in node.items()
+                if isinstance(key, str)
+            ]
+            stack.extend(reversed(children))
+        elif isinstance(node, list):
+            stack.extend(reversed([(f"{pointer}/{i}", value) for i, value in enumerate(node)]))
+        elif isinstance(node, Written):
+            # A number with a fraction or an exponent arrives as the text the file wrote.
+            if decimal.Decimal(node).is_finite():
+                yield pointer, str(node)
+        elif isinstance(node, (int, float)) and not isinstance(node, bool) and math.isfinite(node):
             yield pointer, str(node)
-    elif isinstance(node, (int, float)) and not isinstance(node, bool) and math.isfinite(node):
-        yield pointer, str(node)
 
 
 def _metric_examples(pins: list[dict], root: pathlib.Path) -> Iterator[tuple[dict, dict]]:
@@ -521,34 +545,86 @@ def write(
 
 
 def _format(path: pathlib.Path) -> str:
-    """The name of the format a discovered result file is in."""
-    return next(name for name, suffixes in FORMATS if path.suffix.lower() in suffixes)
+    """The key of the format a discovered result file is in."""
+    return next(key for key, _, suffixes in FORMATS if path.suffix.lower() in suffixes)
 
 
-def _held(path: pathlib.Path) -> Iterator[tuple[dict[str, str | int], str]]:
-    """Every finite number a result file holds, with the locator that reads it, in file order.
+class _Read(BaseModel):
+    """The numbers read from one result file, and what was left out of them."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    values: tuple[tuple[dict[str, str | int], str], ...] = ()
+    cut: bool = False
+    skipped: tuple[str, ...] = ()
+    """Columns compared with nothing, each with why."""
+
+
+def _finite(cell: object) -> bool:
+    if not isinstance(cell, str):
+        return False
+    try:
+        return decimal.Decimal(cell).is_finite()
+    except (decimal.InvalidOperation, ValueError):
+        return False
+
+
+def _index_like(cells: list[object]) -> bool:
+    """Every cell a whole number, each greater than the one before, over enough rows."""
+    if len(cells) < INDEX_MIN_ROWS or not all(_finite(c) for c in cells):
+        return False
+    numbers = [decimal.Decimal(str(c)) for c in cells]
+    if any(n != n.to_integral_value() for n in numbers):
+        return False
+    return all(a < b for a, b in itertools.pairwise(numbers))
+
+
+def _read_values(path: pathlib.Path, cap: int) -> _Read:
+    """At most `cap` finite numbers from one result file, each with the locator that reads it.
 
     A JSON or YAML file is read as the example `metric` claim reads it, and a delimited or
-    columnar table by the table adapter, cell by cell. Other formats yield nothing: a workbook
-    or a database holds several tables, and an array no column names.
+    columnar table by the table adapter. Delimited text is read only as far as `cap` cells, so
+    a large file is never held whole. A column with no name or an index-like one is left out.
+    Other formats give nothing: a workbook or a database holds several tables, and an array no
+    column names.
     """
     suffix = path.suffix.lower()
     if suffix in _TREE_SUFFIXES:
-        for pointer, value in _numbers(_load_tree(path)):
-            yield {"kind": "tree", "pointer": pointer}, value
-    elif suffix in _DELIMITERS or suffix in COLUMNAR_SUFFIXES:
-        header, rows = read_cells(path)
-        for row_number, row in enumerate(rows):
-            for column in header:
-                cell = row.get(column)
-                if not isinstance(cell, str):
-                    continue
-                try:
-                    finite = decimal.Decimal(cell).is_finite()
-                except (decimal.InvalidOperation, ValueError):
-                    continue
-                if finite:
-                    yield {"kind": "table_position", "column": column, "row": row_number}, cell
+        values = [
+            ({"kind": "tree", "pointer": pointer}, value)
+            for pointer, value in itertools.islice(_numbers(_load_tree(path)), cap + 1)
+        ]
+        return _Read(values=tuple(values[:cap]), cut=len(values) > cap)
+    if suffix not in _DELIMITERS and suffix not in COLUMNAR_SUFFIXES:
+        return _Read()
+
+    header, rows = read_cells(path)
+    width = max(len(header), 1)
+    kept = list(itertools.islice(rows, cap // width + 1))
+    more = next(rows, None) is not None
+    rows.close()
+    skipped, columns = [], []
+    for column in header:
+        if not column.strip():
+            skipped.append("a column with no name was compared with nothing")
+        elif _index_like([row.get(column) for row in kept]):
+            skipped.append(
+                f"column {column} was compared with nothing, as an index: its values are "
+                "whole numbers that only increase"
+            )
+        else:
+            columns.append(column)
+    values = [
+        ({"kind": "table_position", "column": column, "row": number}, str(row[column]))
+        for number, row in enumerate(kept)
+        for column in columns
+        if _finite(row.get(column))
+    ]
+    return _Read(
+        values=tuple(values[:cap]),
+        cut=more or len(values) > cap,
+        skipped=tuple(skipped),
+    )
 
 
 def address_said(locator: dict[str, str | int]) -> str:
@@ -558,18 +634,41 @@ def address_said(locator: dict[str, str | int]) -> str:
     return f"column {locator['column']}, row {locator['row']}"
 
 
+def _collapsed(candidates: list[Candidate]) -> list[Candidate]:
+    """One guess per printed number, table column and conversion, counting the other rows;
+    then those in JSON and YAML files before those in tables, each in manuscript order."""
+    first: dict[tuple, int] = {}
+    kept: list[Candidate] = []
+    for c in candidates:
+        if c.locator["kind"] != "table_position":
+            kept.append(c)
+            continue
+        key = (c.offset, c.path, c.locator["column"], c.conversion)
+        if key in first:
+            index = first[key]
+            kept[index] = kept[index].model_copy(update={"more_rows": kept[index].more_rows + 1})
+        else:
+            first[key] = len(kept)
+            kept.append(c)
+    return sorted(kept, key=lambda c: (c.locator["kind"] == "table_position", c.offset))
+
+
 def survey(root: pathlib.Path) -> Survey:
     """What `repro verify` could check at `root`, found as `write` finds it, writing nothing.
 
     The manuscript's numbers are those `claims.numbers` counts, read through a manifest held in
     memory that pins the manuscript and declares no claim. Each one that no rule sets aside is
-    compared with every number `_held` reads from a discovered result file, by
+    compared with every number `_read_values` reads from a discovered result file, by
     `claims.verify.agrees`, the comparison a numeric assertion makes, at the precision printed;
     a number printed with a percent sign is also compared as a percentage of the stored value.
     Every agreement is a `Candidate`. At most `MAX_VALUES_PER_FILE` numbers are read from one
-    file and `MAX_COMPARISONS` comparisons made, and where either is reached a note says so.
+    file and `MAX_COMPARISONS` comparisons made, and where either is reached a note says so. A
+    file that cannot be read is a note, never an exception.
     """
-    found, capped, notes = discover(root)
+    try:
+        found, capped, notes = discover(root)
+    except OSError as e:
+        found, capped, notes = [], False, [f"discovery stopped: {e.filename}: {e.strerror}"]
     manuscripts = [path for path in found if path.suffix.lower() in TEXT_SUFFIXES]
     results = [path for path in found if path not in manuscripts]
 
@@ -578,34 +677,42 @@ def survey(root: pathlib.Path) -> Survey:
         grouped.setdefault(_format(path), []).append(path.relative_to(root).as_posix())
 
     held: list[tuple[str, dict[str, str | int], str]] = []
-    read_from, cut = [], []
+    read_from, cut, skipped_columns = [], [], []
     for path in results:
         relative = path.relative_to(root).as_posix()
         try:
-            values = list(itertools.islice(_held(path), MAX_VALUES_PER_FILE + 1))
+            read = _read_values(path, MAX_VALUES_PER_FILE)
         except (ArtifactUnreadableError, BackendUnavailableError) as e:
             notes.append(f"{relative} could not be read: {e}")
             continue
-        if len(values) > MAX_VALUES_PER_FILE:
-            values = values[:MAX_VALUES_PER_FILE]
+        except OSError as e:
+            notes.append(f"{relative} could not be read: {e.strerror or e}")
+            continue
+        if read.cut:
             cut.append(relative)
             notes.append(
-                f"{relative} holds more than {MAX_VALUES_PER_FILE} numbers; the first "
-                f"{MAX_VALUES_PER_FILE} were compared"
+                f"{relative} was read no further than {MAX_VALUES_PER_FILE} values; the "
+                f"{len(read.values)} numbers read from it were compared"
             )
-        if values:
+        for why in read.skipped:
+            skipped_columns.append(f"{relative}: {why}")
+            notes.append(f"{relative}: {why}")
+        if read.values:
             read_from.append(relative)
-        held += [(relative, locator, value) for locator, value in values]
+        held += [(relative, locator, value) for locator, value in read.values]
 
     manuscript = manuscripts[0] if manuscripts else None
     printed = []
     if manuscript is not None:
-        pins = _pins([manuscript], root)
-        in_memory = Manifest.model_validate({"artifacts": pins, "path": root / DEFAULT_NAME})
+        relative = manuscript.relative_to(root).as_posix()
         try:
+            pins = _pins([manuscript], root)
+            in_memory = Manifest.model_validate({"artifacts": pins, "path": root / DEFAULT_NAME})
             report = printed_numbers(in_memory, only=(pins[0]["id"],))
-        except ArtifactUnreadableError as e:
-            notes.append(f"{pins[0]['path']} could not be read: {e}")
+        except (ArtifactUnreadableError, ArtifactMissingError) as e:
+            notes.append(f"{relative} could not be read: {e}")
+        except OSError as e:
+            notes.append(f"{relative} could not be read: {e.strerror or e}")
         else:
             printed = [
                 number
@@ -648,15 +755,15 @@ def survey(root: pathlib.Path) -> Survey:
         )
 
     return Survey(
-        root=root,
-        results={name: tuple(grouped[name]) for name, _ in FORMATS if name in grouped},
+        results={key: tuple(grouped[key]) for key, _, _ in FORMATS if key in grouped},
         capped=capped,
         manuscript=manuscript.relative_to(root).as_posix() if manuscript is not None else None,
         notes=tuple(notes),
         read_from=tuple(read_from),
         values=len(held),
         cut=tuple(cut),
+        skipped_columns=tuple(skipped_columns),
         compared=compared,
         not_compared=len(printed) - compared,
-        candidates=tuple(candidates),
+        candidates=tuple(_collapsed(candidates)),
     )
