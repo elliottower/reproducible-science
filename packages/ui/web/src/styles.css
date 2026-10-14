@@ -344,3 +344,7 @@ tr.sec-head td { background: #f4f5f8; font-weight: 600; font-size: 12px; padding
 .src-meta { margin-top: 4px; }
 .canvas { position: relative; }
 .graph-key-box { position: absolute; left: 14px; top: 10px; z-index: 5; display: flex; flex-direction: column; gap: 2px; background: rgba(255, 255, 255, 0.92); border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px; font-size: 12px; pointer-events: none; }
+tr.sec-head.clickable { cursor: pointer; }
+tr.sec-head.clickable:hover td { background: #eceef4; }
+.sec-caret { color: var(--muted); display: inline-block; width: 14px; }
+.sec-count { font-weight: 400; color: var(--muted); font-size: 11.5px; }

@@ -201,6 +201,8 @@ function CitationsByClaim({ graph, query, onOpen }: { graph: Graph; query: strin
   const q = query.trim().toLowerCase()
   const sources = (graph.tabs?.citations.sources ?? []).filter((s) => !q || JSON.stringify(s).toLowerCase().includes(q))
   const [groupBy, setGroupBy] = useState<'source' | 'section'>('source')
+  const [openSecs, setOpenSecs] = useState<Set<string>>(new Set())
+  const flipSec = (n: string) => setOpenSecs((prev) => { const x = new Set(prev); if (x.has(n)) x.delete(n); else x.add(n); return x })
   const head = (
     <thead><tr><th style={{ width: '16%' }}>Source</th><th style={{ width: '28%' }}>Source quotations</th><th style={{ width: '20%' }}>Interpretation</th><th>
       <div className="ms-grid ms-grid-head"><span>Manuscript text</span><span>Manuscript section</span></div>
@@ -208,6 +210,12 @@ function CitationsByClaim({ graph, query, onOpen }: { graph: Graph; query: strin
   )
   const switcher = (
     <div className="seg-right">
+      {groupBy === 'section' && (
+        <>
+          <button className="link-btn" onClick={() => setOpenSecs(new Set(Array.from({ length: 200 }, (_, i) => `${i}`)))}>Expand all</button>
+          <button className="link-btn" onClick={() => setOpenSecs(new Set())}>Collapse all</button>
+        </>
+      )}
       <span className="muted small">Group by</span>
       <div className="seg small-seg">
         <button className={groupBy === 'source' ? 'on' : ''} onClick={() => setGroupBy('source')}>Source</button>
@@ -235,9 +243,14 @@ function CitationsByClaim({ graph, query, onOpen }: { graph: Graph; query: strin
           {head}
           <tbody>
             {sections.map((sec, si) => (
-              <>
-                <tr key={`h-${si}`} className="sec-head"><td colSpan={4}>{sec.name}</td></tr>
-                {sec.items.map(({ s, c }, k) => {
+              <Fragment key={`sec-${si}`}>
+                <tr className={`sec-head clickable ${openSecs.has(`${si}`) ? 'open' : ''}`} onClick={() => flipSec(`${si}`)}>
+                  <td colSpan={4}>
+                    <span className="sec-caret">{openSecs.has(`${si}`) ? '▾' : '▸'}</span> {sec.name}
+                    <span className="sec-count"> · {sec.items.length} citation{sec.items.length === 1 ? '' : 's'} · {new Set(sec.items.map((x) => x.s.citation)).size} source{new Set(sec.items.map((x) => x.s.citation)).size === 1 ? '' : 's'}</span>
+                  </td>
+                </tr>
+                {openSecs.has(`${si}`) && sec.items.map(({ s, c }, k) => {
                   const words = sentenceWords([c.text])
                   return (
                     <tr key={`${si}-${k}`} className="static src-start">
@@ -248,7 +261,7 @@ function CitationsByClaim({ graph, query, onOpen }: { graph: Graph; query: strin
                     </tr>
                   )
                 })}
-              </>
+              </Fragment>
             ))}
             {uncited.length > 0 && (
               <tr className="sec-head"><td colSpan={4}>Not cited in any .tex file pinned in repro.yaml: {uncited.map((s) => s.citation).join(', ')}</td></tr>
@@ -292,64 +305,12 @@ function CitationsByClaim({ graph, query, onOpen }: { graph: Graph; query: strin
 }
 
 export function CitationsTab({ graph, query }: { graph: Graph; query: string }) {
-  const [view, setView] = useState<'quote' | 'claim'>(() => {
-    try { return (localStorage.getItem('citations-view') as 'quote' | 'claim') ?? 'claim' } catch { return 'claim' }
-  })
-  const pick = (v: 'quote' | 'claim') => { setView(v); try { localStorage.setItem('citations-view', v) } catch { /* private window */ } }
-  const sources = graph.tabs?.citations.sources ?? []
   const [panel, setPanel] = useState<Source | null>(null)
-  const q = query.trim().toLowerCase()
-  // One row per quote, in the claims files' own order: source, then statement, then quote.
-  const rows = sources.flatMap((s) =>
-    s.statements.flatMap((st) =>
-      st.quotes.map((qq, i) => ({ s, st, qq, first: i === 0 })),
-    ),
-  ).filter(({ s, st, qq }) => !q || `${s.citation} ${qq.section} ${qq.exact} ${st.statement} ${st.notes}`.toLowerCase().includes(q))
-  // A source, and a statement, is written once and spans the rows of its quotes.
-  const span = (i: number, key: (r: (typeof rows)[number]) => string) => {
-    if (i > 0 && key(rows[i - 1]) === key(rows[i])) return 0
-    let n = 1
-    while (i + n < rows.length && key(rows[i + n]) === key(rows[i])) n += 1
-    return n
-  }
-  const bySource = (r: (typeof rows)[number]) => r.s.file
-  const byStatement = (r: (typeof rows)[number]) => `${r.s.file}::${r.st.id}`
   return (
     <div className="rec">
       <Head cmd="citations" line={graph.status?.citations.text ?? '—'}
         what="Passages quoted from other people's work, the paper's interpretation of them, and the sentences of the manuscript that cite each source. Click a title for the source's details. Highlighted words appear in both the source and the manuscript. A source is pinned when its file is saved with a hash; citations verify checks every passage against it, which takes minutes." />
-      <div className="seg">
-        <button className={view === 'claim' ? 'on' : ''} onClick={() => pick('claim')}>By claim</button>
-        <button className={view === 'quote' ? 'on' : ''} onClick={() => pick('quote')}>By quote</button>
-      </div>
-      {view === 'claim' ? <CitationsByClaim graph={graph} query={query} onOpen={setPanel} /> : (
-      <table className="cite-table">
-        <thead><tr><th style={{ width: '18%' }}>Source</th><th>Section</th><th style={{ width: '38%' }}>Quoted text</th><th>Interpretation</th></tr></thead>
-        <tbody>
-          {rows.map(({ s, st, qq }, i) => {
-            const srcSpan = span(i, bySource)
-            const stSpan = span(i, byStatement)
-            return (
-              <tr key={`${s.file}-${st.id}-${i}`} className={`static ${srcSpan ? 'src-start' : ''}`}>
-                {srcSpan > 0 && (
-                  <td rowSpan={srcSpan}><SourceCell s={s} onOpen={setPanel} /></td>
-                )}
-                <td className="small">{qq.section || <span className="muted">—</span>}</td>
-                <td className="quote">“{qq.exact}”</td>
-                {stSpan > 0 && (
-                  <td className="small" rowSpan={stSpan}>
-                    {st.statement}
-                    {st.notes && <Note text={st.notes} />}
-                  </td>
-                )}
-
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-      )}
-      {view === 'quote' && rows.length === 0 && <div className="empty muted">Nothing here{q ? ` matches “${query}”` : ''}.</div>}
+      <CitationsByClaim graph={graph} query={query} onOpen={setPanel} />
       {panel && <SourcePanel s={panel} onClose={() => setPanel(null)} />}
     </div>
   )
