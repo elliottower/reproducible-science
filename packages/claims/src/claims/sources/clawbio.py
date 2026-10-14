@@ -61,14 +61,15 @@ from claims.models import SCHEMA_VERSION, Conversion, Digest, ValueEvidence
 from claims.numbers import printed
 from claims.open_items import DRAFT_NAME, Need, OpenItem, Source, write_draft
 from claims.sources import (
-    DuplicateKeyError,
     PassedOver,
+    RefusedYamlError,
     Written,
     inside,
     is_lfs_pointer,
     load_yaml,
     named,
 )
+from claims.sources.corebench import MAX_EXPONENT, Refused, _numbers
 from claims.verify import compare_decimal
 
 READER = "claims from-clawbio"
@@ -134,11 +135,6 @@ def _artifact(label: str, path: pathlib.Path, directory: pathlib.Path, digest: s
     return artifact
 
 
-def _numbers(text: str) -> object:
-    """JSON with every number kept as the decimal the file writes, never a binary float."""
-    return json.loads(text, parse_float=decimal.Decimal, parse_int=decimal.Decimal)
-
-
 def _pointer(keys: list[str | int]) -> str:
     return "".join("/" + str(key).replace("~", "~0").replace("/", "~1") for key in keys)
 
@@ -154,11 +150,23 @@ def _leaves(node: object, keys: list[str | int]):
     elif isinstance(node, decimal.Decimal) or (
         isinstance(node, int | float) and not isinstance(node, bool)
     ):
-        yield _pointer(keys), decimal.Decimal(str(node))
+        yield _pointer(keys), _in_range(decimal.Decimal(str(node)), _pointer(keys) or "/")
+
+
+def _in_range(number: decimal.Decimal, where: str) -> decimal.Decimal:
+    """The number, or `Refused` where its power of ten is past `MAX_EXPONENT`: comparing
+    `1e999999999` at a printed precision takes minutes."""
+    if number.is_finite() and abs(number.adjusted()) > MAX_EXPONENT:
+        raise Refused(f"a number out of range at {where}")
+    return number
 
 
 def _stored(path: pathlib.Path) -> list[tuple[dict, decimal.Decimal]]:
-    """Each number in a JSON, YAML or delimited file, with the locator that addresses it."""
+    """Each number in a JSON, YAML or delimited file, with the locator that addresses it.
+
+    Read with the CORE-Bench reader's bounded JSON and the readers' YAML loader: a number past
+    `MAX_EXPONENT`, a YAML alias, a key given twice and nesting past `MAX_DEPTH` raise `Refused`
+    or `RefusedYamlError`. A file that does not parse is searched for nothing."""
     suffix = path.suffix.lower()
     try:
         text = path.read_text(encoding="utf-8")
@@ -181,14 +189,13 @@ def _stored(path: pathlib.Path) -> list[tuple[dict, decimal.Decimal]]:
                         continue
                     if number.is_finite():
                         locator = {"kind": "table_position", "column": column, "row": row_number}
-                        found.append((locator, number))
+                        found.append((locator, _in_range(number, f"row {row_number}, {column}")))
             return found
     except (
         OSError,
         UnicodeDecodeError,
         json.JSONDecodeError,
         yaml.YAMLError,
-        DuplicateKeyError,
         csv.Error,
     ):
         return []
@@ -303,13 +310,9 @@ def from_clawbio(folder: pathlib.Path, directory: pathlib.Path) -> Written:
         elif path.stat().st_size <= MAX_SEARCHED_BYTES:
             try:
                 searched[label] = _stored(path)
-            except RecursionError:
+            except (Refused, RefusedYamlError) as e:
                 not_checked.append(
-                    PassedOver(
-                        file=label,
-                        reason="nested deeper than the parser reads, so no candidate is read "
-                        "from it",
-                    )
+                    PassedOver(file=label, reason=f"refused: {e}, so no candidate is read from it")
                 )
 
     tables = folder / TABLES

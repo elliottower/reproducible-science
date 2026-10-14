@@ -234,8 +234,36 @@ def test_a_table_nested_deeper_than_the_parser_reads_is_not_searched_and_does_no
     checksums.write_text(checksums.read_text() + f"{_sha(deep)}  tables/deep.json\n")
     written = from_clawbio(folder, out)
     assert {p.file: p.reason for p in written.not_checked}["tables/deep.json"].startswith(
-        "nested deeper"
+        "refused: nested deeper than 64"
     )
+    assert written.items == 5
+
+
+def _listed(folder: pathlib.Path, name: str, text: str) -> None:
+    (folder / "tables" / name).write_text(text)
+    checksums = folder / "reproducibility" / "checksums.sha256"
+    checksums.write_text(checksums.read_text() + f"{_sha(text)}  tables/{name}\n")
+
+
+@pytest.mark.parametrize(
+    ("name", "text", "reason"),
+    [
+        ("huge.json", '{"x": 1e999999999}\n', "a number out of range"),
+        ("huge.csv", "x\n1e999999999\n", "a number out of range"),
+        ("deep.yaml", "x: " + "[" * 100 + "]" * 100 + "\n", "nested deeper than 64"),
+        (
+            "bomb.yaml",
+            "a: &a [1, 1, 1, 1, 1, 1, 1, 1, 1]\nb: &b [*a, *a, *a, *a, *a, *a, *a, *a, *a]\n"
+            "c: [*b, *b, *b, *b, *b, *b, *b, *b, *b]\n",
+            "an alias",
+        ),
+    ],
+)
+def test_a_hostile_table_is_refused_quickly_and_listed_as_not_checked(tmp_path, name, text, reason):
+    folder, out = _folder(tmp_path), tmp_path / "out"
+    _listed(folder, name, text)
+    written = from_clawbio(folder, out)
+    assert reason in {p.file: p.reason for p in written.not_checked}[f"tables/{name}"]
     assert written.items == 5
 
 
