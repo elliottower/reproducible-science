@@ -61,9 +61,9 @@ from repro.models import (
     Validity,
     ValueEvidence,
 )
-from repro.regenerate import upstream
-from repro.reproduce import stored
-from repro.stale import reruns, stale
+from repro.reruns import reruns, upstream
+from repro.resolve import stored
+from repro.stale import stale
 from repro.toolchain import distribution_version
 from repro.verify import (
     ADAPTER_DISTRIBUTION,

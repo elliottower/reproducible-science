@@ -37,7 +37,8 @@ from repro.adapters.table import read_table as read_table
 from repro.adapters.table import sniff_delimiter as sniff_delimiter
 from repro.adapters.tree import _resolve_tree
 from repro.adapters.tree import resolve_pointer as resolve_pointer
-from repro.models import ValueLocator
+from repro.exceptions import ArtifactUnreadableError
+from repro.models import Evidence, ValueLocator
 
 #: Formats named here have no adapter. Listing them means an unsupported artifact is reported
 #: as unsupported rather than as an unreadable one.
@@ -88,6 +89,18 @@ def resolve(locator: ValueLocator, path: pathlib.Path) -> Found:
     return _ADAPTERS[locator.kind](locator, path)
 
 
+def stored(evidence: Evidence, path: pathlib.Path) -> str | None:
+    """The value an assertion addresses in one file, as stored, or None where there is none."""
+    locator = getattr(evidence, "locator", None)
+    if locator is None or not path.is_file():
+        return None
+    try:
+        _, extracted, _ = resolve(locator, path)
+    except (ArtifactUnreadableError, OSError, ValueError):
+        return None
+    return extracted.raw if extracted is not None else None
+
+
 __all__ = [
     "NEVER_OPENED",
     "UNSUPPORTED",
@@ -99,4 +112,5 @@ __all__ = [
     "resolve",
     "resolve_pointer",
     "sniff_delimiter",
+    "stored",
 ]

@@ -30,7 +30,7 @@ import shutil
 import subprocess
 from collections.abc import Mapping
 
-from repro.exceptions import ArtifactUnreadableError, ReproError
+from repro.exceptions import ReproError
 from repro.models import (
     ArtifactState,
     Claim,
@@ -48,8 +48,10 @@ from repro.models import (
     ReproductionReport,
     Witness,
 )
-from repro.regenerate import check, skipped, upstream
-from repro.resolve import resolve
+from repro.regenerate import check, skipped
+from repro.reruns import RECORD as RECORD
+from repro.reruns import upstream
+from repro.resolve import stored as stored
 from repro.toolchain import distribution_version
 from repro.verify import (
     ADAPTER_DISTRIBUTION,
@@ -58,9 +60,6 @@ from repro.verify import (
     artifact_states,
     check_evidence,
 )
-
-#: Where each invocation's record is appended, beside the manifest. One JSON object per line.
-RECORD = pathlib.Path(".repro") / "reproductions.jsonl"
 
 #: Looked for at the top of the project, in this order. The first found is named and hashed:
 #: which packages were installed is the part of an environment a later reader can rebuild.
@@ -164,18 +163,6 @@ def witness(variables: Mapping[str, str]) -> Witness | None:
             if variables.get(name)
         },
     )
-
-
-def stored(evidence: Evidence, path: pathlib.Path) -> str | None:
-    """The value an assertion addresses in one file, as stored, or None where there is none."""
-    locator = getattr(evidence, "locator", None)
-    if locator is None or not path.is_file():
-        return None
-    try:
-        _, extracted, _ = resolve(locator, path)
-    except (ArtifactUnreadableError, OSError, ValueError):
-        return None
-    return extracted.raw if extracted is not None else None
 
 
 def _converted(conversion: Conversion | None, value: str | None) -> str | None:
