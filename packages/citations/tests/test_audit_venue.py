@@ -27,6 +27,11 @@ def record(**kw) -> A.RegistryRecord:
     return A.RegistryRecord(source="crossref", **kw)
 
 
+def venue_of(verdict: A.EntryAudit) -> V.VenueCheck:
+    assert verdict.venue is not None, "a compared entry carries its venue check"
+    return verdict.venue
+
+
 def venue_problems(entry: A.Entry, rec: A.RegistryRecord) -> list[str]:
     return [p for p in A.compare(entry, rec) if p.startswith("venue")]
 
@@ -188,6 +193,7 @@ def test_an_acm_event_acronym_deposited_only_under_event_is_read(tmp_path, monke
     )
     monkeypatch.setattr(A, "fetch", lambda url, cache, name: body)
     rec = A.from_crossref("10.1145/2939672.2939785", tmp_path)
+    assert rec is not None
     assert "KDD '16" in rec.venues
     assert rec.venue_kind == "proceedings"
     entry = A.Entry(key="k", venue="KDD", venue_kind="proceedings")
@@ -266,7 +272,7 @@ def test_a_preprint_record_is_compared_once_another_service_names_the_venue(tmp_
     monkeypatch.setattr(
         A, "other_venue_names", elsewhere(["Neural Information Processing Systems"])
     )
-    assert run("NeurIPS").venue.outcome == V.MATCH
+    assert venue_of(run("NeurIPS")).outcome == V.MATCH
     wrong = run("ICML")
     assert wrong.status == "mismatch"
     assert wrong.problems == [
@@ -276,7 +282,7 @@ def test_a_preprint_record_is_compared_once_another_service_names_the_venue(tmp_
 
     monkeypatch.setattr(A, "other_venue_names", elsewhere([]))
     nobody = run("ICML")
-    assert (nobody.status, nobody.venue.why) == ("ok", V.PREPRINT_RECORD)
+    assert (nobody.status, venue_of(nobody).why) == ("ok", V.PREPRINT_RECORD)
 
 
 # --- workshop and main track -----------------------------------------------------------------
@@ -345,7 +351,7 @@ def test_other_names_are_asked_for_only_before_a_mismatch(tmp_path, monkeypatch)
     monkeypatch.setattr(A, "other_venue_names", lambda doi, cache: asked.append(doi) or [])
     entries = [A.Entry(key="k", title="T", venue="CVPR", doi="10.1109/x")]
 
-    assert A.audit(entries, tmp_path / "cache").entries["k"].venue.outcome == V.MATCH
+    assert venue_of(A.audit(entries, tmp_path / "cache").entries["k"]).outcome == V.MATCH
     assert asked == [], "an agreeing venue cost a request"
 
 
@@ -367,7 +373,7 @@ def test_another_service_s_name_for_the_venue_rescues_a_would_be_mismatch(tmp_pa
 
     monkeypatch.setattr(A, "other_venue_names", lambda doi, cache: ["Applied Statistics"])
     verdict = A.audit([entry], tmp_path / "cache").entries["k"]
-    assert (verdict.status, verdict.venue.outcome) == ("ok", V.MATCH)
+    assert (verdict.status, venue_of(verdict).outcome) == ("ok", V.MATCH)
 
 
 # --- reading a bibliography ------------------------------------------------------------------

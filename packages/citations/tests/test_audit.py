@@ -492,7 +492,7 @@ def _unidentified(**kw):
         "authors": ["Naitza, Silvia", "Porcu, Eleonora", "Steri, Maristella"],
         "year": "2012",
     }
-    return A.Entry(**{**fields, **kw})
+    return A.Entry.model_validate({**fields, **kw})
 
 
 def test_a_wrong_author_on_an_entry_found_by_title_is_a_mismatch(tmp_path, monkeypatch, capsys):

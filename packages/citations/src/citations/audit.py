@@ -291,8 +291,13 @@ class AuditReport(BaseModel):
         return [k for k, v in self.entries.items() if v.status == status]
 
     @property
-    def venue_not_comparable(self) -> list[str]:
-        return [k for k, v in self.entries.items() if v.venue and v.venue.outcome == NOT_COMPARABLE]
+    def venue_not_comparable(self) -> dict[str, VenueCheck]:
+        """Each entry whose venue could not be compared, with the check that says why."""
+        return {
+            k: v.venue
+            for k, v in self.entries.items()
+            if v.venue is not None and v.venue.outcome == NOT_COMPARABLE
+        }
 
     @property
     def mismatched(self) -> list[str]:
@@ -932,7 +937,7 @@ def render(report: AuditReport, quiet: bool) -> int:
             print(f"  {key}  {v.found_kind} {v.found_id}  ({v.found_by})")
 
     if report.venue_not_comparable and not quiet:
-        why = collections.Counter(report.entries[k].venue.why for k in report.venue_not_comparable)
+        why = collections.Counter(check.why for check in report.venue_not_comparable.values())
         print("\nvenue not compared")
         for reason, count in why.most_common():
             print(f"  {count:>7,}  {reason}")
