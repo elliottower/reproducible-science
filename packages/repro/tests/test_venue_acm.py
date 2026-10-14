@@ -7,13 +7,17 @@ traced to one line written here.
 
 from __future__ import annotations
 
+import hashlib
 import json
 
 import pytest
 import yaml
+from provenance_core.chain import append_event
 from repro.cli import main
+from repro.exceptions import ReproError
 from repro.models import (
     Environment,
+    InputReading,
     Regeneration,
     RegenerationReason,
     RegenerationState,
@@ -35,15 +39,59 @@ SHA = "a" * 64
 COMMIT = "0123456789abcdef0123456789abcdef01234567"
 
 
+RAW = b"x,y\n1,2\n"
+TABLE = b'{"accuracy": 0.91}\n'
+COMMAND = ["python", "make_table.py", "--seed", "7"]
+RERUNS = ".repro/reproductions.jsonl"
+
+
+def sha(data):
+    return hashlib.sha256(data).hexdigest()
+
+
+def rerun(started_at, *, command=COMMAND, raw=RAW, duration=12.5, regeneration="table-2"):
+    """One invocation of `repro reproduce` that reproduced `table-2` over `raw`."""
+    return ReproductionReport(
+        started_at=started_at,
+        environment=Environment(
+            system="Linux", machine="x86_64", python="3.12.1", gpus=("NVIDIA A100 80GB",)
+        ),
+        regenerations=(
+            RegenerationState(
+                regeneration_id=regeneration,
+                artifact_id="table2",
+                state=Regeneration.REPRODUCED,
+                reason=RegenerationReason.OUTPUT_MATCHES,
+                executed=True,
+                duration_seconds=duration,
+                command=tuple(command),
+                inputs=(InputReading(artifact_id="raw", observed=sha(raw)),),
+                expected=sha(TABLE),
+                actual=sha(TABLE),
+            ),
+        ),
+    )
+
+
+def write_reruns(root, *reports):
+    (root / ".repro").mkdir(exist_ok=True)
+    (root / RERUNS).write_text("".join(r.model_dump_json() + "\n" for r in reports))
+
+
 def write_project(root):
-    """A project holding one record of every kind the appendix reads."""
+    """A project holding one record of every kind the appendix reads, each as the tool that
+    keeps it writes it: a re-run that is current, a ledger whose chain verifies, a plan frozen
+    whole."""
     (root / "data").mkdir()
+    (root / "results").mkdir()
+    (root / "data" / "raw.csv").write_bytes(RAW)
+    (root / "results" / "table_2.json").write_bytes(TABLE)
     manifest = {
         "schema_version": "repro/1",
         "project": "demo",
         "artifacts": [
-            {"id": "table2", "path": "results/table_2.json", "digest": {"value": SHA}},
-            {"id": "raw", "path": "data/raw.csv", "digest": {"value": SHA}},
+            {"id": "table2", "path": "results/table_2.json", "digest": {"value": sha(TABLE)}},
+            {"id": "raw", "path": "data/raw.csv", "digest": {"value": sha(RAW)}},
             {"id": "notes", "path": "notes.md"},
         ],
         "claims": [
@@ -53,42 +101,23 @@ def write_project(root):
         "regenerations": [
             {
                 "id": "table-2",
-                "command": ["python", "make_table.py", "--seed", "7"],
+                "command": COMMAND,
                 "inputs": ["raw"],
-                "output": {"artifact": "table2", "digest": {"value": SHA}},
+                "output": {"artifact": "table2", "digest": {"value": sha(TABLE)}},
             }
         ],
     }
     (root / "repro.yaml").write_text(yaml.safe_dump(manifest))
-    report = ReproductionReport(
-        started_at="2026-10-01T10:00:00+00:00",
-        environment=Environment(
-            system="Linux", machine="x86_64", python="3.12.1", gpus=("NVIDIA A100 80GB",)
-        ),
-        regenerations=(
-            RegenerationState(
-                regeneration_id="table-2",
-                artifact_id="table2",
-                state=Regeneration.REPRODUCED,
-                reason=RegenerationReason.OUTPUT_MATCHES,
-                executed=True,
-                duration_seconds=12.5,
-            ),
-        ),
-    )
-    (root / ".repro").mkdir()
-    (root / ".repro" / "reproductions.jsonl").write_text(report.model_dump_json() + "\n")
+    write_reruns(root, rerun("2026-10-01T10:00:00+00:00"))
     (root / ".results").mkdir()
-    events = [
+    for event in (
         {"event": "init"},
         {"event": "run", "run_id": "smoke_first", "outputs": []},
         {"event": "seal", "role": "inputs", "files": []},
         {"event": "run", "run_id": "main", "outputs": []},
         {"event": "claim", "claim": "Accuracy is 91%.", "run_id": "main", "confirmatory": True},
-    ]
-    (root / ".results" / "ledger.jsonl").write_text(
-        "".join(json.dumps(event) + "\n" for event in events)
-    )
+    ):
+        append_event(root / ".results" / "ledger.jsonl", event)
     freeze(root)
     (root / "CITATION.cff").write_text(
         yaml.safe_dump({"cff-version": "1.2.0", "doi": "10.5281/zenodo.42", "license": "MIT"})
@@ -154,9 +183,9 @@ def test_the_experiments_field_quotes_the_declared_command_and_its_output(full):
 
 
 def test_time_and_hardware_come_from_the_record_of_re_runs(full):
-    record = ".repro/reproductions.jsonl"
+    record = RERUNS
     assert said(full.answer("time-to-complete")) == [
-        (record, "the last re-run of 1 declared command took 12.5 s in total")
+        (record, "the current re-runs of 1 declared command took 12.5 s in total")
     ]
     assert said(full.answer("hardware")) == [
         (
@@ -178,8 +207,8 @@ def test_the_ledger_count_leaves_out_test_runs_and_counts_a_run_after_a_seal(ful
 def test_the_evaluation_field_counts_claims_pins_and_re_run_outcomes(full):
     assert said(full.answer("evaluation")) == [
         ("repro.yaml", "declares 2 claims and 3 artifacts, 2 of them pinned by sha256"),
-        (".results/ledger.jsonl", "binds 1 claim to recorded runs, 1 of them confirmatory"),
-        (".repro/reproductions.jsonl", "`table-2` last re-run on 2026-10-01: reproduced, 12.5 s"),
+        (".results/ledger.jsonl", "binds 1 claim to runs it records, 1 of them confirmatory"),
+        (RERUNS, "`table-2`: current; reproduced by the re-run on 2026-10-01, 12.5 s"),
     ]
 
 
@@ -328,8 +357,11 @@ def test_a_license_on_disk_settles_no_choice(full):
 
 
 def test_a_settled_choice_is_marked_draft_in_every_format(full):
-    assert "Answer: **Yes** (DRAFT, settled by `CITATION.cff`)" in markdown(full)
+    assert "Answer: **Yes** (DRAFT, settled by `CITATION.cff`" in markdown(full)
     assert r"Yes \textbf{[DRAFT, settled by \texttt{CITATION.cff}]}" in acm.latex(full)
+    assert r"Yes \textbf{[DRAFT, settled by \texttt{CITATION.cff}; author: confirm" in acm.latex(
+        full
+    )
 
 
 # -- archived and publicly available, offline ------------------------------------------------
@@ -359,10 +391,11 @@ def test_a_doi_in_codemeta_settles_archived(tmp_path):
     [
         ("CITATION.cff", yaml.safe_dump({"identifiers": [{"type": "swh", "value": SWH}]})),
         ("codemeta.json", json.dumps({"identifier": [SWH]})),
-        ("README.md", f"# Demo\n\nArchived as {SWH};origin=https://github.com/a/b\n"),
     ],
 )
-def test_a_software_heritage_id_settles_archived_wherever_it_is(tmp_path, name, text):
+def test_a_software_heritage_id_among_the_projects_identifiers_settles_archived(
+    tmp_path, name, text
+):
     (tmp_path / name).write_text(text)
     archived, _ = archive_and_public(tmp_path)
     assert (archived.choice, said(archived)) == (
@@ -399,19 +432,42 @@ def test_a_repository_settles_publicly_available_for_the_author_to_confirm(
     assert archived.status is Status.TODO
 
 
-def test_an_origin_repository_settles_publicly_available(tmp_path):
+def test_identifiers_of_other_works_settle_nothing(tmp_path):
     write_project(tmp_path)
-    (tmp_path / "CITATION.cff").unlink()
+    (tmp_path / "CITATION.cff").write_text(
+        yaml.safe_dump(
+            {
+                "references": [
+                    {
+                        "title": "numpy",
+                        "doi": "10.1038/s41586-020-2649-2",
+                        "repository-code": "https://github.com/numpy/numpy",
+                        "identifiers": [{"type": "swh", "value": "swh:1:rel:" + "f" * 40}],
+                    }
+                ]
+            }
+        )
+    )
+    (tmp_path / "codemeta.json").write_text(
+        json.dumps(
+            {
+                "softwareRequirements": [
+                    {"identifier": "10.5281/zenodo.1", "codeRepository": "https://github.com/x/y"}
+                ]
+            }
+        )
+    )
+    (tmp_path / "README.md").write_text(f"# Demo\n\nBuilds on {SWH}, doi 10.1234/x.\n")
     manifest = yaml.safe_load((tmp_path / "repro.yaml").read_text())
     manifest["artifacts"][1]["origin"] = {
-        "repository": "https://github.com/a/data",
+        "repository": "https://github.com/someone-else/data",
         "commit": "e" * 40,
         "path": "raw.csv",
     }
     (tmp_path / "repro.yaml").write_text(yaml.safe_dump(manifest))
     archived, public = archive_and_public(tmp_path)
-    assert (public.choice, public.choice_from) == ("Yes", ("repro.yaml",))
-    assert archived.status is Status.TODO
+    assert (archived.status, archived.choice) == (Status.TODO, "")
+    assert (public.status, public.choice) == (Status.TODO, "")
 
 
 def test_a_github_url_alone_is_publicly_available_and_not_archived(tmp_path):
@@ -426,3 +482,89 @@ def test_a_github_url_alone_is_publicly_available_and_not_archived(tmp_path):
     text = markdown(acm.appendix(Project.at(tmp_path)))
     assert "**TODO** (authors): no record here names an archived copy" in text
     assert "(DRAFT, settled by `CITATION.cff`; author: confirm this repository is public)" in text
+
+
+# -- staleness, the ledger's chain, and malformed records ----------------------------------
+
+
+def test_a_re_run_that_is_no_longer_current_is_not_reported_as_current(tmp_path):
+    write_project(tmp_path)
+    (tmp_path / "data" / "raw.csv").write_bytes(b"x,y\n1,3\n")
+    manifest = yaml.safe_load((tmp_path / "repro.yaml").read_text())
+    manifest["artifacts"][1]["digest"]["value"] = sha(b"x,y\n1,3\n")
+    (tmp_path / "repro.yaml").write_text(yaml.safe_dump(manifest))
+    draft = acm.appendix(Project.at(tmp_path))
+    assert (RERUNS, "`table-2`: stale; the re-run compared was on 2026-10-01") in said(
+        draft.answer("evaluation")
+    )
+    assert draft.answer("time-to-complete").status is Status.TODO
+    assert draft.answer("hardware").status is Status.TODO
+
+
+def test_a_re_run_of_a_command_no_longer_declared_is_not_listed(tmp_path):
+    write_project(tmp_path)
+    write_reruns(
+        tmp_path,
+        rerun("2025-01-01T00:00:00+00:00", regeneration="old-gone"),
+        rerun("2026-10-01T10:00:00+00:00", duration=0.0),
+    )
+    draft = acm.appendix(Project.at(tmp_path))
+    lines = [text for record, text in said(draft.answer("evaluation")) if record == RERUNS]
+    assert lines == ["`table-2`: current; reproduced by the re-run on 2026-10-01, 0.0 s"]
+    assert said(draft.answer("time-to-complete")) == [
+        (RERUNS, "the current re-runs of 1 declared command took 0.0 s in total")
+    ]
+
+
+def test_a_claim_naming_no_recorded_run_is_not_counted_as_bound(tmp_path):
+    write_project(tmp_path)
+    append_event(
+        tmp_path / ".results" / "ledger.jsonl",
+        {"event": "claim", "claim": "Recall is 80%.", "run_id": "never", "confirmatory": False},
+    )
+    assert (
+        ".results/ledger.jsonl",
+        "binds 1 claim to runs it records, 1 of them confirmatory; 1 more name a run it does "
+        "not record",
+    ) in said(acm.appendix(Project.at(tmp_path)).answer("evaluation"))
+
+
+def test_a_ledger_whose_chain_does_not_verify_says_so(tmp_path):
+    write_project(tmp_path)
+    path = tmp_path / ".results" / "ledger.jsonl"
+    path.write_text(path.read_text().replace('"main"', '"other"', 1))
+    workflow = said(acm.appendix(Project.at(tmp_path)).answer("experiment-workflow"))
+    assert (
+        ".results/ledger.jsonl",
+        "does not verify as a chain: `results verify` would report edited",
+    ) in workflow
+
+
+@pytest.mark.parametrize(
+    ("name", "content"),
+    [
+        ("CITATION.cff", b"identifiers: 5\ndoi: [1, 2]\n"),
+        (".results/ledger.jsonl", b"[1, 2]\n"),
+        ("PREREG.md", b"\xff\xfe not text **Plan sha256:** `" + b"a" * 64 + b"`\n"),
+    ],
+)
+def test_malformed_records_do_not_crash_the_draft(tmp_path, name, content):
+    (tmp_path / ".results").mkdir()
+    (tmp_path / name).write_bytes(content)
+    draft = acm.appendix(Project.at(tmp_path))
+    assert draft.answer("abstract").status is Status.TODO
+
+
+def test_a_plan_named_that_is_not_there_is_refused(tmp_path):
+    with pytest.raises(ReproError, match="no such file"):
+        Project.at(tmp_path, plan=tmp_path / "nothere.md")
+
+
+def test_the_help_says_which_fields_are_answered(capsys):
+    with pytest.raises(SystemExit):
+        main(["venue", "acm", "--help"])
+    out = " ".join(capsys.readouterr().out.split())
+    assert "Three fields are answered Yes where a record settles them" in out
+    with pytest.raises(SystemExit):
+        main(["venue", "--help"])
+    assert "No question is answered yes or no" not in " ".join(capsys.readouterr().out.split())

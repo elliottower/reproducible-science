@@ -22,19 +22,27 @@ from collections.abc import Callable
 
 import yaml
 from claims.manifest import find, load
-from claims.models import Manifest
+from claims.models import (
+    Freshness,
+    Manifest,
+    RegenerationNode,
+    RegenerationState,
+    ReproductionReport,
+)
 from claims.origins import origins as check_origins
 from claims.reruns import RECORD as RERUNS
 from claims.reruns import reruns as read_reruns
+from claims.stale import stale
 from claims.starter import project_root
 from prereg import record as prereg_record
 from prereg.cli import _plans_below as plans_below
 from prereg.cli import frozen_digest
-from provenance_core.chain import ChainError, read_ledger
+from provenance_core.chain import ChainError, ChainStatus, read_ledger, verify
 from provenance_core.gitref import try_run
 from pydantic import BaseModel, ConfigDict
 
 from repro import badges, crosscheck
+from repro.exceptions import ReproError
 
 #: Where `results` keeps its ledger, from the top of the project.
 LEDGER = badges.LEDGER
@@ -87,6 +95,14 @@ class Finding(BaseModel):
     """The fact, in words generated from the record."""
 
 
+class PlanMissingError(ReproError):
+    """`--plan` names a file that is not there."""
+
+    def __init__(self, path: pathlib.Path) -> None:
+        self.path = path
+        super().__init__(f"--plan {path}: no such file")
+
+
 class Project(BaseModel):
     """The project whose records are read: its top, and its manifest where it has one."""
 
@@ -102,6 +118,8 @@ class Project(BaseModel):
         """The project holding `cwd`, with the manifest that governs it, if any."""
         root = project_root(cwd)
         path = find(cwd)
+        if plan is not None and not plan.is_file():
+            raise PlanMissingError(plan)
         return cls(
             root=root,
             manifest=load(path) if path is not None else None,
@@ -156,20 +174,19 @@ def claims(project: Project) -> tuple[Finding, ...]:
                 ),
             )
         )
-    events = _events(project)
-    if isinstance(events, list):
-        bound = [event for event in events if event.get("event") == "claim"]
-        if bound:
-            confirmatory = sum(bool(event.get("confirmatory")) for event in bound)
-            found.append(
-                Finding(
-                    record=LEDGER.as_posix(),
-                    said=(
-                        f"binds {_plural(len(bound), 'claim')} to recorded runs, "
-                        f"{confirmatory} of them confirmatory"
-                    ),
-                )
-            )
+    _, events = _ledger(project)
+    bound = [event for event in events if event.get("event") == "claim"]
+    if bound:
+        runs = {event.get("run_id") for event in events if event.get("event") == "run"}
+        named = [event for event in bound if event.get("run_id") in runs]
+        confirmatory = sum(bool(event.get("confirmatory")) for event in named)
+        said = (
+            f"binds {_plural(len(named), 'claim')} to runs it records, "
+            f"{confirmatory} of them confirmatory"
+        )
+        if len(named) < len(bound):
+            said += f"; {len(bound) - len(named)} more name a run it does not record"
+        found.append(Finding(record=LEDGER.as_posix(), said=said))
     return tuple(found)
 
 
@@ -221,52 +238,77 @@ def origins(project: Project) -> tuple[Finding, ...]:
 # ---------------------------------------------------------------------- the record of re-runs
 
 
-def _latest_reruns(project: Project):
-    """The last re-run of each declared command, by id, with the invocation it was part of."""
-    if project.manifest is None or project.manifest.path is None:
-        return {}
-    latest = {}
-    for report in read_reruns(project.manifest.path.resolve().parent):
-        for state in report.regenerations:
-            latest[state.regeneration_id] = (report, state)
-    return latest
-
-
 def _rerun_record(project: Project) -> str:
     assert project.manifest is not None and project.manifest.path is not None
     return project.shown(project.manifest.path.resolve().parent / RERUNS)
 
 
+def _freshness(project: Project) -> list[tuple[RegenerationNode, ReproductionReport | None]]:
+    """Each declared command as `repro stale` finds it, with the invocation it compared, if
+    any. A re-run of a command the manifest no longer declares is not here."""
+    manifest = project.manifest
+    if manifest is None or manifest.path is None or not manifest.regenerations:
+        return []
+    by_start = {r.started_at: r for r in read_reruns(manifest.path.resolve().parent)}
+    return [
+        (node, by_start.get(node.rerun_at) if node.rerun_at else None)
+        for node in stale(manifest).regenerations
+    ]
+
+
+def _entry(node: RegenerationNode, report: ReproductionReport | None) -> RegenerationState | None:
+    if report is None:
+        return None
+    return next((e for e in report.regenerations if e.regeneration_id == node.id), None)
+
+
 def reruns(project: Project) -> tuple[Finding, ...]:
-    """The outcome of the last re-run of each declared command."""
-    latest = _latest_reruns(project)
-    if not latest:
+    """Whether each declared command's output is still what a recorded re-run produced, as
+    `repro stale` decides it, and when that re-run was."""
+    nodes = _freshness(project)
+    if not nodes:
         return ()
-    record = _rerun_record(project)
     found = []
-    for regeneration_id, (report, state) in sorted(latest.items()):
-        when = f" on {report.started_at[:10]}" if report.started_at else ""
-        took = f", {state.duration_seconds:.1f} s" if state.duration_seconds is not None else ""
-        found.append(
-            Finding(
-                record=record,
-                said=f"`{regeneration_id}` last re-run{when}: {state.state.value}{took}",
+    for node, report in nodes:
+        state = node.state.value.replace("_", " ")
+        entry = _entry(node, report)
+        if node.state is Freshness.CURRENT and report is not None:
+            took = (
+                f", {entry.duration_seconds:.1f} s"
+                if entry is not None and entry.duration_seconds is not None
+                else ""
             )
-        )
+            said = (
+                f"`{node.id}`: current; reproduced by the re-run on {report.started_at[:10]}{took}"
+            )
+        elif node.rerun_at:
+            said = f"`{node.id}`: {state}; the re-run compared was on {node.rerun_at[:10]}"
+        else:
+            said = f"`{node.id}`: {state}"
+        found.append(Finding(record=_rerun_record(project), said=said))
     return tuple(found)
 
 
+def _current(project: Project) -> list[tuple[ReproductionReport, RegenerationState]]:
+    """The re-run each current declared command was reproduced by."""
+    found = []
+    for node, report in _freshness(project):
+        entry = _entry(node, report)
+        if node.state is Freshness.CURRENT and report is not None and entry is not None:
+            found.append((report, entry))
+    return found
+
+
 def rerun_time(project: Project) -> tuple[Finding, ...]:
-    """How long the last re-run of each declared command took, added up."""
-    latest = _latest_reruns(project)
-    timed = [state.duration_seconds for _, state in latest.values() if state.duration_seconds]
+    """How long the re-runs that are current took, added up."""
+    timed = [e.duration_seconds for _, e in _current(project) if e.duration_seconds is not None]
     if not timed:
         return ()
     return (
         Finding(
             record=_rerun_record(project),
             said=(
-                f"the last re-run of {_plural(len(timed), 'declared command')} took "
+                f"the current re-runs of {_plural(len(timed), 'declared command')} took "
                 f"{sum(timed):.1f} s in total"
             ),
         ),
@@ -274,11 +316,11 @@ def rerun_time(project: Project) -> tuple[Finding, ...]:
 
 
 def rerun_environment(project: Project) -> tuple[Finding, ...]:
-    """Where the most recent re-run ran, as its record says."""
-    latest = _latest_reruns(project)
-    if not latest:
+    """Where the most recent current re-run ran, as its record says."""
+    current = _current(project)
+    if not current:
         return ()
-    report = max((report for report, _ in latest.values()), key=lambda r: r.started_at)
+    report = max((report for report, _ in current), key=lambda r: r.started_at)
     env = report.environment
     parts = [
         " ".join(part for part in (env.system, env.release, env.machine) if part),
@@ -294,35 +336,48 @@ def rerun_environment(project: Project) -> tuple[Finding, ...]:
 # -------------------------------------------------------------------- the ledger and the plan
 
 
-def _events(project: Project) -> list[dict] | str | None:
-    """The ledger's events, None where there is no ledger, or the reason it could not be read."""
+def _ledger(project: Project) -> tuple[ChainStatus | None, list[dict]]:
+    """Whether the ledger's chain verifies, and its events. None and no events where there is
+    no ledger; no events where a line is not an event."""
     path = project.root / LEDGER
     if not path.is_file():
-        return None
+        return None, []
+    status, _ = verify(path)
     try:
-        return read_ledger(path)
-    except ChainError as e:
-        return str(e)
+        events = read_ledger(path)
+    except ChainError:
+        return status, []
+    return status, [event for event in events if isinstance(event, dict)]
 
 
 def ledger(project: Project) -> tuple[Finding, ...]:
-    """How many runs the ledger records, and how many had their inputs sealed before them."""
-    events = _events(project)
-    if events is None:
+    """Whether the ledger's chain verifies, how many runs it records, and how many had their
+    inputs sealed before them."""
+    status, events = _ledger(project)
+    if status is None:
         return ()
-    if isinstance(events, str):
-        return (Finding(record=LEDGER.as_posix(), said=f"could not be read: {events}"),)
-    counted = badges.runs(events)
-    seals = sum(event.get("event") == "seal" for event in events)
-    return (
-        Finding(
-            record=LEDGER.as_posix(),
-            said=(
-                f"records {_plural(seals, 'seal')} of inputs and "
-                f"{_plural(counted.runs, 'run')}, {counted.sealed} of them recorded after a seal"
-            ),
-        ),
-    )
+    found = []
+    if status is not ChainStatus.INTACT:
+        found.append(
+            Finding(
+                record=LEDGER.as_posix(),
+                said=f"does not verify as a chain: `results verify` would report {status.value}",
+            )
+        )
+    if events:
+        counted = badges.runs(events)
+        seals = sum(event.get("event") == "seal" for event in events)
+        found.append(
+            Finding(
+                record=LEDGER.as_posix(),
+                said=(
+                    f"records {_plural(seals, 'seal')} of inputs and "
+                    f"{_plural(counted.runs, 'run')}, {counted.sealed} of them recorded after a "
+                    "seal"
+                ),
+            )
+        )
+    return tuple(found)
 
 
 def plans(project: Project) -> tuple[Finding, ...]:
@@ -334,8 +389,13 @@ def plans(project: Project) -> tuple[Finding, ...]:
             if frozen_digest(path) is None:
                 continue
             whole = prereg_record.read(path)
-        except prereg_record.RecordError as e:
-            found.append(Finding(record=project.shown(path), said=f"freeze record unreadable: {e}"))
+        except prereg_record.RecordError:
+            found.append(
+                Finding(record=project.shown(path), said="has an unreadable freeze record")
+            )
+            continue
+        except UnicodeDecodeError:
+            found.append(Finding(record=project.shown(path), said="is not UTF-8 text"))
             continue
         if whole is not None:
             commit = whole.commit
@@ -383,60 +443,45 @@ def _strings(value: object) -> list[str]:
     return []
 
 
-def _readme(project: Project) -> tuple[str, str]:
-    for name in README_FILES:
-        path = project.root / name
-        if path.is_file():
-            return name, path.read_text(encoding="utf-8", errors="replace")
-    return "", ""
+def _swhids(values: list[str]) -> list[str]:
+    return list(dict.fromkeys(m.group(0) for value in values for m in SWHID.finditer(value)))
 
 
 def archive(project: Project) -> tuple[Finding, ...]:
-    """An archived copy the records name: a DOI in `CITATION.cff` (`doi`, or an identifier of
-    type `doi`) or in `codemeta.json` (`identifier`), and a Software Heritage ID anywhere in
-    either or in the README. A GitHub or GitLab address is not an archive and is not read."""
+    """This project's own archived copy: a DOI or a Software Heritage ID among its own
+    identifiers in `CITATION.cff` (`doi`, and `identifiers` at the top level) or in
+    `codemeta.json` (`identifier`). Cited works, references and the README are not read, and
+    a GitHub or GitLab address is not an archive."""
     found = []
     citation = _citation(project)
-    dois = [str(citation["doi"])] if citation.get("doi") else []
-    for identifier in citation.get("identifiers") or ():
-        if isinstance(identifier, dict) and identifier.get("type") == "doi":
-            dois.append(str(identifier.get("value", "")))
+    own = citation.get("identifiers")
+    own = [item for item in own if isinstance(item, dict)] if isinstance(own, list) else []
+    dois = [str(citation["doi"])] if isinstance(citation.get("doi"), str | int | float) else []
+    dois += [str(item.get("value", "")) for item in own if item.get("type") == "doi"]
     found += [Finding(record=CITATION, said=f"names DOI {d}") for d in dict.fromkeys(dois) if d]
-    codemeta = [
-        m.group(0) for s in _strings(_codemeta(project).get("identifier")) for m in DOI.finditer(s)
+    swh = _swhids([str(item.get("value", "")) for item in own if item.get("type") == "swh"])
+    found += [Finding(record=CITATION, said=f"names Software Heritage ID {i}") for i in swh]
+    identifier = _strings(_codemeta(project).get("identifier"))
+    codemeta_dois = dict.fromkeys(m.group(0) for s in identifier for m in DOI.finditer(s))
+    found += [Finding(record=CODEMETA, said=f"names DOI {d}") for d in codemeta_dois]
+    found += [
+        Finding(record=CODEMETA, said=f"names Software Heritage ID {i}")
+        for i in _swhids(identifier)
     ]
-    found += [Finding(record=CODEMETA, said=f"names DOI {d}") for d in dict.fromkeys(codemeta)]
-    readme_name, readme = _readme(project)
-    for record, text in (
-        (CITATION, "\n".join(_strings(citation))),
-        (CODEMETA, "\n".join(_strings(_codemeta(project)))),
-        (readme_name, readme),
-    ):
-        for swhid in dict.fromkeys(m.group(0) for m in SWHID.finditer(text)):
-            found.append(Finding(record=record, said=f"names Software Heritage ID {swhid}"))
     return tuple(found)
 
 
 def repository(project: Project) -> tuple[Finding, ...]:
-    """The repositories the records name: `repository-code` in `CITATION.cff`,
-    `codeRepository` in `codemeta.json`, and each origin repository in the manifest. None of
-    them can be checked to be public without the network."""
+    """This project's own code repository: `repository-code` in `CITATION.cff` and
+    `codeRepository` in `codemeta.json`. Whether it is public cannot be checked offline."""
     found = []
-    if url := _citation(project).get("repository-code"):
+    url = _citation(project).get("repository-code")
+    if isinstance(url, str) and url:
         found.append(
             Finding(record=CITATION, said=f"names repository-code {url}; {CONFIRM_PUBLIC}")
         )
     for url in dict.fromkeys(_strings(_codemeta(project).get("codeRepository"))):
         found.append(Finding(record=CODEMETA, said=f"names codeRepository {url}; {CONFIRM_PUBLIC}"))
-    if project.manifest is not None:
-        repositories = (a.origin.repository for a in project.manifest.artifacts if a.origin)
-        for url in dict.fromkeys(repositories):
-            found.append(
-                Finding(
-                    record=project.manifest_record,
-                    said=f"names origin repository {url}; {CONFIRM_PUBLIC}",
-                )
-            )
     return tuple(found)
 
 

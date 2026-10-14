@@ -92,7 +92,9 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
             "record of re-runs, the ledger, the frozen plans, CITATION.cff and the files at "
             "the top of the project. Every answer drawn from a record is marked DRAFT and "
             "names that record; every question no record answers is marked TODO and left "
-            "for the authors. No question is answered yes or no. Reaches no network."
+            "for the authors. A yes or no is filled in only where a record settles it with "
+            "no judgment, and is marked DRAFT with that record named; every other yes or no "
+            "is left to the authors. Reaches no network."
         ),
     )
     venues = p.add_subparsers(dest="venue", required=True)
@@ -102,7 +104,11 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
         description=(
             "Draft an Artifact Appendix in the layout of the Unified Artifact Appendix "
             "template ACM conferences use for artifact evaluation. The field labels are the "
-            "template's, copied with the commit they were read at."
+            "template's, copied with the commit they were read at. Three fields are answered "
+            "Yes where a record settles them: Archived, from a DOI or Software Heritage ID "
+            "among the project's own identifiers; Publicly available, from those or the "
+            "project's own code repository, for the authors to confirm it is public; and "
+            "Workflow automation framework used, from a declared command."
         ),
     )
     _output_options(p_acm, list(ACM_FORMATS))

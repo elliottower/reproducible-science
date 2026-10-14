@@ -49,17 +49,19 @@ READS: dict[str, tuple[str, ...]] = {
 }
 
 
-#: Fields a record settles with no judgment involved. An archived copy is a DOI or a Software
-#: Heritage ID; a repository address is public only if the authors say so, and GitHub or GitLab
-#: alone is not an archive. A declared command is run by `repro reproduce`.
+#: Fields a record settles with no judgment involved, read from the project's own identifiers
+#: only. An archived copy is a DOI or a Software Heritage ID; a code repository is public only
+#: if the authors confirm it, and GitHub or GitLab alone is not an archive. A declared command
+#: is run by `repro reproduce`.
 SETTLES: dict[str, Settle] = {
     "archived": Settle(
         choice="Yes",
         readers=("archive",),
         unsettled=(
-            "no record here names an archived copy: a DOI in CITATION.cff or codemeta.json, or "
-            "a Software Heritage ID (swh:1:...) in either or in the README. A GitHub or GitLab "
-            "URL alone is not an archive."
+            "no record here names an archived copy of this project: a DOI or a Software "
+            "Heritage ID (swh:1:...) among its own identifiers, CITATION.cff's doi and "
+            "identifiers or codemeta.json's identifier. A GitHub or GitLab URL alone is not an "
+            "archive."
         ),
     ),
     "publicly-available": Settle(
