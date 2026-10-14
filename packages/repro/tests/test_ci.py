@@ -916,7 +916,7 @@ def test_a_recorded_file_that_changed_and_one_that_is_gone_fail_and_are_named(to
 
 
 def test_states_that_pass_are_counted_on_their_own_lines_and_a_reverted_file_is_named():
-    states = ["ok", "resealed", "resealed", "appended", "ignored", "reverted"]
+    states = ["ok", "resealed", "resealed", "appended", "ignored", "retired", "reverted"]
     files = [{"path": f"f{i}", "state": state} for i, state in enumerate(states)]
     run = ci.ToolRun(
         check="results", command=("results", "verify", "--files"), exit=1, outcome="failed",
@@ -924,12 +924,30 @@ def test_states_that_pass_are_counted_on_their_own_lines_and_a_reverted_file_is_
     )  # fmt: skip
     said = ci.tool_summary(run)
     assert row(said, "recorded files") == (
-        "1 of 6 recorded files match the hash recorded, 1 reverted"
+        "1 of 7 recorded files match the hash recorded, 1 reverted"
     )
     assert row(said, "resealed") == "2 resealed, matching their latest record"
     assert row(said, "appended") == "1 appended, a plan frozen in place whose log only grew"
     assert row(said, "ignored") == "1 ignored, the ledger's own files, not compared"
-    assert [line for line in said.splitlines() if line.startswith("- ")] == ["- `f5`: reverted"]
+    assert row(said, "retired") == "1 retired, no longer part of the project"
+    assert [line for line in said.splitlines() if line.startswith("- ")] == ["- `f6`: reverted"]
+
+
+def test_a_retired_file_passes_and_one_that_reappeared_with_new_bytes_fails(tools):
+    ledger(tools)
+    (tools / "inputs.json").unlink()
+    assert summary_of(tools, "results")[0] == 1
+    assert main(["results", "retire", "inputs.json", "--note", "folded into results.json"]) == 0
+    code, said = summary_of(tools, "results")
+    assert code == 0
+    assert row(said, "retired") == "1 retired, no longer part of the project"
+    (tools / "inputs.json").write_text(json.dumps({"xs": [4]}))
+    code, said = summary_of(tools, "results")
+    assert code == 1
+    assert row(said, "recorded files") == (
+        "1 of 2 recorded files match the hash recorded, 1 reappeared"
+    )
+    assert "- `inputs.json`: reappeared" in said
 
 
 def test_a_ledger_whose_chain_does_not_verify_fails_and_compares_no_file(tools):

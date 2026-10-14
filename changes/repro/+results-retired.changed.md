@@ -1,0 +1,1 @@
+**`repro ci results`, `repro badges` and the mod's band read `retired` as passing and `reappeared` as failing.** `repro ci results` counts retired paths on a row of their own and lists a reappeared one by path; the `results` badge stays green over retired paths and goes amber over a reappeared one; the band counts `REAPPEARED` as changed and `RETIRED` as nothing.

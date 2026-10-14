@@ -703,7 +703,7 @@ results: the ledger's chain, and each recorded file against the hash recorded fo
 What this checks: the ledger's chain is intact and each recorded file is the bytes that were recorded. It does not show that the results are right.
 ```
 
-A recorded file the repository does not commit is `missing` in a clone, and the run fails on it. A file `reverted` to an earlier of its recorded hashes fails too. The states `results verify --files` passes besides `ok` are counted on rows of their own and not listed: `resealed`, a path recorded under more than one hash that holds the latest; `appended`, a plan frozen in place whose log only grew; and `ignored`, one of the ledger's own files, which is not compared.
+A recorded file the repository does not commit is `missing` in a clone, and the run fails on it. A file `reverted` to an earlier of its recorded hashes fails too. The states `results verify --files` passes besides `ok` are counted on rows of their own and not listed: `resealed`, a path recorded under more than one hash that holds the latest; `appended`, a plan frozen in place whose log only grew; `ignored`, one of the ledger's own files, which is not compared; and `retired`, a path `results retire` recorded as no longer part of the project. A retired path that `reappeared` with bytes no record names fails.
 
 ### claims in CI
 
@@ -858,7 +858,7 @@ repro badges
 | badge | counts | green | amber | red |
 |---|---|---|---|---|
 | `prereg` | plans frozen | every plan frozen and unchanged | a plan or an amendment never frozen | a frozen plan changed |
-| `results` | runs with a seal before them, of the ledger's runs; runs named `smoke_`, `prefreeze_`, `test_` or `dryrun_` are left out | `results verify --files` passes and every run is sealed | a run with no seal before it, or `results verify --files` fails over recorded files: changed, missing, reverted, not a tree or not a file | the ledger's chain does not verify, or a timestamp contradicts it |
+| `results` | runs with a seal before them, of the ledger's runs; runs named `smoke_`, `prefreeze_`, `test_` or `dryrun_` are left out | `results verify --files` passes and every run is sealed | a run with no seal before it, or `results verify --files` fails over recorded files: changed, missing, reverted, reappeared, not a tree or not a file | the ledger's chain does not verify, or a timestamp contradicts it |
 | `claims` | assertions verified, of every assertion | every assertion verified | none mismatched, and some were not found, not checked or could not be read | an assertion mismatched |
 | `citations` | quotations found, of every quotation pinned | every quotation found | none not found, and some unchecked | a quotation not found, or a source not the pinned bytes |
 | `reproduced` | declared commands with a current re-run on record, as `repro stale` reports them | every command current | a command stale, never re-run or undetermined | |

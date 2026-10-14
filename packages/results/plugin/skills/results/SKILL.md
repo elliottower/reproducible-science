@@ -104,8 +104,13 @@ With `--files`, every sealed input and recorded output is re-hashed against its 
 | `APPENDED` | a plan frozen in place whose log `prereg log` extended since the seal, and which `prereg check` finds unchanged. Passes |
 | `IGNORED` | one of the ledger's own files, sealed by an earlier version. Passes; `seal` now refuses these |
 | `REVERTED` | recorded under several hashes; the file matches an earlier one, not the latest. Fails |
+| `RETIRED` | `results retire` recorded the path as no longer part of the project; gone, or still the recorded bytes. Passes |
+| `REAPPEARED` | retired, and the path now holds bytes no record names. Fails |
 | `CHANGED` | file was modified since it was sealed or recorded |
 | `MISSING` | file no longer exists at the recorded path |
+
+A file deleted or replaced on purpose is `MISSING` until it is retired: `results retire <path>
+--note "<why>" [--superseded-by <new path>]`. Never re-seal or edit the ledger to clear it.
 
 **`CHAIN BROKEN` means the ledger was tampered with.** It does not mean the results are wrong —
 it means the evidence that they are right was damaged. Restore from git history.

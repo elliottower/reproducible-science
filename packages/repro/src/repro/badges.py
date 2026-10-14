@@ -200,7 +200,7 @@ def results_badge(run: ci.ToolRun, counted: Runs) -> Badge:
 
     Red where the chain did not verify: the account carries no event count, or the check
     failed with every recorded file in a state that passes (`ok`, `resealed`, `appended`,
-    `ignored`), which is a timestamp that contradicts the chain. Amber where the check failed
+    `ignored`, `retired`), which is a timestamp that contradicts the chain. Amber where the check failed
     over a recorded file in a state that fails, or not every run was sealed. Which file states
     fail is the tool's to say, and the badge follows its exit.
     """
