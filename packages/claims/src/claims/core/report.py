@@ -44,6 +44,20 @@ class ArtifactState(BaseModel):
     exists: bool = True
     detail: str = ""
     """Why, where the state needs one -- a path that exists and cannot be read."""
+    same_path_as: tuple[str, ...] = ()
+    """The other artifact ids whose declared path resolves to this one's file."""
+    same_digest_as: tuple[str, ...] = ()
+    """The other artifact ids, at another path, whose file holds the same bytes."""
+
+    @model_serializer(mode="wrap")
+    def _omit_no_aliases(self, handler):
+        """Leave the alias fields out where empty, so a state with none serializes as it did
+        before the fields existed."""
+        dumped = handler(self)
+        for field in ("same_path_as", "same_digest_as"):
+            if not getattr(self, field):
+                dumped.pop(field, None)
+        return dumped
 
 
 class ClaimAssessment(BaseModel):

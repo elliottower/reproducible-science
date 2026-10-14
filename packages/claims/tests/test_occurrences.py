@@ -24,6 +24,7 @@ from claims.models import (
     Standing,
 )
 from claims.numbers import numbers
+from claims.policy import PUBLICATION, STRICT, Severity
 from claims.verify import verify
 from pydantic import ValidationError
 
@@ -475,3 +476,113 @@ def test_a_grouped_value_is_shown_as_printed(tmp_path):
     decision = only(project(tmp_path, [side, FILE], paper=paper, stored={"accuracy": 1062000}))
     assert decision.outcome is Outcome.VERIFIED
     assert decision.detail == "accuracy: n 1,062e3, file 1062000"
+
+
+# -- one file under two ids --------------------------------------------------------------------
+
+
+def aliased(tmp_path, second_path="paper.md", second_text=None):
+    """Two artifact ids, the second naming `second_path`, with one locator on each."""
+    (tmp_path / "paper.md").write_text(ONE_PLACE)
+    if second_text is not None:
+        (tmp_path / second_path).write_text(second_text)
+    locator = {"kind": "prose", "before": "an accuracy of", "after": "x"}
+    manifest = {
+        "schema_version": "repro/1",
+        "project": "t",
+        "artifacts": [
+            {"id": "paper", "path": "paper.md"},
+            {"id": "paper_again", "path": second_path},
+        ],
+        "claims": [
+            {
+                "id": "c",
+                "text": "t",
+                "evidence": [
+                    {
+                        "kind": "correspondence",
+                        "name": "c",
+                        "sides": [
+                            {"name": "abstract", "artifact": "paper", "locator": locator},
+                            {"name": "results", "artifact": "paper_again", "locator": locator},
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    path = tmp_path / "repro.yaml"
+    path.write_text(yaml.safe_dump(manifest, sort_keys=False))
+    return verify(load(path))
+
+
+@pytest.mark.parametrize(
+    ("second_path", "second_text"),
+    [("paper.md", None), ("./sub/../paper.md", None), ("copy.md", ONE_PLACE)],
+)
+def test_one_file_under_two_ids_is_not_compared_with_itself(tmp_path, second_path, second_text):
+    (tmp_path / "sub").mkdir()
+    report = aliased(tmp_path, second_path, second_text)
+    decision = report.decisions[0]
+    assert decision.outcome is Outcome.UNCHECKED
+    assert decision.reason is Reason.SIDES_READ_ONE_PLACE
+    assert "in paper and paper_again, which are one file, 8.4 at line 1" in decision.detail
+
+
+@pytest.mark.parametrize(
+    ("second_path", "second_text", "said"),
+    [
+        ("paper.md", None, "paper and paper_again name the same file"),
+        ("copy.md", ONE_PLACE, "paper and paper_again hold the same bytes"),
+    ],
+)
+def test_two_ids_for_one_file_are_a_policy_finding_naming_both(
+    tmp_path, second_path, second_text, said
+):
+    report = aliased(tmp_path, second_path, second_text)
+    found = [v for v in PUBLICATION.assess(report).violations if v.rule == "artifact.alias"]
+    assert len(found) == 1, "one finding per pair"
+    assert found[0].severity is Severity.WARNING
+    assert found[0].subject == "paper"
+    assert found[0].detail.startswith(said)
+    assert [v.severity for v in STRICT.assess(report).violations if v.rule == "artifact.alias"] == [
+        Severity.ERROR
+    ]
+
+
+def test_two_files_with_different_bytes_are_neither_aliased_nor_refused(tmp_path):
+    report = aliased(tmp_path, "copy.md", ONE_PLACE.replace("8.4", "8.5"))
+    assert not [v for v in PUBLICATION.assess(report).violations if v.rule == "artifact.alias"]
+    assert report.decisions[0].outcome is Outcome.MISMATCH
+    assert "same_path_as" not in report.artifacts[0].model_dump()
+
+
+# -- one side matching more places than the other ----------------------------------------------
+
+PARTLY = "Title\nAbstract: the accuracy was 8.4 x.\n\n\n\nTable\nResults: the accuracy was 8.3 x.\n"
+
+
+def test_a_side_whose_anchors_also_match_the_other_sides_place_is_refused_and_says_where(
+    tmp_path,
+):
+    sides = [
+        {
+            "name": "abstract",
+            "artifact": "paper",
+            "locator": {"kind": "prose", "before": "the accuracy was", "after": "x"},
+        },
+        {
+            "name": "results",
+            "artifact": "paper",
+            "locator": {"kind": "prose", "before": "Results: the accuracy was", "after": "x"},
+        },
+    ]
+    paper = PARTLY.replace("8.4", "8.3")
+    decision = only(project(tmp_path, sides, paper=paper, stored={"accuracy": 8.3}))
+    assert decision.outcome is Outcome.UNCHECKED, "never a pass on a place compared with itself"
+    assert decision.reason is Reason.SIDES_READ_ONE_PLACE
+    assert decision.detail == (
+        "sides abstract and results read the same place in paper: results reads line 7, "
+        "which abstract's anchors also match at line 7; abstract also matches line 2. "
+        "Narrow abstract's anchors so they select only the place abstract is meant for"
+    )

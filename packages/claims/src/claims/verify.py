@@ -28,6 +28,7 @@ import statistics
 from collections.abc import Mapping
 from typing import Protocol
 
+from claims.adapters.base import Occurrence
 from claims.adapters.prose import GROUPED, placed
 from claims.adapters.reads import reading_once
 from claims.exceptions import (
@@ -384,14 +385,42 @@ def _grouping(locator: Locator, raw: str) -> str:
     return ""
 
 
-def _one_place(readings: list) -> str | None:
-    """What to say where two sides read a value at one place in one artifact, or None.
+def same_file(left: pathlib.Path, right: pathlib.Path) -> bool:
+    """Whether two declared paths are one file: one path once resolved, or the same bytes.
+
+    Two artifact ids may name one file, or two copies of it, and a value read through each is
+    then one value read twice. Sizes are compared before any byte is hashed."""
+    try:
+        if left.resolve() == right.resolve():
+            return True
+        if left.stat().st_size != right.stat().st_size:
+            return False
+        return Digest.of_file(left).value == Digest.of_file(right).value
+    except OSError:
+        return False
+
+
+def _line(occurrence: Occurrence) -> str:
+    """Where an occurrence is, as a report names it: its line, or the words around it."""
+    if occurrence.line is not None:
+        return f"line {occurrence.line}"
+    return f'"{occurrence.context}"'
+
+
+def _one_place(readings: list, paths: Mapping[str, pathlib.Path]) -> str | None:
+    """What to say where two sides read a value at one place in one file, or None.
 
     Two locators that differ only in `form`, or in anchors one of which contains the other,
-    can select the same printed value. The value is then compared with itself and agrees
-    whatever the document prints, and the place the manifest meant for one of the sides is
-    never read. The static check on canonical locators cannot see this, so it is made on what
-    the sides selected."""
+    can select the same printed value, and so can one locator under two artifact ids naming
+    one file. The value is then compared with itself and agrees whatever the document prints,
+    and the place the manifest meant for one of the sides is never read. The static check on
+    canonical locators cannot see this, so it is made on what the sides selected, in the file
+    each side resolved to.
+
+    Where one side's anchors also match places the other does not read, the pair is still
+    refused: dropping the shared place to force a comparison would compare what the manifest
+    did not address. The detail says which place is shared and which are not, so the author
+    can narrow the anchors that match more than one."""
     read = [
         (side, extracted)
         for side, _, extracted, _ in readings
@@ -399,16 +428,44 @@ def _one_place(readings: list) -> str | None:
     ]
     for at, (left, mine) in enumerate(read):
         for right, theirs in read[at + 1 :]:
-            if left.artifact != right.artifact:
+            one = left.artifact == right.artifact
+            if not one and not same_file(paths[left.artifact], paths[right.artifact]):
                 continue
-            for here in mine.occurrences:
-                for there in theirs.occurrences:
-                    if here.start < there.end and there.start < here.end:
-                        return (
-                            f"sides {left.name} and {right.name} read the same place in "
-                            f"{left.artifact}, {placed(here)}, so the value would be compared "
-                            f"with itself; give each side anchors that select a place of its own"
-                        )
+            shared = [
+                (here, there)
+                for here in mine.occurrences
+                for there in theirs.occurrences
+                if here.start < there.end and there.start < here.end
+            ]
+            if not shared:
+                continue
+            where = (
+                left.artifact
+                if one
+                else f"{left.artifact} and {right.artifact}, which are one file"
+            )
+            here, there = shared[0]
+            said = f"sides {left.name} and {right.name} read the same place in {where}"
+            extra = {
+                left.name: [o for o in mine.occurrences if all(o is not h for h, _ in shared)],
+                right.name: [o for o in theirs.occurrences if all(o is not t for _, t in shared)],
+            }
+            broad = [name for name, others in extra.items() if others]
+            if not broad:
+                return (
+                    f"{said}, {placed(here)}, so the value would be compared with itself; "
+                    f"give each side anchors that select a place of its own"
+                )
+            wide = broad[0]
+            narrow, (theirs_at, mine_at) = (
+                (right.name, (there, here)) if wide == left.name else (left.name, (here, there))
+            )
+            also = ", ".join(_line(o) for o in extra[wide])
+            return (
+                f"{said}: {narrow} reads {_line(theirs_at)}, which {wide}'s anchors also match "
+                f"at {_line(mine_at)}; {wide} also matches {also}. Narrow {wide}'s anchors so "
+                f"they select only the place {wide} is meant for"
+            )
     return None
 
 
@@ -850,7 +907,7 @@ class CorrespondenceBackend:
                 detail="; ".join(f"{s.name} ({s.artifact}): {d}" for s, _, d in unresolved),
             )
 
-        if (shared := _one_place(readings)) is not None:
+        if (shared := _one_place(readings, paths)) is not None:
             return Decision(
                 **base,
                 **completed,
@@ -1365,7 +1422,39 @@ def artifact_states(
         path = manifest.resolve(artifact)
         paths[artifact.id] = path
         states[artifact.id] = _artifact_state(artifact, path)
-    return states, paths
+    return _aliased(states, paths), paths
+
+
+def _aliased(
+    states: dict[str, ArtifactState], paths: dict[str, pathlib.Path]
+) -> dict[str, ArtifactState]:
+    """Each state with the other ids that name its file or hold its bytes.
+
+    Two ids for one file make any assertion comparing them compare the file with itself, so
+    the report says so before any evidence is read. The digest is the one just computed for
+    the pin, so nothing is read twice."""
+    resolved = {artifact_id: path.resolve() for artifact_id, path in paths.items()}
+    found = {}
+    for artifact_id, state in states.items():
+        same_path = tuple(
+            other
+            for other in states
+            if other != artifact_id and resolved[other] == resolved[artifact_id]
+        )
+        same_digest = tuple(
+            other
+            for other, theirs in states.items()
+            if other != artifact_id
+            and other not in same_path
+            and state.actual is not None
+            and theirs.actual == state.actual
+        )
+        found[artifact_id] = (
+            state.model_copy(update={"same_path_as": same_path, "same_digest_as": same_digest})
+            if same_path or same_digest
+            else state
+        )
+    return found
 
 
 def verify(
