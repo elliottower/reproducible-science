@@ -471,6 +471,18 @@ def build(project: pathlib.Path, out_path: pathlib.Path, groups_file: pathlib.Pa
     for (art, sec), n in edge_counts.items():
         edges.append({"source": art, "target": f"sec:{sec}", "kind": "supports", "count": n})
 
+    # The re-runs `repro reproduce` recorded: how many, and what the last one found.
+    rr_path = project / ".repro" / "reproductions.jsonl"
+    reruns = [json.loads(x) for x in rr_path.read_text().splitlines() if x.strip()] if rr_path.exists() else []
+    last_rerun = reruns[-1] if reruns else None
+    reproduce = {
+        "runs": len(reruns),
+        "declared": len(manifest.get("regenerations", [])),
+        "last_at": last_rerun and last_rerun.get("ended_at"),
+        "last": dict(collections.Counter(r.get("state") for r in last_rerun["regenerations"])) if last_rerun else {},
+        "last_steps": len(last_rerun["regenerations"]) if last_rerun else 0,
+    }
+
     # A claim is backed by a run when a file it reads a number from was written by a run the
     # ledger recorded. Derived from the files, so no sentence has to be bound by hand.
     by_id = {n["id"]: n for n in nodes if n["type"] == "artifact"}
@@ -483,6 +495,7 @@ def build(project: pathlib.Path, out_path: pathlib.Path, groups_file: pathlib.Pa
         "checked_at": checked_at,
         "project_dir": str(project),
         "status": status_lines(project, report),
+        "reproduce": reproduce,
         "manifest_digest": report["manifest_digest"],
         "totals": {
             "claims": len(report["claims"]),

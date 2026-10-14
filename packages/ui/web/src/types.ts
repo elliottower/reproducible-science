@@ -70,6 +70,7 @@ export interface Graph {
   checked_at?: string
   project_dir?: string
   status?: Record<'prereg' | 'results' | 'citations' | 'repro', StatusField>
+  reproduce?: { runs: number; declared: number; last_at: string | null; last: Record<string, number>; last_steps: number }
   manifest_digest: string
   totals: {
     claims: number
