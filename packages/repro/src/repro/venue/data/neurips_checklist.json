@@ -1,0 +1,92 @@
+{
+  "venue": "neurips",
+  "name": "NeurIPS Paper Checklist",
+  "source": {
+    "url": "https://media.neurips.cc/Conferences/NeurIPS2026/Formatting_Instructions_For_NeurIPS_2026.zip",
+    "retrieved": "2026-10-14",
+    "sha256": "780ba13c480f652dcc42e69ed61a752ce0ea270f15d332d4a45b059dabad84f6",
+    "via": "checklist.tex in the NeurIPS 2026 formatting archive linked from https://neurips.cc/Conferences/2026/CallForPapers, fetched with curl (archive sha256 82473931e3ef710fcd3f4a8cd4119b9de32e56825f90f9e5a6d55f2d01b817d9; the sha256 above is of checklist.tex). Headings and question text are copied verbatim in the file's order, with \\url{} and \\emph{} removed. The guidance page https://neurips.cc/public/guides/PaperChecklist was read too; it words several questions differently, and the style file is what a submission includes."
+  },
+  "questions": [
+    {
+      "id": "1",
+      "title": "Claims",
+      "text": "Do the main claims made in the abstract and introduction accurately reflect the paper's contributions and scope?"
+    },
+    {
+      "id": "2",
+      "title": "Limitations",
+      "text": "Does the paper discuss the limitations of the work performed by the authors?"
+    },
+    {
+      "id": "3",
+      "title": "Theory assumptions and proofs",
+      "text": "For each theoretical result, does the paper provide the full set of assumptions and a complete (and correct) proof?"
+    },
+    {
+      "id": "4",
+      "title": "Experimental result reproducibility",
+      "text": "Does the paper fully disclose all the information needed to reproduce the main experimental results of the paper to the extent that it affects the main claims and/or conclusions of the paper (regardless of whether the code and data are provided or not)?"
+    },
+    {
+      "id": "5",
+      "title": "Open access to data and code",
+      "text": "Does the paper provide open access to the data and code, with sufficient instructions to faithfully reproduce the main experimental results, as described in supplemental material?"
+    },
+    {
+      "id": "6",
+      "title": "Experimental setting/details",
+      "text": "Does the paper specify all the training and test details (e.g., data splits, hyperparameters, how they were chosen, type of optimizer) necessary to understand the results?"
+    },
+    {
+      "id": "7",
+      "title": "Experiment statistical significance",
+      "text": "Does the paper report error bars suitably and correctly defined or other appropriate information about the statistical significance of the experiments?"
+    },
+    {
+      "id": "8",
+      "title": "Experiments compute resources",
+      "text": "For each experiment, does the paper provide sufficient information on the computer resources (type of compute workers, memory, time of execution) needed to reproduce the experiments?"
+    },
+    {
+      "id": "9",
+      "title": "Code of ethics",
+      "text": "Does the research conducted in the paper conform, in every respect, with the NeurIPS Code of Ethics https://neurips.cc/public/EthicsGuidelines?"
+    },
+    {
+      "id": "10",
+      "title": "Broader impacts",
+      "text": "Does the paper discuss both potential positive societal impacts and negative societal impacts of the work performed?"
+    },
+    {
+      "id": "11",
+      "title": "Safeguards",
+      "text": "Does the paper describe safeguards that have been put in place for responsible release of data or models that have a high risk for misuse (e.g., pre-trained language models, image generators, or scraped datasets)?"
+    },
+    {
+      "id": "12",
+      "title": "Licenses for existing assets",
+      "text": "Are the creators or original owners of assets (e.g., code, data, models), used in the paper, properly credited and are the license and terms of use explicitly mentioned and properly respected?"
+    },
+    {
+      "id": "13",
+      "title": "New assets",
+      "text": "Are new assets introduced in the paper well documented and is the documentation provided alongside the assets?"
+    },
+    {
+      "id": "14",
+      "title": "Crowdsourcing and research with human subjects",
+      "text": "For crowdsourcing experiments and research with human subjects, does the paper include the full text of instructions given to participants and screenshots, if applicable, as well as details about compensation (if any)?"
+    },
+    {
+      "id": "15",
+      "title": "Institutional review board (IRB) approvals or equivalent for research with human subjects",
+      "text": "Does the paper describe potential risks incurred by study participants, whether such risks were disclosed to the subjects, and whether Institutional Review Board (IRB) approvals (or an equivalent approval/review based on the requirements of your country or institution) were obtained?"
+    },
+    {
+      "id": "16",
+      "title": "Declaration of LLM usage",
+      "text": "Does the paper describe the usage of LLMs if it is an important, original, or non-standard component of the core methods in this research? Note that if the LLM is used only for writing, editing, or formatting purposes and does not impact the core methodology, scientific rigor, or originality of the research, declaration is not required."
+    }
+  ]
+}

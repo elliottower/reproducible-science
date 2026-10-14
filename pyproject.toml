@@ -122,9 +122,10 @@ lint.per-file-ignores."packages/*/tests/*" = [ "B011" ] # bare assert False is f
 # 10.1097/EDE.0000000000001064, `trough` and `devlop` are npm packages the docs site's
 # lockfile names, `bu` is a base64 fragment in one of its integrity hashes, and the rest are
 # author surnames in the sampling frame. `publically` is ACM's spelling in the badging policy
-# text `repro venue acm-evidence` quotes verbatim. Listed rather than skipping whole files,
-# which would hide real typos.
-ignore-words-list = "unparseable,sav,ue,copie,buis,smae,nd,ist,fo,inout,ede,bui,trough,devlop,bu,publically"
+# text `repro venue acm-evidence` quotes verbatim, and `rouge` is the metric the ACL checklist
+# names, in the question text `repro venue acl` stores verbatim. Listed rather than skipping
+# whole files, which would hide real typos.
+ignore-words-list = "unparseable,sav,ue,copie,buis,smae,nd,ist,fo,inout,ede,bui,trough,devlop,bu,publically,rouge"
 skip = "uv.lock,.git"
 
 [tool.pytest]

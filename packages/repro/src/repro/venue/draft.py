@@ -240,8 +240,11 @@ def _finding_line(finding: Finding) -> str:
     return f"- {code(finding.record)} {finding.said}"
 
 
-def markdown(draft: Draft) -> str:
-    """The draft as Markdown: each question under its section, then its marker and findings."""
+def markdown(draft: Draft, choice: str = "") -> str:
+    """The draft as Markdown: each question under its section, then its marker and findings.
+
+    `choice` is the line put under each question whose yes or no no record settles, where the
+    venue asks for one; a settled answer is shown in its place, marked DRAFT."""
     lines = [
         f"# {draft.name} (DRAFT)",
         "",
@@ -264,6 +267,8 @@ def markdown(draft: Draft) -> str:
             lines += ["", f"*{question.text}*"]
         if answer.choice:
             lines += ["", choice_line(answer)]
+        elif choice:
+            lines += ["", choice]
         lines += ["", _marker(answer)]
         if answer.findings:
             lines += ["", *(_finding_line(f) for f in answer.findings)]
