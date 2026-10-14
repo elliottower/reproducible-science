@@ -353,7 +353,12 @@ def latex_text(s: str) -> str:
         base = {"\\i": "i", "\\j": "j"}.get(m.group(2), m.group(2))
         return unicodedata.normalize("NFC", base + ACCENTS[m.group(1)])
 
-    s = re.sub(r"\\([\"'`^~=.uvHck])\s*\{?(\\[ij]|[A-Za-z])\}?", accent, s)
+    # Symbol accents (\\" \\' \\` \\^ \\~ \\= \\.) take the next letter, braced or not. Letter-named
+    # accents (\\c \\u \\v \\H \\k) need braces or a space, or \\code would read as \\c plus o.
+    s = re.sub(r"\\([\"'`^~=.])\s*\{?(\\[ij]|[A-Za-z])\}?", accent, s)
+    s = re.sub(r"\\([uvHck])(?:\{(\\[ij]|[A-Za-z])\}|\s+([A-Za-z]))",
+               lambda m: unicodedata.normalize("NFC", ({"\\i": "i", "\\j": "j"}.get(m.group(2) or m.group(3), m.group(2) or m.group(3))) + ACCENTS[m.group(1)]), s)
+    s = s.replace("\\&", "&").replace("\\#", "#").replace("\\%", "%").replace("\\_", "_").replace("\\$", "$")
     s = re.sub(r"\{\\(ae|AE|aa|AA|ss|o|O|l|L)\}|\\(ae|AE|aa|AA|ss|o|O|l|L)(?![A-Za-z])",
                lambda m: LETTERS[m.group(1) or m.group(2)], s)
     return s
