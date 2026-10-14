@@ -1048,6 +1048,30 @@ Experimental. RO-Crate has no term for the address inside a file, for a printed 
 
 The crate is written from the records alone and loses none of them: `repro.export.rocrate.from_ro_crate` reads one back into the records it came from. Two consequences follow. A file no record names is not in the crate, which is an artifact that no assertion reads and no command upstream of one touches. And a record knows no license, which RO-Crate requires of a crate, so the document says none is stated; add the project's own before publishing one.
 
+## For a venue
+
+```bash
+repro venue acm                          # an Artifact Appendix, as Markdown
+repro venue acm --format latex -o ae.tex # in the layout of the template, as LaTeX
+```
+
+`repro venue acm` drafts an Artifact Appendix in the layout of the [Unified Artifact Appendix template](https://github.com/ctuning/artifact-evaluation/blob/307966059368634d9882a3daa42e4b63ef1946d6/docs/template/ae.tex) that ACM conferences running artifact evaluation ask for. The headings and field labels are the template's, stored in the package with the commit and the day they were copied. A field that a record in the repository bears on carries what that record says, one line per fact, each line naming its record:
+
+| field | read from |
+|---|---|
+| Run-time environment, Software dependencies | lockfiles and environment files at the top of the project, and the environment the last re-run recorded |
+| Hardware | the machine and GPUs the last re-run recorded in `.repro/reproductions.jsonl` |
+| Execution, time to complete | the duration of the last re-run of each declared command, added up |
+| Output | the claims and pinned artifacts `repro.yaml` declares, and the claims the ledger binds to runs |
+| Experiments, Workflow automation framework | each command under `regenerations`, with the file it writes |
+| Code licenses | `LICENSE` by its first line, and the license `CITATION.cff` names |
+| Archived (provide DOI)? | the DOI `CITATION.cff` names |
+| How to access | `git remote get-url origin`, and that DOI |
+| Experiment workflow | the commands, each plan frozen with `prereg` and its commit, and the ledger's count of seals and runs |
+| Evaluation and expected results | the claims, the outcome of the last re-run of each command, and each origin as `repro origins` finds it with no network |
+
+Each such field is marked **DRAFT** and names the records it was generated from. Every other field is marked **TODO** and left empty for the authors: the abstract, the algorithm, the data sets, installation and the rest are not in any record, and generated prose in their place would read as the authors' own. No field says yes or no. `--format json` gives every answer with its status and its records. `-o FILE` refuses to replace a file that exists, since the authors may have edited it; `--force` replaces it.
+
 ## Audit a repository you did not write
 
 ```bash
