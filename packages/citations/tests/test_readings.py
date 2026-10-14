@@ -47,11 +47,36 @@ def test_a_hyphen_between_digits_at_a_line_end_never_joins_them(tmp_path):
 
 def test_a_quotation_ending_where_a_column_line_breaks_is_not_called_truncated(tmp_path):
     # Layout sets the end of one column's line beside the start of the next line, so the
-    # first reading welds `some-` and `class` into `someclass`.
+    # first reading welds `some-` and `class` into `someclass`. The text cannot tell this from
+    # a split word, so it carries the softer warning and not `truncated`.
     p = source(tmp_path, "and every conforming call returns some-\nclass of results it promised.\n")
     r = V.check_one("and every conforming call returns some", p)
     assert r.state == "found"
+    assert "line-end hyphen" in r.warnings
     assert "truncated" not in r.warnings
+
+
+def test_a_quotation_ending_inside_a_word_split_at_a_line_end_is_flagged(tmp_path):
+    p = source(tmp_path, "The screen covered all the publi-\ncations listed in the registry.\n")
+    r = V.check_one("The screen covered all the publi", p)
+    assert r.state == "found"
+    assert "line-end hyphen" in r.warnings
+    assert "truncated" not in r.warnings
+
+
+def test_a_quotation_beginning_inside_a_word_split_at_a_line_end_is_flagged(tmp_path):
+    p = source(tmp_path, "The screen covered all the publi-\ncations listed in the registry.\n")
+    r = V.check_one("cations listed in the registry.", p)
+    assert r.state == "found"
+    assert "line-end hyphen" in r.warnings
+    assert "truncated" not in r.warnings
+
+
+def test_a_quotation_ending_on_a_whole_word_before_a_line_end_hyphen_is_not_flagged(tmp_path):
+    p = source(tmp_path, "The screen covered all the publi-\ncations listed in the registry.\n")
+    r = V.check_one("The screen covered all the", p)
+    assert r.state == "found"
+    assert "line-end hyphen" not in r.warnings
 
 
 def test_a_quotation_cut_inside_a_word_is_still_truncated(tmp_path):

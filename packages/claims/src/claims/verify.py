@@ -216,6 +216,7 @@ _QUOTE_STATE = {
 _QUOTE_WARNINGS = {
     "short": Warning_.SHORT,
     "truncated": Warning_.TRUNCATED,
+    "line-end hyphen": Warning_.LINE_END_HYPHEN,
     "normalized": Warning_.NORMALIZED,
     "page": Warning_.WRONG_PAGE,
     "page unchecked": Warning_.PAGE_UNCHECKED,
