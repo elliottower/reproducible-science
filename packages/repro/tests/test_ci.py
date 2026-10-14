@@ -44,6 +44,7 @@ from repro.models import (
     Statistic,
     TreeLocator,
     Warning_,
+    Witness,
 )
 from repro.policy import PUBLICATION, STRICT
 from repro.reproduce import RECORD, append
@@ -114,7 +115,7 @@ def on_disk(manifest):
     return manifest.path
 
 
-def rerun(manifest, at=THEN):
+def rerun(manifest, at=THEN, witness=None):
     """Record a re-run of every declared command over the files now on disk."""
     root = manifest.path.parent
     states = []
@@ -142,7 +143,8 @@ def rerun(manifest, at=THEN):
                 ),
             )
         )
-    append(ReproductionReport(started_at=at, regenerations=tuple(states)), root)
+    report = ReproductionReport(started_at=at, regenerations=tuple(states), witness=witness)
+    append(report, root)
 
 
 def decision(claim_id, execution, extraction, comparison, reason):
@@ -1162,3 +1164,111 @@ def test_init_prints_both_badge_lines_and_readme_takes_the_branded_ones_when_ask
     )
     assert main(["ci", "init", "--force", "--readme"]) == 0
     assert (repository / "README.md").read_text().count("[![") == 1
+
+
+# -- where the record says a re-run happened -------------------------------------------------
+
+RUN = Witness(kind="github_actions", repository="someone/study", run_id="123456")
+PAGE = "https://github.com/someone/study/actions/runs/123456"
+
+
+def two_commands(root):
+    """A manifest declaring two commands, each writing a file of its own from `inputs.json`."""
+    manifest = project(root, script=SCRIPT)
+    (root / "second.json").write_text(json.dumps({"total": 6}, indent=2))
+    first = manifest.regenerations[0]
+    second = first.model_copy(
+        update={
+            "id": "again",
+            "output": RunOutput(artifact="second", digest=Digest.of_file(root / "second.json")),
+        }
+    )
+    extra = ArtifactRef(
+        id="second", path=root / "second.json", digest=Digest.of_file(root / "second.json")
+    )
+    return manifest.model_copy(
+        update={
+            "artifacts": (*manifest.artifacts, extra),
+            "regenerations": (first, second),
+        }
+    )
+
+
+def record_said(manifest):
+    report = ci.stale(manifest)
+    return ci.record_summary(
+        ci.RecordRun(staleness=report, assessment=STRICT.assess_staleness(report))
+    )
+
+
+def test_a_rerun_the_record_places_in_a_ci_run_is_said_to_be_there_and_linked(tmp_path):
+    manifest = project(tmp_path, script=SCRIPT)
+    rerun(manifest, witness=RUN)
+    said = record_said(manifest)
+    assert row(said, "where") == (
+        f"of the 1 re-run compared: 1 recorded in GitHub Actions [run 123456]({PAGE}) of "
+        "someone/study, as the environment said"
+    )
+    assert RUN.said == "in GitHub Actions run 123456 of someone/study"
+    assert urllib.parse.urlsplit(PAGE).path == "/someone/study/actions/runs/123456"
+    assert "machine" not in row(said, "where")
+
+
+def test_a_rerun_with_no_witness_is_said_to_have_none_and_no_machine_is_claimed(tmp_path):
+    manifest = project(tmp_path, script=SCRIPT)
+    rerun(manifest)
+    said = record_said(manifest)
+    assert row(said, "where") == (
+        "of the 1 re-run compared: 1 recorded with no witness, which is how a re-run on "
+        "someone's own machine is recorded"
+    )
+    assert "author" not in said and "does not say on which machine" not in said
+    assert "github.com" not in row(said, "where")
+
+
+def test_witnessed_and_unwitnessed_reruns_are_counted_apart_and_add_up(tmp_path):
+    manifest = two_commands(tmp_path)
+    first, second = manifest.regenerations
+    rerun(manifest.model_copy(update={"regenerations": (first,)}), witness=RUN)
+    rerun(manifest.model_copy(update={"regenerations": (second,)}), at="2026-02-01T00:00:00+00:00")
+    said = record_said(manifest)
+    assert row(said, "commands").startswith("2 of 2 declared commands have a recorded re-run")
+    assert row(said, "where") == (
+        f"of the 2 re-runs compared: 1 recorded in GitHub Actions [run 123456]({PAGE}) of "
+        "someone/study, as the environment said; 1 recorded with no witness, which is how a "
+        "re-run on someone's own machine is recorded"
+    )
+
+
+def test_a_command_never_rerun_has_no_rerun_to_place(tmp_path):
+    assert row(record_said(project(tmp_path, script=SCRIPT)), "where") == "no re-run was compared"
+
+
+def test_the_claims_row_says_where_the_last_rerun_was_recorded_when_the_record_does(tmp_path):
+    manifest = project(tmp_path, script=SCRIPT)
+    rerun(manifest, witness=RUN)
+    said = ci.claims_summary(ci.claims(manifest, PUBLICATION))
+    assert row(said, "re-runs") == (
+        f"not re-run in this job; the last recorded re-run, started {THEN} in GitHub Actions "
+        f"[run 123456]({PAGE}) of someone/study, as the environment said: "
+        "1 of 1 command reproduced"
+    )
+
+
+def test_a_rerun_made_in_a_job_says_which_run_and_one_made_elsewhere_names_none(
+    tmp_path, monkeypatch
+):
+    path = on_disk(project(tmp_path, script=SCRIPT))
+    for name in ("GITHUB_ACTIONS", "GITHUB_REPOSITORY", "GITHUB_RUN_ID"):
+        monkeypatch.delenv(name, raising=False)
+    assert main(["ci", "reruns", "--run", str(path), "--summary", str(tmp_path / "a.md")]) == 0
+    assert row((tmp_path / "a.md").read_text(), "where") == (
+        "recorded with no witness: the environment named no GitHub Actions run"
+    )
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "someone/study")
+    monkeypatch.setenv("GITHUB_RUN_ID", "123456")
+    assert main(["ci", "reruns", "--run", str(path), "--summary", str(tmp_path / "b.md")]) == 0
+    assert row((tmp_path / "b.md").read_text(), "where") == (
+        f"recorded in GitHub Actions [run 123456]({PAGE}) of someone/study, as the environment said"
+    )
