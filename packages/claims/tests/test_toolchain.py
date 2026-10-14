@@ -13,9 +13,7 @@ import json
 import subprocess
 from importlib.metadata import version
 
-import openpyxl
 import pytest
-import xlwt
 from citations import extractors
 from claims.models import (
     ArtifactRef,
@@ -146,8 +144,12 @@ ROW = ("LASSO-Cox", "0.648")
 
 
 def workbook(path):
-    """A sheet of one row, in the format the suffix names."""
+    """A sheet of one row, in the format the suffix names. Writing and reading a workbook take
+    the optional readers, which `claims-cli` alone does not install, so a test of one is
+    skipped there; a `.csv` needs none."""
     if path.suffix == ".xls":
+        xlwt = pytest.importorskip("xlwt")
+        pytest.importorskip("xlrd")
         book = xlwt.Workbook()
         sheet = book.add_sheet("results")
         for column, cell in enumerate(ROW):
@@ -156,6 +158,7 @@ def workbook(path):
     elif path.suffix == ".csv":
         path.write_text(",".join(ROW) + "\n")
     else:
+        openpyxl = pytest.importorskip("openpyxl")
         book = openpyxl.Workbook()
         book.active.append(ROW)
         book.save(path)

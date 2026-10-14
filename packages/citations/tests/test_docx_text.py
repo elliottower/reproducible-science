@@ -63,7 +63,11 @@ def row(*cells: str, deleted: bool = False) -> str:
 
 
 def table(*rows: str) -> str:
-    return f"<w:tbl>{''.join(rows)}</w:tbl>"
+    """A table with the column grid Word writes, which `python-docx` 1.1 needs to read a row:
+    one column per cell of the first row, not counting a table nested in it."""
+    columns = rows[0].split("<w:tbl>")[0].count("<w:tc>") if rows else 0
+    grid = "<w:tblGrid>" + '<w:gridCol w:w="2000"/>' * columns + "</w:tblGrid>"
+    return f"<w:tbl>{grid}{''.join(rows)}</w:tbl>"
 
 
 def note(kind: str, number: int, text: str) -> str:
@@ -593,10 +597,17 @@ def test_a_utf16_part_with_no_byte_order_mark_declaring_entities_is_refused(tmp_
 
 @pytest.mark.parametrize(
     ("declared", "encoding"),
-    [("UTF-16", "utf-16-le"), ("UTF-16", "utf-16-be"), ("ISO-8859-1", "latin-1")],
+    [
+        ("UTF-16", "utf-16-le"),
+        ("UTF-16", "utf-16-be"),
+        ("ISO-8859-1", "latin-1"),
+        ("windows-1252", "cp1252"),
+        ("us-ascii", "ascii"),
+    ],
 )
 def test_a_part_is_decoded_as_the_parser_detects_its_encoding(tmp_path, declared, encoding):
-    body = p(r("Na\u00efve readers \u00e9crit."))
+    text = "Na\u00efve readers \u00e9crit." if encoding != "ascii" else "Plain readers."
+    body = p(r(text))
     xml = (
         f'<?xml version="1.0" encoding="{declared}"?>'
         f'<w:document xmlns:w="{W}"><w:body>{body}</w:body></w:document>'
@@ -604,7 +615,7 @@ def test_a_part_is_decoded_as_the_parser_detects_its_encoding(tmp_path, declared
     path = tmp_path / "encoded.docx"
     with zipfile.ZipFile(path, "w") as z:
         z.writestr("word/document.xml", xml.encode(encoding))
-    assert read(path) == ["Na\u00efve readers \u00e9crit."]
+    assert read(path) == [text]
 
 
 def test_a_part_holding_a_nul_is_refused(tmp_path):
@@ -636,3 +647,16 @@ def test_a_source_written_by_hand_with_no_version_and_no_digest_is_read_with_ver
     assert (
         pin.main([str(path), "--id", "second", "--quote", "held in every cohort", "--check"]) == 0
     )
+
+
+@pytest.mark.parametrize("declared", ["UTF-7", "unicode_escape", "cp037", "no-such-codec"])
+def test_a_part_declaring_an_encoding_no_word_part_is_in_is_refused_by_name(tmp_path, declared):
+    # `unicode_escape` turns an escaped `<!DOCTYPE` in plain ASCII into a declaration; the
+    # encoding is refused by name before anything is decoded with it.
+    xml = f'<?xml version="1.0" encoding="{declared}"?><w:document xmlns:w="{W}"/>'
+    path = tmp_path / "odd.docx"
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("word/document.xml", xml.encode("ascii"))
+    r_ = V.check_one("anything at all", path)
+    assert r_.state == "unchecked"
+    assert f"declares {declared}" in r_.detail

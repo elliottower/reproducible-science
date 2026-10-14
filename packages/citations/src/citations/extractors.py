@@ -348,6 +348,13 @@ _WINGDINGS_FONT = {0x6C: "●", 0x6E: "■", 0x9F: "•", 0xA7: "▪", 0xFB: "�
 _SYMBOL_FONTS = {"symbol": _SYMBOL_FONT, "wingdings": _WINGDINGS_FONT}
 
 _DOCTYPE = re.compile(r"<!(?:doctype|entity)", re.IGNORECASE)
+#: The encodings a declaration may name, as `codecs` names them. Word writes UTF-8; the rest are
+#: what another program that writes the format plausibly declares. Any other is refused by name:
+#: a codec such as `unicode_escape` or `utf-7` turns plain ASCII into markup the check never saw.
+_XML_ENCODINGS = frozenset(
+    {"utf-8", "utf-16", "utf-16-le", "utf-16-be", "iso8859-1", "ascii"}
+    | {f"cp{n}" for n in range(1250, 1259)}
+)
 _XML_ENCODING = re.compile(rb"""<\?xml[^>]*?encoding\s*=\s*["']([A-Za-z0-9._-]+)["']""")
 
 
@@ -372,7 +379,18 @@ def _xml_decoded(data: bytes) -> str:
     if data[:2] == b"\x00<":
         return data.decode("utf-16-be")
     named = _XML_ENCODING.match(data)
-    return data.decode(named.group(1).decode("ascii") if named else "utf-8")
+    if named is None:
+        return data.decode("utf-8")
+    declared = named.group(1).decode("ascii")
+    try:
+        codec = codecs.lookup(declared).name
+    except LookupError as e:
+        raise UnicodeError(f"it declares {declared}, an encoding nothing here reads") from e
+    if codec.startswith("utf-32"):
+        raise UnicodeError("UTF-32")
+    if codec not in _XML_ENCODINGS:
+        raise UnicodeError(f"it declares {declared}, which is not an encoding a Word part is in")
+    return data.decode(codec)
 
 
 def _docx_symbol(font: str | None, code: str | None) -> str:
@@ -493,8 +511,11 @@ class _DocxPackage:
         if "\x00" in text:
             raise SourceUnreadableError(self.path, f"{name} holds a NUL, which XML forbids")
         try:
-            # The decoded text, never the bytes, so the parser reads what was checked.
+            # The decoded text, never the bytes, so the parser reads what was checked. A lone
+            # surrogate in it cannot be handed to the parser, which takes UTF-8.
             return ET.fromstring(text)
+        except UnicodeEncodeError as e:
+            raise SourceUnreadableError(self.path, f"{name} holds a lone surrogate") from e
         except ET.ParseError as e:
             raise SourceUnreadableError(self.path, f"{name} is not well-formed XML: {e}") from e
 

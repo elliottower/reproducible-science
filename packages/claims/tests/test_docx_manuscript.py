@@ -1,16 +1,18 @@
 """A Word manuscript is checked as a text manuscript is.
 
-Each test builds its `.docx` with `python-docx` in the test's own directory, so no binary is
-committed and the fixture is exactly what the assertions describe. The text is `citations`'
-`docx-text` version 2, whose own tests cover each kind of content it reads.
+Each test writes its `.docx` part by part into a zip in the test's own directory, so no binary
+is committed, no library beyond the standard one builds it, and the fixture is exactly the
+markup the assertions describe. The text is `citations`' `docx-text` version 2, which needs no
+library either, so these run where `claims-cli` is installed alone; its own tests cover each
+kind of content it reads.
 """
 
 from __future__ import annotations
 
 import json
+import zipfile
 from importlib.metadata import version
 
-import docx
 from citations.verify import extract_uncached
 from claims.cli import main
 from claims.models import (
@@ -28,42 +30,62 @@ from claims.models import (
 )
 from claims.numbers import numbers
 from claims.verify import verify
-from docx.oxml import OxmlElement
-from docx.oxml.ns import qn
 
 SENTENCE = "Thirty-five participants responded to the survey."
 
+W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+R = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+RELS = "http://schemas.openxmlformats.org/package/2006/relationships"
 
-def revision(kind: str, words: str) -> OxmlElement:
-    """A tracked insertion or deletion of `words`, as Word writes one."""
-    change = OxmlElement(f"w:{kind}")
-    change.set(qn("w:id"), "1")
-    change.set(qn("w:author"), "a")
-    run, text = OxmlElement("w:r"), OxmlElement("w:t" if kind == "ins" else "w:delText")
-    text.text = words
-    text.set(qn("xml:space"), "preserve")
-    run.append(text)
-    change.append(run)
-    return change
+
+def run(text: str, tag: str = "w:t") -> str:
+    return f'<w:r><{tag} xml:space="preserve">{text}</{tag}></w:r>'
+
+
+def paragraph(*runs: str) -> str:
+    return f"<w:p>{''.join(runs)}</w:p>"
+
+
+def cell(text: str, span: int = 1) -> str:
+    merged = f'<w:tcPr><w:gridSpan w:val="{span}"/></w:tcPr>' if span > 1 else ""
+    return f"<w:tc>{merged}{paragraph(run(text))}</w:tc>"
 
 
 def manuscript(path, *, tracked=False):
-    """A `.docx` of two paragraphs, a table of two rows, one cell of which is merged, and a
-    header. `tracked` inserts ` on average` and deletes ` in 2020` as tracked changes."""
-    document = docx.Document()
-    document.add_paragraph(SENTENCE)
-    paragraph = document.add_paragraph("Responders were older by 4.2 years")
-    if tracked:
-        paragraph._p.append(revision("ins", " on average"))
-        paragraph._p.append(revision("del", " in 2020"))
-    paragraph.add_run(".")
-    table = document.add_table(rows=2, cols=3)
-    for column, heading in enumerate(("Arm", "Cohort", "n")):
-        table.cell(0, column).text = heading
-    table.cell(1, 0).text = "Treated"
-    table.cell(1, 1).merge(table.cell(1, 2)).text = "1,204"
-    document.sections[0].header.paragraphs[0].text = "Running head 99"
-    document.save(path)
+    """A `.docx` of two paragraphs, a table of two rows, one cell of which spans two columns,
+    and a header. `tracked` inserts ` on average` and deletes ` in 2020` as tracked changes."""
+    changes = (
+        f'<w:ins w:id="1" w:author="a">{run(" on average")}</w:ins>'
+        f'<w:del w:id="2" w:author="a">{run(" in 2020", "w:delText")}</w:del>'
+        if tracked
+        else ""
+    )
+    grid = "<w:tblGrid>" + '<w:gridCol w:w="2000"/>' * 3 + "</w:tblGrid>"
+    body = (
+        paragraph(run(SENTENCE))
+        + paragraph(run("Responders were older by 4.2 years"), changes, run("."))
+        + f"<w:tbl>{grid}<w:tr>{cell('Arm')}{cell('Cohort')}{cell('n')}</w:tr>"
+        + f"<w:tr>{cell('Treated')}{cell('1,204', span=2)}</w:tr></w:tbl>"
+        + '<w:sectPr><w:headerReference w:type="default" r:id="rIdH"/></w:sectPr>'
+    )
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr(
+            "_rels/.rels",
+            f'<Relationships xmlns="{RELS}"><Relationship Id="rId1" '
+            f'Type="{R}/officeDocument" Target="word/document.xml"/></Relationships>',
+        )
+        z.writestr(
+            "word/document.xml",
+            f'<w:document xmlns:w="{W}" xmlns:r="{R}"><w:body>{body}</w:body></w:document>',
+        )
+        z.writestr(
+            "word/_rels/document.xml.rels",
+            f'<Relationships xmlns="{RELS}"><Relationship Id="rIdH" Type="{R}/header" '
+            'Target="header1.xml"/></Relationships>',
+        )
+        z.writestr(
+            "word/header1.xml", f'<w:hdr xmlns:w="{W}">{paragraph(run("Running head 99"))}</w:hdr>'
+        )
     return path
 
 
