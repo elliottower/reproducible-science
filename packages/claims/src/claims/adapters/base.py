@@ -53,6 +53,24 @@ class Resolution(enum.StrEnum):
     FORMAT_UNSUPPORTED = "format_unsupported"
 
 
+class Occurrence(BaseModel):
+    """One place a prose locator's anchors select a value, in the normalized text."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    printed: str
+    """The value as the document prints it there: `1,062`, `eighteen`, `8.30`."""
+    raw: str
+    """The value read from it under the locator's form: `1062`, `18`, `8.30`."""
+    start: int
+    end: int
+    """Where the printed value starts and ends in the normalized text."""
+    line: int | None
+    """The line of the extracted text it is on, or None where lines cannot be mapped."""
+    context: str
+    """The words around it."""
+
+
 class ExtractedValue(BaseModel):
     """One stored value, in the representation the artifact used."""
 
@@ -62,6 +80,9 @@ class ExtractedValue(BaseModel):
     native_type: str
     trace: tuple[str, ...] = ()
     """How the value was reached, for a reader reconstructing the address by hand."""
+    occurrences: tuple[Occurrence, ...] = ()
+    """Each place a prose locator selected the value, in the order of the text. `raw` is the
+    first. Empty for every other locator, which addresses one place by construction."""
 
 
 Found = tuple[Resolution, ExtractedValue | None, str]

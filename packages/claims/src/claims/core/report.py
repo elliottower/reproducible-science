@@ -16,6 +16,7 @@ from claims.core.outcomes import (
     Ordering,
     OrderingReason,
     Outcome,
+    PairTie,
     Reason,
     RegistrationAuthority,
     Tie,
@@ -43,6 +44,20 @@ class ArtifactState(BaseModel):
     exists: bool = True
     detail: str = ""
     """Why, where the state needs one -- a path that exists and cannot be read."""
+    same_path_as: tuple[str, ...] = ()
+    """The other artifact ids whose declared path resolves to this one's file."""
+    same_digest_as: tuple[str, ...] = ()
+    """The other artifact ids, at another path, whose file holds the same bytes."""
+
+    @model_serializer(mode="wrap")
+    def _omit_no_aliases(self, handler):
+        """Leave the alias fields out where empty, so a state with none serializes as it did
+        before the fields existed."""
+        dumped = handler(self)
+        for field in ("same_path_as", "same_digest_as"):
+            if not getattr(self, field):
+                dumped.pop(field, None)
+        return dumped
 
 
 class ClaimAssessment(BaseModel):
@@ -401,6 +416,10 @@ class AssertionAccount(BaseModel):
     """How many decimal places the assertion declares the manuscript reports the value to."""
     tie: Tie | None = None
     """Set where the compared value lay exactly halfway between two printed values."""
+    ties: tuple[PairTie, ...] = ()
+    """Each pair of places that met a tie, in a `correspondence` of three places or more."""
+    disagreements: tuple[tuple[str, str], ...] = ()
+    """Each pair of places that disagree, in a `correspondence` of three places or more."""
     statistic: Statistic | None = None
     """What an `aggregate` computes over the values it reads. None for every other kind."""
     computed: str | None = None

@@ -80,6 +80,13 @@ class Policy(BaseModel):
 
     broken_pin: Severity = Severity.ERROR
     unpinned_artifact: Severity = Severity.WARNING
+    artifact_alias: Severity = Severity.WARNING
+    """Two artifact ids whose paths resolve to one file. An assertion comparing the two
+    compares the file with itself, so it agrees whatever the file holds."""
+    artifact_same_bytes: Severity = Severity.WARNING
+    """Two files at different paths holding the same bytes. A warning under every profile:
+    identical outputs can be legitimate, two seeds that converged, and a correspondence that
+    reads one place through both is `sides_read_one_place` whatever this says."""
     artifact_absent: Severity = Severity.ERROR
     """Nothing at the declared path. Without this the assertions against it are merely
     unchecked, which the publication profile tolerates, so a manifest naming a result file
@@ -153,6 +160,33 @@ class Policy(BaseModel):
                         detail="no digest recorded",
                     )
                 )
+
+        # One violation per pair, named from the artifact declared first.
+        for at, artifact in enumerate(report.artifacts):
+            later = {other.artifact_id for other in report.artifacts[at + 1 :]}
+            for other in artifact.same_path_as:
+                if other in later:
+                    violations.append(
+                        Violation(
+                            severity=self.artifact_alias,
+                            rule="artifact.alias",
+                            subject=artifact.artifact_id,
+                            detail=f"{artifact.artifact_id} and {other} name the same file, so "
+                            f"an assertion comparing them compares the file with itself",
+                        )
+                    )
+            for other in artifact.same_digest_as:
+                if other in later:
+                    violations.append(
+                        Violation(
+                            severity=self.artifact_same_bytes,
+                            rule="artifact.same_bytes",
+                            subject=artifact.artifact_id,
+                            detail=f"{artifact.artifact_id} and {other} hold the same bytes "
+                            f"({(artifact.actual or '')[:12]}), so an assertion comparing them "
+                            f"compares one content with itself",
+                        )
+                    )
 
         checked = 0
         for claim in report.claims:
@@ -347,6 +381,7 @@ STRICT = Policy(
     outcomes={o: Severity.ERROR for o in Outcome if o is not Outcome.VERIFIED},
     confirmatory_outcomes={o: Severity.ERROR for o in Outcome if o is not Outcome.VERIFIED},
     unpinned_artifact=Severity.ERROR,
+    artifact_alias=Severity.ERROR,
     ordering_unchecked=Severity.ERROR,
     regeneration_unchecked=Severity.ERROR,
     regeneration_not_rerun=Severity.WARNING,

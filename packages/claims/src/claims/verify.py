@@ -28,7 +28,9 @@ import statistics
 from collections.abc import Mapping
 from typing import Protocol
 
-from claims.adapters.reads import reading_once
+from claims.adapters.base import Occurrence
+from claims.adapters.prose import GROUPED, placed
+from claims.adapters.reads import once, reading_once
 from claims.exceptions import (
     ArtifactUnreadableError,
     BackendUnavailableError,
@@ -44,6 +46,7 @@ from claims.models import (
     ComparisonStatus,
     Conversion,
     CorrespondenceEvidence,
+    CorrespondenceSide,
     Decision,
     DecisionMember,
     DecisionSide,
@@ -51,10 +54,13 @@ from claims.models import (
     Evidence,
     ExecutionStatus,
     ExtractionStatus,
+    Locator,
     Manifest,
     MetricEvidence,
+    NumberForm,
     Ordering,
     OrderingReason,
+    PairTie,
     ProseLocator,
     QuoteEvidence,
     Reason,
@@ -359,7 +365,9 @@ def _compared(stored: decimal.Decimal, conversion: Conversion | None) -> decimal
     return conversion.apply(stored) if conversion is not None and stored.is_finite() else stored
 
 
-def _held(stored: decimal.Decimal, compared: decimal.Decimal, conversion: Conversion | None) -> str:
+def _held(
+    stored: decimal.Decimal | str, compared: decimal.Decimal, conversion: Conversion | None
+) -> str:
     """A stored value as a detail shows it: with what it is under a declared conversion."""
     if conversion is None:
         return f"{stored}"
@@ -385,6 +393,138 @@ def _misplaced(
         f"{evidence.name}: manuscript prints {evidence.reported}, which is "
         f"{_places(printed_places)}, and {_places(evidence.places)} is declared"
     )
+
+
+def _grouping(locator: Locator, raw: str) -> str:
+    """What to add where a prose locator read digits grouped by commas without being asked to.
+
+    The outcome is `value_not_numeric` either way; this only says what would read it."""
+    if (
+        isinstance(locator, ProseLocator)
+        and locator.form is NumberForm.DECIMAL
+        and GROUPED.fullmatch(raw)
+    ):
+        return (
+            f"; the commas group its digits, so declare `form: grouped` on the locator to "
+            f"read it as {raw.replace(',', '')}"
+        )
+    return ""
+
+
+def _digest(path: pathlib.Path) -> str:
+    """The sha256 of a file, computed once per file in a verification.
+
+    The pins are hashed through this, so a comparison of two files later in the same
+    verification reads the digests the pins were checked against and hashes nothing again."""
+    return once(("digest", path.resolve()), lambda: Digest.of_file(path).value)
+
+
+def same_file(left: pathlib.Path, right: pathlib.Path) -> str | None:
+    """`path` where two declared paths resolve to one file, `bytes` where two files hold the
+    same bytes, and None otherwise.
+
+    Two artifact ids may name one file, or two copies of it, and a value read through each is
+    then one value read twice. Sizes are compared before any digest is looked up."""
+    try:
+        if left.resolve() == right.resolve():
+            return "path"
+        if left.stat().st_size != right.stat().st_size:
+            return None
+        return "bytes" if _digest(left) == _digest(right) else None
+    except OSError:
+        return None
+
+
+def _line(occurrence: Occurrence) -> str:
+    """Where an occurrence is, as a report names it: its line, or the words around it."""
+    if occurrence.line is not None:
+        return f"line {occurrence.line}"
+    return f'"{occurrence.context}"'
+
+
+def _one_place(readings: list, paths: Mapping[str, pathlib.Path]) -> str | None:
+    """What to say where two sides read a value at one place in one file, or None.
+
+    Two locators that differ only in `form`, or in anchors one of which contains the other,
+    can select the same printed value, and so can one locator under two artifact ids naming
+    one file. The value is then compared with itself and agrees whatever the document prints,
+    and the place the manifest meant for one of the sides is never read. The static check on
+    canonical locators cannot see this, so it is made on what the sides selected, in the file
+    each side resolved to.
+
+    Where one side's anchors also match places the other does not read, the pair is still
+    refused: dropping the shared place to force a comparison would compare what the manifest
+    did not address. The detail says which place is shared and which are not, so the author
+    can narrow the anchors that match more than one."""
+    read = [
+        (side, extracted)
+        for side, _, extracted, _ in readings
+        if extracted is not None and extracted.occurrences
+    ]
+    for at, (left, mine) in enumerate(read):
+        for right, theirs in read[at + 1 :]:
+            one = left.artifact == right.artifact
+            alias = None if one else same_file(paths[left.artifact], paths[right.artifact])
+            if not one and alias is None:
+                continue
+            shared = [
+                (here, there)
+                for here in mine.occurrences
+                for there in theirs.occurrences
+                if here.start < there.end and there.start < here.end
+            ]
+            if not shared:
+                continue
+            where = (
+                left.artifact
+                if one
+                else f"{left.artifact} and {right.artifact}, which are one file"
+                if alias == "path"
+                else f"{left.artifact} and {right.artifact}, which hold the same bytes"
+            )
+            here, there = shared[0]
+            said = f"sides {left.name} and {right.name} read the same place in {where}"
+            extra = {
+                left.name: [o for o in mine.occurrences if all(o is not h for h, _ in shared)],
+                right.name: [o for o in theirs.occurrences if all(o is not t for _, t in shared)],
+            }
+            broad = [name for name, others in extra.items() if others]
+            if not broad:
+                return (
+                    f"{said}, {placed(here)}, so the value would be compared with itself; "
+                    f"give each side anchors that select a place of its own"
+                )
+            also = "; ".join(
+                f"{name} also matches {', '.join(_line(o) for o in extra[name])}" for name in broad
+            )
+            if len(broad) == 2:
+                return (
+                    f"{said}: both match {_line(here)}; {also}. Narrow the anchors of "
+                    f"{left.name} and {right.name} so each selects only the place it is meant for"
+                )
+            wide = broad[0]
+            narrow, (theirs_at, mine_at) = (
+                (right.name, (there, here)) if wide == left.name else (left.name, (here, there))
+            )
+            return (
+                f"{said}: {narrow} reads {_line(theirs_at)}, which {wide}'s anchors also match "
+                f"at {_line(mine_at)}; {also}. Narrow {wide}'s anchors so they select only the "
+                f"place {wide} is meant for"
+            )
+    return None
+
+
+def _as_printed(side: CorrespondenceSide, printed: str, raw: str) -> str | decimal.Decimal:
+    """A side's value as a detail shows it: as printed under `grouped`, and otherwise as the
+    decimal it was read as, which is how it was always shown."""
+    if isinstance(side.locator, ProseLocator) and side.locator.form is NumberForm.GROUPED:
+        return printed
+    return decimal.Decimal(raw)
+
+
+def _unit(raw: str, conversion: Conversion | None) -> tuple[decimal.Decimal, Conversion | None]:
+    """A value under its side's conversion, and the conversion, as `_held` takes them."""
+    return _compared(decimal.Decimal(raw), conversion), conversion
 
 
 def _plain(converted: decimal.Decimal) -> str:
@@ -649,7 +789,8 @@ class ValueBackend:
                 **no_compare,
                 extraction=ExtractionStatus.INVALID,
                 reason=Reason.VALUE_NOT_NUMERIC,
-                detail=f"{' '.join(extracted.trace)} holds {extracted.raw!r}",
+                detail=f"{' '.join(extracted.trace)} holds {extracted.raw!r}"
+                + _grouping(locator, extracted.raw),
                 warnings=warnings,
             )
         if not stored.is_finite():
@@ -719,9 +860,9 @@ class TableBackend(ValueBackend):
 
 
 class CorrespondenceBackend:
-    """Assertion: two artifacts hold the same value.
+    """Assertion: two artifacts, or several places, hold the same value.
 
-    Two extractions precede one comparison, and the stages report that faithfully. A side that
+    An extraction per side precedes one comparison, and the stages report that faithfully. A side that
     does not extract makes the comparison impossible rather than false: a document that never
     states the number does not contradict the file holding it, and reporting that as a
     disagreement would manufacture a finding out of a gap. The decision carries the failing
@@ -811,6 +952,16 @@ class CorrespondenceBackend:
                 detail="; ".join(f"{s.name} ({s.artifact}): {d}" for s, _, d in unresolved),
             )
 
+        if (shared := _one_place(readings, paths)) is not None:
+            return Decision(
+                **base,
+                **completed,
+                **no_compare,
+                extraction=ExtractionStatus.EXTRACTED,
+                reason=Reason.SIDES_READ_ONE_PLACE,
+                detail=shared,
+            )
+
         numbers: list[decimal.Decimal] = []
         for side, _, extracted, _ in readings:
             raw = extracted.raw if extracted is not None else ""
@@ -825,7 +976,8 @@ class CorrespondenceBackend:
                     **no_compare,
                     extraction=ExtractionStatus.INVALID,
                     reason=Reason.VALUE_NOT_NUMERIC,
-                    detail=f"{side.name} ({side.artifact}) holds {raw!r}",
+                    detail=f"{side.name} ({side.artifact}) holds {raw!r}"
+                    + _grouping(side.locator, raw),
                 )
             numbers.append(number)
 
@@ -842,27 +994,88 @@ class CorrespondenceBackend:
             for recorded, number in zip(base["sides"], numbers, strict=True)
         )
 
-        left, right = evidence.sides
-        a, b = numbers
-        held = [
-            _held(was, number, side.conversion)
-            for was, number, side in zip(stored, numbers, evidence.sides, strict=True)
-        ]
-        # `printed_precision` compares at the coarser of the two precisions, so a document
-        # printing 0.65 agrees with a file holding 0.6478 and the answer does not depend on
-        # which side the manifest wrote first. A larger exponent is the coarser value.
-        coarse, fine = (a, b) if _exponent(a) >= _exponent(b) else (b, a)
-        agrees = _agree(fine, coarse, evidence.mode, evidence.tolerance_value)
-        tie = _tied(fine, coarse, evidence.mode)
-        base["tie"] = tie
+        # One place per side, or one per spelling where a side's anchors select one number
+        # printed to several precisions: `8.3` in an abstract and `8.30` in a table are one
+        # number and two precisions, and each is compared at its own.
+        places: list[tuple[CorrespondenceSide, str, str, decimal.Decimal]] = []
+        for side, _, extracted, _ in readings:
+            occurrences = extracted.occurrences if extracted is not None else ()
+            spelled = list({o.printed: o for o in reversed(occurrences)}.values())[::-1]
+            if len(spelled) > 1:
+                places += [
+                    (
+                        side,
+                        f"{side.name} at line {o.line}"
+                        if o.line is not None
+                        else f"{side.name} printing {o.printed}",
+                        _held(_as_printed(side, o.printed, o.raw), *_unit(o.raw, side.conversion)),
+                        _compared(decimal.Decimal(o.raw), side.conversion),
+                    )
+                    for o in spelled
+                ]
+                continue
+            raw = extracted.raw if extracted is not None else ""
+            printed = occurrences[0].printed if occurrences else raw
+            places.append(
+                (
+                    side,
+                    side.name,
+                    _held(_as_printed(side, printed, raw), *_unit(raw, side.conversion)),
+                    _compared(decimal.Decimal(raw), side.conversion),
+                )
+            )
+
+        # Every pair of places on different sides, each compared as two sides are.
+        # `printed_precision` compares a pair at the coarser of its two precisions, so a
+        # document printing 0.65 agrees with a file holding 0.6478 and the answer does not
+        # depend on which side the manifest wrote first. A larger exponent is the coarser value.
+        # Pairs and not one reference: an abstract printing 8.3 and a section printing 8.4 each
+        # agree with a stored 8.35, and disagree with each other. A declared tolerance applies
+        # to every pair, place against place as well as place against file.
+        disagree: list[tuple[str, str]] = []
+        ties: list[PairTie] = []
+        for at, (left, named, _, a) in enumerate(places):
+            for right, other, _, b in places[at + 1 :]:
+                if right is left:
+                    continue
+                coarse, fine = (a, b) if _exponent(a) >= _exponent(b) else (b, a)
+                if not _agree(fine, coarse, evidence.mode, evidence.tolerance_value):
+                    disagree.append((named, other))
+                if (tie := _tied(fine, coarse, evidence.mode)) is not None:
+                    ties.append(PairTie(sides=(named, other), tie=tie))
+        agrees = not disagree
+        # `tie` is the first, as it was the only one when a correspondence had two sides.
+        base["tie"] = ties[0].tie if ties else None
+        if len(places) == 2:
+            (_, left, a, _), (_, right, b, _) = places
+            between = (
+                f", an exact tie between {ties[0].tie.lower} and {ties[0].tie.upper}"
+                if ties
+                else ""
+            )
+            detail = f"{evidence.name}: {left} {a}, {right} {b}{between}"
+        else:
+            base["ties"] = tuple(ties)
+            base["disagreements"] = tuple(disagree)
+            # Each place with its artifact, since several sides may be places in one document,
+            # then each pair that met a tie, and each pair that disagrees, so the report says
+            # which places to reconcile.
+            detail = f"{evidence.name}: " + ", ".join(
+                f"{named} ({side.artifact}) {value}" for side, named, value, _ in places
+            )
+            detail += "".join(
+                f"; {paired.sides[0]} and {paired.sides[1]} an exact tie between "
+                f"{paired.tie.lower} and {paired.tie.upper}"
+                for paired in ties
+            )
+            detail += "".join(f"; {left} and {right} disagree" for left, right in disagree)
         return Decision(
             **base,
             **completed,
             extraction=ExtractionStatus.EXTRACTED,
             comparison=ComparisonStatus.MATCH if agrees else ComparisonStatus.MISMATCH,
             reason=Reason.VALUE_MATCH if agrees else Reason.VALUE_MISMATCH,
-            detail=f"{evidence.name}: {left.name} {held[0]}, {right.name} {held[1]}"
-            + (f", an exact tie between {tie.lower} and {tie.upper}" if tie else ""),
+            detail=detail,
             warnings=(
                 (Warning_.POSITIONAL_ADDRESS,)
                 if any(side.locator.kind == "table_position" for side in evidence.sides)
@@ -986,7 +1199,10 @@ class AggregateBackend:
             if number.is_finite():
                 converted.append(_compared(number, evidence.conversion))
             else:
-                not_numeric.append(f"{named(position, member.artifact)} holds {raw!r}")
+                not_numeric.append(
+                    f"{named(position, member.artifact)} holds {raw!r}"
+                    + _grouping(member.locator, raw)
+                )
         if not_numeric:
             return Decision(
                 **base,
@@ -1070,7 +1286,7 @@ def _artifact_state(artifact: ArtifactRef, path: pathlib.Path) -> ArtifactState:
     # symlink -- is a fact about that artifact. Raising suppressed the report for every other
     # claim in the manifest because of one bad path.
     try:
-        actual = Digest.of_file(path).value
+        actual = _digest(path)
     except OSError as e:
         return ArtifactState(
             artifact_id=artifact.id,
@@ -1251,7 +1467,39 @@ def artifact_states(
         path = manifest.resolve(artifact)
         paths[artifact.id] = path
         states[artifact.id] = _artifact_state(artifact, path)
-    return states, paths
+    return _aliased(states, paths), paths
+
+
+def _aliased(
+    states: dict[str, ArtifactState], paths: dict[str, pathlib.Path]
+) -> dict[str, ArtifactState]:
+    """Each state with the other ids that name its file or hold its bytes.
+
+    Two ids for one file make any assertion comparing them compare the file with itself, so
+    the report says so before any evidence is read. The digest is the one just computed for
+    the pin, so nothing is read twice."""
+    resolved = {artifact_id: path.resolve() for artifact_id, path in paths.items()}
+    found = {}
+    for artifact_id, state in states.items():
+        same_path = tuple(
+            other
+            for other in states
+            if other != artifact_id and resolved[other] == resolved[artifact_id]
+        )
+        same_digest = tuple(
+            other
+            for other, theirs in states.items()
+            if other != artifact_id
+            and other not in same_path
+            and state.actual is not None
+            and theirs.actual == state.actual
+        )
+        found[artifact_id] = (
+            state.model_copy(update={"same_path_as": same_path, "same_digest_as": same_digest})
+            if same_path or same_digest
+            else state
+        )
+    return found
 
 
 def verify(
@@ -1266,11 +1514,11 @@ def verify(
     them is `repro.reproduce`, which has to be asked for by name.
     """
     registry: dict[str, Backend] = {b.kind: b for b in backends}
-    states, paths = artifact_states(manifest)
-
     assessments = []
-    # Each artifact is parsed once for the whole manifest, just after it was hashed.
+    # Each artifact is hashed once and parsed once for the whole manifest: the pins are
+    # resolved inside the same scope, so a comparison of two files reads their pin digests.
     with reading_once():
+        states, paths = artifact_states(manifest)
         for claim in manifest.claims:
             decisions = tuple(
                 check_evidence(claim, evidence, manifest, paths, states, registry)

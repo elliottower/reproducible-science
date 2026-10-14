@@ -39,7 +39,7 @@ from typing import NamedTuple
 from citations.exceptions import SourceUnreadableError
 from citations.verify import extract_uncached, passage_fold
 
-from claims.adapters.prose import CARDINALS, located, numerals
+from claims.adapters.prose import CARDINALS, GROUPED, context, line_starts, located, numerals
 from claims.exceptions import ArtifactMissingError, ArtifactUnreadableError, ReproError
 from claims.models import (
     AggregateEvidence,
@@ -63,9 +63,6 @@ from claims.models import (
 #: Words shown on either side of a number.
 CONTEXT_WORDS = 4
 
-#: `2,364` and `1,234,567.5`: commas that group digits in threes. Any other comma between
-#: digits separates two numbers.
-_GROUPED = re.compile(r"[+-]?\d{1,3}(?:,\d{3})+(?:\.\d+)?(?:e[+-]?\d+)?")
 _WORD = re.compile(r"[a-z]+(?:-[a-z]+)*")
 _YEAR = re.compile(r"(?:18|19|20)\d\d")
 _DATE = re.compile(r"(?<![\d-])\d{4}-\d{2}-\d{2}(?![\d-])")
@@ -163,28 +160,9 @@ def _read(value: str | None) -> decimal.DecimalTuple | None:
 
 
 def _line_starts(raw: str, folded: str) -> list[int] | None:
-    """Where each line of the extracted text starts in the normalized text.
-
-    `passage_fold` joins the lines with one space, and joins a word a hyphen splits across a
-    line break with nothing. This walks the lines under that rule, and returns None where what it
-    walked is not the normalized text, so no line number is ever a guess.
-    """
-    pieces = [passage_fold(line) for line in raw.split("\n")]
-    starts, at = [], 0
-    for number, piece in enumerate(pieces):
-        starts.append(at)
-        if not piece:
-            continue
-        after = next((later for later in pieces[number + 1 :] if later), "")
-        # A word split across the break: a letter before the hyphen and one opening the next
-        # line that holds anything.
-        broken = piece.endswith("-") and piece[-2:-1].isalpha() and after[:1].isalpha()
-        if broken:
-            piece = piece[:-1]
-        if not folded.startswith(piece.rstrip(), at):
-            return None
-        at += len(piece) + (0 if broken else 1)
-    return starts
+    """Where each line of the extracted text starts in the normalized text, or None where the
+    walk does not reproduce it. See `claims.adapters.prose.line_starts`."""
+    return line_starts(raw, folded, passage_fold)
 
 
 def _dashes(raw: str, folded: str) -> frozenset[int]:
@@ -208,7 +186,7 @@ def _tokens(folded: str, dashes: frozenset[int]) -> list[_Token]:
         whole = folded[first:end]
         if named:
             found.append(_Token(first, end, None, True))
-        elif "," not in whole or _GROUPED.fullmatch(whole):
+        elif "," not in whole or GROUPED.fullmatch(whole):
             found.append(_Token(first, end, whole.replace(",", "")))
         else:
             at = first
@@ -293,20 +271,6 @@ def _places(passage: str, folded: str) -> list[Span]:
         found.append((at, at + len(wanted)))
         at = folded.find(wanted, at + 1)
     return found
-
-
-def _context(folded: str, start: int, end: int) -> str:
-    """The run a number is in and `CONTEXT_WORDS` runs on either side."""
-    lo, hi = start, end - 1
-    for _ in range(CONTEXT_WORDS + 1):
-        lo = folded.rfind(" ", 0, lo)
-        if lo == -1:
-            break
-    for _ in range(CONTEXT_WORDS + 1):
-        hi = folded.find(" ", hi + 1)
-        if hi == -1:
-            break
-    return folded[lo + 1 : len(folded) if hi == -1 else hi]
 
 
 def _reported(claim: Claim) -> set[decimal.DecimalTuple]:
@@ -399,7 +363,7 @@ def _inventory(
                 value=token.value if value is not None and valued else None,
                 offset=start,
                 line=bisect.bisect_right(starts, start) if starts else None,
-                context=_context(folded, start, end),
+                context=context(folded, start, end, CONTEXT_WORDS),
                 standing=standing,
                 rule=rule,
                 claims=claims,

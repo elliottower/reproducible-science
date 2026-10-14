@@ -64,6 +64,18 @@ on the pin alone.
 An artifact declares its digest once. Evidence refers to an artifact by id and never repeats a
 digest, so there is one source of truth per file.
 
+**One file under two ids.** Two artifacts whose declared paths resolve to one file, or whose
+files hold the same bytes, are one file to every assertion: a correspondence with a side on
+each compares the file with itself. Each `ArtifactState` lists the other ids that name its file
+in `same_path_as`, and those at another path holding its bytes in `same_digest_as`, compared
+with the digest computed for the pin, so nothing is hashed twice, and leaves both out where
+they are empty. A policy reports each such pair once, on the id declared first and naming both
+ids. One file under two ids is rule `artifact.alias`, a warning under `exploratory` and
+`publication` and an error under `strict`. Two files at different paths holding the same bytes
+are rule `artifact.same_bytes`, a warning under every profile: identical outputs can be
+legitimate, and a correspondence reading one place through both is refused whatever the policy
+says.
+
 An artifact copied from another repository may also declare where it was copied from, as
 `origin: {repository, commit, path}` (§7.12). An origin is never read by `repro verify`, which
 stays offline, and is left out of a manifest's serialization where it is absent, so the
@@ -200,7 +212,7 @@ mode: printed_precision     # or absolute
 tolerance: "0"
 ```
 
-Assertion: these two artifacts hold the same value.
+Assertion: these artifacts, or these places in one artifact, hold the same value.
 
 A side may carry a `conversion` (§3.7), and is then compared as converted.
 
@@ -211,11 +223,68 @@ with a `metric` requires transcribing one of the two into `reported`, and no ass
 the transcription — rewriting every `reported` field to the value the command measured, leaving
 the quoted sentences untouched, passes a manifest whose documents are still wrong.
 
-Exactly two sides, each with a name, an artifact, and a locator. The two must not address the
-same value, since an assertion comparing a value with itself holds whatever the file contains.
-The names are the author's and the engine attaches no meaning to them.
+Two sides or more, each with a name, an artifact, and a locator. No two may share a name or
+address the same value, since an assertion comparing a value with itself holds whatever the
+file contains. The names are the author's and the engine attaches no meaning to them.
 
-**Neither side is the reference.** A disagreement reports both values and says which artifact
+**One number in several places.** A manuscript prints a number in its abstract, its results and
+a caption, and each place is a side:
+
+```yaml
+kind: correspondence
+name: accuracy
+sides:
+  - {name: abstract, artifact: paper, locator: {kind: prose, before: "an accuracy of", after: "%"}}
+  - {name: results, artifact: paper, locator: {kind: prose, before: "the accuracy was", after: "%"}}
+  - {name: measured, artifact: results, locator: {kind: tree, pointer: /accuracy}, conversion: percent}
+```
+
+Every pair of sides is compared, each as two sides are, and the assertion holds where every
+pair agrees. Comparing each place with the file alone is not enough: a stored `0.0835` is
+`8.35` as a percentage, an exact tie at one decimal, so an abstract printing `8.3` and a
+section printing `8.4` each agree with it and disagree with each other. The decision is
+`mismatch`. Its detail names each side with its artifact and value, then each pair that met an
+exact tie, then each pair that disagrees: `accuracy: abstract (paper) 8.3, results (paper) 8.4,
+measured (results) 0.0835 (8.35 as a percentage); abstract and measured an exact tie between
+8.3 and 8.4; results and measured an exact tie between 8.3 and 8.4; abstract and results
+disagree`. The decision records every tied pair in `ties` and every disagreeing pair in
+`disagreements`, each by the names of its two places (§3.8), and `repro why` prints a line for
+each. A declared tolerance applies to every pair, place against place as well as place against
+file: under `absolute` with `tolerance: "0.05"`, places printing `8.30` and `8.36` disagree
+though each is within the tolerance of a stored `8.33`.
+
+A side whose anchors select one number printed to several precisions, `8.3` in an abstract and
+`8.30` in a table, is a place per spelling, named by the side and the line, and each is compared
+at its own precision: against a stored `8.35` the first is an exact tie and the second a
+mismatch, reported as `abstract at line 3 and file disagree`. The side records the value its
+first place prints.
+
+Two sides reading one place in one artifact are not compared. Locators that differ only in
+`form`, or in anchors one of which contains the other, `accuracy of` and `an accuracy of`, can
+select the same printed value, which then agrees with itself whatever the document prints while
+the place one side was meant for is never read. The canonical locators differ, so the manifest
+loads; the decision is `unchecked`, reason `sides_read_one_place`, and its detail names the two
+sides, the line and the words around the value. Sides are in one artifact where they name one
+id, or two ids whose files are one file (§2): one path once resolved, said as `which are one
+file`, or the same bytes, said as `which hold the same bytes`. Two files are compared by their
+sizes and then by the digests their pins were checked with.
+
+Where one side's anchors also match places the other side does not read, the pair is still
+`sides_read_one_place`. No occurrence is dropped to force a comparison, since the place left
+would be one the manifest did not single out. The detail says which place is shared and which
+are not, and which side to narrow: `sides abstract and results read the same place in paper:
+results reads line 7, which abstract's anchors also match at line 7; abstract also matches
+line 2. Narrow abstract's anchors so they select only the place abstract is meant for`. Where
+each side also matches places the other does not, both are named: `both match line 7; abstract
+also matches line 2; results also matches line 8. Narrow the anchors of abstract and results so
+each selects only the place it is meant for`.
+
+A place printing the value in another unit declares a `conversion` on its side, so `8.3%` with
+`conversion: fraction` agrees with a table cell printing `0.083`, and a place printing
+`1,062` declares `form: grouped` on its locator (§3.6). An anchor pair that occurs twice
+already requires its occurrences to agree (§3.6); sides are for places whose anchors differ.
+
+**Neither side is the reference.** A disagreement reports every value and says which artifact
 each came from; it does not say which is wrong, because nothing in a byte comparison establishes
 whether a specification or a suite is in error. `relative` is rejected for the same reason: its
 tolerance is a fraction of the reported value, and there is no reported value to take a fraction
@@ -382,7 +451,9 @@ and the value is the run of non-whitespace characters between them.
 locator: {kind: prose, before: "suite holds", after: "fixtures", form: cardinal_word}
 ```
 
-With no `after`, the value is the whole run up to the next whitespace. With one, it is the
+With no `after`, the value is the whole run up to the next whitespace, less a full stop closing
+it after a digit: `8.3.` at the end of a sentence reads `8.3`, since no number ends on a decimal
+point. With one, it is the
 whole run where `after` begins past it, and otherwise the run cut at the first place inside it
 where `after` begins. A character printed against the value is therefore removed by naming it.
 A cell of a printed table is glued to its divider, `| 7| 0.318| 0.107|`, and is addressed by
@@ -418,7 +489,22 @@ Anchors are matched against the text a `quote` resolves against, under the same 
 so an anchor and a quotation over one document cannot disagree about what the document says.
 Whitespace at an anchor boundary is ignored, on the grounds that normalization collapses it
 everywhere else. An anchor pair selecting two occurrences of one value resolves to that value;
-selecting two *different* values is `passage_ambiguous`. A repeated count is ordinary prose and
+selecting two *different* values is `passage_ambiguous`. Occurrences are one value where each
+reads as a number under the locator's `form` and the numbers are equal: `8.3` and `8.30`, `18`
+and `eighteen` under `cardinal_word`, `1,062` and `1062` under `grouped`. The value is what the first
+occurrence prints, and each occurrence is kept with its line: a `correspondence` compares each
+spelling at its own precision (§3.4), and every other kind compares at the precision of
+`reported`, where the spelling read makes no difference. `8.3` and `8.34` are different numbers
+and stay
+`passage_ambiguous`, and where any occurrence is no number the occurrences are compared as text.
+The detail of `passage_ambiguous` gives each occurrence, its line where the extracted text's
+lines can be mapped onto the normalized text, and the words around it:
+`"an accuracy of" ... "%" selects 2 different values in paper.md: 8.3 at line 1 ("reached an
+accuracy of 8.3% on the held-out split."), 8.4 at line 3 ("reached an accuracy of 8.4% on the
+same split.")`. Where places are sides of one `correspondence`, its `mode` and `tolerance`
+apply to every pair of places, place against place as well as place against file, so two
+places each within the tolerance of the file can still disagree with each other (§3.4). A
+repeated count is ordinary prose and
 a document stating two counts is a defect, which is the distinction a `quote` cannot draw:
 a quotation is satisfied by any occurrence, so editing one of two statements of a number leaves
 the assertion satisfied by the other.
@@ -430,8 +516,13 @@ inferred.** Under `decimal` a recognized cardinal is refused with `number_as_wor
 converted, because reading a word as a number is a semantic decision and the engine makes none
 on its own. The bound is not arbitrary: the value is one run of non-whitespace characters, and
 every cardinal above ninety-nine is several words, so `one hundred and forty-five` is not
-addressable this way whatever the table holds. `form` is part of the canonical locator, so the
-decision digest binds what the manifest authorized.
+addressable this way whatever the table holds. Under `grouped`, digits grouped in threes by
+commas are read as the number without the commas: `1,062` is 1062. Under `decimal` the same
+text is `value_not_numeric`, since a decimal parser refuses the comma, and the detail says to
+declare `form: grouped`; under either form a
+comma between digits that do not group in threes, `12,13` or `1,0620`, is not grouping. A
+grouped value is shown in a detail as printed, `1,062e3`. `form`
+is part of the canonical locator, so the decision digest binds what the manifest authorized.
 
 Predicates are typed key-value mappings, not a string expression language: a string predicate
 needs a parser, coercion rules, and an escaping grammar, and every implementation would
@@ -575,7 +666,10 @@ which software produced each number, and the manuscript does not say.
 A decision at a tie records it as `tie`, with `lower` and `upper`, the two neighbors, and
 `printed`, the value the manuscript prints, so that an agreement reached by accepting both is
 told from an ordinary one. `repro verify` prints `[exact tie: 4.2 or 4.3]` beside the
-assertion, and `repro why` prints the tie above the printed value.
+assertion, and `repro why` prints the tie above the printed value. A `correspondence` of three
+sides or more compares several pairs, and records each pair that met a tie in `ties`, with the
+names of its two sides, in the order the pairs were compared; `tie` is the first of them. A
+decision with no such pairs carries no `ties` field.
 
 ## 3.9 The value as stored
 
@@ -703,6 +797,7 @@ it flattens to:
 | `value_not_numeric` | `not_found` | the value addressed is not a finite number |
 | `number_as_word` | `not_found` | the value is an English cardinal written out, under a locator that did not ask for one |
 | `passage_ambiguous` | `not_found` | one pair of prose anchors selects two different values |
+| `sides_read_one_place` | `unchecked` | two sides of a `correspondence` select a value at one place in one artifact |
 | `quotation_ambiguous` | `not_found` | the quoted passage occurs more than once and no `prefix` or `suffix` singles one occurrence out |
 | `extractors_disagree` | `not_found` | two extractors that both read the artifact disagree about whether the passage is in it |
 | `format_unsupported` | `unchecked` | no adapter reads the artifact's format |
@@ -836,7 +931,10 @@ to claims marked confirmatory. Three profiles ship:
 The `error` outcome is an error under every profile, as is a broken pin. An artifact absent
 from its declared path is a warning under `exploratory` and an error under the other two. A
 `verified` quotation whose declared page was not checked (`page_unchecked`, §4.1) is graded as
-the profile grades `unchecked` for that claim, under the rule `evidence.page_unchecked`.
+the profile grades `unchecked` for that claim, under the rule `evidence.page_unchecked`. Two
+artifact ids for one file (§2) are the rule `artifact.alias`, a warning under `exploratory` and
+`publication` and an error under `strict`; two files holding the same bytes are the rule
+`artifact.same_bytes`, a warning under every profile.
 
 Every policy requires at least one assertion to have been evaluated. A run that checked
 nothing is not a pass, and without that condition a project with no evidence anywhere

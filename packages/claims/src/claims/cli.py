@@ -471,7 +471,15 @@ def _assertion_lines(assertion: AssertionAccount, paths: dict[str, str]) -> list
             f"the {assertion.statistic.value} of the {len(assertion.reads)} values: "
             f"{assertion.computed}"
         )
-    if assertion.tie is not None:
+    # A correspondence of three places or more compares several pairs, and names each.
+    for paired in assertion.ties:
+        lines.append(
+            f"{paired.sides[0]} and {paired.sides[1]}: an exact tie between "
+            f"{paired.tie.lower} and {paired.tie.upper}"
+        )
+    for left, right in assertion.disagreements:
+        lines.append(f"{left} and {right} disagree")
+    if assertion.tie is not None and not assertion.ties:
         lines.append(
             f"an exact tie between {assertion.tie.lower} and {assertion.tie.upper}: "
             "rounding half up prints one and half to even may print the other"
@@ -496,7 +504,8 @@ def _assertion_lines(assertion: AssertionAccount, paths: dict[str, str]) -> list
         )
         lines.append(f"the manuscript prints {assertion.printed}{declared}: {outcome}")
     else:
-        lines.append(f"the two sides compared: {outcome}")
+        count = "two" if len(assertion.reads) == 2 else str(len(assertion.reads))
+        lines.append(f"the {count} sides compared: {outcome}")
     # One line a warning, named as `repro verify` names it in brackets. An unchecked page says
     # why, since that is in the detail and the detail of a verified assertion is not printed.
     for warning in assertion.warnings:
