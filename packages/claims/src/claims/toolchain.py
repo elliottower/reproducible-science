@@ -82,8 +82,16 @@ def adapter_version() -> str:
 #: The library that reads a text of each suffix `citations` reads with a built-in extractor in
 #: this process, by its distribution name. A quotation or a prose address in such a text is
 #: read by no binary, so naming `pdftotext` would record a program that never ran, and an
-#: upgrade of the library that changes the text would leave no trace in the decision.
-TEXT_LIBRARIES = {".docx": "python-docx"}
+#: upgrade of the library that changes the text would leave no trace in the decision. A `.csv`
+#: is read by `citations`' own `sheet-rows` with the standard library's `csv`, so the code that
+#: reads it is `citations` and its version is the one to record.
+TEXT_LIBRARIES = {
+    ".docx": "python-docx",
+    ".xlsx": "openpyxl",
+    ".xlsm": "openpyxl",
+    ".xls": "xlrd",
+    ".csv": "citations",
+}
 
 
 def text_reader(path: pathlib.Path) -> tuple[str, str] | None:
