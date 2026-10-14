@@ -158,7 +158,9 @@ versus inferred.
 
 **Claim versus occurrence.** One claim, many appearances -- abstract, results,
 caption, conclusion -- with `values_must_agree`. This catches an abstract saying
-8.3% while the results section says 8.4%.
+8.3% while the results section says 8.4%. In the manifest this is a `correspondence`
+with a side per place, every pair compared (SPEC §3.4). What remains is the sidecar
+form: a `\claim{key}{value}` declared at each occurrence, joined on the key.
 
 **`0 inferred bindings counted as verified`** as a line in `check` output. Inferred
 evidence may help an author and can never contribute to a verified-coverage number.

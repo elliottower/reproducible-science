@@ -77,6 +77,11 @@ CARDINALS = _cardinals()
 _SIGNS = "+-\u2212"
 _NUMBER = re.compile(r"\d+(?:_\d+)*(?:[.,]\d+(?:_\d+)*)*(?:[eE][+-]?\d+)?")
 
+#: `2,364` and `1,234,567.5`: commas that group digits in threes. Any other comma between
+#: digits separates two numbers. What `form: grouped` reads, and what `repro numbers` counts
+#: as one number.
+GROUPED = re.compile(r"[+-]?\d{1,3}(?:,\d{3})+(?:\.\d+)?(?:[eE][+-]?\d+)?")
+
 
 def numerals(text: str, lo: int = 0, hi: int | None = None) -> Iterator[tuple[int, int, bool]]:
     """Each run of digits in `text[lo:hi]` that is printed as a number: where it starts, its
@@ -189,6 +194,11 @@ def _resolve_prose(locator: ProseLocator, path: pathlib.Path) -> Found:
         # check because someone corrected the prose. Anything else falls through to the
         # backend, which reports it as not numeric.
         return _ok(value, "text", *trace)
+
+    if locator.form is NumberForm.GROUPED and GROUPED.fullmatch(value):
+        # A numeral written without commas falls through and parses, as a numeral does under
+        # `cardinal_word`.
+        return _ok(value.replace(",", ""), "grouped", *trace, f'the grouped number "{value}"')
 
     if not _is_decimal(value) and value in CARDINALS:
         return _no(

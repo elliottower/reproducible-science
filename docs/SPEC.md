@@ -200,7 +200,7 @@ mode: printed_precision     # or absolute
 tolerance: "0"
 ```
 
-Assertion: these two artifacts hold the same value.
+Assertion: these artifacts, or these places in one artifact, hold the same value.
 
 A side may carry a `conversion` (§3.7), and is then compared as converted.
 
@@ -211,11 +211,35 @@ with a `metric` requires transcribing one of the two into `reported`, and no ass
 the transcription — rewriting every `reported` field to the value the command measured, leaving
 the quoted sentences untouched, passes a manifest whose documents are still wrong.
 
-Exactly two sides, each with a name, an artifact, and a locator. The two must not address the
-same value, since an assertion comparing a value with itself holds whatever the file contains.
-The names are the author's and the engine attaches no meaning to them.
+Two sides or more, each with a name, an artifact, and a locator. No two may share a name or
+address the same value, since an assertion comparing a value with itself holds whatever the
+file contains. The names are the author's and the engine attaches no meaning to them.
 
-**Neither side is the reference.** A disagreement reports both values and says which artifact
+**One number in several places.** A manuscript prints a number in its abstract, its results and
+a caption, and each place is a side:
+
+```yaml
+kind: correspondence
+name: accuracy
+sides:
+  - {name: abstract, artifact: paper, locator: {kind: prose, before: "an accuracy of", after: "%"}}
+  - {name: results, artifact: paper, locator: {kind: prose, before: "the accuracy was", after: "%"}}
+  - {name: measured, artifact: results, locator: {kind: tree, pointer: /accuracy}, conversion: percent}
+```
+
+Every pair of sides is compared, each as two sides are, and the assertion holds where every
+pair agrees. Comparing each place with the file alone is not enough: a stored `0.0835` is
+`8.35` as a percentage, an exact tie at one decimal, so an abstract printing `8.3` and a
+section printing `8.4` each agree with it and disagree with each other. The decision is
+`mismatch` and its detail names each side with its artifact and value and then each pair that
+disagrees: `accuracy: abstract (paper) 8.3, results (paper) 8.4, measured (results) 0.0835
+(8.35 as a percentage), an exact tie between 8.3 and 8.4; abstract and results disagree`. A
+place printing the value in another unit declares a `conversion` on its side, so `8.3%` with
+`conversion: fraction` agrees with a table cell printing `0.083`, and a place printing
+`1,062` declares `form: grouped` on its locator (§3.6). An anchor pair that occurs twice
+already requires its occurrences to agree (§3.6); sides are for places whose anchors differ.
+
+**Neither side is the reference.** A disagreement reports every value and says which artifact
 each came from; it does not say which is wrong, because nothing in a byte comparison establishes
 whether a specification or a suite is in error. `relative` is rejected for the same reason: its
 tolerance is a fraction of the reported value, and there is no reported value to take a fraction
@@ -430,8 +454,11 @@ inferred.** Under `decimal` a recognized cardinal is refused with `number_as_wor
 converted, because reading a word as a number is a semantic decision and the engine makes none
 on its own. The bound is not arbitrary: the value is one run of non-whitespace characters, and
 every cardinal above ninety-nine is several words, so `one hundred and forty-five` is not
-addressable this way whatever the table holds. `form` is part of the canonical locator, so the
-decision digest binds what the manifest authorized.
+addressable this way whatever the table holds. Under `grouped`, digits grouped in threes by
+commas are read as the number without the commas: `1,062` is 1062. Under `decimal` the same
+text is `value_not_numeric`, since a decimal parser refuses the comma, and under either form a
+comma between digits that do not group in threes, `12,13` or `1,0620`, is not grouping. `form`
+is part of the canonical locator, so the decision digest binds what the manifest authorized.
 
 Predicates are typed key-value mappings, not a string expression language: a string predicate
 needs a parser, coercion rules, and an escaping grammar, and every implementation would

@@ -37,7 +37,7 @@ from typing import NamedTuple
 from citations.exceptions import SourceUnreadableError
 from citations.verify import extract_uncached, passage_fold
 
-from claims.adapters.prose import CARDINALS, located, numerals
+from claims.adapters.prose import CARDINALS, GROUPED, located, numerals
 from claims.exceptions import ArtifactMissingError, ArtifactUnreadableError, ReproError
 from claims.models import (
     AggregateEvidence,
@@ -61,9 +61,6 @@ from claims.models import (
 #: Words shown on either side of a number.
 CONTEXT_WORDS = 4
 
-#: `2,364` and `1,234,567.5`: commas that group digits in threes. Any other comma between
-#: digits separates two numbers.
-_GROUPED = re.compile(r"[+-]?\d{1,3}(?:,\d{3})+(?:\.\d+)?(?:e[+-]?\d+)?")
 _WORD = re.compile(r"[a-z]+(?:-[a-z]+)*")
 _YEAR = re.compile(r"(?:18|19|20)\d\d")
 _DATE = re.compile(r"(?<![\d-])\d{4}-\d{2}-\d{2}(?![\d-])")
@@ -206,7 +203,7 @@ def _tokens(folded: str, dashes: frozenset[int]) -> list[_Token]:
         whole = folded[first:end]
         if named:
             found.append(_Token(first, end, None, True))
-        elif "," not in whole or _GROUPED.fullmatch(whole):
+        elif "," not in whole or GROUPED.fullmatch(whole):
             found.append(_Token(first, end, whole.replace(",", "")))
         else:
             at = first

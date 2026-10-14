@@ -492,7 +492,8 @@ def _assertion_lines(assertion: AssertionAccount, paths: dict[str, str]) -> list
         )
         lines.append(f"the manuscript prints {assertion.printed}{declared}: {outcome}")
     else:
-        lines.append(f"the two sides compared: {outcome}")
+        count = "two" if len(assertion.reads) == 2 else str(len(assertion.reads))
+        lines.append(f"the {count} sides compared: {outcome}")
     # One line a warning, named as `repro verify` names it in brackets. An unchecked page says
     # why, since that is in the detail and the detail of a verified assertion is not printed.
     for warning in assertion.warnings:

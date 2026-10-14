@@ -692,9 +692,9 @@ class TableBackend(ValueBackend):
 
 
 class CorrespondenceBackend:
-    """Assertion: two artifacts hold the same value.
+    """Assertion: two artifacts, or several places, hold the same value.
 
-    Two extractions precede one comparison, and the stages report that faithfully. A side that
+    An extraction per side precedes one comparison, and the stages report that faithfully. A side that
     does not extract makes the comparison impossible rather than false: a document that never
     states the number does not contradict the file holding it, and reporting that as a
     disagreement would manufacture a finding out of a gap. The decision carries the failing
@@ -815,27 +815,46 @@ class CorrespondenceBackend:
             for recorded, number in zip(base["sides"], numbers, strict=True)
         )
 
-        left, right = evidence.sides
-        a, b = numbers
         held = [
             _held(was, number, side.conversion)
             for was, number, side in zip(stored, numbers, evidence.sides, strict=True)
         ]
-        # `printed_precision` compares at the coarser of the two precisions, so a document
-        # printing 0.65 agrees with a file holding 0.6478 and the answer does not depend on
-        # which side the manifest wrote first. A larger exponent is the coarser value.
-        coarse, fine = (a, b) if _exponent(a) >= _exponent(b) else (b, a)
-        agrees = _agree(fine, coarse, evidence.mode, evidence.tolerance_value)
-        tie = _tied(fine, coarse, evidence.mode)
+        # Every pair of sides, each compared as two sides are. `printed_precision` compares a
+        # pair at the coarser of its two precisions, so a document printing 0.65 agrees with a
+        # file holding 0.6478 and the answer does not depend on which side the manifest wrote
+        # first. A larger exponent is the coarser value. Pairs and not one reference: an
+        # abstract printing 8.3 and a section printing 8.4 each agree with a stored 8.35, and
+        # disagree with each other.
+        disagree, tie = [], None
+        for at, (left, a) in enumerate(zip(evidence.sides, numbers, strict=True)):
+            for right, b in zip(evidence.sides[at + 1 :], numbers[at + 1 :], strict=True):
+                coarse, fine = (a, b) if _exponent(a) >= _exponent(b) else (b, a)
+                if not _agree(fine, coarse, evidence.mode, evidence.tolerance_value):
+                    disagree.append((left, right))
+                tie = tie or _tied(fine, coarse, evidence.mode)
+        agrees = not disagree
         base["tie"] = tie
+        between = f", an exact tie between {tie.lower} and {tie.upper}" if tie else ""
+        if len(evidence.sides) == 2:
+            (left, right), (a, b) = evidence.sides, held
+            detail = f"{evidence.name}: {left.name} {a}, {right.name} {b}{between}"
+        else:
+            # Each side with its artifact, since several sides may be places in one document,
+            # and then each pair that disagrees, so the report says which places to reconcile.
+            detail = f"{evidence.name}: " + ", ".join(
+                f"{side.name} ({side.artifact}) {value}"
+                for side, value in zip(evidence.sides, held, strict=True)
+            )
+            detail += between + "".join(
+                f"; {left.name} and {right.name} disagree" for left, right in disagree
+            )
         return Decision(
             **base,
             **completed,
             extraction=ExtractionStatus.EXTRACTED,
             comparison=ComparisonStatus.MATCH if agrees else ComparisonStatus.MISMATCH,
             reason=Reason.VALUE_MATCH if agrees else Reason.VALUE_MISMATCH,
-            detail=f"{evidence.name}: {left.name} {held[0]}, {right.name} {held[1]}"
-            + (f", an exact tie between {tie.lower} and {tie.upper}" if tie else ""),
+            detail=detail,
             warnings=(
                 (Warning_.POSITIONAL_ADDRESS,)
                 if any(side.locator.kind == "table_position" for side in evidence.sides)
