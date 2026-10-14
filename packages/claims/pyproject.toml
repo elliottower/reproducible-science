@@ -4,7 +4,7 @@ requires = [ "hatchling" ]
 
 [project]
 name = "claims-cli"
-version = "0.6.0"
+version = "0.6.1"
 description = "Check what a manuscript states against the files it names: numbers, table cells and quotations"
 readme = "README.md"
 keywords = [ "citations", "manuscript", "open science", "provenance", "reproducibility" ]
