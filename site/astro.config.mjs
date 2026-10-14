@@ -78,6 +78,7 @@ export default defineConfig({
             { label: "Results", link: "/tools/results/", attrs: { "data-tool": "results" } },
             { label: "Citations", link: "/tools/citations/", attrs: { "data-tool": "citations" } },
             { label: "Repro", link: "/tools/repro/", attrs: { "data-tool": "repro" } },
+            { label: "Claims", link: "/tools/claims/", attrs: { "data-tool": "claims" } },
           ],
         },
         {

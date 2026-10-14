@@ -37,7 +37,7 @@ import shutil
 import subprocess
 import sys
 
-from repro.exceptions import ReproError
+from claims.exceptions import ReproError
 
 # --------------------------------------------------------------------------------- templates
 

@@ -31,6 +31,7 @@ PACKAGES = {
     "prereg": PROJECT_ROOT / "packages" / "prereg" / "pyproject.toml",
     "results-cli": PROJECT_ROOT / "packages" / "results" / "pyproject.toml",
     "reproducible-science": PROJECT_ROOT / "packages" / "repro" / "pyproject.toml",
+    "claims-cli": PROJECT_ROOT / "packages" / "claims" / "pyproject.toml",
     "provenance-core": PROJECT_ROOT / "packages" / "provenance-core" / "pyproject.toml",
 }
 

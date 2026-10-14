@@ -1,6 +1,6 @@
 {
   "Exclude": [
-    "^packages/repro/tests/conformance/cases/",
+    "^packages/claims/tests/conformance/cases/",
     "uv\\.lock$"
   ],
   "Disable": {

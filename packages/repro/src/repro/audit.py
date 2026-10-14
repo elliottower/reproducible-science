@@ -34,12 +34,12 @@ from collections.abc import Callable, Iterator, Sequence
 from datetime import UTC, datetime
 
 import yaml
+from claims.exceptions import ReproError
+from claims.manifest import DEFAULT_NAME
 from provenance_core import gitref, hint, sha256_of_text
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from repro.delegate import BY_NAME
-from repro.exceptions import ReproError
-from repro.manifest import DEFAULT_NAME
 
 #: A clone or a fetch of a large repository over a slow link.
 TIMEOUT = 600

@@ -9,12 +9,13 @@ happened.
 
 | | |
 |---|---|
-| Distributions | `citations`, `prereg`, `results-cli`, `reproducible-science`, `provenance-core` |
-| Version | one number, identical across all five |
+| Distributions | `citations`, `prereg`, `results-cli`, `claims-cli`, `reproducible-science`, `provenance-core` |
+| Version | one number, identical across all six |
 | Trigger | a single annotated tag `vX.Y.Z` |
-| Result | five workflow runs, five PyPI uploads |
+| Result | six workflow runs, six PyPI uploads |
 
-Per-package tags (`citations-v*`, `prereg-v*`, `results-v*`, `repro-v*`, `provenance-core-v*`)
+Per-package tags (`citations-v*`, `prereg-v*`, `results-v*`, `claims-v*`, `repro-v*`,
+`provenance-core-v*`)
 still work and still
 publish one distribution each. They exist for a repair — republishing one package after a
 partial failure — and not for an ordinary release.
@@ -26,13 +27,13 @@ uv run python scripts/versions.py bump X.Y.Z
 uv run python scripts/versions.py check
 ```
 
-`bump` writes the version into all five manifests and rewrites the sibling dependency ranges
+`bump` writes the version into all six manifests and rewrites the sibling dependency ranges
 to `>=X.Y,<X.(Y+1)`. It refuses a version below one already declared, because PyPI rejects a
 version that goes backwards and never permits reuse of one that goes forwards. A first
 lockstep release, where the highest declared version was never published, passes `--realign`
 to allow the deliberate downward move.
 
-The range is a range rather than an exact `==`. This release is run by hand, so the four
+The range is a range rather than an exact `==`. This release is run by hand, so the six
 uploads land seconds apart; an exact pin makes the set briefly uninstallable in between.
 
 Both refuse a version below the floor `scripts/versions.py` names as `SERIES_FLOOR`, which is
@@ -125,7 +126,7 @@ uv run python scripts/check_publishers.py
 PyPI binds a trusted publisher to a repository, a workflow *filename*, and an environment. A
 package that moved between repositories keeps its old binding and the upload is rejected.
 
-This used to say: open five settings pages in a browser. That is a check with no command, and
+This used to say: open a settings page per distribution in a browser. That is a check with no command, and
 a check with no command is one nobody runs. Each publish workflow now answers the question
 itself. Its `binding` job exchanges an OIDC claim for a short-lived upload token and throws
 the token away — the same exchange the publish action makes, refused by PyPI for exactly the
@@ -148,10 +149,58 @@ gh run watch $(gh run list --workflow publish-citations.yml --limit 1 --json dat
 A dispatch publishes nothing. The `publish` job requires a pushed tag, tested on the event as
 well as the ref, because `github.ref` on a dispatch is the branch it was launched from.
 
-Check all five before tagging, not after the first failure. A rejected upload does not consume
+Check all six before tagging, not after the first failure. A rejected upload does not consume
 the version, so a wholly failed release is recoverable — but a *partial* one is not: if two
 packages upload and two are rejected, re-pushing the tag retries the successful two and fails
 on `File already exists`, and the only way forward is a new version.
+
+## A distribution PyPI has never seen
+
+`claims-cli` is new in 0.6.0. PyPI has no project of that name, so it has no trusted publisher
+for one, and the `binding` job in `publish-claims.yml` is refused until there is. A trusted
+publisher for a project that does not exist yet is a *pending* publisher, and only the
+account that will own the project can create it, by hand, before any tag is pushed.
+
+On PyPI, signed in as the owner: **Your account → Publishing → Add a new pending publisher →
+GitHub**. The form asks for five things.
+
+| field | value |
+|---|---|
+| PyPI Project Name | `claims-cli` |
+| Owner | `elliottower` |
+| Repository name | `reproducible-science` |
+| Workflow name | `publish-claims.yml` |
+| Environment name | `release` |
+
+The workflow name is the file's name, not the `name:` inside it. The environment is the one
+every publish workflow names on both of its jobs, and the one that admits version tags only.
+A pending publisher reserves nothing: the name can still be taken by someone else until the
+first upload, so create it close to the release and not weeks ahead.
+
+Then, with the tag that is about to be released, or any existing version tag, ask PyPI
+without publishing:
+
+```bash
+gh workflow run publish-claims.yml --ref vX.Y.Z
+uv run python scripts/check_publishers.py
+```
+
+**Cut a release candidate first.** `reproducible-science` X.Y.Z declares
+`claims-cli>=X.Y,<X.(Y+1)`. If the six uploads go out together and PyPI refuses only the new
+one, the wrapper is published and cannot be installed, and its version is consumed. A
+candidate of the new distribution alone finds that out with nothing at stake:
+
+```bash
+git tag -a claims-vX.Y.Zrc1 -m "claims-cli X.Y.Zrc1"
+git push origin claims-vX.Y.Zrc1
+```
+
+The per-package tag starts `publish-claims.yml` and no other workflow. The version it uploads
+is the one in `packages/claims/pyproject.toml` at that commit, so the candidate is cut from a
+commit that sets that one manifest to `X.Y.Zrc1`, on a branch, and is never merged: `bump`
+writes all six manifests and `check` wants them equal, which is right for a release and not
+for this. Once the candidate is on PyPI the pending publisher has become an ordinary one, and
+the release of all six proceeds from step 1.
 
 ## 6. Verify the version is unclaimed
 
@@ -160,7 +209,7 @@ git tag -l vX.Y.Z                                  # local
 git ls-remote --tags origin refs/tags/vX.Y.Z       # remote
 ```
 
-And on PyPI, for each of the five distributions, that `X.Y.Z` is absent from `releases`.
+And on PyPI, for each of the six distributions, that `X.Y.Z` is absent from `releases`.
 
 ## 7. Check the artifacts, not the source tree
 
@@ -169,12 +218,13 @@ uv run --isolated --no-project \
   --with dist/citations-X.Y.Z-py3-none-any.whl \
   --with dist/prereg-X.Y.Z-py3-none-any.whl \
   --with dist/results_cli-X.Y.Z-py3-none-any.whl \
+  --with dist/claims_cli-X.Y.Z-py3-none-any.whl \
   --with dist/reproducible_science-X.Y.Z-py3-none-any.whl \
   --with dist/provenance_core-X.Y.Z-py3-none-any.whl \
-  python -c "import citations, prereg, results, repro, provenance_core"
+  python -c "import citations, prereg, results, claims, repro, provenance_core"
 ```
 
-Install all five together in a clean environment, invoke each console script, and re-run the
+Install all six together in a clean environment, invoke each console script, and re-run the
 release's headline regression against the installed wheel rather than against `src/`. A fix
 that is present in the working tree and absent from the artifact is the failure mode this
 catches, and it is invisible to every test that imports from source.
@@ -221,7 +271,7 @@ before pushing.
 
 ## 10. Confirm the release landed
 
-Watch all five workflow runs to completion, then confirm each distribution reports the new
+Watch all six workflow runs to completion, then confirm each distribution reports the new
 version on PyPI and installs from PyPI — not from `dist/` — in a clean environment.
 
 Only then archive or update anything downstream. A standalone repository that has been
@@ -237,6 +287,7 @@ Each entry is something that happened, not something imagined.
 | Version numbers drifting apart across packages | step 1, `versions.py check` |
 | A changelog entry asserting a fix that was never a defect | step 2, tracing each claim to a commit |
 | A trusted publisher still bound to an old repository | step 5 |
-| A partially published release with versions consumed | step 6, checking all five first |
+| A partially published release with versions consumed | step 6, checking all six first |
+| A new distribution whose first upload PyPI refuses | the section on a first release |
 | A fix present in source and absent from the wheel | step 7 |
 | An interop claim falsified by someone else's release | step 8 |

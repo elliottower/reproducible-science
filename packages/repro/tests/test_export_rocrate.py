@@ -47,7 +47,11 @@ from repro.reproduce import append
 from repro.verify import DEFAULT_BACKENDS, MetricBackend
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
-CASES = sorted((pathlib.Path(__file__).parent / "conformance" / "cases").iterdir())
+CASES = sorted(
+    (
+        pathlib.Path(__file__).resolve().parents[2] / "claims" / "tests" / "conformance" / "cases"
+    ).iterdir()
+)
 WHEN = datetime.datetime(2026, 10, 13, 12, 0, tzinfo=datetime.UTC)
 
 #: Every term the crate takes from the RO-Crate 1.3 context, which is schema.org's but for

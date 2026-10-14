@@ -201,7 +201,7 @@ A side may carry a `conversion` (§3.7), and is then compared as converted.
 
 Every other kind compares an artifact against a literal written in the manifest. A claim a
 document makes about the code beside it has an artifact on both sides: `docs/SPEC.md` states a
-fixture count, and `ls -1 packages/repro/tests/conformance/cases` returns one. Expressing that
+fixture count, and `ls -1 packages/claims/tests/conformance/cases` returns one. Expressing that
 with a `metric` requires transcribing one of the two into `reported`, and no assertion reads
 the transcription — rewriting every `reported` field to the value the command measured, leaving
 the quoted sentences untouched, passes a manifest whose documents are still wrong.
@@ -1409,7 +1409,7 @@ An implementation conforms when:
     included, and its decision records what each member read. A statistic over fewer members
     than were declared is never a match.
 
-Conformance is executable: `packages/repro/tests/conformance/` holds 36 fixtures, each with
+Conformance is executable: `packages/claims/tests/conformance/` holds 36 fixtures, each with
 canonical expected JSON. They cover `verified`, `mismatch`, `not_found`, `unchecked` and
 `not_offered`, the pointer-escaping and undeclared-artifact cases, an unpinned artifact, a
 broken pin, five table-addressing cases, six over `correspondence` and the prose locator —

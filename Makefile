@@ -14,7 +14,7 @@
 # Everything runs through `uv run`, so contributors and CI invoke the same commands.
 
 PY := uv run
-PKG_SRC := packages/repro/src packages/citations/src packages/results/src packages/prereg/src
+PKG_SRC := packages/repro/src packages/claims/src packages/citations/src packages/results/src packages/prereg/src
 
 .PHONY: help format check test coverage versions publishable interop qa qa-all release-check types deps imports dead notes check-lowest hooks publishers changelog
 
@@ -141,7 +141,7 @@ release-check: qa interop-strict publishers
 # provenance-core included: every other package declares it, so a release that omits it
 # leaves the other four uninstallable from PyPI. It was absent here while its publish
 # workflow shipped it, so twine and check-wheel-contents never saw the artifact.
-	for d in reproducible-science citations results-cli prereg provenance-core; do uv build --package $$d --out-dir dist -q; done
+	for d in reproducible-science claims-cli citations results-cli prereg provenance-core; do uv build --package $$d --out-dir dist -q; done
 	$(PY) twine check dist/*
 	$(PY) check-wheel-contents dist/*.whl
 

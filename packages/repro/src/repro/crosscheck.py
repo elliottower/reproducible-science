@@ -12,7 +12,7 @@ records the commit, in `.prereg/<plan>.json` beside a plan frozen whole and as
 records what each claim named. Reading both is the whole check, and reading both is what the
 umbrella is for.
 
-What this does not do is decide whether the run a plan governs came after it. `repro.verify`
+What this does not do is decide whether the run a plan governs came after it. `claims.verify`
 already answers that, through `_ordering`, entirely within this package's own manifest: it
 reads `claim.confirmatory`, the runs that produced the claim's artifacts, and their
 registration authority. It never reads a preregistration or a ledger, which is exactly the

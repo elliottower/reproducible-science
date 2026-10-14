@@ -30,6 +30,7 @@ WORKFLOWS = {
     "prereg": "publish-prereg.yml",
     "results-cli": "publish-results.yml",
     "reproducible-science": "publish-repro.yml",
+    "claims-cli": "publish-claims.yml",
     "provenance-core": "publish-provenance-core.yml",
 }
 

@@ -570,7 +570,7 @@ def test_a_number_whose_line_cannot_be_placed_is_printed_with_its_offset(
 ):
     made = project(tmp_path, "First line.\nThen 12 trials.\n")
     assert [n.line for n in numbers(made, only=("paper",)).numbers] == [2]
-    monkeypatch.setattr("repro.numbers._line_starts", lambda raw, folded: None)
+    monkeypatch.setattr("claims.numbers._line_starts", lambda raw, folded: None)
     (number,) = numbers(made, only=("paper",)).numbers
     assert (number.line, number.offset) == (None, 17)
     assert main(["numbers", str(made.path), "--text", "paper"]) == 0

@@ -40,6 +40,7 @@ jobs:
             [publish-prereg.yml]=prereg
             [publish-results.yml]=results-cli
             [publish-repro.yml]=reproducible-science
+            [publish-claims.yml]=claims-cli
             [publish-provenance-core.yml]=provenance-core
           )
           fail=0

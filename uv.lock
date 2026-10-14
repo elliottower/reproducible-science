@@ -23,6 +23,7 @@ resolution-markers = [
 [manifest]
 members = [
     "citations",
+    "claims-cli",
     "prereg",
     "provenance-core",
     "repro-science",
@@ -519,6 +520,72 @@ provides-extras = ["docx", "lint", "paperclip", "pdf", "pdfplumber", "pypdf", "s
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=9.1.1" }]
+
+[[package]]
+name = "claims-cli"
+version = "0.5.6"
+source = { editable = "packages/claims" }
+dependencies = [
+    { name = "citations" },
+    { name = "provenance-core" },
+    { name = "pydantic" },
+    { name = "pyyaml" },
+]
+
+[package.optional-dependencies]
+arrays = [
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+]
+hdf5 = [
+    { name = "h5py" },
+]
+netcdf = [
+    { name = "netcdf4" },
+]
+parquet = [
+    { name = "pyarrow" },
+]
+rds = [
+    { name = "rdata" },
+]
+sheets = [
+    { name = "openpyxl" },
+    { name = "xlrd" },
+]
+stata-spss = [
+    { name = "pyreadstat" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "numpy", version = "2.5.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "pytest" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "citations", editable = "packages/citations" },
+    { name = "h5py", marker = "extra == 'hdf5'", specifier = ">=3.12" },
+    { name = "netcdf4", marker = "extra == 'netcdf'", specifier = ">=1.7.2" },
+    { name = "numpy", marker = "extra == 'arrays'", specifier = ">=2.2.6" },
+    { name = "openpyxl", marker = "extra == 'sheets'", specifier = ">=3.1" },
+    { name = "provenance-core", editable = "packages/provenance-core" },
+    { name = "pyarrow", marker = "extra == 'parquet'", specifier = ">=18" },
+    { name = "pydantic", specifier = ">=2.9" },
+    { name = "pyreadstat", marker = "extra == 'stata-spss'", specifier = ">=1.3.6" },
+    { name = "pyyaml", specifier = ">=6.0.2" },
+    { name = "rdata", marker = "extra == 'rds'", specifier = ">=1" },
+    { name = "xlrd", marker = "extra == 'sheets'", specifier = ">=2.0.1" },
+]
+provides-extras = ["arrays", "hdf5", "netcdf", "parquet", "rds", "sheets", "stata-spss"]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "numpy", specifier = ">=2.2.6" },
+    { name = "pytest", specifier = ">=9.1.1" },
+]
 
 [[package]]
 name = "click"
@@ -3043,6 +3110,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "citations" },
+    { name = "claims-cli" },
     { name = "prereg" },
     { name = "reproducible-science" },
     { name = "results-cli" },
@@ -3094,6 +3162,7 @@ types = [
 [package.metadata]
 requires-dist = [
     { name = "citations", editable = "packages/citations" },
+    { name = "claims-cli", editable = "packages/claims" },
     { name = "prereg", editable = "packages/prereg" },
     { name = "reproducible-science", editable = "packages/repro" },
     { name = "results-cli", editable = "packages/results" },
@@ -3147,6 +3216,7 @@ version = "0.5.6"
 source = { editable = "packages/repro" }
 dependencies = [
     { name = "citations" },
+    { name = "claims-cli" },
     { name = "prereg" },
     { name = "provenance-core" },
     { name = "pydantic" },
@@ -3159,27 +3229,25 @@ adduce = [
     { name = "adduce" },
 ]
 arrays = [
-    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
-    { name = "numpy", version = "2.5.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+    { name = "claims-cli", extra = ["arrays"] },
 ]
 hdf5 = [
-    { name = "h5py" },
+    { name = "claims-cli", extra = ["hdf5"] },
 ]
 netcdf = [
-    { name = "netcdf4" },
+    { name = "claims-cli", extra = ["netcdf"] },
 ]
 parquet = [
-    { name = "pyarrow" },
+    { name = "claims-cli", extra = ["parquet"] },
 ]
 rds = [
-    { name = "rdata" },
+    { name = "claims-cli", extra = ["rds"] },
 ]
 sheets = [
-    { name = "openpyxl" },
-    { name = "xlrd" },
+    { name = "claims-cli", extra = ["sheets"] },
 ]
 stata-spss = [
-    { name = "pyreadstat" },
+    { name = "claims-cli", extra = ["stata-spss"] },
 ]
 
 [package.dev-dependencies]
@@ -3194,19 +3262,19 @@ dev = [
 requires-dist = [
     { name = "adduce", marker = "extra == 'adduce'", specifier = ">=0.1.2" },
     { name = "citations", editable = "packages/citations" },
-    { name = "h5py", marker = "extra == 'hdf5'", specifier = ">=3.12" },
-    { name = "netcdf4", marker = "extra == 'netcdf'", specifier = ">=1.7.2" },
-    { name = "numpy", marker = "extra == 'arrays'", specifier = ">=2.2.6" },
-    { name = "openpyxl", marker = "extra == 'sheets'", specifier = ">=3.1" },
+    { name = "claims-cli", editable = "packages/claims" },
+    { name = "claims-cli", extras = ["arrays"], marker = "extra == 'arrays'", editable = "packages/claims" },
+    { name = "claims-cli", extras = ["hdf5"], marker = "extra == 'hdf5'", editable = "packages/claims" },
+    { name = "claims-cli", extras = ["netcdf"], marker = "extra == 'netcdf'", editable = "packages/claims" },
+    { name = "claims-cli", extras = ["parquet"], marker = "extra == 'parquet'", editable = "packages/claims" },
+    { name = "claims-cli", extras = ["rds"], marker = "extra == 'rds'", editable = "packages/claims" },
+    { name = "claims-cli", extras = ["sheets"], marker = "extra == 'sheets'", editable = "packages/claims" },
+    { name = "claims-cli", extras = ["stata-spss"], marker = "extra == 'stata-spss'", editable = "packages/claims" },
     { name = "prereg", editable = "packages/prereg" },
     { name = "provenance-core", editable = "packages/provenance-core" },
-    { name = "pyarrow", marker = "extra == 'parquet'", specifier = ">=18" },
     { name = "pydantic", specifier = ">=2.9" },
-    { name = "pyreadstat", marker = "extra == 'stata-spss'", specifier = ">=1.3.6" },
     { name = "pyyaml", specifier = ">=6.0.2" },
-    { name = "rdata", marker = "extra == 'rds'", specifier = ">=1" },
     { name = "results-cli", editable = "packages/results" },
-    { name = "xlrd", marker = "extra == 'sheets'", specifier = ">=2.0.1" },
 ]
 provides-extras = ["adduce", "arrays", "hdf5", "netcdf", "parquet", "rds", "sheets", "stata-spss"]
 

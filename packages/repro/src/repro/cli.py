@@ -16,7 +16,7 @@
     repro citations       run `citations`: does every quotation resolve in its source?
     repro results         run `results`: seal a run, record it, verify the chain
 
-A renderer over the library and nothing more. `verify` calls `repro.verify()` and
+A renderer over the library and nothing more. `verify` calls `claims.verify()` and
 `Policy.assess()`, both of which return values, so anything this prints can also be obtained
 by importing the package. `main` returns an exit code; the process boundary is the only place
 that exits.
@@ -32,57 +32,52 @@ import pathlib
 import subprocess
 from pathlib import Path
 
-from provenance_core import atomic_write
-from provenance_core.gitref import try_run
-
-from repro import __version__, audit, ci, crosscheck
-from repro.checks import LOCAL as LOCAL_CHECKS
-from repro.checks import RECORD as CHECKS
-from repro.checks import SET_ASIDE
-
 # The commands of the claims side, each under the name it had in this module.
-from repro.cli_claims import SYMBOL as SYMBOL
-from repro.cli_claims import _assertion_lines as _assertion_lines
-from repro.cli_claims import _chain_lines as _chain_lines
-from repro.cli_claims import _checked_said as _checked_said
-from repro.cli_claims import _count_said as _count_said
-from repro.cli_claims import _finding_said as _finding_said
-from repro.cli_claims import _history_lines as _history_lines
-from repro.cli_claims import _named as _named
-from repro.cli_claims import _numbers_lines as _numbers_lines
-from repro.cli_claims import _record_lines as _record_lines
-from repro.cli_claims import _said as _said
-from repro.cli_claims import _stale_lines as _stale_lines
-from repro.cli_claims import _stale_summary as _stale_summary
-from repro.cli_claims import _stale_text as _stale_text
-from repro.cli_claims import _steps as _steps
-from repro.cli_claims import _verify_text as _verify_text
-from repro.cli_claims import _why_lines as _why_lines
-from repro.cli_claims import cmd_export as cmd_export
-from repro.cli_claims import cmd_manifest_init as cmd_manifest_init
-from repro.cli_claims import cmd_numbers as cmd_numbers
-from repro.cli_claims import cmd_stale as cmd_stale
-from repro.cli_claims import cmd_verify as cmd_verify
-from repro.cli_claims import cmd_why as cmd_why
-from repro.delegate import BY_NAME, TOOLS
-from repro.delegate import check as delegate_check
-from repro.delegate import run as delegate_run
-from repro.demo import demo
-from repro.exceptions import ReproError
-from repro.export import EXPORTS
-from repro.export.rocrate import METADATA_FILE
-from repro.manifest import DEFAULT_NAME, find, load
-from repro.models import (
+from claims.cli import SYMBOL as SYMBOL
+from claims.cli import _assertion_lines as _assertion_lines
+from claims.cli import _chain_lines as _chain_lines
+from claims.cli import _checked_said as _checked_said
+from claims.cli import _count_said as _count_said
+from claims.cli import _finding_said as _finding_said
+from claims.cli import _history_lines as _history_lines
+from claims.cli import _named as _named
+from claims.cli import _numbers_lines as _numbers_lines
+from claims.cli import _record_lines as _record_lines
+from claims.cli import _said as _said
+from claims.cli import _stale_lines as _stale_lines
+from claims.cli import _stale_summary as _stale_summary
+from claims.cli import _stale_text as _stale_text
+from claims.cli import _steps as _steps
+from claims.cli import _verify_text as _verify_text
+from claims.cli import _why_lines as _why_lines
+from claims.cli import add_export, add_manifest, add_numbers, add_stale, add_verify, add_why
+from claims.cli import cmd_export as cmd_export
+from claims.cli import cmd_manifest_init as cmd_manifest_init
+from claims.cli import cmd_numbers as cmd_numbers
+from claims.cli import cmd_stale as cmd_stale
+from claims.cli import cmd_verify as cmd_verify
+from claims.cli import cmd_why as cmd_why
+from claims.exceptions import ReproError
+from claims.manifest import DEFAULT_NAME, find, load
+from claims.models import (
     Reading,
     Regeneration,
     ReproductionReport,
 )
-from repro.policy import PROFILES, Assessment, Policy
+from claims.policy import PROFILES, Assessment, Policy
+from claims.starter import project_root
+from claims.starter import write as write_starter
+from provenance_core import atomic_write
+from provenance_core.gitref import try_run
+
+from repro import __version__, audit, ci, crosscheck
+from repro.delegate import BY_NAME, TOOLS
+from repro.delegate import check as delegate_check
+from repro.delegate import run as delegate_run
+from repro.demo import demo
 from repro.reproduce import RECORD
 from repro.reproduce import append as append_reproduction
 from repro.reproduce import reproduce as run_reproduce
-from repro.starter import CONVENTIONAL, MAX_DISCOVERED, project_root
-from repro.starter import write as write_starter
 
 CLAUDE_MD = """\
 # {name}
@@ -496,52 +491,9 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
     )
     p_demo.set_defaults(func=cmd_demo)
 
-    p_manifest = sub.add_parser("manifest", help=f"write a starter {DEFAULT_NAME}")
-    p_manifest.set_defaults(func=lambda args: p_manifest.print_help() or 1)
-    p_manifest_init = p_manifest.add_subparsers(dest="action").add_parser(
-        "init",
-        help=f"write a starter {DEFAULT_NAME} for an existing project",
-        description=(
-            f"Write {DEFAULT_NAME} at the top of the project this is run in: its git root, or "
-            "the working directory outside a repository. Each file is pinned by sha256, and "
-            "example claims are written for a number and a quotation found in the pinned files, "
-            "so the manifest verifies as written. An example with nothing to point at is "
-            "written as a comment. An existing manifest is never overwritten."
-        ),
-    )
-    p_manifest_init.add_argument(
-        "files",
-        nargs="*",
-        help=(
-            "files to pin, inside the project (default: data files the adapters read under "
-            f"{', '.join(f'{name}/' for name in CONVENTIONAL)}, at most {MAX_DISCOVERED}, and "
-            "a manuscript when exactly one of paper, manuscript or main .tex/.md/.txt exists)"
-        ),
-    )
-    p_manifest_init.set_defaults(func=cmd_manifest_init)
+    add_manifest(sub)
 
-    p_verify = sub.add_parser("verify", help="check every evidence assertion in repro.yaml")
-    p_verify.add_argument("manifest", nargs="?", help=f"path to {DEFAULT_NAME}")
-    p_verify.add_argument("--policy", choices=sorted(PROFILES), default="publication")
-    p_verify.add_argument("--format", choices=("text", "json", "sarif"), default="text")
-    p_verify.add_argument(
-        "--record",
-        action="store_true",
-        help=(
-            f"also bring the tracked record {CHECKS.as_posix()} up to the local one, which "
-            f"every check appends to at {LOCAL_CHECKS.as_posix()} in the git directory"
-        ),
-    )
-    p_verify.add_argument(
-        SET_ASIDE,
-        action="store_true",
-        help=(
-            "where the record of checks does not verify, keep it under a name that says when "
-            "it was set aside and start a new one whose first entry says so; with --record, "
-            "the tracked record as well. Refused where every record verifies"
-        ),
-    )
-    p_verify.set_defaults(func=cmd_verify)
+    add_verify(sub)
 
     p_reproduce = sub.add_parser(
         "reproduce",
@@ -566,91 +518,13 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
     p_reproduce.add_argument("--format", choices=("text", "json"), default="text")
     p_reproduce.set_defaults(func=cmd_reproduce)
 
-    p_stale = sub.add_parser(
-        "stale",
-        help="say which claims read a file changed since its recorded re-run",
-        description=(
-            f"Compare each command declared under `regenerations` in {DEFAULT_NAME} with the "
-            f"re-runs `repro reproduce` recorded in {RECORD.as_posix()}, and say for every claim "
-            "whether the files it reads are still the ones a re-run that reproduced was made "
-            "over. Executes nothing and writes nothing. `current` means consistent with a "
-            "recorded re-run, and a file the manifest does not declare as an input is not "
-            "compared."
-        ),
-    )
-    p_stale.add_argument("manifest", nargs="?", help=f"path to {DEFAULT_NAME}")
-    p_stale.add_argument("--policy", choices=sorted(PROFILES), default="publication")
-    p_stale.add_argument("--format", choices=("text", "json"), default="text")
-    p_stale.set_defaults(func=cmd_stale)
+    add_stale(sub)
 
-    p_why = sub.add_parser(
-        "why",
-        help="say what the record establishes for one claim, and what it does not",
-        description=(
-            f"For one claim in {DEFAULT_NAME}: each assertion as `repro verify` evaluates it now, "
-            "each file the claim reads and each file upstream of one as `repro stale` finds it, "
-            "and then what the record does not cover. Executes nothing and writes nothing. Exits "
-            "0 whatever it finds; `repro verify` and `repro stale` are the checks that fail. With "
-            "no claim, lists the claim ids."
-        ),
-    )
-    p_why.add_argument("claim", nargs="?", help="a claim id (default: list the ids)")
-    p_why.add_argument("manifest", nargs="?", help=f"path to {DEFAULT_NAME}")
-    p_why.add_argument("--format", choices=("text", "json"), default="text")
-    p_why.set_defaults(func=cmd_why)
+    add_why(sub)
 
-    p_numbers = sub.add_parser(
-        "numbers",
-        help="count every number the manuscript prints, bound to a claim or not",
-        description=(
-            f"Read the text the claims in {DEFAULT_NAME} read their sentences from and count "
-            "every number in it: bound where an assertion accounts for that occurrence, set "
-            "aside by a named rule (a year, a table's number), set aside with a reason where "
-            "the manifest lists its passage under `set_aside`, and otherwise unbound. Executes "
-            "nothing and writes nothing. Exits 0 whatever it counts."
-        ),
-    )
-    p_numbers.add_argument("manifest", nargs="?", help=f"path to {DEFAULT_NAME}")
-    p_numbers.add_argument(
-        "--text",
-        action="append",
-        metavar="ID",
-        help=(
-            "read this text artifact; repeatable (default: each artifact a `quote` beside "
-            "another assertion, or a prose address, reads)"
-        ),
-    )
-    p_numbers.add_argument("--format", choices=("text", "json"), default="text")
-    p_numbers.set_defaults(func=cmd_numbers)
+    add_numbers(sub)
 
-    p_export = sub.add_parser(
-        "export",
-        help="write one record per checked assertion, for another program to read",
-        description=(
-            f"Check every assertion in {DEFAULT_NAME} as `repro verify` does and write what was "
-            "found in another format. `record` is JSON Lines, one object per assertion: the "
-            "file read and its digests, the address, the value stored there, the value the "
-            "manuscript reports, the comparison and the outcome. Experimental: each record "
-            "names its version. Executes nothing, writes only what it is asked for, and exits "
-            "0 whatever the outcomes; `repro verify` is the check that fails. `sarif` is a "
-            "SARIF 2.1.0 log for GitHub code scanning, built from the records: a result for "
-            "each mismatch, not-found and error, and a notification for each assertion that "
-            "was not checked. `ro-crate` is the same records as an RO-Crate 1.3 "
-            f"{METADATA_FILE}, and `-o DIR` writes it into DIR."
-        ),
-    )
-    p_export.add_argument(
-        "--include-matches",
-        action="store_true",
-        help=(
-            "sarif only: also write a `pass` result for each assertion that matched. Not for "
-            "an upload to GitHub, which shows each as a warning alert"
-        ),
-    )
-    p_export.add_argument("target", choices=sorted(EXPORTS))
-    p_export.add_argument("manifest", nargs="?", help=f"path to {DEFAULT_NAME}")
-    p_export.add_argument("--output", "-o", help="write to this file (default: standard output)")
-    p_export.set_defaults(func=cmd_export)
+    add_export(sub)
 
     p_check = sub.add_parser(
         "check",
