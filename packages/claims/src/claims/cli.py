@@ -12,6 +12,7 @@
     claims open-items      count what a reader of another tool's files left open, and what is filled
     claims from-codecheck  read a CODECHECK configuration file into a draft manifest and open items
     claims from-corebench  read a CORE-Bench capsule and its task into a draft manifest and open items
+    claims from-clawbio    read a ClawBio skill's output folder into a draft manifest and open items
 
 Each but `open-items` and the `from-` readers is also the `repro` command of the same name: `repro.cli` adds these functions to its
 parser with `add_manifest` through `add_origins`, and `main` here adds them to the parser of
@@ -81,6 +82,7 @@ from claims.record import check_records, to_jsonl
 from claims.renderers import survey_to_sarif, to_sarif
 from claims.reruns import RECORD
 from claims.sources import Written
+from claims.sources.clawbio import from_clawbio
 from claims.sources.codecheck import from_codecheck
 from claims.sources.corebench import from_corebench
 from claims.stale import stale as run_stale
@@ -1175,6 +1177,10 @@ def cmd_from_corebench(args: argparse.Namespace) -> int:
     return _print_reading(reading, args)
 
 
+def cmd_from_clawbio(args: argparse.Namespace) -> int:
+    return _print_reading(from_clawbio(Path(args.folder), Path(args.output)), args)
+
+
 def add_manifest(sub, program: str = REPRO) -> None:
     """`manifest init`: write a starter manifest. Added to `repro`'s parser and to `claims`'s, each under its own name."""
     p_manifest = sub.add_parser("manifest", help=f"write a starter {DEFAULT_NAME}")
@@ -1517,6 +1523,28 @@ def add_from_corebench(sub, program: str = CLAIMS) -> None:
     p_from.set_defaults(func=cmd_from_corebench, program=program)
 
 
+def add_from_clawbio(sub, program: str = CLAIMS) -> None:
+    """`from-clawbio`: read a ClawBio skill's output folder. Added to `claims`'s parser."""
+    p_from = sub.add_parser(
+        "from-clawbio",
+        help="read a ClawBio skill's output folder into a draft manifest and its open items",
+        description=(
+            "Read a ClawBio skill's output folder and write repro.draft.yaml and "
+            "open-items.json into the output directory, never over an existing file. Each "
+            "file reproducibility/checksums.sha256 lists becomes an artifact pinned to the "
+            "digest ClawBio recorded, and report.md one pinned to the bytes read. Each number "
+            "report.md prints outside code becomes a claim whose text is its line, with a "
+            "quotation of that line and one open item: the address of the value in a pinned "
+            "table, which the folder does not state. Candidates a search of the pinned tables "
+            "found are listed in the item and never written into the draft. Runs nothing."
+        ),
+    )
+    p_from.add_argument("folder", help="the skill's output folder, holding report.md")
+    p_from.add_argument("--output", "-o", default=".", help="where to write (default: here)")
+    p_from.add_argument("--format", choices=("text", "json"), default="text")
+    p_from.set_defaults(func=cmd_from_clawbio, program=program)
+
+
 def main(argv: list[str] | None = None, local_record: bool = True) -> int:
     """The `claims` command: the commands above, and nothing that runs one of yours."""
     # Reads `--offset -05:30` as an option and its value; the parsers of the subcommands share
@@ -1549,6 +1577,7 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
     add_open_items(sub, CLAIMS)
     add_from_codecheck(sub, CLAIMS)
     add_from_corebench(sub, CLAIMS)
+    add_from_clawbio(sub, CLAIMS)
 
     args = parser.parse_args(argv)
     args.local_record = local_record

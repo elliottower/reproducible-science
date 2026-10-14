@@ -294,6 +294,11 @@ layers = [
   # Other checkers' results, read into check records. Each sits on the record and the
   # verifier, and nothing below reaches for it.
   "claims.foreign",
+  # Readers of other tools' files. Each writes a draft and its open items, checks nothing,
+  # and reaches the network only through a fetch the command hands it.
+  "claims.sources",
+  # What a reader left open, and how much is filled: checks the draft with the verifier.
+  "claims.open_items",
   # Reads an artifact's origin, with git or over the network when asked, and evaluates no
   # assertion, so nothing below reaches for it.
   "claims.origins",
