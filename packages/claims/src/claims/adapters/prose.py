@@ -194,12 +194,15 @@ def _resolve_prose(locator: ProseLocator, path: pathlib.Path) -> Found:
     # artifact digest does not describe the text it was computed from. `fold` is cached on the
     # string it is given, which is content, and stays as it is. `once` keeps the read for the
     # verification in progress and no longer, so the next verification reads the file again.
-    def read() -> tuple[str, str]:
+    # The line each offset is on is computed with the text, under the same read, so a
+    # verification asks for the document once per locator and extracts it once.
+    def read() -> tuple[str, list[int] | None]:
         raw = extract_uncached(path)
-        return raw, passage_fold(raw)
+        folded = passage_fold(raw)
+        return folded, line_starts(raw, folded, passage_fold)
 
     try:
-        raw, text = once(("prose", path), read)
+        text, starts = once(("prose", path), read)
     except SourceUnreadableError as e:
         raise ArtifactUnreadableError(path, e.detail) from e
     if not text:
@@ -239,7 +242,6 @@ def _resolve_prose(locator: ProseLocator, path: pathlib.Path) -> Found:
     read = [_number(hit, locator.form) for hit in hits]
     numbers = [number for number in read if number is not None]
     distinct = len(set(numbers)) if len(numbers) == len(hits) else len(set(hits))
-    starts = once(("prose lines", path), lambda: line_starts(raw, text, passage_fold))
     occurrences = tuple(
         Occurrence(
             printed=hit,
