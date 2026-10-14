@@ -462,12 +462,15 @@ A number is checked at an address the manifest declares, in the addressing the f
 | NumPy `.npy`, `.npz` | `array` | array name and index | `arrays` |
 | HDF5 `.h5`, NetCDF `.nc` | `array` | dataset path and index, `/runs/accuracy` | `hdf5`, `netcdf` |
 | PDF, text | `prose` | the literal text on either side of the value | |
+| Word `.docx` | `prose` | the literal text on either side of the value | `docx` |
 
 ```bash
 pip install "reproducible-science[parquet,sheets]"
 ```
 
 A predicate matching two rows is reported as ambiguous and never resolved to the first. Without the extra a format needs, its checks are `unchecked` and name the extra to install. A file that is not what its suffix says is `unchecked` as unreadable. A NetCDF value is the one a NetCDF reader reports, unpacked by its `scale_factor` and `add_offset`, and a fill value is absent.
+
+A Word manuscript is read by the `docx-text` extractor of `citations`, with `python-docx`, for a `quote`, a prose address and `repro numbers` alike: each body paragraph in document order, one per line, then each body table in document order, one row per line, cells left to right joined by ` | ` and a merged cell once. Tables follow all the paragraphs and do not stand where they sit among them. Headers, footers, footnotes, endnotes, comments, text boxes, a table nested in a cell, content controls and simple fields are not read. `python-docx` reads neither the inserted nor the deleted text of a tracked change, so a `.docx` holding a tracked change of text is `unchecked` as unreadable until the changes are accepted or rejected. A decision on a `.docx` names `python-docx` and its installed version as its tool, beside the digest of the text it produced.
 
 Pickles (`.pkl`, `.joblib`, `.pt`) are never opened, because reading one runs code. An `.rds` is parsed by [`rdata`](https://pypi.org/project/rdata/), which starts no R process and evaluates nothing in the file.
 

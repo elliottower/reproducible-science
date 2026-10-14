@@ -24,6 +24,7 @@ from collections.abc import Iterator
 
 from claims.adapters.base import Found, Resolution, _no, _ok
 from claims.adapters.reads import once
+from claims.adapters.word import refuse_tracked_changes
 from claims.exceptions import ArtifactUnreadableError, BackendUnavailableError
 from claims.models import NumberForm, ProseLocator
 
@@ -135,6 +136,7 @@ def _resolve_prose(locator: ProseLocator, path: pathlib.Path) -> Found:
     # artifact digest does not describe the text it was computed from. `fold` is cached on the
     # string it is given, which is content, and stays as it is. `once` keeps the read for the
     # verification in progress and no longer, so the next verification reads the file again.
+    refuse_tracked_changes(path)
     try:
         text = once(("prose", path), lambda: passage_fold(extract_uncached(path)))
     except SourceUnreadableError as e:

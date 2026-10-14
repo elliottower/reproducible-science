@@ -35,6 +35,11 @@ dependencies = [
 optional-dependencies.arrays = [
   "numpy>=2.2.6",
 ]
+# A Word manuscript is read by `citations`' `docx-text` extractor, which reads with
+# `python-docx`, so this asks for that extra rather than naming the library a second time. No
+# range: the dependency on `citations` above carries it. Without it a check of a `.docx` is
+# `unchecked` and names the install.
+optional-dependencies.docx = [ "citations[docx]" ]
 # Readers for the formats results arrive in besides delimited text and JSON. Each is optional,
 # because most manifests address a CSV or a JSON file and a Parquet or HDF5 library is not
 # something every install should carry. Without one, a check of that format is `unchecked` and
