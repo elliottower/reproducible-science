@@ -41,7 +41,18 @@ from provenance_core import (
 )
 from provenance_core.gitref import try_run
 
-from prereg import amendment, attributes, osf, pinned, record, sidelog, sources, staged, template
+from prereg import (
+    amendment,
+    attributes,
+    inplace,
+    osf,
+    pinned,
+    record,
+    sidelog,
+    sources,
+    staged,
+    template,
+)
 from prereg.confirm import UNATTENDED_ENV, NotConfirmed, confirm, confirm_unattended
 from prereg.log import (
     ACCESS,
@@ -49,7 +60,6 @@ from prereg.log import (
     ACCESS_MEANING,
     append,
     log_lines,
-    log_problems,
 )
 from prereg.plan import (
     MARK,
@@ -647,38 +657,29 @@ def _check_in_place(path: pathlib.Path) -> int:
     # a plan nobody touched.
     with shared_lock(path):
         text = path.read_text()
-    m = re.search(r"\*\*Plan sha256:\*\* `([0-9a-f]{64})`", text)
-    if not m:
+    # The decision is `inplace.in_place`, which `results verify` asks too. `plan_of` skips
+    # marker-prefixed lines so the hash cannot cover itself, and `freeze` refuses a plan that
+    # hides content behind one. `check` did not, so a line inserted after the freeze --
+    # `**Frozen:** we will also accept p<0.10` -- sat in the plan uncovered and reported unchanged.
+    found = inplace.in_place(text)
+    if found.state == inplace.NOT_FROZEN:
         print(f"not frozen   {path}")
         return 2
-    # `plan_of` skips marker-prefixed lines so the hash cannot cover itself, and `freeze`
-    # refuses a plan that hides content behind one. `check` did not, so a line inserted after
-    # the freeze -- `**Frozen:** we will also accept p<0.10` -- sat in the plan uncovered and
-    # reported unchanged.
-    hidden = unhashed_content(text)
-    log = log_problems(text)
-
-    now = sha256_of(plan_of(text))
-    if now != m.group(1):
+    if found.state == inplace.CHANGED:
         print(f"CHANGED      {path}")
-        print(f"  frozen  {m.group(1)[:16]}…")
-        print(f"  now     {now[:16]}…")
+        print(f"  frozen  {found.frozen[:16]}…")
+        print(f"  now     {found.now[:16]}…")
         # Here and not in `cmd_check`, which printed it after every failure: beneath `LOG
         # ALTERED` it told the author the plan had been edited when the plan hash matched.
         print("  the plan was edited after freezing: restore it and record the change in the log")
         return 1
-    if hidden:
-        print(f"UNCOVERED    {path}")
-        for problem in hidden:
-            print(f"  - {problem}")
-        return 1
-    if log:
-        print(f"LOG ALTERED  {path}")
-        for problem in log:
+    if found.state != inplace.UNCHANGED:
+        print(f"{found.state.upper():<12} {path}")
+        for problem in found.problems:
             print(f"  - {problem}")
         return 1
     print(f"unchanged    {path}")
-    return _report_timestamp(path, m.group(1))
+    return _report_timestamp(path, found.frozen)
 
 
 def _report_timestamp(path: pathlib.Path, digest: str, owed: bool = False) -> int:

@@ -18,10 +18,13 @@ import pathlib
 
 from provenance_core import anchor, atomic_write, sha256_of_tree, try_run
 
-from results import ledger, manuscript, stamps
-from results.paths import ledger_path, require_root
+from results import ledger, manuscript, plans, stamps
+from results.paths import ledger_own, ledger_path, require_root
 from results.record import LINKED
 from results.timeline import first_outcomes_seen, first_run_timestamp, precedes
+
+#: Said of a recorded path that is one of the ledger's own files, in the text and the JSON.
+OWN_FILE = "the ledger's own file, which changes with every event; not compared"
 
 
 def in_history(ledger: pathlib.Path) -> str | None:
@@ -310,13 +313,16 @@ def _verify(check_files: bool, report: dict) -> int:
     for t, n in sorted(counts.items()):
         print(f"  {t:<12}{n:>5}")
 
-    drift = 0
+    drift = resealed = 0
     if check_files:
         print("\nfile hashes:")
         # Keyed by path, the last seal of a path silently replaced every earlier one, so
         # "seal your inputs before a run" was not what this checked. Keep them all, and report
         # a path recorded under more than one hash.
         file_hashes: dict[str, list[str]] = {}
+        # The hash of each path's last record, which is not the last distinct hash where a
+        # path was recorded under one hash, then another, then the first again.
+        latest: dict[str, str] = {}
         # Whether each path was sealed as a file or as a directory, so it is re-derived the way
         # it was recorded. A tree re-hashed with `sha256_of_file` is not a mismatch to report;
         # it is a path that cannot be read at all, and would have been an error rather than a
@@ -326,12 +332,21 @@ def _verify(check_files: bool, report: dict) -> int:
             for f in e.get("files", []) + e.get("outputs", []):
                 recorded = file_hashes.setdefault(f["path"], [])
                 kinds[f["path"]] = f.get("kind", "file")
+                latest[f["path"]] = f["sha256"]
                 if f["sha256"] not in recorded:
                     recorded.append(f["sha256"])
         base = root.parent
         found = report["files"]
         for path, recorded in sorted(file_hashes.items()):
             p = base / path
+            if ledger_own(path):
+                # Recorded before `seal` refused these. The file changes with every event, so
+                # comparing it says nothing about the work, and failing on it would fail every
+                # later verify with nothing the author can do.
+                print(f"  IGNORED    {path}")
+                print(f"    {OWN_FILE}")
+                found.append({"path": path, "state": "ignored", "note": OWN_FILE})
+                continue
             if not p.exists():
                 print(f"  MISSING    {path}")
                 found.append({"path": path, "state": "missing"})
@@ -356,23 +371,52 @@ def _verify(check_files: bool, report: dict) -> int:
                 continue
             else:
                 actual = ledger.sha256_of_file(p)
-            if actual in recorded:
-                if len(recorded) > 1:
-                    # The file on disk matches one recorded hash and the ledger holds others,
-                    # so the path was sealed, changed, and sealed again.
-                    print(f"  RESEALED   {path}")
-                    print(f"    recorded {len(recorded)} different hashes for this path")
-                    found.append({"path": path, "state": "resealed"})
-                    drift += 1
-                else:
-                    print(f"  ok         {path}")
-                    found.append({"path": path, "state": "ok"})
+            if actual == latest[path] and len(recorded) > 1:
+                # Sealed, changed, and sealed again, and the disk holds what the last record
+                # names. Reported by its own word, because a path is meant to be sealed once
+                # and a new version to be a new file; not failed, because nothing on disk
+                # differs from the record.
+                print(f"  RESEALED   {path}")
+                print(f"    matches the latest of {len(recorded)} hashes recorded for this path")
+                found.append({"path": path, "state": "resealed", "hashes": len(recorded)})
+                resealed += 1
+            elif actual == latest[path]:
+                print(f"  ok         {path}")
+                found.append({"path": path, "state": "ok"})
+            elif actual in recorded:
+                # The disk holds bytes an earlier record names and the latest does not: the
+                # file went back, or the last record was of something that is no longer there.
+                which = recorded.index(actual) + 1
+                print(f"  REVERTED   {path}")
+                print(
+                    f"    matches hash {which} of {len(recorded)} recorded for this path, "
+                    f"not the latest"
+                )
+                print(f"    latest   {latest[path][:16]}…")
+                found.append(
+                    {"path": path, "state": "reverted", "hashes": len(recorded), "matches": which}
+                )
+                drift += 1
+            elif added := plans.entries_appended(base, path, latest[path]):
+                print(f"  APPENDED   {path}")
+                print(
+                    f"    a plan frozen in place, unchanged; {added} log "
+                    f"entr{'y' if added == 1 else 'ies'} appended since the latest seal"
+                )
+                found.append({"path": path, "state": "appended", "entries": added})
             else:
                 print(f"  CHANGED    {path}")
-                print(f"    sealed   {recorded[-1][:16]}…")
+                print(f"    sealed   {latest[path][:16]}…")
                 print(f"    now      {actual[:16]}…")
+                if len(recorded) > 1:
+                    print(f"    matches none of the {len(recorded)} hashes recorded for this path")
                 found.append({"path": path, "state": "changed"})
                 drift += 1
+        if resealed:
+            print(
+                f"\n{resealed} path(s) recorded under more than one hash hold the latest. "
+                "A new version is a new file."
+            )
         if drift:
             print(f"\n{drift} file(s) changed or missing since they were recorded.")
             return 1

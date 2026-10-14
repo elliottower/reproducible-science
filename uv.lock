@@ -3261,6 +3261,7 @@ name = "results-cli"
 version = "0.5.6"
 source = { editable = "packages/results" }
 dependencies = [
+    { name = "prereg" },
     { name = "provenance-core", extra = ["anchor"] },
 ]
 
@@ -3270,7 +3271,10 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "provenance-core", extras = ["anchor"], editable = "packages/provenance-core" }]
+requires-dist = [
+    { name = "prereg", editable = "packages/prereg" },
+    { name = "provenance-core", extras = ["anchor"], editable = "packages/provenance-core" },
+]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", specifier = ">=9.1.1" }]
