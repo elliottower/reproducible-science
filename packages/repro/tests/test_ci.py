@@ -833,7 +833,8 @@ def test_the_four_checks_of_a_project_holding_every_record(four, capsys):
 
     code, said = summary_of(four, "citations")
     assert code == 0
-    assert "`citations verify --claims claims`: **passed** (exit 0)" in said
+    assert "`citations verify --claims claims`: **1/2 verified** (exit 0)" in said
+    assert "**passed**" not in said
     assert said.splitlines()[6] == (
         "1 of 2 quotations were not checked: 1 of 2 sources are not on this machine. "
         "An unchecked quotation is not a found one."
@@ -843,7 +844,9 @@ def test_the_four_checks_of_a_project_holding_every_record(four, capsys):
     assert said.rstrip().endswith(
         "It does not show that the source supports the sentence that quotes it."
     )
-    assert "1 unchecked" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "1 unchecked" in out
+    assert "1/2 verified: 1 of 2 quotations not checked; `repro ci citations` exits 0." in out
 
 
 def test_a_plan_edited_after_its_freeze_fails_and_is_named(tools):
@@ -958,6 +961,26 @@ def test_a_ledger_whose_chain_does_not_verify_fails_and_compares_no_file(tools):
     assert code == 1
     assert row(said, "chain").startswith("edited: ")
     assert row(said, "recorded files") == "not compared: the chain did not verify"
+
+
+def citations_run(outcome, found, not_found, quotes, exit=0):
+    return ci.ToolRun(
+        check="citations", command=("citations", "verify", "--claims", "claims"), exit=exit,
+        outcome=outcome,
+        account={"quotes": quotes, "counts": {"found": found, "not found": not_found}},
+    )  # fmt: skip
+
+
+def test_a_citations_run_with_quotations_unchecked_is_given_as_a_count_and_never_as_passed():
+    said = ci.tool_summary(citations_run("passed", 3, 0, 5))
+    assert "`citations verify --claims claims`: **3/5 verified** (exit 0)" in said
+    assert "passed" not in said
+    assert ci.unchecked(citations_run("passed", 3, 0, 5)) == 2
+    # Every quotation found is a pass, and a quotation not found is a failure, as before.
+    assert "**passed** (exit 0)" in ci.tool_summary(citations_run("passed", 5, 0, 5))
+    failed = citations_run("failed", 3, 1, 5, exit=1)
+    assert "**FAILED** (exit 1)" in ci.tool_summary(failed)
+    assert ci.unchecked(failed) == 0
 
 
 def test_a_citations_run_that_read_no_source_could_not_check_and_does_not_pass(tools, capsys):
