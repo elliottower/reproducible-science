@@ -3,7 +3,9 @@ offset its offset, and one rule for where the records are written.
 
 A time is read as ISO 8601, with `Z` for UTC. One that carries an offset keeps it. One that
 carries none was written in a local time nothing in the file names, so it is refused unless the
-caller states the offset, `+HH:MM` or `-HH:MM`, and UTC is never assumed. The offset applies to
+caller states the offset, `+HH:MM` or `-HH:MM`, and UTC is never assumed. On a command line a
+negative offset is written `--offset=-05:30`, since a value that starts with `-` is otherwise
+read as an option. The offset applies to
 every naive time of one reading, so times on either side of a daylight-saving change are read an
 hour apart from what the clock said for one side.
 
@@ -22,6 +24,13 @@ from provenance_core import atomic_write
 from claims.exceptions import ReproError
 
 _OFFSET = re.compile(r"(?P<sign>[+-])(?P<hours>\d{2}):(?P<minutes>\d{2})")
+
+
+#: The help every reader's `--offset` gives.
+OFFSET_HELP = (
+    "the UTC offset, +HH:MM or -HH:MM, of the local times the file holds without one; write a "
+    "negative one --offset=-05:30"
+)
 
 
 class ForeignError(ReproError):
@@ -61,4 +70,7 @@ def write(text: str, output: pathlib.Path | None) -> None:
         return
     if output.exists():
         raise ForeignError(f"{output} exists, and a reader never overwrites a file")
-    atomic_write(output, text)
+    try:
+        atomic_write(output, text)
+    except OSError as e:
+        raise ForeignError(f"{output} could not be written: {e}") from e

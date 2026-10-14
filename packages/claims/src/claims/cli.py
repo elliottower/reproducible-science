@@ -45,7 +45,7 @@ from claims.export import EXPORTS
 from claims.export.rocrate import METADATA_FILE
 from claims.foreign.clew import records as clew_records
 from claims.foreign.clew import summary as clew_summary
-from claims.foreign.common import offset
+from claims.foreign.common import OFFSET_HELP, offset
 from claims.foreign.common import write as write_records
 from claims.foreign.paperdelta import PaperDeltaReading, from_paperdelta
 from claims.manifest import DEFAULT_NAME, find, load
@@ -1388,7 +1388,7 @@ def add_from_clew(sub, program: str = CLAIMS) -> None:
     )
     p_from.add_argument(
         "--offset",
-        help="the UTC offset, +HH:MM or -HH:MM, of the host whose local times the export holds",
+        help=OFFSET_HELP,
     )
     p_from.add_argument("--output", "-o", help="write to this new file (default: standard output)")
     p_from.add_argument("--format", choices=("jsonl", "text"), default="jsonl")
@@ -1426,7 +1426,7 @@ def add_from_paperdelta(sub, program: str = CLAIMS) -> None:
     )
     p_from.add_argument(
         "--offset",
-        help="the UTC offset, +HH:MM or -HH:MM, of a report time written without one",
+        help=OFFSET_HELP,
     )
     p_from.add_argument("--output", "-o", help="write to this file, never over an existing one")
     p_from.add_argument("--format", choices=("jsonl", "text"), default="jsonl")

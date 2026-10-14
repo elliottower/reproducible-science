@@ -15,9 +15,11 @@ check record's vocabulary, as PaperDelta gave it, and does not check anything ag
   `paperdelta`;
 - `pass` is `match` and `mismatch` is `mismatch`; `unknown` is placed by its error code, and a
   code not listed here is `not-checked`, never a mismatch;
-- a `pass` is `not-checked` where the report as a whole is unsettled: a diagnostic on the
-  project, such as `INPUT_CHANGED` or `INCOMPLETE_COVERAGE`, or an exit code the numbers' own
-  findings do not account for. The diagnostic is named as the reason.
+- a `pass` is `not-checked` where the report as a whole is unsettled: a finding on the project
+  or on anything else that is no one item, such as `INPUT_CHANGED` or `INCOMPLETE_COVERAGE`,
+  or an exit code the items' own findings do not account for. The finding is named as the
+  reason. An exit code an item's own `unknown` or `mismatch` accounts for leaves every other
+  number as reported.
 
 The report does not carry the display or the rounding mode, so the configuration it was made
 from is read too, and refused unless the report records a sha256 for it and that is its
@@ -304,29 +306,52 @@ def checked_at(created_at: str, given: datetime.timezone | None) -> datetime.dat
     return aware(created_at, given, "created_at")
 
 
+#: The subjects of PaperDelta's findings about one item: one number, one comparative claim, one
+#: metric, one figure, fragment or producer record, one export. A finding on any other subject,
+#: such as `project` or a manuscript file, is about the run, and no item's result explains it.
+ITEM_SUBJECTS = (
+    "occurrence:",
+    "claim:",
+    "metric:",
+    "figure:",
+    "fragment:",
+    "provenance:",
+    "export:",
+)
+
+#: The exit code each severity makes, as PaperDelta derives it.
+_EXIT = {"unknown": 2, "error": 1}
+
+
 def unsettled(report: Report) -> tuple[str, str] | None:
     """Why the report as a whole leaves a number's `pass` unsettled, as a rule and in words, or
     None where nothing does.
 
     PaperDelta reports a failure of the whole run, such as `INPUT_CHANGED` (a file changed
-    while it was being checked) or `INCOMPLETE_COVERAGE`, as a diagnostic on the subject
-    `project`, and leaves every occurrence's status as it was. An exit code the occurrences'
-    own findings do not account for says the same: 2 is an incomplete check, and 1 with no
-    finding of severity `error` is a failure nothing here names.
+    while it was being checked) or `INCOMPLETE_COVERAGE`, as a finding on the subject
+    `project`, and leaves every occurrence's status as it was. Any finding of severity
+    `unknown` or `error` on a subject that is no one item is read the same way, whether or not
+    the report carries an exit code. An exit code above the one the items' own findings make (2
+    for an `unknown`, 1 for an `error`, 0 for none) is a failure nothing in the report names.
+    An exit code the items' findings account for leaves each number's pass as reported.
     """
-    project = [
+    run = [
         found
         for found in report.diagnostics
-        if found.subject == "project" and found.severity in ("unknown", "error")
+        if found.severity in _EXIT and not found.subject.startswith(ITEM_SUBJECTS)
     ]
-    if project:
-        rules = ", ".join(dict.fromkeys(found.rule for found in project))
-        return rules, f"PaperDelta reports {rules} for the whole project"
-    errors = any(found.severity == "error" for found in report.diagnostics)
-    if report.exit_code == 2 or (report.exit_code == 1 and not errors):
+    if run:
+        rules = ", ".join(dict.fromkeys(found.rule for found in run))
+        subjects = ", ".join(dict.fromkeys(found.subject for found in run))
+        return rules, f"PaperDelta reports {rules} for {subjects}, not for one item"
+    explained = max(
+        (_EXIT[found.severity] for found in report.diagnostics if found.severity in _EXIT),
+        default=0,
+    )
+    if report.exit_code is not None and report.exit_code > explained:
         return (
             f"EXIT_{report.exit_code}",
-            f"PaperDelta exited {report.exit_code}, which no finding of this number accounts for",
+            f"PaperDelta exited {report.exit_code}, which no finding in the report accounts for",
         )
     return None
 

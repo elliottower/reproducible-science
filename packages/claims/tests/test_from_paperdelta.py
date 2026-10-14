@@ -484,3 +484,49 @@ def test_an_export_location_carrying_its_own_kind_is_kept_under_another_name():
     (read_,) = _by_id(read(_dump(report), config))["text_printed"].reads
     assert read_.address.kind == "paperdelta-export"
     assert read_.address.model_extra["paperdelta_kind"] == "mlflow"
+
+
+def test_an_exit_code_one_number_s_own_unknown_accounts_for_leaves_the_others_as_reported():
+    config = CONFIG_TEXT.encode()
+    report = _report(config, exit_code=2)
+    report["occurrences"]["coarser_printed"].update(status="unknown", error="MISSING_VALUE")
+    report["diagnostics"] = [
+        {
+            "id": "occurrence:coarser_printed/MISSING_VALUE",
+            "rule": "MISSING_VALUE",
+            "subject": "occurrence:coarser_printed",
+            "severity": "unknown",
+            "message": "",
+        },
+        {
+            "id": "occurrence:tie_printed/VALUE_MISMATCH",
+            "rule": "VALUE_MISMATCH",
+            "subject": "occurrence:tie_printed",
+            "severity": "error",
+            "message": "",
+        },
+    ]
+    found = _by_id(read(_dump(report), config))
+    for name in ("finer_printed", "text_printed", "rows_printed"):
+        assert found[name].outcome is NormalizedOutcome.MATCH
+    assert found["coarser_printed"].outcome is NormalizedOutcome.NOT_FOUND
+    assert found["tie_printed"].outcome is NormalizedOutcome.MISMATCH
+
+
+def test_a_finding_on_no_one_item_unsettles_every_pass_with_no_exit_code_given():
+    config = CONFIG_TEXT.encode()
+    report = _report(config)
+    del report["exit_code"]
+    report["diagnostics"].append(
+        {
+            "id": "paper.tex/DYNAMIC_TEX",
+            "rule": "DYNAMIC_TEX",
+            "subject": "paper.tex",
+            "severity": "unknown",
+            "message": "",
+        }
+    )
+    passed = _by_id(read(_dump(report), config))["finer_printed"]
+    assert passed.outcome is NormalizedOutcome.NOT_CHECKED
+    assert passed.native_reason == "DYNAMIC_TEX"
+    assert "paper.tex" in passed.detail
