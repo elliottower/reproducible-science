@@ -20,7 +20,7 @@ from provenance_core import anchor, atomic_write, sha256_of_tree, try_run
 
 from results import ledger, manuscript, plans, stamps
 from results.paths import ledger_own, ledger_path, require_root
-from results.record import LINKED
+from results.record import LINKED, retired
 from results.timeline import first_outcomes_seen, first_run_timestamp, precedes
 
 #: Said of a recorded path that is one of the ledger's own files, in the text and the JSON.
@@ -237,6 +237,41 @@ def timestamp() -> int:
     return 0
 
 
+def _retired(
+    path: str, p: pathlib.Path, kind: str, recorded: list[str], said: dict, found: list[dict]
+) -> int:
+    """Report a retired path, and return 1 where it fails.
+
+    Retired and absent, or present with bytes one of its records names, it passes: the path
+    left the project, and anything still there is what was recorded. Present with bytes no
+    record names, or as a file where a tree was sealed or the reverse, it is `REAPPEARED` and
+    fails, because something new sits at a path the ledger says is gone.
+    """
+    if p.exists():
+        if kind == "tree" and p.is_dir():
+            actual: str | None = sha256_of_tree(p)[0]
+        elif kind != "tree" and p.is_file():
+            actual = ledger.sha256_of_file(p)
+        else:
+            actual = None
+        if actual not in recorded:
+            print(f"  REAPPEARED {path}")
+            print(f"    retired: {said['note']}")
+            print(f"    on disk again, holding bytes none of the {len(recorded)} records names")
+            found.append({"path": path, "state": "reappeared", **said})
+            return 1
+    print(f"  RETIRED    {path}")
+    print(f"    {said['note']}")
+    if replacement := said.get("superseded_by"):
+        print(f"    superseded by {replacement}")
+    entry = {"path": path, "state": "retired", **said}
+    if p.exists():
+        print("    still on disk, holding bytes recorded for this path")
+        entry["present"] = True
+    found.append(entry)
+    return 0
+
+
 def verify(check_files: bool, json_path: str | None = None) -> int:
     """Check the chain and, with `check_files`, every recorded file. With `json_path`, the
     same findings are also written there as one JSON object: the chain's status and problems,
@@ -337,6 +372,7 @@ def _verify(check_files: bool, report: dict) -> int:
                     recorded.append(f["sha256"])
         base = root.parent
         found = report["files"]
+        gone = retired(events)
         for path, recorded in sorted(file_hashes.items()):
             p = base / path
             if ledger_own(path):
@@ -346,6 +382,9 @@ def _verify(check_files: bool, report: dict) -> int:
                 print(f"  IGNORED    {path}")
                 print(f"    {OWN_FILE}")
                 found.append({"path": path, "state": "ignored", "note": OWN_FILE})
+                continue
+            if path in gone:
+                drift += _retired(path, p, kinds.get(path, "file"), recorded, gone[path], found)
                 continue
             if not p.exists():
                 print(f"  MISSING    {path}")

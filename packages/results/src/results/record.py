@@ -1,11 +1,11 @@
 """The commands that put an event in the ledger.
 
-`init`, `seal`, `access`, `run`, `claim`, `review` and `annotate` share a shape: find the
-governing `.results/`, build one event, append it, and report what was written. What separates
-them is the refusal each makes first -- a path that is not a file, an access level outside the
-four, a run id already in use, a confirmatory claim resting on a run recorded after the outcomes
-were seen, a review with a verdict outside the four, an annotation whose kind is not
-`namespace:type`.
+`init`, `seal`, `access`, `run`, `retire`, `claim`, `review` and `annotate` share a shape:
+find the governing `.results/`, build one event, append it, and report what was written. What
+separates them is the refusal each makes first -- a path that is not a file, an access level
+outside the four, a run id already in use, a path retired that no seal or run recorded, a
+confirmatory claim resting on a run recorded after the outcomes were seen, a review with a
+verdict outside the four, an annotation whose kind is not `namespace:type`.
 
 Each returns the process's exit code. `cli.py` unpacks the argparse namespace and calls in.
 """
@@ -257,6 +257,85 @@ def label(run_id: str, holds: str, note: str) -> int:
     ledger.append_event(lp, {"event": "label", "run_id": run_id, "holds": holds, "note": note})
     print(f"run {run_id}: declared after the fact as holding {holds}")
     print("`prereg freeze` reports a declaration made after the run was recorded as such.")
+    return 0
+
+
+def recorded_paths(events: list[dict]) -> set[str]:
+    """Every path a seal or a run recorded."""
+    return {f["path"] for e in events for f in e.get("files", []) + e.get("outputs", [])}
+
+
+def retired(events: list[dict]) -> dict[str, dict[str, str]]:
+    """Each path retired and not recorded again since, with what its retirement said: the
+    `note`, and the `superseded_by` path where one was given.
+
+    Read in ledger order, so the latest event about a path decides: a seal or a run after a
+    retirement makes the path part of the project again.
+    """
+    found: dict[str, dict[str, str]] = {}
+    for e in events:
+        if e.get("event") == "retire":
+            said = {"note": e.get("note", "")}
+            if replacement := e.get("superseded_by"):
+                said["superseded_by"] = replacement
+            found |= dict.fromkeys(e.get("paths", []), said)
+        for f in e.get("files", []) + e.get("outputs", []):
+            found.pop(f["path"], None)
+    return found
+
+
+def retire(files: list[str], note: str, superseded_by: str | None = None) -> int:
+    """Record that recorded paths are no longer part of the project, and why.
+
+    The seals and runs that recorded each path stay in the ledger as they were; this adds an
+    event after them. `verify --files` then reports the path `RETIRED` and passes it, and fails
+    it as `REAPPEARED` where a file at that path holds bytes no record names.
+
+    `superseded_by` names the path that replaces them, which has to exist. Where the ledger
+    records that path too, the event also carries the digest it holds now, so the retirement
+    names the bytes it pointed to.
+    """
+    if not note.strip():
+        print("a note is required: say why these paths are no longer part of the project.")
+        return 1
+    root = require_root()
+    lp = ledger_path(root)
+    events = ledger.read_ledger(lp)
+    known, already = recorded_paths(events), retired(events)
+    paths = []
+    for name in files:
+        path = record_path(pathlib.Path(name).resolve(), root)
+        if path not in known:
+            print(f"not retired: {name} was never recorded by a seal or a run.")
+            print("nothing was written. Only a path the ledger names can be retired.")
+            return 1
+        if path in already:
+            print(f"not retired: {name} is already retired: {already[path]['note']}")
+            print("nothing was written.")
+            return 1
+        if path not in paths:
+            paths.append(path)
+    event: dict[str, object] = {"event": "retire", "paths": paths, "note": note}
+    if superseded_by is not None:
+        replacement = pathlib.Path(superseded_by).resolve()
+        if not replacement.exists():
+            print(f"not retired: --superseded-by {superseded_by} does not exist.")
+            print("nothing was written. Name the path that replaces them as it is on disk.")
+            return 1
+        event["superseded_by"] = record_path(replacement, root)
+        if event["superseded_by"] in known:
+            event["superseded_by_sha256"] = (
+                sha256_of_tree(replacement)[0]
+                if replacement.is_dir()
+                else ledger.sha256_of_file(replacement)
+            )
+    ledger.append_event(lp, event)
+    print(f"retired {len(paths)} path(s): {note}")
+    for path in paths:
+        print(f"  {path}")
+    if superseded_by is not None:
+        print(f"  superseded by {event['superseded_by']}")
+    print("their seals and runs stay in the ledger; `verify --files` reports each as RETIRED.")
     return 0
 
 

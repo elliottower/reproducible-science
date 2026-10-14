@@ -126,8 +126,10 @@ def test_the_colour_follows_what_verify_reported_and_not_the_file_states_themsel
     assert badges.results_badge(results_run("passed", ["resealed"]), sealed).color == GREEN
     assert badges.results_badge(results_run("passed", ["ok", "appended"]), sealed).color == GREEN
     assert badges.results_badge(results_run("passed", ["ok", "ignored"]), sealed).color == GREEN
+    assert badges.results_badge(results_run("passed", ["ok", "retired"]), sealed).color == GREEN
     # A state verify fails on is amber.
     assert badges.results_badge(results_run("failed", ["ok", "reverted"]), sealed).color == AMBER
+    assert badges.results_badge(results_run("failed", ["ok", "reappeared"]), sealed).color == AMBER
     assert (
         badges.results_badge(results_run("failed", ["changed", "missing"]), sealed).color == AMBER
     )
@@ -136,7 +138,7 @@ def test_the_colour_follows_what_verify_reported_and_not_the_file_states_themsel
     assert badges.results_badge(results_run("failed", ["ok", "ok"]), sealed).color == RED
     assert (
         badges.results_badge(
-            results_run("failed", ["resealed", "appended", "ignored"]), sealed
+            results_run("failed", ["resealed", "appended", "ignored", "retired"]), sealed
         ).color
         == RED
     )

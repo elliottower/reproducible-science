@@ -55,6 +55,7 @@ all checks passed.
 | `results access <note>` | Record a data-access event |
 | `results run <file>...` | Record outputs after a run; `--holds` says the outputs hold metadata or structure and no outcome |
 | `results label <run-id>` | Declare after the fact that a recorded run's outputs hold no outcome |
+| `results retire <file>... --note TEXT` | Record that recorded paths are no longer part of the project, and why; `--superseded-by NEWPATH` names what replaces them |
 | `results claim <text>` | Bind a manuscript claim to a run |
 | `results review <file>...` | Record that someone examined these files, and what they found |
 | `results annotate <file>...` | Link these files to something outside the ledger; linked, not checked |
@@ -166,6 +167,8 @@ An analysis registered after `outcomes seen` is retrospective.
 | `APPENDED` | A plan `prereg freeze` froze in place, which `prereg check` finds unchanged, and which differs from its latest seal only by entries `prereg log` appended and the `**Log:**` line it recounts. Passes |
 | `IGNORED` | One of the ledger's own files (`.results/`, a lock sidecar), recorded by an earlier version. Not compared; passes |
 | `REVERTED` | Recorded under more than one hash, and the file matches an earlier record and not the latest. Fails |
+| `RETIRED` | Retired by `results retire`, and either gone or still holding bytes one of its records names. Shown with the note, and the replacement where one was named. Passes |
+| `REAPPEARED` | Retired, and the path holds bytes none of its records names, or a file where a directory was sealed or the reverse. Fails |
 | `CHANGED` | File was modified since it was recorded. Fails |
 | `MISSING` | File no longer exists. Fails |
 | `NOT A TREE`, `NOT A FILE` | Sealed as a directory and now a file, or the reverse. Fails |
@@ -177,15 +180,32 @@ history, since the ledger holds only their hash; where no commit holds them, the
 `prereg.inplace.entries_appended`, the rule `prereg check` applies. A plan frozen whole never
 changes and keeps its log beside it.
 
+A path that leaves the project, because it was deleted, moved or folded into another file, is
+`MISSING` until it is retired:
+
+```bash
+results retire results/old_table.csv --note "merged into table2.csv" --superseded-by results/table2.csv
+```
+
+The seals and runs that recorded the path stay in the ledger; `retire` appends an event naming
+the paths, the note and, with `--superseded-by`, the replacement, with the digest it holds now
+where the ledger records the replacement too. It refuses a path no seal or run recorded, a path
+already retired, an empty note, and a replacement that does not exist, and writes nothing. A seal
+or a run of the path after its retirement makes it part of the project again, so the latest
+event decides. A retired path that comes back holding new bytes fails as `REAPPEARED`, because
+the ledger says nothing about what is there.
+
 `results seal` and `results run` refuse the ledger's own files, and a directory holding
 `.results/`: each changes with every event, so a seal of one is out of date at the next command.
 
 With `--json PATH`, each recorded file is `{"path", "state"}`, with `state` one of `ok`,
-`resealed`, `appended`, `ignored`, `reverted`, `changed`, `missing`, `not a tree` and
-`not a file`. `resealed` and `reverted` also carry `hashes`, the number of distinct hashes
+`resealed`, `appended`, `ignored`, `retired`, `reverted`, `reappeared`, `changed`, `missing`,
+`not a tree` and `not a file`. `resealed` and `reverted` also carry `hashes`, the number of distinct hashes
 recorded for the path, and `reverted` carries `matches`, the position of the one the file holds,
 counted from 1 in the order recorded; `appended` carries `entries`, the log entries added since
-the seal; `ignored` carries `note`. The top-level `exit` is the command's exit code, so a reader
+the seal; `ignored` carries `note`; `retired` and `reappeared` carry `note`, and
+`superseded_by` where a replacement was named; `retired` carries `present: true` where the file is
+still on disk. The top-level `exit` is the command's exit code, so a reader
 that does not know a state can still tell whether the run passed.
 
 ## The ledger

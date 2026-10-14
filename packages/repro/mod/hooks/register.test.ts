@@ -603,7 +603,8 @@ test('a file state that passes verify is not counted as changed, and a reverted 
     'file hashes:\n' +
     '  RESEALED   a.csv\n    matches the latest of 2 hashes recorded for this path\n' +
     '  APPENDED   PREREG.md\n    a plan frozen in place, unchanged; 1 log entry appended since the latest seal\n' +
-    "  IGNORED    .results/ledger.head\n    the ledger's own file, which changes with every event; not compared\n"
+    "  IGNORED    .results/ledger.head\n    the ledger's own file, which changes with every event; not compared\n" +
+    '  RETIRED    old.csv\n    folded into a.csv\n'
   project(on, { '/work/study/.results/ledger.jsonl': ledger }, argv =>
     argv[0] === 'results' ? `chain intact: 3 events, anchored\n\n${hashes}` : '',
   )
@@ -615,5 +616,9 @@ test('a file state that passes verify is not counted as changed, and a reverted 
   hashes = 'file hashes:\n  REVERTED   a.csv\n    matches hash 1 of 2 recorded for this path, not the latest\n'
   const reverted = await $.command.run({ command: 'repro-status', args: 'study' })
   expect(reverted.text).toContain('results: 1 changed, 1/1 runs sealed')
+
+  hashes = 'file hashes:\n  REAPPEARED old.csv\n    retired: folded into a.csv\n'
+  const reappeared = await $.command.run({ command: 'repro-status', args: 'study' })
+  expect(reappeared.text).toContain('results: 1 changed, 1/1 runs sealed')
   await $.command.run({ command: 'repro-status', args: 'auto' })
 })

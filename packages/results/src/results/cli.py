@@ -5,6 +5,7 @@ results seal <file>...    hash inputs before a run (prereg, script, data)
 results access <note>     record a data-access event (what you looked at, when)
 results run <file>...     record outputs after a run completes
 results label <run-id>    declare after the fact that a recorded run's outputs hold no outcome
+results retire <file>...  record that recorded paths are no longer part of the project, and why
 results claim <text>      bind a manuscript claim to a run's output
 results review <file>...  record that someone examined these files, and what they found
 results annotate <file>...  link these files to something outside the ledger; linked, not checked
@@ -61,6 +62,10 @@ def cmd_run(a) -> int:
 
 def cmd_label(a) -> int:
     return record.label(a.run_id, a.holds, a.note)
+
+
+def cmd_retire(a) -> int:
+    return record.retire(a.files, a.note, a.superseded_by)
 
 
 def cmd_claim(a) -> int:
@@ -159,6 +164,21 @@ def _main(argv: list[str] | None = None) -> int:
         "--note", required=True, help="why the run was not labelled when it was recorded"
     )
     lb.set_defaults(fn=cmd_label)
+
+    rt = sub.add_parser(
+        "retire", help="record that recorded paths are no longer part of the project, and why"
+    )
+    rt.add_argument("files", nargs="+", help="paths a seal or a run recorded")
+    rt.add_argument(
+        "--note", required=True, help="why these paths are no longer part of the project"
+    )
+    rt.add_argument(
+        "--superseded-by",
+        metavar="NEWPATH",
+        help="the path that replaces them, which must exist; its digest is recorded where the "
+        "ledger records it too",
+    )
+    rt.set_defaults(fn=cmd_retire)
 
     cl = sub.add_parser("claim", help="bind a manuscript claim to a run")
     cl.add_argument("text", help="the claim, as it appears in the manuscript")
