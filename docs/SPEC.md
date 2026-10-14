@@ -983,8 +983,11 @@ regenerations:
 
 The declared inputs are copied into an empty directory and the command runs there, so a
 command needing a file the manifest never declared fails, and a command that writes where it
-was told to writes inside that directory. Every declared path is resolved and checked for
-containment before it is used, since a path holding `..` otherwise lands outside.
+was told to writes inside that directory. The folder the declared output goes in is created
+there before the command runs, as it is in the repository, so a command that writes into a
+folder holding none of its inputs does not fail for want of it. Every declared path is resolved
+and checked for containment before it is used, since a path holding `..` otherwise lands
+outside.
 
 This is a working directory, not a sandbox in the security sense: nothing stops a command
 writing to an absolute path elsewhere. Running `repro reproduce` on a manifest you have not

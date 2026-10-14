@@ -90,10 +90,15 @@ def _shown(source: pathlib.Path, root: pathlib.Path) -> str:
 
 
 def _scrub(text: str, *places: pathlib.Path) -> str:
-    """Remove the directories a message may name, for the same reason."""
-    for place in places:
-        for spelling in {str(place.resolve()), str(place)}:
-            text = text.replace(spelling, ".")
+    """Remove the directories a message may name, for the same reason.
+
+    The longest spelling goes first. On macOS a temporary directory is `/var/...` as named and
+    `/private/var/...` resolved, and replacing the short spelling first leaves `/private.` in
+    the message, which names the machine's layout and matches neither spelling again.
+    """
+    spellings = {spelling for place in places for spelling in (str(place.resolve()), str(place))}
+    for spelling in sorted(spellings, key=len, reverse=True):
+        text = text.replace(spelling, ".")
     return text.replace(str(pathlib.Path.home()), "~")
 
 
@@ -257,6 +262,10 @@ def check(
                 RegenerationReason.OUTPUT_OUTSIDE_SANDBOX,
                 f"output {record.output.artifact} resolves outside the sandbox",
             )
+        # The output's folder is part of where the declaration says the file goes. A command
+        # that writes `results/table.csv` and reads nothing from `results/` would otherwise
+        # fail on a folder the repository has and the sandbox was never given.
+        produced.parent.mkdir(parents=True, exist_ok=True)
 
         started = time.monotonic()
 

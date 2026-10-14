@@ -30,6 +30,7 @@ from repro.models import (
     RunOutput,
 )
 from repro.policy import PUBLICATION, STRICT, Severity
+from repro.regenerate import _scrub
 from repro.reproduce import RECORD, UnknownRegenerationError, append, reproduce
 from repro.verify import verify
 
@@ -887,3 +888,84 @@ def test_a_manifest_declaring_no_command_has_nothing_to_run(tmp_path, capsys):
     assert main(["reproduce", str(path)]) == 2
     assert "nothing to run again" in capsys.readouterr().out
     assert not (tmp_path / RECORD).exists()
+
+
+# -- the sandbox's folders, and the paths a message names --------------------------------------
+
+WRITES_INTO_A_FOLDER = """
+import json, pathlib
+data = json.loads(pathlib.Path("inputs.json").read_text())
+pathlib.Path("out/figures.json").write_text(json.dumps({"total": sum(data["xs"])}, indent=2))
+"""
+
+
+def test_a_command_writing_into_a_folder_that_holds_no_input_reproduces(tmp_path):
+    (tmp_path / "make.py").write_text(WRITES_INTO_A_FOLDER)
+    (tmp_path / "inputs.json").write_text(json.dumps({"xs": [1, 2, 3]}))
+    (tmp_path / "out").mkdir()
+    figures = tmp_path / "out" / "figures.json"
+    figures.write_text(json.dumps({"total": 6}, indent=2))
+    (tmp_path / "repro.yaml").write_text("")
+
+    def ref(id_, path):
+        return ArtifactRef(id=id_, path=path, digest=Digest.of_file(path))
+
+    def pin(id_, path):
+        return RunOutput(artifact=id_, digest=Digest.of_file(path))
+
+    manifest = Manifest(
+        project="p",
+        path=tmp_path / "repro.yaml",
+        artifacts=(
+            ref("inputs", tmp_path / "inputs.json"),
+            ref("make", tmp_path / "make.py"),
+            ref("figures", figures),
+        ),
+        regenerations=(
+            RegenerationRecord(
+                id="figures",
+                command=(sys.executable, "make.py"),
+                inputs=(pin("inputs", tmp_path / "inputs.json"), pin("make", tmp_path / "make.py")),
+                output=pin("figures", figures),
+                timeout_seconds=60,
+            ),
+        ),
+        claims=(
+            Claim(
+                id="c",
+                text="t",
+                evidence=(
+                    MetricEvidence(
+                        artifact="figures", name="total", reported="6", pointer="/total"
+                    ),
+                ),
+            ),
+        ),
+    )
+    result = state(manifest)
+    assert result.state is Regeneration.REPRODUCED, result.detail
+    assert result.bytes_identical is True
+    assert result.undeclared_outputs == ()
+
+
+class Aliased:
+    """A directory whose resolved spelling holds its given one, as macOS resolves `/var/x` to
+    `/private/var/x`."""
+
+    def __init__(self, given: str) -> None:
+        self.given = given
+
+    def __str__(self) -> str:
+        return self.given
+
+    def resolve(self) -> pathlib.Path:
+        return pathlib.Path("/private" + self.given)
+
+
+def test_a_message_naming_both_spellings_of_a_directory_keeps_neither():
+    places = [Aliased(f"/var/folders/repro-regen-{n}") for n in range(24)]
+    said = " ".join(f"/private{place}/a.txt and {place}/b.txt" for place in places)
+    scrubbed = _scrub(said, *places)
+    assert "private" not in scrubbed
+    assert "folders" not in scrubbed
+    assert scrubbed == " ".join("./a.txt and ./b.txt" for _ in places)
