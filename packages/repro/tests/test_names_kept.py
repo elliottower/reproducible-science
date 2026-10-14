@@ -147,3 +147,109 @@ def test_the_shims_hold_no_code_of_their_own():
         text = path.read_text()
         assert f'importlib.import_module("claims.{module}")' in text, path
         assert len(text.splitlines()) < 25, path
+
+
+#: Every name defined or imported at the top of `repro/cli.py` on `main` before the package
+#: moved, read off that file. `ci.py`, the tests and anything that imported from it reach
+#: these.
+CLI_NAMES = (
+    "Assessment",
+    "BY_NAME",
+    "CHECKS",
+    "CLAUDE_MD",
+    "CONVENTIONAL",
+    "DEFAULT_NAME",
+    "EXPORTS",
+    "IGNORE_RULES",
+    "LOCAL_CHECKS",
+    "MAX_DISCOVERED",
+    "METADATA_FILE",
+    "PROFILES",
+    "Path",
+    "Policy",
+    "RECORD",
+    "Reading",
+    "Regeneration",
+    "ReproError",
+    "ReproductionReport",
+    "SET_ASIDE",
+    "SHOWN",
+    "SOURCES_DIR",
+    "SYMBOL",
+    "TOOLS",
+    "__version__",
+    "_assertion_lines",
+    "_chain_lines",
+    "_checked_said",
+    "_count_said",
+    "_finding_said",
+    "_history_lines",
+    "_ignore",
+    "_init_here",
+    "_named",
+    "_numbers_lines",
+    "_plan",
+    "_record_lines",
+    "_reproduce_text",
+    "_run",
+    "_said",
+    "_shown",
+    "_stale_lines",
+    "_stale_summary",
+    "_stale_text",
+    "_steps",
+    "_verify_text",
+    "_why_lines",
+    "append_reproduction",
+    "argparse",
+    "atomic_write",
+    "audit",
+    "badges",
+    "ci",
+    "cmd_check",
+    "cmd_demo",
+    "cmd_export",
+    "cmd_init",
+    "cmd_manifest_init",
+    "cmd_numbers",
+    "cmd_reproduce",
+    "cmd_stale",
+    "cmd_verify",
+    "cmd_why",
+    "crosscheck",
+    "delegate_check",
+    "delegate_run",
+    "demo",
+    "find",
+    "functools",
+    "importlib",
+    "json",
+    "load",
+    "main",
+    "pathlib",
+    "project_root",
+    "run_reproduce",
+    "subprocess",
+    "try_run",
+    "write_starter",
+)
+
+
+@pytest.mark.parametrize("name", CLI_NAMES)
+def test_every_name_repro_cli_had_it_still_has(name):
+    cli = importlib.import_module("repro.cli")
+    assert hasattr(cli, name), name
+
+
+def test_the_names_repro_cli_shares_with_claims_cli_are_one_object():
+    cli = importlib.import_module("repro.cli")
+    claims_cli = importlib.import_module("claims.cli")
+    # `main` is each command's own: `repro`'s and `claims`'s build different parsers.
+    shared = [
+        n for n in CLI_NAMES if hasattr(claims_cli, n) and not n.startswith("__") and n != "main"
+    ]
+    assert len(shared) > 20
+    for name in shared:
+        if isinstance(getattr(cli, name), types.ModuleType):
+            continue
+        assert getattr(cli, name) is getattr(claims_cli, name), name

@@ -10,7 +10,7 @@ import subprocess
 import sys
 
 import pytest
-from prereg import log
+from prereg import inplace, log
 from provenance_core.gitref import clean_env
 
 DIGEST = "35abc8ae2767bee40600e37a5032b1536a8799fea672bdc323f6c317176dd966"
@@ -246,3 +246,23 @@ def test_the_index_may_not_hold_an_edit_to_a_document_frozen_by_a_commit_line(tm
     r = run(["check", "--staged"], tmp_path)
     assert r.returncode == 1
     assert "STAGED       PREREGISTRATION.md  frozen by a commit line" in r.stdout
+
+
+def test_what_prereg_log_writes_is_the_only_difference_entries_appended_accepts(study):
+    plan = study / "PREREG.md"
+    before = plan.read_text()
+    assert run(["log", "C5 failed at k=15", "--access", "results seen"], study).returncode == 0
+    assert run(["log", "a second note", "--access", "results seen"], study).returncode == 0
+    after = plan.read_text()
+    assert inplace.in_place(after) == inplace.InPlace(inplace.UNCHANGED, DIGEST, DIGEST)
+    assert inplace.entries_appended(before, after) == 2
+    assert inplace.entries_appended(after, after) == 0
+    assert inplace.entries_appended(after, before) == 0
+
+    edited = after.replace("## Randomization", "## Randomisation")
+    assert inplace.in_place(edited).state == inplace.CHANGED
+    assert inplace.entries_appended(before, edited) == 0
+    below = after + "\nAlso accept p < 0.10.\n"
+    assert run(["check"], study).returncode == 0
+    assert inplace.in_place(below).state == inplace.UNCHANGED
+    assert inplace.entries_appended(before, below) == 0

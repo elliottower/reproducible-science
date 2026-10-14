@@ -15,6 +15,8 @@ from __future__ import annotations
 import os
 import pathlib
 
+from provenance_core import SIDECAR_SUFFIXES
+
 from results import ledger
 
 RESULTS_DIR = ".results"
@@ -42,6 +44,18 @@ def require_root() -> pathlib.Path:
 
 def ledger_path(root: pathlib.Path) -> pathlib.Path:
     return root / ledger.LEDGER
+
+
+def ledger_own(recorded: str) -> bool:
+    """Whether a recorded path is one of the ledger's own files, which no seal can hold still.
+
+    `recorded` is a path as the ledger writes it, from the project root. Everything under
+    `.results/` is written by this tool -- the ledger, its anchor `ledger.head`, the timestamp
+    proofs -- and changes with every event, so a seal of one is out of date at the next command.
+    A lock or temporary sidecar is written by the locking every tool shares and holds nothing.
+    """
+    parts = pathlib.PurePath(recorded).parts
+    return (bool(parts) and parts[0] == RESULTS_DIR) or recorded.endswith(tuple(SIDECAR_SUFFIXES))
 
 
 def record_path(p: pathlib.Path, root: pathlib.Path) -> str:

@@ -10,6 +10,7 @@
     repro numbers         count every number the manuscript prints, bound to a claim or not
     repro export          write one record per checked assertion, for another program to read
     repro ci              run the checks in a workflow, with a summary on the run page
+    repro badges          print a badge per check, each a count from a run on this machine
     repro check           run every tool this project uses, in one pass
     repro audit           clone a repository at a pinned commit and run every tool over it
     repro prereg          run `prereg`: freeze a plan, and record what deviated from it
@@ -31,6 +32,12 @@ import json
 import pathlib
 import subprocess
 from pathlib import Path
+
+# Names this module imported for the parser of the commands that moved to `claims.cli`, kept
+# under the names they had here.
+from claims.checks import LOCAL as LOCAL_CHECKS  # noqa: F401
+from claims.checks import RECORD as CHECKS  # noqa: F401
+from claims.checks import SET_ASIDE as SET_ASIDE
 
 # The commands of the claims side, each under the name it had in this module.
 from claims.cli import SYMBOL as SYMBOL
@@ -58,6 +65,8 @@ from claims.cli import cmd_stale as cmd_stale
 from claims.cli import cmd_verify as cmd_verify
 from claims.cli import cmd_why as cmd_why
 from claims.exceptions import ReproError
+from claims.export import EXPORTS as EXPORTS
+from claims.export.rocrate import METADATA_FILE as METADATA_FILE
 from claims.manifest import DEFAULT_NAME, find, load
 from claims.models import (
     Reading,
@@ -65,12 +74,14 @@ from claims.models import (
     ReproductionReport,
 )
 from claims.policy import PROFILES, Assessment, Policy
+from claims.starter import CONVENTIONAL as CONVENTIONAL
+from claims.starter import MAX_DISCOVERED as MAX_DISCOVERED
 from claims.starter import project_root
 from claims.starter import write as write_starter
 from provenance_core import atomic_write
 from provenance_core.gitref import try_run
 
-from repro import __version__, audit, ci, crosscheck
+from repro import __version__, audit, badges, ci, crosscheck
 from repro.delegate import BY_NAME, TOOLS
 from repro.delegate import check as delegate_check
 from repro.delegate import run as delegate_run
@@ -543,6 +554,7 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
     p_check.set_defaults(func=cmd_check)
 
     ci.add_parser(sub, verify=_verify_text, reproduce=_reproduce_text, stale=_stale_text)
+    badges.add_parser(sub)
 
     # An audit runs these inside a clone of someone else's repository, and keeps no record of
     # its checks in that clone's git directory.

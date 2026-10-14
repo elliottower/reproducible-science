@@ -100,6 +100,10 @@ With `--files`, every sealed input and recorded output is re-hashed against its 
 | | |
 |---|---|
 | `ok` | file matches its recorded hash |
+| `RESEALED` | recorded under several hashes; the file matches the latest. Passes, and stays in the report: a new version is a new file |
+| `APPENDED` | a plan frozen in place whose log `prereg log` extended since the seal, and which `prereg check` finds unchanged. Passes |
+| `IGNORED` | one of the ledger's own files, sealed by an earlier version. Passes; `seal` now refuses these |
+| `REVERTED` | recorded under several hashes; the file matches an earlier one, not the latest. Fails |
 | `CHANGED` | file was modified since it was sealed or recorded |
 | `MISSING` | file no longer exists at the recorded path |
 

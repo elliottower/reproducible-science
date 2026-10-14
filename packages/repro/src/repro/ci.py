@@ -1122,14 +1122,24 @@ def with_badges(
     ]
     if not added:
         return readme, []
-    lines = readme.splitlines()
+    return "\n".join(under_heading(readme.splitlines(), [" ".join(added)])) + "\n", added
+
+
+def under_heading(lines: list[str], block: list[str], blank: str = "") -> list[str]:
+    """A README's lines with `block` under the first heading, at the head of a block of badges
+    where one is there. A README with no heading takes it at its top.
+
+    `blank` is an empty line as `lines` spells one: `""` for lines split without their
+    endings, the ending for lines that keep theirs.
+    """
+    lines = list(lines)
     at = next((i + 1 for i, line in enumerate(lines) if _HEADING.match(line)), 0)
     after = next((i for i in range(at, len(lines)) if lines[i].strip()), len(lines))
     if after < len(lines) and lines[after].startswith("[!["):
-        lines[after:after] = [" ".join(added)]
+        lines[after:after] = block
     else:
-        lines[at:at] = [*([""] if at else []), " ".join(added), *([] if at else [""])]
-    return "\n".join(lines) + "\n", added
+        lines[at:at] = [*([blank] if at else []), *block, *([] if at else [blank])]
+    return lines
 
 
 def init(
@@ -1525,6 +1535,7 @@ __all__ = [
     "reruns_summary",
     "tool",
     "tool_summary",
+    "under_heading",
     "with_badges",
     "workflow",
 ]
