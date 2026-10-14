@@ -69,6 +69,7 @@ export default defineConfig({
             { label: "The evidence contract", link: "/concepts/evidence-contract/" },
             { label: "Outcomes and reasons", link: "/concepts/outcomes/" },
             { label: "Pinning", link: "/concepts/pinning/" },
+            { label: "The check record", link: "/concepts/check-record/" },
           ],
         },
         {
