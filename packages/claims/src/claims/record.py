@@ -176,6 +176,8 @@ NATIVE_OUTCOMES: dict[str, frozenset[str]] = {
         {"verified", "suspect", "mismatch", "missing", "registered", "superseded"}
         | {"exception", "frozen", "unsourced"}
     ),
+    # An occurrence's, a claim's and a figure's status in a PaperDelta report.
+    "paperdelta": frozenset({"pass", "mismatch", "unknown"}),
 }
 
 

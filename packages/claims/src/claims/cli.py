@@ -8,6 +8,7 @@
     claims origins         compare each artifact copied from another repository with its origin
     claims export          write the check records in another format
     claims from-clew       read a SciTeX Clew claims.json into check records
+    claims from-paperdelta read a PaperDelta report into one check record per occurrence
     claims open-items      count what a reader of another tool's files left open, and what is filled
     claims from-codecheck  read a CODECHECK configuration file into a draft manifest and open items
     claims from-corebench  read a CORE-Bench capsule and its task into a draft manifest and open items
@@ -42,9 +43,12 @@ from claims.checks import set_aside as set_aside_checks
 from claims.exceptions import ReproError
 from claims.export import EXPORTS
 from claims.export.rocrate import METADATA_FILE
-from claims.foreign.clew import ClewError, offset
 from claims.foreign.clew import records as clew_records
 from claims.foreign.clew import summary as clew_summary
+from claims.foreign.common import OFFSET_HELP, offset
+from claims.foreign.common import Parser as OffsetParser
+from claims.foreign.common import write as write_records
+from claims.foreign.paperdelta import PaperDeltaReading, from_paperdelta
 from claims.manifest import DEFAULT_NAME, find, load
 from claims.models import (
     AssertionAccount,
@@ -1056,13 +1060,39 @@ def cmd_from_clew(args: argparse.Namespace) -> int:
         )
     else:
         written = to_jsonl(found)
-    if args.output:
-        target = Path(args.output)
-        if target.exists():
-            raise ClewError(f"{target} exists, and a reader never overwrites a file")
-        atomic_write(target, written)
-    else:
-        print(written, end="")
+    write_records(written, Path(args.output) if args.output else None)
+    return 0
+
+
+def _paperdelta_lines(reading: PaperDeltaReading, rerun: bool) -> list[str]:
+    lines = []
+    for record in reading.records:
+        said = f"{record.claim.id}: paperdelta {record.native_outcome} -> {record.outcome.value}"
+        again = (record.model_extra or {}).get("rerun")
+        if again is not None:
+            said += f"; this toolkit's rule: {again['outcome']} ({again['detail']})"
+        lines.append(f"  {said}  [{record.check_type.value}]")
+    summary = f"{len(reading.records)} records"
+    if rerun:
+        summary += f", {len(reading.disagreements)} where the two rules disagree" + (
+            f": {', '.join(reading.disagreements)}" if reading.disagreements else ""
+        )
+    return [*lines, "", summary]
+
+
+def cmd_from_paperdelta(args: argparse.Namespace) -> int:
+    reading = from_paperdelta(
+        Path(args.report),
+        Path(args.config),
+        given=offset(args.offset) if args.offset else None,
+        rerun=args.rerun,
+    )
+    written = (
+        "".join(f"{record.to_json()}\n" for record in reading.records)
+        if args.format == "jsonl"
+        else "\n".join(_paperdelta_lines(reading, args.rerun)) + "\n"
+    )
+    write_records(written, Path(args.output) if args.output else None)
     return 0
 
 
@@ -1359,11 +1389,49 @@ def add_from_clew(sub, program: str = CLAIMS) -> None:
     )
     p_from.add_argument(
         "--offset",
-        help="the UTC offset, +HH:MM or -HH:MM, of the host whose local times the export holds",
+        help=OFFSET_HELP,
     )
     p_from.add_argument("--output", "-o", help="write to this new file (default: standard output)")
     p_from.add_argument("--format", choices=("jsonl", "text"), default="jsonl")
     p_from.set_defaults(func=cmd_from_clew, program=program)
+
+
+def add_from_paperdelta(sub, program: str = CLAIMS) -> None:
+    """`from-paperdelta`: read a PaperDelta report. Added to `claims`'s parser."""
+    p_from = sub.add_parser(
+        "from-paperdelta",
+        help="read a PaperDelta report into one check record per occurrence",
+        description=(
+            "Read a PaperDelta report.json, with the paperdelta.yaml it was made from, and write "
+            "one check record per occurrence and per comparative claim, with paperdelta as the "
+            "checker and its status and error code as its own words. pass is match, mismatch "
+            "is mismatch, and unknown is placed by its error code; a code this reader does not "
+            "list is not-checked. A derived metric, a statistic other than the mean and a "
+            "comparative claim are check type other. The configuration is refused unless its "
+            "sha256 is the one the report records, and refused where it records none. A pass "
+            "under a project-level diagnostic such as INPUT_CHANGED, or under an exit code the "
+            "numbers do not account for, is not-checked. With --rerun, each comparison PaperDelta "
+            "completed is also put to this toolkit's rule (the printed precision, half-even, "
+            "either neighbor on a tie) and both answers are written. Runs nothing, and exits 0 "
+            "whatever the outcomes."
+        ),
+    )
+    p_from.add_argument("report", help="a PaperDelta report.json")
+    p_from.add_argument(
+        "--config", required=True, help="the paperdelta.yaml the report was made from"
+    )
+    p_from.add_argument(
+        "--rerun",
+        action="store_true",
+        help="also compare under this toolkit's rule, and say where the two rules disagree",
+    )
+    p_from.add_argument(
+        "--offset",
+        help=OFFSET_HELP,
+    )
+    p_from.add_argument("--output", "-o", help="write to this file, never over an existing one")
+    p_from.add_argument("--format", choices=("jsonl", "text"), default="jsonl")
+    p_from.set_defaults(func=cmd_from_paperdelta, program=program)
 
 
 def add_open_items(sub, program: str = CLAIMS) -> None:
@@ -1451,7 +1519,9 @@ def add_from_corebench(sub, program: str = CLAIMS) -> None:
 
 def main(argv: list[str] | None = None, local_record: bool = True) -> int:
     """The `claims` command: the commands above, and nothing that runs one of yours."""
-    parser = argparse.ArgumentParser(
+    # Reads `--offset -05:30` as an option and its value; the parsers of the subcommands share
+    # the class.
+    parser = OffsetParser(
         prog=CLAIMS,
         description=(
             "Check what a manuscript states against the files it names: numbers, table cells "
@@ -1475,6 +1545,7 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
     add_export(sub, CLAIMS)
     add_origins(sub, CLAIMS)
     add_from_clew(sub, CLAIMS)
+    add_from_paperdelta(sub, CLAIMS)
     add_open_items(sub, CLAIMS)
     add_from_codecheck(sub, CLAIMS)
     add_from_corebench(sub, CLAIMS)
