@@ -2,23 +2,34 @@
 
     uv run --no-project --with pyyaml==6.0.2 python builder/serve.py <project> [--port 5190]
 
-Serves web/dist on localhost only. POST /api/recheck runs `repro verify` and `repro stale` over
-the project again (through build_graph.build) and rewrites graph.json; the page then reloads it.
+Serves web/dist on localhost only. POST /api/refresh re-reads the
+project's records (`repro stale`, `results verify`, `prereg check`, the ledger and the check history)
+and writes nothing to the project. POST /api/verify also runs `repro verify`, which records the check
+in the project's history. Either rewrites graph.json; the page then reloads it.
 GET /api/health tells the page that re-checking is available, so the button stays hidden when the
 same files are served by a plain static host.
+
+POST /api/fix-request appends {id, created_at, project, subject, kind, prompt} to
+~/.claude/repro-fixes/queue.jsonl, which the repro-fixes Claude Code mod watches: a session working
+in that project shows the request above its prompt and loads the prompt into the box on request.
+It never starts an agent or runs anything.
 """
 
 import argparse
+import datetime
 import functools
 import http.server
 import json
 import pathlib
 import threading
 import time
+import uuid
 
 import build_graph
 
 DIST = pathlib.Path(__file__).resolve().parent.parent / "web" / "dist"
+QUEUE = pathlib.Path.home() / ".claude" / "repro-fixes" / "queue.jsonl"
+MAX_PROMPT = 8000
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -48,14 +59,40 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return
         super().do_GET()
 
+    def _fix_request(self) -> None:
+        length = int(self.headers.get("Content-Length") or 0)
+        try:
+            body = json.loads(self.rfile.read(min(length, 64_000)) or b"{}")
+        except json.JSONDecodeError:
+            return self._json(400, {"ok": False, "error": "body is not JSON"})
+        prompt, subject, kind = body.get("prompt"), body.get("subject"), body.get("kind")
+        if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > MAX_PROMPT:
+            return self._json(400, {"ok": False, "error": "prompt missing or too long"})
+        if kind not in {"claim", "stale"} or not isinstance(subject, str):
+            return self._json(400, {"ok": False, "error": "kind or subject missing"})
+        request = {
+            "id": uuid.uuid4().hex[:12],
+            "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "project": str(self.project),
+            "subject": subject[:200],
+            "kind": kind,
+            "prompt": prompt,
+        }
+        QUEUE.parent.mkdir(parents=True, exist_ok=True)
+        with QUEUE.open("a") as f:
+            f.write(json.dumps(request) + "\n")
+        self._json(200, {"ok": True, "id": request["id"]})
+
     def do_POST(self) -> None:
-        if self.path != "/api/recheck":
+        if self.path == "/api/fix-request":
+            return self._fix_request()
+        if self.path not in {"/api/refresh", "/api/verify"}:
             return self._json(404, {"error": "not found"})
         if not self.lock.acquire(blocking=False):
             return self._json(409, {"error": "a check is already running"})
         try:
             started = time.monotonic()
-            summary = build_graph.build(self.project, DIST / "graph.json", self.groups)
+            summary = build_graph.build(self.project, DIST / "graph.json", self.groups, check=self.path == "/api/verify")
             self._json(200, {"ok": True, "seconds": round(time.monotonic() - started, 2), "summary": summary})
         except Exception as e:  # reported to the page, which shows it beside the button
             self._json(500, {"ok": False, "error": str(e)})

@@ -14,7 +14,11 @@ cd web && npm install && npm run build && cd ..
 uv run --no-project --with pyyaml==6.0.2 python builder/serve.py <project>     # http://localhost:5190
 ```
 
-The server listens on localhost only. Its **Re-check** button runs `repro verify` and `repro stale` over the project again and reloads the graph.
+The server listens on localhost only. The header carries the same four lines the repro mod draws (prereg, results, citations, repro) and three buttons:
+
+- **Refresh** re-reads the records (`repro stale`, `results verify`, `prereg check`, the ledger, the check history) and writes nothing to the project.
+- **Run repro verify** checks every claim again, which records the check in the project's history.
+- **Send to Claude Code / Copy prompt** (⇄ switches) hands a prompt covering every failing claim and stale rebuild step to Claude Code. Sending appends it to `~/.claude/repro-fixes/queue.jsonl`, which the `repro-fixes` mod shows above the prompt of the session working in that project; nothing runs until the person loads it and presses Enter. Failing claims and stale files carry the same buttons in their panels.
 
 ## Build a static copy
 

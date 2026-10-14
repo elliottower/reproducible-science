@@ -1,16 +1,39 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Background, Controls, ReactFlow, ReactFlowProvider, useReactFlow, type Edge, type Node } from '@xyflow/react'
 import Catalog from './Catalog'
+import { ClaudeButton, FixCtx, projectPrompt } from './fix'
 import { layout, summarize } from './layout'
 import { nodeTypes, UiCtx } from './nodes'
 import { fmt, Panel, when } from './shared'
-import type { Graph } from './types'
+import type { Graph, StatusField } from './types'
 
 interface Recheck {
   available: boolean
-  busy: boolean
+  busy: 'refresh' | 'verify' | null
   message: string | null
-  run: () => void
+  run: (kind: 'refresh' | 'verify') => void
+}
+
+const ORDER = ['prereg', 'results', 'citations', 'repro'] as const
+
+function StatusStrip({ graph }: { graph: Graph }) {
+  if (!graph.status) return null
+  return (
+    <div className="strip">
+      {ORDER.map((k) => {
+        const f: StatusField | undefined = graph.status?.[k]
+        if (!f) return null
+        return (
+          <span key={k} className={`field ${f.ok === true ? 'good' : f.ok === false ? 'bad' : 'none'}`}>
+            <span className="dot" />
+            <span className="key">{k}</span> {f.text}
+            {f.next && <span className="next"> → {f.next}</span>}
+          </span>
+        )
+      })}
+      {graph.checked_at && <span className="when">claims checked {when(graph.checked_at)}</span>}
+    </div>
+  )
 }
 
 function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
@@ -126,11 +149,21 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
             </span>
           )}
           {recheck.available && (
-            <button className="recheck" onClick={recheck.run} disabled={recheck.busy} title={recheck.message ?? 'Run repro verify and repro stale again'}>
-              {recheck.busy ? 'Checking…' : '⟳ Re-check'}
-            </button>
+            <>
+              <button className="recheck" onClick={() => recheck.run('refresh')} disabled={recheck.busy !== null}
+                title="Re-read the records (repro stale, results verify, prereg check, the ledger and the check history). Writes nothing.">
+                {recheck.busy === 'refresh' ? 'Refreshing…' : '⟳ Refresh'}
+              </button>
+              <button className="recheck" onClick={() => recheck.run('verify')} disabled={recheck.busy !== null}
+                title="Run repro verify: check every claim again. Records the check in the project's history.">
+                {recheck.busy === 'verify' ? 'Verifying…' : '✓ Run repro verify'}
+              </button>
+            </>
           )}
+          <ClaudeButton prompt={projectPrompt(graph, graph.project_dir ?? null)} subject="project" />
+          {recheck.message && <span className="muted small">{recheck.message}</span>}
         </header>
+        <StatusStrip graph={graph} />
         <div className="toolbar">
           <input
             className="search"
@@ -186,7 +219,8 @@ export default function App() {
   const [graph, setGraph] = useState<Graph | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [available, setAvailable] = useState(false)
-  const [busy, setBusy] = useState(false)
+  const [projectPath, setProjectPath] = useState<string | null>(null)
+  const [busy, setBusy] = useState<'refresh' | 'verify' | null>(null)
   const [message, setMessage] = useState<string | null>(null)
 
   const load = () =>
@@ -199,28 +233,33 @@ export default function App() {
     load()
     fetch('api/health')
       .then((r) => (r.ok ? r.json() : null))
-      .then((h) => setAvailable(Boolean(h?.recheck)))
+      .then((h) => {
+        setAvailable(Boolean(h?.recheck))
+        setProjectPath(h?.project ?? null)
+      })
       .catch(() => setAvailable(false))
   }, [])
 
-  const run = () => {
-    setBusy(true)
+  const run = (kind: 'refresh' | 'verify') => {
+    setBusy(kind)
     setMessage(null)
-    fetch('api/recheck', { method: 'POST' })
+    fetch(`api/${kind}`, { method: 'POST' })
       .then((r) => r.json())
       .then((res) => {
-        setMessage(res.ok ? `Checked in ${res.seconds}s` : `Re-check failed: ${res.error}`)
+        setMessage(res.ok ? `${kind === 'verify' ? 'Verified' : 'Refreshed'} in ${res.seconds}s` : `${kind} failed: ${res.error}`)
         return res.ok ? load() : undefined
       })
-      .catch((e) => setMessage(`Re-check failed: ${e}`))
-      .finally(() => setBusy(false))
+      .catch((e) => setMessage(`${kind} failed: ${e}`))
+      .finally(() => setBusy(null))
   }
 
   if (error) return <div className="center">{error}</div>
   if (!graph) return <div className="center muted">Loading…</div>
   return (
-    <ReactFlowProvider>
-      <Canvas graph={graph} recheck={{ available, busy, message, run }} />
-    </ReactFlowProvider>
+    <FixCtx.Provider value={{ available, project: projectPath }}>
+      <ReactFlowProvider>
+        <Canvas graph={graph} recheck={{ available, busy, message, run }} />
+      </ReactFlowProvider>
+    </FixCtx.Provider>
   )
 }

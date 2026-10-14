@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useContext, useMemo, useState } from 'react'
+import { claimPrompt, FixButtons, FixCtx, stalePrompt } from './fix'
 import type { ClaimRow, GNode, Graph, HistoryPoint } from './types'
 
 export const fmt = (n: number) => n.toLocaleString('en-US')
@@ -61,6 +62,16 @@ export function HistoryStrip({ points }: { points: HistoryPoint[] }) {
   )
 }
 
+function ClaimFix({ claim }: { claim: ClaimRow }) {
+  const { project } = useContext(FixCtx)
+  return <FixButtons subject={claim.id} kind="claim" prompt={claimPrompt(claim, project)} />
+}
+
+function StaleFix({ node }: { node: GNode }) {
+  const { project } = useContext(FixCtx)
+  return <FixButtons subject={node.id} kind="stale" prompt={stalePrompt(node, project)} />
+}
+
 export function ClaimList({ claims, limit = 40 }: { claims: ClaimRow[]; limit?: number }) {
   const [all, setAll] = useState(false)
   const sorted = useMemo(() => [...claims].sort((a, b) => Number(a.ok) - Number(b.ok)), [claims])
@@ -85,6 +96,7 @@ export function ClaimList({ claims, limit = 40 }: { claims: ClaimRow[]; limit?: 
           <div className="claim-hist">
             <HistoryStrip points={c.history} />
           </div>
+          {!c.ok && <ClaimFix claim={c} />}
         </div>
       ))}
       {sorted.length > limit && !all && (
@@ -140,6 +152,7 @@ export function Panel({ graph, id, onClose, onExpand }: { graph: Graph; id: stri
               <div key={i} className="small mono">{CAUSE[c.cause] ?? c.cause}: {c.artifact}</div>
             ))}
             {node.freshness === 'no_producer' && <div className="muted small">no rebuild step declared; checked against its pin</div>}
+            {node.freshness === 'stale' && <StaleFix node={node} />}
           </dd>
           {node.last_checked && (
             <>

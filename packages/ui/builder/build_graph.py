@@ -223,6 +223,86 @@ def read_checks(project: pathlib.Path) -> list[dict]:
     return []
 
 
+def run_text(argv: list[str], cwd: pathlib.Path, timeout: int = 60) -> str | None:
+    try:
+        return subprocess.run(argv, cwd=cwd, capture_output=True, text=True, timeout=timeout, check=False).stdout
+    except (subprocess.TimeoutExpired, FileNotFoundError):
+        return None
+
+
+def plural(n: int, word: str) -> str:
+    return f"{n:,} {word}{'' if n == 1 else 's'}"
+
+
+def status_lines(project: pathlib.Path, report: dict) -> dict:
+    """The four fields the repro mod draws above the prompt, computed the same way: `prereg check`,
+    `results verify` and the ledger, a count of pinned quotations, and the repro counts. Each field
+    is a short text plus `ok`: True, False (something is wrong) or None (nothing there to check).
+    Read-only: none of these commands writes."""
+    fields: dict[str, dict] = {}
+
+    plans = run_text(["prereg", "check"], project)
+    counts = collections.Counter()
+    for line in (plans or "").splitlines():
+        pinned = re.match(r"^(unchanged|appended|CHANGED|pending|unknown commit)\s{2,}[^/\s]", line)
+        m = re.match(r"^([A-Za-z][A-Za-z ]*?)\s{2,}/", line)
+        label = (m.group(1).lower() if m else None) or (
+            {"unchanged": "unchanged", "appended": "unchanged", "CHANGED": "changed"}.get(pinned.group(1), "not frozen") if pinned else None)
+        if label and label != "log":
+            counts[label] += 1
+    total, frozen = sum(counts.values()), counts["unchanged"]
+    broken = total - frozen - counts["not frozen"]
+    fields["prereg"] = (
+        {"text": "not read (timed out)", "ok": False} if plans is None
+        else {"text": "none drafted", "ok": None, "next": "prereg new"} if total == 0
+        else {"text": f"{broken} changed", "ok": False} if broken
+        else {"text": f"{frozen}/{total} frozen", "ok": True})
+
+    ledger = project / ".results" / "ledger.jsonl"
+    if ledger.exists():
+        verified = run_text(["results", "verify"], project) or ""
+        head = verified.split("\n")[0]
+        if re.search(r"chain intact: \d+ events", head):
+            events = [json.loads(x) for x in ledger.read_text().splitlines() if x.strip()]
+            is_test = lambda rid: bool(re.match(r"^(smoke|prefreeze|test|dryrun)[_-]", rid or ""))
+            claims = [e for e in events if e.get("event") == "claim"]
+            has_seal, runs, sealed = False, 0, 0
+            for e in events:
+                if e.get("event") == "seal":
+                    has_seal = True
+                elif e.get("event") == "run" and not is_test(e.get("run_id")):
+                    runs += 1
+                    sealed += has_seal
+            changed = len(re.findall(r"^\s+(CHANGED|MISSING)\s", verified, flags=re.M))
+            fields["results"] = {
+                "text": (f"{changed} changed, " if changed else "") + (f"{sealed}/{runs} runs sealed" if runs else "0 runs")
+                + f", {plural(len(claims), 'claim')} bound",
+                "ok": not changed and sealed == runs,
+            }
+        else:
+            m = re.match(r"^(?:CHAIN|NO)\s+(\w+)", head)
+            fields["results"] = {"text": (m.group(1).lower() if m else "unreadable"), "ok": False}
+    else:
+        fields["results"] = {"text": "no ledger", "ok": None, "next": "results init"}
+
+    folders = [d for d in project.rglob("claims") if d.is_dir() and ".git" not in d.parts and "node_modules" not in d.parts
+               and len(d.relative_to(project).parts) <= 4]
+    pinned_n = 0
+    for d in folders:
+        for f in d.rglob("*"):
+            if f.is_file():
+                pinned_n += len(re.findall(r"^[ \t]*-?[ \t]*exact:", f.read_text(errors="replace"), flags=re.M))
+    fields["citations"] = ({"text": f"{pinned_n:,} pinned, not verified", "ok": None} if folders
+                           else {"text": "none pinned", "ok": None, "next": "citations pin"})
+
+    outcomes = collections.Counter("verified" if d["comparison"] == "match" and d["execution"] == "completed" else d["comparison"]
+                                   for c in report["claims"] for d in c["decisions"])
+    n = sum(outcomes.values())
+    fields["repro"] = ({"text": "no claims declared", "ok": None} if n == 0
+                       else {"text": f"{outcomes['verified']:,}/{n:,} checks verified", "ok": outcomes["verified"] == n})
+    return fields
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("project", type=pathlib.Path)
@@ -233,12 +313,24 @@ def main() -> None:
     print(build(a.project, a.out, a.groups))
 
 
-def build(project: pathlib.Path, out_path: pathlib.Path, groups_file: pathlib.Path | None = None) -> str:
-    """Write graph.json for `project` to `out_path` and return a one-line summary."""
+def build(project: pathlib.Path, out_path: pathlib.Path, groups_file: pathlib.Path | None = None,
+          check: bool = True) -> str:
+    """Write graph.json for `project` to `out_path` and return a one-line summary.
+
+    With `check`, runs `repro verify`, which records the check in the project's history. Without
+    it, reuses the report of the last check (kept beside graph.json) and re-reads everything else,
+    so nothing is written to the project."""
     project = project.resolve()
 
     manifest = yaml.safe_load((project / "repro.yaml").read_text())
-    report = repro_json(project, "verify")["report"]
+    cache = out_path.with_name("verify-report.json")
+    if check or not cache.exists():
+        report = repro_json(project, "verify")["report"]
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        cache.write_text(json.dumps({"checked_at": datetime.datetime.now(datetime.timezone.utc).isoformat(), "report": report}))
+    else:
+        report = json.loads(cache.read_text())["report"]
+    checked_at = json.loads(cache.read_text())["checked_at"]
     staleness = repro_json(project, "stale")["staleness"]
     ledger_path = project / ".results" / "ledger.jsonl"
     ledger = [json.loads(x) for x in ledger_path.read_text().splitlines()] if ledger_path.exists() else []
@@ -381,6 +473,9 @@ def build(project: pathlib.Path, out_path: pathlib.Path, groups_file: pathlib.Pa
     out = {
         "project": report["project"],
         "built_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "checked_at": checked_at,
+        "project_dir": str(project),
+        "status": status_lines(project, report),
         "manifest_digest": report["manifest_digest"],
         "totals": {
             "claims": len(report["claims"]),

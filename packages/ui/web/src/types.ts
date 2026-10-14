@@ -67,6 +67,9 @@ export interface GEdge {
 export interface Graph {
   project: string
   built_at?: string
+  checked_at?: string
+  project_dir?: string
+  status?: Record<'prereg' | 'results' | 'citations' | 'repro', StatusField>
   manifest_digest: string
   totals: {
     claims: number
@@ -81,4 +84,10 @@ export interface Graph {
   groups: { id: string; kind: 'files' | 'sections' }[]
   nodes: GNode[]
   edges: GEdge[]
+}
+
+export interface StatusField {
+  text: string
+  ok: boolean | null
+  next?: string
 }
