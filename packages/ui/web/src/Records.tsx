@@ -1,4 +1,4 @@
-import { Fragment, useMemo, useState } from 'react'
+import { Fragment, useEffect, useMemo, useState } from 'react'
 import { fmt, when } from './shared'
 import type { Graph } from './types'
 
@@ -179,7 +179,7 @@ function SourceCell({ s, files, onOpen }: { s: Source; files?: Source[]; onOpen:
   )
 }
 
-function SourcePanel({ s, onClose }: { s: Source; onClose: () => void }) {
+function SourcePanel({ s, onClose, onGo }: { s: Source; onClose: () => void; onGo?: (key: string, c: Source['cited_in'][number]) => void }) {
   const venue = s.bib.journal || s.bib.booktitle || s.bib.publisher || s.bib.howpublished || s.bib.organization || ''
   return (
     <aside className="panel">
@@ -197,9 +197,13 @@ function SourcePanel({ s, onClose }: { s: Source; onClose: () => void }) {
         <dt>Pinned</dt><dd>{s.sha256 ? <><span className="mono small">{s.local}</span><div className="mono small muted">sha256 {s.sha256}</div></> : 'Not pinned'}</dd>
         <dt>Claims file</dt><dd className="mono small">{s.file}</dd>
       </dl>
-      <h3>{s.pinned} quotation{s.pinned === 1 ? '' : 's'} · cited {s.cited_in.length === 1 ? 'once' : `${s.cited_in.length} times`}</h3>
+      <h3>{s.pinned} quotation{s.pinned === 1 ? '' : 's'} pinned</h3>
+      <h3>{s.cited_in.length ? `Referenced ${s.cited_in.length === 1 ? 'once' : `${s.cited_in.length} times`} in the manuscript` : 'Not referenced in the manuscript'}</h3>
       {s.cited_in.map((c, k) => (
-        <div key={k} className="ms-sentence">“{c.text}”{c.section && <div className="muted">(section: {c.section})</div>}</div>
+        <button key={k} className="ms-ref" onClick={() => onGo?.(s.citation, c)} title="Show it on the page">
+          <span className="ms-sentence">“{c.text}”</span>
+          {c.section && <span className="muted small">(section: {c.section}) · show it →</span>}
+        </button>
       ))}
     </aside>
   )
@@ -230,7 +234,12 @@ function Interpretation({ st }: { st: Source['statements'][number] }) {
 const sentenceWords = (texts: string[]) =>
   new Set(texts.flatMap((t) => t.toLowerCase().split(/\s+/).map((w) => w.replace(/[^a-z0-9-]/g, ''))))
 
-function CitationsByClaim({ graph, query, onOpen }: { graph: Graph; query: string; onOpen: (s: Source) => void }) {
+function CitationsByClaim({ graph, query, onOpen, focus }: {
+  graph: Graph
+  query: string
+  onOpen: (s: Source) => void
+  focus?: { key: string; order: string; at: number } | null
+}) {
   const q = query.trim().toLowerCase()
   const sources = (graph.tabs?.citations.sources ?? []).filter((s) => !q || JSON.stringify(s).toLowerCase().includes(q))
   const groupBy = 'section' as 'source' | 'section'
@@ -269,6 +278,23 @@ function CitationsByClaim({ graph, query, onOpen }: { graph: Graph; query: strin
       else sections.push({ name, items: [it] })
     }
     const uncited = sources.filter((s) => s.cited_in.length === 0)
+    const rowId = (it: Item) => `cite-${it.key}-${it.c.order.join('-')}`
+    // A reference picked in the source panel: open its section, scroll to it, and flash it.
+    useEffect(() => {
+      if (!focus) return
+      const si = sections.findIndex((sec) => sec.items.some((it) => it.key === focus.key && it.c.order.join(',') === focus.order))
+      if (si < 0) return
+      setOpenSecs((prev) => new Set([...prev, `${si}`]))
+      const id = `cite-${focus.key}-${focus.order.replace(',', '-')}`
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        const el = document.getElementById(id)
+        if (!el) return
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        el.classList.add('flash')
+        setTimeout(() => el.classList.remove('flash'), 1800)
+      }))
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [focus?.at])
     const rowsFor = (files: Source[]) => files.flatMap((s) => s.statements.map((st) => ({ s, st })))
     return (
       <>
@@ -288,7 +314,7 @@ function CitationsByClaim({ graph, query, onOpen }: { graph: Graph; query: strin
                   const words = sentenceWords([it.c.text])
                   const rows = rowsFor(it.files)
                   return rows.map(({ s, st }, i) => (
-                    <tr key={`${si}-${k}-${i}`} className={`static ${i === 0 ? 'src-start' : 'interp-row'}`}>
+                    <tr key={`${si}-${k}-${i}`} id={i === 0 ? rowId(it) : undefined} className={`static ${i === 0 ? 'src-start' : 'interp-row'}`}>
                       {i === 0 && <td rowSpan={rows.length}><SourceCell s={it.files[0]} files={it.files} onOpen={onOpen} /></td>}
                       <td><Quotes st={st} words={words} /></td>
                       <td className="small"><Interpretation st={st} /></td>
@@ -356,12 +382,13 @@ function CitationsByClaim({ graph, query, onOpen }: { graph: Graph; query: strin
 
 export function CitationsTab({ graph, query }: { graph: Graph; query: string }) {
   const [panel, setPanel] = useState<Source | null>(null)
+  const [focus, setFocus] = useState<{ key: string; order: string; at: number } | null>(null)
   return (
     <div className="rec">
       <Head cmd="citations" line={graph.status?.citations.text ?? '—'}
         what="Passages quoted from other people's work, the paper's interpretation of them, and the sentences of the manuscript that cite each source. Click a title for the source's details. Highlighted words appear in both the source and the manuscript. The interpretations and notes are ours; citations verify checks only the quoted passages. A source is pinned when its file is saved with a hash." />
-      <CitationsByClaim graph={graph} query={query} onOpen={setPanel} />
-      {panel && <SourcePanel s={panel} onClose={() => setPanel(null)} />}
+      <CitationsByClaim graph={graph} query={query} onOpen={setPanel} focus={focus} />
+      {panel && <SourcePanel s={panel} onClose={() => setPanel(null)} onGo={(key, c) => setFocus({ key, order: c.order.join(','), at: Date.now() })} />}
     </div>
   )
 }

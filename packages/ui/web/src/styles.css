@@ -356,3 +356,8 @@ tr.sec-head.clickable:hover td { background: #eceef4; }
 .src-rows { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 2px 6px; margin-top: 4px; align-items: baseline; }
 .src-rows .lab { color: var(--muted); }
 .src-rows .mono { font-size: 10.5px; word-break: break-all; }
+.ms-ref { display: flex; flex-direction: column; gap: 2px; width: 100%; text-align: left; border: 1px solid var(--border); background: var(--surface); border-radius: 8px; padding: 8px 10px; margin-bottom: 8px; cursor: pointer; font: inherit; color: inherit; }
+.ms-ref:hover { border-color: #b9b3f5; background: #f8f7ff; }
+.ms-ref .muted { color: var(--accent); }
+tr.flash > td { animation: flash 1.8s ease; }
+@keyframes flash { 0%, 40% { background: #fff1b8; } 100% { background: transparent; } }
