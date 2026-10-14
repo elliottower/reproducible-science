@@ -12,6 +12,7 @@
     repro origins         compare each artifact copied from another repository with its origin
     repro ci              run the checks in a workflow, with a summary on the run page
     repro badges          print a badge per check, each a count from a run on this machine
+    repro venue           draft a venue's appendix or checklist from the records, every answer marked
     repro check           run every tool this project uses, in one pass
     repro audit           clone a repository at a pinned commit and run every tool over it
     repro prereg          run `prereg`: freeze a plan, and record what deviated from it
@@ -98,6 +99,7 @@ from repro.demo import demo
 from repro.reproduce import RECORD
 from repro.reproduce import append as append_reproduction
 from repro.reproduce import reproduce as run_reproduce
+from repro.venue import cli as venue_cli
 
 CLAUDE_MD = """\
 # {name}
@@ -572,6 +574,7 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
         endpoints=badges.command_endpoints,
     )
     badges.add_parser(sub)
+    venue_cli.add_parser(sub)
 
     # An audit runs these inside a clone of someone else's repository, and keeps no record of
     # its checks in that clone's git directory.

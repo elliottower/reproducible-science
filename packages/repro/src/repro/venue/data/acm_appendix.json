@@ -1,0 +1,50 @@
+{
+  "venue": "acm",
+  "name": "Artifact Appendix",
+  "source": {
+    "url": "https://raw.githubusercontent.com/ctuning/artifact-evaluation/307966059368634d9882a3daa42e4b63ef1946d6/docs/template/ae.tex",
+    "retrieved": "2026-10-14",
+    "sha256": "46935542e69e5088d4f393beac5a31633d8e2b7c652a84fa7370cf7a3c6573a7",
+    "via": "The cTuning Unified Artifact Appendix template, 'LaTeX template for Artifact Evaluation V20240722' (CC BY 4.0), fetched with curl at the commit named in the URL, which was the last commit to the file on the retrieval date. Headings, field labels and the italic hints are copied from it; the order is the template's."
+  },
+  "questions": [
+    {
+      "id": "abstract",
+      "title": "Abstract",
+      "text": "Obligatory. Summarize your artifacts (including algorithms, models, data sets, software and hardware) and how they help to reproduce the key results from your paper."
+    },
+    {"id": "algorithm", "section": "Artifact check-list (meta-information)", "title": "Algorithm"},
+    {"id": "program", "section": "Artifact check-list (meta-information)", "title": "Program"},
+    {"id": "compilation", "section": "Artifact check-list (meta-information)", "title": "Compilation"},
+    {"id": "transformations", "section": "Artifact check-list (meta-information)", "title": "Transformations"},
+    {"id": "binary", "section": "Artifact check-list (meta-information)", "title": "Binary"},
+    {"id": "model", "section": "Artifact check-list (meta-information)", "title": "Model"},
+    {"id": "data-set", "section": "Artifact check-list (meta-information)", "title": "Data set"},
+    {"id": "run-time-environment", "section": "Artifact check-list (meta-information)", "title": "Run-time environment"},
+    {"id": "hardware", "section": "Artifact check-list (meta-information)", "title": "Hardware"},
+    {"id": "run-time-state", "section": "Artifact check-list (meta-information)", "title": "Run-time state"},
+    {"id": "execution", "section": "Artifact check-list (meta-information)", "title": "Execution"},
+    {"id": "metrics", "section": "Artifact check-list (meta-information)", "title": "Metrics"},
+    {"id": "output", "section": "Artifact check-list (meta-information)", "title": "Output"},
+    {"id": "experiments", "section": "Artifact check-list (meta-information)", "title": "Experiments"},
+    {"id": "disk-space", "section": "Artifact check-list (meta-information)", "title": "How much disk space required (approximately)?"},
+    {"id": "time-to-prepare", "section": "Artifact check-list (meta-information)", "title": "How much time is needed to prepare workflow (approximately)?"},
+    {"id": "time-to-complete", "section": "Artifact check-list (meta-information)", "title": "How much time is needed to complete experiments (approximately)?"},
+    {"id": "publicly-available", "section": "Artifact check-list (meta-information)", "title": "Publicly available?"},
+    {"id": "code-licenses", "section": "Artifact check-list (meta-information)", "title": "Code licenses (if publicly available)?"},
+    {"id": "data-licenses", "section": "Artifact check-list (meta-information)", "title": "Data licenses (if publicly available)?"},
+    {"id": "workflow-framework", "section": "Artifact check-list (meta-information)", "title": "Workflow automation framework used?"},
+    {"id": "archived", "section": "Artifact check-list (meta-information)", "title": "Archived (provide DOI)?"},
+    {"id": "how-to-access", "section": "Description", "title": "How to access", "text": "Obligatory"},
+    {"id": "hardware-dependencies", "section": "Description", "title": "Hardware dependencies"},
+    {"id": "software-dependencies", "section": "Description", "title": "Software dependencies"},
+    {"id": "data-sets", "section": "Description", "title": "Data sets"},
+    {"id": "models", "section": "Description", "title": "Models"},
+    {"id": "installation", "title": "Installation", "text": "Obligatory"},
+    {"id": "experiment-workflow", "title": "Experiment workflow"},
+    {"id": "evaluation", "title": "Evaluation and expected results", "text": "Obligatory"},
+    {"id": "experiment-customization", "title": "Experiment customization"},
+    {"id": "notes", "title": "Notes"},
+    {"id": "methodology", "title": "Methodology"}
+  ]
+}

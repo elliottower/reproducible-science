@@ -74,14 +74,13 @@ sources.prereg = { workspace = true }
 sources.results-cli = { workspace = true }
 
 [tool.deptry]
-# invoked as a subprocess by `repro init`, so no import graph can see it. Named
-# here rather than silenced globally: a genuinely unused dependency should still be reported.
-# `results-cli` is run the same way, by `repro results`, `repro check` and `repro audit`, and
-# is imported nowhere: the chain's writer the record of checks is appended with is in
-# `provenance-core`. `citations` is run by `repro citations` and those two, and imported by
+# Named here rather than silenced globally: a genuinely unused dependency should still be
+# reported. `results-cli` is run as a subprocess, by `repro results`, `repro check` and
+# `repro audit`, and is imported nowhere: the chain's writer the record of checks is appended
+# with is in `provenance-core`. `citations` is run by `repro citations` and those two, and imported by
 # name where `repro init` asks which library governs a project; what checks a quotation with
 # it is `claims-cli`, which declares it too.
-per_rule_ignores.DEP002 = [ "citations", "prereg", "results-cli" ]
+per_rule_ignores.DEP002 = [ "citations", "results-cli" ]
 # The distribution is not named for its module.
 package_module_name_map = { results-cli = "results", claims-cli = "claims" }
 # Without this every intra-package import reads as a transitive dependency on itself.
