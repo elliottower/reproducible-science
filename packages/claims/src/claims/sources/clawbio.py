@@ -19,10 +19,12 @@ table. So the reader writes what the folder states and opens an item for each nu
   `commands.sh` and `environment.yml`, are pinned in the open items' source;
 - every number `report.md` prints outside code is read under the rule `claims numbers` reads a
   manuscript with (`claims.numbers.printed`). Each quantity becomes a claim whose text is its
-  line as printed, with a declared `quote` of that line in `report.md`, since the report
-  states it, and one item asking for the address of the value in a pinned table. A number the
-  rule sets aside, such as a date, a year or a name, and a number inside a fenced block or an
-  inline code span, is passed over with the reason;
+  line as printed, with a `quote` of that line in `report.md` marked `basis: inferred`, and one
+  item asking for the address of the value in a pinned table. The quote is the reader's
+  proposal that the line is the claim: a draft whose claims hold only such quotes fails
+  `strict` and `publication` until an author or an agent binds each value. A number the rule
+  sets aside, such as a date, a year or a name, a time of day such as `14:22`, and a number
+  inside a fenced block or an inline code span, is passed over with the reason;
 - each item lists as candidates the addresses in the pinned JSON, YAML and delimited tables at
   which a check of the printed number would match, at the printed precision and, for a number
   printed with a percent sign, also as a fraction shown as a percentage. They are never written
@@ -91,6 +93,8 @@ MAX_CANDIDATES = 20
 _LINE = re.compile(r"(?P<digest>[0-9a-fA-F]{64}) [ *](?P<label>.+)")
 _FENCE = re.compile(r"\s*(```|~~~)")
 _INLINE_CODE = re.compile(r"`[^`]*`")
+#: A time of day, `14:22` or `09:05:33`, as a report's header stamps when it was generated.
+_CLOCK = re.compile(r"(?<![\d:.])(?:[01]?\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?![\d:])")
 
 
 class ClawbioError(ReproError):
@@ -297,7 +301,16 @@ def from_clawbio(folder: pathlib.Path, directory: pathlib.Path) -> Written:
                 )
             )
         elif path.stat().st_size <= MAX_SEARCHED_BYTES:
-            searched[label] = _stored(path)
+            try:
+                searched[label] = _stored(path)
+            except RecursionError:
+                not_checked.append(
+                    PassedOver(
+                        file=label,
+                        reason="nested deeper than the parser reads, so no candidate is read "
+                        "from it",
+                    )
+                )
 
     tables = folder / TABLES
     for path in sorted(p for p in tables.rglob("*") if p.is_file()) if tables.is_dir() else []:
@@ -343,6 +356,16 @@ def from_clawbio(folder: pathlib.Path, directory: pathlib.Path) -> Written:
                     "prints an identifier or a command and not a result",
                 )
             )
+        clocks = len(_CLOCK.findall(readable))
+        if clocks:
+            readable = _CLOCK.sub(lambda m: " " * len(m.group()), readable)
+            passed.append(
+                PassedOver(
+                    file=REPORT,
+                    reason=f"line {number}: {clocks} time(s) of day, which say when the report "
+                    "was written and are no result",
+                )
+            )
         quantities = 0
         for found in printed(readable):
             if found.rule is not None or found.value is None:
@@ -361,7 +384,16 @@ def from_clawbio(folder: pathlib.Path, directory: pathlib.Path) -> Written:
                     "id": claim_id,
                     "text": line.strip(),
                     "where": where,
-                    "evidence": [{"kind": "quote", "artifact": REPORT, "text": line.strip()}],
+                    # The reader proposes the line as the claim's passage; nobody has accepted
+                    # it, and a draft that matched it alone would pass as verified.
+                    "evidence": [
+                        {
+                            "kind": "quote",
+                            "artifact": REPORT,
+                            "text": line.strip(),
+                            "basis": "inferred",
+                        }
+                    ],
                 }
             )
             percent = found.text.endswith("%")
@@ -383,6 +415,12 @@ def from_clawbio(folder: pathlib.Path, directory: pathlib.Path) -> Written:
                         "candidates_found": len(candidates),
                     },
                     candidates=tuple(candidates[:MAX_CANDIDATES]),
+                    # No candidate is called unique: a report line names no key or column to
+                    # check a match's labels against, so one match may be chance.
+                    reason="no address in the pinned tables matches"
+                    if not candidates
+                    else "a report line names no label to check a match against, so no "
+                    "candidate is called unique",
                 )
             )
 

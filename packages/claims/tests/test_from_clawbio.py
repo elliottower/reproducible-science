@@ -21,6 +21,7 @@ from claims.manifest import load
 from claims.models import Basis, Outcome, Validity
 from claims.open_items import ClaimState, OpenItemsError, tally
 from claims.open_items import read as read_items
+from claims.policy import EXPLORATORY, PUBLICATION, STRICT
 from claims.sources.clawbio import ClawbioError, from_clawbio
 from claims.verify import verify
 
@@ -141,7 +142,7 @@ def test_every_number_the_report_prints_is_an_item_or_passed_over_with_its_line(
     assert written.claims == written.items == 5
 
 
-def test_each_claim_quotes_its_line_and_holds_no_value_the_reader_found(tmp_path):
+def test_each_claim_proposes_its_line_as_an_inferred_quote_and_holds_no_value(tmp_path):
     out = tmp_path / "out"
     from_clawbio(_folder(tmp_path), out)
     claims = _draft(out)["claims"]
@@ -150,10 +151,20 @@ def test_each_claim_quotes_its_line_and_holds_no_value_the_reader_found(tmp_path
     )
     for claim in claims:
         assert claim["evidence"] == [
-            {"kind": "quote", "artifact": "report.md", "text": claim["text"]}
+            {"kind": "quote", "artifact": "report.md", "text": claim["text"], "basis": "inferred"}
         ]
     report = verify_draft(out)
-    assert report.counts == {Outcome.VERIFIED.value: 5}
+    # Each quote matches its own line, which binds no value, so none is counted as verified.
+    assert report.counts == {"inferred_verified": 5}
+
+
+def test_a_fresh_draft_fails_strict_and_publication_and_passes_exploratory(tmp_path):
+    out = tmp_path / "out"
+    from_clawbio(_folder(tmp_path), out)
+    report = verify_draft(out)
+    assert not STRICT.assess(report).passed
+    assert not PUBLICATION.assess(report).passed
+    assert EXPLORATORY.assess(report).passed
 
 
 def test_candidates_are_the_matching_addresses_and_are_never_in_the_draft(tmp_path):
@@ -173,6 +184,10 @@ def test_candidates_are_the_matching_addresses_and_are_never_in_the_draft(tmp_pa
         for c in score
     ] == [("tables/summary.csv", "table_position", "score", 0)]
     assert all(c["basis"] == "inferred" for i in items.values() for c in i.candidates)
+    assert not any(i.unique for i in items.values())
+    assert items["line-8-1"].reason == "no address in the pinned tables matches" or (
+        items["line-8-1"].candidates and "names no label" in items["line-8-1"].reason
+    )
     draft = (out / "repro.draft.yaml").read_text()
     assert "pointer" not in draft and "table_position" not in draft
 
@@ -192,10 +207,36 @@ def test_open_items_counts_an_inferred_fill_that_matches_as_bound_and_never_veri
 
     after = tally(out / "open-items.json")
     assert after.claims[ClaimState.BOUND] == 1 and after.claims[ClaimState.OPEN] == 4
-    assert after.items["filled_by_inferred"] == 1 and after.items["filled_as_sole_candidate"] == 1
-    assert after.assertions[Basis.INFERRED] == {Outcome.VERIFIED: 1}
-    assert after.inferred_counted_as_verified == 0
-    assert verify_draft(out).counts[Outcome.VERIFIED.value] == 5
+    assert after.items["filled_by_inferred"] == 1 and after.items["with_unique_candidate"] == 0
+    assert after.assertions[Basis.INFERRED] == {Outcome.VERIFIED: 6}
+    assert Outcome.VERIFIED.value not in verify_draft(out).counts
+
+
+def test_a_time_of_day_in_the_report_is_passed_over_and_never_a_claim(tmp_path):
+    folder, out = _folder(tmp_path), tmp_path / "out"
+    stamped = REPORT.replace("**Date**: 2026-10-14", "**Date**: 2026-10-14\nGenerated 14:22 UTC")
+    (folder / "report.md").write_text(stamped)
+    written = from_clawbio(folder, out)
+    items = read_items(out / "open-items.json").items
+    assert "14" not in {i.context["printed"] for i in items}
+    assert "22" not in {i.context["printed"] for i in items}
+    assert written.items == 5
+    assert any(
+        p.reason.startswith("line 4:") and "time(s) of day" in p.reason for p in written.passed_over
+    )
+
+
+def test_a_table_nested_deeper_than_the_parser_reads_is_not_searched_and_does_not_crash(tmp_path):
+    folder, out = _folder(tmp_path), tmp_path / "out"
+    deep = "[" * 100_000 + "]" * 100_000 + "\n"
+    (folder / "tables" / "deep.json").write_text(deep)
+    checksums = folder / "reproducibility" / "checksums.sha256"
+    checksums.write_text(checksums.read_text() + f"{_sha(deep)}  tables/deep.json\n")
+    written = from_clawbio(folder, out)
+    assert {p.file: p.reason for p in written.not_checked}["tables/deep.json"].startswith(
+        "nested deeper"
+    )
+    assert written.items == 5
 
 
 def test_a_reading_never_overwrites_and_a_folder_without_checksums_is_refused(tmp_path):
