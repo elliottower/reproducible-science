@@ -28,9 +28,7 @@ below the verification engine it would otherwise have to import.
 
 from __future__ import annotations
 
-import collections
 import hashlib
-import json
 import pathlib
 import shutil
 import subprocess
@@ -41,7 +39,6 @@ from collections.abc import Callable
 from repro.models import (
     ArtifactState,
     ClaimReading,
-    Digest,
     InputReading,
     Manifest,
     Reading,
@@ -51,7 +48,8 @@ from repro.models import (
     RegenerationState,
     Validity,
 )
-from repro.resolve import resolve_pointer
+from repro.reruns import canonical_digest as canonical_digest
+from repro.reruns import upstream as upstream
 
 _MISSING = object()
 
@@ -71,62 +69,6 @@ def _inside(sandbox: pathlib.Path, source: pathlib.Path, root: pathlib.Path) -> 
     if candidate == sandbox.resolve() or sandbox.resolve() not in candidate.parents:
         return None
     return candidate
-
-
-def _drop(document: object, pointer: str) -> object:
-    """Remove one JSON Pointer's target, if it resolves. Returns the document."""
-    if pointer in ("", "/"):
-        return document
-    parent_pointer, _, last = pointer.rpartition("/")
-    parent = resolve_pointer(document, parent_pointer)
-    key = last.replace("~1", "/").replace("~0", "~")
-    if isinstance(parent, dict):
-        parent.pop(key, None)
-    elif isinstance(parent, list) and key.isdigit() and int(key) < len(parent):
-        parent.pop(int(key))
-    return document
-
-
-def canonical_digest(path: pathlib.Path, volatile: tuple[str, ...]) -> Digest:
-    """The artifact's digest, after removing any volatile fields.
-
-    Falls back to the file's own digest where the artifact is not JSON or names no volatile
-    fields, so the strict comparison stays the default.
-    """
-    if not volatile:
-        return Digest.of_file(path)
-    try:
-        document = json.loads(path.read_text(encoding="utf-8-sig"))
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
-        # Volatile fields are addressed as JSON Pointers, so a non-JSON artifact cannot have
-        # them removed. Comparing the raw bytes is the honest fallback.
-        return Digest.of_file(path)
-    for pointer in volatile:
-        document = _drop(document, pointer)
-    return Digest.of_text(
-        json.dumps(document, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
-    )
-
-
-def upstream(
-    record: RegenerationRecord, producers: dict[str, RegenerationRecord]
-) -> dict[str, int]:
-    """Every record upstream of this one, by id, with how many steps away it is.
-
-    `producers` maps an artifact to the record that writes it. Breadth first and each record
-    once, so the distance is the shortest, a record reached by two routes is listed once, and a
-    cycle ends the walk. The record itself is listed only where a cycle leads back to it.
-    """
-    found: dict[str, int] = {}
-    pending = collections.deque([(record, 0)])
-    while pending:
-        current, distance = pending.popleft()
-        for wanted in current.inputs:
-            producer = producers.get(wanted.artifact)
-            if producer is not None and producer.id not in found:
-                found[producer.id] = distance + 1
-                pending.append((producer, distance + 1))
-    return found
 
 
 #: Undeclared files named in a record. A command that unpacks an archive writes thousands, and

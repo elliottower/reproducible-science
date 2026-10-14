@@ -29,9 +29,6 @@ import collections
 import pathlib
 from collections.abc import Iterable
 
-from pydantic import ValidationError
-
-from repro.exceptions import ReproError
 from repro.models import (
     ArtifactNode,
     AssertionNode,
@@ -45,45 +42,17 @@ from repro.models import (
     RegenerationNode,
     RegenerationRecord,
     RegenerationState,
-    ReproductionReport,
     StaleCause,
     StaleFinding,
     StalenessReport,
 )
-from repro.regenerate import canonical_digest, upstream
-from repro.reproduce import RECORD
+from repro.reruns import RecordUnreadableError as RecordUnreadableError
+from repro.reruns import canonical_digest, upstream
+from repro.reruns import reruns as reruns
 from repro.verify import artifact_states
 
 #: One regeneration's entry in the record, with when its invocation started.
 Rerun = tuple[str, RegenerationState]
-
-
-class RecordUnreadableError(ReproError):
-    """A line of the record of re-runs is not a report `repro reproduce` wrote."""
-
-    def __init__(self, path: pathlib.Path, line: int, detail: str) -> None:
-        self.path = path
-        self.line = line
-        super().__init__(f"{path}:{line}: {detail}")
-
-
-def reruns(root: pathlib.Path) -> tuple[ReproductionReport, ...]:
-    """Every invocation in the project's record of re-runs, oldest first. Empty where the
-    project has no record."""
-    path = root / RECORD
-    if not path.is_file():
-        return ()
-    reports = []
-    for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
-        if not line.strip():
-            continue
-        try:
-            reports.append(ReproductionReport.model_validate_json(line))
-        except ValidationError as e:
-            first = e.errors()[0]
-            where = ".".join(str(x) for x in first["loc"]) or "(top level)"
-            raise RecordUnreadableError(path, number, f"{where}: {first['msg']}") from e
-    return tuple(reports)
 
 
 def worst(states: Iterable[Freshness]) -> Freshness:

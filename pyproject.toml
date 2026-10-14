@@ -251,6 +251,7 @@ source_modules = [
   "repro.policy",
   "repro.regenerate",
   "repro.reproduce",
+  "repro.reruns",
   "repro.checks",
   "repro.stale",
   "repro.why",
@@ -260,6 +261,48 @@ source_modules = [
 ]
 forbidden_modules = [ "repro.integrations" ]
 
+# The claims side checks what a manifest declares and reads the record of re-runs. The wrapper
+# side runs commands, writes that record and drives the other tools. The wrapper may import
+# the claims side and never the reverse, directly or through another module, so that the
+# claims side can be installed without anything that executes.
+
+[[tool.importlinter.contracts]]
+name = "The claims side imports nothing that runs a command or drives another tool"
+type = "forbidden"
+source_modules = [
+  "repro.core",
+  "repro.models",
+  "repro.manifest",
+  "repro.exceptions",
+  "repro.toolchain",
+  "repro.adapters",
+  "repro.resolve",
+  "repro.reruns",
+  "repro.verify",
+  "repro.policy",
+  "repro.checks",
+  "repro.stale",
+  "repro.why",
+  "repro.numbers",
+  "repro.record",
+  "repro.export",
+  "repro.renderers",
+  "repro.provenance",
+  "repro.starter",
+  "repro.corpus",
+  "repro.regression",
+]
+forbidden_modules = [
+  "repro.cli",
+  "repro.ci",
+  "repro.audit",
+  "repro.delegate",
+  "repro.demo",
+  "repro.crosscheck",
+  "repro.reproduce",
+  "repro.regenerate",
+]
+
 [[tool.importlinter.contracts]]
 name = "The verifier is layered"
 type = "layers"
@@ -268,6 +311,11 @@ layers = [
   # The walkthrough drives the same commands a user types, so it sits above everything it
   # drives and nothing below it may reach for it.
   "repro.demo",
+  # Runs a declared command and puts the verifier's question to what it wrote, then writes
+  # the record of re-runs. Above everything that reads that record, and none of it reaches up.
+  "repro.reproduce",
+  # Runs one declared command in a directory holding its declared inputs.
+  "repro.regenerate",
   # Other formats for the check records. An exporter reads records and nothing below them.
   "repro.export",
   "repro.renderers.sarif",
@@ -281,12 +329,11 @@ layers = [
   # that `provenance_core` holds and the `results` ledger is written with too,
   # and reads them back, so `why` sits on it and it reaches for nothing of ours but the models.
   "repro.checks",
-  # Reads what `reproduce` recorded and executes nothing, so it sits on the record's writer.
+  # Reads the record of re-runs against the files on disk and executes nothing.
   "repro.stale",
-  # Runs a declared command and puts the verifier's question to what it wrote, so it sits on
-  # the verifier and the verifier never reaches for it.
-  "repro.reproduce",
   "repro.verify",
+  # Where the record of re-runs is and what it holds, read back. The writer is far above.
+  "repro.reruns",
   "repro.resolve",
   # Reads a text with the prose adapter's rule for a number and evaluates no assertion, so it
   # sits on the adapters and reaches for nothing above them.

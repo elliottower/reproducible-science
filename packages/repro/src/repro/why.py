@@ -44,8 +44,8 @@ from repro.models import (
     TableCellEvidence,
     Validity,
 )
-from repro.regenerate import upstream
-from repro.reproduce import stored
+from repro.reruns import upstream
+from repro.resolve import stored
 from repro.stale import stale
 from repro.verify import DEFAULT_BACKENDS, Backend, artifact_states, check_evidence
 
