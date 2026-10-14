@@ -18,6 +18,7 @@
     repro prereg          run `prereg`: freeze a plan, and record what deviated from it
     repro citations       run `citations`: does every quotation resolve in its source?
     repro results         run `results`: seal a run, record it, verify the chain
+    repro mcp             serve these checks to an agent as MCP tools, over standard input and output
 
 A renderer over the library and nothing more. `verify` calls `claims.verify()` and
 `Policy.assess()`, both of which return values, so anything this prints can also be obtained
@@ -470,6 +471,29 @@ def cmd_check(args) -> int:
     return 0
 
 
+#: What `repro mcp` prints where the `mcp` extra is not installed.
+MCP_EXTRA = 'pip install "reproducible-science[mcp]"'
+
+
+def cmd_mcp(args: argparse.Namespace) -> int:
+    """Serve the project at `--root` over stdio. The server module is reached by name, as
+    `delegate` reaches the tools, because the MCP SDK is an optional extra and the base
+    install must not need it to run any other command."""
+    try:
+        server = importlib.import_module("repro.mcp_server")
+    except ModuleNotFoundError as e:
+        if e.name is None or e.name.split(".")[0] not in ("mcp", "mcp_types"):
+            raise
+        print(f"`repro mcp` needs the MCP SDK: {MCP_EXTRA}")
+        return 2
+    root = Path(args.root) if args.root else Path.cwd()
+    if not root.is_dir():
+        print(f"--root {args.root}: not a directory")
+        return 2
+    server.serve(root)
+    return 0
+
+
 def main(argv: list[str] | None = None, local_record: bool = True) -> int:
     parser = argparse.ArgumentParser(
         prog="repro",
@@ -575,6 +599,21 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
     )
     badges.add_parser(sub)
     venue_cli.add_parser(sub)
+
+    p_mcp = sub.add_parser(
+        "mcp",
+        help="serve these checks to an agent as MCP tools, over standard input and output",
+        description=(
+            "Run an MCP server on standard input and output whose tools are this toolkit's "
+            "checks: verify, why, stale, numbers, origins, open items, prereg check, results "
+            "verify and citations verify, which write nothing, and propose_binding and "
+            "pin_quote, which write one inferred assertion or one quotation that resolves. "
+            "Every path is kept inside the project root. Nothing it offers freezes, seals, "
+            f"registers, runs a declared command or reaches the network. Needs {MCP_EXTRA}."
+        ),
+    )
+    p_mcp.add_argument("--root", help="the project root (default: the working directory)")
+    p_mcp.set_defaults(func=cmd_mcp)
 
     # An audit runs these inside a clone of someone else's repository, and keeps no record of
     # its checks in that clone's git directory.

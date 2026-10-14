@@ -42,6 +42,9 @@ optional-dependencies.adduce = [ "adduce>=0.2" ]
 # range on these: the dependency above carries it.
 optional-dependencies.arrays = [ "claims-cli[arrays]" ]
 optional-dependencies.hdf5 = [ "claims-cli[hdf5]" ]
+# `repro mcp`, the toolkit's checks as tools of an MCP server. The official Python SDK, pinned
+# exactly: its 2.x line moves fast, and the server is tested against this release.
+optional-dependencies.mcp = [ "mcp==2.2" ]
 optional-dependencies.netcdf = [ "claims-cli[netcdf]" ]
 optional-dependencies.parquet = [ "claims-cli[parquet]" ]
 optional-dependencies.rds = [ "claims-cli[rds]" ]

@@ -1174,4 +1174,93 @@ The plugin ships instructions and hooks, not binaries, so install the tools as w
 uv tool install reproducible-science   # or: pip install reproducible-science
 ```
 
+## MCP server
+
+`repro mcp` runs an MCP server over standard input and output. Any coding agent that speaks MCP
+gets the toolkit's checks as tools, and the rules the `open-items` skill states are enforced by
+the server rather than asked of the agent. It needs the `mcp` extra:
+
+```bash
+uv tool install "reproducible-science[mcp]"   # or: pip install "reproducible-science[mcp]"
+repro mcp --root /path/to/project
+```
+
+Every path a tool is given is resolved inside `--root`, or the directory the server starts in,
+and a path that leaves it, through `..` or a symlink, is refused. So is a manifest that names a
+file outside it.
+
+| tool | what it does |
+|---|---|
+| `verify` | checks every assertion in a manifest under a policy, and writes no record of checks |
+| `why` | one claim's account; an inferred assertion that matched reads `matched` |
+| `stale`, `numbers` | as the commands of the same name |
+| `origins` | compares copied artifacts with a local clone of their origin, and fetches nothing |
+| `open_items` | the counts `claims open-items` gives, with one line per item |
+| `next_open_item`, `get_open_item` | one open item at a time: the claim, the printed value, the sentence and its line, each candidate's file, address, labels and stored value, and how many items remain |
+| `prereg_check`, `results_verify`, `citations_verify` | `prereg check`, `results verify [--files]`, `citations verify --claims` |
+| `propose_binding` | appends one assertion to a draft manifest to fill an open item, then checks it |
+| `pin_quote` | `citations pin`, which writes a quotation only where it resolves |
+
+`propose_binding` writes `basis: inferred` and nothing else. It refuses any other basis and
+`reviewed`, a claim the open-items file lists no item for, a draft outside the root, an
+assertion that fills no open item of the claim, a `reported` other than the value the source
+states, and an artifact the draft does not declare. It appends and never edits, so no assertion
+the draft holds is changed. A match is reported as `matched, inferred: not verified`.
+`pin_quote` refuses an id the claims file already holds, so a pinned quotation is never
+replaced.
+
+The server offers nothing that freezes or registers a plan, seals or records a run, runs a
+declared command, publishes or fetches. Its instructions tell the agent to ask a person to run
+those, and carry the `open-items` procedure, so an agent that reads server instructions has it
+without a skill.
+
+### Claude Code
+
+```bash
+claude mcp add --transport stdio --scope project reproducible-science -- repro mcp --root /path/to/project
+```
+
+### Codex
+
+In `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.reproducible-science]
+command = "repro"
+args = ["mcp"]
+cwd = "/path/to/project"
+```
+
+### Gemini CLI
+
+In `~/.gemini/settings.json`, or `.gemini/settings.json` in the project:
+
+```json
+{
+  "mcpServers": {
+    "reproducible-science": {
+      "command": "repro",
+      "args": ["mcp"],
+      "cwd": "/path/to/project"
+    }
+  }
+}
+```
+
+### Cursor
+
+In `.cursor/mcp.json` in the project, or `~/.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "reproducible-science": {
+      "type": "stdio",
+      "command": "repro",
+      "args": ["mcp", "--root", "/path/to/project"]
+    }
+  }
+}
+```
+
 MIT licensed.
