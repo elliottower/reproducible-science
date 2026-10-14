@@ -167,6 +167,12 @@ KNOWN_ADDRESS_KINDS = frozenset(
 #: that is not listed here is not understood, whatever it looks like.
 NATIVE_OUTCOMES: dict[str, frozenset[str]] = {
     CHECKER: frozenset(outcome.value for outcome in Outcome),
+    # SciTeX Clew's stored claim statuses, and the resolved ones its chain flags give a
+    # verified claim (`claims.foreign.clew`).
+    "scitex-clew": frozenset(
+        {"verified", "suspect", "mismatch", "missing", "registered", "superseded"}
+        | {"exception", "frozen", "unsourced"}
+    ),
 }
 
 

@@ -7,8 +7,9 @@
     claims numbers         count every number the manuscript prints, and which a claim binds
     claims origins         compare each artifact copied from another repository with its origin
     claims export          write the check records in another format
+    claims from-clew       read a SciTeX Clew claims.json into check records
 
-Each is also the `repro` command of the same name: `repro.cli` adds these functions to its
+Each but the `from-` readers is also the `repro` command of the same name: `repro.cli` adds these functions to its
 parser with `add_manifest` through `add_origins`, and `main` here adds them to the parser of
 `claims`. Each handler reads the name the user typed off the parsed arguments, so a message that
 says what to run next names a command that user has. Nothing here runs a declared command,
@@ -38,6 +39,9 @@ from claims.checks import set_aside as set_aside_checks
 from claims.exceptions import ReproError
 from claims.export import EXPORTS
 from claims.export.rocrate import METADATA_FILE
+from claims.foreign.clew import ClewError, offset
+from claims.foreign.clew import records as clew_records
+from claims.foreign.clew import summary as clew_summary
 from claims.manifest import DEFAULT_NAME, find, load
 from claims.models import (
     AssertionAccount,
@@ -63,7 +67,7 @@ from claims.numbers import numbers as run_numbers
 from claims.origins import OriginCheck, OriginsReport, OriginState, fetch_url
 from claims.origins import origins as run_origins
 from claims.policy import PROFILES, Assessment, Policy
-from claims.record import check_records
+from claims.record import check_records, to_jsonl
 from claims.renderers import to_sarif
 from claims.reruns import RECORD
 from claims.stale import stale as run_stale
@@ -870,6 +874,32 @@ def cmd_export(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_from_clew(args: argparse.Namespace) -> int:
+    source = Path(args.claims_json)
+    root = Path(args.root) if args.root else None
+    found = clew_records(source, root, offset(args.offset) if args.offset else None)
+    if args.format == "text":
+        written = (
+            "".join(
+                f"{kind}: "
+                + ", ".join(f"{n} {outcome}" for outcome, n in sorted(counts.items()))
+                + "\n"
+                for kind, counts in clew_summary(found).items()
+            )
+            or "no claims\n"
+        )
+    else:
+        written = to_jsonl(found)
+    if args.output:
+        target = Path(args.output)
+        if target.exists():
+            raise ClewError(f"{target} exists, and a reader never overwrites a file")
+        atomic_write(target, written)
+    else:
+        print(written, end="")
+    return 0
+
+
 def add_manifest(sub, program: str = REPRO) -> None:
     """`manifest init`: write a starter manifest. Added to `repro`'s parser and to `claims`'s, each under its own name."""
     p_manifest = sub.add_parser("manifest", help=f"write a starter {DEFAULT_NAME}")
@@ -1061,6 +1091,36 @@ def add_origins(sub, program: str = REPRO) -> None:
     p_origins.set_defaults(func=cmd_origins, program=program)
 
 
+def add_from_clew(sub, program: str = CLAIMS) -> None:
+    """`from-clew`: read a SciTeX Clew export into check records. Added to `claims`'s parser."""
+    p_from = sub.add_parser(
+        "from-clew",
+        help="read a SciTeX Clew claims.json into check records",
+        description=(
+            "Read the claims.json SciTeX Clew exports and write one check record per check "
+            "it records for each claim, with Clew as the checker and its status as the native "
+            "outcome: an artifact-identity record for the source file's hash, and a "
+            "lineage-check record where Clew walked the sessions upstream of it. Clew compares "
+            "no value, so no record is a value-comparison, and claim_value is carried as "
+            "written. Clew writes naive local times, which are refused without --offset. "
+            "Paths are written from --root, the folder holding .scitex by default; one outside "
+            "it is written as its file name. Reads the exported file only, runs nothing and "
+            "imports nothing of Clew, and never overwrites a file."
+        ),
+    )
+    p_from.add_argument("claims_json", help="Clew's claims.json")
+    p_from.add_argument(
+        "--root", help="the project the paths are made relative to (default: above .scitex)"
+    )
+    p_from.add_argument(
+        "--offset",
+        help="the UTC offset, +HH:MM or -HH:MM, of the host whose local times the export holds",
+    )
+    p_from.add_argument("--output", "-o", help="write to this new file (default: standard output)")
+    p_from.add_argument("--format", choices=("jsonl", "text"), default="jsonl")
+    p_from.set_defaults(func=cmd_from_clew, program=program)
+
+
 def main(argv: list[str] | None = None, local_record: bool = True) -> int:
     """The `claims` command: the commands above, and nothing that runs one of yours."""
     parser = argparse.ArgumentParser(
@@ -1086,6 +1146,7 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
     add_numbers(sub, CLAIMS)
     add_export(sub, CLAIMS)
     add_origins(sub, CLAIMS)
+    add_from_clew(sub, CLAIMS)
 
     args = parser.parse_args(argv)
     args.local_record = local_record
