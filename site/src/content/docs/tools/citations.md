@@ -830,7 +830,12 @@ exits 2.
 
 Only a 404 or 410 counts as a registry or search service answering that it has nothing. Every
 other refusal, including the 403 Semantic Scholar gives many anonymous requests, leaves that
-service out of the ones a `not found` rests on, which `--json` lists under `searched`.
+service out of the ones a `not found` rests on, which `--json` lists under `searched`. An entry
+that some services refused and the rest answered with nothing is still `not found`, because
+most indexed works are in Crossref or OpenAlex; the services that refused are listed under
+`refused`, and the report line says so: `not found by title search (crossref, openalex,
+arxiv); Semantic Scholar could not be asked`. Only when every service refuses is the entry
+`could not check`.
 
 ### Entries checked by hand
 
@@ -850,7 +855,11 @@ One key per line; `#` starts a note. A line with two words before a `#` is refus
 is never half read. A listed key is still reported as `not found`, marked as checked, and does
 not fail `--strict`. The list excuses nothing else: a listed key that is found and disagrees on
 a field fails as any other does, and a listed key that is found at all is printed as a warning,
-since it may no longer need to be on the list. A listed key the bibliography does not have is
+since it may no longer need to be on the list. A listed key whose own DOI or PMID every
+registry answers 404 for is excused, because a DOI registered with neither Crossref nor
+DataCite (mEDRA, JaLC) is real, but a mistyped DOI looks the same, so each such key is printed
+as `listed as checked, but its DOI does not resolve; check it isn't mistyped` and listed under
+`checked_list.identifier_does_not_resolve`. A listed key the bibliography does not have is
 warned about as stale. The report prints the file's path and SHA-256, and `--json` carries both
 with the keys read and the stale ones under `checked_list`, so a run's reliance on the list is
 on record.

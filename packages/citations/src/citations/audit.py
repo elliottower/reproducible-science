@@ -269,8 +269,10 @@ class EntryAudit(BaseModel):
     """`title search` or `identifier`, when the status is `not found`."""
 
     refused: list[str] = Field(default_factory=list)
-    """The registries or search services that did not answer, when the status is `could not
-    check`. Empty when no service was asked, after several entries in a row were refused."""
+    """The registries or search services that did not answer. On `could not check`, every one
+    asked, or none when no service was asked after several entries in a row were refused. On a
+    `not found` by title search, the services that refused while the others answered: the
+    verdict rests on the ones under `searched`."""
 
     checked_by_hand: bool = False
     """The key is on the list of entries the author checked by hand. Changes no status; a
@@ -315,6 +317,11 @@ class CheckedList(BaseModel):
 
     stale: list[str] = Field(default_factory=list)
     """Listed keys the audited entries do not have."""
+
+    identifier_does_not_resolve: list[str] = Field(default_factory=list)
+    """Listed keys whose own DOI or PMID every registry asked answered 404 for. The list
+    excuses them, as a DOI registered with neither Crossref nor DataCite is real, but a
+    mistyped DOI looks the same, so each is warned about."""
 
 
 #: The list beside a bibliography `references.bib` is `references.checked.txt`; in a library,
@@ -869,6 +876,15 @@ def with_names(record: RegistryRecord, names: list[str], kind: str = "") -> Regi
 # ------------------------------------------------------------------------------------- run
 
 
+#: How the report names a search service in prose.
+SERVICE_NAMES = {
+    "semanticscholar": "Semantic Scholar",
+    "crossref": "Crossref",
+    "openalex": "OpenAlex",
+    "arxiv": "arXiv",
+}
+
+
 def _search_file(service: Service, entry: Entry) -> tuple[str, str]:
     """The URL one service is asked about one entry, and the cache file its answer lives in."""
     url = service.url(entry)
@@ -986,6 +1002,8 @@ def audit(
             verdict.searched = answered
             if hit is None:
                 verdict.status, verdict.not_found_by = "not found", "title search"
+                # Every service was asked when nothing matched, so those not answering refused.
+                verdict.refused = [s.name for s in SERVICES if s.name not in answered]
                 continue
             found = hit
             # `resolve.best` accepts no candidate without an identifier.
@@ -1017,6 +1035,12 @@ def audit(
         verdict.venue = venue_check(e, record)
         verdict.problems = compare(e, record)
         verdict.status = "mismatch" if verdict.problems else "ok"
+    if report.checked_list is not None:
+        report.checked_list.identifier_does_not_resolve = [
+            k
+            for k, v in report.entries.items()
+            if v.checked_by_hand and v.not_found_by == "identifier"
+        ]
     return report
 
 
@@ -1097,7 +1121,10 @@ def render(report: AuditReport, quiet: bool) -> int:
             if v.not_found_by == "identifier":
                 said = f"{'doi ' + v.doi if v.doi else 'pmid ' + v.pmid} resolves to no record"
             else:
-                said = f"title search ({', '.join(v.searched)})"
+                said = f"not found by title search ({', '.join(v.searched)})"
+                if v.refused:
+                    names = ", ".join(SERVICE_NAMES.get(r, r) for r in v.refused)
+                    said += f"; {names} could not be asked"
             print(f"  {key}  {said}{'  (marked as checked)' if v.checked_by_hand else ''}")
 
     if report.could_not_check and not quiet:
@@ -1135,6 +1162,12 @@ def render(report: AuditReport, quiet: bool) -> int:
         for key in report.listed_but_found:
             status = report.entries[key].status
             print(f"  warning: {key} is on the list, but a registry has it ({status})")
+        for key in listed.identifier_does_not_resolve:
+            which = "DOI" if report.entries[key].doi else "PMID"
+            print(
+                f"  warning: {key} is listed as checked, but its {which} does not resolve; "
+                "check it isn't mistyped"
+            )
         if listed.stale:
             print(f"  warning: {len(listed.stale)} listed key(s) not in what was audited:")
             for key in listed.stale:

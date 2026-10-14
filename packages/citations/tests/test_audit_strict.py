@@ -106,7 +106,7 @@ def test_not_found_fails_strict_and_passes_by_default(tmp_path, monkeypatch, cap
 
     assert code == 1
     assert report["entries"]["naitza2012"]["status"] == "not found"
-    assert "naitza2012  title search (" in capsys.readouterr().out
+    assert "naitza2012  not found by title search (" in capsys.readouterr().out
 
 
 def test_an_identifier_every_registry_answers_404_for_fails_strict_as_not_found(
@@ -135,7 +135,7 @@ def test_a_listed_key_passes_strict_and_is_still_reported_not_found(tmp_path, mo
     assert code == 0
     verdict = report["entries"]["naitza2012"]
     assert (verdict["status"], verdict["checked_by_hand"]) == ("not found", True)
-    assert "naitza2012  title search (" in capsys.readouterr().out
+    assert "naitza2012  not found by title search (" in capsys.readouterr().out
 
 
 def test_a_listed_key_is_printed_as_not_found_marked_as_checked(tmp_path, monkeypatch, capsys):
@@ -256,12 +256,42 @@ def test_a_registry_404_beside_a_refusal_is_not_a_not_found(tmp_path, monkeypatc
     assert code == 2
 
 
-def test_a_semantic_scholar_403_is_not_a_search_that_answered(tmp_path, monkeypatch):
+def test_a_semantic_scholar_403_is_not_a_search_that_answered(tmp_path, monkeypatch, capsys):
     serve(monkeypatch, {**EMPTY_SEARCH, "semanticscholar.org": 403})
+
+    code, report = run(tmp_path, bib(tmp_path, unidentified()), "--strict")
+
+    verdict = report["entries"]["naitza2012"]
+    assert verdict["status"] == "not found"
+    assert verdict["searched"] == ["crossref", "openalex", "arxiv"]
+    assert verdict["refused"] == ["semanticscholar"]
+    assert code == 1
+    assert "; Semantic Scholar could not be asked" in capsys.readouterr().out
+
+
+def test_a_listed_key_whose_doi_does_not_resolve_passes_with_a_warning(
+    tmp_path, monkeypatch, capsys
+):
+    serve(monkeypatch, {"api.crossref.org/works/": 404, "api.datacite.org": 404})
+    (tmp_path / "references.checked.txt").write_text("naitza2012\n")
+
+    code, report = run(tmp_path, bib(tmp_path, identified()), "--strict")
+
+    assert code == 0
+    assert report["checked_list"]["identifier_does_not_resolve"] == ["naitza2012"]
+    assert (
+        "warning: naitza2012 is listed as checked, but its DOI does not resolve; "
+        "check it isn't mistyped" in capsys.readouterr().out
+    )
+
+
+def test_a_listed_key_found_by_title_search_gets_no_identifier_warning(tmp_path, monkeypatch):
+    serve(monkeypatch, EMPTY_SEARCH)
+    (tmp_path / "references.checked.txt").write_text("naitza2012\n")
 
     _, report = run(tmp_path, bib(tmp_path, unidentified()))
 
-    assert report["entries"]["naitza2012"]["searched"] == ["crossref", "openalex", "arxiv"]
+    assert report["checked_list"]["identifier_does_not_resolve"] == []
 
 
 def test_a_disagreement_outranks_a_failed_lookup(tmp_path, monkeypatch):

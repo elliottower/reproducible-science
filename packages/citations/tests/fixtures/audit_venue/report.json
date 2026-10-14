@@ -294,7 +294,9 @@
     "goodfellow2014gan": {
       "status": "not found",
       "not_found_by": "title search",
-      "refused": [],
+      "refused": [
+        "semanticscholar"
+      ],
       "checked_by_hand": false,
       "checked_against": null,
       "doi": "",
