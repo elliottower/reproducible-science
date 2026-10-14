@@ -318,3 +318,5 @@ mark { background: #fff1b8; padding: 0 1px; border-radius: 2px; }
 .fold-btn { border: none; background: none; color: var(--muted); cursor: pointer; padding: 0 4px 0 0; font-size: 11px; }
 tr.folded { cursor: pointer; }
 tr.folded:hover { background: #fafbfc; }
+.note-label { display: inline-block; background: #fdf2dc; color: #a15c00; border-radius: 4px; padding: 0 6px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+.note-wrap .cite-note { margin-top: 3px; color: #7a4a06; }

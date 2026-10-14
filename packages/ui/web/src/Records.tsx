@@ -111,12 +111,14 @@ function Marked({ text, against }: { text: string; against: Set<string> }) {
   )
 }
 
+/** What the person who pinned the quotes wrote about the source: where the paper's reading and the
+ * source differ, what the quote does not show, or where the words came from. Shown, because it is
+ * the evidence that someone read the source. */
 function Note({ text }: { text: string }) {
-  const [open, setOpen] = useState(false)
   return (
     <div className="note-wrap">
-      <button className="note-btn" onClick={() => setOpen((o) => !o)}>note {open ? '▾' : '▸'}</button>
-      {open && <div className="cite-note">{text}</div>}
+      <span className="note-label">Reader's note</span>
+      <div className="cite-note">{text}</div>
     </div>
   )
 }
