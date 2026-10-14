@@ -54,6 +54,29 @@ CODEMETA = "codemeta.json"
 
 #: A DOI, as `CITATION.cff` or `codemeta.json` writes one, bare or as a doi.org address.
 DOI = re.compile(r"\b10\.\d{4,9}/[^\s\"'<>]+")
+#: A suffix a template leaves in place of a DOI: a run of X, TBD or TODO, a run of zeros, or
+#: a placeholder in angle brackets or braces.
+PLACEHOLDER = re.compile(r"(?i)x{3,}|tbd|todo|(?<!\d)0{4,}(?!\d)|[<>{}]")
+#: Zenodo's DOI prefix, whose suffix is `zenodo.` and the record's number.
+ZENODO = re.compile(r"(?i)10\.5281/zenodo\.\d+")
+
+
+def real_dois(values: list[str]) -> list[str]:
+    """Each DOI in `values` that is not a template's placeholder, once. A Zenodo DOI must
+    name a record by its number."""
+    found = []
+    for value in values:
+        for match in DOI.finditer(value):
+            doi = match.group(0).rstrip(".,;)")
+            suffix = doi.split("/", 1)[1]
+            if PLACEHOLDER.search(suffix):
+                continue
+            if doi.startswith("10.5281/") and not ZENODO.fullmatch(doi):
+                continue
+            found.append(doi)
+    return list(dict.fromkeys(found))
+
+
 #: A Software Heritage persistent identifier, without its qualifiers.
 SWHID = re.compile(r"\bswh:1:(?:cnt|dir|rev|rel|snp):[0-9a-f]{40}\b")
 
@@ -490,13 +513,11 @@ def archive(project: Project) -> tuple[Finding, ...]:
     own = [item for item in own if isinstance(item, dict)] if isinstance(own, list) else []
     named = [str(citation["doi"])] if isinstance(citation.get("doi"), str | int | float) else []
     named += [str(item.get("value", "")) for item in own if item.get("type") == "doi"]
-    dois = [m.group(0) for value in named if (m := DOI.search(value))]
-    found += [Finding(record=CITATION, said=f"names DOI {d}") for d in dict.fromkeys(dois)]
+    found += [Finding(record=CITATION, said=f"names DOI {d}") for d in real_dois(named)]
     swh = _swhids([str(item.get("value", "")) for item in own if item.get("type") == "swh"])
     found += [Finding(record=CITATION, said=f"names Software Heritage ID {i}") for i in swh]
     identifier = _strings(_codemeta(project).get("identifier"))
-    codemeta_dois = dict.fromkeys(m.group(0) for s in identifier for m in DOI.finditer(s))
-    found += [Finding(record=CODEMETA, said=f"names DOI {d}") for d in codemeta_dois]
+    found += [Finding(record=CODEMETA, said=f"names DOI {d}") for d in real_dois(identifier)]
     found += [
         Finding(record=CODEMETA, said=f"names Software Heritage ID {i}")
         for i in _swhids(identifier)
@@ -571,13 +592,15 @@ _SCP = re.compile(r"[^/@\s]+@([^:/\s]+):(.*)")
 
 
 def without_userinfo(url: str) -> str:
-    """A repository address with any user name, password or token taken out."""
+    """A repository address with any user name, password or token taken out, and its query
+    and fragment, which can carry a token as well."""
     if scp := _SCP.fullmatch(url):
-        return f"{scp.group(1)}:{scp.group(2)}"
+        return f"{scp.group(1)}:{re.split(r'[?#]', scp.group(2), maxsplit=1)[0]}"
     parts = urllib.parse.urlsplit(url)
-    if parts.scheme and "@" in parts.netloc:
-        return urllib.parse.urlunsplit(parts._replace(netloc=parts.netloc.rsplit("@", 1)[1]))
-    return url
+    if not parts.scheme:
+        return url
+    netloc = parts.netloc.rsplit("@", 1)[-1]
+    return urllib.parse.urlunsplit(parts._replace(netloc=netloc, query="", fragment=""))
 
 
 def remote(project: Project) -> tuple[Finding, ...]:

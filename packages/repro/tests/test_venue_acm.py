@@ -652,3 +652,50 @@ def test_one_claim_naming_no_recorded_run_reads_names(tmp_path):
     )
     evaluation = [text for _, text in said(acm.appendix(Project.at(tmp_path)).answer("evaluation"))]
     assert any(text.endswith("; 1 more names a run it does not record") for text in evaluation)
+
+
+# -- third review ----------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "doi",
+    [
+        "10.5281/zenodo.XXXXXXX",
+        "10.1234/TBD",
+        "10.1234/todo-assign",
+        "10.5281/zenodo.0000000",
+        "10.1234/{record}",
+        "10.5281/zenodo.latest",
+    ],
+)
+@pytest.mark.parametrize("where", ["CITATION.cff", "codemeta.json"])
+def test_a_placeholder_doi_settles_nothing(tmp_path, doi, where):
+    if where == "CITATION.cff":
+        (tmp_path / where).write_text(yaml.safe_dump({"doi": doi}))
+    else:
+        (tmp_path / where).write_text(json.dumps({"identifier": doi}))
+    archived, public = archive_and_public(tmp_path)
+    assert (archived.status, archived.choice) == (Status.TODO, "")
+    assert (public.status, public.choice) == (Status.TODO, "")
+
+
+def test_an_angle_bracket_template_is_no_doi(tmp_path):
+    (tmp_path / "CITATION.cff").write_text(yaml.safe_dump({"doi": "10.5281/<record id>"}))
+    assert archive_and_public(tmp_path)[0].choice == ""
+
+
+def test_a_zenodo_doi_with_a_record_number_settles_archived(tmp_path):
+    (tmp_path / "CITATION.cff").write_text(yaml.safe_dump({"doi": "10.5281/zenodo.17000001"}))
+    assert archive_and_public(tmp_path)[0].choice == "Yes"
+
+
+@pytest.mark.parametrize(
+    ("url", "shown"),
+    [
+        ("https://github.com/a/b.git?access_token=abc123", "https://github.com/a/b.git"),
+        ("https://u:p@gitlab.com/a/b#token=abc", "https://gitlab.com/a/b"),
+        ("git@github.com:a/b.git?x=1", "github.com:a/b.git"),
+    ],
+)
+def test_the_query_and_fragment_are_taken_out_of_the_remote(url, shown):
+    assert without_userinfo(url) == shown
