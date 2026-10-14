@@ -188,16 +188,24 @@ def series(version: str) -> str:
     exact pin makes any hand-run release that publishes packages seconds apart briefly
     uninstallable, and this release is run by hand.
 
-    A candidate pins its siblings from itself: `>=0.6.0rc1,<0.7`. A specifier admits a
+    A candidate pins its siblings from itself: `>=0.6rc1,<0.7`. A specifier admits a
     pre-release only where it names one, so `>=0.6,<0.7` would refuse the candidate the six
     packages are released as together, and the set would not install. The final release goes
     back to `>=0.6,<0.7`, which admits 0.6.0 and every patch after it.
+
+    The candidate's bound is written with trailing zeros dropped from its release numbers,
+    `0.6rc1` for `0.6.0rc1`, because that is how `pyproject-fmt` rewrites it on commit; written
+    as the version, the hook changed every range and `check` then refused what it wrote.
     """
-    major, minor, _patch, pre, _number = parts(version)
+    major, minor, patch, pre, _number = parts(version)
     upper = f"<{major}.{minor + 1}"
     if pre == PRE_RANK[None]:
         return f">={major}.{minor},{upper}"
-    return f">={version},{upper}"
+    numbers = [major, minor, patch]
+    while len(numbers) > 1 and numbers[-1] == 0:
+        numbers.pop()
+    suffix = version[VERSION_PARTS.match(version).start(4) :]
+    return f">={'.'.join(map(str, numbers))}{suffix},{upper}"
 
 
 #: The start of the dependencies array. Its end is found by balancing brackets rather than by

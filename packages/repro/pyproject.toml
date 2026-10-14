@@ -4,7 +4,7 @@ requires = [ "hatchling" ]
 
 [project]
 name = "reproducible-science"
-version = "0.5.6"
+version = "0.6.0rc1"
 description = "One contract for verifying declared evidence assertions against pinned artifacts"
 readme = "README.md"
 keywords = [ "citations", "open science", "preregistration", "provenance", "reproducibility" ]
@@ -23,17 +23,17 @@ classifiers = [
   "Topic :: Scientific/Engineering",
 ]
 dependencies = [
-  "citations>=0.5,<0.6",
+  "citations>=0.6rc1,<0.7",
   # The contract, the engine and the commands that check a manifest. This distribution adds
   # the commands that run things and drive the other tools.
-  "claims-cli>=0.5,<0.6",
+  "claims-cli>=0.6rc1,<0.7",
   # Floors, not bare names: without them a fresh install resolves whatever is oldest on
   # PyPI, which is not the combination the tests exercise.
-  "prereg>=0.5,<0.6",
-  "provenance-core>=0.5,<0.6",
+  "prereg>=0.6rc1,<0.7",
+  "provenance-core>=0.6rc1,<0.7",
   "pydantic>=2.9",
   "pyyaml>=6.0.2",
-  "results-cli>=0.5,<0.6",
+  "results-cli>=0.6rc1,<0.7",
 ]
 # Only needed to run the rule inside `adduce check`. repro itself never imports adduce.
 optional-dependencies.adduce = [ "adduce>=0.1.2" ]
