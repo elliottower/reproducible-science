@@ -119,10 +119,80 @@ A project with no `.gitignore` gets one holding those lines. An existing `.gitig
 
 ## Write a manifest
 
-`repro verify` reads `repro.yaml`, the manifest that pins a project's files and declares what the manuscript claims about them. In a project that has none:
+`repro verify` reads `repro.yaml`, the manifest that pins a project's files and declares what the manuscript claims about them. In a project that has none, `repro verify` reports what one could check, and writes nothing. For a project holding three files:
+
+```text
+results/metrics.json  {"model": "lasso", "scores": {"accuracy": 0.9312, "n": 480, "rate": 0.0426}}
+results/table.csv     model,auc
+                      lasso,0.71
+```
+
+```markdown
+# Results
+
+In 2024 we fit the lasso to 480 participants.
+Held-out accuracy was 0.931, and the error rate was 4.3% (Table 2).
+We ran 3 seeds; the AUC was 0.71, not 0.55.
+```
 
 ```bash
-cd my_experiment
+repro verify
+```
+
+```text
+no repro.yaml here or above.
+
+found by looking under results/, paper/artifacts/, outputs/, data/ and for one manuscript:
+
+  result files: 2
+    JSON and YAML     results/metrics.json
+    CSV, TSV and PSV  results/table.csv
+  manuscript: paper.md
+
+  candidate bindings, guessed: 4 of the 5 numbers compared agree with one of
+  the 4 values read from 2 result files, at the precision printed.
+  A guess says the digits agree, never that the sentence reports that value.
+    guess  line 3    480    results/metrics.json /scores/n holds 480
+                            ...fit the lasso to 480 participants. held-out accuracy was...
+    guess  line 4    0.931  results/metrics.json /scores/accuracy holds 0.9312
+                            ...participants. held-out accuracy was 0.931, and the error rate...
+    guess  line 4    4.3%   results/metrics.json /scores/rate holds 0.0426, as a percentage
+                            ...the error rate was 4.3% (table 2). we ran...
+    guess  line 5    0.71   results/table.csv column auc, row 0 holds 0.71
+                            ...seeds; the auc was 0.71, not 0.55....
+
+  verified: 0. With no manifest no claim is declared, so nothing was checked, and
+  nothing was written.
+
+write one that pins this project's result files, with example claims to edit:
+
+    repro manifest init
+```
+
+The files are the ones `repro manifest init` would pin, found as it finds them. The numbers the manuscript prints are the ones `repro numbers` would count as unbound, in digits, with two digits or a decimal point, so years, labels, citations and single digits are left out. Each is compared with every number a JSON or YAML file holds, in mappings and in lists, and every cell of a CSV, TSV, PSV or columnar table, by the comparison a numeric assertion makes at the precision printed. A number printed with a percent sign is also compared as a percentage. Nothing else is scaled: a number is compared as printed, without its unit or suffix, so `25.6M` is compared as 25.6 and does not match a stored 25557032. A column, a key repeated across the elements of a list, or any other key of a JSON or YAML mapping, is index-like where its whole name, ignoring case and separators, is `id`, `idx`, `index`, `step`, `global_step`, `epoch`, `iter`, `iteration`, `row` or `seed`, or it has no name; `step_size`, `gini_index`, `id_acc` and `row_count` are not. A column or a repeated key is index-like also where it holds at least ten whole numbers and at least three quarters of its consecutive pairs step by one nonzero amount, where every pair that breaks the step drops back to the first value or the least. That keeps a counter that starts again for each run of a long table or each element of an outer list, and leaves out a count with one irregular step. Guesses in an index-like column or key are listed last, each tagged `[index-like column]` or `[index-like key]`, and the headline counts them apart, as `and 4 more numbers agree only with index-like columns or keys`. Nothing is left out. One number agreeing with several rows of a column, or one key of several list elements, is one guess: a place whose value equals the number exactly where one does, then the other rows and what they hold, as `rows 0, 2 hold 0.708 and 0.712`. Guesses in JSON and YAML files are listed before guesses in tables. A long pointer is shortened in the middle in this output and kept whole in JSON. A column of whole numbers that steps exactly linearly, such as a dose series of 25 to 300 mg in steps of 25 or the n of a power table, cannot be told from a counter by its values, so it is demoted; its guesses still appear, last and tagged.
+
+A guess is never counted as verified. At most 10,000 numbers are read from one file, and a delimited file is read no further than that. Notes name files by their path in the project, never an absolute one. At most 1,000,000 comparisons are made. A note says where either limit was reached, and the headline counts the numbers compared and how many were not. A file that cannot be read is a note. The command exits 2, as every command does with nothing to read: nothing was checked, which is neither a pass nor a failure.
+
+`--format json` prints one document:
+
+| key | holds |
+|---|---|
+| `schema_version` | `reproducible.science/survey/0.1-experimental` |
+| `manifest` | `null` |
+| `verified` | `0` |
+| `survey.results` | the result files, relative to the project, under `tree`, `delimited`, `columnar`, `workbook`, `sqlite` or `array` |
+| `survey.manuscript` | the manuscript's path, or `null` |
+| `survey.notes` | what was passed over, could not be read, was skipped, or reached a limit |
+| `survey.read_from`, `survey.values` | the files numbers were read from, and how many numbers |
+| `survey.cut`, `survey.index_like` | files cut at the limit, and the index-like columns and keys (`results/log.json /history/*/step`) |
+| `survey.compared`, `survey.not_compared` | numbers the manuscript prints that were compared, and that the limit left uncompared |
+| `survey.candidates` | each guess: `printed`, `line`, `offset`, `context`, `path`, `locator` (`{kind: tree, pointer}` or `{kind: table_position, column, row}`), `stored`, `conversion`, `index_like`, and `also`: the other rows or list elements the same number agrees with, each a `locator` and `stored` |
+
+`--format sarif` prints a run with no results, a warning notification in its invocation saying nothing was verified, and `schema_version`, `verified` and `survey` in the run's properties.
+
+To write the manifest:
+
+```bash
 repro manifest init
 ```
 
@@ -348,7 +418,7 @@ A number is digits with an optional sign, grouping commas, a decimal point and a
 | `name` | digits with a letter immediately before them, `v15zw` and `sha256sum`, digits a hyphen or underscore joins to a part that holds a letter, `gpt-4` and `9750` in `i7-9750h`, and digits that open a run of letters and digits holding more digits, as a hexadecimal digest does |
 | `version or section` | digits joined by two or more full stops, `0.5.5` |
 | `citation` | whole numbers from 1 up, alone in square brackets: `[12]`, `[3, 7-9]` |
-| `label` | the number after `section`, `figure`, `table`, `equation`, `appendix`, `chapter`, `page`, `algorithm`, `listing`, `theorem`, `lemma`, `proposition`, `corollary`, `definition`, `footnote`, `endnote`, `step` or `line`, or the usual abbreviation of one, and both ends of a range written `2-4` |
+| `label` | the number after `section`, `figure`, `table`, `equation`, `appendix`, `chapter`, `page`, `algorithm`, `listing`, `theorem`, `lemma`, `proposition`, `corollary`, `definition`, `footnote`, `step` or `line`, or the usual abbreviation of one, and both ends of a range written `2-4` |
 | `list marker` | a whole number of one or two digits alone in parentheses, `(1)` |
 | `ordinal` | digits with `st`, `nd`, `rd` or `th` attached |
 | `year` | four digits from 1800 to 2099 with no sign, separator, decimal point or percent sign |
@@ -462,15 +532,12 @@ A number is checked at an address the manifest declares, in the addressing the f
 | NumPy `.npy`, `.npz` | `array` | array name and index | `arrays` |
 | HDF5 `.h5`, NetCDF `.nc` | `array` | dataset path and index, `/runs/accuracy` | `hdf5`, `netcdf` |
 | PDF, text | `prose` | the literal text on either side of the value | |
-| Word `.docx` | `prose` | the literal text on either side of the value | |
 
 ```bash
 pip install "reproducible-science[parquet,sheets]"
 ```
 
 A predicate matching two rows is reported as ambiguous and never resolved to the first. Without the extra a format needs, its checks are `unchecked` and name the extra to install. A file that is not what its suffix says is `unchecked` as unreadable. A NetCDF value is the one a NetCDF reader reports, unpacked by its `scale_factor` and `add_offset`, and a fill value is absent.
-
-A Word manuscript is read by version 2 of the `docx-text` extractor of `citations`, for a `quote`, a prose address and `repro numbers` alike: the body in document order, with tables, text boxes, content controls and field results where they stand, then footnotes and endnotes marked `Footnote 1.` and `Endnote 1.`, then each header and footer once. Tracked changes are read as accepted. Comments are not read, so a quotation never verifies against a reviewer's note. The full order is in the [citations page](/tools/citations/#reading-workbooks-docx-article-xml-and-html). A decision on a `.docx` names `citations` and its version as its tool, beside the digest of the text it produced. A `quote` or a prose address in a workbook names `openpyxl` for `.xlsx` and `.xlsm`, `xlrd` for `.xls` and `citations` for `.csv`, whose `sheet-rows` extractor reads it with the standard library.
 
 Pickles (`.pkl`, `.joblib`, `.pt`) are never opened, because reading one runs code. An `.rds` is parsed by [`rdata`](https://pypi.org/project/rdata/), which starts no R process and evaluates nothing in the file.
 
@@ -577,7 +644,7 @@ The statistic of the members that did resolve is never compared. `repro why` lis
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/elliottower/reproducible-science
-    rev: v0.6.0
+    rev: v0.6.1
     hooks:
       - id: repro-verify
 ```
@@ -1062,9 +1129,12 @@ pip install "reproducible-science[adduce]"
 adduce check .
 ```
 
-The rule reports an aggregate — every assertion holding is a pass, some holding is partial, a
-pinned artifact having changed is a failure naming it — and writes the full per-assertion
-report to `.adduce/repro-report.json`, since one finding cannot carry thousands of outcomes.
+The rule reports one finding for the manifest — every assertion holding is a pass, some
+holding is partial, a pinned artifact having changed is a failure naming it — with one item
+per checked assertion under it: its status, the printed and stored values, the comparison
+rule, and the manifest line and files it read. adduce never scores an item on its own, so the
+finding weighs what it did. Past adduce's envelope of 10,000 items the finding says how many
+more there are, and the full report is written to `.adduce/repro-report.json` in every case.
 A repository with no manifest is out of scope rather than failing, and a verifier that cannot
 run reports `UNKNOWN`: a missing toolchain is not the repository's fault.
 

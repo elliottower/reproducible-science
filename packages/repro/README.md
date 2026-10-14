@@ -112,10 +112,80 @@ A project with no `.gitignore` gets one holding those lines. An existing `.gitig
 
 ## Write a manifest
 
-`repro verify` reads `repro.yaml`, the manifest that pins a project's files and declares what the manuscript claims about them. In a project that has none:
+`repro verify` reads `repro.yaml`, the manifest that pins a project's files and declares what the manuscript claims about them. In a project that has none, `repro verify` reports what one could check, and writes nothing. For a project holding three files:
+
+```text
+results/metrics.json  {"model": "lasso", "scores": {"accuracy": 0.9312, "n": 480, "rate": 0.0426}}
+results/table.csv     model,auc
+                      lasso,0.71
+```
+
+```markdown
+# Results
+
+In 2024 we fit the lasso to 480 participants.
+Held-out accuracy was 0.931, and the error rate was 4.3% (Table 2).
+We ran 3 seeds; the AUC was 0.71, not 0.55.
+```
 
 ```bash
-cd my_experiment
+repro verify
+```
+
+```text
+no repro.yaml here or above.
+
+found by looking under results/, paper/artifacts/, outputs/, data/ and for one manuscript:
+
+  result files: 2
+    JSON and YAML     results/metrics.json
+    CSV, TSV and PSV  results/table.csv
+  manuscript: paper.md
+
+  candidate bindings, guessed: 4 of the 5 numbers compared agree with one of
+  the 4 values read from 2 result files, at the precision printed.
+  A guess says the digits agree, never that the sentence reports that value.
+    guess  line 3    480    results/metrics.json /scores/n holds 480
+                            ...fit the lasso to 480 participants. held-out accuracy was...
+    guess  line 4    0.931  results/metrics.json /scores/accuracy holds 0.9312
+                            ...participants. held-out accuracy was 0.931, and the error rate...
+    guess  line 4    4.3%   results/metrics.json /scores/rate holds 0.0426, as a percentage
+                            ...the error rate was 4.3% (table 2). we ran...
+    guess  line 5    0.71   results/table.csv column auc, row 0 holds 0.71
+                            ...seeds; the auc was 0.71, not 0.55....
+
+  verified: 0. With no manifest no claim is declared, so nothing was checked, and
+  nothing was written.
+
+write one that pins this project's result files, with example claims to edit:
+
+    repro manifest init
+```
+
+The files are the ones `repro manifest init` would pin, found as it finds them. The numbers the manuscript prints are the ones `repro numbers` would count as unbound, in digits, with two digits or a decimal point, so years, labels, citations and single digits are left out. Each is compared with every number a JSON or YAML file holds, in mappings and in lists, and every cell of a CSV, TSV, PSV or columnar table, by the comparison a numeric assertion makes at the precision printed. A number printed with a percent sign is also compared as a percentage. Nothing else is scaled: a number is compared as printed, without its unit or suffix, so `25.6M` is compared as 25.6 and does not match a stored 25557032. A column, a key repeated across the elements of a list, or any other key of a JSON or YAML mapping, is index-like where its whole name, ignoring case and separators, is `id`, `idx`, `index`, `step`, `global_step`, `epoch`, `iter`, `iteration`, `row` or `seed`, or it has no name; `step_size`, `gini_index`, `id_acc` and `row_count` are not. A column or a repeated key is index-like also where it holds at least ten whole numbers and at least three quarters of its consecutive pairs step by one nonzero amount, where every pair that breaks the step drops back to the first value or the least. That keeps a counter that starts again for each run of a long table or each element of an outer list, and leaves out a count with one irregular step. Guesses in an index-like column or key are listed last, each tagged `[index-like column]` or `[index-like key]`, and the headline counts them apart, as `and 4 more numbers agree only with index-like columns or keys`. Nothing is left out. One number agreeing with several rows of a column, or one key of several list elements, is one guess: a place whose value equals the number exactly where one does, then the other rows and what they hold, as `rows 0, 2 hold 0.708 and 0.712`. Guesses in JSON and YAML files are listed before guesses in tables. A long pointer is shortened in the middle in this output and kept whole in JSON. A column of whole numbers that steps exactly linearly, such as a dose series of 25 to 300 mg in steps of 25 or the n of a power table, cannot be told from a counter by its values, so it is demoted; its guesses still appear, last and tagged.
+
+A guess is never counted as verified. At most 10,000 numbers are read from one file, and a delimited file is read no further than that. Notes name files by their path in the project, never an absolute one. At most 1,000,000 comparisons are made. A note says where either limit was reached, and the headline counts the numbers compared and how many were not. A file that cannot be read is a note. The command exits 2, as every command does with nothing to read: nothing was checked, which is neither a pass nor a failure.
+
+`--format json` prints one document:
+
+| key | holds |
+|---|---|
+| `schema_version` | `reproducible.science/survey/0.1-experimental` |
+| `manifest` | `null` |
+| `verified` | `0` |
+| `survey.results` | the result files, relative to the project, under `tree`, `delimited`, `columnar`, `workbook`, `sqlite` or `array` |
+| `survey.manuscript` | the manuscript's path, or `null` |
+| `survey.notes` | what was passed over, could not be read, was skipped, or reached a limit |
+| `survey.read_from`, `survey.values` | the files numbers were read from, and how many numbers |
+| `survey.cut`, `survey.index_like` | files cut at the limit, and the index-like columns and keys (`results/log.json /history/*/step`) |
+| `survey.compared`, `survey.not_compared` | numbers the manuscript prints that were compared, and that the limit left uncompared |
+| `survey.candidates` | each guess: `printed`, `line`, `offset`, `context`, `path`, `locator` (`{kind: tree, pointer}` or `{kind: table_position, column, row}`), `stored`, `conversion`, `index_like`, and `also`: the other rows or list elements the same number agrees with, each a `locator` and `stored` |
+
+`--format sarif` prints a run with no results, a warning notification in its invocation saying nothing was verified, and `schema_version`, `verified` and `survey` in the run's properties.
+
+To write the manifest:
+
+```bash
 repro manifest init
 ```
 

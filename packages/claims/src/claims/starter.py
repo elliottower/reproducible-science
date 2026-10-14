@@ -10,7 +10,12 @@ file, and a line read out of a pinned text source. Each is run through the engin
 written and kept only if every assertion verifies. An example that cannot be made real is
 written as a YAML comment, so a starter never declares a claim that fails on its first run.
 
-Nothing here prints. `repro.cli` renders the `Starter` this returns.
+`survey` reports what the same discovery finds without writing anything, for `repro verify`
+in a project with no manifest: the result files, the manuscript, and the numbers the
+manuscript prints that agree with a value a JSON or YAML file holds. Those agreements are
+guesses, and no decision is made from one.
+
+Nothing here prints. `repro.cli` renders the `Starter` and the `Survey` these return.
 """
 
 from __future__ import annotations
@@ -20,6 +25,7 @@ import decimal
 import itertools
 import math
 import mimetypes
+import os
 import pathlib
 import re
 from collections.abc import Iterator
@@ -32,13 +38,30 @@ from claims.adapters.array import _ARRAY_SUFFIXES
 from claims.adapters.columnar import COLUMNAR_SUFFIXES
 from claims.adapters.sheet import WORKBOOK_SUFFIXES
 from claims.adapters.sqlite import _SQLITE_SUFFIXES
-from claims.adapters.table import _DELIMITERS
+from claims.adapters.table import _DELIMITERS, read_cells
 from claims.adapters.tree import _TREE_SUFFIXES, Written, _load_tree
-from claims.exceptions import ArtifactRefusedError, ArtifactUnreadableError, ManifestExistsError
+from claims.exceptions import (
+    ArtifactMissingError,
+    ArtifactRefusedError,
+    ArtifactUnreadableError,
+    BackendUnavailableError,
+    ManifestExistsError,
+)
 from claims.manifest import DEFAULT_NAME
-from claims.models import SCHEMA_VERSION, ArtifactRef, Digest, Manifest, Outcome
+from claims.models import (
+    SCHEMA_VERSION,
+    ArtifactRef,
+    Conversion,
+    Digest,
+    Manifest,
+    NumberForm,
+    Outcome,
+    Standing,
+)
+from claims.numbers import numbers as printed_numbers
+from claims.numbers import telling
 from claims.provenance import of_tree
-from claims.verify import verify
+from claims.verify import agrees, verify
 
 #: Where discovery looks for result files, relative to the project top.
 CONVENTIONAL = ("results", "paper/artifacts", "outputs", "data")
@@ -66,8 +89,48 @@ MAX_ENTRIES = 1000
 """A directory holding more entries than this is a large tree, and is not searched."""
 MAX_BYTES = 50 * 1024 * 1024
 MAX_QUOTE_TRIES = 5
+MAX_VALUES_PER_FILE = 10_000
+"""A survey reads at most this many numbers from one result file."""
+MAX_COMPARISONS = 1_000_000
+"""A survey compares at most this many pairs of a printed number and a stored one."""
 
 _NOT_SEARCHED = {"node_modules", "__pycache__", "venv", "env", "site-packages"}
+
+#: The formats discovery finds: the key a survey groups result files under, the name a reader
+#: knows the format by, and the suffixes its adapter reads, in the order a survey lists them.
+FORMATS = (
+    ("tree", "JSON and YAML", frozenset(_TREE_SUFFIXES)),
+    ("delimited", "CSV, TSV and PSV", frozenset(_DELIMITERS)),
+    ("columnar", "Parquet, Feather, Stata, SPSS, .rds", frozenset(COLUMNAR_SUFFIXES)),
+    ("workbook", "Excel", frozenset(WORKBOOK_SUFFIXES)),
+    ("sqlite", "SQLite", frozenset(_SQLITE_SUFFIXES)),
+    ("array", "NumPy, HDF5 and NetCDF", frozenset(_ARRAY_SUFFIXES)),
+)
+FORMAT_NAMES = {key: name for key, name, _ in FORMATS}
+
+#: What a survey's JSON document is, and the revision of its shape.
+SURVEY_SCHEMA = "reproducible.science/survey/0.1-experimental"
+
+#: A column, a key repeated across the elements of a list, or any other mapping key, is
+#: index-like where its whole name, lowercased with each run of other characters read as `_`,
+#: is one of these, or it has no name (pandas writes one as `Unnamed: 0`). `step_size`,
+#: `gini_index`, `id_acc` and `row_count` are not. A column or a repeated key is index-like
+#: also where it holds at least `INDEX_MIN_ROWS` values, every one a whole number, and at
+#: least `INDEX_STEP_SHARE` of its consecutive pairs step by one nonzero amount, every other
+#: pair dropping back to the first value or the least: a counter, including one that starts
+#: again for each run of a long table or each element of an outer list. A metric that rises
+#: linearly is not a whole number at each step; a count with one irregular step breaks the
+#: step without a reset. An exactly linear column of whole numbers, a dose series or a power
+#: table's n, cannot be told from a counter by its values, and is demoted. A survey lists its guesses
+#: after the others and counts them apart, and hides none.
+INDEX_NAMES = frozenset(
+    {"id", "idx", "index", "step", "global_step", "epoch", "iter", "iteration", "row", "seed"}
+)
+INDEX_MIN_ROWS = 10
+INDEX_STEP_SHARE = decimal.Decimal("0.75")
+
+#: Text output shortens a pointer longer than this; JSON keeps it whole.
+POINTER_SHOWN = 60
 
 #: The standard library's own table, never the host's `mime.types`, so one file gets one media
 #: type on every machine. The overrides are suffixes that table lacks in some supported Python:
@@ -180,6 +243,78 @@ class Starter(BaseModel):
     """Ids of the example claims written as comments."""
 
 
+class Also(BaseModel):
+    """Another place in the same column, or at the same key of another list element, that the
+    number a `Candidate` names also agrees with."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    locator: dict[str, str | int]
+    stored: str
+
+
+class Candidate(BaseModel):
+    """A number the manuscript prints that agrees with a value a result file holds.
+
+    A guess. The digits agree at the precision printed, under `conversion` where one is named,
+    and nothing says the sentence reports that value. It is never a decision.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    printed: str
+    """As the manuscript prints it, with a percent sign where it has one."""
+    offset: int
+    """Where it starts in the manuscript's normalized text, as `claims.numbers` counts it."""
+    line: int | None
+    context: str
+    path: str
+    """The result file, relative to the project."""
+    locator: dict[str, str | int]
+    """Where the file holds the value, as a `value` assertion's locator would say it: `tree`
+    with a pointer, or `table_position` with a column and a row from 0. Where the number
+    agrees with several rows of one column, or one key of several list elements, this is one
+    whose value equals the number exactly if any does, and `also` holds the rest."""
+    stored: str
+    """The value there, as the file writes it."""
+    conversion: Conversion | None = None
+    also: tuple[Also, ...] = ()
+    index_like: bool = False
+    """The value is in an index-like column or key, so the agreement says less."""
+
+
+class Survey(BaseModel):
+    """What `survey` found. Nothing was written and nothing was verified."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    results: dict[str, tuple[str, ...]]
+    """Each result file found, relative to the project, under the key of its format in
+    `FORMATS`: `tree`, `delimited`, `columnar`, `workbook`, `sqlite` or `array`."""
+    capped: bool = False
+    """Discovery found more than `MAX_DISCOVERED` result files and kept the first of them."""
+    manuscript: str | None = None
+    notes: tuple[str, ...] = ()
+    """What discovery passed over, what could not be read, and where a cap was reached. Paths
+    are relative to the project."""
+    read_from: tuple[str, ...] = ()
+    """The result files values were read from: JSON, YAML, and tables a table locator reads."""
+    values: int = 0
+    """How many numbers were read from those files, at most `MAX_VALUES_PER_FILE` from each."""
+    cut: tuple[str, ...] = ()
+    """The files holding more than `MAX_VALUES_PER_FILE` numbers, of which the first were read."""
+    index_like: tuple[str, ...] = ()
+    """The index-like columns and keys, as `path column` or `path pattern`."""
+    compared: int = 0
+    """How many numbers the manuscript prints were compared with those values: the ones no
+    rule sets aside, printed in digits, with two digits or a decimal point."""
+    not_compared: int = 0
+    """How many such numbers were left uncompared because `MAX_COMPARISONS` was reached."""
+    candidates: tuple[Candidate, ...] = ()
+    """Guesses outside index-like columns and keys first, those in JSON and YAML before those
+    in tables, each in manuscript order; then the guesses in index-like ones, in that order."""
+
+
 def project_root(start: pathlib.Path) -> pathlib.Path:
     """The top of the project holding `start`: its git root, or `start` outside a repository."""
     top = try_run("rev-parse", "--show-toplevel", cwd=start)
@@ -197,7 +332,11 @@ def _shallowest(directory: pathlib.Path, notes: list[str]) -> list[pathlib.Path]
         files: list[pathlib.Path] = []
         below: list[pathlib.Path] = []
         for parent in level:
-            entries = list(itertools.islice(parent.iterdir(), MAX_ENTRIES + 1))
+            try:
+                entries = list(itertools.islice(parent.iterdir(), MAX_ENTRIES + 1))
+            except OSError as e:
+                notes.append(f"{parent.name}/ could not be listed: {e.strerror}")
+                continue
             if len(entries) > MAX_ENTRIES:
                 notes.append(f"{parent.name}/ holds more than {MAX_ENTRIES} entries")
                 continue
@@ -205,7 +344,9 @@ def _shallowest(directory: pathlib.Path, notes: list[str]) -> list[pathlib.Path]
                 if entry.name.startswith(".") or entry.is_symlink():
                     continue
                 if entry.is_dir():
-                    if entry.name not in _NOT_SEARCHED:
+                    if not os.access(entry, os.R_OK | os.X_OK):
+                        notes.append(f"{parent.name}/{entry.name}/ could not be listed")
+                    elif entry.name not in _NOT_SEARCHED:
                         below.append(entry)
                 elif entry.suffix.lower() in DATA_SUFFIXES:
                     if entry.stat().st_size > MAX_BYTES:
@@ -290,19 +431,36 @@ def _pins(paths: list[pathlib.Path], root: pathlib.Path) -> list[dict]:
     return pins
 
 
-def _numbers(node: object, pointer: str = "") -> Iterator[tuple[str, str]]:
-    """Every finite number reachable through mappings, in document order, with its pointer."""
-    if isinstance(node, dict):
-        for key, value in node.items():
-            if isinstance(key, str):
-                token = key.replace("~", "~0").replace("/", "~1")
-                yield from _numbers(value, f"{pointer}/{token}")
-    elif isinstance(node, Written):
-        # A number with a fraction or an exponent arrives as the text the file wrote.
-        if decimal.Decimal(node).is_finite():
-            yield pointer, str(node)
-    elif isinstance(node, (int, float)) and not isinstance(node, bool) and math.isfinite(node):
-        yield pointer, str(node)
+def _walk(node: object) -> Iterator[tuple[str, str, str]]:
+    """Every finite number reachable through mappings and lists, in document order, with its
+    RFC 6901 pointer and its pattern: the pointer with each list index written `*`. Walked
+    with a stack of its own, so no nesting depth exhausts Python's."""
+    stack: list[tuple[str, str, object]] = [("", "", node)]
+    while stack:
+        pointer, pattern, node = stack.pop()
+        if isinstance(node, dict):
+            children = []
+            for key, value in node.items():
+                if isinstance(key, str):
+                    token = key.replace("~", "~0").replace("/", "~1")
+                    children.append((f"{pointer}/{token}", f"{pattern}/{token}", value))
+            stack.extend(reversed(children))
+        elif isinstance(node, list):
+            stack.extend(
+                reversed([(f"{pointer}/{i}", f"{pattern}/*", v) for i, v in enumerate(node)])
+            )
+        elif isinstance(node, Written):
+            # A number with a fraction or an exponent arrives as the text the file wrote.
+            if decimal.Decimal(node).is_finite():
+                yield pointer, pattern, str(node)
+        elif isinstance(node, (int, float)) and not isinstance(node, bool) and math.isfinite(node):
+            yield pointer, pattern, str(node)
+
+
+def _numbers(node: object) -> Iterator[tuple[str, str]]:
+    """Every finite number reachable through mappings and lists, with its pointer."""
+    for pointer, _, value in _walk(node):
+        yield pointer, value
 
 
 def _metric_examples(pins: list[dict], root: pathlib.Path) -> Iterator[tuple[dict, dict]]:
@@ -429,4 +587,303 @@ def write(
             for name, claim in (("example-number", metric), ("example-quote", quote))
             if claim is None
         ),
+    )
+
+
+def _format(path: pathlib.Path) -> str:
+    """The key of the format a discovered result file is in."""
+    return next(key for key, _, suffixes in FORMATS if path.suffix.lower() in suffixes)
+
+
+class _Held(BaseModel):
+    """One number read from a result file: where, what, and the group of places it repeats
+    over, a table's column or a pointer pattern with a list index in it."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    locator: dict[str, str | int]
+    stored: str
+    group: str | None = None
+    index_like: bool = False
+
+
+class _Read(BaseModel):
+    """The numbers read from one result file, and what was left out of them."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    values: tuple[_Held, ...] = ()
+    cut: bool = False
+    index_like: tuple[str, ...] = ()
+    """The index-like groups, as a report names them."""
+
+
+def _finite(cell: object) -> bool:
+    if not isinstance(cell, str):
+        return False
+    try:
+        return decimal.Decimal(cell).is_finite()
+    except (decimal.InvalidOperation, ValueError):
+        return False
+
+
+def _index_name(name: str) -> bool:
+    """A name that is empty, a pandas index's, or as a whole one of `INDEX_NAMES`."""
+    normalized = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
+    return not normalized or normalized.startswith("unnamed_") or normalized in INDEX_NAMES
+
+
+def _progression(values: list[str]) -> bool:
+    """At least `INDEX_MIN_ROWS` whole numbers, at least `INDEX_STEP_SHARE` of whose
+    consecutive pairs step by the same nonzero amount, and every other pair a reset: a drop
+    back to the first value or to the least. A counter that starts again for each run breaks
+    its step only there; a count with one irregular step breaks it elsewhere and is not one."""
+    if len(values) < INDEX_MIN_ROWS:
+        return False
+    numbers = [decimal.Decimal(v) for v in values]
+    if any(n != n.to_integral_value() for n in numbers):
+        return False
+    pairs = list(itertools.pairwise(numbers))
+    steps = collections.Counter(b - a for a, b in pairs)
+    step, count = max(steps.items(), key=lambda item: item[1])
+    if step == 0 or count < INDEX_STEP_SHARE * len(pairs):
+        return False
+    restarts = {numbers[0], min(numbers)}
+    return all(b - a == step or b in restarts for a, b in pairs)
+
+
+def _grouped(held: list[_Held], names: dict[str, tuple[str, str]]) -> _Read:
+    """Each value marked index-like where its group is. `names` gives each group the name a
+    report shows and the name `_index_name` reads: a pattern and its last key, or `column x`
+    and `x`."""
+    members: dict[str, list[str]] = {}
+    for value in held:
+        if value.group is not None:
+            members.setdefault(value.group, []).append(value.stored)
+    index = [
+        group
+        for group, values in members.items()
+        if _index_name(names[group][1]) or _progression(values)
+    ]
+    marked = tuple(
+        v.model_copy(update={"index_like": v.index_like or v.group in index}) for v in held
+    )
+    alone = [str(v.locator["pointer"]) for v in held if v.group is None and v.index_like]
+    return _Read(values=marked, index_like=(*(names[group][0] for group in index), *alone))
+
+
+def _read_values(path: pathlib.Path, cap: int) -> _Read:
+    """At most `cap` finite numbers from one result file, each with the locator that reads it.
+
+    A JSON or YAML file is read as the example `metric` claim reads it, and a delimited or
+    columnar table by the table adapter, a row at a time, so a large delimited file is read no
+    further than `cap` numbers. Other formats give nothing: a workbook or a database holds
+    several tables, and an array no column names.
+    """
+    suffix = path.suffix.lower()
+    held: list[_Held] = []
+    names: dict[str, tuple[str, str]] = {}
+    cut = False
+    if suffix in _TREE_SUFFIXES:
+        for pointer, pattern, value in _walk(_load_tree(path)):
+            if len(held) == cap:
+                cut = True
+                break
+            # A key repeated across list elements is a group, as a column is.
+            group = pattern if "*" in pattern else None
+            if group is not None:
+                names[group] = (pattern, pattern.rpartition("/")[2])
+            locator: dict[str, str | int] = {"kind": "tree", "pointer": pointer}
+            # A key outside any list is read by its name alone; `_grouped` reads a group's.
+            named = group is None and _index_name(pointer.rpartition("/")[2])
+            held.append(_Held(locator=locator, stored=value, group=group, index_like=named))
+    elif suffix in _DELIMITERS or suffix in COLUMNAR_SUFFIXES:
+        header, rows = read_cells(path)
+        names = {column: (f"column {column or '(no name)'}", column) for column in header}
+        for number, row in enumerate(rows):
+            numeric = [(c, str(row.get(c))) for c in header if _finite(row.get(c))]
+            if len(held) + len(numeric) > cap:
+                cut = True
+                break
+            held += [
+                _Held(
+                    locator={"kind": "table_position", "column": column, "row": number},
+                    stored=cell,
+                    group=column,
+                )
+                for column, cell in numeric
+            ]
+        rows.close()
+    return _grouped(held, names).model_copy(update={"cut": cut})
+
+
+def _shortened(pointer: str) -> str:
+    if len(pointer) <= POINTER_SHOWN:
+        return pointer
+    half = (POINTER_SHOWN - 3) // 2
+    return f"{pointer[:half]}...{pointer[-half:]}"
+
+
+def address_said(locator: dict[str, str | int]) -> str:
+    """A `Candidate` locator as a report prints it, a long pointer shortened in its middle."""
+    if locator["kind"] == "tree":
+        return _shortened(str(locator["pointer"])) or "/"
+    column = str(locator["column"]) or "(no name)"
+    return f"column {column}, row {locator['row']}"
+
+
+def _exact(stored: str, printed: str, conversion: Conversion | None) -> bool:
+    value = decimal.Decimal(stored)
+    value = conversion.apply(value) if conversion is not None else value
+    return value == decimal.Decimal(printed.rstrip("%").replace(",", ""))
+
+
+def _collapsed(found: list[tuple[Candidate, str | None]]) -> list[Candidate]:
+    """One guess per printed number, group of places and conversion, standing for the rest of
+    the group in `also`: the first whose value equals the number exactly, or else the first.
+    Then ordered: outside index-like places first, trees before tables, by manuscript order."""
+    groups: dict[tuple, list[Candidate]] = {}
+    order: list[tuple] = []
+    for candidate, group in found:
+        key = (
+            (candidate.offset, candidate.path, group, candidate.conversion)
+            if group is not None
+            else (candidate.offset, candidate.path, id(candidate))
+        )
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(candidate)
+    kept = []
+    for key in order:
+        members = groups[key]
+        first = next((c for c in members if _exact(c.stored, c.printed, c.conversion)), members[0])
+        also = tuple(Also(locator=c.locator, stored=c.stored) for c in members if c is not first)
+        kept.append(first.model_copy(update={"also": also}))
+    return sorted(
+        kept,
+        key=lambda c: (c.index_like, c.locator["kind"] == "table_position", c.offset),
+    )
+
+
+def _scrubbed(note: str, root: pathlib.Path) -> str:
+    """A note with the project's absolute path taken out, under every spelling of it."""
+    for spelling in sorted({str(root), str(root.resolve())}, key=len, reverse=True):
+        note = note.replace(f"{spelling}/", "").replace(spelling, ".")
+    return note
+
+
+def survey(root: pathlib.Path) -> Survey:
+    """What `repro verify` could check at `root`, found as `write` finds it, writing nothing.
+
+    The manuscript's numbers are those `claims.numbers` counts, read through a manifest held in
+    memory that pins the manuscript and declares no claim. Each one that no rule sets aside is
+    compared with every number `_read_values` reads from a discovered result file, by
+    `claims.verify.agrees`, the comparison a numeric assertion makes, at the precision printed;
+    a number printed with a percent sign is also compared as a percentage of the stored value.
+    Every agreement is a `Candidate`. At most `MAX_VALUES_PER_FILE` numbers are read from one
+    file and `MAX_COMPARISONS` comparisons made, and where either is reached a note says so. A
+    file that cannot be read is a note, never an exception.
+    """
+    try:
+        found, capped, notes = discover(root)
+    except OSError as e:
+        found, capped, notes = [], False, [f"discovery stopped: {e.filename}: {e.strerror}"]
+    manuscripts = [path for path in found if path.suffix.lower() in TEXT_SUFFIXES]
+    results = [path for path in found if path not in manuscripts]
+
+    grouped: dict[str, list[str]] = {}
+    for path in results:
+        grouped.setdefault(_format(path), []).append(path.relative_to(root).as_posix())
+
+    held: list[tuple[str, _Held]] = []
+    read_from, cut, index_like = [], [], []
+    for path in results:
+        relative = path.relative_to(root).as_posix()
+        try:
+            read = _read_values(path, MAX_VALUES_PER_FILE)
+        except (ArtifactUnreadableError, BackendUnavailableError) as e:
+            notes.append(f"{relative} could not be read: {e.detail}")
+            continue
+        except OSError as e:
+            notes.append(f"{relative} could not be read: {e.strerror or e}")
+            continue
+        if read.cut:
+            cut.append(relative)
+            notes.append(
+                f"{relative} holds more than {MAX_VALUES_PER_FILE} numbers; the first "
+                f"{len(read.values)} were compared"
+            )
+        index_like += [f"{relative} {name}" for name in read.index_like]
+        if read.values:
+            read_from.append(relative)
+        held += [(relative, value) for value in read.values]
+
+    manuscript = manuscripts[0] if manuscripts else None
+    printed = []
+    if manuscript is not None:
+        relative = manuscript.relative_to(root).as_posix()
+        try:
+            pins = _pins([manuscript], root)
+            in_memory = Manifest.model_validate({"artifacts": pins, "path": root / DEFAULT_NAME})
+            report = printed_numbers(in_memory, only=(pins[0]["id"],))
+        except ArtifactUnreadableError as e:
+            notes.append(f"{relative} could not be read: {e.detail}")
+        except ArtifactMissingError:
+            notes.append(f"{relative} could not be read: it is not on disk")
+        except OSError as e:
+            notes.append(f"{relative} could not be read: {e.strerror or e}")
+        else:
+            printed = [
+                number
+                for number in report.numbers
+                if number.standing is Standing.UNBOUND
+                and number.form is NumberForm.DECIMAL
+                and number.value is not None
+                and telling(decimal.Decimal(number.value).as_tuple())
+            ]
+
+    candidates = []
+    compared = comparisons = 0
+    for number in printed:
+        conversions = (None, Conversion.PERCENT) if number.text.endswith("%") else (None,)
+        if comparisons + len(held) * len(conversions) > MAX_COMPARISONS:
+            break
+        comparisons += len(held) * len(conversions)
+        compared += 1
+        reported = decimal.Decimal(number.value or "")
+        for relative, value in held:
+            stored = decimal.Decimal(value.stored)
+            agreeing = [c for c in conversions if agrees(stored, reported, c)]
+            if agreeing:
+                candidate = Candidate(
+                    printed=number.text,
+                    offset=number.offset,
+                    line=number.line,
+                    context=number.context,
+                    path=relative,
+                    locator=value.locator,
+                    stored=value.stored,
+                    conversion=agreeing[0],
+                    index_like=value.index_like,
+                )
+                candidates.append((candidate, value.group))
+    if compared < len(printed):
+        notes.append(
+            f"comparisons stop at {MAX_COMPARISONS}: {len(printed) - compared} of the "
+            f"{len(printed)} numbers the manuscript prints were not compared"
+        )
+
+    return Survey(
+        results={key: tuple(grouped[key]) for key, _, _ in FORMATS if key in grouped},
+        capped=capped,
+        manuscript=manuscript.relative_to(root).as_posix() if manuscript is not None else None,
+        notes=tuple(_scrubbed(note, root) for note in notes),
+        read_from=tuple(read_from),
+        values=len(held),
+        cut=tuple(cut),
+        index_like=tuple(index_like),
+        compared=compared,
+        not_compared=len(printed) - compared,
+        candidates=tuple(_collapsed(candidates)),
     )

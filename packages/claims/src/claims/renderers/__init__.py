@@ -5,6 +5,6 @@ anything: two renderers over one report always say the same thing in different f
 is the property that makes it safe to add a third.
 """
 
-from claims.renderers.sarif import to_sarif
+from claims.renderers.sarif import survey_to_sarif, to_sarif
 
-__all__ = ["to_sarif"]
+__all__ = ["survey_to_sarif", "to_sarif"]

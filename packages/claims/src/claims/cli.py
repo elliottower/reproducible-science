@@ -68,10 +68,20 @@ from claims.origins import OriginCheck, OriginsReport, OriginState, fetch_url
 from claims.origins import origins as run_origins
 from claims.policy import PROFILES, Assessment, Policy
 from claims.record import check_records, to_jsonl
-from claims.renderers import to_sarif
+from claims.renderers import survey_to_sarif, to_sarif
 from claims.reruns import RECORD
 from claims.stale import stale as run_stale
-from claims.starter import CONVENTIONAL, MAX_DISCOVERED, project_root
+from claims.starter import (
+    CONVENTIONAL,
+    FORMAT_NAMES,
+    MAX_DISCOVERED,
+    SURVEY_SCHEMA,
+    Candidate,
+    Survey,
+    address_said,
+    project_root,
+    survey,
+)
 from claims.starter import write as write_starter
 from claims.verify import verify as run_verify
 from claims.why import why as run_why
@@ -148,10 +158,130 @@ def cmd_manifest_init(args: argparse.Namespace) -> int:
     return 0
 
 
+#: How many candidate bindings `verify` prints with no manifest. The survey holds every one.
+SHOWN_CANDIDATES = 20
+
+
+#: How many other rows, and how many distinct values among them, a collapsed guess names.
+SHOWN_ALSO = 6
+
+
+def _also_said(c: Candidate) -> str:
+    """The other places a collapsed guess stands for, and what they hold where it differs."""
+    if not c.also:
+        return ""
+    values = list(dict.fromkeys(a.stored for a in c.also))
+    if values == [c.stored]:
+        held = "the same"
+    else:
+        shown = values[:SHOWN_ALSO]
+        held = ", ".join(shown[:-1]) + f" and {shown[-1]}" if len(shown) > 1 else shown[0]
+        held += " among others" if len(values) > SHOWN_ALSO else ""
+    one = len(c.also) == 1
+    verb = "holds" if one else "hold"
+    if c.locator["kind"] == "table_position":
+        rows = [str(a.locator["row"]) for a in c.also]
+        named = ", ".join(rows[:SHOWN_ALSO])
+        if len(rows) > SHOWN_ALSO:
+            named += f" and {len(rows) - SHOWN_ALSO} more"
+        return f"; row{'' if one else 's'} {named} {verb} {held}"
+    return f"; {len(c.also)} more list element{'' if one else 's'} {verb} {held}"
+
+
+def _survey_lines(found: Survey) -> list[str]:
+    """What a project with no manifest holds that a manifest could pin, and the numbers its
+    manuscript prints that agree with a stored value, each said to be a guess."""
+    places = ", ".join(f"{name}/" for name in CONVENTIONAL)
+    lines = [f"found by looking under {places} and for one manuscript:", ""]
+
+    count = sum(len(paths) for paths in found.results.values())
+    lines.append(f"  result files: {count}")
+    names = {FORMAT_NAMES[key]: paths for key, paths in found.results.items()}
+    width = max((len(name) for name in names), default=0)
+    for name, paths in names.items():
+        lines += [f"    {name if i == 0 else '':<{width}}  {p}" for i, p in enumerate(paths)]
+    if found.capped:
+        lines.append(
+            f"    more than {MAX_DISCOVERED} were found; these are the first {MAX_DISCOVERED}"
+        )
+    lines.append(f"  manuscript: {found.manuscript or 'none found'}")
+    lines += [f"  note: {note}" for note in found.notes]
+
+    lines.append("")
+    if found.manuscript is None or not found.values:
+        missing = "no manuscript" if found.manuscript is None else "no number in a result file"
+        lines.append(f"  candidate bindings: none, because there is {missing} to compare")
+    else:
+        agreeing = {c.offset for c in found.candidates if not c.index_like}
+        index_only = {c.offset for c in found.candidates if c.index_like} - agreeing
+        files = f"{len(found.read_from)} result file{'' if len(found.read_from) == 1 else 's'}"
+        lines.append(
+            f"  candidate bindings, guessed: {len(agreeing)} of the {found.compared} numbers "
+            "compared agree with one of"
+        )
+        lines.append(f"  the {found.values} values read from {files}, at the precision printed.")
+        if index_only:
+            lines.append(
+                f"  and {len(index_only)} more "
+                + ("number agrees" if len(index_only) == 1 else "numbers agree")
+                + " only with index-like columns or keys, listed last."
+            )
+        if found.not_compared:
+            printed = found.compared + found.not_compared
+            lines.append(
+                f"  {found.not_compared} of the {printed} numbers {found.manuscript} prints were "
+                "not compared: the cap on comparisons was reached."
+            )
+        lines.append("  A guess says the digits agree, never that the sentence reports that value.")
+        shown = found.candidates[:SHOWN_CANDIDATES]
+        width = max((len(c.printed) for c in shown), default=0)
+        for c in shown:
+            where = f"line {c.line}" if c.line else "line ?"
+            held = f"{c.path} {address_said(c.locator)} holds {c.stored}"
+            if c.conversion is not None:
+                held += f", {c.conversion.said}"
+            held += _also_said(c)
+            if c.index_like:
+                kind = "column" if c.locator["kind"] == "table_position" else "key"
+                held += f"  [index-like {kind}]"
+            lines.append(f"    guess  {where:<8}  {c.printed:<{width}}  {held}")
+            lines.append(f"           {'':<8}  {'':<{width}}  ...{c.context}...")
+        if len(found.candidates) > SHOWN_CANDIDATES:
+            lines.append(f"    and {len(found.candidates) - SHOWN_CANDIDATES} more guesses")
+
+    lines += [
+        "",
+        "  verified: 0. With no manifest no claim is declared, so nothing was checked, and",
+        "  nothing was written.",
+        "",
+    ]
+    return lines
+
+
 def cmd_verify(args: argparse.Namespace) -> int:
     path = Path(args.manifest) if args.manifest else find()
     if path is None:
+        # Exits 2 as every command does with nothing to read: a project with no manifest has
+        # checked nothing, which is neither a pass (0) nor a finding against it (1).
+        found = survey(project_root(Path.cwd()))
+        if args.format == "json":
+            print(
+                json.dumps(
+                    {
+                        "schema_version": SURVEY_SCHEMA,
+                        "manifest": None,
+                        "verified": 0,
+                        "survey": found.model_dump(mode="json"),
+                    },
+                    indent=2,
+                )
+            )
+            return 2
+        if args.format == "sarif":
+            print(json.dumps(survey_to_sarif(found, version=__version__), indent=2))
+            return 2
         print(f"no {DEFAULT_NAME} here or above.\n")
+        print("\n".join(_survey_lines(found)))
         print("write one that pins this project's result files, with example claims to edit:\n")
         print(f"    {_program(args)} manifest init")
         return 2

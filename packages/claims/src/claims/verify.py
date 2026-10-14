@@ -347,12 +347,22 @@ def compare_decimal(
 ) -> bool:
     """Does the stored value agree with the reported one, under the declared conversion and
     mode?"""
-    return _agree(
-        _compared(stored, evidence.conversion),
-        evidence.value,
-        evidence.mode,
-        evidence.tolerance_value,
+    return agrees(
+        stored, evidence.value, evidence.conversion, evidence.mode, evidence.tolerance_value
     )
+
+
+def agrees(
+    stored: decimal.Decimal,
+    reported: decimal.Decimal,
+    conversion: Conversion | None = None,
+    mode: ComparisonMode = ComparisonMode.PRINTED_PRECISION,
+    tolerance: decimal.Decimal = decimal.Decimal(0),
+) -> bool:
+    """Does a stored value agree with a printed one: converted first, then compared under
+    `mode`. The comparison every numeric assertion makes, with no evidence attached, so a
+    caller holding two numbers and no assertion compares them as the engine does."""
+    return _agree(_compared(stored, conversion), reported, mode, tolerance)
 
 
 def _compared(stored: decimal.Decimal, conversion: Conversion | None) -> decimal.Decimal:

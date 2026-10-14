@@ -135,12 +135,18 @@ def _load_tree(path: pathlib.Path) -> object:
             return json.loads(text, object_pairs_hook=_no_duplicate_json_keys, parse_float=Written)
         except json.JSONDecodeError as e:
             raise ArtifactUnreadableError(path, f"not valid JSON: {e}") from e
+        except RecursionError as e:
+            # Python before 3.12 decodes JSON recursively, so nesting deep enough is refused
+            # by the interpreter and not by the file.
+            raise ArtifactUnreadableError(path, "nested too deeply for this Python to parse") from e
         except ValueError as e:  # raised by the hook below
             raise ArtifactUnreadableError(path, str(e)) from e
     try:
         return yaml.load(text, Loader=_StrictYaml)
     except yaml.YAMLError as e:
         raise ArtifactUnreadableError(path, f"not valid YAML: {e}") from e
+    except RecursionError as e:
+        raise ArtifactUnreadableError(path, "nested too deeply to parse") from e
 
 
 def _resolve_tree(locator: TreeLocator, path: pathlib.Path) -> Found:

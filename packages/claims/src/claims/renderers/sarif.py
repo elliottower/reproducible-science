@@ -18,6 +18,7 @@ from typing import Any
 
 from claims.models import Ordering, Outcome, Validity, VerificationReport
 from claims.policy import Assessment, Severity
+from claims.starter import SURVEY_SCHEMA, Survey
 
 SCHEMA = "https://json.schemastore.org/sarif-2.1.0.json"
 VERSION = "2.1.0"
@@ -288,6 +289,54 @@ def to_sarif(
                         if assessment
                         else {}
                     ),
+                },
+            }
+        ],
+    }
+
+
+def survey_to_sarif(found: Survey, version: str = "0") -> dict[str, Any]:
+    """One SARIF run for a project with no manifest: no result, since nothing was checked.
+
+    A candidate binding is a guess, and a SARIF result of kind `pass` would show it as a check
+    that passed, so none is written as a result of any kind. The run's invocation carries one
+    warning notification saying nothing was verified, and its property bag holds the survey.
+    """
+    return {
+        "$schema": SCHEMA,
+        "version": VERSION,
+        "runs": [
+            {
+                "tool": {
+                    "driver": {
+                        "name": "repro",
+                        "version": version,
+                        "informationUri": "https://github.com/elliottower/reproducible-science",
+                        "rules": _rules(),
+                    }
+                },
+                "invocations": [
+                    {
+                        "executionSuccessful": True,
+                        "toolExecutionNotifications": [
+                            {
+                                "level": "warning",
+                                "message": {
+                                    "text": (
+                                        "no repro.yaml here or above, so no claim is declared "
+                                        "and nothing was verified; "
+                                        f"{len(found.candidates)} candidate bindings are guesses"
+                                    )
+                                },
+                            }
+                        ],
+                    }
+                ],
+                "results": [],
+                "properties": {
+                    "schema_version": SURVEY_SCHEMA,
+                    "verified": 0,
+                    "survey": found.model_dump(mode="json"),
                 },
             }
         ],
