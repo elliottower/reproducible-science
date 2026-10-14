@@ -255,8 +255,9 @@ def citations_badge(run: ci.ToolRun) -> Badge:
     elif run.outcome == audit.PASSED and found == total:
         color = GREEN
     else:
+        # A run `citations verify` exits 0 for, with quotations left unchecked, is amber.
         color = AMBER
-    return Badge(check="citations", message=f"{found}/{total} verified", color=color)
+    return Badge(check="citations", message=ci.verified(run), color=color)
 
 
 def reruns_badge(report: StalenessReport) -> Badge:

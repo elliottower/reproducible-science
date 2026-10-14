@@ -208,6 +208,15 @@ def test_a_quotation_whose_source_is_absent_is_amber(tools):
     assert given(tools)["citations"] == ("1/2 verified", AMBER)
 
 
+def test_a_run_citations_verify_passes_with_quotations_unchecked_is_amber_with_the_count():
+    run = ci.ToolRun(
+        check="citations", outcome="passed", account={"quotes": 203, "counts": {"found": 200}}
+    )
+    assert badges.citations_badge(run) == Badge(
+        check="citations", message="200/203 verified", color=AMBER
+    )
+
+
 def test_a_quotation_its_source_does_not_hold_is_red(tools):
     pin(tools, "here")
     pin(tools, "other", quote="a sentence the source does not contain anywhere in its text")

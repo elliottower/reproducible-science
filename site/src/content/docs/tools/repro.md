@@ -751,7 +751,7 @@ The numbers, re-runs and freshness rows are reported and grade nothing here. The
 
 citations: each quoted passage against the source its claims file pins. What this means: https://reproducible.science/tools/repro/#citations-in-ci
 
-`citations verify --claims claims`: **passed** (exit 0)
+`citations verify --claims claims`: **1/2 verified** (exit 0)
 
 1 of 2 quotations were not checked: 1 of 2 sources are not on this machine. An unchecked quotation is not a found one.
 
@@ -763,7 +763,7 @@ citations: each quoted passage against the source its claims file pins. What thi
 What this checks: each quoted passage is in the source its claims file pins. It does not show that the source supports the sentence that quotes it.
 ```
 
-A cited paper is usually not the author's to redistribute, so a clone holds every pin and few sources, and each quotation against an absent source is `unchecked`. A run in which some quotations were found, none was not found and the rest were unchecked passes, as `citations verify` exits 0 for it, and the summary opens on how many were not checked. `repro audit` calls the same run `could not check`. A run that read no source does not pass: `citations verify` exits 1 for it and `repro ci citations` exits 2. There is no threshold option. A minimum share of quotations checked would be a number each project picks, and the count on the first line says what a threshold would hide.
+A cited paper is usually not the author's to redistribute, so a clone holds every pin and few sources, and each quotation against an absent source is `unchecked`. A run in which some quotations were found, none was not found and the rest were unchecked passes, as `citations verify` exits 0 for it. Its summary gives the verdict as the count, `1/2 verified`, never as `passed`, and opens on how many were not checked; the `citations` badge of `repro badges` draws the same run amber. `repro audit` calls the same run `could not check`. A run that read no source does not pass: `citations verify` exits 1 for it and `repro ci citations` exits 2. There is no threshold option. A minimum share of quotations checked would be a number each project picks, and the count on the first line says what a threshold would hide.
 
 `repro ci init --fetch-sources` writes the workflow with `repro ci citations --fetch-sources`, which runs `citations fetch --claims <dir>` before the check. `citations fetch` asks where an open copy of each absent source is, downloads it, and installs it only where its sha256 is the one the claims file pins. A source that could not be fetched does not fail the job. Its quotations stay `unchecked`, and a `fetch` row counts the sources fetched, already present, and each other outcome under the word `citations fetch` gives it. This is the one place `repro ci` reaches the network.
 

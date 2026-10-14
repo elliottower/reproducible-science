@@ -876,8 +876,28 @@ def reruns_summary(run: RerunsRun) -> str:
     return "\n".join([*lines, "", RERUNS_SHOWS, ""])
 
 
+def unchecked(run: ToolRun) -> int:
+    """Quotations a citations run neither found nor failed to find, where it found some and
+    failed to find none: the run `citations verify` exits 0 for with sources absent. Zero for
+    any other run, and for every other check."""
+    if run.check != "citations" or run.outcome != audit.PASSED:
+        return 0
+    counts = run.account.get("counts", {})
+    return run.account.get("quotes", 0) - counts.get("found", 0) - counts.get("not found", 0)
+
+
+def verified(run: ToolRun) -> str:
+    """`<found>/<quotations> verified`, as the citations badge and summary say it."""
+    return (
+        f"{run.account.get('counts', {}).get('found', 0)}/{run.account.get('quotes', 0)} verified"
+    )
+
+
 def _tool_verdict(run: ToolRun) -> str:
     word = run.outcome if run.outcome == audit.PASSED else run.outcome.upper()
+    if unchecked(run):
+        # The tool exits 0 and the job passes; the verdict is the count, never `passed`.
+        word = verified(run)
     if not run.command:
         return f"`repro ci {run.check}`: **{word}**: {run.output}"
     return f"`{' '.join(run.command)}`: **{word}** (exit {run.exit})"
@@ -1349,6 +1369,11 @@ def command_tool(args: argparse.Namespace) -> int:
     print(run.output)
     if run.command and run.outcome != audit.PASSED:
         print(f"\n{run.outcome}: `repro ci {run.check}` exits {run.code}.")
+    elif missed := unchecked(run):
+        print(
+            f"\n{verified(run)}: {missed} of {_count(run.account.get('quotes', 0), 'quotation')} "
+            f"not checked; `repro ci {run.check}` exits {run.code}."
+        )
     _summarize(args, tool_summary(run))
     return run.code
 
@@ -1556,7 +1581,9 @@ __all__ = [
     "reruns_summary",
     "tool",
     "tool_summary",
+    "unchecked",
     "under_heading",
+    "verified",
     "with_badges",
     "workflow",
 ]
