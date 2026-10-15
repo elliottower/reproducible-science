@@ -110,9 +110,13 @@ def test_a_draft_is_never_overwritten_without_force(project, run_repro):
     assert code == 0, out
     assert (project / DRAFT_NAME).read_text() == "edited by hand\n"
     assert (project / ITEMS_NAME).read_bytes() == items
-    assert "neither was replaced; --force replaces both" in out
+    assert (
+        "claims: repro.draft.yaml and open-items.json are already here and were not "
+        "replaced; --force replaces "
+        "repro.draft.yaml and open-items.json"
+    ) in out
     assert "scaffolded, nothing verified" not in out
-    assert "already present  repro.draft.yaml (a draft" in out
+    assert "already present  repro.draft.yaml, open-items.json (a scaffold" in out
     assert not (project / DEFAULT_NAME).exists()
 
     code, out = run_repro("init", "--force", cwd=project)
@@ -147,3 +151,13 @@ def test_manifest_init_writes_no_draft(project, run_repro):
     assert (project / DEFAULT_NAME).is_file()
     assert not (project / DRAFT_NAME).exists()
     assert not (project / ITEMS_NAME).exists()
+
+
+def test_open_items_alone_writes_no_starter_and_is_named(project, run_repro):
+    (project / ITEMS_NAME).write_text("{}\n")
+    code, out = run_repro("init", cwd=project)
+    assert code == 0, out
+    assert "already present  open-items.json (a scaffold, not yet renamed to repro.yaml)" in out
+    assert "claims: open-items.json is already here and was not replaced" in out
+    assert not (project / DEFAULT_NAME).exists()
+    assert not (project / DRAFT_NAME).exists()

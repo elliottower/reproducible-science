@@ -85,8 +85,13 @@ from claims.models import (
 )
 from claims.open_items import DRAFT_NAME, ITEMS_NAME
 from claims.policy import PROFILES, Assessment, Policy
-from claims.sources.project import NothingToScaffoldError, ScaffoldExistsError
+from claims.sources.project import (
+    NothingToScaffoldError,
+    ScaffoldExistsError,
+    ScaffoldRefusedError,
+)
 from claims.sources.project import from_project as scaffold_claims
+from claims.sources.project import present as scaffold_present
 from claims.starter import CONVENTIONAL as CONVENTIONAL
 from claims.starter import MAX_DISCOVERED as MAX_DISCOVERED
 from claims.starter import project_root
@@ -220,12 +225,13 @@ def _scaffold(root: Path, manifest_present: bool, force: bool) -> tuple[list[str
         ], False
     try:
         made = scaffold_claims(root, overwrite=force)
-    except ScaffoldExistsError as e:
-        return [f"claims: {e}, and neither was replaced; --force replaces both"], False
+    except (ScaffoldExistsError, ScaffoldRefusedError) as e:
+        return [f"claims: {e}"], False
     except NothingToScaffoldError as e:
         return [f"claims: {e}, so nothing was scaffolded"], False
     lines = [
-        f"scaffolded, nothing verified: {made.open} numbers left open, "
+        f"scaffolded, nothing verified: {made.open} "
+        f"{'number' if made.open == 1 else 'numbers'} left open, "
         f"{made.unique} with one candidate",
         f"  {DRAFT_NAME:<18} {len(made.results)} result "
         f"{'file' if len(made.results) == 1 else 'files'} and {made.manuscript} pinned, "
@@ -276,8 +282,8 @@ def _init_here(scaffold: bool = True, force: bool = False) -> int:
     said, scaffolded = (
         _scaffold(root, bool(present["manifest"]), force) if scaffold else ([], False)
     )
-    if scaffold and not scaffolded and not present["manifest"] and (root / DRAFT_NAME).exists():
-        present["manifest"] = f"{DRAFT_NAME} (a draft, not yet renamed to {DEFAULT_NAME})"
+    if scaffold and not scaffolded and not present["manifest"] and (here := scaffold_present(root)):
+        present["manifest"] = f"{', '.join(here)} (a scaffold, not yet renamed to {DEFAULT_NAME})"
 
     def manifest() -> str | None:
         if scaffolded:

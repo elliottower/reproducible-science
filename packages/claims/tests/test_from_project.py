@@ -13,11 +13,21 @@ import json
 import pytest
 import yaml
 from claims.manifest import load
-from claims.open_items import DRAFT_NAME, ITEMS_NAME, ClaimState, read, tally
+from claims.open_items import (
+    DRAFT_NAME,
+    ITEMS_NAME,
+    ClaimState,
+    OpenItemsError,
+    Source,
+    read,
+    tally,
+    write_draft,
+)
 from claims.policy import PROFILES
 from claims.sources.project import (
     NothingToScaffoldError,
     ScaffoldExistsError,
+    ScaffoldRefusedError,
     from_project,
 )
 from claims.verify import verify
@@ -226,3 +236,114 @@ def test_an_lfs_pointer_is_declared_without_a_pin_and_not_searched(project):
     assert all(
         c["artifact"] != "metrics" for item in items_of(project).values() for c in item.candidates
     )
+
+
+def test_a_dangling_link_at_an_output_path_is_refused_and_nothing_is_written(tmp_path, project):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (project / DRAFT_NAME).symlink_to("../outside/planted.yaml")
+
+    for overwrite in (False, True):
+        with pytest.raises(ScaffoldRefusedError, match="symbolic link"):
+            from_project(project, overwrite=overwrite)
+    assert not (outside / "planted.yaml").exists()
+    assert not (project / ITEMS_NAME).exists()
+
+
+def test_write_draft_refuses_a_link_whatever_reader_calls_it(tmp_path, project):
+    (tmp_path / "outside").mkdir()
+    (project / ITEMS_NAME).symlink_to("../outside/planted.json")
+    source = Source(reader="test", reader_version="0", format="none", path="x", digest="0" * 64)
+    document = {"schema_version": "repro/1", "project": "p", "artifacts": [], "claims": []}
+    with pytest.raises(OpenItemsError, match="symbolic link"):
+        write_draft(project, document, source, (), overwrite=True)
+    assert not (tmp_path / "outside" / "planted.json").exists()
+    assert not (project / DRAFT_NAME).exists()
+
+
+def test_the_words_before_each_number_and_not_the_whole_line_meet_the_label_guard(project):
+    (project / "results" / "metrics.json").write_text(
+        json.dumps({"test": {"accuracy": 0.9312, "loss": 0.2871}})
+    )
+    (project / "results" / "table.csv").unlink()
+    (project / "paper.md").write_text("# R\n\nTest accuracy was 0.874 and test loss was 0.931.\n")
+    made = from_project(project)
+
+    loss = items_of(project)["line-3-2"]
+    assert loss.context["words_before"] == "and test loss was"
+    assert places(loss) == [("metrics", "/test/accuracy")]
+    assert not loss.unique
+    assert loss.reason == "the line names a label or a split no matching address carries"
+    assert made.unique == 0
+
+
+def test_a_sentence_wrapped_onto_the_number_s_line_is_the_claim_s_text(project):
+    (project / "paper.md").write_text(
+        "# R\n\nHeld-out accuracy on the\n0.931 mark was reached, and the rate\nwas 4.3%.\n"
+    )
+    from_project(project)
+    texts = {c.id: c.text for c in load(project / DRAFT_NAME).claims}
+    assert (
+        texts["line-4-1"]
+        == "Held-out accuracy on the 0.931 mark was reached, and the rate was 4.3%."
+    )
+    assert texts["line-5-1"] == texts["line-4-1"]
+
+
+TEX = r"""\documentclass{article}
+% 0.9999 in a comment
+\usepackage{graphicx}
+\begin{document}
+\section{Results}
+Accuracy was 0.931 on the held-out set.
+\begin{tabular}{lc}
+model & recall \\
+lasso & 0.6543 \\
+\end{tabular}
+The held-out loss was $0.4417$.
+\end{document}
+"""
+
+
+def test_a_latex_manuscript_counts_source_lines_and_reads_tables_and_inline_math(project):
+    (project / "paper.md").unlink()
+    (project / "paper.tex").write_text(TEX)
+    (project / "results" / "metrics.json").write_text(
+        json.dumps({"scores": {"accuracy": 0.9312}, "loss": 0.4417})
+    )
+    from_project(project)
+
+    claims = {c.id: c for c in load(project / DRAFT_NAME).claims}
+    assert list(claims) == ["line-6-1", "line-9-1", "line-11-1"]
+    assert claims["line-6-1"].where == "paper.tex, line 6"
+    assert claims["line-11-1"].text == "The held-out loss was 0.4417."
+    items = items_of(project)
+    assert places(items["line-9-1"]) == [("table", "recall[0]"), ("table", "recall[1]")]
+    assert items["line-9-1"].context["words_before"] == "lasso"
+    assert items["line-9-1"].unique
+    assert places(items["line-11-1"]) == [("metrics", "/loss")]
+    assert items["line-11-1"].unique
+
+
+def test_open_items_alone_is_a_scaffold_present_and_is_named(project):
+    (project / ITEMS_NAME).write_text("{}\n")
+    with pytest.raises(ScaffoldExistsError) as refused:
+        from_project(project)
+    assert str(refused.value) == (
+        "open-items.json is already here and was not replaced; --force replaces "
+        "repro.draft.yaml and open-items.json"
+    )
+    assert not (project / DRAFT_NAME).exists()
+
+
+def test_a_result_file_linked_out_of_the_project_is_listed_as_not_checked(tmp_path, project):
+    (tmp_path / "outside").mkdir()
+    (tmp_path / "outside" / "ext.json").write_text('{"accuracy": 0.9312}')
+    (project / "results" / "ext.json").symlink_to(tmp_path / "outside" / "ext.json")
+    made = from_project(project)
+    assert [(p.file, p.reason) for p in made.written.not_checked] == [
+        ("results/ext.json", "a symbolic link, which is not followed")
+    ]
+    assert "results/ext.json" not in {
+        a.path.as_posix() for a in load(project / DRAFT_NAME).artifacts
+    }
