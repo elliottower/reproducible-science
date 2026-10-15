@@ -55,8 +55,13 @@ def manifest_path(path: str) -> str:
 
 ManifestPath = Annotated[str, AfterValidator(manifest_path)]
 
+Kind = Literal["mismatch", "not-found", "error", "stale"]
 #: The outcomes that are a finding, as `repro export sarif` makes each a result.
-FAILING = (NormalizedOutcome.MISMATCH, NormalizedOutcome.NOT_FOUND, NormalizedOutcome.ERROR)
+_KINDS: dict[NormalizedOutcome, Kind] = {
+    NormalizedOutcome.MISMATCH: "mismatch",
+    NormalizedOutcome.NOT_FOUND: "not-found",
+    NormalizedOutcome.ERROR: "error",
+}
 
 
 class Finding(BaseModel):
@@ -76,7 +81,7 @@ class Finding(BaseModel):
     """The assertion's kind and name, as `repro why` labels it."""
     label: str = Field(min_length=1, max_length=MAX_TEXT)
     """The claim's `where` where it has one, its id otherwise."""
-    kind: Literal["mismatch", "not-found", "error", "stale"]
+    kind: Kind
     printed: str | None = Field(default=None, max_length=MAX_TEXT)
     stored: str | None = Field(default=None, max_length=MAX_TEXT)
     """The value the file holds, where one file was read and a value was read from it."""
@@ -139,14 +144,18 @@ def _digest(record: ExportRecord) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
 
 
-def _cut(text: str | None) -> str | None:
+def _cut(text: str) -> str:
     """A string no longer than a finding carries."""
-    return text if text is None or len(text) <= MAX_TEXT else f"{text[: MAX_TEXT - 3]}..."
+    return text if len(text) <= MAX_TEXT else f"{text[: MAX_TEXT - 3]}..."
 
 
-def _kind(record: ExportRecord) -> str | None:
-    if record.outcome in FAILING:
-        return record.outcome.value
+def _cut_or_none(text: str | None) -> str | None:
+    return None if text is None else _cut(text)
+
+
+def _kind(record: ExportRecord) -> Kind | None:
+    if record.outcome in _KINDS:
+        return _KINDS[record.outcome]
     if record.execution is not None and record.execution.state is Freshness.STALE:
         return "stale"
     return None
@@ -178,8 +187,8 @@ def finding(record: ExportRecord, base: pathlib.Path, root: pathlib.Path) -> Fin
         assertion=_cut(f"{record.assertion.kind} {record.assertion.name}".strip()),
         label=_cut(record.claim.where or record.claim.id),
         kind=kind,
-        printed=_cut(record.printed),
-        stored=_cut(stored),
+        printed=_cut_or_none(record.printed),
+        stored=_cut_or_none(stored),
         file=_cut(file),
         passage=record.check_type is CheckType.PASSAGE_PRESENCE,
         path=_relative(where.path, base, root) if where else None,

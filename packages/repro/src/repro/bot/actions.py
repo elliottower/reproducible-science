@@ -100,7 +100,13 @@ def ours(comments: list[Comment]) -> dict[str, tuple[Comment, Marker]]:
     return found
 
 
-def _marker(made: Finding, placed: str, fork: bool, manifest: str, before: Marker | None) -> Marker:
+def _marker(
+    made: Finding,
+    placed: Literal["review", "issue"],
+    fork: bool,
+    manifest: str,
+    before: Marker | None,
+) -> Marker:
     # An answer is about what was found. Where the finding changed, it no longer holds.
     kept = before.decision if before is not None and before.digest == made.digest else None
     return Marker(
@@ -145,6 +151,7 @@ def post(findings: Findings, client: Client, head_sha: str) -> Posted:
     created, edited, unchanged = [], [], []
     for made in findings.findings:
         comment, before = held.pop(made.key, (None, None))
+        placed: Literal["review", "issue"]
         if before is not None:
             placed = before.placed
         elif made.path is not None and made.line in placeable.get(made.path, ()):

@@ -154,9 +154,10 @@ def removed(source: str, artifact: str, text: str) -> str | None:
     index = next((i for i, item in enumerate(entries) if _ours(item, artifact, text)), None)
     if index is None:
         return None
-    key, node = _key(_top(source)) or (None, None)
-    if not isinstance(node, yaml.SequenceNode) or node.flow_style:
+    found = _key(_top(source))
+    if found is None or not isinstance(found[1], yaml.SequenceNode) or found[1].flow_style:
         raise ManifestShapeError(f"`{KEY}` is not a list written one entry per line")
+    key, node = found
     item = node.value[index]
     if len(node.value) == 1:
         start = _line_start(source, key.start_mark.index)
