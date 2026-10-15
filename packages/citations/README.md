@@ -854,9 +854,19 @@ refused, a record that is a preprint or names no venue identifier, an entry citi
 server, a workshop against a main track, a record identified only by its name, two sides with
 no serial identifier of a common kind, and a garbled name.
 
-Registry lookups are cached like every other request, sent unkeyed and with no contact
-address, and paced; a Wikidata request names the project in its `User-Agent`, as the Wikimedia
-policy asks. DBLP's API is not asked, because it answers automated clients with a proof-of-work
+Registry lookups are cached like every other request, sent with no contact address, and
+paced; a Wikidata request names the project in its `User-Agent`, as the Wikimedia policy asks.
+
+API keys are optional. The audit works without them, and compares more venues with them,
+because a lookup a service refuses leaves its venue not comparable:
+
+| Variable | Service | Used |
+|---|---|---|
+| `SEMANTIC_SCHOLAR_API_KEY` | Semantic Scholar | on every request, as the `x-api-key` header; Semantic Scholar refuses many anonymous requests, and its answer is often the only one naming the published venue of an arXiv preprint |
+| `OPENALEX_API_KEY` | OpenAlex | as a fallback only: a request goes out unkeyed first, and is retried with the key, as an `Authorization: Bearer` header, only when OpenAlex refuses it, so a key with a small quota is spent only where the shared unkeyed budget has run out |
+
+Neither key is ever part of a URL, so neither reaches a cache file, a report, a log line or an
+error message. DBLP's API is not asked, because it answers automated clients with a proof-of-work
 page; DBLP venue keys are compared where Wikidata holds them.
 
 Fetched payloads and search answers are cached beside the file audited, so a re-run is offline

@@ -848,6 +848,8 @@ def venue_verdict(
     """The entry's venue against the record's, as registries identify both."""
     ours = e.venue or e.series
     theirs = record_venue(record, found, doi, ask)
+    if found is not None:
+        theirs = theirs.model_copy(update={"searched": True})
     shown = record.venue or (found.venue if found is not None else "")
     if not ours.strip() or theirs.repository or (not theirs.ids and not theirs.links):
         # Nothing on the record side to compare with: the entry's venue is not looked up.

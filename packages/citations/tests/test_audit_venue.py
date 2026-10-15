@@ -71,6 +71,21 @@ def test_two_registry_records_of_one_journal_name_are_not_called_different():
     assert check.why.startswith(V.ONE_NAME)
 
 
+def test_a_record_found_by_title_search_can_confirm_and_never_contradict():
+    # Krizhevsky 2012: a title search reached the 2017 reprint in Communications of the ACM.
+    reprint = res(
+        "issn:0001-0782",
+        "dblp:journals/cacm",
+        direct=True,
+        searched=True,
+        label="Communications of the ACM",
+    )
+    neurips = res("issn:1049-5258", label="Advances in Neural Information Processing Systems")
+    check = V.decide("NeurIPS", "Communications of the ACM", neurips, reprint)
+    assert (check.outcome, check.why) == (V.NOT_COMPARABLE, V.SEARCHED)
+    assert V.decide("CACM", "Communications of the ACM", reprint, reprint).outcome == V.MATCH
+
+
 def test_wikidata_or_openalex_ids_alone_never_make_a_mismatch():
     # Either can be one edition of a conference, or one of several records of one journal.
     entry = res("wikidata:Q1", "openalex:S1")

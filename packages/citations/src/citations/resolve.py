@@ -38,6 +38,7 @@ import pathlib
 import socket
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 import yaml
@@ -80,14 +81,38 @@ class Throttled(Exception):
 # --------------------------------------------------------------------------------------------
 
 
-def fetch(url: str, timeout: int = 25, headers: dict | None = None):
+#: Environment variable holding an OpenAlex API key. Optional, and a fallback only: a request
+#: goes out unkeyed first, from the small daily budget OpenAlex gives unkeyed clients, and is
+#: retried with the key only when OpenAlex refuses it, so a key with a small quota of its own
+#: is spent only where it is needed.
+OPENALEX_KEY_ENV = "OPENALEX_API_KEY"
+
+
+def credentials(url: str) -> dict:
+    """Headers carrying the operator's OpenAlex key, for a retry of a refused request.
+
+    Sent as `Authorization: Bearer`, which OpenAlex documents as equivalent to its `api_key`
+    query parameter, so the key is never part of a URL. A URL is what a cache file is named
+    from and records, what a log line prints and what an exception carries; a header is none
+    of those.
+    """
+    key = os.environ.get(OPENALEX_KEY_ENV, "").strip()
+    if key and urllib.parse.urlsplit(url).hostname == "api.openalex.org":
+        return {"Authorization": f"Bearer {key}"}
+    return {}
+
+
+def fetch(url: str, timeout: int = 25, headers: dict | None = None, keyed: bool = False):
     """An open response. The caller closes it.
 
     Closing it here -- which a `with` block around the `urlopen` does -- returns a response
     whose `read()` yields zero bytes. Every decode then fails, every failure is retried, and
     the resolver concludes that every service refused it.
+
+    `keyed` adds the operator's OpenAlex key, which `get` asks for only on a retry.
     """
-    req = urllib.request.Request(url, headers={"User-Agent": user_agent(), **(headers or {})})
+    sent = {"User-Agent": user_agent(), **(headers or {}), **(credentials(url) if keyed else {})}
+    req = urllib.request.Request(url, headers=sent)
     return urllib.request.urlopen(req, timeout=timeout)
 
 
@@ -100,20 +125,25 @@ def get(url: str, as_json: bool, tries: int = 4, headers: dict | None = None):
     blocked" will confidently delete information.
     """
     delay = 2.0
-    for _ in range(tries):
+    keyed = False
+    # One more attempt where a key can be added: the unkeyed refusal costs the budget nothing.
+    attempts = tries + 1 if credentials(url) else tries
+    for _ in range(attempts):
         try:
-            with fetch(url, headers=headers) as r:
+            with fetch(url, headers=headers, keyed=keyed) as r:
                 body = r.read().decode()
             return json.loads(body) if as_json else body
         except urllib.error.HTTPError as e:
-            if e.code in RETRY_CODES:
-                time.sleep(delay)
-                delay *= 2
-                continue
-            return None
+            if e.code not in RETRY_CODES:
+                return None
         except NETWORK_ERRORS:
-            time.sleep(delay)
-            delay *= 2
+            pass
+        if not keyed and credentials(url):
+            # Refused unkeyed: the operator's key is tried at once, and only now.
+            keyed = True
+            continue
+        time.sleep(delay)
+        delay *= 2
     raise Throttled(url)
 
 

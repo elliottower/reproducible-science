@@ -50,6 +50,7 @@ REFUSED = "a registry lookup failed, so the venue could not be checked"
 NO_COMMON_KIND = "the two sides hold no serial identifier (ISSN, NLM, DBLP) of a common kind"
 INDIRECT = "the record's venue was identified by its name, not by an identifier it carries"
 ONE_NAME = "registries file both venues under one name, with different identifiers"
+SEARCHED = "the record was found by title search and can be another version of the work"
 GARBLED_NAME = "a venue name is garbled"
 
 
@@ -84,6 +85,11 @@ class Resolution(BaseModel):
 
     direct: bool = False
     """The identifiers came from the record itself rather than from resolving a name."""
+
+    searched: bool = False
+    """The record was reached by a title search rather than by the entry's own identifier, so
+    it can be another version of the work: a reprint in another venue, a preprint's journal
+    article."""
 
     repository: bool = False
     """A registry types the venue as a preprint server or repository."""
@@ -284,6 +290,8 @@ def decide(ours: str, theirs: str, entry: Resolution, record: Resolution) -> Ven
         return verdict(NOT_COMPARABLE, REFUSED)
     if not record.direct:
         return verdict(NOT_COMPARABLE, INDIRECT)
+    if record.searched:
+        return verdict(NOT_COMPARABLE, SEARCHED)
     if not (kinds(entry.ids) & kinds(record.ids) & SERIAL):
         return verdict(NOT_COMPARABLE, NO_COMMON_KIND)
     if entry.names & record.names:
