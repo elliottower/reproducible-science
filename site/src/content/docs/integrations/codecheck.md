@@ -51,7 +51,7 @@ claims from-codecheck 2024-001 --register register.json --bundle ../codecheck-20
 
 The draft is not a CODECHECK certificate and does not restate one. A codechecker's report says
 that outputs were recreated; the draft says which outputs exist and leaves the binding of each
-to the paper open. The [open items](/integrations/open-items/) page describes how those are
+to the paper open. The [open items](/agents/open-items/) page describes how those are
 filled.
 
 ## The other project

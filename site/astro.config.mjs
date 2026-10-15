@@ -6,6 +6,15 @@ export default defineConfig({
   // GitHub Pages serving the custom domain. DNS is on Cloudflare; the old
   // elliottower.github.io/reproducible-science address redirects here.
   site: "https://reproducible.science",
+  redirects: {
+    "/integrations/osf/": "/tools/prereg/#osf-integration",
+    "/integrations/opentimestamps/": "/tools/results/#timestamp",
+    "/integrations/zotero/": "/tools/citations/#a-bib-exported-from-zotero",
+    "/integrations/adduce/": "/integrations/",
+    "/integrations/open-items/": "/agents/open-items/",
+    "/integrations/init-scaffold/": "/start/init-scaffold/",
+    "/start/codex/": "/agents/codex-plugin/",
+  },
   integrations: [
     starlight({
       head: [
@@ -60,13 +69,14 @@ export default defineConfig({
           label: "Get started",
           items: [
             { label: "Installation", link: "/start/install/" },
-            { label: "Your first check", link: "/start/first-check/" },
+            { label: "Quick start", link: "/start/first-check/" },
+            { label: "repro init scaffolding", link: "/start/init-scaffold/" },
           ],
         },
         {
           label: "Concepts",
           items: [
-            { label: "The evidence contract", link: "/concepts/evidence-contract/" },
+            { label: "Declaring evidence", link: "/concepts/evidence-contract/" },
             { label: "Outcomes and reasons", link: "/concepts/outcomes/" },
             { label: "Pinning", link: "/concepts/pinning/" },
             { label: "The check record", link: "/concepts/check-record/" },
@@ -95,7 +105,9 @@ export default defineConfig({
           items: [
             { label: "Claude Code plugin", link: "/agents/claude-code-plugin/" },
             { label: "Claude Code mod", link: "/agents/claude-code-mod/" },
+            { label: "Codex plugin", link: "/agents/codex-plugin/" },
             { label: "MCP server", link: "/agents/mcp/" },
+            { label: "Open items", link: "/agents/open-items/" },
           ],
         },
         {

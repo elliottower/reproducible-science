@@ -55,11 +55,11 @@ draft file and reads no result file.
 ## Does not claim
 
 Nothing in the draft is verified. The output says so: `scaffolded, nothing verified`. An agent
-fills the items with the [open-items skill](/integrations/open-items/) or the
+fills the items with the [open-items skill](/agents/open-items/) or the
 [MCP server](/agents/mcp/), and an author reviews the draft and renames it to
 `repro.yaml`.
 
 ## The other project
 
-None: the draft uses the toolkit's own format, the one the [open items](/integrations/open-items/)
+None: the draft uses the toolkit's own format, the one the [open items](/agents/open-items/)
 page describes.
