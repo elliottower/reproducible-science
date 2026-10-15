@@ -178,6 +178,7 @@ on:
   push:
     branches: [{branch}]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read

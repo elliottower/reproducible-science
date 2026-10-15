@@ -23,6 +23,8 @@ from provenance_core import atomic_write
 from pydantic import BaseModel, ConfigDict
 
 from repro import __version__, ci
+from repro.bot import actions
+from repro.bot.findings import manifest_path
 from repro.exceptions import ReproError
 from repro.manifest import DEFAULT_NAME
 
@@ -42,16 +44,22 @@ FINDINGS = "${{ runner.temp }}/repro-bot"
 CHECK = """\
 {marker} On a pull request, it checks the pull request's head
 # commit with a read-only token and uploads what it found. It comments on nothing: the workflow
-# in repro-bot-post.yml does that, and never checks out this commit. {docs}
+# in repro-bot-post.yml does that, and never checks out this commit. `repro bot reply` starts
+# it again with workflow_dispatch after it commits to the branch. {docs}
 name: {check_name}
 
 on:
   pull_request:
+  workflow_dispatch:
+    inputs:
+      pull_request:
+        description: the number of the pull request whose branch this is
+        required: true
 
 permissions: {{}}
 
 concurrency:
-  group: repro-bot-check-${{{{ github.event.pull_request.number }}}}
+  group: repro-bot-check-${{{{ github.event.pull_request.number || inputs.pull_request }}}}
   cancel-in-progress: true
 
 jobs:
@@ -63,16 +71,18 @@ jobs:
     steps:
       - uses: {checkout}
         with:
-          ref: ${{{{ github.event.pull_request.head.sha }}}}
+          ref: ${{{{ github.event.pull_request.head.sha || github.sha }}}}
           persist-credentials: false
       - uses: {setup_uv}
+      # --no-config: a uv.toml or pyproject.toml in the pull request does not choose where
+      # the package is installed from.
       - run: >-
-          uvx --from {distribution}=={version} repro bot check{manifest}
+          uvx --no-config --from {distribution}=={version} repro bot check{manifest_arg}
           --out "$RUNNER_TEMP/repro-bot/findings.json"
           --pull-request "$PULL_REQUEST" --head-sha "$HEAD_SHA"
         env:
-          PULL_REQUEST: ${{{{ github.event.pull_request.number }}}}
-          HEAD_SHA: ${{{{ github.event.pull_request.head.sha }}}}
+          PULL_REQUEST: ${{{{ github.event.pull_request.number || inputs.pull_request }}}}
+          HEAD_SHA: ${{{{ github.event.pull_request.head.sha || github.sha }}}}
       - uses: {upload}
         with:
           name: {artifact}
@@ -84,7 +94,7 @@ POST = """\
 {marker} After `{check_name}` finishes on a pull request, it reads the
 # findings that run uploaded and comments on the pull request. It checks out nothing and runs
 # nothing from the pull request; the findings are data, and the pull request they name must be
-# at the commit that was checked. {docs}
+# at the commit that was checked, from the repository and branch that were checked. {docs}
 name: repro bot post
 
 # workflow_run runs with a token that writes, so it is safe only where it never runs what the
@@ -96,19 +106,22 @@ on:  # zizmor: ignore[dangerous-triggers]
 
 permissions: {{}}
 
+# One run per branch at a time, and a later run waits rather than cancelling one under way.
 concurrency:
   group: repro-bot-post-${{{{ github.event.workflow_run.head_repository.full_name }}}}-${{{{ github.event.workflow_run.head_branch }}}}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   post:
     name: comment on the findings
-    if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success'
+    if: >-
+      (github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.event == 'workflow_dispatch')
+      && github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     permissions:
       actions: read  # to download the findings the check uploaded
       issues: write  # to comment in the pull request's conversation
-      pull-requests: write  # to read the pull request and comment on a line of its diff
+      pull-requests: write  # to read the pull request, comment on its diff and resolve threads
     steps:
       - uses: {setup_uv}
         with:
@@ -120,18 +133,22 @@ jobs:
           run-id: ${{{{ github.event.workflow_run.id }}}}
           github-token: ${{{{ github.token }}}}
       - run: >-
-          uvx --from {distribution}=={version} repro bot post
-          "$RUNNER_TEMP/repro-bot/findings.json" --head-sha "$HEAD_SHA"
+          uvx --no-config --from {distribution}=={version} repro bot post
+          "$RUNNER_TEMP/repro-bot/findings.json" --manifest {manifest}
+          --head-sha "$HEAD_SHA" --head-repository "$HEAD_REPOSITORY" --head-branch "$HEAD_BRANCH"
         env:
           HEAD_SHA: ${{{{ github.event.workflow_run.head_sha }}}}
+          HEAD_REPOSITORY: ${{{{ github.event.workflow_run.head_repository.full_name }}}}
+          HEAD_BRANCH: ${{{{ github.event.workflow_run.head_branch }}}}
           GH_TOKEN: ${{{{ github.token }}}}
 """
 
 REPLY = """\
 {marker} On a reply to one of the bot's comments, it records the
-# answer, and for 3 or 4 commits a set_aside entry to the pull request's branch, never to a
-# fork's. It checks out nothing: repro.yaml is read and written through the API, as text.
-# Replies from anyone without write access to this repository are not recorded. {docs}
+# answer, and for 3 or 4 commits a set_aside entry to {manifest} on the pull request's branch,
+# never to a fork's and never to any other file. It checks out nothing: the manifest is read and
+# written through the API, as text. Replies from anyone without write access to this repository
+# are not recorded. {docs}
 name: repro bot reply
 
 on:
@@ -142,8 +159,12 @@ on:
 
 permissions: {{}}
 
-# No concurrency group: GitHub cancels a queued run when another queues behind it, and a reply
-# whose run was cancelled would be lost. A commit that loses a race is read again and retried.
+# One run per pull request at a time. GitHub cancels a run waiting behind another when a third
+# queues, so each run records every answer on the pull request not yet recorded, not only its
+# own, and never replaces an answer with an older one.
+concurrency:
+  group: repro-bot-reply-${{{{ github.event.issue.number || github.event.pull_request.number }}}}
+  cancel-in-progress: false
 
 jobs:
   reply:
@@ -151,14 +172,17 @@ jobs:
     if: (github.event.issue.pull_request || github.event.pull_request) && github.event.comment.user.type != 'Bot'
     runs-on: ubuntu-latest
     permissions:
-      contents: write  # to commit a set_aside entry to repro.yaml on the pull request's branch
+      actions: write  # to start the checks again on the branch after a commit
+      contents: write  # to commit a set_aside entry to the manifest on the pull request's branch
       issues: write  # to answer in the pull request's conversation
       pull-requests: write  # to read the pull request and answer in a thread on its diff
     steps:
       - uses: {setup_uv}
         with:
           enable-cache: false
-      - run: uvx --from {distribution}=={version} repro bot reply
+      - run: >-
+          uvx --no-config --from {distribution}=={version} repro bot reply
+          --manifest {manifest}{dispatch}
         env:
           GH_TOKEN: ${{{{ github.token }}}}
 """
@@ -207,12 +231,14 @@ class Workflow(BaseModel):
     text: str
 
 
-def workflows(manifest: str = DEFAULT_NAME) -> list[Workflow]:
+def workflows(manifest: str = DEFAULT_NAME, dispatch: tuple[str, ...] = ()) -> list[Workflow]:
     """The three workflows, pinned to the installed version of this package. `manifest` is the
-    manifest's path from the top of the repository."""
+    manifest's path from the top of the repository, and `dispatch` the workflows besides the
+    check that `reply` starts again after it commits."""
     if __version__ == "0+unknown":
         raise ci.VersionUnknownError
-    named = "" if manifest == DEFAULT_NAME else f" {shlex.quote(manifest)}"
+    manifest = manifest_path(manifest)
+    started = (actions.CHECK_WORKFLOW, *dispatch)
     fields = {
         "marker": MARKER,
         "docs": DOCS,
@@ -225,7 +251,9 @@ def workflows(manifest: str = DEFAULT_NAME) -> list[Workflow]:
         "findings": FINDINGS,
         "distribution": ci.DISTRIBUTION,
         "version": __version__,
-        "manifest": named,
+        "manifest": shlex.quote(manifest),
+        "manifest_arg": "" if manifest == DEFAULT_NAME else f" {shlex.quote(manifest)}",
+        "dispatch": "".join(f" --dispatch {shlex.quote(name)}" for name in started),
     }
     return [Workflow(file=file, text=text.format(**fields)) for file, text in FILES.items()]
 
@@ -235,7 +263,8 @@ def init(cwd: pathlib.Path, *, force: bool = False) -> int:
     root, path = ci.located(cwd)
     if path is None:
         raise NoManifestError(root)
-    wanted = workflows(path.relative_to(root).as_posix())
+    started = dispatchable(root)
+    wanted = workflows(path.relative_to(root).as_posix(), tuple(started))
     there = [root / ci.WORKFLOWS / flow.file for flow in wanted]
     ours = tuple(
         target
@@ -259,7 +288,41 @@ def init(cwd: pathlib.Path, *, force: bool = False) -> int:
     print("     from the default branch, so the bot comments on no pull request before that.")
     print("  2. a reply is recorded only from someone with write access to this repository.")
     print("  3. on a pull request from a fork the bot comments and commits nothing.")
+    print("  4. a commit the bot makes starts no workflow by itself, so after one it starts")
+    print(f"     again: {', '.join((actions.CHECK_WORKFLOW, *started))}.")
+    lacking = [
+        name
+        for name in sorted(p.name for p in (root / ci.WORKFLOWS).glob("*.yml"))
+        if name not in started and _ci_written(root / ci.WORKFLOWS / name)
+    ]
+    if lacking:
+        print(f"     {', '.join(lacking)} cannot be started that way; `repro ci init --force`")
+        print("     rewrites them with a workflow_dispatch trigger, and then `repro bot init")
+        print("     --force` names them here.")
     return 0
 
 
-__all__ = ["MARKER", "NoManifestError", "Workflow", "WorkflowExistsError", "init", "workflows"]
+def _ci_written(path: pathlib.Path) -> bool:
+    return path.read_text(encoding="utf-8").startswith(ci.MARKER)
+
+
+def dispatchable(root: pathlib.Path) -> list[str]:
+    """The workflows `repro ci init` wrote here that can be started with workflow_dispatch:
+    the checks a branch protection rule may require, which a commit by the bot starts none of."""
+    folder = root / ci.WORKFLOWS
+    return [
+        path.name
+        for path in sorted(folder.glob("*.yml"))
+        if _ci_written(path) and "\n  workflow_dispatch:" in path.read_text(encoding="utf-8")
+    ]
+
+
+__all__ = [
+    "MARKER",
+    "NoManifestError",
+    "Workflow",
+    "WorkflowExistsError",
+    "dispatchable",
+    "init",
+    "workflows",
+]

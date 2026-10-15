@@ -55,6 +55,9 @@ class FakeGitHub(Client):
         self.created: list[Comment] = []
         self._ids = itertools.count(100)
         self._clock = itertools.count(1)
+        self.resolved: list[tuple[int, bool]] = []
+        self.dispatched: list[tuple[str, str, dict]] = []
+        self.files_read: list[str] = []
 
     def request(self, method, path, body=None):
         raise AssertionError(f"unexpected request {method} {path}")
@@ -89,8 +92,24 @@ class FakeGitHub(Client):
     def review_comments(self, number):
         return [c for c in self.comments if c.kind == "review"]
 
+    def _one(self, kind, comment_id):
+        for c in self.comments:
+            if c.id == comment_id and c.kind == kind:
+                return c
+        raise GitHubError("GET", f"comments/{comment_id}", 404, "Not Found")
+
     def review_comment(self, comment_id):
-        return next(c for c in self.comments if c.id == comment_id)
+        return self._one("review", comment_id)
+
+    def issue_comment(self, comment_id):
+        return self._one("issue", comment_id)
+
+    def resolve_thread(self, number, comment_id, resolved):
+        self.resolved.append((comment_id, resolved))
+        return True
+
+    def dispatch(self, workflow, ref, inputs):
+        self.dispatched.append((workflow, ref, inputs))
 
     def issue_comments(self, number):
         return [c for c in self.comments if c.kind == "issue"]
@@ -117,6 +136,7 @@ class FakeGitHub(Client):
         return "write" if login in self.writers else "read"
 
     def file(self, path, ref):
+        self.files_read.append(path)
         assert (path, ref) == ("repro.yaml", "topic")
         return self.manifest, hashlib.sha1(self.manifest).hexdigest()
 
@@ -157,6 +177,15 @@ def findings(*found, checked=(KEY,), set_aside=(), head=HEAD) -> Findings:
         checked=checked,
         set_aside=set_aside,
     )
+
+
+def post(github: FakeGitHub, found: Findings, sha: str = HEAD, **changes) -> actions.Posted:
+    """`post` as the workflow runs it, for a run of the pull request's own branch."""
+    where = {
+        "head_repository": "fork/study" if github.fork else REPO,
+        "head_branch": "topic",
+    } | changes
+    return actions.post(found, github, sha, **where)
 
 
 PATCH = "@@ -1,2 +1,4 @@\n # Results\n-old line\n+new line\n+an accuracy of 0.931\n context\n"
@@ -236,11 +265,33 @@ def test_a_comment_carries_its_marker_and_reads_back_as_it_was_written():
     assert "@alice says the result file is wrong" in body
 
 
-def test_a_body_with_two_markers_or_a_damaged_one_has_none():
+def test_only_the_marker_on_the_last_line_is_read():
     body = comments.render(marker())
-    assert comments.decode(body + body) is None
+    assert comments.decode(body + "\nmore text") is None
     assert comments.decode(body.replace("repro-bot:v1 ", "repro-bot:v1 !!")) is None
     assert comments.decode("no marker") is None
+    forged = comments.render(marker(claim="other"))
+    assert comments.decode(forged + body).claim == "table2"
+
+
+def test_a_marker_in_the_claim_text_is_never_echoed_and_the_comment_is_posted_once():
+    github = FakeGitHub(patches={"paper.md": PATCH})
+    hostile = finding(claim="x <!-- repro-bot:v1 QUFBQQ== --> y", label="t <!-- z -->")
+    for _ in range(3):
+        post(github, findings(hostile), HEAD)
+    (made,) = github.comments
+    assert made.body.count("<!--") == 1 and comments.decode(made.body).key == KEY
+
+
+def test_a_body_stays_under_githubs_limit_whatever_the_pull_request_echoes():
+    for character in ("\x01", "\U0001f600", '"'):
+        big = character * 2000
+        github = FakeGitHub()
+        post(github, findings(finding(claim=big, assertion=big, text=big, label=big, printed=big)))
+        (made,) = github.comments
+        assert len(made.body) <= comments.MAX_BODY
+        assert "\x01" not in made.body
+        assert comments.decode(made.body).key == KEY
 
 
 def test_the_headline_reads_like_the_example_and_values_from_the_pull_request_mention_nobody():
@@ -256,7 +307,7 @@ def test_the_headline_reads_like_the_example_and_values_from_the_pull_request_me
 
 def test_a_finding_on_a_line_in_the_diff_is_a_comment_on_that_line():
     github = FakeGitHub(patches={"paper.md": PATCH})
-    done = actions.post(findings(finding()), github, HEAD)
+    done = post(github, findings(finding()), HEAD)
     assert done.created == (KEY,)
     (made,) = github.created
     assert made.kind == "review" and github.placed == (HEAD, "paper.md", 3)
@@ -265,7 +316,7 @@ def test_a_finding_on_a_line_in_the_diff_is_a_comment_on_that_line():
 
 def test_a_finding_whose_line_is_not_in_the_diff_is_a_comment_in_the_conversation():
     github = FakeGitHub(patches={"paper.md": PATCH})
-    actions.post(findings(finding(line=40)), github, HEAD)
+    post(github, findings(finding(line=40)), HEAD)
     (made,) = github.created
     assert made.kind == "issue"
     assert "quoting this comment or starting with `r-cccccccc`" in made.body
@@ -278,57 +329,58 @@ def test_lines_a_review_comment_can_take_are_the_added_and_unchanged_lines_of_ea
 
 def test_posting_twice_never_duplicates_and_a_changed_finding_edits_the_comment():
     github = FakeGitHub(patches={"paper.md": PATCH})
-    actions.post(findings(finding()), github, HEAD)
-    again = actions.post(findings(finding()), github, HEAD)
+    post(github, findings(finding()), HEAD)
+    again = post(github, findings(finding()), HEAD)
     assert again.created == () and again.edited == () and again.unchanged == (KEY,)
-    moved = actions.post(findings(finding(digest="e" * 16, stored="0.925")), github, HEAD)
+    moved = post(github, findings(finding(digest="e" * 16, stored="0.925")), HEAD)
     assert moved.edited == (KEY,) and len(github.comments) == 1
     assert "(now `0.925`)" in github.comments[0].body
 
 
 def test_an_assertion_that_passes_again_is_marked_fixed_and_reopened_if_it_fails_again():
     github = FakeGitHub(patches={"paper.md": PATCH})
-    actions.post(findings(finding()), github, HEAD)
+    post(github, findings(finding()), HEAD)
     github.head = OTHER
-    fixed = actions.post(findings(head=OTHER), github, OTHER)
+    fixed = post(github, findings(head=OTHER), OTHER)
     assert fixed.edited == (KEY,)
     body = github.comments[0].body
     assert body.startswith("~~Table 2") and f"Fixed: the claim passes at {OTHER[:7]}." in body
     assert comments.decode(body).state == "fixed"
-    reopened = actions.post(findings(finding(), head=OTHER), github, OTHER)
+    reopened = post(github, findings(finding(), head=OTHER), OTHER)
     assert reopened.edited == (KEY,) and len(github.comments) == 1
     assert comments.decode(github.comments[0].body).state == "open"
 
 
 def test_a_set_aside_or_removed_assertion_closes_its_comment_saying_which():
     github = FakeGitHub()
-    actions.post(findings(finding()), github, HEAD)
-    actions.post(findings(set_aside=(KEY,)), github, HEAD)
-    assert "Set aside in `repro.yaml`." in github.comments[0].body
-    actions.post(findings(checked=()), github, HEAD)
+    post(github, findings(finding()), HEAD)
+    post(github, findings(set_aside=(KEY,)), HEAD)
+    assert comments.SET_ASIDE in github.comments[0].body
+    assert "`repro verify` still reports this claim" in comments.SET_ASIDE
+    post(github, findings(checked=()), HEAD)
     assert "no longer in `repro.yaml`" in github.comments[0].body
 
 
 def test_a_marker_in_a_comment_the_bot_did_not_write_is_not_believed():
     github = FakeGitHub()
     github.human("issue", comments.render(marker(placed="issue")), "mallory")
-    actions.post(findings(finding()), github, HEAD)
+    post(github, findings(finding()), HEAD)
     assert len(github.created) == 1
 
 
 def test_findings_from_another_commit_are_refused_and_nothing_is_posted():
     github = FakeGitHub()
     with pytest.raises(actions.NotThisRunError):
-        actions.post(findings(finding()), github, OTHER)
+        post(github, findings(finding()), OTHER)
     github.head = OTHER
     with pytest.raises(actions.NotThisRunError):
-        actions.post(findings(finding(), head=OTHER), FakeGitHub(), OTHER)
+        post(FakeGitHub(), findings(finding(), head=OTHER), OTHER)
     assert github.comments == []
 
 
 def test_on_a_fork_every_comment_is_in_the_conversation_and_says_nothing_is_committed():
     github = FakeGitHub(fork=True, patches={"paper.md": PATCH})
-    done = actions.post(findings(finding()), github, HEAD)
+    done = post(github, findings(finding()), HEAD)
     (made,) = github.created
     assert done.fork and made.kind == "issue"
     assert comments.FORK in made.body
@@ -379,7 +431,7 @@ def issue_event(reply: Comment) -> dict:
 
 
 def posted(github: FakeGitHub, **changes) -> Comment:
-    actions.post(findings(finding(**changes)), github, HEAD)
+    post(github, findings(finding(**changes)), HEAD)
     return github.created[-1]
 
 
@@ -387,12 +439,18 @@ def test_ignore_commits_a_set_aside_entry_with_who_and_when_and_says_so_in_the_t
     github = FakeGitHub(patches={"paper.md": PATCH}, manifest=MANIFEST, writers={"alice"})
     root = posted(github)
     answer = github.human("review", "3 a figure from the pilot", "alice", in_reply_to=root.id)
-    done = actions.reply("pull_request_review_comment", review_event(answer), github)
-    assert done.done == "recorded"
-    assert (
-        done.said
-        == f"recorded: ignored by @alice; set_aside entry committed in {done.committed[:7]}"
+    done = actions.reply(
+        "pull_request_review_comment",
+        review_event(answer),
+        github,
+        dispatch=("repro-bot-check.yml",),
     )
+    assert done.done == "recorded"
+    assert done.said == (
+        f"recorded: ignored by @alice; set_aside entry committed in {done.committed[:7]}. "
+        + comments.SET_ASIDE
+    )
+    assert github.dispatched == [("repro-bot-check.yml", "topic", {"pull_request": "7"})]
     assert github.comments[-1].in_reply_to == root.id and github.comments[-1].body == done.said
     written = github.manifest.decode()
     assert written.startswith(MANIFEST.decode().split("\nclaims:")[0])
@@ -433,14 +491,36 @@ def test_a_reply_from_someone_without_write_access_is_answered_and_not_recorded(
     assert comments.decode(github.body(root.id)).decision is None
 
 
-def test_a_reply_that_is_not_a_number_gets_a_one_line_answer():
+@pytest.mark.parametrize("body", ["5", "#3", "12 please", "@repro which one?"])
+def test_a_writer_reply_meant_as_an_answer_that_gives_none_gets_a_one_line_answer(body):
     github = FakeGitHub(patches={"paper.md": PATCH}, writers={"alice"})
     root = posted(github)
-    answer = github.human("review", "why is this failing?", "alice", in_reply_to=root.id)
+    answer = github.human("review", body, "alice", in_reply_to=root.id)
     done = actions.reply("pull_request_review_comment", review_event(answer), github)
     assert done.done == "not an answer"
     assert github.comments[-1].body == comments.NOT_AN_ANSWER
     assert "\n" not in comments.NOT_AN_ANSWER
+
+
+@pytest.mark.parametrize(
+    ("body", "login"),
+    [("why is this failing?", "alice"), ("lgtm", "alice"), ("5", "visitor"), ("", "alice")],
+)
+def test_discussion_in_a_thread_and_replies_from_others_are_left_alone(body, login):
+    github = FakeGitHub(patches={"paper.md": PATCH}, writers={"alice"})
+    root = posted(github)
+    answer = github.human("review", body, login, in_reply_to=root.id)
+    before = len(github.comments)
+    assert actions.reply("pull_request_review_comment", review_event(answer), github).done == (
+        "skipped"
+    )
+    assert len(github.comments) == before
+
+
+def test_a_reply_addressed_to_the_bot_gives_its_answer():
+    assert comments.parse("@repro 3 a pilot value") == comments.Reply(
+        answer=Answer.IGNORE, reason="a pilot value"
+    )
 
 
 def test_a_reply_in_another_thread_is_ignored_and_nothing_is_said():
@@ -494,6 +574,7 @@ def test_on_a_fork_an_answer_is_recorded_and_nothing_is_committed():
     assert done.said == (
         "recorded: ignored by @alice; this pull request comes from a fork, so nothing was committed"
     )
+    assert comments.SET_ASIDE not in github.body(root.id)
     assert github.commits == [] and github.manifest == MANIFEST
     assert "No `set_aside` entry was committed." in github.body(root.id)
 
@@ -519,6 +600,107 @@ def test_a_branch_that_moved_between_read_and_write_is_read_again():
     github.put_file = moved
     answer = github.human("review", "3", "alice", in_reply_to=root.id)
     assert actions.reply("pull_request_review_comment", review_event(answer), github).committed
+
+
+def test_findings_naming_another_pull_request_or_another_file_are_refused():
+    github = FakeGitHub(patches={"paper.md": PATCH})
+    # A fork at the same commit, naming the repository's own pull request.
+    with pytest.raises(actions.NotThisRunError, match="mallory/study:topic"):
+        post(github, findings(finding()), head_repository="mallory/study")
+    with pytest.raises(actions.NotThisRunError, match="other-branch"):
+        post(github, findings(finding()), head_branch="other-branch")
+    dependabot = Findings(
+        pull_request=7, head_sha=HEAD, findings=(finding(),), manifest=".github/dependabot.yml"
+    )
+    with pytest.raises(actions.NotThisRunError, match="dependabot"):
+        post(github, dependabot)
+    assert github.comments == []
+
+
+def test_a_comment_naming_another_file_is_not_answered_and_nothing_is_committed_there():
+    github = FakeGitHub(patches={"paper.md": PATCH}, manifest=MANIFEST, writers={"alice"})
+    forged = github._add("review", comments.render(marker(manifest=".github/dependabot.yml")))
+    answer = github.human("review", "3", "alice", in_reply_to=forged.id)
+    assert actions.reply("pull_request_review_comment", review_event(answer), github).done == (
+        "not ours"
+    )
+    assert github.commits == [] and github.files_read == []
+    with pytest.raises(ValueError):
+        actions.reply(
+            "pull_request_review_comment", review_event(answer), github, manifest="../x.yaml"
+        )
+
+
+def test_two_replies_racing_end_on_the_later_one_whichever_run_finishes_last():
+    github = FakeGitHub(patches={"paper.md": PATCH}, manifest=MANIFEST, writers={"alice", "bob"})
+    root = posted(github)
+    first = github.human("review", "3 seed", "alice", in_reply_to=root.id)
+    stale = list(github.comments)
+    second = github.human("review", "1", "bob", in_reply_to=root.id)
+    assert actions.reply("pull_request_review_comment", review_event(second), github).done == (
+        "recorded"
+    )
+    # The first reply's run read the thread before the second landed.
+    listed = github.review_comments
+    github.review_comments = lambda number: [c for c in stale if c.kind == "review"]
+    late = actions.reply("pull_request_review_comment", review_event(first), github)
+    github.review_comments = listed
+    assert late.done == "skipped" and github.commits == [] and github.manifest == MANIFEST
+    assert comments.decode(github.body(root.id)).decision.answer is Answer.YES
+
+
+def test_a_run_records_an_answer_whose_own_run_was_cancelled():
+    github = FakeGitHub(patches={"paper.md": PATCH, "other.md": PATCH}, writers={"alice"})
+    one = posted(github)
+    two = posted(github, key="e" * 64, digest="e" * 16)
+    lost = github.human("review", "2 wrong file", "alice", in_reply_to=one.id)
+    trigger = github.human("review", "1", "alice", in_reply_to=two.id)
+    done = actions.reply("pull_request_review_comment", review_event(trigger), github)
+    assert done.done == "recorded" and len(done.others) == 1
+    assert comments.decode(github.body(one.id)).decision.reply == lost.id
+
+
+def test_post_keeps_an_answer_recorded_after_it_listed_the_comments():
+    github = FakeGitHub(patches={"paper.md": PATCH}, writers={"alice"})
+    root = posted(github)
+    stale = list(github.comments)
+    answer = github.human("review", "2 wrong file", "alice", in_reply_to=root.id)
+    listed = github.review_comments
+    github.review_comments = lambda number: [c for c in stale if c.kind == "review"]
+    actions.reply("pull_request_review_comment", review_event(answer), github)
+    post(github, findings(finding(digest="1" * 16, stored="0.927")))
+    github.review_comments = listed
+    held = comments.decode(github.body(root.id))
+    assert held.decision is not None and held.decision.answer is Answer.NO
+    assert "(now `0.927`)" in github.body(root.id)
+
+
+def test_a_reply_to_a_deleted_comment_is_not_ours_and_does_not_fail():
+    github = FakeGitHub(patches={"paper.md": PATCH}, writers={"alice"})
+    root = posted(github)
+    github.comments.remove(root)
+    answer = github.human("review", "2", "alice", in_reply_to=root.id)
+    assert actions.reply("pull_request_review_comment", review_event(answer), github).done == (
+        "not ours"
+    )
+    assert post(github, findings(finding())).created == (KEY,)
+
+
+def test_a_passage_already_set_aside_by_hand_is_said_and_the_comment_closed():
+    github = FakeGitHub(patches={"paper.md": PATCH}, manifest=MANIFEST, writers={"alice"})
+    root = posted(github, text="took 12 minutes")
+    answer = github.human("review", "3", "alice", in_reply_to=root.id)
+    done = actions.reply("pull_request_review_comment", review_event(answer), github)
+    assert "the passage is already set aside in repro.yaml" in done.said
+    assert github.commits == [] and comments.decode(github.body(root.id)).state == "set-aside"
+
+
+def test_a_comment_on_the_diff_has_its_thread_resolved_when_fixed_and_reopened_on_failure():
+    github = FakeGitHub(patches={"paper.md": PATCH})
+    root = posted(github)
+    post(github, findings())
+    post(github, findings(finding()))
+    assert github.resolved == [(root.id, True), (root.id, False)]
 
 
 # ----------------------------------------------------------------------- the set_aside edit
@@ -562,6 +744,38 @@ def test_an_entry_can_be_added_to_a_manifest_of_any_shape_and_removed_again(sour
     )
     if "\r\n" in source:
         assert "\n" not in result.replace("\r\n", "")
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "project: s\nset_aside:\n- artifact: p\n  text: t\n  reason: |\n    long\n    reason\nclaims: []\n",
+        "set_aside:\n- artifact: p\n  text: t\n  reason: >\n    r\n# keep me\nclaims: []\n",
+        "claims: []\nset_aside:\n- artifact: p\n  text: t\n  reason: r",
+        "\ufeffproject: s\nclaims: []\n",
+        "---\nproject: s\n",
+    ],
+)
+def test_an_entry_is_added_and_removed_again_to_the_same_bytes(source):
+    result = setaside.added(source, ENTRY)
+    assert load_entries(result.removeprefix("\ufeff"))[-1] == ENTRY
+    assert result.endswith("\n") == source.endswith("\n")
+    assert setaside.removed(result, "paper", "an accuracy of 0.931") == source
+
+
+def test_the_comment_after_an_empty_list_and_a_missing_final_line_break_are_kept():
+    result = setaside.added("set_aside: []  # none yet\nclaims: []", ENTRY)
+    assert result.startswith("set_aside:  # none yet\n- artifact: paper\n")
+    assert result.endswith("\nclaims: []")
+
+
+@pytest.mark.parametrize(
+    "source",
+    ["project: s\nclaims: []\n...\n", "a: 1\n---\nb: 2\n", "a: [\n", "set_aside: |\n  x\n"],
+)
+def test_a_manifest_the_entry_cannot_be_put_in_cleanly_is_refused_with_a_reason(source):
+    with pytest.raises(setaside.ManifestShapeError, match="nothing was changed"):
+        setaside.added(source, ENTRY)
 
 
 def test_an_entry_someone_wrote_by_hand_is_never_removed():
@@ -664,17 +878,17 @@ def test_init_writes_three_workflows_with_least_privilege_and_pinned_actions(rep
             step["uses"] for job in flow["jobs"].values() for step in job["steps"] if "uses" in step
         ]
         assert all(re.fullmatch(r"[\w./-]+@[0-9a-f]{40}", used) for used in uses)
-        assert f"reproducible-science=={repro.__version__} repro bot" in text
+        assert f"uvx --no-config --from reproducible-science=={repro.__version__} repro bot" in text
         # Nothing is granted to the workflow; each job names what it needs.
         assert flow["permissions"] == {}
 
     _, check_flow = flows["repro-bot-check.yml"]
     # PyYAML reads the key `on` as a boolean.
-    assert check_flow[True] == {"pull_request": None}
+    assert set(check_flow[True]) == {"pull_request", "workflow_dispatch"}
     (job,) = check_flow["jobs"].values()
     assert job["permissions"] == {"contents": "read"}
     assert job["steps"][0]["with"] == {
-        "ref": "${{ github.event.pull_request.head.sha }}",
+        "ref": "${{ github.event.pull_request.head.sha || github.sha }}",
         "persist-credentials": False,
     }
 
@@ -682,6 +896,9 @@ def test_init_writes_three_workflows_with_least_privilege_and_pinned_actions(rep
     assert post_flow[True] == {
         "workflow_run": {"workflows": [check_flow["name"]], "types": ["completed"]}
     }
+    assert post_flow["concurrency"]["cancel-in-progress"] is False
+    (run,) = [step["run"] for step in post_flow["jobs"]["post"]["steps"] if "run" in step]
+    assert "--manifest repro.yaml" in run and '--head-repository "$HEAD_REPOSITORY"' in run
     assert post_flow["jobs"]["post"]["permissions"] == {
         "actions": "read",
         "issues": "write",
@@ -693,7 +910,12 @@ def test_init_writes_three_workflows_with_least_privilege_and_pinned_actions(rep
         "issue_comment": {"types": ["created"]},
         "pull_request_review_comment": {"types": ["created"]},
     }
+    assert reply_flow["concurrency"]["cancel-in-progress"] is False
+    assert "issue.number" in reply_flow["concurrency"]["group"]
+    (run,) = [step["run"] for step in reply_flow["jobs"]["reply"]["steps"] if "run" in step]
+    assert run.endswith("--manifest repro.yaml --dispatch repro-bot-check.yml")
     assert reply_flow["jobs"]["reply"]["permissions"] == {
+        "actions": "write",
         "contents": "write",
         "issues": "write",
         "pull-requests": "write",
@@ -706,6 +928,15 @@ def test_init_writes_three_workflows_with_least_privilege_and_pinned_actions(rep
             for step in steps
             if "setup-uv" in step.get("uses", "")
         )
+
+
+def test_init_has_the_reply_start_again_each_check_repro_ci_init_wrote(repository):
+    assert main(["ci", "init"]) == 0
+    (repository / ".github" / "workflows" / "theirs.yml").write_text("on: [workflow_dispatch]\n")
+    assert main(["bot", "init"]) == 0
+    assert workflows.dispatchable(repository) == ["claims.yml"]
+    text = (repository / ".github" / "workflows" / "repro-bot-reply.yml").read_text()
+    assert "--dispatch repro-bot-check.yml --dispatch claims.yml" in text
 
 
 def test_init_never_replaces_a_workflow_it_did_not_write_even_when_forced(repository, capsys):
@@ -735,3 +966,21 @@ def test_init_with_no_manifest_writes_nothing(tmp_path, monkeypatch, capsys):
     assert main(["bot", "init"]) == 2
     assert "repro manifest init" in capsys.readouterr().out
     assert not (tmp_path / ".github").exists()
+
+
+def test_resolving_a_thread_finds_it_by_its_first_comment_and_sends_one_mutation():
+    sent = []
+
+    class Recorded(Client):
+        def request(self, method, path, body=None):
+            sent.append((method, path, body))
+            if "mutation" in body["query"]:
+                return {"data": {}}, {}
+            thread = {"id": "T1", "isResolved": False, "comments": {"nodes": [{"databaseId": 5}]}}
+            page = {"pageInfo": {"hasNextPage": False, "endCursor": None}, "nodes": [thread]}
+            return {"data": {"repository": {"pullRequest": {"reviewThreads": page}}}}, {}
+
+    assert Recorded(REPO, "token").resolve_thread(7, 5, True)
+    assert [path for _, path, _ in sent] == ["https://api.github.com/graphql"] * 2
+    assert "resolveReviewThread" in sent[1][2]["query"] and sent[1][2]["variables"] == {"id": "T1"}
+    assert not Recorded(REPO, "token").resolve_thread(7, 6, True)

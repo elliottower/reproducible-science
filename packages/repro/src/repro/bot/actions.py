@@ -1,17 +1,24 @@
-"""What the two writing workflows do: post the findings, and record a reply.
+"""What the two writing workflows do: post the findings, and record the answers.
 
 `post` runs in the workflow `workflow_run` starts after the check, with the findings the check
-uploaded. It trusts nothing in them to say which pull request they are about: the number they
-give is looked up, and the pull request's head commit must be the commit the check ran on.
+uploaded. It trusts nothing in them to say which pull request they are about: the pull request
+they name must be at the commit the check ran on, from the repository and branch the run was
+of, and they must be about the manifest the workflow names.
 
 `reply` runs on `issue_comment` and `pull_request_review_comment`. It reads the event and the
-API, and never the pull request's files except `repro.yaml`, which it reads as data and edits as
-text. Neither checks out or executes anything from the pull request.
+API, and of the pull request's files only the manifest the workflow names, which it reads as
+data and edits as text. Neither checks out or executes anything from the pull request.
+
+Two runs can overlap, and GitHub cancels a run that waits behind another of its concurrency
+group. So `reply` records every answer that holds on the pull request and is not yet in its
+comment, not only the one that started it, and nothing is ever replaced by an older answer:
+a run cancelled, or one that read a thread before a later reply landed, loses nothing.
 """
 
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict
@@ -20,9 +27,12 @@ from repro.bot import setaside
 from repro.bot.comments import (
     NOT_ALLOWED,
     NOT_AN_ANSWER,
+    SET_ASIDE,
     Answer,
     Decision,
     Marker,
+    asks,
+    clean,
     decode,
     headline,
     option,
@@ -34,8 +44,10 @@ from repro.bot.findings import Finding, Findings, manifest_path
 from repro.bot.github import WRITERS, Client, Comment, GitHubError, Pull
 from repro.exceptions import ReproError
 
-#: Attempts at committing `repro.yaml` when the branch moves between reading and writing it.
+#: Attempts at committing the manifest when the branch moves between reading and writing it.
 ATTEMPTS = 3
+#: The workflow `repro bot init` writes for the check, which `reply` starts again after a commit.
+CHECK_WORKFLOW = "repro-bot-check.yml"
 _HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
 
 
@@ -56,6 +68,8 @@ class Posted(BaseModel):
     unchanged: tuple[str, ...] = ()
     fork: bool = False
     problem: str = ""
+    notes: tuple[str, ...] = ()
+    """What could not be done and did not stop the run, such as resolving a thread."""
 
 
 class Replied(BaseModel):
@@ -66,6 +80,8 @@ class Replied(BaseModel):
     done: Literal["skipped", "not ours", "not an answer", "not allowed", "recorded"]
     said: str = ""
     committed: str = ""
+    others: tuple[str, ...] = ()
+    """What was recorded in other threads of the pull request on the way."""
 
 
 # -------------------------------------------------------------------------------------- diff
@@ -88,14 +104,16 @@ def lines(patch: str) -> set[int]:
 # ------------------------------------------------------------------------------ the comments
 
 
-def ours(comments: list[Comment]) -> dict[str, tuple[Comment, Marker]]:
+def ours(comments: list[Comment], manifest: str | None = None) -> dict[str, tuple[Comment, Marker]]:
     """The comments the bot opened, by the key of the assertion each is on. A reply in a
-    thread is not one: it carries no marker. The first comment holding a key is the one."""
+    thread is not one: it carries no marker. The first comment holding a key is the one. With
+    `manifest`, a comment whose marker names any other file is not one either."""
     found: dict[str, tuple[Comment, Marker]] = {}
     for comment in comments:
         if not comment.by_bot or comment.in_reply_to is not None:
             continue
-        if (marker := decode(comment.body)) is not None:
+        marker = decode(comment.body)
+        if marker is not None and (manifest is None or marker.manifest == manifest):
             found.setdefault(marker.key, (comment, marker))
     return found
 
@@ -107,11 +125,12 @@ def _marker(
     manifest: str,
     before: Marker | None,
 ) -> Marker:
-    # An answer is about what was found. Where the finding changed, it no longer holds.
-    kept = before.decision if before is not None and before.digest == made.digest else None
+    # A passage that had to be cleaned to be echoed would not match the manuscript, so it is
+    # not offered for `set_aside`.
+    passage = made.text if clean(made.text) == made.text else ""
     return Marker(
-        claim=made.claim,
-        assertion=made.assertion,
+        claim=clean(made.claim),
+        assertion=clean(made.assertion),
         key=made.key,
         digest=made.digest,
         headline=headline(
@@ -121,36 +140,77 @@ def _marker(
         placed=placed,
         fork=fork,
         manifest=manifest,
-        artifact=made.artifact,
-        text=made.text,
-        decision=kept,
+        artifact=made.artifact if passage else "",
+        text=passage,
+        # An answer recorded is kept until someone answers again.
+        decision=before.decision if before is not None else None,
     )
 
 
-def post(findings: Findings, client: Client, head_sha: str) -> Posted:
+def _resolve(
+    client: Client, number: int, comment: Comment, resolved: bool, notes: list[str]
+) -> None:
+    if comment.kind != "review":
+        return
+    try:
+        client.resolve_thread(number, comment.id, resolved)
+    except GitHubError as refused:
+        notes.append(
+            f"comment {comment.id}: the thread was not {'re' if resolved else 'un'}"
+            f"solved: {refused}"
+        )
+
+
+def post(
+    findings: Findings,
+    client: Client,
+    head_sha: str,
+    head_repository: str,
+    head_branch: str,
+    manifest: str = "repro.yaml",
+) -> Posted:
     """Comment on each finding, once: a comment already open on the same assertion is edited
-    where what it says has changed, and one on an assertion that now passes is marked fixed."""
+    where what it says has changed, and one on an assertion that now passes is marked fixed.
+
+    `head_sha`, `head_repository` and `head_branch` are the run's, as `workflow_run` gives
+    them, and `manifest` the file the workflow names.
+    """
     if findings.head_sha != head_sha:
         raise NotThisRunError(
             f"the findings are of {findings.head_sha[:7]}, and the run checked {head_sha[:7]}"
         )
+    if findings.manifest != manifest:
+        raise NotThisRunError(f"the findings are about {findings.manifest}, not {manifest}")
     pull = client.pull(findings.pull_request)
     if pull.head_sha != head_sha:
         raise NotThisRunError(
             f"pull request #{pull.number} is at {pull.head_sha[:7]}, not {head_sha[:7]}"
         )
+    if (pull.head_repository, pull.head_ref) != (head_repository, head_branch):
+        raise NotThisRunError(
+            f"pull request #{pull.number} is from {pull.head_repository}:{pull.head_ref}, and "
+            f"the run checked {head_repository}:{head_branch}"
+        )
     if findings.problem:
         return Posted(problem=findings.problem)
     fork = pull.head_repository != client.repository
     number = pull.number
-    held = ours(client.review_comments(number) + client.issue_comments(number))
+    held = ours(client.review_comments(number) + client.issue_comments(number), manifest)
     placeable = (
         {path: lines(patch) for path, patch in client.patches(number).items()} if not fork else {}
     )
 
-    created, edited, unchanged = [], [], []
+    created, edited, unchanged, notes = [], [], [], []
+
+    def latest_of(key: str) -> tuple[Comment | None, Marker | None]:
+        """The comment as it is now, read again: an answer may have landed since the list."""
+        comment, _ = held.pop(key, (None, None))
+        now = client.fresh(comment) if comment is not None else None
+        marker = decode(now.body) if now is not None and now.by_bot else None
+        return (now, marker) if marker is not None and marker.key == key else (None, None)
+
     for made in findings.findings:
-        comment, before = held.pop(made.key, (None, None))
+        comment, before = latest_of(made.key)
         placed: Literal["review", "issue"]
         if before is not None:
             placed = before.placed
@@ -158,8 +218,7 @@ def post(findings: Findings, client: Client, head_sha: str) -> Posted:
             placed = "review"
         else:
             placed = "issue"
-        marker = _marker(made, placed, fork, findings.manifest, before)
-        body = render(marker)
+        body = render(_marker(made, placed, fork, manifest, before))
         if comment is None:
             if placed == "review":
                 client.comment_on_line(number, body, head_sha, made.path or "", made.line or 1)
@@ -169,10 +228,15 @@ def post(findings: Findings, client: Client, head_sha: str) -> Posted:
         elif comment.body != body:
             client.edit(comment, body)
             edited.append(made.key)
+            if before is not None and before.state != "open":
+                _resolve(client, number, comment, False, notes)
         else:
             unchanged.append(made.key)
 
-    for key, (comment, before) in held.items():
+    for key in list(held):
+        comment, before = latest_of(key)
+        if comment is None or before is None:
+            continue
         if key in findings.set_aside:
             update: dict[str, Any] = {"state": "set-aside"}
         elif key in findings.checked:
@@ -185,61 +249,72 @@ def post(findings: Findings, client: Client, head_sha: str) -> Posted:
         if comment.body != body:
             client.edit(comment, body)
             edited.append(key)
+            if before.state == "open":
+                _resolve(client, number, comment, True, notes)
         else:
             unchanged.append(key)
     return Posted(
-        created=tuple(created), edited=tuple(edited), unchanged=tuple(unchanged), fork=fork
+        created=tuple(created),
+        edited=tuple(edited),
+        unchanged=tuple(unchanged),
+        fork=fork,
+        notes=tuple(notes),
     )
 
 
-# --------------------------------------------------------------------------------- a reply
+# ------------------------------------------------------------------------------- the answers
 
 
-def _thread(
-    event_name: str, event: dict, client: Client
-) -> tuple[int, Comment, Marker, list[Comment]] | None:
-    """The pull request, the bot's comment a reply answers, its marker, and every reply in its
-    thread oldest first; None where the reply is in no thread of the bot's."""
-    reply = Comment.read(
-        "review" if event_name == "pull_request_review_comment" else "issue", event["comment"]
-    )
-    if event_name == "pull_request_review_comment":
-        number = event["pull_request"]["number"]
-        if reply.in_reply_to is None:
-            return None
-        root = client.review_comment(reply.in_reply_to)
-        marker = decode(root.body) if root.by_bot and root.in_reply_to is None else None
-        if marker is None:
-            return None
-        thread = [c for c in client.review_comments(number) if c.in_reply_to == root.id]
-    elif event_name == "issue_comment":
-        if not event.get("issue", {}).get("pull_request"):
-            return None
-        number = event["issue"]["number"]
-        everything = client.issue_comments(number)
-        found = [
-            (comment, marker)
-            for comment, marker in ours(everything).values()
-            if marker.placed == "issue" and refers_to(reply.body, marker.ref)
-        ]
-        if len(found) != 1:
-            # None, or a reply quoting two of the bot's comments, which answers neither.
-            return None
-        root, marker = found[0]
-        thread = [c for c in everything if not c.by_bot and refers_to(c.body, marker.ref)]
-    else:
-        return None
-    if all(c.id != reply.id for c in thread):
-        thread.append(reply)
-    thread.sort(key=lambda c: (c.created_at, c.id))
-    return number, root, marker, thread
+class _Thread(BaseModel):
+    """One of the bot's comments and the replies in its thread, oldest first."""
+
+    model_config = ConfigDict(frozen=True)
+
+    root: Comment
+    marker: Marker
+    replies: tuple[Comment, ...]
 
 
-def latest(thread: list[Comment], ref: str, client: Client) -> tuple[Comment, Answer, str] | None:
-    """The latest reply in a thread that gives an answer and is from someone with write
-    access: the one that holds."""
-    allowed: dict[str, bool] = {}
-    for comment in reversed(thread):
+def _threads(
+    number: int, client: Client, manifest: str, extra: Comment | None = None
+) -> list[_Thread]:
+    """Every thread the bot opened on the pull request, read now. `extra` is the reply that
+    started the run, counted where the list does not show it yet."""
+    review = client.review_comments(number)
+    issue = client.issue_comments(number)
+    if extra is not None:
+        pool = review if extra.kind == "review" else issue
+        if all(c.id != extra.id for c in pool):
+            pool.append(extra)
+    found = []
+    for root, marker in ours(review + issue, manifest).values():
+        if root.kind == "review":
+            replies = [c for c in review if c.in_reply_to == root.id]
+        else:
+            replies = [c for c in issue if not c.by_bot and refers_to(c.body, marker.ref)]
+        replies.sort(key=lambda c: (c.created_at, c.id))
+        found.append(_Thread(root=root, marker=marker, replies=tuple(replies)))
+    return found
+
+
+def _thread_of(reply: Comment, threads: list[_Thread]) -> _Thread | None:
+    """The thread a reply is in, or None where it is in none of the bot's, or quotes two."""
+    if reply.kind == "review":
+        return next((t for t in threads if t.root.id == reply.in_reply_to), None)
+    found = [t for t in threads if t.root.kind == "issue" and refers_to(reply.body, t.marker.ref)]
+    return found[0] if len(found) == 1 else None
+
+
+def latest(
+    replies: tuple[Comment, ...] | list[Comment],
+    ref: str,
+    client: Client,
+    allowed: dict[str, bool] | None = None,
+) -> tuple[Comment, Answer, str] | None:
+    """The latest reply that gives an answer and is from someone with write access: the one
+    that holds."""
+    allowed = {} if allowed is None else allowed
+    for comment in reversed(list(replies)):
         if comment.bot or (given := parse(comment.body, ref)) is None:
             continue
         if comment.login not in allowed:
@@ -249,14 +324,22 @@ def latest(thread: list[Comment], ref: str, client: Client) -> tuple[Comment, An
     return None
 
 
-def _commit(client: Client, pull: Pull, path: str, change, message: str) -> str:
+def _newer(reply: Comment, marker: Marker) -> bool:
+    """Whether a reply is later than the answer the comment records. An answer is never
+    replaced by an older one."""
+    held = marker.decision
+    return held is None or (reply.created_at, reply.id) > (held.at, held.reply)
+
+
+def _commit(
+    client: Client, pull: Pull, path: str, change: Callable[[str], str | None], message: str
+) -> str:
     """Read `path` on the pull request's branch, apply `change` to its text, and commit what
     it returns; the commit's sha, or "" where `change` returns None. A branch that moved
     between the read and the write is read again."""
     for attempt in range(ATTEMPTS):
         content, blob = client.file(path, pull.head_ref)
-        source = content.decode("utf-8")
-        changed = change(source)
+        changed = change(content.decode("utf-8"))
         if changed is None:
             return ""
         try:
@@ -267,50 +350,50 @@ def _commit(client: Client, pull: Pull, path: str, change, message: str) -> str:
     return ""
 
 
-def reply(event_name: str, event: dict, client: Client) -> Replied:
-    """Read one reply and record the answer that holds in its thread."""
-    comment = event.get("comment") or {}
-    if (comment.get("user") or {}).get("type") == "Bot":
-        return Replied(done="skipped")
-    found = _thread(event_name, event, client)
-    if found is None:
-        return Replied(done="not ours")
-    number, root, marker, thread = found
-    reply_id = comment["id"]
+def _record(
+    number: int,
+    thread: _Thread,
+    by: Comment,
+    chosen: Answer,
+    reason: str,
+    client: Client,
+    pull: Pull,
+    manifest: str,
+    dispatch: tuple[str, ...],
+    trigger: Comment,
+) -> tuple[str, str] | None:
+    """Record one answer: the manifest, then the comment, then a line in the thread. None
+    where, read again, the comment already holds this answer or a later one."""
+    root = client.fresh(thread.root)
+    marker = decode(root.body) if root is not None and root.by_bot else None
+    if root is None or marker is None or not _newer(by, marker):
+        return None
+    # Read the thread again right before writing: a later reply that landed since is the one
+    # to record, and its own run records it.
+    again = next(
+        (t for t in _threads(number, client, manifest, trigger) if t.root.id == root.id), None
+    )
+    holding = latest(again.replies, marker.ref, client) if again is not None else None
+    if holding is None or holding[0].id != by.id:
+        return None
 
-    def answer(text: str) -> None:
-        if root.kind == "review":
-            client.reply_on_line(number, root.id, text)
-        else:
-            client.comment(number, f"`{marker.ref}` {text}")
-
-    given = parse(comment.get("body") or "", marker.ref)
-    if given is None:
-        answer(NOT_AN_ANSWER)
-        return Replied(done="not an answer", said=NOT_AN_ANSWER)
-    login = (comment.get("user") or {}).get("login", "")
-    if client.permission(login) not in WRITERS:
-        answer(NOT_ALLOWED)
-        return Replied(done="not allowed", said=NOT_ALLOWED)
-    holding = latest(thread, marker.ref, client)
-    if holding is None or holding[0].id != reply_id:
-        # A later reply was already recorded, or this one is not in the thread as read.
-        return Replied(done="skipped")
-    by, chosen, reason = holding
-
-    pull = client.pull(number)
     fork = pull.head_repository != client.repository
-    committed, note = "", ""
+    passage = bool(marker.artifact and marker.text)
+    committed, note, state = "", "", marker.state
     if chosen.sets_aside and fork:
         note = "; this pull request comes from a fork, so nothing was committed"
-    elif chosen.sets_aside and not (marker.artifact and marker.text):
+    elif chosen.sets_aside and not passage:
         note = (
-            f"; {marker.manifest} names no passage of the manuscript for this claim, so no "
+            f"; {manifest} names no passage of the manuscript for this claim, so no "
             "set_aside entry was written"
         )
-    elif marker.artifact and marker.text and not fork:
-        path = manifest_path(marker.manifest)
-        if chosen.sets_aside:
+    elif passage and not fork:
+        content, _ = client.file(manifest, pull.head_ref)
+        source = content.decode("utf-8")
+        if chosen.sets_aside and setaside.holds(source, marker.artifact, marker.text):
+            note = f"; the passage is already set aside in {manifest}"
+            state = "set-aside"
+        elif chosen.sets_aside:
             made = setaside.entry(
                 marker.artifact,
                 marker.text,
@@ -323,26 +406,31 @@ def reply(event_name: str, event: dict, client: Client) -> Replied:
             committed = _commit(
                 client,
                 pull,
-                path,
-                lambda source: (
+                manifest,
+                lambda text: (
                     None
-                    if setaside.holds(source, marker.artifact, marker.text)
-                    else setaside.added(source, made)
+                    if setaside.holds(text, marker.artifact, marker.text)
+                    else setaside.added(text, made)
                 ),
-                f"{path}: set aside claim {marker.claim} ({chosen.recorded} by @{by.login} "
-                f"on #{number})",
+                f"{manifest}: set aside claim {marker.claim} ({chosen.recorded} by "
+                f"@{by.login} on #{number})",
             )
             note = f"; set_aside entry committed in {committed[:7]}" if committed else ""
+            state = "set-aside" if committed else state
         else:
             committed = _commit(
                 client,
                 pull,
-                path,
-                lambda source: setaside.removed(source, marker.artifact, marker.text),
-                f"{path}: claim {marker.claim} is no longer set aside "
+                manifest,
+                lambda text: setaside.removed(text, marker.artifact, marker.text),
+                f"{manifest}: claim {marker.claim} is no longer set aside "
                 f"({chosen.recorded} by @{by.login} on #{number})",
             )
             note = f"; the set_aside entry was removed in {committed[:7]}" if committed else ""
+    if committed:
+        note += _dispatched(client, pull, number, dispatch)
+    if not chosen.sets_aside and state == "set-aside":
+        state = "open"
 
     decision = Decision(
         answer=chosen,
@@ -352,20 +440,104 @@ def reply(event_name: str, event: dict, client: Client) -> Replied:
         reply=by.id,
         committed=committed if chosen.sets_aside else "",
     )
-    state = marker.state
-    if chosen.sets_aside and committed:
-        state = "set-aside"
-    elif not chosen.sets_aside and state == "set-aside":
-        state = "open"
     updated = marker.model_copy(update={"decision": decision, "state": state})
     if render(updated) != root.body:
         client.edit(root, render(updated))
     said = f"recorded: {chosen.recorded} by @{by.login}{note}"
-    answer(said)
-    return Replied(done="recorded", said=said, committed=committed)
+    if chosen.sets_aside and state == "set-aside":
+        said += f". {SET_ASIDE}"
+    _say(client, number, root, marker, said)
+    return said, committed
+
+
+def _dispatched(client: Client, pull: Pull, number: int, dispatch: tuple[str, ...]) -> str:
+    """Start each workflow named again on the branch: a commit made with the workflow's token
+    starts none, and a required check left unrun would hold the merge."""
+    failed = []
+    for workflow in dispatch:
+        inputs = {"pull_request": str(number)} if workflow == CHECK_WORKFLOW else {}
+        try:
+            client.dispatch(workflow, pull.head_ref, inputs)
+        except GitHubError:
+            failed.append(workflow)
+    return f"; could not start {', '.join(failed)} again" if failed else ""
+
+
+def _say(client: Client, number: int, root: Comment, marker: Marker, text: str) -> None:
+    if root.kind == "review":
+        client.reply_on_line(number, root.id, text)
+    else:
+        client.comment(number, f"`{marker.ref}` {text}")
+
+
+def reply(
+    event_name: str,
+    event: dict,
+    client: Client,
+    manifest: str = "repro.yaml",
+    dispatch: tuple[str, ...] = (),
+) -> Replied:
+    """Read one reply, and record every answer on the pull request that is not yet in its
+    comment. `manifest` is the file the workflow names, the only one ever committed to, and
+    `dispatch` the workflows started again after a commit."""
+    manifest = manifest_path(manifest)
+    payload = event.get("comment") or {}
+    if (payload.get("user") or {}).get("type") == "Bot":
+        return Replied(done="skipped")
+    kind: Literal["review", "issue"]
+    if event_name == "pull_request_review_comment" and event.get("pull_request"):
+        kind, number = "review", int(event["pull_request"]["number"])
+    elif event_name == "issue_comment" and (event.get("issue") or {}).get("pull_request"):
+        kind, number = "issue", int(event["issue"]["number"])
+    else:
+        return Replied(done="skipped")
+    trigger = Comment.read(kind, payload)
+    threads = _threads(number, client, manifest, trigger)
+    thread = _thread_of(trigger, threads)
+    if thread is None:
+        return Replied(done="not ours")
+
+    allowed: dict[str, bool] = {}
+
+    def writer(login: str) -> bool:
+        if login not in allowed:
+            allowed[login] = client.permission(login) in WRITERS
+        return allowed[login]
+
+    given = parse(trigger.body, thread.marker.ref)
+    if given is None:
+        # Only a reply that looks meant as an answer, from someone who could give one, is told
+        # how to answer; discussion in the thread is left alone.
+        if asks(trigger.body, thread.marker.ref) and writer(trigger.login):
+            _say(client, number, thread.root, thread.marker, NOT_AN_ANSWER)
+            return Replied(done="not an answer", said=NOT_AN_ANSWER)
+        return Replied(done="skipped")
+    if not writer(trigger.login):
+        _say(client, number, thread.root, thread.marker, NOT_ALLOWED)
+        return Replied(done="not allowed", said=NOT_ALLOWED)
+
+    pull = client.pull(number)
+    mine: tuple[str, str] | None = None
+    others = []
+    for each in threads:
+        holding = latest(each.replies, each.marker.ref, client, allowed)
+        if holding is None or not _newer(holding[0], each.marker):
+            continue
+        by, chosen, reason = holding
+        done = _record(number, each, by, chosen, reason, client, pull, manifest, dispatch, trigger)
+        if done is None:
+            continue
+        if each.root.id == thread.root.id and by.id == trigger.id:
+            mine = done
+        else:
+            others.append(done[0])
+    if mine is None:
+        return Replied(done="skipped", others=tuple(others))
+    return Replied(done="recorded", said=mine[0], committed=mine[1], others=tuple(others))
 
 
 __all__ = [
+    "CHECK_WORKFLOW",
     "NotThisRunError",
     "Posted",
     "Replied",

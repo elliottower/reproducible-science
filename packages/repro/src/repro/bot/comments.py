@@ -24,10 +24,19 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 #: Opens the hidden marker. The version is in the name, so a later layout is a new name.
 MARKER_OPEN = "<!-- repro-bot:v1 "
 MARKER_CLOSE = " -->"
-_MARKER = re.compile(r"<!-- repro-bot:v1 ([A-Za-z0-9+/=]+) -->")
+#: The marker as the last line of a body. Only that one is read: a marker anywhere else is text
+#: someone put there.
+_MARKER = re.compile(r"(?:\A|\n)<!-- repro-bot:v1 ([A-Za-z0-9+/=]+) -->\r?\n?\Z")
+#: Characters that open or close an HTML comment, which no echoed text may carry.
+_COMMENT_SYNTAX = re.compile(r"<!--|-->|--!>")
+_CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
 
 #: Characters of a value shown in a comment.
 MAX_SHOWN = 200
+#: Characters of a reason kept from a reply.
+MAX_REASON = 500
+#: GitHub refuses a comment body over 65,536 characters. A body is kept well under it.
+MAX_BODY = 60_000
 
 
 class Answer(enum.IntEnum):
@@ -120,12 +129,12 @@ def encode(marker: Marker) -> str:
 
 
 def decode(body: str) -> Marker | None:
-    """The marker a comment carries, or None where it carries none that reads."""
-    found = _MARKER.findall(body or "")
-    if len(found) != 1:
+    """The marker on the last line of a comment, or None where there is none that reads."""
+    found = _MARKER.search(body or "")
+    if found is None:
         return None
     try:
-        return Marker.model_validate_json(base64.b64decode(found[0], validate=True))
+        return Marker.model_validate_json(base64.b64decode(found[1], validate=True))
     except (binascii.Error, ValueError, ValidationError):
         return None
 
@@ -133,10 +142,19 @@ def decode(body: str) -> Marker | None:
 # -------------------------------------------------------------------------------- rendering
 
 
+def clean(text: str) -> str:
+    """Text read from a pull request, safe to echo: no control characters, and nothing that
+    opens or closes an HTML comment, so no echoed text can carry a marker."""
+    text = _CONTROL.sub(" ", text)
+    while _COMMENT_SYNTAX.search(text):
+        text = _COMMENT_SYNTAX.sub(lambda found: found[0].replace("-", "\u2010"), text)
+    return text
+
+
 def _code(text: object) -> str:
     """A value as inline code on one line: GitHub renders nothing inside it, so a value read
     from the pull request cannot mention anyone or open a comment."""
-    flat = " ".join(str(text).split())
+    flat = " ".join(clean(str(text)).split())
     shown = flat if len(flat) <= MAX_SHOWN else f"{flat[:MAX_SHOWN]}..."
     ticks = "`" * (max((len(run) for run in re.findall(r"`+", shown)), default=0) + 1)
     pad = " " if shown.startswith("`") or shown.endswith("`") or ticks != "`" else ""
@@ -146,7 +164,7 @@ def _code(text: object) -> str:
 def _plain(text: str) -> str:
     """A label as text that renders as itself: Markdown and HTML characters escaped, and an @
     that mentions nobody."""
-    flat = " ".join(text.split())[:MAX_SHOWN]
+    flat = " ".join(clean(text).split())[:MAX_SHOWN]
     escaped = re.sub(r"([\\`*_{}\[\]()#+!|<>~])", r"\\\1", flat)
     return escaped.replace("@", "@​")
 
@@ -209,9 +227,14 @@ def _decision_said(marker: Marker) -> str:
         if decision.committed
         else " No `set_aside` entry was committed."
     )
-    return f"Recorded: {said} by {by}{reason}.{where}"
+    return f"Recorded: {said} by {by}{reason}.{where}" + (
+        f" {SET_ASIDE}" if decision.committed else ""
+    )
 
 
+SET_ASIDE = (
+    "Set aside in `repro.yaml` for `repro numbers`; `repro verify` still reports this claim."
+)
 FORK = (
     "This pull request comes from a fork, so the bot only comments here: it commits nothing "
     "to the fork's branch. An answer of 3 or 4 is recorded in this comment, and the "
@@ -219,12 +242,39 @@ FORK = (
 )
 
 
+def _shrunk(marker: Marker, step: int) -> Marker:
+    """The marker with less of what was echoed from the pull request, step by step."""
+    if step == 1:
+        # The passage is what makes a body long; without it no entry can be written.
+        return marker.model_copy(update={"artifact": "", "text": ""})
+    cut = 1000 if step == 2 else 100
+    return marker.model_copy(
+        update={
+            "claim": marker.claim[:cut],
+            "assertion": marker.assertion[:cut],
+            "headline": marker.headline[: cut * 2],
+            "option": marker.option[: cut * 2],
+        }
+    )
+
+
 def render(marker: Marker) -> str:
-    """The comment's body, from its marker alone."""
+    """The comment's body, from its marker alone, under `MAX_BODY` characters: where it would
+    be longer, the echoed passage is dropped, then the echoed names are cut."""
+    body = _render(marker)
+    for step in (1, 2, 3):
+        if len(body) <= MAX_BODY:
+            break
+        marker = _shrunk(marker, step)
+        body = _render(marker)
+    return body
+
+
+def _render(marker: Marker) -> str:
     if marker.state != "open":
         closed = {
             "fixed": f"Fixed: the claim passes at {marker.fixed_at[:7] or 'the latest commit'}.",
-            "set-aside": "Set aside in `repro.yaml`.",
+            "set-aside": SET_ASIDE,
             "gone": "This assertion is no longer in `repro.yaml`.",
         }[marker.state]
         lines = [f"~~{marker.headline}~~", "", closed]
@@ -271,19 +321,39 @@ def _unquoted(body: str) -> str:
     return "\n".join(line for line in body.splitlines() if not line.lstrip().startswith(">"))
 
 
+_MENTION = re.compile(r"@repro(?:-bot)?\b[\s,:]*")
+
+
+def _own(body: str, ref: str) -> str:
+    """A reply's own text: without quoted lines, a leading `ref` or a leading `@repro`."""
+    text = _unquoted(body).strip()
+    if ref and text.startswith(ref):
+        text = text[len(ref) :].lstrip(" :,-")
+    if found := _MENTION.match(text):
+        text = text[found.end() :]
+    return text.strip()
+
+
+def asks(body: str, ref: str = "") -> bool:
+    """Whether a reply that gives no answer was meant as one: it is addressed to `@repro`, or
+    its own text starts with something number-like. Only such a reply is told to answer 1–4."""
+    text = _unquoted(body).strip()
+    if ref and text.startswith(ref):
+        text = text[len(ref) :].lstrip(" :,-")
+    return bool(_MENTION.match(text)) or bool(re.match(r"[#(]?[0-9]", text))
+
+
 def parse(body: str, ref: str = "") -> Reply | None:
     """The answer a reply gives, or None where it gives none.
 
     The reply's own text, after any quoted lines and a leading `ref`, starts with a number from
     1 to 4, alone or followed by a separator and the reason. `12`, `1.5` and `yes` give none.
     """
-    text = _unquoted(body).strip()
-    if ref and text.startswith(ref):
-        text = text[len(ref) :].lstrip(" :,-")
+    text = _own(body, ref)
     found = _ANSWER.fullmatch(text)
     if found is None:
         return None
-    reason = " ".join((found[2] or "").split())
+    reason = " ".join(clean(found[2] or "").split())[:MAX_REASON]
     return Reply(answer=Answer(int(found[1])), reason=reason)
 
 
@@ -299,10 +369,13 @@ __all__ = [
     "FORK",
     "NOT_ALLOWED",
     "NOT_AN_ANSWER",
+    "SET_ASIDE",
     "Answer",
     "Decision",
     "Marker",
     "Reply",
+    "asks",
+    "clean",
     "decode",
     "encode",
     "headline",

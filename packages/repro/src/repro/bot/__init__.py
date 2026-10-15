@@ -22,8 +22,8 @@ from provenance_core import atomic_write
 from provenance_core.gitref import try_run
 
 from repro.bot import actions, workflows
-from repro.bot.findings import Findings, check
-from repro.bot.github import API, Client
+from repro.bot.findings import Findings, check, manifest_path
+from repro.bot.github import API, GRAPHQL, Client
 from repro.exceptions import ReproError
 from repro.manifest import DEFAULT_NAME, find, load
 
@@ -53,6 +53,7 @@ def _client() -> Client:
         _env("GITHUB_REPOSITORY"),
         _env("GH_TOKEN"),
         os.environ.get("GITHUB_API_URL") or API,
+        os.environ.get("GITHUB_GRAPHQL_URL") or GRAPHQL,
     )
 
 
@@ -92,7 +93,14 @@ def command_post(args: argparse.Namespace) -> int:
     if path.stat().st_size > MAX_FINDINGS_BYTES:
         raise ReproError(f"{path} is over {MAX_FINDINGS_BYTES} bytes; nothing was posted.")
     found = Findings.model_validate_json(path.read_bytes())
-    done = actions.post(found, _client(), args.head_sha)
+    done = actions.post(
+        found,
+        _client(),
+        args.head_sha,
+        args.head_repository,
+        args.head_branch,
+        manifest=args.manifest,
+    )
     print(json.dumps(done.model_dump(mode="json"), indent=2))
     return 0
 
@@ -100,7 +108,9 @@ def command_post(args: argparse.Namespace) -> int:
 def command_reply(args: argparse.Namespace) -> int:
     name = args.event_name or _env("GITHUB_EVENT_NAME")
     event = json.loads(pathlib.Path(args.event or _env("GITHUB_EVENT_PATH")).read_text("utf-8"))
-    done = actions.reply(name, event, _client())
+    done = actions.reply(
+        name, event, _client(), manifest=args.manifest, dispatch=tuple(args.dispatch or ())
+    )
     print(json.dumps(done.model_dump(mode="json"), indent=2))
     return 0
 
@@ -165,6 +175,25 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     )
     p_post.add_argument("findings", help="the file `repro bot check` wrote")
     p_post.add_argument("--head-sha", required=True, metavar="SHA")
+    p_post.add_argument(
+        "--head-repository",
+        required=True,
+        metavar="OWNER/REPO",
+        help="the repository the checked run was of; the pull request must be from it",
+    )
+    p_post.add_argument(
+        "--head-branch",
+        required=True,
+        metavar="BRANCH",
+        help="the branch the checked run was of; the pull request must be from it",
+    )
+    p_post.add_argument(
+        "--manifest",
+        default=DEFAULT_NAME,
+        type=manifest_path,
+        help="the manifest's path from the top of the repository; findings about any other "
+        f"file are refused (default: {DEFAULT_NAME})",
+    )
     p_post.set_defaults(func=command_post)
 
     p_reply = actions_.add_parser(
@@ -179,6 +208,20 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     )
     p_reply.add_argument("--event", metavar="PATH", help="default: $GITHUB_EVENT_PATH")
     p_reply.add_argument("--event-name", metavar="NAME", help="default: $GITHUB_EVENT_NAME")
+    p_reply.add_argument(
+        "--manifest",
+        default=DEFAULT_NAME,
+        type=manifest_path,
+        help="the only file a `set_aside` entry is ever committed to, from the top of the "
+        f"repository (default: {DEFAULT_NAME})",
+    )
+    p_reply.add_argument(
+        "--dispatch",
+        action="append",
+        metavar="WORKFLOW",
+        help="a workflow file to start again on the branch after a commit, so its required "
+        "check runs on the new head; repeatable",
+    )
     p_reply.set_defaults(func=command_reply)
 
 

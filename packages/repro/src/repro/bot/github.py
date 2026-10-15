@@ -21,6 +21,7 @@ from pydantic import BaseModel, ConfigDict
 from repro.exceptions import ReproError
 
 API = "https://api.github.com"
+GRAPHQL = "https://api.github.com/graphql"
 #: The login the workflow token acts as, and the only author whose markers are believed.
 BOT = "github-actions[bot]"
 #: The permissions `GET /repos/{owner}/{repo}/collaborators/{username}/permission` names that
@@ -88,10 +89,11 @@ class Pull(BaseModel):
 class Client:
     """The REST API of one repository, with the workflow's token."""
 
-    def __init__(self, repository: str, token: str, api: str = API) -> None:
+    def __init__(self, repository: str, token: str, api: str = API, graphql: str = GRAPHQL) -> None:
         self.repository = repository
         self._token = token
         self._api = api.rstrip("/")
+        self._graphql = graphql
 
     # -- transport --------------------------------------------------------------------------
 
@@ -99,7 +101,8 @@ class Client:
         self, method: str, path: str, body: dict | None = None
     ) -> tuple[Any, dict[str, str]]:
         """One request, as JSON, and the response's headers."""
-        url = path if path.startswith(self._api) else f"{self._api}{path}"
+        # A full address is the next page GitHub's `Link` header names, or the GraphQL endpoint.
+        url = path if path.startswith("https://") else f"{self._api}{path}"
         sent = urllib.request.Request(
             url,
             method=method,
@@ -169,6 +172,22 @@ class Client:
         data, _ = self.request("GET", self._repo(f"/pulls/comments/{comment_id}"))
         return Comment.read("review", data)
 
+    def issue_comment(self, comment_id: int) -> Comment:
+        """`GET /repos/{owner}/{repo}/issues/comments/{comment_id}`."""
+        data, _ = self.request("GET", self._repo(f"/issues/comments/{comment_id}"))
+        return Comment.read("issue", data)
+
+    def fresh(self, comment: Comment) -> Comment | None:
+        """The comment as it is now, or None where it was deleted."""
+        try:
+            if comment.kind == "review":
+                return self.review_comment(comment.id)
+            return self.issue_comment(comment.id)
+        except GitHubError as refused:
+            if refused.status == 404:
+                return None
+            raise
+
     def issue_comments(self, number: int) -> list[Comment]:
         """`GET /repos/{owner}/{repo}/issues/{issue_number}/comments`."""
         return [
@@ -202,6 +221,50 @@ class Client:
         `PATCH /repos/{owner}/{repo}/issues/comments/{comment_id}`."""
         where = "pulls" if comment.kind == "review" else "issues"
         self.request("PATCH", self._repo(f"/{where}/comments/{comment.id}"), {"body": body})
+
+    def resolve_thread(self, number: int, comment_id: int, resolved: bool) -> bool:
+        """Resolve, or unresolve, the review thread a comment opens, through GraphQL's
+        `resolveReviewThread` and `unresolveReviewThread`. False where no thread holds it."""
+        owner, name = self.repository.split("/", 1)
+        after = None
+        while True:
+            data = self._graph(
+                "query($owner:String!,$name:String!,$number:Int!,$after:String){"
+                "repository(owner:$owner,name:$name){pullRequest(number:$number){"
+                "reviewThreads(first:100,after:$after){pageInfo{hasNextPage endCursor}"
+                "nodes{id isResolved comments(first:1){nodes{databaseId}}}}}}}",
+                {"owner": owner, "name": name, "number": number, "after": after},
+            )
+            threads = data["repository"]["pullRequest"]["reviewThreads"]
+            for thread in threads["nodes"]:
+                first = thread["comments"]["nodes"]
+                if first and first[0]["databaseId"] == comment_id:
+                    if thread["isResolved"] != resolved:
+                        verb = "resolveReviewThread" if resolved else "unresolveReviewThread"
+                        self._graph(
+                            f"mutation($id:ID!){{{verb}(input:{{threadId:$id}}){{thread{{id}}}}}}",
+                            {"id": thread["id"]},
+                        )
+                    return True
+            if not threads["pageInfo"]["hasNextPage"]:
+                return False
+            after = threads["pageInfo"]["endCursor"]
+
+    def _graph(self, query: str, variables: dict) -> dict:
+        data, _ = self.request("POST", self._graphql, {"query": query, "variables": variables})
+        if not isinstance(data, dict) or data.get("errors") or "data" not in data:
+            said = json.dumps((data or {}).get("errors", data))[:300]
+            raise GitHubError("POST", "graphql", 200, said)
+        return data["data"]
+
+    def dispatch(self, workflow: str, ref: str, inputs: dict[str, str]) -> None:
+        """`POST /repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches`: run a
+        workflow that has a `workflow_dispatch` trigger on the branch `ref`."""
+        self.request(
+            "POST",
+            self._repo(f"/actions/workflows/{urllib.parse.quote(workflow)}/dispatches"),
+            {"ref": ref, "inputs": inputs},
+        )
 
     # -- access and contents ----------------------------------------------------------------
 

@@ -38,3 +38,19 @@ def test_the_version_already_published_and_the_new_series_are_not(version):
 def test_the_tree_as_it_stands_passes():
     assert not [p for p in versions.check() if "provenance_core.chain" in p]
     assert (ROOT / "packages/provenance-core/src/provenance_core/chain.py").is_file()
+
+
+@pytest.mark.parametrize("version", ["0.6.2", "0.6.2rc1", "0.6.10"])
+def test_a_further_06_release_is_refused_because_older_claims_reject_reviewed(version, monkeypatch):
+    assert "reviewed" in versions.in_closed_series(version)
+    before = {name: path.read_text() for name, path in versions.PACKAGES.items()}
+    with pytest.raises(versions.VersionError, match=r"0\.7\.0"):
+        versions.bump(version)
+    assert {name: path.read_text() for name, path in versions.PACKAGES.items()} == before
+    monkeypatch.setattr(versions, "declared", lambda: dict.fromkeys(versions.PACKAGES, version))
+    assert any("reviewed" in problem for problem in versions.check())
+
+
+@pytest.mark.parametrize("version", ["0.5.6", "0.6.0rc1", "0.6.0", "0.6.1", "0.7.0rc1", "0.7.0"])
+def test_published_versions_and_the_next_series_are_not_in_a_closed_one(version):
+    assert versions.in_closed_series(version) is None

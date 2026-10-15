@@ -187,6 +187,30 @@ def below_floor(version: str) -> str | None:
     )
 
 
+#: Series closed after their last release, each with the version that closed it and the first
+#: version a later release may carry. `repro bot` writes `reviewed` on a `set_aside` entry, and
+#: `claims-cli` up to 0.6.1 rejects a manifest carrying it; a further 0.6 release would pin
+#: `claims-cli>=0.6,<0.7` and accept those. Every version already published stays valid.
+CLOSED_SERIES = (
+    (
+        "0.6.1",
+        "0.7.0",
+        "`repro bot` writes `reviewed` on a set_aside entry, which no claims-cli up to 0.6.1 reads",
+    ),
+)
+
+
+def in_closed_series(version: str) -> str | None:
+    """Why a release may not carry this version, a later one in a series that was closed, or
+    None where it may."""
+    for last, floor, why in CLOSED_SERIES:
+        if parts(last) < parts(version) and release(version) < release(floor):
+            return (
+                f"{version} is after {last} and below {floor}: {why}. The next release is {floor}"
+            )
+    return None
+
+
 def series(version: str) -> str:
     """The range a lockstep release pins its siblings to: `>=0.4,<0.5`.
 
@@ -315,6 +339,8 @@ def check() -> list[str]:
     want = series(version)
     if (refused := below_floor(version)) is not None:
         problems.append(refused)
+    if (closed := in_closed_series(version)) is not None:
+        problems.append(closed)
 
     for name, path in PACKAGES.items():
         text = path.read_text()
@@ -359,6 +385,8 @@ def bump(version: str, realign: bool = False) -> list[str]:
         raise VersionError(f"{version!r} is not a version this scheme writes (want 1.2.3)")
     if (refused := below_floor(version)) is not None:
         raise VersionError(refused)
+    if (closed := in_closed_series(version)) is not None:
+        raise VersionError(closed)
     # Aligning is not advancing. The first lockstep release sets every package to the highest
     # version already declared, so packages that are already there do not move; refusing an
     # equal version would make that first alignment impossible. What is refused is any package

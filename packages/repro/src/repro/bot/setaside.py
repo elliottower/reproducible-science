@@ -11,6 +11,7 @@ anything else is refused rather than written.
 from __future__ import annotations
 
 import datetime
+import re
 
 import yaml
 
@@ -18,6 +19,7 @@ from repro.exceptions import ReproError
 from repro.models import Review, SetAside
 
 KEY = "set_aside"
+BOM = "\ufeff"
 #: How the reason of an entry `repro bot` wrote begins, so it removes only its own.
 PREFIX = "pull request #"
 
@@ -47,11 +49,41 @@ def _loader() -> type:
     return getattr(yaml, "CSafeLoader", yaml.SafeLoader)
 
 
+def _compose(source: str) -> yaml.Node | None:
+    try:
+        return yaml.compose(source, Loader=_loader())
+    except yaml.YAMLError as failed:
+        raise ManifestShapeError(
+            f"the file does not parse as YAML ({getattr(failed, 'problem', None) or failed})"
+        ) from None
+
+
+def _load(source: str) -> dict:
+    try:
+        loaded = yaml.load(source, Loader=_loader())
+    except yaml.YAMLError as failed:
+        raise ManifestShapeError(
+            f"the file does not parse as YAML ({getattr(failed, 'problem', None) or failed})"
+        ) from None
+    if loaded is None:
+        return {}
+    if not isinstance(loaded, dict):
+        raise ManifestShapeError("the file is not a mapping")
+    return loaded
+
+
 def _top(source: str) -> yaml.MappingNode:
-    root = yaml.compose(source, Loader=_loader())
+    if _DOCUMENT_END.search(source) or _LATER_DOCUMENT.search(source):
+        # Text appended after `...`, or into a second document, is not in the manifest.
+        raise ManifestShapeError("the file holds a YAML document marker after its start")
+    root = _compose(source)
     if not isinstance(root, yaml.MappingNode):
         raise ManifestShapeError("the file is not a mapping")
     return root
+
+
+_DOCUMENT_END = re.compile(r"^\.\.\.(?:[ \t#]|$)", re.M)
+_LATER_DOCUMENT = re.compile(r"(?<=.)\n---(?:[ \t#]|$)", re.S)
 
 
 def _key(root: yaml.MappingNode) -> tuple[yaml.Node, yaml.Node] | None:
@@ -77,6 +109,13 @@ def _line_after(source: str, index: int) -> int:
     return len(source) if found < 0 else found + 1
 
 
+def _end(source: str, node: yaml.Node) -> int:
+    """Where the text of a node ends: after the line its last scalar ends on. A block scalar,
+    `|` or `>`, ends at the start of the line after it, which is already that place."""
+    index = _leaf(node).end_mark.index
+    return index if index > 0 and source[index - 1] == "\n" else _line_after(source, index)
+
+
 def _block(made: SetAside, prefix: str, newline: str) -> str:
     dumped = yaml.safe_dump(
         [made.model_dump(mode="json")], sort_keys=False, allow_unicode=True, width=10**9
@@ -85,29 +124,41 @@ def _block(made: SetAside, prefix: str, newline: str) -> str:
 
 
 def _entries(source: str) -> list:
-    loaded = yaml.load(source, Loader=_loader()) or {}
-    return list(loaded.get(KEY) or [])
+    return list(_load(source).get(KEY) or [])
 
 
 def _rest(source: str) -> dict:
-    loaded = dict(yaml.load(source, Loader=_loader()) or {})
+    loaded = dict(_load(source))
     loaded.pop(KEY, None)
     return loaded
+
+
+def _as_written(source: str, result: str, newline: str) -> str:
+    """The result ending as the source ends: with a line break where it had one, and without
+    where it had none."""
+    if source and not source.endswith("\n") and result.endswith(newline):
+        return result[: -len(newline)]
+    return result
 
 
 def holds(source: str, artifact: str, text: str) -> bool:
     """Whether the manifest sets the passage aside already."""
     return any(
         isinstance(item, dict) and item.get("artifact") == artifact and item.get("text") == text
-        for item in _entries(source)
+        for item in _entries(source.removeprefix(BOM))
     )
 
 
 def added(source: str, made: SetAside) -> str:
     """The manifest's text with `made` as the last `set_aside` entry."""
+    bom = BOM if source.startswith(BOM) else ""
+    body = source.removeprefix(BOM)
+    return bom + _added(body, made)
+
+
+def _added(source: str, made: SetAside) -> str:
     newline = "\r\n" if "\r\n" in source else "\n"
-    root = _top(source)
-    found = _key(root)
+    found = _key(_top(source))
     if found is None:
         head = source if not source or source.endswith("\n") else source + newline
         result = f"{head}{KEY}:{newline}{_block(made, '', newline)}"
@@ -118,20 +169,29 @@ def added(source: str, made: SetAside) -> str:
             start = _line_start(source, first.start_mark.index)
             line = source[start : first.start_mark.index]
             prefix = line[: len(line) - len(line.lstrip())]
-            at = _line_after(source, _leaf(node.value[-1]).end_mark.index)
+            at = _end(source, node.value[-1])
             head = source[:at] if source[:at].endswith("\n") else source[:at] + newline
             result = head + _block(made, prefix, newline) + source[at:]
         elif (isinstance(node, yaml.ScalarNode) and node.tag.endswith(":null")) or (
             isinstance(node, yaml.SequenceNode) and not node.value
         ):
             start = _line_start(source, key.start_mark.index)
-            # An empty value's marks can be the next token's, lines below; `[]` ends at `]`.
-            last = key.end_mark.index if isinstance(node, yaml.ScalarNode) else node.end_mark.index
-            end = _line_after(source, last - (0 if isinstance(node, yaml.ScalarNode) else 1))
-            tail = source[end:]
-            result = source[:start] + f"{KEY}:{newline}" + _block(made, "", newline) + tail
+            at = _line_after(source, key.end_mark.index)
+            line = source[start:at]
+            if node.start_mark.line == key.start_mark.line and node.end_mark.index > (
+                node.start_mark.index
+            ):
+                # `set_aside: []` or `set_aside: null`, with anything after it on the line
+                # kept: the value goes, and a comment stays.
+                ends = line.rstrip("\r\n")
+                kept = ends[node.end_mark.index - start :]
+                line = ends[: node.start_mark.index - start].rstrip() + kept + line[len(ends) :]
+            if not line.endswith("\n"):
+                line += newline
+            result = source[:start] + line + _block(made, "", newline) + source[at:]
         else:
             raise ManifestShapeError(f"`{KEY}` is not a list written one entry per line")
+    result = _as_written(source, result, newline)
     if _entries(result)[-1:] != [made.model_dump(mode="json")] or _rest(result) != _rest(source):
         raise ManifestShapeError("the entry could not be added without changing anything else")
     return result
@@ -150,6 +210,12 @@ def _ours(item: object, artifact: str, text: str) -> bool:
 def removed(source: str, artifact: str, text: str) -> str | None:
     """The manifest's text without the entry `repro bot` wrote for the passage, or None where
     it holds no such entry. An entry someone else wrote is never removed."""
+    bom = BOM if source.startswith(BOM) else ""
+    result = _removed(source.removeprefix(BOM), artifact, text)
+    return None if result is None else bom + result
+
+
+def _removed(source: str, artifact: str, text: str) -> str | None:
     entries = _entries(source)
     index = next((i for i, item in enumerate(entries) if _ours(item, artifact, text)), None)
     if index is None:
@@ -166,8 +232,9 @@ def removed(source: str, artifact: str, text: str) -> str | None:
     if index + 1 < len(node.value):
         end = _line_start(source, node.value[index + 1].start_mark.index)
     else:
-        end = _line_after(source, _leaf(item).end_mark.index)
-    result = source[:start] + source[end:]
+        end = _end(source, item)
+    newline = "\r\n" if "\r\n" in source else "\n"
+    result = _as_written(source, source[:start] + source[end:], newline)
     kept = entries[:index] + entries[index + 1 :]
     if _entries(result) != kept or _rest(result) != _rest(source):
         raise ManifestShapeError("the entry could not be removed without changing anything else")
