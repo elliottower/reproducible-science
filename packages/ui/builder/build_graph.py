@@ -510,8 +510,14 @@ def record_tabs(project: pathlib.Path, manifest: dict, ledger: list[dict], stale
                          "outputs": [o["path"] for o in e.get("outputs", [])], "sealed_before": sealed_yet,
                          # A W&B run only where the ledger names one; never looked up or made up.
                          "wandb_url": next(iter(WANDB_URL.findall(json.dumps(e))), None),
+                         # Each output with its recorded hash, and whether the file on disk still has it.
+                         "files": [{"path": o["path"], "sha256": o["sha256"],
+                                    "on_disk": sha256(project / o["path"]) == o["sha256"]} for o in e.get("outputs", [])],
                          "_outputs": [(o["path"], o["sha256"]) for o in e.get("outputs", [])]})
     run_commits(project, runs, out_dir)
+    # `results annotate` events: a file linked to a record outside the ledger (a W&B run, a DOI, a
+    # Zenodo record). The ledger only says the link was stated; nothing here fetches or compares it.
+    annotations = [e for e in ledger if e.get("event") == "annotation"]
     bound = [{"run_id": e.get("run_id"), "timestamp": e.get("timestamp"), "claim": e.get("claim", ""),
               "location": e.get("location", "")} for e in ledger if e.get("event") == "claim"]
 
@@ -560,6 +566,7 @@ def record_tabs(project: pathlib.Path, manifest: dict, ledger: list[dict], stale
              for r in staleness["regenerations"]]
     rr_path = project / ".repro" / "reproductions.jsonl"
     reruns = []
+    step_runs = collections.defaultdict(list)
     if rr_path.exists():
         for line in rr_path.read_text().splitlines():
             if line.strip():
@@ -567,6 +574,35 @@ def record_tabs(project: pathlib.Path, manifest: dict, ledger: list[dict], stale
                 reruns.append({"started_at": e.get("started_at"), "ended_at": e.get("ended_at"), "tool_version": e.get("tool_version"),
                                "counts": dict(collections.Counter(r.get("state") for r in e.get("regenerations", []))),
                                "steps": len(e.get("regenerations", []))})
+                for r in e.get("regenerations", []):
+                    step_runs[r.get("regeneration_id")].append({
+                        "ended_at": e.get("ended_at"), "tool_version": e.get("tool_version"), "state": r.get("state"),
+                        "bytes_identical": r.get("bytes_identical"), "exit_code": r.get("exit_code"),
+                        "duration_seconds": r.get("duration_seconds"), "detail": r.get("detail", "")})
+    # Each step's files by path, and its re-runs newest first, for the step's side panel.
+    paths = {x["id"]: x.get("path", "") for x in manifest["artifacts"]}
+    for st in steps:
+        r = regen.get(st["id"], {})
+        st["inputs"] = [{"artifact": i["artifact"], "path": paths.get(i["artifact"], "")} for i in r.get("inputs", [])]
+        st["output_path"] = paths.get(st["artifact"], "")
+        st["history"] = list(reversed(step_runs.get(st["id"], [])))[:20]
+    # Each run's outside links: the annotations naming one of its outputs, marked when they were
+    # stated of other bytes than the run wrote.
+    for run in runs:
+        written = {f["path"]: f["sha256"] for f in run["files"]}
+        run["links"] = []
+        for e in annotations:
+            hit = [x for x in e.get("subjects", []) if x.get("path") in written]
+            if not hit:
+                continue
+            target = e.get("target", {})
+            ref = target.get("ref", "")
+            doi = re.sub(r"^(doi:|https?://(dx\.)?doi\.org/)", "", ref) if (
+                target.get("kind", "").startswith("doi:") or "doi.org/" in ref) else ""
+            url = landing_url("", doi, cache) if doi else ref if re.match(r"https?://", ref) else None
+            run["links"].append({"kind": target.get("kind", ""), "ref": ref, "url": url, "note": e.get("note", ""),
+                                 "by": e.get("by", ""), "status": e.get("status", ""), "timestamp": e.get("timestamp"),
+                                 "same_bytes": all(written[x["path"]] == x.get("sha256") for x in hit)})
     out_dir.mkdir(parents=True, exist_ok=True)
     cache_path.write_text(json.dumps(cache, indent=1))
     return {"prereg": {"lines": plans}, "results": {"runs": runs, "seals": seals, "bound": bound},

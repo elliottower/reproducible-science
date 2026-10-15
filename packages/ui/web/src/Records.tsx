@@ -43,6 +43,7 @@ export function ResultsTab({ graph, query }: { graph: Graph; query: string }) {
   const t = graph.tabs?.results
   const [showBound, setShowBound] = useState(false)
   const [viewing, setViewing] = useState<string | null>(null)
+  const [panel, setPanel] = useState<Run | null>(null)
   const q = query.trim().toLowerCase()
   const runs = useMemo(
     () => [...(t?.runs ?? [])].reverse().filter((r) => !q || `${r.run_id} ${r.note} ${r.outputs.join(' ')}`.toLowerCase().includes(q)),
@@ -51,13 +52,16 @@ export function ResultsTab({ graph, query }: { graph: Graph; query: string }) {
   return (
     <div className="rec">
       <Head cmd="results" line={graph.status?.results.counts ? `${fmt(graph.status.results.counts.sealed)}/${fmt(graph.status.results.counts.runs)} runs sealed` : graph.status?.results.text ?? '—'}
-        what="The results ledger, a hash chain of events. results seal hashes a run's inputs before it runs; results run records the files the run wrote, with their hashes. Click a file to read it." />
+        what="The results ledger, a hash chain of events. results seal hashes a run's inputs before it runs; results run records the files the run wrote, with their hashes. Click a run for its details, or a file to read it." />
       <table>
-        <thead><tr><th>Run</th><th>Recorded</th><th>Inputs</th><th>Outputs</th><th>Files written</th><th>Commit</th></tr></thead>
+        <thead><tr><th>Run</th><th>Recorded</th><th>Inputs</th><th>Outputs</th><th>Files written</th><th>Outside records</th><th>Manuscript</th></tr></thead>
         <tbody>
           {runs.map((r) => (
-            <tr key={`${r.run_id}${r.timestamp}`} className="static">
-              <td><div className="mono strong">{r.run_id}</div><div className="small muted claim-cell">{r.note}</div></td>
+            <tr key={`${r.run_id}${r.timestamp}`} className={`static ${panel === r ? 'sel' : ''}`}>
+              <td className="clickable" onClick={() => setPanel(r)} title="Details">
+                <button className="file-link mono strong">{r.run_id}</button>
+                <div className="small muted claim-cell">{r.note}</div>
+              </td>
               <td className="small nowrap">{when(r.timestamp)}</td>
               <td>{r.sealed_before ? <span className="pill good">Sealed</span> : <span className="pill bad">Not sealed</span>}</td>
               <td>{r.outputs.length ? <span className="pill good">Recorded</span> : <span className="pill bad">None</span>}</td>
@@ -66,12 +70,14 @@ export function ResultsTab({ graph, query }: { graph: Graph; query: string }) {
                   <div key={o}><button className="file-link" onClick={() => setViewing(o)}>{o}</button></div>
                 ))}
               </td>
-              <td className="mono small nowrap"><CommitCell r={r} /></td>
+              <td className="small"><OutsideLinks r={r} /></td>
+              <td className="small nowrap">{readBy(graph, r).length ? `${fmt(readBy(graph, r).length)} claims` : <span className="muted">—</span>}</td>
             </tr>
           ))}
         </tbody>
       </table>
       {viewing && <FileViewer path={viewing} onClose={() => setViewing(null)} />}
+      {panel && <RunPanel graph={graph} r={panel} onClose={() => setPanel(null)} onView={setViewing} />}
       <button className="more rec-more" onClick={() => setShowBound((v) => !v)}>
         {showBound ? 'Hide' : 'Show'} the {fmt(t?.bound.length ?? 0)} sentences bound with results claim
       </button>
@@ -98,6 +104,31 @@ export function ResultsTab({ graph, query }: { graph: Graph; query: string }) {
 
 type Run = NonNullable<Graph['tabs']>['results']['runs'][number]
 
+/** The manuscript claims that read a file this run wrote. */
+function readBy(graph: Graph, r: Run) {
+  const paths = new Set(r.outputs)
+  return graph.nodes.filter((n) => n.type === 'artifact' && n.path && paths.has(n.path)).flatMap((n) => n.claims)
+}
+
+/** The run's links to records outside the ledger: a W&B run the ledger names, and every
+ * `results annotate` link on one of its files. A dash when there are none. */
+function OutsideLinks({ r }: { r: Run }) {
+  const links = r.links ?? []
+  if (!r.wandb_url && links.length === 0) return <span className="muted">—</span>
+  return (
+    <>
+      {r.wandb_url && <div><a className="src-link" href={r.wandb_url} target="_blank" rel="noreferrer" title={r.wandb_url}>W&amp;B run ↗</a></div>}
+      {links.map((l, i) => (
+        <div key={i}>
+          {l.url && !/doi\.org\//.test(l.url)
+            ? <a className="src-link" href={l.url} target="_blank" rel="noreferrer" title={l.ref}>{kindLabel(l.kind)} ↗</a>
+            : <span title={l.ref}>{kindLabel(l.kind)}</span>}
+        </div>
+      ))}
+    </>
+  )
+}
+
 /** The commit holding the bytes the run recorded, linked when the project has a remote, and the
  * run's W&B page when the ledger names one. A run whose bytes no commit holds says so. */
 function CommitCell({ r }: { r: Run }) {
@@ -110,6 +141,63 @@ function CommitCell({ r }: { r: Run }) {
       {short && !r.committed && <div className="muted">some outputs not committed</div>}
       {r.wandb_url && <div><a className="src-link" href={r.wandb_url} target="_blank" rel="noreferrer" title={r.wandb_url}>W&amp;B</a></div>}
     </>
+  )
+}
+
+/** "W&B run", "DOI dataset" from a `namespace:type` kind such as wandb:run or doi:dataset. */
+function kindLabel(kind: string): string {
+  const [ns, type] = kind.split(':')
+  const name: Record<string, string> = { wandb: 'W&B', mlflow: 'MLflow', doi: 'DOI', zenodo: 'Zenodo', osf: 'OSF', hf: 'Hugging Face' }
+  return `${name[ns] ?? ns} ${type ?? ''}`.trim()
+}
+
+/** One run: its note, when it ran, the commit holding its bytes, each file it wrote, the records
+ * outside the ledger it was linked to, and the manuscript claims that read its files. */
+function RunPanel({ graph, r, onClose, onView }: { graph: Graph; r: Run; onClose: () => void; onView: (path: string) => void }) {
+  const [allClaims, setAllClaims] = useState(false)
+  const files = r.files ?? r.outputs.map((path) => ({ path, sha256: '', on_disk: true }))
+  const claims = readBy(graph, r)
+  const shown = allClaims ? claims : claims.slice(0, 20)
+  return (
+    <aside className="panel">
+      <button className="close" onClick={onClose}>×</button>
+      <div className="kicker">RUN</div>
+      <h2 className="mono">{r.run_id}</h2>
+      {r.note && <p className="small">{r.note}</p>}
+      <dl>
+        <dt>Recorded</dt><dd>{when(r.timestamp)}</dd>
+        <dt>Inputs</dt><dd>{r.sealed_before ? 'Sealed before the run' : 'Nothing sealed before the run'}</dd>
+        <dt>Commit</dt><dd className="mono small"><CommitCell r={r} /></dd>
+      </dl>
+      <h3>{files.length} file{files.length === 1 ? '' : 's'} written</h3>
+      {files.map((f) => (
+        <div key={f.path} className="run-file">
+          <button className="file-link mono small" onClick={() => onView(f.path)}>{f.path}</button>
+          {f.sha256 && <div className="mono small muted">sha256 {f.sha256}</div>}
+          {!f.on_disk && <div className="small stale-text">The file on disk is no longer these bytes.</div>}
+        </div>
+      ))}
+      <h3>Outside records</h3>
+      {(r.links ?? []).length === 0 ? (
+        <p className="small muted">None linked. <span className="mono">results annotate --kind wandb:run --ref &lt;url&gt; &lt;file&gt;</span> links a file to a W&amp;B run, a DOI or another record.</p>
+      ) : (r.links ?? []).map((l, i) => (
+        <div key={i} className="run-link">
+          <span className="lab">{kindLabel(l.kind)}</span>{' '}
+          {l.url && !/doi\.org\//.test(l.url)
+            ? <a className="src-link" href={l.url} target="_blank" rel="noreferrer" title={l.url}>{l.ref} ↗</a>
+            : <span className="mono small">{l.ref}</span>}
+          <div className="small muted">Linked, not checked{l.same_bytes ? '' : ', and stated of other bytes than this run wrote'}{l.by ? ` · by ${l.by}` : ''}</div>
+          {l.note && <div className="small">{l.note}</div>}
+        </div>
+      ))}
+      <h3>{claims.length ? `${fmt(claims.length)} manuscript claim${claims.length === 1 ? '' : 's'} read these files` : 'No manuscript claim reads these files'}</h3>
+      {shown.map((c) => (
+        <div key={c.id} className="run-claim small">
+          <span className={c.ok ? 'good-text' : 'stale-text'}>{c.ok ? '✓' : '✗'}</span> {c.text} <span className="muted">({c.where})</span>
+        </div>
+      ))}
+      {claims.length > shown.length && <button className="link-btn" onClick={() => setAllClaims(true)}>Show all {fmt(claims.length)}</button>}
+    </aside>
   )
 }
 
@@ -269,8 +357,8 @@ function CitationsByClaim({ graph, query, onOpen, focus }: {
   const q = query.trim().toLowerCase()
   const sources = (graph.tabs?.citations.sources ?? []).filter((s) => !q || JSON.stringify(s).toLowerCase().includes(q))
   const groupBy = 'section' as 'source' | 'section'
-  // The first section (the introduction) starts open; every other section starts closed.
-  const [openSecs, setOpenSecs] = useState<Set<string>>(new Set(['0']))
+  // Every section starts closed, so the page opens on the list of sections.
+  const [openSecs, setOpenSecs] = useState<Set<string>>(new Set())
   const flipSec = (n: string) => setOpenSecs((prev) => { const x = new Set(prev); if (x.has(n)) x.delete(n); else x.add(n); return x })
   const head = (
     <thead><tr><th style={{ width: '16%' }}>Source</th><th style={{ width: '28%' }}>Source quotations</th><th style={{ width: '20%' }}>Interpretation</th><th>Manuscript text</th></tr></thead>
@@ -425,18 +513,20 @@ export function ReproduceTab({ graph, query }: { graph: Graph; query: string }) 
   const steps = [...(t?.steps ?? [])].filter((s) => !q || `${s.id} ${s.command} ${s.state}`.toLowerCase().includes(q)).sort((a, b) => (a.state === 'current' ? 1 : 0) - (b.state === 'current' ? 1 : 0) || a.id.localeCompare(b.id))
   const need = steps.filter((s) => s.state !== 'current').length
   const rp = graph.reproduce
+  const [panel, setPanel] = useState<Step | null>(null)
+  const [viewing, setViewing] = useState<string | null>(null)
   return (
     <div className="rec">
       <Head cmd="repro reproduce" line={rp?.runs ? `${fmt(rp.last.reproduced ?? 0)}/${fmt(rp.last_steps)} reproduced${rp.last_at ? ` ${new Date(rp.last_at).toLocaleDateString('en-US', { day: 'numeric', month: 'short' })}` : ''}${need ? ` · ${need} of ${steps.length} steps need re-running` : ''}` : 'never run'}
-        what="A rebuild step is a command repro.yaml declares that turns input files into an output file, such as detex.py or a derive script. repro reproduce runs every step again and checks the output comes out identical. repro stale, run on every check, compares each step with the last re-run without running anything: that is the state column." />
+        what="A rebuild step is a command repro.yaml declares that turns input files into an output file, such as detex.py or a derive script. repro reproduce runs every step again and checks the output comes out identical. repro stale, run on every check, compares each step with the last re-run without running anything: that is the state column. Click a step for its details." />
       <table>
         <thead><tr><th>Step</th><th>State</th><th>What changed</th><th>Command</th></tr></thead>
         <tbody>
           {steps.map((s) => {
             const [label, tone] = STATE[s.state] ?? [s.state, 'none']
             return (
-              <tr key={s.id} className="static">
-                <td className="mono strong">{s.id}</td>
+              <tr key={s.id} className={`static ${panel === s ? 'sel' : ''}`}>
+                <td className="clickable" onClick={() => setPanel(s)} title="Details"><button className="file-link mono strong">{s.id}</button></td>
                 <td><span className={`pill ${tone === 'warn' ? 'stale' : tone}`}>{label}</span></td>
                 <td className="small">{s.causes.map((c, i) => <div key={i}>{CAUSE[c.cause] ?? c.cause}: <span className="mono">{c.artifact}</span></div>)}</td>
                 <td className="mono small muted claim-cell">{s.command}</td>
@@ -459,7 +549,51 @@ export function ReproduceTab({ graph, query }: { graph: Graph; query: string }) 
           ))}
         </tbody>
       </table>
+      {panel && <StepPanel s={panel} onClose={() => setPanel(null)} onView={setViewing} />}
+      {viewing && <FileViewer path={viewing} onClose={() => setViewing(null)} />}
     </div>
+  )
+}
+
+type Step = NonNullable<Graph['tabs']>['reproduce']['steps'][number]
+
+const RERUN: Record<string, string> = { reproduced: 'Reproduced', differs: 'Output differs', failed: 'Failed', skipped: 'Skipped' }
+
+/** One rebuild step: the command, the files it reads and writes, what changed since its last re-run,
+ * and every re-run of it on record. */
+function StepPanel({ s, onClose, onView }: { s: Step; onClose: () => void; onView: (path: string) => void }) {
+  const [label, tone] = STATE[s.state] ?? [s.state, 'none']
+  const file = (artifact: string, path?: string) => path
+    ? <button className="file-link mono small" onClick={() => onView(path)} title={artifact}>{path}</button>
+    : <span className="mono small">{artifact}</span>
+  return (
+    <aside className="panel">
+      <button className="close" onClick={onClose}>×</button>
+      <div className="kicker">REBUILD STEP</div>
+      <h2 className="mono">{s.id}</h2>
+      <p><span className={`pill ${tone === 'warn' ? 'stale' : tone}`}>{label}</span></p>
+      <dl>
+        <dt>Command</dt><dd className="mono small">{s.command}</dd>
+        <dt>Writes</dt><dd>{file(s.artifact, s.output_path)}</dd>
+        <dt>Reads</dt><dd>{(s.inputs ?? []).map((i) => <div key={i.artifact}>{file(i.artifact, i.path)}</div>)}</dd>
+        <dt>Last re-run</dt><dd>{s.rerun_at ? when(s.rerun_at) : 'never'}</dd>
+      </dl>
+      {s.causes.length > 0 && (
+        <>
+          <h3>Changed since the last re-run</h3>
+          {s.causes.map((c, i) => <div key={i} className="small">{CAUSE[c.cause] ?? c.cause}: <span className="mono">{c.artifact}</span></div>)}
+        </>
+      )}
+      <h3>{(s.history ?? []).length ? `Re-runs of this step (${(s.history ?? []).length}${(s.history ?? []).length === 20 ? ', latest' : ''})` : 'Never re-run'}</h3>
+      {(s.history ?? []).map((h, i) => (
+        <div key={i} className="run-claim small">
+          <span className={h.state === 'reproduced' ? 'good-text' : 'stale-text'}>{h.state === 'reproduced' ? '✓' : '✗'}</span>{' '}
+          {RERUN[h.state] ?? h.state} · {h.ended_at ? when(h.ended_at) : '—'}
+          <span className="muted">{h.duration_seconds != null ? ` · ${h.duration_seconds.toFixed(2)} s` : ''}{h.exit_code ? ` · exit ${h.exit_code}` : ''} · {h.tool_version}</span>
+          {h.detail && <div className="muted">{h.detail}</div>}
+        </div>
+      ))}
+    </aside>
   )
 }
 

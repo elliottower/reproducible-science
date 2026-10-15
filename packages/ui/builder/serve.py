@@ -13,6 +13,11 @@ POST /api/fix-request appends {id, created_at, project, subject, kind, prompt} t
 ~/.claude/repro-fixes/queue.jsonl, which the repro-fixes Claude Code mod watches: a session working
 in that project shows the request above its prompt and loads the prompt into the box on request.
 It never starts an agent or runs anything.
+
+POST /api/reproduce with {"only": [step ids]} or {"only": null} runs `repro reproduce` for those
+rebuild steps, or for all of them. That executes the commands repro.yaml declares, so the page asks
+before calling it. `repro reproduce` appends the re-run to the project's .repro/reproductions.jsonl;
+the graph is then rebuilt from the records.
 """
 
 import argparse
@@ -21,12 +26,14 @@ import functools
 import http.server
 import json
 import pathlib
+import subprocess
 import threading
 import time
 import urllib.parse
 import uuid
 
 import build_graph
+import yaml
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DIST = ROOT / "web" / "dist"
@@ -36,6 +43,7 @@ DATA = ROOT / ".data"
 QUEUE = pathlib.Path.home() / ".claude" / "repro-fixes" / "queue.jsonl"
 MAX_PROMPT = 8000
 MAX_FILE = 2_000_000
+REPRODUCE_TIMEOUT = 3600
 
 
 class Handler(http.server.SimpleHTTPRequestHandler):
@@ -104,9 +112,45 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             f.write(json.dumps(request) + "\n")
         self._json(200, {"ok": True, "id": request["id"]})
 
+    def _reproduce(self) -> None:
+        length = int(self.headers.get("Content-Length") or 0)
+        try:
+            body = json.loads(self.rfile.read(min(length, 64_000)) or b"{}")
+        except json.JSONDecodeError:
+            return self._json(400, {"ok": False, "error": "body is not JSON"})
+        only = body.get("only")
+        declared = {r["id"] for r in yaml.safe_load((self.project / "repro.yaml").read_text()).get("regenerations", [])}
+        if only is not None and (not isinstance(only, list) or not only or not set(only) <= declared):
+            return self._json(400, {"ok": False, "error": "only must be null or a list of declared step ids"})
+        command = ["repro", "reproduce", "--format", "json", *[x for i in (only or []) for x in ("--only", i)],
+                   str(self.project / "repro.yaml")]
+        if not self.lock.acquire(blocking=False):
+            return self._json(409, {"ok": False, "error": "a check is already running"})
+        try:
+            started = time.monotonic()
+            out = subprocess.run(command, cwd=self.project, capture_output=True, text=True,
+                                 timeout=REPRODUCE_TIMEOUT, check=False)
+            build_graph.build(self.project, DATA / "graph.json", self.groups, check=False)
+            try:
+                states = [r.get("state") for r in json.loads(out.stdout)["reproduction"].get("regenerations", [])]
+            except (json.JSONDecodeError, KeyError, AttributeError):
+                states = []
+            self._json(200, {"ok": bool(states), "exit_code": out.returncode,
+                             "seconds": round(time.monotonic() - started, 2),
+                             "counts": {k: states.count(k) for k in set(states)},
+                             "error": "" if states else (out.stderr or out.stdout).strip()[-800:]})
+        except subprocess.TimeoutExpired:
+            self._json(200, {"ok": False, "error": f"stopped after {REPRODUCE_TIMEOUT} seconds"})
+        except Exception as e:  # reported to the page
+            self._json(500, {"ok": False, "error": str(e)})
+        finally:
+            self.lock.release()
+
     def do_POST(self) -> None:
         if self.path == "/api/fix-request":
             return self._fix_request()
+        if self.path == "/api/reproduce":
+            return self._reproduce()
         if self.path not in {"/api/refresh", "/api/verify"}:
             return self._json(404, {"error": "not found"})
         if not self.lock.acquire(blocking=False):

@@ -67,16 +67,14 @@ export function projectPrompt(g: Graph, project: string | null): string {
   ].join('\n')
 }
 
-/** Fix with Claude Code: a menu of two ways to hand the prompt over. Sending queues it for the
- * repro-fixes mod, which shows it above the prompt of the Claude Code session open in the project;
- * copying puts it on the clipboard. Without the local server only copying is offered. */
-export function ClaudeButton({ prompt, subject, small }: { prompt: string; subject: string; small?: boolean }) {
+/** The two ways to hand a fix prompt over. Sending queues it for the repro-fixes mod, which shows it
+ * above the prompt of the Claude Code session open in the project; copying puts it on the clipboard.
+ * Without the local server only copying is offered. */
+function useFix(prompt: string, subject: string) {
   const { available, project } = useContext(FixCtx)
-  const [open, setOpen] = useState(false)
   const [note, setNote] = useState<string | null>(null)
   const done = (text: string) => {
     setNote(text)
-    setOpen(false)
     setTimeout(() => setNote(null), 2500)
   }
   const copy = () => navigator.clipboard.writeText(prompt).then(() => done('Prompt copied'), () => done('Could not copy'))
@@ -84,30 +82,59 @@ export function ClaudeButton({ prompt, subject, small }: { prompt: string; subje
     fetch('api/fix-request', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project, subject, kind: subject === 'project' ? 'claim' : 'claim', prompt }),
+      body: JSON.stringify({ project, subject, kind: 'claim', prompt }),
     })
       .then((r) => r.json())
       .then((res) => done(res.ok ? 'Sent to Claude Code' : `Not sent: ${res.error}`))
       .catch((e) => done(`Not sent: ${e}`))
+  return { available, note, copy, send }
+}
+
+function FixMenu({ fix, what, onDone }: { fix: ReturnType<typeof useFix>; what?: string; onDone: () => void }) {
+  return (
+    <div className="menu" onMouseLeave={onDone}>
+      {what && <div className="menu-what">{what}</div>}
+      {fix.available && (
+        <button onClick={() => { fix.send(); onDone() }}>
+          <b>Fix with Claude Code</b>
+          <span>Appears above the prompt of the Claude Code session open in this project</span>
+        </button>
+      )}
+      <button onClick={() => { fix.copy(); onDone() }}>
+        <b>Copy prompt to fix</b>
+        <span>Paste it into Claude Code, Codex, or an agent connected to repro mcp</span>
+      </button>
+    </div>
+  )
+}
+
+/** Fix with Claude Code, for one claim or one stale file inside a panel. */
+export function ClaudeButton({ prompt, subject, small }: { prompt: string; subject: string; small?: boolean }) {
+  const fix = useFix(prompt, subject)
+  const [open, setOpen] = useState(false)
   return (
     <span className={`fixmenu ${small ? 'small' : ''}`}>
       <button className="fix-main" onClick={() => setOpen((o) => !o)}>
-        {note ?? 'Fix with Claude Code'} <span className="caret">▾</span>
+        {fix.note ?? 'Fix with Claude Code'} <span className="caret">▾</span>
       </button>
-      {open && (
-        <div className="menu" onMouseLeave={() => setOpen(false)}>
-          {available && (
-            <button onClick={send}>
-              <b>Send to Claude Code</b>
-              <span>Appears above the prompt of the session open in this project</span>
-            </button>
-          )}
-          <button onClick={copy}>
-            <b>Copy the prompt</b>
-            <span>Paste it into any Claude Code session yourself</span>
-          </button>
-        </div>
-      )}
+      {open && <FixMenu fix={fix} onDone={() => setOpen(false)} />}
+    </span>
+  )
+}
+
+/** A status pill in the top bar that names a problem ("3 failing", "10 need re-run"). Clicking it
+ * says what is wrong and offers the fix, so the fix appears only where there is something to fix. */
+export function ProblemPill({ className, label, what, prompt, subject, title }: {
+  className: string; label: string; what: string; prompt: string; subject: string; title?: string
+}) {
+  const fix = useFix(prompt, subject)
+  const [open, setOpen] = useState(false)
+  return (
+    <span className="fixmenu">
+      <button className={`pill big pill-btn ${className}`} title={title} onClick={() => setOpen((o) => !o)}>
+        {fix.note ?? label} <span className="caret">▾</span>
+      </button>
+      {open && <FixMenu fix={fix} what={what} onDone={() => setOpen(false)} />}
     </span>
   )
 }

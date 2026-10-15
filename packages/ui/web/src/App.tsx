@@ -3,7 +3,8 @@ import { Background, Controls, ReactFlow, ReactFlowProvider, useReactFlow, type 
 import Catalog from './Catalog'
 import Overview, { type Tab } from './Overview'
 import { CitationsTab, PreregTab, ReproduceTab, ResultsTab } from './Records'
-import { ClaudeButton, FixCtx, projectPrompt } from './fix'
+import { FixCtx, ProblemPill, projectPrompt } from './fix'
+import { ReproduceButton, VerifyButton } from './reproduce'
 import { layout, summarize } from './layout'
 import { nodeTypes, UiCtx } from './nodes'
 import { fmt, Panel, when } from './shared'
@@ -11,9 +12,12 @@ import type { Graph } from './types'
 
 interface Recheck {
   available: boolean
-  busy: 'refresh' | 'verify' | null
+  busy: 'refresh' | 'verify' | 'reproduce' | null
   message: string | null
   run: (kind: 'refresh' | 'verify') => void
+  reproduce: (only: string[] | null) => void
+  /** false when nothing is re-running; otherwise the steps re-running, null meaning all. */
+  reproducing: string[] | null | false
 }
 
 function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
@@ -32,6 +36,15 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
   const [flow, setFlow] = useState<{ nodes: Node[]; edges: Edge[] }>({ nodes: [], edges: [] })
   const rf = useReactFlow()
   const fitted = useRef(false)
+  // The group or file being opened or closed, and where it sat on screen. After the new layout,
+  // the view is moved so that node stays put, instead of everything jumping.
+  const anchor = useRef<{ id: string; x: number; y: number } | null>(null)
+  const pin = (id: string) => {
+    const n = rf.getInternalNode(id)
+    if (!n) return
+    const s = rf.flowToScreenPosition(n.internals.positionAbsolute)
+    anchor.current = { id, x: s.x, y: s.y }
+  }
 
   const matches = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -52,6 +65,17 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
     layout(graph, open, groups, openFiles).then((r) => {
       if (!live) return
       setFlow(r)
+      const a = anchor.current
+      anchor.current = null
+      if (a) {
+        requestAnimationFrame(() => requestAnimationFrame(() => {
+          const n = rf.getInternalNode(a.id)
+          if (!n) return
+          const s = rf.flowToScreenPosition(n.internals.positionAbsolute)
+          const vp = rf.getViewport()
+          rf.setViewport({ x: vp.x + a.x - s.x, y: vp.y + a.y - s.y, zoom: vp.zoom })
+        }))
+      }
       // Fit once, when the graph first appears; afterwards the zoom is the reader's.
       if (!fitted.current) {
         fitted.current = true
@@ -64,6 +88,7 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
   }, [graph, open, openFiles])
 
   const toggle = (g: string) => {
+    pin(`group:${g}`)
     if (selected === `group:${g}`) setSelected(null)
     setOpen((prev) => {
       const next = new Set(prev)
@@ -73,13 +98,15 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
     })
   }
 
-  const toggleFile = (f: string) =>
+  const toggleFile = (f: string) => {
+    pin(f)
     setOpenFiles((prev) => {
       const next = new Set(prev)
       if (next.has(f)) next.delete(f)
       else next.add(f)
       return next
     })
+  }
 
   // Highlight the selected node's upstream and downstream lineage.
   // A selection that is not drawn (a group just opened, a claim folded away) highlights nothing,
@@ -142,30 +169,32 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
             ))}
           </div>
           <div className="spacer" />
-          <span
-            className={`pill big ${failing ? 'bad' : 'good'}`}
-            title={graph.totals.last_check ? `${fmt(graph.totals.assertions)} assertions over ${fmt(graph.totals.artifacts)} files · last check ${when(graph.totals.last_check)}` : undefined}
-          >
-            ● {failing ? `${fmt(failing)} failing` : `${fmt(graph.totals.claims)} verified`}
-          </span>
-          {needRerun > 0 && (
-            <span className="pill big stale" title="rebuild steps changed since the last repro reproduce, or added since and never run">
-              ◐ {needRerun} need re-run
+          {failing > 0 ? (
+            <ProblemPill className="bad" label={`● ${fmt(failing)} failing`} subject="project"
+              what={`${fmt(failing)} claim${failing === 1 ? '' : 's'} no longer match the file they read.`}
+              prompt={projectPrompt(graph, graph.project_dir ?? null)}
+              title={graph.totals.last_check ? `last check ${when(graph.totals.last_check)}` : undefined} />
+          ) : (
+            <span className="pill big good"
+              title={graph.totals.last_check ? `${fmt(graph.totals.assertions)} assertions over ${fmt(graph.totals.artifacts)} files · last check ${when(graph.totals.last_check)}` : undefined}>
+              ● {fmt(graph.totals.claims)} verified
             </span>
+          )}
+          {needRerun > 0 && (
+            <ProblemPill className="stale" label={`◐ ${needRerun} need re-run`} subject="project"
+              what={`${needRerun} file${needRerun === 1 ? '' : 's'} whose rebuild step changed since the last repro reproduce, or was never re-run.`}
+              prompt={projectPrompt(graph, graph.project_dir ?? null)} />
           )}
           {recheck.available && (
             <>
               <button className="recheck" onClick={() => recheck.run('refresh')} disabled={recheck.busy !== null}
                 title="Re-read the records (repro stale, results verify, prereg check, the ledger and the check history). Writes nothing.">
-                {recheck.busy === 'refresh' ? 'Refreshing…' : '⟳ Refresh'}
+                {recheck.busy === 'refresh' ? 'Refreshing…' : <><span className="refresh-icon">⟳</span> Refresh</>}
               </button>
-              <button className="recheck" onClick={() => recheck.run('verify')} disabled={recheck.busy !== null}
-                title="Run repro verify: check every claim again. Records the check in the project's history.">
-                {recheck.busy === 'verify' ? 'Verifying…' : '✓ repro verify'}
-              </button>
+              <VerifyButton graph={graph} busy={recheck.busy === 'verify'} disabled={recheck.busy !== null} run={() => recheck.run('verify')} />
             </>
           )}
-          <ClaudeButton prompt={projectPrompt(graph, graph.project_dir ?? null)} subject="whole project" />
+          {recheck.available && <ReproduceButton graph={graph} busy={recheck.reproducing} run={recheck.reproduce} />}
           {recheck.message && <span className="error-note">{recheck.message}</span>}
         </header>
         <div className="toolbar" style={mode === 'overview' ? { display: 'none' } : undefined}>
@@ -200,7 +229,7 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
           <div className="body">
             <div className="canvas">
               <div className="graph-key-box">
-                <span className="mono"><span className="ov-cmd">graph:</span> where each number comes from</span>
+                <span className="mono"><span className="ov-cmd">graph:</span> the files and runs behind each claim</span>
                 <span className="muted small">files left, paper sections right · solid: claims read this file · dashed: a rebuild step makes it</span>
               </div>
               <ReactFlow
@@ -210,7 +239,8 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
                 onNodeClick={(_, n) => {
                 if (n.type === 'groupOpen') return setSelected(null)
                 setSelected(n.type === 'more' ? (n.data as { file: string }).file : n.id)
-                if (n.type === 'more') return
+                // A group or a "more" card is opened in place; only a single node is panned to.
+                if (n.type === 'more' || n.id.startsWith('group:')) return
                 // Pan so the clicked node sits at the centre; the zoom stays where the reader left it.
                 const inner = rf.getInternalNode(n.id)
                 if (!inner) return
@@ -254,8 +284,9 @@ export default function App() {
   const [error, setError] = useState<string | null>(null)
   const [available, setAvailable] = useState(false)
   const [projectPath, setProjectPath] = useState<string | null>(null)
-  const [busy, setBusy] = useState<'refresh' | 'verify' | null>(null)
+  const [busy, setBusy] = useState<'refresh' | 'verify' | 'reproduce' | null>(null)
   const [message, setMessage] = useState<string | null>(null)
+  const [reproducing, setReproducing] = useState<string[] | null | false>(false)
 
   const load = () =>
     fetch(`graph.json?t=${Date.now()}`)
@@ -287,12 +318,27 @@ export default function App() {
       .finally(() => setBusy(null))
   }
 
+  const reproduce = (only: string[] | null) => {
+    setBusy('reproduce')
+    setReproducing(only)
+    setMessage(null)
+    fetch('api/reproduce', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ only }) })
+      .then((r) => r.json())
+      .then((res) => {
+        const counts = Object.entries(res.counts ?? {}).map(([k, v]) => `${v} ${k}`).join(', ')
+        setMessage(res.ok ? `Reproduce: ${counts} in ${res.seconds} s` : `Reproduce failed: ${res.error}`)
+        return load()
+      })
+      .catch((e) => setMessage(`Reproduce failed: ${e}`))
+      .finally(() => { setBusy(null); setReproducing(false) })
+  }
+
   if (error) return <div className="center">{error}</div>
   if (!graph) return <div className="center muted">Loading…</div>
   return (
     <FixCtx.Provider value={{ available, project: projectPath }}>
       <ReactFlowProvider>
-        <Canvas graph={graph} recheck={{ available, busy, message, run }} />
+        <Canvas graph={graph} recheck={{ available, busy, message, run, reproduce, reproducing }} />
       </ReactFlowProvider>
     </FixCtx.Provider>
   )
