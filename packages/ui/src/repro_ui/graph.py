@@ -696,6 +696,32 @@ WANDB_URL = re.compile(r"https?://(?:[\w-]+\.)*wandb\.ai/[^\s\"'<>)\]]+")
 HISTORY_CAP = 50
 
 
+REMOTE = re.compile(
+    r"^(?:git@([^:]+):|ssh://git@([^/]+)/|https?://(?:[^@/]+@)?([^/]+)/)(.+?)(?:\.git)?/?$"
+)
+
+
+def remote_of(project: pathlib.Path) -> dict | None:
+    """The origin remote as the Share menu needs it: the address to clone, the repository's host,
+    owner and name, and where the project sits inside the repository. None without a remote.
+    `git remote get-url` reads the local config; nothing is fetched. A token in an https address
+    is never carried: the clone address is rebuilt from the host and the path."""
+    remote = (run_text(["git", "remote", "get-url", "origin"], project) or "").strip()
+    m = REMOTE.match(remote)
+    if not m:
+        return None
+    host, path = m.group(1) or m.group(2) or m.group(3), m.group(4)
+    owner, _, name = path.rpartition("/")
+    prefix = (run_text(["git", "rev-parse", "--show-prefix"], project) or "").strip().rstrip("/")
+    return {
+        "clone": f"https://{host}/{path}.git",
+        "host": host,
+        "owner": owner,
+        "name": name,
+        "subdir": prefix,
+    }
+
+
 def commit_url(project: pathlib.Path) -> str | None:
     """`https://github.com/owner/repo/commit/` from the origin remote, or None without one.
     `git remote get-url` reads the local config; nothing is fetched."""
@@ -1013,8 +1039,13 @@ def record_tabs(
 
     # reproduce: every declared rebuild step with its state, and every recorded re-run.
     causes = collections.defaultdict(list)
+    observed: dict[str, list[tuple[str, str]]] = collections.defaultdict(list)
+    art_paths = {x["id"]: x.get("path", "") for x in manifest["artifacts"]}
     for f in staleness["findings"]:
         causes[f["regeneration"]].append({"cause": f["cause"], "artifact": f["artifact"]})
+        # The bytes the last re-run saw, for a file that changed since: what the step's diff shows.
+        if f.get("observed") and art_paths.get(f["artifact"]):
+            observed[f["regeneration"]].append((art_paths[f["artifact"]], f["observed"]))
     regen = {r["id"]: r for r in manifest.get("regenerations", [])}
     steps = [
         {
@@ -1067,6 +1098,21 @@ def record_tabs(
         ]
         st["output_path"] = paths.get(st["artifact"], "")
         st["history"] = list(reversed(step_runs.get(st["id"], [])))[:20]
+    # Each changed file a step reads or writes, with the commit holding the bytes its last re-run
+    # saw, so the step's panel can show what changed. Served by the diff endpoint as `step:<id>`.
+    held = find_commits(project, {pair for pairs in observed.values() for pair in pairs}, out_dir)
+    for st in steps:
+        st["diffs"] = [
+            {
+                "label": path,
+                "open": {"tab": "reproduce", "path": path, "diff": f"step:{st['id']}"},
+                "diff": {
+                    "commit": (held.get((path, digest)) or {}).get("commit"),
+                    "sha256": digest,
+                },
+            }
+            for path, digest in dict.fromkeys(observed.get(st["id"], []))
+        ]
     # Each run's outside links: the annotations naming one of its outputs, marked when they were
     # stated of other bytes than the run wrote.
     for run in runs:
@@ -1484,6 +1530,16 @@ def issue_diff(project: pathlib.Path, graph_data: dict, issue: str, path: str) -
     inside the project. The recorded bytes come from `git show <commit>:<path>`, the commit the
     record names. A binary file, or one too large, gives each side's hash and size only."""
     row = next((r for r in graph_data.get("issues", []) if r["id"] == issue), None)
+    if issue.startswith("step:"):
+        step = next(
+            (
+                st
+                for st in graph_data.get("tabs", {}).get("reproduce", {}).get("steps", [])
+                if f"step:{st['id']}" == issue
+            ),
+            None,
+        )
+        row = {"tool": "repro", "items": step.get("diffs", [])} if step else None
     item = next(
         (
             i
@@ -1542,6 +1598,8 @@ def issue_diff(project: pathlib.Path, graph_data: dict, issue: str, path: str) -
         notes.append(
             "No copy of the sealed bytes was kept: no commit holds them."
             if tool_name == "results"
+            else "No copy of the bytes the last re-run saw was kept: no commit holds them."
+            if tool_name == "repro"
             else "The freeze recorded no commit this repository holds, so there is no frozen copy to show."
             if not commit or not COMMIT.match(commit)
             else f"Commit {commit[:12]} does not hold {path}."
@@ -1877,6 +1935,8 @@ def build(
         "status": status_lines(project, report, sections, ledger, reruns),
         "reproduce": reproduce,
         "project_name": project.name,
+        "remote": remote_of(project),
+        "manuscript_path": artifacts.get("manuscript", {}).get("path"),
         "tabs": tabs,
         "issues": issues(project, sections, ledger, tabs, out_path.parent),
         "manifest_digest": report["manifest_digest"],
