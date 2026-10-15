@@ -58,3 +58,5 @@ only when an author accepts it, by deleting its `basis` line or recording
 
 The readers that write open items: [CODECHECK](/integrations/codecheck/),
 [CORE-Bench](/integrations/core-bench/) and [ClawBio](/integrations/clawbio/).
+
+Not affiliated with or endorsed by CODECHECK, CORE-Bench or ClawBio.

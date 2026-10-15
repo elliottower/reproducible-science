@@ -43,7 +43,8 @@ The job needs `security-events: write`. `repro ci init` does not write this work
 
 - An assertion that was not checked is a notification, never a result.
 - An outcome word this version does not know is never shown as a pass.
-- An inferred match is never shown as a pass.
+- An inferred match (an assertion marked `basis: inferred`) is never shown as a pass. This
+  ships in the next release; 0.6.1 has no inferred assertions.
 - Nothing is dropped past GitHub's limit of 5,000 results per run; the export warns instead.
 - Executes nothing, and exits 0 whatever the outcomes: `repro verify` is the check that fails.
 
@@ -57,3 +58,5 @@ of alerts does not mean every assertion was checked: assertions not checked are 
 GitHub's documentation on
 [uploading a SARIF file](https://docs.github.com/en/code-security/code-scanning/integrating-with-code-scanning/uploading-a-sarif-file-to-github),
 and the [SARIF 2.1.0 standard](https://docs.oasis-open.org/sarif/sarif/v2.1.0/sarif-v2.1.0.html).
+
+Not affiliated with or endorsed by GitHub or OASIS.

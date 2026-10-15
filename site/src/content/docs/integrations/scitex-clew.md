@@ -46,3 +46,5 @@ and its lineage were checked; it says nothing about the number the manuscript pr
 ## The other project
 
 [SciTeX Clew on GitHub](https://github.com/ywatanabe1989/scitex-clew).
+
+Not affiliated with or endorsed by SciTeX.

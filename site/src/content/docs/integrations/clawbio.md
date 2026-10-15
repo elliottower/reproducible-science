@@ -54,3 +54,5 @@ that matches is counted by `claims open-items` as bound, never as verified.
 ## The other project
 
 [ClawBio on GitHub](https://github.com/ClawBio/ClawBio).
+
+Not affiliated with or endorsed by ClawBio.

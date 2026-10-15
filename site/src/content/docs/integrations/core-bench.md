@@ -53,3 +53,5 @@ the capsule reproduces: it says which files exist and which values the task stat
 ## The other project
 
 [CORE-Bench on GitHub](https://github.com/siegelz/core-bench).
+
+Not affiliated with or endorsed by CORE-Bench or its authors.

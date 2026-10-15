@@ -23,3 +23,5 @@ The commands that take a `.bib`:
 `audit` and `lint` read the file. `add` is the one command that writes into a `.bib`; on a file
 Better BibTeX keeps updated, add the entry in Zotero instead, so the library and the file hold
 the same entries.
+
+Not affiliated with or endorsed by Zotero or Better BibTeX.

@@ -52,3 +52,5 @@ experiment was not run before the plan was frozen.
 ## The other project
 
 [opentimestamps.org](https://opentimestamps.org/).
+
+Not affiliated with or endorsed by OpenTimestamps.

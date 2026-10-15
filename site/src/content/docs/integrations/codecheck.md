@@ -58,3 +58,5 @@ filled.
 
 [codecheck.org.uk](https://codecheck.org.uk/), and the
 [configuration file specification](https://codecheck.org.uk/spec/config/2.0/).
+
+Not affiliated with or endorsed by CODECHECK.

@@ -54,3 +54,5 @@ record says so, and the authors fill or confirm the rest.
 The [Unified Artifact Appendix template](https://github.com/ctuning/artifact-evaluation), and
 ACM's [Artifact Review and Badging](https://www.acm.org/publications/policies/artifact-review-and-badging-current)
 policy.
+
+Not affiliated with or endorsed by ACM or cTuning.

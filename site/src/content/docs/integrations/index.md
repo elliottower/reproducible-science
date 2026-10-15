@@ -23,7 +23,7 @@ the toolkit is not affiliated with any of them.
 | [ACM Artifact Appendix](/integrations/acm-artifact-appendix/) | writes a draft appendix | `repro venue acm` | next release |
 | [ACM badging evidence map](/integrations/acm-evidence/) | writes records per badging criterion | `repro venue acm-evidence` | next release |
 | [NeurIPS and ACL checklists](/integrations/neurips-acl/) | writes draft checklists | `repro venue neurips`, `repro venue acl` | next release |
-| [SARIF and code scanning](/integrations/sarif/) | writes a SARIF 2.1.0 log | `repro export sarif` | 0.6.1 |
+| [SARIF and code scanning](/integrations/sarif/) | writes a SARIF 2.1.0 log | `repro export sarif` | 0.6.1; inferred matches next release |
 | [RO-Crate](/integrations/ro-crate/) | writes `ro-crate-metadata.json` | `repro export ro-crate` | 0.6.1 |
 | [JSON check record](/integrations/check-record/) | writes JSON Lines | `repro export record` | 0.6.1 |
 | [GitHub CI](/integrations/github-ci/) | writes workflows and badges | `repro ci`, `repro badges init` | 0.6.1 |

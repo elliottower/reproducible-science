@@ -56,3 +56,5 @@ except for the `rerun` field where `--rerun` was asked for.
 ## The other project
 
 [PaperDelta on GitHub](https://github.com/amos689/paperdelta).
+
+Not affiliated with or endorsed by PaperDelta.

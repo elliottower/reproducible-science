@@ -51,3 +51,5 @@ stays the authors' to answer.
 
 The [NeurIPS Paper Checklist guidelines](https://neurips.cc/public/guides/PaperChecklist), and
 the [ACL Responsible NLP Research checklist](https://aclrollingreview.org/responsibleNLPresearch/).
+
+Not affiliated with or endorsed by NeurIPS or ACL.

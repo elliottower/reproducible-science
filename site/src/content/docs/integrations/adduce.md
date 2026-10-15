@@ -56,3 +56,5 @@ score and weights are adduce's; the rule adds no score of its own.
 ## The other project
 
 [adduce on GitHub](https://github.com/QHarshil/adduce).
+
+Not affiliated with or endorsed by adduce.

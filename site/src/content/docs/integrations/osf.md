@@ -59,3 +59,5 @@ write; it is not a security boundary.
 
 [OSF Preregistration](https://osf.io/prereg/), and OSF's guide to
 [creating a preregistration](https://help.osf.io/article/158-create-a-preregistration).
+
+Not affiliated with or endorsed by OSF or the Center for Open Science.

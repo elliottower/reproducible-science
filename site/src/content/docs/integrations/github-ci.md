@@ -65,3 +65,5 @@ so they draw for a public repository only.
 
 [GitHub Actions documentation](https://docs.github.com/en/actions), and shields.io's
 [endpoint badge](https://shields.io/badges/endpoint-badge).
+
+Not affiliated with or endorsed by GitHub or shields.io.

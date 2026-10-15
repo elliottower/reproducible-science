@@ -47,3 +47,5 @@ The output is not an ACM badge, does not award one, and does not predict one.
 
 ACM's [Artifact Review and Badging](https://www.acm.org/publications/policies/artifact-review-and-badging-current)
 policy.
+
+Not affiliated with or endorsed by ACM.

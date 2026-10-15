@@ -53,3 +53,5 @@ community tool.
 
 [RO-Crate](https://www.researchobject.org/ro-crate/), and the
 [Process Run Crate profile](https://www.researchobject.org/workflow-run-crate/profiles/process_run_crate/).
+
+Not affiliated with or endorsed by the RO-Crate community.
