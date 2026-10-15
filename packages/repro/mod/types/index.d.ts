@@ -1,16 +1,6 @@
 /** The research project a session is working in: its folder, or null before one is touched. */
 export type WorkingProject = string | null
 
-/** One request the lineage view queued, as reproducible-science-graph's builder/serve.py writes it. */
-export type FixRequest = {
-  id: string
-  created_at: string
-  project: string
-  subject: string
-  kind: 'claim' | 'stale'
-  prompt: string
-}
-
 declare module 'claude-code' {
   interface PluginState {
     'repro': {
@@ -29,10 +19,6 @@ declare module 'claude-code' {
       quotations: Record<string, string>
       /** How many quotations that check reported as not found, by folder. */
       quotationsNotFound: Record<string, number>
-      /** Every project the session has worked in, by folder. */
-      followed: string[]
-      /** Fix requests for one of those projects, not yet loaded or dismissed. */
-      fixes: FixRequest[]
     }
   }
 }
