@@ -4,13 +4,15 @@ description: claims from-clawbio reads a ClawBio skill's output folder into a dr
 ---
 
 `claims from-clawbio` reads the output folder a ClawBio skill writes and produces a draft
-manifest. The folder records which bytes the run wrote, in `reproducibility/checksums.sha256`.
+manifest. The folder records which bytes the run wrote, in `reproducibility/checksums.sha256`,
+or in `checksums.sha256` at the top of the folder, where older outputs keep it.
 It does not record which number of `report.md` was read from which cell of which table, so
 each number is left open.
 
 ## Reads
 
-- `report.md`, `tables/`, and `reproducibility/checksums.sha256`.
+- `report.md`, `tables/`, and `reproducibility/checksums.sha256`, or `checksums.sha256` at the
+  top of the folder. Which of the two it found is recorded in the open items' source.
 - The digests of `reproducibility/commands.sh` and `environment.yml`, which are pinned in the
   open items' source. Neither file is run.
 - Tables only through parsers that evaluate nothing: JSON, YAML with the safe loader, and
@@ -40,7 +42,8 @@ claims from-clawbio output/ -o draft/
 
 - Pins the digest ClawBio recorded, never one computed now.
 - Never writes a candidate into the draft.
-- Refuses a folder with no `checksums.sha256`, and never writes over an existing file.
+- Refuses a folder with no `checksums.sha256`, and one with both, since nothing says which the
+  run wrote. Never writes over an existing file.
 - Passes over a table the checksums do not list, a label that leaves the folder, a date, a
   year, a time of day such as `14:22`, and a number inside code, each with the reason.
 - Does not declare `commands.sh` as a regeneration, and runs nothing.

@@ -5,8 +5,12 @@ title: Installation
 Everything at once:
 
 ```bash
-pip install reproducible-science
+uv tool install reproducible-science --with-executables-from claims-cli,prereg,results-cli,citations
+# or: pip install reproducible-science
 ```
+
+Without `--with-executables-from`, uv puts only `repro` on PATH. `pip install
+reproducible-science` installs all five commands.
 
 That installs the verifier and the three tools it works with. To install one alone:
 
@@ -22,7 +26,7 @@ pip install claims-cli    # claims checking only
 machine that should only read a project's files.
 
 Python 3.11 or newer. Every package carries the same version and is released the same day, so
-`0.2.0` of one works with `0.2.0` of the others.
+`0.6.1` of one works with `0.6.1` of the others.
 
 ## Coding agent plugins
 

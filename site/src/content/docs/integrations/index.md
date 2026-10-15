@@ -68,9 +68,3 @@ file, it lists that address in the open item and never writes it into the draft.
 Whatever an agent fills is marked `basis: inferred` and never counts as verified. An inferred
 assertion that matches is counted apart from verified ones, and a draft holding one fails the
 `strict` and `publication` policies until an author accepts it.
-
-## Coming in the next release
-
-This is in an open pull request and will get a page when it merges:
-
-- the pull-request bot

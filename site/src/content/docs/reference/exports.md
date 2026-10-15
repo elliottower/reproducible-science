@@ -7,7 +7,7 @@ description: The three formats repro writes its records in, for other tools to r
 
 `repro export record` checks every assertion in `repro.yaml` as `repro verify` does and writes
 one JSON object per assertion. It is the format the other exports are built from, and the one
-the PaperDelta and SciTeX Clew readers write. [The check record](/concepts/check-record/)
+the PaperDelta reader writes. [The check record](/concepts/check-record/)
 describes every field.
 
 ### Reads

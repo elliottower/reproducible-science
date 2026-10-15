@@ -19,6 +19,7 @@ cannot do, because each fires at a moment rather than when you remember to run s
 | frozen plan changed | a preregistration no longer matches the digest it was frozen with |
 | unverified quotation | a passage enters a manuscript that no claim file pins to a source |
 | unbound number | a number enters a manuscript that no recorded claim names |
+| unfrozen plan before run | an analysis is about to run under a plan that was never frozen |
 
 An edit to a frozen plan or a frozen amendment is refused, with the instruction to record a note
 with `prereg log` or a change with `prereg amend`. Every other hook reports and never blocks. All
