@@ -1076,72 +1076,6 @@ Experimental. RO-Crate has no term for the address inside a file, for a printed 
 
 The crate is written from the records alone and loses none of them: `repro.export.rocrate.from_ro_crate` reads one back into the records it came from. Two consequences follow. A file no record names is not in the crate, which is an artifact that no assertion reads and no command upstream of one touches. And a record knows no license, which RO-Crate requires of a crate, so the document says none is stated; add the project's own before publishing one.
 
-## For a venue
-
-```bash
-repro venue acm                          # an Artifact Appendix, as Markdown
-repro venue acm --format latex -o ae.tex # in the layout of the template, as LaTeX
-```
-
-`repro venue acm` drafts an Artifact Appendix in the layout of the [Unified Artifact Appendix template](https://github.com/ctuning/artifact-evaluation/blob/307966059368634d9882a3daa42e4b63ef1946d6/docs/template/ae.tex) that ACM conferences running artifact evaluation ask for. The headings and field labels are the template's, stored in the package with the commit and the day they were copied. A field that a record in the repository bears on carries what that record says, one line per fact, each line naming its record:
-
-| field | read from |
-|---|---|
-| Run-time environment, Software dependencies | lockfiles and environment files at the top of the project, and the environment of the most recent re-run that is still current |
-| Hardware | the machine and GPUs of the most recent current re-run in `.repro/reproductions.jsonl` |
-| Execution, time to complete | the durations of the re-runs that are current, added up |
-| Output | the claims and pinned artifacts `repro.yaml` declares, and the claims the ledger binds to runs |
-| Experiments, Workflow automation framework | each command under `regenerations`, with the file it writes |
-| Code licenses | `LICENSE` by its first line, and the license `CITATION.cff` names |
-| Archived (provide DOI)? | the DOI `CITATION.cff` names |
-| How to access | `git remote get-url origin` with any user name, password or token taken out and "author: confirm this repository is public", that DOI, and the project's own code repository |
-| Experiment workflow | the commands, each plan frozen with `prereg` and its commit, and the ledger's count of seals and runs |
-| Evaluation and expected results | the claims, whether each declared command's output is current, stale or never re-run as `repro stale` decides it, and each origin as `repro origins` finds it with no network |
-
-Each such field is marked **DRAFT** and names the records it was generated from. Every other field is marked **TODO** and left empty for the authors: the abstract, the algorithm, the data sets, installation and the rest are not in any record, and generated prose in their place would read as the authors' own. A yes or no is filled in only where a record settles it with no judgment involved, marked DRAFT with the record named, and only from the project's own identifiers: `doi`, `identifiers` and `repository-code` at the top of `CITATION.cff`, and `identifier` and `codeRepository` in `codemeta.json`. A DOI or Software Heritage ID (`swh:1:...`) there answers Yes to *Archived (provide DOI)?*; a GitHub or GitLab address alone does not. Any of those, or the code repository, answers Yes to *Publicly available?*, with "author: confirm this repository is public", since whether it is public cannot be seen offline. A declared command answers Yes to *Workflow automation framework used?*. References, cited works, the README and the origins of copied files are never read for these. Every other yes or no is left to the authors. Plans are found as `prereg check` finds them, leaving out any under a folder named `tests`, `test`, `testdata`, `fixtures`, `fixture` or `examples`; `--plan PATH` names one instead, and must exist. A ledger whose chain does not verify is said to, and a claim in it counts as bound only where the run it names is recorded. `--format json` gives every answer with its status and its records. `-o FILE` refuses to replace a file that exists, since the authors may have edited it; `--force` replaces it.
-
-### Evidence against the badging criteria
-
-```bash
-repro venue acm-evidence -o evidence.html     # one page, no images
-repro venue acm-evidence --format json
-```
-
-`repro venue acm-evidence` lists, for each criterion of [ACM Artifact Review and Badging](https://www.acm.org/publications/policies/artifact-review-and-badging-current) version 1.1, the records in the repository that bear on it, under the policy's own words for the criterion. It is labelled, in every format, "Evidence mapped to ACM Artifact Review and Badging v1.1 criteria; not an ACM badge." It never says whether a criterion is met, which is the evaluators' decision, and it uses no badge's name or image as a label or a status.
-
-| criterion | records listed |
-|---|---|
-| placed on an archival repository, with an identifier | a DOI or Software Heritage ID among the project's own identifiers in `CITATION.cff` or `codemeta.json`; never the origin of a copied file, which is someone else's repository |
-| documented, consistent, complete and exercisable | the declared commands, the last re-run of each, the claims in `repro.yaml` and the ledger, the README, `docs/` and `CITATION.cff` |
-| documented and structured for reuse | all of those, the license, and the lockfiles at the top of the project |
-| main results obtained by others, with or without the authors' artifacts | none: `not determinable by this tool` |
-
-Each criterion's standing is `records listed`, `no record found` or `not determinable by this tool`, shown as `DRAFT: records listed` where records are listed and `TODO: ...` otherwise, and the page and the JSON open with a DRAFT notice. The last two criteria are always the third: the policy asks for the results to be obtained by a person or team other than the authors, which nothing in the authors' repository can show. acm.org refuses scripted requests, so the policy page was saved from a browser on 2026-10-11 and converted to text. Each criterion's words are quoted from that text verbatim, ACM's spelling *publically* included, and stored in the package with the page's address, the retrieval date, the sha256 of the saved text and of the saved page, the line each quotation is on, and the sha256 of each quotation, so a copy saved independently can be checked against them. There is no SARIF output: SARIF reports results of an analysis, and a list of records under a criterion is not a result.
-
-### NeurIPS and ACL checklists
-
-```bash
-repro venue neurips --format latex -o checklist-draft.tex
-repro venue acl
-```
-
-`repro venue neurips` drafts the NeurIPS Paper Checklist from `checklist.tex` in the [NeurIPS 2026 formatting archive](https://media.neurips.cc/Conferences/NeurIPS2026/Formatting_Instructions_For_NeurIPS_2026.zip); `repro venue acl` drafts the [ACL Responsible NLP Research checklist](https://aclrollingreview.org/responsibleNLPresearch/). The question text of each is stored in the package, verbatim, with the address and the day it was read, 2026-10-14.
-
-A NeurIPS question asks what the paper discloses, and no record can say that, so a NeurIPS answer stays `\answerTODO{}`, with one exception: open access (5) is `\answerYes{}` followed by a mark that prints, such as **(DRAFT: from `CITATION.cff`; author: confirm this repository is public)**, where the project's own DOI, Software Heritage ID or code repository is recorded, as for ACM's *Publicly available?*. No ACL answer is chosen: no ACL question asks whether code or data were released, and whether a file a claim reads is a scientific artifact in ACL's sense is the authors' judgment, so question B lists the artifacts `repro.yaml` declares and leaves the answer TODO. Where a record bears on a question, the justification is a draft listing what the record says, marked DRAFT with the record named, for the authors to check against the paper and rewrite:
-
-| question | records |
-|---|---|
-| NeurIPS 1, claims | the claims in `repro.yaml` and the ledger |
-| NeurIPS 4, experimental result reproducibility | the declared commands, their last re-runs, the frozen plans |
-| NeurIPS 5, open access to data and code | the DOI, origins, commands, lockfiles and license |
-| NeurIPS 8, compute resources; ACL C1 | the duration and environment of the last re-runs |
-| NeurIPS 12, licenses for existing assets; ACL B1 | each artifact's `origin` |
-| NeurIPS 13, new assets; ACL B5 | the README, `docs/` and `CITATION.cff` (with the license, for NeurIPS) |
-| ACL B2 | `LICENSE` and the license `CITATION.cff` names |
-| ACL C4 | the lockfiles at the top of the project |
-
-The LaTeX for NeurIPS keeps the shape of `checklist.tex` without the guidelines under each question, which stay as that file has them. ACL's checklist is filled in on the submission form, so its draft is Markdown or JSON.
-
 ## Audit a repository you did not write
 
 ```bash
@@ -1274,6 +1208,53 @@ The plugin ships instructions and hooks, not binaries, so install the tools as w
 ```bash
 uv tool install reproducible-science   # or: pip install reproducible-science
 ```
+
+## MCP server
+
+`repro mcp` serves the toolkit's checks to any coding agent that speaks MCP. Register it once
+per agent, for every project:
+
+```bash
+uv tool install "reproducible-science[mcp]"
+claude mcp add --transport stdio --scope user reproducible-science -- repro mcp
+```
+
+Codex, in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.reproducible-science]
+command = "repro"
+args = ["mcp"]
+```
+
+Gemini CLI takes the same `command` and `args` under `mcpServers` in `~/.gemini/settings.json`,
+and Cursor under `mcpServers` in `~/.cursor/mcp.json`, with `"type": "stdio"`.
+
+The server follows the paths the agent passes. Each call works in the project its path is in,
+the nearest folder above it holding one of `PROJECT_MARKERS` (`repro.yaml`, `.results/`,
+`.prereg/`, `claims/`, `PREREG.md`, or a reader's `repro.draft.yaml`), and every path is kept
+inside that project. A symlink belongs to the folder it sits in. A call with no path takes a
+`project` argument, or the project of the last call.
+
+| tool | what it does |
+|---|---|
+| `verify`, `why`, `stale`, `numbers`, `origins` | as the commands; `verify` writes no record of checks |
+| `prereg_check`, `results_verify`, `citations_verify` | the three tools' checks |
+| `citations_audit` | each `.bib` entry against its registry record, ten a call: agrees, disagrees, not found, or could not check; the one tool that reads the network |
+| `next_open_item`, `get_open_item` | one open item: the claim, the printed value, the sentence, each candidate's address, labels and stored value |
+| `propose_binding` | one assertion filling an item, `basis: inferred`, then its check |
+| `add_artifact` | one file, pinned and `basis: inferred` |
+| `mark_reviewed` | what the user approved in the chat, as `reviewed` |
+| `pin_quote` | `citations pin`, which writes only a passage that resolves |
+
+Each write is one line of the draft, and no other byte changes. `propose_binding` reports a
+match as `matched, inferred: not verified`, and a retry replaces only its own proposal that did
+not match. Every attempt is appended to a hash chain in `.repro/attempts.jsonl` beside the
+open-items file, which `claims open-items` counts from, flagging an item tried more than five
+times. An assertion reading an inferred artifact counts as inferred too. `mark_reviewed` writes
+who (git `user.name`), when, how (`approved in chat via` the client) and the digest of what was
+accepted; when that changes, the review no longer counts. Nothing the server offers freezes,
+registers, seals, runs a declared command, and nothing but `citations_audit` fetches.
 
 MIT licensed.
 

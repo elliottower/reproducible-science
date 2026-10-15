@@ -32,10 +32,10 @@ import collections
 import enum
 import json
 import pathlib
-from typing import Any
+from typing import Any, Literal
 
 import yaml
-from provenance_core import atomic_write
+from provenance_core import atomic_write, chain
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from claims.exceptions import ReproError
@@ -49,6 +49,16 @@ OPEN_ITEMS_VERSION = "reproducible.science/open-items/0.1-experimental"
 #: The two files a reader writes, in the directory it is given.
 DRAFT_NAME = "repro.draft.yaml"
 ITEMS_NAME = "open-items.json"
+
+#: Every proposal made to fill an item, on a hash chain beside the record of checks: in the
+#: state folder beside the open-items file, one event a proposal, only ever appended to.
+#: `repro mcp`'s `propose_binding` writes it, and `tally` counts from it.
+ATTEMPTS = pathlib.Path(".repro") / "attempts.jsonl"
+
+#: How many attempts at one item pass without remark. Past it a match is still a match, and
+#: still inferred, but an address found after many tries may be one a search turned up rather
+#: than the claim's own, so the count says so.
+ATTEMPT_LIMIT = 5
 
 _SHA256_HEX = r"^[a-f0-9]{64}$"
 
@@ -142,6 +152,75 @@ class OpenItems(BaseModel):
         return value
 
 
+class Attempt(BaseModel):
+    """One proposal made for an item, and what the check found of it. The chain adds its
+    position, the time and the hash of the event before it."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    event: Literal["attempt"] = "attempt"
+    open_items: str
+    """The open-items file's name, in the directory the record is beside."""
+    item: str
+    claim: str
+    attempt: int = Field(ge=1)
+    """Which attempt at this item it was, counting from 1."""
+    assertion: dict[str, Any]
+    """The assertion proposed, with its address."""
+    outcome: str
+    """What the check found: `matched`, never `verified`, or the outcome's own word."""
+
+
+class AttemptRecord(BaseModel):
+    """The attempts recorded at the items of one open-items file, as read."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    path: str | None
+    """Where the record is, or None where there is none."""
+    status: str
+    """What `provenance_core.chain.verify` found: `intact` for a chain that verifies."""
+    problems: tuple[str, ...] = ()
+    attempts: tuple[Attempt, ...] = ()
+
+
+def read_attempts(open_items: pathlib.Path) -> AttemptRecord:
+    """The attempts recorded at the items of `open_items`, and whether the chain verifies. A
+    chain that does not is reported, and its attempts are still counted as written."""
+    record = open_items.parent / ATTEMPTS
+    if not record.is_file():
+        return AttemptRecord(path=None, status="absent")
+    status, problems = chain.verify(record)
+    try:
+        events = chain.read_ledger(record)
+    except chain.ChainError as e:
+        return AttemptRecord(path=record.as_posix(), status=status.value, problems=(str(e),))
+    found = []
+    for event in events:
+        if event.get("event") != "attempt" or event.get("open_items") != open_items.name:
+            continue
+        try:
+            found.append(
+                Attempt.model_validate(
+                    {k: v for k, v in event.items() if k in Attempt.model_fields}
+                )
+            )
+        except ValidationError as e:
+            problems = [*problems, f"entry {event.get('seq')} is not an attempt: {e}"]
+    return AttemptRecord(
+        path=record.as_posix(), status=status.value, problems=tuple(problems), attempts=tuple(found)
+    )
+
+
+def append_attempt(open_items: pathlib.Path, attempt: dict[str, Any]) -> None:
+    """Append one attempt to the record beside `open_items`. The chain refuses to append to a
+    record that does not verify."""
+    record = open_items.parent / ATTEMPTS
+    record.parent.mkdir(exist_ok=True)
+    event = Attempt.model_validate({**attempt, "open_items": open_items.name})
+    chain.append_event(record, event.model_dump(mode="json"))
+
+
 def write_draft(
     directory: pathlib.Path,
     document: dict,
@@ -219,6 +298,8 @@ class ItemFill(BaseModel):
     match is `matched`, and nothing inferred is ever `verified`."""
     candidates: int = 0
     unique: bool = False
+    attempts: int = 0
+    """How many proposals for it the record of attempts holds."""
 
 
 class ClaimTally(BaseModel):
@@ -247,10 +328,20 @@ class Tally(BaseModel):
     items: dict[str, int]
     assertions: dict[Basis, dict[str, int]]
     """Every assertion of the draft by basis and outcome, an inferred match as `matched`."""
+    attempts: dict[str, int] = {}
+    """Each item a proposal was recorded for, with how many."""
+    over_attempt_limit: tuple[str, ...] = ()
+    """The items with more than `ATTEMPT_LIMIT` attempts recorded."""
+    attempt_record: AttemptRecord = AttemptRecord(path=None, status="absent")
+    """Where the attempts were read from, and whether its chain verifies."""
     per_claim: tuple[ClaimTally, ...]
 
 
-def _fill(item: OpenItem, evidence: tuple, decisions: tuple[Decision, ...]) -> ItemFill:
+def _fill(
+    item: OpenItem, evidence: tuple, decisions: tuple[Decision, ...], attempts: int = 0
+) -> ItemFill:
+    # The basis each decision was counted under: an assertion over an artifact an agent added
+    # is inferred there whatever it says of itself.
     filling = [
         (found, decision)
         for found, decision in zip(evidence, decisions, strict=True)
@@ -260,16 +351,19 @@ def _fill(item: OpenItem, evidence: tuple, decisions: tuple[Decision, ...]) -> I
         id=item.id,
         need=item.need,
         filled=bool(filling),
-        by=tuple(found.counted for found, _ in filling),
+        by=tuple(decision.basis for _, decision in filling),
         outcomes=tuple(decision.said for _, decision in filling),
         candidates=len(item.candidates),
         unique=item.unique,
+        attempts=attempts,
     )
 
 
-def _state(claim_items: tuple[ItemFill, ...], evidence: tuple) -> ClaimState:
+def _state(
+    claim_items: tuple[ItemFill, ...], evidence: tuple, decisions: tuple[Decision, ...]
+) -> ClaimState:
     if not claim_items:
-        if evidence and not any(found.counted is Basis.INFERRED for found in evidence):
+        if evidence and not any(decision.basis is Basis.INFERRED for decision in decisions):
             return ClaimState.READER
         return ClaimState.OUTSIDE
     if not all(fill.filled for fill in claim_items):
@@ -297,13 +391,20 @@ def tally(path: pathlib.Path) -> Tally:
             "declares; an item is closed by filling it, never by deleting its claim"
         )
 
+    record = read_attempts(path)
+    tried = collections.Counter(attempt.item for attempt in record.attempts)
     per_claim = []
     for claim, assessment in zip(manifest.claims, report.claims, strict=True):
         fills = tuple(
-            _fill(item, claim.evidence, assessment.decisions) for item in by_claim[claim.id]
+            _fill(item, claim.evidence, assessment.decisions, tried[item.id])
+            for item in by_claim[claim.id]
         )
         per_claim.append(
-            ClaimTally(claim=claim.id, state=_state(fills, claim.evidence), items=fills)
+            ClaimTally(
+                claim=claim.id,
+                state=_state(fills, claim.evidence, assessment.decisions),
+                items=fills,
+            )
         )
 
     states = collections.Counter(entry.state for entry in per_claim)
@@ -339,6 +440,9 @@ def tally(path: pathlib.Path) -> Tally:
             "with_no_candidate": sum(fill.candidates == 0 for fill in fills),
         },
         assertions=assertions,
+        attempts=dict(tried),
+        over_attempt_limit=tuple(item for item, n in tried.items() if n > ATTEMPT_LIMIT),
+        attempt_record=record,
         per_claim=tuple(per_claim),
     )
 

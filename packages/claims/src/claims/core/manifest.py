@@ -9,9 +9,9 @@ import pathlib
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
 
-from claims.core.artifacts import ArtifactRef, Digest
+from claims.core.artifacts import ArtifactRef, Basis, Digest
 from claims.core.claims import Claim
-from claims.core.evidence import Conversion
+from claims.core.evidence import Conversion, Evidence
 from claims.core.outcomes import RegistrationAuthority
 
 SCHEMA_VERSION = "repro/1"
@@ -342,6 +342,17 @@ class Manifest(BaseModel):
 
     def artifact(self, artifact_id: str) -> ArtifactRef | None:
         return next((a for a in self.artifacts if a.id == artifact_id), None)
+
+    def counted(self, evidence: Evidence) -> Basis:
+        """The basis an assertion is counted under: inferred where it is, and where it reads
+        an artifact an agent added that nobody has accepted, whatever it says of itself."""
+        if evidence.counted is Basis.INFERRED:
+            return Basis.INFERRED
+        for name in evidence.artifacts:
+            artifact = self.artifact(name)
+            if artifact is not None and artifact.counted is Basis.INFERRED:
+                return Basis.INFERRED
+        return evidence.counted
 
     def resolve(self, artifact: ArtifactRef) -> pathlib.Path:
         if artifact.path.is_absolute() or self.path is None:

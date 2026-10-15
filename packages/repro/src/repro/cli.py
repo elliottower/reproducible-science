@@ -18,6 +18,7 @@
     repro prereg          run `prereg`: freeze a plan, and record what deviated from it
     repro citations       run `citations`: does every quotation resolve in its source?
     repro results         run `results`: seal a run, record it, verify the chain
+    repro mcp             serve these checks to an agent as MCP tools, over standard input and output
 
 A renderer over the library and nothing more. `verify` calls `claims.verify()` and
 `Policy.assess()`, both of which return values, so anything this prints can also be obtained
@@ -104,6 +105,7 @@ from repro.delegate import BY_NAME, TOOLS
 from repro.delegate import check as delegate_check
 from repro.delegate import run as delegate_run
 from repro.demo import demo
+from repro.proposals import PROJECT_MARKERS
 from repro.reproduce import RECORD
 from repro.reproduce import append as append_reproduction
 from repro.reproduce import reproduce as run_reproduce
@@ -529,6 +531,29 @@ def cmd_check(args) -> int:
     return 0
 
 
+#: What `repro mcp` prints where the `mcp` extra is not installed.
+MCP_EXTRA = 'pip install "reproducible-science[mcp]"'
+
+
+def cmd_mcp(args: argparse.Namespace) -> int:
+    """Serve the project at `--root` over stdio. The server module is reached by name, as
+    `delegate` reaches the tools, because the MCP SDK is an optional extra and the base
+    install must not need it to run any other command."""
+    try:
+        server = importlib.import_module("repro.mcp_server")
+    except ModuleNotFoundError as e:
+        if e.name is None or e.name.split(".")[0] not in ("mcp", "mcp_types"):
+            raise
+        print(f"`repro mcp` needs the MCP SDK: {MCP_EXTRA}")
+        return 2
+    root = Path(args.root) if args.root else None
+    if root is not None and not root.is_dir():
+        print(f"--root {args.root}: not a directory")
+        return 2
+    server.serve(root)
+    return 0
+
+
 def main(argv: list[str] | None = None, local_record: bool = True) -> int:
     parser = argparse.ArgumentParser(
         prog="repro",
@@ -648,6 +673,29 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
     )
     badges.add_parser(sub)
     venue_cli.add_parser(sub)
+
+    p_mcp = sub.add_parser(
+        "mcp",
+        help="serve these checks to an agent as MCP tools, over standard input and output",
+        description=(
+            "Run an MCP server on standard input and output whose tools are this toolkit's "
+            "checks, the open items of a reader's draft one at a time, and four writes: "
+            "propose_binding, add_artifact and mark_reviewed, each one line of a draft "
+            "manifest, and pin_quote. Each call works in the project its path is in: the "
+            f"nearest folder above it holding one of {', '.join(PROJECT_MARKERS)}. Nothing it "
+            "offers freezes, seals, registers or runs a declared command, and only "
+            "citations_audit reaches the network, to read registry records. "
+            f"Needs {MCP_EXTRA}."
+        ),
+    )
+    p_mcp.add_argument(
+        "--root",
+        help=(
+            "the project of a call that names no path or project, until one does (default: "
+            "the project above the working directory)"
+        ),
+    )
+    p_mcp.set_defaults(func=cmd_mcp)
 
     # An audit runs these inside a clone of someone else's repository, and keeps no record of
     # its checks in that clone's git directory.

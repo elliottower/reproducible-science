@@ -42,6 +42,9 @@ dev = [
   # Validates an exported record against the JSON Schema its model generates. Tests only;
   # nothing under `packages/` imports it. MIT.
   "jsonschema>=4.23",
+  # What `reproducible-science[mcp]` installs, so the tests of `repro mcp` drive the real SDK
+  # over its in-memory transport. Pinned as the extra pins it.
+  "mcp==2.2",
   "netcdf4>=1.7.2",
   "numpy>=2.2.6",
   # The optional spreadsheet and .docx readers, for the same reason as the PDF readers below.

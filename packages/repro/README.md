@@ -1268,4 +1268,51 @@ The plugin ships instructions and hooks, not binaries, so install the tools as w
 uv tool install reproducible-science   # or: pip install reproducible-science
 ```
 
+## MCP server
+
+`repro mcp` serves the toolkit's checks to any coding agent that speaks MCP. Register it once
+per agent, for every project:
+
+```bash
+uv tool install "reproducible-science[mcp]"
+claude mcp add --transport stdio --scope user reproducible-science -- repro mcp
+```
+
+Codex, in `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.reproducible-science]
+command = "repro"
+args = ["mcp"]
+```
+
+Gemini CLI takes the same `command` and `args` under `mcpServers` in `~/.gemini/settings.json`,
+and Cursor under `mcpServers` in `~/.cursor/mcp.json`, with `"type": "stdio"`.
+
+The server follows the paths the agent passes. Each call works in the project its path is in,
+the nearest folder above it holding one of `PROJECT_MARKERS` (`repro.yaml`, `.results/`,
+`.prereg/`, `claims/`, `PREREG.md`, or a reader's `repro.draft.yaml`), and every path is kept
+inside that project. A symlink belongs to the folder it sits in. A call with no path takes a
+`project` argument, or the project of the last call.
+
+| tool | what it does |
+|---|---|
+| `verify`, `why`, `stale`, `numbers`, `origins` | as the commands; `verify` writes no record of checks |
+| `prereg_check`, `results_verify`, `citations_verify` | the three tools' checks |
+| `citations_audit` | each `.bib` entry against its registry record, ten a call: agrees, disagrees, not found, or could not check; the one tool that reads the network |
+| `next_open_item`, `get_open_item` | one open item: the claim, the printed value, the sentence, each candidate's address, labels and stored value |
+| `propose_binding` | one assertion filling an item, `basis: inferred`, then its check |
+| `add_artifact` | one file, pinned and `basis: inferred` |
+| `mark_reviewed` | what the user approved in the chat, as `reviewed` |
+| `pin_quote` | `citations pin`, which writes only a passage that resolves |
+
+Each write is one line of the draft, and no other byte changes. `propose_binding` reports a
+match as `matched, inferred: not verified`, and a retry replaces only its own proposal that did
+not match. Every attempt is appended to a hash chain in `.repro/attempts.jsonl` beside the
+open-items file, which `claims open-items` counts from, flagging an item tried more than five
+times. An assertion reading an inferred artifact counts as inferred too. `mark_reviewed` writes
+who (git `user.name`), when, how (`approved in chat via` the client) and the digest of what was
+accepted; when that changes, the review no longer counts. Nothing the server offers freezes,
+registers, seals, runs a declared command, and nothing but `citations_audit` fetches.
+
 MIT licensed.
