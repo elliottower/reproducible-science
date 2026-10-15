@@ -3,7 +3,7 @@ import { Background, Controls, ReactFlow, ReactFlowProvider, useReactFlow, type 
 import Catalog from './Catalog'
 import Overview, { type Tab } from './Overview'
 import { CitationsTab, PreregTab, ReproduceTab, ResultsTab } from './Records'
-import { failingPrompt, FixCtx, ProblemPill } from './fix'
+import { ClaimsPill, FixCtx } from './fix'
 import { ReproduceButton, type Run, VerifyButton } from './reproduce'
 import { post } from './api'
 import { layout, summarize } from './layout'
@@ -34,6 +34,9 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
     ['claims', 'Claims'], ['reproduce', 'Reproduce'], ['graph', 'Graph'],
   ]
   const [reproOpen, setReproOpen] = useState(false)
+  useEffect(() => {
+    document.title = graph.project_name ? `${graph.project_name} · repro ui` : 'repro ui'
+  }, [graph.project_name])
   const [mode, setMode] = useState<Tab>(TABS.map(([k]) => k).find((v) => v === initial.get('view')) ?? 'overview')
   const [flow, setFlow] = useState<{ nodes: Node[]; edges: Edge[] }>({ nodes: [], edges: [] })
   const rf = useReactFlow()
@@ -157,30 +160,18 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
     window.history.replaceState(null, '', `#${h.toString()}`)
   }, [open, selected, mode, openFiles])
 
-  const failing = graph.totals.failing
-
   return (
     <UiCtx.Provider value={{ selected: shown, matches, related, toggle, openFiles, toggleFile }}>
       <div className="app">
         <header className="top">
-          <div className="brand mono">{graph.project_name ?? 'Claim lineage'}</div>
           <div className="tabs">
             {TABS.map(([k, label]) => (
               <button key={k} className={mode === k ? 'on' : ''} onClick={() => setMode(k)}>{label}</button>
             ))}
           </div>
           <div className="spacer" />
-          {failing > 0 ? (
-            <ProblemPill className="bad" label={`● ${fmt(failing)} failing`}
-              what={`${fmt(failing)} claim${failing === 1 ? '' : 's'} no longer match the file they read.`}
-              prompt={failingPrompt(graph, graph.project_dir ?? null)}
-              title={graph.totals.last_check ? `last check ${when(graph.totals.last_check)}` : undefined} />
-          ) : (
-            <span className="pill big good"
-              title={graph.totals.last_check ? `${fmt(graph.totals.assertions)} assertions over ${fmt(graph.totals.artifacts)} files · last check ${when(graph.totals.last_check)}` : undefined}>
-              ● {fmt(graph.totals.claims)} verified
-            </span>
-          )}
+          <ClaimsPill graph={graph} openClaims={() => setMode('claims')} />
+          {recheck.available && <ReproduceButton graph={graph} open={reproOpen} setOpen={setReproOpen} live={recheck.live} run={recheck.reproduce} />}
           {recheck.available && (
             <>
               <button className="recheck" onClick={() => recheck.run('refresh')} disabled={recheck.busy !== null}
@@ -190,7 +181,6 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
               <VerifyButton graph={graph} busy={recheck.busy === 'verify'} disabled={recheck.busy !== null} run={() => recheck.run('verify')} />
             </>
           )}
-          {recheck.available && <ReproduceButton graph={graph} open={reproOpen} setOpen={setReproOpen} live={recheck.live} run={recheck.reproduce} />}
           {recheck.message && <span className="error-note">{recheck.message}</span>}
         </header>
         <div className="toolbar" style={mode === 'overview' ? { display: 'none' } : undefined}>

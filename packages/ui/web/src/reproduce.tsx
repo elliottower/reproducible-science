@@ -66,10 +66,11 @@ export function ReproduceButton({ graph, open, setOpen, live, run }: {
   const elapsed = live ? (live.done?.seconds ?? (now - live.started) / 1000) : 0
   return (
     <>
-      <button className="repro-main" onClick={() => setOpen(true)}>
+      <button className={`pill big pill-btn ${changed.length ? 'stale' : 'good'}`} onClick={() => setOpen(true)}
+        title="The rebuild steps repro.yaml declares, and whether each re-ran since its inputs last changed">
         {running
-          ? `Reproducing… ${Math.floor(elapsed)} s`
-          : <><span className="play-icon">▶</span> Reproduce{changed.length > 0 && ` · ${changed.length} changed`}</>} <span className="caret">▾</span>
+          ? `◐ reproducing… ${Math.floor(elapsed)} s`
+          : `◐ ${fmt(steps.length - changed.length)}/${fmt(steps.length)} reproduced`} <span className="caret">▾</span>
       </button>
       {open && (
         <div className="viewer-back" onClick={() => setOpen(false)}>
