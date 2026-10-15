@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Adv.+Neural+Inf.+Process.+Syst.&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:08:55Z",
+  "sha256": "c0c2edc5b38c81cafdbe08d207422944a2dceb9af4601e6b9c80604fafded18f",
+  "body": "{\"searchinfo\": {\"search\": \"Adv. Neural Inf. Process. Syst.\"}, \"search\": [], \"success\": 1}"
+}

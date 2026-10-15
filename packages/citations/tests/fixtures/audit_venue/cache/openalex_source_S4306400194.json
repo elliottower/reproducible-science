@@ -1,7 +1,0 @@
-{
-  "cache_version": 1,
-  "url": "https://api.openalex.org/sources/S4306400194",
-  "fetched_at": "2026-10-14T20:52:54Z",
-  "sha256": "6e6e777254a46229b52f64c78762eafe7fe33b67dab54931fdcabb6dd5b53a30",
-  "body": "{\"id\": \"https://openalex.org/S4306400194\", \"issn_l\": \"2331-8422\", \"issn\": [\"2331-8422\"], \"display_name\": \"arXiv (Cornell University)\", \"host_organization\": \"https://openalex.org/I205783295\", \"host_organization_name\": \"Cornell University\", \"host_organization_lineage\": [\"https://openalex.org/I205783295\"], \"works_count\": 1483417, \"oa_works_count\": 1483417, \"cited_by_count\": 5496015, \"is_oa\": true, \"is_in_doaj\": false, \"is_in_doaj_since_year\": null, \"is_high_oa_rate\": true, \"is_high_oa_rate_since_year\": null, \"is_in_scielo\": false, \"is_ojs\": false, \"is_preprint_repository\": true, \"is_core\": false, \"listed_in\": [], \"oa_flip_year\": null, \"first_publication_year\": 1753, \"last_publication_year\": 2026, \"homepage_url\": \"https://arxiv.org\", \"apc_prices\": [], \"apc_usd\": null, \"apc_usd_by_year\": null, \"country_code\": \"US\", \"alternate_titles\": [\"ArXiv.org\"], \"type\": \"repository\", \"works_api_url\": \"https://api.openalex.org/works?filter=primary_location.source.id:S4306400194\", \"updated_date\": \"2026-10-13T10:02:38\", \"created_date\": \"2016-06-24T00:00:00\"}"
-}

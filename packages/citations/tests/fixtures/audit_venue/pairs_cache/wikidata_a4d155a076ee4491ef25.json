@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Communications+Biology&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:09:54Z",
+  "sha256": "58a1c0795bbffd8724352c6f2e7060f6b15ca90b0bdb58844ce81a2a9ae31fdd",
+  "body": "{\"searchinfo\": {\"search\": \"Communications Biology\"}, \"search\": [{\"id\": \"Q60029756\", \"title\": \"Q60029756\", \"pageid\": 59909938, \"concepturi\": \"http://www.wikidata.org/entity/Q60029756\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q60029756\", \"display\": {\"label\": {\"value\": \"Communications Biology\", \"language\": \"en\"}, \"description\": {\"value\": \"scientific journal published by Nature Research\", \"language\": \"en\"}}, \"label\": \"Communications Biology\", \"description\": \"scientific journal published by Nature Research\", \"match\": {\"type\": \"label\", \"language\": \"en\", \"text\": \"Communications Biology\"}}], \"success\": 1}"
+}

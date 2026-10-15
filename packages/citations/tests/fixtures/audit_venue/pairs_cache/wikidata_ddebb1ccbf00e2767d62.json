@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Zeitschrift+f%C3%BCr+Naturforschung+C&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:11:57Z",
+  "sha256": "9339e61c15135cf69e0dd96d43ce5d859c75c8bc6f2bdf75edd2dcc5a4a52083",
+  "body": "{\"searchinfo\": {\"search\": \"Zeitschrift f\u00fcr Naturforschung C\"}, \"search\": [{\"id\": \"Q3575113\", \"title\": \"Q3575113\", \"pageid\": 3403709, \"concepturi\": \"http://www.wikidata.org/entity/Q3575113\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q3575113\", \"display\": {\"label\": {\"value\": \"Zeitschrift f\u00fcr Naturforschung C\", \"language\": \"en\"}, \"description\": {\"value\": \"journal\", \"language\": \"en\"}}, \"label\": \"Zeitschrift f\u00fcr Naturforschung C\", \"description\": \"journal\", \"match\": {\"type\": \"label\", \"language\": \"en\", \"text\": \"Zeitschrift f\u00fcr Naturforschung C\"}}], \"success\": 1}"
+}

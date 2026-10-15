@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Proceedings+of+the+IEEE+Conference+on+Computer+Vision+and+Pattern+Recognition&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-14T22:23:44Z",
+  "sha256": "51d04d5b3bc0bb3551cf53808cdb17ef8554dca975ef9a295743de4a957cdb4a",
+  "body": "{\"searchinfo\": {\"search\": \"Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition\"}, \"search\": [], \"success\": 1}"
+}

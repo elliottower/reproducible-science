@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://api.openalex.org/sources?search=Proceedings+of+the+IEEE+International+Conference+on+Computer+Vision+%28ICCV%29&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
+  "fetched_at": "2026-10-14T22:32:21Z",
+  "sha256": "733401aaf82e3bd9a36f060e8f841de9b13e74fe4df0b717d712e523f15b748a",
+  "body": "{\"meta\": {\"count\": 0, \"db_response_time_ms\": 27, \"page\": 1, \"per_page\": 10, \"groups_count\": null, \"x_query\": {\"oql\": \"get sources where text has (Proceedings of the IEEE International Conference on Computer Vision ICCV)\", \"x_new_oql\": \"get sources where text has (Proceedings of the IEEE International Conference on Computer Vision ICCV)\", \"oqo\": {\"get_rows\": \"sources\", \"filter_rows\": [{\"column_id\": \"text.search\", \"value\": \"Proceedings of the IEEE International Conference on Computer Vision (ICCV)\", \"operator\": \"has\"}]}, \"url\": \"/sources?filter=text.search:Proceedings of the IEEE International Conference on Computer Vision %28ICCV%29&per_page=10\"}, \"cost_usd\": 0.001}, \"results\": [], \"group_by\": []}"
+}

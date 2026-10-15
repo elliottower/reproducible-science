@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Commun.+Biol.&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:09:53Z",
+  "sha256": "c3da621aa7cd21e83371ecac27b7094452b5f2860282f7a3d5f58dabd59b6dca",
+  "body": "{\"searchinfo\": {\"search\": \"Commun. Biol.\"}, \"search\": [{\"id\": \"Q60029756\", \"title\": \"Q60029756\", \"pageid\": 59909938, \"concepturi\": \"http://www.wikidata.org/entity/Q60029756\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q60029756\", \"display\": {\"label\": {\"value\": \"Communications Biology\", \"language\": \"en\"}, \"description\": {\"value\": \"scientific journal published by Nature Research\", \"language\": \"en\"}}, \"label\": \"Communications Biology\", \"description\": \"scientific journal published by Nature Research\", \"match\": {\"type\": \"alias\", \"language\": \"en\", \"text\": \"Commun. Biol.\"}, \"aliases\": [\"Commun. Biol.\"]}], \"success\": 1}"
+}

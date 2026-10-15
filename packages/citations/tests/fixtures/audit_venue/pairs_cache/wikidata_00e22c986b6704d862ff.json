@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Neural+Netw.&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:10:07Z",
+  "sha256": "d15eabdf2c666c3f3988be51306b2fbcbf807bdf90475dc1053687b2dc56e09b",
+  "body": "{\"searchinfo\": {\"search\": \"Neural Netw.\"}, \"search\": [], \"success\": 1}"
+}

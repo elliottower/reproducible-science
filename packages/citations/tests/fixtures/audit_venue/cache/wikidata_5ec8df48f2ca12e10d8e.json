@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3AP236%3D2159-5399%7CP7363%3D2159-5399%7CP236%3D2374-3468%7CP7363%3D2374-3468&format=json",
+  "fetched_at": "2026-10-14T22:30:47Z",
+  "sha256": "2f97a46343784d3f0989e15c44d2a5c268b386394d7d5e5c15861558b201bd02",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q27722923\", \"pageid\": 29439189, \"size\": 16990, \"wordcount\": 172, \"snippet\": \"Proceedings of the AAAI Conference on Artificial Intelligence\\nProceedings of the ... AAAI Conference on Artificial Intelligence. AAAI Conference on Artificial\", \"timestamp\": \"2025-03-12T06:44:26Z\"}]}}"
+}

@@ -123,10 +123,10 @@ lint.per-file-ignores."packages/*/tests/*" = [ "B011" ] # bare assert False is f
 # lockfile names, `bu` is a base64 fragment in one of its integrity hashes, and the rest are
 # author surnames in the sampling frame, and `commun` and `ser` are ISO 4 abbreviations
 # (`Nat. Commun.`, `J. R. Stat. Soc. Ser. B`), and `archiv` is German (`Archiv der Mathematik`). Listed rather than skipping whole files, which
-# would hide real typos. The audit venue fixture's cache is skipped: it is registry responses
+# would hide real typos. The audit venue fixture's caches are skipped: it is registry responses
 # as fetched, in several languages, and nothing in it is ours to correct.
 ignore-words-list = "unparseable,sav,ue,copie,buis,smae,nd,ist,fo,inout,ede,bui,trough,devlop,bu,commun,ser,archiv"
-skip = "uv.lock,.git,packages/citations/tests/fixtures/audit_venue/cache/*"
+skip = "uv.lock,.git,packages/citations/tests/fixtures/audit_venue/cache/*,packages/citations/tests/fixtures/audit_venue/pairs_cache/*"
 
 [tool.pytest]
 ini_options.testpaths = [ "packages" ]

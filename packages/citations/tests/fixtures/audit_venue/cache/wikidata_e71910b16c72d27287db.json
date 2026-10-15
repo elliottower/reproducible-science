@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DCell%22&format=json",
+  "fetched_at": "2026-10-14T22:30:05Z",
+  "sha256": "fc938c8b55d0ac3efe1fdb43b50133aa4e6701e915360eee561151953ed894d1",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q655814\", \"pageid\": 617259, \"size\": 57946, \"wordcount\": 127, \"snippet\": \"Cell\\nCell\\nCell\\nCell\\nCell\\n\u30bb\u30eb\\n\uc140\\nCell\\n\u7d30\u80de\\nCell\\nCell\\nCell\\nCell\\nCell\\nCell\\nCell\\nCell\\nCell\\nCell\\nCell\\nCell\\nCell\\nCell\\nXane\\nCell\\nCell\\nCell\\nCell\\n\u0412\u0443\u0437\u0430\\nCell\\nCell\\nCell\", \"timestamp\": \"2026-08-15T21:28:02Z\"}]}}"
+}

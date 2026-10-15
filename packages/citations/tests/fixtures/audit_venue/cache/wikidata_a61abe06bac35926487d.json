@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=J.+Mol.+Biol.&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-14T22:22:44Z",
+  "sha256": "904f97f499eeb413c85ffba550860565e1d6c09ef5d12fdf3f96f59b60288a4a",
+  "body": "{\"searchinfo\": {\"search\": \"J. Mol. Biol.\"}, \"search\": [{\"id\": \"Q925779\", \"title\": \"Q925779\", \"pageid\": 876168, \"concepturi\": \"http://www.wikidata.org/entity/Q925779\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q925779\", \"display\": {\"label\": {\"value\": \"Journal of Molecular Biology\", \"language\": \"en\"}, \"description\": {\"value\": \"peer-reviewed scientific journal\", \"language\": \"en\"}}, \"label\": \"Journal of Molecular Biology\", \"description\": \"peer-reviewed scientific journal\", \"match\": {\"type\": \"alias\", \"language\": \"en\", \"text\": \"J. Mol. Biol.\"}, \"aliases\": [\"J. Mol. Biol.\"]}], \"success\": 1}"
+}

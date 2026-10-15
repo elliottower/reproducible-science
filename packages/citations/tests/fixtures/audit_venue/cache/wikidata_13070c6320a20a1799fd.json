@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DBioinformatics%22&format=json",
+  "fetched_at": "2026-10-14T22:24:41Z",
+  "sha256": "f5b086013116ce368a9329d6dbe4bb6af12fe0e8d7e9dc15a94be10e231acd72",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q4914910\", \"pageid\": 4695698, \"size\": 36125, \"wordcount\": 58, \"snippet\": \"Bioinformatics\\nBioinformatics\\nBioinformatics\\nBioinformatics\\nBioinformatics\\nBioinformatics\\nBioinformatics\\nBioinformatics\\nBioinformatics\\nBioinformatics\\nBioinformatics\", \"timestamp\": \"2026-09-10T16:05:50Z\"}]}}"
+}

@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=IEEE+Conference+on+Computer+Vision+and+Pattern+Recognition+Workshops&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-14T22:27:34Z",
+  "sha256": "559da4f327e09676740c52811ba55d680a143ce18a9f7ab08c74acb39e7bc7e5",
+  "body": "{\"searchinfo\": {\"search\": \"IEEE Conference on Computer Vision and Pattern Recognition Workshops\"}, \"search\": [], \"success\": 1}"
+}

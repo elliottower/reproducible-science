@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://api.openalex.org/sources?search=IEEE+Trans.+Neural+Netw.+Learn.+Syst.&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
+  "fetched_at": "2026-10-15T00:10:26Z",
+  "sha256": "837c82029e5f35f7dbe6c06882bb0d49f1e7d9f17560eca92025fd8f3e94ae9a",
+  "body": "{\"meta\": {\"count\": 1, \"db_response_time_ms\": 23, \"page\": 1, \"per_page\": 10, \"groups_count\": null, \"x_query\": {\"oql\": \"get sources where text has (IEEE Trans. Neural Netw. Learn. Syst.)\", \"x_new_oql\": \"get sources where text has (IEEE Trans. Neural Netw. Learn. Syst.)\", \"oqo\": {\"get_rows\": \"sources\", \"filter_rows\": [{\"column_id\": \"text.search\", \"value\": \"IEEE Trans. Neural Netw. Learn. Syst.\", \"operator\": \"has\"}]}, \"url\": \"/sources?filter=text.search:IEEE Trans. Neural Netw. Learn. Syst.&per_page=10\"}, \"cost_usd\": 0.001}, \"results\": [{\"id\": \"https://openalex.org/S4210175523\", \"display_name\": \"IEEE Transactions on Neural Networks and Learning Systems\", \"alternate_titles\": [\"IEEE Trans Neural Netw Learn Syst\"], \"issn_l\": \"2162-237X\", \"issn\": [\"2162-237X\", \"2162-2388\"], \"type\": \"journal\"}], \"group_by\": []}"
+}

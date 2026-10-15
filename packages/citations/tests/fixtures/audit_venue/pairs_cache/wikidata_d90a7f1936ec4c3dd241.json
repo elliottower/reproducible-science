@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q7148369%7CQ130170931&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-15T00:09:28Z",
+  "sha256": "a908840a0b018935f59b50a0631dc46cf78aacbb6d248b01776a0dd99988b3c7",
+  "body": "{\"entities\": {\"Q7148369\": {\"id\": \"Q7148369\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Pattern Recognition Letters\"}}, \"aliases\": {}, \"claims\": {\"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0167-8655\", \"type\": \"string\"}}}, {\"mainsnak\": {\"datavalue\": {\"value\": \"1872-7344\", \"type\": \"string\"}}}], \"P1160\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"Pattern Recogn. Lett.\", \"type\": \"string\"}}}], \"P1055\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"9879988\", \"type\": \"string\"}}}], \"P7363\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0167-8655\", \"type\": \"string\"}}}], \"P10283\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"S151820558\", \"type\": \"string\"}}}]}}, \"Q130170931\": {\"id\": \"Q130170931\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Pattern Recognition Letters and Numbers Handwriting by Using Backpropagation and Genetic Algorithms Methods\"}}, \"aliases\": {}, \"claims\": {}}}, \"success\": 1}"
+}

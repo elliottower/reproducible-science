@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DPLoS+Comput.+Biol.%22&format=json",
+  "fetched_at": "2026-10-15T00:11:31Z",
+  "sha256": "1fe137bc0055ebe643b9aa1cde8321c17f5afafef826b0a974a30ee6327271c3",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q2635829\", \"pageid\": 2541270, \"size\": 60787, \"wordcount\": 124, \"snippet\": \"PLOS Computational Biology\\n\u300a\u516c\u5171\u79d1\u5b78\u5716\u66f8\u9928\uff1a\u8a08\u7b97\u751f\u7269\u5b78\u300b\\n\u300a\u516c\u5171\u79d1\u5b66\u56fe\u4e66\u9986\uff1a\u8ba1\u7b97\u751f\u7269\u5b66\u300b\\nPLOS Computational Biology\\n\u300a\u516c\u5171\u79d1\u5b66\u56fe\u4e66\u9986\uff1a\u8ba1\u7b97\u751f\u7269\u5b66\u300b\\nPLOS Computational Biology\\nPLOS Computational Biology\", \"timestamp\": \"2026-04-23T16:26:45Z\"}]}}"
+}

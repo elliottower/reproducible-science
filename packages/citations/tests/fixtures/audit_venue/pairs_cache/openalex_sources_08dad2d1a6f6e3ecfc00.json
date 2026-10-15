@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://api.openalex.org/sources?search=Econ.+Lett.&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
+  "fetched_at": "2026-10-15T00:09:23Z",
+  "sha256": "770ac7a306bfab84cf9ac83c4829b174e226bd03e5266d476c22de84c7279f6c",
+  "body": "{\"meta\": {\"count\": 0, \"db_response_time_ms\": 29, \"page\": 1, \"per_page\": 10, \"groups_count\": null, \"x_query\": {\"oql\": \"get sources where text has (Econ. Lett.)\", \"x_new_oql\": \"get sources where text has (Econ. Lett.)\", \"oqo\": {\"get_rows\": \"sources\", \"filter_rows\": [{\"column_id\": \"text.search\", \"value\": \"Econ. Lett.\", \"operator\": \"has\"}]}, \"url\": \"/sources?filter=text.search:Econ. Lett.&per_page=10\"}, \"cost_usd\": 0.001}, \"results\": [], \"group_by\": []}"
+}

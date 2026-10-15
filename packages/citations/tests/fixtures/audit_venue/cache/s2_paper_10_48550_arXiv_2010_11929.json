@@ -1,7 +1,0 @@
-{
-  "cache_version": 1,
-  "url": "https://api.semanticscholar.org/graph/v1/paper/ARXIV:2010.11929?fields=venue,publicationVenue,journal",
-  "fetched_at": "2026-10-14T20:56:50Z",
-  "sha256": "d1db42ffbcf07652a0bcd856edbdf8ea9d678e156d1cd95698951195a6b80bcc",
-  "body": "{\"paperId\": \"268d347e8a55b5eb82fb5e7d2f800e33c75ab18a\", \"publicationVenue\": {\"id\": \"939c6e1d-0d17-4d6e-8a82-66d960df0e40\", \"name\": \"International Conference on Learning Representations\", \"type\": \"conference\", \"alternate_names\": [\"Int Conf Learn Represent\", \"ICLR\"], \"url\": \"https://iclr.cc/\"}, \"venue\": \"International Conference on Learning Representations\", \"journal\": {\"name\": \"ArXiv\", \"volume\": \"abs/2010.11929\"}}"
-}

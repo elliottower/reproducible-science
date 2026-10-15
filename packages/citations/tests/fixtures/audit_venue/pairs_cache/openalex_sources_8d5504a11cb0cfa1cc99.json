@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://api.openalex.org/sources?search=NAR+Genom.+Bioinform.&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
+  "fetched_at": "2026-10-15T00:11:24Z",
+  "sha256": "844c493ce2925efc7b1b0621d9f0eeda7f60f2242b7176a3497a46eae6ac6d0f",
+  "body": "{\"meta\": {\"count\": 0, \"db_response_time_ms\": 2, \"page\": 1, \"per_page\": 10, \"groups_count\": null, \"x_query\": {\"oql\": \"get sources where text has (NAR Genom. Bioinform.)\", \"x_new_oql\": \"get sources where text has (NAR Genom. Bioinform.)\", \"oqo\": {\"get_rows\": \"sources\", \"filter_rows\": [{\"column_id\": \"text.search\", \"value\": \"NAR Genom. Bioinform.\", \"operator\": \"has\"}]}, \"url\": \"/sources?filter=text.search:NAR Genom. Bioinform.&per_page=10\"}, \"cost_usd\": 0.001}, \"results\": [], \"group_by\": []}"
+}

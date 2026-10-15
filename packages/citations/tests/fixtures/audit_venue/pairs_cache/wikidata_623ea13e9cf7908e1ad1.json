@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Am.+Econ.+Rev.&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:12:57Z",
+  "sha256": "88f3eaa269bc6781f7d5c42fd2e541ecfe5ef8cabf14679d81f45da339521913",
+  "body": "{\"searchinfo\": {\"search\": \"Am. Econ. Rev.\"}, \"search\": [], \"success\": 1}"
+}

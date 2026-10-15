@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q898967&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-15T00:12:52Z",
+  "sha256": "0c47c2ea8a4ea86931326f11a7af98f7ee897a54a898718659f62f1c8fd36700",
+  "body": "{\"entities\": {\"Q898967\": {\"id\": \"Q898967\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Journal of Organic Chemistry\"}, \"mul\": {\"language\": \"mul\", \"value\": \"The Journal of Organic Chemistry\"}}, \"aliases\": {\"en\": [{\"language\": \"en\", \"value\": \"The Journal of Organic Chemistry\"}]}, \"claims\": {\"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0022-3263\", \"type\": \"string\"}}}, {\"mainsnak\": {\"datavalue\": {\"value\": \"1520-6904\", \"type\": \"string\"}}}], \"P1160\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"J. Org. Chem.\", \"type\": \"string\"}}}], \"P1055\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"2985193R\", \"type\": \"string\"}}}], \"P1813\": [{\"mainsnak\": {\"datavalue\": {\"value\": {\"text\": \"JOC\", \"language\": \"en\"}, \"type\": \"monolingualtext\"}}}], \"P7363\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0022-3263\", \"type\": \"string\"}}}], \"P10283\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"S205050996\", \"type\": \"string\"}}}]}}}, \"success\": 1}"
+}

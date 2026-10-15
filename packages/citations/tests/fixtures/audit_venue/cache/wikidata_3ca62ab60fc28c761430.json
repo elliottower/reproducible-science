@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=N.+Engl.+J.+Med.&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-14T22:26:57Z",
+  "sha256": "8456b6cfcefe07d899f4f0b73c0aa154f5d65e673d81c0418d40a48417fa60d8",
+  "body": "{\"searchinfo\": {\"search\": \"N. Engl. J. Med.\"}, \"search\": [{\"id\": \"Q582728\", \"title\": \"Q582728\", \"pageid\": 548183, \"concepturi\": \"http://www.wikidata.org/entity/Q582728\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q582728\", \"display\": {\"label\": {\"value\": \"The New England Journal of Medicine\", \"language\": \"en\"}, \"description\": {\"value\": \"peer-reviewed medical journal\", \"language\": \"en\"}}, \"label\": \"The New England Journal of Medicine\", \"description\": \"peer-reviewed medical journal\", \"match\": {\"type\": \"alias\", \"language\": \"en\", \"text\": \"N. Engl. J. Med.\"}, \"aliases\": [\"N. Engl. J. Med.\"]}], \"success\": 1}"
+}

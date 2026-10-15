@@ -43,8 +43,8 @@ pip install "citations[web]"      # to pin a web page by its URL
 
 `citations verify` establishes one fact about each quotation: the passage occurs in the pinned
 copy of the source, as read by the extractor the report names. `citations audit` establishes one
-fact about each reference: its authors, title, year, venue, volume and pages agree with the record
-its identifier resolves to.
+fact about each reference: its authors, title, year, volume and pages agree with the record its
+identifier resolves to, and its venue is the one the record's venue identifiers name.
 
 Neither establishes that the source is correct, or that the passage supports the sentence it
 is quoted for. In a claims file `statement` is yours and `exact` is theirs, and only `exact` is
@@ -819,48 +819,45 @@ the report above.
 
 ### Venue
 
-The entry's `journal` or `booktitle`, or its `series` where it names neither, is compared with every name the record
-gives the venue: Crossref's container titles, short titles and event name and acronym, PubMed's
-journal title and ISO abbreviation, and the venue names and alternate names Semantic Scholar and
-OpenAlex return for a work found by title. A wrong venue is a disagreement like a wrong year,
-reported as `venue: ours 'Nature' vs registry 'Nature Communications'`.
+A venue is compared by identifier. The record's venue is the identifiers its registries give it:
+a journal article's ISSNs from Crossref, PubMed's NLM id and ISSNs, a DataCite container's
+ISSN, the ISSNs Semantic Scholar or OpenAlex give the venue of a work found by title, and,
+where the record carries none, the primary source of the OpenAlex work. Wikidata widens those
+to the items that hold them, so the record's venue also carries its Wikidata item, OpenAlex
+source and DBLP venue key.
 
-Case, accents, punctuation, stop words, years, ordinals and volume numbers are folded away
-first, so `Proceedings of the 38th International Conference on Machine Learning` and
-`International Conference on Machine Learning` are one name. Two names then agree as the same
-words, as an abbreviation word for word (`Nat. Commun.`, `Proc. Natl. Acad. Sci. U.S.A.`), as
-an acronym (`ICML`, `JMLR`, `TPAMI`, or `KDD` inside `KDD '16`), or through a small alias table
-of the venues no rule connects, such as `NeurIPS` and `Advances in Neural Information Processing
-Systems`, or `NAACL-HLT` and the full NAACL title. The table and its sources are in
-`citations/venue.py`. A journal whose title is its parent's plus `Open`, `Nexus`, `Reports`,
-`Advances`, `Communications`, `Letters` or the like (`BMJ Open`, `Cell Reports`) is a venue of
-its own, a Findings volume is compared by the conference it belongs to, and a series such as
-`Lecture Notes in Computer Science` is never shown as the record's venue where the volume is
-named.
+The entry's `journal` or `booktitle`, or its `series` where it names neither, is resolved to the
+same kinds of identifier through registries that index venue names and their abbreviations:
+Wikidata's labels, aliases, short names and ISO 4 abbreviations, and OpenAlex sources' display
+names, abbreviated titles and alternate titles. An `issn` field is used as given. A registry
+venue is a candidate when one of its own names equals the cited one once case, accents,
+punctuation, LaTeX, years, ordinals and volume numbers are folded away; candidates that share
+an identifier, or that Wikidata links as a conference and its proceedings or as editions of one
+series, are one venue.
 
-A venue that cannot be settled is `not comparable`, counted under `venue n/c`, and never a
-disagreement:
-
-| Reason | Example |
+| Outcome | When |
 |---|---|
-| the entry names no venue, or the record names none | a `@book`, a Crossref record with no container title |
-| the entry cites a preprint | `journal = {arXiv preprint arXiv:1907.11692}`, `CoRR`, `bioRxiv` |
-| the record is a preprint | an arXiv id found by title, whose DataCite record names only arXiv |
-| a workshop or findings volume against the main track | `ICML Workshop on ...` against `International Conference on Machine Learning` |
-| an abbreviation the alias table does not expand | `SIGMOD` against the full SIGMOD title |
-| the names partly agree | `Conference on Robot Learning` against `International Conference on Machine Learning` |
-| a venue name is garbled | a registry name carrying the replacement character `�` |
-| other names could not be fetched | the names disagree on no settled rule, and OpenAlex or Semantic Scholar did not answer |
+| match | the entry's venue and the record's share an identifier, directly or through one Wikidata link |
+| mismatch | the entry's venue resolved to exactly one registry venue, the record carries its venue's identifiers itself, both sides hold an ISSN, NLM id or DBLP key, and none is shared |
+| not comparable | anything else |
 
-Before a venue is reported as different, or left uncompared because the record names only a
-preprint server, OpenAlex and Semantic Scholar are asked for the other names they file the
-venue under, so an agreeing venue costs no request. When one of them does not answer, a
-mismatch stands only if no other name could undo it: two venues the alias table holds apart,
-two journal titles that agree under no rule, or a derivative journal against its parent. Semantic Scholar refuses many anonymous
-requests, and a refused lookup leaves an arXiv-only record not comparable; an operator who sets
-`SEMANTIC_SCHOLAR_API_KEY` gets more of those venues compared. The key is never required. Two journal titles that agree under no rule
-are a mismatch; two conference names are a mismatch only when they map to different venues in
-the alias table or share less than half their distinctive words.
+A mismatch is reported like a wrong year, as `venue: ours 'Nature' vs registry 'Nature
+Communications'`, and fails `--strict`. A Wikidata item or an OpenAlex source can be one edition
+of a conference or one of several records of one journal, so those identifiers confirm a venue
+and never contradict one. A book series' ISSN, such as Lecture Notes in Computer Science's, can
+confirm the series an entry names and never contradicts the volume it names.
+
+A venue that is not comparable is listed with both names, so a person can compare them:
+`venue: ours 'Comput. Netw.' / registry 'Computer Networks' (not comparable: <reason>)`. The
+reasons are a name no registry knows, a name several registry venues share, a lookup that was
+refused, a record that is a preprint or names no venue identifier, an entry citing a preprint
+server, a workshop against a main track, a record identified only by its name, two sides with
+no serial identifier of a common kind, and a garbled name.
+
+Registry lookups are cached like every other request, sent unkeyed and with no contact
+address, and paced; a Wikidata request names the project in its `User-Agent`, as the Wikimedia
+policy asks. DBLP's API is not asked, because it answers automated clients with a proof-of-work
+page; DBLP venue keys are compared where Wikidata holds them.
 
 Fetched payloads and search answers are cached beside the file audited, so a re-run is offline
 and the report is reproducible from what was fetched rather than from the network. A refusal is

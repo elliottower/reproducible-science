@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Journal+of+the+Royal+Statistical+Society%3A+Series+B+%28Methodological%29&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-14T22:30:28Z",
+  "sha256": "19581628fccd5d9c760c6b6bac7521473a6981724aa8fdc68adb7ec622ff9177",
+  "body": "{\"searchinfo\": {\"search\": \"Journal of the Royal Statistical Society: Series B (Methodological)\"}, \"search\": [], \"success\": 1}"
+}

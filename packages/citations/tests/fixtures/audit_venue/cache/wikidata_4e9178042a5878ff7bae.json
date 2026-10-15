@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q5533480&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-14T22:25:36Z",
+  "sha256": "f83eff6dc3336c32899b1430a46a5983718c3ead8939147b19c839249f4f4ab7",
+  "body": "{\"entities\": {\"Q5533480\": {\"id\": \"Q5533480\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Genome Biology\"}}, \"aliases\": {\"en\": [{\"language\": \"en\", \"value\": \"Genome Biol.\"}, {\"language\": \"en\", \"value\": \"Genome Biol\"}]}, \"claims\": {\"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"1465-6906\", \"type\": \"string\"}}}, {\"mainsnak\": {\"datavalue\": {\"value\": \"1474-760X\", \"type\": \"string\"}}}, {\"mainsnak\": {\"datavalue\": {\"value\": \"1465-6914\", \"type\": \"string\"}}}, {\"mainsnak\": {\"datavalue\": {\"value\": \"1474-7596\", \"type\": \"string\"}}}], \"P1160\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"Genome Biol.\", \"type\": \"string\"}}}], \"P1055\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"100960660\", \"type\": \"string\"}}}], \"P10283\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"C64015301\", \"type\": \"string\"}}}, {\"mainsnak\": {\"datavalue\": {\"value\": \"S81160022\", \"type\": \"string\"}}}]}}}, \"success\": 1}"
+}

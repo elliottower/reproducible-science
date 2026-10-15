@@ -309,5 +309,88 @@
       "Archiv für Mathematik",
       "Mathematische Annalen"
     ]
-  ]
+  ],
+  "new_fields": [
+    [
+      "Phys. Rev. B",
+      "Physical Review B"
+    ],
+    [
+      "Rev. Mod. Phys.",
+      "Reviews of Modern Physics"
+    ],
+    [
+      "Nucl. Phys. B",
+      "Nuclear Physics B"
+    ],
+    [
+      "Ann. Phys.",
+      "Annalen der Physik"
+    ],
+    [
+      "Phys. Rev. X",
+      "Physical Review X"
+    ],
+    [
+      "J. Am. Chem. Soc.",
+      "Journal of the American Chemical Society"
+    ],
+    [
+      "Angew. Chem. Int. Ed.",
+      "Angewandte Chemie International Edition"
+    ],
+    [
+      "Chem. Rev.",
+      "Chemical Reviews"
+    ],
+    [
+      "J. Org. Chem.",
+      "The Journal of Organic Chemistry"
+    ],
+    [
+      "Nat. Chem.",
+      "Nature Chemistry"
+    ],
+    [
+      "Am. Econ. Rev.",
+      "American Economic Review"
+    ],
+    [
+      "Q. J. Econ.",
+      "The Quarterly Journal of Economics"
+    ],
+    [
+      "Econometrica",
+      "Econometrica"
+    ],
+    [
+      "J. Polit. Econ.",
+      "Journal of Political Economy"
+    ],
+    [
+      "Rev. Econ. Stud.",
+      "The Review of Economic Studies"
+    ],
+    [
+      "Speculum",
+      "Speculum"
+    ],
+    [
+      "PMLA",
+      "Publications of the Modern Language Association of America"
+    ],
+    [
+      "J. Hist. Ideas",
+      "Journal of the History of Ideas"
+    ],
+    [
+      "Mind",
+      "Mind"
+    ],
+    [
+      "Philos. Rev.",
+      "The Philosophical Review"
+    ]
+  ],
+  "new_fields_source": "physics, chemistry, economics and humanities journals, chosen 2026-10-14T22:11:44.516160+00:00 before any run of the identifier-based check"
 }

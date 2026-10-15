@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Reviews+of+Modern+Physics&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:12:28Z",
+  "sha256": "1a2ec9a8409ef94845f19e029f68db6fa1da4742e557f8d2caedeb04ee396323",
+  "body": "{\"searchinfo\": {\"search\": \"Reviews of Modern Physics\"}, \"search\": [{\"id\": \"Q26572\", \"title\": \"Q26572\", \"pageid\": 29993, \"concepturi\": \"http://www.wikidata.org/entity/Q26572\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q26572\", \"display\": {\"label\": {\"value\": \"Reviews of Modern Physics\", \"language\": \"en\"}, \"description\": {\"value\": \"quarterly peer-reviewed scientific journal\", \"language\": \"en\"}}, \"label\": \"Reviews of Modern Physics\", \"description\": \"quarterly peer-reviewed scientific journal\", \"match\": {\"type\": \"label\", \"language\": \"en\", \"text\": \"Reviews of Modern Physics\"}}], \"success\": 1}"
+}

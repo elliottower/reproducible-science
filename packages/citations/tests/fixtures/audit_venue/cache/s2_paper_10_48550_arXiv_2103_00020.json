@@ -1,7 +1,0 @@
-{
-  "cache_version": 1,
-  "url": "https://api.semanticscholar.org/graph/v1/paper/ARXIV:2103.00020?fields=venue,publicationVenue,journal",
-  "fetched_at": "2026-10-14T20:56:45Z",
-  "sha256": "75a171229a7d7843c32bcbef6bc81d12aa85496c21493b6b6385cbc633ec40ea",
-  "body": "{\"paperId\": \"6f870f7f02a8c59c3e23f407f3ef00dd1dcf8fc4\", \"publicationVenue\": {\"id\": \"fc0a208c-acb7-47dc-a0d4-af8190e21d29\", \"name\": \"International Conference on Machine Learning\", \"type\": \"conference\", \"alternate_names\": [\"ICML\", \"Int Conf Mach Learn\"], \"url\": \"https://icml.cc/\"}, \"venue\": \"International Conference on Machine Learning\", \"journal\": {\"name\": \"ArXiv\", \"volume\": \"abs/2103.00020\"}}"
-}

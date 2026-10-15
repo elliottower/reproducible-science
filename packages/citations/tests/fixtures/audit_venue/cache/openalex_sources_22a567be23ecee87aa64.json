@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://api.openalex.org/sources?search=Proceedings+of+NAACL-HLT&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
+  "fetched_at": "2026-10-14T22:23:22Z",
+  "sha256": "86a3129b393239acccca4018bddb289e5a770df627d0415cadcf5a515fead133",
+  "body": "{\"meta\": {\"count\": 0, \"db_response_time_ms\": 9, \"page\": 1, \"per_page\": 10, \"groups_count\": null, \"x_query\": {\"oql\": \"get sources where text has (Proceedings of NAACL-HLT)\", \"x_new_oql\": \"get sources where text has (Proceedings of NAACL-HLT)\", \"oqo\": {\"get_rows\": \"sources\", \"filter_rows\": [{\"column_id\": \"text.search\", \"value\": \"Proceedings of NAACL-HLT\", \"operator\": \"has\"}]}, \"url\": \"/sources?filter=text.search:Proceedings of NAACL-HLT&per_page=10\"}, \"cost_usd\": 0.001}, \"results\": [], \"group_by\": []}"
+}

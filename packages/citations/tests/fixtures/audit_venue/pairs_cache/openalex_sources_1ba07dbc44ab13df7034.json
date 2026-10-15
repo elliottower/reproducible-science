@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://api.openalex.org/sources?search=Pattern+Recognit.+Lett.&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
+  "fetched_at": "2026-10-15T00:09:27Z",
+  "sha256": "f67e7e03a780213fee8a4c4c9667d50d7dc76e0878ff60bf2e64ea7f77390563",
+  "body": "{\"meta\": {\"count\": 0, \"db_response_time_ms\": 3, \"page\": 1, \"per_page\": 10, \"groups_count\": null, \"x_query\": {\"oql\": \"get sources where text has (Pattern Recognit. Lett.)\", \"x_new_oql\": \"get sources where text has (Pattern Recognit. Lett.)\", \"oqo\": {\"get_rows\": \"sources\", \"filter_rows\": [{\"column_id\": \"text.search\", \"value\": \"Pattern Recognit. Lett.\", \"operator\": \"has\"}]}, \"url\": \"/sources?filter=text.search:Pattern Recognit. Lett.&per_page=10\"}, \"cost_usd\": 0.001}, \"results\": [], \"group_by\": []}"
+}

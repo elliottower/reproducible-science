@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=The+Philosophical+Review&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:13:26Z",
+  "sha256": "d34f35109503492ce750af10624fc24f1ee890ec4e226ba812ac47c04c318c25",
+  "body": "{\"searchinfo\": {\"search\": \"The Philosophical Review\"}, \"search\": [{\"id\": \"Q1817560\", \"title\": \"Q1817560\", \"pageid\": 1748495, \"concepturi\": \"http://www.wikidata.org/entity/Q1817560\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q1817560\", \"display\": {\"label\": {\"value\": \"The Philosophical Review\", \"language\": \"en\"}, \"description\": {\"value\": \"academic journal\", \"language\": \"en\"}}, \"label\": \"The Philosophical Review\", \"description\": \"academic journal\", \"match\": {\"type\": \"label\", \"language\": \"en\", \"text\": \"The Philosophical Review\"}}], \"success\": 1}"
+}

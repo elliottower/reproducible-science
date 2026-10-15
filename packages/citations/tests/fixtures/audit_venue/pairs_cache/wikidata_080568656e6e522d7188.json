@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DJ.+Reine+Angew.+Math.%22&format=json",
+  "fetched_at": "2026-10-15T00:11:42Z",
+  "sha256": "f807c5e1252244ec9e7a21235d06d05395c7c97c94223d22ef0e90d39beae268",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q1368270\", \"pageid\": 1307756, \"size\": 45957, \"wordcount\": 331, \"snippet\": \"Journal f\u00fcr die reine und angewandte Mathematik\\nJournal f\u00fcr die reine und angewandte Mathematik\\n\ud06c\ub810\ub808\\nCrelle&#039;s Journal\\nJournal f\u00fcr die reine und angewandte\", \"timestamp\": \"2026-09-08T16:54:53Z\"}]}}"
+}

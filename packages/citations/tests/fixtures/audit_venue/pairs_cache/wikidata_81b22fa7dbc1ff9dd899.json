@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DEMBO+Rep.%22&format=json",
+  "fetched_at": "2026-10-15T00:09:39Z",
+  "sha256": "0be45a18f82bb2e7c10d2ba6190da78e16d4ebd16f6846a410f505d7a8e1081e",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q5323356\", \"pageid\": 5091162, \"size\": 32499, \"wordcount\": 75, \"snippet\": \"EMBO Reports\\nEMBO Reports\\nEMBO Reports\\nEMBO Reports\\nEMBO Reports\\nEMBO Reports\\nEMBO Reports\\nEMBO Reports\\nEMBO Reports\\nEMBO Reports\\nEMBO Reports\\nEMBO Reports\", \"timestamp\": \"2026-03-12T07:58:28Z\"}]}}"
+}

@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3AP236%3D0162-1459%7CP7363%3D0162-1459%7CP236%3D1537-274X%7CP7363%3D1537-274X&format=json",
+  "fetched_at": "2026-10-14T22:24:03Z",
+  "sha256": "935ba2a8444c00f4b4ca813e0ee115ded83db559d472d4e90747a0c96985dca3",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q4181923\", \"pageid\": 3990293, \"size\": 47749, \"wordcount\": 227, \"snippet\": \"\u0416\u0443\u0440\u043d\u0430\u043b \u0430\u043c\u0435\u0440\u0438\u043a\u0430\u043d\u0441\u043a\u043e\u0439 \u0441\u0442\u0430\u0442\u0438\u0441\u0442\u0438\u0447\u0435\u0441\u043a\u043e\u0439 \u0430\u0441\u0441\u043e\u0446\u0438\u0430\u0446\u0438\u0438\\nJournal of the American Statistical Association\\nJournal of the American Statistical Association\\nJournal of\", \"timestamp\": \"2026-07-10T16:36:01Z\"}]}}"
+}

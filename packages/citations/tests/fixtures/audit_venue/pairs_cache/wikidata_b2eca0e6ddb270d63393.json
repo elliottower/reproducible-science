@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q703577&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-15T00:12:22Z",
+  "sha256": "a7afbcbe8c710bd8ea69408fb4f91d81efe34edd7c49192a4e326a73d9379912",
+  "body": "{\"entities\": {\"Q703577\": {\"id\": \"Q703577\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Mathematische Annalen\"}, \"mul\": {\"language\": \"mul\", \"value\": \"Mathematische Annalen\"}}, \"aliases\": {\"en\": [{\"language\": \"en\", \"value\": \"Math. Annal.\"}, {\"language\": \"en\", \"value\": \"Math. Ann.\"}]}, \"claims\": {\"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0025-5831\", \"type\": \"string\"}}}, {\"mainsnak\": {\"datavalue\": {\"value\": \"1432-1807\", \"type\": \"string\"}}}], \"P1160\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"Math. Ann.\", \"type\": \"string\"}}}], \"P1055\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"9876285\", \"type\": \"string\"}}}], \"P7363\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0025-5831\", \"type\": \"string\"}}}], \"P10283\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"S192217950\", \"type\": \"string\"}}}]}}}, \"success\": 1}"
+}

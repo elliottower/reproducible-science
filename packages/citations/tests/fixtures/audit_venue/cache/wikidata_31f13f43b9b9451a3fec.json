@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q6295963&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-14T22:23:30Z",
+  "sha256": "5ba4bf6d35a9508281291b3c364cf2391f49e0b6fd4d43d0608b2b0bd69db8a5",
+  "body": "{\"entities\": {\"Q6295963\": {\"id\": \"Q6295963\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Journal of Statistical Software\"}}, \"aliases\": {\"en\": [{\"language\": \"en\", \"value\": \"JSS\"}, {\"language\": \"en\", \"value\": \"jstatsoft\"}]}, \"claims\": {\"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"1548-7660\", \"type\": \"string\"}}}], \"P1055\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"101307056\", \"type\": \"string\"}}}], \"P7363\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"1548-7660\", \"type\": \"string\"}}}], \"P10283\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"S167961193\", \"type\": \"string\"}}}]}}}, \"success\": 1}"
+}

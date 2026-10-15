@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Phys.+Rev.+X&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:12:36Z",
+  "sha256": "faf4a26f22980f75aa37b49995c4a2bf0b4ae49c1e25768b54853182808af91e",
+  "body": "{\"searchinfo\": {\"search\": \"Phys. Rev. X\"}, \"search\": [{\"id\": \"Q15716725\", \"title\": \"Q15716725\", \"pageid\": 17351823, \"concepturi\": \"http://www.wikidata.org/entity/Q15716725\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q15716725\", \"display\": {\"label\": {\"value\": \"Physical Review X\", \"language\": \"en\"}, \"description\": {\"value\": \"journal for physics\", \"language\": \"en\"}}, \"label\": \"Physical Review X\", \"description\": \"journal for physics\", \"match\": {\"type\": \"alias\", \"language\": \"en\", \"text\": \"Phys. Rev. X\"}, \"aliases\": [\"Phys. Rev. X\"]}], \"success\": 1}"
+}

@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Nano+Lett.&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:09:14Z",
+  "sha256": "e3bc720b26da625681c9545e79259eb01a642f03aa19cddaab6cecf571afc683",
+  "body": "{\"searchinfo\": {\"search\": \"Nano Lett.\"}, \"search\": [{\"id\": \"Q787913\", \"title\": \"Q787913\", \"pageid\": 740905, \"concepturi\": \"http://www.wikidata.org/entity/Q787913\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q787913\", \"display\": {\"label\": {\"value\": \"Nano Letters\", \"language\": \"en\"}, \"description\": {\"value\": \"peer-reviewed scientific journal\", \"language\": \"en\"}}, \"label\": \"Nano Letters\", \"description\": \"peer-reviewed scientific journal\", \"match\": {\"type\": \"alias\", \"language\": \"en\", \"text\": \"Nano Lett.\"}, \"aliases\": [\"Nano Lett.\"]}], \"success\": 1}"
+}

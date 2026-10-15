@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Zeitschrift+f%C3%BCr+Physik+A&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:11:52Z",
+  "sha256": "ac2f2e74c5df8ee79e1d069ddaa3b3fbfcdfe0d21a7573029100fad378068947",
+  "body": "{\"searchinfo\": {\"search\": \"Zeitschrift f\u00fcr Physik A\"}, \"search\": [{\"id\": \"Q27714989\", \"title\": \"Q27714989\", \"pageid\": 29431249, \"concepturi\": \"http://www.wikidata.org/entity/Q27714989\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q27714989\", \"display\": {\"label\": {\"value\": \"Zeitschrift f\u00fcr Physik A\", \"language\": \"en\"}, \"description\": {\"value\": \"journal\", \"language\": \"en\"}}, \"label\": \"Zeitschrift f\u00fcr Physik A\", \"description\": \"journal\", \"match\": {\"type\": \"label\", \"language\": \"en\", \"text\": \"Zeitschrift f\u00fcr Physik A\"}}], \"success\": 1}"
+}

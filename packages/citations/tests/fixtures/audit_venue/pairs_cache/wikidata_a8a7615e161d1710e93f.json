@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DScience%22&format=json",
+  "fetched_at": "2026-10-15T00:11:27Z",
+  "sha256": "c4cb22f6c736c32ad7a33889949124124f0ba5b45a1ebc6284d600fe45b55d2a",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q192864\", \"pageid\": 190993, \"size\": 150619, \"wordcount\": 381, \"snippet\": \"\u79d1\u5b66\\n\u79d1\u5b78\\nScience\\nScience\\n\uc0ac\uc774\uc5b8\uc2a4\\nScience\\nScience\\nScience\\nScience\\nScience\\nScience\\nScience\\nScience\\n\u30b5\u30a4\u30a8\u30f3\u30b9\\n\u09b8\u09be\u09af\u09bc\u09c7\u09a8\u09cd\u09b8\\nScience\\nScience\\n\u0633\u0627\u064a\u0646\u0633\\nScience\\nScience\\nScience\", \"timestamp\": \"2026-09-09T15:11:45Z\"}]}}"
+}

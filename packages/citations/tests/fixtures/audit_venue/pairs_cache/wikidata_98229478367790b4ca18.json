@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DChem.+Rev.%22&format=json",
+  "fetched_at": "2026-10-15T00:12:48Z",
+  "sha256": "ee9596355a6fd286a57c223f2ac51dbe5d192f10319d4b8b8f8de2c5b5e24d32",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q900502\", \"pageid\": 851306, \"size\": 46530, \"wordcount\": 156, \"snippet\": \"\u5316\u5b66\u8bc4\u8bba\\n\u5316\u5b78\u8a55\u8ad6\\n\u5316\u5b78\u8a55\u8ad6\\nChemical Reviews\\nChemical Reviews\\nChemical Reviews\\nChemical Reviews\\nChemical Reviews\\nChemical Reviews\\nChemical Reviews\\nChemical Reviews\", \"timestamp\": \"2026-09-26T07:22:40Z\"}]}}"
+}

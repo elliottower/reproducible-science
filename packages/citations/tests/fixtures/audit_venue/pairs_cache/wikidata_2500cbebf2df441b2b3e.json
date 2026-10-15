@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DIEEE+Trans.+Commun.%22&format=json",
+  "fetched_at": "2026-10-15T00:09:59Z",
+  "sha256": "65dd3a7ce981d76ecdc67e1af8982ed03235b504a44f073d52f729d3bf67bae5",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q5970501\", \"pageid\": 5746728, \"size\": 36781, \"wordcount\": 88, \"snippet\": \"IEEE Transactions on Communications\\nIEEE Transactions on Communications\\nIEEE Transactions on Communications\\nIEEE Transactions on Communications\\nIEEE Transactions\", \"timestamp\": \"2026-09-11T19:07:42Z\"}]}}"
+}

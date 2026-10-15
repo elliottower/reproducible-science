@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=R.+Soc.+Open+Sci.&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:10:36Z",
+  "sha256": "2fd81740132ee3dcc52a069966ef53e02f1d6f4ffee751084cc1caa05a78c9c7",
+  "body": "{\"searchinfo\": {\"search\": \"R. Soc. Open Sci.\"}, \"search\": [], \"success\": 1}"
+}

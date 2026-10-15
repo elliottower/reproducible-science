@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DSci.+Rep.%22&format=json",
+  "fetched_at": "2026-10-15T00:09:36Z",
+  "sha256": "d4fa8469a6cc3bec74f0a1c7d61abad0e7d8fbbd6ae1c46b39a48ac88fefdbcd",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q2261792\", \"pageid\": 2184658, \"size\": 62274, \"wordcount\": 189, \"snippet\": \"Scientific Reports\\nScientific Reports\\nScientific Reports\\nScientific Reports\\nScientific Reports\\nBilimsel Raporlar\\nScientific Reports\\nScientific Reports\", \"timestamp\": \"2026-09-09T16:48:45Z\"}]}}"
+}

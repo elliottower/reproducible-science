@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DSci.+Data%22&format=json",
+  "fetched_at": "2026-10-15T00:11:12Z",
+  "sha256": "a6c98e3926ddc8e489409cf82c813e573f3a9012e0c1d17c89beada6572b22c0",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q27725928\", \"pageid\": 29442191, \"size\": 39210, \"wordcount\": 92, \"snippet\": \"Scientific Data\\nScientific Data\\nScientific Data\\nScientific Data\\nScientific Data\\nScientific Data\\nScientific Data\\nScientific Data\\nScientific Data\\nScientific\", \"timestamp\": \"2026-09-10T07:22:23Z\"}]}}"
+}

@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Proceedings+of+the+Conference+on+Empirical+Methods+in+Natural+Language+Processing+and+the+International+Joint+Conference+on+Natural+Language+Processing&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-14T22:36:47Z",
+  "sha256": "49454c69b4662ee87fd88bf9d651a5a049e6bc66bb44b10e226cad34a4c25a5e",
+  "body": "{\"searchinfo\": {\"search\": \"Proceedings of the Conference on Empirical Methods in Natural Language Processing and the International Joint Conference on Natural Language Processing\"}, \"search\": [], \"success\": 1}"
+}

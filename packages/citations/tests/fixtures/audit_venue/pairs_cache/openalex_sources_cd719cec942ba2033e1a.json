@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://api.openalex.org/sources?search=Zeitschrift+fuer+Physik&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
+  "fetched_at": "2026-10-15T00:11:41Z",
+  "sha256": "16039e25f73c653849c8a157c66436f147d24bc6214950a6fd34ea02aaf46537",
+  "body": "{\"meta\": {\"count\": 2, \"db_response_time_ms\": 15, \"page\": 1, \"per_page\": 10, \"groups_count\": null, \"x_query\": {\"oql\": \"get sources where text has (Zeitschrift fuer Physik)\", \"x_new_oql\": \"get sources where text has (Zeitschrift fuer Physik)\", \"oqo\": {\"get_rows\": \"sources\", \"filter_rows\": [{\"column_id\": \"text.search\", \"value\": \"Zeitschrift fuer Physik\", \"operator\": \"has\"}]}, \"url\": \"/sources?filter=text.search:Zeitschrift fuer Physik&per_page=10\"}, \"cost_usd\": 0.001}, \"results\": [{\"id\": \"https://openalex.org/S4210173186\", \"display_name\": \"The European Physical Journal A\", \"alternate_titles\": [\"EPJ A\", \"The European physical journal\", \"Hadrons and nuclei\", \"The European physical journal / A\", \"EPJ. A (Internet)\", \"EPJ\", \"Zeitschrift fuer Physik  (West Germany)     Divided into Z. Phys. A and Z. Phys. B\"], \"issn_l\": \"1434-6001\", \"issn\": [\"1434-6001\", \"1434-601X\"], \"type\": \"journal\"}, {\"id\": \"https://openalex.org/S4306535538\", \"display_name\": \"Zeitschrift fuer Angewandte Physik  (West Germany)     Ceased publication\", \"alternate_titles\": [], \"issn_l\": null, \"issn\": null, \"type\": \"journal\"}], \"group_by\": []}"
+}

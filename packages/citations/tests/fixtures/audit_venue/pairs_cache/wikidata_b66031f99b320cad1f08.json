@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Z.+Naturforsch.+A&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:11:48Z",
+  "sha256": "5dc68b67b91517572089713c1adc57a12a45cf92f62646bdc371348348b6f429",
+  "body": "{\"searchinfo\": {\"search\": \"Z. Naturforsch. A\"}, \"search\": [], \"success\": 1}"
+}

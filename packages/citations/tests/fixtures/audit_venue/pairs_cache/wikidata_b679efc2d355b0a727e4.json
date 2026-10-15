@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DAm.+Econ.+Rev.%22&format=json",
+  "fetched_at": "2026-10-15T00:12:58Z",
+  "sha256": "cab53774fd06150d3e3afe8619045388accde5dfbd5fbc93ccb281e507b46dbd",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q1740221\", \"pageid\": 1673202, \"size\": 45539, \"wordcount\": 224, \"snippet\": \"The American Economic Review\\n\u0410\u043c\u0435\u0440\u0438\u043a\u0430\u043d\u0441\u043a\u0438 \u0438\u043a\u043e\u043d\u043e\u043c\u0438\u0447\u0435\u0441\u043a\u0438 \u043f\u0440\u0435\u0433\u043b\u0435\u0434\\nThe American Economic Review\\nAmerican Economic Review\\nAmerican Economic Review\\nAmerican Economic\", \"timestamp\": \"2026-09-09T14:43:53Z\"}]}}"
+}

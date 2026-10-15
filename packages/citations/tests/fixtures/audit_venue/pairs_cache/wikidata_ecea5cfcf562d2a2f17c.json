@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DJ.+Org.+Chem.%22&format=json",
+  "fetched_at": "2026-10-15T00:12:51Z",
+  "sha256": "61200ec103b4fbaf6c0cad4f9e912c970ffe9406b92f7385127db89cf6fdc007",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q898967\", \"pageid\": 849789, \"size\": 46232, \"wordcount\": 329, \"snippet\": \"Journal of Organic Chemistry\\n\u6709\u673a\u5316\u5b66\u671f\u520a\\n\u6709\u6a5f\u5316\u5b78\u671f\u520a\\n\u6709\u6a5f\u5316\u5b78\u671f\u520a\\nJournal of Organic Chemistry\\nJournal of Organic Chemistry\\nJournal of Organic Chemistry\\nJournal of Organic\", \"timestamp\": \"2026-09-26T07:58:10Z\"}]}}"
+}

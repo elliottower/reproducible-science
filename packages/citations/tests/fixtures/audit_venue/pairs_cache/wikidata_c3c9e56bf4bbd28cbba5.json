@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Soc.+Netw.&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:10:22Z",
+  "sha256": "3cabfe82af42b3a3310c7ad6d4096843596aae0d496c9e4ef403e21dbd7e0c3b",
+  "body": "{\"searchinfo\": {\"search\": \"Soc. Netw.\"}, \"search\": [], \"success\": 1}"
+}

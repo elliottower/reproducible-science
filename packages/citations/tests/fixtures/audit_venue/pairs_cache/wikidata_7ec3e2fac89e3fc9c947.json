@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Q.+J.+Econ.&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:13:01Z",
+  "sha256": "54a5f8d9f5b3a6f4563e203d509e39281252d6ceec1cae015364adfe2445a7df",
+  "body": "{\"searchinfo\": {\"search\": \"Q. J. Econ.\"}, \"search\": [], \"success\": 1}"
+}

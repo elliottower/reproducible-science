@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Mathematische+Annalen&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:12:21Z",
+  "sha256": "9c3c44f698d549b2d3e7545d111face08b35af72c50f7fe32ea784af7f29de35",
+  "body": "{\"searchinfo\": {\"search\": \"Mathematische Annalen\"}, \"search\": [{\"id\": \"Q703577\", \"title\": \"Q703577\", \"pageid\": 661906, \"concepturi\": \"http://www.wikidata.org/entity/Q703577\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q703577\", \"display\": {\"label\": {\"value\": \"Mathematische Annalen\", \"language\": \"en\"}, \"description\": {\"value\": \"journal\", \"language\": \"en\"}}, \"label\": \"Mathematische Annalen\", \"description\": \"journal\", \"match\": {\"type\": \"label\", \"language\": \"en\", \"text\": \"Mathematische Annalen\"}}], \"success\": 1}"
+}

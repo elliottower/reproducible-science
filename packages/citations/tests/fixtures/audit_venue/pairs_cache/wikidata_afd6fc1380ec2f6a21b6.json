@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DBMJ+Open%22&format=json",
+  "fetched_at": "2026-10-15T00:09:43Z",
+  "sha256": "5f3bf587914a8e5f9e7b4db5886e0575b120729506f7d9db21dfa7eb5670aeab",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q17003470\", \"pageid\": 18608098, \"size\": 39134, \"wordcount\": 48, \"snippet\": \"BMJ Open\\nBMJ Open\\nBMJ\u30aa\u30fc\u30d7\u30f3\\nBMJ Open\\nBMJ Open\\nBMJ Open\\nBMJ Open\\nBMJ Open\\nwetenschappelijk tijdschrift van BMJ Group\\nscientific journal\\nrevista cient\u00edfica\", \"timestamp\": \"2026-09-09T14:37:43Z\"}]}}"
+}

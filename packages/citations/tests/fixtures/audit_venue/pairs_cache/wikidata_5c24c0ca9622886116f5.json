@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q5358479&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-15T00:09:30Z",
+  "sha256": "2733cceeb20976edb59a478d009f5f65a60751b887bab5b00d2ee96880e769f5",
+  "body": "{\"entities\": {\"Q5358479\": {\"id\": \"Q5358479\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Electronics Letters\"}}, \"aliases\": {}, \"claims\": {\"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0013-5194\", \"type\": \"string\"}}}, {\"mainsnak\": {\"datavalue\": {\"value\": \"1350-911X\", \"type\": \"string\"}}}], \"P1160\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"Electron. Lett.\", \"type\": \"string\"}}}], \"P1055\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"9882899\", \"type\": \"string\"}}}], \"P7363\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0013-5194\", \"type\": \"string\"}}}], \"P10283\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"S149016011\", \"type\": \"string\"}}}]}}}, \"success\": 1}"
+}

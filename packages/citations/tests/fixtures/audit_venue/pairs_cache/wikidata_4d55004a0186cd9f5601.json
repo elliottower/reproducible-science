@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q20996434%7CQ564423&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-15T00:12:34Z",
+  "sha256": "a3e2c32ee698d7ddc6e0a4154235ce743bb455d2a619627e12d82c40bc7dbbbf",
+  "body": "{\"entities\": {\"Q20996434\": {\"id\": \"Q20996434\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Ann. Phys.\"}}, \"aliases\": {}, \"claims\": {}}, \"Q564423\": {\"id\": \"Q564423\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Annals of Physics\"}}, \"aliases\": {\"en\": [{\"language\": \"en\", \"value\": \"AOP\"}, {\"language\": \"en\", \"value\": \"Ann. Physics\"}]}, \"claims\": {\"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0003-4916\", \"type\": \"string\"}}}, {\"mainsnak\": {\"datavalue\": {\"value\": \"1096-035X\", \"type\": \"string\"}}}], \"P1160\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"Ann. Phys.\", \"type\": \"string\"}}}], \"P1055\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0372360\", \"type\": \"string\"}}}], \"P7363\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0003-4916\", \"type\": \"string\"}}}], \"P1813\": [{\"mainsnak\": {\"datavalue\": {\"value\": {\"text\": \"Ann. Physics\", \"language\": \"en\"}, \"type\": \"monolingualtext\"}}}, {\"mainsnak\": {\"datavalue\": {\"value\": {\"text\": \"AOP\", \"language\": \"en\"}, \"type\": \"monolingualtext\"}}}], \"P10283\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"S173877794\", \"type\": \"string\"}}}]}}}, \"success\": 1}"
+}

@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DNucl.+Phys.+B%22&format=json",
+  "fetched_at": "2026-10-15T00:12:30Z",
+  "sha256": "e5fe8c85a418e5176c9640b750fae1bf8fef5b03d86cb7af515664d74224b54e",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q2837370\", \"pageid\": 22753560, \"size\": 33425, \"wordcount\": 76, \"snippet\": \"Nuclear Physics B\\nNuclear Physics B\\nNuclear Physics B\\nNuclear Physics B\\nNuclear Physics B\\nNuclear Physics B\\nNuclear Physics B\\nNuclear Physics B\\nNuclear\", \"timestamp\": \"2026-09-10T11:45:14Z\"}]}}"
+}

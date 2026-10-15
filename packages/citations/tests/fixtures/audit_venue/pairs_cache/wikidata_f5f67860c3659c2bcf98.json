@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Arch.+Math.&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:11:45Z",
+  "sha256": "7cd56a40cae375934dbf732f5d95d893b97f7354cafa245f6b2e8ecf2ca95462",
+  "body": "{\"searchinfo\": {\"search\": \"Arch. Math.\"}, \"search\": [], \"success\": 1}"
+}

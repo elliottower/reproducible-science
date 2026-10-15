@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Biology+Letters&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:09:09Z",
+  "sha256": "d5d902d97580a23077e2b97b344bc14adb40a51cc649befb611d897a00c862bd",
+  "body": "{\"searchinfo\": {\"search\": \"Biology Letters\"}, \"search\": [{\"id\": \"Q43341\", \"title\": \"Q43341\", \"pageid\": 45549, \"concepturi\": \"http://www.wikidata.org/entity/Q43341\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q43341\", \"display\": {\"label\": {\"value\": \"Biology Letters\", \"language\": \"en\"}, \"description\": {\"value\": \"scientific journal\", \"language\": \"en\"}}, \"label\": \"Biology Letters\", \"description\": \"scientific journal\", \"match\": {\"type\": \"label\", \"language\": \"en\", \"text\": \"Biology Letters\"}}, {\"id\": \"Q43057158\", \"title\": \"Q43057158\", \"pageid\": 44299612, \"concepturi\": \"http://www.wikidata.org/entity/Q43057158\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q43057158\", \"display\": {\"label\": {\"value\": \"Biology Letters. Editorial 2012.\", \"language\": \"en\"}, \"description\": {\"value\": \"scientific article published on 14 December 2011\", \"language\": \"en\"}}, \"label\": \"Biology Letters. Editorial 2012.\", \"description\": \"scientific article published on 14 December 2011\", \"match\": {\"type\": \"label\", \"language\": \"en\", \"text\": \"Biology Letters. Editorial 2012.\"}}], \"success\": 1}"
+}

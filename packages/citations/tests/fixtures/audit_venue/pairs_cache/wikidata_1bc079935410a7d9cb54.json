@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q8068628&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-15T00:11:50Z",
+  "sha256": "48ba5b8c1c688f4a0fb11703053d037819bf4f91b894198f15112b8abd867054",
+  "body": "{\"entities\": {\"Q8068628\": {\"id\": \"Q8068628\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Zeitschrift f\u00fcr Naturforschung A\"}}, \"aliases\": {\"en\": [{\"language\": \"en\", \"value\": \"Zeitschrift fuer Naturforschung. Section A: A Journal of Physical Sciences\"}, {\"language\": \"en\", \"value\": \"Zeitschrift fuer Naturforschung A\"}, {\"language\": \"en\", \"value\": \"Zeitschrift f\u00fcr Naturforschung. A, A journal of physical sciences\"}]}, \"claims\": {\"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0932-0784\", \"type\": \"string\"}}}, {\"mainsnak\": {\"datavalue\": {\"value\": \"1865-7109\", \"type\": \"string\"}}}], \"P1160\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"Z. Naturforsch. A Phys. Sci.\", \"type\": \"string\"}}}], \"P1365\": [{\"mainsnak\": {\"datavalue\": {\"value\": {\"entity-type\": \"item\", \"numeric-id\": 60674952, \"id\": \"Q60674952\"}, \"type\": \"wikibase-entityid\"}}}], \"P7363\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0932-0784\", \"type\": \"string\"}}}]}}}, \"success\": 1}"
+}

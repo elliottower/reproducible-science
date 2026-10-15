@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Nucl.+Phys.+B&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:12:29Z",
+  "sha256": "b1b191b1a17084673cdd00ffd0c6d53e72e4a31b7ccfda7890eaa05a0fa75e3a",
+  "body": "{\"searchinfo\": {\"search\": \"Nucl. Phys. B\"}, \"search\": [], \"success\": 1}"
+}

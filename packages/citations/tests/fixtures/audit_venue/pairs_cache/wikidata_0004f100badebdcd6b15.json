@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=J.+Am.+Chem.+Soc.&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:12:39Z",
+  "sha256": "945c46fc8c14c31592975ac323d3ea45c2b7d020bcf64a52ce4682169b2b315f",
+  "body": "{\"searchinfo\": {\"search\": \"J. Am. Chem. Soc.\"}, \"search\": [{\"id\": \"Q898902\", \"title\": \"Q898902\", \"pageid\": 849725, \"concepturi\": \"http://www.wikidata.org/entity/Q898902\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q898902\", \"display\": {\"label\": {\"value\": \"Journal of the American Chemical Society\", \"language\": \"en\"}, \"description\": {\"value\": \"weekly scientific journal published since 1879\", \"language\": \"en\"}}, \"label\": \"Journal of the American Chemical Society\", \"description\": \"weekly scientific journal published since 1879\", \"match\": {\"type\": \"alias\", \"language\": \"mul\", \"text\": \"J. AM. Chem. Soc.\"}, \"aliases\": [\"J. AM. Chem. Soc.\"]}], \"success\": 1}"
+}

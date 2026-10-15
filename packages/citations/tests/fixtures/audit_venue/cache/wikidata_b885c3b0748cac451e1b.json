@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Computer+Vision+%E2%80%93+ECCV+2020&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-14T22:35:25Z",
+  "sha256": "ff067eb8da24bdadedff1586a13bc5906a774f2661f545ad0ef5f5192f98f088",
+  "body": "{\"searchinfo\": {\"search\": \"Computer Vision \u2013 ECCV 2020\"}, \"search\": [{\"id\": \"Q124743843\", \"title\": \"Q124743843\", \"pageid\": 118930894, \"concepturi\": \"http://www.wikidata.org/entity/Q124743843\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q124743843\", \"display\": {\"label\": {\"value\": \"Computer Vision \u2013 ECCV 2020\", \"language\": \"en\"}, \"description\": {\"value\": \"ECCV 2020 proceedings\", \"language\": \"en\"}}, \"label\": \"Computer Vision \u2013 ECCV 2020\", \"description\": \"ECCV 2020 proceedings\", \"match\": {\"type\": \"label\", \"language\": \"en\", \"text\": \"Computer Vision \u2013 ECCV 2020\"}}], \"success\": 1}"
+}

@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q15548308%7CQ114256003&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-15T00:10:07Z",
+  "sha256": "37b0c1541a51949accc89d98a8ce03ba8423600e41daca76c564412c86b5215d",
+  "body": "{\"entities\": {\"Q15548308\": {\"id\": \"Q15548308\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"IEEE Journal on Selected Areas in Communications\"}}, \"aliases\": {}, \"claims\": {\"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0733-8716\", \"type\": \"string\"}}}, {\"mainsnak\": {\"datavalue\": {\"value\": \"1558-0008\", \"type\": \"string\"}}}], \"P1160\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"IEEE J. Sel. Area. Comm.\", \"type\": \"string\"}}}], \"P7363\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0733-8716\", \"type\": \"string\"}}}], \"P10283\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"S90422530\", \"type\": \"string\"}}}]}}, \"Q114256003\": {\"id\": \"Q114256003\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"IEEE Journal on Selected Areas in Communications Publication Information\"}}, \"aliases\": {}, \"claims\": {}}}, \"success\": 1}"
+}

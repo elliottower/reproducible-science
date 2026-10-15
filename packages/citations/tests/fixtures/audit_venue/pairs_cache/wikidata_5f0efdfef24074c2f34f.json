@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Comput.+Netw.&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:10:17Z",
+  "sha256": "bada50d18479255b37ba997b465febb2d9be5587ff5ab6582b30178f0365a9a1",
+  "body": "{\"searchinfo\": {\"search\": \"Comput. Netw.\"}, \"search\": [], \"success\": 1}"
+}

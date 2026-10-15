@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=IEEE+Trans.+Neural+Netw.+Learn.+Syst.&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:10:25Z",
+  "sha256": "e8cfd09d10a3496da8f282a9b438ebb20b0f6f3ea379d6571f84c07af444ec1b",
+  "body": "{\"searchinfo\": {\"search\": \"IEEE Trans. Neural Netw. Learn. Syst.\"}, \"search\": [], \"success\": 1}"
+}

@@ -96,7 +96,15 @@ class Candidate(BaseModel):
     service has them. `citations audit` compares an entry's venue with these."""
 
     venue_kind: str = ""
-    """`journal`, `proceedings`, `preprint`, or empty where the service does not say."""
+    """`journal`, `proceedings`, `preprint`, `series`, or empty where the service does not say."""
+
+    venue_ids: tuple[str, ...] = ()
+    """Identifiers of the venue the service files the work under: `issn:...`,
+    `openalex:S...`."""
+
+    series_ids: tuple[str, ...] = ()
+    """Identifiers of a book series the work is in, such as Lecture Notes in Computer Science.
+    A series is not the venue, so these can confirm a venue and never contradict one."""
 
     identifier: tuple[str, str] | None = None
     """`(kind, value)` -- e.g. `("doi", "10.1145/3442188")`. A candidate without one cannot be
@@ -148,6 +156,15 @@ CROSSREF_KINDS = {
 }
 
 
+def crossref_venue_ids(item: dict) -> tuple[list[str], list[str]]:
+    """The ISSNs a Crossref work carries: the journal's for an article, the book series' for
+    a chapter or a proceedings paper deposited with an ISBN."""
+    issns = [f"issn:{i}" for i in item.get("ISSN") or [] if i]
+    if item.get("type") == "journal-article":
+        return issns, []
+    return [], issns
+
+
 def crossref_venues(item: dict) -> list[str]:
     """Every venue name a Crossref work carries: container titles, short titles, the event.
 
@@ -182,6 +199,8 @@ def _crossref_candidates(payload) -> Iterator[Candidate]:
             venue=(item.get("container-title") or [""])[0],
             venues=tuple(crossref_venues(item)),
             venue_kind=CROSSREF_KINDS.get(item.get("type") or "", ""),
+            venue_ids=tuple(crossref_venue_ids(item)[0]),
+            series_ids=tuple(crossref_venue_ids(item)[1]),
             identifier=("doi", doi) if doi else None,
         )
 
@@ -222,8 +241,27 @@ def s2_venues(item: dict) -> tuple[list[str], str]:
     return [n for n in dict.fromkeys(names) if n], S2_KINDS.get(pv.get("type") or "", "")
 
 
-#: OpenAlex `source.type`, read as a kind of venue.
-OPENALEX_KINDS = {"journal": "journal", "conference": "proceedings", "repository": "preprint"}
+#: OpenAlex `source.type`, read as a kind of venue. A book series is not a venue.
+OPENALEX_KINDS = {
+    "journal": "journal",
+    "conference": "proceedings",
+    "repository": "preprint",
+    "book series": "series",
+}
+
+
+def openalex_venue_ids(work: dict) -> tuple[list[str], list[str]]:
+    """The identifiers of an OpenAlex work's primary source: venue ids, or series ids where
+    OpenAlex types the source as a book series."""
+    source = (work.get("primary_location") or {}).get("source") or {}
+    oid = (source.get("id") or "").rsplit("/", 1)[-1]
+    ids = [f"openalex:{oid}"] if oid else []
+    ids += [
+        f"issn:{i}" for i in dict.fromkeys([source.get("issn_l"), *(source.get("issn") or [])]) if i
+    ]
+    if source.get("type") == "book series":
+        return [], ids
+    return ids, []
 
 
 def openalex_venues(work: dict) -> tuple[list[str], str, str]:
@@ -239,6 +277,12 @@ def openalex_venues(work: dict) -> tuple[list[str], str, str]:
         OPENALEX_KINDS.get(source.get("type") or "", ""),
         (source.get("id") or "").rsplit("/", 1)[-1],
     )
+
+
+def s2_venue_ids(item: dict) -> list[str]:
+    """The ISSNs Semantic Scholar gives the paper's venue."""
+    pv = item.get("publicationVenue") or {}
+    return [f"issn:{i}" for i in [pv.get("issn"), *(pv.get("alternate_issns") or [])] if i]
 
 
 def _s2_candidates(payload) -> Iterator[Candidate]:
@@ -261,6 +305,7 @@ def _s2_candidates(payload) -> Iterator[Candidate]:
             venue=item.get("venue") or "",
             venues=tuple(s2_venues(item)[0]),
             venue_kind=s2_venues(item)[1],
+            venue_ids=tuple(s2_venue_ids(item)),
             identifier=ident,
         )
 
@@ -299,6 +344,8 @@ def _openalex_candidates(payload) -> Iterator[Candidate]:
             or "",
             venues=tuple(openalex_venues(work)[0]),
             venue_kind=openalex_venues(work)[1],
+            venue_ids=tuple(openalex_venue_ids(work)[0]),
+            series_ids=tuple(openalex_venue_ids(work)[1]),
             identifier=ident,
         )
 
