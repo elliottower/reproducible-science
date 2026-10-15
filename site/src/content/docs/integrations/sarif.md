@@ -44,7 +44,7 @@ The job needs `security-events: write`. `repro ci init` does not write this work
 - An assertion that was not checked is a notification, never a result.
 - An outcome word this version does not know is never shown as a pass.
 - An inferred match (an assertion marked `basis: inferred`) is never shown as a pass. This
-  ships in the next release; 0.6.1 has no inferred assertions.
+  ships in 0.7.0; 0.6.1 has no inferred assertions.
 - Nothing is dropped past GitHub's limit of 5,000 results per run; the export warns instead.
 - Executes nothing, and exits 0 whatever the outcomes: `repro verify` is the check that fails.
 

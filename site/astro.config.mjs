@@ -87,6 +87,7 @@ export default defineConfig({
           collapsed: true,
           items: [
             { label: "Overview", link: "/integrations/" },
+            { label: "MCP server", link: "/integrations/mcp/" },
             { label: "CODECHECK", link: "/integrations/codecheck/" },
             { label: "CORE-Bench", link: "/integrations/core-bench/" },
             { label: "ClawBio", link: "/integrations/clawbio/" },
@@ -94,6 +95,7 @@ export default defineConfig({
             { label: "SciTeX Clew", link: "/integrations/scitex-clew/" },
             { label: "adduce", link: "/integrations/adduce/" },
             { label: "Open items", link: "/integrations/open-items/" },
+            { label: "repro init scaffolding", link: "/integrations/init-scaffold/" },
             { label: "ACM Artifact Appendix", link: "/integrations/acm-artifact-appendix/" },
             { label: "ACM badging evidence map", link: "/integrations/acm-evidence/" },
             { label: "NeurIPS and ACL checklists", link: "/integrations/neurips-acl/" },
