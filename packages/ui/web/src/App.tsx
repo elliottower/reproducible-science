@@ -2,11 +2,14 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Background, Controls, ReactFlow, ReactFlowProvider, useReactFlow, type Edge, type Node } from '@xyflow/react'
 import Catalog from './Catalog'
 import Overview, { type Tab } from './Overview'
-import { CitationsTab, PreregTab, ReproduceTab, ResultsTab } from './Records'
+import { CitationsTab, PreregTab, ResultsTab } from './Records'
 import { ClaimsPill, FixCtx } from './fix'
 import { IssuesPill } from './issues'
-import { ReproducedPill, ReproduceButton, type Run, VerifyButton } from './reproduce'
-import { post, postWhenFree } from './api'
+import { AskAIMenu, ShareMenu, VerifyMenu } from './menus'
+import { ReproduceTab, type PageRun } from './reproduceTab'
+import { SearchBox, type Jump } from './search'
+import { ToastHost, useToast } from './toast'
+import { loadGraph, post, postWhenFree, STATIC } from './api'
 import { layout, summarize } from './layout'
 import { nodeTypes, UiCtx } from './nodes'
 import { fmt, Panel, when } from './shared'
@@ -17,9 +20,10 @@ interface Recheck {
   busy: 'refresh' | 'verify' | 'reproduce' | null
   message: string | null
   run: (kind: 'refresh' | 'verify') => void
-  reproduce: (only: string[] | null) => void
-  /** The re-run streaming in, or the last one to finish; null before any. */
-  live: Run | null
+  /** The re-runs started from the page, newest first, as GET /api/runs reports them. */
+  runs: PageRun[]
+  start: (only: string[] | null) => void
+  stop: (run: string) => void
 }
 
 function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
@@ -30,15 +34,32 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
   const [selected, setSelected] = useState<string | null>(initial.get('sel'))
   const [openFiles, setOpenFiles] = useState<Set<string>>(new Set((initial.get('files') ?? '').split('|').filter(Boolean)))
   const [query, setQuery] = useState('')
-  const TABS: [Tab, string][] = [
+  const hasSteps = (graph.tabs?.reproduce.steps ?? []).length > 0
+  // The Reproduce tab is there only when repro.yaml declares rebuild steps.
+  const TABS: [Tab, string][] = ([
     ['overview', 'Overview'], ['prereg', 'Prereg'], ['results', 'Results'], ['citations', 'Citations'],
     ['claims', 'Claims'], ['reproduce', 'Reproduce'], ['graph', 'Graph'],
-  ]
-  const [reproOpen, setReproOpen] = useState(false)
+  ] as [Tab, string][]).filter(([k]) => k !== 'reproduce' || hasSteps)
+  // A step the search box picked: the Reproduce tab opens its panel.
+  const [stepFocus, setStepFocus] = useState<{ step: string; at: number } | null>(null)
   // Where Open in UI last took the page: the tab it opened reads it and shows that item.
   const [focus, setFocus] = useState<Focus | null>(null)
   /** Any other way to a tab drops the Open in UI target, so it is not applied again. */
-  const go = (m: Tab) => { setMode(m); setFocus(null) }
+  const go = (m: Tab) => { setMode(TABS.some(([k]) => k === m) ? m : 'overview'); setFocus(null); setStepFocus(null) }
+  const jump = (j: Jump) => {
+    const at = Date.now()
+    if (j.kind === 'claim') { go('claims'); setQuery(j.id) }
+    else if (j.kind === 'quote') { setQuery(''); setMode('citations'); setFocus({ tab: 'citations', quote: { file: j.file, statement: j.statement, index: j.index }, at }) }
+    else if (j.kind === 'source') { setQuery(''); setMode('citations'); setFocus({ tab: 'citations', source: j.file, at }) }
+    else if (j.kind === 'step') { go('reproduce'); setQuery(''); setStepFocus({ step: j.id, at }) }
+    else {
+      go('graph')
+      setQuery('')
+      const group = graph.nodes.find((n) => n.id === j.id)?.group
+      if (group) setOpen((prev) => new Set([...prev, group]))
+      setSelected(j.id)
+    }
+  }
   useEffect(() => {
     document.title = graph.project_name ? `${graph.project_name} · repro ui` : 'repro ui'
   }, [graph.project_name])
@@ -174,16 +195,12 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
               <button key={k} className={mode === k ? 'on' : ''} onClick={() => go(k)}>{label}</button>
             ))}
           </div>
-          <div className="spacer" />
+          <SearchBox graph={graph} onJump={jump} />
           <ClaimsPill graph={graph} openClaims={() => go('claims')} />
-          <ReproducedPill graph={graph} live={recheck.live} openTab={() => go('reproduce')} />
           <IssuesPill graph={graph} onOpen={(o) => { setMode(o.tab); setFocus({ ...o, at: Date.now() }) }} />
-          {recheck.available && (
-            <>
-              <VerifyButton graph={graph} busy={recheck.busy === 'verify'} disabled={recheck.busy !== null && recheck.busy !== 'refresh'} run={() => recheck.run('verify')} />
-              <ReproduceButton graph={graph} open={reproOpen} setOpen={setReproOpen} live={recheck.live} run={recheck.reproduce} />
-            </>
-          )}
+          <AskAIMenu graph={graph} />
+          <VerifyMenu busy={recheck.busy === 'verify'} run={() => recheck.run('verify')} />
+          <ShareMenu graph={graph} />
           {recheck.message && <span className="error-note">{recheck.message}</span>}
         </header>
         <div className="toolbar" style={mode === 'overview' ? { display: 'none' } : undefined}>
@@ -211,7 +228,7 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
         ) : mode === 'citations' ? (
           <CitationsTab graph={graph} query={query} focus={focus?.tab === 'citations' ? focus : null} />
         ) : mode === 'reproduce' ? (
-          <ReproduceTab graph={graph} query={query} />
+          <ReproduceTab graph={graph} query={query} runs={recheck.runs} start={recheck.start} stop={recheck.stop} focus={stepFocus} />
         ) : mode === 'claims' ? (
           <Catalog graph={graph} query={query} />
         ) : (
@@ -269,22 +286,31 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
 }
 
 export default function App() {
+  return (
+    <ToastHost>
+      <Page />
+    </ToastHost>
+  )
+}
+
+function Page() {
   const [graph, setGraph] = useState<Graph | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [available, setAvailable] = useState(false)
   const [projectPath, setProjectPath] = useState<string | null>(null)
-  const [busy, setBusy] = useState<'refresh' | 'verify' | 'reproduce' | null>(null)
+  const [busy, setBusy] = useState<'refresh' | 'verify' | null>(null)
   const [message, setMessage] = useState<string | null>(null)
-  const [live, setLive] = useState<Run | null>(null)
+  const [runs, setRuns] = useState<PageRun[]>([])
+  const toast = useToast()
 
   const load = () =>
-    fetch(`graph.json?t=${Date.now()}`)
-      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`graph.json: ${r.status}`))))
-      .then(setGraph)
+    loadGraph()
+      .then((g) => setGraph(g as Graph))
       .catch((e) => setError(String(e)))
 
   useEffect(() => {
     load()
+    if (STATIC) return
     fetch('api/health')
       .then((r) => (r.ok ? r.json() : null))
       .then((h) => {
@@ -295,26 +321,50 @@ export default function App() {
   }, [])
 
   // The page re-reads the records by itself, which writes nothing: when its tab comes back into
-  // view, and every 30 s while it is in view. Never while a check or a re-run is going.
+  // view, and every 30 s while it is in view. Never while a check is going.
   const busyRef = useRef(busy)
   busyRef.current = busy
+  const refresh = () => {
+    if (busyRef.current !== null) return Promise.resolve()
+    setBusy('refresh')
+    return post('api/refresh', {})
+      .then((r) => r.json())
+      .then((res) => (res.ok ? load() : undefined))
+      .catch(() => undefined)
+      .finally(() => setBusy((b) => (b === 'refresh' ? null : b)))
+  }
   useEffect(() => {
     if (!available) return
-    const refresh = () => {
-      if (document.visibilityState !== 'visible' || busyRef.current !== null) return
-      setBusy('refresh')
-      post('api/refresh', {})
-        .then((r) => r.json())
-        .then((res) => (res.ok ? load() : undefined))
-        .catch(() => undefined)
-        .finally(() => setBusy((b) => (b === 'refresh' ? null : b)))
-    }
-    const t = setInterval(refresh, 30_000)
-    document.addEventListener('visibilitychange', refresh)
-    return () => { clearInterval(t); document.removeEventListener('visibilitychange', refresh) }
+    const tick = () => { if (document.visibilityState === 'visible') refresh() }
+    const t = setInterval(tick, 30_000)
+    document.addEventListener('visibilitychange', tick)
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', tick) }
   }, [available])
 
+  // The re-runs started from the page: read every 2 s while one is going, every 15 s otherwise.
+  // When one ends, the records are re-read so its result shows.
+  const runningRef = useRef<Set<string>>(new Set())
+  const readRuns = () =>
+    fetch('api/runs')
+      .then((r) => (r.ok ? r.json() : { runs: [] }))
+      .then((body: { runs: PageRun[] }) => {
+        setRuns(body.runs)
+        const now = new Set(body.runs.filter((r) => r.state === 'running').map((r) => r.run_id))
+        const ended = [...runningRef.current].some((id) => !now.has(id))
+        runningRef.current = now
+        if (ended) refresh()
+      })
+      .catch(() => undefined)
+  const anyRunning = runs.some((r) => r.state === 'running')
+  useEffect(() => {
+    if (!available) return
+    readRuns()
+    const t = setInterval(readRuns, anyRunning ? 2000 : 15_000)
+    return () => clearInterval(t)
+  }, [available, anyRunning])
+
   const run = (kind: 'refresh' | 'verify') => {
+    if (STATIC) return
     setBusy(kind)
     setMessage(null)
     postWhenFree(`api/${kind}`, {})
@@ -327,56 +377,28 @@ export default function App() {
       .finally(() => setBusy(null))
   }
 
-  /** Runs the steps and reads the answer as it streams: one JSON object per line, each printed
-   * line of `repro reproduce` and then what the re-run recorded. */
-  const reproduce = async (only: string[] | null) => {
-    setBusy('reproduce')
-    setMessage(null)
-    const started = Date.now()
-    let run: Run = { only, lines: [], started }
-    setLive(run)
-    const finish = (done: Run['done']) => {
-      run = { ...run, done }
-      setLive(run)
-      // The result shows in the Reproduce dialog; only a failure is also said in the top bar.
-      if (done && !done.ok) setMessage(`Reproduce failed: ${done.error}`)
-    }
-    try {
-      const r = await postWhenFree('api/reproduce', { only })
-      if (!r.ok || !r.body) {
-        const res = await r.json().catch(() => ({}))
-        finish({ ok: false, error: res.error ?? `the server answered ${r.status}`, seconds: (Date.now() - started) / 1000 })
-        return
-      }
-      const reader = r.body.pipeThrough(new TextDecoderStream()).getReader()
-      let rest = ''
-      for (;;) {
-        const { value, done } = await reader.read()
-        if (done) break
-        rest += value
-        const parts = rest.split('\n')
-        rest = parts.pop() ?? ''
-        for (const part of parts.filter(Boolean)) {
-          const event = JSON.parse(part)
-          if (event.done) finish(event)
-          else { run = { ...run, lines: [...run.lines, event.line] }; setLive(run) }
-        }
-      }
-      if (!run.done) finish({ ok: false, error: 'the connection closed before the re-run finished', seconds: (Date.now() - started) / 1000 })
-      await load()
-    } catch (e) {
-      finish({ ok: false, error: String(e), seconds: (Date.now() - started) / 1000 })
-    } finally {
-      setBusy(null)
-    }
-  }
+  const start = (only: string[] | null) =>
+    post('api/reproduce', { only })
+      .then((r) => r.json())
+      .then((res) => {
+        if (!res.ok) return toast(`Could not start: ${res.error}`)
+        toast(only ? `Running ${only.join(', ')}` : 'Running every step')
+        return readRuns()
+      })
+      .catch((e) => toast(`Could not start: ${e}`))
+
+  const stop = (runId: string) =>
+    post('api/stop', { run: runId })
+      .then((r) => r.json())
+      .then((res) => { toast(res.ok ? 'Stopping the run' : `Could not stop: ${res.error}`); return readRuns() })
+      .catch((e) => toast(`Could not stop: ${e}`))
 
   if (error) return <div className="center">{error}</div>
   if (!graph) return <div className="center muted">Loading…</div>
   return (
-    <FixCtx.Provider value={{ project: projectPath }}>
+    <FixCtx.Provider value={{ project: projectPath ?? graph.project_dir ?? null }}>
       <ReactFlowProvider>
-        <Canvas graph={graph} recheck={{ available, busy, message, run, reproduce, live }} />
+        <Canvas graph={graph} recheck={{ available, busy, message, run, runs, start, stop }} />
       </ReactFlowProvider>
     </FixCtx.Provider>
   )

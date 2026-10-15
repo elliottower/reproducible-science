@@ -1,3 +1,15 @@
+/** The page as one exported file has no server: `repro ui --export` marks it, and embeds the data. */
+export const STATIC = typeof document !== 'undefined' && Boolean(document.querySelector('meta[name="repro-ui-static"]'))
+
+/** graph.json: embedded in an export, fetched from the server otherwise. */
+export function loadGraph(): Promise<unknown> {
+  if (STATIC) {
+    const el = document.getElementById('repro-graph')
+    return el ? Promise.resolve(JSON.parse(el.textContent ?? '{}')) : Promise.reject(new Error('no data in this file'))
+  }
+  return fetch(`graph.json?t=${Date.now()}`).then((r) => (r.ok ? r.json() : Promise.reject(new Error(`graph.json: ${r.status}`))))
+}
+
 /** POST to the local server as the page itself: JSON, with the token the server wrote into this
  * page when it served it. The server refuses a POST without both, so another site cannot send one. */
 export function post(url: string, body: unknown): Promise<Response> {

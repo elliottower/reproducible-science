@@ -84,11 +84,14 @@ export const statusLines = (s: Status | undefined): Line[] => STATUS_ORDER.map((
 /** A line as one string, as the Overview reads: `results: 72/72 runs sealed`. */
 export const lineText = (l: Line) => `${l.key}: ${l.text}${l.next ? `  →  ${l.next}` : ''}`
 
+/** The rule every prompt the page copies ends on. */
+export const NEVER_ACT = 'Do not change any file or record — no edit, freeze, amend, log, seal, pin, re-run or commit — until I choose.'
+
 /** How every prompt ends. A prompt asks the agent to look and to say what it found; it never
  * tells the agent to change anything, so the person reading the answer decides what happens. */
 export const ASK_FIRST =
   'Investigate and tell me what you find: what changed, whether it looks intended, and what my options are. ' +
-  'Then stop and ask me which to do. Do not change any file or record — no edit, freeze, amend, log, seal, pin, re-run or commit — until I choose.'
+  `Then stop and ask me which to do. ${NEVER_ACT}`
 
 /** What to look at, and the options to lay out, for each kind of issue. */
 const LOOK: Record<string, [string, string]> = {
@@ -135,4 +138,197 @@ export function issuePrompt(row: Issue, project: string | null): string {
     '',
     ASK_FIRST,
   ].join('\n')
+}
+
+// ---------------------------------------------------------------------------------- prompts
+
+/** The Ask AI audit prompt: one line per paragraph, never hard-wrapped, so it pastes as written. */
+export function auditPrompt(project: string | null, manuscript: string | null | undefined): string {
+  const where = [
+    `Project: ${project ?? 'this project'}.`,
+    ...(manuscript ? [`Manuscript: ${manuscript}.`] : []),
+    'Manifest: repro.yaml.',
+  ].join(' ')
+  return [
+    'Audit this paper with Reproducible Science, an open-source toolkit that checks a paper against the records behind it: prereg (the analysis plan was frozen before the run), results (each reported number came from a recorded run over sealed inputs), citations (each quoted passage occurs in its pinned source) and repro (every claim the paper declares resolves against the file it names). Docs: https://reproducible.science/',
+    where,
+    'Setup: first check whether the toolkit is installed (repro --version). If it is not, stop and ask me to install it; do not install anything yourself. The command-line tools install with pip install reproducible-science. The Claude Code plugin, which adds the skills repro, results, citations and prereg and the /repro-check command, can only be installed by me, by typing /plugin marketplace add elliottower/reproducible-science and then /plugin install reproducible-science@reproducible-science; if it is missing, tell me those two commands and carry on with the command-line tools.',
+    'Step 1, the toolkit\'s checks: run /repro-check if the plugin is installed, otherwise repro verify --format json, which checks every declared claim and runs the prereg, results and citations checks. Report what it found, including anything it could not check.',
+    `Step 2, what the checks cannot see: read the manuscript and list every number, quotation and claim with no record behind it, meaning no declared claim, no pinned quote or no sealed input. A number counts as recorded only when a claim fetches it from a stated address in a file, not when the same digits appear somewhere in one.`,
+    'Step 3, for each finding give the file and line, the record it needs and the command that would make it (results claim, citations pin, results seal or prereg new).',
+    'Only read files and run checks. Do not install, bind, pin, seal, freeze, commit or edit anything. Group the findings by kind, then wait for me to choose what to do.',
+    NEVER_ACT,
+  ].join('\n\n')
+}
+
+/** The Ask AI prompt for every open issue at once, under the same rules as each row's prompt. */
+export function fixPrompt(rows: Issue[], project: string | null): string {
+  const kinds = rows.length === 1 ? '1 kind of problem' : `${rows.length} kinds of problem`
+  return [
+    `In ${project ?? 'this project'}, prereg, results and citations report ${kinds}. For each, look into it, explain what you found and lay out my options.`,
+    ...rows.map((row, k) => {
+      const [look, options] = LOOK[row.id] ?? [`\`${row.tool}\`'s own check reports this. Find out what it reports and why.`, '']
+      const items = row.items.slice(0, 10).map((i) => i.label).join('; ')
+      return [
+        `${k + 1}. ${row.tool}: ${row.title}.`,
+        items ? `Items: ${items}${row.items.length > 10 ? `; and ${row.items.length - 10} more` : ''}.` : '',
+        row.note,
+        look,
+        options ? `Options might include ${options}.` : '',
+      ].filter(Boolean).join(' ')
+    }),
+    'Investigate and tell me what you find for each: what changed, whether it looks intended, and what my options are. Then stop and ask me which to do.',
+    NEVER_ACT,
+  ].join('\n\n')
+}
+
+// ---------------------------------------------------------------------------------- share
+
+export interface Remote { clone: string; host: string; owner: string; name: string; subdir: string }
+
+/** What someone runs to open this page on their own machine. */
+export function cloneInstructions(remote: Remote | null | undefined, projectDir: string | undefined): string {
+  if (!remote) {
+    return [
+      ...(projectDir ? [`cd ${shellQuote(projectDir)}`] : []),
+      'pip install "reproducible-science[ui]"',
+      'repro ui',
+    ].join('\n')
+  }
+  const folder = remote.subdir ? `${remote.name}/${remote.subdir}` : remote.name
+  return [
+    `git clone ${shellQuote(remote.clone)}`,
+    `cd ${shellQuote(folder)}`,
+    'pip install "reproducible-science[ui]"',
+    'repro ui',
+  ].join('\n')
+}
+
+/** The workflow that exports the page on every push to main. */
+export const PAGES_WORKFLOW = `name: repro pages
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: github-pages
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install "reproducible-science[ui]"
+      - run: repro ui --export _site
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - uses: actions/deploy-pages@v4`
+
+/** owner/repo on GitHub, or placeholders where the remote is not on GitHub. */
+export function githubRepo(remote: Remote | null | undefined): { owner: string; name: string; known: boolean } {
+  return remote && remote.host === 'github.com'
+    ? { owner: remote.owner, name: remote.name, known: true }
+    : { owner: '<owner>', name: '<repo>', known: false }
+}
+
+export const pagesCommand = (remote: Remote | null | undefined) => {
+  const r = githubRepo(remote)
+  return `gh api -X POST repos/${r.owner}/${r.name}/pages -f build_type=workflow`
+}
+
+export const pagesAddress = (remote: Remote | null | undefined) => {
+  const r = githubRepo(remote)
+  return `${r.owner}.github.io/${r.name}`
+}
+
+/** The three steps, as Copy steps puts them on the clipboard. */
+export function pagesSteps(remote: Remote | null | undefined): string {
+  return [
+    'A Pages site is public even when the repository is private.',
+    '1. Add this workflow as .github/workflows/repro-pages.yml. It exports the page on every push to main.',
+    PAGES_WORKFLOW,
+    `2. Turn on Pages with GitHub Actions as the source, in Settings → Pages, or with: ${pagesCommand(remote)}`,
+    `3. Commit the workflow and push. The page appears at ${pagesAddress(remote)}.`,
+  ].join('\n\n')
+}
+
+/** The Copy prompt of the Pages card: the agent checks and explains; it publishes nothing. */
+export function pagesPrompt(remote: Remote | null | undefined, project: string | null): string {
+  const r = githubRepo(remote)
+  return [
+    `I am thinking of publishing the Reproducible Science page of ${project ?? 'this project'} on GitHub Pages${r.known ? `, from ${r.owner}/${r.name}` : ''}. A Pages site is public even when the repository is private.`,
+    'Check whether .github/workflows/repro-pages.yml exists, whether Pages is already turned on for the repository, and whether the repository is public or private. Then tell me what each of the steps below would change.',
+    pagesSteps(remote),
+    NEVER_ACT,
+  ].join('\n\n')
+}
+
+// ---------------------------------------------------------------------------------- export
+
+/** What a button that needs the local server says in the one-file export. */
+export function staticMessage(what: 'verify' | 'step' | 'all' | 'file', step?: string): string {
+  if (what === 'verify') return "This static export can't run repro verify. Run it on the command line: repro verify"
+  if (what === 'step') return `This static export can't re-run steps. Run it on the command line: repro reproduce --only ${shellQuote(step ?? '')}`
+  if (what === 'all') return "This static export can't re-run steps. Run it on the command line: repro reproduce"
+  return "This static export doesn't include file contents. Open the live page on the command line: repro ui"
+}
+
+// ---------------------------------------------------------------------------------- reproduce
+
+export type StepState = 'run' | 'changed' | 'err' | 'int' | 'ok' | 'none'
+export interface StepRow {
+  step: string
+  /** ISO time of the last re-run, or 'now' while running, or '' when never. */
+  when: string
+  state: StepState
+  /** Words after the result: "bytes identical", "1 file", "exit 1". */
+  detail: string
+  dur: number | null
+  cmd: string
+}
+
+/** Order of results when sorting by Result. */
+export const STATE_ORDER: Record<StepState, number> = { run: 0, changed: 1, err: 2, int: 3, ok: 4, none: 5 }
+export type SortKey = 'step' | 'when' | 'state' | 'dur' | 'cmd'
+
+/** Rows sorted by `key`; `dir` is 1 ascending, -1 descending. A running step is the newest; a step
+ * with no duration sorts after every timed one. Ties keep the step's name order. */
+export function sortRows(rows: StepRow[], key: SortKey, dir: 1 | -1): StepRow[] {
+  const val = (r: StepRow): string | number =>
+    key === 'state' ? STATE_ORDER[r.state]
+      : key === 'when' ? (r.when === 'now' ? '9999' : r.when || '')
+      : key === 'dur' ? (r.dur ?? 1e12)
+      : r[key]
+  return [...rows].sort((a, b) => {
+    const x = val(a)
+    const y = val(b)
+    return ((x < y ? -1 : x > y ? 1 : 0) * dir) || a.step.localeCompare(b.step)
+  })
+}
+
+/** "4m 05s", for a running step's clock. */
+export const clock = (seconds: number) => `${Math.floor(seconds / 60)}m ${String(Math.floor(seconds % 60)).padStart(2, '0')}s`
+/** A duration as the table shows it. */
+export const duration = (s: number | null | undefined) =>
+  s == null ? '' : s < 1 ? `${Math.round(s * 1000)} ms` : s < 60 ? `${s.toFixed(2)} s` : `${Math.floor(s / 60)}m ${Math.round(s % 60)}s`
+
+/** The lines of a `repro reproduce` log that belong to one step: its result line and the lines
+ * indented under it. The whole log where the run was of that step alone. */
+export function stepLog(log: string, step: string, only: string[] | null): string {
+  if (only && only.length === 1 && only[0] === step) return log
+  const out: string[] = []
+  let mine = false
+  for (const line of log.split('\n')) {
+    const m = /^ {2}(reproduced|changed|unchecked|failed|not re-run)\s+(\S+)/.exec(line)
+    if (m) mine = m[2] === step
+    else if (!/^ {13}/.test(line)) mine = false
+    if (mine) out.push(line)
+  }
+  return out.join('\n')
 }

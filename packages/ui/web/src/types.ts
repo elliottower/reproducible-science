@@ -70,6 +70,9 @@ export interface Graph {
   checked_at?: string
   project_dir?: string
   project_name?: string
+  /** The origin remote: where to clone from, and the repository on its host. */
+  remote?: { clone: string; host: string; owner: string; name: string; subdir: string } | null
+  manuscript_path?: string | null
   tabs?: {
     prereg: {
       /** Each plan `prereg check` read, with what its freeze recorded. */
@@ -112,6 +115,8 @@ export interface Graph {
         output_path?: string
         /** This step in each recorded re-run, newest first. */
         history?: { ended_at: string; tool_version: string; state: string; bytes_identical: boolean | null; exit_code: number | null; duration_seconds: number | null; detail: string }[]
+        /** Each file that changed since the last re-run, served by the diff endpoint as `step:<id>`. */
+        diffs?: { label: string; open: IssueOpen }[]
       }[]
       reruns: { started_at: string; ended_at: string; tool_version: string; counts: Record<string, number>; steps: number }[]
     }
@@ -152,7 +157,7 @@ export type Status = Partial<Record<'prereg' | 'results' | 'citations' | 'claims
 
 /** Where Open in UI takes the page for one item of an issue. */
 export interface IssueOpen {
-  tab: 'prereg' | 'results' | 'citations'
+  tab: 'prereg' | 'results' | 'citations' | 'reproduce'
   /** The issue id the diff endpoint serves this path's diff under. */
   diff?: string
   path?: string
