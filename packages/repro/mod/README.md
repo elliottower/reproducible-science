@@ -23,6 +23,7 @@ that cannot load it still loads the plugin.
 | `/repro-status` | The same readout on demand, with the sealed files hashed. Instant, and no model turn. |
 | `/repro-verify` | Checks every pinned quotation of the working project against its source, which takes minutes on a large project, and keeps the count for the readout. |
 | `/repro-hide`, `/repro-show` | Hides the readout above the prompt, and shows it again. A warning still appears while it is hidden. |
+| `/repro-fixes` | Lists the fix requests sent from the lineage view for this project. `/repro-fixes load` puts the oldest in the prompt box. |
 
 ## The status row
 
@@ -117,6 +118,21 @@ ledger, a `claims/` directory, a `PREREG.md` or a `paper/` directory.
     /repro-status auto             go back to following the files
 
 The model can set it too, through the `set_project` tool the mod registers.
+
+## Fix requests from the lineage view
+
+The lineage view in `reproducible-science-graph` has a "Fix with Claude Code" button on a failing
+claim or a stale rebuild step. It appends a request to `~/.claude/repro-fixes/queue.jsonl`, one
+JSON object per line with `id`, `created_at`, `project`, `subject`, `kind` and `prompt`. The mod
+reads the queue every few seconds and draws the oldest request as one more row under the readout:
+
+    ◆ Failing claim: effect-size (+1 more) [Load into prompt] [Dismiss]
+
+The row shows only in a session whose folder is that project or lies inside it, or that has
+worked in that project by the rule above. "Load into prompt" fills the prompt box, and nothing
+is sent until the person presses Enter. A loaded or dismissed request's id is written to
+`~/.claude/repro-fixes/handled.json` and does not show again. `/repro-hide` leaves the row
+standing.
 
 ## Install
 
