@@ -19,6 +19,8 @@ import re
 import urllib.parse
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as package_version
 from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict
@@ -37,9 +39,17 @@ def contact() -> str:
     return os.environ.get(CONTACT_ENV, "").strip()
 
 
+def product() -> str:
+    """`citations/<installed version>`, the product token every request names."""
+    try:
+        return f"citations/{package_version('citations')}"
+    except PackageNotFoundError:  # a source tree with nothing installed
+        return "citations/0+unknown"
+
+
 def user_agent() -> str:
     """The `User-Agent` for outbound metadata requests, with a contact only if one is set."""
-    return f"citations/1.0 (mailto:{contact()})" if contact() else "citations/1.0"
+    return f"{product()} (mailto:{contact()})" if contact() else product()
 
 
 def polite(params: dict) -> dict:

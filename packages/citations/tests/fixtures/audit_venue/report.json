@@ -30,7 +30,8 @@
           "nlm:2985088R",
           "openalex:S46058472",
           "wikidata:Q925779"
-        ]
+        ],
+        "issn": ""
       },
       "searched": []
     },
@@ -57,7 +58,8 @@
           "nlm:100890344",
           "openalex:S145009937",
           "wikidata:Q15759195"
-        ]
+        ],
+        "issn": ""
       },
       "searched": []
     },
@@ -88,7 +90,8 @@
           "nlm:101639023",
           "openalex:S2729999759",
           "wikidata:Q28736261"
-        ]
+        ],
+        "issn": ""
       },
       "searched": []
     },
@@ -123,7 +126,8 @@
           "nlm:9881780",
           "openalex:S62148650",
           "wikidata:Q6723676"
-        ]
+        ],
+        "issn": ""
       },
       "searched": []
     },
@@ -144,7 +148,8 @@
         "theirs_registry": "arXiv",
         "why": "the record is a preprint",
         "ours_ids": [],
-        "theirs_ids": []
+        "theirs_ids": [],
+        "issn": ""
       },
       "searched": [
         "crossref",
@@ -174,7 +179,8 @@
           "issn:1611-3349",
           "openalex:S106296714",
           "wikidata:Q924044"
-        ]
+        ],
+        "issn": ""
       },
       "searched": []
     },
@@ -199,7 +205,8 @@
         "ours_ids": [],
         "theirs_ids": [
           "openalex:S7407088418"
-        ]
+        ],
+        "issn": ""
       },
       "searched": []
     },
@@ -220,7 +227,8 @@
         "theirs_registry": "Proceedings of the 2019 ACL Workshop BlackboxNLP: Analyzing and Interpreting Neural Networks for NLP",
         "why": "the record names no venue identifier",
         "ours_ids": [],
-        "theirs_ids": []
+        "theirs_ids": [],
+        "issn": ""
       },
       "searched": []
     },
@@ -257,7 +265,8 @@
           "nlm:100890344",
           "openalex:S145009937",
           "wikidata:Q15759195"
-        ]
+        ],
+        "issn": ""
       },
       "searched": []
     },
@@ -294,7 +303,8 @@
           "nlm:100890344",
           "openalex:S145009937",
           "wikidata:Q15759195"
-        ]
+        ],
+        "issn": ""
       },
       "searched": []
     },
@@ -317,7 +327,8 @@
         "ours_ids": [],
         "theirs_ids": [
           "openalex:S4363608774"
-        ]
+        ],
+        "issn": ""
       },
       "searched": []
     },
@@ -340,7 +351,8 @@
         "theirs_registry": "arXiv",
         "why": "the record is a preprint",
         "ours_ids": [],
-        "theirs_ids": []
+        "theirs_ids": [],
+        "issn": ""
       },
       "searched": [
         "crossref",
@@ -376,7 +388,8 @@
           "nlm:0365252",
           "openalex:S119757635",
           "wikidata:Q564421"
-        ]
+        ],
+        "issn": ""
       },
       "searched": []
     },
@@ -407,7 +420,8 @@
           "nlm:101307056",
           "openalex:S167961193",
           "wikidata:Q6295963"
-        ]
+        ],
+        "issn": ""
       },
       "searched": []
     },
@@ -463,7 +477,8 @@
           "nlm:101492446",
           "openalex:S4210176548",
           "wikidata:Q27722185"
-        ]
+        ],
+        "issn": ""
       },
       "searched": []
     },
@@ -506,7 +521,8 @@
           "issn:1434-601X",
           "openalex:S4210173186",
           "wikidata:Q2471672"
-        ]
+        ],
+        "issn": ""
       },
       "searched": []
     },
@@ -534,7 +550,8 @@
         "theirs_ids": [
           "issn:1049-5258",
           "openalex:S4363606243"
-        ]
+        ],
+        "issn": ""
       },
       "searched": [
         "semanticscholar"
@@ -557,7 +574,8 @@
         "theirs_registry": "arXiv",
         "why": "the record is a preprint",
         "ours_ids": [],
-        "theirs_ids": []
+        "theirs_ids": [],
+        "issn": ""
       },
       "searched": [
         "crossref",
@@ -593,7 +611,8 @@
           "nlm:0404511",
           "openalex:S3880285",
           "wikidata:Q192864"
-        ]
+        ],
+        "issn": ""
       },
       "searched": []
     },
@@ -633,7 +652,8 @@
           "nlm:01510020R",
           "openalex:S62401924",
           "wikidata:Q4181923"
-        ]
+        ],
+        "issn": ""
       },
       "searched": []
     },
@@ -656,7 +676,8 @@
         "theirs_registry": "arXiv",
         "why": "the record is a preprint",
         "ours_ids": [],
-        "theirs_ids": []
+        "theirs_ids": [],
+        "issn": ""
       },
       "searched": [
         "crossref",
@@ -682,7 +703,8 @@
         "theirs_registry": "arXiv",
         "why": "the record is a preprint",
         "ours_ids": [],
-        "theirs_ids": []
+        "theirs_ids": [],
+        "issn": ""
       },
       "searched": [
         "crossref",
@@ -718,7 +740,8 @@
           "nlm:101215604",
           "openalex:S127827428",
           "wikidata:Q680640"
-        ]
+        ],
+        "issn": ""
       },
       "searched": []
     },
@@ -772,7 +795,8 @@
           "openalex:S4210191612",
           "openalex:S4210210546",
           "wikidata:Q180445"
-        ]
+        ],
+        "issn": ""
       },
       "searched": []
     },
@@ -795,7 +819,8 @@
         "ours_ids": [],
         "theirs_ids": [
           "openalex:S4363608652"
-        ]
+        ],
+        "issn": ""
       },
       "searched": []
     },
@@ -830,7 +855,8 @@
           "nlm:9808944",
           "openalex:S52395412",
           "wikidata:Q4914910"
-        ]
+        ],
+        "issn": ""
       },
       "searched": []
     },
@@ -853,7 +879,8 @@
         "ours_ids": [],
         "theirs_ids": [
           "openalex:S7407086902"
-        ]
+        ],
+        "issn": ""
       },
       "searched": []
     },
@@ -874,7 +901,8 @@
         "theirs_registry": "",
         "why": "the record is a preprint",
         "ours_ids": [],
-        "theirs_ids": []
+        "theirs_ids": [],
+        "issn": ""
       },
       "searched": []
     },
@@ -895,7 +923,8 @@
         "theirs_registry": "arXiv",
         "why": "the record is a preprint",
         "ours_ids": [],
-        "theirs_ids": []
+        "theirs_ids": [],
+        "issn": ""
       },
       "searched": [
         "crossref",
@@ -936,7 +965,8 @@
           "nlm:100960660",
           "openalex:S81160022",
           "wikidata:Q5533480"
-        ]
+        ],
+        "issn": ""
       },
       "searched": []
     },
@@ -957,7 +987,8 @@
         "theirs_registry": "arXiv",
         "why": "the record is a preprint",
         "ours_ids": [],
-        "theirs_ids": []
+        "theirs_ids": [],
+        "issn": ""
       },
       "searched": [
         "crossref",
@@ -981,7 +1012,8 @@
         "theirs_registry": "arXiv",
         "why": "the record is a preprint",
         "ours_ids": [],
-        "theirs_ids": []
+        "theirs_ids": [],
+        "issn": ""
       },
       "searched": [
         "crossref",
@@ -1023,7 +1055,8 @@
           "openalex:S4210191612",
           "openalex:S4210210546",
           "wikidata:Q180445"
-        ]
+        ],
+        "issn": ""
       },
       "searched": []
     },
@@ -1049,7 +1082,8 @@
         "ours_ids": [],
         "theirs_ids": [
           "openalex:S4363608652"
-        ]
+        ],
+        "issn": ""
       },
       "searched": []
     },
@@ -1072,7 +1106,8 @@
         "ours_ids": [],
         "theirs_ids": [
           "openalex:S4363608991"
-        ]
+        ],
+        "issn": ""
       },
       "searched": []
     },
@@ -1097,7 +1132,8 @@
         ],
         "theirs_ids": [
           "openalex:S4363608774"
-        ]
+        ],
+        "issn": ""
       },
       "searched": []
     },
@@ -1131,7 +1167,8 @@
           "openalex:S62468778",
           "wikidata:Q141415926",
           "wikidata:Q582728"
-        ]
+        ],
+        "issn": ""
       },
       "searched": []
     },
@@ -1152,7 +1189,8 @@
         "theirs_registry": "arXiv",
         "why": "the record is a preprint",
         "ours_ids": [],
-        "theirs_ids": []
+        "theirs_ids": [],
+        "issn": ""
       },
       "searched": [
         "crossref",
@@ -1178,7 +1216,8 @@
         "theirs_registry": "arXiv",
         "why": "the record is a preprint",
         "ours_ids": [],
-        "theirs_ids": []
+        "theirs_ids": [],
+        "issn": ""
       },
       "searched": [
         "crossref",
@@ -1206,7 +1245,8 @@
         ],
         "theirs_ids": [
           "openalex:S7407087662"
-        ]
+        ],
+        "issn": ""
       },
       "searched": []
     },
@@ -1245,7 +1285,8 @@
           "nlm:101492446",
           "openalex:S4210176548",
           "wikidata:Q27722185"
-        ]
+        ],
+        "issn": ""
       },
       "searched": []
     },
@@ -1266,7 +1307,8 @@
         "theirs_registry": "Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)",
         "why": "the record names no venue identifier",
         "ours_ids": [],
-        "theirs_ids": []
+        "theirs_ids": [],
+        "issn": ""
       },
       "searched": []
     },
@@ -1291,7 +1333,8 @@
         "ours_ids": [],
         "theirs_ids": [
           "openalex:S7407088418"
-        ]
+        ],
+        "issn": ""
       },
       "searched": []
     },
@@ -1330,7 +1373,8 @@
           "nlm:0411011",
           "openalex:S134668137",
           "wikidata:Q135122"
-        ]
+        ],
+        "issn": ""
       },
       "searched": []
     },
@@ -1365,7 +1409,8 @@
           "openalex:S125754415",
           "openalex:S4306524457",
           "wikidata:Q1146531"
-        ]
+        ],
+        "issn": ""
       },
       "searched": []
     },
@@ -1399,7 +1444,8 @@
           "nlm:101492446",
           "openalex:S4210176548",
           "wikidata:Q27722185"
-        ]
+        ],
+        "issn": ""
       },
       "searched": []
     },
@@ -1426,7 +1472,8 @@
           "issn:1611-3349",
           "openalex:S106296714",
           "wikidata:Q924044"
-        ]
+        ],
+        "issn": ""
       },
       "searched": []
     },
@@ -1459,7 +1506,8 @@
           "nlm:0413661",
           "openalex:S172180718",
           "wikidata:Q864602"
-        ]
+        ],
+        "issn": ""
       },
       "searched": []
     },
@@ -1482,7 +1530,8 @@
         "ours_ids": [],
         "theirs_ids": [
           "openalex:S4363608652"
-        ]
+        ],
+        "issn": ""
       },
       "searched": []
     },
@@ -1521,7 +1570,8 @@
           "openalex:S4210191612",
           "openalex:S4210210546",
           "wikidata:Q180445"
-        ]
+        ],
+        "issn": ""
       },
       "searched": []
     },
@@ -1569,7 +1619,8 @@
           "nlm:0413066",
           "openalex:S110447773",
           "wikidata:Q655814"
-        ]
+        ],
+        "issn": ""
       },
       "searched": []
     },
@@ -1610,7 +1661,8 @@
           "openalex:S125754415",
           "openalex:S4306524457",
           "wikidata:Q1146531"
-        ]
+        ],
+        "issn": ""
       },
       "searched": []
     },
@@ -1631,7 +1683,8 @@
         "theirs_registry": "arXiv",
         "why": "the record is a preprint",
         "ours_ids": [],
-        "theirs_ids": []
+        "theirs_ids": [],
+        "issn": ""
       },
       "searched": [
         "crossref",
@@ -1665,7 +1718,8 @@
           "nlm:100890344",
           "openalex:S145009937",
           "wikidata:Q15759195"
-        ]
+        ],
+        "issn": ""
       },
       "searched": []
     },
@@ -1698,7 +1752,8 @@
           "nlm:101524790",
           "openalex:S4210191458",
           "wikidata:Q27722923"
-        ]
+        ],
+        "issn": ""
       },
       "searched": []
     },
@@ -1726,7 +1781,8 @@
         "theirs_ids": [
           "issn:1049-5258",
           "openalex:S4363606243"
-        ]
+        ],
+        "issn": ""
       },
       "searched": [
         "semanticscholar"
@@ -1753,7 +1809,8 @@
         ],
         "theirs_ids": [
           "openalex:S7407087688"
-        ]
+        ],
+        "issn": ""
       },
       "searched": []
     },
@@ -1784,7 +1841,8 @@
           "nlm:101528555",
           "openalex:S64187185",
           "wikidata:Q573880"
-        ]
+        ],
+        "issn": ""
       },
       "searched": []
     }

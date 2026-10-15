@@ -51,6 +51,9 @@ NO_COMMON_KIND = "the two sides hold no serial identifier (ISSN, NLM, DBLP) of a
 INDIRECT = "the record's venue was identified by its name, not by an identifier it carries"
 ONE_NAME = "registries file both venues under one name, with different identifiers"
 SEARCHED = "the record was found by title search and can be another version of the work"
+ISSN_UNSETTLED = (
+    "the entry's ISSN does not identify the record's venue, and its name does not settle it"
+)
 GARBLED_NAME = "a venue name is garbled"
 
 
@@ -127,6 +130,10 @@ class VenueCheck(BaseModel):
 
     ours_ids: list[str] = Field(default_factory=list)
     theirs_ids: list[str] = Field(default_factory=list)
+
+    issn: str = ""
+    """A disagreement about the entry's `issn` field alone, reported as its own field where the
+    venue's name agrees with the record: `issn: ours '...' vs registry '...'`."""
 
     def line(self) -> str:
         """One line naming both venues, for a person to compare by eye."""

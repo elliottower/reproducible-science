@@ -865,7 +865,11 @@ source and DBLP venue key.
 The entry's `journal` or `booktitle`, or its `series` where it names neither, is resolved to the
 same kinds of identifier through registries that index venue names and their abbreviations:
 Wikidata's labels, aliases, short names and ISO 4 abbreviations, and OpenAlex sources' display
-names, abbreviated titles and alternate titles. An `issn` field is used as given. A registry
+names, abbreviated titles and alternate titles. An `issn` field is resolved beside the name: where
+the name agrees with the record's venue and a registry knows the ISSN as another venue, the ISSN is
+reported as its own disagreement, `issn: ours '...' vs registry '...'`; an ISSN no registry knows
+is not evidence of anything, and where neither the name nor the ISSN settles the venue it is not
+comparable. A registry
 venue is a candidate when one of its own names equals the cited one once case, accents,
 punctuation, LaTeX, years, ordinals and volume numbers are folded away; candidates that share
 an identifier, or that Wikidata links as a conference and its proceedings or as editions of one
@@ -889,6 +893,10 @@ reasons are a name no registry knows, a name several registry venues share, a lo
 refused, a record that is a preprint or names no venue identifier, an entry citing a preprint
 server, a workshop against a main track, a record identified only by its name, two sides with
 no serial identifier of a common kind, and a garbled name.
+
+A lookup answered with 404 or 410 is an answer and is cached. Any other failure (a 500, a 502,
+a 403, a rate limit, no response, or a MediaWiki error reported inside an HTTP 200) is a refusal:
+it is never cached, so the next run asks again, and a venue resting on it is not comparable.
 
 Registry lookups are cached like every other request, sent with no contact address, and
 paced; a Wikidata request names the project in its `User-Agent`, as the Wikimedia policy asks.

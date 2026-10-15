@@ -12,10 +12,13 @@ fetched for them once; the cached bodies are trimmed to the fields read and re-e
 
 from __future__ import annotations
 
+import io
 import json
 import pathlib
+import urllib.error
 import urllib.parse
 
+import citations
 import pytest
 from citations import audit as A
 from citations import venue as V
@@ -23,6 +26,11 @@ from citations import venue_registry as R
 from citations.services import crossref_venue_ids, openalex_venue_ids
 
 FIXTURE = pathlib.Path(__file__).parent / "fixtures" / "audit_venue"
+
+
+def venue_of(verdict: A.EntryAudit) -> V.VenueCheck:
+    assert verdict.venue is not None, "a compared entry carries its venue check"
+    return verdict.venue
 
 
 def res(*ids, status="resolved", direct=False, **kw) -> V.Resolution:
@@ -537,8 +545,9 @@ def test_a_wikidata_request_says_where_it_comes_from_and_carries_no_address(tmp_
     ask = A.asker(tmp_path / "cache")
     ask("https://www.wikidata.org/w/api.php?action=wbsearchentities&search=x", "w.json")
     ask("https://api.openalex.org/sources?search=x", "o.json")
-    assert sent["www.wikidata.org"] == {"User-Agent": A.WIKIDATA_AGENT}
-    assert "@" not in A.WIKIDATA_AGENT
+    assert sent["www.wikidata.org"] == {"User-Agent": A.wikidata_agent()}
+    assert "@" not in A.wikidata_agent()
+    assert A.wikidata_agent().startswith(f"citations/{citations.__version__} ")
     assert sent["api.openalex.org"] is None
 
 
@@ -595,3 +604,146 @@ def test_journal_pairs_resolve_offline_as_recorded_and_none_is_a_mismatch(monkey
     assert not any(v == V.MATCH for k, v in got.items() if k.startswith("german_distinct")), (
         "two distinct German journals were read as one"
     )
+
+
+# --- an ISSN in the entry beside its venue name -----------------------------------------------
+
+
+JCP = res(
+    "issn:0021-9606",
+    "issn:1089-7690",
+    "wikidata:Q1",
+    direct=True,
+    label="The Journal of Chemical Physics",
+)
+
+
+def _with_issn(monkeypatch, tmp_path, by_name, by_issn, issn):
+    rec = record(
+        title="T",
+        venue="The Journal of Chemical Physics",
+        venues=["The Journal of Chemical Physics"],
+        venue_kind="journal",
+        venue_ids=["issn:0021-9606"],
+    )
+    monkeypatch.setattr(A, "from_crossref", lambda doi, cache: rec)
+    monkeypatch.setattr(A, "identify", lambda *a, **k: JCP)
+    monkeypatch.setattr(
+        A, "resolve_name", lambda ask, name, issn="", both=False: by_issn if issn else by_name
+    )
+    entry = A.Entry(key="k", title="T", venue="J. Chem. Phys.", issn=issn, doi="10.1063/x")
+    return A.audit([entry], tmp_path / "cache").entries["k"]
+
+
+def test_a_wrong_issn_beside_a_right_name_is_an_issn_disagreement_not_a_venue_one(
+    tmp_path, monkeypatch
+):
+    other = res("issn:1234-5678", "wikidata:Q999", label="Another Journal")
+    verdict = _with_issn(
+        monkeypatch, tmp_path, JCP.model_copy(update={"direct": False}), other, "1234-5678"
+    )
+    assert venue_of(verdict).outcome == V.MATCH
+    assert verdict.problems == ["issn: ours '1234-5678' vs registry '0021-9606/1089-7690'"]
+
+
+def test_an_issn_no_registry_knows_is_never_evidence_against_anything(tmp_path, monkeypatch):
+    unknown = res("issn:9999-999X")
+    verdict = _with_issn(
+        monkeypatch, tmp_path, JCP.model_copy(update={"direct": False}), unknown, "9999-999X"
+    )
+    assert (verdict.status, venue_of(verdict).outcome) == ("ok", V.MATCH)
+
+
+def test_a_right_issn_beside_an_unknown_name_matches_on_the_issn(tmp_path, monkeypatch):
+    verdict = _with_issn(
+        monkeypatch,
+        tmp_path,
+        V.Resolution(status="unresolved"),
+        JCP.model_copy(update={"direct": False}),
+        "0021-9606",
+    )
+    assert venue_of(verdict).outcome == V.MATCH
+
+
+def test_an_issn_and_a_name_that_both_disagree_are_not_comparable(tmp_path, monkeypatch):
+    other = res("issn:1234-5678", "wikidata:Q999", label="Another Journal")
+    verdict = _with_issn(monkeypatch, tmp_path, other, other, "1234-5678")
+    assert (verdict.status, venue_of(verdict).outcome) == ("ok", V.NOT_COMPARABLE)
+    assert venue_of(verdict).why == V.ISSN_UNSETTLED
+
+
+# --- a refusal is never cached as an answer -----------------------------------------------------
+
+
+def _respond(monkeypatch, status=200, body=b"{}"):
+    asked = []
+
+    def urlopen(req, timeout=None):
+        asked.append(req.full_url)
+        if status != 200:
+            raise urllib.error.HTTPError(req.full_url, status, "no", None, io.BytesIO(b""))
+        return io.BytesIO(body)
+
+    monkeypatch.setattr(A.resolve.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(A.time, "sleep", lambda _: None)
+    monkeypatch.setattr(A.resolve.time, "sleep", lambda _: None)
+    return asked
+
+
+@pytest.mark.parametrize("status", [500, 502, 403, 429])
+def test_a_server_error_is_a_refusal_and_leaves_nothing_in_the_cache(tmp_path, monkeypatch, status):
+    _respond(monkeypatch, status=status)
+    cache = tmp_path / "cache"
+    ask = A.asker(cache)
+    assert (
+        ask("https://www.wikidata.org/w/api.php?action=wbsearchentities&search=x", "w.json") is None
+    )
+    assert not cache.exists() or not list(cache.iterdir())
+
+
+def test_a_mediawiki_error_inside_a_200_is_a_refusal_and_is_not_cached(tmp_path, monkeypatch):
+    body = json.dumps({"error": {"code": "internal_api_error_DBQueryError", "info": "x"}})
+    _respond(monkeypatch, body=body.encode())
+    cache = tmp_path / "cache"
+    assert A.asker(cache)("https://www.wikidata.org/w/api.php?action=query", "w.json") is None
+    assert not cache.exists() or not list(cache.iterdir())
+
+
+@pytest.mark.parametrize("status", [404, 410])
+def test_absent_is_an_answer_and_is_cached(tmp_path, monkeypatch, status):
+    _respond(monkeypatch, status=status)
+    cache = tmp_path / "cache"
+    assert A.asker(cache)("https://api.openalex.org/works/doi:10.1/x", "o.json") == {}
+    assert [f.name for f in cache.iterdir()] == ["o.json"]
+
+
+def test_a_venue_whose_registry_failed_is_not_comparable_and_the_next_run_asks_again(
+    tmp_path, monkeypatch
+):
+    rec = record(
+        title="T",
+        venue="Harvard Law Review",
+        venues=["Harvard Law Review"],
+        venue_kind="journal",
+        venue_ids=["issn:0017-811X"],
+    )
+    monkeypatch.setattr(A, "from_crossref", lambda doi, cache: rec)
+    asked = _respond(monkeypatch, status=500)
+    entry = A.Entry(key="k", title="T", venue="Harvard Law Review", doi="10.2307/x")
+    cache = tmp_path / "cache"
+
+    verdict = A.audit([entry], cache).entries["k"]
+
+    assert venue_of(verdict).outcome == V.NOT_COMPARABLE
+    assert venue_of(verdict).why.startswith(V.REFUSED)
+    assert not cache.exists() or not list(cache.iterdir())
+    first = len(asked)
+    A.audit([entry], cache)
+    assert len(asked) == 2 * first, "a refused lookup was answered from the cache"
+
+
+def test_an_issn_is_read_with_or_without_its_hyphen():
+    assert R.issns("00219606") == ["0021-9606"]
+    assert R.issns("0021-9606, 1089-7690") == ["0021-9606", "1089-7690"]
+    assert R.issns("1234-567x") == ["1234-567X"]
+    assert R.issns("12345678901") == []

@@ -69,7 +69,12 @@ NETWORK_ERRORS = (
 )
 
 #: Status codes that mean "ask again later" rather than "no such work".
-RETRY_CODES = (429, 503, 504)
+RETRY_CODES = (429, 500, 502, 503, 504)
+
+#: The only status codes that mean "answered, and there is no such thing". Any other failure is
+#: a refusal: a 500, a 502 or a 403 says nothing about whether the thing exists, and reading it
+#: as absent turns an outage into a finding.
+ABSENT_CODES = (404, 410)
 
 
 class Throttled(Exception):
@@ -119,7 +124,8 @@ def fetch(url: str, timeout: int = 25, headers: dict | None = None, keyed: bool 
 def get(url: str, as_json: bool, tries: int = 4, headers: dict | None = None):
     """The payload, or None when the service answered and had nothing.
 
-    Raises `Throttled` when it did not answer. Collapsing those two into None is how a batch of
+    Raises `Throttled` when it did not answer: a status other than 404 or 410, or no response.
+    Collapsing those two into None is how a batch of
     sixty lookups reported sixty works as unfindable when the real answer was that Crossref had
     started rate-limiting after the first few. A resolver that cannot tell "absent" from "I was
     blocked" will confidently delete information.
@@ -134,8 +140,10 @@ def get(url: str, as_json: bool, tries: int = 4, headers: dict | None = None):
                 body = r.read().decode()
             return json.loads(body) if as_json else body
         except urllib.error.HTTPError as e:
-            if e.code not in RETRY_CODES:
+            if e.code in ABSENT_CODES:
                 return None
+            if e.code not in RETRY_CODES and (keyed or not credentials(url)):
+                raise Throttled(url) from None
         except NETWORK_ERRORS:
             pass
         if not keyed and credentials(url):
