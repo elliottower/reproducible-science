@@ -33,6 +33,7 @@ WORKFLOWS = {
     "claims-cli": "publish-claims.yml",
     "provenance-core": "publish-provenance-core.yml",
     "reproducible-science-ui": "publish-ui.yml",
+    "reproducible-science-pr-bot": "publish-pr-bot.yml",
 }
 
 #: How old a verification may be before it is worth mentioning. The schedule is weekly.

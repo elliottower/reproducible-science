@@ -14,7 +14,7 @@
 # Everything runs through `uv run`, so contributors and CI invoke the same commands.
 
 PY := uv run
-PKG_SRC := packages/repro/src packages/claims/src packages/citations/src packages/results/src packages/prereg/src
+PKG_SRC := packages/repro/src packages/claims/src packages/citations/src packages/results/src packages/prereg/src packages/pr-bot/src
 
 .PHONY: help format check test coverage versions publishable interop qa qa-all release-check types deps imports dead notes check-lowest hooks publishers changelog
 

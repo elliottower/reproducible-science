@@ -1,4 +1,4 @@
-"""Add one `set_aside` entry to the text of `repro.yaml`, or remove one `repro bot` added,
+"""Add one `set_aside` entry to the text of `repro.yaml`, or remove one the pull-request bot added,
 changing no other byte.
 
 The file is never loaded and dumped again: that would drop its comments, reorder its keys and
@@ -14,13 +14,12 @@ import datetime
 import re
 
 import yaml
-
-from repro.exceptions import ReproError
-from repro.models import Review, SetAside
+from claims.exceptions import ReproError
+from claims.models import Review, SetAside
 
 KEY = "set_aside"
 BOM = "\ufeff"
-#: How the reason of an entry `repro bot` wrote begins, so it removes only its own.
+#: How the reason of an entry the pull-request bot wrote begins, so it removes only its own.
 PREFIX = "pull request #"
 
 
@@ -42,7 +41,9 @@ def entry(
 ) -> SetAside:
     """The entry an answer of 3 or 4 writes: the passage, why, who and when."""
     why = f"{PREFIX}{pull_request}, {said}" + (f": {reason}" if reason else "")
-    return SetAside(artifact=artifact, text=text, reason=why, reviewed=Review(who=login, when=at))
+    return SetAside(
+        artifact=artifact, text=text, reason=why, reviewed=Review(who=login, when=at)
+    )
 
 
 def _loader() -> type:
@@ -75,15 +76,17 @@ def _load(source: str) -> dict:
 def _top(source: str) -> yaml.MappingNode:
     if _DOCUMENT_END.search(source) or _LATER_DOCUMENT.search(source):
         # Text appended after `...`, or into a second document, is not in the manifest.
-        raise ManifestShapeError("the file holds a YAML document marker after its start")
+        raise ManifestShapeError(
+            "the file holds a YAML document marker after its start"
+        )
     root = _compose(source)
     if not isinstance(root, yaml.MappingNode):
         raise ManifestShapeError("the file is not a mapping")
     return root
 
 
-_DOCUMENT_END = re.compile(r"^\.\.\.(?:[ \t#]|$)", re.M)
-_LATER_DOCUMENT = re.compile(r"(?<=.)\n---(?:[ \t#]|$)", re.S)
+_DOCUMENT_END = re.compile(r"^\.\.\.(?:[ \t#]|$)", re.MULTILINE)
+_LATER_DOCUMENT = re.compile(r"(?<=.)\n---(?:[ \t#]|$)", re.DOTALL)
 
 
 def _key(root: yaml.MappingNode) -> tuple[yaml.Node, yaml.Node] | None:
@@ -113,7 +116,9 @@ def _end(source: str, node: yaml.Node) -> int:
     """Where the text of a node ends: after the line its last scalar ends on. A block scalar,
     `|` or `>`, ends at the start of the line after it, which is already that place."""
     index = _leaf(node).end_mark.index
-    return index if index > 0 and source[index - 1] == "\n" else _line_after(source, index)
+    return (
+        index if index > 0 and source[index - 1] == "\n" else _line_after(source, index)
+    )
 
 
 def _block(made: SetAside, prefix: str, newline: str) -> str:
@@ -144,7 +149,9 @@ def _as_written(source: str, result: str, newline: str) -> str:
 def holds(source: str, artifact: str, text: str) -> bool:
     """Whether the manifest sets the passage aside already."""
     return any(
-        isinstance(item, dict) and item.get("artifact") == artifact and item.get("text") == text
+        isinstance(item, dict)
+        and item.get("artifact") == artifact
+        and item.get("text") == text
         for item in _entries(source.removeprefix(BOM))
     )
 
@@ -185,15 +192,25 @@ def _added(source: str, made: SetAside) -> str:
                 # kept: the value goes, and a comment stays.
                 ends = line.rstrip("\r\n")
                 kept = ends[node.end_mark.index - start :]
-                line = ends[: node.start_mark.index - start].rstrip() + kept + line[len(ends) :]
+                line = (
+                    ends[: node.start_mark.index - start].rstrip()
+                    + kept
+                    + line[len(ends) :]
+                )
             if not line.endswith("\n"):
                 line += newline
             result = source[:start] + line + _block(made, "", newline) + source[at:]
         else:
-            raise ManifestShapeError(f"`{KEY}` is not a list written one entry per line")
+            raise ManifestShapeError(
+                f"`{KEY}` is not a list written one entry per line"
+            )
     result = _as_written(source, result, newline)
-    if _entries(result)[-1:] != [made.model_dump(mode="json")] or _rest(result) != _rest(source):
-        raise ManifestShapeError("the entry could not be added without changing anything else")
+    if _entries(result)[-1:] != [made.model_dump(mode="json")] or _rest(
+        result
+    ) != _rest(source):
+        raise ManifestShapeError(
+            "the entry could not be added without changing anything else"
+        )
     return result
 
 
@@ -208,7 +225,7 @@ def _ours(item: object, artifact: str, text: str) -> bool:
 
 
 def removed(source: str, artifact: str, text: str) -> str | None:
-    """The manifest's text without the entry `repro bot` wrote for the passage, or None where
+    """The manifest's text without the entry the pull-request bot wrote for the passage, or None where
     it holds no such entry. An entry someone else wrote is never removed."""
     bom = BOM if source.startswith(BOM) else ""
     result = _removed(source.removeprefix(BOM), artifact, text)
@@ -217,11 +234,17 @@ def removed(source: str, artifact: str, text: str) -> str | None:
 
 def _removed(source: str, artifact: str, text: str) -> str | None:
     entries = _entries(source)
-    index = next((i for i, item in enumerate(entries) if _ours(item, artifact, text)), None)
+    index = next(
+        (i for i, item in enumerate(entries) if _ours(item, artifact, text)), None
+    )
     if index is None:
         return None
     found = _key(_top(source))
-    if found is None or not isinstance(found[1], yaml.SequenceNode) or found[1].flow_style:
+    if (
+        found is None
+        or not isinstance(found[1], yaml.SequenceNode)
+        or found[1].flow_style
+    ):
         raise ManifestShapeError(f"`{KEY}` is not a list written one entry per line")
     key, node = found
     item = node.value[index]
@@ -237,7 +260,9 @@ def _removed(source: str, artifact: str, text: str) -> str | None:
     result = _as_written(source, source[:start] + source[end:], newline)
     kept = entries[:index] + entries[index + 1 :]
     if _entries(result) != kept or _rest(result) != _rest(source):
-        raise ManifestShapeError("the entry could not be removed without changing anything else")
+        raise ManifestShapeError(
+            "the entry could not be removed without changing anything else"
+        )
     return result
 
 

@@ -35,6 +35,7 @@ PACKAGES = {
     "claims-cli": PROJECT_ROOT / "packages" / "claims" / "pyproject.toml",
     "provenance-core": PROJECT_ROOT / "packages" / "provenance-core" / "pyproject.toml",
     "reproducible-science-ui": PROJECT_ROOT / "packages" / "ui" / "pyproject.toml",
+    "reproducible-science-pr-bot": PROJECT_ROOT / "packages" / "pr-bot" / "pyproject.toml",
 }
 
 #: The plugin manifests, for Claude Code and for Codex, which carry the same release version
@@ -188,14 +189,14 @@ def below_floor(version: str) -> str | None:
 
 
 #: Series closed after their last release, each with the version that closed it and the first
-#: version a later release may carry. `repro bot` writes `reviewed` on a `set_aside` entry, and
+#: version a later release may carry. the pull-request bot writes `reviewed` on a `set_aside` entry, and
 #: `claims-cli` up to 0.6.1 rejects a manifest carrying it; a further 0.6 release would pin
 #: `claims-cli>=0.6,<0.7` and accept those. Every version already published stays valid.
 CLOSED_SERIES = (
     (
         "0.6.1",
         "0.7.0",
-        "`repro bot` writes `reviewed` on a set_aside entry, which no claims-cli up to 0.6.1 reads",
+        "the pull-request bot writes `reviewed` on a set_aside entry, which no claims-cli up to 0.6.1 reads",
     ),
 )
 

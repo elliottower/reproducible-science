@@ -12,7 +12,6 @@
     repro origins         compare each artifact copied from another repository with its origin
     repro ci              run the checks in a workflow, with a summary on the run page
     repro badges          print a badge per check, each a count from a run on this machine
-    repro bot             comment on a pull request for each claim that fails, record the answers
     repro venue           draft a venue's appendix or checklist from the records, every answer marked
     repro check           run every tool this project uses, in one pass
     repro audit           clone a repository at a pinned commit and run every tool over it
@@ -104,7 +103,7 @@ from claims.starter import write as write_starter
 from provenance_core import atomic_write
 from provenance_core.gitref import try_run
 
-from repro import __version__, audit, badges, bot, ci, crosscheck
+from repro import __version__, audit, badges, ci, crosscheck, pr_bot
 from repro.delegate import BY_NAME, TOOLS
 from repro.delegate import check as delegate_check
 from repro.delegate import run as delegate_run
@@ -702,9 +701,9 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
         reproduce=_reproduce_text,
         stale=_stale_text,
         endpoints=badges.command_endpoints,
+        pr_bot=pr_bot.command,
     )
     badges.add_parser(sub)
-    bot.add_parser(sub)
     venue_cli.add_parser(sub)
 
     p_mcp = sub.add_parser(

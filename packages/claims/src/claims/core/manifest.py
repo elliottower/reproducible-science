@@ -285,7 +285,7 @@ class SetAside(BaseModel):
 
     reviewed: Review | None = None
     """Who set the passage aside, and when, where someone other than the manifest's author
-    did: `repro bot` writes the GitHub login of the person who answered and the time."""
+    did: the pull-request bot writes the GitHub login of the person who answered and the time."""
 
     @model_serializer(mode="wrap")
     def _omit_unreviewed(self, handler):

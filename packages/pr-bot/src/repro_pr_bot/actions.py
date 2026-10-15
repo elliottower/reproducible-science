@@ -21,10 +21,11 @@ import re
 from collections.abc import Callable
 from typing import Any, Literal
 
+from claims.exceptions import ReproError
 from pydantic import BaseModel, ConfigDict
 
-from repro.bot import setaside
-from repro.bot.comments import (
+from repro_pr_bot import setaside
+from repro_pr_bot.comments import (
     NOT_ALLOWED,
     NOT_AN_ANSWER,
     SET_ASIDE,
@@ -40,14 +41,14 @@ from repro.bot.comments import (
     refers_to,
     render,
 )
-from repro.bot.findings import Finding, Findings, manifest_path
-from repro.bot.github import WRITERS, Client, Comment, GitHubError, Pull
-from repro.exceptions import ReproError
+from repro_pr_bot.findings import Finding, Findings, manifest_path
+from repro_pr_bot.github import WRITERS, Client, Comment, GitHubError, Pull
 
 #: Attempts at committing the manifest when the branch moves between reading and writing it.
 ATTEMPTS = 3
-#: The workflow `repro bot init` writes for the check, which `reply` starts again after a commit.
-CHECK_WORKFLOW = "repro-bot-check.yml"
+#: The caller workflow `repro ci init --pr-bot` writes for the check, which `reply` starts again
+#: after a commit, naming the pull request.
+CHECK_WORKFLOW = "repro-pr-bot.yml"
 _HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
 
 
@@ -104,7 +105,9 @@ def lines(patch: str) -> set[int]:
 # ------------------------------------------------------------------------------ the comments
 
 
-def ours(comments: list[Comment], manifest: str | None = None) -> dict[str, tuple[Comment, Marker]]:
+def ours(
+    comments: list[Comment], manifest: str | None = None
+) -> dict[str, tuple[Comment, Marker]]:
     """The comments the bot opened, by the key of the assertion each is on. A reply in a
     thread is not one: it carries no marker. The first comment holding a key is the one. With
     `manifest`, a comment whose marker names any other file is not one either."""
@@ -180,7 +183,9 @@ def post(
             f"the findings are of {findings.head_sha[:7]}, and the run checked {head_sha[:7]}"
         )
     if findings.manifest != manifest:
-        raise NotThisRunError(f"the findings are about {findings.manifest}, not {manifest}")
+        raise NotThisRunError(
+            f"the findings are about {findings.manifest}, not {manifest}"
+        )
     pull = client.pull(findings.pull_request)
     if pull.head_sha != head_sha:
         raise NotThisRunError(
@@ -195,9 +200,13 @@ def post(
         return Posted(problem=findings.problem)
     fork = pull.head_repository != client.repository
     number = pull.number
-    held = ours(client.review_comments(number) + client.issue_comments(number), manifest)
+    held = ours(
+        client.review_comments(number) + client.issue_comments(number), manifest
+    )
     placeable = (
-        {path: lines(patch) for path, patch in client.patches(number).items()} if not fork else {}
+        {path: lines(patch) for path, patch in client.patches(number).items()}
+        if not fork
+        else {}
     )
 
     created, edited, unchanged, notes = [], [], [], []
@@ -207,7 +216,9 @@ def post(
         comment, _ = held.pop(key, (None, None))
         now = client.fresh(comment) if comment is not None else None
         marker = decode(now.body) if now is not None and now.by_bot else None
-        return (now, marker) if marker is not None and marker.key == key else (None, None)
+        return (
+            (now, marker) if marker is not None and marker.key == key else (None, None)
+        )
 
     for made in findings.findings:
         comment, before = latest_of(made.key)
@@ -221,7 +232,9 @@ def post(
         body = render(_marker(made, placed, fork, manifest, before))
         if comment is None:
             if placed == "review":
-                client.comment_on_line(number, body, head_sha, made.path or "", made.line or 1)
+                client.comment_on_line(
+                    number, body, head_sha, made.path or "", made.line or 1
+                )
             else:
                 client.comment(number, body)
             created.append(made.key)
@@ -291,7 +304,9 @@ def _threads(
         if root.kind == "review":
             replies = [c for c in review if c.in_reply_to == root.id]
         else:
-            replies = [c for c in issue if not c.by_bot and refers_to(c.body, marker.ref)]
+            replies = [
+                c for c in issue if not c.by_bot and refers_to(c.body, marker.ref)
+            ]
         replies.sort(key=lambda c: (c.created_at, c.id))
         found.append(_Thread(root=root, marker=marker, replies=tuple(replies)))
     return found
@@ -301,7 +316,11 @@ def _thread_of(reply: Comment, threads: list[_Thread]) -> _Thread | None:
     """The thread a reply is in, or None where it is in none of the bot's, or quotes two."""
     if reply.kind == "review":
         return next((t for t in threads if t.root.id == reply.in_reply_to), None)
-    found = [t for t in threads if t.root.kind == "issue" and refers_to(reply.body, t.marker.ref)]
+    found = [
+        t
+        for t in threads
+        if t.root.kind == "issue" and refers_to(reply.body, t.marker.ref)
+    ]
     return found[0] if len(found) == 1 else None
 
 
@@ -332,7 +351,11 @@ def _newer(reply: Comment, marker: Marker) -> bool:
 
 
 def _commit(
-    client: Client, pull: Pull, path: str, change: Callable[[str], str | None], message: str
+    client: Client,
+    pull: Pull,
+    path: str,
+    change: Callable[[str], str | None],
+    message: str,
 ) -> str:
     """Read `path` on the pull request's branch, apply `change` to its text, and commit what
     it returns; the commit's sha, or "" where `change` returns None. A branch that moved
@@ -343,7 +366,9 @@ def _commit(
         if changed is None:
             return ""
         try:
-            return client.put_file(path, changed.encode("utf-8"), blob, pull.head_ref, message)
+            return client.put_file(
+                path, changed.encode("utf-8"), blob, pull.head_ref, message
+            )
         except GitHubError as refused:
             if refused.status not in (409, 422) or attempt == ATTEMPTS - 1:
                 raise
@@ -371,7 +396,12 @@ def _record(
     # Read the thread again right before writing: a later reply that landed since is the one
     # to record, and its own run records it.
     again = next(
-        (t for t in _threads(number, client, manifest, trigger) if t.root.id == root.id), None
+        (
+            t
+            for t in _threads(number, client, manifest, trigger)
+            if t.root.id == root.id
+        ),
+        None,
     )
     holding = latest(again.replies, marker.ref, client) if again is not None else None
     if holding is None or holding[0].id != by.id:
@@ -415,7 +445,9 @@ def _record(
                 f"{manifest}: set aside claim {marker.claim} ({chosen.recorded} by "
                 f"@{by.login} on #{number})",
             )
-            note = f"; set_aside entry committed in {committed[:7]}" if committed else ""
+            note = (
+                f"; set_aside entry committed in {committed[:7]}" if committed else ""
+            )
             state = "set-aside" if committed else state
         else:
             committed = _commit(
@@ -426,7 +458,11 @@ def _record(
                 f"{manifest}: claim {marker.claim} is no longer set aside "
                 f"({chosen.recorded} by @{by.login} on #{number})",
             )
-            note = f"; the set_aside entry was removed in {committed[:7]}" if committed else ""
+            note = (
+                f"; the set_aside entry was removed in {committed[:7]}"
+                if committed
+                else ""
+            )
     if committed:
         note += _dispatched(client, pull, number, dispatch)
     if not chosen.sets_aside and state == "set-aside":
@@ -450,12 +486,15 @@ def _record(
     return said, committed
 
 
-def _dispatched(client: Client, pull: Pull, number: int, dispatch: tuple[str, ...]) -> str:
+def _dispatched(
+    client: Client, pull: Pull, number: int, dispatch: tuple[str, ...]
+) -> str:
     """Start each workflow named again on the branch: a commit made with the workflow's token
-    starts none, and a required check left unrun would hold the merge."""
+    starts none, and a required check left unrun would hold the merge. The first is the bot's
+    own check, which is told the pull request's number."""
     failed = []
     for workflow in dispatch:
-        inputs = {"pull_request": str(number)} if workflow == CHECK_WORKFLOW else {}
+        inputs = {"pull_request": str(number)} if workflow == dispatch[0] else {}
         try:
             client.dispatch(workflow, pull.head_ref, inputs)
         except GitHubError:
@@ -487,7 +526,9 @@ def reply(
     kind: Literal["review", "issue"]
     if event_name == "pull_request_review_comment" and event.get("pull_request"):
         kind, number = "review", int(event["pull_request"]["number"])
-    elif event_name == "issue_comment" and (event.get("issue") or {}).get("pull_request"):
+    elif event_name == "issue_comment" and (event.get("issue") or {}).get(
+        "pull_request"
+    ):
         kind, number = "issue", int(event["issue"]["number"])
     else:
         return Replied(done="skipped")
@@ -524,7 +565,9 @@ def reply(
         if holding is None or not _newer(holding[0], each.marker):
             continue
         by, chosen, reason = holding
-        done = _record(number, each, by, chosen, reason, client, pull, manifest, dispatch, trigger)
+        done = _record(
+            number, each, by, chosen, reason, client, pull, manifest, dispatch, trigger
+        )
         if done is None:
             continue
         if each.root.id == thread.root.id and by.id == trigger.id:
@@ -533,7 +576,9 @@ def reply(
             others.append(done[0])
     if mine is None:
         return Replied(done="skipped", others=tuple(others))
-    return Replied(done="recorded", said=mine[0], committed=mine[1], others=tuple(others))
+    return Replied(
+        done="recorded", said=mine[0], committed=mine[1], others=tuple(others)
+    )
 
 
 __all__ = [

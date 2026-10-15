@@ -1,4 +1,4 @@
-"""The GitHub REST calls `repro bot` makes, and nothing else.
+"""The GitHub REST calls the pull-request bot makes, and nothing else.
 
 Each method is one documented endpoint, named in its docstring. `Client.request` is the one
 place a request is sent, so a test replaces the client, never the network. Reads the token the
@@ -16,9 +16,8 @@ import urllib.parse
 import urllib.request
 from typing import Any
 
+from claims.exceptions import ReproError
 from pydantic import BaseModel, ConfigDict
-
-from repro.exceptions import ReproError
 
 API = "https://api.github.com"
 GRAPHQL = "https://api.github.com/graphql"
@@ -69,7 +68,7 @@ class Comment(BaseModel):
 
     @property
     def by_bot(self) -> bool:
-        """Whether `repro bot` could have written it."""
+        """Whether the pull-request bot could have written it."""
         return self.bot and self.login == BOT
 
 
@@ -89,7 +88,9 @@ class Pull(BaseModel):
 class Client:
     """The REST API of one repository, with the workflow's token."""
 
-    def __init__(self, repository: str, token: str, api: str = API, graphql: str = GRAPHQL) -> None:
+    def __init__(
+        self, repository: str, token: str, api: str = API, graphql: str = GRAPHQL
+    ) -> None:
         self.repository = repository
         self._token = token
         self._api = api.rstrip("/")
@@ -195,32 +196,46 @@ class Client:
             for item in self._all(self._repo(f"/issues/{number}/comments"))
         ]
 
-    def comment_on_line(self, number: int, body: str, sha: str, path: str, line: int) -> int:
+    def comment_on_line(
+        self, number: int, body: str, sha: str, path: str, line: int
+    ) -> int:
         """`POST /repos/{owner}/{repo}/pulls/{pull_number}/comments`, on the new side."""
         data, _ = self.request(
             "POST",
             self._repo(f"/pulls/{number}/comments"),
-            {"body": body, "commit_id": sha, "path": path, "line": line, "side": "RIGHT"},
+            {
+                "body": body,
+                "commit_id": sha,
+                "path": path,
+                "line": line,
+                "side": "RIGHT",
+            },
         )
         return data["id"]
 
     def reply_on_line(self, number: int, comment_id: int, body: str) -> int:
         """`POST /repos/{owner}/{repo}/pulls/{pull_number}/comments/{comment_id}/replies`."""
         data, _ = self.request(
-            "POST", self._repo(f"/pulls/{number}/comments/{comment_id}/replies"), {"body": body}
+            "POST",
+            self._repo(f"/pulls/{number}/comments/{comment_id}/replies"),
+            {"body": body},
         )
         return data["id"]
 
     def comment(self, number: int, body: str) -> int:
         """`POST /repos/{owner}/{repo}/issues/{issue_number}/comments`."""
-        data, _ = self.request("POST", self._repo(f"/issues/{number}/comments"), {"body": body})
+        data, _ = self.request(
+            "POST", self._repo(f"/issues/{number}/comments"), {"body": body}
+        )
         return data["id"]
 
     def edit(self, comment: Comment, body: str) -> None:
         """`PATCH /repos/{owner}/{repo}/pulls/comments/{comment_id}`, or
         `PATCH /repos/{owner}/{repo}/issues/comments/{comment_id}`."""
         where = "pulls" if comment.kind == "review" else "issues"
-        self.request("PATCH", self._repo(f"/{where}/comments/{comment.id}"), {"body": body})
+        self.request(
+            "PATCH", self._repo(f"/{where}/comments/{comment.id}"), {"body": body}
+        )
 
     def resolve_thread(self, number: int, comment_id: int, resolved: bool) -> bool:
         """Resolve, or unresolve, the review thread a comment opens, through GraphQL's
@@ -240,7 +255,11 @@ class Client:
                 first = thread["comments"]["nodes"]
                 if first and first[0]["databaseId"] == comment_id:
                     if thread["isResolved"] != resolved:
-                        verb = "resolveReviewThread" if resolved else "unresolveReviewThread"
+                        verb = (
+                            "resolveReviewThread"
+                            if resolved
+                            else "unresolveReviewThread"
+                        )
                         self._graph(
                             f"mutation($id:ID!){{{verb}(input:{{threadId:$id}}){{thread{{id}}}}}}",
                             {"id": thread["id"]},
@@ -251,7 +270,9 @@ class Client:
             after = threads["pageInfo"]["endCursor"]
 
     def _graph(self, query: str, variables: dict) -> dict:
-        data, _ = self.request("POST", self._graphql, {"query": query, "variables": variables})
+        data, _ = self.request(
+            "POST", self._graphql, {"query": query, "variables": variables}
+        )
         if not isinstance(data, dict) or data.get("errors") or "data" not in data:
             said = json.dumps((data or {}).get("errors", data))[:300]
             raise GitHubError("POST", "graphql", 200, said)
@@ -273,7 +294,8 @@ class Client:
         `read` or `none`. A login GitHub does not know has none."""
         try:
             data, _ = self.request(
-                "GET", self._repo(f"/collaborators/{urllib.parse.quote(login)}/permission")
+                "GET",
+                self._repo(f"/collaborators/{urllib.parse.quote(login)}/permission"),
             )
         except GitHubError as refused:
             if refused.status == 404:
@@ -285,11 +307,14 @@ class Client:
         """`GET /repos/{owner}/{repo}/contents/{path}?ref=`: the bytes and the blob's sha."""
         quoted = urllib.parse.quote(path)
         data, _ = self.request(
-            "GET", self._repo(f"/contents/{quoted}?ref={urllib.parse.quote(ref, safe='')}")
+            "GET",
+            self._repo(f"/contents/{quoted}?ref={urllib.parse.quote(ref, safe='')}"),
         )
         return base64.b64decode(data["content"]), data["sha"]
 
-    def put_file(self, path: str, content: bytes, sha: str, branch: str, message: str) -> str:
+    def put_file(
+        self, path: str, content: bytes, sha: str, branch: str, message: str
+    ) -> str:
         """`PUT /repos/{owner}/{repo}/contents/{path}`: one commit on `branch`, refused where
         the file is no longer the blob `sha`. Returns the commit's sha."""
         data, _ = self.request(

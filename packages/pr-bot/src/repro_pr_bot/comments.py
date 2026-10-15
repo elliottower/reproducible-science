@@ -1,4 +1,4 @@
-"""The comments `repro bot` posts, the marker each carries, and the replies it reads.
+"""The comments the pull-request bot posts, the marker each carries, and the replies it reads.
 
 A comment is rendered entirely from its `Marker`, which it carries at its end as an HTML
 comment holding base64 JSON. Rendering from the marker alone means that what a comment says
@@ -166,7 +166,7 @@ def _plain(text: str) -> str:
     that mentions nobody."""
     flat = " ".join(clean(text).split())[:MAX_SHOWN]
     escaped = re.sub(r"([\\`*_{}\[\]()#+!|<>~])", r"\\\1", flat)
-    return escaped.replace("@", "@​")
+    return escaped.replace("@", "@\u200b")
 
 
 def headline(
@@ -232,9 +232,7 @@ def _decision_said(marker: Marker) -> str:
     )
 
 
-SET_ASIDE = (
-    "Set aside in `repro.yaml` for `repro numbers`; `repro verify` still reports this claim."
-)
+SET_ASIDE = "Set aside in `repro.yaml` for `repro numbers`; `repro verify` still reports this claim."
 FORK = (
     "This pull request comes from a fork, so the bot only comments here: it commits nothing "
     "to the fork's branch. An answer of 3 or 4 is recorded in this comment, and the "
@@ -313,12 +311,16 @@ def _render(marker: Marker) -> str:
 
 _ANSWER = re.compile(r"([1-4])(?![0-9])(?!\.[0-9])(?:[\s.:,;)\-–—]+(.*))?", re.DOTALL)
 NOT_AN_ANSWER = "Not recorded: reply 1–4, with any reason after the number."
-NOT_ALLOWED = "Not recorded: only someone with write access to this repository can answer."
+NOT_ALLOWED = (
+    "Not recorded: only someone with write access to this repository can answer."
+)
 
 
 def _unquoted(body: str) -> str:
     """The reply without the lines it quotes."""
-    return "\n".join(line for line in body.splitlines() if not line.lstrip().startswith(">"))
+    return "\n".join(
+        line for line in body.splitlines() if not line.lstrip().startswith(">")
+    )
 
 
 _MENTION = re.compile(r"@repro(?:-bot)?\b[\s,:]*")
@@ -360,7 +362,10 @@ def parse(body: str, ref: str = "") -> Reply | None:
 def refers_to(body: str, ref: str) -> bool:
     """Whether a comment in the conversation is in the thread of the comment named `ref`: it
     quotes that comment, or its own text starts with the name."""
-    if any(line.lstrip().startswith(">") and ref in line for line in (body or "").splitlines()):
+    if any(
+        line.lstrip().startswith(">") and ref in line
+        for line in (body or "").splitlines()
+    ):
         return True
     return _unquoted(body or "").strip().startswith(ref)
 

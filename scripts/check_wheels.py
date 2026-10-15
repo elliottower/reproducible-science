@@ -36,6 +36,7 @@ DISTS = (
     "claims-cli",
     "reproducible-science",
     "reproducible-science-ui",
+    "reproducible-science-pr-bot",
 )
 
 #: What `claims-cli` declares of ours, and so all that is installed beside it when it is

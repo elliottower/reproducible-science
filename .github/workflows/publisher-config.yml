@@ -42,6 +42,7 @@ jobs:
             [publish-repro.yml]=reproducible-science
             [publish-claims.yml]=claims-cli
             [publish-provenance-core.yml]=provenance-core
+            [publish-pr-bot.yml]=reproducible-science-pr-bot
           )
           fail=0
           for file in "${!EXPECTED[@]}"; do

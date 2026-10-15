@@ -1,4 +1,4 @@
-"""What `repro bot check` finds on a pull request: one finding per assertion that fails or went
+"""What `reproducible-science-pr-bot check` finds on a pull request: one finding per assertion that fails or went
 stale, as `repro ci claims` and `repro ci reruns` decide them.
 
 Built from `claims.record.check_records`, the records `repro export` writes, so an outcome here
@@ -9,7 +9,7 @@ finding. Executes nothing and reaches no network.
 
 The file this writes crosses from a workflow that ran with a read-only token to one that
 writes, so it is read back through `Findings.model_validate_json` and nothing in it is trusted
-to name the pull request: `repro bot post` checks the number against the run's head commit.
+to name the pull request: `reproducible-science-pr-bot post` checks the number against the run's head commit.
 """
 
 from __future__ import annotations
@@ -21,10 +21,9 @@ import posixpath
 from typing import Annotated, Literal
 
 from claims.export.sarif import _fingerprint
+from claims.models import Freshness, Manifest
 from claims.record import CheckType, ExportRecord, NormalizedOutcome, check_records
 from pydantic import AfterValidator, BaseModel, ConfigDict, Field
-
-from repro.models import Freshness, Manifest
 
 FORMAT = "repro-bot-findings/1"
 #: Findings written to one file, and so comments posted for one run. A manifest can declare
@@ -49,7 +48,9 @@ def manifest_path(path: str) -> str:
         or "\x00" in path
         or any(part in ("", ".", "..") for part in parts)
     ):
-        raise ValueError(f"not a manifest's path from the top of a repository: {path!r}")
+        raise ValueError(
+            f"not a manifest's path from the top of a repository: {path!r}"
+        )
     return path
 
 
@@ -101,7 +102,7 @@ class Finding(BaseModel):
 
 
 class Findings(BaseModel):
-    """What one run of `repro bot check` found, and which pull request it ran on."""
+    """What one run of `reproducible-science-pr-bot check` found, and which pull request it ran on."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -161,7 +162,9 @@ def _kind(record: ExportRecord) -> Kind | None:
     return None
 
 
-def finding(record: ExportRecord, base: pathlib.Path, root: pathlib.Path) -> Finding | None:
+def finding(
+    record: ExportRecord, base: pathlib.Path, root: pathlib.Path
+) -> Finding | None:
     """The finding for one record, or None where the assertion neither fails nor went stale.
 
     `base` is the manifest's directory, which the paths it declares are relative to, and
@@ -176,7 +179,9 @@ def finding(record: ExportRecord, base: pathlib.Path, root: pathlib.Path) -> Fin
         file += f" and {len(files) - 1} more"
     stored = record.reads[0].stored if len(record.reads) == 1 else None
     located = [passage for passage in record.claim.passages if passage.line is not None]
-    own = [passage for passage in located if passage.assertion == record.assertion.index]
+    own = [
+        passage for passage in located if passage.assertion == record.assertion.index
+    ]
     where = next(iter((*own, *located)), None)
     # A passage too long to carry is not offered for `set_aside`: a cut one would not match.
     first = next((p for p in record.claim.passages if len(p.text) <= MAX_TEXT), None)
@@ -204,7 +209,9 @@ def set_aside(manifest: Manifest, record: ExportRecord) -> bool:
     return any((entry.artifact, entry.text) in passages for entry in manifest.set_aside)
 
 
-def check(manifest: Manifest, root: pathlib.Path, pull_request: int, head_sha: str) -> Findings:
+def check(
+    manifest: Manifest, root: pathlib.Path, pull_request: int, head_sha: str
+) -> Findings:
     """Check every assertion in the manifest and say which fail or went stale."""
     base = manifest.path.parent.resolve() if manifest.path else root
     found, checked, aside = [], [], []
