@@ -1,6 +1,6 @@
 ---
 name: open-items
-description: Fill the open items a reader of another tool's files left beside a draft manifest (`claims from-codecheck`, `claims from-corebench`), proposing each binding as an inferred assertion and letting the deterministic checks decide, then report the counts. Use when given an open-items.json or a repro.draft.yaml, after running one of those readers, or when asked to bind a CODECHECK certificate or a CORE-Bench capsule to its files. Requires the `claims` CLI (`uv tool install claims-cli`) and, for quotations, `citations`.
+description: Fill the open items a reader of another tool's files left beside a draft manifest (`claims from-codecheck`, `claims from-corebench`, `claims from-clawbio`, or the scaffold `repro init` drafts), proposing each binding as an inferred assertion and letting the deterministic checks decide, then report the counts. Use when given an open-items.json or a repro.draft.yaml, after running one of those readers or `repro init`, or when asked to bind a CODECHECK certificate, a CORE-Bench capsule or a ClawBio skill's output folder to its files, or a manuscript's numbers to its result files. Requires the `claims` CLI (`uv tool install claims-cli`) and, for quotations, `citations`.
 ---
 
 # open-items

@@ -29,8 +29,10 @@ that exits.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import functools
 import importlib
+import io
 import json
 import pathlib
 import subprocess
@@ -160,6 +162,18 @@ def _run(cmd: list[str], cwd: Path) -> bool:
         return False
 
 
+def _prereg_new(directory: Path, title: str | None = None) -> bool:
+    """`prereg new` in this process, so the `prereg` installed beside this package writes the
+    plan rather than whichever `prereg` comes first on PATH: an older one there wrote
+    `.gitignore` through a dangling symbolic link after the installed one had stopped."""
+    argv = ["new", str(directory), *(["--title", title] if title else [])]
+    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+        code = delegate_run(BY_NAME["prereg"], argv)
+    if code:
+        print(f"  warning: prereg {' '.join(argv)} failed")
+    return code == 0
+
+
 def _ignore(root: Path) -> tuple[str | None, str | None]:
     """Add the rules of `IGNORE_RULES` that `root/.gitignore` lacks: what was written, and
     what was left out.
@@ -270,8 +284,7 @@ def _init_here(scaffold: bool = True, force: bool = False) -> int:
     }
 
     def plan() -> str | None:
-        made = _run(["prereg", "new", ".", "--title", root.name], cwd=root)
-        return "PREREG.md" if made else None
+        return "PREREG.md" if _prereg_new(root, root.name) else None
 
     def ledger() -> str | None:
         return ".results/" if _run(["results", "init"], cwd=root) else None
@@ -367,7 +380,8 @@ def cmd_init(args: argparse.Namespace) -> int:
     target.mkdir(parents=True, exist_ok=True)
     print(f"initializing {target}")
 
-    for cmd in (["prereg", "new", name], ["results", "init"], ["citations", "init"]):
+    _prereg_new(target / name)
+    for cmd in (["results", "init"], ["citations", "init"]):
         _run(cmd, cwd=target)
     for d in ("claims", "data", "scripts", "figures"):
         (target / d).mkdir(exist_ok=True)
