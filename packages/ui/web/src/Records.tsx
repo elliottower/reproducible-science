@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
 import { fmt, when } from './shared'
+import { secs } from './reproduce'
 import type { Graph } from './types'
 
 /** One page per record, each opening with the line the Overview shows and a sentence on what the
@@ -542,7 +543,7 @@ export function ReproduceTab({ graph, query }: { graph: Graph; query: string }) 
           {[...(t?.reruns ?? [])].reverse().map((r, i) => (
             <tr key={i} className="static">
               <td className="small">{r.ended_at ? when(r.ended_at) : '—'}</td>
-              <td className="small nowrap">{r.started_at && r.ended_at ? `${Math.max(0, (Date.parse(r.ended_at) - Date.parse(r.started_at)) / 1000).toFixed(1)} s` : '—'}</td>
+              <td className="small nowrap">{r.started_at && r.ended_at ? (() => { const t = Math.round(Math.max(0, Date.parse(r.ended_at) - Date.parse(r.started_at)) / 1000); return t < 1 ? 'under 1 s' : `${t} s` })() : '—'}</td>
               <td className="num">{r.steps}</td>
               <td className="small">{Object.entries(r.counts).map(([k, v]) => `${v} ${k}`).join(', ')}</td>
               <td className="mono small muted">{r.tool_version}</td>
@@ -590,7 +591,7 @@ function StepPanel({ s, onClose, onView }: { s: Step; onClose: () => void; onVie
         <div key={i} className="run-claim small">
           <span className={h.state === 'reproduced' ? 'good-text' : 'stale-text'}>{h.state === 'reproduced' ? '✓' : '✗'}</span>{' '}
           {RERUN[h.state] ?? h.state} · {h.ended_at ? when(h.ended_at) : '—'}
-          <span className="muted">{h.duration_seconds != null ? ` · ${h.duration_seconds.toFixed(2)} s` : ''}{h.exit_code ? ` · exit ${h.exit_code}` : ''} · {h.tool_version}</span>
+          <span className="muted">{h.duration_seconds != null ? ` · ${secs(h.duration_seconds)}` : ''}{h.exit_code ? ` · exit ${h.exit_code}` : ''} · {h.tool_version}</span>
           {h.detail && <div className="muted">{h.detail}</div>}
         </div>
       ))}

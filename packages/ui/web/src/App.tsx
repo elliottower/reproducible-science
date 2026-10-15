@@ -4,8 +4,8 @@ import Catalog from './Catalog'
 import Overview, { type Tab } from './Overview'
 import { CitationsTab, PreregTab, ReproduceTab, ResultsTab } from './Records'
 import { ClaimsPill, FixCtx } from './fix'
-import { ReproduceButton, type Run, VerifyButton } from './reproduce'
-import { post } from './api'
+import { ReproducedPill, ReproduceButton, type Run, VerifyButton } from './reproduce'
+import { post, postWhenFree } from './api'
 import { layout, summarize } from './layout'
 import { nodeTypes, UiCtx } from './nodes'
 import { fmt, Panel, when } from './shared'
@@ -171,14 +171,11 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
           </div>
           <div className="spacer" />
           <ClaimsPill graph={graph} openClaims={() => setMode('claims')} />
-          {recheck.available && <ReproduceButton graph={graph} open={reproOpen} setOpen={setReproOpen} live={recheck.live} run={recheck.reproduce} />}
+          <ReproducedPill graph={graph} live={recheck.live} openTab={() => setMode('reproduce')} />
           {recheck.available && (
             <>
-              <button className="recheck" onClick={() => recheck.run('refresh')} disabled={recheck.busy !== null}
-                title="Re-read the records (repro stale, results verify, prereg check, the ledger and the check history). Writes nothing.">
-                {recheck.busy === 'refresh' ? 'Refreshing…' : <><span className="refresh-icon">⟳</span> Refresh</>}
-              </button>
-              <VerifyButton graph={graph} busy={recheck.busy === 'verify'} disabled={recheck.busy !== null} run={() => recheck.run('verify')} />
+              <VerifyButton graph={graph} busy={recheck.busy === 'verify'} disabled={recheck.busy !== null && recheck.busy !== 'refresh'} run={() => recheck.run('verify')} />
+              <ReproduceButton graph={graph} open={reproOpen} setOpen={setReproOpen} live={recheck.live} run={recheck.reproduce} />
             </>
           )}
           {recheck.message && <span className="error-note">{recheck.message}</span>}
@@ -291,10 +288,30 @@ export default function App() {
       .catch(() => setAvailable(false))
   }, [])
 
+  // The page re-reads the records by itself, which writes nothing: when its tab comes back into
+  // view, and every 30 s while it is in view. Never while a check or a re-run is going.
+  const busyRef = useRef(busy)
+  busyRef.current = busy
+  useEffect(() => {
+    if (!available) return
+    const refresh = () => {
+      if (document.visibilityState !== 'visible' || busyRef.current !== null) return
+      setBusy('refresh')
+      post('api/refresh', {})
+        .then((r) => r.json())
+        .then((res) => (res.ok ? load() : undefined))
+        .catch(() => undefined)
+        .finally(() => setBusy((b) => (b === 'refresh' ? null : b)))
+    }
+    const t = setInterval(refresh, 30_000)
+    document.addEventListener('visibilitychange', refresh)
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', refresh) }
+  }, [available])
+
   const run = (kind: 'refresh' | 'verify') => {
     setBusy(kind)
     setMessage(null)
-    post(`api/${kind}`, {})
+    postWhenFree(`api/${kind}`, {})
       .then((r) => r.json())
       .then((res) => {
         setMessage(res.ok ? null : `${kind === 'verify' ? 'repro verify' : 'Refresh'} failed: ${res.error}`)
@@ -319,7 +336,7 @@ export default function App() {
       if (done && !done.ok) setMessage(`Reproduce failed: ${done.error}`)
     }
     try {
-      const r = await post('api/reproduce', { only })
+      const r = await postWhenFree('api/reproduce', { only })
       if (!r.ok || !r.body) {
         const res = await r.json().catch(() => ({}))
         finish({ ok: false, error: res.error ?? `the server answered ${r.status}`, seconds: (Date.now() - started) / 1000 })

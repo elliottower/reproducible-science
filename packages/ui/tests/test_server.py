@@ -234,3 +234,58 @@ def test_a_post_without_this_launchs_token_is_refused_and_the_page_carries_it(se
     assert not (project / ".repro" / "reproductions.jsonl").exists()
     _, page = get(f"{served}/")
     assert f'<meta name="repro-ui-token" content="{TOKEN}" />' in page
+
+
+def test_a_request_not_from_this_page_says_so_rather_than_reload(served):
+    for headers in (
+        {
+            "Content-Type": "application/json",
+            "Origin": "https://evil.example",
+            server.TOKEN_HEADER: TOKEN,
+        },
+        {"Content-Type": "text/plain", server.TOKEN_HEADER: TOKEN},
+    ):
+        req = urllib.request.Request(
+            f"{served}/api/refresh", data=b"{}", method="POST", headers=headers
+        )
+        with pytest.raises(urllib.error.HTTPError) as refused:
+            urllib.request.urlopen(req, timeout=30)
+        assert refused.value.code == 403
+        assert json.loads(refused.value.read())["error"] == server.NOT_OURS
+
+
+def test_a_page_that_goes_away_mid_run_still_gets_the_run_recorded_and_shown(served, project):
+    host, port = served.removeprefix("http://").split(":")
+    body = json.dumps({"only": ["results"]}).encode()
+    request = (
+        f"POST /api/reproduce HTTP/1.1\r\nHost: {host}:{port}\r\n"
+        f"Content-Type: application/json\r\n{server.TOKEN_HEADER}: {TOKEN}\r\n"
+        f"Content-Length: {len(body)}\r\n\r\n"
+    ).encode() + body
+    with socket.create_connection((host, int(port)), timeout=15) as conn:
+        conn.sendall(request)
+        assert conn.recv(64).startswith(b"HTTP/1.0 200")
+    # The page is gone. The run goes on to the end, is recorded, and the data is rebuilt.
+    record = project / ".repro" / "reproductions.jsonl"
+    assert server.Handler.lock.acquire(timeout=90), "the run never released the lock"
+    server.Handler.lock.release()
+    assert record.read_text().count("\n") == 1
+    _, g = get(f"{served}/graph.json")
+    assert g["tabs"]["reproduce"]["steps"][0]["state"] == "current"
+    status, _ = post(f"{served}/api/refresh", {})
+    assert status == 200, "the lock was released"
+
+
+def test_a_failure_after_the_run_ends_the_stream_with_a_result_not_a_lost_connection(
+    served, project, monkeypatch
+):
+    def broken(*args, **kwargs):
+        raise RuntimeError("graph.json could not be written")
+
+    monkeypatch.setattr(graph, "build", broken)
+    status, events = stream(f"{served}/api/reproduce", {"only": ["results"]})
+    (done,) = [e for e in events if e.get("done")]
+    assert (status, done["ok"]) == (200, False)
+    assert "reading its record failed" in done["error"] and "could not be written" in done["error"]
+    assert done["seconds"] >= 0
+    assert (project / ".repro" / "reproductions.jsonl").read_text().count("\n") == 1

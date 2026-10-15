@@ -8,14 +8,18 @@ const STATE: Record<string, [string, string]> = {
   never_rerun: ['Never re-run', 'stale'],
 }
 
+/** One word for a POSIX shell: single-quoted, with any single quote closed, escaped and reopened. */
+export function shellQuote(s: string): string {
+  return /^[A-Za-z0-9_.\/:=+-]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`
+}
+
 /** A command to paste into any new terminal: into the project's folder first, then the command. */
 export function terminalCommand(dir: string | undefined, command: string): string {
-  const quoted = dir ? `'${dir.replace(/'/g, `'\\''`)}'` : ''
-  return dir ? `cd ${quoted} && ${command}` : command
+  return dir ? `cd ${shellQuote(dir)} && ${command}` : command
 }
 
 function reproduceCommand(dir: string | undefined, only: string[] | null): string {
-  return terminalCommand(dir, ['repro reproduce', ...(only ?? []).map((id) => `--only ${id}`)].join(' '))
+  return terminalCommand(dir, ['repro reproduce', ...(only ?? []).map((id) => `--only ${shellQuote(id)}`)].join(' '))
 }
 
 /** A re-run's states in words, leaving out the steps it did not run. */
@@ -25,7 +29,9 @@ export function outcome(counts: Record<string, number> | undefined): string {
   return said.length ? said.join(', ') : 'nothing re-ran'
 }
 
-const secs = (n: number | null | undefined) => (n == null ? '' : n < 10 ? `${n.toFixed(2)} s` : `${n.toFixed(1)} s`)
+/** A duration measured to the millisecond: milliseconds under a second, then seconds. */
+export const secs = (n: number | null | undefined) =>
+  n == null ? '' : n < 1 ? `${Math.round(n * 1000)} ms` : n < 10 ? `${n.toFixed(2)} s` : `${n.toFixed(1)} s`
 
 /** What the page shows while a re-run streams in, and once it is done. */
 export interface Run {
@@ -35,8 +41,29 @@ export interface Run {
   done?: { ok: boolean; seconds?: number; counts?: Record<string, number>; error?: string }
 }
 
-/** Reproduce in the top bar opens the list of rebuild steps. Each step has its own Run, and the
- * head of the list runs the changed ones or every step. Nothing runs from the first click. While a
+/** `◐ 18/20 reproduced`: green when every step re-ran since its inputs last changed, amber
+ * otherwise. Opens the Reproduce tab. */
+export function ReproducedPill({ graph, live, openTab }: { graph: Graph; live: Run | null; openTab: () => void }) {
+  const steps = graph.tabs?.reproduce.steps ?? []
+  const [now, setNow] = useState(Date.now())
+  const running = live !== null && !live.done
+  useEffect(() => {
+    if (!running) return
+    const t = setInterval(() => setNow(Date.now()), 500)
+    return () => clearInterval(t)
+  }, [running])
+  if (steps.length === 0) return null
+  const current = steps.filter((s) => s.state === 'current').length
+  return (
+    <button className={`pill big pill-btn ${current === steps.length ? 'good' : 'stale'}`} onClick={openTab}
+      title="The rebuild steps repro.yaml declares that re-ran since their inputs last changed · open the Reproduce tab">
+      {running ? `◐ reproducing… ${Math.floor((now - live.started) / 1000)} s` : `◐ ${fmt(current)}/${fmt(steps.length)} reproduced`}
+    </button>
+  )
+}
+
+/** `▶ repro reproduce ▾` opens the list of rebuild steps. Each step has its own Run, and the head
+ * of the list runs the changed ones or every step. Nothing runs from the first click. While a
  * re-run goes, its output streams into the dialog. */
 export function ReproduceButton({ graph, open, setOpen, live, run }: {
   graph: Graph
@@ -66,11 +93,8 @@ export function ReproduceButton({ graph, open, setOpen, live, run }: {
   const elapsed = live ? (live.done?.seconds ?? (now - live.started) / 1000) : 0
   return (
     <>
-      <button className={`pill big pill-btn ${changed.length ? 'stale' : 'good'}`} onClick={() => setOpen(true)}
-        title="The rebuild steps repro.yaml declares, and whether each re-ran since its inputs last changed">
-        {running
-          ? `◐ reproducing… ${Math.floor(elapsed)} s`
-          : `◐ ${fmt(steps.length - changed.length)}/${fmt(steps.length)} reproduced`} <span className="caret">▾</span>
+      <button className="repro-main" onClick={() => setOpen(true)}>
+        {running ? `Reproducing… ${Math.floor(elapsed)} s` : <><span className="play-icon">▶</span> repro reproduce</>} <span className="caret">▾</span>
       </button>
       {open && (
         <div className="viewer-back" onClick={() => setOpen(false)}>
@@ -102,7 +126,8 @@ export function ReproduceButton({ graph, open, setOpen, live, run }: {
             <div className="step-list">
               {ordered.map((s) => {
                 const [label, tone] = STATE[s.state] ?? [s.state, 'none']
-                const last = s.history?.[0]
+                // The newest re-run that ran this step: a re-run of other steps records it as not_rerun.
+                const last = s.history?.find((h) => h.state !== 'not_rerun')
                 return (
                   <div key={s.id} className="step-row">
                     <div className="step-main">

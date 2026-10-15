@@ -50,6 +50,9 @@ TOKEN_HEADER = "X-Repro-UI-Token"
 MAX_BODY = 64_000
 MAX_FILE = 2_000_000
 REPRODUCE_TIMEOUT = 3600
+#: What a refused POST says: a stale token, or a request that is not from this server's page.
+OUT_OF_DATE = "This page is out of date: reload it."
+NOT_OURS = "Refused: not a request from this page."
 
 
 def data_dir(project: pathlib.Path) -> pathlib.Path:
@@ -102,7 +105,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.wfile.write(data)
 
     def _local(self) -> bool:
-        """Whether the request names this server by a loopback address, as the page does.
+        """Whether the request names this server by a loopback address, as the page does."""
+        return self._refusal() is None
+
+    def _refusal(self) -> str | None:
+        """Why the request is refused, or None where it is not: it must name this server by a
+        loopback address, as the page does.
 
         A page on another site can make the browser send requests here. Refusing a `Host` that
         is not `127.0.0.1` or `localhost` at this port stops a rebound domain from reading
@@ -112,16 +120,20 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         port = self.server.server_address[1]
         ours = {f"127.0.0.1:{port}", f"localhost:{port}"}
         if self.headers.get("Host") not in ours:
-            return False
+            return NOT_OURS
         if self.command != "POST":
-            return True
+            return None
         origin = self.headers.get("Origin")
         if origin is not None and origin not in {f"http://{h}" for h in ours}:
-            return False
+            return NOT_OURS
         if (self.headers.get("Content-Type") or "").split(";")[0].strip() != "application/json":
-            return False
+            return NOT_OURS
         sent = self.headers.get(TOKEN_HEADER) or ""
-        return bool(self.token) and hmac.compare_digest(sent, self.token)
+        if not (self.token and hmac.compare_digest(sent, self.token)):
+            # The only refusal an ordinary user meets: a tab opened before the server restarted
+            # carries the previous launch's token.
+            return OUT_OF_DATE
+        return None
 
     def _body(self) -> dict:
         """The request's JSON object. Raises RequestRefused where it is not one, where its
@@ -230,7 +242,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def _stream_reproduce(self, only: list[str] | None) -> None:
         """Run `repro reproduce` and send each line it prints as it prints it, then what the
-        re-run recorded. The response has no length, so the connection closes when it ends."""
+        re-run recorded. The response has no length, so the connection closes when it ends.
+
+        A page that goes away mid-run (a reload, a closed tab) does not stop the run: it goes on to
+        the end, is recorded, and the page's data is rebuilt, so the next load shows it."""
         args = ["reproduce", *[x for i in (only or []) for x in ("--only", i)]]
         record = self.project / ".repro" / "reproductions.jsonl"
         before = record.read_text().count("\n") if record.exists() else 0
@@ -239,10 +254,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
         self.close_connection = True
+        gone = False
 
         def send(event: dict) -> None:
-            self.wfile.write((json.dumps(event) + "\n").encode())
-            self.wfile.flush()
+            nonlocal gone
+            if gone:
+                return
+            try:
+                self.wfile.write((json.dumps(event) + "\n").encode())
+                self.wfile.flush()
+            except (BrokenPipeError, ConnectionResetError):
+                gone = True
 
         send({"line": "$ repro " + " ".join(args)})
         started = time.monotonic()
@@ -256,32 +278,48 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 bufsize=1,
                 env={**os.environ, "PYTHONUNBUFFERED": "1"},
             )
-            # A step that prints nothing still has to stop: the timer kills it, which ends the read.
-            watchdog = threading.Timer(REPRODUCE_TIMEOUT, proc.kill)
-            watchdog.start()
-            try:
-                for line in proc.stdout:
-                    send({"line": line.rstrip("\n")})
-                exit_code = proc.wait()
-            finally:
-                watchdog.cancel()
-            if time.monotonic() - started >= REPRODUCE_TIMEOUT:
-                send({"line": f"stopped after {REPRODUCE_TIMEOUT} seconds"})
-        except OSError as e:
-            send({"done": True, "ok": False, "error": str(e)})
+        except OSError as e:  # `repro` could not be started at all
+            send({"done": True, "ok": False, "error": f"repro could not be started: {e}"})
             return
-        lines = record.read_text().splitlines() if record.exists() else []
-        steps = json.loads(lines[-1]).get("regenerations", []) if len(lines) > before else []
-        build_graph.build(
-            self.project, self.data / "graph.json", self.groups, check=False, fetch=self.fetch
-        )
+        # A step that prints nothing still has to stop: the timer kills it, which ends the read.
+        watchdog = threading.Timer(REPRODUCE_TIMEOUT, proc.kill)
+        watchdog.start()
+        try:
+            for line in proc.stdout:  # read to the end even once the page has gone
+                send({"line": line.rstrip("\n")})
+        finally:
+            watchdog.cancel()
+            exit_code = proc.wait()
+        seconds = round(time.monotonic() - started, 2)
+        if seconds >= REPRODUCE_TIMEOUT:
+            send({"line": f"stopped after {REPRODUCE_TIMEOUT} seconds"})
+        try:
+            lines = record.read_text().splitlines() if record.exists() else []
+            steps = json.loads(lines[-1]).get("regenerations", []) if len(lines) > before else []
+            rebuilt = time.monotonic()
+            build_graph.build(
+                self.project, self.data / "graph.json", self.groups, check=False, fetch=self.fetch
+            )
+            rebuild_seconds = round(time.monotonic() - rebuilt, 2)
+        except Exception as e:  # the re-run ended; say what failed after it, not a lost connection
+            send(
+                {
+                    "done": True,
+                    "ok": False,
+                    "exit_code": exit_code,
+                    "seconds": seconds,
+                    "error": f"the re-run ended, but reading its record failed: {e}",
+                }
+            )
+            return
         states = [r.get("state") for r in steps]
         send(
             {
                 "done": True,
                 "ok": bool(steps),
                 "exit_code": exit_code,
-                "seconds": round(time.monotonic() - started, 2),
+                "seconds": seconds,
+                "rebuild_seconds": rebuild_seconds,
                 "counts": {k: states.count(k) for k in set(states)},
                 "steps": [
                     {
@@ -296,8 +334,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         )
 
     def do_POST(self) -> None:
-        if not self._local():
-            return self._json(403, {"ok": False, "error": "This page is out of date: reload it."})
+        refused = self._refusal()
+        if refused is not None:
+            return self._json(403, {"ok": False, "error": refused})
         try:
             body = self._body()
         except RequestRefused as e:

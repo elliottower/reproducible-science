@@ -199,15 +199,7 @@ tr.sel { background: #f3f2fe !important; }
 .ov-row .dot.none { background: #b8bdcb; }
 .ov-actions { display: flex; gap: 16px; align-items: center; }
 .ov-actions:empty { display: none; }
-/* The failing-claims menu */
-.fixmenu { position: relative; display: inline-block; }
 .caret { opacity: 0.8; margin-left: 2px; }
-.menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 20; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; box-shadow: 0 6px 20px rgba(15, 20, 36, 0.15); min-width: 290px; padding: 4px; }
-.fixmenu.small .menu { left: 0; right: auto; }
-.menu button { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%; text-align: left; border: none; background: none; padding: 8px 10px; border-radius: 6px; color: var(--text); }
-.menu button:hover { background: #f3f2fe; }
-.menu b { font-size: 12.5px; font-weight: 500; }
-.menu span { font-size: 11px; color: var(--muted); }
 .ov-headline { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-top: 2px; }
 .ov-headline .dot { align-self: center; }
 .ov-name { color: var(--accent); font-weight: 500; }
@@ -364,7 +356,6 @@ tr.flash > td { animation: flash 1.8s ease; }
 .good-text { color: #1a7f37; }
 td.clickable { cursor: pointer; }
 td.clickable:hover .claim-cell { color: var(--text); }
-.refresh-icon { font-size: 15px; line-height: 1; display: inline-block; position: relative; top: -1px; }
 .repro-main { border: 1px solid #2457c5; background: #2457c5; color: #fff; border-radius: 6px; padding: 4px 12px; font-size: 12px; white-space: nowrap; }
 .repro-main:hover:not(:disabled) { background: #1c47a6; }
 .repro-main:disabled { opacity: 0.7; cursor: default; }
@@ -372,7 +363,6 @@ td.clickable:hover .claim-cell { color: var(--text); }
 .confirm h3 { margin: 0 0 6px; font-size: 15px; }
 .confirm-actions { display: flex; align-items: center; gap: 8px; }
 .pill-btn { border: none; cursor: pointer; font: inherit; font-size: 12px; font-weight: 500; }
-.menu-what { font-size: 12px; color: var(--text); padding: 8px 10px 6px; border-bottom: 1px solid var(--border); margin-bottom: 4px; white-space: normal; }
 .confirm { color: var(--text); white-space: normal; text-align: left; }
 .confirm-head { display: flex; justify-content: space-between; align-items: center; }
 .confirm-head .close { position: static; }
@@ -387,16 +377,9 @@ td.clickable:hover .claim-cell { color: var(--text); }
 .confirm .kv td { padding: 4px 14px 4px 0; vertical-align: top; }
 .confirm .kv td:first-child { color: var(--muted); white-space: nowrap; }
 .confirm .step-row .plain { flex-shrink: 0; }
-.menu-what code { font-family: var(--mono); font-size: 11.5px; }
 .copy-prompt { border: 1px solid var(--border); background: var(--surface); color: var(--text); border-radius: 6px; padding: 4px 10px; font-size: 12px; cursor: pointer; }
 .copy-prompt:hover { background: #f0f1f4; }
 .copy-prompt.small { font-size: 11.5px; padding: 3px 10px; }
-.menu-act { padding: 8px 10px; }
 .run-log { margin-top: 12px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 .run-log-head { padding: 6px 10px; background: #f3f5f9; border-bottom: 1px solid var(--border); }
 .run-log-body { margin: 0; padding: 8px 10px; max-height: 220px; overflow: auto; background: #0f1424; color: #d6dbea; font-family: var(--mono); font-size: 11px; line-height: 1.45; white-space: pre-wrap; }
-.menu.wide { min-width: 340px; max-width: 420px; }
-.menu-head { font-size: 11px; font-family: var(--mono); color: var(--muted); padding: 8px 10px 4px; }
-.menu-list { max-height: 220px; overflow: auto; padding: 0 10px 6px; }
-.menu-row { display: flex; justify-content: space-between; gap: 12px; font-size: 12px; padding: 2px 0; color: var(--text); }
-.menu-act { display: flex; justify-content: space-between; align-items: center; gap: 10px; border-top: 1px solid var(--border); }
