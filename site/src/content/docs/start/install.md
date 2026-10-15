@@ -24,6 +24,11 @@ machine that should only read a project's files.
 Python 3.11 or newer. Every package carries the same version and is released the same day, so
 `0.2.0` of one works with `0.2.0` of the others.
 
+## Coding agent plugins
+
+The skills, hooks and commands that run the tools from inside a coding agent install as a
+plugin: for [Claude Code](/start/claude-code/) or for [Codex](/start/codex/).
+
 ## Optional extras
 
 Array locators need numpy:
