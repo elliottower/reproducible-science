@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Zeitschrift+f%C3%BCr+Kristallographie&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:12:05Z",
   "sha256": "87297843b2f8641af902e71ba4a5530540515edb7214f82e127b89d1942c2efd",

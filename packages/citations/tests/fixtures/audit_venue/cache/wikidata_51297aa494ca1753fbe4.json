@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Nucleic+Acids+Research&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-14T22:28:41Z",
   "sha256": "a4c5c3ce88e35c781c370de89631f5909deea365845b16c727e2aa92ba00cbdc",

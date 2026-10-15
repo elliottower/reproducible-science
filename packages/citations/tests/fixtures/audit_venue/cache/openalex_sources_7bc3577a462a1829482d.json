@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/sources?search=Proceedings+of+the+Annual+Meeting+of+the+Association+for+Computational+Linguistics&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
   "fetched_at": "2026-10-14T22:37:46Z",
   "sha256": "2cb0946e75795a7df732e64cda8df4ec3e0efe2ac4622c907581a2dadfb5cf3b",

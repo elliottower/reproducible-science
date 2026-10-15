@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Nano+Letters&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:09:16Z",
   "sha256": "cacb8a0858ef9ca8d8594361bbe8daa1629f7892e78c3c1a2675e63fc1ee3ec2",

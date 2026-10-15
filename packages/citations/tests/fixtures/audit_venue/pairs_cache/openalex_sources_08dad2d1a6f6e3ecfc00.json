@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/sources?search=Econ.+Lett.&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
   "fetched_at": "2026-10-15T00:09:23Z",
   "sha256": "770ac7a306bfab84cf9ac83c4829b174e226bd03e5266d476c22de84c7279f6c",

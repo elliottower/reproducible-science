@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Speculum&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:13:13Z",
   "sha256": "fe54c00736dae1967099c91ebecec07d56a1ec8f4e1563af6e600932c2f3ba5e",

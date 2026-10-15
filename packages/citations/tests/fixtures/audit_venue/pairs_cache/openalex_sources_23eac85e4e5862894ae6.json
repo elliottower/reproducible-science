@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/sources?search=Cell+Rep.&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
   "fetched_at": "2026-10-15T00:08:58Z",
   "sha256": "21f572ea704a014898add132857acc2b9743fe39ff9be9dfaf330262273c58fa",

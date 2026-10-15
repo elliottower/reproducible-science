@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=PNAS+Nexus&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:09:48Z",
   "sha256": "dfe488e45c483bff8b49922c66444634341f0d6ee793f0f5b1b23149a29393d0",

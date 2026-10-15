@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Neurosci.+Lett.&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:10:53Z",
   "sha256": "acfc663446c26821aa4a4fdc30ac1d77b2b80323689baadba90ca4cf1fbd1950",

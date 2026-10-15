@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Geophys.+Res.+Lett.&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:11:00Z",
   "sha256": "e445928cba85146aced197cf53cd7e688ff6fdbd447745d88ad2b58288870e6a",

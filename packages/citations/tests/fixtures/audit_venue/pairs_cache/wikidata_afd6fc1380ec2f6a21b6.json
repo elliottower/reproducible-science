@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DBMJ+Open%22&format=json",
   "fetched_at": "2026-10-15T00:09:43Z",
   "sha256": "5f3bf587914a8e5f9e7b4db5886e0575b120729506f7d9db21dfa7eb5670aeab",

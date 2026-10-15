@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/works?filter=title.search%3ALearning+Transferable+Visual+Models+From+Natural+Language+Supervision&per-page=5",
   "fetched_at": "2026-10-14T20:49:36Z",
   "sha256": "af0e3050458be0141e9e47de05cdc099029c4e21d072cd6cdf4dde7498497445",

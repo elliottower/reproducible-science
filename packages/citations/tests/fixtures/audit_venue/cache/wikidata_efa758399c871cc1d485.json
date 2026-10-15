@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Lecture+Notes+in+Computer+Science&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-14T22:35:17Z",
   "sha256": "2a53a15906280fe4af05cc0f3f57ba98d0beeabe8f8cb1b2825669c8520e350a",

@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Journal+of+the+Royal+Statistical+Society.+Series+B+%28Methodological%29&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-14T22:23:13Z",
   "sha256": "6e3f3d54d612c65ddfdbbf8f6a2b8ba5ab755586aa3dbc1d4800d6ae5d5e9511",

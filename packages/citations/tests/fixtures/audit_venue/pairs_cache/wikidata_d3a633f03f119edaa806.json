@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=American+Economic+Review&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:12:59Z",
   "sha256": "6ec8f6e5ea1b3dc44f52f9661159ccc5eb7321e9b7c021a62cf03ba518b96b49",

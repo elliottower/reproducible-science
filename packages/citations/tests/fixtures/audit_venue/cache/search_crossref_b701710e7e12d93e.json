@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.crossref.org/works?query.bibliographic=Distributed+Representations+of+Words+and+Phrases+and+their+Compositionality&rows=8",
   "fetched_at": "2026-10-14T20:49:19Z",
   "sha256": "7a8ed9a59bef5df8a1ebe00e95f7de485498d9a5a325a32f742c2a7a63e778df",

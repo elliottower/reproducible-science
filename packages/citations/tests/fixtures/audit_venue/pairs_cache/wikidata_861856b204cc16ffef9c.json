@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=PMLA&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:13:15Z",
   "sha256": "1ed505d97e4560749b1862f9fcf7b9f58d9567aa2a16e1a6bfe2a27e6036e6fa",

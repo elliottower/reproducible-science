@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=EMNLP-IJCNLP&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-14T22:28:25Z",
   "sha256": "0bffbcb7ee3ce182f659124fd43c5920b4a3b4c8795ef3896272c08bbbcde96d",

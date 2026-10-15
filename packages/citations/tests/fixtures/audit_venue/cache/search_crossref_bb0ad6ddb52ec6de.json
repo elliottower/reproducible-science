@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.crossref.org/works?query.bibliographic=ImageNet+Classification+with+Deep+Convolutional+Neural+Networks&rows=8",
   "fetched_at": "2026-10-14T20:48:36Z",
   "sha256": "546b6e3fa1eff1fca58c9483fbe8fb287c9687811dee1d3629603c18a7ac5d59",

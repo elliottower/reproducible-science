@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Econ.+Lett.&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:09:22Z",
   "sha256": "a75c8735be0c58b151774542ae1cf935b22f4618d085057d8448bfc8af55b9cb",

@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Applied+Physics+Letters&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:09:20Z",
   "sha256": "7bc2c5961a1499105780cd5164c9761ca50e0ade01ed75d2e8af510f869c4c72",

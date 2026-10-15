@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Zeitschrift+f%C3%BCr+Naturforschung+C&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:11:57Z",
   "sha256": "9339e61c15135cf69e0dd96d43ce5d859c75c8bc6f2bdf75edd2dcc5a4a52083",

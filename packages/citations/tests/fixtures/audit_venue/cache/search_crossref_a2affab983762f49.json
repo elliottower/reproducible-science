@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.crossref.org/works?query.bibliographic=Semi-Supervised+Classification+with+Graph+Convolutional+Networks&rows=8",
   "fetched_at": "2026-10-14T20:48:22Z",
   "sha256": "5d35083b3cdda0a7879e15ae4fb77ff71af791b1f669455ea9616a3c949f2bc5",

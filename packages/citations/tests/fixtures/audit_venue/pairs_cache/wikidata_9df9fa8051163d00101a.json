@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Physical+Review+X&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:12:38Z",
   "sha256": "05b605a778ba1cea1a709dc9cbcb634078dea5f00315d8226ed7ae19247641ae",

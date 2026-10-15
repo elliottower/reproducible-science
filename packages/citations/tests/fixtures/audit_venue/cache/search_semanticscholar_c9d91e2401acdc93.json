@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.semanticscholar.org/graph/v1/paper/search?query=Attention+Is+All+You+Need&limit=6&fields=title%2CexternalIds%2Cauthors%2Cyear%2Cvenue%2CpublicationVenue%2Cjournal",
   "fetched_at": "2026-10-14T20:50:25Z",
   "sha256": "b7e020a214b368664b0acae71e3a495f6b0b1d26843969508ad651f3fcf9dafb",

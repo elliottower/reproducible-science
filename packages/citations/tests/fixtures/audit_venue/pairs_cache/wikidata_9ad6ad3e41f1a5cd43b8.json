@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Journal+f%C3%BCr+praktische+Chemie&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:12:10Z",
   "sha256": "324992d5251a625cc9394b1e00999927ad7cbec63e5d9cfec22a54661ecb4bda",

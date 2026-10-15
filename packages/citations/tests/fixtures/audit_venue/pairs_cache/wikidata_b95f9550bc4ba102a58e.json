@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DMorb.+Mortal.+Wkly.+Rep.%22&format=json",
   "fetched_at": "2026-10-15T00:10:47Z",
   "sha256": "d672d067f5da8b0d63f66a5224d93ef3fbccdc0253da19c9b9ed207c2fc32557",

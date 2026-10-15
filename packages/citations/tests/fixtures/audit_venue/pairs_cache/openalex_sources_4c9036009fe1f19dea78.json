@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/sources?search=Rev.+Econ.+Stud.&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
   "fetched_at": "2026-10-15T00:13:11Z",
   "sha256": "952aca3c16946c3324f6e7f9f7bdfa816d6de23d1abc574422ad509ae98e6d03",

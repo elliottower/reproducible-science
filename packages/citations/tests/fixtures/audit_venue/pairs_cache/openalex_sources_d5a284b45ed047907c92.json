@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/sources?search=FEBS+Lett.&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
   "fetched_at": "2026-10-15T00:09:12Z",
   "sha256": "8237bdd66f6d7ed9297e9319e83107c778398eeaee1d3a3379d862615c3ed623",

@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/sources?search=Proceedings+of+the+IEEE+International+Conference+on+Computer+Vision+%28ICCV%29&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
   "fetched_at": "2026-10-14T22:32:21Z",
   "sha256": "733401aaf82e3bd9a36f060e8f841de9b13e74fe4df0b717d712e523f15b748a",

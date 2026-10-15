@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Proceedings+of+the+National+Academy+of+Sciences+of+the+United+States+of+America&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:10:45Z",
   "sha256": "48cbcbc6043d9c39b0dcde49a385415019877ebe59b68419efbecdd8a1ce5d5f",

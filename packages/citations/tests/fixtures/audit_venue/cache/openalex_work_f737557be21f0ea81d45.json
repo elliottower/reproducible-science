@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/works/doi:10.1109/CVPRW.2014.131",
   "fetched_at": "2026-10-14T22:27:33Z",
   "sha256": "64f0e0dec81f6a3ae7f1ca7bdc7b62087a891d3bd92e80749fe2be0aae09021b",

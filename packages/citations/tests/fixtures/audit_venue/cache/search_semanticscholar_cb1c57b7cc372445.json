@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.semanticscholar.org/graph/v1/paper/search?query=Generative+Adversarial+Nets&limit=6&fields=title%2CexternalIds%2Cauthors%2Cyear%2Cvenue%2CpublicationVenue%2Cjournal",
   "fetched_at": "2026-10-14T22:36:16Z",
   "sha256": "4c121f2ec44334a4d1e37ee384022da67c9a3658219c86f232d6267de61766c6",

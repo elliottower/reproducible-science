@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Chem.+Rev.&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:12:47Z",
   "sha256": "7bc0f675fb496cdd435ab5cec8f0faa54ca269ced9210b20b7e51462aa563df8",

@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Morb.+Mortal.+Wkly.+Rep.&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:10:47Z",
   "sha256": "018d447368b3c419b17d3e2a81d74c6ef2bad7c209d89fe9e376599596d9931b",

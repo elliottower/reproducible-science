@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Electronics+Letters&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:09:31Z",
   "sha256": "491e8149fa43b6c85aeed43fa6fcba2c758720a0aa87aa3c2d211ba3025531d5",

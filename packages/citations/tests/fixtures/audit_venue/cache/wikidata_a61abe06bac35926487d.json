@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=J.+Mol.+Biol.&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-14T22:22:44Z",
   "sha256": "904f97f499eeb413c85ffba550860565e1d6c09ef5d12fdf3f96f59b60288a4a",

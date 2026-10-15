@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Neural+Information+Processing+Systems&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-14T22:23:51Z",
   "sha256": "c95312a48529fd14a9f966abafa3ee14c94c4fe16235f55f47feb9173a860fc4",

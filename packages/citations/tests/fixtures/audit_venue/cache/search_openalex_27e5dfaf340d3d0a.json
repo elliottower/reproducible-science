@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/works?filter=title.search%3AImageNet+Classification+with+Deep+Convolutional+Neural+Networks&per-page=5",
   "fetched_at": "2026-10-14T20:48:38Z",
   "sha256": "c2dea2a28940c62c9dba4b145a75a2e627705a1ce61565857f81fc940a552a46",

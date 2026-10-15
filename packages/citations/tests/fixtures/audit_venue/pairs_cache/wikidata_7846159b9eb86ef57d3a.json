@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Zeitschrift+f%C3%BCr+Elektrochemie&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:12:08Z",
   "sha256": "c348a0f863189f59ab10f5f1c1f5977deae0a998e46301d837b299403fce8214",

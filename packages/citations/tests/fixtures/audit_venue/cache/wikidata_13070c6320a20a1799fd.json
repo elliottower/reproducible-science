@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DBioinformatics%22&format=json",
   "fetched_at": "2026-10-14T22:24:41Z",
   "sha256": "f5b086013116ce368a9329d6dbe4bb6af12fe0e8d7e9dc15a94be10e231acd72",

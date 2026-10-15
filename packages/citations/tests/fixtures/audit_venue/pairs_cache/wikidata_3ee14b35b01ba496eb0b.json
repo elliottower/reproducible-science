@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DNat.+Chem.%22&format=json",
   "fetched_at": "2026-10-15T00:12:54Z",
   "sha256": "25467c6fdc7ebcbf0377aed8cbf672e4c84b6e6da9fba2b173ebbefa9b11e429",

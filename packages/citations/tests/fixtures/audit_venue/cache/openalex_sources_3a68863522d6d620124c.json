@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/sources?search=Medical+Image+Computing+and+Computer-Assisted+Intervention+%E2%80%93+MICCAI+2015&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
   "fetched_at": "2026-10-15T00:04:06Z",
   "sha256": "9a5b090d60de94f4e1df5b3469ca6ce67591e298b00547938df03be028d224dc",

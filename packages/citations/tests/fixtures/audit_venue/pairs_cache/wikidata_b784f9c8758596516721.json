@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Ann.+Phys.&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:12:33Z",
   "sha256": "fb2db745857a6d2bb1e7935ad961800afc0caf9f015202521e36327b2fd4c253",

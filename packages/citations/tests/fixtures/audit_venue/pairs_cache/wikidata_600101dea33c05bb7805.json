@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Nature+Chemistry&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:12:55Z",
   "sha256": "c74d7d55b8448be70879c3946dfb8d8e9171497638f1547b7f2e2c0ac6769b22",

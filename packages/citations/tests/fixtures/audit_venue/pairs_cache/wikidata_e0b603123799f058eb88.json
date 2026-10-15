@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=IEEE+Transactions+on+Neural+Networks&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:10:12Z",
   "sha256": "707410abe62961373edf9af4651dfe121301f19302ea8f3985bc78ae5d598cd4",

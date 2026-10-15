@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/sources?search=Proceedings+of+the+Conference+on+Empirical+Methods+in+Natural+Language+Processing%3A+System+Demonstrations&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
   "fetched_at": "2026-10-15T00:04:08Z",
   "sha256": "c8de891b01f8ddc7591267a31c1c74bed7ef4ec22c9a566cb0594f38f90ad5b4",

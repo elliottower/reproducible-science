@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Angewandte+Chemie+International+Edition&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:12:45Z",
   "sha256": "95e6215fdd52454962486cc7db40cd92b5efd28d9f1632dfb1bba16e7a83f35d",

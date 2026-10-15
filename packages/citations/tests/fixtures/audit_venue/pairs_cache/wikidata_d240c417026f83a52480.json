@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Optics+Letters&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:09:06Z",
   "sha256": "cac61835eaad8306392a5cd0362dc5f79f771d775267a8f34a8774f879603847",

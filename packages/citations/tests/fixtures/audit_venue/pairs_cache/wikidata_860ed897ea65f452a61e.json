@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Chemical+Communications&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:09:51Z",
   "sha256": "1de402ee98645f02ddfca17ecb588eddb22fa77cf1c19f57f37aaba8fb4fb1b0",

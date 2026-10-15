@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=J.+Hist.+Ideas&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:13:18Z",
   "sha256": "c695fd3276e1201040daab8de984470e9b4e6a5e3a68865f88306801775a6ecd",

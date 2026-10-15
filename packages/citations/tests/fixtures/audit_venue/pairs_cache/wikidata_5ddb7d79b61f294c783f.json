@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Nat.+Chem.&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:12:54Z",
   "sha256": "a6474de27e76b006e6c12d215e4a614bfed58ebce71253198cb5cbe66e57a8c3",

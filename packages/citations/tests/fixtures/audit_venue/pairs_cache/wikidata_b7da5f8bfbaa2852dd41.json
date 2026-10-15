@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DNeural+Netw.%22&format=json",
   "fetched_at": "2026-10-15T00:10:08Z",
   "sha256": "7d3f1816f57f4e36462c138fadc5c47a33f9877f523beafbf4a20881fe6018b7",

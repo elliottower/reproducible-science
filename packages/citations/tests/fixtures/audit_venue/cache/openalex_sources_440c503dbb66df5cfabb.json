@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/sources?search=Proceedings+of+the+22nd+ACM+SIGKDD+International+Conference+on+Knowledge+Discovery+and+Data+Mining&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
   "fetched_at": "2026-10-14T22:28:39Z",
   "sha256": "0d561e2efff002f53de34bd4ef9d8c6d7db8aaeb94f34832398767967cafb9c1",

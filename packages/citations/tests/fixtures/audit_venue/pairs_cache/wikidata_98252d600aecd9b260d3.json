@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Scientific+Reports&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:09:37Z",
   "sha256": "ffd4b5c4485426c896f0eb58d8a63d4e5786f0af132d2e9e3a3bdf3e8d0b5fa2",

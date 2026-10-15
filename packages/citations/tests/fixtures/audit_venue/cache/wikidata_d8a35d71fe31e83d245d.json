@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Proceedings+of+the+Conference+on+Empirical+Methods+in+Natural+Language+Processing&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-14T22:36:42Z",
   "sha256": "51ad9596a99fa041a6021a4008d0808fe7d84c8e2b780c1eab5535f192cfb215",

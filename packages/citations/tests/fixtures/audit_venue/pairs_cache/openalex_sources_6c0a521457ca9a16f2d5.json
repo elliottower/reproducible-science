@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/sources?search=Bioinform.+Adv.&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
   "fetched_at": "2026-10-15T00:10:30Z",
   "sha256": "2989aae4918b5a1ad3c7c33ece92652769e0d442722b0e5afffad16231ffbac5",

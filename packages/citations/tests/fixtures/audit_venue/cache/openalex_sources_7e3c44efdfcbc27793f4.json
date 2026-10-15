@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/sources?search=Proceedings+of+the+2019+Conference+on+Empirical+Methods+in+Natural+Language+Processing+and+the+9th+International+Joint+Conference+on+Natural+Language+Processing&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
   "fetched_at": "2026-10-14T22:32:46Z",
   "sha256": "d7d024c09cb660b6719625a8d472ed777f9a3427061c0d6bb89799aa5b3fd2d1",

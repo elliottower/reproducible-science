@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Journal+of+the+American+Chemical+Society&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:12:41Z",
   "sha256": "3a6d14fadc5ae8a9f27fdba8395db72a9fca02808807ec20dabee3598890c38d",

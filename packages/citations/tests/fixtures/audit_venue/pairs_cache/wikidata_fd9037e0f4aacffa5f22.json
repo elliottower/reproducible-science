@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Morbidity+and+Mortality+Weekly+Report&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:10:48Z",
   "sha256": "ef5bd1fd36ece02fe0aa120e62a9b84cd77113ec8970ffb102c8c2d392e718d8",

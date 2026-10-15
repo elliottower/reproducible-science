@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DJ.+Am.+Chem.+Soc.%22&format=json",
   "fetched_at": "2026-10-15T00:12:40Z",
   "sha256": "4a9bac80a1f0ba7630b9de6a99132877f4eba81311d5ccaca91f93d0b737c3ca",

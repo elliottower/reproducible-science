@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Reviews+of+Modern+Physics&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:12:28Z",
   "sha256": "1a2ec9a8409ef94845f19e029f68db6fa1da4742e557f8d2caedeb04ee396323",

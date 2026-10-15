@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Genome+Biol.&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-14T22:25:37Z",
   "sha256": "69dbcb9d7c902a09fb31937d3170e43e03d469cf261a7f184dad87b8f64e2ce1",

@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DR.+Soc.+Open+Sci.%22&format=json",
   "fetched_at": "2026-10-15T00:10:36Z",
   "sha256": "ad517e2f1f2cfd27155b949957559fa3b720b5d5b4a2640f2b8bcf3dcaaa1524",

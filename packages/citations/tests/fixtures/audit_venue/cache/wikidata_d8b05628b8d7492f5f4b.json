@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Proceedings+of+the+2019+Conference+on+Empirical+Methods+in+Natural+Language+Processing+and+the+9th+International+Joint+Conference+on+Natural+Language+Processing+%28EMNLP-IJCNLP%29&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-14T22:27:52Z",
   "sha256": "7c977e5e0875c367e4594619f9fceed826a26bd60f6385a808587033f8437381",

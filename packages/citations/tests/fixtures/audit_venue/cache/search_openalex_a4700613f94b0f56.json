@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/works?filter=title.search%3ABatch+Normalization%3A+Accelerating+Deep+Network+Training+by+Reducing+Internal+Covariate+Shift&per-page=5",
   "fetched_at": "2026-10-14T20:47:56Z",
   "sha256": "e6540833bdd2239a7b7b095172f9ae303587099f5a51e115776278f4cf2d4d23",

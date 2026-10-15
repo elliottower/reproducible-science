@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Proceedings+of+the+IEEE+International+Conference+on+Computer+Vision+%28ICCV%29&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-14T22:24:59Z",
   "sha256": "5718864bbb389a337cbdeab83992d634c0fc95114e676d35374423e663bcb137",

@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/sources?search=IEEE+Trans.+Neural+Netw.+Learn.+Syst.&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
   "fetched_at": "2026-10-15T00:10:26Z",
   "sha256": "837c82029e5f35f7dbe6c06882bb0d49f1e7d9f17560eca92025fd8f3e94ae9a",

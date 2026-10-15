@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=The+Astrophysical+Journal+Letters&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:10:58Z",
   "sha256": "47b5853dd472314785a97ec93bca971aafacdae382c1e4c55be5d12f13b653ef",

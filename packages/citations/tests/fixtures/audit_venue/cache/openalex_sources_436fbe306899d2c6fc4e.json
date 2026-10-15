@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/sources?search=J.+R.+Stat.+Soc.+B&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
   "fetched_at": "2026-10-14T22:22:48Z",
   "sha256": "392eeec9e9783206c3393be81b90a70f9bdc350475c36dd47fcf5313bd0a8461",

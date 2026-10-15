@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/sources?search=Z.+Phys.&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
   "fetched_at": "2026-10-15T00:11:35Z",
   "sha256": "0d736f77d198b3e6cbccef91fbcf3d41e67f89bd66fbffe684f27e0d6a15fd52",

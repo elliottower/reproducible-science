@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DPLoS+Comput.+Biol.%22&format=json",
   "fetched_at": "2026-10-15T00:11:31Z",
   "sha256": "1fe137bc0055ebe643b9aa1cde8321c17f5afafef826b0a974a30ee6327271c3",

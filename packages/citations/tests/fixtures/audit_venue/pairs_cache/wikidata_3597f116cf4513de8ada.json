@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DEconometrica%22&format=json",
   "fetched_at": "2026-10-15T00:13:06Z",
   "sha256": "59901493744afb5e1598825dde362da128d1bb6a3c752700f7549cf8faed34d8",

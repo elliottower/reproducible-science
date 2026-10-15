@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Journal+f%C3%BCr+die+reine+und+angewandte+Mathematik&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:11:44Z",
   "sha256": "6c3ce6d2ea092a9019ea62b655fede8e086e938b5fe9e71cf5a98b5bc8c0bad6",

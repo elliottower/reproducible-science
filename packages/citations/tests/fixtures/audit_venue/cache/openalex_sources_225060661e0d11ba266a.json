@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/sources?search=Computer+Vision+%E2%80%93+ECCV&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
   "fetched_at": "2026-10-15T00:04:03Z",
   "sha256": "107c061d4a2822c9d8b7d3b48a79bb5844e3af51ed80068a4e9eed3650fb081e",

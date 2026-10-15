@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Pattern+Recognition+Letters&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:09:27Z",
   "sha256": "73367740a9abd94e052e0006640add85c786c6f1422bbcc7dbfef8b7b8e53920",

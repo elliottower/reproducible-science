@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/sources?search=IEEE+J.+Sel.+Areas+Commun.&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
   "fetched_at": "2026-10-15T00:10:05Z",
   "sha256": "c2ffb82607e92401cce07e5e6a8d1a7ee863f26b414adaae10b106c520b86c8d",

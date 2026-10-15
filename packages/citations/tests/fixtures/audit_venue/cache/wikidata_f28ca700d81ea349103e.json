@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=NAACL-HLT&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-14T22:26:54Z",
   "sha256": "46213bb2e1a90d7389c4c1a9f795fb2e530c4151e3eb8db095e11f872298dafb",

@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.crossref.org/works?query.bibliographic=Language+Models+are+Few-Shot+Learners&rows=8",
   "fetched_at": "2026-10-14T20:47:06Z",
   "sha256": "ec1a9896d206cd5497935ea445504dd446cffc6bf74ed81323a95ba49d7f9b24",

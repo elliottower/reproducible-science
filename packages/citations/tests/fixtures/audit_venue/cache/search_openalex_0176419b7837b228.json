@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/works?filter=title.search%3AAn+Image+is+Worth+16x16+Words%3A+Transformers+for+Image+Recognition+at+Scale&per-page=5",
   "fetched_at": "2026-10-14T20:47:24Z",
   "sha256": "62a021f20ac528eaa66955ffa93296a7c8ff6c31ac2267303f23155cc611714e",

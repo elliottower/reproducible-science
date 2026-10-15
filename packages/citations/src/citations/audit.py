@@ -546,9 +546,10 @@ def entries_from_library(only: str | None) -> list[Entry]:
 # --------------------------------------------------------------------------------- sources
 
 
-#: Bumped when the envelope's shape changes, so an older cache is refetched rather than
-#: misread.
-CACHE_VERSION = 1
+#: Bumped when the envelope's shape changes, or when what an older cache holds can no longer
+#: be trusted, so it is refetched rather than misread. Version 2: before it, a registry's
+#: server error was cached as an answer that found nothing.
+CACHE_VERSION = 2
 
 
 def fetch(url: str, cache: pathlib.Path, name: str) -> str | None:
@@ -1140,11 +1141,18 @@ def venue_verdict(
         return by_name
     if by_issn.outcome == MATCH:
         return by_issn
-    return by_name.model_copy(
-        update={"outcome": NOT_COMPARABLE, "why": ISSN_UNSETTLED}
-        if by_name.outcome == MISMATCH
-        else {}
+    if by_name.outcome != MISMATCH or not known_elsewhere:
+        # An ISSN no registry knows is evidence of nothing either way: the name decides alone.
+        return by_name
+    # The name resolved to a venue the record is not. An ISSN registries know as that same
+    # venue supports the mismatch; one they know as a third venue is the entry contradicting
+    # itself, which settles nothing.
+    name_ids = frozenset().union(
+        *(r.ids for k, r in resolved.items() if k[0] == ours and k[1] == "")
     )
+    if name_ids & resolved[key].ids:
+        return by_name
+    return by_name.model_copy(update={"outcome": NOT_COMPARABLE, "why": ISSN_UNSETTLED})
 
 
 def name_verdict(

@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Angew.+Chem.+Int.+Ed.&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:12:44Z",
   "sha256": "86495a2a50a1ca40cf5cf7e0fd28cec23868230d3738012352fe792414880fc5",

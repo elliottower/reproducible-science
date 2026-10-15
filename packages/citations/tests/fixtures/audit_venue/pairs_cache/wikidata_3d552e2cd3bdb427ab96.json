@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Neuroscience+Letters&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:10:55Z",
   "sha256": "67a82db3a2d326d5519f20f9bd8aec230a09d4db6661c6d2bd8bcb9dcefbfc96",

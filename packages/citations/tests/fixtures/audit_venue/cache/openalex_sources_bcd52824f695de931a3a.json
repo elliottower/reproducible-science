@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/sources?search=IEEE%2FCVF+Conference+on+Computer+Vision+and+Pattern+Recognition&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
   "fetched_at": "2026-10-14T22:32:49Z",
   "sha256": "335297f07744eb0cc94e8df17b4e63cca96a81e7659ec865979b26336681d12c",

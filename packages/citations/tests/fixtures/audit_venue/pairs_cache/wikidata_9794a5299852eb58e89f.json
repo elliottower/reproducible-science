@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Archiv+f%C3%BCr+Psychiatrie+und+Nervenkrankheiten&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:11:59Z",
   "sha256": "9e9f33cae106dea9f0d5d15139b71ce08f31aa2f454263935dd124ed7aa720dc",

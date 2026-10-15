@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=NeurIPS&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:08:51Z",
   "sha256": "6ed449256e486337f134bcb14dcb08dbf044e1c47073a987bb83758722dc494c",

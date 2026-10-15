@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/sources?search=Proceedings+of+the+2014+Conference+on+Empirical+Methods+in+Natural+Language+Processing&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
   "fetched_at": "2026-10-15T00:16:53Z",
   "sha256": "d0e792b993c74dd9cc7bc69fdf0570b6ea31e2a846fcc2c5651e8f019355120b",

@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/sources?search=Arch.+Math.&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
   "fetched_at": "2026-10-15T00:11:46Z",
   "sha256": "2882720e6a59e05cd02ddf21904658ead4d6c3864b9e4bf7e1680f36dd7333c5",

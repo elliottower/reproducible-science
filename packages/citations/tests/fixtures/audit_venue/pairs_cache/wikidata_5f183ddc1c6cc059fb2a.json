@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Cell+Reports&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:08:58Z",
   "sha256": "660578743d8f21ab4ed613849a64d665b0f7d62f3436d2c22c8ce020fec189c5",

@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Biol.+Lett.&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:09:08Z",
   "sha256": "1e9503af6d13c1abe88c8b3e98fedd9d6e170f8618cb1f4959cd975b74755a30",

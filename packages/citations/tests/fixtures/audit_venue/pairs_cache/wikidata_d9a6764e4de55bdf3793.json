@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Science&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:11:26Z",
   "sha256": "4342acb94522ced3ab77e4ae6a9f48a64b0938123034f25f0ba075dac17629d9",

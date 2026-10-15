@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.crossref.org/works?query.bibliographic=Axiomatic+Attribution+for+Deep+Networks&rows=8",
   "fetched_at": "2026-10-14T20:50:19Z",
   "sha256": "174cdf162e132f160e0bc10c7b1682f29eaef9a067a6c355a3779f176d9fb6a4",
