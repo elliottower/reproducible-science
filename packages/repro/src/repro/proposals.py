@@ -38,6 +38,13 @@ MAX_SENTENCE = 300
 #: How much of a stored value one packet carries: a cell, never a file.
 MAX_STORED = 80
 
+#: What marks a directory as a project, for `repro mcp`'s `set_project` and its search above the
+#: working directory: a manifest or a reader's draft, a results ledger, a record of frozen plans,
+#: a folder of pinned quotations, or the plan itself. The repro mod for Claude Code reads the
+#: same signs (`MARKERS` in `mod/hooks/register.ts`) but for `paper/`, which marks too many
+#: folders to let a write tool settle on one.
+PROJECT_MARKERS = ("repro.yaml", "repro.draft.yaml", ".results", ".prereg", "claims", "PREREG.md")
+
 #: The longest name an agent may give: a claim, an item, an artifact or a quotation's id.
 MAX_NAME = 200
 

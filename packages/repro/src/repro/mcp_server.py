@@ -55,6 +55,7 @@ from repro.delegate import run as delegate_run
 from repro.proposals import (
     MAX_NAME,
     MAX_TEXT,
+    PROJECT_MARKERS,
     Refused,
     capped,
     inside,
@@ -175,10 +176,6 @@ def _asked_roots(ctx: Context) -> ListRoots | None:
 Roots = Annotated[ListRootsResult | None, Resolve(_asked_roots)]
 
 
-#: What marks a directory as a project: a manifest or a reader's draft, a results ledger, a
-#: record of frozen plans, or a folder of pinned quotations.
-PROJECT_MARKERS = ("repro.yaml", "repro.draft.yaml", ".results", ".prereg", "claims")
-
 #: What every tool answers where no project root could be settled.
 NO_PROJECT = "no project: call set_project"
 
@@ -235,7 +232,7 @@ def build(root: pathlib.Path | None = None) -> MCPServer:
     async def set_project(path: str, roots: Roots = None) -> CallToolResult:
         """Name the project folder for the rest of this session: an absolute path, or one
         relative to the current root. Accepted only where the folder holds repro.yaml,
-        repro.draft.yaml, .results/, .prereg/ or claims/. Answers the root settled on, and
+        repro.draft.yaml, .results/, .prereg/, claims/ or PREREG.md (`PROJECT_MARKERS`). Answers the root settled on, and
         every later path is confined to it."""
         current = chosen[-1] if chosen else _client_root(roots, default)
         given = pathlib.Path(path).expanduser()

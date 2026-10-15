@@ -700,3 +700,22 @@ def test_paths_stay_inside_the_project_set_project_named(project, tmp_path):
     assert results[0].structured_content["root"] == project.as_posix()
     for result in results[1:]:
         assert result.structured_content["refused"] == "outside_root"
+
+
+def test_a_folder_holding_only_a_plan_is_a_project(tmp_path, monkeypatch):
+    study = tmp_path / "study"
+    (study / "analysis").mkdir(parents=True)
+    (study / "PREREG.md").write_text("# Does the plan mark the project?\n")
+    (tmp_path / "paper-only" / "paper").mkdir(parents=True)
+    named, refused = calls(
+        tmp_path,
+        [
+            ("set_project", {"path": str(study)}),
+            ("set_project", {"path": str(tmp_path / "paper-only")}),
+        ],
+    )
+    assert named.structured_content == {"root": study.as_posix()}
+    assert refused.structured_content["refused"] == "not_a_project"
+    monkeypatch.chdir(study / "analysis")
+    (found,) = calls(None, [("prereg_check", {})])
+    assert found.structured_content["root"] == study.as_posix()

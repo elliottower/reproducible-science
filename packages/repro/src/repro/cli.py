@@ -97,6 +97,7 @@ from repro.delegate import BY_NAME, TOOLS
 from repro.delegate import check as delegate_check
 from repro.delegate import run as delegate_run
 from repro.demo import demo
+from repro.proposals import PROJECT_MARKERS
 from repro.reproduce import RECORD
 from repro.reproduce import append as append_reproduction
 from repro.reproduce import reproduce as run_reproduce
@@ -616,7 +617,7 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
         "--root",
         help=(
             "the project root (default: the nearest directory at or above the working "
-            "directory holding repro.yaml, repro.draft.yaml, .results/, .prereg/ or claims/)"
+            f"directory holding one of {', '.join(PROJECT_MARKERS)})"
         ),
     )
     p_mcp.set_defaults(func=cmd_mcp)

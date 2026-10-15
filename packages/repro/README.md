@@ -1187,8 +1187,10 @@ repro mcp --root /path/to/project
 
 The project root is, in order: the folder the agent named with `set_project` in this session;
 the client's first `file://` root where the client offers MCP roots; `--root`; and the nearest
-directory at or above the one the server starts in that holds `repro.yaml`, `repro.draft.yaml`,
-`.results/`, `.prereg/` or `claims/`, found as git finds `.git`. `set_project` accepts only a
+directory at or above the one the server starts in that holds a project marker, found as git
+finds `.git`. The markers are `PROJECT_MARKERS` in `repro/proposals.py`: `repro.yaml`,
+`repro.draft.yaml`, `.results/`, `.prereg/`, `claims/` and `PREREG.md`, the signs the repro mod
+reads but for a bare `paper/` folder. `set_project` accepts only a
 folder holding one of those, and where no root is settled every tool answers
 `no project: call set_project`. Every path a tool is given is resolved inside that
 root, and a path that leaves it, through `..` or a symlink, is refused. So is a manifest that
