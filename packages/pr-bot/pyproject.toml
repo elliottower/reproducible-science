@@ -50,3 +50,4 @@ lint.isort.known-first-party = [ "repro_pr_bot" ]
 
 [tool.deptry]
 known_first_party = [ "repro_pr_bot" ]
+package_module_name_map = { claims-cli = "claims" }
