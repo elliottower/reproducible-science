@@ -36,9 +36,10 @@ PACKAGES = {
     "provenance-core": PROJECT_ROOT / "packages" / "provenance-core" / "pyproject.toml",
 }
 
-#: The Claude Code plugin manifests, which carry the same release version and were not
-#: written by anything. They sat at 0.2.0 through two releases: nothing read them, so nothing
-#: could say they were stale, and a reader comparing the plugin to PyPI found a mismatch.
+#: The plugin manifests, for Claude Code and for Codex, which carry the same release version
+#: and were not written by anything. They sat at 0.2.0 through two releases: nothing read them,
+#: so nothing could say they were stale, and a reader comparing the plugin to PyPI found a
+#: mismatch.
 #: `site/.vscode/launch.json` also carries `"version": "0.2.0"` and is not one of these -- that
 #: is VS Code's schema version and has nothing to do with this project.
 PLUGIN_MANIFESTS = (
@@ -48,6 +49,10 @@ PLUGIN_MANIFESTS = (
     PROJECT_ROOT / "packages" / "results" / "plugin" / ".claude-plugin" / "plugin.json",
     PROJECT_ROOT / "packages" / "repro" / "plugin" / ".claude-plugin" / "plugin.json",
     PROJECT_ROOT / "packages" / "repro" / "mod" / ".claude-plugin" / "plugin.json",
+    # The Codex manifest for the same bundle. Codex names the installed copy by this version
+    # (`plugins/cache/<marketplace>/<plugin>/<version>/`), so a stale one installs as an old
+    # release.
+    PROJECT_ROOT / "packages" / "repro" / "plugin" / ".codex-plugin" / "plugin.json",
 )
 
 #: The citation record, which carries the release version too and was owned by nothing. It
