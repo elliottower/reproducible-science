@@ -434,7 +434,7 @@ A number is digits with an optional sign, grouping commas, a decimal point and a
 | rule | what it sets aside |
 |---|---|
 | `link` | digits inside a URL |
-| `date` | the three parts of a date written `2026-10-13` |
+| `date` | the three parts of a date written `2026-10-13`, and the two of a year and month written `2026-04` |
 | `document identifier` | the number after `rfc`, `iso`, `iec`, `ieee`, `ansi`, `ecma`, `fips`, `pep`, `arxiv`, `doi`, `isbn`, `issn`, `pmid` or `pmcid`, as in `rfc 6901` and `arxiv 2609.22111`, and the digits of a DOI |
 | `name` | digits with a letter immediately before them, `v15zw` and `sha256sum`, digits a hyphen or underscore joins to a part that holds a letter, `gpt-4` and `9750` in `i7-9750h`, and digits that open a run of letters and digits holding more digits, as a hexadecimal digest does |
 | `version or section` | digits joined by two or more full stops, `0.5.5` |

@@ -377,3 +377,54 @@ def test_one_candidate_is_counted_as_not_called_unique_with_the_reader_s_reason(
     said = capsys.readouterr().out
     assert f"{len(single)} with one not called unique" in said
     assert "fails the guards" not in said
+
+
+def test_a_top_level_checksums_file_linked_outside_the_folder_is_refused(tmp_path):
+    folder = _folder(tmp_path)
+    outside = tmp_path / "elsewhere.sha256"
+    (folder / "reproducibility" / "checksums.sha256").rename(outside)
+    (folder / "checksums.sha256").symlink_to(outside)
+    with pytest.raises(ClawbioError, match="resolves outside the folder"):
+        from_clawbio(folder, tmp_path / "out")
+
+
+def test_a_reproducibility_folder_linked_outside_the_folder_is_refused(tmp_path):
+    folder = _folder(tmp_path)
+    (folder / "reproducibility").rename(tmp_path / "bundle")
+    (folder / "reproducibility").symlink_to(tmp_path / "bundle")
+    with pytest.raises(ClawbioError, match="resolves outside the folder"):
+        from_clawbio(folder, tmp_path / "out")
+
+
+def test_a_broken_link_in_reproducibility_beside_a_top_level_file_counts_as_both(tmp_path):
+    folder = _folder(tmp_path)
+    (folder / "reproducibility" / "checksums.sha256").rename(folder / "checksums.sha256")
+    (folder / "reproducibility" / "checksums.sha256").symlink_to(tmp_path / "missing")
+    with pytest.raises(ClawbioError, match="holds both"):
+        from_clawbio(folder, tmp_path / "out")
+
+
+def test_a_label_listed_twice_names_the_checksums_file_it_is_in(tmp_path):
+    folder = _folder(tmp_path)
+    for name in ("checksums.sha256", "commands.sh"):
+        (folder / "reproducibility" / name).rename(folder / name)
+    checksums = folder / "checksums.sha256"
+    checksums.write_text(checksums.read_text() + f"{_sha(SUMMARY)}  tables/summary.csv\n")
+    written = from_clawbio(folder, tmp_path / "out")
+    reasons = {p.reason for p in written.passed_over if p.file == "tables/summary.csv"}
+    assert reasons == {"listed twice in checksums.sha256"}
+
+
+def test_a_number_opening_a_wrapped_line_of_prose_is_read_and_a_first_item_is_not(tmp_path):
+    folder, out = _folder(tmp_path), tmp_path / "out"
+    prose = "The cohort size was\n412. Of these, 30 dropped.\nIt ran on\n1. a single site.\n"
+    (folder / "report.md").write_text(REPORT + "\n" + prose)
+    written = from_clawbio(folder, out)
+    items = read_items(out / "open-items.json").items
+    assert [(i.context["line"], i.context["printed"]) for i in items][5:] == [
+        (21, "412"),
+        (21, "30"),
+    ]
+    reasons = {p.reason for p in written.passed_over if p.file == "report.md"}
+    assert "line 23: 1. numbers a list item and is no result" in reasons
+    assert not any(r.startswith("line 21:") and "list item" in r for r in reasons)

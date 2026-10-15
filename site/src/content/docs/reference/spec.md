@@ -1312,7 +1312,7 @@ The rules are applied in this order, and the first that holds is the one named.
 | rule | sets aside |
 |---|---|
 | `link` | digits inside a URL |
-| `date` | each part of a date written `2026-10-13` |
+| `date` | each part of a date written `2026-10-13`, or of a year and month written `2026-04` |
 | `document_identifier` | the number a document is known by, as in `rfc 6901` and `arxiv 2609.22111`, and the digits of a DOI |
 | `name` | digits that are part of a name: a letter stands immediately before them, a hyphen or underscore joins them to a part holding a letter (`gpt-4`), or they open a run of letters and digits that holds more digits |
 | `version_or_section` | digits joined by two or more full stops, `0.5.5` |

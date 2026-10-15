@@ -1,0 +1,1 @@
+**A year and month written `2026-04` is set aside as a date.** `claims numbers`, `repro numbers` and the plugin's `unbound_numbers` hook read both parts under the rule `date`, as they read the three parts of `2026-10-13`; before, the month was counted as a number. The year must be 1800 to 2099 and the month 01 to 12, so `2019-20` is still a year and a number.

@@ -117,6 +117,8 @@ _INLINE_CODE = re.compile(r"`[^`]*`")
 #: The marker of a numbered list item at the start of a line, inside any blockquote: `2. ` and
 #: `> 1. `. CommonMark allows up to nine digits and `.` or `)`.
 _LIST_ITEM = re.compile(r"^[ \t]*(?:>[ \t]?)*[ \t]*(?P<marker>\d{1,9}[.)])(?=[ \t]|$)")
+#: The blockquote markers at the start of a line, which do not end a paragraph.
+_QUOTED = re.compile(r"^[ \t]*(?:>[ \t]?)*")
 #: A time of day, `14:22` or `09:05:33`, as a report's header stamps when it was generated.
 _CLOCK = re.compile(r"(?<![\d:.])(?:[01]?\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?![\d:])")
 
@@ -138,7 +140,7 @@ def _checksums(text: str, where: str) -> tuple[list[tuple[str, str]], list[Passe
             continue
         label = found["label"]
         if label in seen:
-            passed.append(PassedOver(file=label, reason="listed twice in checksums.sha256"))
+            passed.append(PassedOver(file=label, reason=f"listed twice in {where}"))
             continue
         seen.add(label)
         listed.append((label, found["digest"].lower()))
@@ -268,10 +270,30 @@ def _code_masked(lines: list[str]) -> tuple[list[str], set[int]]:
     return masked, fenced
 
 
+def _list_markers(lines: list[str]) -> dict[int, str]:
+    """The lines, from 1, that open a numbered list item as CommonMark reads them, each with
+    its marker. A marker opens an item at the start of a block (the first line, or after a
+    blank line or a heading) and inside a list, whose items and their continuation lines run to
+    the next blank line. Inside a paragraph only `1.` or `1)` opens one, so the `412.` that
+    starts a wrapped line of prose is a number."""
+    found: dict[int, str] = {}
+    previous, in_list = "", False
+    for number, line in enumerate(lines, start=1):
+        marker = _LIST_ITEM.match(line)
+        before = _QUOTED.sub("", previous, count=1).strip()
+        opens_block = not before or before.startswith("#") or in_list
+        if marker and (opens_block or marker["marker"].lstrip("0") in ("1.", "1)")):
+            found[number] = marker["marker"]
+        in_list = number in found or (in_list and bool(_QUOTED.sub("", line, count=1).strip()))
+        previous = line
+    return found
+
+
 def _layout(folder: pathlib.Path) -> str:
     """Where the folder keeps its checksums: in `reproducibility/`, or at the top for an older
-    output. A folder with both is refused, since nothing says which the run wrote."""
-    found = [where for where in LAYOUTS if (folder / where).exists()]
+    output. A folder with both is refused, since nothing says which the run wrote; a link
+    counts as there whether or not it resolves, so a broken one is refused too."""
+    found = [where for where in LAYOUTS if os.path.lexists(folder / where)]
     if len(found) > 1:
         raise ClawbioError(
             f"{folder} holds both {CHECKSUMS} and {CHECKSUMS_AT_TOP}, and nothing says which "
@@ -296,6 +318,11 @@ def from_clawbio(folder: pathlib.Path, directory: pathlib.Path) -> Written:
         raise ClawbioError(f"{folder} is not a folder")
     layout = _layout(folder)
     checksums, report = folder / layout, folder / REPORT
+    if not inside(folder, checksums):
+        raise ClawbioError(
+            f"{checksums} resolves outside the folder through a symbolic link, so it is not "
+            "this output's record of its files"
+        )
     try:
         listed_raw = checksums.read_bytes()
     except OSError as e:
@@ -382,6 +409,7 @@ def from_clawbio(folder: pathlib.Path, directory: pathlib.Path) -> Written:
 
     lines = text.split("\n")
     masked, fenced = _code_masked(lines)
+    markers = _list_markers(lines)
     claims, items = [], []
     beyond = 0
     for number, (line, readable) in enumerate(zip(lines, masked, strict=True), start=1):
@@ -405,7 +433,7 @@ def from_clawbio(folder: pathlib.Path, directory: pathlib.Path) -> Written:
                     "prints an identifier or a command and not a result",
                 )
             )
-        marker = _LIST_ITEM.match(readable)
+        marker = _LIST_ITEM.match(readable) if number in markers else None
         if marker:
             readable = " " * marker.end() + readable[marker.end() :]
             passed.append(

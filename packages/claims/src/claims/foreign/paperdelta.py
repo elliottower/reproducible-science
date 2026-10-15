@@ -64,7 +64,7 @@ from claims.record import (
     ManifestRef,
     NormalizedOutcome,
 )
-from claims.verify import _aggregate, _agree, _agree_exact
+from claims.verify import _aggregate, _agree, _agree_exact, _plain
 
 CHECKER = "paperdelta"
 CHECKER_URL = "https://github.com/amos689/paperdelta"
@@ -477,19 +477,6 @@ def _reads(
                 )
             )
     return tuple(reads)
-
-
-#: Past this power of ten a number keeps its exponent form, so a hostile report cannot make
-#: one field millions of digits long.
-PLAIN_UP_TO = 100
-
-
-def _plain(number: decimal.Decimal) -> str:
-    """A number as positional digits: a stored 0.9 shown as a percentage is `90`, where `str`
-    writes the `9E+1` that `Decimal.scaleb` leaves."""
-    if number.is_finite() and abs(number.adjusted()) <= PLAIN_UP_TO:
-        return format(number, "f")
-    return str(number)
 
 
 def _spread(locations: tuple[dict[str, Any], ...], count: int) -> tuple[dict[str, Any], ...]:
