@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Phys.+Rev.+B&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:12:23Z",
+  "sha256": "ab0a17cc5d01e0c95b790d61b6b1e742e63efcf3aa9cc5353a35eb4e7545ed27",
+  "body": "{\"searchinfo\": {\"search\": \"Phys. Rev. B\"}, \"search\": [], \"success\": 1}"
+}

@@ -31,6 +31,12 @@ compared like any other, against an identifier the report prints so it can be ad
 no service has is reported as not found and does not fail the audit, because a book, a report
 and a thesis have no registry record either and land in the same row as an invented reference.
 
+The venue is compared by identifier, under `venue.decide`: the record's venue is the ISSNs and
+source ids its registries give it, the entry's is whatever registry venue the cited name
+resolves to (`venue_registry`), and a real paper cited at the wrong journal is a field
+disagreement like a wrong year. A venue that registries cannot settle is not comparable, and
+the report prints both names so a person can compare them.
+
 Responses are cached, so a re-run is offline and the report is reproducible from what was
 fetched.
 """
@@ -57,8 +63,31 @@ from pydantic import BaseModel, ConfigDict, Field
 from citations import bibtex, paths, resolve
 from citations.exceptions import CitationsError
 from citations.models import load_record
-from citations.services import SERVICES, Service, user_agent
+from citations.services import (
+    CROSSREF_KINDS,
+    SERVICES,
+    Candidate,
+    Service,
+    crossref_venue_ids,
+    crossref_venues,
+    openalex_venue_ids,
+    openalex_venues,
+    product,
+    user_agent,
+)
 from citations.text import name_fold, tokens, variants
+from citations.venue import (
+    ISSN_UNSETTLED,
+    MATCH,
+    MISMATCH,
+    NOT_COMPARABLE,
+    ONE_NAME,
+    Resolution,
+    VenueCheck,
+    decide,
+    folded_names,
+)
+from citations.venue_registry import Ask, identify, openalex_work, resolve_name, typed
 
 #: Crossref's polite-pool rate limit is 50 requests a second; this is far under it and keeps
 #: a full-library audit from looking like a scrape.
@@ -174,6 +203,17 @@ class Entry(BaseModel):
     marks it with this field. Both say the same thing, and a check that reads only the first
     calls every marked record truncated."""
 
+    venue_kind: str = ""
+    """`journal` where the venue came from a `journal` field, `proceedings` from a `booktitle`,
+    `preprint` where the entry names only a preprint server, empty where nothing says."""
+
+    series: str = ""
+    """A proceedings series (`Proceedings of Machine Learning Research`, `Lecture Notes in
+    Computer Science`), compared only where the entry names no journal or booktitle."""
+
+    issn: str = ""
+    """An ISSN the entry gives, used as the venue's identifier without a name lookup."""
+
     @property
     def identified(self) -> bool:
         return bool(self.doi.strip() or self.pmid.strip())
@@ -189,6 +229,21 @@ class RegistryRecord(BaseModel):
 
     title: str = ""
     venue: str = ""
+
+    venues: list[str] = Field(default_factory=list)
+    """Every name the record gives the venue: container titles, short titles, an event's name
+    and acronym. `venue` is the first of them."""
+
+    venue_kind: str = ""
+    """`journal`, `proceedings`, `preprint`, or empty where the registry does not say."""
+
+    venue_ids: list[str] = Field(default_factory=list)
+    """Identifiers of the venue the record carries: a journal article's ISSNs, PubMed's NLM id,
+    a DataCite container's ISSN."""
+
+    series_ids: list[str] = Field(default_factory=list)
+    """ISSNs of a book series a chapter or proceedings paper is in. A series is not the venue,
+    so these can confirm a venue and never contradict one."""
 
     years: list[str] = Field(default_factory=list)
     """Every year the registry reports. A journal publishing online ahead of print carries two
@@ -228,6 +283,10 @@ class EntryAudit(BaseModel):
     found_by: str = ""
     """The service whose answer matched."""
 
+    venue: VenueCheck | None = None
+    """The venue comparison, when a record was compared. `not comparable` is reported here and
+    is never a disagreement; a `mismatch` is also one of `problems`."""
+
     searched: list[str] = Field(default_factory=list)
     """The services that answered the title search. One that refused is not listed, so a `not
     found` says which services it rests on."""
@@ -245,6 +304,15 @@ class AuditReport(BaseModel):
 
     def by(self, status: str) -> list[str]:
         return [k for k, v in self.entries.items() if v.status == status]
+
+    @property
+    def venue_not_comparable(self) -> dict[str, VenueCheck]:
+        """Each entry whose venue could not be compared, with the check that says why."""
+        return {
+            k: v.venue
+            for k, v in self.entries.items()
+            if v.venue is not None and v.venue.outcome == NOT_COMPARABLE
+        }
 
     @property
     def mismatched(self) -> list[str]:
@@ -287,13 +355,18 @@ def entries_from_bib(path: pathlib.Path) -> list[Entry]:
     out = []
     for _kind, key, body in bibtex.entries(bibtex.read(path)):
         f = {name.lower(): " ".join(value.split()) for name, value in BIB_FIELD.findall(body)}
+        venue = f.get("journal") or f.get("booktitle", "")
+        kind = "journal" if f.get("journal") else "proceedings" if venue else ""
         out.append(
             Entry(
                 key=key,
                 title=f.get("title", ""),
                 authors=[a for a in re.split(r"\s+and\s+", f.get("author", "")) if a],
                 year=f.get("year", ""),
-                venue=f.get("journal") or f.get("booktitle", ""),
+                venue=venue,
+                venue_kind=kind,
+                series=f.get("series", ""),
+                issn=f.get("issn", ""),
                 volume=f.get("volume", ""),
                 pages=f.get("pages", ""),
                 doi=f.get("doi", ""),
@@ -330,9 +403,10 @@ def entries_from_library(only: str | None) -> list[Entry]:
 # --------------------------------------------------------------------------------- sources
 
 
-#: Bumped when the envelope's shape changes, so an older cache is refetched rather than
-#: misread.
-CACHE_VERSION = 1
+#: Bumped when the envelope's shape changes, or when what an older cache holds can no longer
+#: be trusted, so it is refetched rather than misread. Version 2: before it, a registry's
+#: server error was cached as an answer that found nothing.
+CACHE_VERSION = 2
 
 
 def fetch(url: str, cache: pathlib.Path, name: str) -> str | None:
@@ -426,6 +500,10 @@ def from_crossref(doi: str, cache: pathlib.Path) -> RegistryRecord | None:
         source="crossref",
         title=(m.get("title") or [""])[0],
         venue=(m.get("container-title") or [""])[0],
+        venues=crossref_venues(m),
+        venue_kind=CROSSREF_KINDS.get(m.get("type") or "", ""),
+        venue_ids=crossref_venue_ids(m)[0],
+        series_ids=crossref_venue_ids(m)[1],
         years=years,
         volume=str(m.get("volume") or ""),
         pages=str(m.get("page") or m.get("article-number") or ""),
@@ -488,10 +566,20 @@ def from_datacite(doi: str, cache: pathlib.Path) -> RegistryRecord | None:
             )
         authors.append((tokens(family), tokens(given)))
 
+    preprint = (attrs.get("types") or {}).get("resourceTypeGeneral") == "Preprint"
+    held = attrs.get("container") or {}
+    issns = (
+        [held["identifier"]]
+        if held.get("identifierType") == "ISSN" and held.get("identifier")
+        else []
+    )
     return RegistryRecord(
         source="datacite",
         title=(titles[0].get("title", "") if titles else ""),
         venue=str(container),
+        venues=[str(container)] if container else [],
+        venue_kind="preprint" if preprint else "",
+        venue_ids=[f"issn:{i}" for i in issns],
         years=[str(year)] if year else [],
         volume=str((attrs.get("container") or {}).get("volume") or ""),
         pages="",
@@ -517,14 +605,25 @@ def from_pubmed(pmid: str, cache: pathlib.Path) -> RegistryRecord | None:
     title = art.find(".//ArticleTitle")
     journal = art.find(".//Journal")
     year = journal.findtext(".//Year") if journal is not None else ""
+    names = (
+        [journal.findtext("ISOAbbreviation") or "", journal.findtext("Title") or ""]
+        if journal is not None
+        else []
+    )
+    ids = [f"issn:{i.text.strip()}" for i in art.findall(".//Journal/ISSN") if i.text]
+    ids += [
+        f"issn:{i.text.strip()}" for i in art.findall(".//MedlineJournalInfo/ISSNLinking") if i.text
+    ]
+    ids += [
+        f"nlm:{i.text.strip()}" for i in art.findall(".//MedlineJournalInfo/NlmUniqueID") if i.text
+    ]
     return RegistryRecord(
         source="pubmed",
         title="".join(title.itertext()) if title is not None else "",
-        venue=(
-            (journal.findtext("ISOAbbreviation") or journal.findtext("Title") or "")
-            if journal is not None
-            else ""
-        ),
+        venue=next((n for n in names if n), ""),
+        venues=[n for n in names if n],
+        venue_kind="journal",
+        venue_ids=list(dict.fromkeys(ids)),
         years=[year] if year else [],
         volume=(journal.findtext(".//Volume") or "") if journal is not None else "",
         pages=art.findtext(".//MedlinePgn") or "",
@@ -539,8 +638,11 @@ def from_pubmed(pmid: str, cache: pathlib.Path) -> RegistryRecord | None:
 # ------------------------------------------------------------------------------ comparison
 
 
-def compare(entry: Entry, record: RegistryRecord) -> list[str]:
-    """Every field of `entry` that disagrees with `record`, as one message each."""
+def compare(entry: Entry, record: RegistryRecord, venue: VenueCheck | None = None) -> list[str]:
+    """Every field of `entry` that disagrees with `record`, as one message each.
+
+    `venue` is the venue verdict `audit` reached with registry lookups this function does not
+    make; without one, the venue is not compared."""
     problems = []
 
     our_title = name_fold(entry.title)
@@ -557,6 +659,11 @@ def compare(entry: Entry, record: RegistryRecord) -> list[str]:
 
     if entry.volume and record.volume and entry.volume != record.volume:
         problems.append(f"volume: ours {entry.volume} vs registry {record.volume}")
+
+    if venue is not None and venue.outcome == MISMATCH:
+        problems.append(venue.line())
+    if venue is not None and venue.issn:
+        problems.append(venue.issn)
 
     # PubMed abbreviates end pages (1214-24 for 1214-1224), so only the start page is
     # comparable across sources.
@@ -583,6 +690,129 @@ def compare(entry: Entry, record: RegistryRecord) -> list[str]:
     return problems
 
 
+# ---------------------------------------------------------------------------------- venues
+
+
+#: Attempts at each registry lookup of a venue before the registry counts as having refused.
+VENUE_TRIES = 3
+
+
+def wikidata_agent() -> str:
+    """The User-Agent sent to Wikidata, whose policy asks a client to say where it comes from:
+    the product and version, and a project address rather than a person's."""
+    return f"{product()} (https://github.com/elliottower/reproducible-science)"
+
+
+def refused_in_body(body: str | None) -> bool:
+    """MediaWiki reports an error as a JSON `{"error": {"code": ...}}` inside an HTTP 200. That
+    is a refusal, not an answer that found nothing, and caching it would make the next run read
+    "nothing found" as a fact."""
+    if not body:
+        return False
+    try:
+        answer = json.loads(body)
+    except json.JSONDecodeError:
+        return False
+    error = answer.get("error") if isinstance(answer, dict) else None
+    return isinstance(error, dict) and "code" in error
+
+
+def _ask(url: str, cache: pathlib.Path, name: str, headers: dict | None = None) -> dict | None:
+    """A cached JSON answer, an empty one when the service had nothing, or None when it
+    refused or could not be reached.
+
+    Paced and retried as a title search is, because the services asked here are the ones that
+    rate-limit. A refusal is not cached, so the next run asks again; an empty answer is.
+    """
+    body = cached(url, cache, name)
+    if body is None:
+        try:
+            body = resolve.get(url, as_json=False, tries=VENUE_TRIES, headers=headers)
+        except resolve.Throttled:
+            return None
+        finally:
+            time.sleep(DELAY)
+        if refused_in_body(body):
+            return None
+        # An answer that had nothing is cached too, so a re-run reads it rather than asking
+        # again; only a refusal is left to be asked again.
+        store(url, cache, name, body or "")
+    try:
+        answer = json.loads(body) if body else {}
+    except json.JSONDecodeError:
+        return {}
+    return answer if isinstance(answer, dict) else {}
+
+
+def asker(cache: pathlib.Path) -> Ask:
+    """`_ask` bound to a cache, in the shape `venue_registry` calls."""
+
+    def ask(url: str, name: str) -> dict | None:
+        wikidata = urllib.parse.urlsplit(url).hostname == "www.wikidata.org"
+        return _ask(
+            url, cache, name, headers={"User-Agent": wikidata_agent()} if wikidata else None
+        )
+
+    return ask
+
+
+def record_venue(record: RegistryRecord, found: Candidate | None, doi: str, ask: Ask) -> Resolution:
+    """What registries say the record's venue is.
+
+    The identifiers the record carries come first, then those the title search's answer
+    carried, then the OpenAlex work's primary source. Only where none is known is the record's
+    venue name resolved like an entry's, and a verdict resting on that is never a mismatch.
+    """
+    ids = set(record.venue_ids)
+    series = set(record.series_ids)
+    names = list(record.venues or [record.venue])
+    repository = record.venue_kind == "preprint"
+    if found is not None and found.venue_kind != "preprint":
+        # A title search's answer can name the published venue of a preprint record. One
+        # that names a preprint server names no venue: its ids are the server's.
+        ids |= set(found.venue_ids)
+        series |= set(found.series_ids)
+        names += [n for n in found.venues if n not in names]
+        repository = repository and not found.venue_ids
+    label = ""
+    if repository and found is not None and found.venue_kind in ("journal", "proceedings"):
+        # A preprint record whose search answer names the venue it was published in: that
+        # venue, by name, so it can confirm the entry's and never contradict it.
+        name = next((n for n in found.venues if n), "")
+        if name:
+            return resolve_name(ask, name)
+    if not ids and doi and not repository:
+        work = openalex_work(ask, doi)
+        if work is None:
+            return Resolution(status="refused", label=record.venue)
+        venue_ids, series_ids = openalex_venue_ids(work)
+        ids |= set(venue_ids)
+        series |= set(series_ids)
+        source_names, source_kind, _source = openalex_venues(work)
+        label = source_names[0] if source_names else ""
+        repository = source_kind == "preprint"
+    if repository:
+        return Resolution(status="none", label=record.venue, repository=True)
+    if ids:
+        theirs = identify(ask, frozenset(ids), frozenset(series), label or record.venue)
+        # The record's own container titles are registry names of its venue too.
+        return theirs.model_copy(update={"names": theirs.names | folded_names(names)})
+    # No venue identifier on the record: each of its venue names is resolved, and every venue
+    # they resolve to may confirm the entry's. Resting on names, it never contradicts it.
+    shelf = identify(ask, frozenset(), frozenset(series)) if series else Resolution(status="none")
+    found_by_name = [resolve_name(ask, n) for n in dict.fromkeys(names) if n]
+    options = [o for r in found_by_name for o in (r.options or [r]) if r.ids or r.options]
+    refused = shelf.status == "refused" or any(r.status == "refused" for r in found_by_name)
+    return Resolution(
+        status="refused" if refused else ("resolved" if options or series else "none"),
+        ids=frozenset().union(*(o.ids for o in options)),
+        links=shelf.links.union(*(o.links for o in options)),
+        series=frozenset().union(*(o.series for o in options)),
+        label=label or record.venue,
+        direct=False,
+    )
+
+
 # ------------------------------------------------------------------------------------- run
 
 
@@ -592,8 +822,9 @@ def _search_file(service: Service, entry: Entry) -> tuple[str, str]:
     return url, f"search_{service.name}_{hashlib.sha256(url.encode()).hexdigest()[:16]}.json"
 
 
-def find(entry: Entry, cache: pathlib.Path) -> tuple[tuple[str, str] | None, str, list[str]]:
-    """Search for an entry by title: (identifier, the service that had it, services that answered).
+def find(entry: Entry, cache: pathlib.Path) -> tuple[Candidate | None, str, list[str]]:
+    """Search for an entry by title: (the work found, the service that had it, services that
+    answered).
 
     Each service is asked on its own, as `citations resolve` asks them, and a candidate is
     accepted by `resolve.match` and by nothing else. An empty third element means every service
@@ -627,10 +858,98 @@ def find(entry: Entry, cache: pathlib.Path) -> tuple[tuple[str, str] | None, str
         answered.append(service.name)
         if not body:
             continue
-        hit = resolve.match(entry, service.candidates(json.loads(body) if service.json else body))
+        hit = resolve.best(entry, service.candidates(json.loads(body) if service.json else body))
         if hit:
             return hit, service.name, answered
     return None, "", answered
+
+
+def venue_verdict(
+    e: Entry,
+    record: RegistryRecord,
+    found: Candidate | None,
+    doi: str,
+    ask: Ask,
+    resolved: dict[tuple[str, ...], Resolution],
+) -> VenueCheck:
+    """The entry's venue against the record's, as registries identify both."""
+    ours = e.venue or e.series
+    theirs = record_venue(record, found, doi, ask)
+    if found is not None:
+        theirs = theirs.model_copy(update={"searched": True})
+    shown = record.venue or (found.venue if found is not None else "")
+    if not ours.strip() or theirs.repository or (not theirs.ids and not theirs.links):
+        # Nothing on the record side to compare with: the entry's venue is not looked up.
+        return decide(ours, shown, Resolution(status="unresolved"), theirs)
+    if not e.issn.strip():
+        return name_verdict(ours, shown, theirs, ask, resolved)
+    # An entry carrying both a name and an ISSN is checked on both. The name decides whether
+    # the venue agrees; an ISSN that disagrees with a venue the name confirms is a disagreement
+    # about the ISSN field. An ISSN no registry knows is never ground for a venue mismatch.
+    by_name = name_verdict(ours, shown, theirs, ask, resolved)
+    key = ("", e.issn)
+    if key not in resolved:
+        resolved[key] = resolve_name(ask, "", e.issn)
+    by_issn = decide(ours, shown, resolved[key], theirs)
+    named = by_name.outcome == MATCH or by_name.why.startswith(ONE_NAME)
+    # The entry's ISSN is called wrong only where a registry knows it as another venue: an
+    # electronic ISSN the record does not list, or one no registry knows, is not evidence.
+    known_elsewhere = resolved[key].status == "resolved" and any(
+        i.startswith(("wikidata:", "openalex:")) for i in resolved[key].ids
+    )
+    if named:
+        if (
+            by_issn.outcome != MATCH
+            and known_elsewhere
+            and theirs.status == "resolved"
+            and theirs.direct
+        ):
+            theirs_issn = sorted(i.split(":", 1)[1] for i in theirs.ids if i.startswith("issn:"))
+            if theirs_issn:
+                wrong = f"issn: ours {e.issn!r} vs registry {'/'.join(theirs_issn)!r}"
+                return by_name.model_copy(update={"issn": wrong})
+        return by_name
+    if by_issn.outcome == MATCH:
+        return by_issn
+    if by_name.outcome != MISMATCH or not known_elsewhere:
+        # An ISSN no registry knows is evidence of nothing either way: the name decides alone.
+        return by_name
+    # The name resolved to a venue the record is not. An ISSN registries know as that same
+    # venue supports the mismatch; one they know as a third venue is the entry contradicting
+    # itself, which settles nothing.
+    name_ids = frozenset().union(
+        *(r.ids for k, r in resolved.items() if k[0] == ours and k[1] == "")
+    )
+    if name_ids & resolved[key].ids:
+        return by_name
+    return by_name.model_copy(update={"outcome": NOT_COMPARABLE, "why": ISSN_UNSETTLED})
+
+
+def name_verdict(
+    ours: str,
+    shown: str,
+    theirs: Resolution,
+    ask: Ask,
+    resolved: dict[tuple[str, ...], Resolution],
+) -> VenueCheck:
+    """The entry's venue name against the record's venue."""
+    key = (ours, "")
+    if key not in resolved:
+        resolved[key] = resolve_name(ask, ours)
+    check = decide(ours, shown, resolved[key], theirs)
+    if check.outcome != MATCH and any(i.startswith("openalex:") for i in theirs.ids):
+        # The record's venue is an OpenAlex source, and a conference's often is only that: the
+        # name is asked of OpenAlex too, which can confirm the venue or leave it ambiguous.
+        both = (ours, "", "both")
+        if both not in resolved:
+            resolved[both] = resolve_name(ask, ours, both=True)
+        check = decide(ours, shown, resolved[both], theirs)
+        key = both
+    if check.outcome == MISMATCH:
+        # Before a venue is called wrong: is the entry's venue a preprint server?
+        resolved[key] = typed(ask, resolved[key])
+        check = decide(ours, shown, resolved[key], theirs)
+    return check
 
 
 def audit(
@@ -643,11 +962,15 @@ def audit(
     """
     report = AuditReport(where=where)
     refused_in_a_row = 0
+    ask = asker(cache)
+    # One lookup per distinct cited venue in a run: a bibliography cites one journal many times.
+    resolved: dict[tuple[str, ...], Resolution] = {}
     for e in entries:
         # Unresolved until something below establishes otherwise: no branch that leaves early
         # without a measurement can report one.
         verdict = report.entries[e.key] = EntryAudit(status="unresolved", doi=e.doi, pmid=e.pmid)
         doi = e.doi
+        found: Candidate | None = None
         if not e.identified:
             if not search or not e.title.strip():
                 verdict.status = "no identifier"
@@ -664,14 +987,17 @@ def audit(
             if hit is None:
                 verdict.status = "not found"
                 continue
-            verdict.found_kind, verdict.found_id = hit
+            found = hit
+            # `resolve.best` accepts no candidate without an identifier.
+            kind, ident = hit.identifier or ("", "")
+            verdict.found_kind, verdict.found_id = kind, ident
             verdict.found_by = by
             if verdict.found_kind == "openalex":
                 # An OpenAlex work with no DOI has no registry record to read back.
                 verdict.status = "found"
                 continue
             # arXiv registers every preprint with DataCite under this DOI.
-            doi = hit[1] if hit[0] == "doi" else f"10.48550/arXiv.{hit[1]}"
+            doi = ident if kind == "doi" else f"10.48550/arXiv.{ident}"
         # Ask the registry the DOI is actually registered with. Asking Crossref about an
         # arXiv or Zenodo DOI returns 404, which is a fact about the registry rather than
         # about the entry.
@@ -685,8 +1011,10 @@ def audit(
             record = from_pubmed(e.pmid, cache)
         if record is None:
             continue
+        check = venue_verdict(e, record, found, doi, ask, resolved)
         verdict.checked_against = record.source
-        verdict.problems = compare(e, record)
+        verdict.venue = check
+        verdict.problems = compare(e, record, check)
         verdict.status = "mismatch" if verdict.problems else "ok"
     return report
 
@@ -719,6 +1047,11 @@ def render(report: AuditReport, quiet: bool) -> int:
     print(f"  checked     {report.checked:>7,}")
     print(f"  agree       {report.checked - len(mismatched):>7,}")
     print(f"  disagree    {len(mismatched):>7,}")
+    if report.venue_not_comparable:
+        print(
+            f"  venue n/c   {len(report.venue_not_comparable):>7,}   of those checked, the venue "
+            "could not be compared; never a disagreement"
+        )
     if compared:
         print(
             f"  by search   {len(compared):>7,}   of those checked, named no identifier and "
@@ -749,6 +1082,13 @@ def render(report: AuditReport, quiet: bool) -> int:
         print("\nidentifiers found by title search, to add once read")
         for key, v in by_search.items():
             print(f"  {key}  {v.found_kind} {v.found_id}  ({v.found_by})")
+
+    if report.venue_not_comparable and not quiet:
+        # Both names, side by side: only an identifier comparison may call a venue right or
+        # wrong, so what registries could not settle is left for a person to read.
+        print("\nvenue not compared by identifier")
+        for key, check in report.venue_not_comparable.items():
+            print(f"  {key}  {check.line()}")
 
     if mismatched:
         kinds: collections.Counter = collections.Counter()

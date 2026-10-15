@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q680640&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-14T22:24:14Z",
+  "sha256": "024c8c0ff3450d73c0707a050cf183b8f5e973e25f9e1c73175ac828fcb1b2a7",
+  "body": "{\"entities\": {\"Q680640\": {\"id\": \"Q680640\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Nature Methods\"}}, \"aliases\": {}, \"claims\": {\"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"1548-7091\", \"type\": \"string\"}}}, {\"mainsnak\": {\"datavalue\": {\"value\": \"1548-7105\", \"type\": \"string\"}}}], \"P1160\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"Nat. Methods\", \"type\": \"string\"}}}], \"P1055\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"101215604\", \"type\": \"string\"}}}], \"P7363\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"1548-7091\", \"type\": \"string\"}}}], \"P10283\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"S127827428\", \"type\": \"string\"}}}]}}}, \"success\": 1}"
+}

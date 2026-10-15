@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Rev.+Econ.+Stud.&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:13:10Z",
+  "sha256": "8cdb70f86e0b66cdea67f15bdd07691d5511021f4fb14bd08dda7b222630ceb4",
+  "body": "{\"searchinfo\": {\"search\": \"Rev. Econ. Stud.\"}, \"search\": [], \"success\": 1}"
+}

@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DJ.+Commun.%22&format=json",
+  "fetched_at": "2026-10-15T00:09:56Z",
+  "sha256": "ac6147e5dab88ac269a1344e65b9ab79753f91452ef9fae7da074b5f43ffa594",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q6294987\", \"pageid\": 6101049, \"size\": 40192, \"wordcount\": 83, \"snippet\": \"Journal of Communication\\nJournal of Communication\\nJournal of Communication\\nJournal of Communication\\nJournal of Communication\\nJournal of Communication\\nJournal\", \"timestamp\": \"2026-09-11T20:13:02Z\"}]}}"
+}

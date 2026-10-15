@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q4914910&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-14T22:24:40Z",
+  "sha256": "853958a428fbeda90175e2d2084beaee42c54fc7b323ad284c988bdc9cac1150",
+  "body": "{\"entities\": {\"Q4914910\": {\"id\": \"Q4914910\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Bioinformatics\"}}, \"aliases\": {}, \"claims\": {\"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"1367-4803\", \"type\": \"string\"}}}, {\"mainsnak\": {\"datavalue\": {\"value\": \"1367-4811\", \"type\": \"string\"}}}], \"P1160\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"Bioinformatics\", \"type\": \"string\"}}}], \"P1055\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"9808944\", \"type\": \"string\"}}}], \"P1365\": [{\"mainsnak\": {\"datavalue\": {\"value\": {\"entity-type\": \"item\", \"numeric-id\": 27710219, \"id\": \"Q27710219\"}, \"type\": \"wikibase-entityid\"}}}], \"P1813\": [{\"mainsnak\": {\"datavalue\": {\"value\": {\"text\": \"Bioinformatics\", \"language\": \"en\"}, \"type\": \"monolingualtext\"}}}], \"P8926\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"journals/bioinformatics\", \"type\": \"string\"}}}], \"P7363\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"1367-4803\", \"type\": \"string\"}}}], \"P10283\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"S52395412\", \"type\": \"string\"}}}]}}}, \"success\": 1}"
+}

@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DIEEE+Commun.+Lett.%22&format=json",
+  "fetched_at": "2026-10-15T00:09:01Z",
+  "sha256": "ded1f63f3b3ebbb1d3c4416fa1ab17330c126d7fa47616e58d48897cbcc09716",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q5970310\", \"pageid\": 5746512, \"size\": 33831, \"wordcount\": 80, \"snippet\": \"IEEE Communications Letters\\nIEEE\u901a\u4fe1\u5feb\u5831\\nIEEE Communications Letters\\nIEEE Communications Letters\\nIEEE Communications Letters\\nIEEE Communications Letters\\nIEEE\", \"timestamp\": \"2026-09-11T19:06:02Z\"}]}}"
+}

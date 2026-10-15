@@ -1,0 +1,1850 @@
+{
+  "source": "references.bib audited offline against cache/ (registry answers fetched 2026-10-14 and 2026-10-15)",
+  "entries": {
+    "altschul1990blast": {
+      "status": "ok",
+      "checked_against": "crossref",
+      "doi": "10.1016/S0022-2836(05)80360-2",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "match",
+        "ours": "J. Mol. Biol.",
+        "theirs": "Journal of Molecular Biology",
+        "ours_registry": "Journal of Molecular Biology",
+        "theirs_registry": "Journal of Molecular Biology",
+        "why": "shared identifier issn:0022-2836",
+        "ours_ids": [
+          "issn:0022-2836",
+          "issn:1089-8638",
+          "nlm:2985088R",
+          "openalex:S46058472",
+          "wikidata:Q925779"
+        ],
+        "theirs_ids": [
+          "issn:0022-2836",
+          "issn:1089-8638",
+          "nlm:2985088R",
+          "openalex:S46058472",
+          "wikidata:Q925779"
+        ],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "benjamini1995fdr": {
+      "status": "ok",
+      "checked_against": "crossref",
+      "doi": "10.1111/j.2517-6161.1995.tb02031.x",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "not comparable",
+        "ours": "J. R. Stat. Soc. B",
+        "theirs": "Journal of the Royal Statistical Society Series B: Statistical Methodology",
+        "ours_registry": "",
+        "theirs_registry": "Journal of the Royal Statistical Society Series B: Statistical Methodology",
+        "why": "no registry knows the entry's venue by this name",
+        "ours_ids": [],
+        "theirs_ids": [
+          "issn:1369-7412",
+          "issn:1467-9868",
+          "nlm:100890344",
+          "openalex:S145009937",
+          "wikidata:Q15759195"
+        ],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "bojanowski2017fasttext": {
+      "status": "ok",
+      "checked_against": "crossref",
+      "doi": "10.1162/tacl_a_00051",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "match",
+        "ours": "Transactions of the Association for Computational Linguistics",
+        "theirs": "Transactions of the Association for Computational Linguistics",
+        "ours_registry": "Transactions of the Association for Computational Linguistics",
+        "theirs_registry": "Transactions of the Association for Computational Linguistics",
+        "why": "shared identifier issn:2307-387X",
+        "ours_ids": [
+          "issn:2307-387X",
+          "nlm:101639023",
+          "openalex:S2729999759",
+          "wikidata:Q28736261"
+        ],
+        "theirs_ids": [
+          "issn:2307-387X",
+          "nlm:101639023",
+          "openalex:S2729999759",
+          "wikidata:Q28736261"
+        ],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "breiman2001rf": {
+      "status": "ok",
+      "checked_against": "crossref",
+      "doi": "10.1023/A:1010933404324",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "match",
+        "ours": "Machine Learning",
+        "theirs": "Machine Learning",
+        "ours_registry": "Machine Learning",
+        "theirs_registry": "Machine Learning",
+        "why": "shared identifier issn:0885-6125",
+        "ours_ids": [
+          "issn:0885-6125",
+          "issn:1383-7915",
+          "issn:1573-0565",
+          "nlm:9881780",
+          "openalex:S62148650",
+          "wikidata:Q6723676"
+        ],
+        "theirs_ids": [
+          "issn:0885-6125",
+          "issn:1383-7915",
+          "issn:1573-0565",
+          "nlm:9881780",
+          "openalex:S62148650",
+          "wikidata:Q6723676"
+        ],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "brown2020gpt3": {
+      "status": "ok",
+      "checked_against": "datacite",
+      "doi": "",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "arxiv",
+      "found_id": "2005.14165",
+      "found_by": "openalex",
+      "venue": {
+        "outcome": "not comparable",
+        "ours": "Advances in Neural Information Processing Systems",
+        "theirs": "arXiv",
+        "ours_registry": "",
+        "theirs_registry": "arXiv",
+        "why": "the record is a preprint",
+        "ours_ids": [],
+        "theirs_ids": [],
+        "issn": ""
+      },
+      "searched": [
+        "crossref",
+        "openalex"
+      ]
+    },
+    "carion2020detr": {
+      "status": "ok",
+      "checked_against": "crossref",
+      "doi": "10.1007/978-3-030-58452-8_13",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "not comparable",
+        "ours": "European Conference on Computer Vision (ECCV)",
+        "theirs": "Lecture Notes in Computer Science",
+        "ours_registry": "",
+        "theirs_registry": "Lecture notes in computer science",
+        "why": "the entry's venue name fits several registry venues: European Conference on Computer Vision",
+        "ours_ids": [],
+        "theirs_ids": [
+          "dblp:series/lncs",
+          "issn:0302-9743",
+          "issn:1611-3349",
+          "openalex:S106296714",
+          "wikidata:Q924044"
+        ],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "chen2016xgboost": {
+      "status": "mismatch",
+      "checked_against": "crossref",
+      "doi": "10.1145/2939672.2939785",
+      "pmid": "",
+      "problems": [
+        "title (one is a prefix of the other): registry has 'XGBoost'"
+      ],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "match",
+        "ours": "KDD",
+        "theirs": "Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining",
+        "ours_registry": "",
+        "theirs_registry": "ACM SIGKDD International Conference on Knowledge Discovery and Data Mining (KDD)",
+        "why": "shared identifier openalex:S7407088418, with one of 4 registry venues of this name (ACM SIGKDD International Conference on Knowledge Discovery and Data Mining (KDD))",
+        "ours_ids": [],
+        "theirs_ids": [
+          "openalex:S7407088418"
+        ],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "clark2019bertlook": {
+      "status": "ok",
+      "checked_against": "crossref",
+      "doi": "10.18653/v1/W19-4828",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "not comparable",
+        "ours": "Proceedings of the 2019 ACL Workshop BlackboxNLP: Analyzing and Interpreting Neural Networks for NLP",
+        "theirs": "Proceedings of the 2019 ACL Workshop BlackboxNLP: Analyzing and Interpreting Neural Networks for NLP",
+        "ours_registry": "",
+        "theirs_registry": "Proceedings of the 2019 ACL Workshop BlackboxNLP: Analyzing and Interpreting Neural Networks for NLP",
+        "why": "the record names no venue identifier",
+        "ours_ids": [],
+        "theirs_ids": [],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "cox1972regression": {
+      "status": "ok",
+      "checked_against": "crossref",
+      "doi": "10.1111/j.2517-6161.1972.tb00899.x",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "match",
+        "ours": "Journal of the Royal Statistical Society. Series B (Methodological)",
+        "theirs": "Journal of the Royal Statistical Society Series B: Statistical Methodology",
+        "ours_registry": "Journal of the Royal Statistical Society. Series B: Methodological",
+        "theirs_registry": "Journal of the Royal Statistical Society Series B: Statistical Methodology",
+        "why": "shared identifier issn:1369-7412",
+        "ours_ids": [
+          "issn:0035-9246",
+          "issn:1369-7412",
+          "issn:1467-9868",
+          "issn:2517-6161",
+          "nlm:100890344",
+          "openalex:S145009937",
+          "openalex:S2764851895",
+          "wikidata:Q15759195",
+          "wikidata:Q96330030"
+        ],
+        "theirs_ids": [
+          "issn:1369-7412",
+          "issn:1467-9868",
+          "nlm:100890344",
+          "openalex:S145009937",
+          "wikidata:Q15759195"
+        ],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "dempster1977em": {
+      "status": "ok",
+      "checked_against": "crossref",
+      "doi": "10.1111/j.2517-6161.1977.tb01600.x",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "match",
+        "ours": "Journal of the Royal Statistical Society. Series B (Methodological)",
+        "theirs": "Journal of the Royal Statistical Society Series B: Statistical Methodology",
+        "ours_registry": "Journal of the Royal Statistical Society. Series B: Methodological",
+        "theirs_registry": "Journal of the Royal Statistical Society Series B: Statistical Methodology",
+        "why": "shared identifier issn:1369-7412",
+        "ours_ids": [
+          "issn:0035-9246",
+          "issn:1369-7412",
+          "issn:1467-9868",
+          "issn:2517-6161",
+          "nlm:100890344",
+          "openalex:S145009937",
+          "openalex:S2764851895",
+          "wikidata:Q15759195",
+          "wikidata:Q96330030"
+        ],
+        "theirs_ids": [
+          "issn:1369-7412",
+          "issn:1467-9868",
+          "nlm:100890344",
+          "openalex:S145009937",
+          "wikidata:Q15759195"
+        ],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "devlin2019bert": {
+      "status": "ok",
+      "checked_against": "crossref",
+      "doi": "10.18653/v1/N19-1423",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "not comparable",
+        "ours": "Proceedings of NAACL-HLT",
+        "theirs": "Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, Volume 1 (Long and Short Papers)",
+        "ours_registry": "",
+        "theirs_registry": "Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies (NAACL-HLT)",
+        "why": "no registry knows the entry's venue by this name",
+        "ours_ids": [],
+        "theirs_ids": [
+          "openalex:S4363608774"
+        ],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "dosovitskiy2021vit": {
+      "status": "mismatch",
+      "checked_against": "datacite",
+      "doi": "",
+      "pmid": "",
+      "problems": [
+        "year: ours 2021 vs registry 2020"
+      ],
+      "found_kind": "arxiv",
+      "found_id": "2010.11929",
+      "found_by": "openalex",
+      "venue": {
+        "outcome": "not comparable",
+        "ours": "ICLR",
+        "theirs": "arXiv",
+        "ours_registry": "",
+        "theirs_registry": "arXiv",
+        "why": "the record is a preprint",
+        "ours_ids": [],
+        "theirs_ids": [],
+        "issn": ""
+      },
+      "searched": [
+        "crossref",
+        "openalex"
+      ]
+    },
+    "efron1979bootstrap": {
+      "status": "ok",
+      "checked_against": "crossref",
+      "doi": "10.1214/aos/1176344552",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "match",
+        "ours": "The Annals of Statistics",
+        "theirs": "The Annals of Statistics",
+        "ours_registry": "Annals of Statistics",
+        "theirs_registry": "The Annals of Statistics",
+        "why": "shared identifier issn:0090-5364",
+        "ours_ids": [
+          "issn:0090-5364",
+          "issn:2168-8966",
+          "nlm:0365252",
+          "openalex:S119757635",
+          "wikidata:Q564421"
+        ],
+        "theirs_ids": [
+          "issn:0090-5364",
+          "issn:2168-8966",
+          "nlm:0365252",
+          "openalex:S119757635",
+          "wikidata:Q564421"
+        ],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "friedman2010glmnet": {
+      "status": "ok",
+      "checked_against": "crossref",
+      "doi": "10.18637/jss.v033.i01",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "match",
+        "ours": "Journal of Statistical Software",
+        "theirs": "Journal of Statistical Software",
+        "ours_registry": "Journal of Statistical Software",
+        "theirs_registry": "Journal of Statistical Software",
+        "why": "shared identifier issn:1548-7660",
+        "ours_ids": [
+          "issn:1548-7660",
+          "nlm:101307056",
+          "openalex:S167961193",
+          "wikidata:Q6295963"
+        ],
+        "theirs_ids": [
+          "issn:1548-7660",
+          "nlm:101307056",
+          "openalex:S167961193",
+          "wikidata:Q6295963"
+        ],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "goodfellow2014gan": {
+      "status": "not found",
+      "checked_against": null,
+      "doi": "",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": null,
+      "searched": [
+        "semanticscholar",
+        "crossref",
+        "openalex",
+        "arxiv"
+      ]
+    },
+    "he2016resnet": {
+      "status": "ok",
+      "checked_against": "crossref",
+      "doi": "10.1109/CVPR.2016.90",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "match",
+        "ours": "Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR)",
+        "theirs": "2016 IEEE Conference on Computer Vision and Pattern Recognition (CVPR)",
+        "ours_registry": "Conference on Computer Vision and Pattern Recognition",
+        "theirs_registry": "IEEE Computer Society Conference on Computer Vision and Pattern Recognition/Proceedings - IEEE Computer Society Conference on Computer Vision and Pattern Recognition/Proceedings",
+        "why": "shared identifier issn:1063-6919",
+        "ours_ids": [
+          "dblp:conf/cvpr",
+          "issn:1063-6919",
+          "issn:2163-6648",
+          "issn:2332-564X",
+          "issn:2575-7075",
+          "nlm:101492446",
+          "openalex:S4210176548",
+          "wikidata:Q27722185",
+          "wikidata:Q2992422"
+        ],
+        "theirs_ids": [
+          "issn:1063-6919",
+          "issn:2163-6648",
+          "issn:2332-564X",
+          "issn:2575-7075",
+          "nlm:101492446",
+          "openalex:S4210176548",
+          "wikidata:Q27722185"
+        ],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "heisenberg1927": {
+      "status": "mismatch",
+      "checked_against": "crossref",
+      "doi": "10.1007/BF01397280",
+      "pmid": "",
+      "problems": [
+        "title: ours '{\\\\\"U}ber den anschaulichen Inhalt der quantentheoretischen Kinematik und Mechanik' vs registry '�ber den anschaulichen Inhalt der quantentheoretischen Kinematik und Mechanik'"
+      ],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "match",
+        "ours": "Zeitschrift f{\\\"u}r Physik",
+        "theirs": "Zeitschrift f�r Physik",
+        "ours_registry": "Zeitschrift für Physik A",
+        "theirs_registry": "Zeitschrift f�r Physik",
+        "why": "shared identifier wikidata:Q2471672",
+        "ours_ids": [
+          "issn:0044-3328",
+          "issn:0340-2193",
+          "issn:0930-1151",
+          "issn:0939-7922",
+          "nlm:100971593",
+          "openalex:S4210182239",
+          "openalex:S4210196469",
+          "openalex:S4210212822",
+          "openalex:S4210223708",
+          "openalex:S4210225287",
+          "openalex:S4210228240",
+          "openalex:S4210240350",
+          "wikidata:Q186720",
+          "wikidata:Q27714989"
+        ],
+        "theirs_ids": [
+          "issn:1434-6001",
+          "issn:1434-601X",
+          "openalex:S4210173186",
+          "wikidata:Q2471672"
+        ],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "ho2020ddpm": {
+      "status": "ok",
+      "checked_against": "datacite",
+      "doi": "",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "arxiv",
+      "found_id": "2006.11239",
+      "found_by": "semanticscholar",
+      "venue": {
+        "outcome": "match",
+        "ours": "Advances in Neural Information Processing Systems 33",
+        "theirs": "arXiv",
+        "ours_registry": "Advances in Neural Information Processing Systems",
+        "theirs_registry": "neural information processing systems",
+        "why": "shared identifier issn:1049-5258",
+        "ours_ids": [
+          "issn:1049-5258",
+          "nlm:9607483",
+          "wikidata:Q15767446"
+        ],
+        "theirs_ids": [
+          "issn:1049-5258",
+          "openalex:S4363606243"
+        ],
+        "issn": ""
+      },
+      "searched": [
+        "semanticscholar"
+      ]
+    },
+    "ioffe2015batchnorm": {
+      "status": "ok",
+      "checked_against": "datacite",
+      "doi": "",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "arxiv",
+      "found_id": "1502.03167",
+      "found_by": "openalex",
+      "venue": {
+        "outcome": "not comparable",
+        "ours": "Proceedings of the 32nd International Conference on Machine Learning",
+        "theirs": "arXiv",
+        "ours_registry": "",
+        "theirs_registry": "arXiv",
+        "why": "the record is a preprint",
+        "ours_ids": [],
+        "theirs_ids": [],
+        "issn": ""
+      },
+      "searched": [
+        "crossref",
+        "openalex"
+      ]
+    },
+    "jinek2012crispr": {
+      "status": "ok",
+      "checked_against": "crossref",
+      "doi": "10.1126/science.1225829",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "match",
+        "ours": "Science",
+        "theirs": "Science",
+        "ours_registry": "Science",
+        "theirs_registry": "Science",
+        "why": "shared identifier issn:0036-8075",
+        "ours_ids": [
+          "issn:0036-8075",
+          "issn:1095-9203",
+          "nlm:0404511",
+          "openalex:S3880285",
+          "wikidata:Q192864"
+        ],
+        "theirs_ids": [
+          "issn:0036-8075",
+          "issn:1095-9203",
+          "nlm:0404511",
+          "openalex:S3880285",
+          "wikidata:Q192864"
+        ],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "jumper2021alphafold": {
+      "status": "unresolved",
+      "checked_against": null,
+      "doi": "10.1038/s41586-021-03819-3",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": null,
+      "searched": []
+    },
+    "kaplan1958km": {
+      "status": "ok",
+      "checked_against": "crossref",
+      "doi": "10.1080/01621459.1958.10501452",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "match",
+        "ours": "JASA",
+        "theirs": "Journal of the American Statistical Association",
+        "ours_registry": "",
+        "theirs_registry": "Journal of the American Statistical Association",
+        "why": "shared identifier openalex:S62401924, with one of 4 registry venues of this name (Quarterly Publications of the American Statistical Association)",
+        "ours_ids": [],
+        "theirs_ids": [
+          "issn:0003-1291",
+          "issn:0162-1459",
+          "issn:1537-274X",
+          "nlm:01510020R",
+          "openalex:S62401924",
+          "wikidata:Q4181923"
+        ],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "kingma2015adam": {
+      "status": "mismatch",
+      "checked_against": "datacite",
+      "doi": "",
+      "pmid": "",
+      "problems": [
+        "year: ours 2015 vs registry 2014"
+      ],
+      "found_kind": "arxiv",
+      "found_id": "1412.6980",
+      "found_by": "openalex",
+      "venue": {
+        "outcome": "not comparable",
+        "ours": "International Conference on Learning Representations (ICLR)",
+        "theirs": "arXiv",
+        "ours_registry": "",
+        "theirs_registry": "arXiv",
+        "why": "the record is a preprint",
+        "ours_ids": [],
+        "theirs_ids": [],
+        "issn": ""
+      },
+      "searched": [
+        "crossref",
+        "openalex"
+      ]
+    },
+    "kipf2017gcn": {
+      "status": "mismatch",
+      "checked_against": "datacite",
+      "doi": "",
+      "pmid": "",
+      "problems": [
+        "year: ours 2017 vs registry 2016"
+      ],
+      "found_kind": "arxiv",
+      "found_id": "1609.02907",
+      "found_by": "openalex",
+      "venue": {
+        "outcome": "not comparable",
+        "ours": "5th International Conference on Learning Representations",
+        "theirs": "arXiv",
+        "ours_registry": "",
+        "theirs_registry": "arXiv",
+        "why": "the record is a preprint",
+        "ours_ids": [],
+        "theirs_ids": [],
+        "issn": ""
+      },
+      "searched": [
+        "crossref",
+        "openalex"
+      ]
+    },
+    "korsunsky2019harmony": {
+      "status": "ok",
+      "checked_against": "crossref",
+      "doi": "10.1038/s41592-019-0619-0",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "match",
+        "ours": "Nat. Methods",
+        "theirs": "Nature Methods",
+        "ours_registry": "Nature Methods",
+        "theirs_registry": "Nature Methods",
+        "why": "shared identifier issn:1548-7091",
+        "ours_ids": [
+          "issn:1548-7091",
+          "issn:1548-7105",
+          "nlm:101215604",
+          "openalex:S127827428",
+          "wikidata:Q680640"
+        ],
+        "theirs_ids": [
+          "issn:1548-7091",
+          "issn:1548-7105",
+          "nlm:101215604",
+          "openalex:S127827428",
+          "wikidata:Q680640"
+        ],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "krizhevsky2012imagenet": {
+      "status": "found",
+      "checked_against": null,
+      "doi": "",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "openalex",
+      "found_id": "W3147600416",
+      "found_by": "openalex",
+      "venue": null,
+      "searched": [
+        "crossref",
+        "openalex"
+      ]
+    },
+    "lecun2015deep": {
+      "status": "ok",
+      "checked_against": "crossref",
+      "doi": "10.1038/nature14539",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "match",
+        "ours": "Nature",
+        "theirs": "Nature",
+        "ours_registry": "Nature",
+        "theirs_registry": "Nature",
+        "why": "shared identifier issn:0028-0836",
+        "ours_ids": [
+          "issn:0028-0836",
+          "issn:0302-2889",
+          "issn:1476-4687",
+          "nlm:0410462",
+          "openalex:S137773608",
+          "openalex:S4210191612",
+          "openalex:S4210210546",
+          "wikidata:Q180445"
+        ],
+        "theirs_ids": [
+          "issn:0028-0836",
+          "issn:0302-2889",
+          "issn:1476-4687",
+          "nlm:0410462",
+          "openalex:S137773608",
+          "openalex:S4210191612",
+          "openalex:S4210210546",
+          "wikidata:Q180445"
+        ],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "lewis2020bart": {
+      "status": "ok",
+      "checked_against": "crossref",
+      "doi": "10.18653/v1/2020.acl-main.703",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "match",
+        "ours": "ACL",
+        "theirs": "Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics",
+        "ours_registry": "",
+        "theirs_registry": "Annual Meeting of the Association for Computational Linguistics (ACL)",
+        "why": "shared identifier openalex:S4363608652, with one of 3 registry venues of this name (Annual Meeting of the Association for Computational Linguistics (ACL))",
+        "ours_ids": [],
+        "theirs_ids": [
+          "openalex:S4363608652"
+        ],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "li2009bwa": {
+      "status": "ok",
+      "checked_against": "crossref",
+      "doi": "10.1093/bioinformatics/btp324",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "match",
+        "ours": "Bioinformatics",
+        "theirs": "Bioinformatics",
+        "ours_registry": "Bioinformatics",
+        "theirs_registry": "Bioinformatics",
+        "why": "shared identifier dblp:journals/bioinformatics",
+        "ours_ids": [
+          "dblp:journals/bioinformatics",
+          "issn:1367-4803",
+          "issn:1367-4811",
+          "nlm:9808944",
+          "openalex:S52395412",
+          "wikidata:Q4914910"
+        ],
+        "theirs_ids": [
+          "dblp:journals/bioinformatics",
+          "issn:1367-4803",
+          "issn:1367-4811",
+          "nlm:9808944",
+          "openalex:S52395412",
+          "wikidata:Q4914910"
+        ],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "lin2017focal": {
+      "status": "ok",
+      "checked_against": "crossref",
+      "doi": "10.1109/ICCV.2017.324",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "match",
+        "ours": "Proceedings of the IEEE International Conference on Computer Vision (ICCV)",
+        "theirs": "2017 IEEE International Conference on Computer Vision (ICCV)",
+        "ours_registry": "",
+        "theirs_registry": "IEEE International Conference on Computer Vision (ICCV)",
+        "why": "shared identifier openalex:S7407086902, with one of 4 registry venues of this name (IEEE International Conference on Computer Vision (ICCV))",
+        "ours_ids": [],
+        "theirs_ids": [
+          "openalex:S7407086902"
+        ],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "lin2022esmfold": {
+      "status": "ok",
+      "checked_against": "crossref",
+      "doi": "10.1101/2022.07.20.500902",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "not comparable",
+        "ours": "bioRxiv",
+        "theirs": "",
+        "ours_registry": "",
+        "theirs_registry": "",
+        "why": "the record is a preprint",
+        "ours_ids": [],
+        "theirs_ids": [],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "liu2019roberta": {
+      "status": "ok",
+      "checked_against": "datacite",
+      "doi": "",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "arxiv",
+      "found_id": "1907.11692",
+      "found_by": "arxiv",
+      "venue": {
+        "outcome": "not comparable",
+        "ours": "arXiv preprint arXiv:1907.11692",
+        "theirs": "arXiv",
+        "ours_registry": "",
+        "theirs_registry": "arXiv",
+        "why": "the record is a preprint",
+        "ours_ids": [],
+        "theirs_ids": [],
+        "issn": ""
+      },
+      "searched": [
+        "crossref",
+        "openalex",
+        "arxiv"
+      ]
+    },
+    "love2014deseq2": {
+      "status": "ok",
+      "checked_against": "crossref",
+      "doi": "10.1186/s13059-014-0550-8",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "match",
+        "ours": "Genome Biol.",
+        "theirs": "Genome Biology",
+        "ours_registry": "Genome Biology",
+        "theirs_registry": "Genome Biology",
+        "why": "shared identifier issn:1465-6906",
+        "ours_ids": [
+          "issn:1465-6906",
+          "issn:1465-6914",
+          "issn:1474-7596",
+          "issn:1474-760X",
+          "nlm:100960660",
+          "openalex:S81160022",
+          "wikidata:Q5533480"
+        ],
+        "theirs_ids": [
+          "issn:1465-6906",
+          "issn:1465-6914",
+          "issn:1474-7596",
+          "issn:1474-760X",
+          "nlm:100960660",
+          "openalex:S81160022",
+          "wikidata:Q5533480"
+        ],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "lundberg2017shap": {
+      "status": "ok",
+      "checked_against": "datacite",
+      "doi": "",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "arxiv",
+      "found_id": "1705.07874",
+      "found_by": "openalex",
+      "venue": {
+        "outcome": "not comparable",
+        "ours": "NeurIPS",
+        "theirs": "arXiv",
+        "ours_registry": "",
+        "theirs_registry": "arXiv",
+        "why": "the record is a preprint",
+        "ours_ids": [],
+        "theirs_ids": [],
+        "issn": ""
+      },
+      "searched": [
+        "crossref",
+        "openalex"
+      ]
+    },
+    "mikolov2013word2vec": {
+      "status": "ok",
+      "checked_against": "datacite",
+      "doi": "",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "arxiv",
+      "found_id": "1310.4546",
+      "found_by": "openalex",
+      "venue": {
+        "outcome": "not comparable",
+        "ours": "Adv. Neural Inf. Process. Syst.",
+        "theirs": "arXiv",
+        "ours_registry": "",
+        "theirs_registry": "arXiv",
+        "why": "the record is a preprint",
+        "ours_ids": [],
+        "theirs_ids": [],
+        "issn": ""
+      },
+      "searched": [
+        "crossref",
+        "openalex"
+      ]
+    },
+    "mnih2015dqn": {
+      "status": "ok",
+      "checked_against": "crossref",
+      "doi": "10.1038/nature14236",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "match",
+        "ours": "Nature",
+        "theirs": "Nature",
+        "ours_registry": "Nature",
+        "theirs_registry": "Nature",
+        "why": "shared identifier issn:0028-0836",
+        "ours_ids": [
+          "issn:0028-0836",
+          "issn:0302-2889",
+          "issn:1476-4687",
+          "nlm:0410462",
+          "openalex:S137773608",
+          "openalex:S4210191612",
+          "openalex:S4210210546",
+          "wikidata:Q180445"
+        ],
+        "theirs_ids": [
+          "issn:0028-0836",
+          "issn:0302-2889",
+          "issn:1476-4687",
+          "nlm:0410462",
+          "openalex:S137773608",
+          "openalex:S4210191612",
+          "openalex:S4210210546",
+          "wikidata:Q180445"
+        ],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "papineni2002bleu": {
+      "status": "mismatch",
+      "checked_against": "crossref",
+      "doi": "10.3115/1073083.1073135",
+      "pmid": "",
+      "problems": [
+        "title (one is a prefix of the other): registry has 'BLEU'",
+        "year: ours 2002 vs registry 2001/2007"
+      ],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "match",
+        "ours": "ACL",
+        "theirs": "Proceedings of the 40th Annual Meeting on Association for Computational Linguistics  - ACL '02",
+        "ours_registry": "",
+        "theirs_registry": "Annual Meeting of the Association for Computational Linguistics (ACL)",
+        "why": "shared identifier openalex:S4363608652, with one of 3 registry venues of this name (Annual Meeting of the Association for Computational Linguistics (ACL))",
+        "ours_ids": [],
+        "theirs_ids": [
+          "openalex:S4363608652"
+        ],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "pennington2014glove": {
+      "status": "ok",
+      "checked_against": "crossref",
+      "doi": "10.3115/v1/D14-1162",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "match",
+        "ours": "Proceedings of the 2014 Conference on Empirical Methods in Natural Language Processing (EMNLP)",
+        "theirs": "Proceedings of the 2014 Conference on Empirical Methods in Natural Language Processing (EMNLP)",
+        "ours_registry": "",
+        "theirs_registry": "Conference on Empirical Methods in Natural Language Processing (EMNLP)",
+        "why": "shared identifier openalex:S4363608991, with one of 2 registry venues of this name (Conference on Empirical Methods in Natural Language Processing (EMNLP))",
+        "ours_ids": [],
+        "theirs_ids": [
+          "openalex:S4363608991"
+        ],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "peters2018elmo": {
+      "status": "ok",
+      "checked_against": "crossref",
+      "doi": "10.18653/v1/N18-1202",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "match",
+        "ours": "NAACL-HLT",
+        "theirs": "Proceedings of the 2018 Conference of the North American Chapter of\n          the Association for Computational Linguistics: Human Language\n          Technologies, Volume 1 (Long Papers)",
+        "ours_registry": "Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies (NAACL-HLT)",
+        "theirs_registry": "Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies (NAACL-HLT)",
+        "why": "shared identifier openalex:S4363608774",
+        "ours_ids": [
+          "openalex:S4363608774"
+        ],
+        "theirs_ids": [
+          "openalex:S4363608774"
+        ],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "polack2020bnt162b2": {
+      "status": "ok",
+      "checked_against": "crossref",
+      "doi": "10.1056/NEJMoa2034577",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "match",
+        "ours": "N. Engl. J. Med.",
+        "theirs": "New England Journal of Medicine",
+        "ours_registry": "The New England Journal of Medicine",
+        "theirs_registry": "New England Journal of Medicine",
+        "why": "shared identifier issn:0028-4793",
+        "ours_ids": [
+          "issn:0028-4793",
+          "issn:1533-4406",
+          "nlm:0255562",
+          "openalex:S62468778",
+          "wikidata:Q582728"
+        ],
+        "theirs_ids": [
+          "issn:0028-4793",
+          "issn:1533-4406",
+          "nlm:0255562",
+          "openalex:S62468778",
+          "wikidata:Q141415926",
+          "wikidata:Q582728"
+        ],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "radford2021clip": {
+      "status": "ok",
+      "checked_against": "datacite",
+      "doi": "",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "arxiv",
+      "found_id": "2103.00020",
+      "found_by": "openalex",
+      "venue": {
+        "outcome": "not comparable",
+        "ours": "Proceedings of the 38th International Conference on Machine Learning",
+        "theirs": "arXiv",
+        "ours_registry": "",
+        "theirs_registry": "arXiv",
+        "why": "the record is a preprint",
+        "ours_ids": [],
+        "theirs_ids": [],
+        "issn": ""
+      },
+      "searched": [
+        "crossref",
+        "openalex"
+      ]
+    },
+    "raffel2020t5": {
+      "status": "mismatch",
+      "checked_against": "datacite",
+      "doi": "",
+      "pmid": "",
+      "problems": [
+        "year: ours 2020 vs registry 2019"
+      ],
+      "found_kind": "arxiv",
+      "found_id": "1910.10683",
+      "found_by": "openalex",
+      "venue": {
+        "outcome": "not comparable",
+        "ours": "J. Mach. Learn. Res.",
+        "theirs": "arXiv",
+        "ours_registry": "",
+        "theirs_registry": "arXiv",
+        "why": "the record is a preprint",
+        "ours_ids": [],
+        "theirs_ids": [],
+        "issn": ""
+      },
+      "searched": [
+        "crossref",
+        "openalex"
+      ]
+    },
+    "razavian2014offtheshelf": {
+      "status": "ok",
+      "checked_against": "crossref",
+      "doi": "10.1109/CVPRW.2014.131",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "match",
+        "ours": "IEEE Conference on Computer Vision and Pattern Recognition Workshops",
+        "theirs": "2014 IEEE Conference on Computer Vision and Pattern Recognition Workshops",
+        "ours_registry": "IEEE Conference on Computer Vision and Pattern Recognition Workshops (CVPRW)",
+        "theirs_registry": "IEEE Conference on Computer Vision and Pattern Recognition Workshops (CVPRW)",
+        "why": "shared identifier openalex:S7407087662",
+        "ours_ids": [
+          "openalex:S7407087662"
+        ],
+        "theirs_ids": [
+          "openalex:S7407087662"
+        ],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "redmon2016yolo": {
+      "status": "ok",
+      "checked_against": "crossref",
+      "doi": "10.1109/CVPR.2016.91",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "match",
+        "ours": "CVPR",
+        "theirs": "2016 IEEE Conference on Computer Vision and Pattern Recognition (CVPR)",
+        "ours_registry": "Conference on Computer Vision and Pattern Recognition",
+        "theirs_registry": "IEEE Computer Society Conference on Computer Vision and Pattern Recognition/Proceedings - IEEE Computer Society Conference on Computer Vision and Pattern Recognition/Proceedings",
+        "why": "shared identifier issn:1063-6919",
+        "ours_ids": [
+          "dblp:conf/cvpr",
+          "issn:1063-6919",
+          "issn:2163-6648",
+          "issn:2332-564X",
+          "issn:2575-7075",
+          "nlm:101492446",
+          "openalex:S4210176548",
+          "wikidata:Q27722185",
+          "wikidata:Q2992422"
+        ],
+        "theirs_ids": [
+          "issn:1063-6919",
+          "issn:2163-6648",
+          "issn:2332-564X",
+          "issn:2575-7075",
+          "nlm:101492446",
+          "openalex:S4210176548",
+          "wikidata:Q27722185"
+        ],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "reimers2019sbert": {
+      "status": "ok",
+      "checked_against": "crossref",
+      "doi": "10.18653/v1/D19-1410",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "not comparable",
+        "ours": "EMNLP-IJCNLP",
+        "theirs": "Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)",
+        "ours_registry": "",
+        "theirs_registry": "Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)",
+        "why": "the record names no venue identifier",
+        "ours_ids": [],
+        "theirs_ids": [],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "ribeiro2016lime": {
+      "status": "mismatch",
+      "checked_against": "crossref",
+      "doi": "10.1145/2939672.2939778",
+      "pmid": "",
+      "problems": [
+        "title (one is a prefix of the other): registry has '\"Why Should I Trust You?\"'"
+      ],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "match",
+        "ours": "Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining",
+        "theirs": "Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining",
+        "ours_registry": "",
+        "theirs_registry": "ACM SIGKDD International Conference on Knowledge Discovery and Data Mining (KDD)",
+        "why": "shared identifier openalex:S7407088418, with one of 2 registry venues of this name (ACM SIGKDD International Conference on Knowledge Discovery and Data Mining (KDD))",
+        "ours_ids": [],
+        "theirs_ids": [
+          "openalex:S7407088418"
+        ],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "ritchie2015limma": {
+      "status": "ok",
+      "checked_against": "pubmed",
+      "doi": "",
+      "pmid": "25605792",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "match",
+        "ours": "Nucleic Acids Research",
+        "theirs": "Nucleic Acids Res",
+        "ours_registry": "Nucleic Acids Research",
+        "theirs_registry": "Nucleic Acids Res",
+        "why": "shared identifier issn:0301-5459",
+        "ours_ids": [
+          "issn:0301-5459",
+          "issn:0301-5610",
+          "issn:0305-1048",
+          "issn:1362-4954",
+          "issn:1362-4962",
+          "nlm:0411011",
+          "openalex:S134668137",
+          "wikidata:Q135122"
+        ],
+        "theirs_ids": [
+          "issn:0301-5459",
+          "issn:0301-5610",
+          "issn:0305-1048",
+          "issn:1362-4954",
+          "issn:1362-4962",
+          "nlm:0411011",
+          "openalex:S134668137",
+          "wikidata:Q135122"
+        ],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "rives2021esm": {
+      "status": "ok",
+      "checked_against": "crossref",
+      "doi": "10.1073/pnas.2016239118",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "match",
+        "ours": "Proc. Natl. Acad. Sci. USA",
+        "theirs": "Proceedings of the National Academy of Sciences",
+        "ours_registry": "Proceedings of the National Academy of Sciences",
+        "theirs_registry": "Proceedings of the National Academy of Sciences",
+        "why": "shared identifier issn:0027-8424",
+        "ours_ids": [
+          "issn:0027-8424",
+          "issn:1091-6490",
+          "openalex:S125754415"
+        ],
+        "theirs_ids": [
+          "issn:0027-8424",
+          "issn:0273-1134",
+          "issn:0273-1142",
+          "issn:0744-2831",
+          "issn:1091-6490",
+          "nlm:7505876",
+          "openalex:S125754415",
+          "openalex:S4306524457",
+          "wikidata:Q1146531"
+        ],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "rombach2022ldm": {
+      "status": "ok",
+      "checked_against": "crossref",
+      "doi": "10.1109/CVPR52688.2022.01042",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "match",
+        "ours": "IEEE/CVF Conference on Computer Vision and Pattern Recognition",
+        "theirs": "2022 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)",
+        "ours_registry": "IEEE Computer Society Conference on Computer Vision and Pattern Recognition/Proceedings - IEEE Computer Society Conference on Computer Vision and Pattern Recognition/Proceedings",
+        "theirs_registry": "IEEE Computer Society Conference on Computer Vision and Pattern Recognition/Proceedings - IEEE Computer Society Conference on Computer Vision and Pattern Recognition/Proceedings",
+        "why": "shared identifier issn:1063-6919",
+        "ours_ids": [
+          "issn:1063-6919",
+          "issn:2332-564X",
+          "issn:2575-7075",
+          "openalex:S4210176548"
+        ],
+        "theirs_ids": [
+          "issn:1063-6919",
+          "issn:2163-6648",
+          "issn:2332-564X",
+          "issn:2575-7075",
+          "nlm:101492446",
+          "openalex:S4210176548",
+          "wikidata:Q27722185"
+        ],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "ronneberger2015unet": {
+      "status": "ok",
+      "checked_against": "crossref",
+      "doi": "10.1007/978-3-319-24574-4_28",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "not comparable",
+        "ours": "Medical Image Computing and Computer-Assisted Intervention -- MICCAI 2015",
+        "theirs": "Lecture Notes in Computer Science",
+        "ours_registry": "",
+        "theirs_registry": "Lecture notes in computer science",
+        "why": "no registry knows the entry's venue by this name",
+        "ours_ids": [],
+        "theirs_ids": [
+          "dblp:series/lncs",
+          "issn:0302-9743",
+          "issn:1611-3349",
+          "openalex:S106296714",
+          "wikidata:Q924044"
+        ],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "rosenbaum1983propensity": {
+      "status": "ok",
+      "checked_against": "crossref",
+      "doi": "10.1093/biomet/70.1.41",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "match",
+        "ours": "Biometrika",
+        "theirs": "Biometrika",
+        "ours_registry": "Biometrika",
+        "theirs_registry": "Biometrika",
+        "why": "shared identifier issn:0006-3444",
+        "ours_ids": [
+          "issn:0006-3444",
+          "issn:1464-3510",
+          "nlm:0413661",
+          "openalex:S172180718",
+          "wikidata:Q864602"
+        ],
+        "theirs_ids": [
+          "issn:0006-3444",
+          "issn:1464-3510",
+          "nlm:0413661",
+          "openalex:S172180718",
+          "wikidata:Q864602"
+        ],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "sennrich2016bpe": {
+      "status": "ok",
+      "checked_against": "crossref",
+      "doi": "10.18653/v1/P16-1162",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "match",
+        "ours": "Proceedings of the 54th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers)",
+        "theirs": "Proceedings of the 54th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers)",
+        "ours_registry": "",
+        "theirs_registry": "Annual Meeting of the Association for Computational Linguistics (ACL)",
+        "why": "shared identifier openalex:S4363608652, with one of 2 registry venues of this name (Annual Meeting of the Association for Computational Linguistics (ACL))",
+        "ours_ids": [],
+        "theirs_ids": [
+          "openalex:S4363608652"
+        ],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "silver2016go": {
+      "status": "ok",
+      "checked_against": "crossref",
+      "doi": "10.1038/nature16961",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "match",
+        "ours": "Nature",
+        "theirs": "Nature",
+        "ours_registry": "Nature",
+        "theirs_registry": "Nature",
+        "why": "shared identifier issn:0028-0836",
+        "ours_ids": [
+          "issn:0028-0836",
+          "issn:0302-2889",
+          "issn:1476-4687",
+          "nlm:0410462",
+          "openalex:S137773608",
+          "openalex:S4210191612",
+          "openalex:S4210210546",
+          "wikidata:Q180445"
+        ],
+        "theirs_ids": [
+          "issn:0028-0836",
+          "issn:0302-2889",
+          "issn:1476-4687",
+          "nlm:0410462",
+          "openalex:S137773608",
+          "openalex:S4210191612",
+          "openalex:S4210210546",
+          "wikidata:Q180445"
+        ],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "srivastava2014dropout": {
+      "status": "found",
+      "checked_against": null,
+      "doi": "",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "openalex",
+      "found_id": "W2095705004",
+      "found_by": "openalex",
+      "venue": null,
+      "searched": [
+        "crossref",
+        "openalex"
+      ]
+    },
+    "stuart2019seurat": {
+      "status": "ok",
+      "checked_against": "crossref",
+      "doi": "10.1016/j.cell.2019.05.031",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "match",
+        "ours": "Cell",
+        "theirs": "Cell",
+        "ours_registry": "Cell",
+        "theirs_registry": "Cell",
+        "why": "shared identifier issn:0092-8674",
+        "ours_ids": [
+          "issn:0092-8674",
+          "issn:1097-4172",
+          "nlm:0413066",
+          "openalex:S110447773",
+          "wikidata:Q655814"
+        ],
+        "theirs_ids": [
+          "issn:0092-8674",
+          "issn:1097-4172",
+          "nlm:0413066",
+          "openalex:S110447773",
+          "wikidata:Q655814"
+        ],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "subramanian2005gsea": {
+      "status": "ok",
+      "checked_against": "crossref",
+      "doi": "10.1073/pnas.0506580102",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "match",
+        "ours": "Proc. Natl. Acad. Sci. U.S.A.",
+        "theirs": "Proceedings of the National Academy of Sciences",
+        "ours_registry": "Proceedings of the National Academy of Sciences of the United States of America",
+        "theirs_registry": "Proceedings of the National Academy of Sciences",
+        "why": "shared identifier issn:0027-8424",
+        "ours_ids": [
+          "issn:0027-8424",
+          "issn:0273-1134",
+          "issn:0273-1142",
+          "issn:0744-2831",
+          "issn:1091-6490",
+          "nlm:7505876",
+          "openalex:S125754415",
+          "openalex:S4306524457",
+          "wikidata:Q1146531"
+        ],
+        "theirs_ids": [
+          "issn:0027-8424",
+          "issn:0273-1134",
+          "issn:0273-1142",
+          "issn:0744-2831",
+          "issn:1091-6490",
+          "nlm:7505876",
+          "openalex:S125754415",
+          "openalex:S4306524457",
+          "wikidata:Q1146531"
+        ],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "sundararajan2017ig": {
+      "status": "ok",
+      "checked_against": "datacite",
+      "doi": "",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "arxiv",
+      "found_id": "1703.01365",
+      "found_by": "openalex",
+      "venue": {
+        "outcome": "not comparable",
+        "ours": "ICML",
+        "theirs": "arXiv",
+        "ours_registry": "",
+        "theirs_registry": "arXiv",
+        "why": "the record is a preprint",
+        "ours_ids": [],
+        "theirs_ids": [],
+        "issn": ""
+      },
+      "searched": [
+        "crossref",
+        "openalex"
+      ]
+    },
+    "tibshirani1996lasso": {
+      "status": "ok",
+      "checked_against": "crossref",
+      "doi": "10.1111/j.2517-6161.1996.tb02080.x",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "not comparable",
+        "ours": "Journal of the Royal Statistical Society: Series B (Methodological)",
+        "theirs": "Journal of the Royal Statistical Society Series B: Statistical Methodology",
+        "ours_registry": "Journal of the Royal Statistical Society Series B (Methodological)",
+        "theirs_registry": "Journal of the Royal Statistical Society Series B: Statistical Methodology",
+        "why": "registries file both venues under one name, with different identifiers: 'journal royal statistical society series b'",
+        "ours_ids": [
+          "issn:0035-9246",
+          "issn:2517-6161",
+          "openalex:S2764851895"
+        ],
+        "theirs_ids": [
+          "issn:1369-7412",
+          "issn:1467-9868",
+          "nlm:100890344",
+          "openalex:S145009937",
+          "wikidata:Q15759195"
+        ],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "vanhasselt2016double": {
+      "status": "ok",
+      "checked_against": "crossref",
+      "doi": "10.1609/aaai.v30i1.10295",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "match",
+        "ours": "Proceedings of the AAAI Conference on Artificial Intelligence",
+        "theirs": "Proceedings of the AAAI Conference on Artificial Intelligence",
+        "ours_registry": "Proceedings of the AAAI Conference on Artificial Intelligence",
+        "theirs_registry": "Proceedings of the AAAI Conference on Artificial Intelligence",
+        "why": "shared identifier issn:2159-5399",
+        "ours_ids": [
+          "issn:2159-5399",
+          "issn:2374-3468",
+          "nlm:101524790",
+          "openalex:S4210191458",
+          "wikidata:Q27722923"
+        ],
+        "theirs_ids": [
+          "issn:2159-5399",
+          "issn:2374-3468",
+          "nlm:101524790",
+          "openalex:S4210191458",
+          "wikidata:Q27722923"
+        ],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "vaswani2017attention": {
+      "status": "ok",
+      "checked_against": "datacite",
+      "doi": "",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "arxiv",
+      "found_id": "1706.03762",
+      "found_by": "semanticscholar",
+      "venue": {
+        "outcome": "match",
+        "ours": "Advances in Neural Information Processing Systems",
+        "theirs": "arXiv",
+        "ours_registry": "Advances in Neural Information Processing Systems",
+        "theirs_registry": "neural information processing systems",
+        "why": "shared identifier issn:1049-5258",
+        "ours_ids": [
+          "issn:1049-5258",
+          "nlm:9607483",
+          "wikidata:Q15767446"
+        ],
+        "theirs_ids": [
+          "issn:1049-5258",
+          "openalex:S4363606243"
+        ],
+        "issn": ""
+      },
+      "searched": [
+        "semanticscholar"
+      ]
+    },
+    "wolf2020transformers": {
+      "status": "ok",
+      "checked_against": "crossref",
+      "doi": "10.18653/v1/2020.emnlp-demos.6",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "match",
+        "ours": "Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing: System Demonstrations",
+        "theirs": "Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing: System Demonstrations",
+        "ours_registry": "Conference on Empirical Methods in Natural Language Processing: System Demonstrations (EMNLP)",
+        "theirs_registry": "Conference on Empirical Methods in Natural Language Processing: System Demonstrations (EMNLP)",
+        "why": "shared identifier openalex:S7407087688",
+        "ours_ids": [
+          "openalex:S7407087688"
+        ],
+        "theirs_ids": [
+          "openalex:S7407087688"
+        ],
+        "issn": ""
+      },
+      "searched": []
+    },
+    "zheng2017chromium": {
+      "status": "ok",
+      "checked_against": "crossref",
+      "doi": "10.1038/ncomms14049",
+      "pmid": "",
+      "problems": [],
+      "found_kind": "",
+      "found_id": "",
+      "found_by": "",
+      "venue": {
+        "outcome": "match",
+        "ours": "Nat. Commun.",
+        "theirs": "Nature Communications",
+        "ours_registry": "Nature Communications",
+        "theirs_registry": "Nature Communications",
+        "why": "shared identifier issn:2041-1723",
+        "ours_ids": [
+          "issn:2041-1723",
+          "nlm:101528555",
+          "openalex:S64187185",
+          "wikidata:Q573880"
+        ],
+        "theirs_ids": [
+          "issn:2041-1723",
+          "nlm:101528555",
+          "openalex:S64187185",
+          "wikidata:Q573880"
+        ],
+        "issn": ""
+      },
+      "searched": []
+    }
+  }
+}

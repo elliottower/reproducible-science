@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DJ.+Hist.+Ideas%22&format=json",
+  "fetched_at": "2026-10-15T00:13:19Z",
+  "sha256": "c3ad88382e44af579e1cf52e753d1b97c59bb4c149fd5daadc855a2d9b611c8d",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q471378\", \"pageid\": 444483, \"size\": 47067, \"wordcount\": 146, \"snippet\": \"Journal of the History of Ideas\\nJournal of the History of Ideas\\nJournal of the History of Ideas\\nJournal of the History of Ideas\\nJournal of the History\", \"timestamp\": \"2026-07-15T20:30:48Z\"}]}}"
+}

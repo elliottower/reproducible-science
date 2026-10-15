@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3AP236%3D1434-6001%7CP7363%3D1434-6001%7CP236%3D1434-601X%7CP7363%3D1434-601X&format=json",
+  "fetched_at": "2026-10-14T22:23:48Z",
+  "sha256": "1021135b620d09dbdf7e1a956689aa6cfbbf182b67f70092b974fbd4f6045d2c",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q2471672\", \"pageid\": 2387242, \"size\": 32539, \"wordcount\": 155, \"snippet\": \"European Physical Journal A\\nEuropean Physical Journal A\\nEuropean Physical Journal A: Hadrons and Nuclei\\nEuropean Physical Journal A: Hadrons and Nuclei\", \"timestamp\": \"2026-03-12T09:42:04Z\"}]}}"
+}

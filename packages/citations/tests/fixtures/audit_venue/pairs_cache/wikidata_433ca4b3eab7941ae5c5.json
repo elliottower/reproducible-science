@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q5323356&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-15T00:09:40Z",
+  "sha256": "eda2b749f88ed899d38d51f6562890eb51b14ef396ee0062bf1621e772b84403",
+  "body": "{\"entities\": {\"Q5323356\": {\"id\": \"Q5323356\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"EMBO Reports\"}}, \"aliases\": {}, \"claims\": {\"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"1469-221X\", \"type\": \"string\"}}}, {\"mainsnak\": {\"datavalue\": {\"value\": \"1469-3178\", \"type\": \"string\"}}}], \"P1160\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"EMBO Rep.\", \"type\": \"string\"}}}], \"P1055\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"100963049\", \"type\": \"string\"}}}], \"P7363\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"1469-221X\", \"type\": \"string\"}}}], \"P10283\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"S57252141\", \"type\": \"string\"}}}]}}}, \"success\": 1}"
+}

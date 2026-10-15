@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=IEEE+J.+Sel.+Areas+Commun.&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:10:03Z",
+  "sha256": "84af0bb70ca2a0e1c14eef057831ba940b14884271046ce3ec1ae510e354cff8",
+  "body": "{\"searchinfo\": {\"search\": \"IEEE J. Sel. Areas Commun.\"}, \"search\": [], \"success\": 1}"
+}

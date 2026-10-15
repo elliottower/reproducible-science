@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q980796&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-15T00:13:13Z",
+  "sha256": "8f2da0e3247b3e2c5f1d257f2ecfc43e05a418019e1e3c64cce8c7ff5248cc20",
+  "body": "{\"entities\": {\"Q980796\": {\"id\": \"Q980796\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"The Review of Economic Studies\"}}, \"aliases\": {\"en\": [{\"language\": \"en\", \"value\": \"Review of Economic Studies\"}, {\"language\": \"en\", \"value\": \"The Review of Economic studies\"}]}, \"claims\": {\"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0034-6527\", \"type\": \"string\"}}}, {\"mainsnak\": {\"datavalue\": {\"value\": \"1467-937X\", \"type\": \"string\"}}}], \"P1055\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"101085345\", \"type\": \"string\"}}}], \"P7363\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0034-6527\", \"type\": \"string\"}}}], \"P10283\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"S88935262\", \"type\": \"string\"}}}]}}}, \"success\": 1}"
+}

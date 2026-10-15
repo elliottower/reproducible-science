@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q29391697&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-14T22:30:46Z",
+  "sha256": "66ac751c49bb901eb87f778684adce558cf7f74b35f0ec763e6b7e0c52ef64d0",
+  "body": "{\"entities\": {\"Q29391697\": {\"id\": \"Q29391697\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Journal of the Royal Statistical Society: Series B (Statistical Methodology)\"}}, \"aliases\": {}, \"claims\": {}}}, \"success\": 1}"
+}

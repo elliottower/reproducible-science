@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DR.+Soc.+Open+Sci.%22&format=json",
+  "fetched_at": "2026-10-15T00:10:36Z",
+  "sha256": "ad517e2f1f2cfd27155b949957559fa3b720b5d5b4a2640f2b8bcf3dcaaa1524",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q18712516\", \"pageid\": 20241623, \"size\": 42775, \"wordcount\": 142, \"snippet\": \"Royal Society Open Science\\nRoyal Society Open Science\\nRoyal Society Open Science\\nRoyal Society Open Science\\nRoyal Society Open Science\\n\u05d4\u05d7\u05d1\u05e8\u05d4 \u05d4\u05de\u05dc\u05db\u05d5\u05ea\u05d9\u05ea \u05de\u05d3\u05e2\", \"timestamp\": \"2026-09-09T15:06:24Z\"}]}}"
+}

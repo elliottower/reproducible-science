@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q192864&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-14T22:23:58Z",
+  "sha256": "2e87008d6fd1bc90c3a5af96dd8ddcfecada9c6f3151b2f97db7876b80f8a400",
+  "body": "{\"entities\": {\"Q192864\": {\"id\": \"Q192864\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Science\"}, \"mul\": {\"language\": \"mul\", \"value\": \"Science\"}}, \"aliases\": {\"en\": [{\"language\": \"en\", \"value\": \"Science Magazine\"}, {\"language\": \"en\", \"value\": \"Sci. (N. Y., N. Y.)\"}, {\"language\": \"en\", \"value\": \"science.org\"}, {\"language\": \"en\", \"value\": \"sciencemag.org/\"}]}, \"claims\": {\"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0036-8075\", \"type\": \"string\"}}}, {\"mainsnak\": {\"datavalue\": {\"value\": \"1095-9203\", \"type\": \"string\"}}}], \"P1160\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"Science\", \"type\": \"string\"}}}], \"P1055\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0404511\", \"type\": \"string\"}}}], \"P1813\": [{\"mainsnak\": {\"datavalue\": {\"value\": {\"text\": \"Science\", \"language\": \"en\"}, \"type\": \"monolingualtext\"}}}], \"P7363\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0036-8075\", \"type\": \"string\"}}}], \"P10283\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"S3880285\", \"type\": \"string\"}}}]}}}, \"success\": 1}"
+}

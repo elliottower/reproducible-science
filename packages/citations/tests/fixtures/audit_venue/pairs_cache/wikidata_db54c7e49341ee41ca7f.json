@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DElectron.+Lett.%22&format=json",
+  "fetched_at": "2026-10-15T00:09:29Z",
+  "sha256": "5c5b354525105203d378021d2e8da81cb8aea52852a41c9983787f49a4ac03ad",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q5358479\", \"pageid\": 5125106, \"size\": 35522, \"wordcount\": 62, \"snippet\": \"Electronics Letters\\nElectronics Letters\\nElectronics Letters\\nElectronics Letters\\nElectronics Letters\\nElectronics Letters\\nElectronics Letters\\nElectronics\", \"timestamp\": \"2026-03-12T07:48:48Z\"}]}}"
+}

@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q96321181&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-15T00:11:26Z",
+  "sha256": "2a7b9062b0d10d41a7f83f62878a0fa013bce8235893ad04decf20e9532fba40",
+  "body": "{\"entities\": {\"Q96321181\": {\"id\": \"Q96321181\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"NAR genomics and bioinformatics\"}}, \"aliases\": {\"en\": [{\"language\": \"en\", \"value\": \"NAR Genom Bioinform\"}, {\"language\": \"en\", \"value\": \"Nucleic Acids Research Genomics and Bioinformatics\"}]}, \"claims\": {\"P1055\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"101756213\", \"type\": \"string\"}}}], \"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"2631-9268\", \"type\": \"string\"}}}], \"P7363\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"2631-9268\", \"type\": \"string\"}}}], \"P10283\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"S4210241000\", \"type\": \"string\"}}}]}}}, \"success\": 1}"
+}

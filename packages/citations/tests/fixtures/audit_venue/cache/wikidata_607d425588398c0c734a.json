@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q22827372&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-14T22:26:16Z",
+  "sha256": "74c239aaf40fd4f19c41494ff95c96c7a7a33e3916edfb871c9f6da6dfe43ac1",
+  "body": "{\"entities\": {\"Q22827372\": {\"id\": \"Q22827372\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Proceedings of the 2014 Conference on Empirical Methods in Natural Language Processing (EMNLP)\"}}, \"aliases\": {\"en\": [{\"language\": \"en\", \"value\": \"EMNLP 2014\"}]}, \"claims\": {\"P179\": [{\"mainsnak\": {\"datavalue\": {\"value\": {\"entity-type\": \"item\", \"numeric-id\": 28478540, \"id\": \"Q28478540\"}, \"type\": \"wikibase-entityid\"}}}], \"P1813\": [{\"mainsnak\": {\"datavalue\": {\"value\": {\"text\": \"EMNLP 2014\", \"language\": \"en\"}, \"type\": \"monolingualtext\"}}}], \"P4745\": [{\"mainsnak\": {\"datavalue\": {\"value\": {\"entity-type\": \"item\", \"numeric-id\": 109527583, \"id\": \"Q109527583\"}, \"type\": \"wikibase-entityid\"}}}]}}}, \"success\": 1}"
+}

@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q5381163&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-15T00:11:05Z",
+  "sha256": "6759a0d5c66ad61abe1c4af1769fe1c34df58f8640af2e3a4c07778c6de4155a",
+  "body": "{\"entities\": {\"Q5381163\": {\"id\": \"Q5381163\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Environmental Research Letters\"}}, \"aliases\": {\"en\": [{\"language\": \"en\", \"value\": \"ERL\"}]}, \"claims\": {\"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"1748-9326\", \"type\": \"string\"}}}], \"P1160\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"Environ. Res. Lett.\", \"type\": \"string\"}}}], \"P1055\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"101295599\", \"type\": \"string\"}}}], \"P7363\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"1748-9326\", \"type\": \"string\"}}}], \"P10283\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"S139338987\", \"type\": \"string\"}}}]}}}, \"success\": 1}"
+}

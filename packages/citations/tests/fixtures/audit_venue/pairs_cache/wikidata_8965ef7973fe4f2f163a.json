@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q787913&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-15T00:09:16Z",
+  "sha256": "9481bb8b18726271fb8f64361fd6518547079bd886e5b61e17295059ba2f688d",
+  "body": "{\"entities\": {\"Q787913\": {\"id\": \"Q787913\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Nano Letters\"}}, \"aliases\": {\"en\": [{\"language\": \"en\", \"value\": \"Nano Lett.\"}]}, \"claims\": {\"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"1530-6984\", \"type\": \"string\"}}}, {\"mainsnak\": {\"datavalue\": {\"value\": \"1530-6992\", \"type\": \"string\"}}}], \"P1160\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"Nano Lett.\", \"type\": \"string\"}}}], \"P1055\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"101088070\", \"type\": \"string\"}}}], \"P7363\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"1530-6984\", \"type\": \"string\"}}}], \"P10283\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"S143846845\", \"type\": \"string\"}}}], \"P1813\": [{\"mainsnak\": {\"datavalue\": {\"value\": {\"text\": \"Nano Lett.\", \"language\": \"en\"}, \"type\": \"monolingualtext\"}}}]}}}, \"success\": 1}"
+}

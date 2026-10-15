@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q108673475&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-14T22:30:55Z",
+  "sha256": "e28f4e22252a57a89f83a74c2aa16bc0345e51396bdd1423cbe9194ddca4d585",
+  "body": "{\"entities\": {\"Q108673475\": {\"id\": \"Q108673475\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing: System Demonstrations\"}}, \"aliases\": {\"en\": [{\"language\": \"en\", \"value\": \"Proceedings of the 2020 EMNLP (Systems Demonstrations)\"}]}, \"claims\": {\"P4745\": [{\"mainsnak\": {\"datavalue\": {\"value\": {\"entity-type\": \"item\", \"numeric-id\": 82290350, \"id\": \"Q82290350\"}, \"type\": \"wikibase-entityid\"}}}]}}}, \"success\": 1}"
+}

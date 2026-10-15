@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Chem.+Commun.&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:09:49Z",
+  "sha256": "45c6a1c639c72daaea998ac840086006014bab99e7e9772191abd0fb44ed8445",
+  "body": "{\"searchinfo\": {\"search\": \"Chem. Commun.\"}, \"search\": [], \"success\": 1}"
+}

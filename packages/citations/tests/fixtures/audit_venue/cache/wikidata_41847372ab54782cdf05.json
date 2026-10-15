@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q64005132&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-14T22:37:06Z",
+  "sha256": "6f7b035947881aebdc226167960bb8e407e509ca41f59bf3768628ec9f680a08",
+  "body": "{\"entities\": {\"Q64005132\": {\"id\": \"Q64005132\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Medical Image Computing and Computer-Assisted Intervention \u2013 MICCAI 2015\"}}, \"aliases\": {}, \"claims\": {\"P4745\": [{\"mainsnak\": {\"datavalue\": {\"value\": {\"entity-type\": \"item\", \"numeric-id\": 106087612, \"id\": \"Q106087612\"}, \"type\": \"wikibase-entityid\"}}}]}}}, \"success\": 1}"
+}

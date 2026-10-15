@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Journal+of+the+Royal+Statistical+Society%3A+Series+B&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-14T22:30:45Z",
+  "sha256": "3dc3ce92821d8b4fab5f54483624ca364a58cb30ad0dd020491a64723ef3a74d",
+  "body": "{\"searchinfo\": {\"search\": \"Journal of the Royal Statistical Society: Series B\"}, \"search\": [{\"id\": \"Q29391697\", \"title\": \"Q29391697\", \"pageid\": 31038864, \"concepturi\": \"http://www.wikidata.org/entity/Q29391697\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q29391697\", \"display\": {\"label\": {\"value\": \"Journal of the Royal Statistical Society: Series B (Statistical Methodology)\", \"language\": \"en\"}, \"description\": {\"value\": \"article\", \"language\": \"en\"}}, \"label\": \"Journal of the Royal Statistical Society: Series B (Statistical Methodology)\", \"description\": \"article\", \"match\": {\"type\": \"label\", \"language\": \"en\", \"text\": \"Journal of the Royal Statistical Society: Series B (Statistical Methodology)\"}}], \"success\": 1}"
+}

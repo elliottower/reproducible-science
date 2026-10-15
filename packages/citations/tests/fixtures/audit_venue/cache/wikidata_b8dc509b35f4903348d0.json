@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q564421&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-14T22:23:27Z",
+  "sha256": "35c6800ca26b60fd242d5aace718646bd85fa0e96401652682493c5acb616531",
+  "body": "{\"entities\": {\"Q564421\": {\"id\": \"Q564421\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Annals of Statistics\"}}, \"aliases\": {\"en\": [{\"language\": \"en\", \"value\": \"Ann Stat\"}, {\"language\": \"en\", \"value\": \"The annals of statistics\"}]}, \"claims\": {\"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0090-5364\", \"type\": \"string\"}}}, {\"mainsnak\": {\"datavalue\": {\"value\": \"2168-8966\", \"type\": \"string\"}}}], \"P1055\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0365252\", \"type\": \"string\"}}}], \"P1813\": [{\"mainsnak\": {\"datavalue\": {\"value\": {\"text\": \"Ann Stat\", \"language\": \"en\"}, \"type\": \"monolingualtext\"}}}, {\"mainsnak\": {\"datavalue\": {\"value\": {\"text\": \"Ann. Statist. The\", \"language\": \"en\"}, \"type\": \"monolingualtext\"}}}], \"P7363\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0090-5364\", \"type\": \"string\"}}}], \"P10283\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"S119757635\", \"type\": \"string\"}}}], \"P1365\": [{\"mainsnak\": {\"datavalue\": {\"value\": {\"entity-type\": \"item\", \"numeric-id\": 564411, \"id\": \"Q564411\"}, \"type\": \"wikibase-entityid\"}}}]}}}, \"success\": 1}"
+}

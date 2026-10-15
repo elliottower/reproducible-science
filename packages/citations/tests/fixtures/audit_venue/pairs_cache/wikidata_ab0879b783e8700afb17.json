@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DNucleic+Acids+Res.%22&format=json",
+  "fetched_at": "2026-10-15T00:11:19Z",
+  "sha256": "37175e700e52496397606be5d8b7d7dc643e0c9a156c9b31f7a35fdd62a01d54",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q135122\", \"pageid\": 136833, \"size\": 60348, \"wordcount\": 199, \"snippet\": \"Nucleic Acids Research\\nNucleic Acids Research\\nNucleic Acids Research\\nNucleic Acids Research\\nNucleic Acids Research\\nNucleic Acids Research\\nNucleic Acids\", \"timestamp\": \"2026-09-23T16:25:18Z\"}]}}"
+}

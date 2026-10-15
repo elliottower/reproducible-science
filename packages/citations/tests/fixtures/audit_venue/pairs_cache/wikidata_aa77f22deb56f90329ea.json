@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q1817560&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-15T00:13:27Z",
+  "sha256": "3c3ebd1cb7381d1ecb1aa054b36b00a2336871c81ed4b63d76592c72577061a4",
+  "body": "{\"entities\": {\"Q1817560\": {\"id\": \"Q1817560\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"The Philosophical Review\"}}, \"aliases\": {\"en\": [{\"language\": \"en\", \"value\": \"Philosophical Review\"}]}, \"claims\": {\"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0031-8108\", \"type\": \"string\"}}}, {\"mainsnak\": {\"datavalue\": {\"value\": \"1558-1470\", \"type\": \"string\"}}}], \"P1055\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"100969762\", \"type\": \"string\"}}}], \"P7363\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0031-8108\", \"type\": \"string\"}}}], \"P10283\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"S35579339\", \"type\": \"string\"}}}]}}}, \"success\": 1}"
+}

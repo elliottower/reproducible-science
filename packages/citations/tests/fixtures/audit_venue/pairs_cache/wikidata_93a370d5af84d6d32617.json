@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Z.+Phys.+Chem.&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:12:14Z",
+  "sha256": "9ff061e233fb9e20e87c704fe7d751d3463e5c4f904670bb0f5c46dbd55c7caf",
+  "body": "{\"searchinfo\": {\"search\": \"Z. Phys. Chem.\"}, \"search\": [], \"success\": 1}"
+}

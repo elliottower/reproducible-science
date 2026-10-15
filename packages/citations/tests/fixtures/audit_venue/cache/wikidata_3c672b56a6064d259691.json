@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Proceedings+of+the+Conference+on+Empirical+Methods+in+Natural+Language+Processing%3A+System+Demonstrations&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-14T22:38:04Z",
+  "sha256": "7873e95e01cb3d6ae1c1a8ea89b31b7b6ababa2735cc1d34c544103cc3580052",
+  "body": "{\"searchinfo\": {\"search\": \"Proceedings of the Conference on Empirical Methods in Natural Language Processing: System Demonstrations\"}, \"search\": [], \"success\": 1}"
+}

@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q96321170&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-15T00:10:53Z",
+  "sha256": "f4ed5390516f004f582018792e5230fb44dedf103c43fae44c41c060682248b1",
+  "body": "{\"entities\": {\"Q96321170\": {\"id\": \"Q96321170\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Brain communications\"}}, \"aliases\": {\"en\": [{\"language\": \"en\", \"value\": \"Brain Commun\"}]}, \"claims\": {\"P1055\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"101755125\", \"type\": \"string\"}}}], \"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"2632-1297\", \"type\": \"string\"}}}], \"P7363\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"2632-1297\", \"type\": \"string\"}}}], \"P10283\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"S4210235363\", \"type\": \"string\"}}}]}}}, \"success\": 1}"
+}

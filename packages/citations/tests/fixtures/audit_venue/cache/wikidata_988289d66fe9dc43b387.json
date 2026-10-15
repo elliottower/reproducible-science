@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q134314083&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-14T22:28:37Z",
+  "sha256": "0e0d687c1a108e6062d90693f89a55170dc6a7b01b04e5bdfc10b694ff49001d",
+  "body": "{\"entities\": {\"Q134314083\": {\"id\": \"Q134314083\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining\"}}, \"aliases\": {}, \"claims\": {}}}, \"success\": 1}"
+}

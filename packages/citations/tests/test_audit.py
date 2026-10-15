@@ -492,7 +492,7 @@ def _unidentified(**kw):
         "authors": ["Naitza, Silvia", "Porcu, Eleonora", "Steri, Maristella"],
         "year": "2012",
     }
-    return A.Entry(**{**fields, **kw})
+    return A.Entry.model_validate({**fields, **kw})
 
 
 def test_a_wrong_author_on_an_entry_found_by_title_is_a_mismatch(tmp_path, monkeypatch, capsys):
@@ -567,7 +567,7 @@ def test_a_near_title_by_other_authors_is_not_taken_for_the_work(tmp_path, monke
     assert A.render(report, quiet=False) == 0, "a book with no DOI is not a failed audit"
     row = next(x for x in capsys.readouterr().out.splitlines() if x.startswith("  not found"))
     assert "2" in row
-    assert not any(word in row for word in ("error", "fabricat", "invent", "fail"))
+    assert not any(word in row for word in ("error", "fabricat", "invent", "fail", "fake"))
 
 
 def test_every_service_refusing_is_a_search_not_made(tmp_path, monkeypatch):

@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Phys.+Rev.+Lett.&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:08:35Z",
+  "sha256": "0d577dc3524282f2070b64523eaaac77d324e12874e9dd01d955b7180caf7090",
+  "body": "{\"searchinfo\": {\"search\": \"Phys. Rev. Lett.\"}, \"search\": [{\"id\": \"Q2018386\", \"title\": \"Q2018386\", \"pageid\": 1946499, \"concepturi\": \"http://www.wikidata.org/entity/Q2018386\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q2018386\", \"display\": {\"label\": {\"value\": \"Physical Review Letters\", \"language\": \"en\"}, \"description\": {\"value\": \"physics journal from the American Physical Society\", \"language\": \"en\"}}, \"label\": \"Physical Review Letters\", \"description\": \"physics journal from the American Physical Society\", \"match\": {\"type\": \"alias\", \"language\": \"en\", \"text\": \"Phys. Rev. Lett.\"}, \"aliases\": [\"Phys. Rev. Lett.\"]}], \"success\": 1}"
+}

@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Advances+in+Neural+Information+Processing+Systems+33&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-14T22:23:53Z",
+  "sha256": "bff6e9a0de98169360989f52edccc490ec0c1088084492240eda69c54702e014",
+  "body": "{\"searchinfo\": {\"search\": \"Advances in Neural Information Processing Systems 33\"}, \"search\": [{\"id\": \"Q100913796\", \"title\": \"Q100913796\", \"pageid\": 98404239, \"concepturi\": \"http://www.wikidata.org/entity/Q100913796\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q100913796\", \"display\": {\"label\": {\"value\": \"Advances in Neural Information Processing Systems 33\", \"language\": \"en\"}, \"description\": {\"value\": \"NeurIPS 2020 proceedings\", \"language\": \"en\"}}, \"label\": \"Advances in Neural Information Processing Systems 33\", \"description\": \"NeurIPS 2020 proceedings\", \"match\": {\"type\": \"label\", \"language\": \"en\", \"text\": \"Advances in Neural Information Processing Systems 33\"}}], \"success\": 1}"
+}

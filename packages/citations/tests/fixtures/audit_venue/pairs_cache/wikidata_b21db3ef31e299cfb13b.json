@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DIEEE%2FACM+Trans.+Netw.%22&format=json",
+  "fetched_at": "2026-10-15T00:10:15Z",
+  "sha256": "1d5a786485d16ff8f210ed6cc31e06ac5d112bdeea8b965e27f5d63f40c9f362",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q5970243\", \"pageid\": 5746437, \"size\": 35411, \"wordcount\": 125, \"snippet\": \"IEEE/ACM Transactions on Networking\\nIEEE/ACM Transactions on Networking\\nIEEE/ACM Transactions on Networking\\nIEEE/ACM\u7db2\u7d61\u5b78\u5831\\nIEEE/ACM Transactions on Networking\", \"timestamp\": \"2026-09-11T19:05:02Z\"}]}}"
+}

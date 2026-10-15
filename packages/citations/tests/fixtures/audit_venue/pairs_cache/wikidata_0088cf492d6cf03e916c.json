@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q60029756&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-15T00:09:54Z",
+  "sha256": "1c95be02fe818e5c54c743f82ba108a6fa225067aba2c3b28e719d8cd15428b5",
+  "body": "{\"entities\": {\"Q60029756\": {\"id\": \"Q60029756\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Communications Biology\"}}, \"aliases\": {\"en\": [{\"language\": \"en\", \"value\": \"Commun. Biol.\"}, {\"language\": \"en\", \"value\": \"2399-3642\"}]}, \"claims\": {\"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"2399-3642\", \"type\": \"string\"}}}], \"P1055\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"101719179\", \"type\": \"string\"}}}], \"P7363\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"2399-3642\", \"type\": \"string\"}}}], \"P10283\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"S4210225776\", \"type\": \"string\"}}}], \"P1160\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"Commun. Biol.\", \"type\": \"string\"}}}]}}}, \"success\": 1}"
+}

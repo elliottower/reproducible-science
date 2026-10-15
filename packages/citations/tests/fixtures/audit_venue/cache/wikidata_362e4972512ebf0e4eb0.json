@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q27722889&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-14T22:37:03Z",
+  "sha256": "0f2f79fd02d3ad79d4e4913a50b5e72e0a0d8370d28c2f1ef44cd996915efc6c",
+  "body": "{\"entities\": {\"Q27722889\": {\"id\": \"Q27722889\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Proceedings of the ACM SIGKDD international conference on Knowledge discovery and data mining\"}}, \"aliases\": {\"en\": [{\"language\": \"en\", \"value\": \"KDD : proceedings. International Conference on Knowledge Discovery & Data Mining\"}, {\"language\": \"en\", \"value\": \"KDD\"}]}, \"claims\": {\"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"2154-817X\", \"type\": \"string\"}}}], \"P1055\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"101523327\", \"type\": \"string\"}}}], \"P1813\": [{\"mainsnak\": {\"datavalue\": {\"value\": {\"text\": \"KDD\", \"language\": \"en\"}, \"type\": \"monolingualtext\"}}}], \"P7363\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"2154-817X\", \"type\": \"string\"}}}], \"P4745\": [{\"mainsnak\": {\"datavalue\": {\"value\": {\"entity-type\": \"item\", \"numeric-id\": 66305862, \"id\": \"Q66305862\"}, \"type\": \"wikibase-entityid\"}}}]}}}, \"success\": 1}"
+}

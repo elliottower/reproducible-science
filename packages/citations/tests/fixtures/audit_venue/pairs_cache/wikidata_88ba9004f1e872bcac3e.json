@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q471378%7CQ129209659&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-15T00:13:22Z",
+  "sha256": "fb7ae42680a88bb52bab5a609783558d6e256ecdc3cbb25e025ab533ac3eaea8",
+  "body": "{\"entities\": {\"Q471378\": {\"id\": \"Q471378\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Journal of the History of Ideas\"}, \"mul\": {\"language\": \"mul\", \"value\": \"Journal of the History of Ideas: An International Quarterly Devoted to Intellectual History\"}}, \"aliases\": {\"mul\": [{\"language\": \"mul\", \"value\": \"Journal of the History of Ideas: An International Quarterly Devoted to Intellectual History\"}]}, \"claims\": {\"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0022-5037\", \"type\": \"string\"}}}, {\"mainsnak\": {\"datavalue\": {\"value\": \"1086-3222\", \"type\": \"string\"}}}], \"P1160\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"J. Hist. Ideas\", \"type\": \"string\"}}}], \"P1055\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"00140360R\", \"type\": \"string\"}}}], \"P7363\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0022-5037\", \"type\": \"string\"}}}], \"P10283\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"S34788281\", \"type\": \"string\"}}}]}}, \"Q129209659\": {\"id\": \"Q129209659\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Journal of the History of Ideas. College of the City of New York, 1942-1945.\"}}, \"aliases\": {}, \"claims\": {}}}, \"success\": 1}"
+}

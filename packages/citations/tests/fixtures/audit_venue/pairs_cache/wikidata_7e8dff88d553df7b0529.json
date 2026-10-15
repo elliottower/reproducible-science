@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=EMBO+Rep.&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:09:39Z",
+  "sha256": "a42950da2a7393e5957e6c6d8a1e6c7657e013afc92a351953ff99163b39fd9f",
+  "body": "{\"searchinfo\": {\"search\": \"EMBO Rep.\"}, \"search\": [], \"success\": 1}"
+}

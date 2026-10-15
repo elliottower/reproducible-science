@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Economics+Letters&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:09:24Z",
+  "sha256": "172f4b7f1a6800bb7ccf70c005cabb237bc0544a9e15f316e235313bc04dd2e3",
+  "body": "{\"searchinfo\": {\"search\": \"Economics Letters\"}, \"search\": [{\"id\": \"Q1282106\", \"title\": \"Q1282106\", \"pageid\": 1222589, \"concepturi\": \"http://www.wikidata.org/entity/Q1282106\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q1282106\", \"display\": {\"label\": {\"value\": \"Economics Letters\", \"language\": \"en\"}, \"description\": {\"value\": \"journal\", \"language\": \"en\"}}, \"label\": \"Economics Letters\", \"description\": \"journal\", \"match\": {\"type\": \"label\", \"language\": \"en\", \"text\": \"Economics Letters\"}}], \"success\": 1}"
+}

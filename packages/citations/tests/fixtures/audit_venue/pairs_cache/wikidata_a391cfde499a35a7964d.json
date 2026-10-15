@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DZ.+Phys.+Chem.%22&format=json",
+  "fetched_at": "2026-10-15T00:12:14Z",
+  "sha256": "fab6448b6f58b7a99bd4258265c55a7c3100a0c62b41a0f9cca7db5885ae7193",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q186723\", \"pageid\": 185490, \"size\": 36432, \"wordcount\": 128, \"snippet\": \"Zeitschrift f\u00fcr Physikalische Chemie\\nZeitschrift fuer Physikalische Chemie\\nZeitschrift f\u00fcr Physikalische Chemie\\nZeitschrift f\u00fcr Physikalische Chemie\\nZeitschrift\", \"timestamp\": \"2025-07-01T14:48:15Z\"}]}}"
+}

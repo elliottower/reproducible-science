@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Electron.+Lett.&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:09:29Z",
+  "sha256": "d041cf500fda076eff3746589272705c599cd9cb575476cb248bb9ce8417fe99",
+  "body": "{\"searchinfo\": {\"search\": \"Electron. Lett.\"}, \"search\": [], \"success\": 1}"
+}

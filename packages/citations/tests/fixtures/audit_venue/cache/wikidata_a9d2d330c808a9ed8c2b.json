@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Journal+of+Statistical+Software&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-14T22:23:30Z",
+  "sha256": "30a1700917af29d6aa7e3c5e7b390a167f99cdc24724475fe58d8530b1175222",
+  "body": "{\"searchinfo\": {\"search\": \"Journal of Statistical Software\"}, \"search\": [{\"id\": \"Q6295963\", \"title\": \"Q6295963\", \"pageid\": 6102026, \"concepturi\": \"http://www.wikidata.org/entity/Q6295963\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q6295963\", \"display\": {\"label\": {\"value\": \"Journal of Statistical Software\", \"language\": \"en\"}, \"description\": {\"value\": \"journal publishing on statistical software\", \"language\": \"en\"}}, \"label\": \"Journal of Statistical Software\", \"description\": \"journal publishing on statistical software\", \"match\": {\"type\": \"label\", \"language\": \"en\", \"text\": \"Journal of Statistical Software\"}}], \"success\": 1}"
+}

@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3AP236%3D0302-9743%7CP7363%3D0302-9743%7CP236%3D1611-3349%7CP7363%3D1611-3349%7CP10283%3DS106296714&format=json",
+  "fetched_at": "2026-10-14T22:22:59Z",
+  "sha256": "734d6d5e5aa12fac8d043ca80fbdf78a5e97766c58c9303fc654119a2d6e5c7e",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 2}, \"search\": [{\"ns\": 0, \"title\": \"Q924044\", \"pageid\": 874444, \"size\": 171353, \"wordcount\": 185, \"snippet\": \"Lecture Notes in Computer Science\\nLecture Notes in Computer Science\\nLecture Notes in Computer Science\\nLecture Notes in Computer Science\\nLecture Notes in\", \"timestamp\": \"2026-09-14T22:22:18Z\"}, {\"ns\": 0, \"title\": \"Q141413838\", \"pageid\": 134944468, \"size\": 3495, \"wordcount\": 13, \"snippet\": \"Issues Importance Analysis for\u00a0Reaching High-Quality Consensus in\u00a0Preference-Based Conflict Scenarios\", \"timestamp\": \"2026-09-10T17:27:14Z\"}]}}"
+}

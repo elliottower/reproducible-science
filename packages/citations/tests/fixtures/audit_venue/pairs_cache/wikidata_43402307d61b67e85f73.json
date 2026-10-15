@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Network%3A+Computation+in+Neural+Systems&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:11:17Z",
+  "sha256": "fe92df5c82fb551dc8e528869fa062f3abf008e61a911607e3e2b7b83d5f28d2",
+  "body": "{\"searchinfo\": {\"search\": \"Network: Computation in Neural Systems\"}, \"search\": [{\"id\": \"Q7000691\", \"title\": \"Q7000691\", \"pageid\": 6876630, \"concepturi\": \"http://www.wikidata.org/entity/Q7000691\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q7000691\", \"display\": {\"label\": {\"value\": \"Network\", \"language\": \"en\"}, \"description\": {\"value\": \"British scientific journal focusing on computational neuroscience\", \"language\": \"en\"}}, \"label\": \"Network\", \"description\": \"British scientific journal focusing on computational neuroscience\", \"match\": {\"type\": \"alias\", \"language\": \"en\", \"text\": \"Network: Computation in Neural Systems\"}, \"aliases\": [\"Network: Computation in Neural Systems\"]}], \"success\": 1}"
+}

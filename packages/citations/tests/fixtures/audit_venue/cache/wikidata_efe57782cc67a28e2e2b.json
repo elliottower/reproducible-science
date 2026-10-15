@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Proceedings+of+the+2014+Conference+on+Empirical+Methods+in+Natural+Language+Processing&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-14T22:26:32Z",
+  "sha256": "575119ba51da977a9e013e11602f96a032338f02326478cd4e9a4805fe6cbe80",
+  "body": "{\"searchinfo\": {\"search\": \"Proceedings of the 2014 Conference on Empirical Methods in Natural Language Processing\"}, \"search\": [{\"id\": \"Q22827372\", \"title\": \"Q22827372\", \"pageid\": 24848593, \"concepturi\": \"http://www.wikidata.org/entity/Q22827372\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q22827372\", \"display\": {\"label\": {\"value\": \"Proceedings of the 2014 Conference on Empirical Methods in Natural Language Processing (EMNLP)\", \"language\": \"en\"}, \"description\": {\"value\": \"emnlp 2014 proceedings\", \"language\": \"en\"}}, \"label\": \"Proceedings of the 2014 Conference on Empirical Methods in Natural Language Processing (EMNLP)\", \"description\": \"emnlp 2014 proceedings\", \"match\": {\"type\": \"label\", \"language\": \"en\", \"text\": \"Proceedings of the 2014 Conference on Empirical Methods in Natural Language Processing (EMNLP)\"}}], \"success\": 1}"
+}

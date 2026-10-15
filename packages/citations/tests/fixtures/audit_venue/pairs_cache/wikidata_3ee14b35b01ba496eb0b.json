@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DNat.+Chem.%22&format=json",
+  "fetched_at": "2026-10-15T00:12:54Z",
+  "sha256": "25467c6fdc7ebcbf0377aed8cbf672e4c84b6e6da9fba2b173ebbefa9b11e429",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q2107904\", \"pageid\": 2034352, \"size\": 37163, \"wordcount\": 135, \"snippet\": \"Nature Chemistry\\n\u30cd\u30a4\u30c1\u30e3\u30fc \u30b1\u30df\u30b9\u30c8\u30ea\u30fc\\nNature Chemistry\\nNature Chemistry\\nNature Chemistry\\nNature Chemistry\\nNature Chemistry\\n\u041d\u0430\u0442\u04b1\u0440\u0435 \u0426\u04bb\u0435\u043c\u0456\u0441\u0442\u0440y\\nNature Chemistry\\nNature\", \"timestamp\": \"2026-09-09T15:47:05Z\"}]}}"
+}

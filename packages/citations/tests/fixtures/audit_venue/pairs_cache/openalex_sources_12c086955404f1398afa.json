@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://api.openalex.org/sources?search=IEEE+Trans.+Neural+Netw.&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
+  "fetched_at": "2026-10-15T00:10:12Z",
+  "sha256": "068cabe772031eb0e8c1c563b1980cbb1954ee04a053b4cb36770215c2a8aa97",
+  "body": "{\"meta\": {\"count\": 1, \"db_response_time_ms\": 5, \"page\": 1, \"per_page\": 10, \"groups_count\": null, \"x_query\": {\"oql\": \"get sources where text has (IEEE Trans. Neural Netw.)\", \"x_new_oql\": \"get sources where text has (IEEE Trans. Neural Netw.)\", \"oqo\": {\"get_rows\": \"sources\", \"filter_rows\": [{\"column_id\": \"text.search\", \"value\": \"IEEE Trans. Neural Netw.\", \"operator\": \"has\"}]}, \"url\": \"/sources?filter=text.search:IEEE Trans. Neural Netw.&per_page=10\"}, \"cost_usd\": 0.001}, \"results\": [{\"id\": \"https://openalex.org/S4210175523\", \"display_name\": \"IEEE Transactions on Neural Networks and Learning Systems\", \"alternate_titles\": [\"IEEE Trans Neural Netw Learn Syst\"], \"issn_l\": \"2162-237X\", \"issn\": [\"2162-237X\", \"2162-2388\"], \"type\": \"journal\"}], \"group_by\": []}"
+}

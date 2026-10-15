@@ -7,12 +7,17 @@ the wrong party as the request's owner.
 
 from __future__ import annotations
 
+import citations
 from citations import services
 
 
 def test_no_contact_is_announced_by_default(monkeypatch):
     monkeypatch.delenv(services.CONTACT_ENV, raising=False)
-    assert services.user_agent() == "citations/1.0"
+    assert services.user_agent() == services.product()
+
+
+def test_the_product_token_is_the_installed_version():
+    assert services.product() == f"citations/{citations.__version__}"
 
 
 def test_no_mailto_is_sent_by_default(monkeypatch):
@@ -22,7 +27,7 @@ def test_no_mailto_is_sent_by_default(monkeypatch):
 
 def test_a_configured_contact_is_announced(monkeypatch):
     monkeypatch.setenv(services.CONTACT_ENV, "someone@example.org")
-    assert services.user_agent() == "citations/1.0 (mailto:someone@example.org)"
+    assert services.user_agent() == f"{services.product()} (mailto:someone@example.org)"
 
 
 def test_a_configured_contact_reaches_the_query(monkeypatch):
@@ -32,7 +37,7 @@ def test_a_configured_contact_reaches_the_query(monkeypatch):
 
 def test_whitespace_is_not_a_contact(monkeypatch):
     monkeypatch.setenv(services.CONTACT_ENV, "   ")
-    assert services.user_agent() == "citations/1.0"
+    assert services.user_agent() == services.product()
 
 
 def test_polite_does_not_mutate_what_it_is_given(monkeypatch):

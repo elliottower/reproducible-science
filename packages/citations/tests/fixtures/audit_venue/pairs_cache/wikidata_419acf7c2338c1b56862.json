@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Physics+Letters+B&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:09:34Z",
+  "sha256": "bce327db05f2cd3b1fe0a55daa3a13336f3b7db8a8213b35d0fb26b2de3300ab",
+  "body": "{\"searchinfo\": {\"search\": \"Physics Letters B\"}, \"search\": [{\"id\": \"Q286010\", \"title\": \"Q286010\", \"pageid\": 276494, \"concepturi\": \"http://www.wikidata.org/entity/Q286010\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q286010\", \"display\": {\"label\": {\"value\": \"Physics Letters B\", \"language\": \"en\"}, \"description\": {\"value\": \"scientific journal\", \"language\": \"en\"}}, \"label\": \"Physics Letters B\", \"description\": \"scientific journal\", \"match\": {\"type\": \"label\", \"language\": \"en\", \"text\": \"Physics Letters B\"}}, {\"id\": \"Q1659906\", \"title\": \"Q1659906\", \"pageid\": 1593561, \"concepturi\": \"http://www.wikidata.org/entity/Q1659906\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q1659906\", \"display\": {\"label\": {\"value\": \"Physics Letters A\", \"language\": \"en\"}, \"description\": {\"value\": \"journal\", \"language\": \"en\"}}, \"label\": \"Physics Letters A\", \"description\": \"journal\", \"match\": {\"type\": \"alias\", \"language\": \"tr\", \"text\": \"Physics Letters B\"}, \"aliases\": [\"Physics Letters B\"]}], \"success\": 1}"
+}

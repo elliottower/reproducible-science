@@ -38,6 +38,7 @@ import pathlib
 import socket
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 import yaml
@@ -45,7 +46,7 @@ from provenance_core import atomic_write
 
 from citations import paperclip, paths
 from citations.models import Record, load_record
-from citations.services import SERVICES, Service, Work, user_agent
+from citations.services import SERVICES, Candidate, Service, Work, user_agent
 from citations.text import name_fold as norm
 from citations.text import surname_variants
 
@@ -68,7 +69,12 @@ NETWORK_ERRORS = (
 )
 
 #: Status codes that mean "ask again later" rather than "no such work".
-RETRY_CODES = (429, 503, 504)
+RETRY_CODES = (429, 500, 502, 503, 504)
+
+#: The only status codes that mean "answered, and there is no such thing". Any other failure is
+#: a refusal: a 500, a 502 or a 403 says nothing about whether the thing exists, and reading it
+#: as absent turns an outage into a finding.
+ABSENT_CODES = (404, 410)
 
 
 class Throttled(Exception):
@@ -80,40 +86,72 @@ class Throttled(Exception):
 # --------------------------------------------------------------------------------------------
 
 
-def fetch(url: str, timeout: int = 25, headers: dict | None = None):
+#: Environment variable holding an OpenAlex API key. Optional, and a fallback only: a request
+#: goes out unkeyed first, from the small daily budget OpenAlex gives unkeyed clients, and is
+#: retried with the key only when OpenAlex refuses it, so a key with a small quota of its own
+#: is spent only where it is needed.
+OPENALEX_KEY_ENV = "OPENALEX_API_KEY"
+
+
+def credentials(url: str) -> dict:
+    """Headers carrying the operator's OpenAlex key, for a retry of a refused request.
+
+    Sent as `Authorization: Bearer`, which OpenAlex documents as equivalent to its `api_key`
+    query parameter, so the key is never part of a URL. A URL is what a cache file is named
+    from and records, what a log line prints and what an exception carries; a header is none
+    of those.
+    """
+    key = os.environ.get(OPENALEX_KEY_ENV, "").strip()
+    if key and urllib.parse.urlsplit(url).hostname == "api.openalex.org":
+        return {"Authorization": f"Bearer {key}"}
+    return {}
+
+
+def fetch(url: str, timeout: int = 25, headers: dict | None = None, keyed: bool = False):
     """An open response. The caller closes it.
 
     Closing it here -- which a `with` block around the `urlopen` does -- returns a response
     whose `read()` yields zero bytes. Every decode then fails, every failure is retried, and
     the resolver concludes that every service refused it.
+
+    `keyed` adds the operator's OpenAlex key, which `get` asks for only on a retry.
     """
-    req = urllib.request.Request(url, headers={"User-Agent": user_agent(), **(headers or {})})
+    sent = {"User-Agent": user_agent(), **(headers or {}), **(credentials(url) if keyed else {})}
+    req = urllib.request.Request(url, headers=sent)
     return urllib.request.urlopen(req, timeout=timeout)
 
 
 def get(url: str, as_json: bool, tries: int = 4, headers: dict | None = None):
     """The payload, or None when the service answered and had nothing.
 
-    Raises `Throttled` when it did not answer. Collapsing those two into None is how a batch of
+    Raises `Throttled` when it did not answer: a status other than 404 or 410, or no response.
+    Collapsing those two into None is how a batch of
     sixty lookups reported sixty works as unfindable when the real answer was that Crossref had
     started rate-limiting after the first few. A resolver that cannot tell "absent" from "I was
     blocked" will confidently delete information.
     """
     delay = 2.0
-    for _ in range(tries):
+    keyed = False
+    # One more attempt where a key can be added: the unkeyed refusal costs the budget nothing.
+    attempts = tries + 1 if credentials(url) else tries
+    for _ in range(attempts):
         try:
-            with fetch(url, headers=headers) as r:
+            with fetch(url, headers=headers, keyed=keyed) as r:
                 body = r.read().decode()
             return json.loads(body) if as_json else body
         except urllib.error.HTTPError as e:
-            if e.code in RETRY_CODES:
-                time.sleep(delay)
-                delay *= 2
-                continue
-            return None
+            if e.code in ABSENT_CODES:
+                return None
+            if e.code not in RETRY_CODES and (keyed or not credentials(url)):
+                raise Throttled(url) from None
         except NETWORK_ERRORS:
-            time.sleep(delay)
-            delay *= 2
+            pass
+        if not keyed and credentials(url):
+            # Refused unkeyed: the operator's key is tried at once, and only now.
+            keyed = True
+            continue
+        time.sleep(delay)
+        delay *= 2
     raise Throttled(url)
 
 
@@ -137,7 +175,13 @@ def year_ok(ours: str, theirs: int | None) -> bool:
 
 
 def match(rec: Work, candidates) -> tuple[str, str] | None:
-    """The best acceptable candidate's identifier, or None if none is acceptable.
+    """The best acceptable candidate's identifier, or None if none is acceptable."""
+    found = best(rec, candidates)
+    return found.identifier if found else None
+
+
+def best(rec: Work, candidates) -> Candidate | None:
+    """The best acceptable candidate, or None if none is acceptable.
 
     Acceptability and ranking are separate. A candidate that fails any guard is out regardless
     of how well it scores; among those that pass, the venue decides which version of the same
@@ -145,7 +189,7 @@ def match(rec: Work, candidates) -> tuple[str, str] | None:
     """
     first = rec.authors[0] if rec.authors else ""
     want = surname_variants(first)
-    best: tuple[float, tuple[str, str]] | None = None
+    top: tuple[float, Candidate] | None = None
 
     # `want` is empty when the record lists no authors, and `year_ok` returns True for an
     # empty year, so a record with neither was matched on title similarity alone. Those are
@@ -168,9 +212,9 @@ def match(rec: Work, candidates) -> tuple[str, str] | None:
             continue
         venue_score = close(c.venue, rec.venue) if (rec.venue and c.venue) else 0.0
         score = title_score + VENUE_WEIGHT * venue_score
-        if best is None or score > best[0]:
-            best = (score, c.identifier)
-    return best[1] if best else None
+        if top is None or score > top[0]:
+            top = (score, c)
+    return top[1] if top else None
 
 
 def search(service: Service, rec: Work) -> tuple[str, str] | None:

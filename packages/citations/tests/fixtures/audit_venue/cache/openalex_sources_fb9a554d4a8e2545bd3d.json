@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://api.openalex.org/sources?search=Proceedings+of+the+2020+Conference+on+Empirical+Methods+in+Natural+Language+Processing%3A+System+Demonstrations&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
+  "fetched_at": "2026-10-14T22:30:58Z",
+  "sha256": "1ecf3d760bbbd210ef3c60c20a4843f78dcd0d62c9bd0116b1088bc9cc27ba44",
+  "body": "{\"meta\": {\"count\": 0, \"db_response_time_ms\": 10, \"page\": 1, \"per_page\": 10, \"groups_count\": null, \"x_query\": {\"oql\": \"get sources where text has (Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing: System Demonstrations)\", \"x_new_oql\": \"get sources where text has (Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing: System Demonstrations)\", \"oqo\": {\"get_rows\": \"sources\", \"filter_rows\": [{\"column_id\": \"text.search\", \"value\": \"Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing: System Demonstrations\", \"operator\": \"has\"}]}, \"url\": \"/sources?filter=text.search:Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing: System Demonstrations&per_page=10\"}, \"cost_usd\": 0.001}, \"results\": [], \"group_by\": []}"
+}

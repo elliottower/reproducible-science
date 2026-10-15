@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DAnn.+Phys.%22&format=json",
+  "fetched_at": "2026-10-15T00:12:33Z",
+  "sha256": "5e88e9f05511a6b19f2ea75bc008b9d48d5758dd6ad5e334d59e983fc3a5b31f",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q564423\", \"pageid\": 531416, \"size\": 45296, \"wordcount\": 109, \"snippet\": \"Annals of Physics\\nAnnals of Physics\\n\u7269\u7406\u5e74\u9274 (Elsevier)\\nAnnals of Physics\\nAnnals of Physics\\nAnnals of Physics\\nAnnals of Physics\\nAnnals of Physics\\nAnnals of\", \"timestamp\": \"2026-07-17T18:37:27Z\"}]}}"
+}

@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3AP236%3D0090-5364%7CP7363%3D0090-5364&format=json",
+  "fetched_at": "2026-10-14T22:23:26Z",
+  "sha256": "f17c986bbf2d08680d8a053d5646d85444816ae44290a1cc2317425f2af46005",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q564421\", \"pageid\": 531414, \"size\": 39215, \"wordcount\": 127, \"snippet\": \"Annals of Statistics\\nAnnals of Statistics\\nAnnals of Statistics\\nAnnals of Statistics\\nAnnals of Statistics\\nAnnals of Statistics\\nAnnals of Statistics\\nAnnals\", \"timestamp\": \"2026-07-17T18:37:28Z\"}]}}"
+}

@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DRev.+Mod.+Phys.%22&format=json",
+  "fetched_at": "2026-10-15T00:12:27Z",
+  "sha256": "8e5bb6af4f6e55a4f85a30a6511614e9abfbf1136628bf9a425238eb37c2881d",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q26572\", \"pageid\": 29993, \"size\": 40605, \"wordcount\": 250, \"snippet\": \"Reviews of Modern Physics\\nReviews of Modern Physics\\nReviews of Modern Physics\\nReviews of Modern Physics\\nReviews of Modern Physics\\nReviews of Modern Physics\", \"timestamp\": \"2026-07-02T21:29:33Z\"}]}}"
+}

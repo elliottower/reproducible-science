@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=J.+Org.+Chem.&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:12:50Z",
+  "sha256": "9327bb44b48b8b7294246c6fe22a712182f40cd625e378efd2fe7f76da200432",
+  "body": "{\"searchinfo\": {\"search\": \"J. Org. Chem.\"}, \"search\": [{\"id\": \"Q898967\", \"title\": \"Q898967\", \"pageid\": 849789, \"concepturi\": \"http://www.wikidata.org/entity/Q898967\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q898967\", \"display\": {\"label\": {\"value\": \"Journal of Organic Chemistry\", \"language\": \"en\"}, \"description\": {\"value\": \"journal\", \"language\": \"en\"}}, \"label\": \"Journal of Organic Chemistry\", \"description\": \"journal\", \"match\": {\"type\": \"alias\", \"language\": \"es\", \"text\": \"J. Org. Chem.\"}, \"aliases\": [\"J. Org. Chem.\"]}], \"success\": 1}"
+}

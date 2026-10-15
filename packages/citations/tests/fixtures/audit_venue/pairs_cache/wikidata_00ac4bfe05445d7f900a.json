@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q96726301%7CQ134731346&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-15T00:11:10Z",
+  "sha256": "58b3f186f57e9ba1dbf64d1e790a4bde0c76bf6866708f953573ef7eb36d546a",
+  "body": "{\"entities\": {\"Q96726301\": {\"id\": \"Q96726301\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Machine Learning Science and Technology\"}, \"mul\": {\"language\": \"mul\", \"value\": \"Machine Learning Science and Technology\"}}, \"aliases\": {\"en\": [{\"language\": \"en\", \"value\": \"Machine learning: science and technology\"}]}, \"claims\": {\"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"2632-2153\", \"type\": \"string\"}}}], \"P7363\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"2632-2153\", \"type\": \"string\"}}}], \"P8926\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"journals/mlst\", \"type\": \"string\"}}}], \"P10283\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"S4210200687\", \"type\": \"string\"}}}]}}, \"Q134731346\": {\"id\": \"Q134731346\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Machine Learning: Science and Technology\"}}, \"aliases\": {}, \"claims\": {}}}, \"success\": 1}"
+}

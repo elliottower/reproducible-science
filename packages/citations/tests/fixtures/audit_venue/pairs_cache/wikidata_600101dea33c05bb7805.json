@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Nature+Chemistry&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:12:55Z",
+  "sha256": "c74d7d55b8448be70879c3946dfb8d8e9171497638f1547b7f2e2c0ac6769b22",
+  "body": "{\"searchinfo\": {\"search\": \"Nature Chemistry\"}, \"search\": [{\"id\": \"Q2107904\", \"title\": \"Q2107904\", \"pageid\": 2034352, \"concepturi\": \"http://www.wikidata.org/entity/Q2107904\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q2107904\", \"display\": {\"label\": {\"value\": \"Nature Chemistry\", \"language\": \"en\"}, \"description\": {\"value\": \"peer-reviewed scientific journal\", \"language\": \"en\"}}, \"label\": \"Nature Chemistry\", \"description\": \"peer-reviewed scientific journal\", \"match\": {\"type\": \"label\", \"language\": \"en\", \"text\": \"Nature Chemistry\"}}], \"success\": 1}"
+}

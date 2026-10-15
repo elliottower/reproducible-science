@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Nat.+Chem.&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:12:54Z",
+  "sha256": "a6474de27e76b006e6c12d215e4a614bfed58ebce71253198cb5cbe66e57a8c3",
+  "body": "{\"searchinfo\": {\"search\": \"Nat. Chem.\"}, \"search\": [{\"id\": \"Q2107904\", \"title\": \"Q2107904\", \"pageid\": 2034352, \"concepturi\": \"http://www.wikidata.org/entity/Q2107904\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q2107904\", \"display\": {\"label\": {\"value\": \"Nature Chemistry\", \"language\": \"en\"}, \"description\": {\"value\": \"peer-reviewed scientific journal\", \"language\": \"en\"}}, \"label\": \"Nature Chemistry\", \"description\": \"peer-reviewed scientific journal\", \"match\": {\"type\": \"alias\", \"language\": \"it\", \"text\": \"Nat. Chem.\"}, \"aliases\": [\"Nat. Chem.\"]}, {\"id\": \"Q904026\", \"title\": \"Q904026\", \"pageid\": 854770, \"concepturi\": \"http://www.wikidata.org/entity/Q904026\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q904026\", \"display\": {\"label\": {\"value\": \"Nature Chemical Biology\", \"language\": \"en\"}, \"description\": {\"value\": \"journal\", \"language\": \"en\"}}, \"label\": \"Nature Chemical Biology\", \"description\": \"journal\", \"match\": {\"type\": \"alias\", \"language\": \"ru\", \"text\": \"Nat. Chem. Biol.\"}, \"aliases\": [\"Nat. Chem. Biol.\"]}], \"success\": 1}"
+}

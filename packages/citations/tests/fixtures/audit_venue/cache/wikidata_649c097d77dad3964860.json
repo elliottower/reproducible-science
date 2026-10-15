@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Proceedings+of+the+IEEE+Conference+on+Computer+Vision+and+Pattern+Recognition+%28CVPR%29&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-14T22:23:42Z",
+  "sha256": "f75202ca456b12e95217aa2b534a3a8b89d300b9af89ec84b217feae526e7b51",
+  "body": "{\"searchinfo\": {\"search\": \"Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition (CVPR)\"}, \"search\": [], \"success\": 1}"
+}

@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DPhys.+Rev.+Lett.%22&format=json",
+  "fetched_at": "2026-10-15T00:08:36Z",
+  "sha256": "3a683017aa9e80977a5f2d207af4816946ac20e81c336c343927b3f8c988c1e5",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q2018386\", \"pageid\": 1946499, \"size\": 123549, \"wordcount\": 301, \"snippet\": \"Physical Review Letters\\n\u7269\u7406\u8bc4\u8bba\u5feb\u62a5\\n\u7269\u7406\u8a55\u8ad6\u5feb\u5831\\n\u7269\u7406\u8a55\u8ad6\u5feb\u5831\\nPhysical Review Letters\\nPhysical Review Letters\\nPhysical Review Letters\\nPhysical Review Letters\\nPhysical Review\", \"timestamp\": \"2026-09-07T12:18:00Z\"}]}}"
+}

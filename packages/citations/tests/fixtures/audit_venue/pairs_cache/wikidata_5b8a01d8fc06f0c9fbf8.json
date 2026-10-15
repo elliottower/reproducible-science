@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q783630&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-15T00:13:08Z",
+  "sha256": "8d00963a611748204fa9e855efddbc311f50db83fa397604650160309120505c",
+  "body": "{\"entities\": {\"Q783630\": {\"id\": \"Q783630\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Journal of Political Economy\"}}, \"aliases\": {\"en\": [{\"language\": \"en\", \"value\": \"The Journal of Political Economy\"}, {\"language\": \"en\", \"value\": \"JPE\"}]}, \"claims\": {\"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0022-3808\", \"type\": \"string\"}}}, {\"mainsnak\": {\"datavalue\": {\"value\": \"1537-534X\", \"type\": \"string\"}}}], \"P1160\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"J. Polit. Econ.\", \"type\": \"string\"}}}], \"P1055\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"9878848\", \"type\": \"string\"}}}], \"P7363\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0022-3808\", \"type\": \"string\"}}}], \"P10283\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"S95323914\", \"type\": \"string\"}}}]}}}, \"success\": 1}"
+}

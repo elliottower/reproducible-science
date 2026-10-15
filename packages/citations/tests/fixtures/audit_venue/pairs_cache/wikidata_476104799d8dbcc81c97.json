@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Sci.+Adv.&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:08:45Z",
+  "sha256": "a87dd002f003f1bda21871aafb95f33f4e5820a15a3e8f850c18328e2e7ce199",
+  "body": "{\"searchinfo\": {\"search\": \"Sci. Adv.\"}, \"search\": [{\"id\": \"Q19881044\", \"title\": \"Q19881044\", \"pageid\": 21520036, \"concepturi\": \"http://www.wikidata.org/entity/Q19881044\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q19881044\", \"display\": {\"label\": {\"value\": \"Science Advances\", \"language\": \"en\"}, \"description\": {\"value\": \"scientific journal\", \"language\": \"en\"}}, \"label\": \"Science Advances\", \"description\": \"scientific journal\", \"match\": {\"type\": \"alias\", \"language\": \"en\", \"text\": \"Sci. Adv.\"}, \"aliases\": [\"Sci. Adv.\"]}], \"success\": 1}"
+}

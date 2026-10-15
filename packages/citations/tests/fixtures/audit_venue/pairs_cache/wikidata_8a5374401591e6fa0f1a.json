@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DOpt.+Lett.%22&format=json",
+  "fetched_at": "2026-10-15T00:09:05Z",
+  "sha256": "5b18b13a60db1eccc4953aa79ee4e09fd81147d1c1eab963d94839152237b719",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q7098918\", \"pageid\": 6993692, \"size\": 43752, \"wordcount\": 88, \"snippet\": \"Optics Letters\\nOptics Letters\\nOptics Letters\\nOptics Letters\\nOptics Letters\\nOptics Letters\\nOptics Letters\\nOptics Letters\\nOptics Letters\\nOptics Letters\\nOptics\", \"timestamp\": \"2026-07-27T10:58:15Z\"}]}}"
+}

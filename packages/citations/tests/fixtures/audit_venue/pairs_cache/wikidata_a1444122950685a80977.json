@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q1740221&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-15T00:12:58Z",
+  "sha256": "62cb55cf1b8af4a0eaf103f3dbfaff124686c97605ba601ec15e75404345f82e",
+  "body": "{\"entities\": {\"Q1740221\": {\"id\": \"Q1740221\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"The American Economic Review\"}}, \"aliases\": {\"en\": [{\"language\": \"en\", \"value\": \"American Economic Review\"}]}, \"claims\": {\"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0002-8282\", \"type\": \"string\"}}}, {\"mainsnak\": {\"datavalue\": {\"value\": \"1944-7981\", \"type\": \"string\"}}}], \"P1160\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"Am. Econ. Rev.\", \"type\": \"string\"}}}], \"P1055\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"14810500R\", \"type\": \"string\"}}}], \"P1813\": [{\"mainsnak\": {\"datavalue\": {\"value\": {\"text\": \"AER\", \"language\": \"en\"}, \"type\": \"monolingualtext\"}}}], \"P7363\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0002-8282\", \"type\": \"string\"}}}], \"P10283\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"S23254222\", \"type\": \"string\"}}}]}}}, \"success\": 1}"
+}

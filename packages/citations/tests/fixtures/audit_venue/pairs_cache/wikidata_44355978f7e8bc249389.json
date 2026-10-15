@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Environmental+Research+Letters&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:11:06Z",
+  "sha256": "193387593c526345288e282113412df3cfcd8c66175825405168086dfc9462e8",
+  "body": "{\"searchinfo\": {\"search\": \"Environmental Research Letters\"}, \"search\": [{\"id\": \"Q5381163\", \"title\": \"Q5381163\", \"pageid\": 5146839, \"concepturi\": \"http://www.wikidata.org/entity/Q5381163\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q5381163\", \"display\": {\"label\": {\"value\": \"Environmental Research Letters\", \"language\": \"en\"}, \"description\": {\"value\": \"scientific journal\", \"language\": \"en\"}}, \"label\": \"Environmental Research Letters\", \"description\": \"scientific journal\", \"match\": {\"type\": \"label\", \"language\": \"en\", \"text\": \"Environmental Research Letters\"}}], \"success\": 1}"
+}

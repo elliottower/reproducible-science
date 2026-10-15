@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=The+Annals+of+Statistics&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-14T22:23:28Z",
+  "sha256": "10ca8a7df8728f0375904ae5ee219190559ed4e097572a739c2b158879312f8d",
+  "body": "{\"searchinfo\": {\"search\": \"The Annals of Statistics\"}, \"search\": [{\"id\": \"Q564421\", \"title\": \"Q564421\", \"pageid\": 531414, \"concepturi\": \"http://www.wikidata.org/entity/Q564421\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q564421\", \"display\": {\"label\": {\"value\": \"Annals of Statistics\", \"language\": \"en\"}, \"description\": {\"value\": \"journal\", \"language\": \"en\"}}, \"label\": \"Annals of Statistics\", \"description\": \"journal\", \"match\": {\"type\": \"alias\", \"language\": \"en\", \"text\": \"The annals of statistics\"}, \"aliases\": [\"The annals of statistics\"]}], \"success\": 1}"
+}

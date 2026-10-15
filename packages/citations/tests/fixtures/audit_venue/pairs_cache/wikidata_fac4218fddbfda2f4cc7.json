@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DJ.+Polit.+Econ.%22&format=json",
+  "fetched_at": "2026-10-15T00:13:07Z",
+  "sha256": "8aa851a76f09a9736868755682db1533a61de2a9f35600e5015b5c74f52f61c6",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q783630\", \"pageid\": 736637, \"size\": 46732, \"wordcount\": 178, \"snippet\": \"Journal of Political Economy\\nJournal of Political Economy\\nJournal of Political Economy\\nJournal of Political Economy\\nJournal of Political Economy\\nJournal\", \"timestamp\": \"2026-07-28T07:11:21Z\"}]}}"
+}

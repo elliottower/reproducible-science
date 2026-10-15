@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=IEEE%2FACM+Trans.+Netw.&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:10:14Z",
+  "sha256": "20f9a95350c2ec2ae1aa2c47de3cec223f57b9693f02f14407ab2a43428a6ecf",
+  "body": "{\"searchinfo\": {\"search\": \"IEEE/ACM Trans. Netw.\"}, \"search\": [], \"success\": 1}"
+}

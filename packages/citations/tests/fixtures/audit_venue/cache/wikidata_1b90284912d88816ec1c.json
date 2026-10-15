@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Proceedings+of+the+22nd+ACM+SIGKDD+International+Conference+on+Knowledge+Discovery+and+Data+Mining&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-14T22:28:36Z",
+  "sha256": "c8b6ae65d13443cfb6b7a0489a4880bd5fe786ff6dd2657567ad3d642b25a796",
+  "body": "{\"searchinfo\": {\"search\": \"Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining\"}, \"search\": [{\"id\": \"Q134314083\", \"title\": \"Q134314083\", \"pageid\": 128163901, \"concepturi\": \"http://www.wikidata.org/entity/Q134314083\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q134314083\", \"display\": {\"label\": {\"value\": \"Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining\", \"language\": \"en\"}, \"description\": {\"value\": \"scientific article published on 13 August 2016\", \"language\": \"en\"}}, \"label\": \"Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining\", \"description\": \"scientific article published on 13 August 2016\", \"match\": {\"type\": \"label\", \"language\": \"en\", \"text\": \"Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge Discovery and Data Mining\"}}], \"success\": 1}"
+}

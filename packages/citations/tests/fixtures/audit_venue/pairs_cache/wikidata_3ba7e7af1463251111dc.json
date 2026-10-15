@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=The+Astrophysical+Journal+Letters&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:10:58Z",
+  "sha256": "47b5853dd472314785a97ec93bca971aafacdae382c1e4c55be5d12f13b653ef",
+  "body": "{\"searchinfo\": {\"search\": \"The Astrophysical Journal Letters\"}, \"search\": [{\"id\": \"Q3470990\", \"title\": \"Q3470990\", \"pageid\": 3306075, \"concepturi\": \"http://www.wikidata.org/entity/Q3470990\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q3470990\", \"display\": {\"label\": {\"value\": \"The Astrophysical Journal Letters\", \"language\": \"en\"}, \"description\": {\"value\": \"journal (2041-8205)\", \"language\": \"en\"}}, \"label\": \"The Astrophysical Journal Letters\", \"description\": \"journal (2041-8205)\", \"match\": {\"type\": \"label\", \"language\": \"en\", \"text\": \"The Astrophysical Journal Letters\"}}], \"success\": 1}"
+}

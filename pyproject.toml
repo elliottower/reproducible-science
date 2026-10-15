@@ -126,10 +126,13 @@ lint.per-file-ignores."packages/*/tests/*" = [ "B011" ] # bare assert False is f
 # lockfile names, `bu` is a base64 fragment in one of its integrity hashes, and the rest are
 # author surnames in the sampling frame. `publically` is ACM's spelling in the badging policy
 # text `repro venue acm-evidence` quotes verbatim, and `rouge` is the metric the ACL checklist
-# names, in the question text `repro venue acl` stores verbatim. Listed rather than skipping
-# whole files, which would hide real typos.
-ignore-words-list = "unparseable,sav,ue,copie,buis,smae,nd,ist,fo,inout,ede,bui,trough,devlop,bu,publically,rouge"
-skip = "uv.lock,.git"
+# names, in the question text `repro venue acl` stores verbatim. `commun` and `ser` are ISO 4
+# abbreviations (`Nat. Commun.`, `J. R. Stat. Soc. Ser. B`), and `archiv` is German (`Archiv
+# der Mathematik`). Listed rather than skipping whole files, which would hide real typos. The
+# audit venue fixture's caches are skipped: they are registry responses as fetched, in several
+# languages, and nothing in them is ours to correct.
+ignore-words-list = "unparseable,sav,ue,copie,buis,smae,nd,ist,fo,inout,ede,bui,trough,devlop,bu,publically,rouge,commun,ser,archiv"
+skip = "uv.lock,.git,packages/citations/tests/fixtures/audit_venue/cache/*,packages/citations/tests/fixtures/audit_venue/pairs_cache/*"
 
 [tool.pytest]
 ini_options.testpaths = [ "packages" ]

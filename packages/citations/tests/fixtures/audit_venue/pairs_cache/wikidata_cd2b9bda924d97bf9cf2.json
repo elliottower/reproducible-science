@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q5970501&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-15T00:10:00Z",
+  "sha256": "35dda0b93d8a587a84cee0b04f7cf1609b9b6becefbcdf6730d3ce5f98c5a68f",
+  "body": "{\"entities\": {\"Q5970501\": {\"id\": \"Q5970501\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"IEEE Transactions on Communications\"}}, \"aliases\": {}, \"claims\": {\"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0090-6778\", \"type\": \"string\"}}}, {\"mainsnak\": {\"datavalue\": {\"value\": \"1558-0857\", \"type\": \"string\"}}}], \"P1160\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"IEEE Trans. Commun.\", \"type\": \"string\"}}}], \"P1055\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"9881352\", \"type\": \"string\"}}}], \"P7363\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0090-6778\", \"type\": \"string\"}}}], \"P10283\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"S196647941\", \"type\": \"string\"}}}]}}}, \"success\": 1}"
+}

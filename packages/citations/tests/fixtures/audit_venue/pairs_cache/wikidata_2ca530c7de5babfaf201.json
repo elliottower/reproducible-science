@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DPhys.+Rev.+B%22&format=json",
+  "fetched_at": "2026-10-15T00:12:24Z",
+  "sha256": "02d1e87e74401fb53e70d3d90b41e5df605b670cf32cda0a4c24930f60d1da67",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q2284414\", \"pageid\": 2206624, \"size\": 126705, \"wordcount\": 160, \"snippet\": \"Physical Review B\\nPhysical Review B\\nPhysical Review B\\nPhysical Review B\\nPhysical Review B\\nPhysical Review B\\nPhysical Review B\\nPhysical Review B\\nPhysical\", \"timestamp\": \"2026-03-11T19:57:14Z\"}]}}"
+}

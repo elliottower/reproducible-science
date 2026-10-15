@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=IEEE+Trans.+Commun.&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:09:59Z",
+  "sha256": "ea325fd5ab1706b5db14ce2536b1255dd8e71d1eb01d1a52c9fb19bd37ccb16b",
+  "body": "{\"searchinfo\": {\"search\": \"IEEE Trans. Commun.\"}, \"search\": [], \"success\": 1}"
+}

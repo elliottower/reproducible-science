@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3AP236%3D1548-7660%7CP7363%3D1548-7660&format=json",
+  "fetched_at": "2026-10-14T22:23:29Z",
+  "sha256": "27c6d8ecd3077e6f88b6306ad722b220ba6887c40d3df58637d2bb78f991c803",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q6295963\", \"pageid\": 6102026, \"size\": 45411, \"wordcount\": 98, \"snippet\": \"Journal of Statistical Software\\nJournal of Statistical Software\\nJournal of Statistical Software\\nJournal of Statistical Software\\nJournal of Statistical\", \"timestamp\": \"2025-03-11T22:59:49Z\"}]}}"
+}

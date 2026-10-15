@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q130602048&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-14T22:29:04Z",
+  "sha256": "a6160433ffe52cf8dae31a1c7052726617194fe94c4d66b9cbd5ff7944770f1c",
+  "body": "{\"entities\": {\"Q130602048\": {\"id\": \"Q130602048\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Medical Image Computing and Computer-Assisted Intervention -- MICCAI 2015\"}}, \"aliases\": {\"en\": [{\"language\": \"en\", \"value\": \"MICCAI 2015\"}]}, \"claims\": {\"P1813\": [{\"mainsnak\": {\"datavalue\": {\"value\": {\"text\": \"MICCAI 2015\", \"language\": \"en\"}, \"type\": \"monolingualtext\"}}}], \"P179\": [{\"mainsnak\": {\"datavalue\": {\"value\": {\"entity-type\": \"item\", \"numeric-id\": 34959724, \"id\": \"Q34959724\"}, \"type\": \"wikibase-entityid\"}}}]}}}, \"success\": 1}"
+}

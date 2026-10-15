@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Brain+Communications&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:10:52Z",
+  "sha256": "d8395a770181cc371f672ee4d2935e4835f347be8f05b4a4b336816ce9d1e745",
+  "body": "{\"searchinfo\": {\"search\": \"Brain Communications\"}, \"search\": [{\"id\": \"Q96321170\", \"title\": \"Q96321170\", \"pageid\": 95053671, \"concepturi\": \"http://www.wikidata.org/entity/Q96321170\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q96321170\", \"display\": {\"label\": {\"value\": \"Brain communications\", \"language\": \"en\"}, \"description\": {\"value\": \"UK scientific journal\", \"language\": \"en\"}}, \"label\": \"Brain communications\", \"description\": \"UK scientific journal\", \"match\": {\"type\": \"label\", \"language\": \"en\", \"text\": \"Brain communications\"}}], \"success\": 1}"
+}

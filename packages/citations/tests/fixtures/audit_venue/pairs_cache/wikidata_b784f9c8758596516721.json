@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Ann.+Phys.&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:12:33Z",
+  "sha256": "fb2db745857a6d2bb1e7935ad961800afc0caf9f015202521e36327b2fd4c253",
+  "body": "{\"searchinfo\": {\"search\": \"Ann. Phys.\"}, \"search\": [{\"id\": \"Q20996434\", \"title\": \"Q20996434\", \"pageid\": 23048015, \"concepturi\": \"http://www.wikidata.org/entity/Q20996434\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q20996434\", \"display\": {\"label\": {\"value\": \"Ann. Phys.\", \"language\": \"en\"}, \"description\": {\"value\": \"Wikimedia disambiguation page\", \"language\": \"en\"}}, \"label\": \"Ann. Phys.\", \"description\": \"Wikimedia disambiguation page\", \"match\": {\"type\": \"label\", \"language\": \"en\", \"text\": \"Ann. Phys.\"}}], \"success\": 1}"
+}

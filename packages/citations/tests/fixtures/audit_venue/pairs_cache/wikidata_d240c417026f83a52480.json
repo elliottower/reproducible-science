@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Optics+Letters&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:09:06Z",
+  "sha256": "cac61835eaad8306392a5cd0362dc5f79f771d775267a8f34a8774f879603847",
+  "body": "{\"searchinfo\": {\"search\": \"Optics Letters\"}, \"search\": [{\"id\": \"Q7098918\", \"title\": \"Q7098918\", \"pageid\": 6993692, \"concepturi\": \"http://www.wikidata.org/entity/Q7098918\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q7098918\", \"display\": {\"label\": {\"value\": \"Optics Letters\", \"language\": \"en\"}, \"description\": {\"value\": \"journal\", \"language\": \"en\"}}, \"label\": \"Optics Letters\", \"description\": \"journal\", \"match\": {\"type\": \"label\", \"language\": \"en\", \"text\": \"Optics Letters\"}}, {\"id\": \"Q86694700\", \"title\": \"Q86694700\", \"pageid\": 85940313, \"concepturi\": \"http://www.wikidata.org/entity/Q86694700\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q86694700\", \"display\": {\"label\": {\"value\": \"Optics Letters to Increase Page Limit to Four Pages\", \"language\": \"en\"}, \"description\": {\"value\": \"scientific article published on 01 May 2013\", \"language\": \"en\"}}, \"label\": \"Optics Letters to Increase Page Limit to Four Pages\", \"description\": \"scientific article published on 01 May 2013\", \"match\": {\"type\": \"label\", \"language\": \"en\", \"text\": \"Optics Letters to Increase Page Limit to Four Pages\"}}], \"success\": 1}"
+}

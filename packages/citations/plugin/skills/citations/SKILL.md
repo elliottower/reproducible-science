@@ -227,8 +227,10 @@ layered"`. Quote through the qualifiers; never end a pin mid-clause.
 
 ## A resolving identifier says nothing about the metadata beside it
 
-`verify` checks quotations. `audit` checks the reference itself: do the authors, year, volume
-and pages stored beside a DOI match the record that DOI resolves to?
+`verify` checks quotations. `audit` checks the reference itself: do the authors, year, venue,
+volume and pages stored beside a DOI match the record that DOI resolves to? The venue is compared
+by registry identifier (ISSN, NLM id, DBLP key, Wikidata item, OpenAlex source); a venue those
+cannot settle is reported as not comparable with both names shown, and never as a disagreement.
 
 The failure is a real DOI carrying an invented author list. It resolves, the link is live, and
 the quotations pinned to it are genuine, because the DOI does point at the right paper — the

@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DJ.+Am.+Chem.+Soc.%22&format=json",
+  "fetched_at": "2026-10-15T00:12:40Z",
+  "sha256": "4a9bac80a1f0ba7630b9de6a99132877f4eba81311d5ccaca91f93d0b737c3ca",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q898902\", \"pageid\": 849725, \"size\": 60710, \"wordcount\": 402, \"snippet\": \"\u7f8e\u56fd\u5316\u5b66\u5b66\u4f1a\u671f\u520a\\n\u7f8e\u570b\u5316\u5b78\u5b78\u6703\u671f\u520a\\n\u7f8e\u570b\u5316\u5b78\u5b78\u6703\u671f\u520a\\nJournal of the American Chemical Society\\nJournal of the American Chemical Society\\n\ubbf8\uad6d \ud654\ud559\ud68c\uc9c0\\nJournal of the American Chemical Society\", \"timestamp\": \"2026-09-26T07:30:06Z\"}]}}"
+}

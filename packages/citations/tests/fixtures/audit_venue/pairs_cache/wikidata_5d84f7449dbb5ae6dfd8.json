@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Journal+f%C3%BCr+die+reine+und+angewandte+Mathematik&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:11:44Z",
+  "sha256": "6c3ce6d2ea092a9019ea62b655fede8e086e938b5fe9e71cf5a98b5bc8c0bad6",
+  "body": "{\"searchinfo\": {\"search\": \"Journal f\u00fcr die reine und angewandte Mathematik\"}, \"search\": [{\"id\": \"Q1368270\", \"title\": \"Q1368270\", \"pageid\": 1307756, \"concepturi\": \"http://www.wikidata.org/entity/Q1368270\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q1368270\", \"display\": {\"label\": {\"value\": \"Crelle's Journal\", \"language\": \"en\"}, \"description\": {\"value\": \"Mathematics journal\", \"language\": \"en\"}}, \"label\": \"Crelle's Journal\", \"description\": \"Mathematics journal\", \"match\": {\"type\": \"alias\", \"language\": \"en\", \"text\": \"Journal f\u00fcr die reine und angewandte Mathematik\"}, \"aliases\": [\"Journal f\u00fcr die reine und angewandte Mathematik\"]}], \"success\": 1}"
+}

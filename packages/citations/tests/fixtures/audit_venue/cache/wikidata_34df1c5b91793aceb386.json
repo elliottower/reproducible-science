@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3AP236%3D2041-1723%7CP7363%3D2041-1723&format=json",
+  "fetched_at": "2026-10-14T22:30:58Z",
+  "sha256": "ae7cbbf461ec6ef365066efe08b20893479abe91f18d96061bebeb7dce74fed9",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q573880\", \"pageid\": 539804, \"size\": 58091, \"wordcount\": 199, \"snippet\": \"Nature Communications\\nNature Communications\\nNature Communications\\nNature Communications\\nNature Communications\\nNature Communications\\n\u81ea\u7136-\u901a\u8baf\\n\u81ea\u7136-\u901a\u8baf\\n\u30cd\u30a4\u30c1\u30e3\u30fc\u30fb\u30b3\u30df\u30e5\u30cb\u30b1\u30fc\u30b7\u30e7\u30f3\u30ba\", \"timestamp\": \"2026-09-11T18:02:31Z\"}]}}"
+}

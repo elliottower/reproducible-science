@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Medical+Image+Computing+and+Computer-Assisted+Intervention+--+MICCAI+2015&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-14T22:29:03Z",
+  "sha256": "0ac71708ab8eb7af355b824ef8173366ec8d02c0cef3790dfb38fc1040c37cba",
+  "body": "{\"searchinfo\": {\"search\": \"Medical Image Computing and Computer-Assisted Intervention -- MICCAI 2015\"}, \"search\": [{\"id\": \"Q130602048\", \"title\": \"Q130602048\", \"pageid\": 124542908, \"concepturi\": \"http://www.wikidata.org/entity/Q130602048\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q130602048\", \"display\": {\"label\": {\"value\": \"Medical Image Computing and Computer-Assisted Intervention -- MICCAI 2015\", \"language\": \"en\"}, \"description\": {\"value\": \"MICCAI 2015 proceedings\", \"language\": \"en\"}}, \"label\": \"Medical Image Computing and Computer-Assisted Intervention -- MICCAI 2015\", \"description\": \"MICCAI 2015 proceedings\", \"match\": {\"type\": \"label\", \"language\": \"en\", \"text\": \"Medical Image Computing and Computer-Assisted Intervention -- MICCAI 2015\"}}], \"success\": 1}"
+}

@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Appl.+Phys.+Lett.&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:09:18Z",
+  "sha256": "f3ffca8e1b04de2a62ce4676248db442ae483e6d0c2bf4386abcdd24b1ec6f80",
+  "body": "{\"searchinfo\": {\"search\": \"Appl. Phys. Lett.\"}, \"search\": [{\"id\": \"Q621615\", \"title\": \"Q621615\", \"pageid\": 584912, \"concepturi\": \"http://www.wikidata.org/entity/Q621615\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q621615\", \"display\": {\"label\": {\"value\": \"Applied Physics Letters\", \"language\": \"en\"}, \"description\": {\"value\": \"Scientific journal\", \"language\": \"en\"}}, \"label\": \"Applied Physics Letters\", \"description\": \"Scientific journal\", \"match\": {\"type\": \"alias\", \"language\": \"ru\", \"text\": \"Appl. phys. lett.\"}, \"aliases\": [\"Appl. phys. lett.\"]}], \"success\": 1}"
+}

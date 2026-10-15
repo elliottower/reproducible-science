@@ -51,7 +51,7 @@ pip install "citations[web]"      # to pin a web page by its URL
 `citations verify` establishes one fact about each quotation: the passage occurs in the pinned
 copy of the source, as read by the extractor the report names. `citations audit` establishes one
 fact about each reference: its authors, title, year, volume and pages agree with the record its
-identifier resolves to.
+identifier resolves to, and its venue is the one the record's venue identifiers name.
 
 Neither establishes that the source is correct, or that the passage supports the sentence it
 is quoted for. In a claims file `statement` is yours and `exact` is theirs, and only `exact` is
@@ -805,7 +805,7 @@ spaces between cells, which `jats-text` renders with `|` between them.
 ## Audit output
 
 `verify` asks whether a quotation is in the source. `audit` asks a different question: does the
-author list, year, volume and page range stored beside an identifier match the record that
+author list, year, venue, volume and page range stored beside an identifier match the record that
 identifier resolves to?
 
 ```bash
@@ -852,6 +852,67 @@ An identifier found by title can belong to another version of the work, such as 
 a journal article, so a year or venue disagreement on a `by search` entry is read before it is
 corrected. `--no-search` asks no search service and counts these entries under `no id`, as in
 the report above.
+
+### Venue
+
+A venue is compared by identifier. The record's venue is the identifiers its registries give it:
+a journal article's ISSNs from Crossref, PubMed's NLM id and ISSNs, a DataCite container's
+ISSN, the ISSNs Semantic Scholar or OpenAlex give the venue of a work found by title, and,
+where the record carries none, the primary source of the OpenAlex work. Wikidata widens those
+to the items that hold them, so the record's venue also carries its Wikidata item, OpenAlex
+source and DBLP venue key.
+
+The entry's `journal` or `booktitle`, or its `series` where it names neither, is resolved to the
+same kinds of identifier through registries that index venue names and their abbreviations:
+Wikidata's labels, aliases, short names and ISO 4 abbreviations, and OpenAlex sources' display
+names, abbreviated titles and alternate titles. An `issn` field is resolved beside the name: where
+the name agrees with the record's venue and a registry knows the ISSN as another venue, the ISSN is
+reported as its own disagreement, `issn: ours '...' vs registry '...'`. Where the name names
+another venue than the record's, an ISSN registries know as that same venue supports the
+mismatch, an ISSN no registry knows leaves the name to decide alone, and an ISSN registries know
+as a third venue leaves it not comparable, the entry contradicting itself. A registry
+venue is a candidate when one of its own names equals the cited one once case, accents,
+punctuation, LaTeX, years, ordinals and volume numbers are folded away; candidates that share
+an identifier, or that Wikidata links as a conference and its proceedings or as editions of one
+series, are one venue.
+
+| Outcome | When |
+|---|---|
+| match | the entry's venue and the record's share an identifier, directly or through one Wikidata link |
+| mismatch | the entry's venue resolved to exactly one registry venue, the record carries its venue's identifiers itself, both sides hold an ISSN, NLM id or DBLP key, and none is shared |
+| not comparable | anything else |
+
+A mismatch is reported like a wrong year, as `venue: ours 'Nature' vs registry 'Nature
+Communications'`, and fails `--strict`. A Wikidata item or an OpenAlex source can be one edition
+of a conference or one of several records of one journal, so those identifiers confirm a venue
+and never contradict one. A book series' ISSN, such as Lecture Notes in Computer Science's, can
+confirm the series an entry names and never contradicts the volume it names.
+
+A venue that is not comparable is listed with both names, so a person can compare them:
+`venue: ours 'Comput. Netw.' / registry 'Computer Networks' (not comparable: <reason>)`. The
+reasons are a name no registry knows, a name several registry venues share, a lookup that was
+refused, a record that is a preprint or names no venue identifier, an entry citing a preprint
+server, a workshop against a main track, a record identified only by its name, two sides with
+no serial identifier of a common kind, and a garbled name.
+
+A lookup answered with 404 or 410 is an answer and is cached. Any other failure (a 500, a 502,
+a 403, a rate limit, no response, or a MediaWiki error reported inside an HTTP 200) is a refusal:
+it is never cached, so the next run asks again, and a venue resting on it is not comparable.
+
+Registry lookups are cached like every other request, sent with no contact address, and
+paced; a Wikidata request names the project in its `User-Agent`, as the Wikimedia policy asks.
+
+API keys are optional. The audit works without them, and compares more venues with them,
+because a lookup a service refuses leaves its venue not comparable:
+
+| Variable | Service | Used |
+|---|---|---|
+| `SEMANTIC_SCHOLAR_API_KEY` | Semantic Scholar | on every request, as the `x-api-key` header; Semantic Scholar refuses many anonymous requests, and its answer is often the only one naming the published venue of an arXiv preprint |
+| `OPENALEX_API_KEY` | OpenAlex | as a fallback only: a request goes out unkeyed first, and is retried with the key, as an `Authorization: Bearer` header, only when OpenAlex refuses it, so a key with a small quota is spent only where the shared unkeyed budget has run out |
+
+Neither key is ever part of a URL, so neither reaches a cache file, a report, a log line or an
+error message. DBLP's API is not asked, because it answers automated clients with a proof-of-work
+page; DBLP venue keys are compared where Wikidata holds them.
 
 Fetched payloads and search answers are cached beside the file audited, so a re-run is offline
 and the report is reproducible from what was fetched rather than from the network. A refusal is

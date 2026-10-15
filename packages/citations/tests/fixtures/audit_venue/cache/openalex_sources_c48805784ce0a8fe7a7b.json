@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://api.openalex.org/sources?search=Proceedings+of+the+IEEE+International+Conference+on+Computer+Vision&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
+  "fetched_at": "2026-10-14T22:25:18Z",
+  "sha256": "fcc5732ef4612a876916739d1d1f892060f0294f6eaad2acf3e0ce911d79d40c",
+  "body": "{\"meta\": {\"count\": 0, \"db_response_time_ms\": 34, \"page\": 1, \"per_page\": 10, \"groups_count\": null, \"x_query\": {\"oql\": \"get sources where text has (Proceedings of the IEEE International Conference on Computer Vision)\", \"x_new_oql\": \"get sources where text has (Proceedings of the IEEE International Conference on Computer Vision)\", \"oqo\": {\"get_rows\": \"sources\", \"filter_rows\": [{\"column_id\": \"text.search\", \"value\": \"Proceedings of the IEEE International Conference on Computer Vision\", \"operator\": \"has\"}]}, \"url\": \"/sources?filter=text.search:Proceedings of the IEEE International Conference on Computer Vision&per_page=10\"}, \"cost_usd\": 0.001}, \"results\": [], \"group_by\": []}"
+}

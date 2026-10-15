@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=J.+R.+Stat.+Soc.+B&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-14T22:22:47Z",
+  "sha256": "aad895a08bff486ed38dc1acb78a7a7fa5f07a6fe6a214bbdab59ebc066db9cd",
+  "body": "{\"searchinfo\": {\"search\": \"J. R. Stat. Soc. B\"}, \"search\": [], \"success\": 1}"
+}

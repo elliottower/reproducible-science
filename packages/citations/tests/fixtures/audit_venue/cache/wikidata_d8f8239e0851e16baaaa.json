@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Transactions+of+the+Association+for+Computational+Linguistics&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-14T22:22:50Z",
+  "sha256": "2e2a7aa41241c5f6fea5ded04c54bac48dc3e03502c7cb0240a502dafdff2d5c",
+  "body": "{\"searchinfo\": {\"search\": \"Transactions of the Association for Computational Linguistics\"}, \"search\": [{\"id\": \"Q28736261\", \"title\": \"Q28736261\", \"pageid\": 30395439, \"concepturi\": \"http://www.wikidata.org/entity/Q28736261\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q28736261\", \"display\": {\"label\": {\"value\": \"Transactions of the Association for Computational Linguistics\", \"language\": \"en\"}, \"description\": {\"value\": \"journal\", \"language\": \"en\"}}, \"label\": \"Transactions of the Association for Computational Linguistics\", \"description\": \"journal\", \"match\": {\"type\": \"label\", \"language\": \"en\", \"text\": \"Transactions of the Association for Computational Linguistics\"}}], \"success\": 1}"
+}

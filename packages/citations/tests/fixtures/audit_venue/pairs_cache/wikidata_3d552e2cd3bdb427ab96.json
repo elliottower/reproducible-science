@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Neuroscience+Letters&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:10:55Z",
+  "sha256": "67a82db3a2d326d5519f20f9bd8aec230a09d4db6661c6d2bd8bcb9dcefbfc96",
+  "body": "{\"searchinfo\": {\"search\": \"Neuroscience Letters\"}, \"search\": [{\"id\": \"Q7002625\", \"title\": \"Q7002625\", \"pageid\": 6879010, \"concepturi\": \"http://www.wikidata.org/entity/Q7002625\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q7002625\", \"display\": {\"label\": {\"value\": \"Neuroscience Letters\", \"language\": \"en\"}, \"description\": {\"value\": \"journal\", \"language\": \"en\"}}, \"label\": \"Neuroscience Letters\", \"description\": \"journal\", \"match\": {\"type\": \"label\", \"language\": \"en\", \"text\": \"Neuroscience Letters\"}}, {\"id\": \"Q27712126\", \"title\": \"Q27712126\", \"pageid\": 29428398, \"concepturi\": \"http://www.wikidata.org/entity/Q27712126\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q27712126\", \"display\": {\"label\": {\"value\": \"Neuroscience letters. Supplement\", \"language\": \"en\"}, \"description\": {\"value\": \"journal\", \"language\": \"en\"}}, \"label\": \"Neuroscience letters. Supplement\", \"description\": \"journal\", \"match\": {\"type\": \"label\", \"language\": \"en\", \"text\": \"Neuroscience letters. Supplement\"}}], \"success\": 1}"
+}

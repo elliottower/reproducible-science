@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://api.openalex.org/sources?search=Proceedings+of+the+54th+Annual+Meeting+of+the+Association+for+Computational+Linguistics+%28Volume+1%3A+Long+Papers%29&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
+  "fetched_at": "2026-10-14T22:32:52Z",
+  "sha256": "9b46acb353a8b66007eb5910d4ab9ff395c9af316fd953ad2d041099d1303f8e",
+  "body": "{\"meta\": {\"count\": 0, \"db_response_time_ms\": 16, \"page\": 1, \"per_page\": 10, \"groups_count\": null, \"x_query\": {\"oql\": \"get sources where text has (Proceedings of the 54th Annual Meeting of the Association for Computational Linguistics Volume 1: Long Papers)\", \"x_new_oql\": \"get sources where text has (Proceedings of the 54th Annual Meeting of the Association for Computational Linguistics Volume 1: Long Papers)\", \"oqo\": {\"get_rows\": \"sources\", \"filter_rows\": [{\"column_id\": \"text.search\", \"value\": \"Proceedings of the 54th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers)\", \"operator\": \"has\"}]}, \"url\": \"/sources?filter=text.search:Proceedings of the 54th Annual Meeting of the Association for Computational Linguistics %28Volume 1: Long Papers%29&per_page=10\"}, \"cost_usd\": 0.001}, \"results\": [], \"group_by\": []}"
+}

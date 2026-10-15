@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://api.openalex.org/sources?search=Cell+Rep.&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
+  "fetched_at": "2026-10-15T00:08:58Z",
+  "sha256": "21f572ea704a014898add132857acc2b9743fe39ff9be9dfaf330262273c58fa",
+  "body": "{\"meta\": {\"count\": 1, \"db_response_time_ms\": 9, \"page\": 1, \"per_page\": 10, \"groups_count\": null, \"x_query\": {\"oql\": \"get sources where text has (Cell Rep.)\", \"x_new_oql\": \"get sources where text has (Cell Rep.)\", \"oqo\": {\"get_rows\": \"sources\", \"filter_rows\": [{\"column_id\": \"text.search\", \"value\": \"Cell Rep.\", \"operator\": \"has\"}]}, \"url\": \"/sources?filter=text.search:Cell Rep.&per_page=10\"}, \"cost_usd\": 0.001}, \"results\": [{\"id\": \"https://openalex.org/S4210224615\", \"display_name\": \"Stem Cell Reviews and Reports\", \"alternate_titles\": [\"Stem Cell Rev and Rep\", \"Stem Cell Rev\"], \"issn_l\": \"1550-8943\", \"issn\": [\"1550-8943\", \"1558-6804\", \"2629-3269\", \"2629-3277\"], \"type\": \"journal\"}], \"group_by\": []}"
+}

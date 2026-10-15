@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Cell+Rep.&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:08:56Z",
+  "sha256": "431c2013ae5cbfd768358231a72a879e04eaf8564d9bee988028f58130df0bf2",
+  "body": "{\"searchinfo\": {\"search\": \"Cell Rep.\"}, \"search\": [], \"success\": 1}"
+}

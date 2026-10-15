@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=IEEE%2FCVF+Conference+on+Computer+Vision+and+Pattern+Recognition&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-14T22:28:47Z",
+  "sha256": "54acf9bf263754e63c56f8ddac5ca8712febea01135a182f631141fb61ff4505",
+  "body": "{\"searchinfo\": {\"search\": \"IEEE/CVF Conference on Computer Vision and Pattern Recognition\"}, \"search\": [], \"success\": 1}"
+}

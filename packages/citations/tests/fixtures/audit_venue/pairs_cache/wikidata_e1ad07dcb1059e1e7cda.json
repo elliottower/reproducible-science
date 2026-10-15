@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q96335159%7CQ96734285&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-15T00:11:56Z",
+  "sha256": "c4dc0ff56a000a1f89a434c783e7e90b09236c57c0b7517dfc8e0c441741af4e",
+  "body": "{\"entities\": {\"Q96335159\": {\"id\": \"Q96335159\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Zeitschrift f\u00fcr Physik B-Condensed Matter\"}}, \"aliases\": {}, \"claims\": {\"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0722-3277\", \"type\": \"string\"}}}, {\"mainsnak\": {\"datavalue\": {\"value\": \"1431-584X\", \"type\": \"string\"}}}], \"P7363\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0722-3277\", \"type\": \"string\"}}}], \"P1366\": [{\"mainsnak\": {\"datavalue\": {\"value\": {\"entity-type\": \"item\", \"numeric-id\": 1940257, \"id\": \"Q1940257\"}, \"type\": \"wikibase-entityid\"}}}]}}, \"Q96734285\": {\"id\": \"Q96734285\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Zeitschrift f\u00fcr Physik B Condensed Matter and Quanta\"}}, \"aliases\": {}, \"claims\": {\"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0340-224X\", \"type\": \"string\"}}}]}}}, \"success\": 1}"
+}

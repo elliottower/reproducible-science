@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Proc.+Natl.+Acad.+Sci.+U.S.A.&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:10:43Z",
+  "sha256": "074dc2736beadcac0d30083aa1e8e6f1b56da4a8295e5a754898077b15f89e85",
+  "body": "{\"searchinfo\": {\"search\": \"Proc. Natl. Acad. Sci. U.S.A.\"}, \"search\": [{\"id\": \"Q1146531\", \"title\": \"Q1146531\", \"pageid\": 1093107, \"concepturi\": \"http://www.wikidata.org/entity/Q1146531\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q1146531\", \"display\": {\"label\": {\"value\": \"Proceedings of the National Academy of Sciences of the United States of America\", \"language\": \"en\"}, \"description\": {\"value\": \"academic journal of the National Academy of Sciences\", \"language\": \"en\"}}, \"label\": \"Proceedings of the National Academy of Sciences of the United States of America\", \"description\": \"academic journal of the National Academy of Sciences\", \"match\": {\"type\": \"alias\", \"language\": \"en\", \"text\": \"Proc. Natl. Acad. Sci. U.S.A.\"}, \"aliases\": [\"Proc. Natl. Acad. Sci. U.S.A.\"]}], \"success\": 1}"
+}

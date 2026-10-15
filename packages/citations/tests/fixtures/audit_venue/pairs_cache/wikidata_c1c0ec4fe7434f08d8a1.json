@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=NAR+Genomics+and+Bioinformatics&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:11:25Z",
+  "sha256": "acbcd7f90d0eef3ef1115012ad5043d7e98edab4fcd6c213e78a1b58f04bc287",
+  "body": "{\"searchinfo\": {\"search\": \"NAR Genomics and Bioinformatics\"}, \"search\": [{\"id\": \"Q96321181\", \"title\": \"Q96321181\", \"pageid\": 95053682, \"concepturi\": \"http://www.wikidata.org/entity/Q96321181\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q96321181\", \"display\": {\"label\": {\"value\": \"NAR genomics and bioinformatics\", \"language\": \"en\"}, \"description\": {\"value\": \"UK scientific journal\", \"language\": \"en\"}}, \"label\": \"NAR genomics and bioinformatics\", \"description\": \"UK scientific journal\", \"match\": {\"type\": \"label\", \"language\": \"en\", \"text\": \"NAR genomics and bioinformatics\"}}], \"success\": 1}"
+}

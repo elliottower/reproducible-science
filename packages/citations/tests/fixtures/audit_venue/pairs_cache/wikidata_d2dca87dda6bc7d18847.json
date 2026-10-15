@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Z.+Physik&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:11:37Z",
+  "sha256": "80d9e60caf4e5e044600dcde6f7272ff1718b53296ffb7e6f33977dd559b8055",
+  "body": "{\"searchinfo\": {\"search\": \"Z. Physik\"}, \"search\": [], \"success\": 1}"
+}

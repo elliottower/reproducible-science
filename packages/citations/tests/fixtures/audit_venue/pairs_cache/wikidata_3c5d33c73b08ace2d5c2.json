@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DEnviron.+Res.+Lett.%22&format=json",
+  "fetched_at": "2026-10-15T00:11:05Z",
+  "sha256": "e3c75bb73fb2485fe440769fd80f1848d4957d5619c21f20cc8d488128e92440",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q5381163\", \"pageid\": 5146839, \"size\": 42592, \"wordcount\": 98, \"snippet\": \"Environmental Research Letters\\nEnvironmental Research Letters\\nEnvironmental Research Letters\\nEnvironmental Research Letters\\nEnvironmental Research Letters\", \"timestamp\": \"2026-09-11T16:27:41Z\"}]}}"
+}

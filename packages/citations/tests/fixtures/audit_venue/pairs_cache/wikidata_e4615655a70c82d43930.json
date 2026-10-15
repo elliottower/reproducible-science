@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=J.+Polit.+Econ.&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:13:07Z",
+  "sha256": "dd05b72ddfccb6967a6ffdae20cab07c1b6e17621f5322c1fbdde52c3ebbca9c",
+  "body": "{\"searchinfo\": {\"search\": \"J. Polit. Econ.\"}, \"search\": [], \"success\": 1}"
+}

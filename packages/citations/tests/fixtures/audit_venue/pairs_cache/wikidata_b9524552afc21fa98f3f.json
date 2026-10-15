@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q1120519&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-15T00:08:49Z",
+  "sha256": "1b4e95dee1c38698b0ba8a4058612ea48d79f12c08c2458ebd9c36dbe8c3e820",
+  "body": "{\"entities\": {\"Q1120519\": {\"id\": \"Q1120519\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Communications of the ACM\"}, \"mul\": {\"language\": \"mul\", \"value\": \"Communications of the ACM\"}}, \"aliases\": {\"en\": [{\"language\": \"en\", \"value\": \"CACM\"}, {\"language\": \"en\", \"value\": \"Commun. ACM\"}]}, \"claims\": {\"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0001-0782\", \"type\": \"string\"}}}, {\"mainsnak\": {\"datavalue\": {\"value\": \"1557-7317\", \"type\": \"string\"}}}, {\"mainsnak\": {\"datavalue\": {\"value\": \"0588-8069\", \"type\": \"string\"}}}], \"P1160\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"Commun. ACM\", \"type\": \"string\"}}}], \"P1055\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"58030170R\", \"type\": \"string\"}}}], \"P1813\": [{\"mainsnak\": {\"datavalue\": {\"value\": {\"text\": \"CACM\", \"language\": \"en\"}, \"type\": \"monolingualtext\"}}}], \"P7363\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0001-0782\", \"type\": \"string\"}}}], \"P8926\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"journals/cacm\", \"type\": \"string\"}}}], \"P10283\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"S103482838\", \"type\": \"string\"}}}]}}}, \"success\": 1}"
+}

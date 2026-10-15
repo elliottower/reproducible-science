@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q120690309%7CQ120690479&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-15T00:09:49Z",
+  "sha256": "2e37e583338afb2e2a12a9c0498bd4da3156f05d3adbe7b3cc5cc632327270a6",
+  "body": "{\"entities\": {\"Q120690309\": {\"id\": \"Q120690309\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"PNAS Nexus\"}}, \"aliases\": {\"en\": [{\"language\": \"en\", \"value\": \"Proceedings of the National Academy of Sciences Nexus\"}]}, \"claims\": {\"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"2752-6542\", \"type\": \"string\"}}}], \"P7363\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"2752-6542\", \"type\": \"string\"}}}], \"P1055\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"9918367777906676\", \"type\": \"string\"}}}], \"P10283\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"s4220651275\", \"type\": \"string\"}}}]}}, \"Q120690479\": {\"id\": \"Q120690479\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"PNAS Nexus connects\u2014engineering creates: disseminating research to make a difference\"}}, \"aliases\": {}, \"claims\": {}}}, \"success\": 1}"
+}

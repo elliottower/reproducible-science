@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3AP236%3D1369-7412%7CP7363%3D1369-7412%7CP236%3D1467-9868%7CP7363%3D1467-9868&format=json",
+  "fetched_at": "2026-10-14T22:22:46Z",
+  "sha256": "09114b2842b225f53f5bd162f869e0a09fc18c715bf6711927dccfbb3c94208d",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q15759195\", \"pageid\": 17392490, \"size\": 38704, \"wordcount\": 216, \"snippet\": \"Journal of the Royal Statistical Society Series B: Statistical Methodology\\nJournal of the Royal Statistical Society Series B: Statistical Methodology\\nJournal\", \"timestamp\": \"2026-03-12T08:06:56Z\"}]}}"
+}

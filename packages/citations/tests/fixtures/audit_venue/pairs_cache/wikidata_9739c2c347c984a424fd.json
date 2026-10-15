@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Royal+Society+Open+Science&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:10:37Z",
+  "sha256": "24c8261651c3234e0e21f19de3c8ebd98999e2f37625418e1805d44b5aad65cf",
+  "body": "{\"searchinfo\": {\"search\": \"Royal Society Open Science\"}, \"search\": [{\"id\": \"Q18712516\", \"title\": \"Q18712516\", \"pageid\": 20241623, \"concepturi\": \"http://www.wikidata.org/entity/Q18712516\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q18712516\", \"display\": {\"label\": {\"value\": \"Royal Society Open Science\", \"language\": \"en\"}, \"description\": {\"value\": \"scientific journal\", \"language\": \"en\"}}, \"label\": \"Royal Society Open Science\", \"description\": \"scientific journal\", \"match\": {\"type\": \"label\", \"language\": \"en\", \"text\": \"Royal Society Open Science\"}}, {\"id\": \"Q124004145\", \"title\": \"Q124004145\", \"pageid\": 118180647, \"concepturi\": \"http://www.wikidata.org/entity/Q124004145\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q124004145\", \"display\": {\"label\": {\"value\": \"Royal Society Open Science\", \"language\": \"en\"}}, \"label\": \"Royal Society Open Science\", \"match\": {\"type\": \"label\", \"language\": \"en\", \"text\": \"Royal Society Open Science\"}}], \"success\": 1}"
+}

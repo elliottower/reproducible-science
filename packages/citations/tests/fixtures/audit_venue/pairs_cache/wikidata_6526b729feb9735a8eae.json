@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DBiol.+Lett.%22&format=json",
+  "fetched_at": "2026-10-15T00:09:08Z",
+  "sha256": "6826f9b71120308e9baff438a24a24b1543d352397f8a189bb9c1e58e45569d0",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q43341\", \"pageid\": 45549, \"size\": 34661, \"wordcount\": 101, \"snippet\": \"\u751f\u7269\u5b78\u5831\\nBiology Letters\\nBiology Letters\\nBiology Letters\\nBiology Letters\\nBiology Letters\\nBiology Letters\\nBiology Letters\\nBiology Letters\\nBiology Letters\\nBiology\", \"timestamp\": \"2026-07-13T16:25:40Z\"}]}}"
+}

@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DProc.+Natl.+Acad.+Sci.+U.S.A.%22&format=json",
+  "fetched_at": "2026-10-14T22:30:08Z",
+  "sha256": "978fce983abbe01f3852b0b5f53a1f1ae7f5a6ee297ebc71f5ecd2f73f787782",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q1146531\", \"pageid\": 1093107, \"size\": 110072, \"wordcount\": 1173, \"snippet\": \"Proceedings of the National Academy of Sciences\\n\u7f8e\u56fd\u56fd\u5bb6\u79d1\u5b66\u9662\u9662\u520a\\n\u7f8e\u570b\u570b\u5bb6\u79d1\u5b78\u9662\u9662\u520a\\n\u7f8e\u570b\u570b\u5bb6\u79d1\u5b78\u9662\u9662\u520a\\nProceedings of the National Academy of Sciences\\nProceedings of the National\", \"timestamp\": \"2026-05-04T03:43:03Z\"}]}}"
+}

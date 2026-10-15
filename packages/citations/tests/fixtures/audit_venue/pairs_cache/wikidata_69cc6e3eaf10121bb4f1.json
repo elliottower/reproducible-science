@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q7000691&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-15T00:11:18Z",
+  "sha256": "f6dc29be99e7c9037c00307d0154dfd45e87db355c6708382dc59e7671ac3384",
+  "body": "{\"entities\": {\"Q7000691\": {\"id\": \"Q7000691\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Network\"}}, \"aliases\": {\"en\": [{\"language\": \"en\", \"value\": \"Network (London, 1990)\"}, {\"language\": \"en\", \"value\": \"Network: Computation in Neural Systems\"}]}, \"claims\": {\"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0954-898X\", \"type\": \"string\"}}}, {\"mainsnak\": {\"datavalue\": {\"value\": \"1361-6536\", \"type\": \"string\"}}}], \"P1160\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"Network\", \"type\": \"string\"}}}], \"P1055\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"9431867\", \"type\": \"string\"}}}], \"P7363\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0954-898X\", \"type\": \"string\"}}}], \"P10283\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"S102859716\", \"type\": \"string\"}}}]}}}, \"success\": 1}"
+}

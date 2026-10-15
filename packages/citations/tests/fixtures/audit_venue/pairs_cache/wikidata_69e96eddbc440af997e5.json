@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Pattern+Recognit.+Lett.&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:09:26Z",
+  "sha256": "f1f24d49630c3e4fb6676f96c3abb08faf2d3a9987f59e497dcdd9f3d9d3db1d",
+  "body": "{\"searchinfo\": {\"search\": \"Pattern Recognit. Lett.\"}, \"search\": [], \"success\": 1}"
+}

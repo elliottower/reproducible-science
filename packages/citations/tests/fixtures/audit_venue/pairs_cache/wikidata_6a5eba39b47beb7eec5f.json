@@ -1,0 +1,7 @@
+{
+  "cache_version": 2,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q43341%7CQ43057158&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-15T00:09:10Z",
+  "sha256": "ce90084ad5d1cc01727a25b2d7bbf597aebafab05713fce83f3903127f0f0542",
+  "body": "{\"entities\": {\"Q43341\": {\"id\": \"Q43341\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Biology Letters\"}}, \"aliases\": {\"en\": [{\"language\": \"en\", \"value\": \"Biol. Lett.\"}]}, \"claims\": {\"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"1744-9561\", \"type\": \"string\"}}}, {\"mainsnak\": {\"datavalue\": {\"value\": \"1744-957X\", \"type\": \"string\"}}}], \"P1160\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"Biol. Lett.\", \"type\": \"string\"}}}], \"P1055\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"101247722\", \"type\": \"string\"}}}], \"P7363\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"1744-9561\", \"type\": \"string\"}}}], \"P1813\": [{\"mainsnak\": {\"datavalue\": {\"value\": {\"text\": \"Biol. Lett.\", \"language\": \"en\"}, \"type\": \"monolingualtext\"}}}], \"P10283\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"S153317304\", \"type\": \"string\"}}}]}}, \"Q43057158\": {\"id\": \"Q43057158\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Biology Letters. Editorial 2012.\"}}, \"aliases\": {}, \"claims\": {}}}, \"success\": 1}"
+}
