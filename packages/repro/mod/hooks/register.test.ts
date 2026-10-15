@@ -11,14 +11,48 @@ const revealed: string[] = []
 /** Every `$.process.run` the mod made, as JSON, so a test can read where a check ran. */
 const spawned: string[] = []
 
+/**
+ * The disk beneath `project`: `links` maps a symbolic link's path to the path it points at, and
+ * `ignoresCase` makes `prereg.md` open `PREREG.md`, keeping its own spelling in `realPath` as the
+ * engine documents a case alias does.
+ */
+type Disk = { links?: Record<string, string>; ignoresCase?: boolean }
+
 /** Stands for the engine beneath the mod: a project whose files are `files`, and a tool that always runs. */
-function project(on: On, files: Record<string, string>, says: (argv: readonly string[]) => string | null = () => '') {
+function project(
+  on: On,
+  files: Record<string, string>,
+  says: (argv: readonly string[]) => string | null = () => '',
+  disk: Disk = {},
+) {
   const ran: string[] = []
+  const links = disk.links ?? {}
+  /** The stored spelling of the file or folder `path` opens, or undefined where it opens nothing. */
+  const opens = (path: string): string | undefined => {
+    const followed = links[path] ?? path
+    const same = (stored: string) =>
+      disk.ignoresCase ? stored.toLowerCase() === followed.toLowerCase() : stored === followed
+    const file = Object.keys(files).find(same)
+    if (file !== undefined) {
+      return file
+    }
+    const under = Object.keys(files).find(f => same(f.slice(0, followed.length)) && f[followed.length] === '/')
+
+    return under?.slice(0, followed.length)
+  }
   on('session.cwd', () => ({ value: CWD }))
-  on('fs.exists', (_$, e) => ({
-    value: e.path in files || Object.keys(files).some(f => f.startsWith(`${e.path}/`)),
-  }))
-  on('fs.read', (_$, e) => ({ value: files[e.path] ?? '' }))
+  on('fs.exists', (_$, e) => ({ value: opens(e.path) !== undefined }))
+  on('fs.read', (_$, e) => ({ value: files[opens(e.path) ?? e.path] ?? '' }))
+  on('fs.stat', (_$, e) => {
+    const stored = opens(e.path)
+    if (stored === undefined) {
+      throw new Error(`ENOENT: ${e.path}`)
+    }
+    const followed = links[e.path] ?? e.path
+    const kind = stored in files ? ('file' as const) : ('dir' as const)
+
+    return { value: { kind, size: 0, mtimeMs: 0, isLink: e.path in links, realPath: e.resolve ? followed : undefined } }
+  })
   on('ui.open', () => ({ value: { isOpen: true } as never }))
   on('ui.close', () => ({ value: undefined as never }))
   on('ui.focus', () => ({ value: undefined as never }))
@@ -95,6 +129,73 @@ test('an edit to a frozen amendment is refused and never reaches the tool', asyn
     }
   }
   expect(ran).toEqual([])
+})
+
+test('an edit through a symbolic link to a plan frozen in place is refused', async ($, on) => {
+  const ran = project(on, { [`${CWD}/PREREG.md`]: FROZEN_PLAN }, undefined, {
+    links: { [`${CWD}/link.md`]: `${CWD}/PREREG.md` },
+  })
+
+  const answer = await $.tool.call({ tool: 'Edit', file_path: `${CWD}/link.md`, old_string: 'H1. ...', new_string: 'H1. x' })
+
+  expect(answer.deny).toContain(`${CWD}/PREREG.md is a frozen registration`)
+  expect(ran).toEqual([])
+})
+
+test('an edit through a symbolic link to a plan frozen whole is refused', async ($, on) => {
+  const ran = project(
+    on,
+    { [`${CWD}/PREREG.md`]: DRAFT_PLAN, [`${CWD}/.prereg/PREREG.md.json`]: '{}' },
+    undefined,
+    { links: { [`${CWD}/link.md`]: `${CWD}/PREREG.md` } },
+  )
+
+  const answer = await $.tool.call({ tool: 'Write', file_path: `${CWD}/link.md`, content: 'rewritten' })
+
+  expect(answer.deny).toContain(`${CWD}/PREREG.md has a freeze record (${CWD}/.prereg/PREREG.md.json)`)
+  expect(ran).toEqual([])
+})
+
+test('an edit through a symbolic link to a file nobody froze goes through', async ($, on) => {
+  const ran = project(
+    on,
+    { [`${CWD}/PREREG.md`]: FROZEN_PLAN, [`${CWD}/notes.md`]: 'notes' },
+    undefined,
+    { links: { [`${CWD}/link.md`]: `${CWD}/notes.md` } },
+  )
+
+  const answer = await $.tool.call({ tool: 'Write', file_path: `${CWD}/link.md`, content: 'more notes' })
+
+  expect(answer.deny).toBeUndefined()
+  expect(ran).toEqual(['Write'])
+})
+
+const CASES = {
+  'frozen in place': { [`${CWD}/PREREG.md`]: FROZEN_PLAN },
+  'frozen whole': { [`${CWD}/PREREG.md`]: DRAFT_PLAN, [`${CWD}/.prereg/PREREG.md.json`]: '{}' },
+}
+
+for (const [freeze, files] of Object.entries(CASES)) {
+  test(`on a disk that ignores case, an edit to prereg.md is refused when PREREG.md is ${freeze}`, async ($, on) => {
+    const ran = project(on, files, undefined, { ignoresCase: true })
+
+    const answer = await $.tool.call({ tool: 'Write', file_path: `${CWD}/prereg.md`, content: 'rewritten' })
+
+    // A record looked up as `.prereg/prereg.md.json` opens the stored one on such a disk, so the
+    // refusal may name either spelling; that it refuses is the property.
+    expect(answer.deny?.toLowerCase()).toContain(`${CWD}/prereg.md`.toLowerCase())
+    expect(answer.deny).toContain('prereg amend')
+    expect(ran).toEqual([])
+  })
+}
+
+test('on a disk that keeps case, prereg.md beside a frozen PREREG.md is a file of its own', async ($, on) => {
+  const ran = project(on, { [`${CWD}/PREREG.md`]: FROZEN_PLAN, [`${CWD}/prereg.md`]: 'notes' })
+
+  const answer = await $.tool.call({ tool: 'Write', file_path: `${CWD}/prereg.md`, content: 'more notes' })
+
+  expect(answer.deny).toBeUndefined()
+  expect(ran).toEqual(['Write'])
 })
 
 test('an amendment still in draft can be edited beside a frozen plan', async ($, on) => {

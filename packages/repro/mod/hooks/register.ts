@@ -67,6 +67,32 @@ async function above($: EngineInterface, dir: string, name: string) {
   }
 }
 
+/**
+ * The paths an edit to `path` may write: as named, then where it lands. `realPath` follows every
+ * symbolic link; a case alias keeps its own spelling there, so the last name is read back from
+ * its folder's listing, which spells it as the disk stores it. A file not there yet lands in its
+ * folder's real path.
+ */
+async function candidates($: EngineInterface, path: string): Promise<string[]> {
+  const name = path.replace(/^.*\//, '')
+  const own = await $.fs.stat(path, { resolve: true }).catch(() => undefined)
+  const folder = own?.realPath
+    ? parent(own.realPath)
+    : (await $.fs.stat(parent(path), { resolve: true }).catch(() => undefined))?.realPath
+  if (folder === undefined) {
+    return [path]
+  }
+  const landed = own?.realPath ? own.realPath.replace(/^.*\//, '') : name
+  const listed = own ? await $.fs.list(folder).catch(() => []) : []
+  const spelled =
+    listed.some(entry => entry.name === landed)
+      ? landed
+      : (listed.find(entry => entry.name.toLowerCase() === landed.toLowerCase())?.name ?? landed)
+  const real = `${folder}/${spelled}`
+
+  return real === path ? [path] : [path, real]
+}
+
 async function absolute($: EngineInterface, path: string) {
   const cwd = await $.session.cwd()
   if (path.startsWith('~/')) {
@@ -848,42 +874,46 @@ export const register: Register = on => {
 
   for (const tool of ['Edit', 'Write'] as const) {
     on('tool.call', { tool }, async ($, e, next) => {
-      const path = await absolute($, e.file_path)
-      await track($, path)
+      const edited = await absolute($, e.file_path)
+      await track($, edited)
 
-      if (path.includes('/') && (await $.fs.exists(recordOf(path)))) {
-        return {
-          deny:
-            `${path} has a freeze record (${recordOf(path)}), and a frozen file never changes by ` +
-            `one byte. Record a note with \`prereg log\`, or a change to the plan as an ` +
-            `amendment with \`prereg amend\`, which is a file of its own. Ask the user before ` +
-            `doing either.`,
+      // The file as named, then where it lands: an editor writes through a symbolic link, and on a
+      // disk that ignores case `prereg.md` opens `PREREG.md`. The shared hook does the same.
+      for (const path of await candidates($, edited)) {
+        if (path.includes('/') && (await $.fs.exists(recordOf(path)))) {
+          return {
+            deny:
+              `${path} has a freeze record (${recordOf(path)}), and a frozen file never changes by ` +
+              `one byte. Record a note with \`prereg log\`, or a change to the plan as an ` +
+              `amendment with \`prereg amend\`, which is a file of its own. Ask the user before ` +
+              `doing either.`,
+          }
         }
-      }
 
-      if (path.endsWith(`/${PLAN}`) && (await $.fs.exists(path)) && FROZEN.test(await $.fs.read(path))) {
-        return {
-          deny:
-            `${path} is a frozen registration, and a frozen plan is not edited in place. ` +
-            `Record a note with \`prereg log\`, or a change to the plan as an amendment with ` +
-            `\`prereg amend\`, which is a file of its own. Ask the user before doing either.`,
+        if (path.endsWith(`/${PLAN}`) && (await $.fs.exists(path)) && FROZEN.test(await $.fs.read(path))) {
+          return {
+            deny:
+              `${path} is a frozen registration, and a frozen plan is not edited in place. ` +
+              `Record a note with \`prereg log\`, or a change to the plan as an amendment with ` +
+              `\`prereg amend\`, which is a file of its own. Ask the user before doing either.`,
+          }
         }
       }
 
       const ran = await next(e)
-      if (ran.deny !== undefined || !MANUSCRIPT.test(path) || told.has(path)) {
+      if (ran.deny !== undefined || !MANUSCRIPT.test(edited) || told.has(edited)) {
         return ran
       }
-      if (await above($, dirOf(path), LEDGER)) {
+      if (await above($, dirOf(edited), LEDGER)) {
         return ran
       }
-      told.add(path)
+      told.add(edited)
 
       return {
         ...ran,
         context: [
           ...(ran.context ?? []),
-          `reproducible-science: ${path} is a manuscript and no .results/ ledger exists at or above it, ` +
+          `reproducible-science: ${edited} is a manuscript and no .results/ ledger exists at or above it, ` +
             `so no number in it is bound to a run. Before reporting a result here, run ` +
             `\`results init\`, seal the inputs, and bind each sentence with \`results claim\`. ` +
             `If this file reports no results of this project, say so to the user and continue.`,
