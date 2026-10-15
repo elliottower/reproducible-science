@@ -50,10 +50,10 @@ OPEN_ITEMS_VERSION = "reproducible.science/open-items/0.1-experimental"
 DRAFT_NAME = "repro.draft.yaml"
 ITEMS_NAME = "open-items.json"
 
-#: The record of what an agent did through `repro mcp`, on a hash chain: each project it named
-#: with `set_project`, and each proposal it made to fill an item. Beside the record of checks, in
-#: the state folder of the project the agent worked in, and only ever appended to.
-AGENT_RECORD = pathlib.Path(".repro") / "agent.jsonl"
+#: Every proposal made to fill an item, on a hash chain beside the record of checks: in the
+#: state folder beside the open-items file, one event a proposal, only ever appended to.
+#: `repro mcp`'s `propose_binding` writes it, and `tally` counts from it.
+ATTEMPTS = pathlib.Path(".repro") / "attempts.jsonl"
 
 #: How many attempts at one item pass without remark. Past it a match is still a match, and
 #: still inferred, but an address found after many tries may be one a search turned up rather
@@ -153,16 +153,14 @@ class OpenItems(BaseModel):
 
 
 class Attempt(BaseModel):
-    """One proposal made for an item, and what the check found of it: an event of the agent
-    record. The chain adds its position, the time and the hash of the event before it."""
+    """One proposal made for an item, and what the check found of it. The chain adds its
+    position, the time and the hash of the event before it."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     event: Literal["attempt"] = "attempt"
-    session: str
-    """The server session that made it."""
     open_items: str
-    """The open-items file, from the directory the record is in."""
+    """The open-items file's name, in the directory the record is beside."""
     item: str
     claim: str
     attempt: int = Field(ge=1)
@@ -173,65 +171,53 @@ class Attempt(BaseModel):
     """What the check found: `matched`, never `verified`, or the outcome's own word."""
 
 
-class AgentRecord(BaseModel):
-    """The agent record governing an open-items file, as read."""
+class AttemptRecord(BaseModel):
+    """The attempts recorded at the items of one open-items file, as read."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     path: str | None
-    """Where it is, or None where no record is found."""
+    """Where the record is, or None where there is none."""
     status: str
     """What `provenance_core.chain.verify` found: `intact` for a chain that verifies."""
     problems: tuple[str, ...] = ()
     attempts: tuple[Attempt, ...] = ()
-    """The attempts at the items of this open-items file, in the order made."""
 
 
-def agent_record(start: pathlib.Path) -> pathlib.Path | None:
-    """The agent record at or above `start`, as git finds `.git`, or None."""
-    here = start.resolve()
-    return next(
-        (d / AGENT_RECORD for d in (here, *here.parents) if (d / AGENT_RECORD).is_file()), None
-    )
-
-
-def _key(open_items: pathlib.Path, record: pathlib.Path) -> str:
-    """The open-items file as an attempt names it: from the directory holding `.repro/`."""
-    return open_items.resolve().relative_to(record.parent.parent).as_posix()
-
-
-def read_attempts(open_items: pathlib.Path) -> AgentRecord:
-    """The attempts recorded at the items of `open_items`, with whether the chain verifies.
-    A chain that does not verify is reported, and its attempts are still counted as written."""
-    record = agent_record(open_items.parent)
-    if record is None:
-        return AgentRecord(path=None, status="absent")
+def read_attempts(open_items: pathlib.Path) -> AttemptRecord:
+    """The attempts recorded at the items of `open_items`, and whether the chain verifies. A
+    chain that does not is reported, and its attempts are still counted as written."""
+    record = open_items.parent / ATTEMPTS
+    if not record.is_file():
+        return AttemptRecord(path=None, status="absent")
     status, problems = chain.verify(record)
     try:
         events = chain.read_ledger(record)
     except chain.ChainError as e:
-        return AgentRecord(path=record.as_posix(), status=status.value, problems=(str(e),))
-    key = _key(open_items, record)
+        return AttemptRecord(path=record.as_posix(), status=status.value, problems=(str(e),))
     found = []
     for event in events:
-        if event.get("event") != "attempt" or event.get("open_items") != key:
+        if event.get("event") != "attempt" or event.get("open_items") != open_items.name:
             continue
-        fields = {k: v for k, v in event.items() if k in Attempt.model_fields}
         try:
-            found.append(Attempt.model_validate(fields))
+            found.append(
+                Attempt.model_validate(
+                    {k: v for k, v in event.items() if k in Attempt.model_fields}
+                )
+            )
         except ValidationError as e:
-            problems = (*problems, f"entry {event.get('seq')} is not an attempt: {e}")
-    return AgentRecord(
+            problems = [*problems, f"entry {event.get('seq')} is not an attempt: {e}"]
+    return AttemptRecord(
         path=record.as_posix(), status=status.value, problems=tuple(problems), attempts=tuple(found)
     )
 
 
-def append_attempt(root: pathlib.Path, open_items: pathlib.Path, attempt: dict[str, Any]) -> None:
-    """Append one attempt to the agent record of the project at `root`. Refused, by the chain,
-    where the record does not verify."""
-    record = root / AGENT_RECORD
+def append_attempt(open_items: pathlib.Path, attempt: dict[str, Any]) -> None:
+    """Append one attempt to the record beside `open_items`. The chain refuses to append to a
+    record that does not verify."""
+    record = open_items.parent / ATTEMPTS
     record.parent.mkdir(exist_ok=True)
-    event = Attempt.model_validate({**attempt, "open_items": _key(open_items, record)})
+    event = Attempt.model_validate({**attempt, "open_items": open_items.name})
     chain.append_event(record, event.model_dump(mode="json"))
 
 
@@ -335,7 +321,7 @@ class Tally(BaseModel):
     """Each item a proposal was recorded for, with how many."""
     over_attempt_limit: tuple[str, ...] = ()
     """The items with more than `ATTEMPT_LIMIT` attempts recorded."""
-    agent_record: AgentRecord = AgentRecord(path=None, status="absent")
+    attempt_record: AttemptRecord = AttemptRecord(path=None, status="absent")
     """Where the attempts were read from, and whether its chain verifies."""
     per_claim: tuple[ClaimTally, ...]
 
@@ -445,7 +431,7 @@ def tally(path: pathlib.Path) -> Tally:
         assertions=assertions,
         attempts=dict(tried),
         over_attempt_limit=tuple(item for item, n in tried.items() if n > ATTEMPT_LIMIT),
-        agent_record=record,
+        attempt_record=record,
         per_claim=tuple(per_claim),
     )
 

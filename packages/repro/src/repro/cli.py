@@ -606,18 +606,19 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
         help="serve these checks to an agent as MCP tools, over standard input and output",
         description=(
             "Run an MCP server on standard input and output whose tools are this toolkit's "
-            "checks: verify, why, stale, numbers, origins, open items, prereg check, results "
-            "verify and citations verify, which write nothing, and propose_binding and "
-            "pin_quote, which write one inferred assertion or one quotation that resolves. "
-            "Every path is kept inside the project root. Nothing it offers freezes, seals, "
-            f"registers, runs a declared command or reaches the network. Needs {MCP_EXTRA}."
+            "checks, the open items of a reader's draft one at a time, and four writes: "
+            "propose_binding, add_artifact and mark_reviewed, each one line of a draft "
+            "manifest, and pin_quote. Each call works in the project its path is in: the "
+            f"nearest folder above it holding one of {', '.join(PROJECT_MARKERS)}. Nothing it "
+            "offers freezes, seals, registers, runs a declared command or reaches the network. "
+            f"Needs {MCP_EXTRA}."
         ),
     )
     p_mcp.add_argument(
         "--root",
         help=(
-            "the project root (default: the nearest directory at or above the working "
-            f"directory holding one of {', '.join(PROJECT_MARKERS)})"
+            "the project of a call that names no path or project, until one does (default: "
+            "the project above the working directory)"
         ),
     )
     p_mcp.set_defaults(func=cmd_mcp)

@@ -848,8 +848,26 @@
     },
     "Review": {
       "additionalProperties": false,
-      "description": "Who accepted an inferred assertion, and when. An assertion carrying one is counted as\ndeclared.",
+      "description": "Who accepted an inferred assertion or artifact, when, and how. One carrying a review is\ncounted as declared, while the review holds.",
       "properties": {
+        "digest": {
+          "anyOf": [
+            {
+              "pattern": "^[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Digest"
+        },
+        "how": {
+          "default": "",
+          "title": "How",
+          "type": "string"
+        },
         "when": {
           "anyOf": [
             {

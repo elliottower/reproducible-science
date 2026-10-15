@@ -65,7 +65,7 @@ class _Stated(BaseModel):
     @property
     def counted(self) -> Basis:
         """The basis the assertion is counted under: declared once someone has reviewed it."""
-        return Basis.DECLARED if self.reviewed is not None else self.basis
+        return Basis.DECLARED if self.reviewed and self.reviewed.holds(self) else self.basis
 
 
 class _EvidenceBase(_Stated):

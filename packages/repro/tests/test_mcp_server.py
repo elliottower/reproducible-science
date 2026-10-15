@@ -1,7 +1,6 @@
 import json
-import os
 import pathlib
-import subprocess
+import shutil
 from typing import Any
 
 import anyio
@@ -10,10 +9,9 @@ import yaml
 from claims.cli import main as claims_main
 from claims.manifest import load
 from claims.models import Digest, Manifest
-from claims.open_items import OpenItem, Source, write_draft
+from claims.open_items import OpenItem, Source, tally, write_draft
 from claims.verify import verify as run_verify
 from mcp import Client
-from mcp.types import ListRootsResult, Root
 from provenance_core import chain
 from repro import proposals
 from repro.mcp_server import INSTRUCTIONS, build
@@ -167,6 +165,10 @@ def session(root: pathlib.Path):
     return anyio.run(run)
 
 
+def tallied(project: pathlib.Path) -> dict[str, Any]:
+    return tally(project / DRAFT_ITEMS).model_dump(mode="json")
+
+
 def values(found: Any) -> list[Any]:
     if isinstance(found, dict):
         return [v for value in found.values() for v in values(value)]
@@ -186,7 +188,6 @@ def test_the_server_lists_every_tool_and_carries_the_procedure(project):
         "stale",
         "numbers",
         "origins",
-        "open_items",
         "next_open_item",
         "get_open_item",
         "prereg_check",
@@ -194,14 +195,15 @@ def test_the_server_lists_every_tool_and_carries_the_procedure(project):
         "citations_verify",
         "propose_binding",
         "pin_quote",
-        "set_project",
         "add_artifact",
+        "mark_reviewed",
     }
     assert instructions == INSTRUCTIONS
     for rule in (
         "basis: inferred",
         "matched, inferred: not verified",
-        "call set_project with the project folder first",
+        "Pass absolute paths, or a `project` folder",
+        "call mark_reviewed only for the items",
         "Never: edit open-items.json",
         "edit a pinned quotation",
         "ask the human to run them: prereg freeze, prereg register, results seal",
@@ -251,15 +253,6 @@ def test_numbers_counts_what_a_text_prints(project):
 def test_origins_compares_nothing_where_none_is_declared(project):
     result = call(project, "origins")
     assert result.structured_content["origins"]["origins"] == []
-
-
-def test_open_items_counts_and_lists_each_item(project):
-    result = call(project, "open_items", {"open_items": DRAFT_ITEMS})
-    found = result.structured_content
-    assert found["items"]["total"] == 3
-    assert found["items"]["open"] == 2
-    assert [entry["item"] for entry in found["list"]] == ["auc/value", "acc/value", "bound/value"]
-    assert [entry["filled"] for entry in found["list"]] == [False, False, True]
 
 
 def test_items_are_handed_over_one_at_a_time_with_counts(project):
@@ -316,7 +309,7 @@ def test_a_matched_proposal_is_written_inferred_and_never_called_verified(projec
     assert why.structured_content["assertions"][0]["outcome"] == "matched"
     assert "verified" not in why.structured_content["inferred"]
 
-    after = call(project, "open_items", {"open_items": DRAFT_ITEMS}).structured_content
+    after = tallied(project)
     assert after["items"]["filled_by_inferred"] == 1
     assert "verified" not in after["assertions"]["inferred"]
 
@@ -362,7 +355,7 @@ def unchanged(project: pathlib.Path):
             "fills_no_open_item",
         ),
         ({"assertion": _candidate("/auc/held") | {"artifact": "paper"}}, "artifact_undeclared"),
-        ({"open_items": "../outside/open-items.json"}, "outside_root"),
+        ({"open_items": "../outside/open-items.json"}, "no_project"),
     ],
 )
 def test_propose_binding_refuses_and_writes_nothing(project, arguments, rule):
@@ -569,7 +562,7 @@ def test_no_argument_to_pin_quote_ends_the_server_or_reaches_the_network(project
             async with Client(build(project)) as client:
                 given = {"claims_file": "claims/woodward.yaml", "id": "q", "quote": PASSAGE}
                 refused = await client.call_tool("pin_quote", given | arguments)
-                after = await client.call_tool("open_items", {"open_items": DRAFT_ITEMS})
+                after = await client.call_tool("next_open_item", {"open_items": DRAFT_ITEMS})
                 return refused, after
 
     refused, after = anyio.run(run)
@@ -589,142 +582,6 @@ def test_a_value_beginning_with_a_dash_is_read_as_the_value(project, field, valu
         assert "--check" in claims
     else:
         assert claims["q"]["quotes"][0]["section"] == "--recapture"
-
-
-def roots_call(
-    server_root: pathlib.Path, root: pathlib.Path, tool: str, arguments: dict, mode: str = "auto"
-):
-    async def list_roots(context) -> ListRootsResult:
-        return ListRootsResult(roots=[Root(uri=root.as_uri())])
-
-    async def run():
-        async with Client(build(server_root), list_roots_callback=list_roots, mode=mode) as client:
-            return await client.call_tool(tool, arguments)
-
-    return anyio.run(run)
-
-
-@pytest.mark.parametrize("mode", ["auto", "legacy"])
-def test_a_client_that_offers_roots_names_the_project(project, tmp_path, mode):
-    elsewhere = tmp_path / "started-here"
-    elsewhere.mkdir()
-    result = roots_call(elsewhere, project, "verify", {"policy": "exploratory"}, mode)
-    assert not result.is_error
-    assert result.structured_content["root"] == project.as_posix()
-    assert result.structured_content["counts"] == {"verified": 1}
-
-    result = roots_call(project, elsewhere, "verify", {}, mode)
-    assert result.structured_content["root"] == elsewhere.as_posix()
-    assert result.structured_content["error"] == "ManifestError"
-
-
-def test_a_client_root_confines_every_path(project):
-    result = roots_call(
-        project.parent, project, "verify", {"manifest": "../project/../outside/repro.yaml"}
-    )
-    assert result.structured_content["refused"] == "outside_root"
-    result = roots_call(
-        project.parent, project / "draft", "open_items", {"open_items": "open-items.json"}
-    )
-    assert not result.is_error
-    result = roots_call(project.parent, project / "draft", "verify", {"manifest": "../repro.yaml"})
-    assert result.structured_content["refused"] == "outside_root"
-
-
-def calls(server_root: pathlib.Path | None, steps: list[tuple[str, dict]], roots=None):
-    """Several calls in one session, as an agent makes them."""
-
-    async def list_roots(context) -> ListRootsResult:
-        return ListRootsResult(roots=[Root(uri=root.as_uri()) for root in roots])
-
-    async def run():
-        callback = list_roots if roots else None
-        async with Client(build(server_root), list_roots_callback=callback) as client:
-            return [await client.call_tool(tool, arguments) for tool, arguments in steps]
-
-    return anyio.run(run)
-
-
-def test_set_project_names_the_root_for_the_rest_of_the_session(project, tmp_path):
-    named, verified = calls(
-        tmp_path,
-        [("set_project", {"path": str(project)}), ("verify", {"policy": "exploratory"})],
-        roots=[tmp_path],
-    )
-    assert named.structured_content == {"root": project.as_posix()}
-    assert verified.structured_content["root"] == project.as_posix()
-    assert verified.structured_content["counts"] == {"verified": 1}
-
-
-@pytest.mark.parametrize("target", ["empty", "file", "missing"])
-def test_set_project_refuses_what_is_not_a_project(project, tmp_path, target):
-    (tmp_path / "empty").mkdir()
-    (tmp_path / "file").write_text("x")
-    refused, verified = calls(
-        project,
-        [("set_project", {"path": str(tmp_path / target)}), ("verify", {"policy": "exploratory"})],
-    )
-    assert refused.is_error
-    assert refused.structured_content["refused"] == "not_a_project"
-    assert verified.structured_content["root"] == project.as_posix()
-
-
-def test_the_project_is_found_above_the_working_directory(project, monkeypatch):
-    monkeypatch.chdir(project / "results")
-    (result,) = calls(None, [("verify", {"policy": "exploratory"})])
-    assert result.structured_content["root"] == project.as_posix()
-    assert result.structured_content["counts"] == {"verified": 1}
-
-
-def test_with_no_project_every_tool_says_to_call_set_project(project, tmp_path, monkeypatch):
-    nowhere = tmp_path / "nowhere"
-    nowhere.mkdir()
-    monkeypatch.chdir(nowhere)
-    proposal = {"open_items": DRAFT_ITEMS, "claim": "auc", "assertion": _candidate("/auc/held")}
-    pin = {"claims_file": "claims/woodward.yaml", "id": "q", "quote": PASSAGE}
-    results = calls(None, [("propose_binding", proposal), ("pin_quote", pin), ("verify", {})])
-    for result in results:
-        assert result.is_error
-        assert result.structured_content["refused"] == "no_project"
-        assert result.content[0].text == "no project: call set_project"
-
-
-def test_paths_stay_inside_the_project_set_project_named(project, tmp_path):
-    outside = tmp_path / "outside"
-    outside.mkdir()
-    (outside / "repro.yaml").write_text((project / "repro.yaml").read_text())
-    (project / "elsewhere").symlink_to(outside)
-    results = calls(
-        tmp_path,
-        [
-            ("set_project", {"path": str(project)}),
-            ("verify", {"manifest": "elsewhere/repro.yaml"}),
-            ("verify", {"manifest": "../outside/repro.yaml"}),
-            ("verify", {"manifest": str(outside / "repro.yaml")}),
-        ],
-    )
-    assert results[0].structured_content["root"] == project.as_posix()
-    for result in results[1:]:
-        assert result.structured_content["refused"] == "outside_root"
-
-
-def test_a_folder_holding_only_a_plan_is_a_project(tmp_path, monkeypatch):
-    study = tmp_path / "study"
-    (study / "analysis").mkdir(parents=True)
-    (study / "PREREG.md").write_text("# Does the plan mark the project?\n")
-    (tmp_path / "paper-only" / "paper").mkdir(parents=True)
-    named, refused = calls(
-        tmp_path,
-        [
-            ("set_project", {"path": str(study)}),
-            ("set_project", {"path": str(tmp_path / "paper-only")}),
-        ],
-    )
-    assert named.structured_content == {"root": study.as_posix()}
-    assert refused.structured_content["refused"] == "not_a_project"
-    monkeypatch.chdir(study / "analysis")
-    (found,) = calls(None, [("prereg_check", {})])
-    assert found.structured_content["root"] == study.as_posix()
 
 
 def propose_auc(project: pathlib.Path, pointer: str):
@@ -769,7 +626,7 @@ def test_an_inferred_assertion_the_agent_did_not_propose_is_never_replaced(proje
 
 
 def test_attempts_are_appended_to_a_hash_chain(project):
-    record = project / ".repro" / "agent.jsonl"
+    record = project / "draft" / ".repro" / "attempts.jsonl"
     propose_auc(project, "/auc/train")
     first = record.read_bytes()
     propose_auc(project, "/auc/held")
@@ -782,17 +639,16 @@ def test_attempts_are_appended_to_a_hash_chain(project):
     ]
     assert events[1]["prev_hash"] != events[0]["prev_hash"]
     assert events[0]["assertion"]["locator"] == {"kind": "tree", "pointer": "/auc/train"}
-    assert events[0]["session"] != events[1]["session"]
-    assert events[0]["open_items"] == DRAFT_ITEMS
+    assert events[0]["open_items"] == "open-items.json"
 
 
 def test_an_edited_record_of_attempts_is_reported(project, capsys):
-    record = project / ".repro" / "agent.jsonl"
+    record = project / "draft" / ".repro" / "attempts.jsonl"
     propose_auc(project, "/auc/train")
     propose_auc(project, "/auc/train")
     record.write_text(record.read_text().replace('"mismatch"', '"matched"', 1))
-    counted = call(project, "open_items", {"open_items": DRAFT_ITEMS}).structured_content
-    assert counted["agent_record"]["status"] != "intact"
+    counted = tallied(project)
+    assert counted["attempt_record"]["status"] != "intact"
     assert claims_main(["open-items", str(project / DRAFT_ITEMS)]) == 0
     assert "does not verify" in capsys.readouterr().out
     refused = propose_auc(project, "/auc/held")
@@ -811,7 +667,7 @@ def test_a_warning_comes_at_the_sixth_attempt_and_not_the_fifth(project, capsys)
     assert sixth["said"] == "matched, inferred: not verified"
     assert auc_evidence(project)[0]["basis"] == "inferred"
 
-    counted = call(project, "open_items", {"open_items": DRAFT_ITEMS}).structured_content
+    counted = tallied(project)
     assert counted["attempts"] == {"auc/value": 6}
     assert counted["over_attempt_limit"] == ["auc/value"]
     assert counted["items"]["filled_by_inferred"] == 1
@@ -831,39 +687,7 @@ def test_five_attempts_are_counted_and_not_flagged(project, capsys):
     assert fill["attempts"] == 5
 
 
-def test_set_project_is_refused_outside_the_clients_roots_and_logged_inside(project, tmp_path):
-    other = tmp_path / "other"
-    (other / "claims").mkdir(parents=True)
-    refused, named, switched = calls(
-        tmp_path,
-        [
-            ("set_project", {"path": str(project)}),
-            ("set_project", {"path": str(other)}),
-            ("set_project", {"path": str(other)}),
-        ],
-        roots=[other],
-    )
-    assert refused.structured_content["refused"] == "outside_client_roots"
-    assert named.structured_content == {"root": other.as_posix()}
-    assert not (project / ".repro" / "agent.jsonl").exists()
-    events = chain.read_ledger(other / ".repro" / "agent.jsonl")
-    assert [(e["event"], e["root"]) for e in events] == [("set_project", other.as_posix())] * 2
-    assert switched.structured_content["root"] == other.as_posix()
-
-
 # ------------------------------------------------------------------------------ add_artifact
-
-
-def git(root: pathlib.Path, *args: str) -> None:
-    # A hook's `GIT_DIR` outranks the directory named, so the environment is cleaned first.
-    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
-    subprocess.run(
-        ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
-        cwd=root,
-        check=True,
-        capture_output=True,
-        env=env,
-    )
 
 
 @pytest.fixture
@@ -872,9 +696,6 @@ def committed(project: pathlib.Path) -> pathlib.Path:
     (project / "pointer.bin").write_text(
         "version https://git-lfs.github.com/spec/v1\noid sha256:" + "0" * 64 + "\nsize 1\n"
     )
-    git(project, "init", "-q")
-    git(project, "add", ".")
-    git(project, "commit", "-q", "-m", "start")
     return project
 
 
@@ -903,7 +724,6 @@ def test_a_committed_file_is_added_inferred_and_nothing_else_changes(committed):
     old = draft.read_text()
     (result,) = session_calls(committed, [add("paper.txt", id="paper")])
     assert not result.is_error, result.content[0].text
-    assert result.structured_content["by"].startswith("commit ")
     new = draft.read_text()
     line = json.dumps(result.structured_content["artifact"])
     assert new.replace(f"- {line}\n", "", 1) == old
@@ -911,12 +731,9 @@ def test_a_committed_file_is_added_inferred_and_nothing_else_changes(committed):
     assert artifact["basis"] == "inferred"
     assert artifact["path"] == "../paper.txt"
     assert artifact["media_type"] == "text/plain"
-    events = chain.read_ledger(committed / ".repro" / "agent.jsonl")
-    assert events[-1]["event"] == "add_artifact"
 
 
 def test_add_artifact_refuses_and_writes_nothing(committed, tmp_path, monkeypatch):
-    (committed / "untracked.txt").write_text("written in the session\n")
     (tmp_path / "away.txt").write_text("x")
     (committed / "away").symlink_to(tmp_path / "away.txt")
     same = unchanged(committed)
@@ -935,67 +752,7 @@ def test_add_artifact_refuses_and_writes_nothing(committed, tmp_path, monkeypatc
     (result,) = session_calls(committed, [add("paper.txt")])
     assert result.structured_content["refused"] == "too_large"
     monkeypatch.undo()
-    (result,) = session_calls(committed, [add("untracked.txt")])
-    assert result.structured_content["refused"] == "not_vouched"
-    assert "commit it or record it with results run first" in result.structured_content["detail"]
     assert same()
-
-
-def test_a_file_committed_during_the_session_is_refused(committed):
-    def commit_one():
-        (committed / "made.txt").write_text("made by the agent\n")
-        git(committed, "add", "made.txt")
-        git(committed, "commit", "-q", "-m", "made")
-
-    (result,) = session_calls(committed, [commit_one, add("made.txt")])
-    assert result.structured_content["refused"] == "not_vouched"
-    assert (
-        "committed or changed during this session; a human must add it"
-        in (result.structured_content["detail"])
-    )
-    (later,) = session_calls(committed, [add("made.txt")])
-    assert not later.is_error
-
-
-def test_a_file_changed_after_the_session_started_is_refused(committed):
-    def edit():
-        (committed / "paper.txt").write_text("The AUC was 0.99 on held-out data.\n")
-
-    def commit_edit():
-        git(committed, "commit", "-q", "-am", "edit")
-
-    (changed, committed_too) = session_calls(
-        committed, [edit, add("paper.txt"), commit_edit, add("paper.txt")]
-    )
-    for result in (changed, committed_too):
-        assert result.structured_content["refused"] == "not_vouched"
-        assert "a human must add it" in result.structured_content["detail"]
-
-
-def test_a_run_output_the_ledger_recorded_before_the_session_is_added(committed):
-    out = committed / "results" / "fresh.json"
-    out.write_text('{"auc": 0.5}')
-    ledger = committed / ".results" / "ledger.jsonl"
-    ledger.parent.mkdir()
-    output = {"path": "results/fresh.json", "sha256": Digest.of_file(out).value}
-    chain.append_event(ledger, {"event": "run", "run_id": "r1", "outputs": [output]})
-    (result,) = session_calls(committed, [add("results/fresh.json")])
-    assert not result.is_error, result.content[0].text
-    assert "run r1" in result.structured_content["by"]
-
-
-def test_a_run_recorded_during_the_session_does_not_vouch(committed):
-    out = committed / "results" / "fresh.json"
-
-    def record_run():
-        out.write_text('{"auc": 0.5}')
-        ledger = committed / ".results" / "ledger.jsonl"
-        ledger.parent.mkdir(exist_ok=True)
-        output = {"path": "results/fresh.json", "sha256": Digest.of_file(out).value}
-        chain.append_event(ledger, {"event": "run", "run_id": "r2", "outputs": [output]})
-
-    (result,) = session_calls(committed, [record_run, add("results/fresh.json")])
-    assert result.structured_content["refused"] == "not_vouched"
 
 
 def manifest_over(tmp_path: pathlib.Path, artifact: dict) -> Manifest:
@@ -1026,3 +783,151 @@ def test_a_reviewed_artifact_counts_as_declared(tmp_path):
     review = {"who": "An Author", "when": "2026-10-14"}
     report = run_verify(manifest_over(tmp_path, {"basis": "inferred", "reviewed": review}))
     assert report.counts == {"verified": 1}
+
+
+# ------------------------------------------------------------------- the project of each call
+
+
+def calls(root: pathlib.Path | None, steps: list) -> list:
+    return session_calls(root, steps)
+
+
+def copy_project(source: pathlib.Path, target: pathlib.Path) -> pathlib.Path:
+    shutil.copytree(source, target, symlinks=True)
+    return target
+
+
+def test_each_call_follows_the_project_its_path_is_in(project, tmp_path, monkeypatch):
+    other = copy_project(project, tmp_path / "other")
+    unrelated = tmp_path / "unrelated"
+    unrelated.mkdir()
+    monkeypatch.chdir(unrelated)
+    in_a, in_b, no_path, named = calls(
+        None,
+        [
+            ("verify", {"manifest": str(project / "repro.yaml"), "policy": "exploratory"}),
+            ("next_open_item", {"open_items": str(other / DRAFT_ITEMS)}),
+            ("verify", {"policy": "exploratory"}),
+            ("verify", {"project": str(project), "policy": "exploratory"}),
+        ],
+    )
+    assert (in_a.structured_content["root"], in_a.structured_content["counts"]) == (
+        project.as_posix(),
+        {"verified": 1},
+    )
+    assert in_b.structured_content["root"] == other.as_posix()
+    assert no_path.structured_content["root"] == other.as_posix()
+    assert named.structured_content["root"] == project.as_posix()
+
+
+def test_with_no_project_anywhere_a_call_says_to_pass_one(tmp_path, monkeypatch):
+    nowhere = tmp_path / "nowhere"
+    nowhere.mkdir()
+    (nowhere / "stray.yaml").write_text("claims: []\n")
+    monkeypatch.chdir(nowhere)
+    plain, under_none = calls(None, [("verify", {}), ("verify", {"manifest": "stray.yaml"})])
+    assert plain.structured_content["detail"] == "no project: pass a path or a project"
+    assert under_none.structured_content["refused"] == "no_project"
+
+
+def test_a_symlink_belongs_to_the_project_it_sits_in(project, tmp_path):
+    other = copy_project(project, tmp_path / "other")
+    (project / "to-other").symlink_to(other)
+    (project / "also-here").symlink_to(project / "results")
+    out, kept = calls(
+        project,
+        [
+            ("verify", {"manifest": str(project / "to-other" / "repro.yaml")}),
+            ("next_open_item", {"open_items": str(project / DRAFT_ITEMS)}),
+        ],
+    )
+    assert out.structured_content["refused"] == "outside_root"
+    assert kept.structured_content["root"] == project.as_posix()
+    (inside_link,) = calls(project, [("verify", {"manifest": str(project / "repro.yaml")})])
+    assert inside_link.structured_content["root"] == project.as_posix()
+
+
+def test_a_path_that_walks_out_of_its_project_is_refused(project, tmp_path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "repro.yaml").write_text((project / "repro.yaml").read_text())
+    (project / "elsewhere").symlink_to(outside / "repro.yaml")
+    (result,) = calls(project, [("verify", {"manifest": str(project / "elsewhere")})])
+    assert result.structured_content["refused"] == "outside_root"
+
+
+def test_a_crlf_draft_keeps_its_line_endings(project):
+    draft = project / "draft" / "repro.draft.yaml"
+    draft.write_bytes(draft.read_bytes().replace(b"\n", b"\r\n"))
+    old = draft.read_bytes()
+    result = propose_auc(project, "/auc/held")
+    assert result.structured_content["said"] == "matched, inferred: not verified"
+    new = draft.read_bytes()
+    assert new.count(b"\n") == new.count(b"\r\n")
+    start = next(i for i, (a, b) in enumerate(zip(old, new, strict=False)) if a != b)
+    inserted = len(new) - len(old)
+    assert new[:start] + new[start + inserted :] == old
+
+
+# ----------------------------------------------------------------------------- mark_reviewed
+
+
+@pytest.fixture
+def reviewer(tmp_path, monkeypatch):
+    config = tmp_path / "gitconfig"
+    config.write_text("[user]\n\tname = A Reviewer\n\temail = reviewer@example.org\n")
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(config))
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    return config
+
+
+def review(project: pathlib.Path, items: list[str]):
+    (result,) = calls(
+        project,
+        [("mark_reviewed", {"open_items": DRAFT_ITEMS, "items": items, "note": "looked fine"})],
+    )
+    return result
+
+
+def test_mark_reviewed_promotes_an_item_and_records_the_chat(project, reviewer):
+    propose_auc(project, "/auc/held")
+    result = review(project, ["auc/value"])
+    assert not result.is_error, result.content[0].text
+    (written,) = auc_evidence(project)
+    assert written["basis"] == "inferred"
+    assert written["reviewed"]["who"] == "A Reviewer <reviewer@example.org>"
+    assert written["reviewed"]["how"].startswith("approved in chat via ")
+    assert written["reviewed"]["how"].endswith(": looked fine")
+    assert len(written["reviewed"]["digest"]) == 64
+    counts = tallied(project)["items"]
+    assert (counts["filled_by_inferred"], counts["filled_by_declared_only"]) == (0, 2)
+    (checked,) = calls(
+        project, [("verify", {"manifest": str(project / "draft" / "repro.draft.yaml")})]
+    )
+    assert checked.structured_content["counts"] == {"verified": 2, "not_offered": 2}
+
+
+def test_a_review_lapses_when_what_it_accepted_changes(project, reviewer):
+    propose_auc(project, "/auc/held")
+    review(project, ["auc/value"])
+    draft = project / "draft" / "repro.draft.yaml"
+    draft.write_text(draft.read_text().replace('"name": "auc"', '"name": "auc, renamed"'))
+    counts = tallied(project)["items"]
+    assert counts["filled_by_inferred"] == 1
+    (checked,) = calls(project, [("verify", {"manifest": str(draft)})])
+    assert checked.structured_content["counts"] == {
+        "inferred_matched": 1,
+        "verified": 1,
+        "not_offered": 2,
+    }
+
+
+def test_mark_reviewed_refuses_what_did_not_match_and_a_project_with_no_git_user(project, reviewer):
+    propose_auc(project, "/auc/train")
+    same = unchanged(project)
+    assert review(project, ["auc/value"]).structured_content["refused"] == "not_matched"
+    reviewer.write_text("")
+    propose_auc(project, "/auc/held")
+    same = unchanged(project)
+    assert review(project, ["auc/value"]).structured_content["refused"] == "no_reviewer"
+    assert same()

@@ -1183,108 +1183,49 @@ uv tool install reproducible-science   # or: pip install reproducible-science
 
 ## MCP server
 
-`repro mcp` runs an MCP server over standard input and output. Any coding agent that speaks MCP
-gets the toolkit's checks as tools, and the rules the `open-items` skill states are enforced by
-the server rather than asked of the agent. It needs the `mcp` extra:
+`repro mcp` serves the toolkit's checks to any coding agent that speaks MCP. Register it once
+per agent, for every project:
 
 ```bash
-uv tool install "reproducible-science[mcp]"   # or: pip install "reproducible-science[mcp]"
-repro mcp --root /path/to/project
+uv tool install "reproducible-science[mcp]"
+claude mcp add --transport stdio --scope user reproducible-science -- repro mcp
 ```
 
-The project root is, in order: the folder the agent named with `set_project` in this session;
-the client's first `file://` root where the client offers MCP roots; `--root`; and the nearest
-directory at or above the one the server starts in that holds a project marker, found as git
-finds `.git`. The markers are `PROJECT_MARKERS` in `repro/proposals.py`: `repro.yaml`,
-`repro.draft.yaml`, `.results/`, `.prereg/`, `claims/` and `PREREG.md`, the signs the repro mod
-reads but for a bare `paper/` folder. `set_project` accepts only a
-folder holding one of those, and where no root is settled every tool answers
-`no project: call set_project`. Every path a tool is given is resolved inside that
-root, and a path that leaves it, through `..` or a symlink, is refused. So is a manifest that
-names a file outside it.
-
-| tool | what it does |
-|---|---|
-| `verify` | checks every assertion in a manifest under a policy, and writes no record of checks |
-| `why` | one claim's account; an inferred assertion that matched reads `matched` |
-| `stale`, `numbers` | as the commands of the same name |
-| `origins` | compares copied artifacts with a local clone of their origin, and fetches nothing |
-| `open_items` | the counts `claims open-items` gives, with one line per item |
-| `next_open_item`, `get_open_item` | one open item at a time: the claim, the printed value, the sentence and its line, each candidate's file, address, labels and stored value, and how many items remain |
-| `prereg_check`, `results_verify`, `citations_verify` | `prereg check`, `results verify [--files]`, `citations verify --claims` |
-| `propose_binding` | appends one assertion to a draft manifest to fill an open item, then checks it |
-| `pin_quote` | `citations pin`, which writes a quotation only where it resolves |
-| `set_project` | names the project folder for the rest of the session |
-
-`propose_binding` writes `basis: inferred` and nothing else. It refuses any other basis and
-`reviewed`, a claim the open-items file lists no item for or the draft does not hold, a draft
-outside the root, an assertion that fills no open item of the claim, a `reported` that is
-missing or other than the value the source states, an artifact the draft does not declare, and
-a name, value or passage over its length cap. It inserts the assertion into the draft as one
-line and changes no other byte, comments included. An item already filled is refused, except
-where the one assertion filling it is the agent's own last proposal and did not match: a retry
-replaces that line and no other. A matched or declared assertion is never replaced. Every
-proposal is appended to `open-items.attempts.jsonl` beside the draft, with the item, the
-attempt's number, the assertion, the outcome and the time, and the file is never rewritten.
-From the sixth attempt at one item the result carries a warning that the binding may be what a
-search found rather than the claim's own value; it stays inferred either way. A match is reported as
-`matched, inferred: not verified`. `pin_quote` refuses an id the claims file already holds, so a
-pinned quotation is never replaced, and a quotation that begins with `-` is read as the
-quotation.
-
-The server offers nothing that freezes or registers a plan, seals or records a run, runs a
-declared command, publishes or fetches. Its instructions tell the agent to ask a person to run
-those, and carry the `open-items` procedure, so an agent that reads server instructions has it
-without a skill.
-
-### Claude Code
-
-```bash
-claude mcp add --transport stdio --scope project reproducible-science -- repro mcp --root /path/to/project
-```
-
-### Codex
-
-In `~/.codex/config.toml`:
+Codex, in `~/.codex/config.toml`:
 
 ```toml
 [mcp_servers.reproducible-science]
 command = "repro"
 args = ["mcp"]
-cwd = "/path/to/project"
 ```
 
-### Gemini CLI
+Gemini CLI takes the same `command` and `args` under `mcpServers` in `~/.gemini/settings.json`,
+and Cursor under `mcpServers` in `~/.cursor/mcp.json`, with `"type": "stdio"`.
 
-In `~/.gemini/settings.json`, or `.gemini/settings.json` in the project:
+The server follows the paths the agent passes. Each call works in the project its path is in,
+the nearest folder above it holding one of `PROJECT_MARKERS` (`repro.yaml`, `.results/`,
+`.prereg/`, `claims/`, `PREREG.md`, or a reader's `repro.draft.yaml`), and every path is kept
+inside that project. A symlink belongs to the folder it sits in. A call with no path takes a
+`project` argument, or the project of the last call.
 
-```json
-{
-  "mcpServers": {
-    "reproducible-science": {
-      "command": "repro",
-      "args": ["mcp"],
-      "cwd": "/path/to/project"
-    }
-  }
-}
-```
+| tool | what it does |
+|---|---|
+| `verify`, `why`, `stale`, `numbers`, `origins` | as the commands; `verify` writes no record of checks |
+| `prereg_check`, `results_verify`, `citations_verify` | the three tools' checks |
+| `next_open_item`, `get_open_item` | one open item: the claim, the printed value, the sentence, each candidate's address, labels and stored value |
+| `propose_binding` | one assertion filling an item, `basis: inferred`, then its check |
+| `add_artifact` | one file, pinned and `basis: inferred` |
+| `mark_reviewed` | what the user approved in the chat, as `reviewed` |
+| `pin_quote` | `citations pin`, which writes only a passage that resolves |
 
-### Cursor
-
-In `.cursor/mcp.json` in the project, or `~/.cursor/mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "reproducible-science": {
-      "type": "stdio",
-      "command": "repro",
-      "args": ["mcp", "--root", "/path/to/project"]
-    }
-  }
-}
-```
+Each write is one line of the draft, and no other byte changes. `propose_binding` reports a
+match as `matched, inferred: not verified`, and a retry replaces only its own proposal that did
+not match. Every attempt is appended to a hash chain in `.repro/attempts.jsonl` beside the
+open-items file, which `claims open-items` counts from, flagging an item tried more than five
+times. An assertion reading an inferred artifact counts as inferred too. `mark_reviewed` writes
+who (git `user.name`), when, how (`approved in chat via` the client) and the digest of what was
+accepted; when that changes, the review no longer counts. Nothing the server offers freezes,
+registers, seals, runs a declared command or fetches.
 
 MIT licensed.
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime
 import enum
 import hashlib
+import json
 import pathlib
 import re
 from typing import Annotated, Literal
@@ -49,13 +50,41 @@ class Basis(enum.StrEnum):
 
 
 class Review(BaseModel):
-    """Who accepted an inferred assertion, and when. An assertion carrying one is counted as
-    declared."""
+    """Who accepted an inferred assertion or artifact, when, and how. One carrying a review is
+    counted as declared, while the review holds."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     who: str = Field(min_length=1)
     when: AwareDatetime | datetime.date
+    how: str = ""
+    """How it was accepted, such as `approved in chat via claude-code`."""
+    digest: str | None = Field(default=None, pattern=_SHA256_HEX)
+    """`review_digest` of what was accepted. A review that names one holds only while the
+    assertion or artifact still has that digest, so changing a binding undoes its review. A
+    review written without one holds as before."""
+
+    @model_serializer(mode="wrap")
+    def _omit_unsaid(self, handler):
+        dumped = handler(self)
+        for field in ("how", "digest"):
+            if not dumped.get(field):
+                dumped.pop(field, None)
+        return dumped
+
+    def holds(self, reviewed: BaseModel) -> bool:
+        return self.digest is None or self.digest == review_digest(reviewed)
+
+
+def review_digest(reviewed: BaseModel) -> str:
+    """sha256 of an assertion or an artifact as declared, leaving out who states it and who
+    reviewed it: what a review is a review of."""
+    dumped = reviewed.model_dump(mode="json")
+    for field in ("basis", "reviewed"):
+        dumped.pop(field, None)
+    return hashlib.sha256(
+        json.dumps(dumped, sort_keys=True, separators=(",", ":")).encode()
+    ).hexdigest()
 
 
 class Digest(BaseModel):
@@ -175,8 +204,8 @@ class ArtifactRef(BaseModel):
 
     @property
     def counted(self) -> Basis:
-        """Declared once someone has reviewed it."""
-        return Basis.DECLARED if self.reviewed is not None else self.basis
+        """Declared once someone has reviewed it, while the review holds."""
+        return Basis.DECLARED if self.reviewed and self.reviewed.holds(self) else self.basis
 
     @property
     def is_pinned(self) -> bool:

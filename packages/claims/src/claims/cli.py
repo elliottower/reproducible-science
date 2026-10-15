@@ -1121,10 +1121,10 @@ def _tally_lines(found: Tally) -> list[str]:
         lines.append(f"  {basis.value} assertions: {counted}")
     if found.manifest_changed:
         lines.append(f"  {found.manifest} has changed since the reader wrote it")
-    record = found.agent_record
+    record = found.attempt_record
     if record.path is not None and record.status != "intact":
         lines.append(
-            f"  agent record {record.path} does not verify ({record.status}): "
+            f"  the record of attempts {record.path} does not verify ({record.status}): "
             + "; ".join(record.problems)
         )
     for item, count in found.attempts.items():

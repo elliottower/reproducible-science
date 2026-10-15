@@ -1,26 +1,15 @@
 """`repro mcp`: the toolkit's checks as tools of an MCP server, over standard input and output.
 
-Any agent that speaks MCP gets the same tools and the same rules, and the rules are the
-server's to enforce rather than an instruction file's to ask for. Every tool calls the
-toolkit in this process: the claims side through its functions, and `prereg`, `results` and
-`citations` through the entry `repro check` uses, each told to write what it found as JSON.
+Every tool calls the toolkit in this process: the claims side through its functions, and
+`prereg`, `results` and `citations` through the entry `repro check` uses, each told to write
+what it found as JSON. Nothing here freezes or registers a plan, seals or records a run, runs a
+declared command, publishes or fetches; the instructions say to ask the human for those.
 
-Read-only: verify, why, stale, numbers, open_items, next_open_item, get_open_item, origins,
-prereg_check, results_verify, citations_verify. They write nothing into the project: `verify`
-here does not append to the record of checks, as `repro verify` does.
-
-Two write: `propose_binding` appends one `basis: inferred` assertion to a draft manifest, and
-`pin_quote` runs `citations pin`, which writes a quotation only where it resolves.
-
-Nothing here freezes or registers a plan, seals or records a run, runs a declared command,
-publishes anything or reaches the network. The instructions say to ask the human for those.
-
-Every path an agent gives is resolved inside the project root, `--root` or the directory the
-server starts in, and refused where it leaves it. The root is, in order: the folder
-`set_project` named; the client's first `file://` MCP root; `--root`; and the nearest directory
-at or above the working directory holding a project marker. Tool bodies run on the event loop, one at a
-time: the tools reached through their command line read the working directory and print, so
-each runs with the directory changed to the root and its output captured.
+Each call works in one project, found from its path: the nearest folder at or above it holding
+a marker (`PROJECT_MARKERS`). A call with no path takes its `project` argument, else the
+project of the last call, else `--root`, else the project above the working directory. Every
+path is kept inside its project. Tool bodies run on the event loop, one at a time, because the
+delegated tools change the working directory and print.
 """
 
 from __future__ import annotations
@@ -30,24 +19,21 @@ import io
 import json
 import pathlib
 import tempfile
-import urllib.parse
-import urllib.request
 from collections.abc import Callable, Sequence
-from typing import Annotated, Any
+from typing import Any
 
 from citations import pin as citations_pin
 from claims.exceptions import ReproError
 from claims.manifest import DEFAULT_NAME
 from claims.models import Basis
 from claims.numbers import numbers as run_numbers
-from claims.open_items import tally
 from claims.origins import origins as run_origins
 from claims.policy import PROFILES
 from claims.stale import stale as run_stale
 from claims.verify import verify as run_verify
 from claims.why import why as run_why
-from mcp.server.mcpserver import Context, ListRoots, MCPServer, Resolve
-from mcp.types import CallToolResult, ListRootsResult, TextContent, ToolAnnotations
+from mcp.server.mcpserver import Context, MCPServer
+from mcp.types import CallToolResult, TextContent, ToolAnnotations
 
 from repro import __version__
 from repro.delegate import BY_NAME
@@ -57,16 +43,19 @@ from repro.proposals import (
     MAX_TEXT,
     PROJECT_MARKERS,
     Refused,
-    Session,
     capped,
     inside,
     load_inside,
     packet,
+    project_of,
     propose,
 )
 from repro.proposals import add_artifact as add_artifact_to
+from repro.proposals import mark_reviewed as record_review
 
 NAME = "reproducible-science"
+
+NO_PROJECT = "no project: pass a path or a project"
 
 #: What an agent reads on connecting: the open-items procedure of the plugin's `open-items`
 #: skill, condensed, and what it has to ask a person to run.
@@ -74,51 +63,44 @@ INSTRUCTIONS = """\
 Tools for the reproducible-science toolkit: check a manuscript's declared claims against the \
 files they name, and fill the items a reader of another tool's files left open.
 
-Every tool works inside one project folder, and every result names it as `root`. When unsure \
-which project this is, call set_project with the project folder first. A tool that answers \
-"no project: call set_project" found none.
+Pass absolute paths, or a `project` folder to a tool that takes no path. The server follows \
+them: each call works in the project holding its path, and every result names it as `root`.
 
-The rule: you propose, the checks decide. Every assertion you write is basis: inferred, and \
-propose_binding writes no other. An inferred assertion that matched is a proposal that held, \
-never a verified claim: report it as "matched, inferred: not verified". It fails the \
-publication and strict policies until an author accepts it, and accepting it is the author's.
+The rule: you propose, the checks decide. Every assertion you write is basis: inferred. An \
+inferred assertion that matched is "matched, inferred: not verified", never verified, and \
+fails the publication and strict policies until a person accepts it.
 
 Filling open items:
-1. Count first: open_items on the open-items.json. Note the counts.
-2. Take items one at a time: next_open_item gives the first open one, then pass its id as \
-`after` for the next. get_open_item reads one by id. Each packet holds the claim, the value \
-printed or stated, the sentence and its line, and each candidate's file, address, labels and \
-stored value.
-3. need value: propose one assertion that fetches the stated value from its address. Prefer an \
-address that names the value (a tree pointer, a table locator with where) over a row position. \
-A unique candidate is a lead, never an answer: propose it only after the sentence's or the \
-question's words agree with the candidate's labels. Where they do not settle it (a column \
-named score for a question about AUROC), leave the item open and say why.
-4. need passage: where the paper is not yet an artifact of the draft, add_artifact declares it \
-(it must be committed before this session, or recorded by results run). Then the passage \
-that makes the claim, quoted as the source prints it, never \
-shortened. Where the project keeps a citations claims file, pin_quote with check=true first, \
-then pin it. A passage that does not resolve is not written.
-5. Leave an item open rather than guess. An open item is a result.
-6. A proposal that does not match is not fixed by changing reported. Propose another address \
-or leave the item open.
-7. Count again with open_items, and report the counts as it gives them, each item left open \
-with its reason, and that every filled item is inferred.
+1. next_open_item gives the first open item of an open-items.json; pass its id as `after` for \
+the next. Each holds the claim, the printed value, the sentence and its line, and each \
+candidate's file, address, labels and stored value.
+2. need value: propose_binding one assertion fetching the stated value from its address, \
+preferring one that names the value (a tree pointer, a table locator with where). Propose a \
+unique candidate only after the sentence's words agree with its labels; where they do not \
+settle it, leave the item open and say why.
+3. need passage: add_artifact the paper where the draft lacks it, then propose_binding a quote \
+of the passage as the source prints it. Where the project keeps a citations claims file, \
+pin_quote with check=true first. A passage that does not resolve is not written.
+4. A proposal that does not match is not fixed by changing reported: propose another address \
+(it replaces your failed one) or leave the item open. An open item is a result.
+5. Report each item left open with its reason, and that every filled item is inferred.
 
-Never: edit open-items.json; delete a claim to close an item; write an assertion without \
-basis: inferred, remove that line, or write reviewed; change reported, which is the value as \
-the source states it; edit a pinned quotation (a wrong pin is replaced by a new one); change an \
-artifact's digest or write repro.yaml; run anything in a capsule or bundle; call anything \
-verified that a tool did not report verified, or any assertion you wrote verified at all.
+Reviews: list the matched items to the user first, and call mark_reviewed only for the items \
+the user has explicitly approved in this conversation.
+
+Never: edit open-items.json; delete a claim to close an item; write reviewed yourself; change \
+reported; edit a pinned quotation; change a digest or write repro.yaml; run anything in a \
+capsule or bundle; call anything verified that a tool did not report verified.
 
 Not offered here, so ask the human to run them: prereg freeze, prereg register, results seal, \
 results run, repro reproduce and anything else that runs a declared command, anything that \
-publishes or registers, and anything that fetches over the network (citations pin --url, \
-claims origins --fetch, claims from-codecheck --fetch).
+publishes or registers, and anything that fetches over the network.
 """
 
 READ_ONLY = ToolAnnotations(read_only_hint=True, open_world_hint=False)
 WRITES = ToolAnnotations(read_only_hint=False, destructive_hint=False, open_world_hint=False)
+
+Work = Callable[[pathlib.Path], tuple[dict[str, Any], str]]
 
 
 def _result(data: dict[str, Any], summary: str, error: bool = False) -> CallToolResult:
@@ -128,13 +110,9 @@ def _result(data: dict[str, Any], summary: str, error: bool = False) -> CallTool
 
 
 def _inferred_said(account: dict[str, Any]) -> dict[str, Any]:
-    """`why`'s account with each inferred assertion's match named `matched`, as `claims why`
-    prints it, so no inferred assertion reads `verified` in what an agent is handed."""
+    """`why`'s account with each inferred match named `matched`, never `verified`."""
     for assertion in account.get("assertions", ()):
-        if (
-            assertion.get("basis") == Basis.INFERRED.value
-            and assertion.get("outcome") == "verified"
-        ):
+        if assertion.get("basis") == Basis.INFERRED.value and assertion["outcome"] == "verified":
             assertion["outcome"] = "matched"
             assertion["said"] = "matched, inferred: not verified"
     if "verified" in account.get("inferred", {}):
@@ -142,10 +120,9 @@ def _inferred_said(account: dict[str, Any]) -> dict[str, Any]:
     return account
 
 
-def _delegated(root: pathlib.Path, tool: str, argv: Sequence[str]) -> dict[str, Any]:
-    """One of the other tools' commands run in this process, as `repro check` runs it, with
-    what it found written as JSON to a scratch file. `delegate.run` takes the code of a
-    `SystemExit`, so no argument can end the server."""
+def _delegated(root: pathlib.Path, tool: str, argv: Sequence[str]) -> tuple[dict[str, Any], str]:
+    """One of the other tools' commands run in this process, with what it found written as
+    JSON to a scratch file. `delegate.run` takes the code of a `SystemExit`."""
     output = io.StringIO()
     with (
         tempfile.TemporaryDirectory() as scratch,
@@ -156,293 +133,191 @@ def _delegated(root: pathlib.Path, tool: str, argv: Sequence[str]) -> dict[str, 
         found = pathlib.Path(scratch) / "found.json"
         code = delegate_run(BY_NAME[tool], [*argv, "--json", str(found)])
         written = json.loads(found.read_text()) if found.exists() else None
-    return {"exit": code, "found": written, "output": output.getvalue()}
+    last = next((line for line in reversed(output.getvalue().splitlines()) if line.strip()), "")
+    command = f"{tool} {argv[0]}"
+    data = {"command": command, "exit": code, "found": written, "output": output.getvalue()}
+    return data, f"{command}: exit {code}; {last.strip()}"
 
 
-def _file_root(uri: str) -> pathlib.Path | None:
-    """The directory a `file://` root names, or None for any other root."""
-    parsed = urllib.parse.urlparse(uri)
-    if parsed.scheme != "file":
-        return None
-    path = pathlib.Path(urllib.request.url2pathname(parsed.path)).resolve()
-    return path if path.is_dir() else None
-
-
-def _asked_roots(ctx: Context) -> ListRoots | None:
-    """Ask a client that offers roots for them, and nothing of one that does not. The SDK sends
-    the request as the negotiated protocol has it: mid-call before 2026-07-28, as an input the
-    client answers on retry after."""
-    capabilities = ctx.client_capabilities
-    return ListRoots() if capabilities is not None and capabilities.roots is not None else None
-
-
-#: A tool parameter the SDK fills with the client's roots, and never one the agent supplies.
-Roots = Annotated[ListRootsResult | None, Resolve(_asked_roots)]
-
-
-#: What every tool answers where no project root could be settled.
-NO_PROJECT = "no project: call set_project"
-
-
-def is_project(directory: pathlib.Path) -> bool:
-    return directory.is_dir() and any((directory / name).exists() for name in PROJECT_MARKERS)
-
-
-def discover(start: pathlib.Path) -> pathlib.Path | None:
-    """The nearest directory at or above `start` holding a project marker, as git finds
-    `.git`; None where no directory up to the filesystem root does."""
-    here = start.resolve()
-    return next((d for d in (here, *here.parents) if is_project(d)), None)
-
-
-def _client_root(
-    listed: ListRootsResult | None, default: pathlib.Path | None
-) -> pathlib.Path | None:
-    """The client's first `file://` root that is a directory, which is how an agent that
-    starts the server without `--root` names the project; otherwise `default`."""
-    found = (_file_root(str(root.uri)) for root in (listed.roots if listed else ()))
-    return next((path for path in found if path is not None), default)
-
-
-Work = Callable[[pathlib.Path], tuple[dict[str, Any], str]]
+def _client(ctx: Context) -> str:
+    params = ctx.session.client_params
+    info = getattr(params, "client_info", None)
+    return getattr(info, "name", None) or "an MCP client"
 
 
 def build(root: pathlib.Path | None = None) -> MCPServer:
-    """The server, with every tool registered. The root of each call is, in order: the folder
-    `set_project` named in this session; the client's first `file://` root, where it offers
-    roots; `root` (`--root`); and the nearest directory at or above the working directory that
-    holds a project marker. Where none is settled every tool answers `NO_PROJECT`."""
-    default = root.resolve() if root is not None else discover(pathlib.Path.cwd())
+    """The server, with every tool registered. `root` is `--root`: the project of a call with
+    no path and no `project`, until a call names another."""
+    fallback = root.resolve() if root is not None else None
     server = MCPServer(NAME, instructions=INSTRUCTIONS, version=__version__)
-    chosen: list[pathlib.Path] = []
-    session = Session()
-    if default is not None:
-        session.commit(default)
+    last: list[pathlib.Path] = []
 
-    def answer(roots: ListRootsResult | None, work: Work) -> CallToolResult:
-        here = chosen[-1] if chosen else _client_root(roots, default)
-        if here is None:
-            return _result({"refused": "no_project", "detail": NO_PROJECT}, NO_PROJECT, True)
-        # The commit this project stood at when the session first saw it, for `add_artifact`.
-        session.commit(here)
-        # Run on the event loop, not a worker thread: the delegated tools change the working
-        # directory and capture standard output, which two calls at once would cross.
+    def base() -> pathlib.Path:
+        return last[-1] if last else fallback or pathlib.Path.cwd()
+
+    def absolute(path: str) -> pathlib.Path:
+        given = pathlib.Path(path).expanduser()
+        return given if given.is_absolute() else base() / given
+
+    def here(path: str | None, project: str | None) -> pathlib.Path:
+        if path is not None or project is not None:
+            return project_of(absolute(path if path is not None else project or ""))
+        if last or fallback:
+            return base()
         try:
-            data, summary = work(here)
+            return project_of(pathlib.Path.cwd())
+        except Refused as e:
+            raise Refused("no_project", NO_PROJECT) from e
+
+    def answer(work: Work, path: str | None = None, project: str | None = None) -> CallToolResult:
+        try:
+            found = here(path, project)
+        except Refused as e:
+            return _result({"refused": e.rule, "detail": e.detail}, str(e), True)
+        last.append(found)
+        try:
+            data, summary = work(found)
         except Refused as e:
             data, summary, error = {"refused": e.rule, "detail": e.detail}, str(e), True
         except ReproError as e:
             data, summary, error = {"error": type(e).__name__, "detail": str(e)}, str(e), True
         else:
             error = False
-        return _result({**data, "root": here.as_posix()}, summary, error)
+        return _result({**data, "root": found.as_posix()}, summary, error)
 
-    @server.tool(annotations=WRITES)
-    async def set_project(path: str, roots: Roots = None) -> CallToolResult:
-        """Name the project folder for the rest of this session: an absolute path, or one
-        relative to the current root. Accepted only where the folder holds repro.yaml,
-        repro.draft.yaml, .results/, .prereg/, claims/ or PREREG.md (`PROJECT_MARKERS`). Answers the root settled on, and
-        every later path is confined to it."""
-        current = chosen[-1] if chosen else _client_root(roots, default)
-        given = pathlib.Path(path).expanduser()
-        if not given.is_absolute():
-            given = (current or pathlib.Path.cwd()) / given
-        folder = given.resolve()
-        offered = [r for r in (_file_root(str(x.uri)) for x in (roots.roots if roots else ())) if r]
-        if not folder.is_dir():
-            rule, reason = "not_a_project", f"{path} resolves to {folder}, which is not a directory"
-        elif not is_project(folder):
-            rule, reason = "not_a_project", f"{folder} holds none of {', '.join(PROJECT_MARKERS)}"
-        elif offered and not any(folder.is_relative_to(r) for r in offered):
-            rule = "outside_client_roots"
-            reason = (
-                f"{folder} is inside none of the client's roots: {', '.join(map(str, offered))}"
-            )
-        else:
-            chosen.append(folder)
-            session.commit(folder)
-            session.log(folder, {"event": "set_project", "root": folder.as_posix()})
-            return _result({"root": folder.as_posix()}, f"project root: {folder}")
-        detail = f"not a project: {reason}" if rule == "not_a_project" else reason
-        return _result({"refused": rule, "detail": detail}, detail, error=True)
+    def manifest_at(at: pathlib.Path, manifest: str | None):
+        return load_inside(at, absolute(manifest) if manifest else at / DEFAULT_NAME)
+
+    def policy_of(policy: str):
+        if policy not in PROFILES:
+            raise Refused("policy", f"policy is one of {', '.join(sorted(PROFILES))}")
+        return PROFILES[policy]
 
     @server.tool(annotations=READ_ONLY)
     async def verify(
-        manifest: str = DEFAULT_NAME, policy: str = "publication", roots: Roots = None
+        manifest: str | None = None, project: str | None = None, policy: str = "publication"
     ) -> CallToolResult:
-        """Check every evidence assertion in the manifest, and assess it under a policy
-        (exploratory, publication or strict). Writes no record of checks."""
+        """Check every assertion in a manifest (default: repro.yaml of the project) under a
+        policy: exploratory, publication or strict. Writes no record of checks."""
 
-        def work(here: pathlib.Path):
-            if policy not in PROFILES:
-                raise Refused("policy", f"policy is one of {', '.join(sorted(PROFILES))}")
-            report = run_verify(load_inside(here, manifest))
-            assessment = PROFILES[policy].assess(report)
+        def work(at: pathlib.Path):
+            report = run_verify(manifest_at(at, manifest))
+            assessment = policy_of(policy).assess(report)
             counts = ", ".join(f"{n} {k}" for k, n in sorted(report.counts.items()))
-            said = f"{counts}; policy {policy}: {'passed' if assessment.passed else 'FAILED'}"
-            # `counts` is a property of the report, so its dump leaves it out. It is the line
-            # an agent reads first, and an inferred match is counted there as inferred_matched.
             return {
                 "counts": dict(report.counts),
                 "report": report.model_dump(mode="json"),
                 "assessment": assessment.model_dump(mode="json"),
-            }, said
+            }, f"{counts}; policy {policy}: {'passed' if assessment.passed else 'FAILED'}"
 
-        return answer(roots, work)
+        return answer(work, manifest, project)
 
     @server.tool(annotations=READ_ONLY)
-    async def why(claim: str, manifest: str = DEFAULT_NAME, roots: Roots = None) -> CallToolResult:
-        """What the record establishes for one claim, and what it does not. An inferred
-        assertion that matched reads `matched`, never `verified`."""
+    async def why(
+        claim: str, manifest: str | None = None, project: str | None = None
+    ) -> CallToolResult:
+        """What the record establishes for one claim, and what it does not."""
 
-        def work(here: pathlib.Path):
-            found = run_why(load_inside(here, manifest), claim)
-            account = _inferred_said(found.model_dump(mode="json"))
+        def work(at: pathlib.Path):
+            account = _inferred_said(
+                run_why(manifest_at(at, manifest), claim).model_dump(mode="json")
+            )
             said = ", ".join(
-                f"{a.get('kind')} {a.get('said') or a.get('outcome')}"
-                for a in account["assertions"]
+                f"{a['kind']} {a.get('said') or a['outcome']}" for a in account["assertions"]
             )
             return account, f"{claim}: {said or 'no assertions'}"
 
-        return answer(roots, work)
+        return answer(work, manifest, project)
 
     @server.tool(annotations=READ_ONLY)
     async def stale(
-        manifest: str = DEFAULT_NAME, policy: str = "publication", roots: Roots = None
+        manifest: str | None = None, project: str | None = None, policy: str = "publication"
     ) -> CallToolResult:
         """Which claims read a file changed since its recorded re-run. Executes nothing."""
 
-        def work(here: pathlib.Path):
-            if policy not in PROFILES:
-                raise Refused("policy", f"policy is one of {', '.join(sorted(PROFILES))}")
-            loaded = load_inside(here, manifest)
+        def work(at: pathlib.Path):
+            loaded = manifest_at(at, manifest)
             if not loaded.regenerations:
                 return {"regenerations": 0}, "no command is declared under regenerations"
             report = run_stale(loaded)
-            assessment = PROFILES[policy].assess_staleness(report)
-            states = ", ".join(f"{c.id} {c.state.value}" for c in report.claims)
+            assessment = policy_of(policy).assess_staleness(report)
             return {
                 "staleness": report.model_dump(mode="json"),
                 "assessment": assessment.model_dump(mode="json"),
-            }, f"{states}; policy {policy}: {'passed' if assessment.passed else 'FAILED'}"
+            }, ", ".join(f"{c.id} {c.state.value}" for c in report.claims)
 
-        return answer(roots, work)
+        return answer(work, manifest, project)
 
     @server.tool(annotations=READ_ONLY)
     async def numbers(
-        manifest: str = DEFAULT_NAME, texts: list[str] | None = None, roots: Roots = None
+        manifest: str | None = None, project: str | None = None, texts: list[str] | None = None
     ) -> CallToolResult:
         """Every number the manuscript prints, and whether a claim binds it."""
 
-        def work(here: pathlib.Path):
-            report = run_numbers(load_inside(here, manifest), only=tuple(texts or ()))
-            counts = ", ".join(f"{n} {k.value}" for k, n in report.counts.items())
-            data = report.model_dump(mode="json")
-            data["counts"] = {k.value: n for k, n in report.counts.items()}
+        def work(at: pathlib.Path):
+            report = run_numbers(manifest_at(at, manifest), only=tuple(texts or ()))
+            counts = {k.value: n for k, n in report.counts.items()}
+            data = {**report.model_dump(mode="json"), "counts": counts}
             return data, f"{len(report.numbers)} numbers: {counts}"
 
-        return answer(roots, work)
+        return answer(work, manifest, project)
 
     @server.tool(annotations=READ_ONLY)
-    async def origins(manifest: str = DEFAULT_NAME, roots: Roots = None) -> CallToolResult:
+    async def origins(manifest: str | None = None, project: str | None = None) -> CallToolResult:
         """Compare each artifact copied from another repository with its origin, from a local
         clone only: this server fetches nothing."""
 
-        def work(here: pathlib.Path):
-            report = run_origins(load_inside(here, manifest), {}, None)
-            counts = ", ".join(f"{n} {k}" for k, n in report.counts.items())
-            return {"origins": report.model_dump(mode="json")}, (
-                f"{len(report.origins)} origins: {counts or 'none declared'}"
-            )
+        def work(at: pathlib.Path):
+            report = run_origins(manifest_at(at, manifest), {}, None)
+            return {"origins": report.model_dump(mode="json")}, f"{len(report.origins)} origins"
 
-        return answer(roots, work)
+        return answer(work, manifest, project)
 
     @server.tool(annotations=READ_ONLY)
-    async def open_items(open_items: str, roots: Roots = None) -> CallToolResult:
-        """Count what a reader left open in a draft manifest and what is filled, with one line
-        per item. An inferred match is counted as matched, never verified."""
-
-        def work(here: pathlib.Path):
-            found = tally(inside(here, open_items))
-            data = found.model_dump(mode="json", exclude={"per_claim"})
-            data["list"] = [
-                {
-                    "item": fill.id,
-                    "claim": entry.claim,
-                    "need": fill.need.value,
-                    "filled": fill.filled,
-                    "outcomes": list(fill.outcomes),
-                    "unique": fill.unique,
-                }
-                for entry in found.per_claim
-                for fill in entry.items
-            ]
-            claims = ", ".join(f"{n} {state}" for state, n in data["claims"].items())
-            items = data["items"]
-            return data, (
-                f"{found.total} claims: {claims}; {items['total']} items, {items['open']} open, "
-                f"{items['filled_by_inferred']} filled by an inferred assertion"
-            )
-
-        return answer(roots, work)
+    async def prereg_check(project: str | None = None) -> CallToolResult:
+        """`prereg check`: has any frozen plan in the project changed since its freeze?"""
+        return answer(lambda at: _delegated(at, "prereg", ["check"]), None, project)
 
     @server.tool(annotations=READ_ONLY)
-    async def next_open_item(
-        open_items: str, after: str | None = None, roots: Roots = None
+    async def results_verify(files: bool = False, project: str | None = None) -> CallToolResult:
+        """`results verify`, with `files` checking every recorded file's hash."""
+        argv = ["verify", "--files"] if files else ["verify"]
+        return answer(lambda at: _delegated(at, "results", argv), None, project)
+
+    @server.tool(annotations=READ_ONLY)
+    async def citations_verify(
+        claims: str | None = None, project: str | None = None
     ) -> CallToolResult:
-        """The first open item after `after` (from the start where omitted), as one packet:
-        the claim, the printed value, the sentence and its line, and each candidate's file,
-        address, labels and stored value, with the counts of items in total and remaining."""
+        """`citations verify --claims` over a claims folder (default: claims/ of the project)."""
 
-        def work(here: pathlib.Path):
-            found = packet(here, open_items, None, after)
-            return found.model_dump(mode="json"), (
-                f"{found.item} ({found.need.value}), {found.remaining} of {found.total} open; "
-                f"next {found.next_item or 'none'}"
-            )
+        def work(at: pathlib.Path):
+            folder = inside(at, absolute(claims)) if claims else at / "claims"
+            return _delegated(at, "citations", ["verify", f"--claims={folder}"])
 
-        return answer(roots, work)
+        return answer(work, claims, project)
 
     @server.tool(annotations=READ_ONLY)
-    async def get_open_item(open_items: str, item: str, roots: Roots = None) -> CallToolResult:
+    async def next_open_item(open_items: str, after: str | None = None) -> CallToolResult:
+        """The first open item after `after` (from the start where omitted), as one packet,
+        with the counts of items in total and remaining."""
+
+        def work(at: pathlib.Path):
+            found = packet(at, str(absolute(open_items)), None, after)
+            return found.model_dump(mode="json"), (
+                f"{found.item}: {found.remaining} of {found.total} open; next {found.next_item}"
+            )
+
+        return answer(work, open_items)
+
+    @server.tool(annotations=READ_ONLY)
+    async def get_open_item(open_items: str, item: str) -> CallToolResult:
         """One item of the open-items file by its id, as `next_open_item` gives it."""
 
-        def work(here: pathlib.Path):
-            found = packet(here, open_items, item, None)
-            state = "filled" if found.filled else "open"
-            return found.model_dump(mode="json"), (
-                f"{found.item} ({found.need.value}, {state}), {found.remaining} of "
-                f"{found.total} open"
-            )
+        def work(at: pathlib.Path):
+            found = packet(at, str(absolute(open_items)), item, None)
+            return found.model_dump(mode="json"), f"{found.item}: filled {found.filled}"
 
-        return answer(roots, work)
-
-    @server.tool(annotations=READ_ONLY)
-    async def prereg_check(roots: Roots = None) -> CallToolResult:
-        """Has any frozen plan in the project changed since its freeze? `prereg check`."""
-        return answer(
-            roots, lambda here: _said("prereg check", _delegated(here, "prereg", ["check"]))
-        )
-
-    @server.tool(annotations=READ_ONLY)
-    async def results_verify(files: bool = False, roots: Roots = None) -> CallToolResult:
-        """Check the results ledger's hash chain, and with `files` every recorded file's
-        hash. `results verify`."""
-        argv = ["verify", "--files"] if files else ["verify"]
-        return answer(
-            roots, lambda here: _said("results verify", _delegated(here, "results", argv))
-        )
-
-    @server.tool(annotations=READ_ONLY)
-    async def citations_verify(claims: str = "claims", roots: Roots = None) -> CallToolResult:
-        """Do the quotations in a claims directory resolve in their pinned sources?
-        `citations verify --claims`."""
-
-        def work(here: pathlib.Path):
-            argv = ["verify", f"--claims={inside(here, claims)}"]
-            return _said("citations verify", _delegated(here, "citations", argv))
-
-        return answer(roots, work)
+        return answer(work, open_items)
 
     @server.tool(annotations=WRITES)
     async def propose_binding(
@@ -451,46 +326,59 @@ def build(root: pathlib.Path | None = None) -> MCPServer:
         assertion: dict[str, Any],
         item: str | None = None,
         basis: str | None = None,
-        roots: Roots = None,
     ) -> CallToolResult:
-        """Fill one open item: append `assertion` to the claim in the draft manifest the
-        open-items file names, marked basis: inferred, and check it. The assertion is inserted
-        as one line and no other byte of the draft changes. Refused: any basis but inferred,
-        `reviewed`, a claim the file lists no item for or the draft lacks, a draft outside the
-        project root, a kind that fills no open item, a `reported` that is missing or other
-        than the value the source states, and an oversized field. A match is "matched,
-        inferred: not verified"."""
+        """Fill one open item: insert `assertion`, basis: inferred, into the claim in the
+        draft the open-items file names, as one line, and check it. It replaces your last
+        proposal for the item where that did not match, and never a matched, declared or
+        reviewed one. Refused: another basis, `reviewed`, a claim not in the file or the
+        draft, a kind that fills no open item, a missing or changed `reported`, an undeclared
+        artifact, an oversized field. From the sixth attempt the result carries a warning."""
 
-        def work(here: pathlib.Path):
-            done = propose(here, open_items, claim, assertion, session, item, basis)
-            return done.model_dump(mode="json"), f"{done.item}: {done.said}"
+        def work(at: pathlib.Path):
+            done = propose(at, str(absolute(open_items)), claim, assertion, item, basis)
+            return done.model_dump(mode="json"), f"{done.item}: {done.said} {done.warning}"
 
-        return answer(roots, work)
+        return answer(work, open_items)
 
     @server.tool(annotations=WRITES)
     async def add_artifact(
-        open_items: str,
-        path: str,
-        media_type: str | None = None,
-        id: str | None = None,
-        roots: Roots = None,
+        open_items: str, path: str, media_type: str | None = None, id: str | None = None
     ) -> CallToolResult:
-        """Declare a file in the draft manifest the open-items file names, pinned by its
-        sha256 and marked basis: inferred, so every assertion reading it counts as inferred
-        until an author accepts it. `media_type` is guessed from the name where omitted
-        (text/plain for a text the passage of an item is quoted from). Refused: a path outside
-        the root, a directory, a Git LFS pointer, a file over the size cap, a file or id the
-        draft declares, and a file whose bytes are not those of the commit this session
-        started at, nor a run the results ledger recorded before it started: a file written or
-        committed during the session is never taken."""
+        """Declare a file in the draft the open-items file names, pinned by its sha256 and
+        basis: inferred, so whatever reads it counts as inferred until a person accepts it.
+        Refused: a path outside the project, a directory, a Git LFS pointer, a file over the
+        size cap, a file or id already declared."""
 
-        def work(here: pathlib.Path):
-            done = add_artifact_to(here, open_items, path, session, media_type, id)
-            return done.model_dump(mode="json"), (
-                f"added {done.artifact['id']} to {done.draft}, inferred; vouched for by {done.by}"
+        def work(at: pathlib.Path):
+            done = add_artifact_to(
+                at, str(absolute(open_items)), str(absolute(path)), media_type, id
             )
+            return done.model_dump(mode="json"), f"added {done.artifact['id']}, inferred"
 
-        return answer(roots, work)
+        return answer(work, open_items)
+
+    @server.tool(annotations=WRITES)
+    async def mark_reviewed(
+        ctx: Context,
+        open_items: str,
+        items: list[str] | None = None,
+        artifacts: list[str] | None = None,
+        note: str = "",
+    ) -> CallToolResult:
+        """Record that the user approved, in this conversation, the inferred assertion filling
+        each item and each inferred artifact: reviewed {who (git user), when, how, digest}.
+        Call it only after listing the items and the user's explicit approval. A review lapses
+        when what it accepted changes."""
+        how = f"approved in chat via {_client(ctx)}" + (f": {note}" if note else "")
+
+        def work(at: pathlib.Path):
+            done = record_review(
+                at, str(absolute(open_items)), list(items or ()), list(artifacts or ()), how
+            )
+            named = [*done.assertions, *done.artifacts]
+            return done.model_dump(mode="json"), f"reviewed {', '.join(named)}: {how}"
+
+        return answer(work, open_items)
 
     @server.tool(annotations=WRITES)
     async def pin_quote(
@@ -501,33 +389,33 @@ def build(root: pathlib.Path | None = None) -> MCPServer:
         section: str | None = None,
         occurrence: int | None = None,
         check: bool = False,
-        roots: Roots = None,
     ) -> CallToolResult:
         """`citations pin`: add a quotation to a claims file where it resolves in the pinned
-        source, and write nothing where it does not. With `check`, resolve and write nothing.
-        Never replaces a pinned quotation: an id the file already holds is refused."""
+        source, and write nothing where it does not. With `check`, write nothing. An id the
+        file already holds is refused, so a pinned quotation is never replaced."""
 
-        def work(here: pathlib.Path):
+        def work(at: pathlib.Path):
             for field, value, cap in (
                 ("id", id, MAX_NAME),
                 ("quote", quote, MAX_TEXT),
                 ("section", section, MAX_NAME),
             ):
                 capped(field, value, cap)
-            path = inside(here, claims_file)
-            # Every value is attached to its flag with `=`, so a value beginning with `-` is
-            # read as the value and never as another option, `--url` among them.
+            path = inside(at, absolute(claims_file))
+            # Each value is attached to its flag with `=`, so one beginning with `-` is read
+            # as the value and never as another option.
             argv = [str(path), f"--id={id}", f"--quote={quote}"]
-            for flag, value in (("--page", page), ("--section", section)):
+            for flag, value in (
+                ("--page", page),
+                ("--section", section),
+                ("--occurrence", occurrence),
+            ):
                 if value is not None:
                     argv.append(f"{flag}={value}")
-            if occurrence is not None:
-                argv.append(f"--occurrence={occurrence}")
-            if check:
-                argv.append("--check")
+            argv += ["--check"] if check else []
             output = io.StringIO()
             with (
-                contextlib.chdir(here),
+                contextlib.chdir(at),
                 contextlib.redirect_stdout(output),
                 contextlib.redirect_stderr(output),
             ):
@@ -536,26 +424,21 @@ def build(root: pathlib.Path | None = None) -> MCPServer:
                 except citations_pin.PinRefused as e:
                     raise Refused("pin_refused", str(e)) from e
                 except SystemExit as e:
-                    # argparse ends the process on a usage error; here that is a refusal.
                     code = e.code if isinstance(e.code, int) else 2
             said = output.getvalue()
             if code != 0:
                 raise Refused("pin_refused", said.strip() or f"citations pin exited {code}")
-            data = {"claims_file": path.relative_to(here).as_posix(), "id": id}
+            data = {"claims_file": path.relative_to(at).as_posix(), "id": id}
             return {**data, "written": not check, "output": said}, said.strip()
 
-        return answer(roots, work)
+        return answer(work, claims_file)
 
     return server
 
 
-def _said(command: str, ran: dict[str, Any]) -> tuple[dict[str, Any], str]:
-    """A delegated command's findings, with its exit code as the command documents it."""
-    last = next((line for line in reversed(ran["output"].splitlines()) if line.strip()), "")
-    return {"command": command, **ran}, f"{command}: exit {ran['exit']}; {last.strip()}"
-
-
 def serve(root: pathlib.Path | None) -> None:
-    """Run the server over standard input and output until the client leaves. `root` is
-    `--root`, or None to find the project above the working directory."""
+    """Run the server over standard input and output until the client leaves."""
     build(root).run("stdio")
+
+
+__all__ = ["INSTRUCTIONS", "NAME", "NO_PROJECT", "PROJECT_MARKERS", "build", "serve"]
