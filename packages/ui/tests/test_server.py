@@ -6,9 +6,11 @@ import functools
 import http.server
 import json
 import pathlib
+import socket
 import subprocess
 import sysconfig
 import threading
+import time
 import urllib.error
 import urllib.request
 
@@ -155,6 +157,44 @@ def test_a_malformed_request_is_answered_and_refused(served):
         f"{served}/api/reproduce", "POST", b"{}", {**json_headers, "Content-Length": "abc"}
     ) in (400, 411)
     assert raw(f"{served}/api/fix-request", "POST", b'"a string"', json_headers) == 400
+
+
+def test_a_fix_request_whose_kind_is_not_a_string_is_refused(served, tmp_path, monkeypatch):
+    monkeypatch.setattr(server, "QUEUE", tmp_path / "queue.jsonl")
+    headers = {"Content-Type": "application/json", server.TOKEN_HEADER: TOKEN}
+    body = json.dumps({"prompt": "p", "subject": "s", "kind": ["claim"]}).encode()
+    assert raw(f"{served}/api/fix-request", "POST", body, headers) == 400
+    assert not (tmp_path / "queue.jsonl").exists()
+
+
+def test_json_nested_too_deep_to_parse_is_refused(served):
+    headers = {"Content-Type": "application/json", server.TOKEN_HEADER: TOKEN}
+    deep = b"[" * 20_000 + b"]" * 20_000
+    assert raw(f"{served}/api/fix-request", "POST", b'{"a": ' + deep + b"}", headers) == 400
+
+
+def test_a_body_over_the_cap_is_refused_unread(served):
+    headers = {"Content-Type": "application/json", server.TOKEN_HEADER: TOKEN}
+    big = b'{"prompt": "' + b"x" * (server.MAX_BODY + 10) + b'"}'
+    assert raw(f"{served}/api/fix-request", "POST", big, headers) == 413
+
+
+def test_a_body_shorter_than_its_declared_length_does_not_hold_the_server(served):
+    host, port = served.removeprefix("http://").split(":")
+    request = (
+        f"POST /api/fix-request HTTP/1.1\r\nHost: {host}:{port}\r\n"
+        f"Content-Type: application/json\r\n{server.TOKEN_HEADER}: {TOKEN}\r\n"
+        "Content-Length: 60000\r\n\r\n{}"
+    ).encode()
+    started = time.monotonic()
+    with socket.create_connection((host, int(port)), timeout=15) as conn:
+        conn.sendall(request)
+        reply = conn.recv(4096)
+    assert time.monotonic() - started < 12
+    assert reply.startswith(b"HTTP/1.0 408") or reply == b""
+    # And the server still answers the next request.
+    status, _ = get(f"{served}/api/health")
+    assert status == 200
 
 
 def test_the_commands_the_page_runs_are_the_ones_installed_beside_it():

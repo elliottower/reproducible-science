@@ -52,6 +52,8 @@ DIST = pathlib.Path(__file__).resolve().parent / "static"
 TOKEN_HEADER = "X-Repro-UI-Token"
 QUEUE = pathlib.Path.home() / ".claude" / "repro-fixes" / "queue.jsonl"
 MAX_PROMPT = 8000
+#: The largest request body read. A larger declared length is refused unread.
+MAX_BODY = 64_000
 MAX_FILE = 2_000_000
 REPRODUCE_TIMEOUT = 3600
 
@@ -73,6 +75,15 @@ def data_dir(project: pathlib.Path) -> pathlib.Path:
     return pathlib.Path.home() / ".cache" / "reproducible-science-ui" / key
 
 
+class RequestRefused(Exception):
+    """A request body that is refused, with the status to answer it with."""
+
+    def __init__(self, status: int, error: str) -> None:
+        super().__init__(error)
+        self.status = status
+        self.error = error
+
+
 class Handler(http.server.SimpleHTTPRequestHandler):
     project: pathlib.Path
     groups: pathlib.Path | None
@@ -81,6 +92,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     #: Made at launch and written into the page this server serves; a POST must carry it back.
     token: str = ""
     lock = threading.Lock()
+    #: Seconds a request may leave its socket idle. A body shorter than the length it declared
+    #: would otherwise hold its thread until the client goes away.
+    timeout = 5
 
     def log_message(self, format: str, *args: object) -> None:  # one line per request is noise
         pass
@@ -115,16 +129,26 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         sent = self.headers.get(TOKEN_HEADER) or ""
         return bool(self.token) and hmac.compare_digest(sent, self.token)
 
-    def _body(self) -> dict | None:
-        """The request's JSON object, or None where it is not one."""
+    def _body(self) -> dict:
+        """The request's JSON object. Raises RequestRefused where it is not one, where its
+        declared length is too large to read (413), or where it does not arrive in time."""
         try:
             length = int(self.headers.get("Content-Length") or 0)
-            if length < 0:
-                return None
-            body = json.loads(self.rfile.read(min(length, 64_000)) or b"{}")
-        except (ValueError, json.JSONDecodeError):
-            return None
-        return body if isinstance(body, dict) else None
+        except ValueError:
+            raise RequestRefused(400, "Content-Length is not a number") from None
+        if length < 0:
+            raise RequestRefused(400, "Content-Length is negative")
+        if length > MAX_BODY:
+            raise RequestRefused(413, f"a body over {MAX_BODY:,} bytes is not read")
+        try:
+            body = json.loads(self.rfile.read(length) or b"{}")
+        except TimeoutError:
+            raise RequestRefused(408, "the body did not arrive") from None
+        except (ValueError, RecursionError):
+            raise RequestRefused(400, "body is not JSON") from None
+        if not isinstance(body, dict):
+            raise RequestRefused(400, "body is not a JSON object")
+        return body
 
     def do_GET(self) -> None:
         if not self._local():
@@ -185,10 +209,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             )
         return self._json(200, {"ok": True, "text": target.read_text(errors="replace")})
 
-    def _fix_request(self) -> None:
-        body = self._body()
-        if body is None:
-            return self._json(400, {"ok": False, "error": "body is not a JSON object"})
+    def _fix_request(self, body: dict) -> None:
         prompt, subject, kind = (
             body.get("prompt"),
             body.get("subject"),
@@ -196,7 +217,11 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         )
         if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > MAX_PROMPT:
             return self._json(400, {"ok": False, "error": "prompt missing or too long"})
-        if kind not in {"claim", "stale"} or not isinstance(subject, str):
+        if (
+            not isinstance(kind, str)
+            or kind not in {"claim", "stale"}
+            or not isinstance(subject, str)
+        ):
             return self._json(400, {"ok": False, "error": "kind or subject missing"})
         request = {
             "id": uuid.uuid4().hex[:12],
@@ -211,10 +236,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             f.write(json.dumps(request) + "\n")
         self._json(200, {"ok": True, "id": request["id"]})
 
-    def _reproduce(self) -> None:
-        body = self._body()
-        if body is None:
-            return self._json(400, {"ok": False, "error": "body is not a JSON object"})
+    def _reproduce(self, body: dict) -> None:
         only = body.get("only")
         declared = {
             r.get("id")
@@ -292,10 +314,15 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def do_POST(self) -> None:
         if not self._local():
             return self._json(403, {"ok": False, "error": "not a request from this page"})
+        try:
+            body = self._body()
+        except RequestRefused as e:
+            self.close_connection = True
+            return self._json(e.status, {"ok": False, "error": e.error})
         if self.path == "/api/fix-request":
-            return self._fix_request()
+            return self._fix_request(body)
         if self.path == "/api/reproduce":
-            return self._reproduce()
+            return self._reproduce(body)
         if self.path not in {"/api/refresh", "/api/verify"}:
             return self._json(404, {"error": "not found"})
         if not self.lock.acquire(blocking=False):
