@@ -18,7 +18,7 @@ candidate branch produced in one pass is fine; an unreviewable single diff is no
 1. Move modules into one `src/repro/` tree. No behaviour changes, imports only.
 2. One `pyproject.toml`. Four publish workflows and four tag patterns deleted.
 3. One CLI: `repro citations verify`, `repro results seal`, `repro prereg freeze`,
-   composed under `repro check`.
+   composed under `repro verify`.
 4. One state directory `.repro/`, replacing whatever each tool creates today.
 
 Each step is its own commit and leaves the suite green.
@@ -98,7 +98,7 @@ that reads as authored is the same defect as an inferred claim counted as verifi
 
 **Zero-config first run.** `adduce check .` works on any repository; `repro verify`
 requires a hand-written manifest. That single difference is most of the adoption
-gap. `repro check .` with no manifest should report what it could check and offer
+gap. `repro verify .` with no manifest should report what it could check and offer
 to scaffold rather than refusing.
 
 **Manifest scaffolder.** Draft candidate claims from a repository, as adduce does
@@ -135,7 +135,7 @@ establish what was read months ago.
 **`repro` must become the umbrella it claims to be.** It declares `citations`,
 `prereg`, `results-cli` and `provenance-core` as dependencies and imports them in
 2, 0, 0 and 2 files. It is currently the fifth sibling, not the integrator. One
-`repro check` should run the whole workflow -- plan frozen, inputs sealed, runs
+`repro verify` should run the whole workflow -- plan frozen, inputs sealed, runs
 recorded, quotations resolving, assertions holding -- and report one status. Keep
 the four separately publishable; someone who wants quotation checking should not
 inherit a ledger. When a sibling is imported standalone and the umbrella is
@@ -185,7 +185,7 @@ Collapse to one distribution:
 
 - One package. All source ships; `provenance_core` becomes an internal module
   rather than a published package.
-- One CLI with subcommand namespaces -- `repro check`, `repro citations verify`,
+- One CLI with subcommand namespaces -- `repro verify`, `repro citations verify`,
   `repro results seal`, `repro prereg freeze` -- so the ecosystem is discoverable
   from `repro --help` instead of requiring a user to already know that four
   commands exist.

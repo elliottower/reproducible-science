@@ -17,6 +17,7 @@
     repro prereg          run `prereg`: freeze a plan, and record what deviated from it
     repro citations       run `citations`: does every quotation resolve in its source?
     repro results         run `results`: seal a run, record it, verify the chain
+    repro claims          run `claims`: check a manifest's claims alone, as `claims verify` does
     repro mcp             serve these checks to an agent as MCP tools, over standard input and output
     repro ui              serve a page over this project's records on localhost
 
@@ -697,9 +698,20 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
         )
         p_tool.set_defaults(func=None, tool=tool.name)
 
+    # `claims` as well, for an install that put only `repro` on PATH: `uv tool install
+    # reproducible-science` does, and the mod's status row runs `claims verify` through it then.
+    sub.add_parser(
+        "claims", help="run `claims`: check a manifest's claims alone", add_help=False
+    ).set_defaults(func=None, claims=True)
+
     args, rest = parser.parse_known_args(argv)
     if getattr(args, "tool", None):
         return delegate_run(BY_NAME[args.tool], rest)
+    if getattr(args, "claims", False):
+        try:
+            return int(claims_main(rest, local_record=local_record) or 0)
+        except SystemExit as e:
+            return int(e.code or 0)
     if getattr(args, "ui", False):
         return cmd_ui(rest)
     if rest:

@@ -39,7 +39,10 @@ frozen and nothing may be claimed from it.
 `citations` is the last full check by `/repro-verify`, and before one has run it is the count
 pinned: `citations: 120 pinned, not verified`. Checking quotations takes minutes on a large
 project, so the row never runs it. A check that does not finish in a minute marks its own field
-`not read (timed out)` and leaves the others standing.
+`not read (timed out)` and leaves the others standing. A tool that is not on PATH is run as
+`repro <tool>`, which is how `uv tool install reproducible-science` without
+`--with-executables-from` leaves it, and a field whose tool cannot be run either way reads
+`not installed`.
 
 `repro` is the checks `claims verify` verified over all the manifest declares, one per assertion: the
 claims alone, which is the fast check. The manifest is

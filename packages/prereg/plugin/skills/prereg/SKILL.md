@@ -198,7 +198,9 @@ nothing either.
 | writing a quotation | a `claims/` entry | the passage is in the source |
 | before submitting | `prereg check`, `results verify`, `citations verify` | nothing drifted |
 
-Every tool named here is installed by `uv tool install reproducible-science`, so the commands
+Every tool named here is installed by `uv tool install reproducible-science
+--with-executables-from claims-cli,prereg,results-cli,citations` (a bare `uv tool install
+reproducible-science` puts only `repro` on PATH), so the commands
 above are available whatever plugins are present.
 
 Each tool also ships its own plugin, adding a hook that speaks when its moment passes

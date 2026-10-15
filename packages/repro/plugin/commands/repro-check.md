@@ -5,7 +5,7 @@ argument-hint: [repro.yaml or project directory]
 
 Run `repro verify $1 --format json`, defaulting to `paper/repro.yaml` or the nearest manifest
 in this repository. Say which file or directory you used. For the claims alone, quickly,
-`claims verify $1` is the same check of the manifest without the other records.
+`claims verify $1` is the same check of the manifest without the other records (`repro claims verify $1` where only `repro` is on PATH).
 
 The report has one section per record, and `project.checks` gives each one's verdict:
 `passed`, `failed` or `not used`. Name every section that is `not used` as not used, never as

@@ -61,8 +61,11 @@ Each tool's skill shells out to the published package of the same name, so the C
 installed where Claude is running:
 
 ```bash
-uv tool install reproducible-science   # or: pip install reproducible-science
+uv tool install reproducible-science --with-executables-from claims-cli,prereg,results-cli,citations
 ```
+
+Without `--with-executables-from`, uv puts only `repro` on PATH. `pip install
+reproducible-science` installs all five commands.
 
 A project can move between the plugin and the command line without changing anything on
 disk.

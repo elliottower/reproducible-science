@@ -145,6 +145,11 @@ def test_with_no_manifest_each_name_tells_the_user_its_own_command(
         "    repro manifest init\n"
     )
     # `verify` reports between the two what it found to check; the others say nothing more.
+    # `repro verify` then names the sections it found nothing for.
+    unused = "\nnot used here: claims, staleness, prereg, results, citations\n"
+    if command == "verify":
+        assert under_repro.endswith(tail + unused)
+        under_repro = under_repro.removesuffix(unused)
     assert under_repro.startswith(head) and under_repro.endswith(tail)
     if command != "verify":
         assert under_repro == head + tail

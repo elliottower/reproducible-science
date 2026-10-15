@@ -15,8 +15,8 @@ reproduce` is the command that runs things. `claims verify` is the claims alone,
 fast check.
 
 The exit code is 0 where every check that ran passed, 1 where one failed (a tool that could
-not check counts as not passing), and 2 where nothing was checked: no manifest, and no other
-record.
+not check counts as not passing, and is said as `could not check`), and 2 where nothing was
+checked: no manifest, and no other record.
 """
 
 from __future__ import annotations
@@ -136,8 +136,15 @@ def exit_code(found: dict[str, bool | None]) -> int:
     return 0 if all(ran) else 1
 
 
-def _word(passed: bool | None) -> str:
-    return "not used" if passed is None else "passed" if passed else "failed"
+def words(project: Project, found: dict[str, bool | None]) -> dict[str, str]:
+    """Each section's verdict in words: `passed`, `failed` or `not used`, and for a tool the
+    outcome its own check gave, so `could not check` and `nothing to read` stay apart from
+    `failed`. Either counts against the exit code as a failure does."""
+    said = {
+        name: "not used" if passed is None else "passed" if passed else "failed"
+        for name, passed in found.items()
+    }
+    return said | {name: run.outcome for name, run in project.tools.items() if run.command}
 
 
 def sections(project: Project, found: dict[str, bool | None]) -> dict:
@@ -164,7 +171,7 @@ def sections(project: Project, found: dict[str, bool | None]) -> dict:
         "cross_tool": {"passed": project.cross_tool.passed, **project.cross_tool.model_dump()},
         "project": {
             "root": project.root,
-            "checks": {name: _word(passed) for name, passed in found.items()},
+            "checks": words(project, found),
             "exit_code": exit_code(found),
         },
     }
@@ -182,8 +189,14 @@ def _tool_lines(run: ci.ToolRun) -> list[str]:
     return lines + [f"      {line}" for line in run.output.rstrip().splitlines()]
 
 
-def _project_text(project: Project, policy: Policy, found: dict[str, bool | None]) -> None:
+def _project_text(
+    project: Project, policy: Policy, found: dict[str, bool | None], claims: str = ""
+) -> None:
+    """The sections beside the claims. `claims` is the line said of them where they were not
+    checked, which is printed among the others."""
     print(f"\n{project.root}\n")
+    if claims:
+        print(f"  {'claims':<12} not used here: {claims}")
     staleness = project.staleness
     if staleness.report is None or staleness.assessment is None:
         print(f"  {'staleness':<12} not used here: {staleness.reason}")
@@ -217,14 +230,29 @@ def _project_text(project: Project, policy: Policy, found: dict[str, bool | None
             "      real arrangement this cannot see. What it can say is nothing here records one."
         )
 
-    ran = {name: passed for name, passed in found.items() if passed is not None}
-    unused = [name for name, passed in found.items() if passed is None and name != "cross_tool"]
     print()
-    failed = [name for name, passed in ran.items() if not passed]
-    counted = f"{len(ran) - len(failed)} of {len(ran)} checks passed"
-    print(counted + (f"; failed: {', '.join(failed)}" if failed else ""))
+    print("\n".join(_summary(project, found)))
+
+
+def _summary(project: Project, found: dict[str, bool | None]) -> list[str]:
+    """How many checks passed, the others by their word, and the sections not used."""
+    said = words(project, found)
+    ran = [name for name, passed in found.items() if passed is not None]
+    passed = [name for name in ran if found[name]]
+    lines = []
+    if ran:
+        by_word: dict[str, list[str]] = {}
+        for name in ran:
+            if not found[name]:
+                by_word.setdefault(said[name], []).append(name)
+        lines.append(
+            f"{len(passed)} of {len(ran)} checks passed"
+            + "".join(f"; {word}: {', '.join(names)}" for word, names in by_word.items())
+        )
+    unused = [name for name, passed in found.items() if passed is None and name != "cross_tool"]
     if unused:
-        print(f"not used here: {', '.join(unused)}")
+        lines.append(f"not used here: {', '.join(unused)}")
+    return lines
 
 
 def locate(given: str | None) -> tuple[Path, Path | None]:
@@ -265,18 +293,26 @@ def command(args: argparse.Namespace) -> int:
         elif args.format == "sarif":
             print(
                 json.dumps(
-                    _with_project(survey_to_sarif(listed, version=__version__), found), indent=2
+                    _with_checks(survey_to_sarif(listed, version=__version__), project, found),
+                    indent=2,
                 )
             )
-        else:
+        elif exit_code(found) == 2:
+            # Nothing at all to check: what `claims verify` prints, which says what a manifest
+            # could pin, and then the sections not used.
             print(f"no {DEFAULT_NAME} here or above.\n")
             print("\n".join(_survey_lines(listed)))
             print("write one that pins this project's result files, with example claims to edit:\n")
-            print("    repro manifest init")
-            # With no other record either, what is printed is what `claims verify` prints:
-            # every section would read `not used`, and the JSON says so section by section.
-            if exit_code(found) != 2:
-                _project_text(project, policy, found)
+            print("    repro manifest init\n")
+            print("\n".join(_summary(project, found)))
+        else:
+            # Other records were checked, so the claims are one section among them, not used.
+            _project_text(
+                project,
+                policy,
+                found,
+                claims=f"no {DEFAULT_NAME} here or above; `repro manifest init` writes one",
+            )
         return exit_code(found)
 
     manifest, report, policy, assessment = _checked(args, path)
@@ -284,7 +320,7 @@ def command(args: argparse.Namespace) -> int:
     found = verdicts(assessment.passed, project)
     if args.format == "sarif":
         sarif = to_sarif(report, assessment, version=__version__)
-        print(json.dumps(_with_project(sarif, found), indent=2))
+        print(json.dumps(_with_checks(sarif, project, found), indent=2))
     elif args.format == "json":
         print(
             json.dumps(
@@ -302,11 +338,12 @@ def command(args: argparse.Namespace) -> int:
     return exit_code(found)
 
 
-def _with_project(sarif: dict, found: dict[str, bool | None]) -> dict:
-    """The claims' SARIF run, with each section's verdict and the exit code in its property
-    bag. A result is an assertion, so a tool's verdict is a property of the run, not a result."""
-    sarif["runs"][0]["properties"]["project"] = {
-        "checks": {name: _word(passed) for name, passed in found.items()},
+def _with_checks(sarif: dict, project: Project, found: dict[str, bool | None]) -> dict:
+    """The claims' SARIF run, with each section's verdict and the exit code under `checks` in
+    its property bag, beside the `project` name the claims' log already gives. A result is an
+    assertion, so a tool's verdict is a property of the run, not a result."""
+    sarif["runs"][0]["properties"]["checks"] = {
+        "sections": words(project, found),
         "exit_code": exit_code(found),
     }
     return sarif

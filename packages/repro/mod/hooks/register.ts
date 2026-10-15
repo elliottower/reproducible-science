@@ -153,20 +153,35 @@ const quotationsNotFound = atom(
 
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`
 
+/** The tools `repro <tool>` also runs, for an install that put only `repro` on PATH. */
+const VIA_REPRO = new Set(['claims', 'prereg', 'results', 'citations'])
+
 /**
- * A command's output, or undefined when it did not finish in time or could not start.
+ * A command's output; undefined when it did not finish in time, and null when it is not installed.
  *
  * `$.process.run` rejects on a timeout, and a rejection here used to end the whole turn's hook:
  * one slow `prereg check` on a busy machine left no status line at all. A check that did not
- * finish now marks its own field and leaves the others standing.
+ * finish now marks its own field and leaves the others standing. `uv tool install
+ * reproducible-science` puts only `repro` on PATH, so a tool that will not start is asked for
+ * again as `repro <tool>`, which runs the same command from `repro`'s own environment.
  */
 async function output($: EngineInterface, argv: string[], cwd: string, timeoutMs: number) {
-  try {
-    return (await $.process.run(argv, { cwd, timeoutMs })).stdout
-  } catch {
-    return undefined
+  const run = async (args: string[]) => {
+    try {
+      const ran = await $.process.run(args, { cwd, timeoutMs })
+      return ran.exitCode === 127 ? null : ran.stdout
+    } catch (e) {
+      // A command that cannot start is not installed; anything else is one still running.
+      return /ENOENT|not found|no such file|spawn/i.test(String(e)) ? null : undefined
+    }
   }
+  const got = await run(argv)
+  return got === null && VIA_REPRO.has(argv[0] ?? '') ? run(['repro', ...argv]) : got
 }
+
+/** A field whose command gave nothing to read: not installed, or still running at its deadline. */
+const unread = (tool: string, got: null | undefined) =>
+  `${tool}: ${got === null ? 'not installed' : 'not read (timed out)'}`
 
 /** The outcomes `claims verify` counts, the most serious first, which is the order the row gives them in. */
 const OUTCOMES = ['mismatch', 'not_found', 'error', 'unchecked', 'not_offered', 'verified']
@@ -186,9 +201,9 @@ const KINDS = new Set(['quote', 'metric', 'table', 'value', 'correspondence', 'a
  * is counted too: the assertions read from it still say `verified`, of a file that is not the
  * declared one, and `3/3 verified` would be the row saying so.
  */
-function assertions(printed: string | undefined) {
-  if (printed === undefined) {
-    return { field: 'repro: not read (timed out)', wrong: [] }
+function assertions(printed: string | null | undefined) {
+  if (printed == null) {
+    return { field: unread('repro', printed), wrong: [] }
   }
   // Without the policy line nothing was verified: the manifest did not load.
   if (!/^\s+policy \S+: (passed|FAILED)/m.test(printed)) {
@@ -373,7 +388,7 @@ async function status($: EngineInterface, root: string, withFiles: boolean) {
   // One line per plan, whichever folder reported it: a check run in a subfolder also lists the
   // plan above it.
   const listed = new Set((plans ?? '').split('\n'))
-  if (plans !== undefined) {
+  if (plans != null) {
     for (const folder of await planFolders($, root)) {
       const below = await output($, ['prereg', 'check'], `${root}/${folder}`, 60_000)
       for (const line of (below ?? '').split('\n')) {
@@ -404,8 +419,8 @@ async function status($: EngineInterface, root: string, withFiles: boolean) {
   const frozen = counts.get('unchanged') ?? 0
   const broken = total - frozen - (counts.get('not frozen') ?? 0)
   fields.push(
-    plans === undefined
-      ? 'prereg: not read (timed out)'
+    plans == null
+      ? unread('prereg', plans)
       : total === 0
         ? 'prereg: none drafted'
         : broken
@@ -425,8 +440,8 @@ async function status($: EngineInterface, root: string, withFiles: boolean) {
       withFiles ? 300_000 : 60_000,
     )
     const head = verified?.split('\n')[0] ?? ''
-    if (verified === undefined) {
-      fields.push('results: not read (timed out)')
+    if (verified == null) {
+      fields.push(unread('results', verified))
     } else if (/chain intact: \d+ events/.test(head)) {
       const ledger = await $.fs.read(`${root}/${LEDGER}`)
       // A run counts as sealed when inputs were sealed before it was recorded. A run named as a

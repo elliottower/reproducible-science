@@ -64,8 +64,11 @@ The hooks see patches only. A frozen file moved or deleted with `mv` or `rm` is 
 The CLIs, installed separately:
 
 ```bash
-uv tool install reproducible-science   # prereg, citations, results, repro
+uv tool install reproducible-science --with-executables-from claims-cli,prereg,results-cli,citations
 ```
+
+Without `--with-executables-from`, uv puts only `repro` on PATH. `pip install
+reproducible-science` installs all five commands.
 
 Every hook stays silent in a project that has not opted in — no ledger, no claims directory,
 no frozen plan means nothing to check and nothing said.

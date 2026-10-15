@@ -312,6 +312,11 @@ def test_nothing_to_check_exits_2_and_a_project_without_a_manifest_is_still_chec
     assert code == 2
     assert found["manifest"] is None
     assert set(found["project"]["checks"].values()) == {"not used"}
+    assert main(["verify"]) == 2
+    out = capsys.readouterr().out
+    assert out.endswith(
+        "    repro manifest init\n\nnot used here: claims, staleness, prereg, results, citations\n"
+    )
 
     freeze(project)
     code, found = verified(capsys)
@@ -319,6 +324,24 @@ def test_nothing_to_check_exits_2_and_a_project_without_a_manifest_is_still_chec
     assert found["manifest"] is None and found["verified"] == 0
     assert found["project"]["checks"]["claims"] == "not used"
     assert found["project"]["checks"]["prereg"] == "passed"
+
+    # The claims are one section among the others, not a block saying nothing was checked.
+    assert main(["verify"]) == 0
+    out = capsys.readouterr().out
+    assert "nothing was checked" not in out and "verified: 0" not in out
+    assert "  claims       not used here: no repro.yaml here or above" in out
+    assert "1 of 1 checks passed\nnot used here: claims, staleness, results, citations" in out
+
+
+def test_a_check_that_could_not_be_made_is_said_so_and_fails_the_project(project, capsys):
+    pin_manifest(project)
+    assert main(["prereg", "new", ".", "--title", "study"]) == 0
+    code, found = verified(capsys)
+    assert code == 1
+    assert found["prereg"]["outcome"] == "could not check"
+    assert found["project"]["checks"]["prereg"] == "could not check"
+    assert main(["verify"]) == 1
+    assert "1 of 2 checks passed; could not check: prereg" in capsys.readouterr().out
 
 
 def test_a_directory_names_the_project_checked(every, tmp_path, monkeypatch, capsys):
@@ -338,8 +361,9 @@ def test_sarif_carries_each_checks_verdict_and_exits_as_the_project_does(project
     assert main(["verify", "--format", "sarif"]) == 1
     run = json.loads(capsys.readouterr().out)["runs"][0]
     assert run["properties"]["passed"] is True
-    assert run["properties"]["project"]["checks"]["citations"] == "failed"
-    assert run["properties"]["project"]["exit_code"] == 1
+    assert run["properties"]["project"] == "study"
+    assert run["properties"]["checks"]["sections"]["citations"] == "failed"
+    assert run["properties"]["checks"]["exit_code"] == 1
 
 
 def test_claims_verify_is_the_claims_alone(project, capsys):
@@ -354,3 +378,13 @@ def test_check_is_no_longer_a_command(capsys):
         main(["check"])
     assert raised.value.code == 2
     assert "invalid choice: 'check'" in capsys.readouterr().err
+
+
+def test_repro_claims_runs_claims_where_only_repro_is_on_path(project, capsys):
+    pin_manifest(project, reported="7")
+    capsys.readouterr()
+    assert main(["claims", "verify", "--format", "json"]) == 1
+    through_repro = capsys.readouterr().out
+    assert claims_main(["verify", "--format", "json"]) == 1
+    assert json.loads(through_repro) == json.loads(capsys.readouterr().out)
+    assert main(["claims", "--version"]) == 0
