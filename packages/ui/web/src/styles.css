@@ -383,3 +383,22 @@ td.clickable:hover .claim-cell { color: var(--text); }
 .run-log { margin-top: 12px; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
 .run-log-head { padding: 6px 10px; background: #f3f5f9; border-bottom: 1px solid var(--border); }
 .run-log-body { margin: 0; padding: 8px 10px; max-height: 220px; overflow: auto; background: #0f1424; color: #d6dbea; font-family: var(--mono); font-size: 11px; line-height: 1.45; white-space: pre-wrap; }
+.issues { position: relative; }
+.issues-menu { position: absolute; right: 0; top: calc(100% + 8px); width: 440px; max-height: 70vh; overflow-y: auto; background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 20px 60px rgba(15, 20, 36, 0.3); z-index: 60; white-space: normal; }
+.issue-row { padding: 12px 14px; border-bottom: 1px solid var(--border); }
+.issue-row:last-child { border-bottom: none; }
+.issue-title { font-size: 12.5px; line-height: 1.4; word-break: break-word; }
+.issue-tool { color: var(--bad); font-weight: 600; }
+.issue-note { color: var(--muted); font-size: 11.5px; margin-top: 3px; line-height: 1.4; }
+.issue-items { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; margin-top: 6px; }
+.issue-items .link-btn { text-align: left; word-break: break-all; }
+.issue-actions { display: flex; gap: 8px; margin-top: 8px; }
+.diff-box { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin: 8px 0 14px; }
+.diff-head { margin-bottom: 4px; }
+.diff-note { color: var(--warn); margin: 4px 0; }
+.diff-body { margin: 6px 0 0; max-height: 50vh; overflow: auto; font-family: var(--mono); font-size: 11px; line-height: 1.45; white-space: pre; background: #fafbfc; padding: 6px 8px; border-radius: 6px; }
+.diff-body span { display: block; }
+.diff-body .add { background: #e7f6ec; color: #1a7f37; }
+.diff-body .del { background: #fbe9e6; color: #c7321c; }
+.diff-body .hunk { color: var(--accent); }
+.src-words.flash { animation: flash 1.8s ease; }

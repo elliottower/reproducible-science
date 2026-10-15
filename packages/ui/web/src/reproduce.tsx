@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { reproduceCommand, terminalCommand } from './format'
 import { fmt, when } from './shared'
 import type { Graph } from './types'
 
@@ -8,19 +9,7 @@ const STATE: Record<string, [string, string]> = {
   never_rerun: ['Never re-run', 'stale'],
 }
 
-/** One word for a POSIX shell: single-quoted, with any single quote closed, escaped and reopened. */
-export function shellQuote(s: string): string {
-  return /^[A-Za-z0-9_.\/:=+-]+$/.test(s) ? s : `'${s.replace(/'/g, `'\\''`)}'`
-}
 
-/** A command to paste into any new terminal: into the project's folder first, then the command. */
-export function terminalCommand(dir: string | undefined, command: string): string {
-  return dir ? `cd ${shellQuote(dir)} && ${command}` : command
-}
-
-function reproduceCommand(dir: string | undefined, only: string[] | null): string {
-  return terminalCommand(dir, ['repro reproduce', ...(only ?? []).map((id) => `--only ${shellQuote(id)}`)].join(' '))
-}
 
 /** A re-run's states in words, leaving out the steps it did not run. */
 const WORDS: Record<string, string> = { reproduced: 'reproduced', changed: 'changed', unchecked: 'could not be checked', failed: 'failed' }

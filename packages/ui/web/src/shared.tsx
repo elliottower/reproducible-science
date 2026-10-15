@@ -1,8 +1,9 @@
 import { useContext, useMemo, useState } from 'react'
 import { claimPrompt, CopyPrompt, FixCtx } from './fix'
+import { fmt } from './format'
 import type { ClaimRow, GNode, Graph, HistoryPoint } from './types'
 
-export const fmt = (n: number) => n.toLocaleString('en-US')
+export { fmt }
 export const when = (ts: string) =>
   new Date(ts).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 

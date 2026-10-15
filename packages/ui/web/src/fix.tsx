@@ -1,15 +1,10 @@
 import { createContext, useState } from 'react'
+import { ASK_FIRST } from './format'
 import { fmt, when } from './shared'
 import type { ClaimRow, Graph } from './types'
 
 /** The project folder, for the prompts below to name. */
 export const FixCtx = createContext<{ project: string | null }>({ project: null })
-
-/** How every prompt ends. A prompt asks the agent to look and to say what it found; it never
- * tells the agent to change anything, so the person reading the answer decides what happens. */
-const ASK_FIRST =
-  'Investigate and tell me what you find: what changed, whether it looks intended, and what my options are. ' +
-  'Then stop and ask me which to do. Do not edit, repin, reseal, re-run or commit anything until I choose.'
 
 const failingLines = (c: ClaimRow) =>
   c.assertions.filter((a) => !a.ok).map(

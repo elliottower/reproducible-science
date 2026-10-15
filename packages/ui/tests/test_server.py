@@ -12,6 +12,7 @@ import sysconfig
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 
 import pytest
@@ -20,8 +21,7 @@ from repro_ui import graph, server
 TOKEN = "launch-token"
 
 
-@pytest.fixture
-def served(project, tmp_path):
+def serve(project: pathlib.Path, tmp_path: pathlib.Path):
     data = tmp_path / "data"
     graph.build(project, data / "graph.json", check=False, fetch=False)
     static = tmp_path / "static"
@@ -38,6 +38,19 @@ def served(project, tmp_path):
         ("127.0.0.1", 0), functools.partial(handler, directory=str(static))
     )
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    return httpd
+
+
+@pytest.fixture
+def served(project, tmp_path):
+    httpd = serve(project, tmp_path)
+    yield f"http://127.0.0.1:{httpd.server_address[1]}"
+    httpd.shutdown()
+
+
+@pytest.fixture
+def served_kept(kept, tmp_path):
+    httpd = serve(kept, tmp_path)
     yield f"http://127.0.0.1:{httpd.server_address[1]}"
     httpd.shutdown()
 
@@ -161,7 +174,13 @@ def test_a_request_from_another_site_changes_nothing(served, project):
 
 def test_a_domain_rebound_to_this_server_reads_nothing(served):
     port = served.rsplit(":", 1)[1]
-    for path in ("/api/health", "/graph.json", "/api/file?path=results.json", "/"):
+    for path in (
+        "/api/health",
+        "/graph.json",
+        "/api/file?path=results.json",
+        "/api/diff?issue=results-changed&path=data.json",
+        "/",
+    ):
         assert raw(f"{served}{path}", headers={"Host": f"attacker.example:{port}"}) == 403, path
 
 
@@ -289,3 +308,56 @@ def test_a_failure_after_the_run_ends_the_stream_with_a_result_not_a_lost_connec
     assert "reading its record failed" in done["error"] and "could not be written" in done["error"]
     assert done["seconds"] >= 0
     assert (project / ".repro" / "reproductions.jsonl").read_text().count("\n") == 1
+
+
+def test_a_diff_the_issues_name_is_served_and_nothing_else_is(served_kept, kept):
+    q = urllib.parse.urlencode
+    status, body = get(
+        f"{served_kept}/api/diff?{q({'issue': 'results-changed', 'path': 'data.json'})}"
+    )
+    assert status == 200
+    assert '+{"values": [1, 2, 3, 4]}' in body["diff"].splitlines()
+    status, body = get(
+        f"{served_kept}/api/diff?{q({'issue': 'prereg-changed', 'path': 'PREREG.md'})}"
+    )
+    assert (status, body["commit"]) == (
+        200,
+        json.loads((kept / ".prereg" / "PREREG.md.json").read_text())["commit"],
+    )
+
+    (kept.parent / "secret.txt").write_text("not the page's to show")
+    for issue, path in [
+        ("results-changed", "../secret.txt"),
+        ("results-changed", "/etc/hosts"),
+        ("results-changed", "repro.yaml"),
+        ("results-changed", "data.json\x00"),
+        ("prereg-changed", "data.json"),
+        ("", ""),
+    ]:
+        status, body = get(f"{served_kept}/api/diff?{q({'issue': issue, 'path': path})}")
+        assert (status, body["ok"]) == (404, False), (issue, path)
+    assert raw(f"{served_kept}/api/diff", "GET") == 404
+
+
+def test_the_diff_endpoint_changes_nothing_in_the_project(served_kept, kept):
+    def state() -> dict[str, bytes]:
+        return {
+            str(f.relative_to(kept)): f.read_bytes()
+            for f in kept.rglob("*")
+            if f.is_file() and ".git" not in f.relative_to(kept).parts
+        }
+
+    before = state()
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=kept, capture_output=True, text=True
+    ).stdout
+    for path in ("data.json", "blob.bin", "scratch.txt"):
+        status, _ = get(f"{served_kept}/api/diff?issue=results-changed&path={path}")
+        assert status == 200
+    assert state() == before
+    assert (
+        subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=kept, capture_output=True, text=True
+        ).stdout
+        == head
+    )

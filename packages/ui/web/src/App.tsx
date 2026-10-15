@@ -4,12 +4,13 @@ import Catalog from './Catalog'
 import Overview, { type Tab } from './Overview'
 import { CitationsTab, PreregTab, ReproduceTab, ResultsTab } from './Records'
 import { ClaimsPill, FixCtx } from './fix'
+import { IssuesPill } from './issues'
 import { ReproducedPill, ReproduceButton, type Run, VerifyButton } from './reproduce'
 import { post, postWhenFree } from './api'
 import { layout, summarize } from './layout'
 import { nodeTypes, UiCtx } from './nodes'
 import { fmt, Panel, when } from './shared'
-import type { Graph } from './types'
+import type { Focus, Graph } from './types'
 
 interface Recheck {
   available: boolean
@@ -34,6 +35,8 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
     ['claims', 'Claims'], ['reproduce', 'Reproduce'], ['graph', 'Graph'],
   ]
   const [reproOpen, setReproOpen] = useState(false)
+  // Where Open in UI last took the page: the tab it opened reads it and shows that item.
+  const [focus, setFocus] = useState<Focus | null>(null)
   useEffect(() => {
     document.title = graph.project_name ? `${graph.project_name} · repro ui` : 'repro ui'
   }, [graph.project_name])
@@ -172,6 +175,7 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
           <div className="spacer" />
           <ClaimsPill graph={graph} openClaims={() => setMode('claims')} />
           <ReproducedPill graph={graph} live={recheck.live} openTab={() => setMode('reproduce')} />
+          <IssuesPill graph={graph} onOpen={(o) => { setMode(o.tab); setFocus({ ...o, at: Date.now() }) }} />
           {recheck.available && (
             <>
               <VerifyButton graph={graph} busy={recheck.busy === 'verify'} disabled={recheck.busy !== null && recheck.busy !== 'refresh'} run={() => recheck.run('verify')} />
@@ -199,11 +203,11 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
         {mode === 'overview' ? (
           <Overview graph={graph} onOpen={setMode} />
         ) : mode === 'prereg' ? (
-          <PreregTab graph={graph} />
+          <PreregTab graph={graph} focus={focus?.tab === 'prereg' ? focus : null} />
         ) : mode === 'results' ? (
-          <ResultsTab graph={graph} query={query} />
+          <ResultsTab graph={graph} query={query} focus={focus?.tab === 'results' ? focus : null} />
         ) : mode === 'citations' ? (
-          <CitationsTab graph={graph} query={query} />
+          <CitationsTab graph={graph} query={query} focus={focus?.tab === 'citations' ? focus : null} />
         ) : mode === 'reproduce' ? (
           <ReproduceTab graph={graph} query={query} />
         ) : mode === 'claims' ? (

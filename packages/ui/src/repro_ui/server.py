@@ -3,11 +3,13 @@
     repro ui [project] [--port 5190] [--offline] [--no-browser]
 
 Serves the built page on localhost only. POST /api/refresh re-reads the
-project's records (`repro stale`, `results verify`, `prereg check`, the ledger and the check history)
+project's records (`repro stale`, `results verify --files`, `prereg check`, the ledger and the check history)
 and writes nothing to the project. POST /api/verify also runs `repro verify`, which records the check
 in the project's history. Either rewrites graph.json; the page then reloads it.
 GET /api/health tells the page that re-checking is available, so the button stays hidden when the
-same files are served by a plain static host.
+same files are served by a plain static host. GET /api/diff?issue=<id>&path=<path> shows the
+recorded bytes of a file an issue names (a frozen plan, a sealed file) against the file now, read
+with `git show` from the commit the record names; any other path is refused.
 
 POST /api/reproduce with {"only": [step ids]} or {"only": null} runs `repro reproduce` for those
 rebuild steps, or for all of them. That executes the commands repro.yaml declares, so the page asks
@@ -167,6 +169,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._file(
                 urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("path", [""])[0]
             )
+        if self.path.startswith("/api/diff?"):
+            query = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            return self._diff(query.get("issue", [""])[0], query.get("path", [""])[0])
         if self.path.split("?")[0] == "/graph.json":
             self.send_response(200)
             data = (self.data / "graph.json").read_bytes()
@@ -214,6 +219,19 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 },
             )
         return self._json(200, {"ok": True, "text": target.read_text(errors="replace")})
+
+    def _diff(self, issue: str, rel: str) -> None:
+        """The recorded bytes of a file against the file now, for an item of the issues list in
+        graph.json: a plan against its frozen commit, a sealed file against the commit holding
+        the sealed bytes. Read-only. A path the issues list does not name is refused."""
+        graph = json.loads((self.data / "graph.json").read_text())
+        try:
+            body = build_graph.issue_diff(self.project, graph, issue, rel)
+        except build_graph.NotNamed:
+            return self._json(404, {"ok": False, "error": "not a file the records name"})
+        except (OSError, subprocess.SubprocessError) as e:
+            return self._json(500, {"ok": False, "error": f"could not read the file: {e}"})
+        return self._json(200, body)
 
     def _reproduce(self, body: dict) -> None:
         only = body.get("only")

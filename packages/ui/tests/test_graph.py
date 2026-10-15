@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import pathlib
 import urllib.request
@@ -138,3 +139,120 @@ def test_without_fetch_a_doi_is_never_looked_up_and_a_cached_landing_page_is_sti
 )
 def test_latex_accents_and_escapes_read_as_the_characters_they_print(tex, text):
     assert graph.latex_text(tex) == text
+
+
+def test_a_project_keeping_no_plan_ledger_or_quotations_says_so_on_each_line_and_has_no_issues(
+    project, tmp_path
+):
+    for check in (True, False):
+        g = built(project, tmp_path / "out", check=check)
+        s = g["status"]
+        assert [s[k]["state"] for k in ("prereg", "results", "citations")] == ["none"] * 3
+        assert s["claims"] == {"state": "read", "total": 1, "verified": 1, "ok": True}
+        assert g["issues"] == []
+        assert g["tabs"]["prereg"] == {
+            "plans": [],
+            "used": False,
+            "output": g["tabs"]["prereg"]["output"],
+        }
+
+
+def test_each_record_verify_reads_gives_its_count_and_each_kind_of_problem_one_row(kept, tmp_path):
+    g = built(kept, tmp_path / "out")
+    s = g["status"]
+    assert (s["prereg"]["plans"], s["prereg"]["frozen"], s["prereg"]["changed"]) == (1, 0, 1)
+    assert (s["results"]["runs"], s["results"]["sealed"], s["results"]["changed"]) == (1, 1, 3)
+    assert (s["citations"]["quotes"], s["citations"]["found"], s["citations"]["not_found"]) == (
+        2,
+        1,
+        1,
+    )
+    assert (s["claims"]["verified"], s["claims"]["total"]) == (1, 1)
+
+    rows = {r["id"]: r for r in g["issues"]}
+    assert set(rows) == {"prereg-changed", "results-changed", "citations-not-found"}
+    assert rows["prereg-changed"]["title"] == "PREREG.md changed after it was frozen"
+    freeze = json.loads((kept / ".prereg" / "PREREG.md.json").read_text())
+    (plan,) = rows["prereg-changed"]["items"]
+    assert plan["diff"] == {"commit": freeze["commit"], "sha256": freeze["sha256"]}
+
+    sealed = {i["label"]: i for i in rows["results-changed"]["items"]}
+    assert set(sealed) == {"data.json", "blob.bin", "scratch.txt"}
+    assert sealed["data.json"]["open"]["run"]["run_id"] == "count"
+    # A commit holds the sealed bytes of the two committed files, and none holds scratch.txt's.
+    assert sealed["data.json"]["diff"]["commit"] and sealed["blob.bin"]["diff"]["commit"]
+    assert sealed["scratch.txt"]["diff"]["commit"] is None
+
+    (quote,) = rows["citations-not-found"]["items"]
+    assert rows["citations-not-found"]["title"] == "1 quotation not found in its source (fox2020)"
+    assert quote["open"]["quote"] == {"file": "claims/fox.yaml", "statement": "sleeps", "index": 0}
+
+
+def test_a_refresh_rereads_the_plans_and_the_ledger_without_running_verify(kept, tmp_path):
+    out = tmp_path / "out"
+    built(kept, out)
+    checks = len(graph.read_checks(kept))
+    (kept / "data.json").write_text(json.dumps({"values": [1, 2, 3]}))
+    (kept / "blob.bin").unlink()
+    g = built(kept, out, check=False)
+    assert len(graph.read_checks(kept)) == checks
+    rows = {r["id"]: r for r in g["issues"]}
+    assert {i["label"] for i in rows["results-changed"]["items"]} == {"scratch.txt"}
+    assert [i["label"] for i in rows["results-missing"]["items"]] == ["blob.bin"]
+    # The quotations keep what the last check found: a refresh does not read every source.
+    assert "citations-not-found" in rows
+
+
+def test_a_diff_shows_the_frozen_or_sealed_bytes_against_the_file_now(kept, sealed_blob, tmp_path):
+    g = built(kept, tmp_path / "out")
+    plan = graph.issue_diff(kept, g, "prereg-changed", "PREREG.md")
+    assert "+A line added after the freeze." in plan["diff"].splitlines()
+    assert (
+        plan["old"]["sha256"]
+        == json.loads((kept / ".prereg" / "PREREG.md.json").read_text())["sha256"]
+    )
+
+    data = graph.issue_diff(kept, g, "results-changed", "data.json")
+    assert data["diff"].splitlines()[-4:] == [
+        '-{"values": [1, 2, 3]}',
+        "\\ No newline at end of file",
+        '+{"values": [1, 2, 3, 4]}',
+        "\\ No newline at end of file",
+    ]
+
+    blob = graph.issue_diff(kept, g, "results-changed", "blob.bin")
+    assert (blob["binary"], blob["diff"]) == (True, "")
+    assert blob["old"] == {
+        "sha256": hashlib.sha256(sealed_blob).hexdigest(),
+        "size": len(sealed_blob),
+    }
+    assert blob["new"]["sha256"] == hashlib.sha256(sealed_blob[::-1]).hexdigest()
+
+    scratch = graph.issue_diff(kept, g, "results-changed", "scratch.txt")
+    assert scratch["old"] is None
+    assert scratch["note"] == "No copy of the sealed bytes was kept: no commit holds them."
+
+
+def test_a_diff_is_refused_for_anything_the_issues_do_not_name(kept, tmp_path):
+    g = built(kept, tmp_path / "out")
+    (kept.parent / "secret.txt").write_text("not the page's to show")
+    for issue, path in [
+        ("results-changed", "repro.yaml"),
+        ("prereg-changed", "data.json"),
+        ("results-changed", "../secret.txt"),
+        ("results-changed", "/etc/hosts"),
+        ("results-changed", "./data.json"),
+        ("not-an-issue", "data.json"),
+        ("citations-not-found", "claims/fox.yaml"),
+    ]:
+        with pytest.raises(graph.NotNamed):
+            graph.issue_diff(kept, g, issue, path)
+
+
+def test_a_path_an_issue_names_that_leads_out_of_the_project_is_refused(kept, tmp_path):
+    g = built(kept, tmp_path / "out")
+    item = g["issues"][1]["items"][0]
+    item["open"]["path"] = "../secret.txt"
+    (kept.parent / "secret.txt").write_text("not the page's to show")
+    with pytest.raises(graph.NotNamed):
+        graph.issue_diff(kept, g, g["issues"][1]["id"], "../secret.txt")
