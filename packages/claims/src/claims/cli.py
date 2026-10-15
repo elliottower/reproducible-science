@@ -73,7 +73,7 @@ from claims.models import (
     Warning_,
 )
 from claims.numbers import numbers as run_numbers
-from claims.open_items import ClaimState, Tally, tally_json
+from claims.open_items import ATTEMPT_LIMIT, ClaimState, Tally, tally_json
 from claims.open_items import tally as run_tally
 from claims.origins import OriginCheck, OriginsReport, OriginState, fetch_url
 from claims.origins import origins as run_origins
@@ -1121,6 +1121,13 @@ def _tally_lines(found: Tally) -> list[str]:
         lines.append(f"  {basis.value} assertions: {counted}")
     if found.manifest_changed:
         lines.append(f"  {found.manifest} has changed since the reader wrote it")
+    for item, count in found.attempts.items():
+        over = (
+            f", over {ATTEMPT_LIMIT}: check the binding is the claim's own value, not a search"
+            if item in found.over_attempt_limit
+            else ""
+        )
+        lines.append(f"  {item}: {count} attempt{'' if count == 1 else 's'}{over}")
     return lines
 
 

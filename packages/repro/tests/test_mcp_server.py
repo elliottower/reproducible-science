@@ -5,6 +5,7 @@ from typing import Any
 import anyio
 import pytest
 import yaml
+from claims.cli import main as claims_main
 from claims.models import Digest
 from claims.open_items import OpenItem, Source, write_draft
 from mcp import Client
@@ -719,3 +720,92 @@ def test_a_folder_holding_only_a_plan_is_a_project(tmp_path, monkeypatch):
     monkeypatch.chdir(study / "analysis")
     (found,) = calls(None, [("prereg_check", {})])
     assert found.structured_content["root"] == study.as_posix()
+
+
+def propose_auc(project: pathlib.Path, pointer: str):
+    given = {"open_items": DRAFT_ITEMS, "claim": "auc", "assertion": _candidate(pointer)}
+    return call(project, "propose_binding", given)
+
+
+def auc_evidence(project: pathlib.Path) -> list:
+    draft = yaml.safe_load((project / "draft" / "repro.draft.yaml").read_text())
+    return next(c for c in draft["claims"] if c["id"] == "auc").get("evidence", [])
+
+
+def test_a_retry_after_a_mismatch_replaces_it_and_nothing_else(project):
+    draft = project / "draft" / "repro.draft.yaml"
+    first = propose_auc(project, "/auc/train").structured_content
+    assert (first["outcome"], first["attempt"], first["replaced"]) == ("mismatch", 1, False)
+    old = draft.read_text()
+    second = propose_auc(project, "/auc/held").structured_content
+    assert (second["outcome"], second["attempt"], second["replaced"]) == ("matched", 2, True)
+    assert auc_evidence(project) == [_candidate("/auc/held")]
+    new = draft.read_text()
+    old_line = json.dumps(_candidate("/auc/train"))
+    assert new.replace(json.dumps(_candidate("/auc/held")), old_line) == old
+
+
+def test_a_matched_assertion_is_never_replaced(project):
+    propose_auc(project, "/auc/held")
+    same = unchanged(project)
+    result = propose_auc(project, "/auc/train")
+    assert result.structured_content["refused"] == "fills_no_open_item"
+    assert same()
+
+
+def test_an_inferred_assertion_the_agent_did_not_propose_is_never_replaced(project):
+    draft = project / "draft" / "repro.draft.yaml"
+    held = json.dumps(_candidate("/auc/train"))
+    draft.write_text(draft.read_text().replace(AUC_LINE, AUC_LINE + f"  evidence:\n  - {held}\n"))
+    same = unchanged(project)
+    result = propose_auc(project, "/auc/held")
+    assert result.structured_content["refused"] == "fills_no_open_item"
+    assert same()
+
+
+def test_the_record_of_attempts_is_only_appended_to(project):
+    log = project / "draft" / "open-items.attempts.jsonl"
+    propose_auc(project, "/auc/train")
+    first = log.read_bytes()
+    propose_auc(project, "/auc/held")
+    second = log.read_bytes()
+    assert second.startswith(first)
+    lines = [json.loads(line) for line in second.decode().splitlines()]
+    assert [(r["item"], r["attempt"], r["outcome"]) for r in lines] == [
+        ("auc/value", 1, "mismatch"),
+        ("auc/value", 2, "matched"),
+    ]
+    assert lines[0]["assertion"]["locator"] == {"kind": "tree", "pointer": "/auc/train"}
+    assert all(r["at"].endswith("+00:00") for r in lines)
+
+
+def test_a_warning_comes_at_the_sixth_attempt_and_not_the_fifth(project, capsys):
+    for attempt in range(1, 6):
+        result = propose_auc(project, "/auc/train").structured_content
+        assert (result["attempt"], result["warning"]) == (attempt, "")
+    sixth = propose_auc(project, "/auc/held").structured_content
+    assert sixth["warning"] == (
+        "item auc/value matched on attempt 6: check the binding is the claim's own value, "
+        "not a search"
+    )
+    assert sixth["said"] == "matched, inferred: not verified"
+    assert auc_evidence(project)[0]["basis"] == "inferred"
+
+    counted = call(project, "open_items", {"open_items": DRAFT_ITEMS}).structured_content
+    assert counted["attempts"] == {"auc/value": 6}
+    assert counted["over_attempt_limit"] == ["auc/value"]
+    assert counted["items"]["filled_by_inferred"] == 1
+
+    assert claims_main(["open-items", str(project / DRAFT_ITEMS)]) == 0
+    assert "auc/value: 6 attempts, over 5" in capsys.readouterr().out
+
+
+def test_five_attempts_are_counted_and_not_flagged(project, capsys):
+    for _ in range(5):
+        propose_auc(project, "/auc/train")
+    assert claims_main(["open-items", str(project / DRAFT_ITEMS), "--format", "json"]) == 0
+    counted = json.loads(capsys.readouterr().out)
+    assert counted["attempts"] == {"auc/value": 5}
+    assert counted["over_attempt_limit"] == []
+    (fill,) = [f for c in counted["per_claim"] for f in c["items"] if f["id"] == "auc/value"]
+    assert fill["attempts"] == 5

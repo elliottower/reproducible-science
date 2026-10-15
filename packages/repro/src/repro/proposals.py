@@ -15,6 +15,7 @@ Every refusal is a `Refused`, which names the rule and says why. A refusal write
 
 from __future__ import annotations
 
+import datetime
 import json
 import pathlib
 from typing import Any
@@ -22,12 +23,21 @@ from typing import Any
 import yaml
 from claims.exceptions import ReproError
 from claims.manifest import load
-from claims.models import Basis, Manifest
-from claims.open_items import FILLS, Need, OpenItem, OpenItems
+from claims.models import Basis, Evidence, Manifest
+from claims.open_items import (
+    ATTEMPT_LIMIT,
+    FILLS,
+    Attempt,
+    Need,
+    OpenItem,
+    OpenItems,
+    append_attempt,
+    read_attempts,
+)
 from claims.open_items import read as read_items
 from claims.verify import verify
 from provenance_core import atomic_write
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError
 
 #: How many candidates one packet lists. The count of the rest is given.
 MAX_CANDIDATES = 10
@@ -56,6 +66,9 @@ MAX_TEXT = 2000
 
 #: The longest assertion, written as JSON.
 MAX_ASSERTION = 8000
+
+#: Reads one assertion as a manifest does.
+_EVIDENCE: TypeAdapter[Any] = TypeAdapter(Evidence)
 
 #: What an agent's assertion is marked, and the only basis `propose` writes.
 INFERRED = Basis.INFERRED.value
@@ -300,6 +313,61 @@ class Proposal(BaseModel):
     detail: str
     extracted: str | None
     counted_as_verified: bool = False
+    attempt: int
+    """Which attempt at this item it was, as the record of attempts counts them."""
+    replaced: bool = False
+    """Whether it took the place of this agent's earlier proposal for the item, which had not
+    matched."""
+    warning: str = ""
+    """Set past `ATTEMPT_LIMIT` attempts at one item."""
+
+
+def _same(proposed: dict[str, Any], held: Any) -> bool:
+    """Whether a logged proposal is the assertion the draft holds, compared as the manifest
+    reads both."""
+    try:
+        return _EVIDENCE.validate_python(proposed) == held
+    except ValidationError:
+        return False
+
+
+def _retry_index(
+    item: OpenItem, claim: Any, decisions: tuple, attempts: tuple[Attempt, ...]
+) -> int | None:
+    """Where the one assertion filling `item` sits, where it may be replaced: it is inferred
+    and nobody reviewed it, it did not match, and it is the last proposal recorded for the
+    item. None for anything else, a declared or matched assertion above all."""
+    filling = [i for i, e in enumerate(claim.evidence) if e.kind in FILLS[item.need]]
+    if len(filling) != 1:
+        return None
+    index = filling[0]
+    held = claim.evidence[index]
+    if held.counted is not Basis.INFERRED or decisions[index].said == "matched":
+        return None
+    mine = [attempt for attempt in attempts if attempt.item == item.id]
+    return index if mine and _same(mine[-1].assertion, held) else None
+
+
+def _assertion_span(text: str, claim_id: str, index: int) -> tuple[int, int]:
+    """Where in the draft's text the claim's `index`th assertion is written: the span of one
+    flow mapping, which is how `propose` writes one."""
+    root = yaml.compose(text)
+    claims = next(v for k, v in root.value if getattr(k, "value", None) == "claims")
+    entry = next(
+        c for c in claims.value if any(k.value == "id" and v.value == claim_id for k, v in c.value)
+    )
+    evidence = next(v for k, v in entry.value if k.value == "evidence")
+    node = evidence.value[index]
+    if not (isinstance(node, yaml.MappingNode) and node.flow_style):
+        raise Refused("draft_layout", f"the assertion to replace in {claim_id!r} was rewritten")
+    return node.start_mark.index, node.end_mark.index
+
+
+def _without(dump: dict, claim_id: str, index: int) -> dict:
+    for entry in dump["claims"]:
+        if entry["id"] == claim_id:
+            entry["evidence"] = entry["evidence"][:index] + entry["evidence"][index + 1 :]
+    return dump
 
 
 def capped(field: str, value: str | None, cap: int) -> None:
@@ -449,7 +517,16 @@ def propose(
             f"{path.name} lists items for {claim_id!r}, and {draft.name} holds no such claim",
         )
     kind = assertion.get("kind")
-    fillable = [i for i in open_for_claim if kind in FILLS[i.need] and not _fills(i, before)]
+    claim = next(c for c in before.claims if c.id == claim_id)
+    attempts = read_attempts(path)
+    position = [c.id for c in before.claims].index(claim_id)
+    decisions = verify(before).claims[position].decisions if claim.evidence else ()
+    fillable = [
+        (i, None if not _fills(i, before) else _retry_index(i, claim, decisions, attempts))
+        for i in open_for_claim
+        if kind in FILLS[i.need]
+    ]
+    fillable = [(i, at) for i, at in fillable if not _fills(i, before) or at is not None]
     if not fillable:
         raise Refused(
             "fills_no_open_item",
@@ -457,9 +534,10 @@ def propose(
             + ", ".join(
                 f"{i.id} needs {i.need.value}{' and is filled' if _fills(i, before) else ''}"
                 for i in open_for_claim
-            ),
+            )
+            + "; only an inferred proposal of yours that did not match is replaced",
         )
-    item = fillable[0]
+    item, replacing = fillable[0]
 
     if item.need is Need.VALUE and kind != "correspondence" and not assertion.get("reported"):
         raise Refused("missing", "the assertion has no `reported`: the value the source states")
@@ -471,24 +549,25 @@ def propose(
             f"({', '.join(sorted(allowed))}); `reported` is never changed to make a check pass",
         )
 
-    claim = next(c for c in before.claims if c.id == claim_id)
     text = draft.read_text(encoding="utf-8")
     written = {**assertion, "basis": INFERRED}
-    at, block = _insertion(text, claim_id, json.dumps(written))
-    new_text = text[:at] + block + text[at:]
+    if replacing is None:
+        index = len(claim.evidence)
+        at, block = _insertion(text, claim_id, json.dumps(written))
+        new_text = text[:at] + block + text[at:]
+    else:
+        index = replacing
+        start, end = _assertion_span(text, claim_id, index)
+        new_text = text[:start] + json.dumps(written) + text[end:]
     try:
         after = Manifest.model_validate({**yaml.safe_load(new_text), "path": draft})
     except (ValidationError, yaml.YAMLError) as e:
         detail = e.errors()[0]["msg"] if isinstance(e, ValidationError) else str(e)
         raise Refused("invalid_assertion", detail) from e
 
-    index = len(claim.evidence)
-    # The draft reads as it did, but for the one assertion added as the last of its claim's.
-    was, now = before.model_dump(mode="json"), after.model_dump(mode="json")
-    for entry in now["claims"]:
-        if entry["id"] == claim_id:
-            entry["evidence"] = entry["evidence"][:index]
-    if was != now:
+    # The draft reads as it did, but for the one assertion added or replaced.
+    was = _without(before.model_dump(mode="json"), claim_id, index)
+    if was != _without(after.model_dump(mode="json"), claim_id, index):
         raise Refused("draft_layout", f"inserting into {draft.name} would change what it declares")
     added = next(c for c in after.claims if c.id == claim_id).evidence[index]
     if undeclared := set(added.artifacts) - {a.id for a in after.artifacts}:
@@ -499,10 +578,26 @@ def propose(
         )
 
     atomic_write(draft, new_text)
-    checked = load(draft)
-    report = verify(checked)
-    position = [c.id for c in checked.claims].index(claim_id)
+    report = verify(load(draft))
     decision = report.claims[position].decisions[index]
+    attempt = sum(1 for a in attempts if a.item == item.id) + 1
+    append_attempt(
+        path,
+        Attempt(
+            item=item.id,
+            claim=claim_id,
+            attempt=attempt,
+            assertion=written,
+            outcome=decision.said,
+            at=datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds"),
+        ),
+    )
+    warning = (
+        f"item {item.id} {decision.said} on attempt {attempt}: check the binding is the "
+        "claim's own value, not a search"
+        if attempt > ATTEMPT_LIMIT
+        else ""
+    )
     return Proposal(
         draft=draft.relative_to(root).as_posix(),
         claim=claim_id,
@@ -512,4 +607,7 @@ def propose(
         said=f"{decision.said}, inferred: not verified",
         detail=decision.detail,
         extracted=decision.extracted,
+        attempt=attempt,
+        replaced=replacing is not None,
+        warning=warning,
     )

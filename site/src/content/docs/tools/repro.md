@@ -1221,7 +1221,13 @@ names a file outside it.
 outside the root, an assertion that fills no open item of the claim, a `reported` that is
 missing or other than the value the source states, an artifact the draft does not declare, and
 a name, value or passage over its length cap. It inserts the assertion into the draft as one
-line and changes no other byte, comments included. A match is reported as
+line and changes no other byte, comments included. An item already filled is refused, except
+where the one assertion filling it is the agent's own last proposal and did not match: a retry
+replaces that line and no other. A matched or declared assertion is never replaced. Every
+proposal is appended to `open-items.attempts.jsonl` beside the draft, with the item, the
+attempt's number, the assertion, the outcome and the time, and the file is never rewritten.
+From the sixth attempt at one item the result carries a warning that the binding may be what a
+search found rather than the claim's own value; it stays inferred either way. A match is reported as
 `matched, inferred: not verified`. `pin_quote` refuses an id the claims file already holds, so a
 pinned quotation is never replaced, and a quotation that begins with `-` is read as the
 quotation.

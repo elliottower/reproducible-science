@@ -50,6 +50,15 @@ OPEN_ITEMS_VERSION = "reproducible.science/open-items/0.1-experimental"
 DRAFT_NAME = "repro.draft.yaml"
 ITEMS_NAME = "open-items.json"
 
+#: The record of every proposal made to fill an item, beside the open-items file: one JSON
+#: object a line, appended to and never rewritten. `repro mcp`'s `propose_binding` writes it.
+ATTEMPTS_NAME = "open-items.attempts.jsonl"
+
+#: How many attempts at one item pass without remark. Past it a match is still a match, and
+#: still inferred, but an address found after many tries may be one a search turned up rather
+#: than the claim's own, so the count says so.
+ATTEMPT_LIMIT = 5
+
 _SHA256_HEX = r"^[a-f0-9]{64}$"
 
 
@@ -142,6 +151,49 @@ class OpenItems(BaseModel):
         return value
 
 
+class Attempt(BaseModel):
+    """One proposal made for an item, and what the check found of it."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    item: str
+    claim: str
+    attempt: int = Field(ge=1)
+    """Which attempt at this item it was, counting from 1."""
+    assertion: dict[str, Any]
+    """The assertion proposed, with its address."""
+    outcome: str
+    """What the check found: `matched`, never `verified`, or the outcome's own word."""
+    at: str
+    """When, in UTC, as ISO 8601."""
+
+
+def attempts_path(open_items: pathlib.Path) -> pathlib.Path:
+    return open_items.parent / ATTEMPTS_NAME
+
+
+def read_attempts(open_items: pathlib.Path) -> tuple[Attempt, ...]:
+    """Every attempt recorded beside an open-items file, in the order made. None recorded is
+    an empty tuple."""
+    path = attempts_path(open_items)
+    if not path.exists():
+        return ()
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+        return tuple(Attempt.model_validate_json(line) for line in lines if line.strip())
+    except OSError as e:
+        raise OpenItemsError(f"{path} could not be read: {e}") from e
+    except ValidationError as e:
+        raise OpenItemsError(f"{path} holds a line that is not an attempt: {e}") from e
+
+
+def append_attempt(open_items: pathlib.Path, attempt: Attempt) -> None:
+    """Add one line to the record of attempts. Opened for appending only, so nothing already
+    in it is rewritten."""
+    with attempts_path(open_items).open("a", encoding="utf-8") as handle:
+        handle.write(attempt.model_dump_json() + "\n")
+
+
 def write_draft(
     directory: pathlib.Path, document: dict, source: Source, items: tuple[OpenItem, ...]
 ) -> pathlib.Path:
@@ -208,6 +260,8 @@ class ItemFill(BaseModel):
     match is `matched`, and nothing inferred is ever `verified`."""
     candidates: int = 0
     unique: bool = False
+    attempts: int = 0
+    """How many proposals for it the record of attempts holds."""
 
 
 class ClaimTally(BaseModel):
@@ -236,10 +290,16 @@ class Tally(BaseModel):
     items: dict[str, int]
     assertions: dict[Basis, dict[str, int]]
     """Every assertion of the draft by basis and outcome, an inferred match as `matched`."""
+    attempts: dict[str, int] = {}
+    """Each item a proposal was recorded for, with how many."""
+    over_attempt_limit: tuple[str, ...] = ()
+    """The items with more than `ATTEMPT_LIMIT` attempts recorded."""
     per_claim: tuple[ClaimTally, ...]
 
 
-def _fill(item: OpenItem, evidence: tuple, decisions: tuple[Decision, ...]) -> ItemFill:
+def _fill(
+    item: OpenItem, evidence: tuple, decisions: tuple[Decision, ...], attempts: int = 0
+) -> ItemFill:
     filling = [
         (found, decision)
         for found, decision in zip(evidence, decisions, strict=True)
@@ -253,6 +313,7 @@ def _fill(item: OpenItem, evidence: tuple, decisions: tuple[Decision, ...]) -> I
         outcomes=tuple(decision.said for _, decision in filling),
         candidates=len(item.candidates),
         unique=item.unique,
+        attempts=attempts,
     )
 
 
@@ -286,10 +347,12 @@ def tally(path: pathlib.Path) -> Tally:
             "declares; an item is closed by filling it, never by deleting its claim"
         )
 
+    tried = collections.Counter(attempt.item for attempt in read_attempts(path))
     per_claim = []
     for claim, assessment in zip(manifest.claims, report.claims, strict=True):
         fills = tuple(
-            _fill(item, claim.evidence, assessment.decisions) for item in by_claim[claim.id]
+            _fill(item, claim.evidence, assessment.decisions, tried[item.id])
+            for item in by_claim[claim.id]
         )
         per_claim.append(
             ClaimTally(claim=claim.id, state=_state(fills, claim.evidence), items=fills)
@@ -328,6 +391,8 @@ def tally(path: pathlib.Path) -> Tally:
             "with_no_candidate": sum(fill.candidates == 0 for fill in fills),
         },
         assertions=assertions,
+        attempts=dict(tried),
+        over_attempt_limit=tuple(item for item, n in tried.items() if n > ATTEMPT_LIMIT),
         per_claim=tuple(per_claim),
     )
 
