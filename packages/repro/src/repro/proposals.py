@@ -15,6 +15,7 @@ Every refusal is a `Refused`, which names the rule and says why. A refusal write
 
 from __future__ import annotations
 
+import json
 import pathlib
 from typing import Any
 
@@ -36,6 +37,18 @@ MAX_SENTENCE = 300
 
 #: How much of a stored value one packet carries: a cell, never a file.
 MAX_STORED = 80
+
+#: The longest name an agent may give: a claim, an item, an artifact or a quotation's id.
+MAX_NAME = 200
+
+#: The longest value an agent may give as `reported`.
+MAX_VALUE = 100
+
+#: The longest passage or other text field an agent may give.
+MAX_TEXT = 2000
+
+#: The longest assertion, written as JSON.
+MAX_ASSERTION = 8000
 
 #: What an agent's assertion is marked, and the only basis `propose` writes.
 INFERRED = Basis.INFERRED.value
@@ -282,6 +295,96 @@ class Proposal(BaseModel):
     counted_as_verified: bool = False
 
 
+def capped(field: str, value: str | None, cap: int) -> None:
+    """Refuse a value longer than `cap` characters: a field an agent fills is a name, a
+    number or a passage, never a file."""
+    if value is not None and len(value) > cap:
+        raise Refused("too_long", f"{field} is {len(value):,} characters; the cap is {cap:,}")
+
+
+def _capped_assertion(assertion: dict[str, Any]) -> None:
+    capped("the assertion", json.dumps(assertion, default=str), MAX_ASSERTION)
+    capped("reported", _text(assertion.get("reported")), MAX_VALUE)
+    for field in ("name", "artifact"):
+        capped(field, _text(assertion.get(field)), MAX_NAME)
+    for field, value in _strings(assertion, "assertion"):
+        capped(field, value, MAX_TEXT)
+
+
+def _strings(value: Any, where: str) -> list[tuple[str, str]]:
+    """Every string anywhere in `value`, with where it sits."""
+    if isinstance(value, str):
+        return [(where, value)]
+    if isinstance(value, dict):
+        return [s for k, v in value.items() for s in _strings(v, f"{where}.{k}")]
+    if isinstance(value, list):
+        return [s for i, v in enumerate(value) for s in _strings(v, f"{where}[{i}]")]
+    return []
+
+
+def _text(value: Any) -> str | None:
+    return value if isinstance(value, str) else None
+
+
+def _last_leaf(node: yaml.Node) -> yaml.Node:
+    """The last scalar or flow collection under a node, whose end mark is where its text ends.
+    A block collection's own end mark is the position of the token after it, which can be
+    lines further on."""
+    while isinstance(node, yaml.CollectionNode) and not node.flow_style and node.value:
+        last = node.value[-1]
+        node = last[1] if isinstance(last, tuple) else last
+    return node
+
+
+def _line_after(text: str, node: yaml.Node) -> int:
+    """Where the line after the end of `node` starts: after any comment that ends its line."""
+    end = _last_leaf(node).end_mark.index
+    if end > 0 and text[end - 1] == "\n":
+        return end
+    newline = text.find("\n", end)
+    return len(text) if newline < 0 else newline + 1
+
+
+def _insertion(text: str, claim_id: str, line: str) -> tuple[int, str]:
+    """Where in the draft's text the assertion `line` (one line of flow YAML) goes, and the
+    text to insert there, so that every other byte of the draft stays as it is."""
+    root = yaml.compose(text)
+    claims = next(
+        (v for k, v in getattr(root, "value", ()) if getattr(k, "value", None) == "claims"), None
+    )
+    entry = next(
+        (
+            c
+            for c in getattr(claims, "value", ())
+            if isinstance(c, yaml.MappingNode)
+            and any(k.value == "id" and v.value == claim_id for k, v in c.value)
+        ),
+        None,
+    )
+    if entry is None or entry.flow_style or not entry.value:
+        raise Refused("draft_layout", f"the claim {claim_id!r} is not a block mapping in the draft")
+    evidence = next((v for k, v in entry.value if k.value == "evidence"), None)
+    if evidence is None:
+        indent = " " * entry.value[0][0].start_mark.column
+        at = _line_after(text, entry)
+        block = f"{indent}evidence:\n{indent}- {line}\n"
+    elif isinstance(evidence, yaml.SequenceNode) and evidence.flow_style:
+        at = evidence.end_mark.index - 1
+        block = f", {line}" if evidence.value else line
+        return at, block
+    elif isinstance(evidence, yaml.SequenceNode) and evidence.value:
+        first = evidence.value[0].start_mark
+        start = text.rfind("\n", 0, first.index) + 1
+        indent = " " * text[start : first.index].rfind("-")
+        at = _line_after(text, evidence)
+        block = f"{indent}- {line}\n"
+    else:
+        raise Refused("draft_layout", f"the evidence of {claim_id!r} is not a list")
+    if at == len(text) and text and not text.endswith("\n"):
+        block = "\n" + block
+    return at, block
+
+
 def propose(
     root: pathlib.Path,
     open_items: str,
@@ -295,12 +398,16 @@ def propose(
 
     Refused, with nothing written: a basis other than inferred, or `reviewed`; a claim the
     file lists no item for; a draft outside the root; an assertion of a kind that fills none
-    of the claim's open items, or only items already filled; a `reported` other than the
-    value the source states; an artifact the draft does not declare; and a draft holding
-    comments, which a rewrite would drop. The write appends and edits nothing: no assertion
+    of the claim's open items, or only items already filled; a `reported` that is missing or
+    other than the value the source states; an artifact the draft does not declare; a claim
+    the draft does not hold; and a field over its cap. The write appends and edits nothing: no assertion
     the draft holds can be changed through it, and an item a declared assertion fills is
-    filled.
+    filled. The assertion is inserted into the draft's text as one line of flow YAML, so its
+    comments and the layout of everything else are kept byte for byte.
     """
+    for field, value in (("claim", claim_id), ("item", item_id)):
+        capped(field, value, MAX_NAME)
+    _capped_assertion(assertion)
     stated = assertion.get("basis")
     if (basis is not None and basis != INFERRED) or (stated is not None and stated != INFERRED):
         raise Refused(
@@ -329,6 +436,11 @@ def propose(
             )
 
     before = load_inside(root, draft)
+    if claim_id not in {c.id for c in before.claims}:
+        raise Refused(
+            "claim_not_in_draft",
+            f"{path.name} lists items for {claim_id!r}, and {draft.name} holds no such claim",
+        )
     kind = assertion.get("kind")
     fillable = [i for i in open_for_claim if kind in FILLS[i.need] and not _fills(i, before)]
     if not fillable:
@@ -342,6 +454,8 @@ def propose(
         )
     item = fillable[0]
 
+    if item.need is Need.VALUE and kind != "correspondence" and not assertion.get("reported"):
+        raise Refused("missing", "the assertion has no `reported`: the value the source states")
     allowed = stated_values(item)
     if item.need is Need.VALUE and allowed and str(assertion.get("reported")) not in allowed:
         raise Refused(
@@ -352,19 +466,23 @@ def propose(
 
     claim = next(c for c in before.claims if c.id == claim_id)
     text = draft.read_text(encoding="utf-8")
-    if any(line.lstrip().startswith("#") for line in text.splitlines()):
-        raise Refused("draft_has_comments", f"{draft.name} holds comments a rewrite would drop")
-    document = yaml.safe_load(text)
     written = {**assertion, "basis": INFERRED}
-    entry = next(c for c in document["claims"] if c.get("id") == claim_id)
-    entry.setdefault("evidence", []).append(written)
-    new_text = yaml.safe_dump(document, sort_keys=False, width=100, allow_unicode=True)
+    at, block = _insertion(text, claim_id, json.dumps(written))
+    new_text = text[:at] + block + text[at:]
     try:
         after = Manifest.model_validate({**yaml.safe_load(new_text), "path": draft})
-    except ValidationError as e:
-        raise Refused("invalid_assertion", str(e.errors()[0]["msg"])) from e
+    except (ValidationError, yaml.YAMLError) as e:
+        detail = e.errors()[0]["msg"] if isinstance(e, ValidationError) else str(e)
+        raise Refused("invalid_assertion", detail) from e
 
     index = len(claim.evidence)
+    # The draft reads as it did, but for the one assertion added as the last of its claim's.
+    was, now = before.model_dump(mode="json"), after.model_dump(mode="json")
+    for entry in now["claims"]:
+        if entry["id"] == claim_id:
+            entry["evidence"] = entry["evidence"][:index]
+    if was != now:
+        raise Refused("draft_layout", f"inserting into {draft.name} would change what it declares")
     added = next(c for c in after.claims if c.id == claim_id).evidence[index]
     if undeclared := set(added.artifacts) - {a.id for a in after.artifacts}:
         raise Refused(

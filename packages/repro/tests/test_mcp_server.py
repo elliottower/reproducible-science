@@ -8,6 +8,7 @@ import yaml
 from claims.models import Digest
 from claims.open_items import OpenItem, Source, write_draft
 from mcp import Client
+from mcp.types import ListRootsResult, Root
 from repro.mcp_server import INSTRUCTIONS, build
 
 PASSAGE = "the set of changes over which a relationship is invariant"
@@ -226,7 +227,7 @@ def test_why_names_an_unknown_claim_as_an_error(project):
 
 def test_stale_says_no_command_is_declared(project):
     result = call(project, "stale")
-    assert result.structured_content == {"regenerations": 0}
+    assert result.structured_content["regenerations"] == 0
 
 
 def test_numbers_counts_what_a_text_prints(project):
@@ -468,3 +469,153 @@ def test_prereg_check_and_results_verify_report_a_project_without_their_records(
     results = call(project, "results_verify", {"files": True}).structured_content
     assert results["command"] == "results verify"
     assert results["exit"] != 0
+
+
+AUC_LINE = "  text: The AUC was 0.9375 on held-out data.\n"
+QUOTE = '{kind: quote, artifact: table, text: "test,0.81"}'
+
+
+@pytest.mark.parametrize(
+    "layout",
+    [
+        "",
+        "  evidence: []  # nothing yet\n",
+        f"  evidence:\n  - {QUOTE}  # the reader's quotation\n  # a comment after the list\n",
+        f"  evidence:\n    - {QUOTE}\n",
+    ],
+)
+def test_a_proposal_inserts_one_block_and_leaves_every_other_byte(project, layout):
+    draft = project / "draft" / "repro.draft.yaml"
+    text = draft.read_text()
+    assert AUC_LINE in text
+    text = "# written by a reader, then annotated\n" + text.replace(AUC_LINE, AUC_LINE + layout)
+    draft.write_text(text + "# the end\n")
+    old = draft.read_text()
+
+    result = call(
+        project,
+        "propose_binding",
+        {"open_items": DRAFT_ITEMS, "claim": "auc", "assertion": _candidate("/auc/held")},
+    )
+    assert result.structured_content["said"] == "matched, inferred: not verified"
+    new = draft.read_text()
+    start = next(i for i, (a, b) in enumerate(zip(old, new, strict=False)) if a != b)
+    inserted = len(new) - len(old)
+    assert new[:start] == old[:start]
+    assert new[start + inserted :] == old[start:]
+    assert '"basis": "inferred"' in new[start : start + inserted]
+    claim = next(c for c in yaml.safe_load(new)["claims"] if c["id"] == "auc")
+    assert claim["evidence"][-1] == _candidate("/auc/held")
+
+
+def test_a_claim_the_draft_does_not_hold_is_refused(project):
+    draft = project / "draft" / "repro.draft.yaml"
+    document = yaml.safe_load(draft.read_text())
+    document["claims"] = [c for c in document["claims"] if c["id"] != "acc"]
+    draft.write_text(yaml.safe_dump(document, sort_keys=False))
+    proposal = {"kind": "value", "artifact": "table", "name": "acc", "reported": "0.81"}
+    proposal["locator"] = {"kind": "table", "column": "acc", "where": {"split": "test"}}
+    result = call(
+        project,
+        "propose_binding",
+        {"open_items": DRAFT_ITEMS, "claim": "acc", "assertion": proposal},
+    )
+    assert result.structured_content["refused"] == "claim_not_in_draft"
+
+
+@pytest.mark.parametrize(
+    ("assertion", "rule"),
+    [
+        ({k: v for k, v in _candidate("/auc/held").items() if k != "reported"}, "missing"),
+        (_candidate("/auc/held") | {"reported": "9" * 500}, "too_long"),
+        (_candidate("/" + "a" * 5000), "too_long"),
+    ],
+)
+def test_a_missing_or_oversized_field_is_refused(project, assertion, rule):
+    same = unchanged(project)
+    result = call(
+        project,
+        "propose_binding",
+        {"open_items": DRAFT_ITEMS, "claim": "auc", "assertion": assertion},
+    )
+    assert result.structured_content["refused"] == rule
+    assert same()
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        {"quote": "--url=https://example.com/"},
+        {"quote": "-h"},
+        {"quote": "x" * 5000},
+    ],
+)
+def test_no_argument_to_pin_quote_ends_the_server_or_reaches_the_network(project, arguments):
+    claims = project / "claims" / "woodward.yaml"
+    before = claims.read_bytes()
+
+    async def run():
+        with anyio.fail_after(30):
+            async with Client(build(project)) as client:
+                given = {"claims_file": "claims/woodward.yaml", "id": "q", "quote": PASSAGE}
+                refused = await client.call_tool("pin_quote", given | arguments)
+                after = await client.call_tool("open_items", {"open_items": DRAFT_ITEMS})
+                return refused, after
+
+    refused, after = anyio.run(run)
+    assert refused.is_error
+    assert refused.structured_content["refused"] in ("pin_refused", "too_long")
+    assert not after.is_error
+    assert claims.read_bytes() == before
+
+
+@pytest.mark.parametrize(("field", "value"), [("id", "--check"), ("section", "--recapture")])
+def test_a_value_beginning_with_a_dash_is_read_as_the_value(project, field, value):
+    given = {"claims_file": "claims/woodward.yaml", "id": "q", "quote": PASSAGE, field: value}
+    result = call(project, "pin_quote", given)
+    assert result.structured_content["written"] is True
+    claims = yaml.safe_load((project / "claims" / "woodward.yaml").read_text())["claims"]
+    if field == "id":
+        assert "--check" in claims
+    else:
+        assert claims["q"]["quotes"][0]["section"] == "--recapture"
+
+
+def roots_call(
+    server_root: pathlib.Path, root: pathlib.Path, tool: str, arguments: dict, mode: str = "auto"
+):
+    async def list_roots(context) -> ListRootsResult:
+        return ListRootsResult(roots=[Root(uri=root.as_uri())])
+
+    async def run():
+        async with Client(build(server_root), list_roots_callback=list_roots, mode=mode) as client:
+            return await client.call_tool(tool, arguments)
+
+    return anyio.run(run)
+
+
+@pytest.mark.parametrize("mode", ["auto", "legacy"])
+def test_a_client_that_offers_roots_names_the_project(project, tmp_path, mode):
+    elsewhere = tmp_path / "started-here"
+    elsewhere.mkdir()
+    result = roots_call(elsewhere, project, "verify", {"policy": "exploratory"}, mode)
+    assert not result.is_error
+    assert result.structured_content["root"] == project.as_posix()
+    assert result.structured_content["counts"] == {"verified": 1}
+
+    result = roots_call(project, elsewhere, "verify", {}, mode)
+    assert result.structured_content["root"] == elsewhere.as_posix()
+    assert result.structured_content["error"] == "ManifestError"
+
+
+def test_a_client_root_confines_every_path(project):
+    result = roots_call(
+        project.parent, project, "verify", {"manifest": "../project/../outside/repro.yaml"}
+    )
+    assert result.structured_content["refused"] == "outside_root"
+    result = roots_call(
+        project.parent, project / "draft", "open_items", {"open_items": "open-items.json"}
+    )
+    assert not result.is_error
+    result = roots_call(project.parent, project / "draft", "verify", {"manifest": "../repro.yaml"})
+    assert result.structured_content["refused"] == "outside_root"

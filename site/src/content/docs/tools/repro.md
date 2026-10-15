@@ -1192,9 +1192,11 @@ uv tool install "reproducible-science[mcp]"   # or: pip install "reproducible-sc
 repro mcp --root /path/to/project
 ```
 
-Every path a tool is given is resolved inside `--root`, or the directory the server starts in,
-and a path that leaves it, through `..` or a symlink, is refused. So is a manifest that names a
-file outside it.
+The project root is the client's first `file://` root where the client offers MCP roots, which
+is how an agent that starts the server without `--root` names the project; otherwise `--root`;
+otherwise the directory the server starts in. Every path a tool is given is resolved inside that
+root, and a path that leaves it, through `..` or a symlink, is refused. So is a manifest that
+names a file outside it.
 
 | tool | what it does |
 |---|---|
@@ -1209,12 +1211,14 @@ file outside it.
 | `pin_quote` | `citations pin`, which writes a quotation only where it resolves |
 
 `propose_binding` writes `basis: inferred` and nothing else. It refuses any other basis and
-`reviewed`, a claim the open-items file lists no item for, a draft outside the root, an
-assertion that fills no open item of the claim, a `reported` other than the value the source
-states, and an artifact the draft does not declare. It appends and never edits, so no assertion
-the draft holds is changed. A match is reported as `matched, inferred: not verified`.
-`pin_quote` refuses an id the claims file already holds, so a pinned quotation is never
-replaced.
+`reviewed`, a claim the open-items file lists no item for or the draft does not hold, a draft
+outside the root, an assertion that fills no open item of the claim, a `reported` that is
+missing or other than the value the source states, an artifact the draft does not declare, and
+a name, value or passage over its length cap. It inserts the assertion into the draft as one
+line and changes no other byte, comments included. A match is reported as
+`matched, inferred: not verified`. `pin_quote` refuses an id the claims file already holds, so a
+pinned quotation is never replaced, and a quotation that begins with `-` is read as the
+quotation.
 
 The server offers nothing that freezes or registers a plan, seals or records a run, runs a
 declared command, publishes or fetches. Its instructions tell the agent to ask a person to run
