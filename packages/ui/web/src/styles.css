@@ -392,3 +392,4 @@ td.clickable:hover .claim-cell { color: var(--text); }
 .confirm .kv td { padding: 4px 14px 4px 0; vertical-align: top; }
 .confirm .kv td:first-child { color: var(--muted); white-space: nowrap; }
 .confirm .step-row .plain { flex-shrink: 0; }
+.menu-what code { font-family: var(--mono); font-size: 11.5px; }

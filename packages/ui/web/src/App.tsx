@@ -183,7 +183,7 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
           )}
           {needRerun > 0 && (
             <ProblemPill className="stale" label={`◐ ${needRerun} need re-run`} subject="project"
-              what={`${needRerun} file${needRerun === 1 ? '' : 's'} whose rebuild step changed since the last repro reproduce, or was never re-run.`}
+              what={<>{needRerun} {needRerun === 1 ? 'file whose rebuild step' : 'files whose rebuild steps'} changed since the last <code>repro reproduce</code>, or {needRerun === 1 ? 'was' : 'were'} never re-run.</>}
               prompt={projectPrompt(graph, graph.project_dir ?? null)} />
           )}
           {recheck.available && (

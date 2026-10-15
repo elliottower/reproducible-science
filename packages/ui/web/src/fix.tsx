@@ -1,4 +1,4 @@
-import { createContext, useContext, useState } from 'react'
+import { createContext, useContext, useState, type ReactNode } from 'react'
 import { post } from './api'
 import type { ClaimRow, GNode, Graph } from './types'
 
@@ -87,7 +87,7 @@ function useFix(prompt: string, subject: string) {
   return { available, note, copy, send }
 }
 
-function FixMenu({ fix, what, onDone }: { fix: ReturnType<typeof useFix>; what?: string; onDone: () => void }) {
+function FixMenu({ fix, what, onDone }: { fix: ReturnType<typeof useFix>; what?: ReactNode; onDone: () => void }) {
   return (
     <div className="menu" onMouseLeave={onDone}>
       {what && <div className="menu-what">{what}</div>}
@@ -122,7 +122,7 @@ export function ClaudeButton({ prompt, subject, small }: { prompt: string; subje
 /** A status pill in the top bar that names a problem ("3 failing", "10 need re-run"). Clicking it
  * says what is wrong and offers the fix, so the fix appears only where there is something to fix. */
 export function ProblemPill({ className, label, what, prompt, subject, title }: {
-  className: string; label: string; what: string; prompt: string; subject: string; title?: string
+  className: string; label: string; what: ReactNode; prompt: string; subject: string; title?: string
 }) {
   const fix = useFix(prompt, subject)
   const [open, setOpen] = useState(false)
