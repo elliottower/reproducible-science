@@ -240,9 +240,22 @@ The two example claims show the commonest shapes: a `metric`, a number at a JSON
 repro verify
 ```
 
-Reads `repro.yaml` and checks every declared evidence assertion against the artifact it names. It spawns nothing: `prereg`, `results` and `citations` are separate commands.
+Checks every record the project keeps, in one report with one exit code:
 
-It changes nothing in the working tree. It does keep a record of what it checked. For every assertion whose `reported` value or passage, address, claim text, artifact digest or outcome differs from the last entry recorded for it, one entry is appended: what the assertion declared, the digest of each file it read, the outcome, and when. A check that finds every assertion as it was last recorded adds nothing, so the record grows with changes and not with runs. `repro why <claim-id>` reads it back.
+| section | what it checks | used where the project has |
+|---|---|---|
+| claims | every evidence assertion `repro.yaml` declares, against the artifact it names | `repro.yaml` |
+| staleness | each declared command against the record of its re-runs, as `repro stale` reports it, graded under `--policy` | a command under `regenerations` |
+| prereg | `prereg check` | a `PREREG.md` or `.prereg/` |
+| results | `results verify --files` | `.results/` |
+| citations | `citations verify --claims <dir>` | a claims directory holding a claims file |
+| cross-tool | a ledger claim naming a freeze that no frozen plan records | a ledger and a plan |
+
+A record the project does not keep is named as not used and is not run. The project is the directory given, or the folder holding the manifest given or found at or above the working directory. It executes nothing a manifest declares and reaches no network: `repro reproduce` is the command that runs things. It exits 0 where every check that ran passed, 1 where one failed or could not check, and 2 where nothing was checked. `--format json` keeps `report` and `assessment` where `claims verify` puts them and adds `staleness`, `prereg`, `results`, `citations`, `cross_tool` and `project` beside them; `--format sarif` is the claims' log with each section's verdict under the run's `properties.project`.
+
+`claims verify` checks the claims alone, takes the same options and writes the same record of checks. It is the fast check, and the one a pre-commit hook runs.
+
+Neither command changes anything in the working tree. Each keeps a record of what it checked. For every assertion whose `reported` value or passage, address, claim text, artifact digest or outcome differs from the last entry recorded for it, one entry is appended: what the assertion declared, the digest of each file it read, the outcome, and when. A check that finds every assertion as it was last recorded adds nothing, so the record grows with changes and not with runs. `repro why <claim-id>` reads it back.
 
 | | local record | tracked record |
 |---|---|---|
@@ -716,7 +729,7 @@ next: commit and push. Each badge prints its workflow's name beside `passing` or
 `failing`, for the latest run on the default branch.
 ```
 
-`repro ci init` writes one workflow for each check the repository keeps a record for, says which it skipped and why, and prints two badge lines for each one written, in the order prereg, results, claims, citations, reruns. Which records a repository keeps is decided as `repro check` decides it.
+`repro ci init` writes one workflow for each check the repository keeps a record for, says which it skipped and why, and prints two badge lines for each one written, in the order prereg, results, claims, citations, reruns. Which records a repository keeps is decided as `repro verify` decides it.
 
 | workflow | badge reads | written when the repository has | the workflow runs |
 |---|---|---|---|
@@ -805,7 +818,7 @@ A recorded file the repository does not commit is `missing` in a clone, and the 
 
 ### claims in CI
 
-`repro ci claims` runs what `repro verify` runs: each value and passage the manifest declares against the file it is declared to come from, and each file against its pin. It executes nothing, writes nothing to the project, and keeps no record of checks: `repro verify` is the command that appends to one. `--policy` grades as it does for `repro verify`.
+`repro ci claims` runs what `claims verify` runs: each value and passage the manifest declares against the file it is declared to come from, and each file against its pin. It executes nothing, writes nothing to the project, and keeps no record of checks: `claims verify` and `repro verify` are the commands that append to one. `--policy` grades as it does for `claims verify`.
 
 ```markdown
 ## claims: my_project
@@ -1054,7 +1067,7 @@ SARIF has no property for most of what a record holds. The whole record is in ea
 
 GitHub keeps the 5,000 most severe results of a run and rejects a file over 10 MB compressed. The default output holds only what did not match; with `--include-matches` a log over 5,000 results is written whole and a warning says so.
 
-`repro verify --format sarif` is an older log built from the report, graded by `--policy`, and is unchanged.
+`claims verify --format sarif` is an older log built from the report and graded by `--policy`. `repro verify --format sarif` is that log with each section's verdict and the exit code under the run's `properties.project`.
 
 ## As an RO-Crate
 
@@ -1125,7 +1138,7 @@ Clones the repository into a cache directory at that commit (default: the remote
 | `.results/ledger.jsonl` | `results verify --files` |
 | a claims directory | `citations verify --claims <dir>` |
 | each tracked `.bib` file | `citations audit --bib <file>` |
-| `repro.yaml` | `repro verify` |
+| `repro.yaml` | `claims verify` |
 
 ```text
 command           exit  outcome          what it found                                 what it could not establish
@@ -1135,7 +1148,7 @@ results.verify    1     failed           chain intact: 153 events, anchored; 4  
                                          file(s) changed or missing since they were
                                          recorded.
 citations.verify  1     could not check  not found 0                                   unchecked 18 file not found
-repro.verify      2     nothing to read  no repro.yaml here or above.                  -
+claims.verify     2     nothing to read  no repro.yaml here or above.                  -
 ```
 
 Each row carries one of four outcomes. `failed` is a finding about the repository. `could not check` means a source is not on this machine or a registry did not answer, and `nothing to read` means the repository keeps no record of that kind. Neither is a pass. A step left out is listed as `not run` with the reason. The command exits 1 when a check failed, 2 when one could not be made or nothing was established, and 0 otherwise.

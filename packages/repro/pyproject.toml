@@ -88,7 +88,7 @@ sources.results-cli = { workspace = true }
 
 [tool.deptry]
 # Named here rather than silenced globally: a genuinely unused dependency should still be
-# reported. `results-cli` is run as a subprocess, by `repro results`, `repro check` and
+# reported. `results-cli` is run as a subprocess, by `repro results`, `repro verify` and
 # `repro audit`, and is imported nowhere: the chain's writer the record of checks is appended
 # with is in `provenance-core`. `citations` is run by `repro citations` and those two, and imported by
 # name where `repro init` asks which library governs a project; what checks a quotation with

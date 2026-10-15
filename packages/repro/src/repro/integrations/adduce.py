@@ -1,4 +1,4 @@
-"""An adduce rule that runs `repro verify` and reports what it found.
+"""An adduce rule that checks what `claims verify` checks and reports what it found.
 
 **One finding, and one item per assertion.** `adduce.rules.Rule.evaluate` returns a single
 `Finding` per repository, and adduce scores, weighs and suppresses findings. Since 0.2.0 a
@@ -148,7 +148,7 @@ class ReproEvidenceRule(Rule):
     )
     weight = 5
     severity = "high"
-    fix_command = "repro verify"
+    fix_command = "claims verify"
 
     def applies_to(self, repo) -> bool:
         # Gate on a manifest existing. A repository that declares no assertions is not failing
@@ -258,7 +258,7 @@ class ReproEvidenceRule(Rule):
             return finding(
                 Status.FAIL,
                 f"No declared evidence assertion verifies ({detail}).",
-                remediation=f"Run `repro verify` and see {SIDECAR}.",
+                remediation=f"Run `claims verify` and see {SIDECAR}.",
             )
         return finding(
             Status.PARTIAL,

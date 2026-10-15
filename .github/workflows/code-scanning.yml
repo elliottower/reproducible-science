@@ -3,7 +3,7 @@ name: Code scanning
 # This repository's own declared claims, as code scanning alerts. `repro export sarif` writes
 # one result for each assertion in `repro.yaml` that does not hold, and the upload shows it
 # under Security and, where its line is in the diff, on the pull request. It exits 0 whatever
-# it finds: the pre-commit hook and `repro verify` are the checks that fail.
+# it finds: the pre-commit hook and `claims verify` are the checks that fail.
 on:
   push:
     branches: [main]

@@ -537,13 +537,13 @@ test('registrations frozen by a commit line count as plans, and only an edited o
   await $.command.run({ command: 'repro-status', args: 'auto' })
 })
 
-/** What `repro verify` prints, cut to the lines the mod reads: the assertions, the counts, the policy. */
+/** What `claims verify` prints, cut to the lines the mod reads: the assertions, the counts, the policy. */
 const assertions = (lines: string[], counts: string, policy = 'FAILED  (1 errors, 0 warnings)') =>
   `/work/trial/repro.yaml\n\n${lines.map(line => `  ${line}\n`).join('')}\n  ${counts}\n  policy publication: ${policy}\n`
 
-/** A project at /work/trial with a manifest, where `repro verify` prints `printed` (null: it times out). */
+/** A project at /work/trial with a manifest, where `claims verify` prints `printed` (null: it times out). */
 function trial(on: On, printed: string | null, files: Record<string, string> = { '/work/trial/repro.yaml': 'x' }) {
-  project(on, { '/work/trial/PREREG.md': DRAFT_PLAN, ...files }, argv => (argv[0] === 'repro' ? printed : ''))
+  project(on, { '/work/trial/PREREG.md': DRAFT_PLAN, ...files }, argv => (argv[0] === 'claims' ? printed : ''))
   spawned.length = 0
 }
 
@@ -560,7 +560,7 @@ test('a manifest whose assertions all verify adds a fourth field, as verified ov
   const shown = await $.command.run({ command: 'repro-status', args: 'trial' })
 
   expect(shown.text).toContain('citations: none pinned · repro: 34/34 checks verified')
-  expect(spawned.some(call => call.includes('"repro","verify"') && call.includes('/work/trial'))).toBe(true)
+  expect(spawned.some(call => call.includes('"claims","verify"') && call.includes('/work/trial'))).toBe(true)
   await $.command.run({ command: 'repro-status', args: 'auto' })
 })
 

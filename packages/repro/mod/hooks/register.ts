@@ -168,14 +168,14 @@ async function output($: EngineInterface, argv: string[], cwd: string, timeoutMs
   }
 }
 
-/** The outcomes `repro verify` counts, the most serious first, which is the order the row gives them in. */
+/** The outcomes `claims verify` counts, the most serious first, which is the order the row gives them in. */
 const OUTCOMES = ['mismatch', 'not_found', 'error', 'unchecked', 'not_offered', 'verified']
 
-/** The kinds of evidence `repro verify` prints beside an assertion. Only `quote` is not a number. */
+/** The kinds of evidence `claims verify` prints beside an assertion. Only `quote` is not a number. */
 const KINDS = new Set(['quote', 'metric', 'table', 'value', 'correspondence', 'aggregate'])
 
 /**
- * The `repro` field and its warnings, from what `repro verify` printed:
+ * The `repro` field and its warnings, from what `claims verify` printed:
  *
  *       MISS  effect-size  correspondence effect-delta: manuscript 0.055, run 0.0453
  *
@@ -262,7 +262,7 @@ type Rerun = { state?: string; rerun_at?: string | null; witness?: { kind?: stri
  *
  * Undefined, and no row, where the manifest declares no command, and where `repro stale` did
  * not finish or printed no report: a record of re-runs with a line it cannot read, or a `repro`
- * with no `stale` command. `repro stale` executes nothing and hashes the files `repro verify`
+ * with no `stale` command. `repro stale` executes nothing and hashes the files `claims verify`
  * has just hashed, so it costs what the row above costs, and it is not run at all for a manifest
  * with no `regenerations`.
  */
@@ -511,7 +511,7 @@ async function status($: EngineInterface, root: string, withFiles: boolean) {
     fields.push('citations: none pinned')
   }
 
-  // `repro verify` reads the `repro.yaml` at or above the directory it runs in and no other, so
+  // `claims verify` reads the `repro.yaml` at or above the directory it runs in and no other, so
   // that is the only manifest looked for. It takes under a second on 34 assertions, and runs here.
   // With no manifest the field says so, as the others do for a missing ledger or plan: a row
   // left out reads the same as nothing to check.
@@ -519,7 +519,7 @@ async function status($: EngineInterface, root: string, withFiles: boolean) {
   if (manifest) {
     // The two read the same files and neither waits on the other.
     const [printed, rerun] = await Promise.all([
-      output($, ['repro', 'verify'], root, 60_000),
+      output($, ['claims', 'verify'], root, 60_000),
       reruns($, root, manifest),
     ])
     const checked = assertions(printed)

@@ -90,7 +90,7 @@ async function rows(
         stdout:
           e.argv[1] === 'stale'
             ? (stale ?? '')
-            : e.argv[0] === 'repro'
+            : e.argv[0] === 'claims'
               ? `${root}/repro.yaml\n\n  ok    n  metric   /n = 3\n\n  3 verified\n  policy publication: passed  (0 errors, 0 warnings)\n`
               : '',
         stderr: '',

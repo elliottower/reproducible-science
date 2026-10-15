@@ -57,9 +57,9 @@ install.
 | [`repro`](packages/repro) | that every declared claim holds against its pinned artifact, and which ones do not |
 
 `pip install reproducible-science` brings all four. Each is also its own distribution —
-`prereg`, `citations`, `results-cli` — so installing one brings only that one. The code behind
-`repro verify` is a fifth, [`claims-cli`](packages/claims), with the command `claims`: it checks
-a manifest's claims and runs nothing the manifest names.
+`prereg`, `citations`, `results-cli` — so installing one brings only that one. The code that
+checks a manifest's claims is a fifth, [`claims-cli`](packages/claims), with the command
+`claims`: `claims verify` checks the claims alone and runs nothing the manifest names.
 
 ## Getting started
 
@@ -68,7 +68,8 @@ breaks it twice — so the first thing you watch the tool do is catch something,
 things it catches are not the same kind of failure.
 
 Write down what your paper claims and where each claim comes from. `repro verify` checks every
-one against the file it names and tells you which ones hold.
+one against the file it names and tells you which ones hold, and in the same report checks the
+plan, the ledger and the quotations the project keeps, naming any it does not keep as not used.
 
 ```console
 $ prereg freeze                                    # lock the plan; names a git commit
@@ -86,6 +87,16 @@ repro.yaml
   policy publication: FAILED  (2 errors, 0 warnings)
     error   evidence.mismatch          pvalue/metric: p: manuscript prints 0.031, results.js
     error   evidence.not_found         n/metric: /n does not resolve in results.json
+
+/home/me/study
+
+  staleness    not used here: repro.yaml declares no command under `regenerations`
+  prereg       passed  (prereg check)
+  results      passed  (results verify --files)
+  citations    not used here: no claims directory holding a claims file here
+
+2 of 3 checks passed; failed: claims
+not used here: staleness, citations
 ```
 
 `ok` holds, `MISS` disagrees with the artifact, `GONE` names an address that no longer

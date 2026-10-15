@@ -3,7 +3,7 @@
     repro init [name]     scaffold an experiment directory, or set up the project here
     repro demo            write a worked example and run the workflow over it
     repro manifest init   write a starter repro.yaml for an existing project
-    repro verify          check every evidence assertion in repro.yaml
+    repro verify          check the claims and every other record this project keeps, in one pass
     repro reproduce       run the declared commands again and check the numbers still hold
     repro stale           say which claims read a file changed since its recorded re-run
     repro why             say what the record establishes for one claim, and what it does not
@@ -13,7 +13,6 @@
     repro ci              run the checks in a workflow, with a summary on the run page
     repro badges          print a badge per check, each a count from a run on this machine
     repro venue           draft a venue's appendix or checklist from the records, every answer marked
-    repro check           run every tool this project uses, in one pass
     repro audit           clone a repository at a pinned commit and run every tool over it
     repro prereg          run `prereg`: freeze a plan, and record what deviated from it
     repro citations       run `citations`: does every quotation resolve in its source?
@@ -22,8 +21,8 @@
     repro ui              serve a page over this project's records on localhost
 
 A renderer over the library and nothing more. `verify` calls `claims.verify()` and
-`Policy.assess()`, both of which return values, so anything this prints can also be obtained
-by importing the package. `main` returns an exit code; the process boundary is the only place
+`Policy.assess()`, both of which return values, then `repro.whole.check()` for the project's
+other records, so anything this prints can also be obtained by importing the package. `main` returns an exit code; the process boundary is the only place
 that exits.
 """
 
@@ -35,7 +34,7 @@ import functools
 import importlib
 import io
 import json
-import pathlib
+import pathlib  # noqa: F401  (a name this module had; see test_names_kept.py)
 import subprocess
 from pathlib import Path
 
@@ -69,7 +68,6 @@ from claims.cli import (
     add_numbers,
     add_origins,
     add_stale,
-    add_verify,
     add_why,
 )
 from claims.cli import cmd_export as cmd_export
@@ -78,6 +76,7 @@ from claims.cli import cmd_numbers as cmd_numbers
 from claims.cli import cmd_stale as cmd_stale
 from claims.cli import cmd_verify as cmd_verify
 from claims.cli import cmd_why as cmd_why
+from claims.cli import main as claims_main
 from claims.exceptions import ReproError
 from claims.export import EXPORTS as EXPORTS
 from claims.export.rocrate import METADATA_FILE as METADATA_FILE
@@ -103,9 +102,9 @@ from claims.starter import write as write_starter
 from provenance_core import atomic_write
 from provenance_core.gitref import try_run
 
-from repro import __version__, audit, badges, ci, crosscheck, pr_bot
+from repro import __version__, audit, badges, ci, pr_bot, whole
+from repro import crosscheck as crosscheck
 from repro.delegate import BY_NAME, TOOLS
-from repro.delegate import check as delegate_check
 from repro.delegate import run as delegate_run
 from repro.demo import demo
 from repro.proposals import PROJECT_MARKERS
@@ -122,7 +121,7 @@ CLAUDE_MD = """\
 - `prereg` — freeze a plan before running, record amendments and deviations
 - `citations` — verify quotations resolve in pinned source artifacts
 - `results` — seal inputs, record outputs, bind claims to runs, verify the chain
-- `repro verify` — check every evidence assertion declared in repro.yaml
+- `repro verify` — check the claims declared in repro.yaml and every other record, in one pass
 
 ## Workflow
 
@@ -130,7 +129,7 @@ CLAUDE_MD = """\
 prereg freeze                         # lock the plan
 results seal PREREG.md analysis.py    # hash inputs
 results run output.json --run-id exp_001
-repro verify                          # check the declared evidence
+repro verify                          # check the claims, the plan, the ledger, the citations
 ```
 """
 
@@ -499,53 +498,6 @@ def _reproduce_text(
         print(f"  witnessed {report.witness.said}, as the environment said")
 
 
-def cmd_check(args) -> int:
-    """Run every applicable tool and report them together."""
-    root = pathlib.Path(args.directory or ".").resolve()
-    outcomes = delegate_check(root, args.only or ())
-    print(f"{root}\n")
-    for o in outcomes:
-        print(o.line)
-        if o.used and o.code != 0:
-            for line in o.output.rstrip().splitlines():
-                print(f"      {line}")
-    # The cross-tool part, which is the reason `check` exists rather than four commands. Each
-    # of these reads two tools' records and reports something neither can see alone.
-    crossed = 0
-    if stray := crosscheck.unmatched(root):
-        crossed += len(stray)
-        print("\n  claims naming a freeze that no frozen plan records:")
-        for c in stray:
-            print(f"      {c.claim[:58]}  cites {c.ref}")
-        print("      `results` checks that the reference resolves to a commit, not that a plan")
-        print("      was frozen at it, so a citation like this passes every tool on its own.")
-    if unplanned := crosscheck.confirmatory_without_a_plan(root):
-        print("\n  confirmatory claims, and no frozen plan in this project:")
-        for text in unplanned[:10]:
-            print(f"      {text[:70]}")
-        if len(unplanned) > 10:
-            print(f"      ... and {len(unplanned) - 10} more")
-        print("      Reported, not failed: a plan frozen elsewhere or registered on OSF is a")
-        print(
-            "      real arrangement this cannot see. What it can say is nothing here records one."
-        )
-
-    ran = [o for o in outcomes if o.used]
-    bad = [o for o in ran if o.code != 0]
-    if crossed and not bad:
-        print(f"\n{crossed} cross-tool problem(s); every tool passed on its own.")
-        return 1
-    print()
-    if not ran:
-        print("no tool applies to this project. `repro demo` writes one that does.")
-        return 1
-    if bad:
-        print(f"{len(bad)} of {len(ran)} failed.")
-        return 1
-    print(f"{len(ran)} of {len(ran)} passed.")
-    return 0
-
-
 #: What `repro mcp` prints where the `mcp` extra is not installed.
 MCP_EXTRA = 'pip install "reproducible-science[mcp]"'
 
@@ -595,8 +547,9 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
         epilog=(
             "`repro citations verify` and `citations verify` are the same command. Each tool "
             "keeps its own, installs on its own, and is not deprecated. What only exists here "
-            "is `repro check`, which runs the ones a project uses together. If you use one "
-            "tool, use it directly -- for preregistration alone this adds nothing at all."
+            "is `repro verify`, which checks the claims and every tool a project uses together; "
+            "`claims verify` checks the claims alone. If you use one tool, use it directly -- "
+            "for preregistration alone this adds nothing at all."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -644,7 +597,7 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
 
     add_manifest(sub)
 
-    add_verify(sub)
+    whole.add_parser(sub)
 
     p_reproduce = sub.add_parser(
         "reproduce",
@@ -678,22 +631,6 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
     add_export(sub)
 
     add_origins(sub)
-
-    p_check = sub.add_parser(
-        "check",
-        help="run every tool this project uses, in one pass",
-        description=(
-            "One pass over the project, one report, one exit code. A tool the project does "
-            "not use is named as unused and not run: reporting it as passing would be a clean "
-            "line standing for a check that never happened. This is the only command that "
-            "does not exist in the tools themselves."
-        ),
-    )
-    p_check.add_argument("directory", nargs="?", help="project root (default: .)")
-    p_check.add_argument(
-        "--only", action="append", choices=sorted(BY_NAME), help="restrict to one tool; repeatable"
-    )
-    p_check.set_defaults(func=cmd_check)
 
     ci.add_parser(
         sub,
@@ -746,7 +683,8 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
     # An audit runs these inside a clone of someone else's repository, and keeps no record of
     # its checks in that clone's git directory.
     entries = {t.name: functools.partial(delegate_run, t) for t in TOOLS} | {
-        "repro": functools.partial(main, local_record=False)
+        "claims": functools.partial(claims_main, local_record=False),
+        "repro": functools.partial(main, local_record=False),
     }
     audit.add_parser(sub).set_defaults(func=functools.partial(audit.command, entries=entries))
 

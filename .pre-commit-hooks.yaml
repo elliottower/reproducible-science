@@ -6,7 +6,10 @@
 #       hooks:
 #         - id: repro-verify
 #
-# The hook checks a repository's own repro.yaml, so it reports on the consumer's manifest.
+# The hook checks a repository's own repro.yaml, so it reports on the consumer's manifest. It
+# runs `claims verify`, the claims alone, which is the fast check: `repro verify` also runs
+# prereg, results and citations, and belongs in CI or before a release. The ids keep their
+# names so a configuration naming them still works.
 # This repository runs it on itself as well, against the repro.yaml at its root: a verifier
 # whose own claims nothing checks is the one project it would be strange to exempt.
 
@@ -15,7 +18,7 @@
   description: >
     Check every declared quotation, reported value and table cell against the artifact it
     names, and fail where a printed number no longer matches the file it came from.
-  entry: repro verify
+  entry: claims verify
   language: python
   pass_filenames: false
   always_run: true
@@ -25,7 +28,7 @@
   description: >
     As repro-verify, but every outcome other than verified is an error, including a check that
     could not run.
-  entry: repro verify --policy strict
+  entry: claims verify --policy strict
   language: python
   pass_filenames: false
   always_run: true

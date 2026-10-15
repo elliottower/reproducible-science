@@ -1,4 +1,4 @@
-"""`repro <tool>` is a spelling of the tool; `repro check` is the thing that is not.
+"""`repro <tool>` is a spelling of the tool; `repro verify` is the thing that is not.
 
 The risk in an umbrella is that it reports on work it did not do. These pin the two ways that
 could happen: a tool the project does not use being counted as passing, and a tool being run
@@ -10,7 +10,9 @@ from __future__ import annotations
 import pathlib
 
 import pytest
-from repro.delegate import BY_NAME, TOOLS, check, run
+from claims.policy import PUBLICATION
+from repro import whole
+from repro.delegate import BY_NAME, TOOLS, run
 
 
 def test_every_tool_is_reachable_and_takes_argv():
@@ -22,17 +24,18 @@ def test_every_tool_is_reachable_and_takes_argv():
 
 
 def test_a_tool_the_project_does_not_use_is_not_reported_as_passing(tmp_path):
-    outcomes = {o.tool: o for o in check(tmp_path)}
-    assert set(outcomes) == set(BY_NAME)
-    for name, o in outcomes.items():
-        assert not o.used, name
-        assert o.code is None, f"{name} was not run, so it has no exit code to report"
-        assert "not used" in o.line
+    project = whole.check(tmp_path, None, PUBLICATION)
+    assert set(project.tools) == set(BY_NAME)
+    for name, ran in project.tools.items():
+        assert not ran.command, name
+        assert ran.exit is None, f"{name} was not run, so it has no exit code to report"
+        assert whole.tool_passed(ran) is None
 
 
 def test_a_project_using_no_tool_is_not_a_pass(tmp_path):
     """Nothing ran, so there is nothing to call clean."""
-    assert all(not o.used for o in check(tmp_path))
+    found = whole.verdicts(None, whole.check(tmp_path, None, PUBLICATION))
+    assert whole.exit_code(found) == 2
 
 
 def test_detection_reads_the_state_directory_not_a_data_directory(tmp_path):
@@ -50,8 +53,8 @@ def test_detection_reads_the_state_directory_not_a_data_directory(tmp_path):
 def test_a_tool_runs_in_the_named_project_not_the_working_directory(tmp_path, monkeypatch):
     """Each tool resolves its configuration from the working directory.
 
-    Without a chdir, `repro check <dir>` ran the tools against whatever directory the shell
-    was in and reported the answer as if it were about `<dir>`.
+    Without a chdir, a check of `<dir>` ran the tools against whatever directory the shell was
+    in and reported the answer as if it were about `<dir>`.
     """
     project = tmp_path / "project"
     (project / ".results").mkdir(parents=True)
@@ -59,9 +62,9 @@ def test_a_tool_runs_in_the_named_project_not_the_working_directory(tmp_path, mo
     elsewhere.mkdir()
     monkeypatch.chdir(elsewhere)
 
-    outcome = next(o for o in check(project) if o.tool == "results")
-    assert outcome.used
-    assert str(project) in outcome.output or outcome.code == 0, outcome.output
+    ran = whole.check(project, None, PUBLICATION).tools["results"]
+    assert ran.command
+    assert str(project) in ran.output or ran.exit == 0, ran.output
 
 
 @pytest.mark.parametrize("name", sorted(BY_NAME))

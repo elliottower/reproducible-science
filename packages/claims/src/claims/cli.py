@@ -16,7 +16,8 @@
 
 Each but `open-items` and the `from-` readers is also the `repro` command of the same name: `repro.cli` adds these functions to its
 parser with `add_manifest` through `add_origins`, and `main` here adds them to the parser of
-`claims`. Each handler reads the name the user typed off the parsed arguments, so a message that
+`claims`. `repro verify` takes the options of `claims verify` and also checks the project's
+other records. Each handler reads the name the user typed off the parsed arguments, so a message that
 says what to run next names a command that user has. Nothing here runs a declared command,
 writes the record of re-runs or drives another tool, and an import-linter contract holds this
 package to importing nothing of `repro`.
@@ -59,6 +60,7 @@ from claims.models import (
     CheckedAssertion,
     ClaimAccount,
     Freshness,
+    Manifest,
     NumberForm,
     NumbersReport,
     Ordering,
@@ -306,6 +308,32 @@ def cmd_verify(args: argparse.Namespace) -> int:
         print(f"    {_program(args)} manifest init")
         return 2
 
+    _, report, policy, assessment = _checked(args, path)
+
+    if args.format == "sarif":
+        print(json.dumps(to_sarif(report, assessment, version=__version__), indent=2))
+        return 0 if assessment.passed else 1
+    if args.format == "json":
+        print(
+            json.dumps(
+                {
+                    "report": report.model_dump(mode="json"),
+                    "assessment": assessment.model_dump(mode="json"),
+                },
+                indent=2,
+            )
+        )
+        return 0 if assessment.passed else 1
+
+    _verify_text(path, report, policy, assessment)
+    return 0 if assessment.passed else 1
+
+
+def _checked(
+    args: argparse.Namespace, path: Path
+) -> tuple[Manifest, VerificationReport, Policy, Assessment]:
+    """Verify the manifest at `path` under `args.policy`, and append to the record of checks
+    as `args` says. What `verify` prints is made from these; `repro verify` prints them too."""
     manifest = load(path)
     report = run_verify(manifest)
     policy = PROFILES[args.policy]
@@ -340,24 +368,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
         os.write(2, f"record not written: {e}\n".encode())
     except OSError as e:
         os.write(2, f"record not written: {e.filename}: {e.strerror}\n".encode())
-
-    if args.format == "sarif":
-        print(json.dumps(to_sarif(report, assessment, version=__version__), indent=2))
-        return 0 if assessment.passed else 1
-    if args.format == "json":
-        print(
-            json.dumps(
-                {
-                    "report": report.model_dump(mode="json"),
-                    "assessment": assessment.model_dump(mode="json"),
-                },
-                indent=2,
-            )
-        )
-        return 0 if assessment.passed else 1
-
-    _verify_text(path, report, policy, assessment)
-    return 0 if assessment.passed else 1
+    return manifest, report, policy, assessment
 
 
 def _verify_text(
@@ -1221,10 +1232,20 @@ def add_manifest(sub, program: str = REPRO) -> None:
     p_manifest_init.set_defaults(func=cmd_manifest_init, program=program)
 
 
-def add_verify(sub, program: str = REPRO) -> None:
-    """`verify`: check every assertion. Added to `repro`'s parser and to `claims`'s, each under its own name."""
-    p_verify = sub.add_parser("verify", help="check every evidence assertion in repro.yaml")
-    p_verify.add_argument("manifest", nargs="?", help=f"path to {DEFAULT_NAME}")
+def add_verify(
+    sub,
+    program: str = REPRO,
+    *,
+    func=None,
+    summary: str = "check every evidence assertion in repro.yaml",
+    description: str | None = None,
+    target: str = f"path to {DEFAULT_NAME}",
+) -> argparse.ArgumentParser:
+    """`verify`: check every assertion. `claims verify` is this; `repro verify` adds the same
+    options to a command that also checks the project's other records, passing its own `func`,
+    `summary`, `description` and `target`."""
+    p_verify = sub.add_parser("verify", help=summary, description=description)
+    p_verify.add_argument("manifest", nargs="?", help=target)
     p_verify.add_argument("--policy", choices=sorted(PROFILES), default="publication")
     p_verify.add_argument("--format", choices=("text", "json", "sarif"), default="text")
     p_verify.add_argument(
@@ -1244,7 +1265,8 @@ def add_verify(sub, program: str = REPRO) -> None:
             "the tracked record as well. Refused where every record verifies"
         ),
     )
-    p_verify.set_defaults(func=cmd_verify, program=program)
+    p_verify.set_defaults(func=func or cmd_verify, program=program)
+    return p_verify
 
 
 def add_stale(sub, program: str = REPRO) -> None:
@@ -1570,10 +1592,11 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
             "and quotations declared in a manifest, each against a pinned file."
         ),
         epilog=(
-            "`claims verify` and `repro verify` are the same command, and so is each of the "
-            "others here. `repro`, from the `reproducible-science` distribution, adds the "
-            "commands that run things: `repro reproduce`, `repro check`, `repro audit` and "
-            "`repro ci`."
+            "Each command here is also a `repro` command of the same name, but for `verify`: "
+            "`claims verify` checks the manifest's claims alone, and `repro verify`, from the "
+            "`reproducible-science` distribution, checks those and every other record the "
+            "project keeps, in one report. `repro` also adds the commands that run things: "
+            "`repro reproduce`, `repro audit` and `repro ci`."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )

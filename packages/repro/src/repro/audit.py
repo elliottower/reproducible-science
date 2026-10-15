@@ -2,8 +2,10 @@
 
 The command a reviewer runs on somebody else's repository. It clones into a cache directory,
 never into the audited repository and never inside another one, runs `prereg check`,
-`results verify --files`, `citations verify`, `citations audit` and `repro verify` over the
-clone, and writes one record of what each established and what it could not.
+`results verify --files`, `citations verify`, `citations audit` and `claims verify` over the
+clone, and writes one record of what each established and what it could not. Each tool is a
+step of its own, so the claims step is `claims verify`, which checks the manifest alone, and
+not `repro verify`, which would run the other tools a second time.
 
 Three things are kept apart in every row, because a report that merges them is the defect the
 audited tools exist to catch: a check that **failed**, a check that **could not** be made (a
@@ -74,11 +76,13 @@ READS: dict[tuple[str, str], tuple[str, str]] = {
         r"^(?:checked|agree|disagree) [\d,]+",
         r"^(?:could not check|unresolved|no id) [\d,]+.*",
     ),
-    ("repro", "verify"): (
+    ("claims", "verify"): (
         r"^\d+ \w+(?:, \d+ \w+)*$|^policy .*",
         r"\b[1-9]\d* (?:unchecked|error|not_offered)\b",
     ),
 }
+# A target file may still name `repro verify` as a step; its claims are read the same way.
+READS[("repro", "verify")] = READS[("claims", "verify")]
 
 #: How `citations verify` heads its warning that git tracks sources it read. The heading opens
 #: with `git` so that `N sources ...` above does not take the sentence whole; the count goes
@@ -90,6 +94,7 @@ DISTRIBUTIONS = {
     "citations": "citations",
     "results": "results-cli",
     "prereg": "prereg",
+    "claims": "claims-cli",
     "repro": "reproducible-science",
 }
 
@@ -150,7 +155,7 @@ def checkout(
 ) -> pathlib.Path:
     """The repository at `commit` (default: the remote's HEAD), cloned under `cache`.
 
-    `repro verify`, `prereg check` and `results verify` walk upwards for a manifest, a plan and
+    `claims verify`, `prereg check` and `results verify` walk upwards for a manifest, a plan and
     a ledger, so a clone placed below another project's is refused. A cached clone is fetched
     again and cleaned, so every audit starts from the bytes the commit names: the tools leave
     lock files beside what they read, and a clone carrying an earlier run's is `dirty`.
@@ -215,7 +220,7 @@ def default_steps(root: pathlib.Path, layout: Layout) -> list[StepSpec]:
             )
             for name, rel in bibs.items()
         ),
-        StepSpec(name="repro.verify", argv=["repro", "verify", *manifest]),
+        StepSpec(name="claims.verify", argv=["claims", "verify", *manifest]),
     ]
 
 
@@ -529,7 +534,7 @@ def add_parser(sub: argparse._SubParsersAction) -> argparse.ArgumentParser:
         help="clone a repository at a pinned commit and run every tool over the clone",
         description=(
             "Clone a repository into a cache directory at a commit, run prereg check, results "
-            "verify --files, citations verify, citations audit on each .bib file and repro "
+            "verify --files, citations verify, citations audit on each .bib file and claims "
             "verify over the clone, and write <name>_audit.json and <name>_audit.log. Nothing "
             "is written into the audited repository. A check that could not be made, and a "
             "check with nothing to read, are reported apart from one that failed. Exits 1 "
