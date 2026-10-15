@@ -556,7 +556,11 @@ def test_the_claims_workflow_runs_one_pinned_command_with_read_only_permissions(
     assert text.startswith(ci.MARKER)
     assert flow["name"] == "claims"
     # PyYAML reads the key `on` as a boolean.
-    assert flow[True] == {"push": {"branches": ["main"]}, "pull_request": None}
+    assert flow[True] == {
+        "push": {"branches": ["main"]},
+        "pull_request": None,
+        "workflow_dispatch": None,
+    }
     assert flow["permissions"] == {"contents": "read"}
     (job,) = flow["jobs"].values()
     uses = [step["uses"] for step in job["steps"] if "uses" in step]

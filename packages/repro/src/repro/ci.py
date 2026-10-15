@@ -178,6 +178,7 @@ on:
   push:
     branches: [{branch}]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -1491,7 +1492,9 @@ def command_tool(args: argparse.Namespace) -> int:
     return run.code
 
 
-def command_init(args: argparse.Namespace) -> int:
+def command_init(args: argparse.Namespace, pr_bot: Callable[[argparse.Namespace], int]) -> int:
+    if args.pr_bot:
+        return pr_bot(args)
     names = {}
     for given in args.name or ():
         check, sep, text = given.partition("=")
@@ -1518,9 +1521,10 @@ def add_parser(
     reproduce: Shown,
     stale: Shown,
     endpoints: Callable[[argparse.Namespace], int],
+    pr_bot: Callable[[argparse.Namespace], int],
 ) -> None:
-    """`endpoints` is `repro.badges.command_endpoints`, passed in because `repro.badges` reads
-    this module."""
+    """`endpoints` is `repro.badges.command_endpoints` and `pr_bot` is `repro.pr_bot.command`,
+    passed in because both modules read this one."""
     p = sub.add_parser(
         "ci",
         help="run the checks in a workflow, with a summary on the run page",
@@ -1701,7 +1705,14 @@ def add_parser(
         help="name a check's workflow, which is what its badge prints; repeatable "
         f"(default: {', '.join(f'{check}={NAMES[check]}' for check in CHECKS)})",
     )
-    p_init.set_defaults(func=command_init)
+    p_init.add_argument(
+        "--pr-bot",
+        action="store_true",
+        help="write the pull-request bot's two caller workflows instead, repro-pr-bot.yml and "
+        "repro-pr-bot-respond.yml, which call the reusable workflow "
+        "elliottower/reproducible-science/.github/workflows/pr-bot.yml",
+    )
+    p_init.set_defaults(func=lambda args: command_init(args, pr_bot))
 
 
 __all__ = [

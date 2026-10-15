@@ -103,7 +103,7 @@ from claims.starter import write as write_starter
 from provenance_core import atomic_write
 from provenance_core.gitref import try_run
 
-from repro import __version__, audit, badges, ci, crosscheck
+from repro import __version__, audit, badges, ci, crosscheck, pr_bot
 from repro.delegate import BY_NAME, TOOLS
 from repro.delegate import check as delegate_check
 from repro.delegate import run as delegate_run
@@ -701,6 +701,7 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
         reproduce=_reproduce_text,
         stale=_stale_text,
         endpoints=badges.command_endpoints,
+        pr_bot=pr_bot.command,
     )
     badges.add_parser(sub)
     venue_cli.add_parser(sub)

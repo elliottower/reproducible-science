@@ -1,0 +1,117 @@
+# The reproducible-science pull-request bot, as a reusable workflow: it runs only when called,
+# never on an event of this repository. Two caller workflows in the author's repository call it,
+# as elliottower/reproducible-science/.github/workflows/pr-bot.yml@<release>; `repro ci init
+# --pr-bot` writes them. Which job runs is decided by
+# the caller's event, which the `github` context of a called workflow is:
+#
+#   pull_request, workflow_dispatch          check  contents: read; the only job that checks
+#                                                   out the pull request
+#   workflow_run (after the check)           post   comments; checks out nothing
+#   issue_comment, pull_request_review_comment reply records an answer; checks out nothing
+#
+# A called workflow can lower the permissions its caller grants and never raise them, so each
+# job names the token it needs and holds no more, whatever the caller grants.
+name: reproducible-science-pr-bot
+
+on:
+  workflow_call:
+    inputs:
+      manifest:
+        description: The manifest's path from the top of the repository, the only file a set_aside entry is ever committed to.
+        type: string
+        default: repro.yaml
+      dispatch:
+        description: Workflow files to start again on the branch after the bot commits, separated by spaces; the first is the caller of the check.
+        type: string
+        default: repro-pr-bot.yml
+
+permissions: {}
+
+jobs:
+  check:
+    name: check the pull request's head commit
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read  # to check out the pull request's head commit
+    concurrency:
+      group: repro-pr-bot-check-${{ github.event.pull_request.number || github.event.inputs.pull_request }}
+      cancel-in-progress: true
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+        with:
+          enable-cache: false
+      # --no-config: a uv.toml or pyproject.toml in the pull request does not choose where the
+      # package is installed from.
+      - run: uvx --no-config --from reproducible-science-pr-bot==0.6.1 reproducible-science-pr-bot check "$MANIFEST"
+        env:
+          MANIFEST: ${{ inputs.manifest }}
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: repro-pr-bot-findings
+          path: ${{ runner.temp }}/repro-pr-bot/findings.json
+          retention-days: 1
+
+  post:
+    name: comment on the findings
+    if: >-
+      github.event_name == 'workflow_run'
+      && (github.event.workflow_run.event == 'pull_request' || github.event.workflow_run.event == 'workflow_dispatch')
+      && github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read  # to download the findings the check uploaded
+      issues: write  # to comment in the pull request's conversation
+      pull-requests: write  # to read the pull request, comment on its diff and resolve threads
+    # One run per branch at a time; a later run waits rather than cancelling one under way.
+    concurrency:
+      group: repro-pr-bot-post-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch }}
+      cancel-in-progress: false
+    steps:
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+        with:
+          enable-cache: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          name: repro-pr-bot-findings
+          path: ${{ runner.temp }}/repro-pr-bot
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+      # The findings are data from a run that held a read-only token. The pull request they name
+      # must be at the commit, repository and branch this workflow_run reports.
+      - run: uvx --no-config --from reproducible-science-pr-bot==0.6.1 reproducible-science-pr-bot post --manifest "$MANIFEST"
+        env:
+          MANIFEST: ${{ inputs.manifest }}
+          GH_TOKEN: ${{ github.token }}
+
+  reply:
+    name: record an answer
+    if: >-
+      ((github.event_name == 'issue_comment' && github.event.issue.pull_request)
+      || github.event_name == 'pull_request_review_comment')
+      && github.event.comment.user.type != 'Bot'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write  # to start the checks again on the branch after a commit
+      contents: write  # to commit a set_aside entry to the manifest on the pull request's branch
+      issues: write  # to answer in the pull request's conversation
+      pull-requests: write  # to read the pull request and answer in a thread on its diff
+    # One run per pull request at a time. GitHub cancels a run waiting behind another when a
+    # third queues, so each run records every answer on the pull request not yet recorded, and
+    # never replaces an answer with an older one.
+    concurrency:
+      group: repro-pr-bot-reply-${{ github.event.issue.number || github.event.pull_request.number }}
+      cancel-in-progress: false
+    steps:
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+        with:
+          enable-cache: false
+      - run: uvx --no-config --from reproducible-science-pr-bot==0.6.1 reproducible-science-pr-bot reply --manifest "$MANIFEST" --dispatch "$DISPATCH"
+        env:
+          MANIFEST: ${{ inputs.manifest }}
+          DISPATCH: ${{ inputs.dispatch }}
+          GH_TOKEN: ${{ github.token }}

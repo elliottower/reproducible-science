@@ -868,6 +868,19 @@
           "title": "How",
           "type": "string"
         },
+        "via": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Via"
+        },
         "when": {
           "anyOf": [
             {

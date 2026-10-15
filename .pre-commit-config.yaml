@@ -186,7 +186,7 @@ repos:
       # whatever copy is on PATH.
       - id: types
         name: type checks
-        entry: uv run --group types pyrefly check packages/repro/src packages/claims/src packages/citations/src packages/results/src packages/prereg/src
+        entry: uv run --group types pyrefly check packages/repro/src packages/claims/src packages/citations/src packages/results/src packages/prereg/src packages/pr-bot/src
         language: system
         pass_filenames: false
         stages: [pre-push]

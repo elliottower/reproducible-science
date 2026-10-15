@@ -28,6 +28,7 @@ members = [
     "provenance-core",
     "repro-science",
     "reproducible-science",
+    "reproducible-science-pr-bot",
     "reproducible-science-ui",
     "results-cli",
 ]
@@ -3330,6 +3331,7 @@ all = [
     { name = "adduce" },
     { name = "claims-cli", extra = ["arrays", "hdf5", "netcdf", "parquet", "rds", "sheets", "stata-spss"] },
     { name = "mcp" },
+    { name = "reproducible-science-pr-bot" },
     { name = "reproducible-science-ui" },
 ]
 arrays = [
@@ -3346,6 +3348,9 @@ netcdf = [
 ]
 parquet = [
     { name = "claims-cli", extra = ["parquet"] },
+]
+pr-bot = [
+    { name = "reproducible-science-pr-bot" },
 ]
 rds = [
     { name = "claims-cli", extra = ["rds"] },
@@ -3385,17 +3390,37 @@ requires-dist = [
     { name = "provenance-core", editable = "packages/provenance-core" },
     { name = "pydantic", specifier = ">=2.9" },
     { name = "pyyaml", specifier = ">=6.0.2" },
-    { name = "reproducible-science", extras = ["adduce", "arrays", "hdf5", "mcp", "netcdf", "parquet", "rds", "sheets", "stata-spss", "ui"], marker = "extra == 'all'", editable = "packages/repro" },
+    { name = "reproducible-science", extras = ["adduce", "arrays", "hdf5", "mcp", "netcdf", "parquet", "pr-bot", "rds", "sheets", "stata-spss", "ui"], marker = "extra == 'all'", editable = "packages/repro" },
+    { name = "reproducible-science-pr-bot", marker = "extra == 'pr-bot'", editable = "packages/pr-bot" },
     { name = "reproducible-science-ui", marker = "extra == 'ui'", editable = "packages/ui" },
     { name = "results-cli", editable = "packages/results" },
 ]
-provides-extras = ["adduce", "all", "arrays", "hdf5", "mcp", "netcdf", "parquet", "rds", "sheets", "stata-spss", "ui"]
+provides-extras = ["adduce", "all", "arrays", "hdf5", "mcp", "netcdf", "parquet", "pr-bot", "rds", "sheets", "stata-spss", "ui"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "adduce", specifier = ">=0.2" },
     { name = "numpy", specifier = ">=2.2.6" },
     { name = "pytest", specifier = ">=9.1.1" },
+]
+
+[[package]]
+name = "reproducible-science-pr-bot"
+version = "0.6.1"
+source = { editable = "packages/pr-bot" }
+dependencies = [
+    { name = "claims-cli" },
+    { name = "provenance-core" },
+    { name = "pydantic" },
+    { name = "pyyaml" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "claims-cli", editable = "packages/claims" },
+    { name = "provenance-core", editable = "packages/provenance-core" },
+    { name = "pydantic", specifier = ">=2.9" },
+    { name = "pyyaml", specifier = ">=6.0.2" },
 ]
 
 [[package]]

@@ -212,6 +212,10 @@ path = "provenance-core"
 name = "reproducible-science-ui"
 path = "ui"
 
+[[tool.towncrier.section]]
+name = "reproducible-science-pr-bot"
+path = "pr-bot"
+
 # Architecture, enforced. The rule the monorepo exists to keep is that the three tools stay
 # usable without the verifier: `pip install citations` must not drag in an evidence engine.
 
@@ -237,7 +241,16 @@ min_confidence = 100
 adduce = "0.2.0"
 
 [tool.importlinter]
-root_packages = [ "repro", "claims", "citations", "results", "prereg", "provenance_core", "repro_ui" ]
+root_packages = [
+  "repro",
+  "claims",
+  "citations",
+  "results",
+  "prereg",
+  "provenance_core",
+  "repro_pr_bot",
+  "repro_ui",
+]
 include_external_packages = false
 
 [[tool.importlinter.contracts]]
@@ -251,6 +264,12 @@ name = "The page imports none of the tools: it runs them and reads what they pri
 type = "forbidden"
 source_modules = [ "repro_ui" ]
 forbidden_modules = [ "repro", "claims", "citations", "results", "prereg", "provenance_core" ]
+
+[[tool.importlinter.contracts]]
+name = "The pull-request bot installs without the wrapper, the ledger or the plan"
+type = "forbidden"
+source_modules = [ "repro_pr_bot" ]
+forbidden_modules = [ "repro", "results", "prereg" ]
 
 [[tool.importlinter.contracts]]
 name = "The three tools do not depend on the verifier"

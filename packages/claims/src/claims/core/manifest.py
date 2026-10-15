@@ -7,11 +7,11 @@ from __future__ import annotations
 import enum
 import pathlib
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_serializer, model_validator
 
 from claims.core.artifacts import ArtifactRef, Basis, Digest
 from claims.core.claims import Claim
-from claims.core.evidence import Conversion, Evidence
+from claims.core.evidence import Conversion, Evidence, Review
 from claims.core.outcomes import RegistrationAuthority
 
 SCHEMA_VERSION = "repro/1"
@@ -282,6 +282,19 @@ class SetAside(BaseModel):
     reason: str = Field(min_length=1)
     """Why no assertion is offered for these numbers. Required: an entry without one would be
     a way to shrink the count of unbound numbers without saying anything."""
+
+    reviewed: Review | None = None
+    """Who set the passage aside, and when, where someone other than the manifest's author
+    did: the pull-request bot writes the GitHub login of the person who answered and the time."""
+
+    @model_serializer(mode="wrap")
+    def _omit_unreviewed(self, handler):
+        """Left out where None, so a manifest that declares no review dumps, and so hashes, as
+        it did before the field existed."""
+        dumped = handler(self)
+        if self.reviewed is None:
+            dumped.pop("reviewed", None)
+        return dumped
 
 
 class Manifest(BaseModel):

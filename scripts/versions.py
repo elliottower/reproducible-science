@@ -35,6 +35,7 @@ PACKAGES = {
     "claims-cli": PROJECT_ROOT / "packages" / "claims" / "pyproject.toml",
     "provenance-core": PROJECT_ROOT / "packages" / "provenance-core" / "pyproject.toml",
     "reproducible-science-ui": PROJECT_ROOT / "packages" / "ui" / "pyproject.toml",
+    "reproducible-science-pr-bot": PROJECT_ROOT / "packages" / "pr-bot" / "pyproject.toml",
 }
 
 #: The plugin manifests, for Claude Code and for Codex, which carry the same release version
@@ -76,6 +77,14 @@ HOOK_README = PROJECT_ROOT / "packages" / "repro" / "README.md"
 
 README_REV = re.compile(r"^(?P<head>\s+rev:\s*)v(?P<version>[0-9][^\s]*)", re.M)
 
+#: The pull-request bot's reusable workflow runs the bot from PyPI at an exact version, three
+#: times. Users' caller files name this repository at the tag `v<version>`, so the workflow at a
+#: tag must run the release that tag published. Read from `PROJECT_ROOT` when used, and only
+#: while `PACKAGES` names the bot, so a test that points either at a copy never rewrites this
+#: tree's file.
+BOT_WORKFLOW = pathlib.Path(".github") / "workflows" / "pr-bot.yml"
+BOT_PIN = re.compile(r"(?P<head>reproducible-science-pr-bot==)(?P<version>[0-9][^\s\"']*)")
+
 CFF_VERSION = re.compile(r'^(?P<head>version:\s*")(?P<version>[^"]+)(?P<tail>")', re.M)
 CFF_DATE = re.compile(r'^(?P<head>date-released:\s*")(?P<date>[^"]+)(?P<tail>")', re.M)
 
@@ -111,6 +120,14 @@ def hook_rev() -> str | None:
         return None
     m = HOOK_REV.search(HOOKS.read_text())
     return m.group("version") if m else None
+
+
+def bot_pins() -> list[str] | None:
+    """The versions the bot's reusable workflow runs, or None where there is no such file."""
+    path = PROJECT_ROOT / BOT_WORKFLOW
+    if "reproducible-science-pr-bot" not in PACKAGES or not path.exists():
+        return None
+    return [m.group("version") for m in BOT_PIN.finditer(path.read_text())]
 
 
 def readme_rev() -> str | None:
@@ -185,6 +202,30 @@ def below_floor(version: str) -> str | None:
         f"no provenance-core up to {LAST_BEFORE_FLOOR} has, and a sibling range of "
         f"{series(version)} would accept one. The next release opens {SERIES_FLOOR}"
     )
+
+
+#: Series closed after their last release, each with the version that closed it and the first
+#: version a later release may carry. the pull-request bot writes `reviewed` on a `set_aside` entry, and
+#: `claims-cli` up to 0.6.1 rejects a manifest carrying it; a further 0.6 release would pin
+#: `claims-cli>=0.6,<0.7` and accept those. Every version already published stays valid.
+CLOSED_SERIES = (
+    (
+        "0.6.1",
+        "0.7.0",
+        "the pull-request bot writes `reviewed` on a set_aside entry, which no claims-cli up to 0.6.1 reads",
+    ),
+)
+
+
+def in_closed_series(version: str) -> str | None:
+    """Why a release may not carry this version, a later one in a series that was closed, or
+    None where it may."""
+    for last, floor, why in CLOSED_SERIES:
+        if parts(last) < parts(version) and release(version) < release(floor):
+            return (
+                f"{version} is after {last} and below {floor}: {why}. The next release is {floor}"
+            )
+    return None
 
 
 def series(version: str) -> str:
@@ -315,6 +356,8 @@ def check() -> list[str]:
     want = series(version)
     if (refused := below_floor(version)) is not None:
         problems.append(refused)
+    if (closed := in_closed_series(version)) is not None:
+        problems.append(closed)
 
     for name, path in PACKAGES.items():
         text = path.read_text()
@@ -332,6 +375,13 @@ def check() -> list[str]:
         problems.append(
             f".pre-commit-hooks.yaml: the install snippet pins v{pinned}, "
             f"but the release is {version}"
+        )
+
+    pins = bot_pins()
+    if pins is not None and (not pins or set(pins) != {version}):
+        problems.append(
+            f"{BOT_WORKFLOW.as_posix()}: runs reproducible-science-pr-bot "
+            f"{', '.join(sorted(set(pins))) or 'at no pinned version'}, but the release is {version}"
         )
 
     shown = readme_rev()
@@ -359,6 +409,8 @@ def bump(version: str, realign: bool = False) -> list[str]:
         raise VersionError(f"{version!r} is not a version this scheme writes (want 1.2.3)")
     if (refused := below_floor(version)) is not None:
         raise VersionError(refused)
+    if (closed := in_closed_series(version)) is not None:
+        raise VersionError(closed)
     # Aligning is not advancing. The first lockstep release sets every package to the highest
     # version already declared, so packages that are already there do not move; refusing an
     # equal version would make that first alignment impossible. What is refused is any package
@@ -419,6 +471,14 @@ def bump(version: str, realign: bool = False) -> list[str]:
         if text != original:
             HOOKS.write_text(text)
             touched.append(HOOKS.name)
+
+    bot = PROJECT_ROOT / BOT_WORKFLOW
+    if "reproducible-science-pr-bot" in PACKAGES and bot.exists():
+        text = original = bot.read_text()
+        text = BOT_PIN.sub(rf"\g<head>{version}", text)
+        if text != original:
+            bot.write_text(text)
+            touched.append(BOT_WORKFLOW.as_posix())
 
     if HOOK_README.exists():
         text = original = HOOK_README.read_text()

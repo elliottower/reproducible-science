@@ -465,7 +465,7 @@ set_aside:
   reason: how long the form takes, not a result
 ```
 
-`text` is matched as a quotation is, every number inside each place it occurs is set aside, and `reason` is required. An entry whose passage is not in the text is listed with a count of 0. `--format json` prints, per text, every number with the line it is on, its offset in the normalized text, the value read, its standing, and the rule, the claims that bind it or the reason.
+`text` is matched as a quotation is, every number inside each place it occurs is set aside, and `reason` is required. `reviewed: {who, when}` is optional and says who set the passage aside and when; [the pull-request bot](#a-bot-on-pull-requests) writes it, with `via: reproducible-science-pr-bot`. An entry whose passage is not in the text is listed with a count of 0. `--format json` prints, per text, every number with the line it is on, its offset in the normalized text, the value read, its standing, and the rule, the claims that bind it or the reason.
 
 ## A file copied from another repository
 
@@ -1028,6 +1028,68 @@ The citations endpoint file is read from that record and from no run in the job:
 | no record | `not verified locally`, gray, and the job's log names `repro badges --record` |
 
 A claims file pins its source by digest, so a source swapped under a pin changes the claims file and the record goes stale. `repro badges --check`, run against the block `init` wrote, compares that record with the claims files and exits 1 where it no longer covers them, naming each file; in a pre-commit hook it stops a commit whose citations badge would read `re-verify locally`. `repro badges --readme` refuses to replace the block `init` wrote.
+
+## A bot on pull requests
+
+```bash
+repro ci init --pr-bot
+```
+
+The pull-request bot comments on a pull request once for each assertion that fails or went stale, and records the answer someone with write access gives. It is its own distribution, `reproducible-science-pr-bot`, and runs from GitHub Actions in your repository with its own token. Nothing is hosted, and no model reads or writes anything.
+
+`repro ci init --pr-bot` writes two short caller workflows. Each calls the reusable workflow `elliottower/reproducible-science/.github/workflows/pr-bot.yml`, which holds the jobs; the callers only choose when it runs and what its token may do.
+
+| caller | runs on | job | token | does |
+|---|---|---|---|---|
+| `repro-pr-bot.yml` | `pull_request`, and `workflow_dispatch` from `reply` | check | `contents: read` | checks out the pull request's head commit, runs `reproducible-science-pr-bot check`, and uploads what it found as the artifact `repro-pr-bot-findings` |
+| `repro-pr-bot-respond.yml` | `workflow_run`, after the check | post | `actions: read`, `issues: write`, `pull-requests: write` | downloads that artifact and runs `reproducible-science-pr-bot post`; checks out nothing |
+| `repro-pr-bot-respond.yml` | `issue_comment`, `pull_request_review_comment` | reply | `actions: write`, `contents: write`, `issues: write`, `pull-requests: write` | runs `reproducible-science-pr-bot reply` on a reply to one of the bot's comments; checks out nothing |
+
+The callers are two because the comments must be posted by a run holding a token that writes, which `pull_request` never gives a pull request from a fork, and that run is started by `workflow_run` after the check. GitHub's documentation does not say that a workflow can be started by its own completion, so a second file starts it. A called workflow can lower the permissions its caller grants and never raise them ([Reusing workflow configurations](https://docs.github.com/en/actions/reference/workflows-and-actions/reusing-workflow-configurations)), so each job of the reusable workflow asks for the token in the table, whatever the caller grants: the check job holds `contents: read` even in a caller that grants more.
+
+`reproducible-science-pr-bot check` decides what fails as `repro export` does: an assertion whose record says `mismatch`, `not-found` or `error`, or whose producing command is `stale`, as `repro ci claims` and `repro ci reruns` report it. An inferred assertion nobody reviewed is `not-checked` and gets no comment. It executes nothing and writes at most fifty findings. `post` comments on each:
+
+```text
+Table 2: `0.931` no longer matches `results/metrics.json` (now `0.928`)
+
+Reply in this thread with a number:
+1. Yes, the paper should say `0.928`
+2. No, the result file is wrong
+3. Ignore this one
+4. Not a claim
+```
+
+The comment is on the manuscript's line where the claim quotes its sentence from a text file that holds it once, as `repro export sarif` places a result, and that line is in the diff. Otherwise it is in the pull request's conversation, where a reply says which comment it answers by quoting it or by starting with the short name the comment prints, such as `r-3f2a9c1b`. Each comment carries a hidden marker naming the claim, the assertion, the assertion's fingerprint, which is the one `repro export sarif` gives GitHub, and a digest of what was found. A second run never posts a comment again: it edits the comment already open on the same assertion where what it says has changed, strikes it through as fixed where the assertion passes and resolves its review thread, and opens both again where it fails again. An answer recorded in a comment is kept when the comment is edited. Text echoed from the pull request is shown as code, with control characters and HTML comment syntax taken out, and a body that would pass GitHub's limit of 65,536 characters drops the echoed passage first.
+
+A reply is read where it is in one of the bot's threads and its text, after any quoted lines and an optional `@repro`, starts with a number from 1 to 4. Words after the number are the reason. A reply naming two numbers or a time, `1-2`, `1, 2`, `1 or 2`, `1:30`, gives no answer. Fullwidth digits, invisible characters and a number in emphasis or code, `**1**`, are read as the plain number. A reply from someone with write access that starts with another number, or with `@repro`, is answered with one line, `reply 1–4`; any other discussion in the thread is left alone, and a reply anywhere else is not read. Of the replies in a thread, the latest from someone the API reports as having `write`, `maintain` or `admin` access holds, and an answer is never replaced by an earlier one. An edited reply is read again when it is edited, as what it now says, and the answer it gives replaces the one it gave; a deleted reply leaves what it recorded, `set_aside` entry included, in place.
+
+| answer | recorded |
+|---|---|
+| 1, yes | in the comment: who accepts the file's value. The manuscript is never edited, and the claim fails until the paper prints the value |
+| 2, no | in the comment: who says the result file is wrong. The claim keeps failing |
+| 3, ignore | a `set_aside` entry for the claim's passage, committed to the pull request's branch |
+| 4, not a claim | the same, with `not a claim` in its reason |
+
+The bot confirms in the thread, `recorded: ignored by @login`. Where the passage is already set aside, by hand or otherwise, it says so, commits nothing and closes the comment. The entry it commits names the passage the claim quotes, and says who answered and when under `reviewed`:
+
+```yaml
+set_aside:
+- artifact: paper
+  text: an accuracy of 0.931
+  reason: 'pull request #7, ignored: a figure from the pilot'
+  reviewed:
+    who: alice
+    when: '2026-10-14T12:00:00Z'
+    via: reproducible-science-pr-bot
+```
+
+The entry is added after the last one, indented as they are, and no other byte of `repro.yaml` changes; the file is never loaded and dumped again. Answers 1 and 2 change no file, except that a 1 or 2 after a 3 or 4 removes the entry the bot wrote for it. The bot knows its own entries by `via: reproducible-science-pr-bot` and never removes another. A claim that quotes no passage has no entry to write, and the bot says so. A `set_aside` entry accounts for the numbers in its passage in `repro numbers` and nothing more: `repro verify` still reports the claim, and the comment, closed as set aside, says so.
+
+The split follows GitHub's advice for workflows that handle pull requests from forks ([Secure use reference](https://docs.github.com/en/actions/reference/security/secure-use)): the job that reads the pull request's files holds a read-only token, and the jobs with a token that writes check out nothing and run nothing from the pull request. `post` treats the findings as data and refuses them unless the pull request they name is at the commit the check ran on and from the repository and branch that were checked, and unless they are about the manifest the workflow names. `reply` commits only to that manifest, whatever a comment says, and answers no comment about another file. The check runs `uvx --no-config`, so a `uv.toml` in the pull request cannot choose where the package is installed from. No workflow uses `pull_request_target`, and none places a comment's text in a shell command. On a pull request from a fork the bot comments only in the conversation, says so in each comment, and commits nothing; an answer of 3 or 4 is recorded in the comment and the entry is left for a maintainer to add. A commit made with the workflow's token starts no other workflow, so after committing `reply` starts `repro-pr-bot.yml` again on the branch with `workflow_dispatch`, which that token may do, and with it each workflow `repro ci init` wrote that has a `workflow_dispatch` trigger. A check started that way reports on the branch's new head commit, so a branch protection rule requiring it does not hold the merge. `repro ci init` writes that trigger; a workflow it wrote before it did is named by `repro ci init --pr-bot`, and `repro ci init --force` then `repro ci init --pr-bot --force` adds it.
+
+Runs of `post` on one branch wait for each other, and so do runs of `reply` on one pull request. A run of `post` and a run of `reply` can overlap: they are kept apart because GitHub cancels a run waiting in a concurrency group when another queues behind it, and a shared group would drop findings or answers. Each reads a comment again right before it edits it and changes only its own part: `post` never changes the recorded answer, and `reply` changes whether a comment is open or fixed only by setting it aside or undoing that. Each run of `reply` records every answer on the pull request not yet in its comment, not only the one that started it, and reads the thread and the manifest again right before it commits. When `check` found more than fifty assertions failing, `post` closes no comment, because one left out of the findings may still fail.
+
+GitHub runs `workflow_run` and `issue_comment` workflows only from the default branch, so the bot comments on no pull request until the two callers are merged there. `repro ci init --pr-bot` never replaces a file it did not write; `--force` replaces the two it wrote. Each caller and the reusable workflow grant nothing at their top, `permissions: {}`, and each job names what it needs, with a comment saying why. Every action the reusable workflow uses is pinned by commit, as in the workflows `repro ci init` writes.
 
 ## On a pull request, as SARIF
 

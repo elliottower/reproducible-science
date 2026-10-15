@@ -39,7 +39,7 @@ dependencies = [
 optional-dependencies.adduce = [ "adduce>=0.2" ]
 # Every extra a user would want, so one install line gets the whole toolkit.
 optional-dependencies.all = [
-  "reproducible-science[adduce,arrays,hdf5,mcp,netcdf,parquet,rds,sheets,stata-spss,ui]",
+  "reproducible-science[adduce,arrays,hdf5,mcp,netcdf,parquet,pr-bot,rds,sheets,stata-spss,ui]",
 ]
 # The optional readers are `claims-cli`'s, which holds the adapters. Each extra here asks for
 # the one of the same name there, so `reproducible-science[sheets]` installs what it did. No
@@ -51,6 +51,8 @@ optional-dependencies.hdf5 = [ "claims-cli[hdf5]" ]
 optional-dependencies.mcp = [ "mcp==2.2" ]
 optional-dependencies.netcdf = [ "claims-cli[netcdf]" ]
 optional-dependencies.parquet = [ "claims-cli[parquet]" ]
+# The pull-request bot's command, which the workflows `repro ci init --pr-bot` writes run.
+optional-dependencies.pr-bot = [ "reproducible-science-pr-bot>=0.6,<0.7" ]
 optional-dependencies.rds = [ "claims-cli[rds]" ]
 optional-dependencies.sheets = [ "claims-cli[sheets]" ]
 optional-dependencies.stata-spss = [ "claims-cli[stata-spss]" ]
@@ -80,6 +82,7 @@ build.targets.wheel.packages = [ "src/repro" ]
 sources.citations = { workspace = true }
 sources.claims-cli = { workspace = true }
 sources.prereg = { workspace = true }
+sources.reproducible-science-pr-bot = { workspace = true }
 sources.reproducible-science-ui = { workspace = true }
 sources.results-cli = { workspace = true }
 
@@ -90,9 +93,16 @@ sources.results-cli = { workspace = true }
 # with is in `provenance-core`. `citations` is run by `repro citations` and those two, and imported by
 # name where `repro init` asks which library governs a project; what checks a quotation with
 # it is `claims-cli`, which declares it too.
-# `reproducible-science-ui` is reached by name by `repro ui`, and `[all]` names this package
-# itself with its extras; neither is an import.
-per_rule_ignores.DEP002 = [ "citations", "reproducible-science", "reproducible-science-ui", "results-cli" ]
+# `reproducible-science-ui` is reached by name by `repro ui`, `reproducible-science-pr-bot` is a
+# command of its own that `[pr-bot]` installs, and `[all]` names this package itself with its
+# extras; none is an import.
+per_rule_ignores.DEP002 = [
+  "citations",
+  "reproducible-science",
+  "reproducible-science-pr-bot",
+  "reproducible-science-ui",
+  "results-cli",
+]
 # The distribution is not named for its module.
 package_module_name_map = { results-cli = "results", claims-cli = "claims" }
 # Without this every intra-package import reads as a transitive dependency on itself.
