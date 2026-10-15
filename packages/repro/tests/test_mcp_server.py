@@ -1047,6 +1047,35 @@ def test_citations_audit_reports_each_entry_against_its_registry(project, regist
     assert snapshot(project) == before
 
 
+def test_citations_audit_says_which_services_did_not_answer_and_how(project, registries):
+    (project / "paper.bib").write_text(BIB)
+    (result,) = calls(project, [("citations_audit", {"bib": str(project / "paper.bib")})])
+    rows = {row["key"]: row["registry"] for row in result.structured_content["entries"]}
+    assert "crossref, datacite did not answer" in rows["throttled"]["why_not"]
+    assert "semanticscholar, crossref, openalex, arxiv did not answer" in rows["refused"]["why_not"]
+    assert "ask again later" in rows["refused"]["why_not"]
+
+
+def test_citations_audit_tells_a_rejected_query_from_a_refusal(project, monkeypatch):
+    def search(url, as_json, tries=4, headers=None):
+        if "crossref" in url or "openalex" in url:
+            raise citations_resolve.Rejected(url)
+        raise citations_resolve.Throttled(url)
+
+    monkeypatch.setattr(citations_resolve, "get", search)
+    monkeypatch.setattr(citations_audit_module, "SEARCH_DELAY", 0)
+    (project / "paper.bib").write_text(
+        "@book{odd, title = {A Book: With (Odd) Punctuation}, author = {Coe, Al}, year = {2002}}\n"
+    )
+    (result,) = calls(project, [("citations_audit", {"bib": str(project / "paper.bib")})])
+    (row,) = result.structured_content["entries"]
+    why = row["registry"]["why_not"]
+    assert row["registry"]["result"] == "could_not_check"
+    assert "semanticscholar, arxiv did not answer" in why
+    assert "crossref, openalex rejected the query as malformed" in why
+    assert "asking again changes nothing" in why
+
+
 def test_citations_audit_pages_past_its_cap(project, registries, monkeypatch):
     monkeypatch.setattr(mcp_server, "MAX_AUDIT_ENTRIES", 2)
     (project / "paper.bib").write_text(BIB)

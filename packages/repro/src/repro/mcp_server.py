@@ -114,11 +114,8 @@ AUDITED = {
     "ok": ("agrees", ""),
     "mismatch": ("disagrees", ""),
     "not found": ("not_found", ""),
-    "unresolved": (
-        "could_not_check",
-        "the registry or every search service did not answer: throttled, offline, or not "
-        "registered there",
-    ),
+    # Why, for this one, is read off the entry's `refused` and `rejected` by `_why_not`.
+    "could not check": ("could_not_check", ""),
     "no identifier": ("could_not_check", "no DOI or PMID, and the title search is off"),
     "found": ("could_not_check", "the title search found an id with no DOI to compare against"),
 }
@@ -166,6 +163,41 @@ def _delegated(root: pathlib.Path, tool: str, argv: Sequence[str]) -> tuple[dict
     return data, f"{command}: exit {code}; {last.strip()}"
 
 
+def _why_not(verdict: citations_audit_module.EntryAudit) -> str:
+    """Why `citations audit` could not check an entry: which services did not answer, and how.
+
+    Read from the entry's `refused` (throttled, blocked, offline or failing: asked again on the
+    next run) and `rejected` (the service would not run the query: asking again changes
+    nothing), so an agent can tell a retry from a query to fix."""
+    said = []
+    if verdict.refused:
+        said.append(
+            f"{', '.join(verdict.refused)} did not answer (throttled, refused or offline; "
+            "ask again later)"
+        )
+    if verdict.rejected:
+        said.append(
+            f"{', '.join(verdict.rejected)} rejected the query as malformed (asking again "
+            "changes nothing)"
+        )
+    if verdict.found_id:
+        said.append(
+            f"a title search found {verdict.found_kind} {verdict.found_id}, and its registry "
+            "record could not be read"
+        )
+    elif verdict.searched:
+        said.append(
+            f"only {', '.join(verdict.searched)} answered the title search, and a not found "
+            "needs Crossref or OpenAlex"
+        )
+    if not said:
+        said.append(
+            "not asked: every search service refused the entries before it, so the search "
+            "stopped (throttled or offline; ask again later)"
+        )
+    return "; ".join(said)
+
+
 def _audited(
     root: pathlib.Path, path: pathlib.Path, strict: bool, search: bool, start: int
 ) -> tuple[dict, str]:
@@ -186,6 +218,8 @@ def _audited(
     rows: list[dict[str, Any]] = []
     for key, verdict in report.entries.items():
         result, why_not = AUDITED.get(verdict.status, ("could_not_check", verdict.status))
+        if verdict.status == "could not check":
+            why_not = _why_not(verdict)
         fields = [m.group(1) for p in verdict.problems if (m := FIELD.match(p))]
         rows.append(
             {
