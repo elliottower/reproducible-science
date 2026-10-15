@@ -568,6 +568,22 @@ def cmd_mcp(args: argparse.Namespace) -> int:
     return 0
 
 
+UI_EXTRA = 'pip install "reproducible-science[ui]"'
+
+
+def cmd_ui(rest: list[str]) -> int:
+    """Serve the page over this project's records. The page is its own distribution, reached by
+    name as `repro mcp` reaches its server, so the base install does not carry it."""
+    try:
+        server = importlib.import_module("repro_ui.server")
+    except ModuleNotFoundError as e:
+        if e.name is None or e.name.split(".")[0] != "repro_ui":
+            raise
+        print(f"`repro ui` needs the page: {UI_EXTRA}")
+        return 2
+    return server.main(rest)
+
+
 def main(argv: list[str] | None = None, local_record: bool = True) -> int:
     parser = argparse.ArgumentParser(
         prog="repro",
@@ -711,6 +727,20 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
     )
     p_mcp.set_defaults(func=cmd_mcp)
 
+    # Its options are the page's own, passed through untouched, as `repro citations` passes its
+    # arguments to `citations`.
+    p_ui = sub.add_parser(
+        "ui",
+        help="serve a page over this project's records on localhost",
+        description=(
+            "Build a page over this project's claims, the files they read, the runs that wrote "
+            "them, the quotations and the re-runs, and serve it on localhost. "
+            f"`repro ui --help` once installed lists its options. Needs {UI_EXTRA}."
+        ),
+        add_help=False,
+    )
+    p_ui.set_defaults(func=None, ui=True)
+
     # An audit runs these inside a clone of someone else's repository, and keeps no record of
     # its checks in that clone's git directory.
     entries = {t.name: functools.partial(delegate_run, t) for t in TOOLS} | {
@@ -730,6 +760,8 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
     args, rest = parser.parse_known_args(argv)
     if getattr(args, "tool", None):
         return delegate_run(BY_NAME[args.tool], rest)
+    if getattr(args, "ui", False):
+        return cmd_ui(rest)
     if rest:
         parser.error(f"unrecognized arguments: {' '.join(rest)}")
     args.local_record = local_record

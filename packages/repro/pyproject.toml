@@ -37,6 +37,10 @@ dependencies = [
 ]
 # Only needed to run the rule inside `adduce check`. repro itself never imports adduce.
 optional-dependencies.adduce = [ "adduce>=0.2" ]
+# Every extra a user would want, so one install line gets the whole toolkit.
+optional-dependencies.all = [
+  "reproducible-science[adduce,arrays,hdf5,mcp,netcdf,parquet,rds,sheets,stata-spss,ui]",
+]
 # The optional readers are `claims-cli`'s, which holds the adapters. Each extra here asks for
 # the one of the same name there, so `reproducible-science[sheets]` installs what it did. No
 # range on these: the dependency above carries it.
@@ -50,6 +54,8 @@ optional-dependencies.parquet = [ "claims-cli[parquet]" ]
 optional-dependencies.rds = [ "claims-cli[rds]" ]
 optional-dependencies.sheets = [ "claims-cli[sheets]" ]
 optional-dependencies.stata-spss = [ "claims-cli[stata-spss]" ]
+# `repro ui`, the page over a project's records, served on localhost.
+optional-dependencies.ui = [ "reproducible-science-ui>=0.6,<0.7" ]
 urls.Changelog = "https://github.com/elliottower/reproducible-science/blob/main/CHANGELOG.md"
 urls.Homepage = "https://github.com/elliottower/reproducible-science"
 urls.Issues = "https://github.com/elliottower/reproducible-science/issues"
@@ -74,6 +80,7 @@ build.targets.wheel.packages = [ "src/repro" ]
 sources.citations = { workspace = true }
 sources.claims-cli = { workspace = true }
 sources.prereg = { workspace = true }
+sources.reproducible-science-ui = { workspace = true }
 sources.results-cli = { workspace = true }
 
 [tool.deptry]

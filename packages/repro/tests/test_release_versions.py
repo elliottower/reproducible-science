@@ -235,3 +235,59 @@ def test_this_repository_declares_and_verifies_its_own_claims():
 
     config = (ROOT / ".pre-commit-config.yaml").read_text()
     assert "repro verify" in config, "the manifest exists but no hook runs it"
+
+
+WITH_EXTRAS = """[project]
+name = "reproducible-science"
+version = "0.3.0"
+dependencies = [ "claims-cli>=0.3,<0.4" ]
+optional-dependencies.all = [
+  "reproducible-science[sheets,ui]",
+]
+optional-dependencies.sheets = [ "claims-cli[sheets]" ]
+optional-dependencies.ui = [ "reproducible-science-ui>=0.3,<0.4" ]
+keywords = [ "reproducible-science-ui" ]
+"""
+
+
+def test_an_extra_that_pins_a_sibling_is_read_and_one_that_leaves_the_range_to_dependencies_is_not():
+    assert versions.optional_refs(WITH_EXTRAS) == [("reproducible-science-ui", ">=0.3,<0.4")]
+
+
+def test_a_bump_moves_an_extras_sibling_range_and_leaves_bare_extras_and_keywords_alone(
+    tmp_path, monkeypatch
+):
+    manifest = tmp_path / "pyproject.toml"
+    manifest.write_text(WITH_EXTRAS)
+    monkeypatch.setattr(versions, "PACKAGES", {"reproducible-science": manifest})
+    monkeypatch.setattr(versions, "PLUGIN_MANIFESTS", ())
+    monkeypatch.setattr(versions, "HOOKS", tmp_path / "absent.yaml")
+    monkeypatch.setattr(versions, "HOOK_README", tmp_path / "absent.md")
+    monkeypatch.setattr(versions, "CITATION", tmp_path / "absent.cff")
+    monkeypatch.setattr(versions, "PROJECT_ROOT", tmp_path)
+    # Three names, one file: the bump rewrites a sibling only if it is one of PACKAGES, and each
+    # of these must read the same version for the bump to be an alignment.
+    monkeypatch.setattr(
+        versions,
+        "PACKAGES",
+        {
+            "reproducible-science": manifest,
+            "reproducible-science-ui": manifest,
+            "claims-cli": manifest,
+        },
+    )
+    versions.bump("9.9.0", realign=True)
+
+    out = manifest.read_text()
+    assert '"reproducible-science-ui>=9.9,<9.10"' in out
+    assert '"claims-cli[sheets]"' in out, "an extra with no range keeps none"
+    assert '"reproducible-science[sheets,ui]"' in out, "the package's own name is never rewritten"
+    assert 'keywords = [ "reproducible-science-ui" ]' in out
+
+
+def test_every_extra_in_this_workspace_that_pins_a_sibling_pins_the_release_series():
+    want = versions.series(max(versions.declared().values(), key=versions.parts))
+    for name, path in versions.PACKAGES.items():
+        for dep, spec in versions.optional_refs(path.read_text()):
+            if dep != name:
+                assert spec == want, f"{name}: extra pins {dep}{spec}, want {want}"

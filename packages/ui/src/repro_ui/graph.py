@@ -1,13 +1,12 @@
-"""Build graph.json, the data behind the lineage view, for one project.
+"""Build graph.json, the data behind the page, for one project.
 
 Reads the project's repro.yaml, runs `repro verify --format json` and `repro stale --format json`
 (both read-only apart from the check history `repro verify` already keeps), and reads the
-results ledger and the local record of checks. Writes one JSON file the web app loads.
-
-    uv run --no-project --with pyyaml==6.0.2 python builder/build_graph.py <project> web/public/graph.json
+results ledger and the local record of checks. Writes one JSON file the page loads.
 """
 
-import argparse
+from __future__ import annotations
+
 import collections
 import datetime
 import hashlib
@@ -21,7 +20,11 @@ import urllib.request
 
 import yaml
 
-PAPER_GROUPS = {"Section": "Paper: body", "Table": "Paper: tables", "Appendix": "Paper: appendices"}
+PAPER_GROUPS = {
+    "Section": "Paper: body",
+    "Table": "Paper: tables",
+    "Appendix": "Paper: appendices",
+}
 MANUSCRIPT_IDS = {"manuscript", "manuscript-text", "appendix", "appendix-text"}
 # Worst first, for collapsing several assertions into one outcome per check.
 OUTCOME_RANK = ["mismatch", "not_found", "error", "unchecked", "verified"]
@@ -34,7 +37,10 @@ def sha256(path: pathlib.Path) -> str | None:
 def repro_json(project: pathlib.Path, command: str) -> dict:
     out = subprocess.run(
         ["repro", command, "--format", "json", str(project / "repro.yaml")],
-        cwd=project, capture_output=True, text=True, check=False,
+        cwd=project,
+        capture_output=True,
+        text=True,
+        check=False,
     )
     if not out.stdout.strip():
         raise RuntimeError(f"repro {command} wrote nothing: {out.stderr.strip()[:500]}")
@@ -47,8 +53,13 @@ def section_of(where: str) -> str:
     return f"Section {m.group(1)}" if m else first
 
 
-def auto_groups(artifacts: dict, regenerations: list, readers: dict[str, set[str]], places: dict[str, set[str]],
-                overrides: list[dict]) -> dict[str, str]:
+def auto_groups(
+    artifacts: dict,
+    regenerations: list,
+    readers: dict[str, set[str]],
+    places: dict[str, set[str]],
+    overrides: list[dict],
+) -> dict[str, str]:
     """Group files with no configuration, the way Dagster groups assets by the code that owns them.
 
     Joined, in order: a file matching an override's pattern goes to that group; every .tex file and
@@ -77,7 +88,11 @@ def auto_groups(artifacts: dict, regenerations: list, readers: dict[str, set[str
                 break
 
     tex = {a for a in ids if artifacts[a].get("media_type") == "application/x-tex"}
-    rendered = {r["output"]["artifact"] for r in regenerations if any(i["artifact"] in tex for i in r["inputs"])}
+    rendered = {
+        r["output"]["artifact"]
+        for r in regenerations
+        if any(i["artifact"] in tex for i in r["inputs"])
+    }
     manuscript = (tex | rendered) - set(fixed)
 
     outdeg = collections.Counter(i["artifact"] for r in regenerations for i in r["inputs"])
@@ -85,7 +100,12 @@ def auto_groups(artifacts: dict, regenerations: list, readers: dict[str, set[str
         out = r["output"]["artifact"]
         for i in r["inputs"]:
             src = i["artifact"]
-            if src in parent and out in parent and not {src, out} & (manuscript | set(fixed)) and outdeg[src] <= 2:
+            if (
+                src in parent
+                and out in parent
+                and not {src, out} & (manuscript | set(fixed))
+                and outdeg[src] <= 2
+            ):
                 union(src, out)
     by_word = collections.defaultdict(list)
     for a in ids:
@@ -120,14 +140,20 @@ def auto_groups(artifacts: dict, regenerations: list, readers: dict[str, set[str
     for root, members in members_of().items():
         words = collections.Counter(m.split("-")[0] for m in members)
         word, n = words.most_common(1)[0]
-        names[root] = word if n > 1 or len(members) == 1 else max(members, key=lambda m: len(readers.get(m, ())))
+        names[root] = (
+            word
+            if n > 1 or len(members) == 1
+            else max(members, key=lambda m: len(readers.get(m, ())))
+        )
     group = {a: names[find(a)] for a in ids if a not in manuscript and a not in fixed}
-    group.update({a: "manuscript" for a in manuscript})
+    group.update(dict.fromkeys(manuscript, "manuscript"))
     group.update(fixed)
     return group
 
 
-def read_labels(project: pathlib.Path, manuscript_path: str | None) -> tuple[dict[str, str], dict[str, str]]:
+def read_labels(
+    project: pathlib.Path, manuscript_path: str | None
+) -> tuple[dict[str, str], dict[str, str]]:
     """From the .aux LaTeX wrote beside the manuscript: label -> number (`tab:timing` -> `15`),
     and table number -> normalized caption text."""
     if not manuscript_path:
@@ -146,7 +172,9 @@ def read_labels(project: pathlib.Path, manuscript_path: str | None) -> tuple[dic
     return labels, captions
 
 
-def table_texts(project: pathlib.Path, tex_paths: list[str], labels: dict[str, str]) -> dict[str, str]:
+def table_texts(
+    project: pathlib.Path, tex_paths: list[str], labels: dict[str, str]
+) -> dict[str, str]:
     """Table number -> normalized text of the whole table environment (caption and cells), from
     every .tex file the manifest pins. Cells are joined with ` | `, as a text rendering prints them."""
     out: dict[str, str] = {}
@@ -155,10 +183,12 @@ def table_texts(project: pathlib.Path, tex_paths: list[str], labels: dict[str, s
         if not f.is_file():
             continue
         src = f.read_text(errors="replace")
-        for block in re.findall(r"\\begin\{table\*?\}(.*?)\\end\{table\*?\}", src, flags=re.S):
+        for block in re.findall(r"\\begin\{table\*?\}(.*?)\\end\{table\*?\}", src, flags=re.DOTALL):
             m = re.search(r"\\label\{(tab:[^}]+)\}", block)
             if m and m.group(1) in labels:
-                out[labels[m.group(1)]] = out.get(labels[m.group(1)], "") + " " + normalize(block.replace("&", " | "))
+                out[labels[m.group(1)]] = (
+                    out.get(labels[m.group(1)], "") + " " + normalize(block.replace("&", " | "))
+                )
     return out
 
 
@@ -169,7 +199,9 @@ def normalize(tex: str) -> str:
     return re.sub(r"\s+", " ", s).strip().lower()
 
 
-def correct_tables(claims: list[dict], labels: dict[str, str], captions: dict[str, str]) -> dict[str, str]:
+def correct_tables(
+    claims: list[dict], labels: dict[str, str], captions: dict[str, str]
+) -> dict[str, str]:
     """Declared `Table N` -> the table whose caption holds the passages its claims quote.
 
     A manifest's `where` is written by hand and nothing checks it, so table numbers drift when a
@@ -189,7 +221,7 @@ def correct_tables(claims: list[dict], labels: dict[str, str], captions: dict[st
                         votes[part][num] += 1
     fixed = {}
     for declared, v in votes.items():
-        num, n = v.most_common(1)[0]
+        num, _ = v.most_common(1)[0]
         if f"Table {num}" != declared:
             fixed[declared] = f"Table {num}"
     return fixed
@@ -198,15 +230,22 @@ def correct_tables(claims: list[dict], labels: dict[str, str], captions: dict[st
 def resolve_where(where: str, labels: dict[str, str], fixed: dict[str, str]) -> str:
     """`Table fc-cases` -> `Table 10` where the .aux knows the label, and a drifted table number
     to the table its quoted caption is in; anything else unchanged."""
+
     def one(part: str) -> str:
         if part.strip() in fixed:
             return fixed[part.strip()]
         m = re.match(r"(Table|Figure|Section|Appendix)\s+(\S+)$", part.strip())
         if not m or re.match(r"^[A-Z0-9.]+$", m.group(2)):
             return part.strip()
-        prefix = {"Table": "tab:", "Figure": "fig:", "Section": "sec:", "Appendix": "sec:"}[m.group(1)]
+        prefix = {
+            "Table": "tab:",
+            "Figure": "fig:",
+            "Section": "sec:",
+            "Appendix": "sec:",
+        }[m.group(1)]
         num = labels.get(prefix + m.group(2))
         return f"{m.group(1)} {num}" if num else part.strip()
+
     return ", ".join(one(p) for p in where.split(","))
 
 
@@ -215,7 +254,9 @@ def worst(outcomes: list[str]) -> str:
 
 
 def read_checks(project: pathlib.Path) -> list[dict]:
-    git_dir = subprocess.run(["git", "rev-parse", "--git-dir"], cwd=project, capture_output=True, text=True)
+    git_dir = subprocess.run(
+        ["git", "rev-parse", "--git-dir"], cwd=project, capture_output=True, text=True
+    )
     candidates = []
     if git_dir.returncode == 0:
         candidates.append((project / git_dir.stdout.strip()) / "repro" / "checks.jsonl")
@@ -228,9 +269,15 @@ def read_checks(project: pathlib.Path) -> list[dict]:
 
 def run_text(argv: list[str], cwd: pathlib.Path, timeout: int = 60) -> str | None:
     try:
-        return subprocess.run(argv, cwd=cwd, capture_output=True, text=True, timeout=timeout, check=False).stdout
+        return subprocess.run(
+            argv, cwd=cwd, capture_output=True, text=True, timeout=timeout, check=False
+        ).stdout
     except (subprocess.TimeoutExpired, FileNotFoundError):
         return None
+
+
+#: Run ids the repro mod leaves out of its counts: rehearsals, not results.
+TEST_RUN = re.compile(r"^(smoke|prefreeze|test|dryrun)[_-]")
 
 
 def plural(n: int, word: str) -> str:
@@ -250,16 +297,27 @@ def status_lines(project: pathlib.Path, report: dict) -> dict:
         pinned = re.match(r"^(unchanged|appended|CHANGED|pending|unknown commit)\s{2,}[^/\s]", line)
         m = re.match(r"^([A-Za-z][A-Za-z ]*?)\s{2,}/", line)
         label = (m.group(1).lower() if m else None) or (
-            {"unchanged": "unchanged", "appended": "unchanged", "CHANGED": "changed"}.get(pinned.group(1), "not frozen") if pinned else None)
+            {
+                "unchanged": "unchanged",
+                "appended": "unchanged",
+                "CHANGED": "changed",
+            }.get(pinned.group(1), "not frozen")
+            if pinned
+            else None
+        )
         if label and label != "log":
             counts[label] += 1
     total, frozen = sum(counts.values()), counts["unchanged"]
     broken = total - frozen - counts["not frozen"]
     fields["prereg"] = (
-        {"text": "not read (timed out)", "ok": False} if plans is None
-        else {"text": "none drafted", "ok": None, "next": "prereg new"} if total == 0
-        else {"text": f"{broken} changed", "ok": False} if broken
-        else {"text": f"{frozen}/{total} frozen", "ok": True})
+        {"text": "not read (timed out)", "ok": False}
+        if plans is None
+        else {"text": "none drafted", "ok": None, "next": "prereg new"}
+        if total == 0
+        else {"text": f"{broken} changed", "ok": False}
+        if broken
+        else {"text": f"{frozen}/{total} frozen", "ok": True}
+    )
 
     ledger = project / ".results" / "ledger.jsonl"
     if ledger.exists():
@@ -267,43 +325,81 @@ def status_lines(project: pathlib.Path, report: dict) -> dict:
         head = verified.split("\n")[0]
         if re.search(r"chain intact: \d+ events", head):
             events = [json.loads(x) for x in ledger.read_text().splitlines() if x.strip()]
-            is_test = lambda rid: bool(re.match(r"^(smoke|prefreeze|test|dryrun)[_-]", rid or ""))
             claims = [e for e in events if e.get("event") == "claim"]
             has_seal, runs, sealed = False, 0, 0
             for e in events:
                 if e.get("event") == "seal":
                     has_seal = True
-                elif e.get("event") == "run" and not is_test(e.get("run_id")):
+                elif e.get("event") == "run" and not TEST_RUN.match(e.get("run_id") or ""):
                     runs += 1
                     sealed += has_seal
-            changed = len(re.findall(r"^\s+(CHANGED|MISSING)\s", verified, flags=re.M))
+            changed = len(re.findall(r"^\s+(CHANGED|MISSING)\s", verified, flags=re.MULTILINE))
             fields["results"] = {
-                "text": (f"{changed} changed, " if changed else "") + (f"{sealed}/{runs} runs sealed" if runs else "0 runs")
+                "text": (f"{changed} changed, " if changed else "")
+                + (f"{sealed}/{runs} runs sealed" if runs else "0 runs")
                 + f", {plural(len(claims), 'claim')} bound",
                 "ok": not changed and sealed == runs,
-                "counts": {"runs": runs, "sealed": sealed, "bound": len(claims), "changed": changed},
+                "counts": {
+                    "runs": runs,
+                    "sealed": sealed,
+                    "bound": len(claims),
+                    "changed": changed,
+                },
             }
         else:
             m = re.match(r"^(?:CHAIN|NO)\s+(\w+)", head)
-            fields["results"] = {"text": (m.group(1).lower() if m else "unreadable"), "ok": False}
+            fields["results"] = {
+                "text": (m.group(1).lower() if m else "unreadable"),
+                "ok": False,
+            }
     else:
         fields["results"] = {"text": "no ledger", "ok": None, "next": "results init"}
 
-    folders = [d for d in project.rglob("claims") if d.is_dir() and ".git" not in d.parts and "node_modules" not in d.parts
-               and len(d.relative_to(project).parts) <= 4]
+    folders = [
+        d
+        for d in project.rglob("claims")
+        if d.is_dir()
+        and ".git" not in d.parts
+        and "node_modules" not in d.parts
+        and len(d.relative_to(project).parts) <= 4
+    ]
     pinned_n = 0
     for d in folders:
         for f in d.rglob("*"):
             if f.is_file():
-                pinned_n += len(re.findall(r"^[ \t]*-?[ \t]*exact:", f.read_text(errors="replace"), flags=re.M))
-    fields["citations"] = ({"text": f"{pinned_n:,} pinned, not verified", "ok": None, "counts": {"pinned": pinned_n}} if folders
-                           else {"text": "none pinned", "ok": None, "next": "citations pin"})
+                pinned_n += len(
+                    re.findall(
+                        r"^[ \t]*-?[ \t]*exact:",
+                        f.read_text(errors="replace"),
+                        flags=re.MULTILINE,
+                    )
+                )
+    fields["citations"] = (
+        {
+            "text": f"{pinned_n:,} pinned, not verified",
+            "ok": None,
+            "counts": {"pinned": pinned_n},
+        }
+        if folders
+        else {"text": "none pinned", "ok": None, "next": "citations pin"}
+    )
 
-    outcomes = collections.Counter("verified" if d["comparison"] == "match" and d["execution"] == "completed" else d["comparison"]
-                                   for c in report["claims"] for d in c["decisions"])
+    outcomes = collections.Counter(
+        "verified"
+        if d["comparison"] == "match" and d["execution"] == "completed"
+        else d["comparison"]
+        for c in report["claims"]
+        for d in c["decisions"]
+    )
     n = sum(outcomes.values())
-    fields["repro"] = ({"text": "no claims declared", "ok": None} if n == 0
-                       else {"text": f"{outcomes['verified']:,}/{n:,} checks verified", "ok": outcomes["verified"] == n})
+    fields["repro"] = (
+        {"text": "no claims declared", "ok": None}
+        if n == 0
+        else {
+            "text": f"{outcomes['verified']:,}/{n:,} checks verified",
+            "ok": outcomes["verified"] == n,
+        }
+    )
     return fields
 
 
@@ -318,14 +414,20 @@ def citing_sentences(project: pathlib.Path, tex_paths: list[str]) -> dict[str, l
         if not f.is_file():
             continue
         src = re.sub(r"(?<!\\)%.*", "", f.read_text(errors="replace"))
-        sections = [(m.start(), re.sub(r"\\[a-zA-Z]+\{?|[{}]", "", m.group(2)).strip())
-                    for m in re.finditer(r"\\(section|subsection)\*?\{([^}]*)\}", src)]
+        sections = [
+            (m.start(), re.sub(r"\\[a-zA-Z]+\{?|[{}]", "", m.group(2)).strip())
+            for m in re.finditer(r"\\(section|subsection)\*?\{([^}]*)\}", src)
+        ]
         for m in cite.finditer(src):
-            start = max(src.rfind(". ", 0, m.start()), src.rfind("\n\n", 0, m.start()), src.rfind("}.", 0, m.start()))
+            start = max(
+                src.rfind(". ", 0, m.start()),
+                src.rfind("\n\n", 0, m.start()),
+                src.rfind("}.", 0, m.start()),
+            )
             end_dot = src.find(". ", m.end())
             end_par = src.find("\n\n", m.end())
             end = min(x for x in (end_dot, end_par, len(src)) if x != -1)
-            raw = src[start + 2 if start >= 0 else 0:end + 1]
+            raw = src[start + 2 if start >= 0 else 0 : end + 1]
             text = latex_text(cite.sub(lambda c: "[" + c.group(1) + "]", raw))
             text = re.sub(r"\\(?:emph|textit|textbf|code|tVerify|texttt)\{([^}]*)\}", r"\1", text)
             text = re.sub(r"\\[a-zA-Z]+\*?(\[[^\]]*\])?(\{[^}]*\})?", "", text).replace("~", " ")
@@ -341,14 +443,38 @@ def citing_sentences(project: pathlib.Path, tex_paths: list[str]) -> dict[str, l
     return out
 
 
-ACCENTS = {'"': "\u0308", "'": "\u0301", "`": "\u0300", "^": "\u0302", "~": "\u0303", "=": "\u0304",
-           ".": "\u0307", "u": "\u0306", "v": "\u030c", "H": "\u030b", "c": "\u0327", "k": "\u0328"}
-LETTERS = {"o": "ø", "O": "Ø", "ae": "æ", "AE": "Æ", "aa": "å", "AA": "Å", "ss": "ß", "l": "ł", "L": "Ł", "i": "ı"}
+ACCENTS = {
+    '"': "\u0308",
+    "'": "\u0301",
+    "`": "\u0300",
+    "^": "\u0302",
+    "~": "\u0303",
+    "=": "\u0304",
+    ".": "\u0307",
+    "u": "\u0306",
+    "v": "\u030c",
+    "H": "\u030b",
+    "c": "\u0327",
+    "k": "\u0328",
+}
+LETTERS = {
+    "o": "ø",
+    "O": "Ø",
+    "ae": "æ",
+    "AE": "Æ",
+    "aa": "å",
+    "AA": "Å",
+    "ss": "ß",
+    "l": "ł",
+    "L": "Ł",
+    "i": "ı",
+}
 
 
 def latex_text(s: str) -> str:
     """LaTeX accents and special letters as the characters they print: N\\"ust -> Nüst,
     Vicentt\\'{\\i}n -> Vicenttín, {\\o} -> ø. Applied before commands are stripped."""
+
     def accent(m: re.Match) -> str:
         base = {"\\i": "i", "\\j": "j"}.get(m.group(2), m.group(2))
         return unicodedata.normalize("NFC", base + ACCENTS[m.group(1)])
@@ -356,11 +482,27 @@ def latex_text(s: str) -> str:
     # Symbol accents (\\" \\' \\` \\^ \\~ \\= \\.) take the next letter, braced or not. Letter-named
     # accents (\\c \\u \\v \\H \\k) need braces or a space, or \\code would read as \\c plus o.
     s = re.sub(r"\\([\"'`^~=.])\s*\{?(\\[ij]|[A-Za-z])\}?", accent, s)
-    s = re.sub(r"\\([uvHck])(?:\{(\\[ij]|[A-Za-z])\}|\s+([A-Za-z]))",
-               lambda m: unicodedata.normalize("NFC", ({"\\i": "i", "\\j": "j"}.get(m.group(2) or m.group(3), m.group(2) or m.group(3))) + ACCENTS[m.group(1)]), s)
-    s = s.replace("\\&", "&").replace("\\#", "#").replace("\\%", "%").replace("\\_", "_").replace("\\$", "$")
-    s = re.sub(r"\{\\(ae|AE|aa|AA|ss|o|O|l|L)\}|\\(ae|AE|aa|AA|ss|o|O|l|L)(?![A-Za-z])",
-               lambda m: LETTERS[m.group(1) or m.group(2)], s)
+    s = re.sub(
+        r"\\([uvHck])(?:\{(\\[ij]|[A-Za-z])\}|\s+([A-Za-z]))",
+        lambda m: unicodedata.normalize(
+            "NFC",
+            ({"\\i": "i", "\\j": "j"}.get(m.group(2) or m.group(3), m.group(2) or m.group(3)))
+            + ACCENTS[m.group(1)],
+        ),
+        s,
+    )
+    s = (
+        s.replace("\\&", "&")
+        .replace("\\#", "#")
+        .replace("\\%", "%")
+        .replace("\\_", "_")
+        .replace("\\$", "$")
+    )
+    s = re.sub(
+        r"\{\\(ae|AE|aa|AA|ss|o|O|l|L)\}|\\(ae|AE|aa|AA|ss|o|O|l|L)(?![A-Za-z])",
+        lambda m: LETTERS[m.group(1) or m.group(2)],
+        s,
+    )
     return s
 
 
@@ -377,7 +519,7 @@ def parse_bib(paths: list[pathlib.Path]) -> dict[str, dict[str, str]]:
             while i < len(src) and depth:
                 depth += {"{": 1, "}": -1}.get(src[i], 0)
                 i += 1
-            body, fields = src[m.end():i - 1], {"type": m.group(1).lower()}
+            body, fields = src[m.end() : i - 1], {"type": m.group(1).lower()}
             for f in re.finditer(r"(\w+)\s*=\s*", body):
                 j = f.end()
                 if j < len(body) and body[j] == "{":
@@ -385,31 +527,41 @@ def parse_bib(paths: list[pathlib.Path]) -> dict[str, dict[str, str]]:
                     while k < len(body) and d:
                         d += {"{": 1, "}": -1}.get(body[k], 0)
                         k += 1
-                    value = body[j + 1:k - 1]
+                    value = body[j + 1 : k - 1]
                 elif j < len(body) and body[j] == '"':
                     k = body.find('"', j + 1)
-                    value = body[j + 1:k]
+                    value = body[j + 1 : k]
                 else:
                     value = re.match(r"[^,\n]*", body[j:]).group(0)
-                value = re.sub(r"\\[a-zA-Z]+\s*", "", latex_text(value)).replace("{", "").replace("}", "").replace("--", "–")
+                value = (
+                    re.sub(r"\\[a-zA-Z]+\s*", "", latex_text(value))
+                    .replace("{", "")
+                    .replace("}", "")
+                    .replace("--", "–")
+                )
                 fields[f.group(1).lower()] = re.sub(r"\s+", " ", value).strip()
             out[m.group(2)] = fields
     return out
 
 
-def landing_url(url: str, doi: str, cache: dict[str, str]) -> str:
+def landing_url(url: str, doi: str, cache: dict[str, str], fetch: bool = True) -> str:
     """The page a reader lands on: a doi.org address is resolved once to the publisher's page and
-    cached, because a doi.org link says nothing about where it goes. Unresolvable: left as given."""
+    cached, because a doi.org link says nothing about where it goes. Unresolvable: left as given.
+    Without `fetch`, only what is already cached is used and nothing reaches the network."""
     target = url or (f"https://doi.org/{doi}" if doi else "")
     if not target or "doi.org/" not in target:
         return target
     if target in cache and "doi.org/" not in cache[target]:
         return cache[target]
+    if not fetch:
+        return target
     # HEAD first; a publisher that refuses it (ACM, OUP, BMC…) often still redirects a GET, of which
     # only the final address is read. A failure is not cached, so the next build tries again.
     for method in ("HEAD", "GET"):
         try:
-            req = urllib.request.Request(target, method=method, headers={"User-Agent": "reproducible-science-graph"})
+            req = urllib.request.Request(
+                target, method=method, headers={"User-Agent": "reproducible-science-ui"}
+            )
             with urllib.request.urlopen(req, timeout=8) as r:
                 cache[target] = r.geturl()
                 return cache[target]
@@ -430,7 +582,10 @@ def commit_url(project: pathlib.Path) -> str | None:
     """`https://github.com/owner/repo/commit/` from the origin remote, or None without one.
     `git remote get-url` reads the local config; nothing is fetched."""
     remote = (run_text(["git", "remote", "get-url", "origin"], project) or "").strip()
-    m = re.match(r"^(?:git@([^:]+):|ssh://git@([^/]+)/|https?://(?:[^@/]+@)?([^/]+)/)(.+?)(?:\.git)?/?$", remote)
+    m = re.match(
+        r"^(?:git@([^:]+):|ssh://git@([^/]+)/|https?://(?:[^@/]+@)?([^/]+)/)(.+?)(?:\.git)?/?$",
+        remote,
+    )
     return f"https://{m.group(1) or m.group(2) or m.group(3)}/{m.group(4)}/commit/" if m else None
 
 
@@ -450,12 +605,33 @@ def run_commits(project: pathlib.Path, runs: list[dict], out_dir: pathlib.Path) 
     base = commit_url(project)
     cache_path = out_dir / "run_commits.json"
     cache = json.loads(cache_path.read_text()) if cache_path.exists() else {}
-    pending = {(path, digest) for run in runs for path, digest in run["_outputs"]
-               if "commit" not in cache.get(f"{path}@{digest}", {}) and cache.get(f"{path}@{digest}", {}).get("head") != head}
+    pending = {
+        (path, digest)
+        for run in runs
+        for path, digest in run["_outputs"]
+        if "commit" not in cache.get(f"{path}@{digest}", {})
+        and cache.get(f"{path}@{digest}", {}).get("head") != head
+    }
     if pending:
         # One walk of the history for every path still to look up, rather than a `git log` per path.
         paths = sorted({path for path, _ in pending})
-        log = run_text(["git", "-c", "core.quotePath=false", "log", "--format=@%H %ct", "--name-only", "--no-renames", "--", *paths], project) or ""
+        log = (
+            run_text(
+                [
+                    "git",
+                    "-c",
+                    "core.quotePath=false",
+                    "log",
+                    "--format=@%H %ct",
+                    "--name-only",
+                    "--no-renames",
+                    "--",
+                    *paths,
+                ],
+                project,
+            )
+            or ""
+        )
         history: dict[str, list[tuple[str, int]]] = collections.defaultdict(list)
         commit = None
         for line in log.splitlines():
@@ -464,11 +640,18 @@ def run_commits(project: pathlib.Path, runs: list[dict], out_dir: pathlib.Path) 
                 commit = (sha, int(ct))
             elif line.strip() and commit:
                 history[line.strip()].append(commit)
-        blobs = subprocess.Popen(["git", "cat-file", "--batch"], cwd=project, stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        blobs = subprocess.Popen(
+            ["git", "cat-file", "--batch"],
+            cwd=project,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+        )
         top = (run_text(["git", "rev-parse", "--show-prefix"], project) or "").strip()
         for path, digest in sorted(pending):
             hit = {"head": head}
-            for sha, ct in list(reversed(history.get(top + path, [])))[:HISTORY_CAP]:  # oldest first
+            for sha, ct in list(reversed(history.get(top + path, [])))[
+                :HISTORY_CAP
+            ]:  # oldest first
                 blobs.stdin.write(f"{sha}:./{path}\n".encode())
                 blobs.stdin.flush()
                 header = blobs.stdout.readline().split()
@@ -494,7 +677,14 @@ def run_commits(project: pathlib.Path, runs: list[dict], out_dir: pathlib.Path) 
     cache_path.write_text(json.dumps(cache, indent=1))
 
 
-def record_tabs(project: pathlib.Path, manifest: dict, ledger: list[dict], staleness: dict, out_dir: pathlib.Path) -> dict:
+def record_tabs(
+    project: pathlib.Path,
+    manifest: dict,
+    ledger: list[dict],
+    staleness: dict,
+    out_dir: pathlib.Path,
+    fetch: bool = True,
+) -> dict:
     """What the Prereg, Results, Citations and Reproduce tabs list, read from the records themselves."""
     # prereg: what `prereg check` printed, one line per plan.
     plans = [ln for ln in (run_text(["prereg", "check"], project) or "").splitlines() if ln.strip()]
@@ -506,33 +696,74 @@ def record_tabs(project: pathlib.Path, manifest: dict, ledger: list[dict], stale
             sealed_yet = True
             seals += 1
         elif e.get("event") == "run":
-            runs.append({"run_id": e.get("run_id"), "timestamp": e.get("timestamp"), "note": e.get("note", ""),
-                         "outputs": [o["path"] for o in e.get("outputs", [])], "sealed_before": sealed_yet,
-                         # A W&B run only where the ledger names one; never looked up or made up.
-                         "wandb_url": next(iter(WANDB_URL.findall(json.dumps(e))), None),
-                         # Each output with its recorded hash, and whether the file on disk still has it.
-                         "files": [{"path": o["path"], "sha256": o["sha256"],
-                                    "on_disk": sha256(project / o["path"]) == o["sha256"]} for o in e.get("outputs", [])],
-                         "_outputs": [(o["path"], o["sha256"]) for o in e.get("outputs", [])]})
+            runs.append(
+                {
+                    "run_id": e.get("run_id"),
+                    "timestamp": e.get("timestamp"),
+                    "note": e.get("note", ""),
+                    "outputs": [o["path"] for o in e.get("outputs", [])],
+                    "sealed_before": sealed_yet,
+                    # A W&B run only where the ledger names one; never looked up or made up.
+                    "wandb_url": next(iter(WANDB_URL.findall(json.dumps(e))), None),
+                    # Each output with its recorded hash, and whether the file on disk still has it.
+                    "files": [
+                        {
+                            "path": o["path"],
+                            "sha256": o["sha256"],
+                            "on_disk": sha256(project / o["path"]) == o["sha256"],
+                        }
+                        for o in e.get("outputs", [])
+                    ],
+                    "_outputs": [(o["path"], o["sha256"]) for o in e.get("outputs", [])],
+                }
+            )
     run_commits(project, runs, out_dir)
     # `results annotate` events: a file linked to a record outside the ledger (a W&B run, a DOI, a
     # Zenodo record). The ledger only says the link was stated; nothing here fetches or compares it.
     annotations = [e for e in ledger if e.get("event") == "annotation"]
-    bound = [{"run_id": e.get("run_id"), "timestamp": e.get("timestamp"), "claim": e.get("claim", ""),
-              "location": e.get("location", "")} for e in ledger if e.get("event") == "claim"]
+    bound = [
+        {
+            "run_id": e.get("run_id"),
+            "timestamp": e.get("timestamp"),
+            "claim": e.get("claim", ""),
+            "location": e.get("location", ""),
+        }
+        for e in ledger
+        if e.get("event") == "claim"
+    ]
 
     # citations: every claims file under a `claims` folder, with its source and quotations, and
     # the sentences of the manuscript that cite it.
-    tex_paths = [x["path"] for x in manifest["artifacts"] if x.get("media_type") == "application/x-tex"]
+    tex_paths = [
+        x["path"] for x in manifest["artifacts"] if x.get("media_type") == "application/x-tex"
+    ]
     cited_in = citing_sentences(project, tex_paths)
-    main_tex = next((project / x["path"] for x in manifest["artifacts"] if x["id"] == "manuscript"), None)
-    bib_names = re.findall(r"\\bibliography\{([^}]*)\}", main_tex.read_text(errors="replace")) if main_tex and main_tex.is_file() else []
-    bib = parse_bib([main_tex.parent / f"{n.strip()}.bib" for names in bib_names for n in names.split(",")]) if main_tex else {}
+    main_tex = next(
+        (project / x["path"] for x in manifest["artifacts"] if x["id"] == "manuscript"),
+        None,
+    )
+    bib_names = (
+        re.findall(r"\\bibliography\{([^}]*)\}", main_tex.read_text(errors="replace"))
+        if main_tex and main_tex.is_file()
+        else []
+    )
+    bib = (
+        parse_bib(
+            [main_tex.parent / f"{n.strip()}.bib" for names in bib_names for n in names.split(",")]
+        )
+        if main_tex
+        else {}
+    )
     cache_path = out_dir / "landing_urls.json"
     cache = json.loads(cache_path.read_text()) if cache_path.exists() else {}
     sources = []
     for d in sorted(project.rglob("claims")):
-        if not d.is_dir() or ".git" in d.parts or "node_modules" in d.parts or len(d.relative_to(project).parts) > 4:
+        if (
+            not d.is_dir()
+            or ".git" in d.parts
+            or "node_modules" in d.parts
+            or len(d.relative_to(project).parts) > 4
+        ):
             continue
         for f in sorted(d.glob("*.y*ml")):
             try:
@@ -542,28 +773,66 @@ def record_tabs(project: pathlib.Path, manifest: dict, ledger: list[dict], stale
             src = doc.get("source", {}) or {}
             statements = []
             for sid, c in (doc.get("claims", {}) or {}).items():
-                quotes = [{"exact": q.get("exact", ""), "section": q.get("section", "")} for q in (c or {}).get("quotes", []) or [] if isinstance(q, dict)]
-                statements.append({"id": sid, "statement": (c or {}).get("statement", ""), "quotes": quotes,
-                                   "notes": (c or {}).get("notes", "")})
-            sources.append({"file": str(f.relative_to(project)), "citation": src.get("citation", f.stem),
-                            "url": src.get("url", ""), "local": src.get("local", ""), "sha256": src.get("sha256", ""),
-                            "cited_in": cited_in.get(src.get("citation", f.stem), []),
-                            "bib": bib.get(src.get("citation", f.stem), {}),
-                            "link": landing_url(src.get("url", ""), bib.get(src.get("citation", f.stem), {}).get("doi", ""), cache),
-                            # The DOI's own landing page, which is the publisher's record; the link above
-                            # is the copy that was pinned and may be a preprint elsewhere.
-                            "doi_link": landing_url("", bib.get(src.get("citation", f.stem), {}).get("doi", "")
-                                                    or (re.search(r"doi\.org/(10\.[^\s?#]+)", src.get("url", "")) or [None, ""])[1], cache),
-                            "pinned": sum(len(s["quotes"]) for s in statements), "statements": statements})
+                quotes = [
+                    {"exact": q.get("exact", ""), "section": q.get("section", "")}
+                    for q in (c or {}).get("quotes", []) or []
+                    if isinstance(q, dict)
+                ]
+                statements.append(
+                    {
+                        "id": sid,
+                        "statement": (c or {}).get("statement", ""),
+                        "quotes": quotes,
+                        "notes": (c or {}).get("notes", ""),
+                    }
+                )
+            sources.append(
+                {
+                    "file": str(f.relative_to(project)),
+                    "citation": src.get("citation", f.stem),
+                    "url": src.get("url", ""),
+                    "local": src.get("local", ""),
+                    "sha256": src.get("sha256", ""),
+                    "cited_in": cited_in.get(src.get("citation", f.stem), []),
+                    "bib": bib.get(src.get("citation", f.stem), {}),
+                    "link": landing_url(
+                        src.get("url", ""),
+                        bib.get(src.get("citation", f.stem), {}).get("doi", ""),
+                        cache,
+                        fetch,
+                    ),
+                    # The DOI's own landing page, which is the publisher's record; the link above
+                    # is the copy that was pinned and may be a preprint elsewhere.
+                    "doi_link": landing_url(
+                        "",
+                        bib.get(src.get("citation", f.stem), {}).get("doi", "")
+                        or (
+                            re.search(r"doi\.org/(10\.[^\s?#]+)", src.get("url", "")) or [None, ""]
+                        )[1],
+                        cache,
+                        fetch,
+                    ),
+                    "pinned": sum(len(s["quotes"]) for s in statements),
+                    "statements": statements,
+                }
+            )
 
     # reproduce: every declared rebuild step with its state, and every recorded re-run.
     causes = collections.defaultdict(list)
     for f in staleness["findings"]:
         causes[f["regeneration"]].append({"cause": f["cause"], "artifact": f["artifact"]})
     regen = {r["id"]: r for r in manifest.get("regenerations", [])}
-    steps = [{"id": r["id"], "artifact": r["artifact"], "state": r["state"], "rerun_at": r.get("rerun_at"),
-              "command": " ".join(regen.get(r["id"], {}).get("command", [])), "causes": causes.get(r["id"], [])}
-             for r in staleness["regenerations"]]
+    steps = [
+        {
+            "id": r["id"],
+            "artifact": r["artifact"],
+            "state": r["state"],
+            "rerun_at": r.get("rerun_at"),
+            "command": " ".join(regen.get(r["id"], {}).get("command", [])),
+            "causes": causes.get(r["id"], []),
+        }
+        for r in staleness["regenerations"]
+    ]
     rr_path = project / ".repro" / "reproductions.jsonl"
     reruns = []
     step_runs = collections.defaultdict(list)
@@ -571,19 +840,37 @@ def record_tabs(project: pathlib.Path, manifest: dict, ledger: list[dict], stale
         for line in rr_path.read_text().splitlines():
             if line.strip():
                 e = json.loads(line)
-                reruns.append({"started_at": e.get("started_at"), "ended_at": e.get("ended_at"), "tool_version": e.get("tool_version"),
-                               "counts": dict(collections.Counter(r.get("state") for r in e.get("regenerations", []))),
-                               "steps": len(e.get("regenerations", []))})
+                reruns.append(
+                    {
+                        "started_at": e.get("started_at"),
+                        "ended_at": e.get("ended_at"),
+                        "tool_version": e.get("tool_version"),
+                        "counts": dict(
+                            collections.Counter(r.get("state") for r in e.get("regenerations", []))
+                        ),
+                        "steps": len(e.get("regenerations", [])),
+                    }
+                )
                 for r in e.get("regenerations", []):
-                    step_runs[r.get("regeneration_id")].append({
-                        "ended_at": e.get("ended_at"), "tool_version": e.get("tool_version"), "state": r.get("state"),
-                        "bytes_identical": r.get("bytes_identical"), "exit_code": r.get("exit_code"),
-                        "duration_seconds": r.get("duration_seconds"), "detail": r.get("detail", "")})
+                    step_runs[r.get("regeneration_id")].append(
+                        {
+                            "ended_at": e.get("ended_at"),
+                            "tool_version": e.get("tool_version"),
+                            "state": r.get("state"),
+                            "bytes_identical": r.get("bytes_identical"),
+                            "exit_code": r.get("exit_code"),
+                            "duration_seconds": r.get("duration_seconds"),
+                            "detail": r.get("detail", ""),
+                        }
+                    )
     # Each step's files by path, and its re-runs newest first, for the step's side panel.
     paths = {x["id"]: x.get("path", "") for x in manifest["artifacts"]}
     for st in steps:
         r = regen.get(st["id"], {})
-        st["inputs"] = [{"artifact": i["artifact"], "path": paths.get(i["artifact"], "")} for i in r.get("inputs", [])]
+        st["inputs"] = [
+            {"artifact": i["artifact"], "path": paths.get(i["artifact"], "")}
+            for i in r.get("inputs", [])
+        ]
         st["output_path"] = paths.get(st["artifact"], "")
         st["history"] = list(reversed(step_runs.get(st["id"], [])))[:20]
     # Each run's outside links: the annotations naming one of its outputs, marked when they were
@@ -597,35 +884,64 @@ def record_tabs(project: pathlib.Path, manifest: dict, ledger: list[dict], stale
                 continue
             target = e.get("target", {})
             ref = target.get("ref", "")
-            doi = re.sub(r"^(doi:|https?://(dx\.)?doi\.org/)", "", ref) if (
-                target.get("kind", "").startswith("doi:") or "doi.org/" in ref) else ""
-            url = landing_url("", doi, cache) if doi else ref if re.match(r"https?://", ref) else None
-            run["links"].append({"kind": target.get("kind", ""), "ref": ref, "url": url, "note": e.get("note", ""),
-                                 "by": e.get("by", ""), "status": e.get("status", ""), "timestamp": e.get("timestamp"),
-                                 "same_bytes": all(written[x["path"]] == x.get("sha256") for x in hit)})
+            doi = (
+                re.sub(r"^(doi:|https?://(dx\.)?doi\.org/)", "", ref)
+                if (target.get("kind", "").startswith("doi:") or "doi.org/" in ref)
+                else ""
+            )
+            url = (
+                landing_url("", doi, cache, fetch)
+                if doi
+                else ref
+                if re.match(r"https?://", ref)
+                else None
+            )
+            run["links"].append(
+                {
+                    "kind": target.get("kind", ""),
+                    "ref": ref,
+                    "url": url,
+                    "note": e.get("note", ""),
+                    "by": e.get("by", ""),
+                    "status": e.get("status", ""),
+                    "timestamp": e.get("timestamp"),
+                    "same_bytes": all(written[x["path"]] == x.get("sha256") for x in hit),
+                }
+            )
     out_dir.mkdir(parents=True, exist_ok=True)
     cache_path.write_text(json.dumps(cache, indent=1))
-    return {"prereg": {"lines": plans}, "results": {"runs": runs, "seals": seals, "bound": bound},
-            "citations": {"sources": sources}, "reproduce": {"steps": steps, "reruns": reruns}}
+    return {
+        "prereg": {"lines": plans},
+        "results": {"runs": runs, "seals": seals, "bound": bound},
+        "citations": {"sources": sources},
+        "reproduce": {"steps": steps, "reruns": reruns},
+    }
 
 
-def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("project", type=pathlib.Path)
-    ap.add_argument("out", type=pathlib.Path)
-    ap.add_argument("--groups", type=pathlib.Path,
-                    help="optional YAML list of {group, match}: a file whose id matches the regex goes to that group")
-    a = ap.parse_args()
-    print(build(a.project, a.out, a.groups))
+#: What `repro stale` reports for a project that declares no rebuild step. It prints a sentence
+#: rather than JSON then, so the page is built from this instead of from its output.
+NOTHING_STALE = {
+    "findings": [],
+    "regenerations": [],
+    "artifacts": [],
+    "claims": [],
+    "reruns": 0,
+}
 
 
-def build(project: pathlib.Path, out_path: pathlib.Path, groups_file: pathlib.Path | None = None,
-          check: bool = True) -> str:
+def build(
+    project: pathlib.Path,
+    out_path: pathlib.Path,
+    groups_file: pathlib.Path | None = None,
+    check: bool = True,
+    fetch: bool = True,
+) -> str:
     """Write graph.json for `project` to `out_path` and return a one-line summary.
 
     With `check`, runs `repro verify`, which records the check in the project's history. Without
     it, reuses the report of the last check (kept beside graph.json) and re-reads everything else,
-    so nothing is written to the project."""
+    so nothing is written to the project. With `fetch`, the landing page of each DOI not yet in
+    the cache is looked up over the network; without it nothing is."""
     project = project.resolve()
 
     manifest = yaml.safe_load((project / "repro.yaml").read_text())
@@ -633,20 +949,37 @@ def build(project: pathlib.Path, out_path: pathlib.Path, groups_file: pathlib.Pa
     if check or not cache.exists():
         report = repro_json(project, "verify")["report"]
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        cache.write_text(json.dumps({"checked_at": datetime.datetime.now(datetime.timezone.utc).isoformat(), "report": report}))
+        cache.write_text(
+            json.dumps(
+                {
+                    "checked_at": datetime.datetime.now(datetime.UTC).isoformat(),
+                    "report": report,
+                }
+            )
+        )
     else:
         report = json.loads(cache.read_text())["report"]
     checked_at = json.loads(cache.read_text())["checked_at"]
-    staleness = repro_json(project, "stale")["staleness"]
+    staleness = (
+        repro_json(project, "stale")["staleness"]
+        if manifest.get("regenerations")
+        else NOTHING_STALE
+    )
     ledger_path = project / ".results" / "ledger.jsonl"
-    ledger = [json.loads(x) for x in ledger_path.read_text().splitlines()] if ledger_path.exists() else []
+    ledger = (
+        [json.loads(x) for x in ledger_path.read_text().splitlines()]
+        if ledger_path.exists()
+        else []
+    )
     checks = read_checks(project)
 
     artifacts = {x["id"]: x for x in manifest["artifacts"]}
     is_code = {aid for aid, x in artifacts.items() if x.get("media_type") == "text/x-python"}
     claim_decl = {c["id"]: c for c in manifest["claims"]}
     labels, captions = read_labels(project, artifacts.get("manuscript", {}).get("path"))
-    tex_paths = [x["path"] for x in artifacts.values() if x.get("media_type") == "application/x-tex"]
+    tex_paths = [
+        x["path"] for x in artifacts.values() if x.get("media_type") == "application/x-tex"
+    ]
     for num, body in table_texts(project, tex_paths, labels).items():
         captions[num] = captions.get(num, "") + " " + body
     fixed_tables = correct_tables(manifest["claims"], labels, captions)
@@ -658,14 +991,24 @@ def build(project: pathlib.Path, out_path: pathlib.Path, groups_file: pathlib.Pa
                 readers[ev["artifact"]].add(c["id"])
                 places[ev["artifact"]].add(resolve_where(c.get("where", ""), labels, fixed_tables))
     overrides = yaml.safe_load(groups_file.read_text()) if groups_file else []
-    group_of = auto_groups({k: v for k, v in artifacts.items() if k not in is_code},
-                           manifest.get("regenerations", []), readers, places, overrides)
+    group_of = auto_groups(
+        {k: v for k, v in artifacts.items() if k not in is_code},
+        manifest.get("regenerations", []),
+        readers,
+        places,
+        overrides,
+    )
 
     last_run: dict[str, dict] = {}
     for e in ledger:
         if e.get("event") == "run":
             for o in e.get("outputs", []):
-                last_run[o["path"]] = {"run_id": e["run_id"], "timestamp": e["timestamp"], "sha256": o["sha256"], "note": e.get("note", "")}
+                last_run[o["path"]] = {
+                    "run_id": e["run_id"],
+                    "timestamp": e["timestamp"],
+                    "sha256": o["sha256"],
+                    "note": e.get("note", ""),
+                }
 
     regen_of = {r["output"]["artifact"]: r for r in manifest.get("regenerations", [])}
     stale_art = {x["id"]: x for x in staleness["artifacts"]}
@@ -701,16 +1044,27 @@ def build(project: pathlib.Path, out_path: pathlib.Path, groups_file: pathlib.Pa
         st_assert = st.get("assertions", [])
         rows = []
         for i, dcs in enumerate(c["decisions"]):
-            rows.append({
-                "kind": dcs["kind"], "artifact": dcs["artifact_id"],
-                "ok": dcs["execution"] == "completed" and dcs["comparison"] == "match",
-                "comparison": dcs["comparison"], "reason": dcs["reason"], "detail": dcs["detail"],
-                "extracted": dcs["extracted"], "warnings": dcs["warnings"],
-                "stale": st_assert[i]["state"] if i < len(st_assert) else None,
-            })
+            rows.append(
+                {
+                    "kind": dcs["kind"],
+                    "artifact": dcs["artifact_id"],
+                    "ok": dcs["execution"] == "completed" and dcs["comparison"] == "match",
+                    "comparison": dcs["comparison"],
+                    "reason": dcs["reason"],
+                    "detail": dcs["detail"],
+                    "extracted": dcs["extracted"],
+                    "warnings": dcs["warnings"],
+                    "stale": st_assert[i]["state"] if i < len(st_assert) else None,
+                }
+            )
         row = {
-            "id": c["claim_id"], "where": where, "declared_where": declared, "section": sec, "text": decl.get("text", ""),
-            "ok": all(r["ok"] for r in rows), "stale": st.get("state"),
+            "id": c["claim_id"],
+            "where": where,
+            "declared_where": declared,
+            "section": sec,
+            "text": decl.get("text", ""),
+            "ok": all(r["ok"] for r in rows),
+            "stale": st.get("state"),
             "history": history.get(c["claim_id"], []),
         }
         row["assertions"] = rows
@@ -737,34 +1091,61 @@ def build(project: pathlib.Path, out_path: pathlib.Path, groups_file: pathlib.Pa
         groups.setdefault(group, {"id": group, "kind": "files"})
         regen = regen_of.get(aid)
         sr = stale_regen.get(aid)
-        nodes.append({
-            "id": aid, "type": "artifact", "group": group, "path": path,
-            "media_type": art.get("media_type"),
-            "pinned": pinned, "current": current,
-            "state": "missing" if current is None else ("changed" if pinned and current != pinned else "pinned"),
-            "run": run and {**run, "fresh": run["sha256"] == current},
-            "regenerated_by": regen and " ".join(regen["command"]),
-            "code": [artifacts[i["artifact"]]["path"] for i in (regen or {}).get("inputs", []) if i["artifact"] in is_code],
-            "freshness": stale_art.get(aid, {}).get("state"),
-            "rerun_at": sr and sr.get("rerun_at"),
-            "causes": causes_by_regen.get(aid, []),
-            "last_checked": last_checked.get(aid),
-            "ok": per_art[aid]["ok"], "fail": per_art[aid]["fail"], "stale": per_art[aid]["stale"],
-            "claims": per_art[aid]["claims"],
-        })
+        nodes.append(
+            {
+                "id": aid,
+                "type": "artifact",
+                "group": group,
+                "path": path,
+                "media_type": art.get("media_type"),
+                "pinned": pinned,
+                "current": current,
+                "state": "missing"
+                if current is None
+                else ("changed" if pinned and current != pinned else "pinned"),
+                "run": run and {**run, "fresh": run["sha256"] == current},
+                "regenerated_by": regen and " ".join(regen["command"]),
+                "code": [
+                    artifacts[i["artifact"]]["path"]
+                    for i in (regen or {}).get("inputs", [])
+                    if i["artifact"] in is_code
+                ],
+                "freshness": stale_art.get(aid, {}).get("state"),
+                "rerun_at": sr and sr.get("rerun_at"),
+                "causes": causes_by_regen.get(aid, []),
+                "last_checked": last_checked.get(aid),
+                "ok": per_art[aid]["ok"],
+                "fail": per_art[aid]["fail"],
+                "stale": per_art[aid]["stale"],
+                "claims": per_art[aid]["claims"],
+            }
+        )
 
     def sec_key(s: str) -> tuple:
         order = {"Section": 0, "Table": 1, "Appendix": 2}
         head, _, rest = s.partition(" ")
         nums = tuple(int(x) if x.isdigit() else x for x in re.split(r"[.\s]", rest))
-        return (order.get(head, 3), tuple((0, x) if isinstance(x, int) else (1, x) for x in nums))
+        return (
+            order.get(head, 3),
+            tuple((0, x) if isinstance(x, int) else (1, x) for x in nums),
+        )
 
     for g in PAPER_GROUPS.values():
         groups[g] = {"id": g, "kind": "sections"}
     for sec in sorted(per_sec, key=sec_key):
         v = per_sec[sec]
-        nodes.append({"id": f"sec:{sec}", "type": "section", "group": PAPER_GROUPS.get(sec.split()[0], "Paper: body"),
-                      "label": sec, "ok": v["ok"], "fail": v["fail"], "stale": v["stale"], "claims": v["claims"]})
+        nodes.append(
+            {
+                "id": f"sec:{sec}",
+                "type": "section",
+                "group": PAPER_GROUPS.get(sec.split()[0], "Paper: body"),
+                "label": sec,
+                "ok": v["ok"],
+                "fail": v["fail"],
+                "stale": v["stale"],
+                "claims": v["claims"],
+            }
+        )
 
     edges = []
     for r in manifest.get("regenerations", []):
@@ -772,19 +1153,31 @@ def build(project: pathlib.Path, out_path: pathlib.Path, groups_file: pathlib.Pa
             if i["artifact"] in is_code:
                 continue
             if i["artifact"] in artifacts and r["output"]["artifact"] in artifacts:
-                edges.append({"source": i["artifact"], "target": r["output"]["artifact"], "kind": "regenerates"})
+                edges.append(
+                    {
+                        "source": i["artifact"],
+                        "target": r["output"]["artifact"],
+                        "kind": "regenerates",
+                    }
+                )
     for (art, sec), n in edge_counts.items():
         edges.append({"source": art, "target": f"sec:{sec}", "kind": "supports", "count": n})
 
     # The re-runs `repro reproduce` recorded: how many, and what the last one found.
     rr_path = project / ".repro" / "reproductions.jsonl"
-    reruns = [json.loads(x) for x in rr_path.read_text().splitlines() if x.strip()] if rr_path.exists() else []
+    reruns = (
+        [json.loads(x) for x in rr_path.read_text().splitlines() if x.strip()]
+        if rr_path.exists()
+        else []
+    )
     last_rerun = reruns[-1] if reruns else None
     reproduce = {
         "runs": len(reruns),
         "declared": len(manifest.get("regenerations", [])),
         "last_at": last_rerun and last_rerun.get("ended_at"),
-        "last": dict(collections.Counter(r.get("state") for r in last_rerun["regenerations"])) if last_rerun else {},
+        "last": dict(collections.Counter(r.get("state") for r in last_rerun["regenerations"]))
+        if last_rerun
+        else {},
         "last_steps": len(last_rerun["regenerations"]) if last_rerun else 0,
     }
 
@@ -792,17 +1185,23 @@ def build(project: pathlib.Path, out_path: pathlib.Path, groups_file: pathlib.Pa
     # ledger recorded. Derived from the files, so no sentence has to be bound by hand.
     by_id = {n["id"]: n for n in nodes if n["type"] == "artifact"}
     run_backed = sum(
-        1 for c in report["claims"]
-        if any(by_id.get(d["artifact_id"], {}).get("run") for d in c["decisions"] if d["kind"] != "quote"))
+        1
+        for c in report["claims"]
+        if any(
+            by_id.get(d["artifact_id"], {}).get("run")
+            for d in c["decisions"]
+            if d["kind"] != "quote"
+        )
+    )
     out = {
         "project": report["project"],
-        "built_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "built_at": datetime.datetime.now(datetime.UTC).isoformat(),
         "checked_at": checked_at,
         "project_dir": str(project),
         "status": status_lines(project, report),
         "reproduce": reproduce,
         "project_name": project.name,
-        "tabs": record_tabs(project, manifest, ledger, staleness, out_path.parent),
+        "tabs": record_tabs(project, manifest, ledger, staleness, out_path.parent, fetch),
         "manifest_digest": report["manifest_digest"],
         "totals": {
             "claims": len(report["claims"]),
@@ -823,7 +1222,3 @@ def build(project: pathlib.Path, out_path: pathlib.Path, groups_file: pathlib.Pa
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(out, indent=1))
     return f"{len(nodes)} nodes, {len(edges)} edges, {len(groups)} groups -> {out_path}"
-
-
-if __name__ == "__main__":
-    main()

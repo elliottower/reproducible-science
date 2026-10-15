@@ -1,0 +1,1 @@
+**`repro ui`, with `pip install "reproducible-science[ui]"`, and `reproducible-science[all]` for every extra.** `repro ui` serves the page `reproducible-science-ui` builds over the project; without it installed, it prints the install line.

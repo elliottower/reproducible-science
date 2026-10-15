@@ -100,6 +100,7 @@ sources.claims-cli = { workspace = true }
 sources.prereg = { workspace = true }
 sources.provenance-core = { workspace = true }
 sources.reproducible-science = { workspace = true }
+sources.reproducible-science-ui = { workspace = true }
 sources.results-cli = { workspace = true }
 workspace.members = [ "packages/*" ]
 
@@ -108,7 +109,7 @@ target-version = "py311"
 line-length = 100
 # `site/` is a JavaScript project: nothing under it is ruff's to police, and a stray file
 # there must not be able to fail the Python gate.
-extend-exclude = [ "packages/*/tests/conformance/cases", "site" ]
+extend-exclude = [ "packages/*/tests/conformance/cases", "packages/ui/web", "site" ]
 format.docstring-code-format = false
 lint.select = [ "B", "C4", "E", "F", "I", "RUF", "UP", "W" ]
 lint.ignore = [
@@ -131,7 +132,7 @@ lint.per-file-ignores."packages/*/tests/*" = [ "B011" ] # bare assert False is f
 # audit venue fixture's caches are skipped: they are registry responses as fetched, in several
 # languages, and nothing in them is ours to correct.
 ignore-words-list = "unparseable,sav,ue,copie,buis,smae,nd,ist,fo,inout,ede,bui,trough,devlop,bu,publically,commun,ser,archiv"
-skip = "uv.lock,.git,packages/citations/tests/fixtures/audit_venue/cache/*,packages/citations/tests/fixtures/audit_venue/pairs_cache/*"
+skip = "uv.lock,.git,packages/ui/web/package-lock.json,packages/citations/tests/fixtures/audit_venue/cache/*,packages/citations/tests/fixtures/audit_venue/pairs_cache/*"
 
 [tool.pytest]
 ini_options.testpaths = [ "packages" ]
@@ -148,7 +149,7 @@ ini_options.markers = [
 # Package names, not paths: a CLI test runs the command in a temporary directory, and a
 # relative source path matches nothing from there -- so every CLI reported 0% while its
 # tests passed.
-run.source_pkgs = [ "citations", "claims", "prereg", "repro", "results" ]
+run.source_pkgs = [ "citations", "claims", "prereg", "repro", "repro_ui", "results" ]
 run.omit = [ "*/tests/*" ]
 run.branch = true
 run.parallel = true
@@ -207,6 +208,10 @@ path = "repro"
 name = "provenance-core"
 path = "provenance-core"
 
+[[tool.towncrier.section]]
+name = "reproducible-science-ui"
+path = "ui"
+
 # Architecture, enforced. The rule the monorepo exists to keep is that the three tools stay
 # usable without the verifier: `pip install citations` must not drag in an evidence engine.
 
@@ -232,7 +237,7 @@ min_confidence = 100
 adduce = "0.2.0"
 
 [tool.importlinter]
-root_packages = [ "repro", "claims", "citations", "results", "prereg", "provenance_core" ]
+root_packages = [ "repro", "claims", "citations", "results", "prereg", "provenance_core", "repro_ui" ]
 include_external_packages = false
 
 [[tool.importlinter.contracts]]
@@ -240,6 +245,12 @@ name = "The shared primitives depend on nothing of ours"
 type = "forbidden"
 source_modules = [ "provenance_core" ]
 forbidden_modules = [ "repro", "claims", "citations", "results", "prereg" ]
+
+[[tool.importlinter.contracts]]
+name = "The page imports none of the tools: it runs them and reads what they print and write"
+type = "forbidden"
+source_modules = [ "repro_ui" ]
+forbidden_modules = [ "repro", "claims", "citations", "results", "prereg", "provenance_core" ]
 
 [[tool.importlinter.contracts]]
 name = "The three tools do not depend on the verifier"

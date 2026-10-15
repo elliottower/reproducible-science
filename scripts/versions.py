@@ -34,6 +34,7 @@ PACKAGES = {
     "reproducible-science": PROJECT_ROOT / "packages" / "repro" / "pyproject.toml",
     "claims-cli": PROJECT_ROOT / "packages" / "claims" / "pyproject.toml",
     "provenance-core": PROJECT_ROOT / "packages" / "provenance-core" / "pyproject.toml",
+    "reproducible-science-ui": PROJECT_ROOT / "packages" / "ui" / "pyproject.toml",
 }
 
 #: The plugin manifests, for Claude Code and for Codex, which carry the same release version
@@ -235,6 +236,11 @@ DEPENDENCIES_START = re.compile(r"^dependencies = \[", re.M)
 EXTRAS = r'(\[[^\]"]*\])?'
 
 
+#: The start of each optional-dependencies array, written as dotted keys in this workspace:
+#: `optional-dependencies.ui = [ "reproducible-science-ui>=0.6,<0.7" ]`.
+OPTIONAL_START = re.compile(r"^optional-dependencies\.[\w-]+ = \[", re.M)
+
+
 def dependencies_span(text: str) -> tuple[int, int] | None:
     """The offsets of the dependencies array's body, or None where there is no array.
 
@@ -242,16 +248,41 @@ def dependencies_span(text: str) -> tuple[int, int] | None:
     which characters are the array.
     """
     start = DEPENDENCIES_START.search(text)
-    if not start:
-        return None
-    depth, i = 1, start.end()
+    return array_body(text, start.end()) if start else None
+
+
+def optional_spans(text: str) -> list[tuple[int, int]]:
+    """The offsets of every optional-dependencies array's body, balanced as `dependencies` is."""
+    return [span for m in OPTIONAL_START.finditer(text) if (span := array_body(text, m.end()))]
+
+
+def optional_refs(text: str) -> list[tuple[str, str]]:
+    """Sibling packages an extra pins with a range, as (distribution, specifier) pairs.
+
+    An extra that names a sibling with no range, as `reproducible-science[sheets]` names
+    `claims-cli[sheets]`, is left to the range `dependencies` already carries and is not read.
+    An extra that brings in a sibling `dependencies` does not, as `[ui]` brings in
+    `reproducible-science-ui`, carries a range of its own, which moves with every release.
+    """
+    found = []
+    for start, end in optional_spans(text):
+        body = text[start:end]
+        for name in PACKAGES:
+            for m in re.finditer(rf'"{re.escape(name)}{EXTRAS}([><=!~][^"]*)"', body):
+                found.append((name, m.group(2)))
+    return found
+
+
+def array_body(text: str, i: int) -> tuple[int, int] | None:
+    """The offsets from `i`, just past an opening bracket, to its matching close."""
+    begin, depth = i, 1
     while i < len(text) and depth:
         if text[i] == "[":
             depth += 1
         elif text[i] == "]":
             depth -= 1
         i += 1
-    return (start.end(), i - 1) if depth == 0 else None
+    return (begin, i - 1) if depth == 0 else None
 
 
 def cross_refs(text: str) -> dict[str, str]:
@@ -286,7 +317,8 @@ def check() -> list[str]:
         problems.append(refused)
 
     for name, path in PACKAGES.items():
-        for dep, spec in cross_refs(path.read_text()).items():
+        text = path.read_text()
+        for dep, spec in [*cross_refs(text).items(), *optional_refs(text)]:
             if dep == name:
                 continue
             if spec != want:
@@ -360,6 +392,19 @@ def bump(version: str, realign: bool = False) -> list[str]:
                     body,
                 )
             text = text[: span[0]] + body + text[span[1] :]
+        # An extra's sibling range moves too; one with no range is left as it is. From the
+        # last array back, so a rewrite that changes a body's length moves no span not yet read.
+        for start, end in reversed(optional_spans(text)):
+            body = text[start:end]
+            for dep in PACKAGES:
+                if dep == name:
+                    continue
+                body = re.sub(
+                    rf'"{re.escape(dep)}{EXTRAS}[><=!~][^"]*"',
+                    lambda m, dep=dep: f'"{dep}{m.group(1) or ""}{want}"',
+                    body,
+                )
+            text = text[:start] + body + text[end:]
         if text != original:
             path.write_text(text)
             touched.append(str(path.relative_to(PROJECT_ROOT)))

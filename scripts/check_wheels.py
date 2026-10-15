@@ -35,6 +35,7 @@ DISTS = (
     "results-cli",
     "claims-cli",
     "reproducible-science",
+    "reproducible-science-ui",
 )
 
 #: What `claims-cli` declares of ours, and so all that is installed beside it when it is
@@ -173,6 +174,20 @@ def main() -> int:
             if smoke.returncode != 0:
                 print(smoke.stdout[-2000:])
                 return 1
+
+        # The page's wheel has to carry the built page: its files are not in git, and a wheel
+        # built without them installs a server with nothing to serve.
+        page = run(
+            str(python),
+            "-c",
+            "from repro_ui.server import DIST; print((DIST / 'index.html').is_file())",
+        )
+        if page.stdout.strip() != "True":
+            print(
+                f"  FAIL reproducible-science-ui carries no built page\n{page.stdout}{page.stderr}"
+            )
+            return 1
+        print("  reproducible-science-ui carries its built page")
 
         quote = run(
             str(python), "-c", "from citations.verify import check_one; print('quote backend: ok')"

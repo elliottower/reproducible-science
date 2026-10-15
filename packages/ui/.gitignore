@@ -1,7 +1,5 @@
 node_modules/
-dist/
 .DS_Store
 __pycache__/
-# Built from a project's private records; never committed.
-.data/
-web/public/
+# Built from web/ by `npm run build`, and by the build hook into every wheel.
+src/repro_ui/static/
