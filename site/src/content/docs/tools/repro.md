@@ -1037,7 +1037,7 @@ repro ci init --pr-bot
 
 The pull-request bot comments on a pull request once for each assertion that fails or went stale, and records the answer someone with write access gives. It is its own distribution, `reproducible-science-pr-bot`, and runs from GitHub Actions in your repository with its own token. Nothing is hosted, and no model reads or writes anything.
 
-`repro ci init --pr-bot` writes two short caller workflows. Each calls the reusable workflow `elliottower/reproducible-science-pr-bot/.github/workflows/pr-bot.yml`, which holds the jobs; the callers only choose when it runs and what its token may do.
+`repro ci init --pr-bot` writes two short caller workflows. Each calls the reusable workflow `elliottower/reproducible-science/.github/workflows/pr-bot.yml`, which holds the jobs; the callers only choose when it runs and what its token may do.
 
 | caller | runs on | job | token | does |
 |---|---|---|---|---|

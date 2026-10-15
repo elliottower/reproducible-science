@@ -33,10 +33,10 @@ from repro.exceptions import ReproError
 MARKER = "# Written by `repro ci init --pr-bot`."
 DOCS = "https://reproducible.science/tools/repro/#a-bot-on-pull-requests"
 
-#: The reusable workflow that holds the jobs, published in the bot's Action repository.
-REUSABLE = "elliottower/reproducible-science-pr-bot/.github/workflows/pr-bot.yml"
-#: The release of the bot's Action repository the callers use. A tag until the repository is
-#: published; a commit sha replaces it then, as every other action here is pinned.
+#: The reusable workflow that holds the jobs, in this toolkit's own repository.
+REUSABLE = "elliottower/reproducible-science/.github/workflows/pr-bot.yml"
+#: The release of this repository the callers use: the tag of the release that publishes
+#: reproducible-science-pr-bot at the version the reusable workflow runs.
 REF = "v0.7.0"
 
 CHECK_FILE = "repro-pr-bot.yml"

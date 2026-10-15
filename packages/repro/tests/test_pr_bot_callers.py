@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pathlib
 import re
 import subprocess
 
@@ -122,3 +123,41 @@ def test_with_no_manifest_nothing_is_written(tmp_path, monkeypatch, capsys):
     assert main(["ci", "init", "--pr-bot"]) == 2
     assert "repro manifest init" in capsys.readouterr().out
     assert not (tmp_path / ".github").exists()
+
+
+REUSABLE = pathlib.Path(__file__).resolve().parents[3] / ".github" / "workflows" / "pr-bot.yml"
+
+
+def test_the_reusable_workflow_the_callers_name_is_in_this_repository():
+    owner_repo, _, path = pr_bot.REUSABLE.partition("/.github/")
+    assert owner_repo == "elliottower/reproducible-science"
+    assert REUSABLE.as_posix().endswith(f".github/{path}")
+
+
+def test_the_reusable_workflow_keeps_the_split_each_job_holding_only_its_token():
+    flow = yaml.safe_load(REUSABLE.read_text())
+    called = flow[True]["workflow_call"]
+    assert flow["permissions"] == {} and set(called) == {"inputs"}
+    for caller in pr_bot.callers("repro.yaml", ("claims.yml",)):
+        (job,) = yaml.safe_load(caller.text)["jobs"].values()
+        assert set(job["with"]) <= set(called["inputs"])
+    jobs = flow["jobs"]
+    assert jobs["check"]["permissions"] == {"contents": "read"}
+    (checkout,) = [s for s in jobs["check"]["steps"] if "checkout" in s.get("uses", "")]
+    assert checkout["with"]["persist-credentials"] is False
+    assert jobs["post"]["permissions"] == {
+        "actions": "read",
+        "issues": "write",
+        "pull-requests": "write",
+    }
+    assert jobs["reply"]["permissions"]["contents"] == "write"
+    for name in ("post", "reply"):
+        steps = jobs[name]["steps"]
+        assert not any("checkout" in step.get("uses", "") for step in steps)
+        assert jobs[name]["concurrency"]["cancel-in-progress"] is False
+        assert "workflow_run" in jobs["post"]["if"] and "comment" in jobs["reply"]["if"]
+    text = REUSABLE.read_text()
+    assert "pull_request_target" not in text and "github.event.comment.body" not in text
+    uses = [s["uses"] for job in jobs.values() for s in job["steps"] if "uses" in s]
+    assert all(re.fullmatch(r"[\w./-]+@[0-9a-f]{40}", used) for used in uses)
+    assert text.count("uvx --no-config --from reproducible-science-pr-bot==") == 3
