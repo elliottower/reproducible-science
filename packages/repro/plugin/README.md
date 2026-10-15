@@ -34,7 +34,7 @@ happens, and is the only hook that refuses anything.
 | `citations` | Verify that quotations resolve in the sources they cite, and manage a library of verified quotations. |
 | `results` | Seal a run's inputs before computing, record outputs after, bind manuscript claims to specific runs, and verify the hash chain. |
 | `repro` | Verify that a manuscript's declared claims resolve in the artifacts they name. |
-| `open-items` | Fill the items a reader of CODECHECK or CORE-Bench files left open, as inferred assertions the checks then decide, and report the counts. |
+| `open-items` | Fill the items a reader of CODECHECK, CORE-Bench or ClawBio files, or the scaffold of `repro init`, left open, as inferred assertions the checks then decide, and report the counts. |
 
 **A command for each tool**, named alike so there is nothing to remember:
 `/prereg-check`, `/citations-check`, `/results-check`, `/repro-check`.
