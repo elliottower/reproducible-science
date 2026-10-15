@@ -27,6 +27,10 @@ dependencies = [
   # The contract, the engine and the commands that check a manifest. This distribution adds
   # the commands that run things and drive the other tools.
   "claims-cli>=0.6,<0.7",
+  # `repro mcp`, the toolkit's checks as tools of an MCP server. The official Python SDK, pinned
+  # exactly: its 2.x line moves fast, and the server is tested against this release. Imported
+  # only when `repro mcp` runs, so no other command pays for it at startup.
+  "mcp==2.2",
   # Floors, not bare names: without them a fresh install resolves whatever is oldest on
   # PyPI, which is not the combination the tests exercise.
   "prereg>=0.6,<0.7",
@@ -39,16 +43,16 @@ dependencies = [
 optional-dependencies.adduce = [ "adduce>=0.2" ]
 # Every extra a user would want, so one install line gets the whole toolkit.
 optional-dependencies.all = [
-  "reproducible-science[adduce,arrays,hdf5,mcp,netcdf,parquet,pr-bot,rds,sheets,stata-spss,ui]",
+  "reproducible-science[adduce,arrays,hdf5,netcdf,parquet,pr-bot,rds,sheets,stata-spss,ui]",
 ]
 # The optional readers are `claims-cli`'s, which holds the adapters. Each extra here asks for
 # the one of the same name there, so `reproducible-science[sheets]` installs what it did. No
 # range on these: the dependency above carries it.
 optional-dependencies.arrays = [ "claims-cli[arrays]" ]
 optional-dependencies.hdf5 = [ "claims-cli[hdf5]" ]
-# `repro mcp`, the toolkit's checks as tools of an MCP server. The official Python SDK, pinned
-# exactly: its 2.x line moves fast, and the server is tested against this release.
-optional-dependencies.mcp = [ "mcp==2.2" ]
+# Empty: the MCP SDK is a dependency of the base install. Kept so an install line that still
+# names `reproducible-science[mcp]` resolves without a warning.
+optional-dependencies.mcp = [  ]
 optional-dependencies.netcdf = [ "claims-cli[netcdf]" ]
 optional-dependencies.parquet = [ "claims-cli[parquet]" ]
 # The pull-request bot's command, which the workflows `repro ci init --pr-bot` writes run.

@@ -14,14 +14,23 @@ OIDC claim for a short-lived upload token and throws it away. This reads those r
 Exits non-zero when any binding last failed, or has never been verified. A verification older
 than `STALE_DAYS` is reported rather than failed: it means nothing has run lately, not that
 anything is wrong.
+
+    uv run python scripts/check_publishers.py --declared
+
+checks the half a checkout can see, with no network: every publish workflow is in `WORKFLOWS`,
+and every job that can mint an upload token runs in the `release` environment. The weekly
+`publisher-config.yml` runs this.
 """
 
 from __future__ import annotations
 
 import datetime
 import json
+import pathlib
 import subprocess
 import sys
+
+import yaml
 
 #: Distribution name to the workflow PyPI is bound to. Both halves matter: the binding names
 #: the filename, so a workflow renamed without reconfiguring PyPI fails at the upload.
@@ -38,6 +47,63 @@ WORKFLOWS = {
 
 #: How old a verification may be before it is worth mentioning. The schedule is weekly.
 STALE_DAYS = 10
+
+
+#: Where the workflows are, from this file rather than the working directory.
+WORKFLOW_DIR = pathlib.Path(__file__).resolve().parent.parent / ".github" / "workflows"
+
+#: The environment PyPI's trusted publisher names, and the only one that admits a release tag.
+ENVIRONMENT = "release"
+
+
+def mints(permissions: object) -> bool:
+    """Whether a `permissions:` value grants `id-token: write`."""
+    if permissions == "write-all":
+        return True
+    return isinstance(permissions, dict) and permissions.get("id-token") == "write"
+
+
+def environment(job: dict) -> str | None:
+    """The environment a job runs in, written either as a name or as a mapping with one."""
+    env = job.get("environment")
+    return env.get("name") if isinstance(env, dict) else env
+
+
+def declared() -> int:
+    """Whether every publish workflow is mapped, and mints a token only in `release`.
+
+    A job that can mint an OIDC token outside the environment can upload without the
+    environment's tag rule, and a workflow with no minting job cannot upload at all. Counting
+    `environment: release` lines checked neither: it failed a workflow that builds in a job
+    with no token, and passed one that mints in a job with no environment."""
+    problems = []
+    on_disk = {p.name for p in WORKFLOW_DIR.glob("publish-*.yml")}
+    for name in sorted(on_disk - set(WORKFLOWS.values())):
+        problems.append(f"{name} publishes, but no distribution in WORKFLOWS names it")
+    for dist, name in WORKFLOWS.items():
+        path = WORKFLOW_DIR / name
+        if not path.is_file():
+            problems.append(f"{name} is gone; PyPI still binds {dist} to that filename")
+            continue
+        workflow = yaml.safe_load(path.read_text())
+        if mints(workflow.get("permissions")):
+            problems.append(f"{name} grants id-token: write to every job at the top level")
+        jobs = workflow.get("jobs") or {}
+        minting = [job_id for job_id, job in jobs.items() if mints(job.get("permissions"))]
+        if not minting:
+            problems.append(f"{name} has no job with id-token: write, so it cannot upload")
+        for job_id in minting:
+            if environment(jobs[job_id]) != ENVIRONMENT:
+                problems.append(
+                    f"{name}: job '{job_id}' has id-token: write outside environment: {ENVIRONMENT}"
+                )
+        print(f"  {name:<32}{dist:<30}mints in: {', '.join(minting) or '-'}")
+    for line in problems:
+        print(f"::error::{line}")
+    print()
+    print("  Checked what this repository declares. Whether PyPI still agrees is answered by")
+    print("  the binding job, which needs a tag:  gh workflow run <file> --ref vX.Y.Z")
+    return 1 if problems else 0
 
 
 #: The job that performs the exchange. Read by name, because a run's overall conclusion is
@@ -129,4 +195,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(declared() if sys.argv[1:] == ["--declared"] else main())

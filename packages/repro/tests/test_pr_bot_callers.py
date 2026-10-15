@@ -176,7 +176,8 @@ def test_the_pr_bot_extra_pins_the_bot_to_this_release_series_and_all_includes_i
     ]
     (everything,) = extras["all"]
     named = everything.split("[", 1)[1].rstrip("]").split(",")
-    assert set(named) == set(extras) - {"all"}
+    # An empty extra, kept so an old install line resolves, installs nothing for `all` to add.
+    assert set(named) == {name for name, deps in extras.items() if deps} - {"all"}
 
 
 def test_the_callers_name_the_tag_of_this_release_and_the_workflow_runs_this_release():

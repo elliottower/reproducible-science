@@ -499,21 +499,10 @@ def _reproduce_text(
         print(f"  witnessed {report.witness.said}, as the environment said")
 
 
-#: What `repro mcp` prints where the `mcp` extra is not installed.
-MCP_EXTRA = 'pip install "reproducible-science[mcp]"'
-
-
 def cmd_mcp(args: argparse.Namespace) -> int:
     """Serve the project at `--root` over stdio. The server module is reached by name, as
-    `delegate` reaches the tools, because the MCP SDK is an optional extra and the base
-    install must not need it to run any other command."""
-    try:
-        server = importlib.import_module("repro.mcp_server")
-    except ModuleNotFoundError as e:
-        if e.name is None or e.name.split(".")[0] not in ("mcp", "mcp_types"):
-            raise
-        print(f"`repro mcp` needs the MCP SDK: {MCP_EXTRA}")
-        return 2
+    `delegate` reaches the tools, so that no other command imports the MCP SDK at startup."""
+    server = importlib.import_module("repro.mcp_server")
     root = Path(args.root) if args.root else None
     if root is not None and not root.is_dir():
         print(f"--root {args.root}: not a directory")
@@ -654,8 +643,7 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
             "manifest, and pin_quote. Each call works in the project its path is in: the "
             f"nearest folder above it holding one of {', '.join(PROJECT_MARKERS)}. Nothing it "
             "offers freezes, seals, registers or runs a declared command, and only "
-            "citations_audit reaches the network, to read registry records. "
-            f"Needs {MCP_EXTRA}."
+            "citations_audit reaches the network, to read registry records."
         ),
     )
     p_mcp.add_argument(

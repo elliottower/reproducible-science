@@ -17,7 +17,10 @@ on:
     - cron: "7 6 * * 1"
   workflow_dispatch:
   pull_request:
-    paths: [".github/workflows/publish-*.yml", ".github/workflows/publisher-config.yml"]
+    paths:
+      - ".github/workflows/publish-*.yml"
+      - ".github/workflows/publisher-config.yml"
+      - "scripts/check_publishers.py"
 
 permissions:
   contents: read
@@ -30,38 +33,14 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: every publish workflow names the release environment
-        run: |
-          set -euo pipefail
-          # Filename to PyPI project. A rename on either side breaks a release, so the mapping is
-          # written down here rather than inferred, and a missing file fails loudly.
-          declare -A EXPECTED=(
-            [publish-citations.yml]=citations
-            [publish-prereg.yml]=prereg
-            [publish-results.yml]=results-cli
-            [publish-repro.yml]=reproducible-science
-            [publish-claims.yml]=claims-cli
-            [publish-provenance-core.yml]=provenance-core
-            [publish-pr-bot.yml]=reproducible-science-pr-bot
-          )
-          fail=0
-          for file in "${!EXPECTED[@]}"; do
-            path=".github/workflows/${file}"
-            project="${EXPECTED[$file]}"
-            if [ ! -f "$path" ]; then
-              echo "::error::${file} is gone; PyPI still binds ${project} to that filename"
-              fail=1
-              continue
-            fi
-            envs=$(grep -c 'environment: release' "$path" || true)
-            if [ "$envs" -lt 2 ]; then
-              echo "::error::${file} does not name 'environment: release' on both jobs (found ${envs})"
-              fail=1
-              continue
-            fi
-            printf '  %-32s %-22s environment: release\n' "$file" "$project"
-          done
-          echo
-          echo "  Checked what this repository declares. Whether PyPI still agrees is answered by"
-          echo "  the binding job, which needs a tag:  gh workflow run <file> --ref vX.Y.Z"
-          exit $fail
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+        with:
+          enable-cache: false
+
+      # The filename-to-project mapping lives in `scripts/check_publishers.py`, one copy for
+      # this check and the binding report both. A rename on either side breaks a release, so the
+      # mapping is written down rather than inferred, and a publish workflow it does not name
+      # fails here. Every job with `id-token: write` must run in `release`: a release workflow
+      # may build in a job of its own with no token, as `publish-ui.yml` does around npm.
+      - name: every job that can mint an upload token runs in the release environment
+        run: uv run --no-project --with pyyaml==6.0.2 python scripts/check_publishers.py --declared

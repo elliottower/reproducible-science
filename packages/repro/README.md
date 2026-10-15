@@ -1265,7 +1265,7 @@ uv tool install reproducible-science   # or: pip install reproducible-science
 per agent, for every project:
 
 ```bash
-uv tool install "reproducible-science[mcp]"
+uv tool install reproducible-science
 claude mcp add --transport stdio --scope user reproducible-science -- repro mcp
 ```
 
