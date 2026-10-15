@@ -21,6 +21,7 @@ const SYNCED = [
   ["packages/results/README.md", "tools/results.md", "Results", "results"],
   ["packages/repro/README.md", "tools/repro.md", "Repro", "end-to-end"],
   ["packages/claims/README.md", "tools/claims.md", "Claims"],
+  ["packages/repro/mod/README.md", "agents/claude-code-mod.md", "Claude Code mod"],
 ];
 
 // Schemas published under the URL their `$id` names: `docs/schemas/X` is served at

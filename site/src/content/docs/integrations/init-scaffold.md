@@ -56,7 +56,7 @@ draft file and reads no result file.
 
 Nothing in the draft is verified. The output says so: `scaffolded, nothing verified`. An agent
 fills the items with the [open-items skill](/integrations/open-items/) or the
-[MCP server](/integrations/mcp/), and an author reviews the draft and renames it to
+[MCP server](/agents/mcp/), and an author reviews the draft and renames it to
 `repro.yaml`.
 
 ## The other project

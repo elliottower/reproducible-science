@@ -6,7 +6,7 @@ description: The open-items agent skill fills what a reader left open, and claim
 A reader of another tool's files, such as `claims from-codecheck`, `claims from-corebench` or
 `claims from-clawbio`, writes `repro.draft.yaml` and `open-items.json`. Each item is a gap the
 source left: a value with no address, or a claim with no passage. Two pieces fill and count
-those items: an agent skill, and a command. The [MCP server](/integrations/mcp/) offers the
+those items: an agent skill, and a command. The [MCP server](/agents/mcp/) offers the
 same procedure as tools, and `repro init` writes the same two files for a project's own
 result files.
 
