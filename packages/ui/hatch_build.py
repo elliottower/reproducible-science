@@ -20,7 +20,7 @@ STATIC = HERE / "src" / "repro_ui" / "static"
 
 
 class WebBuildHook(BuildHookInterface):
-    def initialize(self, version: str, build_data: dict) -> None:
+    def initialize(self, version: str, _build_data: dict) -> None:
         if version == "editable" or (STATIC / "index.html").is_file():
             return
         npm = shutil.which("npm")

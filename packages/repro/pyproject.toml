@@ -90,7 +90,9 @@ sources.results-cli = { workspace = true }
 # with is in `provenance-core`. `citations` is run by `repro citations` and those two, and imported by
 # name where `repro init` asks which library governs a project; what checks a quotation with
 # it is `claims-cli`, which declares it too.
-per_rule_ignores.DEP002 = [ "citations", "results-cli" ]
+# `reproducible-science-ui` is reached by name by `repro ui`, and `[all]` names this package
+# itself with its extras; neither is an import.
+per_rule_ignores.DEP002 = [ "citations", "reproducible-science", "reproducible-science-ui", "results-cli" ]
 # The distribution is not named for its module.
 package_module_name_map = { results-cli = "results", claims-cli = "claims" }
 # Without this every intra-package import reads as a transitive dependency on itself.
