@@ -488,3 +488,95 @@ def test_a_bibliography_of_listed_works_nobody_indexes_passes_strict(tmp_path, m
 
     assert report["entries"]["naitza2012"]["status"] == "not found"
     assert code == 0, "every entry was searched for, so something was checked"
+
+
+# --- an identifier found by title search --------------------------------------------------------
+
+FOUND_DOI = "10.1/zzz"
+
+CROSSREF_FINDS_IT = json.dumps(
+    {
+        "message": {
+            "items": [
+                {
+                    "title": [TITLE],
+                    "author": [{"family": "Naitza"}],
+                    "issued": {"date-parts": [[2012]]},
+                    "DOI": FOUND_DOI,
+                }
+            ]
+        }
+    }
+)
+
+
+def test_a_found_doi_that_resolves_nowhere_is_named_on_its_line(tmp_path, monkeypatch, capsys):
+    serve(monkeypatch, {**EMPTY_SEARCH, "api.crossref.org/works?": CROSSREF_FINDS_IT})
+
+    code, report = run(tmp_path, bib(tmp_path, unidentified()), "--strict")
+
+    printed = capsys.readouterr().out
+    assert report["entries"]["naitza2012"]["not_found_by"] == "identifier"
+    assert code == 1
+    assert f"naitza2012  DOI {FOUND_DOI}, found by title search, resolves to no record" in printed
+    assert "pmid  resolves" not in printed
+
+
+def test_a_listed_found_doi_that_resolves_nowhere_is_warned_about_by_name(
+    tmp_path, monkeypatch, capsys
+):
+    serve(monkeypatch, {**EMPTY_SEARCH, "api.crossref.org/works?": CROSSREF_FINDS_IT})
+    (tmp_path / "references.checked.txt").write_text("naitza2012\n")
+
+    code, _ = run(tmp_path, bib(tmp_path, unidentified()), "--strict")
+
+    printed = capsys.readouterr().out
+    assert code == 0
+    assert (
+        f"its DOI {FOUND_DOI}, found by title search, does not resolve; check it isn't mistyped"
+        in printed
+    )
+    assert "its PMID" not in printed
+    assert "every checked entry matches" not in printed
+    assert "no entry was compared with a registry record" in printed
+
+
+def test_a_found_doi_whose_registry_failed_is_could_not_check_not_nothing_searched(
+    tmp_path, monkeypatch, capsys
+):
+    serve(
+        monkeypatch,
+        {
+            **EMPTY_SEARCH,
+            "api.crossref.org/works?": CROSSREF_FINDS_IT,
+            "api.crossref.org/works/": 503,
+            "api.datacite.org": 404,
+        },
+    )
+
+    code, report = run(tmp_path, bib(tmp_path, unidentified()), "--strict")
+
+    printed = capsys.readouterr().out
+    assert report["entries"]["naitza2012"]["status"] == "could not check"
+    assert code == 2
+    assert "nothing was checked" not in printed
+    assert f"DOI {FOUND_DOI}, found by title search, could not be read back" in printed
+
+
+def test_a_refusal_before_the_matching_service_is_recorded(tmp_path, monkeypatch):
+    serve(
+        monkeypatch,
+        {
+            **EMPTY_SEARCH,
+            "semanticscholar.org": 403,
+            "api.crossref.org/works?": CROSSREF_FINDS_IT,
+            "api.crossref.org/works/": WORK,
+        },
+    )
+
+    _, report = run(tmp_path, bib(tmp_path, unidentified()))
+
+    verdict = report["entries"]["naitza2012"]
+    assert (verdict["checked_against"], verdict["found_id"]) == ("crossref", FOUND_DOI)
+    assert verdict["searched"] == ["crossref"]
+    assert verdict["refused"] == ["semanticscholar"]

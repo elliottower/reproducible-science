@@ -957,6 +957,18 @@ SERVICE_NAMES = {
 }
 
 
+def _identifier(v: EntryAudit, kind_only: bool = False) -> str:
+    """The identifier a verdict rests on: the entry's own, or the one a title search found.
+
+    `kind_only` names the entry's own as `DOI` or `PMID` alone; a found one is always given in
+    full, since the entry does not carry it."""
+    if v.doi or v.pmid:
+        kind, ident = ("DOI", v.doi) if v.doi else ("PMID", v.pmid)
+        return kind if kind_only else f"{kind.lower()} {ident}"
+    kind = {"doi": "DOI", "arxiv": "arXiv id"}.get(v.found_kind, v.found_kind)
+    return f"{kind} {v.found_id}, found by title search,"
+
+
 def _unasked(v: EntryAudit) -> str:
     """`; X could not be asked; Y rejected the query`, for the services a verdict lacks."""
     said = ""
@@ -973,9 +985,11 @@ def _search_file(service: Service, entry: Entry) -> tuple[str, str]:
     return url, f"search_{service.name}_{hashlib.sha256(url.encode()).hexdigest()[:16]}.json"
 
 
-def find(entry: Entry, cache: pathlib.Path) -> tuple[Candidate | None, str, list[str], list[str]]:
+def find(
+    entry: Entry, cache: pathlib.Path
+) -> tuple[Candidate | None, str, list[str], list[str], list[str]]:
     """Search for an entry by title: (the work found, the service that had it, services that
-    answered, services that rejected the query).
+    answered, services that rejected the query, services that refused).
 
     Each service is asked on its own, as `citations resolve` asks them, and a candidate is
     accepted by `resolve.match` and by nothing else. Empty third and fourth elements mean every
@@ -989,6 +1003,7 @@ def find(entry: Entry, cache: pathlib.Path) -> tuple[Candidate | None, str, list
     """
     answered: list[str] = []
     rejected: list[str] = []
+    refused: list[str] = []
     for service in sorted(SERVICES, key=lambda s: not (cache / _search_file(s, entry)[1]).exists()):
         url, name = _search_file(service, entry)
         body = cached(url, cache, name)
@@ -1007,6 +1022,7 @@ def find(entry: Entry, cache: pathlib.Path) -> tuple[Candidate | None, str, list
                 rejected.append(service.name)
                 continue
             except (resolve.Throttled, json.JSONDecodeError):
+                refused.append(service.name)
                 continue
             finally:
                 time.sleep(SEARCH_DELAY)
@@ -1017,8 +1033,8 @@ def find(entry: Entry, cache: pathlib.Path) -> tuple[Candidate | None, str, list
             continue
         hit = resolve.best(entry, service.candidates(json.loads(body) if service.json else body))
         if hit:
-            return hit, service.name, answered, rejected
-    return None, "", answered, rejected
+            return hit, service.name, answered, rejected, refused
+    return None, "", answered, rejected, refused
 
 
 def registry_lookup(
@@ -1119,15 +1135,12 @@ def audit(
                 verdict.status = "no identifier"
                 continue
             asked = refused_in_a_row < GIVE_UP_AFTER
-            hit, by, answered, rejected = find(e, cache) if asked else (None, "", [], [])
-            verdict.searched, verdict.rejected = answered, rejected
-            # Every service was asked when nothing matched, so those that neither answered nor
-            # rejected the query refused. A search that matched stopped at the match.
-            verdict.refused = [
-                s.name
-                for s in SERVICES
-                if asked and hit is None and s.name not in answered + rejected
-            ]
+            hit, by, answered, rejected, refused = (
+                find(e, cache) if asked else (None, "", [], [], [])
+            )
+            # A search that matched stopped at the match: a service refusing before it is
+            # recorded, and the services after it were not asked.
+            verdict.searched, verdict.rejected, verdict.refused = answered, rejected, refused
             # A rejected query is an answer about the query, made again on every run, so it never
             # counts toward giving up on the services.
             refused_in_a_row = refused_in_a_row + 1 if not (answered or rejected) else 0
@@ -1152,7 +1165,8 @@ def audit(
         record, refused = registry_lookup(doi, e.pmid, cache)
         if record is None:
             if refused:
-                verdict.refused = refused
+                # After a title search, its refusals stay beside the registries'.
+                verdict.refused = list(dict.fromkeys([*verdict.refused, *refused]))
             else:
                 verdict.status, verdict.not_found_by = "not found", "identifier"
             continue
@@ -1245,7 +1259,7 @@ def render(report: AuditReport, quiet: bool) -> int:
         for key in report.not_found:
             v = report.entries[key]
             if v.not_found_by == "identifier":
-                said = f"{'doi ' + v.doi if v.doi else 'pmid ' + v.pmid} resolves to no record"
+                said = f"{_identifier(v)} resolves to no record"
             else:
                 said = f"not found by title search ({', '.join(v.searched)})"
                 said += _unasked(v)
@@ -1255,7 +1269,9 @@ def render(report: AuditReport, quiet: bool) -> int:
         print("\ncould not check")
         for key in report.could_not_check:
             v = report.entries[key]
-            if v.searched:
+            if v.found_id:
+                said = f"{_identifier(v)} could not be read back{_unasked(v)}"
+            elif v.searched:
                 said = f"searched ({', '.join(v.searched)}){_unasked(v)}"
             elif v.refused or v.rejected:
                 said = _unasked(v).removeprefix("; ")
@@ -1293,9 +1309,9 @@ def render(report: AuditReport, quiet: bool) -> int:
             status = report.entries[key].status
             print(f"  warning: {key} is on the list, but a registry has it ({status})")
         for key in listed.identifier_does_not_resolve:
-            which = "DOI" if report.entries[key].doi else "PMID"
             print(
-                f"  warning: {key} is listed as checked, but its {which} does not resolve; "
+                f"  warning: {key} is listed as checked, but its "
+                f"{_identifier(report.entries[key], kind_only=True)} does not resolve; "
                 "check it isn't mistyped"
             )
         if listed.stale:
@@ -1323,13 +1339,21 @@ def render(report: AuditReport, quiet: bool) -> int:
             f"{len(report.could_not_check)} could not be checked, because a lookup failed; "
             "run again. --strict exits 2 on these when nothing else fails."
         )
-    if not report.measured:
+    if not report.measured and not report.could_not_check:
         print(
             "nothing was checked: no entry was compared with a registry record or searched for. "
             "--strict exits 2."
         )
     elif not (mismatched or unlisted or report.could_not_check):
-        print("every checked entry matches its registry record.")
+        if report.checked:
+            print("every checked entry matches its registry record.")
+        elif report.not_found:
+            print(
+                "no entry was compared with a registry record; each one not found is on the "
+                "list of entries checked by hand."
+            )
+        else:
+            print("no entry was compared with a registry record.")
     return report.strict_exit
 
 
