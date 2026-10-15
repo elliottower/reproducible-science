@@ -471,6 +471,8 @@ def test_a_freeze_record_denies_the_edit_whatever_the_file_is_named(tmp_path, na
 def test_a_digest_line_in_a_file_not_named_as_the_plan_allows_the_edit(tmp_path, name):
     directory = tmp_path / "experiment"
     directory.mkdir()
+    if name == "prereg.md" and _case_insensitive(directory):
+        pytest.skip("on a disk that ignores case, prereg.md opens PREREG.md and is the plan")
     path = directory / name
     path.write_text(f"# Notes\n\n{FROZEN}\nQuoted from the plan.\n")
     assert sorted(entry.name for entry in directory.iterdir()) == [name]
@@ -537,6 +539,103 @@ def test_an_absolute_path_is_unchanged_by_the_cwd_of_the_session(tmp_path):
     payload = {"cwd": str(tmp_path / "elsewhere"), "tool_input": {"file_path": str(path)}}
     reason = _denial(_refused_from(tmp_path, payload, HOME=str(tmp_path / "elsewhere")))
     assert reason.startswith(f"{path} has a freeze record ({path.parent / '.prereg'}")
+
+
+def _frozen_in_place(tmp_path: pathlib.Path) -> pathlib.Path:
+    return plan(tmp_path, f"# Plan\n\n{FROZEN}\nWe will measure X.\n") / "PREREG.md"
+
+
+FREEZES = {
+    "whole": lambda tmp_path: _frozen_whole(tmp_path, "PREREG.md", "# Plan\n"),
+    "in-place": _frozen_in_place,
+}
+
+
+@pytest.mark.parametrize("freeze", FREEZES)
+def test_an_edit_through_a_symlink_to_a_frozen_plan_is_denied(tmp_path, freeze):
+    # An editor writes through the link, so the plan changes while the path names `link.md`.
+    frozen = FREEZES[freeze](tmp_path)
+    link = frozen.parent / "link.md"
+    link.symlink_to(frozen.name)
+    reason = _denial(run(REFUSED, {"tool_name": "Edit", "tool_input": {"file_path": str(link)}}))
+    assert str(frozen.resolve()) in reason
+
+
+@pytest.mark.parametrize("freeze", FREEZES)
+def test_an_edit_through_a_linked_directory_to_a_frozen_plan_is_denied(tmp_path, freeze):
+    frozen = FREEZES[freeze](tmp_path)
+    linked = tmp_path / "linked"
+    linked.symlink_to(frozen.parent, target_is_directory=True)
+    payload = {"tool_name": "Edit", "tool_input": {"file_path": str(linked / frozen.name)}}
+    assert "frozen" in _denial(run(REFUSED, payload))
+
+
+def test_a_symlink_to_an_unfrozen_file_is_edited_in_silence(tmp_path):
+    _frozen_whole(tmp_path, "PREREG.md", "# Plan\n")
+    notes = tmp_path / "experiment" / "notes.md"
+    notes.write_text("notes\n")
+    (notes.parent / "link.md").symlink_to("notes.md")
+    payload = {"tool_name": "Edit", "tool_input": {"file_path": str(notes.parent / "link.md")}}
+    assert run(REFUSED, payload).stdout.strip() == ""
+
+
+def _case_insensitive(directory: pathlib.Path) -> bool:
+    probe = directory / "Probe"
+    probe.write_text("")
+    try:
+        return (directory / "probe").exists()
+    finally:
+        probe.unlink()
+
+
+@pytest.mark.parametrize("freeze", FREEZES)
+def test_a_frozen_plan_named_in_another_case_is_denied_on_a_disk_that_ignores_case(
+    tmp_path, freeze
+):
+    if not _case_insensitive(tmp_path):
+        pytest.skip("on a case-sensitive disk prereg.md is a different file from PREREG.md")
+    frozen = FREEZES[freeze](tmp_path)
+    payload = {"tool_name": "Edit", "tool_input": {"file_path": str(frozen.parent / "prereg.md")}}
+    assert "frozen" in _denial(run(REFUSED, payload))
+
+
+@pytest.mark.parametrize("freeze", FREEZES)
+def test_a_hard_link_to_a_frozen_plan_is_denied(tmp_path, freeze):
+    # Identity rather than name: `os.path.samefile` is what catches the case above, and a hard
+    # link exercises it on every disk, case-sensitive or not.
+    frozen = FREEZES[freeze](tmp_path)
+    other = frozen.parent / "copy.md"
+    os.link(frozen, other)
+    payload = {"tool_name": "Edit", "tool_input": {"file_path": str(other)}}
+    assert "frozen" in _denial(run(REFUSED, payload))
+
+
+def _refused_without_its_detector(tmp_path: pathlib.Path, target: pathlib.Path):
+    """The refusing hook run from a folder that lacks `frozen_plan_changed.py` beside it."""
+    alone = tmp_path / "hook-alone"
+    alone.mkdir()
+    (alone / REFUSED).write_bytes((HOOKS / REFUSED).read_bytes())
+    return subprocess.run(
+        [sys.executable, str(alone / REFUSED)],
+        input=json.dumps({"tool_name": "Edit", "tool_input": {"file_path": str(target)}}),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+
+@pytest.mark.parametrize("name", ["PREREG.md", "prereg.md", "notes.md"])
+def test_a_hook_that_cannot_load_its_detector_refuses_an_edit_that_could_be_frozen(tmp_path, name):
+    directory = tmp_path / "experiment"
+    (directory / ".prereg").mkdir(parents=True)
+    reason = _denial(_refused_without_its_detector(tmp_path, directory / name))
+    assert "could not load the check" in reason
+
+
+def test_a_hook_that_cannot_load_its_detector_allows_a_file_that_cannot_be_frozen(tmp_path):
+    (tmp_path / "src").mkdir()
+    out = _refused_without_its_detector(tmp_path, tmp_path / "src" / "analysis.py")
+    assert (out.returncode, out.stdout) == (0, "")
 
 
 def _reasons_of_the_mod() -> list[str]:
