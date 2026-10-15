@@ -161,3 +161,14 @@ def test_open_items_alone_writes_no_starter_and_is_named(project, run_repro):
     assert "claims: open-items.json is already here and was not replaced" in out
     assert not (project / DEFAULT_NAME).exists()
     assert not (project / DRAFT_NAME).exists()
+
+
+def test_a_gitignore_linked_out_of_the_project_is_not_written_through(tmp_path, project, run_repro):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (project / ".gitignore").symlink_to("../outside/planted")
+    code, out = run_repro("init", cwd=project)
+    assert code == 0, out
+    assert not (outside / "planted").exists()
+    assert (project / ".gitignore").is_symlink()
+    assert "left .gitignore alone: it is a symbolic link, and nothing is written through one" in out

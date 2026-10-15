@@ -172,6 +172,12 @@ def _ignore(root: Path) -> tuple[str | None, str | None]:
     value says so. Outside a repository, and where git is absent, nothing is tracked.
     """
     path = root / ".gitignore"
+    # A dangling link does not exist, and a write to it lands where it points.
+    if path.is_symlink() or (path.exists() and not path.resolve().is_relative_to(root.resolve())):
+        return (
+            None,
+            "left .gitignore alone: it is a symbolic link, and nothing is written through one",
+        )
     existing = path.read_text(encoding="utf-8") if path.exists() else ""
     held = {line.strip().strip("/") for line in existing.splitlines()}
     folder = f"{SOURCES_DIR}/"

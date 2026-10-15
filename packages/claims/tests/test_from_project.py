@@ -347,3 +347,20 @@ def test_a_result_file_linked_out_of_the_project_is_listed_as_not_checked(tmp_pa
     assert "results/ext.json" not in {
         a.path.as_posix() for a in load(project / DRAFT_NAME).artifacts
     }
+
+
+def test_a_clause_naming_no_label_is_read_with_its_whole_sentence(project):
+    (project / "results" / "metrics.json").write_text(
+        json.dumps({"test": {"accuracy": 0.5021, "loss": 0.9312}})
+    )
+    (project / "results" / "table.csv").unlink()
+    (project / "paper.md").write_text(
+        "# R\n\nAccuracy, measured on the held-out split, was 0.931.\n"
+    )
+    from_project(project)
+    item = items_of(project)["line-3-1"]
+    assert item.context["words_before"] == "was"
+    assert item.context["words_read"] == "Accuracy, measured on the held-out split, was 0.931."
+    assert places(item) == [("metrics", "/test/loss")]
+    assert not item.unique
+    assert item.reason == "the line names a label or a split no matching address carries"

@@ -29,7 +29,9 @@ own, and every split the line names (test, train, validation) is among the addre
 The words read for a number are those before it in its own clause, at most `QUESTION_WORDS`:
 from the last comma, semicolon, colon, parenthesis or table cell before it, or the number
 before it in the same sentence, so `test loss was 0.931` names `loss` and not the `accuracy`
-of an earlier clause. A number in a table row is read with the row's label.
+of an earlier clause. Where those words name no label of any candidate and no split, the
+whole sentence is read instead, so `Accuracy, measured on the held-out split, was 0.931.` is
+read with `Accuracy`. A number in a table row is read with the row's label.
 A candidate in an index-like column or key (`claims.starter`), or in a file whose labels the
 CORE-Bench reader does not read, never passes. A unique candidate is a lead, never a binding.
 
@@ -54,10 +56,13 @@ from claims.open_items import DRAFT_NAME, ITEMS_NAME, Need, OpenItem, Source, wr
 from claims.sources import PassedOver, Written, inside, is_lfs_pointer
 from claims.sources.corebench import (
     MIN_SIGNIFICANT,
+    QUALIFIERS,
     SMALL_INTEGER,
     Refused,
     Stored,
+    _names,
     _stored,
+    _words,
     labels_agree,
     qualifiers_agree,
     specific,
@@ -163,6 +168,27 @@ def _places(candidates: list[Candidate], labelled: dict[str, Stored]) -> list[_P
     return places
 
 
+def _names_a_label(words: str, places: list[_Place]) -> bool:
+    """Whether the words name a label of any place's label sets, or a split."""
+    said = _words(words)
+    if any(set(said) & split for split in QUALIFIERS):
+        return True
+    return any(
+        _names(said, label)
+        for place in places
+        if place.stored is not None
+        for _, members in place.stored.labels
+        for label in members
+    )
+
+
+def _read_words(question: str, sentence: str, places: list[_Place]) -> str:
+    """The words the guards read: the number's own clause, or the whole sentence where the
+    clause names no label and no split, so `Accuracy, measured on the held-out split, was
+    0.931.` is read with `Accuracy`."""
+    return question if _names_a_label(question, places) else sentence
+
+
 def _guarded(question: str, value: str, places: list[_Place]) -> tuple[list[_Place], str]:
     """The places, any that pass the guards first, and why none is unique, if none is."""
     if not places:
@@ -215,7 +241,8 @@ def _item(
     compared: bool,
 ) -> OpenItem:
     value = number.value or ""
-    ordered, reason = _guarded(question, value, places)
+    read_words = _read_words(question, line, places)
+    ordered, reason = _guarded(read_words, value, places)
     if not compared:
         reason = "not compared: the survey stopped at its limit of comparisons"
     where = f"on line {number.line}" if number.line is not None else "in its text"
@@ -232,6 +259,7 @@ def _item(
             "line": number.line,
             "text": line,
             "words_before": question,
+            "words_read": read_words,
             "candidates_found": len(ordered),
         },
         candidates=tuple(

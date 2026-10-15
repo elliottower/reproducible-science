@@ -141,7 +141,8 @@ def cmd_new(a) -> int:
     (d / "results").mkdir(exist_ok=True)
     title = a.title or d.name.replace("_", " ").replace("-", " ")
     (d / PREREG).write_text(template.render(title))
-    if not (d / ".gitignore").exists():
+    # A dangling link does not exist, and a write to it would land where it points.
+    if not (d / ".gitignore").exists() and not (d / ".gitignore").is_symlink():
         (d / ".gitignore").write_text(NEW_GITIGNORE)
     print(f"created {d}/")
     print(f"  {PREREG}   the plan, in OSF's headings")
