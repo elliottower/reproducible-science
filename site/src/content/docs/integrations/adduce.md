@@ -1,6 +1,6 @@
 ---
 title: adduce
-description: The rule R-REPRO-001 runs repro verify inside adduce check, with one item per checked assertion.
+description: The rule R-REPRO-001 runs claims verify inside adduce check, with one item per checked assertion.
 ---
 
 adduce scores a repository for reproducibility across categories. Installing the `adduce`
@@ -12,7 +12,7 @@ adduce is not a dependency of this toolkit, and this toolkit is not a dependency
 
 The `repro.yaml` at the repository root. Where there is none at the root, the one manifest
 outside folders named `test`, `tests`, `fixture`, `fixtures`, `example`, `examples` or
-`conformance`. It then checks every assertion as `repro verify` does.
+`conformance`. It then checks every assertion as `claims verify` does.
 
 ## Writes
 

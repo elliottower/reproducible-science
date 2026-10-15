@@ -12,7 +12,7 @@ writes ordinary workflow files into the project, each running one pinned `repro 
 - `repro ci init`: which records the project keeps (frozen plans, a ledger, a manifest, claims
   files, recorded re-runs) and the `origin` remote, for the badge address.
 - `repro ci <check>`, in the job: that tool's own check. `prereg`, `results` and `citations` run
-  the tool's check, `claims` runs what `repro verify` and `repro stale` run, and `reruns` checks
+  the tool's check, `claims` runs what `claims verify` runs, and `reruns` checks
   that a re-run of each declared command is on record.
 - `repro badges init`: the same checks, and `.repro/citations-verified.json`, which
   `repro badges --record` writes on the author's machine, because a clone does not hold the cited

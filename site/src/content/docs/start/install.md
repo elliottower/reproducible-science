@@ -17,8 +17,8 @@ pip install results-cli   # the run ledger only
 pip install claims-cli    # claims checking only
 ```
 
-`claims-cli` is the code behind `repro verify`, `stale`, `why`, `numbers`, `export` and
-`origins`, under the command `claims`. It runs no command a manifest names, so it suits a
+`claims-cli` is the code behind `claims verify`, `stale`, `why`, `numbers`, `export` and
+`origins`, under the command `claims`; `repro verify` adds the checks of the other three tools. It runs no command a manifest names, so it suits a
 machine that should only read a project's files.
 
 Python 3.11 or newer. Every package carries the same version and is released the same day, so

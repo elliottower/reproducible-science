@@ -39,5 +39,6 @@ Each tool also ships on its own, for anyone who wants one of them:
 The plugin ships instructions and hooks, not binaries, so install the tools as well:
 
 ```bash
-uv tool install reproducible-science   # or: pip install reproducible-science
+uv tool install reproducible-science --with-executables-from claims-cli,prereg,results-cli,citations
+# or: pip install reproducible-science
 ```

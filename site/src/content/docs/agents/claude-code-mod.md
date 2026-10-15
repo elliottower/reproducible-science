@@ -28,7 +28,6 @@ that cannot load it still loads the plugin.
 | `/repro-status` | The same readout on demand, with the sealed files hashed. Instant, and no model turn. |
 | `/repro-verify` | Checks every pinned quotation of the working project against its source, which takes minutes on a large project, and keeps the count for the readout. |
 | `/repro-hide`, `/repro-show` | Hides the readout above the prompt, and shows it again. A warning still appears while it is hidden. |
-| `/repro-fixes` | Lists the fix requests sent from the lineage view for this project. `/repro-fixes load` puts the oldest in the prompt box. |
 
 ## The status row
 
@@ -45,10 +44,14 @@ frozen and nothing may be claimed from it.
 `citations` is the last full check by `/repro-verify`, and before one has run it is the count
 pinned: `citations: 120 pinned, not verified`. Checking quotations takes minutes on a large
 project, so the row never runs it. A check that does not finish in a minute marks its own field
-`not read (timed out)` and leaves the others standing.
+`not read (timed out)` and leaves the others standing. A tool that is not on PATH is run as
+`repro <tool>`, which is how `uv tool install reproducible-science` without
+`--with-executables-from` leaves it, and a field whose tool cannot be run either way reads
+`not installed`.
 
-`repro` is the checks `repro verify` verified over all the manifest declares, one per assertion. The manifest is
-the `repro.yaml` at the project's top or above it, which is the one `repro verify` reads without
+`repro` is the checks `claims verify` verified over all the manifest declares, one per assertion: the
+claims alone, which is the fast check. The manifest is
+the `repro.yaml` at the project's top or above it, which is the one `claims verify` reads without
 being given a path. A manifest under another name or in a subfolder (`paper/repro.yaml`) is not
 found, and a project with none reads `repro: no manifest`. Claims are counted on the `results`
 row, where `results claim` makes them:
@@ -58,7 +61,7 @@ row, where `results claim` makes them:
     repro: 6/6 checks verified, 1 broken pin
 
 A pinned file that changed is named because the assertions read from it still verify, against a
-file that is not the declared one. Where `repro verify` does not print a line for every
+file that is not the declared one. Where `claims verify` does not print a line for every
 assertion and some did not verify, the field gives the tool's own words: `repro: 1 mismatch,
 33 verified`. The check takes under a second on a manifest of
 56 assertions, so it runs with the others at the end of each turn.
@@ -77,7 +80,7 @@ disk, and the same holds for every command upstream. A command `repro stale` cal
 number. The date is the day the latest of the re-runs compared against started, in the
 machine's time zone, and `in CI` follows it where that re-run's entry carries a `witness`. The
 row is read from `repro stale --format json`, which executes nothing and takes about as long as
-`repro verify`, and it is not run for a manifest with no `regenerations`, which draws no row.
+`claims verify`, and it is not run for a manifest with no `regenerations`, which draws no row.
 Neither does a record of re-runs with a line `repro stale` cannot read.
 
 A row whose tool has a next step still to take names the command that takes it, directly after
@@ -103,7 +106,7 @@ The warnings, each on the pinned line as `repro: ...`:
 | `3 runs, no plan frozen` | runs are recorded and no plan is frozen |
 | `1 number mismatched` | a number in the manuscript disagrees with the artifact `repro.yaml` binds it to |
 | `1 quotation mismatched` | the same, for a `quote` assertion |
-| `2 claims mismatched` | the same, where the kind could not be read off `repro verify`'s lines |
+| `2 claims mismatched` | the same, where the kind could not be read off `claims verify`'s lines |
 | `1 quotation not found` | after `/repro-verify`: a pinned quotation is not in its source |
 | `1 claim on test runs` | a manuscript number is bound to a run named as a test run |
 
@@ -123,21 +126,6 @@ ledger, a `claims/` directory, a `PREREG.md` or a `paper/` directory.
     /repro-status auto             go back to following the files
 
 The model can set it too, through the `set_project` tool the mod registers.
-
-## Fix requests from the lineage view
-
-The lineage view in `reproducible-science-graph` has a "Fix with Claude Code" button on a failing
-claim or a stale rebuild step. It appends a request to `~/.claude/repro-fixes/queue.jsonl`, one
-JSON object per line with `id`, `created_at`, `project`, `subject`, `kind` and `prompt`. The mod
-reads the queue every few seconds and draws the oldest request as one more row under the readout:
-
-    ◆ Failing claim: effect-size (+1 more) [Load into prompt] [Dismiss]
-
-The row shows only in a session whose folder is that project or lies inside it, or that has
-worked in that project by the rule above. "Load into prompt" fills the prompt box, and nothing
-is sent until the person presses Enter. A loaded or dismissed request's id is written to
-`~/.claude/repro-fixes/handled.json` and does not show again. `/repro-hide` leaves the row
-standing.
 
 ## Install
 
