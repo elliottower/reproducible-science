@@ -10,7 +10,7 @@ GET /api/health tells the page that re-checking is available, so the button stay
 same files are served by a plain static host.
 
 POST /api/fix-request appends {id, created_at, project, subject, kind, prompt} to
-~/.claude/repro-fixes/queue.jsonl, which the repro-fixes Claude Code mod watches: a session working
+~/.claude/repro-fixes/queue.jsonl, which the repro Claude Code mod watches: a session working
 in that project shows the request above its prompt and loads the prompt into the box on request.
 It never starts an agent or runs anything.
 
@@ -18,6 +18,10 @@ POST /api/reproduce with {"only": [step ids]} or {"only": null} runs `repro repr
 rebuild steps, or for all of them. That executes the commands repro.yaml declares, so the page asks
 before calling it. `repro reproduce` appends the re-run to the project's .repro/reproductions.jsonl;
 the graph is then rebuilt from the records.
+
+Every request must name this server by a loopback address. Every POST must also come from this
+server's own page: JSON, from its own origin, carrying the token the server put in the page it
+served at launch. A page on another site, or a domain rebound to this address, is refused.
 """
 
 from __future__ import annotations
@@ -26,9 +30,11 @@ import argparse
 import datetime
 import functools
 import hashlib
+import hmac
 import http.server
 import json
 import pathlib
+import secrets
 import subprocess
 import threading
 import time
@@ -42,6 +48,8 @@ from repro_ui import graph as build_graph
 
 #: The built page, which every wheel carries.
 DIST = pathlib.Path(__file__).resolve().parent / "static"
+#: The header a POST carries the launch token in.
+TOKEN_HEADER = "X-Repro-UI-Token"
 QUEUE = pathlib.Path.home() / ".claude" / "repro-fixes" / "queue.jsonl"
 MAX_PROMPT = 8000
 MAX_FILE = 2_000_000
@@ -70,6 +78,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     groups: pathlib.Path | None
     data: pathlib.Path
     fetch: bool = True
+    #: Made at launch and written into the page this server serves; a POST must carry it back.
+    token: str = ""
     lock = threading.Lock()
 
     def log_message(self, format: str, *args: object) -> None:  # one line per request is noise
@@ -83,7 +93,44 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(data)
 
+    def _local(self) -> bool:
+        """Whether the request names this server by a loopback address, as the page does.
+
+        A page on another site can make the browser send requests here. Refusing a `Host` that
+        is not `127.0.0.1` or `localhost` at this port stops a rebound domain from reading
+        anything; for a request that changes something, the `Origin` the browser sets must be
+        this server too, and the body must be sent as JSON, which no form and no simple
+        cross-site request can do without the browser asking first."""
+        port = self.server.server_address[1]
+        ours = {f"127.0.0.1:{port}", f"localhost:{port}"}
+        if self.headers.get("Host") not in ours:
+            return False
+        if self.command != "POST":
+            return True
+        origin = self.headers.get("Origin")
+        if origin is not None and origin not in {f"http://{h}" for h in ours}:
+            return False
+        if (self.headers.get("Content-Type") or "").split(";")[0].strip() != "application/json":
+            return False
+        sent = self.headers.get(TOKEN_HEADER) or ""
+        return bool(self.token) and hmac.compare_digest(sent, self.token)
+
+    def _body(self) -> dict | None:
+        """The request's JSON object, or None where it is not one."""
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+            if length < 0:
+                return None
+            body = json.loads(self.rfile.read(min(length, 64_000)) or b"{}")
+        except (ValueError, json.JSONDecodeError):
+            return None
+        return body if isinstance(body, dict) else None
+
     def do_GET(self) -> None:
+        if not self._local():
+            return self._json(403, {"ok": False, "error": "not this server's address"})
+        if self.path.split("?")[0] in {"/", "/index.html"}:
+            return self._page()
         if self.path == "/api/health":
             return self._json(200, {"recheck": True, "project": str(self.project)})
         if self.path.startswith("/api/file?"):
@@ -100,6 +147,18 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.wfile.write(data)
             return
         super().do_GET()
+
+    def _page(self) -> None:
+        """The page, with this launch's token in it for the page to send back on every POST."""
+        html = (pathlib.Path(self.directory) / "index.html").read_text()
+        meta = f'<meta name="repro-ui-token" content="{self.token}" />'
+        data = html.replace("<head>", f"<head>\n    {meta}", 1).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
 
     def _file(self, rel: str) -> None:
         """A file the records name (a run's output, or a file the manifest pins), read-only, from
@@ -127,11 +186,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         return self._json(200, {"ok": True, "text": target.read_text(errors="replace")})
 
     def _fix_request(self) -> None:
-        length = int(self.headers.get("Content-Length") or 0)
-        try:
-            body = json.loads(self.rfile.read(min(length, 64_000)) or b"{}")
-        except json.JSONDecodeError:
-            return self._json(400, {"ok": False, "error": "body is not JSON"})
+        body = self._body()
+        if body is None:
+            return self._json(400, {"ok": False, "error": "body is not a JSON object"})
         prompt, subject, kind = (
             body.get("prompt"),
             body.get("subject"),
@@ -155,20 +212,21 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         self._json(200, {"ok": True, "id": request["id"]})
 
     def _reproduce(self) -> None:
-        length = int(self.headers.get("Content-Length") or 0)
-        try:
-            body = json.loads(self.rfile.read(min(length, 64_000)) or b"{}")
-        except json.JSONDecodeError:
-            return self._json(400, {"ok": False, "error": "body is not JSON"})
+        body = self._body()
+        if body is None:
+            return self._json(400, {"ok": False, "error": "body is not a JSON object"})
         only = body.get("only")
         declared = {
-            r["id"]
+            r.get("id")
             for r in yaml.safe_load((self.project / "repro.yaml").read_text()).get(
                 "regenerations", []
             )
         }
         if only is not None and (
-            not isinstance(only, list) or not only or not set(only) <= declared
+            not isinstance(only, list)
+            or not only
+            or not all(isinstance(i, str) for i in only)
+            or not set(only) <= declared
         ):
             return self._json(
                 400,
@@ -178,7 +236,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 },
             )
         command = [
-            "repro",
+            build_graph.tool("repro"),
             "reproduce",
             "--format",
             "json",
@@ -232,6 +290,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             self.lock.release()
 
     def do_POST(self) -> None:
+        if not self._local():
+            return self._json(403, {"ok": False, "error": "not a request from this page"})
         if self.path == "/api/fix-request":
             return self._fix_request()
         if self.path == "/api/reproduce":
@@ -301,6 +361,7 @@ def main(argv: list[str] | None = None) -> int:
     Handler.groups = a.groups
     Handler.data = data_dir(project)
     Handler.fetch = not a.offline
+    Handler.token = secrets.token_urlsafe(24)
     print(f"reading {project} ...")
     build_graph.build(
         project, Handler.data / "graph.json", a.groups, check=False, fetch=Handler.fetch

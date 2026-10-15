@@ -62,20 +62,14 @@ jobs:
           echo "https://pypi.org/manage/project/${PROJECT}/settings/publishing/"
           exit 1
 
-  publish:
-    # Only a pushed tag releases. A manual dispatch verifies the binding and publishes
-    # nothing, so this tests the event as well as the ref -- a dispatch can now name a tag,
-    # and a gate reading the ref alone would upload from one.
+  build:
+    # Built in a job of its own, with no way to mint an upload token: the page is built with
+    # npm, and an install script of any npm package runs here. The other publish workflows run
+    # no npm and build in the publishing job; this one hands its files over as an artifact.
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
-    needs: binding
     runs-on: ubuntu-latest
-    environment: release
     permissions:
-      id-token: write
       contents: read
-    defaults:
-      run:
-        working-directory: packages/ui
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
@@ -86,16 +80,35 @@ jobs:
           # that then gets signed and published.
           enable-cache: false
       - run: uv sync --all-packages
-        working-directory: .
       - run: uv run pytest
-        working-directory: .
-      # The wheel carries the built page, which the build hook makes with npm.
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
         with:
           node-version: "22"
           # No cache on a release run, for the reason setup-uv has none above.
           package-manager-cache: false
-      - run: uv build --package reproducible-science-ui --out-dir dist
+      - run: uv build --package reproducible-science-ui --out-dir packages/ui/dist
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: reproducible-science-ui-dist
+          path: packages/ui/dist
+          if-no-files-found: error
+
+  publish:
+    # Only a pushed tag releases. A manual dispatch verifies the binding and publishes
+    # nothing, so this tests the event as well as the ref -- a dispatch can now name a tag,
+    # and a gate reading the ref alone would upload from one. It builds nothing and runs no
+    # code of the project's: it uploads what `build` made.
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    needs: [binding, build]
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          name: reproducible-science-ui-dist
+          path: dist
       - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33  # release/v1
         with:
-          packages-dir: packages/ui/dist
+          packages-dir: dist

@@ -14,8 +14,10 @@ import json
 import pathlib
 import re
 import subprocess
+import sysconfig
 import unicodedata
 import urllib.error
+import urllib.parse
 import urllib.request
 
 import yaml
@@ -30,13 +32,29 @@ MANUSCRIPT_IDS = {"manuscript", "manuscript-text", "appendix", "appendix-text"}
 OUTCOME_RANK = ["mismatch", "not_found", "error", "unchecked", "verified"]
 
 
+def tool(name: str) -> str:
+    """The command `name` from the environment this package is installed in, where it is there.
+
+    The page reads the JSON these commands print, so it has to run the version installed beside
+    it: a different `repro` earlier on PATH, such as an older tool install, prints another shape.
+    Falls back to PATH where the environment has no such script."""
+    script = pathlib.Path(sysconfig.get_path("scripts")) / name
+    return str(script) if script.is_file() else name
+
+
+def is_doi_address(url: str) -> bool:
+    """Whether `url` is an address at doi.org, by its host rather than by a substring of it."""
+    host = urllib.parse.urlparse(url).hostname or ""
+    return host in {"doi.org", "dx.doi.org"}
+
+
 def sha256(path: pathlib.Path) -> str | None:
     return hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
 
 
 def repro_json(project: pathlib.Path, command: str) -> dict:
     out = subprocess.run(
-        ["repro", command, "--format", "json", str(project / "repro.yaml")],
+        [tool("repro"), command, "--format", "json", str(project / "repro.yaml")],
         cwd=project,
         capture_output=True,
         text=True,
@@ -291,7 +309,7 @@ def status_lines(project: pathlib.Path, report: dict) -> dict:
     Read-only: none of these commands writes."""
     fields: dict[str, dict] = {}
 
-    plans = run_text(["prereg", "check"], project)
+    plans = run_text([tool("prereg"), "check"], project)
     counts = collections.Counter()
     for line in (plans or "").splitlines():
         pinned = re.match(r"^(unchanged|appended|CHANGED|pending|unknown commit)\s{2,}[^/\s]", line)
@@ -321,7 +339,7 @@ def status_lines(project: pathlib.Path, report: dict) -> dict:
 
     ledger = project / ".results" / "ledger.jsonl"
     if ledger.exists():
-        verified = run_text(["results", "verify"], project) or ""
+        verified = run_text([tool("results"), "verify"], project) or ""
         head = verified.split("\n")[0]
         if re.search(r"chain intact: \d+ events", head):
             events = [json.loads(x) for x in ledger.read_text().splitlines() if x.strip()]
@@ -549,9 +567,9 @@ def landing_url(url: str, doi: str, cache: dict[str, str], fetch: bool = True) -
     cached, because a doi.org link says nothing about where it goes. Unresolvable: left as given.
     Without `fetch`, only what is already cached is used and nothing reaches the network."""
     target = url or (f"https://doi.org/{doi}" if doi else "")
-    if not target or "doi.org/" not in target:
+    if not target or not is_doi_address(target):
         return target
-    if target in cache and "doi.org/" not in cache[target]:
+    if target in cache and not is_doi_address(cache[target]):
         return cache[target]
     if not fetch:
         return target
@@ -566,7 +584,7 @@ def landing_url(url: str, doi: str, cache: dict[str, str], fetch: bool = True) -
                 cache[target] = r.geturl()
                 return cache[target]
         except urllib.error.HTTPError as e:  # a 403 after the redirect still names the landing page
-            if e.url and "doi.org/" not in e.url:
+            if e.url and not is_doi_address(e.url):
                 cache[target] = e.url
                 return cache[target]
         except Exception:  # timeout, refused connection: try the next method
@@ -687,7 +705,9 @@ def record_tabs(
 ) -> dict:
     """What the Prereg, Results, Citations and Reproduce tabs list, read from the records themselves."""
     # prereg: what `prereg check` printed, one line per plan.
-    plans = [ln for ln in (run_text(["prereg", "check"], project) or "").splitlines() if ln.strip()]
+    plans = [
+        ln for ln in (run_text([tool("prereg"), "check"], project) or "").splitlines() if ln.strip()
+    ]
 
     # results: every run, whether a seal came before it, and the sentences bound with `results claim`.
     runs, sealed_yet, seals = [], False, 0
@@ -886,7 +906,7 @@ def record_tabs(
             ref = target.get("ref", "")
             doi = (
                 re.sub(r"^(doi:|https?://(dx\.)?doi\.org/)", "", ref)
-                if (target.get("kind", "").startswith("doi:") or "doi.org/" in ref)
+                if (target.get("kind", "").startswith("doi:") or is_doi_address(ref))
                 else ""
             )
             url = (

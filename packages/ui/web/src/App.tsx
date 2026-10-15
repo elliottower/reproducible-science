@@ -5,6 +5,7 @@ import Overview, { type Tab } from './Overview'
 import { CitationsTab, PreregTab, ReproduceTab, ResultsTab } from './Records'
 import { FixCtx, ProblemPill, projectPrompt } from './fix'
 import { ReproduceButton, VerifyButton } from './reproduce'
+import { post } from './api'
 import { layout, summarize } from './layout'
 import { nodeTypes, UiCtx } from './nodes'
 import { fmt, Panel, when } from './shared'
@@ -308,7 +309,7 @@ export default function App() {
   const run = (kind: 'refresh' | 'verify') => {
     setBusy(kind)
     setMessage(null)
-    fetch(`api/${kind}`, { method: 'POST' })
+    post(`api/${kind}`, {})
       .then((r) => r.json())
       .then((res) => {
         setMessage(res.ok ? null : `${kind === 'verify' ? 'repro verify' : 'Refresh'} failed: ${res.error}`)
@@ -322,7 +323,7 @@ export default function App() {
     setBusy('reproduce')
     setReproducing(only)
     setMessage(null)
-    fetch('api/reproduce', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ only }) })
+    post('api/reproduce', { only })
       .then((r) => r.json())
       .then((res) => {
         const counts = Object.entries(res.counts ?? {}).map(([k, v]) => `${v} ${k}`).join(', ')

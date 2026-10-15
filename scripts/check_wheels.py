@@ -188,6 +188,11 @@ def main() -> int:
             )
             return 1
         print("  reproducible-science-ui carries its built page")
+        helped = run(str(venv / "bin" / "repro-ui"), "--help")
+        if helped.returncode:
+            print(f"  FAIL repro-ui --help from the wheel\n{helped.stdout}{helped.stderr}")
+            return 1
+        print("  repro-ui --help runs from the wheel")
 
         quote = run(
             str(python), "-c", "from citations.verify import check_one; print('quote backend: ok')"

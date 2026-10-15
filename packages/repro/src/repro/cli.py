@@ -19,6 +19,7 @@
     repro citations       run `citations`: does every quotation resolve in its source?
     repro results         run `results`: seal a run, record it, verify the chain
     repro mcp             serve these checks to an agent as MCP tools, over standard input and output
+    repro ui              serve a page over this project's records on localhost
 
 A renderer over the library and nothing more. `verify` calls `claims.verify()` and
 `Policy.assess()`, both of which return values, so anything this prints can also be obtained

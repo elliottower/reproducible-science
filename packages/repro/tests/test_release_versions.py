@@ -259,7 +259,6 @@ def test_a_bump_moves_an_extras_sibling_range_and_leaves_bare_extras_and_keyword
 ):
     manifest = tmp_path / "pyproject.toml"
     manifest.write_text(WITH_EXTRAS)
-    monkeypatch.setattr(versions, "PACKAGES", {"reproducible-science": manifest})
     monkeypatch.setattr(versions, "PLUGIN_MANIFESTS", ())
     monkeypatch.setattr(versions, "HOOKS", tmp_path / "absent.yaml")
     monkeypatch.setattr(versions, "HOOK_README", tmp_path / "absent.md")
@@ -291,3 +290,29 @@ def test_every_extra_in_this_workspace_that_pins_a_sibling_pins_the_release_seri
         for dep, spec in versions.optional_refs(path.read_text()):
             if dep != name:
                 assert spec == want, f"{name}: extra pins {dep}{spec}, want {want}"
+
+
+def test_versions_check_reports_an_extra_whose_sibling_range_is_behind_the_release(
+    tmp_path, monkeypatch
+):
+    """The check has to fail on the defect: an extra left at the previous series is an install
+    that cannot resolve, and `check` read only `dependencies` before."""
+    manifest = tmp_path / "pyproject.toml"
+    manifest.write_text(WITH_EXTRAS.replace('version = "0.3.0"', 'version = "0.4.0"'))
+    other = tmp_path / "ui.toml"
+    other.write_text('[project]\nname = "reproducible-science-ui"\nversion = "0.4.0"\n')
+    claims = tmp_path / "claims.toml"
+    claims.write_text('[project]\nname = "claims-cli"\nversion = "0.4.0"\n')
+    monkeypatch.setattr(
+        versions,
+        "PACKAGES",
+        {"reproducible-science": manifest, "reproducible-science-ui": other, "claims-cli": claims},
+    )
+    monkeypatch.setattr(versions, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(versions, "PLUGIN_MANIFESTS", ())
+    monkeypatch.setattr(versions, "HOOKS", tmp_path / "absent.yaml")
+    monkeypatch.setattr(versions, "HOOK_README", tmp_path / "absent.md")
+    monkeypatch.setattr(versions, "CITATION", tmp_path / "absent.cff")
+    monkeypatch.setattr(versions, "below_floor", lambda version: None)
+    problems = versions.check()
+    assert any("reproducible-science-ui>=0.3,<0.4" in p for p in problems), problems

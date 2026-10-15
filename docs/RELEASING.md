@@ -18,7 +18,8 @@ Per-package tags (`citations-v*`, `prereg-v*`, `results-v*`, `repro-v*`,
 `provenance-core-v*`) start one workflow each, for a repair -- republishing one package after
 a partial failure -- and not for an ordinary release. Both jobs of a publish workflow run in the
 `release` environment, which admits only tags matching `v*`, so a run started by one of these
-cannot publish until that rule admits its tag. `publish-claims.yml` takes `v*` alone.
+cannot publish until that rule admits its tag. `publish-claims.yml` and `publish-ui.yml` take
+`v*` alone: `reproducible-science-ui` has no per-package tag.
 
 ## 1. Set the version
 
@@ -171,7 +172,7 @@ hand: **Your account → Publishing → Add a new pending publisher → GitHub**
 The workflow name is the file's name, not the `name:` inside it. A pending publisher reserves
 nothing: until the first upload anyone can take the name.
 
-`reproducible-science-ui` is new in 0.7.0 and needs the same, with **PyPI Project Name**
+`reproducible-science-ui` is new in the next release and needs the same, with **PyPI Project Name**
 `reproducible-science-ui` and **Workflow name** `publish-ui.yml`; the other fields are as above.
 Its wheel carries the built web page, so `publish-ui.yml` and the `packaging` job of `ci.yml` set
 up Node before building: the build hook in `packages/ui/hatch_build.py` runs `npm ci` and
@@ -266,7 +267,8 @@ uv run --isolated --no-project \
   --with dist/claims_cli-X.Y.Z-py3-none-any.whl \
   --with dist/reproducible_science-X.Y.Z-py3-none-any.whl \
   --with dist/provenance_core-X.Y.Z-py3-none-any.whl \
-  python -c "import citations, prereg, results, claims, repro, provenance_core"
+  --with dist/reproducible_science_ui-X.Y.Z-py3-none-any.whl \
+  python -c "import citations, prereg, results, claims, repro, provenance_core, repro_ui"
 ```
 
 Install all seven together in a clean environment, invoke each console script, and re-run the

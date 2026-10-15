@@ -1,4 +1,5 @@
 import { createContext, useContext, useState } from 'react'
+import { post } from './api'
 import type { ClaimRow, GNode, Graph } from './types'
 
 /** Whether the page is served by builder/serve.py, which can queue a request for Claude Code. */
@@ -79,11 +80,7 @@ function useFix(prompt: string, subject: string) {
   }
   const copy = () => navigator.clipboard.writeText(prompt).then(() => done('Prompt copied'), () => done('Could not copy'))
   const send = () =>
-    fetch('api/fix-request', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project, subject, kind: 'claim', prompt }),
-    })
+    post('api/fix-request', { project, subject, kind: 'claim', prompt })
       .then((r) => r.json())
       .then((res) => done(res.ok ? 'Sent to Claude Code' : `Not sent: ${res.error}`))
       .catch((e) => done(`Not sent: ${e}`))

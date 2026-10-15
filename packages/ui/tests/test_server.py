@@ -5,13 +5,17 @@ from __future__ import annotations
 import functools
 import http.server
 import json
+import pathlib
 import subprocess
+import sysconfig
 import threading
 import urllib.error
 import urllib.request
 
 import pytest
 from repro_ui import graph, server
+
+TOKEN = "launch-token"
 
 
 @pytest.fixture
@@ -20,11 +24,13 @@ def served(project, tmp_path):
     graph.build(project, data / "graph.json", check=False, fetch=False)
     static = tmp_path / "static"
     static.mkdir()
-    (static / "index.html").write_text("<!doctype html><title>page</title>")
+    (static / "index.html").write_text(
+        "<!doctype html><html><head><title>page</title></head></html>"
+    )
     handler = type(
         "TestHandler",
         (server.Handler,),
-        {"project": project, "groups": None, "data": data, "fetch": False},
+        {"project": project, "groups": None, "data": data, "fetch": False, "token": TOKEN},
     )
     httpd = http.server.ThreadingHTTPServer(
         ("127.0.0.1", 0), functools.partial(handler, directory=str(static))
@@ -50,7 +56,7 @@ def post(url: str, body: dict) -> tuple[int, dict]:
         url,
         data=json.dumps(body).encode(),
         method="POST",
-        headers={"Content-Type": "application/json"},
+        headers={"Content-Type": "application/json", server.TOKEN_HEADER: TOKEN},
     )
     try:
         with urllib.request.urlopen(req, timeout=120) as r:
@@ -97,3 +103,77 @@ def test_a_folder_with_no_manifest_is_refused_before_anything_is_built(tmp_path,
 def test_the_data_of_a_project_in_git_is_kept_inside_its_git_directory(project):
     subprocess.run(["git", "init", "-q"], cwd=project, check=True)
     assert server.data_dir(project) == (project / ".git").resolve() / "repro" / "ui"
+
+
+def raw(url: str, method: str = "GET", body: bytes = b"", headers: dict | None = None) -> int:
+    req = urllib.request.Request(
+        url, data=body if method == "POST" else None, method=method, headers=headers or {}
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r:
+            return r.status
+    except urllib.error.HTTPError as e:
+        return e.code
+
+
+def test_a_request_from_another_site_changes_nothing(served, project, tmp_path, monkeypatch):
+    queue = tmp_path / "queue.jsonl"
+    monkeypatch.setattr(server, "QUEUE", queue)
+    fix = json.dumps({"prompt": "run this", "subject": "s", "kind": "claim"}).encode()
+    run = json.dumps({"only": None}).encode()
+    # What a page on another site can send: its own Origin, or a body that is not declared JSON.
+    for headers in (
+        {"Content-Type": "application/json", "Origin": "https://evil.example"},
+        {"Content-Type": "text/plain"},
+    ):
+        assert raw(f"{served}/api/fix-request", "POST", fix, headers) == 403
+        assert raw(f"{served}/api/reproduce", "POST", run, headers) == 403
+        assert raw(f"{served}/api/verify", "POST", b"{}", headers) == 403
+    assert not queue.exists()
+    assert not (project / ".repro" / "reproductions.jsonl").exists()
+    # The page itself sends JSON from this server's own address, and is let through.
+    own = {
+        "Content-Type": "application/json",
+        "Origin": served.replace("127.0.0.1", "localhost"),
+        server.TOKEN_HEADER: TOKEN,
+    }
+    assert raw(f"{served}/api/fix-request", "POST", fix, own) == 200
+    assert queue.read_text().count("\n") == 1
+
+
+def test_a_domain_rebound_to_this_server_reads_nothing(served):
+    port = served.rsplit(":", 1)[1]
+    for path in ("/api/health", "/graph.json", "/api/file?path=results.json", "/"):
+        assert raw(f"{served}{path}", headers={"Host": f"attacker.example:{port}"}) == 403, path
+
+
+def test_a_malformed_request_is_answered_and_refused(served):
+    json_headers = {"Content-Type": "application/json", server.TOKEN_HEADER: TOKEN}
+    assert raw(f"{served}/api/reproduce", "POST", b"[1, 2]", json_headers) == 400
+    assert raw(f"{served}/api/reproduce", "POST", b'{"only": [{}]}', json_headers) == 400
+    assert raw(
+        f"{served}/api/reproduce", "POST", b"{}", {**json_headers, "Content-Length": "abc"}
+    ) in (400, 411)
+    assert raw(f"{served}/api/fix-request", "POST", b'"a string"', json_headers) == 400
+
+
+def test_the_commands_the_page_runs_are_the_ones_installed_beside_it():
+    path = graph.tool("repro")
+    assert path == str(pathlib.Path(sysconfig.get_path("scripts")) / "repro")
+    assert graph.tool("not-a-command-anywhere") == "not-a-command-anywhere"
+
+
+def test_a_post_without_this_launchs_token_is_refused_and_the_page_carries_it(
+    served, tmp_path, monkeypatch
+):
+    queue = tmp_path / "queue.jsonl"
+    monkeypatch.setattr(server, "QUEUE", queue)
+    fix = json.dumps({"prompt": "p", "subject": "s", "kind": "claim"}).encode()
+    for token in (None, "a-guess"):
+        headers = {"Content-Type": "application/json"} | (
+            {server.TOKEN_HEADER: token} if token else {}
+        )
+        assert raw(f"{served}/api/fix-request", "POST", fix, headers) == 403
+    assert not queue.exists()
+    _, page = get(f"{served}/")
+    assert f'<meta name="repro-ui-token" content="{TOKEN}" />' in page

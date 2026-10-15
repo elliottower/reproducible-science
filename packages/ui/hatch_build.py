@@ -19,9 +19,21 @@ WEB = HERE / "web"
 STATIC = HERE / "src" / "repro_ui" / "static"
 
 
+def built_and_current() -> bool:
+    """Whether the page is built, and built after every file of its source last changed.
+
+    An sdist holds no `web/src`, so there the built page is current by definition."""
+    index = STATIC / "index.html"
+    if not index.is_file():
+        return False
+    sources = [f for f in (WEB / "src").rglob("*") if f.is_file()] if (WEB / "src").is_dir() else []
+    sources += [f for f in (WEB / "index.html", WEB / "package-lock.json") if f.is_file()]
+    return all(f.stat().st_mtime <= index.stat().st_mtime for f in sources)
+
+
 class WebBuildHook(BuildHookInterface):
     def initialize(self, version: str, _build_data: dict) -> None:
-        if version == "editable" or (STATIC / "index.html").is_file():
+        if version == "editable" or built_and_current():
             return
         npm = shutil.which("npm")
         if npm is None or not (WEB / "package.json").is_file():
