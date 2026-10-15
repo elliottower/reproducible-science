@@ -42,8 +42,8 @@ function IssueRow({ row, onOpen }: { row: Issue; onOpen: (o: IssueOpen) => void 
       <div className="issue-note">{row.note}</div>
       {row.items.length > 1 && (
         <div className="issue-items">
-          {row.items.slice(0, 8).map((i) => (
-            <button key={i.label} className="link-btn mono small" onClick={() => onOpen(i.open)} title="Open in UI">{i.label}</button>
+          {row.items.slice(0, 8).map((i, k) => (
+            <button key={k} className="link-btn mono small" onClick={() => onOpen(i.open)} title="Open in UI">{i.label}</button>
           ))}
           {row.items.length > 8 && <span className="muted small">and {row.items.length - 8} more</span>}
         </div>

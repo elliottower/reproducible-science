@@ -224,12 +224,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         """The recorded bytes of a file against the file now, for an item of the issues list in
         graph.json: a plan against its frozen commit, a sealed file against the commit holding
         the sealed bytes. Read-only. A path the issues list does not name is refused."""
-        graph = json.loads((self.data / "graph.json").read_text())
         try:
+            graph = json.loads((self.data / "graph.json").read_text())
             body = build_graph.issue_diff(self.project, graph, issue, rel)
         except build_graph.NotNamed:
             return self._json(404, {"ok": False, "error": "not a file the records name"})
-        except (OSError, subprocess.SubprocessError) as e:
+        except (OSError, ValueError, subprocess.SubprocessError) as e:
             return self._json(500, {"ok": False, "error": f"could not read the file: {e}"})
         return self._json(200, body)
 

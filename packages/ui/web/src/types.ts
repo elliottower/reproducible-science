@@ -141,7 +141,7 @@ export interface Graph {
 export interface StatusField {
   state: 'none' | 'read' | 'unread' | 'broken' | 'unverified'
   ok: boolean | null
-  plans?: number; frozen?: number; changed?: number; drafts?: number; amendments?: number
+  plans?: number; frozen?: number; changed?: number; drafts?: number; amendments?: number; unknown?: number
   runs?: number; sealed?: number; chain?: string
   quotes?: number; found?: number; not_found?: number; pinned?: number
   total?: number; verified?: number

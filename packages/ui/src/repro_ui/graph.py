@@ -305,6 +305,8 @@ TEST_RUN = re.compile(r"^(smoke|prefreeze|test|dryrun)[_-]")
 
 #: The states of a recorded file `results verify --files` fails on, as `repro verify` reads them.
 RESULTS_FAILING = ("changed", "missing", "reverted", "reappeared", "not a tree", "not a file")
+#: The states of a registration pinned by a Commit SHA line that `prereg check` passes.
+PINNED_STANDING = ("unchanged", "appended", "superseded", "withdrawn")
 #: The tool sections `repro verify --format json` writes beside the claims.
 TOOL_SECTIONS = ("prereg", "results", "citations")
 
@@ -329,6 +331,26 @@ def unused() -> dict:
     return {"used": False, "outcome": "nothing to read", "account": {}, "output": ""}
 
 
+#: How deep below the project `repro verify` looks for a PREREG.md, and the folders it skips.
+MARKER_DEPTH = 3
+SKIPPED = frozenset({"node_modules", "venv", ".venv", "site-packages", "build", "dist"})
+
+
+def prereg_used(project: pathlib.Path) -> bool:
+    """Whether `repro verify` counts the project as keeping plans: a `.prereg/` at its root, or
+    a PREREG.md at most three folders down outside hidden and build folders. The same rule as
+    `repro.delegate`, restated because the page imports none of the tools; a refresh that used
+    another rule would turn the line over every 30 seconds."""
+    if (project / ".prereg").exists():
+        return True
+    for depth in range(MARKER_DEPTH + 1):
+        for f in project.glob("*/" * depth + "PREREG.md"):
+            parts = f.relative_to(project).parts
+            if f.is_file() and not any(x.startswith(".") or x in SKIPPED for x in parts):
+                return True
+    return False
+
+
 def read_sections(verify: dict | None, project: pathlib.Path, manifest: dict, cached: dict) -> dict:
     """Staleness and the three tools' sections, each as `repro verify --format json` writes it.
 
@@ -342,19 +364,18 @@ def read_sections(verify: dict | None, project: pathlib.Path, manifest: dict, ca
             "staleness": stale.get("report") or NOTHING_STALE,
             **{name: verify.get(name) or unused() for name in TOOL_SECTIONS},
         }
-    plans = tool_account(project, [tool("prereg"), "check"])
-    if not plans["account"].get("plans") and not plans["account"].get("commit_pinned"):
-        plans = unused() if plans["outcome"] == "read" else plans
     return {
         "staleness": (
             repro_json(project, "stale")["staleness"]
             if manifest.get("regenerations")
             else NOTHING_STALE
         ),
-        "prereg": plans,
+        "prereg": (
+            tool_account(project, [tool("prereg"), "check"]) if prereg_used(project) else unused()
+        ),
         "results": (
             tool_account(project, [tool("results"), "verify", "--files"])
-            if (project / ".results" / "ledger.jsonl").exists()
+            if (project / ".results").exists()
             else unused()
         ),
         # None: not checked since the page's data was first built, which the status line says.
@@ -415,9 +436,12 @@ def status_lines(
         )
         drafts = sum(1 for x in plans if not x["frozen"])
         amendments = sum(1 for x in plans if x["frozen"] and x["check"] == "not frozen")
+        # A registration pinned by a Commit SHA line whose log only grew is `appended`, which
+        # `prereg check` passes; one that names no commit this repository holds cannot be read.
         unchanged = sum(1 for x in plans if x["frozen"] and x["check"] == "unchanged") + sum(
-            1 for d in pinned if d["status"] == "unchanged"
+            1 for d in pinned if d["status"] in PINNED_STANDING
         )
+        unknown = sum(1 for d in pinned if d["status"] in ("pending", "unknown commit"))
         fields["prereg"] = {
             "state": "read",
             "plans": len(plans) + len(pinned),
@@ -425,7 +449,8 @@ def status_lines(
             "changed": changed,
             "drafts": drafts,
             "amendments": amendments,
-            "ok": not (changed or drafts or amendments),
+            "unknown": unknown,
+            "ok": not (changed or drafts or amendments or unknown),
         }
 
     results = sections["results"]
@@ -701,11 +726,22 @@ def find_commits(
         if "commit" not in cache.get(f"{path}@{digest}", {})
         and cache.get(f"{path}@{digest}", {}).get("head") != head
     }
+    # A path outside the repository (a ledger may record one through a symlink) makes `git log`
+    # refuse every path given with it, so such a path is never asked about; nor is one git's
+    # line-based batch input cannot carry.
+    top_dir = (run_text(["git", "rev-parse", "--show-toplevel"], project) or "").strip()
+    pending = {
+        (path, digest)
+        for path, digest in pending
+        if top_dir
+        and "\n" not in path
+        and (project / path).resolve().is_relative_to(pathlib.Path(top_dir).resolve())
+    }
     if pending:
         # One walk of the history for every path still to look up, rather than a `git log` per path.
         paths = sorted({path for path, _ in pending})
-        log = (
-            run_text(
+        try:
+            walked = subprocess.run(
                 [
                     "git",
                     "-c",
@@ -717,13 +753,20 @@ def find_commits(
                     "--",
                     *paths,
                 ],
-                project,
+                cwd=project,
+                capture_output=True,
+                text=True,
+                timeout=60,
+                check=False,
             )
-            or ""
-        )
+        except subprocess.TimeoutExpired:
+            walked = None
+        if walked is None or walked.returncode != 0:
+            # Nothing was looked at, so nothing is recorded as missing: the next build asks again.
+            return {pair: cache.get(f"{pair[0]}@{pair[1]}") for pair in pairs}
         history: dict[str, list[tuple[str, int]]] = collections.defaultdict(list)
         commit = None
-        for line in log.splitlines():
+        for line in walked.stdout.splitlines():
             if line.startswith("@"):
                 sha, ct = line[1:].split()
                 commit = (sha, int(ct))
@@ -743,10 +786,12 @@ def find_commits(
             ]:  # oldest first
                 blobs.stdin.write(f"{sha}:./{path}\n".encode())
                 blobs.stdin.flush()
-                header = blobs.stdout.readline().split()
-                if len(header) < 3:  # "<object> missing": the commit deleted the file
+                # "<sha> <type> <size>", or "<what was asked> missing" (the commit deleted the
+                # file) or "... ambiguous", where what was asked may itself hold spaces.
+                header = blobs.stdout.readline().rstrip(b"\n").split(b" ")
+                if header[-1] in (b"missing", b"ambiguous") or not header[-1].isdigit():
                     continue
-                body = blobs.stdout.read(int(header[2]))
+                body = blobs.stdout.read(int(header[-1]))
                 blobs.stdout.read(1)
                 if hashlib.sha256(body).hexdigest() == digest:
                     hit = {"commit": sha, "time": ct}
@@ -1454,22 +1499,36 @@ def issue_diff(project: pathlib.Path, graph_data: dict, issue: str, path: str) -
         raise NotNamed(path)
     commit, recorded = item["diff"].get("commit"), item["diff"].get("sha256")
     tool_name = row["tool"]
-    old = None
+    old, old_size = None, None
     if commit and COMMIT.match(commit):
-        shown = subprocess.run(
-            ["git", "show", f"{commit}:./{path}"],
+        # The committed copy's size first, so a large one is never read into memory.
+        sized = subprocess.run(
+            ["git", "cat-file", "-s", f"{commit}:./{path}"],
             cwd=project,
             capture_output=True,
+            text=True,
             timeout=30,
             check=False,
         )
-        old = shown.stdout if shown.returncode == 0 else None
+        old_size = (
+            int(sized.stdout) if sized.returncode == 0 and sized.stdout.strip().isdigit() else None
+        )
+        if old_size is not None and old_size <= MAX_DIFF_BYTES:
+            shown = subprocess.run(
+                ["git", "show", f"{commit}:./{path}"],
+                cwd=project,
+                capture_output=True,
+                timeout=30,
+                check=False,
+            )
+            old = shown.stdout if shown.returncode == 0 else None
     new = (
         target.read_bytes()
         if target.is_file() and target.stat().st_size <= MAX_DIFF_BYTES
         else None
     )
-    too_big = (target.is_file() and new is None) or (old is not None and len(old) > MAX_DIFF_BYTES)
+    old_too_big = old_size is not None and old_size > MAX_DIFF_BYTES
+    too_big = (target.is_file() and new is None) or old_too_big
 
     def side(data: bytes | None) -> dict | None:
         return (
@@ -1479,7 +1538,7 @@ def issue_diff(project: pathlib.Path, graph_data: dict, issue: str, path: str) -
         )
 
     notes = []
-    if old is None:
+    if old is None and not old_too_big:
         notes.append(
             "No copy of the sealed bytes was kept: no commit holds them."
             if tool_name == "results"
@@ -1519,7 +1578,11 @@ def issue_diff(project: pathlib.Path, graph_data: dict, issue: str, path: str) -
         "ok": True,
         "path": path,
         "commit": commit,
-        "old": side(old),
+        "old": (
+            {"sha256": recorded if recorded else None, "size": old_size}
+            if old_too_big
+            else side(old)
+        ),
         "new": side(new)
         if new is not None
         else ({"sha256": None, "size": target.stat().st_size} if too_big else None),
@@ -1834,5 +1897,8 @@ def build(
         "edges": edges,
     }
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps(out, indent=1))
+    # Written beside and renamed over, so the server never reads half a file.
+    partial = out_path.with_name(out_path.name + ".partial")
+    partial.write_text(json.dumps(out, indent=1))
+    partial.replace(out_path)
     return f"{len(nodes)} nodes, {len(edges)} edges, {len(groups)} groups -> {out_path}"

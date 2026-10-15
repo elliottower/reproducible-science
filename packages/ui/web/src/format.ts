@@ -39,9 +39,10 @@ export function statusLine(key: StatusKey, s: Status | undefined): Line {
     const parts = [`${fmt(f.frozen ?? 0)}/${fmt(f.plans ?? 0)} frozen`]
     if (f.changed) parts.push(`${fmt(f.changed)} changed since frozen`)
     if (f.amendments) parts.push(plural(f.amendments, 'amendment not frozen', 'amendments not frozen'))
+    if (f.unknown) parts.push(`${fmt(f.unknown)} naming no commit held here`)
     return {
       key, text: parts.join(', '),
-      tone: f.changed ? 'bad' : f.drafts || f.amendments ? 'warn' : 'good',
+      tone: f.changed || f.unknown ? 'bad' : f.drafts || f.amendments ? 'warn' : 'good',
       next: !f.changed && (f.drafts || f.amendments) ? 'prereg freeze' : undefined,
     }
   }
@@ -87,12 +88,12 @@ export const lineText = (l: Line) => `${l.key}: ${l.text}${l.next ? `  →  ${l.
  * tells the agent to change anything, so the person reading the answer decides what happens. */
 export const ASK_FIRST =
   'Investigate and tell me what you find: what changed, whether it looks intended, and what my options are. ' +
-  'Then stop and ask me which to do. Do not edit, repin, reseal, re-run or commit anything until I choose.'
+  'Then stop and ask me which to do. Do not change any file or record — no edit, freeze, amend, log, seal, pin, re-run or commit — until I choose.'
 
 /** What to look at, and the options to lay out, for each kind of issue. */
 const LOOK: Record<string, [string, string]> = {
   'prereg-changed': [
-    'The freeze record in the .prereg/ folder beside each plan names the commit and the sha256 that were frozen. Compare that commit\'s copy of the plan with the file now, and say what changed and whether it reads as a deliberate change to the plan.',
+    'The record in the .prereg/ folder beside each plan names the commit and the sha256 of the frozen text. Compare that commit\'s copy of the plan with the file now, and say what changed and whether it reads as a deliberate change to the plan.',
     'logging an amendment that covers the change, or restoring the frozen text',
   ],
   'prereg-pinned-changed': [

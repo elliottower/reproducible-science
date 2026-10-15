@@ -37,6 +37,8 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
   const [reproOpen, setReproOpen] = useState(false)
   // Where Open in UI last took the page: the tab it opened reads it and shows that item.
   const [focus, setFocus] = useState<Focus | null>(null)
+  /** Any other way to a tab drops the Open in UI target, so it is not applied again. */
+  const go = (m: Tab) => { setMode(m); setFocus(null) }
   useEffect(() => {
     document.title = graph.project_name ? `${graph.project_name} · repro ui` : 'repro ui'
   }, [graph.project_name])
@@ -169,12 +171,12 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
         <header className="top">
           <div className="tabs">
             {TABS.map(([k, label]) => (
-              <button key={k} className={mode === k ? 'on' : ''} onClick={() => setMode(k)}>{label}</button>
+              <button key={k} className={mode === k ? 'on' : ''} onClick={() => go(k)}>{label}</button>
             ))}
           </div>
           <div className="spacer" />
-          <ClaimsPill graph={graph} openClaims={() => setMode('claims')} />
-          <ReproducedPill graph={graph} live={recheck.live} openTab={() => setMode('reproduce')} />
+          <ClaimsPill graph={graph} openClaims={() => go('claims')} />
+          <ReproducedPill graph={graph} live={recheck.live} openTab={() => go('reproduce')} />
           <IssuesPill graph={graph} onOpen={(o) => { setMode(o.tab); setFocus({ ...o, at: Date.now() }) }} />
           {recheck.available && (
             <>
@@ -201,7 +203,7 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
           {mode === 'graph' && <button onClick={() => setOpen(new Set())}>Collapse all</button>}
         </div>
         {mode === 'overview' ? (
-          <Overview graph={graph} onOpen={setMode} />
+          <Overview graph={graph} onOpen={go} />
         ) : mode === 'prereg' ? (
           <PreregTab graph={graph} focus={focus?.tab === 'prereg' ? focus : null} />
         ) : mode === 'results' ? (

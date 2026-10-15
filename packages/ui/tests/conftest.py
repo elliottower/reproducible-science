@@ -9,6 +9,7 @@ import os
 import pathlib
 import shutil
 import subprocess
+import types
 
 import pytest
 import yaml
@@ -208,3 +209,9 @@ def make_kept(tmp_path: pathlib.Path) -> pathlib.Path:
     (root / "blob.bin").write_bytes(BINARY[::-1])
     (root / "scratch.txt").write_text("changed, and never committed\n")
     return root
+
+
+@pytest.fixture
+def tools():
+    """The helpers a test that builds its own project needs: `git`, `cli` and `write_project`."""
+    return types.SimpleNamespace(git=git, cli=cli, write_project=write_project)

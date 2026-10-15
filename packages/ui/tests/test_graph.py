@@ -256,3 +256,100 @@ def test_a_path_an_issue_names_that_leads_out_of_the_project_is_refused(kept, tm
     (kept.parent / "secret.txt").write_text("not the page's to show")
     with pytest.raises(graph.NotNamed):
         graph.issue_diff(kept, g, g["issues"][1]["id"], "../secret.txt")
+
+
+def test_the_prereg_and_results_lines_are_ok_once_the_plan_and_the_sealed_files_are_restored(
+    kept, tmp_path, tools
+):
+    s = built(kept, tmp_path / "out")["status"]
+    assert (s["prereg"]["ok"], s["results"]["ok"]) == (False, False)
+    tools.git(kept, "checkout", "--", "PREREG.md", "data.json", "blob.bin")
+    (kept / "scratch.txt").write_text("never committed\n")
+    g = built(kept, tmp_path / "out")
+    s = g["status"]
+    assert s["prereg"] == {
+        "state": "read",
+        "plans": 1,
+        "frozen": 1,
+        "changed": 0,
+        "drafts": 0,
+        "amendments": 0,
+        "unknown": 0,
+        "ok": True,
+    }
+    assert (s["results"]["sealed"], s["results"]["runs"], s["results"]["ok"]) == (1, 1, True)
+    assert [r["id"] for r in g["issues"]] == ["citations-not-found"]
+
+
+def test_runs_with_nothing_sealed_before_them_are_one_row_with_a_note_and_nothing_to_click(
+    project, tmp_path, tools
+):
+    tools.cli(project, "results", "init")
+    tools.cli(project, "results", "run", "--run-id", "count", "results.json")
+    g = built(project, tmp_path / "out")
+    assert (g["status"]["results"]["sealed"], g["status"]["results"]["runs"]) == (0, 1)
+    assert g["status"]["results"]["ok"] is False
+    (row,) = g["issues"]
+    assert (row["id"], row["fix"], row["items"]) == ("results-unsealed", False, [])
+    assert row["title"] == "1 run with nothing sealed before it"
+
+
+def test_a_refresh_and_a_check_agree_on_whether_the_project_keeps_plans_or_a_ledger(
+    project, tmp_path
+):
+    (project / ".prereg").mkdir()
+    (project / ".results").mkdir()
+    checked = built(project, tmp_path / "out")
+    refreshed = built(project, tmp_path / "out", check=False)
+    for key in ("prereg", "results"):
+        assert refreshed["status"][key] == checked["status"][key], key
+    assert [r["id"] for r in refreshed["issues"]] == [r["id"] for r in checked["issues"]]
+
+
+def test_a_commit_that_reads_as_an_option_never_reaches_git(kept, tmp_path):
+    g = built(kept, tmp_path / "out")
+    written = tmp_path / "written"
+    (row,) = [r for r in g["issues"] if r["id"] == "prereg-changed"]
+    row["items"][0]["diff"]["commit"] = f"--output={written}"
+    d = graph.issue_diff(kept, g, "prereg-changed", "PREREG.md")
+    assert d["old"] is None
+    assert not written.exists()
+
+
+def test_a_project_in_a_subfolder_finds_the_commit_of_each_sealed_file_despite_spaces_deletions_and_paths_outside(
+    tmp_path, tools
+):
+    outer = tmp_path / "repo"
+    sub = outer / "paper"
+    sub.mkdir(parents=True)
+    tools.write_project(sub, with_step=False)
+    tools.git(outer, "init", "-q")
+    spaced = sub / "c d.txt"
+    spaced.write_text("first\n")
+    tools.git(outer, "add", "-A")
+    tools.git(outer, "commit", "-q", "-m", "first")
+    first = tools.git(outer, "rev-parse", "HEAD")
+    tools.git(outer, "rm", "-q", "paper/c d.txt")
+    tools.git(outer, "commit", "-q", "-m", "deleted")
+    spaced.write_text("second\n")
+    (tmp_path / "secret.txt").write_text("outside the repository\n")
+    (sub / "link.txt").symlink_to(tmp_path / "secret.txt")
+    tools.cli(sub, "results", "init")
+    tools.cli(sub, "results", "seal", "data.json", "c d.txt", "link.txt")
+    tools.git(outer, "add", "-A")
+    tools.git(outer, "commit", "-q", "-m", "sealed")
+    sealed_at = tools.git(outer, "rev-parse", "HEAD")
+    (sub / "data.json").write_text(json.dumps({"values": [1, 2, 3, 4]}))
+    spaced.write_text("third\n")
+    (tmp_path / "secret.txt").write_text("changed outside\n")
+
+    g = built(sub, tmp_path / "out")
+    items = {i["label"]: i for r in g["issues"] if r["tool"] == "results" for i in r["items"]}
+    # The oldest commit holding the sealed bytes: data.json is unchanged since the first.
+    assert items["data.json"]["diff"]["commit"] == first
+    assert items["c d.txt"]["diff"]["commit"] == sealed_at
+    d = graph.issue_diff(sub, g, "results-changed", "c d.txt")
+    assert [x for x in d["diff"].splitlines() if x[:1] in "+-" and x[:3] not in ("+++", "---")] == [
+        "-second",
+        "+third",
+    ]

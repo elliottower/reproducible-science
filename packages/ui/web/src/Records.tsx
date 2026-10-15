@@ -87,7 +87,7 @@ export function PreregTab({ graph, focus }: { graph: Graph; focus?: Focus | null
           <DiffView issue={diff.issue} path={diff.path} label="The frozen plan against the file now" />
         </aside>
       )}
-      <pre className="rec-pre">{plans.length === 0 ? 'No PREREG.md' : t?.output ?? ''}</pre>
+      <pre className="rec-pre">{t?.used ? t.output : 'No PREREG.md'}</pre>
     </div>
   )
 }

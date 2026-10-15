@@ -130,6 +130,12 @@ describe('status lines', () => {
     expect(lineText(l)).toBe('results: 3/3 runs sealed')
   })
 
+  it('counts a registration naming no commit held here as a problem', () => {
+    const l = statusLine('prereg', { prereg: { state: 'read', plans: 2, frozen: 1, changed: 0, drafts: 0, amendments: 0, unknown: 1, ok: false } })
+    expect(lineText(l)).toBe('prereg: 1/2 frozen, 1 naming no commit held here')
+    expect(l.tone).toBe('bad')
+  })
+
   it('asks for a freeze, not a new plan, when a plan is drafted and not frozen', () => {
     const l = statusLine('prereg', { prereg: { state: 'read', plans: 1, frozen: 0, changed: 0, drafts: 1, amendments: 0, ok: false } })
     expect(lineText(l)).toBe('prereg: 0/1 frozen  →  prereg freeze')
@@ -160,6 +166,12 @@ describe('issue prompts', () => {
     const body = prompt.slice(0, -ASK_FIRST.length)
     const sentences = body.split(/\n|(?<=[.;:])\s+/).map((x) => x.replace(/^[-\s]+/, '')).filter(Boolean)
     for (const s of sentences) expect(s).not.toMatch(ACTS)
+    // Nowhere outside the options sentence does a verb that changes a record appear, whether a
+    // sentence opens on it or it sits mid-sentence ("Then restore the frozen text").
+    for (const s of sentences.filter((x) => !x.startsWith('Options might include'))) {
+      expect(s).not.toMatch(/\b(edit|re-?run|seal|reseal|freeze|amend|re-?pin|restore|retire|delete|fix|log)\b/i)
+    }
+    expect(prompt).toContain(row.note)
     // Options are named only as options, in the one sentence that says so.
     for (const s of sentences.filter((x) => /\b(amendment|restoring|re-?pinning|recording)\b/.test(x))) {
       expect(s).toMatch(/^Options might include/)
@@ -168,7 +180,7 @@ describe('issue prompts', () => {
 
   it('ends by asking before anything is changed', () => {
     expect(ASK_FIRST).toMatch(/stop and ask me/)
-    expect(ASK_FIRST).toMatch(/Do not edit, repin, reseal, re-run or commit anything until I choose/)
+    expect(ASK_FIRST.endsWith('Do not change any file or record — no edit, freeze, amend, log, seal, pin, re-run or commit — until I choose.')).toBe(true)
   })
 
   it('lists at most twenty items and says how many more', () => {
