@@ -118,7 +118,7 @@ Report the counts from `open-items.after.json`, as it gives them:
 - `claims`: `reader` (bound from what the source states), `bound` (every item filled and
   matching), `not_matching`, `open`, `outside`. They add up to `total`.
 - `items`: `open`, `filled`, `filled_and_passing`, `filled_by_inferred`, and the candidate
-  counts `with_unique_candidate`, `with_several_candidates`, `with_one_not_passing` and
+  counts `with_unique_candidate`, `with_several_candidates`, `with_one_not_unique` and
   `with_no_candidate`.
 
 For each item left open that had candidates, give its `reason`, read from `open-items.json`:

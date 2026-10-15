@@ -65,7 +65,8 @@ CONTEXT_WORDS = 4
 
 _WORD = re.compile(r"[a-z]+(?:-[a-z]+)*")
 _YEAR = re.compile(r"(?:18|19|20)\d\d")
-_DATE = re.compile(r"(?<![\d-])\d{4}-\d{2}-\d{2}(?![\d-])")
+#: An ISO 8601 date, `2016-10-10`, or a year and month, `2007-11`, whose month is no quantity.
+_DATE = re.compile(r"(?<![\d-])(?:\d{4}-\d{2}-\d{2}|(?:18|19|20)\d\d-(?:0[1-9]|1[0-2]))(?![\d-])")
 _DOI = re.compile(r"(?<![\d.])10\.\d{4,9}/")
 #: A standard, a preprint or a book named by its series and number: `rfc 6901`, `iso 8601`.
 _DOCUMENT = re.compile(

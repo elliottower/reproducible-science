@@ -324,6 +324,11 @@ def test_a_set_aside_entry_needs_a_reason(tmp_path):
             "frozen on 2026-10-13 at noon",
             [("2026", "2026", "date"), ("10", "10", "date"), ("13", "13", "date")],
         ),
+        (
+            "started 2007-11, done 2014-01",
+            [(n, n, "date") for n in ("2007", "11", "2014", "01")],
+        ),
+        ("the 2019-20 season", [("2019", "2019", "year"), ("20", "20", None)]),
         ("version v15 of sha256", [("15", None, "name"), ("256", None, "name")]),
         ("gpt-4 and covid-19", [("4", None, "name"), ("19", None, "name")]),
         ("digest 6efb0ee8 pinned", [("6", None, "name"), ("0", None, "name"), ("8", None, "name")]),

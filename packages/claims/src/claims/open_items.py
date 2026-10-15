@@ -22,8 +22,10 @@ An item may carry candidates: assertions a deterministic search of the files fou
 which the reader lists and never writes into the draft, however few there are. A value found
 somewhere in a file is not a value fetched from a stated address. An item is `unique` where
 exactly one candidate passes the reader's guards, and that candidate is listed first; where
-none does, or several do, `reason` says which. The count says how many items had a unique
-candidate, several, one that fails the guards, or none.
+none does, or several do, `reason` says which. `claims from-clawbio` applies no guards and
+calls no candidate unique, and its `reason` says why. The count says how many items had a
+unique candidate, several, one not called unique, or none; the item's `reason` says why its
+one candidate was not.
 """
 
 from __future__ import annotations
@@ -436,7 +438,7 @@ def tally(path: pathlib.Path) -> Tally:
             "with_several_candidates": sum(
                 not fill.unique and fill.candidates > 1 for fill in fills
             ),
-            "with_one_not_passing": sum(not fill.unique and fill.candidates == 1 for fill in fills),
+            "with_one_not_unique": sum(not fill.unique and fill.candidates == 1 for fill in fills),
             "with_no_candidate": sum(fill.candidates == 0 for fill in fills),
         },
         assertions=assertions,

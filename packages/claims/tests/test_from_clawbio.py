@@ -5,7 +5,12 @@ skill that declares its own license and any model or data a skill uses, so no re
 output is copied in. The folder below has the layout ClawBio's shared helpers write
 (`clawbio/common/reproducibility.py` at 9405cfd): `report.md`, `tables/`, and
 `reproducibility/` with `commands.sh`, `environment.yml` and `checksums.sha256`, whose labels
-are paths from the folder.
+are paths from the folder. Older outputs keep `checksums.sha256` and `commands.sh` at the top of
+the folder, as `skills/clinical-trial-finder/examples/demo_output` does at 1419c50.
+
+The report lines for year-month dates and list markers have the shape of lines 27 and 170-171
+of that demo's `report.md`, with invented text: the trial records in it come from
+ClinicalTrials.gov and EUCTR, which ClawBio's licence does not cover.
 """
 
 from __future__ import annotations
@@ -300,3 +305,75 @@ def test_past_the_cap_numbers_are_counted_and_not_made_claims(tmp_path, monkeypa
     assert "2 more number(s) past the first 3, which are not made claims" in {
         p.reason for p in written.passed_over
     }
+
+
+def test_an_older_output_with_checksums_at_the_top_is_read_and_the_layout_recorded(tmp_path):
+    folder, out = _folder(tmp_path), tmp_path / "out"
+    for name in ("checksums.sha256", "commands.sh"):
+        (folder / "reproducibility" / name).rename(folder / name)
+    written = from_clawbio(folder, out)
+    artifacts = {a["id"]: a for a in _draft(out)["artifacts"]}
+    assert artifacts["tables/stats.json"]["digest"]["value"] == _sha(STATS)
+    assert (
+        "line 5 is not a sha256 line"
+        in {p.file: p.reason for p in written.passed_over}["checksums.sha256"]
+    )
+    source = read_items(out / "open-items.json").source
+    assert source.digest == hashlib.sha256((folder / "checksums.sha256").read_bytes()).hexdigest()
+    assert "at the top of the folder" in source.format
+    assert source.pins == {
+        "report.md": _sha(REPORT),
+        "commands.sh": _sha("#!/usr/bin/env bash\ntrue\n"),
+    }
+    assert written.items == 5
+
+
+def test_the_layout_clawbio_s_helper_writes_is_recorded(tmp_path):
+    out = tmp_path / "out"
+    from_clawbio(_folder(tmp_path), out)
+    assert "in reproducibility/" in read_items(out / "open-items.json").source.format
+
+
+def test_a_folder_with_checksums_in_both_places_is_refused(tmp_path):
+    folder = _folder(tmp_path)
+    (folder / "checksums.sha256").write_text(f"{_sha(SUMMARY)}  tables/summary.csv\n")
+    with pytest.raises(ClawbioError, match="holds both"):
+        from_clawbio(folder, tmp_path / "out")
+    assert not (tmp_path / "out").exists()
+
+
+def test_a_year_and_month_is_a_date_and_never_a_claim(tmp_path):
+    folder, out = _folder(tmp_path), tmp_path / "out"
+    (folder / "report.md").write_text(
+        REPORT + "\n- **Start**: 2007-11 | **Est. completion**: 2014-01\n"
+    )
+    written = from_clawbio(folder, out)
+    assert written.items == 5
+    reasons = [p.reason for p in written.passed_over if p.file == "report.md"]
+    for part in ("2007", "11", "2014", "01"):
+        assert f"line 20: {part} is set aside by the rule date" in reasons
+
+
+def test_the_number_of_a_list_item_is_passed_over_and_its_text_is_read(tmp_path):
+    folder, out = _folder(tmp_path), tmp_path / "out"
+    listed = "> 1. Carriers who take the invented drug sleep better.\n2. Carriers over 65 years.\n"
+    (folder / "report.md").write_text(REPORT + "\n" + listed)
+    written = from_clawbio(folder, out)
+    items = read_items(out / "open-items.json").items
+    assert [(i.context["line"], i.context["printed"]) for i in items][5:] == [(21, "65")]
+    reasons = {p.reason for p in written.passed_over if p.file == "report.md"}
+    assert "line 20: 1. numbers a list item and is no result" in reasons
+    assert "line 21: 2. numbers a list item and is no result" in reasons
+
+
+def test_one_candidate_is_counted_as_not_called_unique_with_the_reader_s_reason(tmp_path, capsys):
+    out = tmp_path / "out"
+    from_clawbio(_folder(tmp_path), out)
+    items = {i.claim: i for i in read_items(out / "open-items.json").items}
+    single = [i for i in items.values() if len(i.candidates) == 1]
+    assert single and all("names no label" in i.reason for i in single)
+    assert tally(out / "open-items.json").items["with_one_not_unique"] == len(single)
+    assert main(["open-items", str(out / "open-items.json")]) == 0
+    said = capsys.readouterr().out
+    assert f"{len(single)} with one not called unique" in said
+    assert "fails the guards" not in said

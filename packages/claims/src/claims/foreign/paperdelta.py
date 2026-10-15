@@ -471,12 +471,25 @@ def _reads(
                     on_disk=_hex(hashes.get(source.path)),
                     address=_address(source.field, location, index, source.count),
                     stored=_stored_text(value) if compared else None,
-                    converted=str(conversion.apply(number))
+                    converted=_plain(conversion.apply(number))
                     if compared and conversion is not None and number is not None
                     else None,
                 )
             )
     return tuple(reads)
+
+
+#: Past this power of ten a number keeps its exponent form, so a hostile report cannot make
+#: one field millions of digits long.
+PLAIN_UP_TO = 100
+
+
+def _plain(number: decimal.Decimal) -> str:
+    """A number as positional digits: a stored 0.9 shown as a percentage is `90`, where `str`
+    writes the `9E+1` that `Decimal.scaleb` leaves."""
+    if number.is_finite() and abs(number.adjusted()) <= PLAIN_UP_TO:
+        return format(number, "f")
+    return str(number)
 
 
 def _spread(locations: tuple[dict[str, Any], ...], count: int) -> tuple[dict[str, Any], ...]:
@@ -580,7 +593,7 @@ def _rerun(
         held = _agree_exact(exact, printed, mode, zero)
         computed = decimal.Decimal(exact.numerator) / decimal.Decimal(exact.denominator)
     outcome = NormalizedOutcome.MATCH if held else NormalizedOutcome.MISMATCH
-    return answer(outcome, f"{computed} against printed {printed}")
+    return answer(outcome, f"{_plain(computed)} against printed {printed}")
 
 
 def _paperdelta(**fields: Any) -> dict[str, Any]:
@@ -660,7 +673,7 @@ def read(
         computed = None
         if valued and statistic is not None and compared and state and state.value is not None:
             value = decimal.Decimal(state.value)
-            computed = str(conversion.apply(value) if conversion else value)
+            computed = _plain(conversion.apply(value) if conversion else value)
         comparison = (
             Comparison(
                 mode=ComparisonMode.PRINTED_PRECISION,

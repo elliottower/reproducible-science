@@ -326,6 +326,14 @@ def test_a_tie_is_recorded_with_paperdelta_s_rounding_and_the_converted_value():
     assert "rerun" not in tie.model_extra
 
 
+def test_a_fraction_shown_as_a_percentage_is_written_in_plain_digits():
+    here = pathlib.Path(__file__).parent / "fixtures" / "paperdelta-percent"
+    found = _by_id(from_paperdelta(here / "report.json", here / "paperdelta.yaml", rerun=True))
+    control = found["control_accuracy"]
+    assert control.reads[0].stored == "0.9" and control.reads[0].converted == "90"
+    assert control.model_extra["rerun"]["detail"] == "90 against printed 90.0"
+
+
 @pytest.mark.parametrize(
     ("code", "outcome"),
     [
