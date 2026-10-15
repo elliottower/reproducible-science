@@ -2,8 +2,6 @@
 
     repro venue acm           an Artifact Appendix, in Markdown, LaTeX or JSON
     repro venue acm-evidence  the records bearing on each ACM badging criterion, in HTML or JSON
-    repro venue neurips       the NeurIPS Paper Checklist, in Markdown, LaTeX or JSON
-    repro venue acl           the ACL Responsible NLP Research checklist, in Markdown or JSON
 
 Each writes to standard output, or to `--output`, which is never overwritten without
 `--force`: a draft the authors have started editing is theirs, and regenerating over it would
@@ -19,7 +17,7 @@ from collections.abc import Callable
 from provenance_core import atomic_write
 
 from repro.exceptions import ReproError
-from repro.venue import acl, acm, acm_evidence, neurips
+from repro.venue import acm, acm_evidence
 from repro.venue.draft import Draft, Status, as_json, markdown
 from repro.venue.records import Project
 
@@ -87,29 +85,6 @@ def command_acm_evidence(args: argparse.Namespace) -> int:
     return code
 
 
-NEURIPS_FORMATS: dict[str, Callable[[Draft], str]] = {
-    "markdown": neurips.as_markdown,
-    "latex": neurips.latex,
-    "json": as_json,
-}
-
-ACL_FORMATS: dict[str, Callable[[Draft], str]] = {
-    "markdown": acl.as_markdown,
-    "json": as_json,
-}
-
-
-def _command(make: Callable[[Project], Draft], formats: dict[str, Callable[[Draft], str]]):
-    def command(args: argparse.Namespace) -> int:
-        draft = make(Project.at(pathlib.Path.cwd(), plan=args.plan))
-        code = emit(formats[args.format](draft), args.output, args.force)
-        if args.output is not None:
-            print(f"  {summary(draft)}")
-        return code
-
-    return command
-
-
 def _output_options(parser: argparse.ArgumentParser, formats: list[str], plan: bool = True) -> None:
     parser.add_argument("--format", choices=formats, default=formats[0])
     parser.add_argument("--output", "-o", metavar="FILE", help="write here instead of printing")
@@ -168,33 +143,6 @@ def add_parser(sub: argparse._SubParsersAction) -> None:
     )
     _output_options(p_evidence, list(EVIDENCE_FORMATS), plan=False)
     p_evidence.set_defaults(func=command_acm_evidence)
-    for name, make, formats, summary_line, about in (
-        (
-            "neurips",
-            neurips.checklist,
-            NEURIPS_FORMATS,
-            "the NeurIPS Paper Checklist, from checklist.tex in the formatting archive",
-            "Every answer but one stays \\answerTODO{}: each question asks what the paper "
-            "discloses, which no record can say. Open access (5) is \\answerYes{} where the "
-            "project's own DOI, Software Heritage ID or code repository is recorded, printed "
-            "as a draft naming the record, for the authors to confirm the repository is "
-            "public. Where a record bears on a question, the justification is a draft listing "
-            "what it says.",
-        ),
-        (
-            "acl",
-            acl.checklist,
-            ACL_FORMATS,
-            "the ACL Responsible NLP Research checklist, from the ARR checklist page",
-            "No question is answered yes or no. Where a record bears on a question, the "
-            "justification is a draft listing what it says.",
-        ),
-    ):
-        p_venue = venues.add_parser(
-            name, help=summary_line, description=f"Draft {summary_line}. {about}"
-        )
-        _output_options(p_venue, list(formats))
-        p_venue.set_defaults(func=_command(make, formats))
 
 
 __all__ = ["OutputExistsError", "add_parser", "emit"]
