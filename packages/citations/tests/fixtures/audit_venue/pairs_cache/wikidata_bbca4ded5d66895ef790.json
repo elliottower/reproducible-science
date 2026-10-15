@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Zeitschrift+f%C3%BCr+Physik+A&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:11:52Z",
   "sha256": "ac2f2e74c5df8ee79e1d069ddaa3b3fbfcdfe0d21a7573029100fad378068947",

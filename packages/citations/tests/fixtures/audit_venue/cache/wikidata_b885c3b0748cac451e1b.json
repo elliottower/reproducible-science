@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Computer+Vision+%E2%80%93+ECCV+2020&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-14T22:35:25Z",
   "sha256": "ff067eb8da24bdadedff1586a13bc5906a774f2661f545ad0ef5f5192f98f088",

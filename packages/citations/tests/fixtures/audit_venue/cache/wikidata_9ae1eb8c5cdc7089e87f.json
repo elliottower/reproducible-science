@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Nat.+Methods&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-14T22:24:14Z",
   "sha256": "d08a6b66d1798539021cdfc330eb079187f7081d2e57dcab4d4eac5d27e07dfe",

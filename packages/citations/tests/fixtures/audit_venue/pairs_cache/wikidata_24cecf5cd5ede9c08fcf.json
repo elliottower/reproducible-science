@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Network&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:11:15Z",
   "sha256": "2bff83e158d08b002789021b4a610d4bbe928dcab47ef7eecdb13288b4c35e07",

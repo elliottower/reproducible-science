@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=JASA&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-14T22:24:05Z",
   "sha256": "aae3b74c3cf3e986fc891bb1df96eb7d0bfa8f876e38772f4f1f7ec5d3dd0e8d",

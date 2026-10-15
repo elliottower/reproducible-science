@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.crossref.org/works?query.bibliographic=Generative+Adversarial+Nets&rows=8",
   "fetched_at": "2026-10-14T20:47:37Z",
   "sha256": "36ee8d55675c106449dd29e65dfd6dad236cc911a65e18e450ce0e630e08a90e",

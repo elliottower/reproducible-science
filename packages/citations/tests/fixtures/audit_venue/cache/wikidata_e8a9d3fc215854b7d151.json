@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Advances+in+Neural+Information+Processing+Systems+33&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-14T22:23:53Z",
   "sha256": "bff6e9a0de98169360989f52edccc490ec0c1088084492240eda69c54702e014",

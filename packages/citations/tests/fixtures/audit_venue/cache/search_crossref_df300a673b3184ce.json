@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.crossref.org/works?query.bibliographic=Adam%3A+A+Method+for+Stochastic+Optimization&rows=8",
   "fetched_at": "2026-10-14T20:48:10Z",
   "sha256": "f2f22d1a485c062f996548c023c8b6c18dc1e112f4f84731736327efdf47b2dc",

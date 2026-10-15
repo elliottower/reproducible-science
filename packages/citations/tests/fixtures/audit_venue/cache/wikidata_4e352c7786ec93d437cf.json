@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Medical+Image+Computing+and+Computer-Assisted+Intervention+--+MICCAI+2015&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-14T22:29:03Z",
   "sha256": "0ac71708ab8eb7af355b824ef8173366ec8d02c0cef3790dfb38fc1040c37cba",

@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/works/doi:10.18653/v1/2020.emnlp-demos.6",
   "fetched_at": "2026-10-14T22:30:53Z",
   "sha256": "53fa6ac1d061669abf0ffd7bd2e55ad5e8d32444dcbe8995a2531eade3b3f3df",

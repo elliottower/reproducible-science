@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DNucleic+Acids+Res.%22&format=json",
   "fetched_at": "2026-10-15T00:11:19Z",
   "sha256": "37175e700e52496397606be5d8b7d7dc643e0c9a156c9b31f7a35fdd62a01d54",

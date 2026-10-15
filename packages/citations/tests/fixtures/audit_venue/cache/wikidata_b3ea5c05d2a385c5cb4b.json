@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=KDD&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-14T22:23:09Z",
   "sha256": "e17307465d5eefc80100e2c43979b657ec532605869bbf2c1557582a5ef8fcd2",

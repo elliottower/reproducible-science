@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=PLoS+One&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:08:31Z",
   "sha256": "c9e7bef93c591d89ccf87c784e16d49f65da2c1c0e34302c69fc58f246300f93",

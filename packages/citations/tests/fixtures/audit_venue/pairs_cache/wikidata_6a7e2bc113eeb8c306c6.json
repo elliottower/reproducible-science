@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Computer+Networks&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:10:19Z",
   "sha256": "2916bb3f1e4d28ddb5fb68aa8b2701df6bae5ca73870f9400adbca9b7c3da776",

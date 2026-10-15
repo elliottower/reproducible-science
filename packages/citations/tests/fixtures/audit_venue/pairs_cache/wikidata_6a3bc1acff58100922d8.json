@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=FEBS+Lett.&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:09:11Z",
   "sha256": "19b2f3057d177abaae8c08b7e1ceb40c0b5b3da0f356c7e1f87720eedb42f5f4",

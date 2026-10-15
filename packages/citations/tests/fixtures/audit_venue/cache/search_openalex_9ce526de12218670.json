@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/works?filter=title.search%3AGenerative+Adversarial+Nets&per-page=5",
   "fetched_at": "2026-10-14T20:47:38Z",
   "sha256": "076620d75de32c3e61834c7dd4e48025fe8f6ac37943360a78936a2984ab94a9",

@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DMol.+Syst.+Biol.%22&format=json",
   "fetched_at": "2026-10-15T00:10:33Z",
   "sha256": "5e7c9cde90cac67732c9559272d921b6ec75c54038d2955e99f5d77eac782376",

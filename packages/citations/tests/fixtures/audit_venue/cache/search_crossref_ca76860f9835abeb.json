@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.crossref.org/works?query.bibliographic=Learning+Transferable+Visual+Models+From+Natural+Language+Supervision&rows=8",
   "fetched_at": "2026-10-14T20:49:34Z",
   "sha256": "29867b74605e0557501ba858cf9d9ab520374e8138ce309eb57ae857b557fbef",

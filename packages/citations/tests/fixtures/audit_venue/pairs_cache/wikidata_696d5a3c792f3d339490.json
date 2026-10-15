@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=The+Journal+of+Organic+Chemistry&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:12:52Z",
   "sha256": "9f902e5f774b7881fb26b3abda8f940124e7ceb80a6650fc32bded56b815bc44",

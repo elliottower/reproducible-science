@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Publications+of+the+Modern+Language+Association+of+America&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:13:17Z",
   "sha256": "ebad688d4f021ac8951daeca2ed59d7384e79b55f8f627855aba6bf2b255ad45",

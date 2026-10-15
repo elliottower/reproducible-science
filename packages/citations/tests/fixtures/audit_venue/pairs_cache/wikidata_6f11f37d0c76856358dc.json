@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Rev.+Mod.+Phys.&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:12:26Z",
   "sha256": "d1befc4c9fc7a83b43d7793e33f7fa2ae48ab7dacfdf33abb36c96c5f40cf51c",

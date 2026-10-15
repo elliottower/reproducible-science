@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=NAR+Genomics+and+Bioinformatics&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:11:25Z",
   "sha256": "acbcd7f90d0eef3ef1115012ad5043d7e98edab4fcd6c213e78a1b58f04bc287",

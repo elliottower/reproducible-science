@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/sources?search=Journal+of+the+Royal+Statistical+Society%3A+Series+B+%28Methodological%29&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
   "fetched_at": "2026-10-15T00:04:07Z",
   "sha256": "f81e02e92bfbbf1e3dc68bba2e308571201a642457c86ce463aedebad74c4ab5",

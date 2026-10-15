@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DGenome+Biol.%22&format=json",
   "fetched_at": "2026-10-14T22:25:37Z",
   "sha256": "b41e110caa52f8d5577654d4dd202da985d2c77776e525d3f72a2655affaf631",

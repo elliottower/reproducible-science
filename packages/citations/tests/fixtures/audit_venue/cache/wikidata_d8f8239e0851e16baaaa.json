@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Transactions+of+the+Association+for+Computational+Linguistics&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-14T22:22:50Z",
   "sha256": "2e2a7aa41241c5f6fea5ded04c54bac48dc3e03502c7cb0240a502dafdff2d5c",

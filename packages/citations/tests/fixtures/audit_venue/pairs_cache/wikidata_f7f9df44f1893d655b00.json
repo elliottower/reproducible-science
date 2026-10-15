@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=eLife&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:11:10Z",
   "sha256": "ee58f0a8f82eb47dd41758246c60c384145cd9e2b28fa13cadb16d4c6fa27d05",

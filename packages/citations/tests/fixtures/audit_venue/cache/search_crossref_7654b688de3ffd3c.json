@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.crossref.org/works?query.bibliographic=An+Image+is+Worth+16x16+Words%3A+Transformers+for+Image+Recognition+at+Scale&rows=8",
   "fetched_at": "2026-10-14T20:47:22Z",
   "sha256": "94e5d40a74e179e7e06acb6cdf5b32c985d2e2ec58d92fa643fb2c486b9ac80f",

@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=The+Philosophical+Review&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:13:26Z",
   "sha256": "d34f35109503492ce750af10624fc24f1ee890ec4e226ba812ac47c04c318c25",

@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Physics+Letters+B&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:09:34Z",
   "sha256": "bce327db05f2cd3b1fe0a55daa3a13336f3b7db8a8213b35d0fb26b2de3300ab",

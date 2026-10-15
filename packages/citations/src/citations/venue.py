@@ -51,9 +51,7 @@ NO_COMMON_KIND = "the two sides hold no serial identifier (ISSN, NLM, DBLP) of a
 INDIRECT = "the record's venue was identified by its name, not by an identifier it carries"
 ONE_NAME = "registries file both venues under one name, with different identifiers"
 SEARCHED = "the record was found by title search and can be another version of the work"
-ISSN_UNSETTLED = (
-    "the entry's ISSN does not identify the record's venue, and its name does not settle it"
-)
+ISSN_UNSETTLED = "the entry's ISSN and its venue name name two different venues"
 GARBLED_NAME = "a venue name is garbled"
 
 

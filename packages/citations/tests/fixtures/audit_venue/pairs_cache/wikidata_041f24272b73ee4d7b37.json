@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Phys.+Rev.+Lett.&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:08:35Z",
   "sha256": "0d577dc3524282f2070b64523eaaac77d324e12874e9dd01d955b7180caf7090",

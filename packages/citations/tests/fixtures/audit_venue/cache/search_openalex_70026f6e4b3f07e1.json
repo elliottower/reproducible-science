@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/works?filter=title.search%3ALanguage+Models+are+Few-Shot+Learners&per-page=5",
   "fetched_at": "2026-10-14T20:47:08Z",
   "sha256": "8741a3ac69e17331f94142aa1e988ff1550c4fedee2ca0065420f13d3f3bbb57",

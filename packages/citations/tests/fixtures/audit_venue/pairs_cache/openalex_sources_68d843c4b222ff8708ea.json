@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/sources?search=Mach.+Learn.%3A+Sci.+Technol.&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
   "fetched_at": "2026-10-15T00:11:08Z",
   "sha256": "b41ed9239a6c1e52dc29010809793977c61516ea28d36d397e2f380d4a6fce19",

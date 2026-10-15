@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Zeitschrift+fur+Physik&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:12:12Z",
   "sha256": "8b69ee5cdb8265e3f9a1a3dd7ee6c2f93cb3acdc3635dd664ed03319500058a9",

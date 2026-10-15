@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Neural+Networks&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:10:09Z",
   "sha256": "c3d8d2e25624930cac5c83142c6775d543985a11f173946004ddbccc5bde8645",

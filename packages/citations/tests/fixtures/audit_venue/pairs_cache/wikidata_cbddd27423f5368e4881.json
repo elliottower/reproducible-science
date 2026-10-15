@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Science+Advances&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:08:47Z",
   "sha256": "03bc44bedeae9ccc94588cb7e92a4da03fd5ba7fdcf6e7939a4a3de9930290dd",

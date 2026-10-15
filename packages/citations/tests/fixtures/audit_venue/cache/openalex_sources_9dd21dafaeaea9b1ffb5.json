@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/sources?search=Neural+Information+Processing+Systems&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
   "fetched_at": "2026-10-14T22:23:52Z",
   "sha256": "ee5f2344c96565db2dc44489e5f74e457419a865a0f33c5f25bd0cffaf4a2b2d",

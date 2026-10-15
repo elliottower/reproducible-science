@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.crossref.org/works?query.bibliographic=Exploring+the+Limits+of+Transfer+Learning+with+a+Unified+Text-to-Text+Transformer&rows=8",
   "fetched_at": "2026-10-14T20:49:47Z",
   "sha256": "ef19b290468c02a84346fc76e2abd03e94c70a671600f552bcad27a6dc0d5bbf",

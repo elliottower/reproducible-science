@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DPLOS+ONE%22&format=json",
   "fetched_at": "2026-10-15T00:08:34Z",
   "sha256": "010f667d3410c5e533b4cd68da1babb4d872c236cae7fe75f9b0894ff8f7d854",

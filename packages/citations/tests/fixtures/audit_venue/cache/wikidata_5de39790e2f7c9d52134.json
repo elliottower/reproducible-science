@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q1653169%7CQ105699606%7CQ6772765%7CQ106334229%7CQ105695803%7CQ106334226%7CQ106336093%7CQ106334224%7CQ105695798%7CQ34469255&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
   "fetched_at": "2026-10-14T22:25:20Z",
   "sha256": "2aa68b924c31e3de3ec0113c25d49f86013dfc96d9143c4c14cdfbc828c4537d",

@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/sources?search=KDD&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
   "fetched_at": "2026-10-14T22:23:10Z",
   "sha256": "6e8b345697c77fef3d0a65da9f2f3277ca7be7a2a0dac15593e5b052e71f2af8",

@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/works?filter=title.search%3ADropout%3A+A+Simple+Way+to+Prevent+Neural+Networks+from+Overfitting&per-page=5",
   "fetched_at": "2026-10-14T20:50:08Z",
   "sha256": "ceb6c5329a6292ef88d3911b09771a3f1df955b575af46aff09df21d824237a5",

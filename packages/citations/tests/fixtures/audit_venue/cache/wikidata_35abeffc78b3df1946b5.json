@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Biometrika&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-14T22:29:09Z",
   "sha256": "ff8edf549ae4eed95265d34f7e8ed43e9320e6afb2a3c842eb10b30a767f873c",

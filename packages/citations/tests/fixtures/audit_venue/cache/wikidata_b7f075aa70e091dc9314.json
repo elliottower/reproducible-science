@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Methodological&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-14T22:23:17Z",
   "sha256": "33519333e7ce92f7d7ab4203320793b8a1162b025d76b27aa0c01602cbc1f51b",

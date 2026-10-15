@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Proc.+Natl.+Acad.+Sci.+U.S.A.&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:10:43Z",
   "sha256": "074dc2736beadcac0d30083aa1e8e6f1b56da4a8295e5a754898077b15f89e85",

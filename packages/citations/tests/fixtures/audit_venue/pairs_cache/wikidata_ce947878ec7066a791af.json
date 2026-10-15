@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Geophysical+Research+Letters&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:11:02Z",
   "sha256": "6f433be4e2130774e5f50dd7b34ca46d0538c9f8745ff8619140f10be9185f86",

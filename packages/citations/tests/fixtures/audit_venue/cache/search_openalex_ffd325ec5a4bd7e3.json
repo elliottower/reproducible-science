@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/works?filter=title.search%3ASemi-Supervised+Classification+with+Graph+Convolutional+Networks&per-page=5",
   "fetched_at": "2026-10-14T20:48:24Z",
   "sha256": "043f17719c63e7f782aaa02855e2486892ed2ef4bfeea788ef29d69032ec2b8f",

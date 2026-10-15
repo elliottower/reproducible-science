@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/sources?search=Pattern+Recognit.+Lett.&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
   "fetched_at": "2026-10-15T00:09:27Z",
   "sha256": "f67e7e03a780213fee8a4c4c9667d50d7dc76e0878ff60bf2e64ea7f77390563",

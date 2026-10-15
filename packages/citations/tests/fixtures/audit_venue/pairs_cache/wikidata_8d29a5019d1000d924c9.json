@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Journal+of+Political+Economy&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:13:08Z",
   "sha256": "c247fbe2eff0deffc9b8839c3ac7e41fd6d1d4d9124988ecfdf0e06a204e94bd",

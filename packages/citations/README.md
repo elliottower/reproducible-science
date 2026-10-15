@@ -860,9 +860,10 @@ same kinds of identifier through registries that index venue names and their abb
 Wikidata's labels, aliases, short names and ISO 4 abbreviations, and OpenAlex sources' display
 names, abbreviated titles and alternate titles. An `issn` field is resolved beside the name: where
 the name agrees with the record's venue and a registry knows the ISSN as another venue, the ISSN is
-reported as its own disagreement, `issn: ours '...' vs registry '...'`; an ISSN no registry knows
-is not evidence of anything, and where neither the name nor the ISSN settles the venue it is not
-comparable. A registry
+reported as its own disagreement, `issn: ours '...' vs registry '...'`. Where the name names
+another venue than the record's, an ISSN registries know as that same venue supports the
+mismatch, an ISSN no registry knows leaves the name to decide alone, and an ISSN registries know
+as a third venue leaves it not comparable, the entry contradicting itself. A registry
 venue is a candidate when one of its own names equals the cited one once case, accents,
 punctuation, LaTeX, years, ordinals and volume numbers are folded away; candidates that share
 an identifier, or that Wikidata links as a conference and its proceedings or as editions of one

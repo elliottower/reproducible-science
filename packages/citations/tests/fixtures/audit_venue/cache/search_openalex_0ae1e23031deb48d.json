@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/works?filter=title.search%3AAdam%3A+A+Method+for+Stochastic+Optimization&per-page=5",
   "fetched_at": "2026-10-14T20:48:11Z",
   "sha256": "5150d00d8b39f5de006c63200dadf34cbbc067e8f6408181981242249f4eccbc",

@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DCommun.+ACM%22&format=json",
   "fetched_at": "2026-10-15T00:08:49Z",
   "sha256": "b713edcdf8540293bdb8e6844dc0894da3ae2a69ea0b184721849b7deef225d6",

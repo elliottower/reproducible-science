@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Archiv+der+Mathematik&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:11:46Z",
   "sha256": "c62a36784fb2879c87bbeaf3111e857ee78477082fdcca22d3190cc41745228e",

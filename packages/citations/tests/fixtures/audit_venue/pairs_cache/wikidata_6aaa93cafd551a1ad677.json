@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Bioinform.+Adv.&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:10:29Z",
   "sha256": "1f5dcadaf9f9f4bc500e4c90f16da5ab878a581a196e3e0de2796a440646c51f",

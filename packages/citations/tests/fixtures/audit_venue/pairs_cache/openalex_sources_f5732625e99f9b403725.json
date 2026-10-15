@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/sources?search=Adv.+Neural+Inf.+Process.+Syst.&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
   "fetched_at": "2026-10-15T00:08:56Z",
   "sha256": "128bfa12562c1238b5c00fa651823394faf36dd51c50173db25c4be836d8a20c",

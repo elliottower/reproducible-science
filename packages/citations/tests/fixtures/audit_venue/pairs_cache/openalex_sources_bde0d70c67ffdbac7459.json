@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/sources?search=JAMA+Netw.+Open&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
   "fetched_at": "2026-10-15T00:09:45Z",
   "sha256": "dd83b93ee5068ef629ba9a0a4be602670388d93b1163b9d3e750d969a5e71d59",

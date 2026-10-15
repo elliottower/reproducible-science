@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/sources?search=Proceedings+of+the+2019+ACL+Workshop+BlackboxNLP%3A+Analyzing+and+Interpreting+Neural+Networks+for+NLP&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
   "fetched_at": "2026-10-14T22:23:12Z",
   "sha256": "e92b76c3bb7a25fec351eb05bd310e65917f260bf4437b5e2eb3226757cf0a9d",

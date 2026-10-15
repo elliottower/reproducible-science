@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Nature+Communications&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:08:41Z",
   "sha256": "74ff39bb8481804532ee0e284354fb7dd8bc984d54fa40d6daa41921b79c16cd",

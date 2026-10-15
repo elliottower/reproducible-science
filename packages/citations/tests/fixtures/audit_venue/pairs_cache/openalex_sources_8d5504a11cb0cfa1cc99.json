@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/sources?search=NAR+Genom.+Bioinform.&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
   "fetched_at": "2026-10-15T00:11:24Z",
   "sha256": "844c493ce2925efc7b1b0621d9f0eeda7f60f2242b7176a3497a46eae6ac6d0f",

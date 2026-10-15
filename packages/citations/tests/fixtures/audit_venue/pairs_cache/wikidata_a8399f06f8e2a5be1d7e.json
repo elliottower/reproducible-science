@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Bioinformatics+Advances&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:10:30Z",
   "sha256": "95f2e44b1a2736bd995a967d3a67d0e304b24feebcbb1ac3d3cf1d79c4074089",

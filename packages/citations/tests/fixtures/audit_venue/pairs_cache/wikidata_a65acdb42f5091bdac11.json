@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Econometrica&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:13:05Z",
   "sha256": "ac67ec03ed6458fd5aff643363615b7c6142580fbb30ecfdde4bbf2a32077922",

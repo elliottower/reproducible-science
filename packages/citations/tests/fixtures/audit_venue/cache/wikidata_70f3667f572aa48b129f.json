@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=ICCV&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-14T22:25:19Z",
   "sha256": "bb86040defb161ab763cd0483a8dee6508c4b70af4b2c0272c5b59ce25ac7b3f",

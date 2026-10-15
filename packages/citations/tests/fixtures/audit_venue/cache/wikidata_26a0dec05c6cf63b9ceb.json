@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3AP236%3D0022-2836%7CP7363%3D0022-2836&format=json",
   "fetched_at": "2026-10-14T22:22:42Z",
   "sha256": "525f353d2c5aa64ec266a53ffe514132d2322b468f6201d56f910f199d706be7",

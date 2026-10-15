@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/works/doi:10.18653/v1/2020.acl-main.703",
   "fetched_at": "2026-10-14T22:24:20Z",
   "sha256": "47ea4af280d65e1fc0ca8c683979673aa80470f41a973e24bec3e19a3f2e670f",

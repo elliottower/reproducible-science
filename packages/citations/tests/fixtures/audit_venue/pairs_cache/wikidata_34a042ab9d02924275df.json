@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Archiv+f%C3%BCr+Anatomie+und+Physiologie&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:12:01Z",
   "sha256": "dcac8cdc91fd669fd5ec447c6e4fc3d5bbea4f784fb96babda012a6d43dfd4b0",

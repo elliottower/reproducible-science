@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Chemical+Reviews&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:12:49Z",
   "sha256": "3facec3a3577a174268a7b341b9aa94b6f4b9e506e7c0e5332d971412a14f64f",

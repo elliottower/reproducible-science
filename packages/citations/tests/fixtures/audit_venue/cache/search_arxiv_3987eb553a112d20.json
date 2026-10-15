@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://export.arxiv.org/api/query?search_query=ti%3A%22%7BRoBERTa%7D%3A+A+Robustly+Optimized+%7BBERT%7D+Pretraining+Approach%22&max_results=4",
   "fetched_at": "2026-10-14T20:48:54Z",
   "sha256": "0621105f44e787a98d7dbb7a4a19f36973ed0366da903c64ff9e1c4950cf3753",

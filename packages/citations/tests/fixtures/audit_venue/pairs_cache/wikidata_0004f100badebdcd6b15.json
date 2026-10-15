@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=J.+Am.+Chem.+Soc.&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:12:39Z",
   "sha256": "945c46fc8c14c31592975ac323d3ea45c2b7d020bcf64a52ce4682169b2b315f",

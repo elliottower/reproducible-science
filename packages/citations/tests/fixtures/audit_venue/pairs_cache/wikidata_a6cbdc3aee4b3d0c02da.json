@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=IEEE+Journal+on+Selected+Areas+in+Communications&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:10:06Z",
   "sha256": "223973a4fa110f8861647e9ac5a1789493f9caa722d0f6a6832d3e6264f68380",

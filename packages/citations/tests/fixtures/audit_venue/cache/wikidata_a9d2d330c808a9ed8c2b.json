@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Journal+of+Statistical+Software&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-14T22:23:30Z",
   "sha256": "30a1700917af29d6aa7e3c5e7b390a167f99cdc24724475fe58d8530b1175222",

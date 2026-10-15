@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.semanticscholar.org/graph/v1/paper/search?query=Denoising+Diffusion+Probabilistic+Models&limit=6&fields=title%2CexternalIds%2Cauthors%2Cyear%2Cvenue%2CpublicationVenue%2Cjournal",
   "fetched_at": "2026-10-14T20:47:43Z",
   "sha256": "78c114d4c62ba10bd75b251565918da7a2e962448fc2159d0d1e105dd14ffed4",

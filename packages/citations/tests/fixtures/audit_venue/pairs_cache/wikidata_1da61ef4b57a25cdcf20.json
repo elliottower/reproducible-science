@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DChem.+Commun.%22&format=json",
   "fetched_at": "2026-10-15T00:09:50Z",
   "sha256": "43826be58b776bb562a642e8144aa619352cb491fb52042c5e26098fe6d5ec81",

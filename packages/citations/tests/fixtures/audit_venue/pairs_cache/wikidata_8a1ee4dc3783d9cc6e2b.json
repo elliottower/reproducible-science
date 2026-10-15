@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=IEEE+Transactions+on+Neural+Networks+and+Learning+Systems&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:10:27Z",
   "sha256": "a4ba56b4055f7ea5ea61aa4de354acfe1ee527cc92e3bb366e61036d7abdaced",

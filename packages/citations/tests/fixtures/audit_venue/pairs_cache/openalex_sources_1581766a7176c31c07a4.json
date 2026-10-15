@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/sources?search=Z.+Naturforsch.+A&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
   "fetched_at": "2026-10-15T00:11:49Z",
   "sha256": "0840e29816ac732754290ece2f70e99b98f318da34b6c5bd11aa6821001c2c54",

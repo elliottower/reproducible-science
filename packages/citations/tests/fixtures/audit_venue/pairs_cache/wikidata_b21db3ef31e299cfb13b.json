@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DIEEE%2FACM+Trans.+Netw.%22&format=json",
   "fetched_at": "2026-10-15T00:10:15Z",
   "sha256": "1d5a786485d16ff8f210ed6cc31e06ac5d112bdeea8b965e27f5d63f40c9f362",

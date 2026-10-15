@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Royal+Society+Open+Science&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:10:37Z",
   "sha256": "24c8261651c3234e0e21f19de3c8ebd98999e2f37625418e1805d44b5aad65cf",

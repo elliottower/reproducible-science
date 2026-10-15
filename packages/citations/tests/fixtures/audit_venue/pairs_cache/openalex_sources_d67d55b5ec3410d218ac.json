@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/sources?search=Phys.+Lett.+B&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
   "fetched_at": "2026-10-15T00:09:33Z",
   "sha256": "510d5aad95c76f4ee2c9eed9aae7d1ee44df4a15ae0e00126a43863c2744044e",

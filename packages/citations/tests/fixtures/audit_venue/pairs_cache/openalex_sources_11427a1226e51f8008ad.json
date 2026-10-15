@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/sources?search=Archiv+f%C3%BCr+Mathematik&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
   "fetched_at": "2026-10-15T00:12:20Z",
   "sha256": "2ab10ef605929c5c6a64ada0da28cc225ab692e776e7f185e6f1f0050d6556e4",

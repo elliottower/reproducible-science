@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=CVPR&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-14T22:23:46Z",
   "sha256": "d09a0fb40c60adefbdfcf3383b5de96d0b80925837b0a112053e37762afb1418",

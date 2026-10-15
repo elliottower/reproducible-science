@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Nat.+Commun.&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-14T22:30:59Z",
   "sha256": "98b7c98f18fa7718cbe46a830abf2929a6a9d94c389a30ae3c2ccb9d8e2a0a5e",

@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Proceedings+of+the+54th+Annual+Meeting+of+the+Association+for+Computational+Linguistics+%28Volume+1%3A+Long+Papers%29&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-14T22:29:27Z",
   "sha256": "a55d282cfc82678c6fd2cc19c2ebc4cf302c5ead362db1ca115ce4be79156f00",

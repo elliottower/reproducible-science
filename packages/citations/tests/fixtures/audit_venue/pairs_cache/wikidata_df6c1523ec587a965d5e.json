@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Journal+of+the+History+of+Ideas&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:13:20Z",
   "sha256": "fc44f0c076eca5b716e8ecbf11efe33e1a800b666f49fbdb3265c6f21233da5e",

@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=PLOS+Computational+Biology&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:11:32Z",
   "sha256": "818f9774821994edd7d9592de37b0e1db719752c2fda5385222a083c42c3d5b7",

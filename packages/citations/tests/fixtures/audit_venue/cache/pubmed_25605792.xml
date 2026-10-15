@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?db=pubmed&id=25605792&retmode=xml",
   "fetched_at": "2026-10-14T20:49:53Z",
   "sha256": "30d4bae65f77d1c247ab1424f722793536bc3aad5d50ede0be2b1dde477cbb2e",

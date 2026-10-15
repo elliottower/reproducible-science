@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/works?filter=title.search%3ADistributed+Representations+of+Words+and+Phrases+and+their+Compositionality&per-page=5",
   "fetched_at": "2026-10-14T20:49:20Z",
   "sha256": "c4f4190a3413803053295e0d967d473fe45f5d1ecb0c48defcdc5676b3ed4f1f",

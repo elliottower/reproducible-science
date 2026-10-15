@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=IEEE+Commun.+Lett.&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:09:00Z",
   "sha256": "5673c0938930fe6fb8c34cef3ffbe1da621f300ab040de2d82fefcdac33a806b",

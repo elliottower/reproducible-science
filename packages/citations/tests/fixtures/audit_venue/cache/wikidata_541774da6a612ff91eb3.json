@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DN.+Engl.+J.+Med.%22&format=json",
   "fetched_at": "2026-10-14T22:26:57Z",
   "sha256": "d7bcf6602d6dcfde183d0c16765ed04b59988acecdbd6487ea91e70e86350397",

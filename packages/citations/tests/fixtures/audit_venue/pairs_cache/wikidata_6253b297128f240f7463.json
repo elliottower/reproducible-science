@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Brain+Communications&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:10:52Z",
   "sha256": "d8395a770181cc371f672ee4d2935e4835f347be8f05b4a4b336816ce9d1e745",

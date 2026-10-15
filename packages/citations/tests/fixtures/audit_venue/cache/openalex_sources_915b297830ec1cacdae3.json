@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://api.openalex.org/sources?search=European+Conference+on+Computer+Vision&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
   "fetched_at": "2026-10-14T22:23:04Z",
   "sha256": "c5b207324553da7cc6b61de942b8c833d2b19fa1bb7d36c06bfa8c282c300df8",

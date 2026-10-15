@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=JAMA+Netw.+Open&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:09:44Z",
   "sha256": "428228ef1964ab6cba80483f8c46336c0ca5352b523689da8e2b1b46704b909e",

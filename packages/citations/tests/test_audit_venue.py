@@ -12,6 +12,7 @@ fetched for them once; the cached bodies are trimmed to the fields read and re-e
 
 from __future__ import annotations
 
+import hashlib
 import io
 import json
 import pathlib
@@ -665,11 +666,83 @@ def test_a_right_issn_beside_an_unknown_name_matches_on_the_issn(tmp_path, monke
     assert venue_of(verdict).outcome == V.MATCH
 
 
-def test_an_issn_and_a_name_that_both_disagree_are_not_comparable(tmp_path, monkeypatch):
-    other = res("issn:1234-5678", "wikidata:Q999", label="Another Journal")
-    verdict = _with_issn(monkeypatch, tmp_path, other, other, "1234-5678")
-    assert (verdict.status, venue_of(verdict).outcome) == ("ok", V.NOT_COMPARABLE)
-    assert venue_of(verdict).why == V.ISSN_UNSETTLED
+NATURE_DIRECT = res("issn:0028-0836", "issn:1476-4687", "wikidata:Q180445", label="Nature")
+
+
+@pytest.mark.parametrize(
+    "case,by_issn,issn,outcome",
+    [
+        # The Becke JCP DOI cited as journal = {Nature}: wrong venue, and its own ISSN agrees.
+        ("wrong venue, its own issn", NATURE_DIRECT, "0028-0836", V.MISMATCH),
+        ("wrong venue, an issn no registry knows", res("issn:9999-999X"), "9999-999X", V.MISMATCH),
+        ("wrong venue, no issn", None, "", V.MISMATCH),
+        (
+            "wrong venue, an issn of a third venue",
+            res("issn:1234-5678", "wikidata:Q999", label="Another Journal"),
+            "1234-5678",
+            V.NOT_COMPARABLE,
+        ),
+    ],
+)
+def test_an_issn_supports_or_unsettles_a_wrong_venue_name_and_never_hides_it(
+    tmp_path, monkeypatch, case, by_issn, issn, outcome
+):
+    verdict = _with_issn(monkeypatch, tmp_path, NATURE_DIRECT, by_issn or NATURE_DIRECT, issn)
+    check = venue_of(verdict)
+    assert check.outcome == outcome, (case, check.why)
+    if outcome == V.NOT_COMPARABLE:
+        assert check.why == V.ISSN_UNSETTLED
+
+
+def test_an_unhyphenated_lowercase_x_eissn_beside_the_right_name_is_not_flagged(
+    tmp_path, monkeypatch
+):
+    # Harvard Law Review's e-ISSN, written `2161976x`: read as 2161-976X, and not a mismatch.
+    hlr = res(
+        "issn:0017-811X", "issn:2161-976X", "wikidata:Q1", direct=True, label="Harvard Law Review"
+    )
+    rec = record(
+        title="T",
+        venue="Harvard Law Review",
+        venues=["Harvard Law Review"],
+        venue_kind="journal",
+        venue_ids=["issn:0017-811X"],
+    )
+    monkeypatch.setattr(A, "from_crossref", lambda doi, cache: rec)
+    monkeypatch.setattr(A, "identify", lambda *a, **k: hlr)
+    seen = []
+
+    def resolve(ask, name, issn="", both=False):
+        seen.append(issn)
+        return hlr.model_copy(update={"direct": False})
+
+    monkeypatch.setattr(A, "resolve_name", resolve)
+    entry = A.Entry(
+        key="k", title="T", venue="Harvard Law Review", issn="2161976x", doi="10.2307/x"
+    )
+    verdict = A.audit([entry], tmp_path / "cache").entries["k"]
+    assert (verdict.status, venue_of(verdict).outcome) == ("ok", V.MATCH)
+    assert verdict.problems == []
+
+
+def test_a_cache_written_before_the_refusal_fix_is_not_read(tmp_path, monkeypatch):
+    # Version 1 caches could hold a Wikidata server error as an answer that found nothing.
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    url = "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=x"
+    (cache / "w.json").write_text(
+        json.dumps(
+            {
+                "cache_version": 1,
+                "url": url,
+                "fetched_at": "2026-10-14T00:00:00Z",
+                "sha256": hashlib.sha256(b"").hexdigest(),
+                "body": "",
+            }
+        )
+    )
+    assert A.CACHE_VERSION >= 2
+    assert A.cached(url, cache, "w.json") is None
 
 
 # --- a refusal is never cached as an answer -----------------------------------------------------

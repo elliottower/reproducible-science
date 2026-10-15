@@ -1,5 +1,5 @@
 {
-  "cache_version": 1,
+  "cache_version": 2,
   "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Molecular+Systems+Biology&language=en&uselang=en&type=item&limit=10&format=json",
   "fetched_at": "2026-10-15T00:10:34Z",
   "sha256": "a9e64d37f5df61995039dfbfe8383599bc2df71b142fcd9d9c0b98753836e425",
