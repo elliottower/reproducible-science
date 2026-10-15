@@ -3210,6 +3210,8 @@ dependencies = [
     { name = "claims-cli" },
     { name = "prereg" },
     { name = "reproducible-science" },
+    { name = "reproducible-science-pr-bot" },
+    { name = "reproducible-science-ui" },
     { name = "results-cli" },
 ]
 
@@ -3231,7 +3233,6 @@ dev = [
     { name = "coverage" },
     { name = "h5py" },
     { name = "jsonschema" },
-    { name = "mcp" },
     { name = "netcdf4" },
     { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "numpy", version = "2.5.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
@@ -3263,6 +3264,8 @@ requires-dist = [
     { name = "claims-cli", editable = "packages/claims" },
     { name = "prereg", editable = "packages/prereg" },
     { name = "reproducible-science", editable = "packages/repro" },
+    { name = "reproducible-science-pr-bot", editable = "packages/pr-bot" },
+    { name = "reproducible-science-ui", editable = "packages/ui" },
     { name = "results-cli", editable = "packages/results" },
 ]
 
@@ -3284,7 +3287,6 @@ dev = [
     { name = "coverage", specifier = ">=7.6" },
     { name = "h5py", specifier = ">=3.12" },
     { name = "jsonschema", specifier = ">=4.23" },
-    { name = "mcp", specifier = "==2.2" },
     { name = "netcdf4", specifier = ">=1.7.2" },
     { name = "numpy", specifier = ">=2.2.6" },
     { name = "openpyxl", specifier = ">=3.1" },
@@ -3316,6 +3318,7 @@ source = { editable = "packages/repro" }
 dependencies = [
     { name = "citations" },
     { name = "claims-cli" },
+    { name = "mcp" },
     { name = "prereg" },
     { name = "provenance-core" },
     { name = "pydantic" },
@@ -3330,7 +3333,6 @@ adduce = [
 all = [
     { name = "adduce" },
     { name = "claims-cli", extra = ["arrays", "hdf5", "netcdf", "parquet", "rds", "sheets", "stata-spss"] },
-    { name = "mcp" },
     { name = "reproducible-science-pr-bot" },
     { name = "reproducible-science-ui" },
 ]
@@ -3339,9 +3341,6 @@ arrays = [
 ]
 hdf5 = [
     { name = "claims-cli", extra = ["hdf5"] },
-]
-mcp = [
-    { name = "mcp" },
 ]
 netcdf = [
     { name = "claims-cli", extra = ["netcdf"] },
@@ -3385,12 +3384,12 @@ requires-dist = [
     { name = "claims-cli", extras = ["rds"], marker = "extra == 'rds'", editable = "packages/claims" },
     { name = "claims-cli", extras = ["sheets"], marker = "extra == 'sheets'", editable = "packages/claims" },
     { name = "claims-cli", extras = ["stata-spss"], marker = "extra == 'stata-spss'", editable = "packages/claims" },
-    { name = "mcp", marker = "extra == 'mcp'", specifier = "==2.2" },
+    { name = "mcp", specifier = "==2.2" },
     { name = "prereg", editable = "packages/prereg" },
     { name = "provenance-core", editable = "packages/provenance-core" },
     { name = "pydantic", specifier = ">=2.9" },
     { name = "pyyaml", specifier = ">=6.0.2" },
-    { name = "reproducible-science", extras = ["adduce", "arrays", "hdf5", "mcp", "netcdf", "parquet", "pr-bot", "rds", "sheets", "stata-spss", "ui"], marker = "extra == 'all'", editable = "packages/repro" },
+    { name = "reproducible-science", extras = ["adduce", "arrays", "hdf5", "netcdf", "parquet", "pr-bot", "rds", "sheets", "stata-spss", "ui"], marker = "extra == 'all'", editable = "packages/repro" },
     { name = "reproducible-science-pr-bot", marker = "extra == 'pr-bot'", editable = "packages/pr-bot" },
     { name = "reproducible-science-ui", marker = "extra == 'ui'", editable = "packages/ui" },
     { name = "results-cli", editable = "packages/results" },

@@ -22,11 +22,16 @@ classifiers = [
   "Programming Language :: Python :: 3.13",
   "Programming Language :: Python :: 3.14",
 ]
+# Every package under `packages/`, so a bare `uv run` in a fresh clone resolves each root
+# package `lint-imports` names. The page and the bot install editable here, and the page's build
+# hook skips an editable install, so this needs no Node.
 dependencies = [
   "citations>=0.2",
   "claims-cli>=0.5",
   "prereg>=0.2",
   "reproducible-science>=0.3",
+  "reproducible-science-pr-bot>=0.6",
+  "reproducible-science-ui>=0.6",
   "results-cli>=0.3",
 ]
 urls.Homepage = "https://github.com/elliottower/reproducible-science"
@@ -42,9 +47,6 @@ dev = [
   # Validates an exported record against the JSON Schema its model generates. Tests only;
   # nothing under `packages/` imports it. MIT.
   "jsonschema>=4.23",
-  # What `reproducible-science[mcp]` installs, so the tests of `repro mcp` drive the real SDK
-  # over its in-memory transport. Pinned as the extra pins it.
-  "mcp==2.2",
   "netcdf4>=1.7.2",
   "numpy>=2.2.6",
   # The optional spreadsheet and .docx readers, for the same reason as the PDF readers below.
@@ -91,7 +93,7 @@ audit = [
 types = [ "pyrefly>=1", "requests>=2.31" ]
 
 [tool.hatch]
-# Metadata only: the code lives in the four packages this depends on.
+# Metadata only: the code lives in the packages this depends on.
 build.targets.wheel.bypass-selection = true
 
 [tool.uv]
@@ -100,6 +102,7 @@ sources.claims-cli = { workspace = true }
 sources.prereg = { workspace = true }
 sources.provenance-core = { workspace = true }
 sources.reproducible-science = { workspace = true }
+sources.reproducible-science-pr-bot = { workspace = true }
 sources.reproducible-science-ui = { workspace = true }
 sources.results-cli = { workspace = true }
 workspace.members = [ "packages/*" ]
