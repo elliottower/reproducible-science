@@ -1,7 +1,7 @@
 """`repro mcp`: the toolkit's checks as tools of an MCP server, over standard input and output.
 
 Every tool calls the toolkit in this process: the claims side through its functions, and
-`prereg`, `results` and `citations` through the entry `repro check` uses, each told to write
+`prereg`, `results` and `citations` through the entry `repro verify` uses, each told to write
 what it found as JSON. Nothing here freezes or registers a plan, seals or records a run, runs a
 declared command or publishes, and only `citations_audit` reads over the network, from
 registries; the instructions say to ask the human for the rest.
@@ -378,7 +378,9 @@ def build(root: pathlib.Path | None = None) -> MCPServer:
         manifest: str | None = None, project: str | None = None, policy: str = "publication"
     ) -> CallToolResult:
         """Check every assertion in a manifest (default: repro.yaml of the project) under a
-        policy: exploratory, publication or strict. Writes no record of checks."""
+        policy: exploratory, publication or strict. What `claims verify` checks: the claims
+        alone; prereg_check, results_verify, citations_verify and stale check the rest. Writes
+        no record of checks."""
 
         def work(at: pathlib.Path):
             report = run_verify(manifest_at(at, manifest))

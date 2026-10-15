@@ -24,8 +24,11 @@ The skills and the MCP server shell out to the command-line tools, which are ins
 separately:
 
 ```bash
-uv tool install reproducible-science   # prereg, citations, results, repro
+uv tool install reproducible-science --with-executables-from claims-cli,prereg,results-cli,citations
 ```
+
+Without `--with-executables-from`, uv puts only `repro` on PATH. `pip install
+reproducible-science` installs all five commands.
 
 Codex does not run a plugin's hooks until you have reviewed them. Open `/hooks`, read the
 commands the plugin registers, and trust them. A hook changed by an update is skipped again until

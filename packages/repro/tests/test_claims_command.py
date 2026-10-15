@@ -1,5 +1,6 @@
 """`claims <command>` and `repro <command>` are one function, and differ only where a message
-names a command.
+names a command. `verify` is the exception: `repro verify` checks the project's other records
+as well, and says what `claims verify` says before it.
 
 The same handlers answer to both names. Under `repro` every message is what it was. Under
 `claims` a message names `claims` for a command that package holds and says who provides
@@ -48,9 +49,12 @@ def project(root):
     return str(root / "repro.yaml")
 
 
-COMMANDS = [
+VERIFY = [
     ["verify"],
     ["verify", "--policy", "strict"],
+]
+
+COMMANDS = [
     ["stale"],
     ["why", "sites"],
     ["why", "attrition"],
@@ -73,6 +77,26 @@ def test_the_json_of_a_command_is_the_same_under_either_name(tmp_path, capsys, c
     under_claims = run(claims_main, [*argv, "--format", "json"], capsys)
     assert under_claims == under_repro
     json.loads(under_repro[1])
+
+
+@pytest.mark.parametrize("command", VERIFY, ids=" ".join)
+def test_repro_verify_holds_what_claims_verify_says_and_adds_the_other_records(
+    tmp_path, capsys, command
+):
+    path = project(tmp_path)
+    argv = [command[0], path, *command[1:]]
+    code, out, err = run(repro_main, [*argv, "--format", "json"], capsys)
+    alone = run(claims_main, [*argv, "--format", "json"], capsys)
+    whole = json.loads(out)
+    assert {key: whole[key] for key in json.loads(alone[1])} == json.loads(alone[1])
+    assert whole["project"]["checks"]["prereg"] == "not used"
+    assert (code, err) == (alone[0], alone[2])
+
+    code, out, err = run(repro_main, argv, capsys)
+    alone = run(claims_main, argv, capsys)
+    assert out.startswith(alone[1])
+    assert "not used here: prereg, results, citations" in out
+    assert (code, err) == (alone[0], alone[2])
 
 
 @pytest.mark.parametrize("target", ["record", "sarif", "ro-crate"])
@@ -121,6 +145,11 @@ def test_with_no_manifest_each_name_tells_the_user_its_own_command(
         "    repro manifest init\n"
     )
     # `verify` reports between the two what it found to check; the others say nothing more.
+    # `repro verify` then names the sections it found nothing for.
+    unused = "\nnot used here: claims, staleness, prereg, results, citations\n"
+    if command == "verify":
+        assert under_repro.endswith(tail + unused)
+        under_repro = under_repro.removesuffix(unused)
     assert under_repro.startswith(head) and under_repro.endswith(tail)
     if command != "verify":
         assert under_repro == head + tail

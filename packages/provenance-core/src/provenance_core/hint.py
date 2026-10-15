@@ -4,7 +4,7 @@ A tool that advertises itself is worse for it, and one that prints advertising i
 is worse still. So this is bounded to the case where the note is a fact rather than a pitch,
 and every bound is a condition on saying anything at all:
 
-  * **the project already uses another tool.** If it does not, `repro check` would run one
+  * **the project already uses another tool.** If it does not, `repro verify` would run one
     thing and the note would be false. Detection is on state directories, never on a data
     directory that happens to share the name.
   * **stderr, never stdout.** A note on stdout corrupts `citations verify --json | jq`.
@@ -87,7 +87,7 @@ def note(me: str, root: pathlib.Path | None = None, stream=None) -> str | None:
 
     names = ", ".join(others)
     line = (
-        f"note: this project also uses {names}. `repro check` runs them together in one pass, "
+        f"note: this project also uses {names}. `repro verify` runs them together in one pass, "
         f"and reports what no single tool can see. `{OFF}=1` silences this."
     )
     print(line, file=stream)

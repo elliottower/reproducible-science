@@ -18,9 +18,15 @@ that have nothing to do with the claim. Give the address; let the tool fetch it.
 ```bash
 repro demo               # a worked example, run for real and then broken on purpose
 repro init my-paper      # scaffold repro.yaml
-repro verify             # check every assertion in it
-repro verify --policy strict
+claims verify            # check every assertion in it: the fast check
+claims verify --policy strict
+repro verify             # the claims, the plan, the ledger, the citations and staleness, in one report
 ```
+
+`claims verify` checks the manifest's claims alone. `repro verify` checks those and every other
+record the project keeps -- `prereg check`, `results verify --files`, `citations verify`, and
+each declared command against its recorded re-runs -- naming a record the project does not keep
+as not used. Both execute nothing a manifest declares, and both keep the record of checks.
 
 `repro demo` writes `repro-demo/`, a self-contained project that verifies clean and then fails
 two different ways: a pinned file that was edited, and a number the manuscript reports that the
@@ -253,10 +259,10 @@ directory, the freeze goes ahead.
 
 ## When to reach for this
 
-- Before submitting a draft, over the whole manifest
+- Before submitting a draft, over the whole project: `repro verify`
 - After regenerating results, to see which claims moved
 - To run the declared commands again and see whether the printed numbers survive: `repro reproduce`
-- To see what a claim said at each check before it was edited: `repro why <claim-id>`, which reads the record every `repro verify` keeps in the git directory
+- To see what a claim said at each check before it was edited: `repro why <claim-id>`, which reads the record every `claims verify` and `repro verify` keeps in the git directory
 - In the project's CI job or before a release, so that record travels with the repository: `repro verify --record`, then commit `.repro/checks.jsonl` and `.repro/ledger.head`
 - After editing an input or a script, before trusting a green verify: `repro stale`
 - For one claim, what the record establishes and what it does not: `repro why <claim-id>`

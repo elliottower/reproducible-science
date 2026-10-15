@@ -176,7 +176,8 @@ repos:
         # The hook published for other repositories, run against ours. `verify` writes nothing
         # -- `test_read_only.py` asserts that five ways -- so it is safe at commit time, and a
         # number that drifts from the measurement behind it fails here rather than in a review.
-        entry: uv run repro verify
+        # `claims verify` is the claims alone; `repro verify` would run the other tools too.
+        entry: uv run claims verify
         language: system
         pass_filenames: false
         always_run: true

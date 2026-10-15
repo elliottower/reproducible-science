@@ -16,6 +16,6 @@
 
 <!-- Delete this section if it does not. -->
 
-- [ ] `repro verify --policy strict` passes
+- [ ] `claims verify --policy strict` passes
 - [ ] derived artifacts regenerate clean (`make drift`)
 - [ ] conformance fixtures are unchanged, or the change is deliberate and re-pinned

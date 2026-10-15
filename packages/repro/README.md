@@ -188,11 +188,13 @@ found by looking under results/, paper/artifacts/, outputs/, data/ and for one m
 write one that pins this project's result files, with example claims to edit:
 
     repro manifest init
+
+not used here: claims, staleness, prereg, results, citations
 ```
 
 The files are the ones `repro manifest init` would pin, found as it finds them. The numbers the manuscript prints are the ones `repro numbers` would count as unbound, in digits, with two digits or a decimal point, so years, labels, citations and single digits are left out. Each is compared with every number a JSON or YAML file holds, in mappings and in lists, and every cell of a CSV, TSV, PSV or columnar table, by the comparison a numeric assertion makes at the precision printed. A number printed with a percent sign is also compared as a percentage. Nothing else is scaled: a number is compared as printed, without its unit or suffix, so `25.6M` is compared as 25.6 and does not match a stored 25557032. A column, a key repeated across the elements of a list, or any other key of a JSON or YAML mapping, is index-like where its whole name, ignoring case and separators, is `id`, `idx`, `index`, `step`, `global_step`, `epoch`, `iter`, `iteration`, `row` or `seed`, or it has no name; `step_size`, `gini_index`, `id_acc` and `row_count` are not. A column or a repeated key is index-like also where it holds at least ten whole numbers and at least three quarters of its consecutive pairs step by one nonzero amount, where every pair that breaks the step drops back to the first value or the least. That keeps a counter that starts again for each run of a long table or each element of an outer list, and leaves out a count with one irregular step. Guesses in an index-like column or key are listed last, each tagged `[index-like column]` or `[index-like key]`, and the headline counts them apart, as `and 4 more numbers agree only with index-like columns or keys`. Nothing is left out. One number agreeing with several rows of a column, or one key of several list elements, is one guess: a place whose value equals the number exactly where one does, then the other rows and what they hold, as `rows 0, 2 hold 0.708 and 0.712`. Guesses in JSON and YAML files are listed before guesses in tables. A long pointer is shortened in the middle in this output and kept whole in JSON. A column of whole numbers that steps exactly linearly, such as a dose series of 25 to 300 mg in steps of 25 or the n of a power table, cannot be told from a counter by its values, so it is demoted; its guesses still appear, last and tagged.
 
-A guess is never counted as verified. At most 10,000 numbers are read from one file, and a delimited file is read no further than that. Notes name files by their path in the project, never an absolute one. At most 1,000,000 comparisons are made. A note says where either limit was reached, and the headline counts the numbers compared and how many were not. A file that cannot be read is a note. The command exits 2, as every command does with nothing to read: nothing was checked, which is neither a pass nor a failure.
+A guess is never counted as verified. At most 10,000 numbers are read from one file, and a delimited file is read no further than that. Notes name files by their path in the project, never an absolute one. At most 1,000,000 comparisons are made. A note says where either limit was reached, and the headline counts the numbers compared and how many were not. A file that cannot be read is a note. Where the project keeps no other record either, the command exits 2, as every command does with nothing to read: nothing was checked, which is neither a pass nor a failure.
 
 `--format json` prints one document:
 
@@ -240,9 +242,22 @@ The two example claims show the commonest shapes: a `metric`, a number at a JSON
 repro verify
 ```
 
-Reads `repro.yaml` and checks every declared evidence assertion against the artifact it names. It spawns nothing: `prereg`, `results` and `citations` are separate commands.
+Checks every record the project keeps, in one report with one exit code:
 
-It changes nothing in the working tree. It does keep a record of what it checked. For every assertion whose `reported` value or passage, address, claim text, artifact digest or outcome differs from the last entry recorded for it, one entry is appended: what the assertion declared, the digest of each file it read, the outcome, and when. A check that finds every assertion as it was last recorded adds nothing, so the record grows with changes and not with runs. `repro why <claim-id>` reads it back.
+| section | what it checks | used where the project has |
+|---|---|---|
+| claims | every evidence assertion `repro.yaml` declares, against the artifact it names | `repro.yaml` |
+| staleness | each declared command against the record of its re-runs, as `repro stale` reports it, graded under `--policy` | a command under `regenerations` |
+| prereg | `prereg check` | a `PREREG.md` or `.prereg/` |
+| results | `results verify --files` | `.results/` |
+| citations | `citations verify --claims <dir>` | a claims directory holding a claims file |
+| cross-tool | a ledger claim naming a freeze that no frozen plan records | a ledger and a plan |
+
+A record the project does not keep is named as not used and is not run. The project is the directory given, or the folder holding the manifest given or found at or above the working directory. It executes nothing a manifest declares and reaches no network: `repro reproduce` is the command that runs things. It exits 0 where every check that ran passed, 1 where one failed or could not check, and 2 where nothing was checked. `--format json` keeps `report` and `assessment` where `claims verify` puts them and adds `staleness`, `prereg`, `results`, `citations`, `cross_tool` and `project` beside them; `--format sarif` is the claims' log with each section's verdict and the exit code under the run's `properties.checks`. With no manifest and another record kept, the claims are a section reported as not used, and the exit code is the other records'. A section's word is `passed`, `failed` or `not used`, and a tool's own check may also give `could not check` or `nothing to read`, which count against the exit code as `failed` does.
+
+`claims verify` checks the claims alone, takes the same options and writes the same record of checks. It is the fast check, and the one a pre-commit hook runs.
+
+Neither command changes anything in the working tree. Each keeps a record of what it checked. For every assertion whose `reported` value or passage, address, claim text, artifact digest or outcome differs from the last entry recorded for it, one entry is appended: what the assertion declared, the digest of each file it read, the outcome, and when. A check that finds every assertion as it was last recorded adds nothing, so the record grows with changes and not with runs. `repro why <claim-id>` reads it back.
 
 | | local record | tracked record |
 |---|---|---|
@@ -716,7 +731,7 @@ next: commit and push. Each badge prints its workflow's name beside `passing` or
 `failing`, for the latest run on the default branch.
 ```
 
-`repro ci init` writes one workflow for each check the repository keeps a record for, says which it skipped and why, and prints two badge lines for each one written, in the order prereg, results, claims, citations, reruns. Which records a repository keeps is decided as `repro check` decides it.
+`repro ci init` writes one workflow for each check the repository keeps a record for, says which it skipped and why, and prints two badge lines for each one written, in the order prereg, results, claims, citations, reruns. Which records a repository keeps is decided as `repro verify` decides it.
 
 | workflow | badge reads | written when the repository has | the workflow runs |
 |---|---|---|---|
@@ -805,7 +820,7 @@ A recorded file the repository does not commit is `missing` in a clone, and the 
 
 ### claims in CI
 
-`repro ci claims` runs what `repro verify` runs: each value and passage the manifest declares against the file it is declared to come from, and each file against its pin. It executes nothing, writes nothing to the project, and keeps no record of checks: `repro verify` is the command that appends to one. `--policy` grades as it does for `repro verify`.
+`repro ci claims` runs what `claims verify` runs: each value and passage the manifest declares against the file it is declared to come from, and each file against its pin. It executes nothing, writes nothing to the project, and keeps no record of checks: `claims verify` and `repro verify` are the commands that append to one. `--policy` grades as it does for `claims verify`.
 
 ```markdown
 ## claims: my_project
@@ -1054,7 +1069,7 @@ SARIF has no property for most of what a record holds. The whole record is in ea
 
 GitHub keeps the 5,000 most severe results of a run and rejects a file over 10 MB compressed. The default output holds only what did not match; with `--include-matches` a log over 5,000 results is written whole and a warning says so.
 
-`repro verify --format sarif` is an older log built from the report, graded by `--policy`, and is unchanged.
+`claims verify --format sarif` is an older log built from the report and graded by `--policy`. `repro verify --format sarif` is that log with each section's verdict and the exit code under the run's `properties.checks`.
 
 ## As an RO-Crate
 
@@ -1125,7 +1140,7 @@ Clones the repository into a cache directory at that commit (default: the remote
 | `.results/ledger.jsonl` | `results verify --files` |
 | a claims directory | `citations verify --claims <dir>` |
 | each tracked `.bib` file | `citations audit --bib <file>` |
-| `repro.yaml` | `repro verify` |
+| `repro.yaml` | `claims verify` |
 
 ```text
 command           exit  outcome          what it found                                 what it could not establish
@@ -1135,7 +1150,7 @@ results.verify    1     failed           chain intact: 153 events, anchored; 4  
                                          file(s) changed or missing since they were
                                          recorded.
 citations.verify  1     could not check  not found 0                                   unchecked 18 file not found
-repro.verify      2     nothing to read  no repro.yaml here or above.                  -
+claims.verify     2     nothing to read  no repro.yaml here or above.                  -
 ```
 
 Each row carries one of four outcomes. `failed` is a finding about the repository. `could not check` means a source is not on this machine or a registry did not answer, and `nothing to read` means the repository keeps no record of that kind. Neither is a pass. A step left out is listed as `not run` with the reason. The command exits 1 when a check failed, 2 when one could not be made or nothing was established, and 0 otherwise.

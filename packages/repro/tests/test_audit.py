@@ -174,7 +174,7 @@ def test_every_kind_of_record_is_checked_and_the_record_names_the_commit_and_tre
         "prereg.check": 0,
         "results.verify": 0,
         "citations.verify": 0,
-        "repro.verify": 0,
+        "claims.verify": 0,
     }
     assert set(outcomes(record).values()) == {audit.PASSED}
     assert "1 plans: 1 unchanged" in record["steps"]["prereg.check"]["output"]
@@ -182,7 +182,7 @@ def test_every_kind_of_record_is_checked_and_the_record_names_the_commit_and_tre
     assert record["steps"]["citations.verify"]["found"] == (
         "found 1; not found 0; 1 source tracked by git"
     )
-    assert "1 verified" in record["steps"]["repro.verify"]["found"]
+    assert "1 verified" in record["steps"]["claims.verify"]["found"]
     assert record["declared"] | {"tracked_files": 0} == {
         "tracked_files": 0,
         "registered_plans": 1,
@@ -293,7 +293,7 @@ def test_a_repository_keeping_no_record_has_nothing_to_read_and_nothing_is_estab
 ):
     code, record, printed = run_audit(str(empty))
     assert outcomes(record) == dict.fromkeys(
-        ("prereg.check", "results.verify", "citations.verify", "repro.verify"), audit.NOTHING
+        ("prereg.check", "results.verify", "citations.verify", "claims.verify"), audit.NOTHING
     )
     assert {step["exit"] for step in record["steps"].values()} == {2}
     assert record["skipped"]["citations.audit"]["reason"] == "no .bib file in the repository"
@@ -316,7 +316,7 @@ def test_commit_pins_an_older_revision_and_the_record_names_it(repo, run_audit):
         "prereg.check": audit.FAILED,
         "results.verify": audit.NOTHING,
         "citations.verify": audit.NOTHING,
-        "repro.verify": audit.NOTHING,
+        "claims.verify": audit.NOTHING,
     }
     assert (
         record["steps"]["prereg.check"]["found"] == "1 plans: 0 unchanged, 0 changed, 1 not frozen"
@@ -416,7 +416,7 @@ def test_a_target_names_an_unusual_path_and_adds_a_step_beside_the_defaults(
         "results.verify",
         "citations.verify",
         "citations.audit",
-        "repro.verify",
+        "claims.verify",
     ]
     assert set(record["steps"]) == {s["name"] for s in record["target"]["steps"]} - {
         "citations.audit"

@@ -18,6 +18,9 @@ const spawned: string[] = []
  */
 type Disk = { links?: Record<string, string>; ignoresCase?: boolean }
 
+/** What `says` gives for a command that is not installed: the engine cannot start it. */
+const MISSING = '\u0000not installed'
+
 /** Stands for the engine beneath the mod: a project whose files are `files`, and a tool that always runs. */
 function project(
   on: On,
@@ -75,9 +78,18 @@ function project(
     if (says(e.argv) === null) {
       throw new Error(`$.process.run(${e.argv[0]}) aborted: still running after 60000ms`)
     }
+    // A throw here never reaches the mod with its message, so a command that cannot start is
+    // given as a shell reports one: exit 127 and nothing printed.
+    const missing = says(e.argv) === MISSING
 
     return {
-      value: { exitCode: 0, stdout: says(e.argv) ?? '', stderr: '', isStdoutTruncated: false, isStderrTruncated: false },
+      value: {
+        exitCode: missing ? 127 : 0,
+        stdout: missing ? '' : (says(e.argv) ?? ''),
+        stderr: '',
+        isStdoutTruncated: false,
+        isStderrTruncated: false,
+      },
     }
   })
   on('tool.call', (_$, e) => {
@@ -537,13 +549,13 @@ test('registrations frozen by a commit line count as plans, and only an edited o
   await $.command.run({ command: 'repro-status', args: 'auto' })
 })
 
-/** What `repro verify` prints, cut to the lines the mod reads: the assertions, the counts, the policy. */
+/** What `claims verify` prints, cut to the lines the mod reads: the assertions, the counts, the policy. */
 const assertions = (lines: string[], counts: string, policy = 'FAILED  (1 errors, 0 warnings)') =>
   `/work/trial/repro.yaml\n\n${lines.map(line => `  ${line}\n`).join('')}\n  ${counts}\n  policy publication: ${policy}\n`
 
-/** A project at /work/trial with a manifest, where `repro verify` prints `printed` (null: it times out). */
+/** A project at /work/trial with a manifest, where `claims verify` prints `printed` (null: it times out). */
 function trial(on: On, printed: string | null, files: Record<string, string> = { '/work/trial/repro.yaml': 'x' }) {
-  project(on, { '/work/trial/PREREG.md': DRAFT_PLAN, ...files }, argv => (argv[0] === 'repro' ? printed : ''))
+  project(on, { '/work/trial/PREREG.md': DRAFT_PLAN, ...files }, argv => (argv[0] === 'claims' ? printed : ''))
   spawned.length = 0
 }
 
@@ -560,7 +572,34 @@ test('a manifest whose assertions all verify adds a fourth field, as verified ov
   const shown = await $.command.run({ command: 'repro-status', args: 'trial' })
 
   expect(shown.text).toContain('citations: none pinned · repro: 34/34 checks verified')
-  expect(spawned.some(call => call.includes('"repro","verify"') && call.includes('/work/trial'))).toBe(true)
+  expect(spawned.some(call => call.includes('"claims","verify"') && call.includes('/work/trial'))).toBe(true)
+  await $.command.run({ command: 'repro-status', args: 'auto' })
+})
+
+test('with only repro on PATH, the claims are checked through repro claims', async ($, on) => {
+  const printed = assertions(['ok    n  metric   /n = 3'], '1 verified', 'passed  (0 errors, 0 warnings)')
+  project(on, { '/work/trial/PREREG.md': DRAFT_PLAN, '/work/trial/repro.yaml': 'x' }, argv =>
+    argv[0] === 'repro' ? (argv[1] === 'claims' ? printed : '') : argv[0] === 'claims' ? MISSING : '',
+  )
+  spawned.length = 0
+
+  const shown = await $.command.run({ command: 'repro-status', args: 'trial' })
+
+  expect(shown.text).toContain('repro: 1/1 checks verified')
+  expect(spawned.some(call => call.includes('"repro","claims","verify"'))).toBe(true)
+  await $.command.run({ command: 'repro-status', args: 'auto' })
+})
+
+test('a tool that is not installed is said to be, never to have timed out', async ($, on) => {
+  project(on, { '/work/trial/PREREG.md': DRAFT_PLAN, '/work/trial/repro.yaml': 'x' }, argv =>
+    ['claims', 'repro', 'prereg'].includes(argv[0] ?? '') ? MISSING : '',
+  )
+
+  const shown = await $.command.run({ command: 'repro-status', args: 'trial' })
+
+  expect(shown.text).toContain('prereg: not installed')
+  expect(shown.text).toContain('repro: not installed')
+  expect(shown.text).not.toContain('timed out')
   await $.command.run({ command: 'repro-status', args: 'auto' })
 })
 

@@ -17,6 +17,7 @@ import urllib.parse
 import pytest
 import repro
 import yaml
+from claims.cli import main as claims_main
 from repro import ci
 from repro.cli import main
 from repro.models import (
@@ -469,7 +470,7 @@ def test_claims_exits_0_and_prints_what_verify_prints(tmp_path, capsys, monkeypa
     path = on_disk(project(tmp_path))
     assert main(["ci", "claims", str(path)]) == 0
     ours = capsys.readouterr().out
-    assert main(["verify", str(path)]) == 0
+    assert claims_main(["verify", str(path)]) == 0
     assert ours.startswith(capsys.readouterr().out)
     assert "no command is declared" in ours
     assert sorted(p.name for p in tmp_path.iterdir()) == [

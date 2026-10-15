@@ -46,12 +46,12 @@ test('a project with nothing wrong pins nothing', async ($, on) => {
   await $.command.run({ command: 'repro-status', args: 'auto' })
 })
 
-/** What `repro verify` prints for these assertion lines and this line of counts. */
+/** What `claims verify` prints for these assertion lines and this line of counts. */
 const printed = (lines: string[], counts: string) =>
   `/work/audit/repro.yaml\n\n${lines.map(line => `  ${line}\n`).join('')}\n  ${counts}\n  policy publication: FAILED  (1 errors, 0 warnings)\n`
 
 /**
- * A healthy project at `root` with a manifest and one claims folder, where `repro verify` and
+ * A healthy project at `root` with a manifest and one claims folder, where `claims verify` and
  * `citations verify` print what is given.
  */
 function audited(on: On, root: string, repro: string, citations: string) {
@@ -69,7 +69,7 @@ function audited(on: On, root: string, repro: string, citations: string) {
     value: {
       exitCode: 0,
       stdout:
-        e.argv[0] === 'repro'
+        e.argv[0] === 'claims'
           ? repro
           : e.argv[0] === 'citations'
             ? citations

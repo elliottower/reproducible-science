@@ -2,7 +2,7 @@
 
     repro ci prereg     what `prereg check` checks
     repro ci results    what `results verify --files` checks
-    repro ci claims     what `repro verify` checks
+    repro ci claims     what `claims verify` checks
     repro ci citations  what `citations verify --claims <dir>` checks
     repro ci reruns     what `repro stale` reports of each declared command, running none;
                         with `--run`, what `repro reproduce` runs
@@ -12,7 +12,7 @@
 Nothing is evaluated here that those commands do not evaluate. `claims` calls
 `claims.verify.verify`, `reruns` calls `claims.stale.stale` and with `--run`
 `repro.reproduce.reproduce`, and the policy grades each as it does there. `prereg`, `results` and `citations` run the tool's own
-check in this process, found and pointed as `repro check` finds and points it, and read the
+check in this process, found and pointed as `repro verify` finds and points it, and read the
 counts from the JSON the tool writes with `--json`. The text printed is the text those commands
 print. What this adds is a Markdown summary appended to the file `GITHUB_STEP_SUMMARY` names,
 which GitHub shows on the page of the run.
@@ -91,7 +91,7 @@ NAMES = {
 
 class ToolCommand(BaseModel):
     """How `repro ci <tool>` reaches one tool: every name of that tool's that this module
-    spells. The command itself is `repro.delegate`'s, which `repro check` also runs."""
+    spells. The command itself is `repro.delegate`'s, which `repro verify` also runs."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -448,7 +448,7 @@ def claims(manifest: Manifest, policy: Policy) -> ClaimsRun:
 
 
 class ToolRun(BaseModel):
-    """What one tool's own check found, run as `repro check` runs it."""
+    """What one tool's own check found. `repro verify` runs each tool through this too."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -1410,7 +1410,7 @@ def _say_sources_absent(root: pathlib.Path, prefix: str) -> None:
 
 # ---------------------------------------------------------------------------------- commands
 
-#: The text `repro verify`, `repro reproduce` and `repro stale` print, which `repro.cli` owns.
+#: The text `claims verify`, `repro reproduce` and `repro stale` print, which `repro.cli` owns.
 Shown = Callable[..., None]
 
 
@@ -1530,7 +1530,7 @@ def add_parser(
         help="run the checks in a workflow, with a summary on the run page",
         description=(
             "The checks as one line of a workflow each. `prereg`, `results` and `citations` "
-            "run that tool's own check, `claims` runs what `repro verify` and `repro stale` "
+            "run that tool's own check, `claims` runs what `claims verify` and `repro stale` "
             "run, `reruns` runs what `repro reproduce` runs, and each appends a Markdown "
             "summary to the file GITHUB_STEP_SUMMARY names. `init` writes a workflow for each "
             "check the repository keeps a record for, and prints the README lines."
@@ -1581,7 +1581,7 @@ def add_parser(
     p_claims = checks(
         "claims",
         "check every assertion, then say which claims read a file changed since its re-run",
-        "Run what `repro verify` runs. Executes nothing. Exits 1 where the policy fails the "
+        "Run what `claims verify` runs. Executes nothing. Exits 1 where the policy fails the "
         "verification, 2 with no manifest, and 0 otherwise. Where the manifest declares a "
         "command, how many assertions read a file current with a recorded re-run is printed "
         "and not graded: `repro ci reruns` is the check that fails on it.",
