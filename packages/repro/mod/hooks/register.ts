@@ -636,11 +636,17 @@ export function parseQueue(text: string): FixRequest[] {
 const under = (path: string, root: string) => path === root || path.startsWith(root.endsWith('/') ? root : `${root}/`)
 
 /**
- * Whether a request belongs to this session: its project is the session's folder, holds it or
- * lies inside it, or holds a project the session has followed through the files its tools touched.
+ * Whether a request belongs to this session: its project is the session's folder or holds it, or
+ * holds a project the session has followed through the files its tools touched. A project inside
+ * the session's folder is not enough, or a session opened in the home folder would show them all,
+ * and a request naming no project or the root names every session's.
  */
 export function isMine(r: FixRequest, cwd: string, seen: readonly string[]): boolean {
-  return under(cwd, r.project) || under(r.project, cwd) || seen.some(one => under(one, r.project))
+  if (r.project.replace(/\/+$/, '') === '') {
+    return false
+  }
+
+  return under(cwd, r.project) || seen.some(one => under(one, r.project))
 }
 
 async function handledIds($: EngineInterface, dir: string) {

@@ -69,6 +69,19 @@ test('isMine: the project, a folder inside it, or a followed project; never a si
   expect(isMine(req('/u/paper'), '/u/other', ['/u/elsewhere'])).toBe(false)
 })
 
+test('isMine: a project inside the session folder is not enough, so a session at home shows nothing below it', async () => {
+  expect(isMine(req('/home/u/work/paper'), '/home/u', [])).toBe(false)
+  expect(isMine(req('/home/u/work/paper'), '/home/u', ['/home/u'])).toBe(false)
+  expect(isMine(req('/home/u/work/paper'), '/home/u/work/paper/src', [])).toBe(true)
+})
+
+test('isMine: a request naming no project or the root shows in no session', async () => {
+  for (const project of ['', '/', '//']) {
+    expect(isMine(req(project), '/home/u/work/paper', [])).toBe(false)
+    expect(isMine(req(project), '/', ['/home/u/work/paper'])).toBe(false)
+  }
+})
+
 test('a queued request for this project shows in the band, and load fills the box and marks it handled', async ($, on) => {
   const files: Record<string, string> = {
     [QUEUE]: [req('/work/paper', 'one'), req('/work/other', 'two')].map(r => JSON.stringify(r)).join('\n') + '\n',
