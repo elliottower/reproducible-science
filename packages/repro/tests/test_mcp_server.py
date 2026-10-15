@@ -1,15 +1,21 @@
 import json
+import os
 import pathlib
+import subprocess
 from typing import Any
 
 import anyio
 import pytest
 import yaml
 from claims.cli import main as claims_main
-from claims.models import Digest
+from claims.manifest import load
+from claims.models import Digest, Manifest
 from claims.open_items import OpenItem, Source, write_draft
+from claims.verify import verify as run_verify
 from mcp import Client
 from mcp.types import ListRootsResult, Root
+from provenance_core import chain
+from repro import proposals
 from repro.mcp_server import INSTRUCTIONS, build
 
 PASSAGE = "the set of changes over which a relationship is invariant"
@@ -189,6 +195,7 @@ def test_the_server_lists_every_tool_and_carries_the_procedure(project):
         "propose_binding",
         "pin_quote",
         "set_project",
+        "add_artifact",
     }
     assert instructions == INSTRUCTIONS
     for rule in (
@@ -639,12 +646,10 @@ def calls(server_root: pathlib.Path | None, steps: list[tuple[str, dict]], roots
 
 
 def test_set_project_names_the_root_for_the_rest_of_the_session(project, tmp_path):
-    other = tmp_path / "other"
-    (other / "claims").mkdir(parents=True)
     named, verified = calls(
         tmp_path,
         [("set_project", {"path": str(project)}), ("verify", {"policy": "exploratory"})],
-        roots=[other],
+        roots=[tmp_path],
     )
     assert named.structured_content == {"root": project.as_posix()}
     assert verified.structured_content["root"] == project.as_posix()
@@ -763,20 +768,35 @@ def test_an_inferred_assertion_the_agent_did_not_propose_is_never_replaced(proje
     assert same()
 
 
-def test_the_record_of_attempts_is_only_appended_to(project):
-    log = project / "draft" / "open-items.attempts.jsonl"
+def test_attempts_are_appended_to_a_hash_chain(project):
+    record = project / ".repro" / "agent.jsonl"
     propose_auc(project, "/auc/train")
-    first = log.read_bytes()
+    first = record.read_bytes()
     propose_auc(project, "/auc/held")
-    second = log.read_bytes()
-    assert second.startswith(first)
-    lines = [json.loads(line) for line in second.decode().splitlines()]
-    assert [(r["item"], r["attempt"], r["outcome"]) for r in lines] == [
-        ("auc/value", 1, "mismatch"),
-        ("auc/value", 2, "matched"),
+    assert record.read_bytes().startswith(first)
+    assert chain.verify(record)[0] is chain.ChainStatus.INTACT
+    events = chain.read_ledger(record)
+    assert [(e["event"], e["item"], e["attempt"], e["outcome"]) for e in events] == [
+        ("attempt", "auc/value", 1, "mismatch"),
+        ("attempt", "auc/value", 2, "matched"),
     ]
-    assert lines[0]["assertion"]["locator"] == {"kind": "tree", "pointer": "/auc/train"}
-    assert all(r["at"].endswith("+00:00") for r in lines)
+    assert events[1]["prev_hash"] != events[0]["prev_hash"]
+    assert events[0]["assertion"]["locator"] == {"kind": "tree", "pointer": "/auc/train"}
+    assert events[0]["session"] != events[1]["session"]
+    assert events[0]["open_items"] == DRAFT_ITEMS
+
+
+def test_an_edited_record_of_attempts_is_reported(project, capsys):
+    record = project / ".repro" / "agent.jsonl"
+    propose_auc(project, "/auc/train")
+    propose_auc(project, "/auc/train")
+    record.write_text(record.read_text().replace('"mismatch"', '"matched"', 1))
+    counted = call(project, "open_items", {"open_items": DRAFT_ITEMS}).structured_content
+    assert counted["agent_record"]["status"] != "intact"
+    assert claims_main(["open-items", str(project / DRAFT_ITEMS)]) == 0
+    assert "does not verify" in capsys.readouterr().out
+    refused = propose_auc(project, "/auc/held")
+    assert refused.is_error
 
 
 def test_a_warning_comes_at_the_sixth_attempt_and_not_the_fifth(project, capsys):
@@ -809,3 +829,200 @@ def test_five_attempts_are_counted_and_not_flagged(project, capsys):
     assert counted["over_attempt_limit"] == []
     (fill,) = [f for c in counted["per_claim"] for f in c["items"] if f["id"] == "auc/value"]
     assert fill["attempts"] == 5
+
+
+def test_set_project_is_refused_outside_the_clients_roots_and_logged_inside(project, tmp_path):
+    other = tmp_path / "other"
+    (other / "claims").mkdir(parents=True)
+    refused, named, switched = calls(
+        tmp_path,
+        [
+            ("set_project", {"path": str(project)}),
+            ("set_project", {"path": str(other)}),
+            ("set_project", {"path": str(other)}),
+        ],
+        roots=[other],
+    )
+    assert refused.structured_content["refused"] == "outside_client_roots"
+    assert named.structured_content == {"root": other.as_posix()}
+    assert not (project / ".repro" / "agent.jsonl").exists()
+    events = chain.read_ledger(other / ".repro" / "agent.jsonl")
+    assert [(e["event"], e["root"]) for e in events] == [("set_project", other.as_posix())] * 2
+    assert switched.structured_content["root"] == other.as_posix()
+
+
+# ------------------------------------------------------------------------------ add_artifact
+
+
+def git(root: pathlib.Path, *args: str) -> None:
+    # A hook's `GIT_DIR` outranks the directory named, so the environment is cleaned first.
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+        cwd=root,
+        check=True,
+        capture_output=True,
+        env=env,
+    )
+
+
+@pytest.fixture
+def committed(project: pathlib.Path) -> pathlib.Path:
+    (project / "paper.txt").write_text("The AUC was 0.9375 on held-out data.\n")
+    (project / "pointer.bin").write_text(
+        "version https://git-lfs.github.com/spec/v1\noid sha256:" + "0" * 64 + "\nsize 1\n"
+    )
+    git(project, "init", "-q")
+    git(project, "add", ".")
+    git(project, "commit", "-q", "-m", "start")
+    return project
+
+
+def session_calls(root: pathlib.Path, steps: list) -> list:
+    """Calls in one session, where a step may be a function run between them."""
+
+    async def run():
+        found = []
+        async with Client(build(root)) as client:
+            for step in steps:
+                if callable(step):
+                    step()
+                else:
+                    found.append(await client.call_tool(*step))
+        return found
+
+    return anyio.run(run)
+
+
+def add(path: str, **more) -> tuple[str, dict]:
+    return ("add_artifact", {"open_items": DRAFT_ITEMS, "path": path, **more})
+
+
+def test_a_committed_file_is_added_inferred_and_nothing_else_changes(committed):
+    draft = committed / "draft" / "repro.draft.yaml"
+    old = draft.read_text()
+    (result,) = session_calls(committed, [add("paper.txt", id="paper")])
+    assert not result.is_error, result.content[0].text
+    assert result.structured_content["by"].startswith("commit ")
+    new = draft.read_text()
+    line = json.dumps(result.structured_content["artifact"])
+    assert new.replace(f"- {line}\n", "", 1) == old
+    artifact = yaml.safe_load(new)["artifacts"][-1]
+    assert artifact["basis"] == "inferred"
+    assert artifact["path"] == "../paper.txt"
+    assert artifact["media_type"] == "text/plain"
+    events = chain.read_ledger(committed / ".repro" / "agent.jsonl")
+    assert events[-1]["event"] == "add_artifact"
+
+
+def test_add_artifact_refuses_and_writes_nothing(committed, tmp_path, monkeypatch):
+    (committed / "untracked.txt").write_text("written in the session\n")
+    (tmp_path / "away.txt").write_text("x")
+    (committed / "away").symlink_to(tmp_path / "away.txt")
+    same = unchanged(committed)
+    for path, rule, said in [
+        ("../away.txt", "outside_root", ""),
+        ("away", "outside_root", ""),
+        ("results/metrics.json", "already_declared", ""),
+        ("results", "not_a_file", "directory"),
+        ("absent.txt", "not_a_file", ""),
+        ("pointer.bin", "lfs_pointer", ""),
+    ]:
+        (result,) = session_calls(committed, [add(path)])
+        assert result.structured_content["refused"] == rule, path
+        assert said in result.structured_content["detail"]
+    monkeypatch.setattr(proposals, "MAX_ARTIFACT_BYTES", 10)
+    (result,) = session_calls(committed, [add("paper.txt")])
+    assert result.structured_content["refused"] == "too_large"
+    monkeypatch.undo()
+    (result,) = session_calls(committed, [add("untracked.txt")])
+    assert result.structured_content["refused"] == "not_vouched"
+    assert "commit it or record it with results run first" in result.structured_content["detail"]
+    assert same()
+
+
+def test_a_file_committed_during_the_session_is_refused(committed):
+    def commit_one():
+        (committed / "made.txt").write_text("made by the agent\n")
+        git(committed, "add", "made.txt")
+        git(committed, "commit", "-q", "-m", "made")
+
+    (result,) = session_calls(committed, [commit_one, add("made.txt")])
+    assert result.structured_content["refused"] == "not_vouched"
+    assert (
+        "committed or changed during this session; a human must add it"
+        in (result.structured_content["detail"])
+    )
+    (later,) = session_calls(committed, [add("made.txt")])
+    assert not later.is_error
+
+
+def test_a_file_changed_after_the_session_started_is_refused(committed):
+    def edit():
+        (committed / "paper.txt").write_text("The AUC was 0.99 on held-out data.\n")
+
+    def commit_edit():
+        git(committed, "commit", "-q", "-am", "edit")
+
+    (changed, committed_too) = session_calls(
+        committed, [edit, add("paper.txt"), commit_edit, add("paper.txt")]
+    )
+    for result in (changed, committed_too):
+        assert result.structured_content["refused"] == "not_vouched"
+        assert "a human must add it" in result.structured_content["detail"]
+
+
+def test_a_run_output_the_ledger_recorded_before_the_session_is_added(committed):
+    out = committed / "results" / "fresh.json"
+    out.write_text('{"auc": 0.5}')
+    ledger = committed / ".results" / "ledger.jsonl"
+    ledger.parent.mkdir()
+    output = {"path": "results/fresh.json", "sha256": Digest.of_file(out).value}
+    chain.append_event(ledger, {"event": "run", "run_id": "r1", "outputs": [output]})
+    (result,) = session_calls(committed, [add("results/fresh.json")])
+    assert not result.is_error, result.content[0].text
+    assert "run r1" in result.structured_content["by"]
+
+
+def test_a_run_recorded_during_the_session_does_not_vouch(committed):
+    out = committed / "results" / "fresh.json"
+
+    def record_run():
+        out.write_text('{"auc": 0.5}')
+        ledger = committed / ".results" / "ledger.jsonl"
+        ledger.parent.mkdir(exist_ok=True)
+        output = {"path": "results/fresh.json", "sha256": Digest.of_file(out).value}
+        chain.append_event(ledger, {"event": "run", "run_id": "r2", "outputs": [output]})
+
+    (result,) = session_calls(committed, [record_run, add("results/fresh.json")])
+    assert result.structured_content["refused"] == "not_vouched"
+
+
+def manifest_over(tmp_path: pathlib.Path, artifact: dict) -> Manifest:
+    data = tmp_path / "metrics.json"
+    data.write_text('{"auc": 0.9375}')
+    artifact = {
+        "id": "metrics",
+        "path": "metrics.json",
+        "digest": {"algorithm": "sha256", "value": Digest.of_file(data).value},
+        **artifact,
+    }
+    assertion = {k: v for k, v in _candidate("/auc").items() if k != "basis"}
+    text = yaml.safe_dump(
+        {"artifacts": [artifact], "claims": [{"id": "c", "text": "t", "evidence": [assertion]}]}
+    )
+    (tmp_path / "repro.yaml").write_text(text)
+    return load(tmp_path / "repro.yaml")
+
+
+def test_a_declared_assertion_over_an_inferred_artifact_counts_as_inferred(tmp_path):
+    report = run_verify(manifest_over(tmp_path, {"basis": "inferred"}))
+    (decision,) = report.decisions
+    assert decision.said == "matched"
+    assert report.counts == {"inferred_matched": 1}
+
+
+def test_a_reviewed_artifact_counts_as_declared(tmp_path):
+    review = {"who": "An Author", "when": "2026-10-14"}
+    report = run_verify(manifest_over(tmp_path, {"basis": "inferred", "reviewed": review}))
+    assert report.counts == {"verified": 1}

@@ -5,14 +5,12 @@ value a manuscript reports for it."""
 
 from __future__ import annotations
 
-import datetime
 import decimal
 import enum
 import json
 from typing import Annotated, Literal
 
 from pydantic import (
-    AwareDatetime,
     BaseModel,
     ConfigDict,
     Field,
@@ -21,7 +19,7 @@ from pydantic import (
     model_validator,
 )
 
-from claims.core.artifacts import Digest
+from claims.core.artifacts import Basis, Digest, Review
 
 SCHEMA_VERSION = "repro/1"
 
@@ -29,35 +27,6 @@ _SHA256_HEX = r"^[a-f0-9]{64}$"
 
 
 # ---------------------------------------------------------------------------------- evidence
-
-
-class Basis(enum.StrEnum):
-    """Who states an assertion: the manifest's author, or a proposal nobody has accepted.
-
-    A check of an inferred assertion runs as any other and reports what it found. What it
-    cannot establish is that the address is the one the sentence means, which is the part an
-    author vouches for and a proposal does not, so an inferred assertion is never counted as
-    verified: a policy grades it as a draft, a report counts it apart, and a check record
-    passes on none of its matches. A search that finds a value at one address proposes it like
-    anything else; it never binds it.
-    """
-
-    DECLARED = "declared"
-    """Written by the author, or read from another tool's file where that file states it. The
-    default, and left out of a manifest where it holds."""
-    INFERRED = "inferred"
-    """Proposed by a program or a model and not yet accepted by an author. Accepting one is
-    deleting the field, or recording who reviewed it under `reviewed`."""
-
-
-class Review(BaseModel):
-    """Who accepted an inferred assertion, and when. An assertion carrying one is counted as
-    declared."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    who: str = Field(min_length=1)
-    when: AwareDatetime | datetime.date
 
 
 def _omit_undeclared(model: BaseModel, dumped: dict) -> dict:

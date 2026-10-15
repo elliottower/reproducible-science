@@ -2,12 +2,22 @@
 
 from __future__ import annotations
 
+import datetime
+import enum
 import hashlib
 import pathlib
 import re
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_serializer
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 
 SCHEMA_VERSION = "repro/1"
 
@@ -17,6 +27,35 @@ _COMMIT_HEX = re.compile(r"[a-f0-9]{40}")
 
 
 # --------------------------------------------------------------------------------- artifacts
+
+
+class Basis(enum.StrEnum):
+    """Who states an assertion: the manifest's author, or a proposal nobody has accepted.
+
+    A check of an inferred assertion runs as any other and reports what it found. What it
+    cannot establish is that the address is the one the sentence means, which is the part an
+    author vouches for and a proposal does not, so an inferred assertion is never counted as
+    verified: a policy grades it as a draft, a report counts it apart, and a check record
+    passes on none of its matches. A search that finds a value at one address proposes it like
+    anything else; it never binds it.
+    """
+
+    DECLARED = "declared"
+    """Written by the author, or read from another tool's file where that file states it. The
+    default, and left out of a manifest where it holds."""
+    INFERRED = "inferred"
+    """Proposed by a program or a model and not yet accepted by an author. Accepting one is
+    deleting the field, or recording who reviewed it under `reviewed`."""
+
+
+class Review(BaseModel):
+    """Who accepted an inferred assertion, and when. An assertion carrying one is counted as
+    declared."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    who: str = Field(min_length=1)
+    when: AwareDatetime | datetime.date
 
 
 class Digest(BaseModel):
@@ -106,15 +145,38 @@ class ArtifactRef(BaseModel):
     media_type: str = "application/octet-stream"
     origin: Origin | None = None
     """Where the bytes were copied from, where the manifest says."""
+    basis: Basis = Basis.DECLARED
+    """`inferred` for a file an agent added and no author has accepted. Every assertion that
+    reads it is counted as inferred, whatever its own basis, until someone records `reviewed`
+    here or deletes the field."""
+    reviewed: Review | None = None
 
     @model_serializer(mode="wrap")
     def _omit_no_origin(self, handler):
-        """Leave the field out where there is none, so a manifest that declares no origin
+        """Leave each field out where it holds its default, so a manifest that declares none
         dumps, and so digests, as it did before the field existed."""
         dumped = handler(self)
         if self.origin is None:
             dumped.pop("origin", None)
+        if self.basis is Basis.DECLARED:
+            dumped.pop("basis", None)
+        if self.reviewed is None:
+            dumped.pop("reviewed", None)
         return dumped
+
+    @model_validator(mode="after")
+    def _a_review_is_of_an_inferred_artifact(self):
+        if self.reviewed is not None and self.basis is not Basis.INFERRED:
+            raise ValueError(
+                f"artifact {self.id!r}: `reviewed` records who accepted an artifact an agent "
+                "added; a declared one is its author's already"
+            )
+        return self
+
+    @property
+    def counted(self) -> Basis:
+        """Declared once someone has reviewed it."""
+        return Basis.DECLARED if self.reviewed is not None else self.basis
 
     @property
     def is_pinned(self) -> bool:

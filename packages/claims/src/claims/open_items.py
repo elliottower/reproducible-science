@@ -32,10 +32,10 @@ import collections
 import enum
 import json
 import pathlib
-from typing import Any
+from typing import Any, Literal
 
 import yaml
-from provenance_core import atomic_write
+from provenance_core import atomic_write, chain
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 from claims.exceptions import ReproError
@@ -50,9 +50,10 @@ OPEN_ITEMS_VERSION = "reproducible.science/open-items/0.1-experimental"
 DRAFT_NAME = "repro.draft.yaml"
 ITEMS_NAME = "open-items.json"
 
-#: The record of every proposal made to fill an item, beside the open-items file: one JSON
-#: object a line, appended to and never rewritten. `repro mcp`'s `propose_binding` writes it.
-ATTEMPTS_NAME = "open-items.attempts.jsonl"
+#: The record of what an agent did through `repro mcp`, on a hash chain: each project it named
+#: with `set_project`, and each proposal it made to fill an item. Beside the record of checks, in
+#: the state folder of the project the agent worked in, and only ever appended to.
+AGENT_RECORD = pathlib.Path(".repro") / "agent.jsonl"
 
 #: How many attempts at one item pass without remark. Past it a match is still a match, and
 #: still inferred, but an address found after many tries may be one a search turned up rather
@@ -152,10 +153,16 @@ class OpenItems(BaseModel):
 
 
 class Attempt(BaseModel):
-    """One proposal made for an item, and what the check found of it."""
+    """One proposal made for an item, and what the check found of it: an event of the agent
+    record. The chain adds its position, the time and the hash of the event before it."""
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    event: Literal["attempt"] = "attempt"
+    session: str
+    """The server session that made it."""
+    open_items: str
+    """The open-items file, from the directory the record is in."""
     item: str
     claim: str
     attempt: int = Field(ge=1)
@@ -164,34 +171,68 @@ class Attempt(BaseModel):
     """The assertion proposed, with its address."""
     outcome: str
     """What the check found: `matched`, never `verified`, or the outcome's own word."""
-    at: str
-    """When, in UTC, as ISO 8601."""
 
 
-def attempts_path(open_items: pathlib.Path) -> pathlib.Path:
-    return open_items.parent / ATTEMPTS_NAME
+class AgentRecord(BaseModel):
+    """The agent record governing an open-items file, as read."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    path: str | None
+    """Where it is, or None where no record is found."""
+    status: str
+    """What `provenance_core.chain.verify` found: `intact` for a chain that verifies."""
+    problems: tuple[str, ...] = ()
+    attempts: tuple[Attempt, ...] = ()
+    """The attempts at the items of this open-items file, in the order made."""
 
 
-def read_attempts(open_items: pathlib.Path) -> tuple[Attempt, ...]:
-    """Every attempt recorded beside an open-items file, in the order made. None recorded is
-    an empty tuple."""
-    path = attempts_path(open_items)
-    if not path.exists():
-        return ()
+def agent_record(start: pathlib.Path) -> pathlib.Path | None:
+    """The agent record at or above `start`, as git finds `.git`, or None."""
+    here = start.resolve()
+    return next(
+        (d / AGENT_RECORD for d in (here, *here.parents) if (d / AGENT_RECORD).is_file()), None
+    )
+
+
+def _key(open_items: pathlib.Path, record: pathlib.Path) -> str:
+    """The open-items file as an attempt names it: from the directory holding `.repro/`."""
+    return open_items.resolve().relative_to(record.parent.parent).as_posix()
+
+
+def read_attempts(open_items: pathlib.Path) -> AgentRecord:
+    """The attempts recorded at the items of `open_items`, with whether the chain verifies.
+    A chain that does not verify is reported, and its attempts are still counted as written."""
+    record = agent_record(open_items.parent)
+    if record is None:
+        return AgentRecord(path=None, status="absent")
+    status, problems = chain.verify(record)
     try:
-        lines = path.read_text(encoding="utf-8").splitlines()
-        return tuple(Attempt.model_validate_json(line) for line in lines if line.strip())
-    except OSError as e:
-        raise OpenItemsError(f"{path} could not be read: {e}") from e
-    except ValidationError as e:
-        raise OpenItemsError(f"{path} holds a line that is not an attempt: {e}") from e
+        events = chain.read_ledger(record)
+    except chain.ChainError as e:
+        return AgentRecord(path=record.as_posix(), status=status.value, problems=(str(e),))
+    key = _key(open_items, record)
+    found = []
+    for event in events:
+        if event.get("event") != "attempt" or event.get("open_items") != key:
+            continue
+        fields = {k: v for k, v in event.items() if k in Attempt.model_fields}
+        try:
+            found.append(Attempt.model_validate(fields))
+        except ValidationError as e:
+            problems = (*problems, f"entry {event.get('seq')} is not an attempt: {e}")
+    return AgentRecord(
+        path=record.as_posix(), status=status.value, problems=tuple(problems), attempts=tuple(found)
+    )
 
 
-def append_attempt(open_items: pathlib.Path, attempt: Attempt) -> None:
-    """Add one line to the record of attempts. Opened for appending only, so nothing already
-    in it is rewritten."""
-    with attempts_path(open_items).open("a", encoding="utf-8") as handle:
-        handle.write(attempt.model_dump_json() + "\n")
+def append_attempt(root: pathlib.Path, open_items: pathlib.Path, attempt: dict[str, Any]) -> None:
+    """Append one attempt to the agent record of the project at `root`. Refused, by the chain,
+    where the record does not verify."""
+    record = root / AGENT_RECORD
+    record.parent.mkdir(exist_ok=True)
+    event = Attempt.model_validate({**attempt, "open_items": _key(open_items, record)})
+    chain.append_event(record, event.model_dump(mode="json"))
 
 
 def write_draft(
@@ -294,12 +335,16 @@ class Tally(BaseModel):
     """Each item a proposal was recorded for, with how many."""
     over_attempt_limit: tuple[str, ...] = ()
     """The items with more than `ATTEMPT_LIMIT` attempts recorded."""
+    agent_record: AgentRecord = AgentRecord(path=None, status="absent")
+    """Where the attempts were read from, and whether its chain verifies."""
     per_claim: tuple[ClaimTally, ...]
 
 
 def _fill(
     item: OpenItem, evidence: tuple, decisions: tuple[Decision, ...], attempts: int = 0
 ) -> ItemFill:
+    # The basis each decision was counted under: an assertion over an artifact an agent added
+    # is inferred there whatever it says of itself.
     filling = [
         (found, decision)
         for found, decision in zip(evidence, decisions, strict=True)
@@ -309,7 +354,7 @@ def _fill(
         id=item.id,
         need=item.need,
         filled=bool(filling),
-        by=tuple(found.counted for found, _ in filling),
+        by=tuple(decision.basis for _, decision in filling),
         outcomes=tuple(decision.said for _, decision in filling),
         candidates=len(item.candidates),
         unique=item.unique,
@@ -317,9 +362,11 @@ def _fill(
     )
 
 
-def _state(claim_items: tuple[ItemFill, ...], evidence: tuple) -> ClaimState:
+def _state(
+    claim_items: tuple[ItemFill, ...], evidence: tuple, decisions: tuple[Decision, ...]
+) -> ClaimState:
     if not claim_items:
-        if evidence and not any(found.counted is Basis.INFERRED for found in evidence):
+        if evidence and not any(decision.basis is Basis.INFERRED for decision in decisions):
             return ClaimState.READER
         return ClaimState.OUTSIDE
     if not all(fill.filled for fill in claim_items):
@@ -347,7 +394,8 @@ def tally(path: pathlib.Path) -> Tally:
             "declares; an item is closed by filling it, never by deleting its claim"
         )
 
-    tried = collections.Counter(attempt.item for attempt in read_attempts(path))
+    record = read_attempts(path)
+    tried = collections.Counter(attempt.item for attempt in record.attempts)
     per_claim = []
     for claim, assessment in zip(manifest.claims, report.claims, strict=True):
         fills = tuple(
@@ -355,7 +403,11 @@ def tally(path: pathlib.Path) -> Tally:
             for item in by_claim[claim.id]
         )
         per_claim.append(
-            ClaimTally(claim=claim.id, state=_state(fills, claim.evidence), items=fills)
+            ClaimTally(
+                claim=claim.id,
+                state=_state(fills, claim.evidence, assessment.decisions),
+                items=fills,
+            )
         )
 
     states = collections.Counter(entry.state for entry in per_claim)
@@ -393,6 +445,7 @@ def tally(path: pathlib.Path) -> Tally:
         assertions=assertions,
         attempts=dict(tried),
         over_attempt_limit=tuple(item for item, n in tried.items() if n > ATTEMPT_LIMIT),
+        agent_record=record,
         per_claim=tuple(per_claim),
     )
 

@@ -15,16 +15,21 @@ Every refusal is a `Refused`, which names the rule and says why. A refusal write
 
 from __future__ import annotations
 
+import dataclasses
 import datetime
 import json
+import mimetypes
+import os
 import pathlib
+import uuid
 from typing import Any
 
 import yaml
 from claims.exceptions import ReproError
 from claims.manifest import load
-from claims.models import Basis, Evidence, Manifest
+from claims.models import Basis, Digest, Evidence, Manifest
 from claims.open_items import (
+    AGENT_RECORD,
     ATTEMPT_LIMIT,
     FILLS,
     Attempt,
@@ -35,8 +40,9 @@ from claims.open_items import (
     read_attempts,
 )
 from claims.open_items import read as read_items
+from claims.sources import is_lfs_pointer
 from claims.verify import verify
-from provenance_core import atomic_write
+from provenance_core import atomic_write, chain, try_run
 from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError
 
 #: How many candidates one packet lists. The count of the rest is given.
@@ -420,9 +426,34 @@ def _line_after(text: str, node: yaml.Node) -> int:
     return len(text) if newline < 0 else newline + 1
 
 
+def _append_item(text: str, mapping: yaml.Node, key: str, line: str, what: str) -> tuple[int, str]:
+    """Where to insert `line`, one line of flow YAML, as the last item of the list `mapping`
+    holds under `key`, and the text to insert there, so every other byte stays as it is. A
+    list that is not there yet is started under the mapping's last key."""
+    if not isinstance(mapping, yaml.MappingNode) or mapping.flow_style or not mapping.value:
+        raise Refused("draft_layout", f"{what} is not a block mapping in the draft")
+    listed = next((v for k, v in mapping.value if k.value == key), None)
+    if listed is None:
+        indent = " " * mapping.value[0][0].start_mark.column
+        at = _line_after(text, mapping)
+        block = f"{indent}{key}:\n{indent}- {line}\n"
+    elif isinstance(listed, yaml.SequenceNode) and listed.flow_style:
+        return listed.end_mark.index - 1, (f", {line}" if listed.value else line)
+    elif isinstance(listed, yaml.SequenceNode) and listed.value:
+        first = listed.value[0].start_mark
+        start = text.rfind("\n", 0, first.index) + 1
+        indent = " " * text[start : first.index].rfind("-")
+        at = _line_after(text, listed)
+        block = f"{indent}- {line}\n"
+    else:
+        raise Refused("draft_layout", f"the {key} of {what} is not a list")
+    if at == len(text) and text and not text.endswith("\n"):
+        block = "\n" + block
+    return at, block
+
+
 def _insertion(text: str, claim_id: str, line: str) -> tuple[int, str]:
-    """Where in the draft's text the assertion `line` (one line of flow YAML) goes, and the
-    text to insert there, so that every other byte of the draft stays as it is."""
+    """Where in the draft's text the assertion `line` goes, as the claim's last."""
     root = yaml.compose(text)
     claims = next(
         (v for k, v in getattr(root, "value", ()) if getattr(k, "value", None) == "claims"), None
@@ -436,28 +467,9 @@ def _insertion(text: str, claim_id: str, line: str) -> tuple[int, str]:
         ),
         None,
     )
-    if entry is None or entry.flow_style or not entry.value:
+    if entry is None:
         raise Refused("draft_layout", f"the claim {claim_id!r} is not a block mapping in the draft")
-    evidence = next((v for k, v in entry.value if k.value == "evidence"), None)
-    if evidence is None:
-        indent = " " * entry.value[0][0].start_mark.column
-        at = _line_after(text, entry)
-        block = f"{indent}evidence:\n{indent}- {line}\n"
-    elif isinstance(evidence, yaml.SequenceNode) and evidence.flow_style:
-        at = evidence.end_mark.index - 1
-        block = f", {line}" if evidence.value else line
-        return at, block
-    elif isinstance(evidence, yaml.SequenceNode) and evidence.value:
-        first = evidence.value[0].start_mark
-        start = text.rfind("\n", 0, first.index) + 1
-        indent = " " * text[start : first.index].rfind("-")
-        at = _line_after(text, evidence)
-        block = f"{indent}- {line}\n"
-    else:
-        raise Refused("draft_layout", f"the evidence of {claim_id!r} is not a list")
-    if at == len(text) and text and not text.endswith("\n"):
-        block = "\n" + block
-    return at, block
+    return _append_item(text, entry, "evidence", line, f"the claim {claim_id!r}")
 
 
 def propose(
@@ -465,6 +477,7 @@ def propose(
     open_items: str,
     claim_id: str,
     assertion: dict[str, Any],
+    session: Session,
     item_id: str | None = None,
     basis: str | None = None,
 ) -> Proposal:
@@ -518,7 +531,7 @@ def propose(
         )
     kind = assertion.get("kind")
     claim = next(c for c in before.claims if c.id == claim_id)
-    attempts = read_attempts(path)
+    attempts = read_attempts(path).attempts
     position = [c.id for c in before.claims].index(claim_id)
     decisions = verify(before).claims[position].decisions if claim.evidence else ()
     fillable = [
@@ -582,15 +595,16 @@ def propose(
     decision = report.claims[position].decisions[index]
     attempt = sum(1 for a in attempts if a.item == item.id) + 1
     append_attempt(
+        root,
         path,
-        Attempt(
-            item=item.id,
-            claim=claim_id,
-            attempt=attempt,
-            assertion=written,
-            outcome=decision.said,
-            at=datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds"),
-        ),
+        {
+            "session": session.id,
+            "item": item.id,
+            "claim": claim_id,
+            "attempt": attempt,
+            "assertion": written,
+            "outcome": decision.said,
+        },
     )
     warning = (
         f"item {item.id} {decision.said} on attempt {attempt}: check the binding is the "
@@ -611,3 +625,190 @@ def propose(
         replaced=replacing is not None,
         warning=warning,
     )
+
+
+# ----------------------------------------------------------------------------- the session
+
+
+@dataclasses.dataclass
+class Session:
+    """One run of the server: when it started, and the commit each project stood at when the
+    server first saw it. Neither moves: a commit made, or a file changed, after that is
+    something an agent could have done, and `add_artifact` takes none of it."""
+
+    id: str = dataclasses.field(default_factory=lambda: uuid.uuid4().hex)
+    started: datetime.datetime = dataclasses.field(
+        default_factory=lambda: datetime.datetime.now(datetime.UTC)
+    )
+    commits: dict[pathlib.Path, str | None] = dataclasses.field(default_factory=dict)
+
+    def commit(self, root: pathlib.Path) -> str | None:
+        """The commit `root` stood at when this session first saw it, or None outside git."""
+        if root not in self.commits:
+            head = try_run("rev-parse", "--verify", "HEAD", cwd=root)
+            self.commits[root] = head.strip() if head else None
+        return self.commits[root]
+
+    def log(self, root: pathlib.Path, event: dict[str, Any]) -> None:
+        """Append one event of this session to the agent record of the project at `root`."""
+        record = root / AGENT_RECORD
+        record.parent.mkdir(exist_ok=True)
+        chain.append_event(record, {**event, "session": self.id})
+
+
+# ---------------------------------------------------------------------------- add_artifact
+
+#: The largest file `add_artifact` pins.
+MAX_ARTIFACT_BYTES = 64 * 1024 * 1024
+
+#: Why a file the session could have made is refused.
+NOT_YOURS = "committed or changed during this session; a human must add it"
+UNRECORDED = "commit it or record it with results run first, then start a new session"
+
+
+class Added(BaseModel):
+    """What `add_artifact` wrote into the draft."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    draft: str
+    artifact: dict[str, Any]
+    by: str
+    """What vouches for the bytes: the commit the session started at, or a run in the ledger."""
+
+
+def _blob(root: pathlib.Path, revision: str, relative: str) -> str | None:
+    found = try_run("rev-parse", "--verify", "--quiet", f"{revision}:./{relative}", cwd=root)
+    return found.strip() if found else None
+
+
+def _recorded_run(root: pathlib.Path, relative: str, digest: str, before: datetime.datetime):
+    """The run in the project's results ledger that recorded these bytes at this path before
+    `before`, or None. The ledger is read, never written."""
+    ledger = root / ".results" / "ledger.jsonl"
+    if not ledger.is_file():
+        return None
+    try:
+        events = chain.read_ledger(ledger)
+    except chain.ChainError:
+        return None
+    for event in events:
+        if event.get("event") != "run":
+            continue
+        try:
+            when = datetime.datetime.fromisoformat(str(event.get("timestamp")))
+        except ValueError:
+            continue
+        if when.tzinfo is None or when >= before:
+            continue
+        for output in event.get("outputs", ()):
+            if output.get("path") == relative and output.get("sha256") == digest:
+                return event.get("run_id")
+    return None
+
+
+def _vouched(root: pathlib.Path, file: pathlib.Path, digest: str, session: Session) -> str:
+    """What says these bytes were not made in this session: the commit the session started
+    at holds them, or the ledger recorded them as a run's output before it started. Refused
+    otherwise."""
+    relative = file.relative_to(root).as_posix()
+    commit = session.commit(root)
+    if commit is not None:
+        then = _blob(root, commit, relative)
+        if then is not None:
+            now = try_run("hash-object", "--", relative, cwd=root)
+            if now is not None and now.strip() == then:
+                return f"commit {commit[:12]}, where this session started"
+    if (run := _recorded_run(root, relative, digest, session.started)) is not None:
+        return f"run {run} in the results ledger, recorded before this session started"
+    if commit is not None and (then := _blob(root, commit, relative)) is not None:
+        raise Refused("not_vouched", f"{relative} differs from commit {commit[:12]}: {NOT_YOURS}")
+    if _blob(root, "HEAD", relative) is not None:
+        raise Refused("not_vouched", f"{relative} was {NOT_YOURS}")
+    raise Refused(
+        "not_vouched",
+        f"{relative} is in no commit this session started at and no run the ledger recorded: "
+        f"{UNRECORDED}",
+    )
+
+
+def add_artifact(
+    root: pathlib.Path,
+    open_items: str,
+    path: str,
+    session: Session,
+    media_type: str | None = None,
+    artifact_id: str | None = None,
+) -> Added:
+    """Declare a file in the draft an open-items file names, pinned by its sha256 and marked
+    `basis: inferred`, so every assertion that reads it is counted as inferred until an author
+    accepts it. Inserted as one line, as `propose` inserts an assertion.
+
+    Refused: a path outside the root; a directory, or nothing; a Git LFS pointer; a file over
+    `MAX_ARTIFACT_BYTES`; a file or an id the draft already declares; and a file whose bytes
+    neither the commit the session started at holds nor a run the results ledger recorded
+    before the session started."""
+    capped("path", path, MAX_TEXT)
+    capped("id", artifact_id, MAX_NAME)
+    capped("media_type", media_type, MAX_NAME)
+    items_path = inside(root, open_items)
+    items = read_items(items_path)
+    draft = _draft(root, items_path, items)
+    file = inside(root, path)
+    if not file.exists():
+        raise Refused("not_a_file", f"nothing is at {path}")
+    if not file.is_file():
+        raise Refused("not_a_file", f"{path} is a directory, not a file")
+    if file.stat().st_size > MAX_ARTIFACT_BYTES:
+        raise Refused(
+            "too_large",
+            f"{path} is {file.stat().st_size:,} bytes; the cap is {MAX_ARTIFACT_BYTES:,}",
+        )
+    if is_lfs_pointer(file):
+        raise Refused("lfs_pointer", f"{path} is a Git LFS pointer: its content is not here")
+
+    before = load_inside(root, draft)
+    name = artifact_id or file.relative_to(root).as_posix()
+    for declared in before.artifacts:
+        if declared.id == name or before.resolve(declared).resolve() == file:
+            raise Refused(
+                "already_declared", f"{draft.name} declares {path} already, as {declared.id!r}"
+            )
+    digest = Digest.of_file(file).value
+    by = _vouched(root, file, digest, session)
+
+    artifact = {
+        "id": name,
+        "path": pathlib.Path(os.path.relpath(file, draft.parent)).as_posix(),
+        "digest": {"algorithm": "sha256", "value": digest},
+        "media_type": media_type
+        or mimetypes.guess_type(file.name)[0]
+        or "application/octet-stream",
+        "basis": INFERRED,
+    }
+    text = draft.read_text(encoding="utf-8")
+    at, block = _append_item(
+        text, yaml.compose(text), "artifacts", json.dumps(artifact), draft.name
+    )
+    new_text = text[:at] + block + text[at:]
+    try:
+        after = Manifest.model_validate({**yaml.safe_load(new_text), "path": draft})
+    except (ValidationError, yaml.YAMLError) as e:
+        detail = e.errors()[0]["msg"] if isinstance(e, ValidationError) else str(e)
+        raise Refused("invalid_artifact", detail) from e
+    was, now = before.model_dump(mode="json"), after.model_dump(mode="json")
+    now["artifacts"] = now["artifacts"][:-1]
+    if was != now:
+        raise Refused("draft_layout", f"inserting into {draft.name} would change what it declares")
+    atomic_write(draft, new_text)
+    session.log(
+        root,
+        {
+            "event": "add_artifact",
+            "draft": draft.relative_to(root).as_posix(),
+            "artifact": name,
+            "sha256": digest,
+            "by": by,
+        },
+    )
+    return Added(draft=draft.relative_to(root).as_posix(), artifact=artifact, by=by)

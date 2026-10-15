@@ -57,12 +57,14 @@ from repro.proposals import (
     MAX_TEXT,
     PROJECT_MARKERS,
     Refused,
+    Session,
     capped,
     inside,
     load_inside,
     packet,
     propose,
 )
+from repro.proposals import add_artifact as add_artifact_to
 
 NAME = "reproducible-science"
 
@@ -92,7 +94,9 @@ address that names the value (a tree pointer, a table locator with where) over a
 A unique candidate is a lead, never an answer: propose it only after the sentence's or the \
 question's words agree with the candidate's labels. Where they do not settle it (a column \
 named score for a question about AUROC), leave the item open and say why.
-4. need passage: the passage that makes the claim, quoted as the source prints it, never \
+4. need passage: where the paper is not yet an artifact of the draft, add_artifact declares it \
+(it must be committed before this session, or recorded by results run). Then the passage \
+that makes the claim, quoted as the source prints it, never \
 shortened. Where the project keeps a citations claims file, pin_quote with check=true first, \
 then pin it. A passage that does not resolve is not written.
 5. Leave an item open rather than guess. An open item is a result.
@@ -211,11 +215,16 @@ def build(root: pathlib.Path | None = None) -> MCPServer:
     default = root.resolve() if root is not None else discover(pathlib.Path.cwd())
     server = MCPServer(NAME, instructions=INSTRUCTIONS, version=__version__)
     chosen: list[pathlib.Path] = []
+    session = Session()
+    if default is not None:
+        session.commit(default)
 
     def answer(roots: ListRootsResult | None, work: Work) -> CallToolResult:
         here = chosen[-1] if chosen else _client_root(roots, default)
         if here is None:
             return _result({"refused": "no_project", "detail": NO_PROJECT}, NO_PROJECT, True)
+        # The commit this project stood at when the session first saw it, for `add_artifact`.
+        session.commit(here)
         # Run on the event loop, not a worker thread: the delegated tools change the working
         # directory and capture standard output, which two calls at once would cross.
         try:
@@ -239,15 +248,23 @@ def build(root: pathlib.Path | None = None) -> MCPServer:
         if not given.is_absolute():
             given = (current or pathlib.Path.cwd()) / given
         folder = given.resolve()
+        offered = [r for r in (_file_root(str(x.uri)) for x in (roots.roots if roots else ())) if r]
         if not folder.is_dir():
-            reason = f"{path} resolves to {folder}, which is not a directory"
+            rule, reason = "not_a_project", f"{path} resolves to {folder}, which is not a directory"
         elif not is_project(folder):
-            reason = f"{folder} holds none of {', '.join(PROJECT_MARKERS)}"
+            rule, reason = "not_a_project", f"{folder} holds none of {', '.join(PROJECT_MARKERS)}"
+        elif offered and not any(folder.is_relative_to(r) for r in offered):
+            rule = "outside_client_roots"
+            reason = (
+                f"{folder} is inside none of the client's roots: {', '.join(map(str, offered))}"
+            )
         else:
             chosen.append(folder)
+            session.commit(folder)
+            session.log(folder, {"event": "set_project", "root": folder.as_posix()})
             return _result({"root": folder.as_posix()}, f"project root: {folder}")
-        detail = f"not a project: {reason}"
-        return _result({"refused": "not_a_project", "detail": detail}, detail, error=True)
+        detail = f"not a project: {reason}" if rule == "not_a_project" else reason
+        return _result({"refused": rule, "detail": detail}, detail, error=True)
 
     @server.tool(annotations=READ_ONLY)
     async def verify(
@@ -445,8 +462,33 @@ def build(root: pathlib.Path | None = None) -> MCPServer:
         inferred: not verified"."""
 
         def work(here: pathlib.Path):
-            done = propose(here, open_items, claim, assertion, item, basis)
+            done = propose(here, open_items, claim, assertion, session, item, basis)
             return done.model_dump(mode="json"), f"{done.item}: {done.said}"
+
+        return answer(roots, work)
+
+    @server.tool(annotations=WRITES)
+    async def add_artifact(
+        open_items: str,
+        path: str,
+        media_type: str | None = None,
+        id: str | None = None,
+        roots: Roots = None,
+    ) -> CallToolResult:
+        """Declare a file in the draft manifest the open-items file names, pinned by its
+        sha256 and marked basis: inferred, so every assertion reading it counts as inferred
+        until an author accepts it. `media_type` is guessed from the name where omitted
+        (text/plain for a text the passage of an item is quoted from). Refused: a path outside
+        the root, a directory, a Git LFS pointer, a file over the size cap, a file or id the
+        draft declares, and a file whose bytes are not those of the commit this session
+        started at, nor a run the results ledger recorded before it started: a file written or
+        committed during the session is never taken."""
+
+        def work(here: pathlib.Path):
+            done = add_artifact_to(here, open_items, path, session, media_type, id)
+            return done.model_dump(mode="json"), (
+                f"added {done.artifact['id']} to {done.draft}, inferred; vouched for by {done.by}"
+            )
 
         return answer(roots, work)
 
