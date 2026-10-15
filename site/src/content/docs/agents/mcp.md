@@ -9,12 +9,12 @@ draft manifest or one pinned quotation. It ships in 0.7.0.
 
 ## Setup
 
-Install with the `mcp` extra, then register the server once per agent, for every project.
+Install the toolkit, then register the server once per agent, for every project.
 
 Claude Code:
 
 ```bash
-uv tool install "reproducible-science[mcp]"
+uv tool install reproducible-science
 claude mcp add --transport stdio --scope user reproducible-science -- repro mcp
 ```
 
