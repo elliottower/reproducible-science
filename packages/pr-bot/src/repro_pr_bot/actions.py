@@ -164,6 +164,22 @@ def _resolve(
         )
 
 
+def _rewrite(client: Client, comment: Comment, made: Marker) -> bool:
+    """Edit one of the bot's comments to say what `made` says, keeping the answer it records
+    as it is right now: the comment is read again just before the write, so an answer `reply`
+    recorded since `post` listed the comments is kept. False where nothing changed or the
+    comment is gone."""
+    now = client.fresh(comment)
+    current = decode(now.body) if now is not None and now.by_bot else None
+    if now is None or current is None or current.key != made.key:
+        return False
+    body = render(made.model_copy(update={"decision": current.decision}))
+    if body == now.body:
+        return False
+    client.edit(now, body)
+    return True
+
+
 def post(
     findings: Findings,
     client: Client,
@@ -229,7 +245,8 @@ def post(
             placed = "review"
         else:
             placed = "issue"
-        body = render(_marker(made, placed, fork, manifest, before))
+        marker = _marker(made, placed, fork, manifest, before)
+        body = render(marker)
         if comment is None:
             if placed == "review":
                 client.comment_on_line(
@@ -238,15 +255,16 @@ def post(
             else:
                 client.comment(number, body)
             created.append(made.key)
-        elif comment.body != body:
-            client.edit(comment, body)
+        elif _rewrite(client, comment, marker):
             edited.append(made.key)
             if before is not None and before.state != "open":
                 _resolve(client, number, comment, False, notes)
         else:
             unchanged.append(made.key)
 
-    for key in list(held):
+    # Findings past the cap were left out of the file, so an assertion absent from it may still
+    # be failing: nothing is closed until the file holds every finding.
+    for key in list(held) if not findings.more else []:
         comment, before = latest_of(key)
         if comment is None or before is None:
             continue
@@ -258,9 +276,7 @@ def post(
                 update["fixed_at"] = head_sha
         else:
             update = {"state": "gone"}
-        body = render(before.model_copy(update=update))
-        if comment.body != body:
-            client.edit(comment, body)
+        if _rewrite(client, comment, before.model_copy(update=update)):
             edited.append(key)
             if before.state == "open":
                 _resolve(client, number, comment, True, notes)
@@ -343,11 +359,15 @@ def latest(
     return None
 
 
-def _newer(reply: Comment, marker: Marker) -> bool:
-    """Whether a reply is later than the answer the comment records. An answer is never
-    replaced by an older one."""
+def _newer(reply: Comment, answer: Answer, reason: str, marker: Marker) -> bool:
+    """Whether a reply's answer is not yet the one the comment records: a later reply, or the
+    recorded reply edited to say something else. An answer is never replaced by an older one."""
     held = marker.decision
-    return held is None or (reply.created_at, reply.id) > (held.at, held.reply)
+    if held is None:
+        return True
+    if reply.id == held.reply:
+        return (answer, reason) != (held.answer, held.reason)
+    return (reply.created_at, reply.id) > (held.at, held.reply)
 
 
 def _commit(
@@ -391,7 +411,7 @@ def _record(
     where, read again, the comment already holds this answer or a later one."""
     root = client.fresh(thread.root)
     marker = decode(root.body) if root is not None and root.by_bot else None
-    if root is None or marker is None or not _newer(by, marker):
+    if root is None or marker is None or not _newer(by, chosen, reason, marker):
         return None
     # Read the thread again right before writing: a later reply that landed since is the one
     # to record, and its own run records it.
@@ -404,12 +424,13 @@ def _record(
         None,
     )
     holding = latest(again.replies, marker.ref, client) if again is not None else None
-    if holding is None or holding[0].id != by.id:
+    if holding is None or holding[0].id != by.id or holding[1:] != (chosen, reason):
         return None
 
     fork = pull.head_repository != client.repository
     passage = bool(marker.artifact and marker.text)
-    committed, note, state = "", "", marker.state
+    # `state` is "set-aside" where this answer leaves the claim set aside, and empty otherwise.
+    committed, note, state = "", "", ""
     if chosen.sets_aside and fork:
         note = "; this pull request comes from a fork, so nothing was committed"
     elif chosen.sets_aside and not passage:
@@ -465,9 +486,6 @@ def _record(
             )
     if committed:
         note += _dispatched(client, pull, number, dispatch)
-    if not chosen.sets_aside and state == "set-aside":
-        state = "open"
-
     decision = Decision(
         answer=chosen,
         reason=reason,
@@ -476,9 +494,20 @@ def _record(
         reply=by.id,
         committed=committed if chosen.sets_aside else "",
     )
-    updated = marker.model_copy(update={"decision": decision, "state": state})
-    if render(updated) != root.body:
-        client.edit(root, render(updated))
+    # Read the comment again right before writing it, and change only the answer and whether
+    # it is set aside: whether it is open, fixed or gone otherwise is `post`'s to say.
+    now = client.fresh(root)
+    current = decode(now.body) if now is not None and now.by_bot else None
+    if now is not None and current is not None:
+        update: dict[str, Any] = {"decision": decision}
+        if state == "set-aside":
+            update["state"] = "set-aside"
+        elif current.state == "set-aside" and committed and not chosen.sets_aside:
+            # The entry this comment was closed by is gone, so the claim is open again.
+            update["state"] = "open"
+        updated = current.model_copy(update=update)
+        if render(updated) != now.body:
+            client.edit(now, render(updated))
     said = f"recorded: {chosen.recorded} by @{by.login}{note}"
     if chosen.sets_aside and state == "set-aside":
         said += f". {SET_ASIDE}"
@@ -545,16 +574,23 @@ def reply(
             allowed[login] = client.permission(login) in WRITERS
         return allowed[login]
 
+    # An edit is read as the reply it now is, and answered with nothing but the record.
+    edited = event.get("action") == "edited"
     given = parse(trigger.body, thread.marker.ref)
+    told: Replied | None = None
     if given is None:
         # Only a reply that looks meant as an answer, from someone who could give one, is told
         # how to answer; discussion in the thread is left alone.
-        if asks(trigger.body, thread.marker.ref) and writer(trigger.login):
+        if (
+            not edited
+            and asks(trigger.body, thread.marker.ref)
+            and writer(trigger.login)
+        ):
             _say(client, number, thread.root, thread.marker, NOT_AN_ANSWER)
-            return Replied(done="not an answer", said=NOT_AN_ANSWER)
-        return Replied(done="skipped")
-    if not writer(trigger.login):
-        _say(client, number, thread.root, thread.marker, NOT_ALLOWED)
+            told = Replied(done="not an answer", said=NOT_AN_ANSWER)
+    elif not writer(trigger.login):
+        if not edited:
+            _say(client, number, thread.root, thread.marker, NOT_ALLOWED)
         return Replied(done="not allowed", said=NOT_ALLOWED)
 
     pull = client.pull(number)
@@ -562,7 +598,7 @@ def reply(
     others = []
     for each in threads:
         holding = latest(each.replies, each.marker.ref, client, allowed)
-        if holding is None or not _newer(holding[0], each.marker):
+        if holding is None or not _newer(*holding, each.marker):
             continue
         by, chosen, reason = holding
         done = _record(
@@ -575,7 +611,9 @@ def reply(
         else:
             others.append(done[0])
     if mine is None:
-        return Replied(done="skipped", others=tuple(others))
+        return (told or Replied(done="skipped")).model_copy(
+            update={"others": tuple(others)}
+        )
     return Replied(
         done="recorded", said=mine[0], committed=mine[1], others=tuple(others)
     )

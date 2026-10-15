@@ -7,7 +7,7 @@ A pull-request bot for [reproducible-science](https://github.com/elliottower/rep
 3. Ignore this one
 4. Not a claim
 
-Answers 3 and 4 commit a `set_aside` entry to the pull request's branch, naming who answered and when. Answers 1 and 2 are recorded in the comment and change no file. The manuscript is never edited.
+Answers 3 and 4 commit a `set_aside` entry to the pull request's branch, naming who answered and when. Answers 1 and 2 are recorded in the comment and change no file, except that a 1 or 2 after a 3 or 4 removes the entry the bot wrote for it. The manuscript is never edited.
 
 It runs from GitHub Actions workflows in your own repository, with its own token. Nothing is hosted, and no model reads or writes anything. `repro ci init --pr-bot` writes the two short caller workflows; the commands they run are this package's:
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import pathlib
 import re
 import subprocess
+import tomllib
 
 import pytest
 import yaml
@@ -54,8 +55,8 @@ def test_the_two_callers_grant_least_privilege_and_call_the_pinned_reusable_work
     _, respond = flows[pr_bot.RESPOND_FILE]
     assert respond[True] == {
         "workflow_run": {"workflows": [check["name"]], "types": ["completed"]},
-        "issue_comment": {"types": ["created"]},
-        "pull_request_review_comment": {"types": ["created"]},
+        "issue_comment": {"types": ["created", "edited"]},
+        "pull_request_review_comment": {"types": ["created", "edited"]},
     }
     assert respond["jobs"]["respond"]["permissions"] == {
         "actions": "write",
@@ -161,3 +162,16 @@ def test_the_reusable_workflow_keeps_the_split_each_job_holding_only_its_token()
     uses = [s["uses"] for job in jobs.values() for s in job["steps"] if "uses" in s]
     assert all(re.fullmatch(r"[\w./-]+@[0-9a-f]{40}", used) for used in uses)
     assert text.count("uvx --no-config --from reproducible-science-pr-bot==") == 3
+
+
+def test_the_pr_bot_extra_pins_the_bot_to_this_release_series_and_all_includes_it():
+    manifest = REUSABLE.parents[2] / "packages" / "repro" / "pyproject.toml"
+    project = tomllib.loads(manifest.read_text())["project"]
+    extras = project["optional-dependencies"]
+    major, minor, _ = project["version"].split(".", 2)
+    assert extras["pr-bot"] == [
+        f"reproducible-science-pr-bot>={major}.{minor},<{major}.{int(minor) + 1}"
+    ]
+    (everything,) = extras["all"]
+    named = everything.split("[", 1)[1].rstrip("]").split(",")
+    assert set(named) == set(extras) - {"all"}

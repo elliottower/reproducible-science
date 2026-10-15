@@ -19,8 +19,10 @@ from claims.models import Review, SetAside
 
 KEY = "set_aside"
 BOM = "\ufeff"
-#: How the reason of an entry the pull-request bot wrote begins, so it removes only its own.
+#: How the reason of an entry the pull-request bot writes begins.
 PREFIX = "pull request #"
+#: What the bot writes as `reviewed.via` on its own entries: the only entries it removes.
+VIA = "reproducible-science-pr-bot"
 
 
 class ManifestShapeError(ReproError):
@@ -42,7 +44,10 @@ def entry(
     """The entry an answer of 3 or 4 writes: the passage, why, who and when."""
     why = f"{PREFIX}{pull_request}, {said}" + (f": {reason}" if reason else "")
     return SetAside(
-        artifact=artifact, text=text, reason=why, reviewed=Review(who=login, when=at)
+        artifact=artifact,
+        text=text,
+        reason=why,
+        reviewed=Review(who=login, when=at, via=VIA),
     )
 
 
@@ -220,7 +225,7 @@ def _ours(item: object, artifact: str, text: str) -> bool:
         and item.get("artifact") == artifact
         and item.get("text") == text
         and isinstance(item.get("reviewed"), dict)
-        and str(item.get("reason", "")).startswith(PREFIX)
+        and item["reviewed"].get("via") == VIA
     )
 
 
@@ -266,4 +271,4 @@ def _removed(source: str, artifact: str, text: str) -> str | None:
     return result
 
 
-__all__ = ["PREFIX", "ManifestShapeError", "added", "entry", "holds", "removed"]
+__all__ = ["PREFIX", "VIA", "ManifestShapeError", "added", "entry", "holds", "removed"]

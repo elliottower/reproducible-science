@@ -228,7 +228,25 @@ def test_a_reply_starting_with_one_to_four_gives_that_answer_and_the_rest_is_the
 
 
 @pytest.mark.parametrize(
-    "body", ["", "5", "0", "12", "1.5", "yes", "three", "x 3", "3x", "> 3", "see 2"]
+    "body",
+    [
+        "",
+        "5",
+        "0",
+        "12",
+        "1.5",
+        "yes",
+        "three",
+        "x 3",
+        "3x",
+        "> 3",
+        "see 2",
+        "1-2",
+        "1, 2",
+        "1 or 2",
+        "1:30",
+        "10",
+    ],
 )
 def test_anything_else_gives_no_answer(body):
     assert comments.parse(body, "r-cccccccc") is None
@@ -492,7 +510,9 @@ def test_ignore_commits_a_set_aside_entry_with_who_and_when_and_says_so_in_the_t
         artifact="paper",
         text="an accuracy of 0.931",
         reason="pull request #7, ignored: a figure from the pilot",
-        reviewed=Review(who="alice", when=answer.created_at),
+        reviewed=Review(
+            who="alice", when=answer.created_at, via="reproducible-science-pr-bot"
+        ),
     )
     state = comments.decode(github.body(root.id))
     assert state.state == "set-aside" and state.decision.by == "alice"
@@ -806,6 +826,7 @@ def test_an_entry_is_added_after_the_last_and_every_other_byte_is_kept():
         "    reviewed:\n"
         "      who: alice\n"
         "      when: '2026-10-14T12:00:00Z'\n"
+        "      via: reproducible-science-pr-bot\n"
     )
     assert block in result
     assert result.replace(block, "", 1) == source
@@ -1018,3 +1039,135 @@ def test_workflows_to_start_again_are_read_from_spaces_and_commas_once_each():
         "claims.yml",
         "results.yml",
     )
+
+
+# ------------------------------------------------------------------- reproductions from QA
+
+
+@pytest.mark.parametrize("body", ["1-2", "1, 2", "1 or 2", "1:30", "10"])
+def test_an_ambiguous_number_is_no_answer_and_gets_the_hint(body):
+    assert comments.parse(body, "r-cccccccc") is None
+    assert comments.asks(body, "r-cccccccc")
+
+
+@pytest.mark.parametrize(
+    "body", ["**1**", "`1`", "\uff11", "\u200b1", "1\u200b", "__1__ yes"]
+)
+def test_a_number_dressed_in_markdown_or_unicode_is_the_plain_number(body):
+    assert comments.parse(body, "r-cccccccc").answer is Answer.YES
+
+
+def test_findings_past_the_cap_close_nothing_and_resolve_no_thread():
+    github = FakeGitHub(patches={"paper.md": PATCH})
+    keys = [f"{i:064x}" for i in range(51)]
+    first = Findings(
+        pull_request=7,
+        head_sha=HEAD,
+        findings=tuple(finding(key=k, line=40) for k in keys[1:51]),
+        checked=tuple(keys),
+    )
+    post(github, first)
+    # A new failing assertion comes first, and pushes the last one past the cap.
+    second = Findings(
+        pull_request=7,
+        head_sha=HEAD,
+        findings=tuple(finding(key=k, line=40) for k in keys[:50]),
+        more=1,
+        checked=tuple(keys),
+    )
+    post(github, second)
+    states = {
+        comments.decode(c.body).key: comments.decode(c.body).state
+        for c in github.comments
+        if comments.decode(c.body)
+    }
+    assert states[keys[50]] == "open" and github.resolved == []
+
+
+def test_an_edited_reply_counts_as_what_it_now_says():
+    github = FakeGitHub(
+        patches={"paper.md": PATCH}, writers={"alice"}, manifest=b"set_aside: []\n"
+    )
+    root = posted(github)
+    answer = github.human("review", "2", "alice", in_reply_to=root.id)
+    actions.reply("pull_request_review_comment", review_event(answer), github)
+    at = next(i for i, c in enumerate(github.comments) if c.id == answer.id)
+    github.comments[at] = answer.model_copy(update={"body": "1 the paper is wrong"})
+    edited = review_event(github.comments[at])
+    edited["action"] = "edited"
+    before = len(github.comments)
+    done = actions.reply("pull_request_review_comment", edited, github)
+    held = comments.decode(github.body(root.id)).decision
+    assert (
+        done.done == "recorded"
+        and held.answer is Answer.YES
+        and held.reply == answer.id
+    )
+    assert held.reason == "the paper is wrong"
+    assert len(github.comments) == before + 1
+
+
+def test_an_edited_reply_also_counts_at_the_next_comment_in_the_thread():
+    github = FakeGitHub(writers={"alice"})
+    root = posted(github, line=None, path=None)
+    answer = github.human("issue", "r-cccccccc 2", "alice")
+    actions.reply("issue_comment", issue_event(answer), github)
+    at = next(i for i, c in enumerate(github.comments) if c.id == answer.id)
+    github.comments[at] = answer.model_copy(update={"body": "r-cccccccc 1"})
+    later = github.human("issue", "r-cccccccc thoughts?", "alice")
+    actions.reply("issue_comment", issue_event(later), github)
+    assert comments.decode(github.body(root.id)).decision.answer is Answer.YES
+
+
+def test_an_edit_into_something_that_is_not_an_answer_says_nothing():
+    github = FakeGitHub(patches={"paper.md": PATCH}, writers={"alice"})
+    root = posted(github)
+    answer = github.human("review", "5", "alice", in_reply_to=root.id)
+    event = review_event(answer)
+    event["action"] = "edited"
+    before = len(github.comments)
+    actions.reply("pull_request_review_comment", event, github)
+    assert len(github.comments) == before
+
+
+def test_a_hand_written_entry_that_looks_like_the_bots_is_never_removed():
+    hand = (
+        "set_aside:\n- artifact: paper\n  text: x\n"
+        "  reason: 'pull request #9 discussed by hand'\n"
+        "  reviewed: {who: bob, when: '2026-01-01T00:00:00Z'}\n"
+    )
+    assert setaside.removed(hand, "paper", "x") is None
+    ours = setaside.added(
+        "claims: []\n", setaside.entry("paper", "x", 9, "ignored", "", "b", THEN)
+    )
+    assert setaside.removed(ours, "paper", "x") == "claims: []\n"
+
+
+def test_post_keeps_an_answer_that_lands_between_its_read_and_its_write():
+    github = FakeGitHub(patches={"paper.md": PATCH}, writers={"alice"})
+    root = posted(github)
+    answer = github.human("review", "2 wrong file", "alice", in_reply_to=root.id)
+    fresh = github.fresh
+
+    def answered_meanwhile(comment):
+        # The answer is recorded after post has read the comment for this finding.
+        if comment.id == root.id and not github.recorded:
+            github.recorded = True
+            actions.reply("pull_request_review_comment", review_event(answer), github)
+        return fresh(comment)
+
+    github.recorded = False
+    github.fresh = answered_meanwhile
+    post(github, findings(finding(digest="1" * 16, stored="0.927")))
+    held = comments.decode(github.body(root.id))
+    assert held.decision is not None and held.decision.answer is Answer.NO
+
+
+def test_reply_never_reopens_a_fixed_comment():
+    github = FakeGitHub(patches={"paper.md": PATCH}, writers={"alice"})
+    root = posted(github)
+    post(github, findings())
+    answer = github.human("review", "2", "alice", in_reply_to=root.id)
+    actions.reply("pull_request_review_comment", review_event(answer), github)
+    held = comments.decode(github.body(root.id))
+    assert held.state == "fixed" and held.decision.answer is Answer.NO

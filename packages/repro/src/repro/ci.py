@@ -1709,8 +1709,8 @@ def add_parser(
         "--pr-bot",
         action="store_true",
         help="write the pull-request bot's two caller workflows instead, repro-pr-bot.yml and "
-        "repro-pr-bot-respond.yml, which call the reusable workflow published with "
-        "reproducible-science-pr-bot",
+        "repro-pr-bot-respond.yml, which call the reusable workflow "
+        "elliottower/reproducible-science/.github/workflows/pr-bot.yml",
     )
     p_init.set_defaults(func=lambda args: command_init(args, pr_bot))
 

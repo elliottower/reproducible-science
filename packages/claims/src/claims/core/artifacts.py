@@ -63,11 +63,15 @@ class Review(BaseModel):
     """`review_digest` of what was accepted. A review that names one holds only while the
     assertion or artifact still has that digest, so changing a binding undoes its review. A
     review written without one holds as before."""
+    via: str | None = Field(default=None, min_length=1)
+    """The program that wrote the review for the person named, where one did:
+    `reproducible-science-pr-bot` for an answer given on a pull request. That program edits or
+    removes only what names it here."""
 
     @model_serializer(mode="wrap")
     def _omit_unsaid(self, handler):
         dumped = handler(self)
-        for field in ("how", "digest"):
+        for field in ("how", "digest", "via"):
             if not dumped.get(field):
                 dumped.pop(field, None)
         return dumped

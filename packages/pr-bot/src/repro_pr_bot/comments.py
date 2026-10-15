@@ -17,6 +17,7 @@ import binascii
 import datetime
 import enum
 import re
+import unicodedata
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
@@ -326,34 +327,52 @@ def _unquoted(body: str) -> str:
 _MENTION = re.compile(r"@repro(?:-bot)?\b[\s,:]*")
 
 
-def _own(body: str, ref: str) -> str:
-    """A reply's own text: without quoted lines, a leading `ref` or a leading `@repro`."""
-    text = _unquoted(body).strip()
+#: Characters with no width, which a pasted or typed number can carry.
+_INVISIBLE = re.compile("[\u200b-\u200d\u2060\ufeff]")
+#: A number in emphasis or code, `**1**` or `` `1` ``, read as the number.
+_DRESSED = re.compile(r"([*_`~]+)([0-9])\1(?![*_`~])")
+#: What makes a number after the answer a second answer, a range or a time: `1-2`, `1, 2`,
+#: `1 or 2`, `1:30`.
+_SECOND = re.compile(r"(?:(?:or|and|to|nor)\s+)?[#(]?[0-9]", re.IGNORECASE)
+
+
+def _plain_text(body: str, ref: str) -> str:
+    """A reply's own text, normalized: without quoted lines, invisible characters or a leading
+    `ref`, with compatibility forms such as fullwidth digits read as their plain forms."""
+    text = _INVISIBLE.sub("", unicodedata.normalize("NFKC", _unquoted(body))).strip()
     if ref and text.startswith(ref):
         text = text[len(ref) :].lstrip(" :,-")
+    return text
+
+
+def _own(body: str, ref: str) -> str:
+    """A reply's own text, normalized, without a leading `@repro`, and with a number in
+    emphasis or code at its start read as the number."""
+    text = _plain_text(body, ref)
     if found := _MENTION.match(text):
         text = text[found.end() :]
-    return text.strip()
+    return _DRESSED.sub(r"\2", text, count=1).strip()
 
 
 def asks(body: str, ref: str = "") -> bool:
     """Whether a reply that gives no answer was meant as one: it is addressed to `@repro`, or
     its own text starts with something number-like. Only such a reply is told to answer 1–4."""
-    text = _unquoted(body).strip()
-    if ref and text.startswith(ref):
-        text = text[len(ref) :].lstrip(" :,-")
-    return bool(_MENTION.match(text)) or bool(re.match(r"[#(]?[0-9]", text))
+    text = _plain_text(body, ref)
+    return bool(_MENTION.match(text)) or bool(re.match(r"[*_`~]*[#(]?[0-9]", text))
 
 
 def parse(body: str, ref: str = "") -> Reply | None:
     """The answer a reply gives, or None where it gives none.
 
     The reply's own text, after any quoted lines and a leading `ref`, starts with a number from
-    1 to 4, alone or followed by a separator and the reason. `12`, `1.5` and `yes` give none.
+    1 to 4, alone or followed by a separator and the reason. `12`, `1.5` and `yes` give none,
+    and so does a reply naming two numbers, `1-2`, `1, 2`, `1 or 2`, or a time, `1:30`, which
+    answers nothing for certain. Fullwidth digits, invisible characters, and a number in
+    emphasis or code, `**1**`, are read as the plain number.
     """
     text = _own(body, ref)
     found = _ANSWER.fullmatch(text)
-    if found is None:
+    if found is None or _SECOND.match(found[2] or ""):
         return None
     reason = " ".join(clean(found[2] or "").split())[:MAX_REASON]
     return Reply(answer=Answer(int(found[1])), reason=reason)

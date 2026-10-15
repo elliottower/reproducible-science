@@ -5,8 +5,8 @@
     repro-pr-bot-respond.yml   on `workflow_run` after the check, `issue_comment` and
                                `pull_request_review_comment`: comment and record answers
 
-Each calls the reusable workflow published with the bot, which holds the jobs; these files only
-choose when it runs and what its token may do. They are two and not one: the comments must be
+Each calls the reusable workflow this repository holds at `.github/workflows/pr-bot.yml`,
+which holds the jobs; these files only choose when it runs and what its token may do. They are two and not one: the comments must be
 posted by a run that holds a token which writes, which `pull_request` never gives a fork, and
 that run is started by `workflow_run` after the check. A workflow started by its own completion
 is not something GitHub documents, so the run that writes is started by a second file.
@@ -65,7 +65,8 @@ jobs:
   check:
     permissions:
       contents: read  # to check out the pull request's head commit
-    uses: {reusable}@{ref}
+    # Pinned to a release tag of the toolkit. Replace it with the commit that tag names.
+    uses: {reusable}@{ref}  # zizmor: ignore[unpinned-uses]
     with:
       manifest: {manifest}
 """
@@ -76,16 +77,17 @@ RESPOND = """\
 # the answer. Neither job checks out the pull request. {docs}
 name: repro pr bot respond
 
-# workflow_run runs with a token that writes, so it is safe only where it never runs what the
-# pull request brought. The jobs it calls check out nothing and read the findings as data.
-on:  # zizmor: ignore[dangerous-triggers]
-  workflow_run:
+# workflow_run and issue_comment run with a token that writes, so each is safe only where it
+# never runs what the pull request brought. The jobs they call check out nothing and read the
+# findings and the comments as data. An edited reply is read as what it now says.
+on:
+  workflow_run:  # zizmor: ignore[dangerous-triggers]
     workflows: [{check_name}]
     types: [completed]
-  issue_comment:
-    types: [created]
+  issue_comment:  # zizmor: ignore[dangerous-triggers]
+    types: [created, edited]
   pull_request_review_comment:
-    types: [created]
+    types: [created, edited]
 
 permissions: {{}}
 
@@ -97,7 +99,8 @@ jobs:
       contents: write  # to commit a set_aside entry to {manifest} on a pull request's branch
       issues: write  # to comment in a pull request's conversation
       pull-requests: write  # to comment on a diff, answer in its threads and resolve them
-    uses: {reusable}@{ref}
+    # Pinned to a release tag of the toolkit. Replace it with the commit that tag names.
+    uses: {reusable}@{ref}  # zizmor: ignore[unpinned-uses]
     with:
       manifest: {manifest}
       dispatch: {dispatch}
