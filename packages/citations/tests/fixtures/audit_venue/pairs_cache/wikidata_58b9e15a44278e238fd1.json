@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q15716725&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-15T00:12:37Z",
+  "sha256": "f4fd52133c0028a0108f82756891ca91d93e335f9998bf32b28854cbbe4b8a83",
+  "body": "{\"entities\": {\"Q15716725\": {\"id\": \"Q15716725\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Physical Review X\"}}, \"aliases\": {\"en\": [{\"language\": \"en\", \"value\": \"PRX\"}, {\"language\": \"en\", \"value\": \"Physical review. X\"}, {\"language\": \"en\", \"value\": \"Phys. Rev. X\"}]}, \"claims\": {\"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"2160-3308\", \"type\": \"string\"}}}], \"P1160\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"Phys. Rev. X\", \"type\": \"string\"}}}], \"P1055\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"101636260\", \"type\": \"string\"}}}], \"P1813\": [{\"mainsnak\": {\"datavalue\": {\"value\": {\"text\": \"Phys. Rev. X\", \"language\": \"en\"}, \"type\": \"monolingualtext\"}}}], \"P7363\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"2160-3308\", \"type\": \"string\"}}}], \"P10283\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"S137042341\", \"type\": \"string\"}}}]}}}, \"success\": 1}"
+}

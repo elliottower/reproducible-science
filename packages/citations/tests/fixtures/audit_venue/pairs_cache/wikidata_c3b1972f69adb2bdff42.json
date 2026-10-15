@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Sci.+Data&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:11:12Z",
+  "sha256": "095849e36a26fd52e9082c5d9e2dfc3128b52fa73393b2077bddae46c51d9008",
+  "body": "{\"searchinfo\": {\"search\": \"Sci. Data\"}, \"search\": [{\"id\": \"Q20081319\", \"title\": \"Q20081319\", \"pageid\": 21751277, \"concepturi\": \"http://www.wikidata.org/entity/Q20081319\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q20081319\", \"display\": {\"label\": {\"value\": \"scientific data\", \"language\": \"en\"}, \"description\": {\"value\": \"data used in science\", \"language\": \"en\"}}, \"label\": \"scientific data\", \"description\": \"data used in science\", \"match\": {\"type\": \"alias\", \"language\": \"en-gb\", \"text\": \"Sci. Data\"}, \"aliases\": [\"Sci. Data\"]}], \"success\": 1}"
+}

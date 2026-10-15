@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3AP236%3D1474-760X%7CP7363%3D1474-760X&format=json",
+  "fetched_at": "2026-10-14T22:25:36Z",
+  "sha256": "b41e110caa52f8d5577654d4dd202da985d2c77776e525d3f72a2655affaf631",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q5533480\", \"pageid\": 5293865, \"size\": 54033, \"wordcount\": 106, \"snippet\": \"Genome Biology\\nGenome Biology\\nGenome Biology\\nGenome Biology\\nGenome Biology\\nGenome Biology\\nGenome Biology\\nGenome Biology\\nGenome Biology\\nGenome Biology\\n\u30b2\u30ce\u30e0\u30d0\u30a4\u30aa\u30ed\u30b8\u30fc\", \"timestamp\": \"2026-09-23T15:36:47Z\"}]}}"
+}

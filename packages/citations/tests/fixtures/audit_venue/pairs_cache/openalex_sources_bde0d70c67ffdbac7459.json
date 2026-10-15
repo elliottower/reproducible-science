@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://api.openalex.org/sources?search=JAMA+Netw.+Open&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
+  "fetched_at": "2026-10-15T00:09:45Z",
+  "sha256": "dd83b93ee5068ef629ba9a0a4be602670388d93b1163b9d3e750d969a5e71d59",
+  "body": "{\"meta\": {\"count\": 1, \"db_response_time_ms\": 7, \"page\": 1, \"per_page\": 10, \"groups_count\": null, \"x_query\": {\"oql\": \"get sources where text has (JAMA Netw. Open)\", \"x_new_oql\": \"get sources where text has (JAMA Netw. Open)\", \"oqo\": {\"get_rows\": \"sources\", \"filter_rows\": [{\"column_id\": \"text.search\", \"value\": \"JAMA Netw. Open\", \"operator\": \"has\"}]}, \"url\": \"/sources?filter=text.search:JAMA Netw. Open&per_page=10\"}, \"cost_usd\": 0.001}, \"results\": [{\"id\": \"https://openalex.org/S4210217848\", \"display_name\": \"JAMA Network Open\", \"alternate_titles\": [\"JAMA Netw Open\"], \"issn_l\": \"2574-3805\", \"issn\": [\"2574-3805\"], \"type\": \"journal\"}], \"group_by\": []}"
+}

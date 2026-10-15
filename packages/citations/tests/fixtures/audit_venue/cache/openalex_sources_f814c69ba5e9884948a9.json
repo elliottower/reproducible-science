@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://api.openalex.org/sources?search=Medical+Image+Computing+and+Computer-Assisted+Intervention+--+MICCAI+2015&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
+  "fetched_at": "2026-10-14T22:29:07Z",
+  "sha256": "d0c20fd9185418a78758a812f8306c23e0f9020690ceff0287b091e44f6be3d7",
+  "body": "{\"meta\": {\"count\": 0, \"db_response_time_ms\": 9, \"page\": 1, \"per_page\": 10, \"groups_count\": null, \"x_query\": {\"oql\": \"get sources where text has (Medical Image Computing \\\"and\\\" Computer-Assisted Intervention -- MICCAI 2015)\", \"x_new_oql\": \"get sources where text has (Medical Image Computing \\\"and\\\" Computer-Assisted Intervention -- MICCAI 2015)\", \"oqo\": {\"get_rows\": \"sources\", \"filter_rows\": [{\"column_id\": \"text.search\", \"value\": \"Medical Image Computing and Computer-Assisted Intervention -- MICCAI 2015\", \"operator\": \"has\"}]}, \"url\": \"/sources?filter=text.search:Medical Image Computing and Computer-Assisted Intervention -- MICCAI 2015&per_page=10\"}, \"cost_usd\": 0.001}, \"results\": [], \"group_by\": []}"
+}

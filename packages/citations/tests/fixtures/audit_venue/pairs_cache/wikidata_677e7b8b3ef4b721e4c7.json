@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DGeophys.+Res.+Lett.%22&format=json",
+  "fetched_at": "2026-10-15T00:11:01Z",
+  "sha256": "6d65b6062c816265b35384ca6b4d09e58b7fd7d97775125dc519df7f3259cab2",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q5535576\", \"pageid\": 5295889, \"size\": 49404, \"wordcount\": 142, \"snippet\": \"Geophysical Research Letters\\n\u5730\u7403\u7269\u7406\u7814\u7a76\u901a\u8a0a\\nGeophysical Research Letters\\nGeophysical Research Letters\\nGeophysical Research Letters\\nGeophysical Research Letters\", \"timestamp\": \"2026-07-10T16:56:29Z\"}]}}"
+}

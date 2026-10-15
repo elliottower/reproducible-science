@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DEconometrica%22&format=json",
+  "fetched_at": "2026-10-15T00:13:06Z",
+  "sha256": "59901493744afb5e1598825dde362da128d1bb6a3c752700f7549cf8faed34d8",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q375835\", \"pageid\": 357655, \"size\": 45468, \"wordcount\": 75, \"snippet\": \"Econometrica\\nEconometrica\\nEconometrica\\nEconometrica\\nEconometrica\\nEconometrica\\n\u30a8\u30b3\u30ce\u30e1\u30c8\u30ea\u30ab\\n\uc774\ucf54\ub178\uba54\ud2b8\ub9ac\uce74\\nEconometrica\\nEconometrica\\nEconometrica\\nEconometrica\\nEconometrica\", \"timestamp\": \"2026-06-20T08:40:16Z\"}]}}"
+}

@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Biol.+Lett.&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:09:08Z",
+  "sha256": "1e9503af6d13c1abe88c8b3e98fedd9d6e170f8618cb1f4959cd975b74755a30",
+  "body": "{\"searchinfo\": {\"search\": \"Biol. Lett.\"}, \"search\": [{\"id\": \"Q43341\", \"title\": \"Q43341\", \"pageid\": 45549, \"concepturi\": \"http://www.wikidata.org/entity/Q43341\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q43341\", \"display\": {\"label\": {\"value\": \"Biology Letters\", \"language\": \"en\"}, \"description\": {\"value\": \"scientific journal\", \"language\": \"en\"}}, \"label\": \"Biology Letters\", \"description\": \"scientific journal\", \"match\": {\"type\": \"alias\", \"language\": \"en\", \"text\": \"Biol. Lett.\"}, \"aliases\": [\"Biol. Lett.\"]}], \"success\": 1}"
+}

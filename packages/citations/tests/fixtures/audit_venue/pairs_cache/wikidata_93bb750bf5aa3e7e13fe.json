@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DPhys.+Rev.+X%22&format=json",
+  "fetched_at": "2026-10-15T00:12:36Z",
+  "sha256": "296ed9cb43b940289bc64a870bc27ad8d637d889a05138ccccf26cca7ffd7628",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q15716725\", \"pageid\": 17351823, \"size\": 45251, \"wordcount\": 94, \"snippet\": \"Physical Review X\\nPhysical Review X\\n\u7269\u7406\u8bc4\u8bbaX\\nPhysical Review X\\nPhysical Review X\\nPhysical Review X\\nPhysical Review X\\nPhysical Review X\\nPhysical Review X\\nPhysical\", \"timestamp\": \"2026-07-01T17:41:06Z\"}]}}"
+}

@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q573880%7CQ117602039&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-15T00:08:44Z",
+  "sha256": "961cd2e114482ca34e6ecf14e53bbafc948ed9624d121249b6fca2961421348a",
+  "body": "{\"entities\": {\"Q573880\": {\"id\": \"Q573880\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Nature Communications\"}, \"mul\": {\"language\": \"mul\", \"value\": \"Nature Communications\"}}, \"aliases\": {\"en\": [{\"language\": \"en\", \"value\": \"Nat Commun\"}, {\"language\": \"en\", \"value\": \"Nature communications\"}]}, \"claims\": {\"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"2041-1723\", \"type\": \"string\"}}}], \"P1160\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"Nat. Commun.\", \"type\": \"string\"}}}], \"P1055\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"101528555\", \"type\": \"string\"}}}], \"P1813\": [{\"mainsnak\": {\"datavalue\": {\"value\": {\"text\": \"Nat Commun\", \"language\": \"en\"}, \"type\": \"monolingualtext\"}}}], \"P7363\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"2041-1723\", \"type\": \"string\"}}}], \"P10283\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"S64187185\", \"type\": \"string\"}}}]}}, \"Q117602039\": {\"id\": \"Q117602039\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Nat Community Cemetery\"}}, \"aliases\": {}, \"claims\": {}}}, \"success\": 1}"
+}

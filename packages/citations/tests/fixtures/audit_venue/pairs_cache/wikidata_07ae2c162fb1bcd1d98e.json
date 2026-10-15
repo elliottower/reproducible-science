@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=EMBO+Reports&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:09:41Z",
+  "sha256": "78d43c1aaea3722be06d9c032f9722903f9ee466e8fcdd460641b7a974f4febd",
+  "body": "{\"searchinfo\": {\"search\": \"EMBO Reports\"}, \"search\": [{\"id\": \"Q5323356\", \"title\": \"Q5323356\", \"pageid\": 5091162, \"concepturi\": \"http://www.wikidata.org/entity/Q5323356\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q5323356\", \"display\": {\"label\": {\"value\": \"EMBO Reports\", \"language\": \"en\"}, \"description\": {\"value\": \"scientific journal\", \"language\": \"en\"}}, \"label\": \"EMBO Reports\", \"description\": \"scientific journal\", \"match\": {\"type\": \"label\", \"language\": \"en\", \"text\": \"EMBO Reports\"}}], \"success\": 1}"
+}

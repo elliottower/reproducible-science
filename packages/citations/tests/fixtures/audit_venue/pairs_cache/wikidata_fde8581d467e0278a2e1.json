@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Open+Biol.&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:10:39Z",
+  "sha256": "736b0121fa9f9bbf368d324701ccb4b8c8d0e00014a579bd506de4c23761c47c",
+  "body": "{\"searchinfo\": {\"search\": \"Open Biol.\"}, \"search\": [], \"success\": 1}"
+}

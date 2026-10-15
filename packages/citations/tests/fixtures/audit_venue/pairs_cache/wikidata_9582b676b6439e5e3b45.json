@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q1368270&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-15T00:11:43Z",
+  "sha256": "6471328a06a5c494ed8c713184569d85009052eab18d9aba808bcae26da67a15",
+  "body": "{\"entities\": {\"Q1368270\": {\"id\": \"Q1368270\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Crelle's Journal\"}}, \"aliases\": {\"en\": [{\"language\": \"en\", \"value\": \"Journal f\u00fcr die reine und angewandte Mathematik\"}, {\"language\": \"en\", \"value\": \"Crelle\"}, {\"language\": \"en\", \"value\": \"Journal for Pure and Applied Mathematics\"}, {\"language\": \"en\", \"value\": \"Journal fuer die Reine und Angewandte Mathematik\"}]}, \"claims\": {\"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0075-4102\", \"type\": \"string\"}}}, {\"mainsnak\": {\"datavalue\": {\"value\": \"1435-5345\", \"type\": \"string\"}}}], \"P1160\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"J. Reine Angew. Math.\", \"type\": \"string\"}}}], \"P7363\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0075-4102\", \"type\": \"string\"}}}], \"P10283\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"S62223294\", \"type\": \"string\"}}}], \"P1813\": [{\"mainsnak\": {\"datavalue\": {\"value\": {\"text\": \"J. Reine Angew. Math.\", \"language\": \"en\"}, \"type\": \"monolingualtext\"}}}]}}}, \"success\": 1}"
+}

@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=NAR+Genom.+Bioinform.&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:11:23Z",
+  "sha256": "152c4216f0bc31c4657a033c246a578f20d27d39bd2664476b53e95424113db8",
+  "body": "{\"searchinfo\": {\"search\": \"NAR Genom. Bioinform.\"}, \"search\": [], \"success\": 1}"
+}

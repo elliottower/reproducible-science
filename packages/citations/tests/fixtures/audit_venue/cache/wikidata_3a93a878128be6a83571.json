@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q28736261&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-14T22:22:49Z",
+  "sha256": "f20862d4a510b02dd5500f5060b2b4cf5531fcda47f7e03804d942e4e46afdcf",
+  "body": "{\"entities\": {\"Q28736261\": {\"id\": \"Q28736261\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Transactions of the Association for Computational Linguistics\"}}, \"aliases\": {\"en\": [{\"language\": \"en\", \"value\": \"TACL\"}, {\"language\": \"en\", \"value\": \"Trans Assoc Comput Linguist\"}]}, \"claims\": {\"P1813\": [{\"mainsnak\": {\"datavalue\": {\"value\": {\"text\": \"TACL\", \"language\": \"en\"}, \"type\": \"monolingualtext\"}}}], \"P1055\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"101639023\", \"type\": \"string\"}}}], \"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"2307-387X\", \"type\": \"string\"}}}], \"P7363\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"2307-387X\", \"type\": \"string\"}}}], \"P10283\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"S2729999759\", \"type\": \"string\"}}}]}}}, \"success\": 1}"
+}

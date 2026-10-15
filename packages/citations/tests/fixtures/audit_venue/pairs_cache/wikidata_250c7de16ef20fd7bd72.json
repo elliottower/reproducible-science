@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DCommun.+ACM%22&format=json",
+  "fetched_at": "2026-10-15T00:08:49Z",
+  "sha256": "b713edcdf8540293bdb8e6844dc0894da3ae2a69ea0b184721849b7deef225d6",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q1120519\", \"pageid\": 1067615, \"size\": 158680, \"wordcount\": 213, \"snippet\": \"Communications of the ACM\\nCommunications of the ACM\\nCommunications of the ACM\\nACM\u901a\u8baf\\nCommunications of the ACM\\nCommunications of the ACM\\nCommunications\", \"timestamp\": \"2026-09-26T01:39:32Z\"}]}}"
+}

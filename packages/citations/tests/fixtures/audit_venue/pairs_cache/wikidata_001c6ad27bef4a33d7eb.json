@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q19881044&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-15T00:08:46Z",
+  "sha256": "bf550e236d4cb2a9c2448e2f3d88684cf32ca5fed9b4c89fe5c9b0c99b021fa2",
+  "body": "{\"entities\": {\"Q19881044\": {\"id\": \"Q19881044\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Science Advances\"}}, \"aliases\": {\"en\": [{\"language\": \"en\", \"value\": \"Sci. Adv.\"}, {\"language\": \"en\", \"value\": \"ScienceAdvances\"}, {\"language\": \"en\", \"value\": \"Sci Adv\"}, {\"language\": \"en\", \"value\": \"Science advances\"}]}, \"claims\": {\"P1160\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"Sci. Adv.\", \"type\": \"string\"}}}], \"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"2375-2548\", \"type\": \"string\"}}}, {\"mainsnak\": {\"datavalue\": {\"value\": \"2375-2548\", \"type\": \"string\"}}}], \"P1055\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"101653440\", \"type\": \"string\"}}}], \"P7363\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"2375-2548\", \"type\": \"string\"}}}], \"P10283\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"S2737427234\", \"type\": \"string\"}}}]}}}, \"success\": 1}"
+}

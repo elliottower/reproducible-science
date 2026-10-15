@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q2471672&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-14T22:23:49Z",
+  "sha256": "9aafd302ae5e2d95d63aba712d105a16bb2e53af33421c101e718c849bc9191c",
+  "body": "{\"entities\": {\"Q2471672\": {\"id\": \"Q2471672\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"European Physical Journal A\"}, \"mul\": {\"language\": \"mul\", \"value\": \"European Physical Journal A: Hadrons and Nuclei\"}}, \"aliases\": {\"en\": [{\"language\": \"en\", \"value\": \"European Physical Journal A. Hadrons and Nuclei\"}, {\"language\": \"en\", \"value\": \"European physical journal. A, Hadrons and nuclei\"}]}, \"claims\": {\"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"1434-6001\", \"type\": \"string\"}}}, {\"mainsnak\": {\"datavalue\": {\"value\": \"1434-601X\", \"type\": \"string\"}}}], \"P10283\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"S4210173186\", \"type\": \"string\"}}}], \"P7363\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"1434-6001\", \"type\": \"string\"}}}]}}}, \"success\": 1}"
+}

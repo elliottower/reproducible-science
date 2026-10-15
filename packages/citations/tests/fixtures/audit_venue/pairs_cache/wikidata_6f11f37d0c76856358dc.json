@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Rev.+Mod.+Phys.&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:12:26Z",
+  "sha256": "d1befc4c9fc7a83b43d7793e33f7fa2ae48ab7dacfdf33abb36c96c5f40cf51c",
+  "body": "{\"searchinfo\": {\"search\": \"Rev. Mod. Phys.\"}, \"search\": [{\"id\": \"Q26572\", \"title\": \"Q26572\", \"pageid\": 29993, \"concepturi\": \"http://www.wikidata.org/entity/Q26572\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q26572\", \"display\": {\"label\": {\"value\": \"Reviews of Modern Physics\", \"language\": \"en\"}, \"description\": {\"value\": \"quarterly peer-reviewed scientific journal\", \"language\": \"en\"}}, \"label\": \"Reviews of Modern Physics\", \"description\": \"quarterly peer-reviewed scientific journal\", \"match\": {\"type\": \"alias\", \"language\": \"ru\", \"text\": \"Rev. Mod. Phys.\"}, \"aliases\": [\"Rev. Mod. Phys.\"]}], \"success\": 1}"
+}

@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q186723&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-15T00:11:40Z",
+  "sha256": "3c2f999ffc7a0517cd86ca3f2b2c6f500a53606346959cf482688bf3dc85d4c7",
+  "body": "{\"entities\": {\"Q186723\": {\"id\": \"Q186723\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Zeitschrift fuer Physikalische Chemie\"}}, \"aliases\": {\"en\": [{\"language\": \"en\", \"value\": \"Zeitschrift f\u00fcr physikalische Chemie\"}]}, \"claims\": {\"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0942-9352\", \"type\": \"string\"}}}, {\"mainsnak\": {\"datavalue\": {\"value\": \"2196-7156\", \"type\": \"string\"}}}], \"P1160\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"Z. Phys. Chem.\", \"type\": \"string\"}}}], \"P1055\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"1305675\", \"type\": \"string\"}}}], \"P7363\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0942-9352\", \"type\": \"string\"}}}], \"P10283\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"S89003483\", \"type\": \"string\"}}}]}}}, \"success\": 1}"
+}

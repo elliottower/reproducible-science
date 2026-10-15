@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q3470990&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-15T00:10:59Z",
+  "sha256": "9dafc00735b85ae2cb19fcb4295edf4c58b5e58882bb35e0e8b5d1ae5ae606a0",
+  "body": "{\"entities\": {\"Q3470990\": {\"id\": \"Q3470990\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"The Astrophysical Journal Letters\"}}, \"aliases\": {\"en\": [{\"language\": \"en\", \"value\": \"The astrophysical journal. Letteral\"}, {\"language\": \"en\", \"value\": \"Astrophysical journal. Letters\"}, {\"language\": \"en\", \"value\": \"The astrophysical journal. Letters\"}, {\"language\": \"en\", \"value\": \"ApJL\"}, {\"language\": \"en\", \"value\": \"Letters of the Astrophysical Journal\"}, {\"language\": \"en\", \"value\": \"Astrophysical Journal Letters\"}]}, \"claims\": {\"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"2041-8205\", \"type\": \"string\"}}}, {\"mainsnak\": {\"datavalue\": {\"value\": \"2041-8213\", \"type\": \"string\"}}}], \"P1055\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"101671660\", \"type\": \"string\"}}}], \"P7363\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"2041-8205\", \"type\": \"string\"}}}], \"P10283\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"S4210175824\", \"type\": \"string\"}}}]}}}, \"success\": 1}"
+}

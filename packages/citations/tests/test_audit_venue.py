@@ -1,14 +1,13 @@
 """A real paper cited at the wrong venue passed every check `audit` made.
 
-The venue is now compared like the year. The cost of being wrong is not symmetric: a venue is
-written a dozen ways for one meeting, and a check that cries wrong at `NeurIPS` against
-`Advances in Neural Information Processing Systems` buries the one entry that is actually at
-the wrong journal. So there are three outcomes, and `not comparable` is never a disagreement.
+The venue is compared by identifier. The record's venue is the ISSNs and source ids its
+registries give it; the entry's venue name is resolved to the same kinds of identifier through
+registries that index venue names and abbreviations. Only an identifier comparison may say
+match or mismatch, and a mismatch needs serial identifiers (ISSN, NLM, DBLP) on both sides.
+Everything else is not comparable, with both names shown.
 
-The last test audits 62 real, correctly cited references offline, against the registry and
-search answers fetched for them once, and expects no venue disagreement. The cached bodies are
-trimmed to the fields `audit` reads (reference lists, abstracts and the like removed) and
-re-enveloped; the URLs and every field read are as fetched on 2026-10-14.
+The fixture tests audit real, correctly cited references offline, against the registry answers
+fetched for them once; the cached bodies are trimmed to the fields read and re-enveloped.
 """
 
 from __future__ import annotations
@@ -20,549 +19,400 @@ import urllib.parse
 import pytest
 from citations import audit as A
 from citations import venue as V
+from citations import venue_registry as R
+from citations.services import crossref_venue_ids, openalex_venue_ids
 
 FIXTURE = pathlib.Path(__file__).parent / "fixtures" / "audit_venue"
+
+
+def res(*ids, status="resolved", direct=False, **kw) -> V.Resolution:
+    return V.Resolution(status=status, ids=frozenset(ids), direct=direct, **kw)
+
+
+NATURE = res("issn:0028-0836", "issn:1476-4687", "wikidata:Q180445", label="Nature")
+NAT_COMMUN = res("issn:2041-1723", "wikidata:Q573880", label="Nature Communications", direct=True)
+
+
+# --- the decision ------------------------------------------------------------------------
+
+
+def test_a_shared_identifier_is_a_match():
+    check = V.decide("Nat. Commun.", "Nature Communications", NAT_COMMUN, NAT_COMMUN)
+    assert check.outcome == V.MATCH
+    assert check.why.startswith("shared identifier")
+
+
+def test_disjoint_serial_identifiers_on_a_direct_record_are_a_mismatch_naming_both():
+    check = V.decide("Nature", "Nature Communications", NATURE, NAT_COMMUN)
+    assert check.outcome == V.MISMATCH
+    assert (check.ours_registry, check.theirs_registry) == ("Nature", "Nature Communications")
+    assert check.line() == "venue: ours 'Nature' vs registry 'Nature Communications'"
+
+
+def test_a_record_identified_only_by_its_name_is_never_a_mismatch():
+    indirect = NAT_COMMUN.model_copy(update={"direct": False})
+    check = V.decide("Nature", "Nature Communications", NATURE, indirect)
+    assert (check.outcome, check.why) == (V.NOT_COMPARABLE, V.INDIRECT)
+
+
+def test_two_registry_records_of_one_journal_name_are_not_called_different():
+    # Gödel 1931: the entry's name resolves to Wikidata's historical record of the journal,
+    # Crossref's ISSN to the continuing one, and both are filed under the same title.
+    name = V.folded_names(["Monatshefte für Mathematik und Physik"])
+    entry = res("issn:1812-8076", "wikidata:Q96716169", names=name)
+    record = res("issn:0026-9255", "wikidata:Q1944084", names=name, direct=True)
+    check = V.decide(
+        'Monatshefte f{\\"u}r Mathematik und Physik',
+        "Monatshefte für Mathematik und Physik",
+        entry,
+        record,
+    )
+    assert check.outcome == V.NOT_COMPARABLE
+    assert check.why.startswith(V.ONE_NAME)
+
+
+def test_a_record_found_by_title_search_can_confirm_and_never_contradict():
+    # Krizhevsky 2012: a title search reached the 2017 reprint in Communications of the ACM.
+    reprint = res(
+        "issn:0001-0782",
+        "dblp:journals/cacm",
+        direct=True,
+        searched=True,
+        label="Communications of the ACM",
+    )
+    neurips = res("issn:1049-5258", label="Advances in Neural Information Processing Systems")
+    check = V.decide("NeurIPS", "Communications of the ACM", neurips, reprint)
+    assert (check.outcome, check.why) == (V.NOT_COMPARABLE, V.SEARCHED)
+    assert V.decide("CACM", "Communications of the ACM", reprint, reprint).outcome == V.MATCH
+
+
+def test_wikidata_or_openalex_ids_alone_never_make_a_mismatch():
+    # Either can be one edition of a conference, or one of several records of one journal.
+    entry = res("wikidata:Q1", "openalex:S1")
+    record = res("wikidata:Q2", "openalex:S2", direct=True)
+    check = V.decide("A", "B", entry, record)
+    assert (check.outcome, check.why) == (V.NOT_COMPARABLE, V.NO_COMMON_KIND)
+
+
+@pytest.mark.parametrize(
+    "status,why",
+    [("unresolved", V.UNRESOLVED), ("ambiguous", V.AMBIGUOUS), ("refused", V.REFUSED)],
+)
+def test_an_entry_venue_that_did_not_resolve_is_not_comparable(status, why):
+    entry = V.Resolution(status=status)
+    check = V.decide("Proc. Somewhere", "Nature Communications", entry, NAT_COMMUN)
+    assert check.outcome == V.NOT_COMPARABLE
+    assert check.why.startswith(why)
+
+
+def test_a_refused_record_lookup_is_not_comparable():
+    record = NAT_COMMUN.model_copy(update={"status": "refused"})
+    check = V.decide("Nature", "Nature Communications", NATURE, record)
+    assert (check.outcome, check.why) == (V.NOT_COMPARABLE, V.REFUSED)
+
+
+def test_an_ambiguous_name_matches_through_whichever_venue_the_record_is():
+    options = [
+        res("issn:2213-2244", label="Developmental Cell"),
+        res("issn:0092-8674", label="Cell"),
+    ]
+    entry = V.Resolution(
+        status="ambiguous", options=options, candidates=["Cell", "Developmental Cell"]
+    )
+    record = res("issn:0092-8674", direct=True, label="Cell")
+    assert V.decide("Cell", "Cell", entry, record).outcome == V.MATCH
+    other = res("issn:1097-4164", direct=True, label="Molecular Cell")
+    assert V.decide("Cell", "Molecular Cell", entry, other).outcome == V.NOT_COMPARABLE
+
+
+def test_a_link_is_followed_one_hop_and_siblings_stay_apart():
+    parent = "wikidata:Q100"
+    a = res("issn:1111-1111", "wikidata:Q1", links=frozenset({parent}))
+    b = res("issn:2222-2222", "wikidata:Q2", links=frozenset({parent}), direct=True)
+    assert V.decide("Phys. Rev. A", "Physical Review B", a, b).outcome == V.MISMATCH
+    successor = res("issn:3333-3333", "wikidata:Q3", links=frozenset({"wikidata:Q1"}), direct=True)
+    assert V.decide("Old title", "New title", a, successor).outcome == V.MATCH
+
+
+def test_two_editions_of_one_conference_series_are_one_venue():
+    series = frozenset({"wikidata:Q47"})
+    entry = res("wikidata:Q2013", series=series)
+    record = res("wikidata:Q2019", "openalex:S2019", series=series, direct=True)
+    assert V.decide("NAACL 2013", "NAACL 2019", entry, record).outcome == V.MATCH
+
+
+def test_preprints_workshops_garbled_names_and_missing_venues_are_not_comparable():
+    preprint = res("issn:2331-8422", direct=True, repository=True, label="arXiv")
+    assert V.decide("NeurIPS", "arXiv", NATURE, preprint).why == V.PREPRINT
+    server = NATURE.model_copy(update={"repository": True})
+    assert V.decide("arXiv", "Nature", server, NAT_COMMUN).why == V.ENTRY_PREPRINT
+    assert V.decide("CVPR", "CVPR Workshops", NATURE, NAT_COMMUN).why == V.WORKSHOP
+    assert V.decide("Z. f�r Physik", "Z. Phys.", NATURE, NAT_COMMUN).why == V.GARBLED_NAME
+    assert V.decide("", "Nature", NATURE, NAT_COMMUN).why == V.NO_ENTRY_VENUE
+    assert V.decide("Nature", "", NATURE, res(direct=True)).why == V.NO_RECORD_VENUE
+
+
+def test_not_comparable_names_both_venues_for_a_person_to_read():
+    check = V.decide(
+        "Comput. Netw.", "Computer Networks", V.Resolution(status="unresolved"), NAT_COMMUN
+    )
+    assert check.line() == (
+        "venue: ours 'Comput. Netw.' / registry 'Computer Networks' "
+        f"(not comparable: {V.UNRESOLVED})"
+    )
+
+
+# --- normalization picks candidates and nothing else ------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "cited,registry",
+    [
+        ('Zeitschrift f{\\"u}r Physik', "Zeitschrift für Physik"),
+        ("The Annals of Statistics", "Annals of Statistics"),
+        (
+            "Proceedings of the 38th International Conference on Machine Learning",
+            "Proceedings of the International Conference on Machine Learning",
+        ),
+        ("Ｎａｔｕｒｅ", "Nature"),
+    ],
+)
+def test_generic_normalization_folds_markup_case_numbers_and_function_words(cited, registry):
+    assert V.same_name(cited, [registry])
+
+
+def test_normalization_never_equates_two_different_titles():
+    assert not V.same_name("Nature", ["Nature Communications"])
+    assert not V.same_name("Nat. Commun.", ["Nature Communications"])
+
+
+# --- resolving a name through registries ------------------------------------------------------
+
+
+def _claim(value):
+    v = {"id": value} if value.startswith("Q") else value
+    return [{"mainsnak": {"datavalue": {"value": v}}}]
+
+
+def _item(label, aliases=(), **claims):
+    return {
+        "labels": {"en": {"value": label}},
+        "aliases": {"en": [{"value": a} for a in aliases]},
+        "claims": {p: _claim(v) for p, v in claims.items()},
+    }
+
+
+class Registries:
+    """Answers `venue_registry` lookups from dicts, as a cache would."""
+
+    def __init__(self, search=None, iso4=None, entities=None, by_ids=None, sources=None, refuse=()):
+        self.search = search or {}
+        self.iso4 = iso4 or {}
+        self.entities = entities or {}
+        self.by_ids = by_ids or []
+        self.sources = sources or {}
+        self.refuse = set(refuse)
+        self.asked: list[str] = []
+
+    def __call__(self, url: str, name: str):
+        self.asked.append(url)
+        parts = urllib.parse.urlsplit(url)
+        q = dict(urllib.parse.parse_qsl(parts.query))
+        host = parts.hostname or ""
+        if host in self.refuse:
+            return None
+        if host == "www.wikidata.org":
+            if q.get("action") == "wbsearchentities":
+                return {"search": [{"id": i} for i in self.search.get(q["search"], [])]}
+            if q.get("action") == "query":
+                term = q["srsearch"]
+                hits = self.iso4.get(term, []) if "P1160" in term else self.by_ids
+                return {"query": {"search": [{"title": t} for t in hits]}}
+            ids = q["ids"].split("|")
+            return {"entities": {i: self.entities[i] for i in ids if i in self.entities}}
+        if parts.path == "/sources":
+            return {"results": self.sources.get(q["search"], [])}
+        return {}
+
+
+def test_a_name_resolves_to_the_one_venue_whose_registry_names_include_it():
+    reg = Registries(
+        search={"Nat. Commun.": ["Q573880", "Q87"]},
+        entities={
+            "Q573880": _item(
+                "Nature Communications", ["Nat. Commun."], P236="2041-1723", P10283="S64187185"
+            ),
+            # A namesake with no venue identifier is not a venue: a person, a file format.
+            "Q87": _item("Nat. Commun.", ["Nat. Commun."]),
+        },
+    )
+    got = R.resolve_name(reg, "Nat. Commun.")
+    assert got.status == "resolved"
+    assert {"issn:2041-1723", "openalex:S64187185", "wikidata:Q573880"} <= got.ids
+
+
+def test_an_openalex_topic_id_on_wikidata_is_not_a_venue_id():
+    reg = Registries(
+        search={"Nature": ["Q180445", "Q1207505"]},
+        entities={
+            "Q180445": _item("Nature", P236="0028-0836"),
+            "Q1207505": _item("quality", ["nature"], P10283="T10001"),
+        },
+    )
+    assert R.resolve_name(reg, "Nature").status == "resolved"
+
+
+def test_a_conference_and_its_proceedings_series_are_one_venue():
+    reg = Registries(
+        search={"NeurIPS": ["Q1961016", "Q15767446"]},
+        entities={
+            "Q1961016": _item(
+                "Conference on Neural Information Processing Systems",
+                ["NeurIPS"],
+                P8926="conf/nips",
+            ),
+            "Q15767446": _item(
+                "Advances in Neural Information Processing Systems",
+                ["NeurIPS"],
+                P236="1049-5258",
+                P4745="Q1961016",
+            ),
+        },
+    )
+    got = R.resolve_name(reg, "NeurIPS")
+    assert got.status == "resolved"
+    assert {"dblp:conf/nips", "issn:1049-5258"} <= got.ids
+
+
+def test_an_iso4_abbreviation_is_found_by_its_statement():
+    reg = Registries(
+        iso4={'haswbstatement:"P1160=Comput. Netw."': ["Q5157456"]},
+        entities={"Q5157456": _item("Computer Networks", P1160="Comput. Netw.", P236="1389-1286")},
+    )
+    assert "issn:1389-1286" in R.resolve_name(reg, "Comput. Netw.").ids
+
+
+def test_two_unrelated_venues_of_one_name_are_ambiguous_and_keep_both():
+    reg = Registries(
+        search={"ICLR": ["Q1", "Q2"]},
+        entities={
+            "Q1": _item(
+                "International Conference on Learning Representations", ["ICLR"], P8926="conf/iclr"
+            ),
+            "Q2": _item("International Cybersecurity Law Review", ["ICLR"], P236="2662-9720"),
+        },
+    )
+    got = R.resolve_name(reg, "ICLR")
+    assert got.status == "ambiguous"
+    assert len(got.options) == 2
+
+
+def test_the_name_as_cited_is_tried_before_the_acronym_inside_it():
+    full = "International Conference on Learning Representations (ICLR)"
+    reg = Registries(
+        search={
+            full: ["Q1"],
+            "International Conference on Learning Representations": ["Q1"],
+            "ICLR": ["Q1", "Q2"],
+        },
+        entities={
+            "Q1": _item(
+                "International Conference on Learning Representations", ["ICLR"], P8926="conf/iclr"
+            ),
+            "Q2": _item("International Cybersecurity Law Review", ["ICLR"], P236="2662-9720"),
+        },
+    )
+    got = R.resolve_name(reg, full)
+    assert (got.status, got.label) == (
+        "resolved",
+        "International Conference on Learning Representations",
+    )
+
+
+def test_a_refused_lookup_is_a_resolution_that_failed_not_one_that_found_nothing():
+    reg = Registries(refuse={"www.wikidata.org"})
+    assert R.resolve_name(reg, "Nature").status == "refused"
+
+
+def test_an_issn_in_the_entry_is_used_without_a_name_lookup():
+    reg = Registries(by_ids=["Q180445"], entities={"Q180445": _item("Nature", P236="0028-0836")})
+    got = R.resolve_name(reg, "Some Name", issn="0028-0836")
+    assert "issn:0028-0836" in got.ids
+    assert not any("wbsearchentities" in u for u in reg.asked)
+
+
+def test_a_book_series_issn_only_links_and_never_identifies_the_venue():
+    reg = Registries(
+        by_ids=["Q1"], entities={"Q1": _item("Lecture Notes in Computer Science", P236="0302-9743")}
+    )
+    got = R.identify(reg, frozenset(), frozenset({"issn:0302-9743"}))
+    assert not got.ids
+    assert "issn:0302-9743" in got.links
+
+
+def test_a_venue_is_typed_as_a_repository_only_when_asked_and_a_refusal_unsettles_it():
+    arxiv = res("openalex:S4306400194", "issn:2331-8422", label="arXiv")
+    reg = Registries()
+    reg.sources = {}
+
+    def ask(url, name):
+        if urllib.parse.urlsplit(url).path.endswith("/S4306400194"):
+            return {
+                "id": "https://openalex.org/S4306400194",
+                "type": "repository",
+                "display_name": "arXiv",
+            }
+        return reg(url, name)
+
+    assert R.typed(ask, arxiv).repository
+    refused = R.typed(lambda url, name: None, arxiv)
+    assert refused.status == "refused"
+
+
+def test_crossref_issns_name_a_journal_for_an_article_and_a_series_for_a_chapter():
+    article = {"type": "journal-article", "ISSN": ["2041-1723"]}
+    chapter = {"type": "book-chapter", "ISSN": ["0302-9743", "1611-3349"]}
+    assert crossref_venue_ids(article) == (["issn:2041-1723"], [])
+    assert crossref_venue_ids(chapter) == ([], ["issn:0302-9743", "issn:1611-3349"])
+    lncs = {
+        "primary_location": {
+            "source": {
+                "id": "https://openalex.org/S106296714",
+                "issn_l": "0302-9743",
+                "type": "book series",
+            }
+        }
+    }
+    assert openalex_venue_ids(lncs) == ([], ["openalex:S106296714", "issn:0302-9743"])
+
+
+# --- in an audit -----------------------------------------------------------------------------
 
 
 def record(**kw) -> A.RegistryRecord:
     return A.RegistryRecord(source="crossref", **kw)
 
 
-def venue_of(verdict: A.EntryAudit) -> V.VenueCheck:
-    assert verdict.venue is not None, "a compared entry carries its venue check"
-    return verdict.venue
-
-
-def venue_problems(entry: A.Entry, rec: A.RegistryRecord) -> list[str]:
-    return [p for p in A.compare(entry, rec) if p.startswith("venue")]
-
-
-# --- the three outcomes --------------------------------------------------------------------
-
-
-def test_a_journal_and_its_abbreviation_match():
-    entry = A.Entry(key="k", venue="Nat. Commun.", venue_kind="journal")
-    rec = record(venues=["Nature Communications"], venue_kind="journal")
-    assert A.venue_check(entry, rec).outcome == V.MATCH
-    assert venue_problems(entry, rec) == []
-
-
-def test_a_real_paper_at_the_wrong_journal_is_a_mismatch_naming_both():
-    entry = A.Entry(key="k", venue="Nature", venue_kind="journal")
-    rec = record(venues=["Nature Communications", "Nat Commun"], venue_kind="journal")
-    assert A.venue_check(entry, rec).outcome == V.MISMATCH
-    assert venue_problems(entry, rec) == [
-        "venue: ours 'Nature' vs registry 'Nature Communications'"
-    ]
-
-
-@pytest.mark.parametrize(
-    "ours,theirs",
-    [
-        ("ICML", "Neural Information Processing Systems"),
-        (
-            "ACL",
-            "Proceedings of the 2019 Conference of the North American Chapter of the "
-            "Association for Computational Linguistics: Human Language Technologies",
-        ),
-        ("ICCV", "2016 IEEE Conference on Computer Vision and Pattern Recognition (CVPR)"),
-        ("Bioinformatics", "Nucleic Acids Research"),
-        ("CCS", "2019 IEEE Symposium on Security and Privacy (SP)"),
-        (
-            "Interspeech",
-            "2013 IEEE International Conference on Acoustics, Speech and Signal Processing",
-        ),
-        ("Transactions on Machine Learning Research", "Journal of Machine Learning Research"),
-        ("USENIX Security Symposium", "Network and Distributed System Security Symposium"),
-    ],
-)
-def test_two_different_venues_are_a_mismatch(ours, theirs):
-    check = V.decide([ours], [theirs], "proceedings", "")
-    assert check.outcome == V.MISMATCH, check.why
-
-
-@pytest.mark.parametrize(
-    "ours,theirs,why",
-    [
-        ("", "Nature", "the entry names no venue"),
-        ("Nature", "", "the record names no venue"),
-        (
-            "SIGMOD",
-            "Proceedings of the 2016 International Conference on Management of Data",
-            "an abbreviation the alias table does not expand",
-        ),
-        (
-            "Conference on Robot Learning",
-            "International Conference on Machine Learning",
-            "the names partly agree",
-        ),
-    ],
-)
-def test_what_cannot_be_settled_is_not_comparable(ours, theirs, why):
-    check = V.decide([ours], [theirs], "proceedings", "proceedings")
-    assert (check.outcome, check.why) == (V.NOT_COMPARABLE, why)
-
-
-def test_not_comparable_is_never_a_disagreement():
-    entry = A.Entry(key="k", title="T", venue="SIGMOD", doi="10/x")
-    rec = record(
-        title="T", venues=["Proceedings of the 2016 International Conference on Management of Data"]
-    )
-    assert A.venue_check(entry, rec).outcome == V.NOT_COMPARABLE
-    assert A.compare(entry, rec) == []
-
-
-# --- abbreviations ---------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "ours,theirs",
-    [
-        ("J. Mach. Learn. Res.", "Journal of Machine Learning Research"),
-        (
-            "Proc. Natl. Acad. Sci. U.S.A.",
-            "Proceedings of the National Academy of Sciences of the United States of America",
-        ),
-        ("PNAS", "Proceedings of the National Academy of Sciences"),
-        ("N. Engl. J. Med.", "New England Journal of Medicine"),
-        ("NEJM", "The New England Journal of Medicine"),
-        ("Ann. Statist.", "The Annals of Statistics"),
-        ("JASA", "Journal of the American Statistical Association"),
-        ("IEEE TPAMI", "IEEE Transactions on Pattern Analysis and Machine Intelligence"),
-        (
-            "J. R. Stat. Soc. B",
-            "Journal of the Royal Statistical Society Series B: Statistical Methodology",
-        ),
-        (
-            "Journal of the Royal Statistical Society: Series B (Methodological)",
-            "Journal of the Royal Statistical Society Series B: Statistical Methodology",
-        ),
-        ("Science", "Science (New York, N.Y.)"),
-    ],
-)
-def test_a_journal_abbreviation_matches_the_title(ours, theirs):
-    check = V.decide([ours], [theirs], "journal", "journal")
-    assert check.outcome == V.MATCH, check.why
-
-
-@pytest.mark.parametrize(
-    "ours,theirs",
-    [
-        ("NeurIPS", "Advances in Neural Information Processing Systems"),
-        ("NIPS", "Neural Information Processing Systems"),
-        (
-            "Advances in Neural Information Processing Systems 33",
-            "Neural Information Processing Systems",
-        ),
-        ("Adv. Neural Inf. Process. Syst.", "Neural Information Processing Systems"),
-        ("ICML", "Proceedings of the 37th International Conference on Machine Learning"),
-        ("ICLR", "International Conference on Learning Representations"),
-        ("5th International Conference on Learning Representations", "ICLR"),
-        ("CVPR", "2016 IEEE Conference on Computer Vision and Pattern Recognition (CVPR)"),
-        (
-            "Proceedings of NAACL-HLT",
-            "Proceedings of the 2019 Conference of the North American "
-            "Chapter of the Association for Computational Linguistics: Human Language "
-            "Technologies, Volume 1 (Long and Short Papers)",
-        ),
-        (
-            "EMNLP",
-            "Proceedings of the 2014 Conference on Empirical Methods in Natural Language "
-            "Processing (EMNLP)",
-        ),
-        ("AAAI", "Proceedings of the AAAI Conference on Artificial Intelligence"),
-        (
-            "Thirty-Eighth AAAI Conference on Artificial Intelligence",
-            "Proceedings of the AAAI Conference on Artificial Intelligence",
-        ),
-    ],
-)
-def test_a_conference_acronym_matches_its_full_title(ours, theirs):
-    check = V.decide([ours], [theirs], "proceedings", "proceedings")
-    assert check.outcome == V.MATCH, check.why
-
-
-def test_an_acm_event_acronym_deposited_only_under_event_is_read(tmp_path, monkeypatch):
-    body = json.dumps(
-        {
-            "message": {
-                "type": "proceedings-article",
-                "container-title": [
-                    "Proceedings of the 22nd ACM SIGKDD International Conference on Knowledge "
-                    "Discovery and Data Mining"
-                ],
-                "event": {
-                    "name": "KDD '16: The 22nd ACM SIGKDD International Conference",
-                    "acronym": "KDD '16",
-                },
-            }
-        }
-    )
-    monkeypatch.setattr(A, "fetch", lambda url, cache, name: body)
-    rec = A.from_crossref("10.1145/2939672.2939785", tmp_path)
-    assert rec is not None
-    assert "KDD '16" in rec.venues
-    assert rec.venue_kind == "proceedings"
-    entry = A.Entry(key="k", venue="KDD", venue_kind="proceedings")
-    assert A.venue_check(entry, rec).outcome == V.MATCH
-
-
-def test_a_springer_volume_title_is_read_beside_its_series():
-    rec = record(venues=["Lecture Notes in Computer Science", "Computer Vision – ECCV 2020"])
-    entry = A.Entry(key="k", venue="European Conference on Computer Vision (ECCV)")
-    assert A.venue_check(entry, rec).outcome == V.MATCH
-
-
-def test_a_series_on_the_entry_never_rescues_a_wrong_booktitle():
-    lncs = record(venues=["Lecture Notes in Computer Science", "Computer Vision – ECCV 2014"])
-    miccai = A.Entry(key="k", venue="MICCAI 2016", series="Lecture Notes in Computer Science")
-    assert A.venue_check(miccai, lncs).outcome == V.MISMATCH
-
-    pmlr = record(
-        venues=[
-            "Proceedings of Machine Learning Research",
-            "International Conference on Machine Learning",
-        ]
-    )
-    aistats = A.Entry(key="k", venue="AISTATS", series="Proceedings of Machine Learning Research")
-    assert A.venue_check(aistats, pmlr).outcome == V.MISMATCH
-    icml = A.Entry(
-        key="k",
-        venue="Proceedings of the 38th ICML",
-        series="Proceedings of Machine Learning Research",
-    )
-    assert A.venue_check(icml, pmlr).outcome == V.MATCH
-
-
-def test_decide_reads_a_series_only_where_no_venue_comes_before_it():
-    record_names = [
-        "Proceedings of Machine Learning Research",
-        "International Conference on Machine Learning",
-    ]
-    wrong = V.decide(
-        ["AISTATS", "Proceedings of Machine Learning Research"],
-        record_names,
-        "proceedings",
-        "proceedings",
-    )
-    assert wrong.outcome == V.MISMATCH
-    alone = V.decide(["", "Proceedings of Machine Learning Research"], record_names, "", "")
-    assert alone.outcome == V.MATCH
-
-
-def test_a_series_is_compared_when_the_entry_names_nothing_else():
-    lncs = record(venues=["Lecture Notes in Computer Science", "Computer Vision – ECCV 2014"])
-    entry = A.Entry(key="k", series="Lecture Notes in Computer Science")
-    assert A.venue_check(entry, lncs).outcome == V.MATCH
-
-
-def test_a_mismatch_names_the_volume_rather_than_its_series():
-    lncs = record(venues=["Lecture Notes in Computer Science", "Computer Vision – ECCV 2014"])
-    entry = A.Entry(key="k", title="", venue="MICCAI 2016")
-    assert venue_problems(entry, lncs) == [
-        "venue: ours 'MICCAI 2016' vs registry 'Computer Vision – ECCV 2014'"
-    ]
-
-
-# --- one family, several journals -----------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "ours,theirs",
-    [
-        ("JAMA Network Open", "JAMA"),
-        ("JAMA Netw. Open", "JAMA"),
-        ("BMJ Open", "BMJ"),
-        ("PNAS Nexus", "Proceedings of the National Academy of Sciences"),
-        ("Cell Reports", "Cell"),
-        ("Sci. Adv.", "Science"),
-        ("Nature Communications", "Nature"),
-        ("Physical Review Letters", "Physical Review"),
-        ("PLOS ONE", "PLOS"),
-    ],
-)
-def test_a_derivative_journal_is_not_its_parent(ours, theirs):
-    for a, b in ((ours, theirs), (theirs, ours)):
-        check = V.decide([a], [b], "journal", "journal")
-        assert check.outcome == V.MISMATCH, (a, b, check.why)
-
-
-@pytest.mark.parametrize(
-    "ours,theirs",
-    [
-        ("JAMA Netw. Open", "JAMA Network Open"),
-        ("Sci. Adv.", "Science Advances"),
-        ("Phys. Rev. Lett.", "Physical Review Letters"),
-        ("PRL", "Physical Review Letters"),
-        ("PLoS One", "PLOS ONE"),
-        ("Advances in Neural Information Processing Systems", "NeurIPS"),
-    ],
-)
-def test_a_derivative_journal_matches_itself(ours, theirs):
-    check = V.decide([ours], [theirs], "journal", "journal")
-    assert check.outcome == V.MATCH, check.why
-
-
-# --- Findings volumes -----------------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "ours,theirs,outcome",
-    [
-        (
-            "Findings of the Association for Computational Linguistics: EMNLP 2020",
-            "Findings of the Association for Computational Linguistics: ACL-IJCNLP 2021",
-            V.MISMATCH,
-        ),
-        (
-            "Findings of EMNLP",
-            "Findings of the Association for Computational Linguistics: ACL-IJCNLP 2021",
-            V.MISMATCH,
-        ),
-        (
-            "Findings of EMNLP 2020",
-            "Findings of the Association for Computational Linguistics: EMNLP 2020",
-            V.MATCH,
-        ),
-        (
-            "Findings of the ACL",
-            "Findings of the Association for Computational Linguistics: EMNLP 2020",
-            V.NOT_COMPARABLE,
-        ),
-    ],
-)
-def test_a_findings_volume_is_compared_by_its_conference(ours, theirs, outcome):
-    check = V.decide([ours], [theirs], "proceedings", "proceedings")
-    assert check.outcome == outcome, check.why
-
-
-# --- names a registry could not decode -------------------------------------------------------
-
-
-def test_a_garbled_registry_name_is_never_the_ground_for_a_mismatch():
-    check = V.decide(
-        ['Zeitschrift f{\\"u}r Physik'], ["Zeitschrift f\ufffdr Physik"], "journal", "journal"
-    )
-    assert (check.outcome, check.why) == (V.NOT_COMPARABLE, V.GARBLED_RECORD)
-    wrong = V.decide(["Annalen der Physik"], ["Zeitschrift f\ufffdr Physik"], "journal", "journal")
-    assert wrong.outcome == V.NOT_COMPARABLE
-
-
-def test_a_clean_name_beside_a_garbled_one_is_still_read():
-    check = V.decide(
-        ['Zeitschrift f{\\"u}r Physik'],
-        ["Zeitschrift f\ufffdr Physik", "Z. Physik"],
-        "journal",
-        "journal",
-    )
-    assert check.outcome == V.MATCH
-    assert check.theirs == "Z. Physik"
-
-
-@pytest.mark.parametrize(
-    "ours",
-    ["Proc. Natl. Acad. Sci. USA", "Proc. Natl. Acad. Sci. U.S.A.", "Proc Natl Acad Sci U S A"],
-)
-def test_usa_is_folded_however_it_is_written(ours):
-    for theirs in (
-        "Proc. Natl. Acad. Sci. U.S.A.",
-        "Proceedings of the National Academy of Sciences of the United States of America",
-    ):
-        assert V.decide([ours], [theirs], "journal", "journal").outcome == V.MATCH
-
-
-def test_registry_names_alone_settle_rives_and_heisenberg(tmp_path, monkeypatch):
-    # The Crossref records as fetched: PNAS deposits `Proc. Natl. Acad. Sci. U.S.A.`, and
-    # Springer deposits `Zeitschrift f\ufffdr Physik` beside `Z. Physik`. OpenAlex and Semantic
-    # Scholar refuse every request here, so nothing but the registry decides.
-    _offline(monkeypatch)
-    entries = [
-        e
-        for e in A.entries_from_bib(FIXTURE / "references.bib")
-        if e.key in ("rives2021esm", "heisenberg1927")
-    ]
-    report = A.audit(entries, FIXTURE / "cache")
-    got = {k: venue_of(v).outcome for k, v in report.entries.items()}
-    assert got == {"rives2021esm": V.MATCH, "heisenberg1927": V.MATCH}
-    assert not [p for v in report.entries.values() for p in v.problems if p.startswith("venue")]
-
-
-# --- a mismatch the extra lookups could not confirm ------------------------------------------
-
-
-def test_an_unconfirmed_mismatch_is_not_comparable_when_a_lookup_failed(tmp_path, monkeypatch):
-    rec = record(
-        title="T",
-        venues=["Proceedings of the 2016 Conference on Uncertainty in Artificial Intelligence"],
-        venue_kind="proceedings",
-    )
-    monkeypatch.setattr(A, "from_crossref", lambda doi, cache: rec)
-    entry = A.Entry(
-        key="k",
-        title="T",
-        venue="Robotics: Science and Systems",
-        venue_kind="proceedings",
-        doi="10.5555/x",
-    )
-
-    monkeypatch.setattr(A, "other_venue_names", lambda doi, cache: A.OtherNames())
-    assert A.audit([entry], tmp_path / "cache").entries["k"].status == "mismatch"
-
-    refused = A.OtherNames(refused=["semanticscholar"])
-    monkeypatch.setattr(A, "other_venue_names", lambda doi, cache: refused)
-    verdict = A.audit([entry], tmp_path / "cache").entries["k"]
-    assert (verdict.status, venue_of(verdict).outcome, venue_of(verdict).why) == (
-        "ok",
-        V.NOT_COMPARABLE,
-        V.UNCONFIRMED,
-    )
-
-
-@pytest.mark.parametrize(
-    "ours,theirs,kind",
-    [
-        ("ICML", "Advances in Neural Information Processing Systems 33", "proceedings"),
-        ("Nature", "Nature Communications", "journal"),
-    ],
-)
-def test_a_settled_mismatch_stands_when_every_lookup_failed(
-    tmp_path, monkeypatch, ours, theirs, kind
-):
-    _offline(monkeypatch)
-    rec = record(title="T", venues=[theirs], venue_kind=kind)
-    monkeypatch.setattr(A, "from_crossref", lambda doi, cache: rec)
-    entry = A.Entry(key="k", title="T", venue=ours, venue_kind=kind, doi="10.5555/x")
-    verdict = A.audit([entry], tmp_path / "cache").entries["k"]
-    assert verdict.status == "mismatch"
-
-
-def test_the_extra_lookups_report_a_refusal(tmp_path, monkeypatch):
-    _offline(monkeypatch)
-    other = A.other_venue_names("10.5555/x", tmp_path / "cache")
-    assert other.names == []
-    assert other.refused == ["openalex", "semanticscholar"]
-
-
-# --- preprints -------------------------------------------------------------------------------
-
-
-def test_an_arxiv_record_is_never_a_venue_mismatch_by_itself():
-    entry = A.Entry(key="k", venue="ICML", venue_kind="proceedings")
-    rec = A.RegistryRecord(source="datacite", venues=["arXiv"], venue_kind="preprint")
-    check = A.venue_check(entry, rec)
-    assert (check.outcome, check.why) == (V.NOT_COMPARABLE, V.PREPRINT_RECORD)
-    assert venue_problems(entry, rec) == []
-
-
-def test_an_entry_citing_the_preprint_is_not_compared_with_the_published_venue():
-    for ours in ("arXiv preprint arXiv:1907.11692", "CoRR", "bioRxiv"):
-        check = V.decide([ours], ["Neural Information Processing Systems"], "journal", "")
-        assert (check.outcome, check.why) == (V.NOT_COMPARABLE, "the entry cites a preprint")
-
-
-def test_a_preprint_record_is_compared_once_another_service_names_the_venue(tmp_path, monkeypatch):
-    feed = (
-        "<feed><entry><id>http://arxiv.org/abs/1706.03762v7</id>"
-        "<published>2017-06-12T00:00:00Z</published>"
-        "<title>Attention Is All You Need</title>"
-        "<author><name>Ashish Vaswani</name></author></entry></feed>"
-    )
-
-    def get(url, **kw):
-        return feed if urllib.parse.urlsplit(url).hostname == "export.arxiv.org" else None
-
-    monkeypatch.setattr(A.resolve, "get", get)
-    monkeypatch.setattr(A.time, "sleep", lambda _: None)
-    arxiv = A.RegistryRecord(
-        source="datacite",
-        title="Attention Is All You Need",
-        years=["2017"],
-        venues=["arXiv"],
-        venue_kind="preprint",
-    )
-    monkeypatch.setattr(A, "from_datacite", lambda doi, cache: arxiv)
-    asked = []
-
-    def elsewhere(names):
-        def lookup(doi, cache):
-            asked.append(doi)
-            return A.OtherNames(names=names)
-
-        return lookup
-
-    def run(venue):
-        entry = A.Entry(
-            key="k",
-            title="Attention Is All You Need",
-            authors=["Vaswani, Ashish"],
-            year="2017",
-            venue=venue,
+def _registries(monkeypatch, entry: V.Resolution, theirs: V.Resolution | None = None):
+    monkeypatch.setattr(A, "resolve_name", lambda ask, name, issn="": entry)
+    if theirs is not None:
+        monkeypatch.setattr(
+            A, "identify", lambda ask, ids, series=frozenset(), label="", repository=False: theirs
         )
-        return A.audit([entry], tmp_path / "cache").entries["k"]
-
-    monkeypatch.setattr(
-        A, "other_venue_names", elsewhere(["Neural Information Processing Systems"])
-    )
-    assert venue_of(run("NeurIPS")).outcome == V.MATCH
-    wrong = run("ICML")
-    assert wrong.status == "mismatch"
-    assert wrong.problems == [
-        "venue: ours 'ICML' vs registry 'Neural Information Processing Systems'"
-    ]
-    assert asked == ["10.48550/arXiv.1706.03762"] * 2
-
-    monkeypatch.setattr(A, "other_venue_names", elsewhere([]))
-    nobody = run("ICML")
-    assert (nobody.status, venue_of(nobody).why) == ("ok", V.PREPRINT_RECORD)
-
-
-# --- workshop and main track -----------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "ours,theirs",
-    [
-        (
-            "ICML Workshop on Human Interpretability in Machine Learning",
-            "International Conference on Machine Learning",
-        ),
-        (
-            "CVPR",
-            "2020 IEEE/CVF Conference on Computer Vision and Pattern Recognition Workshops (CVPRW)",
-        ),
-        (
-            "Findings of the Association for Computational Linguistics: EMNLP 2020",
-            "Proceedings of the 2020 Conference on Empirical Methods in Natural Language "
-            "Processing (EMNLP)",
-        ),
-    ],
-)
-def test_a_workshop_against_the_main_track_is_not_comparable(ours, theirs):
-    check = V.decide([ours], [theirs], "proceedings", "proceedings")
-    assert check.outcome == V.NOT_COMPARABLE
-    assert "track" in check.why
-
-
-def test_a_workshop_against_its_own_proceedings_matches():
-    check = V.decide(
-        ["IEEE Conference on Computer Vision and Pattern Recognition Workshops"],
-        ["2014 IEEE Conference on Computer Vision and Pattern Recognition Workshops"],
-        "proceedings",
-        "proceedings",
-    )
-    assert check.outcome == V.MATCH
-
-
-# --- reported like any other field -----------------------------------------------------------
 
 
 def test_a_venue_mismatch_fails_the_audit_like_a_wrong_year(tmp_path, monkeypatch, capsys):
-    rec = record(title="T", years=["2020"], venues=["Nature Communications"], venue_kind="journal")
-    monkeypatch.setattr(A, "from_crossref", lambda doi, cache: rec)
-    monkeypatch.setattr(A, "other_venue_names", lambda doi, cache: A.OtherNames())
-    entry = A.Entry(
-        key="k", title="T", year="2020", venue="Nature", venue_kind="journal", doi="10.1038/x"
+    rec = record(
+        title="T",
+        years=["2020"],
+        venue="Nature Communications",
+        venues=["Nature Communications"],
+        venue_kind="journal",
+        venue_ids=["issn:2041-1723"],
     )
+    monkeypatch.setattr(A, "from_crossref", lambda doi, cache: rec)
+    _registries(monkeypatch, NATURE, NAT_COMMUN)
+    entry = A.Entry(key="k", title="T", year="2020", venue="Nature", doi="10.1038/x")
 
     report = A.audit([entry], tmp_path / "cache")
 
@@ -570,70 +420,129 @@ def test_a_venue_mismatch_fails_the_audit_like_a_wrong_year(tmp_path, monkeypatc
     assert A.render(report, quiet=False) == 1
     out = capsys.readouterr().out
     assert "venue: ours 'Nature' vs registry 'Nature Communications'" in out
-    assert "        1  venue" in out
 
 
-def test_other_names_are_asked_for_only_before_a_mismatch(tmp_path, monkeypatch):
-    rec = record(
-        title="T", venues=["2016 IEEE Conference on Computer Vision and Pattern Recognition (CVPR)"]
-    )
-    monkeypatch.setattr(A, "from_crossref", lambda doi, cache: rec)
-    asked = []
-    monkeypatch.setattr(
-        A, "other_venue_names", lambda doi, cache: asked.append(doi) or A.OtherNames()
-    )
-    entries = [A.Entry(key="k", title="T", venue="CVPR", doi="10.1109/x")]
-
-    assert venue_of(A.audit(entries, tmp_path / "cache").entries["k"]).outcome == V.MATCH
-    assert asked == [], "an agreeing venue cost a request"
-
-
-def test_another_service_s_name_for_the_venue_rescues_a_would_be_mismatch(tmp_path, monkeypatch):
-    # Series C of the Royal Statistical Society's journal was titled `Applied Statistics`, and
-    # OpenAlex files it under that name too. Crossref's title alone reads as another journal.
+def test_a_venue_not_compared_is_printed_with_both_names(tmp_path, monkeypatch, capsys):
     rec = record(
         title="T",
-        venues=["Journal of the Royal Statistical Society Series C: Applied Statistics"],
+        venue="Computer Networks",
+        venues=["Computer Networks"],
+        venue_ids=["issn:1389-1286"],
         venue_kind="journal",
     )
     monkeypatch.setattr(A, "from_crossref", lambda doi, cache: rec)
+    _registries(
+        monkeypatch,
+        V.Resolution(status="refused"),
+        res("issn:1389-1286", direct=True, label="Computer Networks"),
+    )
+    entry = A.Entry(key="k", title="T", venue="Comput. Netw.", doi="10.1016/x")
+
+    report = A.audit([entry], tmp_path / "cache")
+
+    verdict = report.entries["k"]
+    assert verdict.venue is not None
+    assert (verdict.status, verdict.venue.outcome) == ("ok", V.NOT_COMPARABLE)
+    assert A.render(report, quiet=False) == 0
+    assert "venue: ours 'Comput. Netw.' / registry 'Computer Networks'" in capsys.readouterr().out
+
+
+def test_a_preprint_record_found_through_a_preprint_search_answer_is_not_compared(
+    tmp_path, monkeypatch
+):
+    # The answer that found the arXiv id carried arXiv's own source ids, which once read as
+    # the venue of a NeurIPS paper and made a mismatch.
+    arxiv = A.RegistryRecord(
+        source="datacite",
+        title="Language Models are Few-Shot Learners",
+        years=["2020"],
+        venue="arXiv",
+        venues=["arXiv"],
+        venue_kind="preprint",
+    )
+    monkeypatch.setattr(A, "from_datacite", lambda doi, cache: arxiv)
+    found = A.Candidate(
+        title="Language Models are Few-Shot Learners",
+        surnames=frozenset({"brown"}),
+        year=2020,
+        venue="arXiv",
+        venues=("arXiv",),
+        venue_kind="preprint",
+        venue_ids=("openalex:S4306400194", "issn:2331-8422"),
+        identifier=("arxiv", "2005.14165"),
+    )
+    monkeypatch.setattr(A, "find", lambda e, cache: (found, "openalex", ["openalex"], []))
+    _registries(monkeypatch, res("issn:1049-5258", label="NeurIPS"))
     entry = A.Entry(
-        key="k", title="T", venue="Applied Statistics", venue_kind="journal", doi="10.2307/x"
+        key="k",
+        title="Language Models are Few-Shot Learners",
+        authors=["Brown, Tom B."],
+        year="2020",
+        venue="Advances in Neural Information Processing Systems",
     )
 
-    monkeypatch.setattr(A, "other_venue_names", lambda doi, cache: A.OtherNames())
-    assert A.audit([entry], tmp_path / "cache").entries["k"].status == "mismatch"
-
-    monkeypatch.setattr(
-        A, "other_venue_names", lambda doi, cache: A.OtherNames(names=["Applied Statistics"])
-    )
     verdict = A.audit([entry], tmp_path / "cache").entries["k"]
-    assert (verdict.status, venue_of(verdict).outcome) == ("ok", V.MATCH)
+
+    assert verdict.venue is not None
+    assert (verdict.venue.outcome, verdict.venue.why) == (V.NOT_COMPARABLE, V.PREPRINT)
 
 
-# --- reading a bibliography ------------------------------------------------------------------
+def test_an_entry_series_is_compared_only_when_it_names_no_venue(tmp_path, monkeypatch):
+    rec = record(
+        title="T",
+        venue="Lecture Notes in Computer Science",
+        venues=["Lecture Notes in Computer Science"],
+        venue_ids=["issn:0302-9743"],
+    )
+    monkeypatch.setattr(A, "from_crossref", lambda doi, cache: rec)
+    asked = []
+
+    def resolve(ask, name, issn=""):
+        asked.append(name)
+        return V.Resolution(status="unresolved")
+
+    monkeypatch.setattr(A, "resolve_name", resolve)
+    monkeypatch.setattr(A, "identify", lambda *a, **k: res("issn:0302-9743", direct=True))
+    entries = [
+        A.Entry(key="a", title="T", venue="MICCAI 2016", series="LNCS", doi="10.1007/x"),
+        A.Entry(key="b", title="T", series="LNCS", doi="10.1007/y"),
+    ]
+    A.audit(entries, tmp_path / "cache")
+    assert asked == ["MICCAI 2016", "LNCS"]
 
 
 def test_a_bib_entry_s_venue_fields_are_read(tmp_path):
     f = tmp_path / "refs.bib"
     f.write_text(
-        "@article{j, title = {A}, journal = {Nature}, eprint = {1234.5678},"
-        " archivePrefix = {arXiv}}\n"
+        "@article{j, title = {A}, journal = {Nature}, issn = {0028-0836}}\n"
         "@inproceedings{c, title = {B}, booktitle = {Proceedings of ICML},"
         " series = {Proceedings of Machine Learning Research}}\n"
-        "@misc{p, title = {C}, howpublished = {arXiv preprint arXiv:1907.11692}}\n"
-        "@book{b, title = {D}, publisher = {Springer}}\n"
     )
-    got = {e.key: (e.venue, e.venue_kind, e.series) for e in A.entries_from_bib(f)}
+    got = {e.key: (e.venue, e.venue_kind, e.series, e.issn) for e in A.entries_from_bib(f)}
     assert got == {
-        "j": ("Nature", "journal", ""),
-        "c": ("Proceedings of ICML", "proceedings", "Proceedings of Machine Learning Research"),
-        "p": ("", "preprint", ""),
-        "b": ("", "", ""),
+        "j": ("Nature", "journal", "", "0028-0836"),
+        "c": ("Proceedings of ICML", "proceedings", "Proceedings of Machine Learning Research", ""),
     }
 
 
-# --- precision on real references ------------------------------------------------------------
+def test_a_wikidata_request_says_where_it_comes_from_and_carries_no_address(tmp_path, monkeypatch):
+    sent = {}
+
+    def get(url, as_json, tries=4, headers=None):
+        sent[urllib.parse.urlsplit(url).hostname] = headers
+        return "{}"
+
+    monkeypatch.setattr(A.resolve, "get", get)
+    monkeypatch.setattr(A.time, "sleep", lambda _: None)
+    ask = A.asker(tmp_path / "cache")
+    ask("https://www.wikidata.org/w/api.php?action=wbsearchentities&search=x", "w.json")
+    ask("https://api.openalex.org/sources?search=x", "o.json")
+    assert sent["www.wikidata.org"] == {"User-Agent": A.WIKIDATA_AGENT}
+    assert "@" not in A.WIKIDATA_AGENT
+    assert sent["api.openalex.org"] is None
+
+
+# --- precision on real references, offline ---------------------------------------------------
 
 
 def _offline(monkeypatch):
@@ -651,7 +560,7 @@ def _offline(monkeypatch):
 def test_no_correctly_cited_real_reference_is_flagged_for_its_venue(monkeypatch):
     _offline(monkeypatch)
     entries = A.entries_from_bib(FIXTURE / "references.bib")
-    assert len(entries) >= 40
+    assert len(entries) >= 60
 
     report = A.audit(entries, FIXTURE / "cache")
 
@@ -664,5 +573,25 @@ def test_no_correctly_cited_real_reference_is_flagged_for_its_venue(monkeypatch)
     expected = json.loads((FIXTURE / "report.json").read_text())
     got = {k: v.model_dump(mode="json") for k, v in report.entries.items()}
     assert got == expected["entries"]
-    outcomes = [v.venue.outcome for v in report.entries.values() if v.venue]
-    assert outcomes.count(V.MATCH) >= 40
+
+
+PAIRS = json.loads((FIXTURE / "journal_pairs.json").read_text())
+
+
+def _pair(a: str, b: str) -> V.VenueCheck:
+    ask = A.asker(FIXTURE / "pairs_cache")
+    return V.decide(a, b, R.resolve_name(ask, a), R.resolve_name(ask, b))
+
+
+def test_journal_pairs_resolve_offline_as_recorded_and_none_is_a_mismatch(monkeypatch):
+    _offline(monkeypatch)
+    got = {}
+    for group in ("same_journal", "german_same", "german_distinct", "new_fields"):
+        for a, b in PAIRS[group]:
+            got[f"{group}: {a} || {b}"] = _pair(a, b).outcome
+    recorded = json.loads((FIXTURE / "journal_pairs_results.json").read_text())
+    assert got == recorded["outcomes"]
+    assert V.MISMATCH not in got.values(), "a name pair alone is never a mismatch"
+    assert not any(v == V.MATCH for k, v in got.items() if k.startswith("german_distinct")), (
+        "two distinct German journals were read as one"
+    )

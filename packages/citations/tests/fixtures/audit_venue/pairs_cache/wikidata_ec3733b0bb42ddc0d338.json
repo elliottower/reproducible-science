@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DComput.+Netw.%22&format=json",
+  "fetched_at": "2026-10-15T00:10:18Z",
+  "sha256": "e0c5ec4bf60cbf02892d6b79b72c62548b24d4a3202b3b364f878b8898c18aa8",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q5157456\", \"pageid\": 4929223, \"size\": 24359, \"wordcount\": 50, \"snippet\": \"Computer Networks\\nComputer Networks\\nComputer Networks\\nComputer Networks\\nComputer Networks\\nComputer Networks\\nComputer Networks\\nComputer Networks\\nComputer\", \"timestamp\": \"2026-03-12T06:42:46Z\"}]}}"
+}

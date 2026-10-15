@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=PLoS+Comput.+Biol.&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:11:30Z",
+  "sha256": "55d5249d696b68e5bad61f0521c602ece1ce8a1ec28651fb990328c5427e52af",
+  "body": "{\"searchinfo\": {\"search\": \"PLoS Comput. Biol.\"}, \"search\": [], \"success\": 1}"
+}

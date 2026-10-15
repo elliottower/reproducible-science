@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DPLOS+ONE%22&format=json",
+  "fetched_at": "2026-10-15T00:08:34Z",
+  "sha256": "010f667d3410c5e533b4cd68da1babb4d872c236cae7fe75f9b0894ff8f7d854",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q564954\", \"pageid\": 531865, \"size\": 115665, \"wordcount\": 222, \"snippet\": \"PLoS ONE\\nPLOS ONE\\nPLOS ONE\\nPLOS ONE\\n\u067e\u0644\u0627\u0633 \u0648\u0627\u0646\\nPLOS ONE\\nPlos One\\nPLOS ONE\\nPLOS ONE\\nPLOS ONE\\nPLOS ONE\\nPLOS ONE\\nPLOS ONE\\nPLOS ONE\\nPLOS ONE\\nPLOS ONE\\n\u0628\u0644\u0648\u0633 \u0648\u0646\", \"timestamp\": \"2026-08-01T18:16:10Z\"}]}}"
+}

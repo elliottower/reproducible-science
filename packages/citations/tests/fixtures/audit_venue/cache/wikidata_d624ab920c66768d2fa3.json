@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Proceedings+of+the+ACM+SIGKDD+International+Conference+on+Knowledge+Discovery+and+Data+Mining&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-14T22:37:02Z",
+  "sha256": "0ddfc64ee3f65c44422260066656a0b18600bc46323027b29954e0018a264ef3",
+  "body": "{\"searchinfo\": {\"search\": \"Proceedings of the ACM SIGKDD International Conference on Knowledge Discovery and Data Mining\"}, \"search\": [{\"id\": \"Q27722889\", \"title\": \"Q27722889\", \"pageid\": 29439155, \"concepturi\": \"http://www.wikidata.org/entity/Q27722889\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q27722889\", \"display\": {\"label\": {\"value\": \"Proceedings of the ACM SIGKDD international conference on Knowledge discovery and data mining\", \"language\": \"en\"}, \"description\": {\"value\": \"conference proceedings series\", \"language\": \"en\"}}, \"label\": \"Proceedings of the ACM SIGKDD international conference on Knowledge discovery and data mining\", \"description\": \"conference proceedings series\", \"match\": {\"type\": \"label\", \"language\": \"en\", \"text\": \"Proceedings of the ACM SIGKDD international conference on Knowledge discovery and data mining\"}}], \"success\": 1}"
+}

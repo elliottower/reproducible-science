@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3AP236%3D2307-387X%7CP7363%3D2307-387X&format=json",
+  "fetched_at": "2026-10-14T22:22:49Z",
+  "sha256": "5c020e74807a172dadf5defdba87951a63e8ac0db448d1a3110df7a3b059a16f",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q28736261\", \"pageid\": 30395439, \"size\": 125819, \"wordcount\": 117, \"snippet\": \"Transactions of the Association for Computational Linguistics\\nTransactions of the Association for Computational Linguistics\\nTransactions of the Association\", \"timestamp\": \"2026-07-31T12:38:04Z\"}]}}"
+}

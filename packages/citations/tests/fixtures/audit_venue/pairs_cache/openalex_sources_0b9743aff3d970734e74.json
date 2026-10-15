@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://api.openalex.org/sources?search=Soc.+Netw.&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
+  "fetched_at": "2026-10-15T00:10:23Z",
+  "sha256": "89d87ac625ab571abdd72939312861d8295b0f717f4a982ec8010d6d3b05a624",
+  "body": "{\"meta\": {\"count\": 1, \"db_response_time_ms\": 17, \"page\": 1, \"per_page\": 10, \"groups_count\": null, \"x_query\": {\"oql\": \"get sources where text has (Soc. Netw.)\", \"x_new_oql\": \"get sources where text has (Soc. Netw.)\", \"oqo\": {\"get_rows\": \"sources\", \"filter_rows\": [{\"column_id\": \"text.search\", \"value\": \"Soc. Netw.\", \"operator\": \"has\"}]}, \"url\": \"/sources?filter=text.search:Soc. Netw.&per_page=10\"}, \"cost_usd\": 0.001}, \"results\": [{\"id\": \"https://openalex.org/S118036144\", \"display_name\": \"Cyberpsychology Behavior and Social Networking\", \"alternate_titles\": [\"Cyberpsychology Behav Soc Netw\"], \"issn_l\": \"2152-2715\", \"issn\": [\"2152-2715\", \"2152-2723\"], \"type\": \"journal\"}], \"group_by\": []}"
+}

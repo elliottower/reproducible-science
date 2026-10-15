@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Communications+of+the+ACM&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:08:50Z",
+  "sha256": "6cd9abe72ba3e65c902d985f1eb1bf074f7e339ae2f5dd505e2bef4460a2d167",
+  "body": "{\"searchinfo\": {\"search\": \"Communications of the ACM\"}, \"search\": [{\"id\": \"Q1120519\", \"title\": \"Q1120519\", \"pageid\": 1067615, \"concepturi\": \"http://www.wikidata.org/entity/Q1120519\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q1120519\", \"display\": {\"label\": {\"value\": \"Communications of the ACM\", \"language\": \"en\"}, \"description\": {\"value\": \"journal\", \"language\": \"en\"}}, \"label\": \"Communications of the ACM\", \"description\": \"journal\", \"match\": {\"type\": \"label\", \"language\": \"en\", \"text\": \"Communications of the ACM\"}}, {\"id\": \"Q134731399\", \"title\": \"Q134731399\", \"pageid\": 128559621, \"concepturi\": \"http://www.wikidata.org/entity/Q134731399\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q134731399\", \"display\": {\"label\": {\"value\": \"Communications of the ACM 54 (10), 95-103, 2011\", \"language\": \"en\"}}, \"label\": \"Communications of the ACM 54 (10), 95-103, 2011\", \"match\": {\"type\": \"label\", \"language\": \"en\", \"text\": \"Communications of the ACM 54 (10), 95-103, 2011\"}}], \"success\": 1}"
+}

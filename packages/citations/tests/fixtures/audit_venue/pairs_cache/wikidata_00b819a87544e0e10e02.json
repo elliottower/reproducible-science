@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DAppl.+Phys.+Lett.%22&format=json",
+  "fetched_at": "2026-10-15T00:09:18Z",
+  "sha256": "ead1747efd6799d88df7cdcc921e64a15a97586e46f16e964bc3767258bfbfa1",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q621615\", \"pageid\": 584912, \"size\": 45321, \"wordcount\": 108, \"snippet\": \"Applied Physics Letters\\n\u5e94\u7528\u7269\u7406\u5b66\u5feb\u62a5\\n\uc5b4\ud50c\ub77c\uc774\ub4dc \ud53c\uc9c1\uc2a4 \ub808\ud130\uc2a4\\n\u041b\u0456\u0441\u0442\u044b \u045e \u0434\u0430\u0441\u0442\u0430\u0441\u043e\u045e\u043d\u0430\u0439 \u0444\u0456\u0437\u044b\u0446\u044b\\nApplied Physics Letters\\nWissenschaftliche Fachzeitschrift\\nScientific journal\\nwetenschappelijk\", \"timestamp\": \"2026-04-22T17:12:20Z\"}]}}"
+}

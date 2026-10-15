@@ -1,0 +1,396 @@
+{
+  "source": "independent QA of PR 222, probe3.py: correctly cited journal names against the registry's title for the same journal, and German journals that share a word but are distinct",
+  "same_journal": [
+    [
+      "PLoS One",
+      "PLOS ONE"
+    ],
+    [
+      "PLoS ONE",
+      "PLOS ONE"
+    ],
+    [
+      "Phys. Rev. Lett.",
+      "Physical Review Letters"
+    ],
+    [
+      "Nat. Commun.",
+      "Nature Communications"
+    ],
+    [
+      "Nat Commun",
+      "Nature Communications"
+    ],
+    [
+      "Sci. Adv.",
+      "Science Advances"
+    ],
+    [
+      "Commun. ACM",
+      "Communications of the ACM"
+    ],
+    [
+      "NeurIPS",
+      "Advances in Neural Information Processing Systems"
+    ],
+    [
+      "Adv. Neural Inf. Process. Syst.",
+      "Advances in Neural Information Processing Systems"
+    ],
+    [
+      "Cell Rep.",
+      "Cell Reports"
+    ],
+    [
+      "IEEE Commun. Lett.",
+      "IEEE Communications Letters"
+    ],
+    [
+      "IEEE Communications Letters",
+      "IEEE Communications Letters"
+    ],
+    [
+      "Opt. Lett.",
+      "Optics Letters"
+    ],
+    [
+      "Biol. Lett.",
+      "Biology Letters"
+    ],
+    [
+      "Biology Letters",
+      "Biology Letters"
+    ],
+    [
+      "FEBS Lett.",
+      "FEBS Letters"
+    ],
+    [
+      "Nano Lett.",
+      "Nano Letters"
+    ],
+    [
+      "Appl. Phys. Lett.",
+      "Applied Physics Letters"
+    ],
+    [
+      "Econ. Lett.",
+      "Economics Letters"
+    ],
+    [
+      "Pattern Recognit. Lett.",
+      "Pattern Recognition Letters"
+    ],
+    [
+      "Electron. Lett.",
+      "Electronics Letters"
+    ],
+    [
+      "Phys. Lett. B",
+      "Physics Letters B"
+    ],
+    [
+      "Sci. Rep.",
+      "Scientific Reports"
+    ],
+    [
+      "EMBO Rep.",
+      "EMBO Reports"
+    ],
+    [
+      "BMJ Open",
+      "BMJ Open"
+    ],
+    [
+      "JAMA Netw. Open",
+      "JAMA Network Open"
+    ],
+    [
+      "PNAS Nexus",
+      "PNAS Nexus"
+    ],
+    [
+      "Chem. Commun.",
+      "Chemical Communications"
+    ],
+    [
+      "Commun. Biol.",
+      "Communications Biology"
+    ],
+    [
+      "J. Commun.",
+      "Journal of Communication"
+    ],
+    [
+      "IEEE Trans. Commun.",
+      "IEEE Transactions on Communications"
+    ],
+    [
+      "IEEE J. Sel. Areas Commun.",
+      "IEEE Journal on Selected Areas in Communications"
+    ],
+    [
+      "Neural Netw.",
+      "Neural Networks"
+    ],
+    [
+      "IEEE Trans. Neural Netw.",
+      "IEEE Transactions on Neural Networks"
+    ],
+    [
+      "IEEE/ACM Trans. Netw.",
+      "IEEE/ACM Transactions on Networking"
+    ],
+    [
+      "Comput. Netw.",
+      "Computer Networks"
+    ],
+    [
+      "Soc. Netw.",
+      "Social Networks"
+    ],
+    [
+      "IEEE Trans. Neural Netw. Learn. Syst.",
+      "IEEE Transactions on Neural Networks and Learning Systems"
+    ],
+    [
+      "Bioinform. Adv.",
+      "Bioinformatics Advances"
+    ],
+    [
+      "Mol. Syst. Biol.",
+      "Molecular Systems Biology"
+    ],
+    [
+      "R. Soc. Open Sci.",
+      "Royal Society Open Science"
+    ],
+    [
+      "Open Biol.",
+      "Open Biology"
+    ],
+    [
+      "Proc. Natl. Acad. Sci. U.S.A.",
+      "Proceedings of the National Academy of Sciences of the United States of America"
+    ],
+    [
+      "Morb. Mortal. Wkly. Rep.",
+      "Morbidity and Mortality Weekly Report"
+    ],
+    [
+      "Brain Commun.",
+      "Brain Communications"
+    ],
+    [
+      "Neurosci. Lett.",
+      "Neuroscience Letters"
+    ],
+    [
+      "Astrophys. J. Lett.",
+      "The Astrophysical Journal Letters"
+    ],
+    [
+      "Geophys. Res. Lett.",
+      "Geophysical Research Letters"
+    ],
+    [
+      "Environ. Res. Lett.",
+      "Environmental Research Letters"
+    ],
+    [
+      "Mach. Learn.: Sci. Technol.",
+      "Machine Learning: Science and Technology"
+    ],
+    [
+      "eLife",
+      "eLife"
+    ],
+    [
+      "Sci. Data",
+      "Scientific Data"
+    ],
+    [
+      "Network",
+      "Network: Computation in Neural Systems"
+    ],
+    [
+      "Nucleic Acids Res.",
+      "Nucleic Acids Research"
+    ],
+    [
+      "NAR Genom. Bioinform.",
+      "NAR Genomics and Bioinformatics"
+    ],
+    [
+      "Science",
+      "Science"
+    ],
+    [
+      "Nature",
+      "Nature"
+    ],
+    [
+      "PLoS Comput. Biol.",
+      "PLOS Computational Biology"
+    ]
+  ],
+  "german_same": [
+    [
+      "Z. Phys.",
+      "Zeitschrift für Physik"
+    ],
+    [
+      "Z. Physik",
+      "Zeitschrift für Physik"
+    ],
+    [
+      "Zeitschrift fuer Physik",
+      "Zeitschrift für Physik"
+    ],
+    [
+      "Zeitschrift f{\\\"u}r Physik",
+      "Zeitschrift für Physik"
+    ],
+    [
+      "J. Reine Angew. Math.",
+      "Journal für die reine und angewandte Mathematik"
+    ],
+    [
+      "Arch. Math.",
+      "Archiv der Mathematik"
+    ],
+    [
+      "Z. Naturforsch. A",
+      "Zeitschrift für Naturforschung A"
+    ]
+  ],
+  "german_distinct": [
+    [
+      "Zeitschrift für Physik",
+      "Zeitschrift für Physikalische Chemie"
+    ],
+    [
+      "Zeitschrift für Physik A",
+      "Zeitschrift für Physik B"
+    ],
+    [
+      "Zeitschrift für Naturforschung A",
+      "Zeitschrift für Naturforschung C"
+    ],
+    [
+      "Archiv für Psychiatrie und Nervenkrankheiten",
+      "Archiv für Anatomie und Physiologie"
+    ],
+    [
+      "Zeitschrift für Kristallographie",
+      "Zeitschrift für Physik"
+    ],
+    [
+      "Zeitschrift für anorganische und allgemeine Chemie",
+      "Zeitschrift für Elektrochemie"
+    ],
+    [
+      "Journal für die reine und angewandte Mathematik",
+      "Journal für praktische Chemie"
+    ],
+    [
+      "Zeitschrift fur Physik",
+      "Zeitschrift fur Physikalische Chemie"
+    ],
+    [
+      "Z. Phys.",
+      "Z. Phys. Chem."
+    ],
+    [
+      "Zeitschrift für Physik",
+      "Physik Journal"
+    ],
+    [
+      "Archiv für Mathematik",
+      "Mathematische Annalen"
+    ]
+  ],
+  "new_fields": [
+    [
+      "Phys. Rev. B",
+      "Physical Review B"
+    ],
+    [
+      "Rev. Mod. Phys.",
+      "Reviews of Modern Physics"
+    ],
+    [
+      "Nucl. Phys. B",
+      "Nuclear Physics B"
+    ],
+    [
+      "Ann. Phys.",
+      "Annalen der Physik"
+    ],
+    [
+      "Phys. Rev. X",
+      "Physical Review X"
+    ],
+    [
+      "J. Am. Chem. Soc.",
+      "Journal of the American Chemical Society"
+    ],
+    [
+      "Angew. Chem. Int. Ed.",
+      "Angewandte Chemie International Edition"
+    ],
+    [
+      "Chem. Rev.",
+      "Chemical Reviews"
+    ],
+    [
+      "J. Org. Chem.",
+      "The Journal of Organic Chemistry"
+    ],
+    [
+      "Nat. Chem.",
+      "Nature Chemistry"
+    ],
+    [
+      "Am. Econ. Rev.",
+      "American Economic Review"
+    ],
+    [
+      "Q. J. Econ.",
+      "The Quarterly Journal of Economics"
+    ],
+    [
+      "Econometrica",
+      "Econometrica"
+    ],
+    [
+      "J. Polit. Econ.",
+      "Journal of Political Economy"
+    ],
+    [
+      "Rev. Econ. Stud.",
+      "The Review of Economic Studies"
+    ],
+    [
+      "Speculum",
+      "Speculum"
+    ],
+    [
+      "PMLA",
+      "Publications of the Modern Language Association of America"
+    ],
+    [
+      "J. Hist. Ideas",
+      "Journal of the History of Ideas"
+    ],
+    [
+      "Mind",
+      "Mind"
+    ],
+    [
+      "Philos. Rev.",
+      "The Philosophical Review"
+    ]
+  ],
+  "new_fields_source": "physics, chemistry, economics and humanities journals, chosen 2026-10-14T22:11:44.516160+00:00 before any run of the identifier-based check"
+}

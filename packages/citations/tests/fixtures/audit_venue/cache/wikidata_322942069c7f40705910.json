@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q100913796&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-14T22:23:54Z",
+  "sha256": "ab1e77de5f1b973ac117a8b6d00b20d24c09aee20ff14a3abe677ee6b677a032",
+  "body": "{\"entities\": {\"Q100913796\": {\"id\": \"Q100913796\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Advances in Neural Information Processing Systems 33\"}}, \"aliases\": {\"en\": [{\"language\": \"en\", \"value\": \"NeurIPS 2020 proceedings\"}, {\"language\": \"en\", \"value\": \"NIPS 2020 proceedings\"}]}, \"claims\": {\"P4745\": [{\"mainsnak\": {\"datavalue\": {\"value\": {\"entity-type\": \"item\", \"numeric-id\": 76733622, \"id\": \"Q76733622\"}, \"type\": \"wikibase-entityid\"}}}], \"P179\": [{\"mainsnak\": {\"datavalue\": {\"value\": {\"entity-type\": \"item\", \"numeric-id\": 15767446, \"id\": \"Q15767446\"}, \"type\": \"wikibase-entityid\"}}}], \"P1813\": [{\"mainsnak\": {\"datavalue\": {\"value\": {\"text\": \"NeurIPS 2020\", \"language\": \"en\"}, \"type\": \"monolingualtext\"}}}]}}}, \"success\": 1}"
+}

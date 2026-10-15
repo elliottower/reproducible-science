@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Nat.+Commun.&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-14T22:30:59Z",
+  "sha256": "98b7c98f18fa7718cbe46a830abf2929a6a9d94c389a30ae3c2ccb9d8e2a0a5e",
+  "body": "{\"searchinfo\": {\"search\": \"Nat. Commun.\"}, \"search\": [{\"id\": \"Q573880\", \"title\": \"Q573880\", \"pageid\": 539804, \"concepturi\": \"http://www.wikidata.org/entity/Q573880\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q573880\", \"display\": {\"label\": {\"value\": \"Nature Communications\", \"language\": \"en\"}, \"description\": {\"value\": \"scientific journal\", \"language\": \"en\"}}, \"label\": \"Nature Communications\", \"description\": \"scientific journal\", \"match\": {\"type\": \"alias\", \"language\": \"fi\", \"text\": \"Nat. Commun.\"}, \"aliases\": [\"Nat. Commun.\"]}], \"success\": 1}"
+}

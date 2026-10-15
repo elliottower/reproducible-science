@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Environ.+Res.+Lett.&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:11:04Z",
+  "sha256": "37e30938859012a82fded61397a1e9ac6d505e15a1fce9d5b01873910017d721",
+  "body": "{\"searchinfo\": {\"search\": \"Environ. Res. Lett.\"}, \"search\": [], \"success\": 1}"
+}

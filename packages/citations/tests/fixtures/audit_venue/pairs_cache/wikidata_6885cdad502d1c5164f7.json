@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q426303&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-15T00:09:50Z",
+  "sha256": "bb0c1921a5f64831ddd6b8e858cab9a7400d65353e2b5b9dcae21b66589fea8f",
+  "body": "{\"entities\": {\"Q426303\": {\"id\": \"Q426303\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Chemical Communications\"}}, \"aliases\": {\"en\": [{\"language\": \"en\", \"value\": \"ChemComm\"}]}, \"claims\": {\"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"1364-548X\", \"type\": \"string\"}}}, {\"mainsnak\": {\"datavalue\": {\"value\": \"1359-7345\", \"type\": \"string\"}}}], \"P1160\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"Chem. Commun.\", \"type\": \"string\"}}}], \"P1055\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"9610838\", \"type\": \"string\"}}}], \"P7363\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"1359-7345\", \"type\": \"string\"}}}], \"P10283\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"S152760256\", \"type\": \"string\"}}}, {\"mainsnak\": {\"datavalue\": {\"value\": \"S4210207732\", \"type\": \"string\"}}}]}}}, \"success\": 1}"
+}

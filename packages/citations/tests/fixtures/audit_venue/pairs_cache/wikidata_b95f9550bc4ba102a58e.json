@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DMorb.+Mortal.+Wkly.+Rep.%22&format=json",
+  "fetched_at": "2026-10-15T00:10:47Z",
+  "sha256": "d672d067f5da8b0d63f66a5224d93ef3fbccdc0253da19c9b9ed207c2fc32557",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q1763668\", \"pageid\": 1695940, \"size\": 43308, \"wordcount\": 145, \"snippet\": \"Morbidity and Mortality Weekly Report\\nMorbidity and Mortality Weekly Report\\n\u53d1\u75c5\u7387\u548c\u6b7b\u4ea1\u7387\u5468\u62a5\\nMorbidity and Mortality Weekly Report\\n\u767c\u75c5\u7387\u548c\u6b7b\u4ea1\u7387\u9031\u5831\\nMorbidity and Mortality\", \"timestamp\": \"2024-12-23T13:07:43Z\"}]}}"
+}

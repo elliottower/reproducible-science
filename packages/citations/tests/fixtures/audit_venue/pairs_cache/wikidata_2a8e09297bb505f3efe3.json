@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DNeurosci.+Lett.%22&format=json",
+  "fetched_at": "2026-10-15T00:10:54Z",
+  "sha256": "0c0d9971867b98ad9709f9dee7088fd7ab471c13c36e5069265fbcadde0f0856",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q7002625\", \"pageid\": 6879010, \"size\": 31563, \"wordcount\": 94, \"snippet\": \"Neuroscience Letters\\nNeuroscience Letters\\nNeuroscience Letters\\nNeuroscience Letters\\nNeuroscience Letters\\nNeuroscience Letters\\nNeuroscience Letters\\nNeuroscience\", \"timestamp\": \"2026-03-12T07:04:59Z\"}]}}"
+}

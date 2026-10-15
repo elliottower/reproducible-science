@@ -17,6 +17,7 @@ import urllib.error
 
 import pytest
 from citations import audit as A
+from citations import venue as V
 from citations.exceptions import CitationsError
 
 TITLE = "Genome-wide association study of circulating interleukin 6 levels"
@@ -342,7 +343,9 @@ UAI = json.dumps(
 )
 
 
-def test_a_venue_left_unconfirmed_by_refused_lookups_never_fails_strict(tmp_path, monkeypatch):
+def test_a_venue_left_unconfirmed_by_refused_lookups_never_fails_strict(
+    tmp_path, monkeypatch, capsys
+):
     serve(
         monkeypatch,
         {
@@ -356,10 +359,13 @@ def test_a_venue_left_unconfirmed_by_refused_lookups_never_fails_strict(tmp_path
     code, report = run(tmp_path, bib(tmp_path, entry), "--strict")
 
     verdict = report["entries"]["naitza2012"]
-    assert verdict["venue"]["outcome"] == "not comparable"
+    assert (verdict["venue"]["outcome"], verdict["venue"]["why"]) == ("not comparable", V.REFUSED)
     assert verdict["status"] == "ok"
-    assert verdict["refused"] == ["openalex", "semanticscholar"]
+    assert verdict["refused"] == [], "the entry's own status rests on no refused service"
     assert code == 0
+    line = next(x for x in capsys.readouterr().out.splitlines() if x.startswith("  naitza2012"))
+    assert "ours 'Robotics: Science and Systems'" in line
+    assert "registry 'Proceedings of the 2016 Conference on Uncertainty in AI'" in line
 
 
 # --- a rejected query, and what a not found rests on --------------------------------------------

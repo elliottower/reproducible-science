@@ -122,3 +122,35 @@ def test_lint_authors_reads_a_rejected_identifier_as_no_names(tmp_path, monkeypa
 def test_fetch_locate_reads_a_rejected_identifier_as_no_copies(monkeypatch):
     serve(monkeypatch, {"": 400})
     assert FETCH.locate(ClaimSource(doi="10.1093/hmg/dds213", citation="x")) == []
+
+
+def keyed_serve(monkeypatch, code: int) -> list[dict]:
+    """Every request answered with `code`; returns the headers each one carried."""
+    sent: list[dict] = []
+
+    def urlopen(req, timeout=None):
+        sent.append(dict(req.header_items()))
+        raise urllib.error.HTTPError(
+            req.full_url, code, f"HTTP {code}", email.message.Message(), io.BytesIO(b"")
+        )
+
+    monkeypatch.setenv(R.OPENALEX_KEY_ENV, "secret-key")
+    monkeypatch.setattr(R.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(R.time, "sleep", lambda _: None)
+    return sent
+
+
+@pytest.mark.parametrize("code", [400, 422])
+def test_a_rejected_openalex_query_is_never_retried_with_the_key(monkeypatch, code):
+    sent = keyed_serve(monkeypatch, code)
+    with pytest.raises(R.Rejected):
+        R.get("https://api.openalex.org/works?search=x", as_json=True)
+    assert len(sent) == 1
+    assert "Authorization" not in sent[0]
+
+
+def test_a_refused_openalex_request_is_retried_once_with_the_key(monkeypatch):
+    sent = keyed_serve(monkeypatch, 403)
+    with pytest.raises(R.Throttled):
+        R.get("https://api.openalex.org/works?search=x", as_json=True)
+    assert ["Authorization" in h for h in sent] == [False, True]

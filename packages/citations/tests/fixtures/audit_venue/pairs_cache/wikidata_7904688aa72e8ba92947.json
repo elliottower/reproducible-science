@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Commun.+ACM&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:08:48Z",
+  "sha256": "69f78ec15c8ffb58f860632c21986f99bcb541795df13c2cfa75ffca5d53a951",
+  "body": "{\"searchinfo\": {\"search\": \"Commun. ACM\"}, \"search\": [{\"id\": \"Q1120519\", \"title\": \"Q1120519\", \"pageid\": 1067615, \"concepturi\": \"http://www.wikidata.org/entity/Q1120519\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q1120519\", \"display\": {\"label\": {\"value\": \"Communications of the ACM\", \"language\": \"en\"}, \"description\": {\"value\": \"journal\", \"language\": \"en\"}}, \"label\": \"Communications of the ACM\", \"description\": \"journal\", \"match\": {\"type\": \"alias\", \"language\": \"en\", \"text\": \"Commun. ACM\"}, \"aliases\": [\"Commun. ACM\"]}], \"success\": 1}"
+}

@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q18712516%7CQ124004145&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-15T00:10:38Z",
+  "sha256": "c6ba1ab99785a3d1a96a173932e626fc6f7c8cbfbfc6667bc60543f88cab57bb",
+  "body": "{\"entities\": {\"Q18712516\": {\"id\": \"Q18712516\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Royal Society Open Science\"}}, \"aliases\": {}, \"claims\": {\"P1160\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"R. Soc. Open Sci.\", \"type\": \"string\"}}}], \"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"2054-5703\", \"type\": \"string\"}}}, {\"mainsnak\": {\"datavalue\": {\"value\": \"2054-5703\", \"type\": \"string\"}}}], \"P1055\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"101647528\", \"type\": \"string\"}}}], \"P7363\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"2054-5703\", \"type\": \"string\"}}}], \"P10283\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"S2737558550\", \"type\": \"string\"}}}]}}, \"Q124004145\": {\"id\": \"Q124004145\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Royal Society Open Science\"}}, \"aliases\": {}, \"claims\": {}}}, \"success\": 1}"
+}

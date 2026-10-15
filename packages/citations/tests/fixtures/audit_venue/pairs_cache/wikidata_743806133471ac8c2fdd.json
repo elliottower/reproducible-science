@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Mach.+Learn.%3A+Sci.+Technol.&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:11:07Z",
+  "sha256": "964eaf05b053aa7a4e2ffcf270cddd17d66c7fb42b8820aaceaa49d51d198b3e",
+  "body": "{\"searchinfo\": {\"search\": \"Mach. Learn.: Sci. Technol.\"}, \"search\": [], \"success\": 1}"
+}

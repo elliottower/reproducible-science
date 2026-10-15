@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q5970310&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-15T00:09:02Z",
+  "sha256": "f046efdb7121d558ee412eb66d9f5e265767cbd81ef4001185172fd9f840c427",
+  "body": "{\"entities\": {\"Q5970310\": {\"id\": \"Q5970310\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"IEEE Communications Letters\"}, \"mul\": {\"language\": \"mul\", \"value\": \"IEEE Communications Letters\"}}, \"aliases\": {}, \"claims\": {\"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"1089-7798\", \"type\": \"string\"}}}, {\"mainsnak\": {\"datavalue\": {\"value\": \"1558-2558\", \"type\": \"string\"}}}, {\"mainsnak\": {\"datavalue\": {\"value\": \"2373-7891\", \"type\": \"string\"}}}], \"P1160\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"IEEE Commun. Lett.\", \"type\": \"string\"}}}], \"P1055\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"101210565\", \"type\": \"string\"}}}], \"P7363\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"1089-7798\", \"type\": \"string\"}}}], \"P10283\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"S147316732\", \"type\": \"string\"}}}]}}}, \"success\": 1}"
+}

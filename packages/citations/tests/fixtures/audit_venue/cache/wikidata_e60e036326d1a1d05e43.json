@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbgetentities&ids=Q4181923&props=claims%7Clabels%7Caliases&languages=en%7Cmul&format=json",
+  "fetched_at": "2026-10-14T22:24:04Z",
+  "sha256": "fd6682b9a6a3d36d48bfcdaa5b4aec40a86eb876a2f5a808194ffa26f41dde6f",
+  "body": "{\"entities\": {\"Q4181923\": {\"id\": \"Q4181923\", \"labels\": {\"en\": {\"language\": \"en\", \"value\": \"Journal of the American Statistical Association\"}}, \"aliases\": {\"en\": [{\"language\": \"en\", \"value\": \"American Statistical Association. Journal\"}]}, \"claims\": {\"P236\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0162-1459\", \"type\": \"string\"}}}, {\"mainsnak\": {\"datavalue\": {\"value\": \"1537-274X\", \"type\": \"string\"}}}, {\"mainsnak\": {\"datavalue\": {\"value\": \"0003-1291\", \"type\": \"string\"}}}], \"P1813\": [{\"mainsnak\": {\"datavalue\": {\"value\": {\"text\": \"JASA\", \"language\": \"en\"}, \"type\": \"monolingualtext\"}}}], \"P1055\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"01510020R\", \"type\": \"string\"}}}], \"P7363\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"0162-1459\", \"type\": \"string\"}}}], \"P10283\": [{\"mainsnak\": {\"datavalue\": {\"value\": \"S62401924\", \"type\": \"string\"}}}]}}}, \"success\": 1}"
+}

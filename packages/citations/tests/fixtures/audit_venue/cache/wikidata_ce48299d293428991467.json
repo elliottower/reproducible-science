@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Proceedings+of+the+ACL+Workshop+BlackboxNLP%3A+Analyzing+and+Interpreting+Neural+Networks+for+NLP&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-14T22:35:58Z",
+  "sha256": "1f8bba1715f3ccd6371604a08073c8df84b5f1abc77b1931c43cad502d6259da",
+  "body": "{\"searchinfo\": {\"search\": \"Proceedings of the ACL Workshop BlackboxNLP: Analyzing and Interpreting Neural Networks for NLP\"}, \"search\": [], \"success\": 1}"
+}

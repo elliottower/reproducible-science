@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://api.openalex.org/sources?search=Archiv+f%C3%BCr+Mathematik&per-page=10&select=id%2Cdisplay_name%2Cabbreviated_title%2Calternate_titles%2Cissn_l%2Cissn%2Ctype",
+  "fetched_at": "2026-10-15T00:12:20Z",
+  "sha256": "2ab10ef605929c5c6a64ada0da28cc225ab692e776e7f185e6f1f0050d6556e4",
+  "body": "{\"meta\": {\"count\": 0, \"db_response_time_ms\": 269, \"page\": 1, \"per_page\": 10, \"groups_count\": null, \"x_query\": {\"oql\": \"get sources where text has (Archiv f\u00fcr Mathematik)\", \"x_new_oql\": \"get sources where text has (Archiv f\u00fcr Mathematik)\", \"oqo\": {\"get_rows\": \"sources\", \"filter_rows\": [{\"column_id\": \"text.search\", \"value\": \"Archiv f\u00fcr Mathematik\", \"operator\": \"has\"}]}, \"url\": \"/sources?filter=text.search:Archiv f%C3%BCr Mathematik&per_page=10\"}, \"cost_usd\": 0.001}, \"results\": [], \"group_by\": []}"
+}

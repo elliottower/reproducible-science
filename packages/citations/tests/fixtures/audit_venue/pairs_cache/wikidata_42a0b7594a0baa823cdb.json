@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Physik+Journal&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:12:15Z",
+  "sha256": "3c416ff90ccc28bc3418bb6049a2a8c45b7d5f64f9de5a9f3197016a7e8dcffc",
+  "body": "{\"searchinfo\": {\"search\": \"Physik Journal\"}, \"search\": [{\"id\": \"Q1449079\", \"title\": \"Q1449079\", \"pageid\": 1387276, \"concepturi\": \"http://www.wikidata.org/entity/Q1449079\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q1449079\", \"display\": {\"label\": {\"value\": \"Physik Journal\", \"language\": \"en\"}, \"description\": {\"value\": \"scientific journal in physics\", \"language\": \"en\"}}, \"label\": \"Physik Journal\", \"description\": \"scientific journal in physics\", \"match\": {\"type\": \"label\", \"language\": \"en\", \"text\": \"Physik Journal\"}}, {\"id\": \"Q96726013\", \"title\": \"Q96726013\", \"pageid\": 95277411, \"concepturi\": \"http://www.wikidata.org/entity/Q96726013\", \"repository\": \"wikidata\", \"url\": \"//www.wikidata.org/wiki/Q96726013\", \"display\": {\"label\": {\"value\": \"Physikalische Bl\u00e4tter\", \"language\": \"en\"}, \"description\": {\"value\": \"discontinued scientific journal\", \"language\": \"en\"}}, \"label\": \"Physikalische Bl\u00e4tter\", \"description\": \"discontinued scientific journal\", \"match\": {\"type\": \"label\", \"language\": \"nl\", \"text\": \"Physik Journal\"}, \"aliases\": [\"Physik Journal\"]}], \"success\": 1}"
+}

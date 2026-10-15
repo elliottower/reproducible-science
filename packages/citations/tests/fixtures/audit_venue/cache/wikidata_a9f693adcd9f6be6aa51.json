@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=query&list=search&srsearch=haswbstatement%3A%22P1160%3DNat.+Methods%22&format=json",
+  "fetched_at": "2026-10-14T22:24:15Z",
+  "sha256": "f4f9a226e6e5dce20c5d53da918f52dc99cb83c90ea8dc26f68517a8440de1e1",
+  "body": "{\"batchcomplete\": \"\", \"query\": {\"searchinfo\": {\"totalhits\": 1}, \"search\": [{\"ns\": 0, \"title\": \"Q680640\", \"pageid\": 641218, \"size\": 45385, \"wordcount\": 114, \"snippet\": \"Nature Methods\\nNature Methods\\nNature Methods\\nNature Methods\\nNature Methods\\nNature Methods\\nNature Methods\\nNature Methods\\nNature Methods\\nNature Methods\\nNature\", \"timestamp\": \"2026-09-11T21:33:32Z\"}]}}"
+}

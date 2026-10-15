@@ -1,0 +1,7 @@
+{
+  "cache_version": 1,
+  "url": "https://www.wikidata.org/w/api.php?action=wbsearchentities&search=Mol.+Syst.+Biol.&language=en&uselang=en&type=item&limit=10&format=json",
+  "fetched_at": "2026-10-15T00:10:32Z",
+  "sha256": "6336cb3db97bc3bb985e2af43f4ab88e4d2f2feb245449578f125ee7f9a2dfd4",
+  "body": "{\"searchinfo\": {\"search\": \"Mol. Syst. Biol.\"}, \"search\": [], \"success\": 1}"
+}
