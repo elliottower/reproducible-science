@@ -610,7 +610,8 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
             "propose_binding, add_artifact and mark_reviewed, each one line of a draft "
             "manifest, and pin_quote. Each call works in the project its path is in: the "
             f"nearest folder above it holding one of {', '.join(PROJECT_MARKERS)}. Nothing it "
-            "offers freezes, seals, registers, runs a declared command or reaches the network. "
+            "offers freezes, seals, registers or runs a declared command, and only "
+            "citations_audit reaches the network, to read registry records. "
             f"Needs {MCP_EXTRA}."
         ),
     )

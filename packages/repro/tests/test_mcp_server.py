@@ -658,8 +658,24 @@ def test_an_edited_record_of_attempts_is_reported(project, capsys):
     assert counted["attempt_record"]["status"] != "intact"
     assert claims_main(["open-items", str(project / DRAFT_ITEMS)]) == 0
     assert "does not verify" in capsys.readouterr().out
+    same = unchanged(project)
     refused = propose_auc(project, "/auc/held")
-    assert refused.is_error
+    assert refused.structured_content["refused"] == "attempts_record"
+    assert "does not verify" in refused.structured_content["detail"]
+    assert same()
+
+
+def test_a_proposal_whose_attempt_cannot_be_recorded_leaves_the_draft_as_it_was(
+    project, monkeypatch
+):
+    def broken(*args, **kwargs):
+        raise chain.ChainError("attempts.jsonl", "the record was cut while it was read")
+
+    monkeypatch.setattr(proposals, "append_attempt", broken)
+    same = unchanged(project)
+    refused = propose_auc(project, "/auc/held")
+    assert refused.structured_content["refused"] == "attempts_record"
+    assert same()
 
 
 def test_a_warning_comes_at_the_sixth_attempt_and_not_the_fifth(project, capsys):
@@ -1065,3 +1081,30 @@ def test_citations_audit_under_strict_fails_on_what_it_could_not_check(project, 
     assert lenient.structured_content["counts"]["could_not_check"] == 1
     assert lenient.structured_content["passed"] is True
     assert strict.structured_content["passed"] is False
+
+
+def test_an_audit_cache_linked_out_of_the_project_is_refused(project, registries, tmp_path):
+    (project / "paper.bib").write_text(BIB)
+    away = tmp_path / "away-cache"
+    away.mkdir()
+    (project / ".audit-cache").symlink_to(away)
+    (result,) = calls(project, [("citations_audit", {"bib": str(project / "paper.bib")})])
+    assert result.structured_content["refused"] == "outside_root"
+    assert list(away.iterdir()) == []
+    assert registries == []
+
+
+def test_an_audit_that_could_check_nothing_does_not_pass(project, registries):
+    refused = "@book{refused" + BIB.split("@book{refused")[1]
+    (project / "paper.bib").write_text(refused)
+    (result,) = calls(project, [("citations_audit", {"bib": str(project / "paper.bib")})])
+    assert result.structured_content["counts"]["could_not_check"] == 1
+    assert (result.structured_content["checked"], result.structured_content["passed"]) == (0, False)
+
+
+def test_mark_reviewed_refuses_an_item_whose_claim_the_draft_lacks(project, reviewer):
+    draft = project / "draft" / "repro.draft.yaml"
+    document = yaml.safe_load(draft.read_text())
+    document["claims"] = [c for c in document["claims"] if c["id"] != "acc"]
+    draft.write_text(yaml.safe_dump(document, sort_keys=False))
+    assert review(project, ["acc/value"]).structured_content["refused"] == "claim_not_in_draft"

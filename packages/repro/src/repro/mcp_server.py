@@ -166,7 +166,9 @@ def _delegated(root: pathlib.Path, tool: str, argv: Sequence[str]) -> tuple[dict
     return data, f"{command}: exit {code}; {last.strip()}"
 
 
-def _audited(path: pathlib.Path, strict: bool, search: bool, start: int) -> tuple[dict, str]:
+def _audited(
+    root: pathlib.Path, path: pathlib.Path, strict: bool, search: bool, start: int
+) -> tuple[dict, str]:
     """`citations audit --bib` over one page of entries: the registry's verdict per entry, and
     apart from it what a title search found. Reads registries; writes only the cache
     `citations audit` keeps beside the bibliography."""
@@ -177,9 +179,10 @@ def _audited(path: pathlib.Path, strict: bool, search: bool, start: int) -> tupl
     entries = citations_audit_module.entries_from_bib(path)
     page = entries[start : start + MAX_AUDIT_ENTRIES]
     with contextlib.redirect_stdout(io.StringIO()):
-        report = citations_audit_module.audit(
-            page, path.parent / ".audit-cache", str(path), search=search
-        )
+        # The cache `citations audit` keeps beside the bibliography, held to the project as
+        # every other path is: a link out of it is refused.
+        cache = inside(root, path.parent / ".audit-cache")
+        report = citations_audit_module.audit(page, cache, str(path), search=search)
     rows: list[dict[str, Any]] = []
     for key, verdict in report.entries.items():
         result, why_not = AUDITED.get(verdict.status, ("could_not_check", verdict.status))
@@ -208,13 +211,16 @@ def _audited(path: pathlib.Path, strict: bool, search: bool, start: int) -> tupl
         word: sum(r["registry"]["result"] == word for r in rows)
         for word in ("agrees", "disagrees", "not_found", "could_not_check")
     }
+    checked = counts["agrees"] + counts["disagrees"]
     failed = counts["disagrees"] + (counts["could_not_check"] if strict else 0)
     following = start + len(page)
     data = {
         "entries": rows,
         "counts": counts,
         "strict": strict,
-        "passed": not failed and bool(rows),
+        # Nothing compared is not a pass, whatever `strict` says.
+        "passed": not failed and checked > 0,
+        "checked": checked,
         "total": len(entries),
         "next_start": following if following < len(entries) else None,
     }
@@ -390,7 +396,7 @@ def build(root: pathlib.Path | None = None) -> MCPServer:
         `next_start` as `start` for more. The only tool that reaches the network, and only to
         read registries; it writes no .bib, record or claims file."""
         return answer(
-            lambda at: _audited(inside(at, absolute(bib)), strict, not no_search, start), bib
+            lambda at: _audited(at, inside(at, absolute(bib)), strict, not no_search, start), bib
         )
 
     @server.tool(annotations=READ_ONLY)

@@ -40,7 +40,7 @@ from claims.open_items import (
 from claims.open_items import read as read_items
 from claims.sources import is_lfs_pointer
 from claims.verify import verify
-from provenance_core import atomic_write_bytes, try_run
+from provenance_core import atomic_write_bytes, chain, try_run
 from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError
 
 #: What marks a directory as a project: a manifest or a reader's draft, a results ledger, a
@@ -509,7 +509,14 @@ def propose(
         raise Refused("claim_not_in_draft", f"{draft.name} holds no claim {claim_id!r}")
 
     kind = assertion.get("kind")
-    attempts = read_attempts(path).attempts
+    record = read_attempts(path)
+    if record.status not in ("absent", "intact"):
+        raise Refused(
+            "attempts_record",
+            f"the attempts record {record.path} does not verify ({record.status}); nothing "
+            "is written until a person sets it right",
+        )
+    attempts = record.attempts
     position = [c.id for c in before.claims].index(claim_id)
     decisions = verify(before).claims[position].decisions if claim.evidence else ()
     fillable = [
@@ -554,16 +561,21 @@ def propose(
     atomic_write_bytes(draft, new_text.encode("utf-8"))
     decision = verify(load(draft)).claims[position].decisions[index]
     attempt = sum(1 for a in attempts if a.item == item.id) + 1
-    append_attempt(
-        path,
-        {
-            "item": item.id,
-            "claim": claim_id,
-            "attempt": attempt,
-            "assertion": written,
-            "outcome": decision.said,
-        },
-    )
+    try:
+        append_attempt(
+            path,
+            {
+                "item": item.id,
+                "claim": claim_id,
+                "attempt": attempt,
+                "assertion": written,
+                "outcome": decision.said,
+            },
+        )
+    except (chain.ChainError, OSError) as e:
+        # A binding is never left in the draft without its attempt on record.
+        atomic_write_bytes(draft, text.encode("utf-8"))
+        raise Refused("attempts_record", f"the attempt could not be recorded: {e}") from e
     return Proposal(
         draft=draft.relative_to(root).as_posix(),
         claim=claim_id,
@@ -701,7 +713,10 @@ def mark_reviewed(
         item = items.get(item_id)
         if item is None:
             raise Refused("item_not_in_open_items", f"{path.name} lists no item {item_id!r}")
-        position = [c.id for c in manifest.claims].index(item.claim)
+        ids = [c.id for c in manifest.claims]
+        if item.claim not in ids:
+            raise Refused("claim_not_in_draft", f"{draft.name} holds no claim {item.claim!r}")
+        position = ids.index(item.claim)
         claim = manifest.claims[position]
         index = next(
             (
