@@ -33,7 +33,8 @@ class NumberRule(enum.StrEnum):
     LINK = "link"
     """Inside a URL."""
     DATE = "date"
-    """One of the three parts of a date written `2026-10-13`."""
+    """One of the three parts of a date written `2026-10-13`, or of the two of a year and
+    month written `2026-04` (a year from 1800 to 2099, a month from 01 to 12)."""
     DOCUMENT = "document_identifier"
     """The number a document is known by: what follows `rfc`, `iso`, `iec`, `ieee`, `ansi`,
     `ecma`, `fips`, `pep`, `arxiv`, `doi`, `isbn`, `issn`, `pmid` or `pmcid`, as in `rfc 6901`

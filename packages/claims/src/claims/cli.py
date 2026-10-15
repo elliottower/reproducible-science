@@ -1110,7 +1110,7 @@ def _tally_lines(found: Tally) -> list[str]:
         f"an inferred assertion, {items['filled_by_declared_only']} by declared ones only",
         f"  candidates: {items['with_unique_candidate']} items with a unique one, "
         f"{items['with_several_candidates']} with several, "
-        f"{items['with_one_not_passing']} with one that fails the guards, "
+        f"{items['with_one_not_unique']} with one not called unique, "
         f"{items['with_no_candidate']} with none",
         f"  {items['filled']} filled, {items['filled_and_passing']} of them passing the check",
     ]
@@ -1544,7 +1544,8 @@ def add_from_clawbio(sub, program: str = CLAIMS) -> None:
         description=(
             "Read a ClawBio skill's output folder and write repro.draft.yaml and "
             "open-items.json into the output directory, never over an existing file. Each "
-            "file reproducibility/checksums.sha256 lists becomes an artifact pinned to the "
+            "file reproducibility/checksums.sha256 lists, or checksums.sha256 at the top of an "
+            "older output, becomes an artifact pinned to the "
             "digest ClawBio recorded, and report.md one pinned to the bytes read. Each number "
             "report.md prints outside code becomes a claim whose text is its line, with a "
             "quotation of that line and one open item: the address of the value in a pinned "

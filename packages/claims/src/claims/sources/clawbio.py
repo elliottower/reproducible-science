@@ -2,7 +2,12 @@
 
 A ClawBio skill writes its results into one folder: `report.md`, the report a person reads,
 `tables/` and `figures/`, and `reproducibility/`, which holds `commands.sh` (a script that
-replays the run), `environment.yml` and `checksums.sha256`. The checksums file lists, one per
+replays the run), `environment.yml` and `checksums.sha256`. That is the layout ClawBio's shared
+helper, `clawbio/common/reproducibility.py`, writes. Older outputs, such as
+`skills/clinical-trial-finder/examples/demo_output`, keep `checksums.sha256` and `commands.sh`
+at the top of the folder. The reader looks in `reproducibility/` first and then at the top,
+records in the open items' source which it found, and refuses a folder that has both, since
+nothing says which of the two the run wrote. The checksums file lists, one per
 line, `<sha256>  <label>` for the outputs the skill chose to record, each label the path from
 the folder or, where the skill gave no anchor, the file's name alone. It states which bytes the
 run wrote. It does not state which number of the report was read from which cell of which
@@ -17,14 +22,15 @@ table. So the reader writes what the folder states and opens an item for each nu
 - `report.md` becomes an artifact, pinned to the digest the checksums record for it where they
   list it, and to the sha256 of the bytes read otherwise. That digest, and those of
   `commands.sh` and `environment.yml`, are pinned in the open items' source;
-- every number `report.md` prints outside code is read under the rule `claims numbers` reads a
+- every number `report.md` prints outside code and outside the marker of a numbered list item
+  (`2. `, `> 1. `) at the start of a line is read under the rule `claims numbers` reads a
   manuscript with (`claims.numbers.printed`). Each quantity, up to `MAX_CLAIMS` of them, the rest
   counted, becomes a claim whose text is its
   line as printed, with a `quote` of that line in `report.md` marked `basis: inferred`, and one
   item asking for the address of the value in a pinned table. The quote is the reader's
   proposal that the line is the claim: a draft whose claims hold only such quotes fails
   `strict` and `publication` until an author or an agent binds each value. A number the rule
-  sets aside, such as a date, a year or a name, a time of day such as `14:22`, and a number
+  sets aside, such as a date (`2016-10-10` or `2007-11`), a year or a name, a time of day such as `14:22`, and a number
   inside a fenced block or an inline code span, is passed over with the reason;
 - each item lists as candidates the addresses in the pinned JSON, YAML and delimited tables at
   which a check of the printed number would match, at the printed precision and, for a number
@@ -79,8 +85,17 @@ FORMAT = "ClawBio reproducibility bundle"
 REPORT = "report.md"
 BUNDLE = "reproducibility"
 CHECKSUMS = f"{BUNDLE}/checksums.sha256"
-#: Files of the bundle that are pinned in the source and declared as nothing.
-PINNED_IN_SOURCE = (f"{BUNDLE}/commands.sh", f"{BUNDLE}/environment.yml")
+#: Where older outputs keep the checksums, at the top of the folder.
+CHECKSUMS_AT_TOP = "checksums.sha256"
+#: Each place the checksums may be, in the order looked, with the layout it means, as recorded
+#: in the open items' source.
+LAYOUTS = {
+    CHECKSUMS: "checksums.sha256 in reproducibility/, as ClawBio's shared helper writes it",
+    CHECKSUMS_AT_TOP: "checksums.sha256 at the top of the folder, as older outputs keep it",
+}
+#: Files of the bundle, beside the checksums, that are pinned in the source and declared as
+#: nothing.
+PINNED_IN_SOURCE = ("commands.sh", "environment.yml")
 TABLES = "tables"
 
 TREE = frozenset({".json", ".yaml", ".yml"})
@@ -99,6 +114,11 @@ MAX_CLAIMS = 500
 _LINE = re.compile(r"(?P<digest>[0-9a-fA-F]{64}) [ *](?P<label>.+)")
 _FENCE = re.compile(r"\s*(```|~~~)")
 _INLINE_CODE = re.compile(r"`[^`]*`")
+#: The marker of a numbered list item at the start of a line, inside any blockquote: `2. ` and
+#: `> 1. `. CommonMark allows up to nine digits and `.` or `)`.
+_LIST_ITEM = re.compile(r"^[ \t]*(?:>[ \t]?)*[ \t]*(?P<marker>\d{1,9}[.)])(?=[ \t]|$)")
+#: The blockquote markers at the start of a line, which do not end a paragraph.
+_QUOTED = re.compile(r"^[ \t]*(?:>[ \t]?)*")
 #: A time of day, `14:22` or `09:05:33`, as a report's header stamps when it was generated.
 _CLOCK = re.compile(r"(?<![\d:.])(?:[01]?\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d+)?)?(?![\d:])")
 
@@ -107,19 +127,20 @@ class ClawbioError(ReproError):
     """A ClawBio output folder could not be read as one."""
 
 
-def _checksums(text: str) -> tuple[list[tuple[str, str]], list[PassedOver]]:
-    """Each `(label, sha256)` the checksums file lists, and the lines that are not one."""
+def _checksums(text: str, where: str) -> tuple[list[tuple[str, str]], list[PassedOver]]:
+    """Each `(label, sha256)` the checksums file at `where` lists, and the lines that are not
+    one."""
     listed, passed, seen = [], [], set()
     for number, line in enumerate(text.splitlines(), start=1):
         if not line.strip():
             continue
         found = _LINE.fullmatch(line.rstrip("\r"))
         if found is None:
-            passed.append(PassedOver(file=CHECKSUMS, reason=f"line {number} is not a sha256 line"))
+            passed.append(PassedOver(file=where, reason=f"line {number} is not a sha256 line"))
             continue
         label = found["label"]
         if label in seen:
-            passed.append(PassedOver(file=label, reason="listed twice in checksums.sha256"))
+            passed.append(PassedOver(file=label, reason=f"listed twice in {where}"))
             continue
         seen.add(label)
         listed.append((label, found["digest"].lower()))
@@ -249,6 +270,43 @@ def _code_masked(lines: list[str]) -> tuple[list[str], set[int]]:
     return masked, fenced
 
 
+def _list_markers(lines: list[str]) -> dict[int, str]:
+    """The lines, from 1, that open a numbered list item as CommonMark reads them, each with
+    its marker. A marker opens an item at the start of a block (the first line, or after a
+    blank line or a heading) and inside a list, whose items and their continuation lines run to
+    the next blank line. Inside a paragraph only `1.` or `1)` opens one, so the `412.` that
+    starts a wrapped line of prose is a number."""
+    found: dict[int, str] = {}
+    previous, in_list = "", False
+    for number, line in enumerate(lines, start=1):
+        marker = _LIST_ITEM.match(line)
+        before = _QUOTED.sub("", previous, count=1).strip()
+        opens_block = not before or before.startswith("#") or in_list
+        if marker and (opens_block or marker["marker"].lstrip("0") in ("1.", "1)")):
+            found[number] = marker["marker"]
+        in_list = number in found or (in_list and bool(_QUOTED.sub("", line, count=1).strip()))
+        previous = line
+    return found
+
+
+def _layout(folder: pathlib.Path) -> str:
+    """Where the folder keeps its checksums: in `reproducibility/`, or at the top for an older
+    output. A folder with both is refused, since nothing says which the run wrote; a link
+    counts as there whether or not it resolves, so a broken one is refused too."""
+    found = [where for where in LAYOUTS if os.path.lexists(folder / where)]
+    if len(found) > 1:
+        raise ClawbioError(
+            f"{folder} holds both {CHECKSUMS} and {CHECKSUMS_AT_TOP}, and nothing says which "
+            "the run wrote; remove the one that is not this run's"
+        )
+    if not found:
+        raise ClawbioError(
+            f"{folder} holds no checksums: a ClawBio output folder holds {CHECKSUMS}, or "
+            f"{CHECKSUMS_AT_TOP} at the top where it is older"
+        )
+    return found[0]
+
+
 def _project(lines: list[str], folder: pathlib.Path) -> str:
     heading = next((line[2:].strip() for line in lines if line.startswith("# ")), "")
     return heading or folder.resolve().name
@@ -256,19 +314,23 @@ def _project(lines: list[str], folder: pathlib.Path) -> str:
 
 def from_clawbio(folder: pathlib.Path, directory: pathlib.Path) -> Written:
     """Write the draft and the open items one skill's output folder gives into `directory`."""
-    checksums, report = folder / CHECKSUMS, folder / REPORT
     if not folder.is_dir():
         raise ClawbioError(f"{folder} is not a folder")
+    layout = _layout(folder)
+    checksums, report = folder / layout, folder / REPORT
+    if not inside(folder, checksums):
+        raise ClawbioError(
+            f"{checksums} resolves outside the folder through a symbolic link, so it is not "
+            "this output's record of its files"
+        )
     try:
         listed_raw = checksums.read_bytes()
     except OSError as e:
-        raise ClawbioError(
-            f"{checksums} could not be read: {e}; a ClawBio output folder holds {CHECKSUMS}"
-        ) from e
+        raise ClawbioError(f"{checksums} could not be read: {e}") from e
     if not report.is_file() or not inside(folder, report):
         raise ClawbioError(f"{report} is not a file in the folder")
     try:
-        listed, passed = _checksums(listed_raw.decode("utf-8"))
+        listed, passed = _checksums(listed_raw.decode("utf-8"), layout)
         text = extract_uncached(report)
     except UnicodeDecodeError as e:
         raise ClawbioError(f"{checksums} is not text: {e}") from e
@@ -340,12 +402,14 @@ def from_clawbio(folder: pathlib.Path, directory: pathlib.Path) -> Written:
     if REPORT not in {artifact["id"] for artifact in artifacts}:
         artifacts.append(_artifact(REPORT, report, directory, report_digest))
     pins = {REPORT: report_digest}
-    for name in PINNED_IN_SOURCE:
+    beside = pathlib.PurePosixPath(layout).parent
+    for name in (str(beside / file) for file in PINNED_IN_SOURCE):
         if (folder / name).is_file() and inside(folder, folder / name):
             pins[name] = Digest.of_file(folder / name).value
 
     lines = text.split("\n")
     masked, fenced = _code_masked(lines)
+    markers = _list_markers(lines)
     claims, items = [], []
     beyond = 0
     for number, (line, readable) in enumerate(zip(lines, masked, strict=True), start=1):
@@ -367,6 +431,16 @@ def from_clawbio(folder: pathlib.Path, directory: pathlib.Path) -> Written:
                     file=REPORT,
                     reason=f"line {number}: {in_code} number(s) inside inline code, which "
                     "prints an identifier or a command and not a result",
+                )
+            )
+        marker = _LIST_ITEM.match(readable) if number in markers else None
+        if marker:
+            readable = " " * marker.end() + readable[marker.end() :]
+            passed.append(
+                PassedOver(
+                    file=REPORT,
+                    reason=f"line {number}: {marker['marker']} numbers a list item and is "
+                    "no result",
                 )
             )
         clocks = len(_CLOCK.findall(readable))
@@ -458,7 +532,7 @@ def from_clawbio(folder: pathlib.Path, directory: pathlib.Path) -> Written:
     source = Source(
         reader=READER,
         reader_version=__version__,
-        format=FORMAT,
+        format=f"{FORMAT}: {LAYOUTS[layout]}",
         path=named(checksums),
         digest=hashlib.sha256(listed_raw).hexdigest(),
         pins=pins,

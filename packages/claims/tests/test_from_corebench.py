@@ -207,12 +207,12 @@ def test_the_tally_counts_candidates_and_then_an_agents_fill(tmp_path):
     assert found.claims[ClaimState.READER] == 0
     assert found.claims[ClaimState.OPEN] == 6
     assert {key: found.items[key] for key in (
-        "with_unique_candidate", "with_several_candidates", "with_one_not_passing",
+        "with_unique_candidate", "with_several_candidates", "with_one_not_unique",
         "with_no_candidate",
     )} == {
         "with_unique_candidate": 2,  # AUC, accuracy of lasso
         "with_several_candidates": 1,  # layers: 3 matches /layers and 3.2
-        "with_one_not_passing": 2,  # epochs: a small integer; ridge: lasso's row
+        "with_one_not_unique": 2,  # epochs: a small integer; ridge: lasso's row
         "with_no_candidate": 1,  # the axis label, which is not a number
     }  # fmt: skip
 

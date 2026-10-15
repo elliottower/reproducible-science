@@ -540,10 +540,18 @@ def _unit(raw: str, conversion: Conversion | None) -> tuple[decimal.Decimal, Con
     return _compared(decimal.Decimal(raw), conversion), conversion
 
 
+#: Past this power of ten a number keeps its exponent form, so a hostile value cannot make
+#: one field millions of digits long.
+PLAIN_UP_TO = 100
+
+
 def _plain(converted: decimal.Decimal) -> str:
     """A converted value with no exponent: 0.5 as a percentage is written 50, where `str`
-    writes the same decimal as 5E+1."""
-    return format(converted, "f")
+    writes the same decimal as 5E+1. Past 10^100, or not finite, it is written as `str` writes
+    it."""
+    if converted.is_finite() and abs(converted.adjusted()) <= PLAIN_UP_TO:
+        return format(converted, "f")
+    return str(converted)
 
 
 def _exponent(value: decimal.Decimal) -> int:

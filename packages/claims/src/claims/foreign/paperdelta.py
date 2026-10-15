@@ -64,7 +64,7 @@ from claims.record import (
     ManifestRef,
     NormalizedOutcome,
 )
-from claims.verify import _aggregate, _agree, _agree_exact
+from claims.verify import _aggregate, _agree, _agree_exact, _plain
 
 CHECKER = "paperdelta"
 CHECKER_URL = "https://github.com/amos689/paperdelta"
@@ -471,7 +471,7 @@ def _reads(
                     on_disk=_hex(hashes.get(source.path)),
                     address=_address(source.field, location, index, source.count),
                     stored=_stored_text(value) if compared else None,
-                    converted=str(conversion.apply(number))
+                    converted=_plain(conversion.apply(number))
                     if compared and conversion is not None and number is not None
                     else None,
                 )
@@ -580,7 +580,7 @@ def _rerun(
         held = _agree_exact(exact, printed, mode, zero)
         computed = decimal.Decimal(exact.numerator) / decimal.Decimal(exact.denominator)
     outcome = NormalizedOutcome.MATCH if held else NormalizedOutcome.MISMATCH
-    return answer(outcome, f"{computed} against printed {printed}")
+    return answer(outcome, f"{_plain(computed)} against printed {printed}")
 
 
 def _paperdelta(**fields: Any) -> dict[str, Any]:
@@ -660,7 +660,7 @@ def read(
         computed = None
         if valued and statistic is not None and compared and state and state.value is not None:
             value = decimal.Decimal(state.value)
-            computed = str(conversion.apply(value) if conversion else value)
+            computed = _plain(conversion.apply(value) if conversion else value)
         comparison = (
             Comparison(
                 mode=ComparisonMode.PRINTED_PRECISION,
