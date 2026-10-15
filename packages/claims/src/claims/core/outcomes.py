@@ -9,7 +9,7 @@ import enum
 
 from pydantic import BaseModel, ConfigDict, model_serializer
 
-from claims.core.evidence import Conversion, Statistic
+from claims.core.evidence import Basis, Conversion, Review, Statistic
 
 SCHEMA_VERSION = "repro/1"
 
@@ -211,6 +211,10 @@ class Warning_(enum.StrEnum):
 
     SHORT = "short"
     TRUNCATED = "truncated"
+    LINE_END_HYPHEN = "line_end_hyphen"
+    """The passage begins or ends where its source breaks a word across lines with a hyphen.
+    Read one way the passage cuts that word and read the other it does not, and the text does
+    not say which, so it is neither `truncated` nor clean."""
     NORMALIZED = "normalized"
     WRONG_PAGE = "wrong_page"
     PAGE_UNCHECKED = "page_unchecked"
@@ -419,6 +423,26 @@ class Decision(BaseModel):
     way a changed artifact does is a policy question, and `claims.policy` decides policy."""
 
     warnings: tuple[Warning_, ...] = ()
+
+    basis: Basis = Basis.DECLARED
+    """The basis the assertion is counted under: the manifest's, or `declared` where someone
+    reviewed it. An inferred assertion is checked as any other, and its outcome is never
+    counted as verified."""
+
+    reviewed: Review | None = None
+    """Who accepted an assertion its author did not write, and when."""
+
+    @property
+    def inferred(self) -> bool:
+        return self.basis is Basis.INFERRED
+
+    @property
+    def said(self) -> str:
+        """The outcome in words that never call an inferred match verified: `matched` for one,
+        and the outcome's own word for everything else."""
+        if self.inferred and self.outcome is Outcome.VERIFIED:
+            return "matched"
+        return self.outcome.value
 
     @model_serializer(mode="wrap")
     def _omit_no_ties(self, handler):

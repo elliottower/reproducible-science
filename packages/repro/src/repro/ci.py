@@ -580,7 +580,10 @@ def _table(rows: list[tuple[str, str]]) -> list[str]:
 def _assertions_found(report: VerificationReport) -> str:
     outcomes = collections.Counter(d.outcome for d in report.decisions)
     total = len(report.decisions)
-    found = f"{outcomes[Outcome.VERIFIED]} of {_count(total, 'assertion')} verified"
+    inferred = sum(d.outcome is Outcome.VERIFIED and d.inferred for d in report.decisions)
+    found = f"{outcomes[Outcome.VERIFIED] - inferred} of {_count(total, 'assertion')} verified"
+    if inferred:
+        found += f", {inferred} inferred that matched and are not counted as verified"
     for outcome in (Outcome.MISMATCH, Outcome.NOT_FOUND, Outcome.UNCHECKED, Outcome.ERROR):
         if outcomes[outcome]:
             found += f", {outcomes[outcome]} {_said(outcome.value)}"

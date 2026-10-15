@@ -34,12 +34,11 @@ import datetime
 import hashlib
 import json
 import pathlib
-import re
 from typing import Any
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, ValidationError
 
-from claims.exceptions import ReproError
+from claims.foreign.common import ForeignError, aware
 from claims.models import Digest, Validity
 from claims.record import (
     AssertionRef,
@@ -84,10 +83,8 @@ _IDENTITY_REASONS = {
     "superseded": "a later claim superseded this one",
 }
 
-_OFFSET = re.compile(r"(?P<sign>[+-])(?P<hours>\d{2}):(?P<minutes>\d{2})")
 
-
-class ClewError(ReproError):
+class ClewError(ForeignError):
     """A Clew export could not be read into check records."""
 
 
@@ -134,15 +131,6 @@ class ClaimsExport(BaseModel):
     claims: tuple[ClewClaim, ...]
 
 
-def offset(text: str) -> datetime.timezone:
-    """A UTC offset written `+HH:MM` or `-HH:MM`."""
-    found = _OFFSET.fullmatch(text)
-    if found is None or int(found["hours"]) > 23 or int(found["minutes"]) > 59:
-        raise ClewError(f"{text!r} is not an offset; write it +HH:MM or -HH:MM")
-    delta = datetime.timedelta(hours=int(found["hours"]), minutes=int(found["minutes"]))
-    return datetime.timezone(-delta if found["sign"] == "-" else delta)
-
-
 def _parsed(text: str, field: str, claim_id: str) -> datetime.datetime:
     try:
         return datetime.datetime.fromisoformat(text)
@@ -155,12 +143,7 @@ def _aware(
 ) -> datetime.datetime | None:
     if text is None:
         return None
-    when = _parsed(text, field, claim_id)
-    if when.tzinfo is None:
-        if given is None:
-            raise ClewError(f"claim {claim_id}: {field} is naive")
-        when = when.replace(tzinfo=given)
-    return when
+    return aware(text, given, f"claim {claim_id}: {field}")
 
 
 def _naive(claims: tuple[ClewClaim, ...]) -> list[str]:

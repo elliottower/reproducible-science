@@ -1,0 +1,1 @@
+**`repro init` writes the plan with the `prereg` installed beside it, never one found on PATH.** It ran `prereg new` as a subprocess, so an older `prereg` first on PATH wrote the plan instead, and that one still wrote `.gitignore` through a dangling symbolic link. `init`, and `init <name>`, now call `prereg new` in the same process.

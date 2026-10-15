@@ -1,6 +1,8 @@
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
+import type { FixRequest } from '../types'
+
 /** What `prereg freeze` once wrote into a plan. Its presence makes a plan frozen in place. */
 const FROZEN = /^\*\*Plan sha256:\*\*[ \t]*`[0-9a-f]{64}`/m
 
@@ -63,6 +65,32 @@ async function above($: EngineInterface, dir: string, name: string) {
       return undefined
     }
   }
+}
+
+/**
+ * The paths an edit to `path` may write: as named, then where it lands. `realPath` follows every
+ * symbolic link; a case alias keeps its own spelling there, so the last name is read back from
+ * its folder's listing, which spells it as the disk stores it. A file not there yet lands in its
+ * folder's real path.
+ */
+async function candidates($: EngineInterface, path: string): Promise<string[]> {
+  const name = path.replace(/^.*\//, '')
+  const own = await $.fs.stat(path, { resolve: true }).catch(() => undefined)
+  const folder = own?.realPath
+    ? parent(own.realPath)
+    : (await $.fs.stat(parent(path), { resolve: true }).catch(() => undefined))?.realPath
+  if (folder === undefined) {
+    return [path]
+  }
+  const landed = own?.realPath ? own.realPath.replace(/^.*\//, '') : name
+  const listed = own ? await $.fs.list(folder).catch(() => []) : []
+  const spelled =
+    listed.some(entry => entry.name === landed)
+      ? landed
+      : (listed.find(entry => entry.name.toLowerCase() === landed.toLowerCase())?.name ?? landed)
+  const real = `${folder}/${spelled}`
+
+  return real === path ? [path] : [path, real]
 }
 
 async function absolute($: EngineInterface, path: string) {
@@ -589,9 +617,109 @@ const savedPin = atom({ plugin: 'repro', key: 'isPinned' } as const, false)
 /** Whether the person hid the readout above the prompt with `/repro-hide`. Warnings still show. */
 const hidden = atom({ plugin: 'repro', key: 'isHidden' } as const, false)
 
+/** Every project this session has worked in, so a fix request for any of them shows. */
+const followed = atom({ plugin: 'repro', key: 'followed' } as const, [] as string[])
+
 async function save($: EngineInterface) {
   await update($, savedProject, () => project ?? null)
   await update($, savedPin, () => isPinned)
+  const now = project
+  if (now) {
+    await update($, followed, seen => (seen.includes(now) ? seen : [...seen, now]))
+  }
+}
+
+/**
+ * Fix requests from the lineage view in reproducible-science-graph. Its "Fix with Claude Code"
+ * button appends one JSON object per line to `queue.jsonl` here, and the ids loaded or dismissed
+ * are kept in `handled.json` beside it. The graph's server writes both paths, so neither moves.
+ */
+const fixesDir = async ($: EngineInterface) => `${(await $.env.get('HOME')) ?? ''}/.claude/repro-fixes`
+
+/** Requests for a project this session works in, not yet loaded or dismissed, oldest first. */
+const fixes = atom({ plugin: 'repro', key: 'fixes' } as const, [] as FixRequest[])
+
+/** Parse the queue: one JSON object per line; a line that does not parse is skipped. */
+export function parseQueue(text: string): FixRequest[] {
+  const out: FixRequest[] = []
+  for (const line of text.split('\n')) {
+    if (!line.trim()) {
+      continue
+    }
+    try {
+      const r = JSON.parse(line)
+      if (typeof r.id === 'string' && typeof r.project === 'string' && typeof r.prompt === 'string') {
+        out.push(r)
+      }
+    } catch {
+      // A partly written last line; the next read finds it whole.
+    }
+  }
+
+  return out
+}
+
+const under = (path: string, root: string) => path === root || path.startsWith(root.endsWith('/') ? root : `${root}/`)
+
+/**
+ * Whether a request belongs to this session: its project is the session's folder or holds it, or
+ * holds a project the session has followed through the files its tools touched. A project inside
+ * the session's folder is not enough, or a session opened in the home folder would show them all,
+ * and a request naming no project or the root names every session's.
+ */
+export function isMine(r: FixRequest, cwd: string, seen: readonly string[]): boolean {
+  if (r.project.replace(/\/+$/, '') === '') {
+    return false
+  }
+
+  return under(cwd, r.project) || seen.some(one => under(one, r.project))
+}
+
+async function handledIds($: EngineInterface, dir: string) {
+  const file = `${dir}/handled.json`
+  if (!(await $.fs.exists(file))) {
+    return new Set<string>()
+  }
+  try {
+    return new Set(JSON.parse(await $.fs.read(file)) as string[])
+  } catch {
+    return new Set<string>()
+  }
+}
+
+async function markHandled($: EngineInterface, id: string) {
+  const dir = await fixesDir($)
+  const ids = await handledIds($, dir)
+  ids.add(id)
+  await $.fs.write(`${dir}/handled.json`, JSON.stringify([...ids]))
+  await update($, fixes, list => list.filter(r => r.id !== id))
+}
+
+async function refreshFixes($: EngineInterface) {
+  const dir = await fixesDir($)
+  const queue = `${dir}/queue.jsonl`
+  if (!(await $.fs.exists(queue))) {
+    return
+  }
+  const done = await handledIds($, dir)
+  const cwd = await $.session.cwd()
+  const seen = await read($, followed)
+  const mine = parseQueue(await $.fs.read(queue)).filter(r => !done.has(r.id) && isMine(r, cwd, seen))
+  const before = await read($, fixes)
+  if (JSON.stringify(before.map(r => r.id)) !== JSON.stringify(mine.map(r => r.id))) {
+    await update($, fixes, () => mine)
+    const fresh = mine.filter(r => !before.some(b => b.id === r.id))
+    if (fresh.length) {
+      $.ui.toast(`Fix request from the lineage view: ${fresh[fresh.length - 1]?.subject}`)
+    }
+  }
+}
+
+const fixLabel = (r: FixRequest) => `${r.kind === 'claim' ? 'Failing claim' : 'Stale rebuild step'}: ${r.subject}`
+
+async function loadFix($: EngineInterface, r: FixRequest) {
+  await $.prompt.fill({ text: r.prompt })
+  await markHandled($, r.id)
 }
 
 /** What the checks last said, shown on the status line and given to the model with the gates. */
@@ -686,6 +814,11 @@ export const register: Register = on => {
       name: 'repro-verify',
       description: "(reproducible-science) Check every pinned quotation of the working project against its source",
     })
+    await $.command.register({
+      name: 'repro-fixes',
+      description: '(reproducible-science) Fix requests from the lineage view; `load` puts the oldest in the prompt box',
+      argumentHint: '[load]',
+    })
     project = (await read($, savedProject)) ?? undefined
     isPinned = await read($, savedPin)
     await $.tool.register({
@@ -702,6 +835,10 @@ export const register: Register = on => {
     })
     await track($, await $.session.cwd())
     await refresh($)
+    // A request arrives while the session is idle, so the queue is read on a clock as well as
+    // at the end of each turn. It is one small file.
+    void refreshFixes($).catch(() => undefined)
+    $.clock.every(3000, () => void refreshFixes($).catch(() => undefined))
 
     return next(e)
   })
@@ -737,42 +874,46 @@ export const register: Register = on => {
 
   for (const tool of ['Edit', 'Write'] as const) {
     on('tool.call', { tool }, async ($, e, next) => {
-      const path = await absolute($, e.file_path)
-      await track($, path)
+      const edited = await absolute($, e.file_path)
+      await track($, edited)
 
-      if (path.includes('/') && (await $.fs.exists(recordOf(path)))) {
-        return {
-          deny:
-            `${path} has a freeze record (${recordOf(path)}), and a frozen file never changes by ` +
-            `one byte. Record a note with \`prereg log\`, or a change to the plan as an ` +
-            `amendment with \`prereg amend\`, which is a file of its own. Ask the user before ` +
-            `doing either.`,
+      // The file as named, then where it lands: an editor writes through a symbolic link, and on a
+      // disk that ignores case `prereg.md` opens `PREREG.md`. The shared hook does the same.
+      for (const path of await candidates($, edited)) {
+        if (path.includes('/') && (await $.fs.exists(recordOf(path)))) {
+          return {
+            deny:
+              `${path} has a freeze record (${recordOf(path)}), and a frozen file never changes by ` +
+              `one byte. Record a note with \`prereg log\`, or a change to the plan as an ` +
+              `amendment with \`prereg amend\`, which is a file of its own. Ask the user before ` +
+              `doing either.`,
+          }
         }
-      }
 
-      if (path.endsWith(`/${PLAN}`) && (await $.fs.exists(path)) && FROZEN.test(await $.fs.read(path))) {
-        return {
-          deny:
-            `${path} is a frozen registration, and a frozen plan is not edited in place. ` +
-            `Record a note with \`prereg log\`, or a change to the plan as an amendment with ` +
-            `\`prereg amend\`, which is a file of its own. Ask the user before doing either.`,
+        if (path.endsWith(`/${PLAN}`) && (await $.fs.exists(path)) && FROZEN.test(await $.fs.read(path))) {
+          return {
+            deny:
+              `${path} is a frozen registration, and a frozen plan is not edited in place. ` +
+              `Record a note with \`prereg log\`, or a change to the plan as an amendment with ` +
+              `\`prereg amend\`, which is a file of its own. Ask the user before doing either.`,
+          }
         }
       }
 
       const ran = await next(e)
-      if (ran.deny !== undefined || !MANUSCRIPT.test(path) || told.has(path)) {
+      if (ran.deny !== undefined || !MANUSCRIPT.test(edited) || told.has(edited)) {
         return ran
       }
-      if (await above($, dirOf(path), LEDGER)) {
+      if (await above($, dirOf(edited), LEDGER)) {
         return ran
       }
-      told.add(path)
+      told.add(edited)
 
       return {
         ...ran,
         context: [
           ...(ran.context ?? []),
-          `reproducible-science: ${path} is a manuscript and no .results/ ledger exists at or above it, ` +
+          `reproducible-science: ${edited} is a manuscript and no .results/ ledger exists at or above it, ` +
             `so no number in it is bound to a run. Before reporting a result here, run ` +
             `\`results init\`, seal the inputs, and bind each sentence with \`results claim\`. ` +
             `If this file reports no results of this project, say so to the user and continue.`,
@@ -833,11 +974,34 @@ export const register: Register = on => {
   // takes a `tail`, and the terminal leaves the tail out where the row has no room beside its
   // own mode labels, which on a session with several of them is always.
   on('ui.render', { component: 'AbovePrompt' }, async ($, e, next) => {
-    const line = await read($, shownStatus)
-    if (!line || e.props.hasSurvey || (await read($, hidden))) {
+    if (e.props.hasSurvey) {
       return next(e)
     }
-    const { Box, Text } = $.ui.resolve(e)
+    // A fix request is a row of its own under the readout. It is not part of the readout, so
+    // `/repro-hide` leaves it standing, as it leaves a warning.
+    const line = (await read($, hidden)) ? '' : await read($, shownStatus)
+    const requests = await read($, fixes)
+    if (!line && requests.length === 0) {
+      return next(e)
+    }
+    const { Box, Button, Text } = $.ui.resolve(e)
+    const request = requests[0]
+    const fixRow = request
+      ? [
+          h(
+            Box,
+            { key: 'fix' },
+            h(Text, { color: 'yellow' }, '◆ '),
+            h(Text, {}, `${fixLabel(request)}${requests.length > 1 ? ` (+${requests.length - 1} more)` : ''} `),
+            h(Button, { key: 'fix:load', label: 'Load into prompt', onPress: () => loadFix($, request) }),
+            h(Text, {}, ' '),
+            h(Button, { key: 'fix:dismiss', label: 'Dismiss', onPress: () => markHandled($, request.id) }),
+          ),
+        ]
+      : []
+    if (!line) {
+      return h(Box, { paddingRight: 5, flexDirection: 'column' }, ...fixRow)
+    }
 
     // The engine draws its collapse mark, `[-]`, over the last columns of the band's first row.
     // Unpadded, a line wrapping there lost the characters under it: `4 sealed, 0 claims` showed
@@ -861,6 +1025,7 @@ export const register: Register = on => {
       Box,
       { paddingRight: 5, flexDirection: 'column' },
       ...rows.map((row, at) => h(Text, { key: `field:${at}`, dimColor: true }, row)),
+      ...fixRow,
     )
   })
 
@@ -1002,6 +1167,31 @@ export const register: Register = on => {
     await update($, hidden, () => false)
 
     return { text: 'Readout shown.' }
+  })
+
+  // Nothing runs on its own: `load` fills the prompt box, and the person reads it and sends it.
+  on('command.run', { command: 'repro-fixes' }, async ($, e) => {
+    await refreshFixes($)
+    const list = await read($, fixes)
+    const first = list[0]
+    if ((e.args ?? '').trim() === 'load') {
+      if (!first) {
+        return { text: 'No fix requests for this project.' }
+      }
+      await loadFix($, first)
+
+      return { text: `Loaded the request for ${first.subject} into the prompt box. Read it and press Enter to send.` }
+    }
+    if (!first) {
+      return { text: 'No fix requests for this project.' }
+    }
+
+    return {
+      text:
+        list
+          .map((r, at) => `${at + 1}. ${fixLabel(r)} (${r.created_at.slice(0, 16).replace('T', ' ')})`)
+          .join('\n') + '\n\n/repro-fixes load puts the oldest in the prompt box.',
+    }
   })
 
   // The full quotation check. It reads every pinned source, which takes minutes on a large

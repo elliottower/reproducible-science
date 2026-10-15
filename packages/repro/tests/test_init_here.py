@@ -292,3 +292,30 @@ def test_a_dot_for_the_name_sets_up_this_directory_and_scaffolds_no_new_project(
     assert (project / DEFAULT_NAME).is_file()
     assert not (project / "CLAUDE.md").exists()
     assert not any((project / name).exists() for name in ("data", "scripts", "figures"))
+
+
+def test_the_plan_is_written_by_the_installed_prereg_never_one_found_on_path(
+    project, run_repro, tmp_path, monkeypatch
+):
+    # An older `prereg` first on PATH wrote `.gitignore` through a dangling link. A stand-in
+    # there records that it ran, and the dangling link would be followed by such a write.
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    ran = tmp_path / "path-prereg-ran"
+    fake = bin_dir / "prereg"
+    fake.write_text(f"#!/bin/sh\ntouch '{ran}'\nexit 0\n")
+    fake.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}{os.pathsep}{os.environ['PATH']}")
+    elsewhere = tmp_path / "elsewhere"
+    (project / ".gitignore").symlink_to(elsewhere)
+
+    code, out = run_repro("init", cwd=project)
+    assert states(out)["plan"] == "created", out
+    assert (project / "PREREG.md").is_file()
+    assert not ran.exists(), "init ran the prereg on PATH"
+    assert not elsewhere.exists(), "a .gitignore was written through the dangling link"
+
+    code, out = run_repro("init", "pilot", cwd=project)
+    assert code == 0, out
+    assert (project / "pilot" / "pilot" / "PREREG.md").is_file()
+    assert not ran.exists(), "init <name> ran the prereg on PATH"

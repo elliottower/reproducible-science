@@ -1,0 +1,1 @@
+**The `claims` badge and `repro ci claims` do not count an inferred assertion that matched as verified.** The badge's `N/M verified` leaves it out of `N`, and the summary says how many inferred assertions matched and are not counted.

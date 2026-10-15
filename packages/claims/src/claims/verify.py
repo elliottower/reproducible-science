@@ -148,6 +148,8 @@ def _base(
         "claim_id": claim.id,
         "claim_digest": claim.digest.value,
         "kind": evidence.kind,
+        "basis": evidence.counted,
+        "reviewed": evidence.reviewed,
         # Left empty where an assertion reads two files or more: `artifact_id` is singular,
         # and filling it with one of them would name a side the engine does not rank. They are
         # recorded in `sides`, or in `members`.
@@ -214,6 +216,7 @@ _QUOTE_STATE = {
 _QUOTE_WARNINGS = {
     "short": Warning_.SHORT,
     "truncated": Warning_.TRUNCATED,
+    "line-end hyphen": Warning_.LINE_END_HYPHEN,
     "normalized": Warning_.NORMALIZED,
     "page": Warning_.WRONG_PAGE,
     "page unchecked": Warning_.PAGE_UNCHECKED,
@@ -1579,7 +1582,10 @@ def check_evidence(
     if backend is None:
         raise UnknownEvidenceKindError(evidence.kind, tuple(registry))
 
-    base = _base(claim, evidence, backend, text=_text(evidence, paths))
+    # An assertion over a file an agent added is counted as inferred until someone accepts
+    # the file, so every decision below, the early ones included, carries the manifest's count.
+    counted = manifest.counted(evidence)
+    base = {**_base(claim, evidence, backend, text=_text(evidence, paths)), "basis": counted}
     unchecked = {
         "execution": ExecutionStatus.UNAVAILABLE,
         "extraction": ExtractionStatus.NOT_ATTEMPTED,
@@ -1631,6 +1637,10 @@ def check_evidence(
     return decision.model_copy(
         update={
             "validity": validity,
+            # Whatever path the backend took to its decision, the decision is of an assertion
+            # the manifest says who states.
+            "basis": counted,
+            "reviewed": evidence.reviewed,
             "artifact_digest": states[named[0]].actual if len(named) == 1 else None,
             # The backend knows which locator addressed which side; only the engine knows what
             # was at each path. Filling the digests here keeps both in one record.

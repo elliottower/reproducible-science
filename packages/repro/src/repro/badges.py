@@ -348,7 +348,11 @@ def claims_badge(report: VerificationReport) -> Badge:
     where none mismatched and some were not found, not checked or could not be read."""
     outcomes = collections.Counter(decision.outcome for decision in report.decisions)
     total = len(report.decisions)
-    verified = outcomes[Outcome.VERIFIED]
+    # An inferred assertion that matched is a proposal that held, not a verified claim.
+    verified = sum(
+        decision.outcome is Outcome.VERIFIED and not decision.inferred
+        for decision in report.decisions
+    )
     if outcomes[Outcome.MISMATCH]:
         color = RED
     elif total and verified == total:

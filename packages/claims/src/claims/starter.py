@@ -31,6 +31,8 @@ import re
 from collections.abc import Iterator
 
 import yaml
+from citations.coverage import strip_comments, unwrap
+from citations.verify import passage_fold
 from provenance_core.gitref import try_run
 from pydantic import BaseModel, ConfigDict
 
@@ -56,9 +58,11 @@ from claims.models import (
     Manifest,
     NumberForm,
     Outcome,
+    PrintedNumber,
     Standing,
 )
 from claims.numbers import numbers as printed_numbers
+from claims.numbers import printed as printed_in
 from claims.numbers import telling
 from claims.provenance import of_tree
 from claims.verify import agrees, verify
@@ -321,11 +325,14 @@ def project_root(start: pathlib.Path) -> pathlib.Path:
     return pathlib.Path(top.strip() if top else start).resolve()
 
 
-def _shallowest(directory: pathlib.Path, notes: list[str]) -> list[pathlib.Path]:
+def _shallowest(
+    directory: pathlib.Path, notes: list[str], links: list[pathlib.Path] | None = None
+) -> list[pathlib.Path]:
     """The data files at the shallowest level of `directory` that holds any.
 
     A results directory keeps its summaries at the top and per-run output below them, so the
-    first level with a readable file is taken and nothing beneath it is searched.
+    first level with a readable file is taken and nothing beneath it is searched. A symbolic
+    link is never followed; one named as a data file is added to `links` where it is given.
     """
     level = [directory]
     for _ in range(MAX_DEPTH):
@@ -341,7 +348,11 @@ def _shallowest(directory: pathlib.Path, notes: list[str]) -> list[pathlib.Path]
                 notes.append(f"{parent.name}/ holds more than {MAX_ENTRIES} entries")
                 continue
             for entry in sorted(entries):
-                if entry.name.startswith(".") or entry.is_symlink():
+                if entry.name.startswith("."):
+                    continue
+                if entry.is_symlink():
+                    if links is not None and entry.suffix.lower() in DATA_SUFFIXES:
+                        links.append(entry)
                     continue
                 if entry.is_dir():
                     if not os.access(entry, os.R_OK | os.X_OK):
@@ -359,14 +370,17 @@ def _shallowest(directory: pathlib.Path, notes: list[str]) -> list[pathlib.Path]
     return []
 
 
-def discover(root: pathlib.Path) -> tuple[list[pathlib.Path], bool, list[str]]:
-    """Files worth pinning under `root`, whether the cap was hit, and what was passed over."""
+def discover(
+    root: pathlib.Path, links: list[pathlib.Path] | None = None
+) -> tuple[list[pathlib.Path], bool, list[str]]:
+    """Files worth pinning under `root`, whether the cap was hit, and what was passed over.
+    Data files that are symbolic links are added to `links` where it is given."""
     notes: list[str] = []
     found = [
         path
         for name in CONVENTIONAL
         if (root / name).is_dir()
-        for path in _shallowest(root / name, notes)
+        for path in _shallowest(root / name, notes, links)
     ]
     capped = len(found) > MAX_DISCOVERED
     found = found[:MAX_DISCOVERED]
@@ -773,8 +787,95 @@ def _scrubbed(note: str, root: pathlib.Path) -> str:
     return note
 
 
+class Scan(BaseModel):
+    """A `Survey`, and the numbers of the manuscript it was to compare."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    survey: Survey
+    printed: tuple[PrintedNumber, ...] = ()
+    """Every number of the manuscript no rule sets aside, printed in digits, with two digits or
+    a decimal point, in manuscript order: the first `survey.compared` were compared, and any
+    after them were left uncompared at `MAX_COMPARISONS`."""
+    lines: tuple[str, ...] = ()
+    """With `tex_source`, the lines of a LaTeX manuscript as `tex_lines` reads them, which the
+    `line` of each number counts from 1; otherwise empty."""
+    links: tuple[str, ...] = ()
+    """Data files under the conventional directories that are symbolic links, and were not
+    read, relative to the project."""
+
+
+#: Commands whose arguments are no prose: an environment's name, a reference, a citation key, a
+#: file, a length. The command and every argument written after it on the line are dropped.
+_TEX_DROPPED = re.compile(
+    r"\\(?:begin|end|label|ref|eqref|autoref|cref|Cref|cite[a-zA-Z]*|includegraphics|"
+    r"usepackage|documentclass|input|include|vspace|hspace|setlength|addtolength|"
+    r"bibliography|bibliographystyle|url|newcommand|renewcommand|hline|toprule|midrule|"
+    r"bottomrule|cline)\*?(?:\[[^\]]*\])*(?:\{[^{}]*\})*"
+)
+_TEX_HEADING = re.compile(r"\\(?:part|chapter|section|subsection|subsubsection|paragraph)\*?\{")
+
+
+def tex_lines(source: str) -> list[str]:
+    """A LaTeX source as prose, one line per line of the source, so a line number counts
+    source lines. Comments, the preamble and what follows `\\end{document}` are blank; a
+    heading is written `# heading`; table cells are separated by ` | `; inline math keeps its
+    content; the arguments of the commands in `_TEX_DROPPED` are dropped, and every other
+    command name. Comments and markup are removed by `citations.coverage`."""
+    lines = strip_comments(source).split("\n")
+    begin = next((i for i, line in enumerate(lines) if "\\begin{document}" in line), -1)
+    end = next((i for i, line in enumerate(lines) if "\\end{document}" in line), len(lines))
+    out = []
+    for number, line in enumerate(lines):
+        if number <= begin or number >= end:
+            out.append("")
+            continue
+        text = _TEX_DROPPED.sub(" ", line)
+        text = re.sub(r"\\\\(?:\[[^\]]*\])?", " ", text)
+        text = re.sub(r"(?<!\\)&", " | ", text)
+        text = re.sub(r"(\\[a-zA-Z]+\*?)\[[^\]]*\]", r"\1", text)
+        text = re.sub(r"\\[a-zA-Z]+\*?", " ", unwrap(text))
+        text = " ".join(text.split())
+        out.append(f"# {text}" if text and _TEX_HEADING.match(line.strip()) else text)
+    return out
+
+
+def _compared_kind(number: PrintedNumber) -> bool:
+    """A number a survey compares: no rule sets it aside, printed in digits, with two digits or
+    a decimal point."""
+    return (
+        number.standing is Standing.UNBOUND
+        and number.form is NumberForm.DECIMAL
+        and number.value is not None
+        and telling(decimal.Decimal(number.value).as_tuple())
+    )
+
+
+def _source_numbers(lines: list[str]) -> list[PrintedNumber]:
+    """The numbers of `tex_lines`, each with its source line and an offset counted over the
+    lines' normalized text, read under the rule `claims.numbers.printed` reads a text with."""
+    found, offset = [], 0
+    for number, line in enumerate(lines, start=1):
+        for printed in printed_in(line):
+            if _compared_kind(printed):
+                found.append(
+                    printed.model_copy(update={"offset": offset + printed.offset, "line": number})
+                )
+        offset += len(passage_fold(line)) + 1
+    return found
+
+
 def survey(root: pathlib.Path) -> Survey:
+    """What `repro verify` could check at `root`. See `scan`."""
+    return scan(root).survey
+
+
+def scan(root: pathlib.Path, tex_source: bool = False) -> Scan:
     """What `repro verify` could check at `root`, found as `write` finds it, writing nothing.
+
+    With `tex_source`, a LaTeX manuscript's numbers are read from its source lines through
+    `tex_lines`, tables and inline math included, and each number's line is its source line;
+    `repro verify` reads the extracted text, as `claims.numbers` does.
 
     The manuscript's numbers are those `claims.numbers` counts, read through a manifest held in
     memory that pins the manuscript and declares no claim. Each one that no rule sets aside is
@@ -785,8 +886,9 @@ def survey(root: pathlib.Path) -> Survey:
     file and `MAX_COMPARISONS` comparisons made, and where either is reached a note says so. A
     file that cannot be read is a note, never an exception.
     """
+    links: list[pathlib.Path] = []
     try:
-        found, capped, notes = discover(root)
+        found, capped, notes = discover(root, links)
     except OSError as e:
         found, capped, notes = [], False, [f"discovery stopped: {e.filename}: {e.strerror}"]
     manuscripts = [path for path in found if path.suffix.lower() in TEXT_SUFFIXES]
@@ -820,8 +922,15 @@ def survey(root: pathlib.Path) -> Survey:
         held += [(relative, value) for value in read.values]
 
     manuscript = manuscripts[0] if manuscripts else None
-    printed = []
-    if manuscript is not None:
+    printed: list[PrintedNumber] = []
+    lines: list[str] = []
+    if manuscript is not None and tex_source and manuscript.suffix.lower() == ".tex":
+        try:
+            lines = tex_lines(manuscript.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError) as e:
+            notes.append(f"{manuscript.relative_to(root).as_posix()} could not be read: {e}")
+        printed = _source_numbers(lines)
+    elif manuscript is not None:
         relative = manuscript.relative_to(root).as_posix()
         try:
             pins = _pins([manuscript], root)
@@ -834,14 +943,7 @@ def survey(root: pathlib.Path) -> Survey:
         except OSError as e:
             notes.append(f"{relative} could not be read: {e.strerror or e}")
         else:
-            printed = [
-                number
-                for number in report.numbers
-                if number.standing is Standing.UNBOUND
-                and number.form is NumberForm.DECIMAL
-                and number.value is not None
-                and telling(decimal.Decimal(number.value).as_tuple())
-            ]
+            printed = [number for number in report.numbers if _compared_kind(number)]
 
     candidates = []
     compared = comparisons = 0
@@ -874,7 +976,7 @@ def survey(root: pathlib.Path) -> Survey:
             f"{len(printed)} numbers the manuscript prints were not compared"
         )
 
-    return Survey(
+    found_here = Survey(
         results={key: tuple(grouped[key]) for key, _, _ in FORMATS if key in grouped},
         capped=capped,
         manuscript=manuscript.relative_to(root).as_posix() if manuscript is not None else None,
@@ -886,4 +988,10 @@ def survey(root: pathlib.Path) -> Survey:
         compared=compared,
         not_compared=len(printed) - compared,
         candidates=tuple(_collapsed(candidates)),
+    )
+    return Scan(
+        survey=found_here,
+        printed=tuple(printed),
+        lines=tuple(lines),
+        links=tuple(sorted(link.relative_to(root).as_posix() for link in links)),
     )

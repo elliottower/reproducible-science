@@ -67,3 +67,30 @@ def test_fetch_writes_how_many_sources_had_each_outcome(tmp_path):
     assert account["sources"] == 2 == sum(account["counts"].values())
     assert account["counts"]["present"] == 1 and account["counts"]["no location"] == 1
     assert account["counts"]["fetched"] == 0
+
+
+SHORT = "quick brown fox"
+
+
+def test_verify_names_the_quotations_carrying_each_warning(tmp_path, capsys):
+    pin(tmp_path, "here", [QUOTE, SHORT])
+    wrote = tmp_path / "counts.json"
+    main(["verify", "--claims", str(tmp_path / "claims"), "--json", str(wrote), "--verbose"])
+    account = json.loads(wrote.read_text())
+    assert account["warnings"] == {
+        "short": [
+            {"claim": "here:c1", "quote": QUOTE, "state": "found"},
+            {"claim": "here:c1", "quote": SHORT, "state": "found"},
+        ]
+    }
+    out = capsys.readouterr().out
+    assert f"{'here:c1':<40}{SHORT}\n" in out
+
+
+def test_without_verbose_the_warnings_are_counted_and_the_flag_is_named(tmp_path, capsys):
+    pin(tmp_path, "here", [SHORT])
+    main(["verify", "--claims", str(tmp_path / "claims")])
+    out = capsys.readouterr().out
+    assert "1  short" in out
+    assert SHORT not in out.split("warnings", 1)[1]
+    assert "`--verbose` lists the quotations carrying each warning" in out

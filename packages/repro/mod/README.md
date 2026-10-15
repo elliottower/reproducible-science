@@ -13,7 +13,7 @@ that cannot load it still loads the plugin.
 
 | | |
 |---|---|
-| Refuses an edit to a frozen file | An `Edit` or `Write` to a file with a freeze record (`.prereg/<name>.json` beside it: a plan or an amendment), or to a `PREREG.md` carrying a freeze digest, is denied, with the instruction to record a note with `prereg log` or a change with `prereg amend`. An amendment still in draft has no record and is edited freely. |
+| Refuses an edit to a frozen file | An `Edit` or `Write` to a file with a freeze record (`.prereg/<name>.json` beside it: a plan or an amendment), or to a `PREREG.md` carrying a freeze digest, is denied, with the instruction to record a note with `prereg log` or a change with `prereg amend`. The file is matched where it lands as well as by the name the edit gives: a symbolic link to a frozen plan, or `prereg.md` on a disk that ignores case, is refused too. A hard link to a frozen plan is not matched, because the mod's file interface reports no device or inode. An amendment still in draft has no record and is edited freely. |
 | Notes a manuscript with no ledger | The first edit to a `.tex`, `.Rmd`, `.qmd` or `.typ` with no `.results/` ledger above it goes through, and the model is told no number in the file is bound to a run. |
 | Notes an analysis with no ledger | The same, once per project, when a command runs an analysis. |
 | Notes a downloaded source | After `curl` or `wget` saves a PDF, the model is told the address to record as `url:` in the claims file, so `citations fetch` can retrieve the same bytes for a reader. |
@@ -23,6 +23,7 @@ that cannot load it still loads the plugin.
 | `/repro-status` | The same readout on demand, with the sealed files hashed. Instant, and no model turn. |
 | `/repro-verify` | Checks every pinned quotation of the working project against its source, which takes minutes on a large project, and keeps the count for the readout. |
 | `/repro-hide`, `/repro-show` | Hides the readout above the prompt, and shows it again. A warning still appears while it is hidden. |
+| `/repro-fixes` | Lists the fix requests sent from the lineage view for this project. `/repro-fixes load` puts the oldest in the prompt box. |
 
 ## The status row
 
@@ -117,6 +118,21 @@ ledger, a `claims/` directory, a `PREREG.md` or a `paper/` directory.
     /repro-status auto             go back to following the files
 
 The model can set it too, through the `set_project` tool the mod registers.
+
+## Fix requests from the lineage view
+
+The lineage view in `reproducible-science-graph` has a "Fix with Claude Code" button on a failing
+claim or a stale rebuild step. It appends a request to `~/.claude/repro-fixes/queue.jsonl`, one
+JSON object per line with `id`, `created_at`, `project`, `subject`, `kind` and `prompt`. The mod
+reads the queue every few seconds and draws the oldest request as one more row under the readout:
+
+    ◆ Failing claim: effect-size (+1 more) [Load into prompt] [Dismiss]
+
+The row shows only in a session whose folder is that project or lies inside it, or that has
+worked in that project by the rule above. "Load into prompt" fills the prompt box, and nothing
+is sent until the person presses Enter. A loaded or dismissed request's id is written to
+`~/.claude/repro-fixes/handled.json` and does not show again. `/repro-hide` leaves the row
+standing.
 
 ## Install
 

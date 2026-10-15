@@ -8,8 +8,13 @@
     claims origins         compare each artifact copied from another repository with its origin
     claims export          write the check records in another format
     claims from-clew       read a SciTeX Clew claims.json into check records
+    claims from-paperdelta read a PaperDelta report into one check record per occurrence
+    claims open-items      count what a reader of another tool's files left open, and what is filled
+    claims from-codecheck  read a CODECHECK configuration file into a draft manifest and open items
+    claims from-corebench  read a CORE-Bench capsule and its task into a draft manifest and open items
+    claims from-clawbio    read a ClawBio skill's output folder into a draft manifest and open items
 
-Each but the `from-` readers is also the `repro` command of the same name: `repro.cli` adds these functions to its
+Each but `open-items` and the `from-` readers is also the `repro` command of the same name: `repro.cli` adds these functions to its
 parser with `add_manifest` through `add_origins`, and `main` here adds them to the parser of
 `claims`. Each handler reads the name the user typed off the parsed arguments, so a message that
 says what to run next names a command that user has. Nothing here runs a declared command,
@@ -39,13 +44,17 @@ from claims.checks import set_aside as set_aside_checks
 from claims.exceptions import ReproError
 from claims.export import EXPORTS
 from claims.export.rocrate import METADATA_FILE
-from claims.foreign.clew import ClewError, offset
 from claims.foreign.clew import records as clew_records
 from claims.foreign.clew import summary as clew_summary
+from claims.foreign.common import OFFSET_HELP, offset
+from claims.foreign.common import Parser as OffsetParser
+from claims.foreign.common import write as write_records
+from claims.foreign.paperdelta import PaperDeltaReading, from_paperdelta
 from claims.manifest import DEFAULT_NAME, find, load
 from claims.models import (
     AssertionAccount,
     Availability,
+    Basis,
     ChainNode,
     CheckedAssertion,
     ClaimAccount,
@@ -64,12 +73,18 @@ from claims.models import (
     Warning_,
 )
 from claims.numbers import numbers as run_numbers
+from claims.open_items import ATTEMPT_LIMIT, ClaimState, Tally, tally_json
+from claims.open_items import tally as run_tally
 from claims.origins import OriginCheck, OriginsReport, OriginState, fetch_url
 from claims.origins import origins as run_origins
 from claims.policy import PROFILES, Assessment, Policy
 from claims.record import check_records, to_jsonl
 from claims.renderers import survey_to_sarif, to_sarif
 from claims.reruns import RECORD
+from claims.sources import Written
+from claims.sources.clawbio import from_clawbio
+from claims.sources.codecheck import from_codecheck
+from claims.sources.corebench import from_corebench
 from claims.stale import stale as run_stale
 from claims.starter import (
     CONVENTIONAL,
@@ -114,6 +129,11 @@ SYMBOL = {
     Outcome.ERROR: "ERR ",
     Outcome.NOT_OFFERED: "none",
 }
+
+
+#: Beside an inferred assertion, whatever its comparison found: a proposal nobody accepted is
+#: never shown as `ok`.
+INFERRED_SYMBOL = "inf "
 
 
 def cmd_manifest_init(args: argparse.Namespace) -> int:
@@ -373,16 +393,20 @@ def _verify_text(
             )
         for d in claim.decisions:
             mark = "" if d.is_authoritative else f"  <{d.validity.value}>"
+            mark += "  <inferred>" if d.inferred else ""
             note = f"  [{','.join(w.value for w in d.warnings)}]" if d.warnings else ""
             # Said outside the detail, which is cut short and would lose it.
             tie = f"  [exact tie: {d.tie.lower} or {d.tie.upper}]" if d.tie else ""
             print(
-                f"  {SYMBOL[d.outcome]}  {d.claim_id:<12} {d.kind:<8} "
+                f"  {INFERRED_SYMBOL if d.inferred else SYMBOL[d.outcome]}  {d.claim_id:<12} {d.kind:<8} "
                 f"{d.detail[:52]}{tie}{note}{mark}"
             )
 
     counts = report.counts
     print(f"\n  {', '.join(f'{v} {k}' for k, v in sorted(counts.items()))}")
+    if inferred := [d for d in report.decisions if d.inferred]:
+        matched = sum(d.outcome is Outcome.VERIFIED for d in inferred)
+        print(f"  {len(inferred)} inferred, {matched} of them matched, counted apart from verified")
     print(
         f"  policy {policy.name}: {'passed' if assessment.passed else 'FAILED'}"
         f"  ({len(assessment.errors)} errors, {len(assessment.warnings)} warnings)"
@@ -615,7 +639,11 @@ def _assertion_lines(assertion: AssertionAccount, paths: dict[str, str]) -> list
             "rounding half up prints one and half to even may print the other"
         )
     outcome = _said(assertion.outcome)
-    if (
+    if assertion.basis is Basis.INFERRED:
+        # Said as what the comparison found, never as `verified`: nobody accepted the address.
+        found = "matched" if assertion.outcome is Outcome.VERIFIED else outcome
+        outcome = f"{found}, inferred: not counted as verified"
+    elif (
         assertion.outcome not in (Outcome.VERIFIED, Outcome.MISMATCH)
         or assertion.reason is Reason.PLACES_MISMATCH
     ):
@@ -814,9 +842,14 @@ def _why_lines(account: ClaimAccount) -> list[str]:
         state: n for state, n in account.states.items() if state is not Freshness.NO_PRODUCER
     }
     count = sum(covered.values())
+    found = [f"{n} {_said(outcome)}" for outcome, n in outcomes.items()] + [
+        f"{n} inferred "
+        + ("that matched" if outcome is Outcome.VERIFIED else f"and {_said(outcome)}")
+        for outcome, n in account.inferred.items()
+    ]
     summary = (
         f"  {total} assertion{'' if total == 1 else 's'}: "
-        + (", ".join(f"{n} {_said(outcome)}" for outcome, n in outcomes.items()) or "none")
+        + (", ".join(found) or "none")
         + f"; {count} of {total} read{'s' if count == 1 else ''} a file with a recorded producer"
         + "".join(f", {n} {_said(state)}" for state, n in covered.items())
     )
@@ -1029,14 +1062,136 @@ def cmd_from_clew(args: argparse.Namespace) -> int:
         )
     else:
         written = to_jsonl(found)
-    if args.output:
-        target = Path(args.output)
-        if target.exists():
-            raise ClewError(f"{target} exists, and a reader never overwrites a file")
-        atomic_write(target, written)
-    else:
-        print(written, end="")
+    write_records(written, Path(args.output) if args.output else None)
     return 0
+
+
+def _paperdelta_lines(reading: PaperDeltaReading, rerun: bool) -> list[str]:
+    lines = []
+    for record in reading.records:
+        said = f"{record.claim.id}: paperdelta {record.native_outcome} -> {record.outcome.value}"
+        again = (record.model_extra or {}).get("rerun")
+        if again is not None:
+            said += f"; this toolkit's rule: {again['outcome']} ({again['detail']})"
+        lines.append(f"  {said}  [{record.check_type.value}]")
+    summary = f"{len(reading.records)} records"
+    if rerun:
+        summary += f", {len(reading.disagreements)} where the two rules disagree" + (
+            f": {', '.join(reading.disagreements)}" if reading.disagreements else ""
+        )
+    return [*lines, "", summary]
+
+
+def cmd_from_paperdelta(args: argparse.Namespace) -> int:
+    reading = from_paperdelta(
+        Path(args.report),
+        Path(args.config),
+        given=offset(args.offset) if args.offset else None,
+        rerun=args.rerun,
+    )
+    written = (
+        "".join(f"{record.to_json()}\n" for record in reading.records)
+        if args.format == "jsonl"
+        else "\n".join(_paperdelta_lines(reading, args.rerun)) + "\n"
+    )
+    write_records(written, Path(args.output) if args.output else None)
+    return 0
+
+
+def _tally_lines(found: Tally) -> list[str]:
+    """The claims by state, the items, and the assertions by basis and outcome."""
+    states = ", ".join(f"{n} {_said(state)}" for state, n in found.claims.items())
+    items = found.items
+    lines = [
+        f"  {found.total} claims: {states}",
+        f"  {found.claims[ClaimState.READER]} bound from the source alone, "
+        f"{found.left_open_by_reader} left open by the reader",
+        f"  {items['total']} items: {items['open']} open, {items['filled_by_inferred']} filled by "
+        f"an inferred assertion, {items['filled_by_declared_only']} by declared ones only",
+        f"  candidates: {items['with_unique_candidate']} items with a unique one, "
+        f"{items['with_several_candidates']} with several, "
+        f"{items['with_one_not_passing']} with one that fails the guards, "
+        f"{items['with_no_candidate']} with none",
+        f"  {items['filled']} filled, {items['filled_and_passing']} of them passing the check",
+    ]
+    for basis, outcomes in found.assertions.items():
+        counted = (
+            ", ".join(f"{n} {said.replace('_', ' ')}" for said, n in outcomes.items()) or "none"
+        )
+        lines.append(f"  {basis.value} assertions: {counted}")
+    if found.manifest_changed:
+        lines.append(f"  {found.manifest} has changed since the reader wrote it")
+    record = found.attempt_record
+    if record.path is not None and record.status != "intact":
+        lines.append(
+            f"  the record of attempts {record.path} does not verify ({record.status}): "
+            + "; ".join(record.problems)
+        )
+    for item, count in found.attempts.items():
+        over = (
+            f", over {ATTEMPT_LIMIT}: check the binding is the claim's own value, not a search"
+            if item in found.over_attempt_limit
+            else ""
+        )
+        lines.append(f"  {item}: {count} attempt{'' if count == 1 else 's'}{over}")
+    return lines
+
+
+def cmd_open_items(args: argparse.Namespace) -> int:
+    found = run_tally(Path(args.open_items))
+    if args.format == "json":
+        print(tally_json(found))
+        return 0
+    source = found.source
+    print(f"{found.open_items}: {found.manifest}, read by {source.reader} from {source.path}\n")
+    print("\n".join(_tally_lines(found)))
+    return 0
+
+
+def _reading_lines(reading: Written, program: str) -> list[str]:
+    lines = [
+        f"wrote {reading.draft} and {reading.open_items}",
+        f"  {reading.artifacts} artifacts, {reading.pinned} pinned by sha256",
+        f"  {reading.claims} claims, {reading.items} open items for an author or an agent to fill",
+    ]
+    lines += [
+        f"  passed over: {passed.file or '(no file)'}: {passed.reason}"
+        for passed in reading.passed_over
+    ]
+    lines += [f"  not checked: {unread.file}: {unread.reason}" for unread in reading.not_checked]
+    lines += [f"  not pinned: {missing.file}: {missing.reason}" for missing in reading.unpinned]
+    return [*lines, "", f"next: {program} open-items {reading.open_items}"]
+
+
+def _print_reading(reading: Written, args: argparse.Namespace) -> int:
+    if args.format == "json":
+        print(json.dumps(reading.model_dump(mode="json"), indent=2))
+    else:
+        print("\n".join(_reading_lines(reading, _program(args))))
+    return 0
+
+
+def cmd_from_codecheck(args: argparse.Namespace) -> int:
+    reading = from_codecheck(
+        args.source,
+        Path(args.output),
+        register=Path(args.register) if args.register else None,
+        register_sha256=args.register_sha256,
+        bundle=Path(args.bundle) if args.bundle else None,
+        fetch=fetch_url if args.fetch else None,
+    )
+    return _print_reading(reading, args)
+
+
+def cmd_from_corebench(args: argparse.Namespace) -> int:
+    reading = from_corebench(
+        Path(args.capsule), Path(args.tasks), Path(args.output), capsule_id=args.capsule_id
+    )
+    return _print_reading(reading, args)
+
+
+def cmd_from_clawbio(args: argparse.Namespace) -> int:
+    return _print_reading(from_clawbio(Path(args.folder), Path(args.output)), args)
 
 
 def add_manifest(sub, program: str = REPRO) -> None:
@@ -1253,16 +1408,161 @@ def add_from_clew(sub, program: str = CLAIMS) -> None:
     )
     p_from.add_argument(
         "--offset",
-        help="the UTC offset, +HH:MM or -HH:MM, of the host whose local times the export holds",
+        help=OFFSET_HELP,
     )
     p_from.add_argument("--output", "-o", help="write to this new file (default: standard output)")
     p_from.add_argument("--format", choices=("jsonl", "text"), default="jsonl")
     p_from.set_defaults(func=cmd_from_clew, program=program)
 
 
+def add_from_paperdelta(sub, program: str = CLAIMS) -> None:
+    """`from-paperdelta`: read a PaperDelta report. Added to `claims`'s parser."""
+    p_from = sub.add_parser(
+        "from-paperdelta",
+        help="read a PaperDelta report into one check record per occurrence",
+        description=(
+            "Read a PaperDelta report.json, with the paperdelta.yaml it was made from, and write "
+            "one check record per occurrence and per comparative claim, with paperdelta as the "
+            "checker and its status and error code as its own words. pass is match, mismatch "
+            "is mismatch, and unknown is placed by its error code; a code this reader does not "
+            "list is not-checked. A derived metric, a statistic other than the mean and a "
+            "comparative claim are check type other. The configuration is refused unless its "
+            "sha256 is the one the report records, and refused where it records none. A pass "
+            "under a project-level diagnostic such as INPUT_CHANGED, or under an exit code the "
+            "numbers do not account for, is not-checked. With --rerun, each comparison PaperDelta "
+            "completed is also put to this toolkit's rule (the printed precision, half-even, "
+            "either neighbor on a tie) and both answers are written. Runs nothing, and exits 0 "
+            "whatever the outcomes."
+        ),
+    )
+    p_from.add_argument("report", help="a PaperDelta report.json")
+    p_from.add_argument(
+        "--config", required=True, help="the paperdelta.yaml the report was made from"
+    )
+    p_from.add_argument(
+        "--rerun",
+        action="store_true",
+        help="also compare under this toolkit's rule, and say where the two rules disagree",
+    )
+    p_from.add_argument(
+        "--offset",
+        help=OFFSET_HELP,
+    )
+    p_from.add_argument("--output", "-o", help="write to this file, never over an existing one")
+    p_from.add_argument("--format", choices=("jsonl", "text"), default="jsonl")
+    p_from.set_defaults(func=cmd_from_paperdelta, program=program)
+
+
+def add_open_items(sub, program: str = CLAIMS) -> None:
+    """`open-items`: count what a reader left open. Added to `claims`'s parser."""
+    p_open = sub.add_parser(
+        "open-items",
+        help="count what a reader of another tool's files left open, and what has been filled",
+        description=(
+            "Read an open-items file a reader wrote beside its draft manifest, check the draft "
+            f"as `{program} verify` does, and count each claim once: bound from the source "
+            "alone, every item filled by assertions that matched, filled by one that did not, "
+            "an item still open, or outside the items. Assertions are counted by basis and "
+            "outcome, and an inferred assertion that matched is never counted as verified. "
+            "Executes nothing, writes nothing, and exits 0 whatever it counts."
+        ),
+    )
+    p_open.add_argument("open_items", help="the open-items.json a reader wrote")
+    p_open.add_argument("--format", choices=("text", "json"), default="text")
+    p_open.set_defaults(func=cmd_open_items, program=program)
+
+
+def add_from_codecheck(sub, program: str = CLAIMS) -> None:
+    """`from-codecheck`: read a CODECHECK configuration file. Added to `claims`'s parser."""
+    p_from = sub.add_parser(
+        "from-codecheck",
+        help="read a CODECHECK configuration file into a draft manifest and its open items",
+        description=(
+            "Read a codecheck.yml, by its path or by its certificate's identifier, and write "
+            "repro.draft.yaml and open-items.json into the output directory, never over an "
+            "existing file. Each output file becomes an artifact, pinned where it is on disk. "
+            "Each output a backend reads a value from becomes a claim whose text is the "
+            "output's comment, with two open items: the passage of the paper it supports and "
+            "a value the paper prints from it, which the configuration file does not state. "
+            "An identifier is looked up in a copy of the register's register.json, whose sha256 "
+            "is recorded; its configuration file is read from --bundle, or with --fetch from "
+            "GitHub at the commit its default branch points to. Writes no certificate field and "
+            "names nothing of the draft by the certificate's identifier."
+        ),
+    )
+    p_from.add_argument("source", help="a codecheck.yml, or a certificate identifier YYYY-NNN")
+    p_from.add_argument("--output", "-o", default=".", help="where to write (default: here)")
+    p_from.add_argument("--register", help="a copy of the register's register.json")
+    p_from.add_argument("--register-sha256", help="refuse a register.json whose sha256 is not this")
+    p_from.add_argument(
+        "--bundle",
+        help=(
+            "a local copy of the certificate's repository, or the folder the outputs are in "
+            "(default for a path: the folder the codecheck.yml is in)"
+        ),
+    )
+    p_from.add_argument(
+        "--fetch",
+        action="store_true",
+        help="for an identifier with no --bundle, fetch the codecheck.yml from GitHub",
+    )
+    p_from.add_argument("--format", choices=("text", "json"), default="text")
+    p_from.set_defaults(func=cmd_from_codecheck, program=program)
+
+
+def add_from_corebench(sub, program: str = CLAIMS) -> None:
+    """`from-corebench`: read a CORE-Bench capsule and its task. Added to `claims`'s parser."""
+    p_from = sub.add_parser(
+        "from-corebench",
+        help="read a CORE-Bench capsule and its task into a draft manifest and its open items",
+        description=(
+            "Read a capsule folder and the CORE-Bench task for it, and write repro.draft.yaml "
+            "and open-items.json into the output directory, never over an existing file. Each "
+            "file under the capsule's results/ in a format a backend reads becomes an artifact, "
+            "pinned by sha256. Each question becomes a claim whose text is the question, with "
+            "one open item: the address in a result file of the value the task states, or for "
+            "an answer that is not a number the passage that prints it. The addresses at which "
+            "a check of the task's value would match are listed in the item as candidates and "
+            "never written into the draft. Runs nothing in the capsule."
+        ),
+    )
+    p_from.add_argument("capsule", help="the capsule's folder, holding results/")
+    p_from.add_argument("tasks", help="a task file holding this capsule's task, or a list of tasks")
+    p_from.add_argument(
+        "--capsule-id", help="the capsule's id in the task file (default: the folder's name)"
+    )
+    p_from.add_argument("--output", "-o", default=".", help="where to write (default: here)")
+    p_from.add_argument("--format", choices=("text", "json"), default="text")
+    p_from.set_defaults(func=cmd_from_corebench, program=program)
+
+
+def add_from_clawbio(sub, program: str = CLAIMS) -> None:
+    """`from-clawbio`: read a ClawBio skill's output folder. Added to `claims`'s parser."""
+    p_from = sub.add_parser(
+        "from-clawbio",
+        help="read a ClawBio skill's output folder into a draft manifest and its open items",
+        description=(
+            "Read a ClawBio skill's output folder and write repro.draft.yaml and "
+            "open-items.json into the output directory, never over an existing file. Each "
+            "file reproducibility/checksums.sha256 lists becomes an artifact pinned to the "
+            "digest ClawBio recorded, and report.md one pinned to the bytes read. Each number "
+            "report.md prints outside code becomes a claim whose text is its line, with a "
+            "quotation of that line and one open item: the address of the value in a pinned "
+            "table, which the folder does not state. Candidates a search of the pinned tables "
+            "found are listed in the item and never written into the draft. Runs nothing."
+        ),
+    )
+    p_from.add_argument("folder", help="the skill's output folder, holding report.md")
+    p_from.add_argument("--output", "-o", default=".", help="where to write (default: here)")
+    p_from.add_argument("--format", choices=("text", "json"), default="text")
+    p_from.set_defaults(func=cmd_from_clawbio, program=program)
+
+
 def main(argv: list[str] | None = None, local_record: bool = True) -> int:
     """The `claims` command: the commands above, and nothing that runs one of yours."""
-    parser = argparse.ArgumentParser(
+    # Reads `--offset -05:30` as an option and its value; the parsers of the subcommands share
+    # the class.
+    parser = OffsetParser(
         prog=CLAIMS,
         description=(
             "Check what a manuscript states against the files it names: numbers, table cells "
@@ -1286,6 +1586,11 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
     add_export(sub, CLAIMS)
     add_origins(sub, CLAIMS)
     add_from_clew(sub, CLAIMS)
+    add_from_paperdelta(sub, CLAIMS)
+    add_open_items(sub, CLAIMS)
+    add_from_codecheck(sub, CLAIMS)
+    add_from_corebench(sub, CLAIMS)
+    add_from_clawbio(sub, CLAIMS)
 
     args = parser.parse_args(argv)
     args.local_record = local_record

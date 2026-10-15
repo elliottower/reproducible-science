@@ -51,7 +51,7 @@ pip install "citations[web]"      # to pin a web page by its URL
 `citations verify` establishes one fact about each quotation: the passage occurs in the pinned
 copy of the source, as read by the extractor the report names. `citations audit` establishes one
 fact about each reference: its authors, title, year, volume and pages agree with the record its
-identifier resolves to.
+identifier resolves to, and its venue is the one the record's venue identifiers name.
 
 Neither establishes that the source is correct, or that the passage supports the sentence it
 is quoted for. In a claims file `statement` is yours and `exact` is theirs, and only `exact` is
@@ -133,7 +133,8 @@ every quote resolved, but against a source that is not the one pinned.
 | `citations pin` | Add a quotation to a claims file, refusing one that does not resolve; `--occurrence N` pins one occurrence of a repeated passage; `--url` pins against a web page |
 | `citations restore` | Write the source's passage for a quotation that leaves text out, as a separate record |
 | `citations verify` | Do the quotations resolve in their sources? |
-| `citations verify --json PATH` | Also write the counts to `PATH` as JSON: quotations by outcome, sources read and sources absent |
+| `citations verify --json PATH` | Also write the counts to `PATH` as JSON: quotations by outcome, sources read and sources absent, and under `warnings` each warning with the quotations carrying it |
+| `citations verify --verbose` | Also list, under each warning, the claims file, claim and quotation carrying it |
 | `citations coverage` | Is every quotation in my manuscript pinned at all? |
 | `citations audit` | Does the stored metadata match the record the identifier resolves to? |
 | `citations resolve` | Backfill missing DOIs and arXiv ids |
@@ -399,10 +400,28 @@ underscores and a hyphen joining two word characters are ignored altogether is `
 Punctuation that carries meaning is kept, so `p < 0.05` does not match a source reading
 `p = 0.05`, and `-0.42` does not match `0.42`.
 
+A passage folding does not find is looked for verbatim once more, in a second reading of the
+source, before spacing is ignored. That reading keeps a hyphen at a line break between two
+letters, so `open-access` matches a source that broke it as `open-` over `access`, and it
+closes a space before a closing mark or after an opening one, so `dvc.lock, including` matches
+a page rendering `dvc.lock , including`. Only white space is removed, and every word and mark
+stays. Where the source is a page's text read off disk (`.md`, `.markdown`, `.rst`, `.txt`),
+the second reading also drops what the page does not show: a MyST or Verso role keeps its text
+(`{kw}`#print axioms`` reads `#print axioms`) and an HTML tag goes, so a quotation can be
+written as the page renders it. A quotation that kept the markup still resolves in the first
+reading. HTML is read by `html-text` and XML by `jats-text`, and neither is changed by this.
+A passage found in either reading is `truncated` only where it cuts a word in both, so a
+quotation ending on `some` where layout set `some-` at a line end beside `class` is not. Where
+one reading cuts and the other does not, the quotation carries `line-end hyphen` instead: it
+begins or ends at a hyphen the source puts at a line break, and the text cannot say whether
+that hyphen splits one word, which the quotation then cuts, or ends a line beside an unrelated
+one.
+
 | Warning | Meaning |
 |---------|---------|
 | `short` | under 40 characters, or ending on a comma or a connecting word, so the source may qualify it in the next clause |
 | `truncated` | every occurrence begins or stops mid-word or mid-number |
+| `line-end hyphen` | begins or ends at a hyphen the source puts at a line break, so it may cut a word; check it |
 | `normalized` | matched only after ignoring spacing, underscores and hyphens inside a word |
 | `page`, `page unchecked` | found on another page, or a page is recorded and was not checked |
 
@@ -429,9 +448,9 @@ that matches -- a truncated quotation resolves and says something the source doe
 
 **A hyphen on a line break.** `fold` removes `-\n` between two letters because a renderer
 inserts one when it splits a word, and it cannot tell that from a real hyphen that happens to
-fall at a line end. A dash with anything else on either side of the break is kept.
-The same quotation then resolves everywhere else in the document and fails at that one
-occurrence. Split it there.
+fall at a line end. A dash with anything else on either side of the break is kept. The second
+reading keeps the hyphen, so a quotation written either way resolves; one that crosses two
+such breaks, one a split word and one a real hyphen, does not, and is split there.
 
 **The wrong reader.** `pdftotext -layout` preserves a page's geometry, so on a two-column paper
 it interleaves the columns and shreds every sentence crossing the gutter. A block of failures
@@ -631,6 +650,7 @@ establishes that the file has not changed and establishes nothing about the read
 | `pdftotext` | the same binary, poppler's reading order | (as above) |
 | pypdf | its own content-stream parser | `pip install "citations[pypdf]"` |
 | pdfplumber | pdfminer.six plus its own layout layer | `pip install "citations[pdfplumber]"` |
+| `pdftotext -tsv`, by column | poppler's word boxes, each line split at the gutter | poppler 22.08 or later |
 
 Poppler is preferred and recommended. Where it is absent, or fails on a document, the chain
 falls through to whichever pure-Python reader is installed and records the substitution as a
@@ -645,6 +665,15 @@ while reading order preserves the sentence and misplaces the subscripts beside i
 passage checks, reading order resolved 59 that `-layout` missed and missed 29 it resolved.
 Neither is right in general, so `-layout` reads a document by default and both are consulted
 under `--triangulate`, where a disagreement between them is reported rather than resolved.
+
+Where a gutter is narrow, every one of those readers joins a line of the left column to the line
+beside it, so a sentence that wraps inside a column comes out with the other column's words
+spliced into it. Before a passage is called `not found`, one more reading is asked: poppler's
+word boxes, with each line split at the page's gutter and every left half read before any right
+half, between lines that span it. A page with no gutter at least six points wide reads top to
+bottom. A passage found this way is recorded as a fallback naming `pdftotext -tsv, by column`.
+It is not consulted under `--triangulate`, because it is poppler's own glyphs in another order,
+and it does not apply to a source that declares `extract_cmd`.
 
 A source that declares `extract_cmd` does not enter that chain. Its author has named the
 program that produces the text they quote, so it runs or the check is `unchecked` with its
@@ -776,7 +805,7 @@ spaces between cells, which `jats-text` renders with `|` between them.
 ## Audit output
 
 `verify` asks whether a quotation is in the source. `audit` asks a different question: does the
-author list, year, volume and page range stored beside an identifier match the record that
+author list, year, venue, volume and page range stored beside an identifier match the record that
 identifier resolves to?
 
 ```bash
@@ -823,6 +852,58 @@ An identifier found by title can belong to another version of the work, such as 
 a journal article, so a year or venue disagreement on a `by search` entry is read before it is
 corrected. `--no-search` asks no search service and counts these entries under `no id`, as in
 the report above.
+
+### Venue
+
+A venue is compared by identifier. The record's venue is the identifiers its registries give it:
+a journal article's ISSNs from Crossref, PubMed's NLM id and ISSNs, a DataCite container's
+ISSN, the ISSNs Semantic Scholar or OpenAlex give the venue of a work found by title, and,
+where the record carries none, the primary source of the OpenAlex work. Wikidata widens those
+to the items that hold them, so the record's venue also carries its Wikidata item, OpenAlex
+source and DBLP venue key.
+
+The entry's `journal` or `booktitle`, or its `series` where it names neither, is resolved to the
+same kinds of identifier through registries that index venue names and their abbreviations:
+Wikidata's labels, aliases, short names and ISO 4 abbreviations, and OpenAlex sources' display
+names, abbreviated titles and alternate titles. An `issn` field is used as given. A registry
+venue is a candidate when one of its own names equals the cited one once case, accents,
+punctuation, LaTeX, years, ordinals and volume numbers are folded away; candidates that share
+an identifier, or that Wikidata links as a conference and its proceedings or as editions of one
+series, are one venue.
+
+| Outcome | When |
+|---|---|
+| match | the entry's venue and the record's share an identifier, directly or through one Wikidata link |
+| mismatch | the entry's venue resolved to exactly one registry venue, the record carries its venue's identifiers itself, both sides hold an ISSN, NLM id or DBLP key, and none is shared |
+| not comparable | anything else |
+
+A mismatch is reported like a wrong year, as `venue: ours 'Nature' vs registry 'Nature
+Communications'`, and fails `--strict`. A Wikidata item or an OpenAlex source can be one edition
+of a conference or one of several records of one journal, so those identifiers confirm a venue
+and never contradict one. A book series' ISSN, such as Lecture Notes in Computer Science's, can
+confirm the series an entry names and never contradicts the volume it names.
+
+A venue that is not comparable is listed with both names, so a person can compare them:
+`venue: ours 'Comput. Netw.' / registry 'Computer Networks' (not comparable: <reason>)`. The
+reasons are a name no registry knows, a name several registry venues share, a lookup that was
+refused, a record that is a preprint or names no venue identifier, an entry citing a preprint
+server, a workshop against a main track, a record identified only by its name, two sides with
+no serial identifier of a common kind, and a garbled name.
+
+Registry lookups are cached like every other request, sent with no contact address, and
+paced; a Wikidata request names the project in its `User-Agent`, as the Wikimedia policy asks.
+
+API keys are optional. The audit works without them, and compares more venues with them,
+because a lookup a service refuses leaves its venue not comparable:
+
+| Variable | Service | Used |
+|---|---|---|
+| `SEMANTIC_SCHOLAR_API_KEY` | Semantic Scholar | on every request, as the `x-api-key` header; Semantic Scholar refuses many anonymous requests, and its answer is often the only one naming the published venue of an arXiv preprint |
+| `OPENALEX_API_KEY` | OpenAlex | as a fallback only: a request goes out unkeyed first, and is retried with the key, as an `Authorization: Bearer` header, only when OpenAlex refuses it, so a key with a small quota is spent only where the shared unkeyed budget has run out |
+
+Neither key is ever part of a URL, so neither reaches a cache file, a report, a log line or an
+error message. DBLP's API is not asked, because it answers automated clients with a proof-of-work
+page; DBLP venue keys are compared where Wikidata holds them.
 
 Fetched payloads and search answers are cached beside the file audited, so a re-run is offline
 and the report is reproducible from what was fetched rather than from the network. A refusal is
