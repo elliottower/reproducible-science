@@ -82,9 +82,31 @@ def test_a_step_the_manifest_does_not_declare_is_refused_and_nothing_runs(served
     assert not (project / ".repro" / "reproductions.jsonl").exists()
 
 
-def test_re_running_a_step_records_it_and_the_page_shows_it_reproduced(served, project):
-    status, body = post(f"{served}/api/reproduce", {"only": ["results"]})
-    assert (status, body["ok"], body["counts"]) == (200, True, {"reproduced": 1})
+def stream(url: str, body: dict) -> tuple[int, list[dict]]:
+    """POST and read the answer one JSON object per line, as the page does."""
+    req = urllib.request.Request(
+        url,
+        data=json.dumps(body).encode(),
+        method="POST",
+        headers={"Content-Type": "application/json", server.TOKEN_HEADER: TOKEN},
+    )
+    with urllib.request.urlopen(req, timeout=120) as r:
+        return r.status, [json.loads(line) for line in r.read().decode().splitlines() if line]
+
+
+def test_re_running_a_step_streams_its_output_then_what_it_recorded(served, project):
+    status, events = stream(f"{served}/api/reproduce", {"only": ["results"]})
+    assert status == 200
+    lines, (done,) = (
+        [e["line"] for e in events if "line" in e],
+        [e for e in events if e.get("done")],
+    )
+    assert lines[0] == "$ repro reproduce --only results"
+    assert len(lines) > 1, "nothing that repro reproduce printed reached the page"
+    assert (done["ok"], done["counts"]) == (True, {"reproduced": 1})
+    ((step_id, state, seconds),) = [(s["id"], s["state"], s["seconds"]) for s in done["steps"]]
+    assert (step_id, state) == ("results", "reproduced") and seconds >= 0
+    assert events[-1] == done, "the result comes last"
     assert (project / ".repro" / "reproductions.jsonl").read_text().count("\n") == 1
     _, g = get(f"{served}/graph.json")
     (step,) = g["tabs"]["reproduce"]["steps"]
@@ -118,20 +140,15 @@ def raw(url: str, method: str = "GET", body: bytes = b"", headers: dict | None =
         return e.code
 
 
-def test_a_request_from_another_site_changes_nothing(served, project, tmp_path, monkeypatch):
-    queue = tmp_path / "queue.jsonl"
-    monkeypatch.setattr(server, "QUEUE", queue)
-    fix = json.dumps({"prompt": "run this", "subject": "s", "kind": "claim"}).encode()
+def test_a_request_from_another_site_changes_nothing(served, project):
     run = json.dumps({"only": None}).encode()
     # What a page on another site can send: its own Origin, or a body that is not declared JSON.
     for headers in (
         {"Content-Type": "application/json", "Origin": "https://evil.example"},
         {"Content-Type": "text/plain"},
     ):
-        assert raw(f"{served}/api/fix-request", "POST", fix, headers) == 403
         assert raw(f"{served}/api/reproduce", "POST", run, headers) == 403
         assert raw(f"{served}/api/verify", "POST", b"{}", headers) == 403
-    assert not queue.exists()
     assert not (project / ".repro" / "reproductions.jsonl").exists()
     # The page itself sends JSON from this server's own address, and is let through.
     own = {
@@ -139,8 +156,7 @@ def test_a_request_from_another_site_changes_nothing(served, project, tmp_path, 
         "Origin": served.replace("127.0.0.1", "localhost"),
         server.TOKEN_HEADER: TOKEN,
     }
-    assert raw(f"{served}/api/fix-request", "POST", fix, own) == 200
-    assert queue.read_text().count("\n") == 1
+    assert raw(f"{served}/api/refresh", "POST", b"{}", own) == 200
 
 
 def test_a_domain_rebound_to_this_server_reads_nothing(served):
@@ -156,33 +172,31 @@ def test_a_malformed_request_is_answered_and_refused(served):
     assert raw(
         f"{served}/api/reproduce", "POST", b"{}", {**json_headers, "Content-Length": "abc"}
     ) in (400, 411)
-    assert raw(f"{served}/api/fix-request", "POST", b'"a string"', json_headers) == 400
+    assert raw(f"{served}/api/reproduce", "POST", b'"a string"', json_headers) == 400
 
 
-def test_a_fix_request_whose_kind_is_not_a_string_is_refused(served, tmp_path, monkeypatch):
-    monkeypatch.setattr(server, "QUEUE", tmp_path / "queue.jsonl")
+def test_the_endpoint_that_queued_requests_for_claude_code_is_gone(served):
     headers = {"Content-Type": "application/json", server.TOKEN_HEADER: TOKEN}
-    body = json.dumps({"prompt": "p", "subject": "s", "kind": ["claim"]}).encode()
-    assert raw(f"{served}/api/fix-request", "POST", body, headers) == 400
-    assert not (tmp_path / "queue.jsonl").exists()
+    body = json.dumps({"prompt": "p", "subject": "s", "kind": "claim"}).encode()
+    assert raw(f"{served}/api/fix-request", "POST", body, headers) == 404
 
 
 def test_json_nested_too_deep_to_parse_is_refused(served):
     headers = {"Content-Type": "application/json", server.TOKEN_HEADER: TOKEN}
     deep = b"[" * 20_000 + b"]" * 20_000
-    assert raw(f"{served}/api/fix-request", "POST", b'{"a": ' + deep + b"}", headers) == 400
+    assert raw(f"{served}/api/reproduce", "POST", b'{"a": ' + deep + b"}", headers) == 400
 
 
 def test_a_body_over_the_cap_is_refused_unread(served):
     headers = {"Content-Type": "application/json", server.TOKEN_HEADER: TOKEN}
     big = b'{"prompt": "' + b"x" * (server.MAX_BODY + 10) + b'"}'
-    assert raw(f"{served}/api/fix-request", "POST", big, headers) == 413
+    assert raw(f"{served}/api/reproduce", "POST", big, headers) == 413
 
 
 def test_a_body_shorter_than_its_declared_length_does_not_hold_the_server(served):
     host, port = served.removeprefix("http://").split(":")
     request = (
-        f"POST /api/fix-request HTTP/1.1\r\nHost: {host}:{port}\r\n"
+        f"POST /api/reproduce HTTP/1.1\r\nHost: {host}:{port}\r\n"
         f"Content-Type: application/json\r\n{server.TOKEN_HEADER}: {TOKEN}\r\n"
         "Content-Length: 60000\r\n\r\n{}"
     ).encode()
@@ -203,17 +217,20 @@ def test_the_commands_the_page_runs_are_the_ones_installed_beside_it():
     assert graph.tool("not-a-command-anywhere") == "not-a-command-anywhere"
 
 
-def test_a_post_without_this_launchs_token_is_refused_and_the_page_carries_it(
-    served, tmp_path, monkeypatch
-):
-    queue = tmp_path / "queue.jsonl"
-    monkeypatch.setattr(server, "QUEUE", queue)
-    fix = json.dumps({"prompt": "p", "subject": "s", "kind": "claim"}).encode()
+def test_a_post_without_this_launchs_token_is_refused_and_the_page_carries_it(served, project):
+    run = json.dumps({"only": ["results"]}).encode()
     for token in (None, "a-guess"):
         headers = {"Content-Type": "application/json"} | (
             {server.TOKEN_HEADER: token} if token else {}
         )
-        assert raw(f"{served}/api/fix-request", "POST", fix, headers) == 403
-    assert not queue.exists()
+        req = urllib.request.Request(
+            f"{served}/api/reproduce", data=run, method="POST", headers=headers
+        )
+        with pytest.raises(urllib.error.HTTPError) as refused:
+            urllib.request.urlopen(req, timeout=30)
+        assert refused.value.code == 403
+        # Said so the reader knows what to do: an old tab carries the previous launch's token.
+        assert json.loads(refused.value.read())["error"] == "This page is out of date: reload it."
+    assert not (project / ".repro" / "reproductions.jsonl").exists()
     _, page = get(f"{served}/")
     assert f'<meta name="repro-ui-token" content="{TOKEN}" />' in page

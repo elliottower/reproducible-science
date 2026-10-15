@@ -31,11 +31,11 @@ manifest and manuscript, then serves it on localhost only.
   history, kept inside `.git` and never committed. It asks first.
 - **Reproduce** runs the rebuild steps you choose with `repro reproduce`, which executes the
   commands `repro.yaml` declares and adds the re-run to `.repro/reproductions.jsonl`. It lists
-  each command before anything runs.
-- **Fix with Claude Code**, on a failing or stale count, appends a request to
-  `~/.claude/repro-fixes/queue.jsonl`, which the `repro` Claude Code mod shows above the prompt
-  of a session working in the project. Nothing runs until it is loaded and sent. **Copy prompt
-  to fix** puts the same prompt on the clipboard, for any other agent.
+  each command before anything runs, streams the output while it runs, and shows how long each
+  step took. **Copy command** gives the same re-run as a line to paste into any terminal:
+  `cd '<project>' && repro reproduce --only <step>`.
+- **Copy prompt to fix**, on a failing claim or the failing count, puts a prompt on the
+  clipboard to paste into Claude Code, Codex or any other agent. It writes nothing.
 
 The page's own data and caches are kept inside the project's git directory
 (`.git/repro/ui/`), or under `~/.cache/reproducible-science-ui/` for a project outside git.

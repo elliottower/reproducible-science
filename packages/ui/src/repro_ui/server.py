@@ -9,15 +9,12 @@ in the project's history. Either rewrites graph.json; the page then reloads it.
 GET /api/health tells the page that re-checking is available, so the button stays hidden when the
 same files are served by a plain static host.
 
-POST /api/fix-request appends {id, created_at, project, subject, kind, prompt} to
-~/.claude/repro-fixes/queue.jsonl, which the repro Claude Code mod watches: a session working
-in that project shows the request above its prompt and loads the prompt into the box on request.
-It never starts an agent or runs anything.
-
 POST /api/reproduce with {"only": [step ids]} or {"only": null} runs `repro reproduce` for those
 rebuild steps, or for all of them. That executes the commands repro.yaml declares, so the page asks
-before calling it. `repro reproduce` appends the re-run to the project's .repro/reproductions.jsonl;
-the graph is then rebuilt from the records.
+before calling it. The answer streams as it happens, one JSON object per line: {"line": text} for
+each line `repro reproduce` prints, then {"done": true, ...} with what the re-run recorded. `repro
+reproduce` appends the re-run to the project's .repro/reproductions.jsonl; the graph is then rebuilt
+from the records.
 
 Every request must name this server by a loopback address. Every POST must also come from this
 server's own page: JSON, from its own origin, carrying the token the server put in the page it
@@ -27,19 +24,18 @@ served at launch. A page on another site, or a domain rebound to this address, i
 from __future__ import annotations
 
 import argparse
-import datetime
 import functools
 import hashlib
 import hmac
 import http.server
 import json
+import os
 import pathlib
 import secrets
 import subprocess
 import threading
 import time
 import urllib.parse
-import uuid
 import webbrowser
 
 import yaml
@@ -50,8 +46,6 @@ from repro_ui import graph as build_graph
 DIST = pathlib.Path(__file__).resolve().parent / "static"
 #: The header a POST carries the launch token in.
 TOKEN_HEADER = "X-Repro-UI-Token"
-QUEUE = pathlib.Path.home() / ".claude" / "repro-fixes" / "queue.jsonl"
-MAX_PROMPT = 8000
 #: The largest request body read. A larger declared length is refused unread.
 MAX_BODY = 64_000
 MAX_FILE = 2_000_000
@@ -209,33 +203,6 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             )
         return self._json(200, {"ok": True, "text": target.read_text(errors="replace")})
 
-    def _fix_request(self, body: dict) -> None:
-        prompt, subject, kind = (
-            body.get("prompt"),
-            body.get("subject"),
-            body.get("kind"),
-        )
-        if not isinstance(prompt, str) or not prompt.strip() or len(prompt) > MAX_PROMPT:
-            return self._json(400, {"ok": False, "error": "prompt missing or too long"})
-        if (
-            not isinstance(kind, str)
-            or kind not in {"claim", "stale"}
-            or not isinstance(subject, str)
-        ):
-            return self._json(400, {"ok": False, "error": "kind or subject missing"})
-        request = {
-            "id": uuid.uuid4().hex[:12],
-            "created_at": datetime.datetime.now(datetime.UTC).isoformat(),
-            "project": str(self.project),
-            "subject": subject[:200],
-            "kind": kind,
-            "prompt": prompt,
-        }
-        QUEUE.parent.mkdir(parents=True, exist_ok=True)
-        with QUEUE.open("a") as f:
-            f.write(json.dumps(request) + "\n")
-        self._json(200, {"ok": True, "id": request["id"]})
-
     def _reproduce(self, body: dict) -> None:
         only = body.get("only")
         declared = {
@@ -252,75 +219,90 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         ):
             return self._json(
                 400,
-                {
-                    "ok": False,
-                    "error": "only must be null or a list of declared step ids",
-                },
+                {"ok": False, "error": "only must be null or a list of declared step ids"},
             )
-        command = [
-            build_graph.tool("repro"),
-            "reproduce",
-            "--format",
-            "json",
-            *[x for i in (only or []) for x in ("--only", i)],
-            str(self.project / "repro.yaml"),
-        ]
         if not self.lock.acquire(blocking=False):
             return self._json(409, {"ok": False, "error": "a check is already running"})
         try:
-            started = time.monotonic()
-            out = subprocess.run(
-                command,
-                cwd=self.project,
-                capture_output=True,
-                text=True,
-                timeout=REPRODUCE_TIMEOUT,
-                check=False,
-            )
-            build_graph.build(
-                self.project,
-                self.data / "graph.json",
-                self.groups,
-                check=False,
-                fetch=self.fetch,
-            )
-            try:
-                states = [
-                    r.get("state")
-                    for r in json.loads(out.stdout)["reproduction"].get("regenerations", [])
-                ]
-            except (json.JSONDecodeError, KeyError, AttributeError):
-                states = []
-            self._json(
-                200,
-                {
-                    "ok": bool(states),
-                    "exit_code": out.returncode,
-                    "seconds": round(time.monotonic() - started, 2),
-                    "counts": {k: states.count(k) for k in set(states)},
-                    "error": "" if states else (out.stderr or out.stdout).strip()[-800:],
-                },
-            )
-        except subprocess.TimeoutExpired:
-            self._json(
-                200,
-                {"ok": False, "error": f"stopped after {REPRODUCE_TIMEOUT} seconds"},
-            )
-        except Exception as e:  # reported to the page
-            self._json(500, {"ok": False, "error": str(e)})
+            self._stream_reproduce(only)
         finally:
             self.lock.release()
 
+    def _stream_reproduce(self, only: list[str] | None) -> None:
+        """Run `repro reproduce` and send each line it prints as it prints it, then what the
+        re-run recorded. The response has no length, so the connection closes when it ends."""
+        args = ["reproduce", *[x for i in (only or []) for x in ("--only", i)]]
+        record = self.project / ".repro" / "reproductions.jsonl"
+        before = record.read_text().count("\n") if record.exists() else 0
+        self.send_response(200)
+        self.send_header("Content-Type", "application/x-ndjson")
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.close_connection = True
+
+        def send(event: dict) -> None:
+            self.wfile.write((json.dumps(event) + "\n").encode())
+            self.wfile.flush()
+
+        send({"line": "$ repro " + " ".join(args)})
+        started = time.monotonic()
+        try:
+            proc = subprocess.Popen(
+                [build_graph.tool("repro"), *args, str(self.project / "repro.yaml")],
+                cwd=self.project,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+                env={**os.environ, "PYTHONUNBUFFERED": "1"},
+            )
+            # A step that prints nothing still has to stop: the timer kills it, which ends the read.
+            watchdog = threading.Timer(REPRODUCE_TIMEOUT, proc.kill)
+            watchdog.start()
+            try:
+                for line in proc.stdout:
+                    send({"line": line.rstrip("\n")})
+                exit_code = proc.wait()
+            finally:
+                watchdog.cancel()
+            if time.monotonic() - started >= REPRODUCE_TIMEOUT:
+                send({"line": f"stopped after {REPRODUCE_TIMEOUT} seconds"})
+        except OSError as e:
+            send({"done": True, "ok": False, "error": str(e)})
+            return
+        lines = record.read_text().splitlines() if record.exists() else []
+        steps = json.loads(lines[-1]).get("regenerations", []) if len(lines) > before else []
+        build_graph.build(
+            self.project, self.data / "graph.json", self.groups, check=False, fetch=self.fetch
+        )
+        states = [r.get("state") for r in steps]
+        send(
+            {
+                "done": True,
+                "ok": bool(steps),
+                "exit_code": exit_code,
+                "seconds": round(time.monotonic() - started, 2),
+                "counts": {k: states.count(k) for k in set(states)},
+                "steps": [
+                    {
+                        "id": r.get("regeneration_id"),
+                        "state": r.get("state"),
+                        "seconds": r.get("duration_seconds"),
+                    }
+                    for r in steps
+                ],
+                "error": "" if steps else "repro reproduce recorded no re-run",
+            }
+        )
+
     def do_POST(self) -> None:
         if not self._local():
-            return self._json(403, {"ok": False, "error": "not a request from this page"})
+            return self._json(403, {"ok": False, "error": "This page is out of date: reload it."})
         try:
             body = self._body()
         except RequestRefused as e:
             self.close_connection = True
             return self._json(e.status, {"ok": False, "error": e.error})
-        if self.path == "/api/fix-request":
-            return self._fix_request(body)
         if self.path == "/api/reproduce":
             return self._reproduce(body)
         if self.path not in {"/api/refresh", "/api/verify"}:

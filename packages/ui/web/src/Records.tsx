@@ -71,7 +71,7 @@ export function ResultsTab({ graph, query }: { graph: Graph; query: string }) {
                 ))}
               </td>
               <td className="small"><OutsideLinks r={r} /></td>
-              <td className="small nowrap">{readBy(graph, r).length ? `${fmt(readBy(graph, r).length)} claims` : <span className="muted">—</span>}</td>
+              <td className="small nowrap">{claimsReading(graph, r).length ? `${fmt(claimsReading(graph, r).length)} claims` : <span className="muted">—</span>}</td>
             </tr>
           ))}
         </tbody>
@@ -105,7 +105,7 @@ export function ResultsTab({ graph, query }: { graph: Graph; query: string }) {
 type Run = NonNullable<Graph['tabs']>['results']['runs'][number]
 
 /** The manuscript claims that read a file this run wrote. */
-function readBy(graph: Graph, r: Run) {
+function claimsReading(graph: Graph, r: Run) {
   const paths = new Set(r.outputs)
   return graph.nodes.filter((n) => n.type === 'artifact' && n.path && paths.has(n.path)).flatMap((n) => n.claims)
 }
@@ -156,7 +156,7 @@ function kindLabel(kind: string): string {
 function RunPanel({ graph, r, onClose, onView }: { graph: Graph; r: Run; onClose: () => void; onView: (path: string) => void }) {
   const [allClaims, setAllClaims] = useState(false)
   const files = r.files ?? r.outputs.map((path) => ({ path, sha256: '', on_disk: true }))
-  const claims = readBy(graph, r)
+  const claims = claimsReading(graph, r)
   const shown = allClaims ? claims : claims.slice(0, 20)
   return (
     <aside className="panel">
@@ -537,11 +537,12 @@ export function ReproduceTab({ graph, query }: { graph: Graph; query: string }) 
       </table>
       <h3 className="rec-h3">Re-runs recorded</h3>
       <table>
-        <thead><tr><th>Finished</th><th>Steps</th><th>Result</th><th>Toolkit</th></tr></thead>
+        <thead><tr><th>Finished</th><th>Took</th><th>Steps</th><th>Result</th><th>Toolkit</th></tr></thead>
         <tbody>
           {[...(t?.reruns ?? [])].reverse().map((r, i) => (
             <tr key={i} className="static">
               <td className="small">{r.ended_at ? when(r.ended_at) : '—'}</td>
+              <td className="small nowrap">{r.started_at && r.ended_at ? `${Math.max(0, (Date.parse(r.ended_at) - Date.parse(r.started_at)) / 1000).toFixed(1)} s` : '—'}</td>
               <td className="num">{r.steps}</td>
               <td className="small">{Object.entries(r.counts).map(([k, v]) => `${v} ${k}`).join(', ')}</td>
               <td className="mono small muted">{r.tool_version}</td>
