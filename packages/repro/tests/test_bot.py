@@ -665,12 +665,14 @@ def test_init_writes_three_workflows_with_least_privilege_and_pinned_actions(rep
         ]
         assert all(re.fullmatch(r"[\w./-]+@[0-9a-f]{40}", used) for used in uses)
         assert f"reproducible-science=={repro.__version__} repro bot" in text
+        # Nothing is granted to the workflow; each job names what it needs.
+        assert flow["permissions"] == {}
 
     _, check_flow = flows["repro-bot-check.yml"]
     # PyYAML reads the key `on` as a boolean.
     assert check_flow[True] == {"pull_request": None}
-    assert check_flow["permissions"] == {"contents": "read"}
     (job,) = check_flow["jobs"].values()
+    assert job["permissions"] == {"contents": "read"}
     assert job["steps"][0]["with"] == {
         "ref": "${{ github.event.pull_request.head.sha }}",
         "persist-credentials": False,
@@ -680,9 +682,8 @@ def test_init_writes_three_workflows_with_least_privilege_and_pinned_actions(rep
     assert post_flow[True] == {
         "workflow_run": {"workflows": [check_flow["name"]], "types": ["completed"]}
     }
-    assert post_flow["permissions"] == {
+    assert post_flow["jobs"]["post"]["permissions"] == {
         "actions": "read",
-        "contents": "read",
         "issues": "write",
         "pull-requests": "write",
     }
@@ -692,7 +693,7 @@ def test_init_writes_three_workflows_with_least_privilege_and_pinned_actions(rep
         "issue_comment": {"types": ["created"]},
         "pull_request_review_comment": {"types": ["created"]},
     }
-    assert reply_flow["permissions"] == {
+    assert reply_flow["jobs"]["reply"]["permissions"] == {
         "contents": "write",
         "issues": "write",
         "pull-requests": "write",

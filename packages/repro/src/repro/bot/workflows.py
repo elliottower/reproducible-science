@@ -48,12 +48,18 @@ name: {check_name}
 on:
   pull_request:
 
-permissions:
-  contents: read
+permissions: {{}}
+
+concurrency:
+  group: repro-bot-check-${{{{ github.event.pull_request.number }}}}
+  cancel-in-progress: true
 
 jobs:
   check:
+    name: check the pull request's head commit
     runs-on: ubuntu-latest
+    permissions:
+      contents: read  # to check out the pull request's head commit
     steps:
       - uses: {checkout}
         with:
@@ -81,16 +87,14 @@ POST = """\
 # at the commit that was checked. {docs}
 name: repro bot post
 
-on:
+# workflow_run runs with a token that writes, so it is safe only where it never runs what the
+# pull request brought. This workflow checks out nothing and reads the findings as data.
+on:  # zizmor: ignore[dangerous-triggers]
   workflow_run:
     workflows: [{check_name}]
     types: [completed]
 
-permissions:
-  actions: read
-  contents: read
-  issues: write
-  pull-requests: write
+permissions: {{}}
 
 concurrency:
   group: repro-bot-post-${{{{ github.event.workflow_run.head_repository.full_name }}}}-${{{{ github.event.workflow_run.head_branch }}}}
@@ -98,8 +102,13 @@ concurrency:
 
 jobs:
   post:
+    name: comment on the findings
     if: github.event.workflow_run.event == 'pull_request' && github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
+    permissions:
+      actions: read  # to download the findings the check uploaded
+      issues: write  # to comment in the pull request's conversation
+      pull-requests: write  # to read the pull request and comment on a line of its diff
     steps:
       - uses: {setup_uv}
         with:
@@ -131,15 +140,20 @@ on:
   pull_request_review_comment:
     types: [created]
 
-permissions:
-  contents: write
-  issues: write
-  pull-requests: write
+permissions: {{}}
+
+# No concurrency group: GitHub cancels a queued run when another queues behind it, and a reply
+# whose run was cancelled would be lost. A commit that loses a race is read again and retried.
 
 jobs:
   reply:
+    name: record an answer
     if: (github.event.issue.pull_request || github.event.pull_request) && github.event.comment.user.type != 'Bot'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # to commit a set_aside entry to repro.yaml on the pull request's branch
+      issues: write  # to answer in the pull request's conversation
+      pull-requests: write  # to read the pull request and answer in a thread on its diff
     steps:
       - uses: {setup_uv}
         with:

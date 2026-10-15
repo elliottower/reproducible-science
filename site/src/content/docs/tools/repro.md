@@ -1040,7 +1040,7 @@ repro bot init
 | workflow | runs on | token | does |
 |---|---|---|---|
 | `repro-bot-check.yml` | `pull_request` | `contents: read` | checks out the pull request's head commit, runs `repro bot check`, and uploads what it found as the artifact `repro-bot-findings` |
-| `repro-bot-post.yml` | `workflow_run`, after the check | `actions: read`, `contents: read`, `issues: write`, `pull-requests: write` | downloads that artifact and runs `repro bot post`; checks out nothing |
+| `repro-bot-post.yml` | `workflow_run`, after the check | `actions: read`, `issues: write`, `pull-requests: write` | downloads that artifact and runs `repro bot post`; checks out nothing |
 | `repro-bot-reply.yml` | `issue_comment`, `pull_request_review_comment` | `contents: write`, `issues: write`, `pull-requests: write` | runs `repro bot reply` on a reply to one of the bot's comments; checks out nothing |
 
 `repro bot check` decides what fails as `repro export` does: an assertion whose record says `mismatch`, `not-found` or `error`, or whose producing command is `stale`, as `repro ci claims` and `repro ci reruns` report it. An inferred assertion nobody reviewed is `not-checked` and gets no comment. It executes nothing and writes at most fifty findings. `post` comments on each:
@@ -1082,7 +1082,7 @@ The entry is added after the last one, indented as they are, and no other byte o
 
 The split follows GitHub's advice for workflows that handle pull requests from forks ([Security hardening for GitHub Actions](https://docs.github.com/en/actions/security-for-github-actions/security-guides/security-hardening-for-github-actions)): the job that reads the pull request's files holds a read-only token, and the jobs with a token that writes check out nothing and run nothing from the pull request. `post` treats the findings as data and refuses them unless the pull request they name is at the commit the check ran on. No workflow uses `pull_request_target`, and none places a comment's text in a shell command. On a pull request from a fork the bot comments only in the conversation, says so in each comment, and commits nothing; an answer of 3 or 4 is recorded in the comment and the entry is left for a maintainer to add. A commit made with the workflow's token starts no other workflow, so the comments are brought up to date by the next push.
 
-GitHub runs `workflow_run` and `issue_comment` workflows only from the default branch, so the bot comments on no pull request until the three files are merged there. `init` never replaces a file it did not write; `--force` replaces the three it wrote. Every action is pinned by commit, as in the workflows `repro ci init` writes.
+GitHub runs `workflow_run` and `issue_comment` workflows only from the default branch, so the bot comments on no pull request until the three files are merged there. `init` never replaces a file it did not write; `--force` replaces the three it wrote. Each workflow grants nothing at its top, `permissions: {}`, and its one job names what it needs, with a comment saying why. Every action is pinned by commit, as in the workflows `repro ci init` writes.
 
 ## On a pull request, as SARIF
 
