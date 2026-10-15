@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import importlib.util
 import pathlib
 import re
 import subprocess
 import tomllib
 
 import pytest
+import repro
 import yaml
 from repro import ci, pr_bot
 from repro.cli import main
@@ -175,3 +177,38 @@ def test_the_pr_bot_extra_pins_the_bot_to_this_release_series_and_all_includes_i
     (everything,) = extras["all"]
     named = everything.split("[", 1)[1].rstrip("]").split(",")
     assert set(named) == set(extras) - {"all"}
+
+
+def test_the_callers_name_the_tag_of_this_release_and_the_workflow_runs_this_release():
+    version = repro.__version__
+    for caller in pr_bot.callers():
+        (job,) = yaml.safe_load(caller.text)["jobs"].values()
+        assert job["uses"] == f"{pr_bot.REUSABLE}@v{version}"
+    pins = re.findall(r"reproducible-science-pr-bot==(\S+)", REUSABLE.read_text())
+    assert len(pins) == 3 and set(pins) == {version}
+
+
+def test_versions_bump_moves_the_workflows_pins_and_check_refuses_one_left_behind(
+    tmp_path, monkeypatch
+):
+    spec = importlib.util.spec_from_file_location(
+        "versions", REUSABLE.parents[2] / "scripts" / "versions.py"
+    )
+    versions = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(versions)
+    copy = tmp_path / versions.BOT_WORKFLOW
+    copy.parent.mkdir(parents=True)
+    copy.write_text(REUSABLE.read_text())
+    monkeypatch.setattr(versions, "PROJECT_ROOT", tmp_path)
+    manifest = tmp_path / "pyproject.toml"
+    manifest.write_text('[project]\nname = "x"\nversion = "0.6.1"\n')
+    monkeypatch.setattr(versions, "PACKAGES", {"reproducible-science-pr-bot": manifest})
+    monkeypatch.setattr(versions, "PLUGIN_MANIFESTS", ())
+    for name in ("CITATION", "HOOKS", "HOOK_README"):
+        monkeypatch.setattr(versions, name, tmp_path / "absent")
+    with monkeypatch.context() as later:
+        later.setattr(versions, "declared", lambda: dict.fromkeys(versions.PACKAGES, "0.7.1"))
+        assert any("pr-bot.yml" in problem for problem in versions.check())
+    assert versions.BOT_WORKFLOW.as_posix() in versions.bump("0.7.1", realign=True)
+    assert set(re.findall(r"reproducible-science-pr-bot==(\S+)", copy.read_text())) == {"0.7.1"}
+    assert REUSABLE.read_text() != copy.read_text()

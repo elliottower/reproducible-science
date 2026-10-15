@@ -26,7 +26,7 @@ from claims.manifest import DEFAULT_NAME
 from provenance_core import atomic_write
 from pydantic import BaseModel, ConfigDict
 
-from repro import ci
+from repro import __version__, ci
 from repro.exceptions import ReproError
 
 #: The first line of each file this writes, and how it knows one of its own.
@@ -35,9 +35,16 @@ DOCS = "https://reproducible.science/tools/repro/#a-bot-on-pull-requests"
 
 #: The reusable workflow that holds the jobs, in this toolkit's own repository.
 REUSABLE = "elliottower/reproducible-science/.github/workflows/pr-bot.yml"
-#: The release of this repository the callers use: the tag of the release that publishes
-#: reproducible-science-pr-bot at the version the reusable workflow runs.
-REF = "v0.7.0"
+
+
+def ref() -> str:
+    """The release of this repository the callers use: the tag of the installed version, at
+    which the reusable workflow runs reproducible-science-pr-bot of the same version, as
+    `scripts/versions.py` keeps it. Releases are in lockstep, so the two are one number."""
+    if __version__ == "0+unknown":
+        raise ci.VersionUnknownError
+    return f"v{__version__}"
+
 
 CHECK_FILE = "repro-pr-bot.yml"
 RESPOND_FILE = "repro-pr-bot-respond.yml"
@@ -160,7 +167,7 @@ def callers(manifest: str = DEFAULT_NAME, dispatch: tuple[str, ...] = ()) -> lis
         "check_name": CHECK_NAME,
         "respond": RESPOND_FILE,
         "reusable": REUSABLE,
-        "ref": REF,
+        "ref": ref(),
         "manifest": _yaml(manifest),
         "dispatch": _yaml(started),
     }
@@ -207,7 +214,7 @@ def init(cwd: pathlib.Path, *, force: bool = False) -> int:
         print(f"wrote {target}")
     print(f"  {CHECK_FILE}: on a pull request, checks its head commit read-only")
     print(f"  {RESPOND_FILE}: after the check, comments; on a reply 1-4, records the answer")
-    print(f"  both call {REUSABLE}@{REF}")
+    print(f"  both call {REUSABLE}@{ref()}")
     print("\nnext:")
     print(f"  1. commit {ci.WORKFLOWS.as_posix()}/{CHECK_FILE} and {RESPOND_FILE}, and merge")
     print("     them into the default branch. GitHub runs `workflow_run` and `issue_comment`")
@@ -237,7 +244,6 @@ def command(args: argparse.Namespace) -> int:
 __all__ = [
     "CHECK_FILE",
     "MARKER",
-    "REF",
     "RESPOND_FILE",
     "REUSABLE",
     "CallerExistsError",
@@ -246,4 +252,5 @@ __all__ = [
     "command",
     "dispatchable",
     "init",
+    "ref",
 ]

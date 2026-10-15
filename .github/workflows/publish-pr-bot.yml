@@ -6,7 +6,8 @@ name: Publish reproducible-science-pr-bot
 
 on:
   push:
-    tags: ["pr-bot-v*", "v*"]
+    # A release tag only: the `release` environment admits `v*` tags and no other.
+    tags: ["v*"]
   workflow_dispatch:
 
 jobs:

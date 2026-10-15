@@ -441,7 +441,12 @@ def _record(
     elif passage and not fork:
         content, _ = client.file(manifest, pull.head_ref)
         source = content.decode("utf-8")
-        if chosen.sets_aside and setaside.holds(source, marker.artifact, marker.text):
+        mine = setaside.own(source, marker.artifact, marker.text)
+        if (
+            chosen.sets_aside
+            and mine is None
+            and setaside.holds(source, marker.artifact, marker.text)
+        ):
             note = f"; the passage is already set aside in {manifest}"
             state = "set-aside"
         elif chosen.sets_aside:
@@ -458,18 +463,15 @@ def _record(
                 client,
                 pull,
                 manifest,
-                lambda text: (
-                    None
-                    if setaside.holds(text, marker.artifact, marker.text)
-                    else setaside.added(text, made)
-                ),
+                # An edited answer, 3 for 4 or a new reason, rewrites the bot's own entry.
+                lambda text: setaside.written(text, made),
                 f"{manifest}: set aside claim {marker.claim} ({chosen.recorded} by "
                 f"@{by.login} on #{number})",
             )
             note = (
                 f"; set_aside entry committed in {committed[:7]}" if committed else ""
             )
-            state = "set-aside" if committed else state
+            state = "set-aside" if committed or mine is not None else state
         else:
             committed = _commit(
                 client,

@@ -1171,3 +1171,33 @@ def test_reply_never_reopens_a_fixed_comment():
     actions.reply("pull_request_review_comment", review_event(answer), github)
     held = comments.decode(github.body(root.id))
     assert held.state == "fixed" and held.decision.answer is Answer.NO
+
+
+def test_editing_a_recorded_ignore_to_not_a_claim_rewrites_the_bots_entry():
+    github = FakeGitHub(
+        patches={"paper.md": PATCH}, manifest=MANIFEST, writers={"alice"}
+    )
+    root = posted(github)
+    answer = github.human("review", "3 a pilot value", "alice", in_reply_to=root.id)
+    actions.reply("pull_request_review_comment", review_event(answer), github)
+    at = next(i for i, c in enumerate(github.comments) if c.id == answer.id)
+    github.comments[at] = answer.model_copy(update={"body": "4 a section number"})
+    edited = review_event(github.comments[at])
+    edited["action"] = "edited"
+    done = actions.reply("pull_request_review_comment", edited, github)
+    assert done.done == "recorded" and done.committed
+    entries = load_entries(github.manifest.decode())
+    assert len(entries) == 2 and entries[0].text == "took 12 minutes"
+    assert entries[-1].reason == "pull request #7, not a claim: a section number"
+    assert len(github.commits) == 2
+    # The same answer read again writes nothing.
+    assert not actions.reply("pull_request_review_comment", edited, github).committed
+    assert len(github.commits) == 2
+
+
+def test_an_entry_already_the_bots_answer_is_not_written_again_and_a_hand_entry_wins():
+    made = setaside.entry("paper", "x", 7, "ignored", "", "alice", THEN)
+    ours = setaside.added("claims: []\n", made)
+    assert setaside.written(ours, made) is None
+    hand = "set_aside:\n- {artifact: paper, text: x, reason: by hand}\n"
+    assert setaside.written(hand, made) is None

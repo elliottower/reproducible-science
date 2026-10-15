@@ -41,6 +41,14 @@ Both refuse a version below the floor `scripts/versions.py` names as `SERIES_FLO
 0.6.0: `reproducible-science` and `results-cli` import `provenance_core.chain`, no
 `provenance-core` up to 0.5.6 has it, and a 0.5 range would accept one that lacks it.
 
+`bump` also rewrites the three `reproducible-science-pr-bot==X.Y.Z` pins in
+`.github/workflows/pr-bot.yml`, and `check` fails where one differs from the release: the
+callers `repro ci init --pr-bot` writes name this repository at the tag `vX.Y.Z`, so the
+workflow at that tag runs the bot that tag publishes. The Action repository,
+`elliottower/reproducible-science-pr-bot`, is not in this tree, and nothing here moves its
+pin: after the release is on PyPI, set `reproducible-science-pr-bot==X.Y.Z` in its
+`action.yml`, update the version its README names, commit, and tag it `vX.Y.Z`.
+
 `check` runs in `make qa` and in CI. A version scheme that is documented rather than enforced
 drifts: this repository shipped `pyyaml>=6` and `pydantic>=2` for months, both too low to
 install on current Python, and nothing noticed until a gate resolved the declared minimum.

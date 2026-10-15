@@ -229,6 +229,24 @@ def _ours(item: object, artifact: str, text: str) -> bool:
     )
 
 
+def own(source: str, artifact: str, text: str) -> dict | None:
+    """The entry the pull-request bot wrote for the passage, as the manifest holds it, or None."""
+    entries = _entries(source.removeprefix(BOM))
+    return next((item for item in entries if _ours(item, artifact, text)), None)
+
+
+def written(source: str, made: SetAside) -> str | None:
+    """The manifest's text with `made` as the bot's entry for its passage, replacing the bot's
+    earlier entry for it, as when a recorded answer was edited; None where that entry is
+    already `made`, or where an entry the bot did not write sets the passage aside."""
+    held = own(source, made.artifact, made.text)
+    if held == made.model_dump(mode="json"):
+        return None
+    if held is None and holds(source, made.artifact, made.text):
+        return None
+    return added(removed(source, made.artifact, made.text) or source, made)
+
+
 def removed(source: str, artifact: str, text: str) -> str | None:
     """The manifest's text without the entry the pull-request bot wrote for the passage, or None where
     it holds no such entry. An entry someone else wrote is never removed."""
@@ -271,4 +289,14 @@ def _removed(source: str, artifact: str, text: str) -> str | None:
     return result
 
 
-__all__ = ["PREFIX", "VIA", "ManifestShapeError", "added", "entry", "holds", "removed"]
+__all__ = [
+    "PREFIX",
+    "VIA",
+    "ManifestShapeError",
+    "added",
+    "entry",
+    "holds",
+    "own",
+    "removed",
+    "written",
+]

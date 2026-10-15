@@ -77,6 +77,14 @@ HOOK_README = PROJECT_ROOT / "packages" / "repro" / "README.md"
 
 README_REV = re.compile(r"^(?P<head>\s+rev:\s*)v(?P<version>[0-9][^\s]*)", re.M)
 
+#: The pull-request bot's reusable workflow runs the bot from PyPI at an exact version, three
+#: times. Users' caller files name this repository at the tag `v<version>`, so the workflow at a
+#: tag must run the release that tag published. Read from `PROJECT_ROOT` when used, and only
+#: while `PACKAGES` names the bot, so a test that points either at a copy never rewrites this
+#: tree's file.
+BOT_WORKFLOW = pathlib.Path(".github") / "workflows" / "pr-bot.yml"
+BOT_PIN = re.compile(r"(?P<head>reproducible-science-pr-bot==)(?P<version>[0-9][^\s\"']*)")
+
 CFF_VERSION = re.compile(r'^(?P<head>version:\s*")(?P<version>[^"]+)(?P<tail>")', re.M)
 CFF_DATE = re.compile(r'^(?P<head>date-released:\s*")(?P<date>[^"]+)(?P<tail>")', re.M)
 
@@ -112,6 +120,14 @@ def hook_rev() -> str | None:
         return None
     m = HOOK_REV.search(HOOKS.read_text())
     return m.group("version") if m else None
+
+
+def bot_pins() -> list[str] | None:
+    """The versions the bot's reusable workflow runs, or None where there is no such file."""
+    path = PROJECT_ROOT / BOT_WORKFLOW
+    if "reproducible-science-pr-bot" not in PACKAGES or not path.exists():
+        return None
+    return [m.group("version") for m in BOT_PIN.finditer(path.read_text())]
 
 
 def readme_rev() -> str | None:
@@ -361,6 +377,13 @@ def check() -> list[str]:
             f"but the release is {version}"
         )
 
+    pins = bot_pins()
+    if pins is not None and (not pins or set(pins) != {version}):
+        problems.append(
+            f"{BOT_WORKFLOW.as_posix()}: runs reproducible-science-pr-bot "
+            f"{', '.join(sorted(set(pins))) or 'at no pinned version'}, but the release is {version}"
+        )
+
     shown = readme_rev()
     if shown is not None and shown != version:
         problems.append(
@@ -448,6 +471,14 @@ def bump(version: str, realign: bool = False) -> list[str]:
         if text != original:
             HOOKS.write_text(text)
             touched.append(HOOKS.name)
+
+    bot = PROJECT_ROOT / BOT_WORKFLOW
+    if "reproducible-science-pr-bot" in PACKAGES and bot.exists():
+        text = original = bot.read_text()
+        text = BOT_PIN.sub(rf"\g<head>{version}", text)
+        if text != original:
+            bot.write_text(text)
+            touched.append(BOT_WORKFLOW.as_posix())
 
     if HOOK_README.exists():
         text = original = HOOK_README.read_text()
