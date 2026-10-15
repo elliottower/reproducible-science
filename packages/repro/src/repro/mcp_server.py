@@ -26,6 +26,7 @@ from typing import Any
 
 from citations import audit as citations_audit_module
 from citations import pin as citations_pin
+from citations.exceptions import CitationsError
 from claims.exceptions import ReproError
 from claims.manifest import DEFAULT_NAME
 from claims.models import Basis
@@ -198,23 +199,54 @@ def _why_not(verdict: citations_audit_module.EntryAudit) -> str:
     return "; ".join(said)
 
 
+#: What `strict` gives, as `citations audit --strict` exits: 0, 1 and 2.
+STRICT_OUTCOMES = {0: "passed", 1: "failed", 2: "could_not_check"}
+
+
+def _checked_list(
+    root: pathlib.Path, bib: pathlib.Path, named: pathlib.Path | None, keys: list[str]
+) -> citations_audit_module.CheckedList | None:
+    """The list of entries checked by hand, read as `citations audit` reads it: `named`, or
+    `<stem>.checked.txt` beside the bibliography where that exists."""
+    path = named or bib.with_name(bib.stem + citations_audit_module.CHECKED_SUFFIX)
+    if named is None and not path.is_file():
+        return None
+    path = inside(root, path)
+    if not path.is_file():
+        raise Refused("not_a_file", f"no checked list at {path}")
+    try:
+        return citations_audit_module.load_checked(path, keys)
+    except CitationsError as e:
+        raise Refused("checked_list", str(e)) from e
+
+
 def _audited(
-    root: pathlib.Path, path: pathlib.Path, strict: bool, search: bool, start: int
+    root: pathlib.Path,
+    path: pathlib.Path,
+    strict: bool,
+    search: bool,
+    start: int,
+    checked_path: pathlib.Path | None = None,
 ) -> tuple[dict, str]:
     """`citations audit --bib` over one page of entries: the registry's verdict per entry, and
     apart from it what a title search found. Reads registries; writes only the cache
-    `citations audit` keeps beside the bibliography."""
+    `citations audit` keeps beside the bibliography.
+
+    `strict` judges the page as `citations audit --strict` judges a bibliography: a
+    disagreement or a not found off the checked list fails it, and otherwise a lookup that
+    could not be made, or a page on which nothing was checked, is `could_not_check`."""
     if not path.is_file():
         raise Refused("not_a_file", f"no bibliography at {path}")
     if start < 0:
         raise Refused("start", "start counts entries from 0")
     entries = citations_audit_module.entries_from_bib(path)
     page = entries[start : start + MAX_AUDIT_ENTRIES]
+    listed = _checked_list(root, path, checked_path, [e.key for e in entries])
     with contextlib.redirect_stdout(io.StringIO()):
         # The cache `citations audit` keeps beside the bibliography, held to the project as
         # every other path is: a link out of it is refused.
         cache = inside(root, path.parent / ".audit-cache")
-        report = citations_audit_module.audit(page, cache, str(path), search=search)
+        report = citations_audit_module.audit(page, cache, str(path), search=search, checked=listed)
     rows: list[dict[str, Any]] = []
     for key, verdict in report.entries.items():
         result, why_not = AUDITED.get(verdict.status, ("could_not_check", verdict.status))
@@ -232,6 +264,10 @@ def _audited(
                     "problems": verdict.problems,
                     "doi": verdict.doi,
                     "pmid": verdict.pmid,
+                    "not_found_by": verdict.not_found_by,
+                    "checked_by_hand": verdict.checked_by_hand,
+                    "refused": verdict.refused,
+                    "rejected": verdict.rejected,
                 },
                 "search": {
                     "found_kind": verdict.found_kind,
@@ -246,15 +282,36 @@ def _audited(
         for word in ("agrees", "disagrees", "not_found", "could_not_check")
     }
     checked = counts["agrees"] + counts["disagrees"]
-    failed = counts["disagrees"] + (counts["could_not_check"] if strict else 0)
     following = start + len(page)
+    marked = [k for k in report.not_found if report.entries[k].checked_by_hand]
+    if strict:
+        exit_code = report.strict_exit
+        outcome = STRICT_OUTCOMES[exit_code]
+        passed = exit_code == 0
+    else:
+        # Nothing compared is not a pass.
+        exit_code, outcome = None, None
+        passed = not counts["disagrees"] and checked > 0
     data = {
         "entries": rows,
         "counts": counts,
+        "marked": marked,
         "strict": strict,
-        # Nothing compared is not a pass, whatever `strict` says.
-        "passed": not failed and checked > 0,
+        "passed": passed,
+        # Under `strict`, what `citations audit --strict` would exit for this page: 1 a
+        # disagreement or an unlisted not found, 2 only a lookup that could not be made or
+        # nothing checked, 0 otherwise. Absent without `strict`.
+        "exit": exit_code,
+        "outcome": outcome,
         "checked": checked,
+        "checked_list": listed.model_dump(mode="json") if listed else None,
+        "warnings": {
+            "listed_but_found": report.listed_but_found,
+            "identifier_does_not_resolve": (
+                report.checked_list.identifier_does_not_resolve if report.checked_list else []
+            ),
+            "stale": listed.stale if listed else [],
+        },
         "total": len(entries),
         "next_start": following if following < len(entries) else None,
     }
@@ -421,17 +478,30 @@ def build(root: pathlib.Path | None = None) -> MCPServer:
 
     @server.tool(annotations=LOOKS_UP)
     async def citations_audit(
-        bib: str, strict: bool = False, no_search: bool = False, start: int = 0
+        bib: str,
+        strict: bool = False,
+        no_search: bool = False,
+        start: int = 0,
+        checked: str | None = None,
     ) -> CallToolResult:
         """`citations audit --bib`: does each entry's title, authors, year, volume and pages
         agree with the registry record its DOI or PMID resolves to, or that a title search
         finds? Per entry: agrees, disagrees (with the fields named), not found, or could not
         check, which is what a throttled or silent service gives. Ten entries a call; pass
         `next_start` as `start` for more. The only tool that reaches the network, and only to
-        read registries; it writes no .bib, record or claims file."""
-        return answer(
-            lambda at: _audited(at, inside(at, absolute(bib)), strict, not no_search, start), bib
-        )
+        read registries; it writes no .bib, record or claims file.
+
+        `strict` judges each page as `citations audit --strict` does: `outcome` is `failed` for
+        a disagreement or a not found whose key is not on the checked list, `could_not_check`
+        when only lookups failed or nothing was checked, and `passed` otherwise. The checked
+        list is `checked`, or `<stem>.checked.txt` beside the bibliography; a listed key not
+        found is still reported, under `marked`."""
+
+        def work(at: pathlib.Path):
+            named = inside(at, absolute(checked)) if checked else None
+            return _audited(at, inside(at, absolute(bib)), strict, not no_search, start, named)
+
+        return answer(work, bib)
 
     @server.tool(annotations=READ_ONLY)
     async def next_open_item(open_items: str, after: str | None = None) -> CallToolResult:
