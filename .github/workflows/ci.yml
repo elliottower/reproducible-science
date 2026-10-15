@@ -68,6 +68,10 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: packages/ui/web/package-lock.json
+      # The page's own tests: the shell quoting of the commands it copies, its status lines and
+      # its prompts. Type-checked first, as the build does not.
+      - run: npm ci && npx tsc --noEmit && npm test
+        working-directory: packages/ui/web
       - run: uv sync --all-packages --group dev --group audit
       - run: uv run python scripts/check_deps.py
       - run: uv run python scripts/check_wheels.py
