@@ -42,6 +42,9 @@ dev = [
   # Validates an exported record against the JSON Schema its model generates. Tests only;
   # nothing under `packages/` imports it. MIT.
   "jsonschema>=4.23",
+  # What `reproducible-science[mcp]` installs, so the tests of `repro mcp` drive the real SDK
+  # over its in-memory transport. Pinned as the extra pins it.
+  "mcp==2.2",
   "netcdf4>=1.7.2",
   "numpy>=2.2.6",
   # The optional spreadsheet and .docx readers, for the same reason as the PDF readers below.
@@ -121,11 +124,14 @@ lint.per-file-ignores."packages/*/tests/*" = [ "B011" ] # bare assert False is f
 # `research/pdf-readers/pdfrs/Cargo.lock`, `ede` is the journal code in the DOI
 # 10.1097/EDE.0000000000001064, `trough` and `devlop` are npm packages the docs site's
 # lockfile names, `bu` is a base64 fragment in one of its integrity hashes, and the rest are
-# author surnames in the sampling frame, and `commun` and `ser` are ISO 4 abbreviations
-# (`Nat. Commun.`, `J. R. Stat. Soc. Ser. B`), and `archiv` is German (`Archiv der Mathematik`). Listed rather than skipping whole files, which
-# would hide real typos. The audit venue fixture's caches are skipped: it is registry responses
-# as fetched, in several languages, and nothing in it is ours to correct.
-ignore-words-list = "unparseable,sav,ue,copie,buis,smae,nd,ist,fo,inout,ede,bui,trough,devlop,bu,commun,ser,archiv"
+# author surnames in the sampling frame. `publically` is ACM's spelling in the badging policy
+# text `repro venue acm-evidence` quotes verbatim, and `rouge` is the metric the ACL checklist
+# names, in the question text `repro venue acl` stores verbatim. `commun` and `ser` are ISO 4
+# abbreviations (`Nat. Commun.`, `J. R. Stat. Soc. Ser. B`), and `archiv` is German (`Archiv
+# der Mathematik`). Listed rather than skipping whole files, which would hide real typos. The
+# audit venue fixture's caches are skipped: they are registry responses as fetched, in several
+# languages, and nothing in them is ours to correct.
+ignore-words-list = "unparseable,sav,ue,copie,buis,smae,nd,ist,fo,inout,ede,bui,trough,devlop,bu,publically,rouge,commun,ser,archiv"
 skip = "uv.lock,.git,packages/citations/tests/fixtures/audit_venue/cache/*,packages/citations/tests/fixtures/audit_venue/pairs_cache/*"
 
 [tool.pytest]
@@ -288,6 +294,11 @@ layers = [
   # The commands of the claims side and how each prints. `repro.cli` and this module's own
   # `main` build a parser over them, and they reach for nothing that runs a command.
   "claims.cli",
+  # Readers of other tools' files. Each writes a draft and its open items, checks nothing,
+  # and reaches the network only through a fetch the command hands it.
+  "claims.sources",
+  # What a reader left open, and how much is filled: checks the draft with the verifier.
+  "claims.open_items",
   # Other checkers' results, read into check records. Each sits on the record and the
   # verifier, and nothing below reaches for it.
   "claims.foreign",

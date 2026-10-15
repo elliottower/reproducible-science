@@ -133,7 +133,8 @@ every quote resolved, but against a source that is not the one pinned.
 | `citations pin` | Add a quotation to a claims file, refusing one that does not resolve; `--occurrence N` pins one occurrence of a repeated passage; `--url` pins against a web page |
 | `citations restore` | Write the source's passage for a quotation that leaves text out, as a separate record |
 | `citations verify` | Do the quotations resolve in their sources? |
-| `citations verify --json PATH` | Also write the counts to `PATH` as JSON: quotations by outcome, sources read and sources absent |
+| `citations verify --json PATH` | Also write the counts to `PATH` as JSON: quotations by outcome, sources read and sources absent, and under `warnings` each warning with the quotations carrying it |
+| `citations verify --verbose` | Also list, under each warning, the claims file, claim and quotation carrying it |
 | `citations coverage` | Is every quotation in my manuscript pinned at all? |
 | `citations audit` | Does the stored metadata match the record the identifier resolves to? |
 | `citations audit --strict` | Exit 1 on a disagreement or on an entry not found that is not on the checked list, 2 when a lookup failed and nothing else did |
@@ -400,10 +401,28 @@ underscores and a hyphen joining two word characters are ignored altogether is `
 Punctuation that carries meaning is kept, so `p < 0.05` does not match a source reading
 `p = 0.05`, and `-0.42` does not match `0.42`.
 
+A passage folding does not find is looked for verbatim once more, in a second reading of the
+source, before spacing is ignored. That reading keeps a hyphen at a line break between two
+letters, so `open-access` matches a source that broke it as `open-` over `access`, and it
+closes a space before a closing mark or after an opening one, so `dvc.lock, including` matches
+a page rendering `dvc.lock , including`. Only white space is removed, and every word and mark
+stays. Where the source is a page's text read off disk (`.md`, `.markdown`, `.rst`, `.txt`),
+the second reading also drops what the page does not show: a MyST or Verso role keeps its text
+(`{kw}`#print axioms`` reads `#print axioms`) and an HTML tag goes, so a quotation can be
+written as the page renders it. A quotation that kept the markup still resolves in the first
+reading. HTML is read by `html-text` and XML by `jats-text`, and neither is changed by this.
+A passage found in either reading is `truncated` only where it cuts a word in both, so a
+quotation ending on `some` where layout set `some-` at a line end beside `class` is not. Where
+one reading cuts and the other does not, the quotation carries `line-end hyphen` instead: it
+begins or ends at a hyphen the source puts at a line break, and the text cannot say whether
+that hyphen splits one word, which the quotation then cuts, or ends a line beside an unrelated
+one.
+
 | Warning | Meaning |
 |---------|---------|
 | `short` | under 40 characters, or ending on a comma or a connecting word, so the source may qualify it in the next clause |
 | `truncated` | every occurrence begins or stops mid-word or mid-number |
+| `line-end hyphen` | begins or ends at a hyphen the source puts at a line break, so it may cut a word; check it |
 | `normalized` | matched only after ignoring spacing, underscores and hyphens inside a word |
 | `page`, `page unchecked` | found on another page, or a page is recorded and was not checked |
 
@@ -430,9 +449,9 @@ that matches -- a truncated quotation resolves and says something the source doe
 
 **A hyphen on a line break.** `fold` removes `-\n` between two letters because a renderer
 inserts one when it splits a word, and it cannot tell that from a real hyphen that happens to
-fall at a line end. A dash with anything else on either side of the break is kept.
-The same quotation then resolves everywhere else in the document and fails at that one
-occurrence. Split it there.
+fall at a line end. A dash with anything else on either side of the break is kept. The second
+reading keeps the hyphen, so a quotation written either way resolves; one that crosses two
+such breaks, one a split word and one a real hyphen, does not, and is split there.
 
 **The wrong reader.** `pdftotext -layout` preserves a page's geometry, so on a two-column paper
 it interleaves the columns and shreds every sentence crossing the gutter. A block of failures
@@ -632,6 +651,7 @@ establishes that the file has not changed and establishes nothing about the read
 | `pdftotext` | the same binary, poppler's reading order | (as above) |
 | pypdf | its own content-stream parser | `pip install "citations[pypdf]"` |
 | pdfplumber | pdfminer.six plus its own layout layer | `pip install "citations[pdfplumber]"` |
+| `pdftotext -tsv`, by column | poppler's word boxes, each line split at the gutter | poppler 22.08 or later |
 
 Poppler is preferred and recommended. Where it is absent, or fails on a document, the chain
 falls through to whichever pure-Python reader is installed and records the substitution as a
@@ -646,6 +666,15 @@ while reading order preserves the sentence and misplaces the subscripts beside i
 passage checks, reading order resolved 59 that `-layout` missed and missed 29 it resolved.
 Neither is right in general, so `-layout` reads a document by default and both are consulted
 under `--triangulate`, where a disagreement between them is reported rather than resolved.
+
+Where a gutter is narrow, every one of those readers joins a line of the left column to the line
+beside it, so a sentence that wraps inside a column comes out with the other column's words
+spliced into it. Before a passage is called `not found`, one more reading is asked: poppler's
+word boxes, with each line split at the page's gutter and every left half read before any right
+half, between lines that span it. A page with no gutter at least six points wide reads top to
+bottom. A passage found this way is recorded as a fallback naming `pdftotext -tsv, by column`.
+It is not consulted under `--triangulate`, because it is poppler's own glyphs in another order,
+and it does not apply to a source that declares `extract_cmd`.
 
 A source that declares `extract_cmd` does not enter that chain. Its author has named the
 program that produces the text they quote, so it runs or the check is `unchecked` with its
@@ -890,7 +919,11 @@ source and DBLP venue key.
 The entry's `journal` or `booktitle`, or its `series` where it names neither, is resolved to the
 same kinds of identifier through registries that index venue names and their abbreviations:
 Wikidata's labels, aliases, short names and ISO 4 abbreviations, and OpenAlex sources' display
-names, abbreviated titles and alternate titles. An `issn` field is used as given. A registry
+names, abbreviated titles and alternate titles. An `issn` field is resolved beside the name: where
+the name agrees with the record's venue and a registry knows the ISSN as another venue, the ISSN is
+reported as its own disagreement, `issn: ours '...' vs registry '...'`; an ISSN no registry knows
+is not evidence of anything, and where neither the name nor the ISSN settles the venue it is not
+comparable. A registry
 venue is a candidate when one of its own names equals the cited one once case, accents,
 punctuation, LaTeX, years, ordinals and volume numbers are folded away; candidates that share
 an identifier, or that Wikidata links as a conference and its proceedings or as editions of one
@@ -914,6 +947,11 @@ reasons are a name no registry knows, a name several registry venues share, a lo
 refused, a record that is a preprint or names no venue identifier, an entry citing a preprint
 server, a workshop against a main track, a record identified only by its name, two sides with
 no serial identifier of a common kind, and a garbled name.
+
+A lookup answered with 404 or 410 is an answer and is cached, and so is a 400 or 422, which
+rejects the query and adds no names. Any other failure (a 500, a 502,
+a 403, a rate limit, no response, or a MediaWiki error reported inside an HTTP 200) is a refusal:
+it is never cached, so the next run asks again, and a venue resting on it is not comparable.
 
 A venue that is not comparable never fails `--strict`, and never makes an entry `could not
 check`: the entry's status rests on its other fields. A venue lookup that was refused is

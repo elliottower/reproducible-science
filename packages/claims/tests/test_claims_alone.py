@@ -123,7 +123,10 @@ def test_the_help_names_claims_for_its_own_commands_and_repro_for_the_rest(capsy
 
     assert main([]) == 1
     listed = capsys.readouterr().out
-    assert "{manifest,verify,stale,why,numbers,export,origins,from-clew}" in listed
+    assert (
+        "{manifest,verify,stale,why,numbers,export,origins,from-clew,from-paperdelta,open-items,"
+        "from-codecheck,from-corebench,from-clawbio}" in listed
+    )
     for absent in ("reproduce", "check", "audit", "demo"):
         assert f"\n    {absent} " not in listed
 

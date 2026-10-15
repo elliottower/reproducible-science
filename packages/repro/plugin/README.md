@@ -34,9 +34,30 @@ happens, and is the only hook that refuses anything.
 | `citations` | Verify that quotations resolve in the sources they cite, and manage a library of verified quotations. |
 | `results` | Seal a run's inputs before computing, record outputs after, bind manuscript claims to specific runs, and verify the hash chain. |
 | `repro` | Verify that a manuscript's declared claims resolve in the artifacts they name. |
+| `open-items` | Fill the items a reader of CODECHECK, CORE-Bench or ClawBio files, or the scaffold of `repro init`, left open, as inferred assertions the checks then decide, and report the counts. |
 
 **A command for each tool**, named alike so there is nothing to remember:
 `/prereg-check`, `/citations-check`, `/results-check`, `/repro-check`.
+
+## Codex
+
+This directory is also a Codex plugin. `.codex-plugin/plugin.json` is its manifest in the Codex
+format, beside the Claude Code one, and both name the same `skills/`. The Codex manifest adds
+two files Claude Code never reads:
+`codex-mcp.json`, which starts the MCP server with `repro mcp`, and `hooks/codex-hooks.json`.
+
+Codex edits files with `apply_patch`, whose hook input carries the patch text and no
+`file_path`. `hooks/codex_apply_patch.py` reads the patch and runs an edit hook above once for
+each file it touches, unchanged, with the input Claude Code would have sent.
+`unfrozen_plan_before_run.py` reads a Codex `Bash` payload as it is. The marketplace entry is
+`.agents/plugins/marketplace.json` at the repository root; installing is described at
+<https://reproducible.science/start/codex/>.
+
+```bash
+codex plugin marketplace add elliottower/reproducible-science   # then /plugins inside Codex
+```
+
+The hooks see patches only. A frozen file moved or deleted with `mv` or `rm` is not refused.
 
 ## What it expects
 

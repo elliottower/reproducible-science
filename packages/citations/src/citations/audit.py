@@ -90,12 +90,16 @@ from citations.services import (
     crossref_venues,
     openalex_venue_ids,
     openalex_venues,
+    product,
     user_agent,
 )
 from citations.text import name_fold, tokens, variants
 from citations.venue import (
+    ISSN_UNSETTLED,
+    MATCH,
     MISMATCH,
     NOT_COMPARABLE,
+    ONE_NAME,
     Resolution,
     VenueCheck,
     decide,
@@ -808,6 +812,8 @@ def compare(entry: Entry, record: RegistryRecord, venue: VenueCheck | None = Non
 
     if venue is not None and venue.outcome == MISMATCH:
         problems.append(venue.line())
+    if venue is not None and venue.issn:
+        problems.append(venue.issn)
 
     # PubMed abbreviates end pages (1214-24 for 1214-1224), so only the start page is
     # comparable across sources.
@@ -840,9 +846,25 @@ def compare(entry: Entry, record: RegistryRecord, venue: VenueCheck | None = Non
 #: Attempts at each registry lookup of a venue before the registry counts as having refused.
 VENUE_TRIES = 3
 
-#: Sent to Wikidata, whose User-Agent policy asks a client to say where it comes from. A
-#: project address, not a person's.
-WIKIDATA_AGENT = "citations/1.0 (https://github.com/elliottower/reproducible-science)"
+
+def wikidata_agent() -> str:
+    """The User-Agent sent to Wikidata, whose policy asks a client to say where it comes from:
+    the product and version, and a project address rather than a person's."""
+    return f"{product()} (https://github.com/elliottower/reproducible-science)"
+
+
+def refused_in_body(body: str | None) -> bool:
+    """MediaWiki reports an error as a JSON `{"error": {"code": ...}}` inside an HTTP 200. That
+    is a refusal, not an answer that found nothing, and caching it would make the next run read
+    "nothing found" as a fact."""
+    if not body:
+        return False
+    try:
+        answer = json.loads(body)
+    except json.JSONDecodeError:
+        return False
+    error = answer.get("error") if isinstance(answer, dict) else None
+    return isinstance(error, dict) and "code" in error
 
 
 def _ask(url: str, cache: pathlib.Path, name: str, headers: dict | None = None) -> dict | None:
@@ -862,6 +884,8 @@ def _ask(url: str, cache: pathlib.Path, name: str, headers: dict | None = None) 
             body = None  # an answer about the query, which adds no names
         finally:
             time.sleep(DELAY)
+        if refused_in_body(body):
+            return None
         # An answer that had nothing is cached too, so a re-run reads it rather than asking
         # again; only a refusal is left to be asked again.
         store(url, cache, name, body or "")
@@ -877,7 +901,9 @@ def asker(cache: pathlib.Path) -> Ask:
 
     def ask(url: str, name: str) -> dict | None:
         wikidata = urllib.parse.urlsplit(url).hostname == "www.wikidata.org"
-        return _ask(url, cache, name, headers={"User-Agent": WIKIDATA_AGENT} if wikidata else None)
+        return _ask(
+            url, cache, name, headers={"User-Agent": wikidata_agent()} if wikidata else None
+        )
 
     return ask
 
@@ -1084,16 +1110,61 @@ def venue_verdict(
     if not ours.strip() or theirs.repository or (not theirs.ids and not theirs.links):
         # Nothing on the record side to compare with: the entry's venue is not looked up.
         return decide(ours, shown, Resolution(status="unresolved"), theirs)
-    key = (ours, e.issn)
+    if not e.issn.strip():
+        return name_verdict(ours, shown, theirs, ask, resolved)
+    # An entry carrying both a name and an ISSN is checked on both. The name decides whether
+    # the venue agrees; an ISSN that disagrees with a venue the name confirms is a disagreement
+    # about the ISSN field. An ISSN no registry knows is never ground for a venue mismatch.
+    by_name = name_verdict(ours, shown, theirs, ask, resolved)
+    key = ("", e.issn)
     if key not in resolved:
-        resolved[key] = resolve_name(ask, ours, e.issn)
+        resolved[key] = resolve_name(ask, "", e.issn)
+    by_issn = decide(ours, shown, resolved[key], theirs)
+    named = by_name.outcome == MATCH or by_name.why.startswith(ONE_NAME)
+    # The entry's ISSN is called wrong only where a registry knows it as another venue: an
+    # electronic ISSN the record does not list, or one no registry knows, is not evidence.
+    known_elsewhere = resolved[key].status == "resolved" and any(
+        i.startswith(("wikidata:", "openalex:")) for i in resolved[key].ids
+    )
+    if named:
+        if (
+            by_issn.outcome != MATCH
+            and known_elsewhere
+            and theirs.status == "resolved"
+            and theirs.direct
+        ):
+            theirs_issn = sorted(i.split(":", 1)[1] for i in theirs.ids if i.startswith("issn:"))
+            if theirs_issn:
+                wrong = f"issn: ours {e.issn!r} vs registry {'/'.join(theirs_issn)!r}"
+                return by_name.model_copy(update={"issn": wrong})
+        return by_name
+    if by_issn.outcome == MATCH:
+        return by_issn
+    return by_name.model_copy(
+        update={"outcome": NOT_COMPARABLE, "why": ISSN_UNSETTLED}
+        if by_name.outcome == MISMATCH
+        else {}
+    )
+
+
+def name_verdict(
+    ours: str,
+    shown: str,
+    theirs: Resolution,
+    ask: Ask,
+    resolved: dict[tuple[str, ...], Resolution],
+) -> VenueCheck:
+    """The entry's venue name against the record's venue."""
+    key = (ours, "")
+    if key not in resolved:
+        resolved[key] = resolve_name(ask, ours)
     check = decide(ours, shown, resolved[key], theirs)
-    if check.outcome != "match" and any(i.startswith("openalex:") for i in theirs.ids):
+    if check.outcome != MATCH and any(i.startswith("openalex:") for i in theirs.ids):
         # The record's venue is an OpenAlex source, and a conference's often is only that: the
         # name is asked of OpenAlex too, which can confirm the venue or leave it ambiguous.
-        both = (ours, e.issn, "both")
+        both = (ours, "", "both")
         if both not in resolved:
-            resolved[both] = resolve_name(ask, ours, e.issn, both=True)
+            resolved[both] = resolve_name(ask, ours, both=True)
         check = decide(ours, shown, resolved[both], theirs)
         key = both
     if check.outcome == MISMATCH:

@@ -146,12 +146,19 @@ def line_starts(raw: str, folded: str, fold: Callable[[str], str]) -> list[int] 
     None where what it walked is not the normalized text, so no line number is ever a guess.
     """
     pieces = [fold(line) for line in raw.split("\n")]
+    # The next line that holds anything, for every line, found in one pass from the end: looking
+    # ahead from each line instead copied the rest of the list per line, and a log of 100,000
+    # lines took half a minute.
+    following, ahead = [""] * len(pieces), ""
+    for number in range(len(pieces) - 1, -1, -1):
+        following[number] = ahead
+        ahead = pieces[number] or ahead
     starts, at = [], 0
     for number, piece in enumerate(pieces):
         starts.append(at)
         if not piece:
             continue
-        after = next((later for later in pieces[number + 1 :] if later), "")
+        after = following[number]
         # A word split across the break: a letter before the hyphen and one opening the next
         # line that holds anything.
         broken = piece.endswith("-") and piece[-2:-1].isalpha() and after[:1].isalpha()

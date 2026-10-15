@@ -312,6 +312,15 @@ def _resolution(group: list[Venue], status: str, direct: bool = False) -> Resolu
     )
 
 
+def issns(text: str) -> list[str]:
+    """The ISSNs in an entry's `issn` field, hyphenated and upper-cased as registries write
+    them: `00219606` and `0021-9606` are one ISSN, as are `1234-567x` and `1234-567X`."""
+    return [
+        f"{a}-{b.upper()}"
+        for a, b in re.findall(r"(?<![\dXx])(\d{4})-?(\d{3}[\dXx])(?![\dXx])", text)
+    ]
+
+
 def resolve_name(ask: Ask, name: str, issn: str = "", both: bool = False) -> Resolution:
     """The registry venue a cited venue name is, or why there is not exactly one.
 
@@ -321,9 +330,7 @@ def resolve_name(ask: Ask, name: str, issn: str = "", both: bool = False) -> Res
     the Wikidata venue did not match.
     """
     if issn.strip():
-        return identify(
-            ask, frozenset({f"issn:{i}" for i in re.findall(r"\d{4}-\d{3}[\dXx]", issn)})
-        )
+        return identify(ask, frozenset(f"issn:{i}" for i in issns(issn)))
     if not name.strip() or GARBLED in name:
         return Resolution(status="unresolved")
     looked = Looked()

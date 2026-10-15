@@ -1,0 +1,52 @@
+{
+  "name": "ACM Artifact Review and Badging",
+  "version": "1.1",
+  "source": {
+    "url": "https://www.acm.org/publications/policies/artifact-review-and-badging-current",
+    "retrieved": "2026-10-11",
+    "sha256": "7f8508694c50b8317b3bc05d4dc8596c08264439e92c9a07d105d04734831b7b",
+    "via": "Saved from a browser on 2026-10-11, because acm.org refuses scripted fetches, as 'Artifact Review and Badging - Current.html' (sha256 7cb56da3d9dba28a61935892a3d5a46e91ecf49d60ba57a794ce694462a844c8), and converted with `pandoc -f html -t plain --wrap=none`; the sha256 above is of that text. The page is headed 'Artifact Review and Badging Version 1.1 - August 24, 2020'. Each criterion's policy text is copied from that text verbatim, spelling included ('publically', 'a unique identifier for the object'); `source_line` is its line in the text and `quoted_sha256` the sha256 of the quoted words in UTF-8. The titles are this package's."
+  },
+  "criteria": [
+    {
+      "id": "archival",
+      "title": "Placed on an archival repository, with an identifier",
+      "policy_text": "Author-created artifacts relevant to this paper have been placed on a publically accessible archival repository. A DOI or link to this repository along with a unique identifier for the object is provided.",
+      "determinable": true,
+      "source_line": 772,
+      "quoted_sha256": "3de69e7bb27447c2e930299c3ae2fe80a8d2c8fa87f47cffd6053a882d8fe95f"
+    },
+    {
+      "id": "exercisable",
+      "title": "Documented, consistent, complete and exercisable",
+      "policy_text": "The artifacts associated with the research are found to be documented, consistent, complete, exercisable, and include appropriate evidence of verification and validation.",
+      "determinable": true,
+      "source_line": 752,
+      "quoted_sha256": "7441ffa959de31a50473822def006e15ed21c8dda5b79fc04f44c3322716b5aa"
+    },
+    {
+      "id": "reuse",
+      "title": "Documented and structured for reuse",
+      "policy_text": "The artifacts associated with the paper are of a quality that significantly exceeds minimal functionality. That is, they have all the qualities of the Artifacts Evaluated – Functional level, but, in addition, they are very carefully documented and well-structured to the extent that reuse and repurposing is facilitated. In particular, norms and standards of the research community for artifacts of this type are strictly adhered to.",
+      "determinable": true,
+      "source_line": 765,
+      "quoted_sha256": "5f6dc29744b82b10b7334ee8bb2e4a53bdd5b52fb9e41cdc80d422a184a514e7"
+    },
+    {
+      "id": "by-others-with-artifacts",
+      "title": "Main results obtained by others, with the authors' artifacts",
+      "policy_text": "The main results of the paper have been obtained in a subsequent study by a person or team other than the authors, using, in part, artifacts provided by the author.",
+      "determinable": false,
+      "source_line": 783,
+      "quoted_sha256": "8f757d75caed3e34319e051af23c73d01b2a60f928fef8d159bcf86853e18595"
+    },
+    {
+      "id": "by-others-independently",
+      "title": "Main results obtained by others, without the authors' artifacts",
+      "policy_text": "The main results of the paper have been independently obtained in a subsequent study by a person or team other than the authors, without the use of author-supplied artifacts.",
+      "determinable": false,
+      "source_line": 785,
+      "quoted_sha256": "77592d01abd693d7e8f164fc523b2a30b79a1fd0c57367603b9577446bd1a3c2"
+    }
+  ]
+}

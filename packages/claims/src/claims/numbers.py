@@ -279,6 +279,60 @@ def _places(passage: str, folded: str) -> list[Span]:
     return found
 
 
+def _context(folded: str, start: int, end: int) -> str:
+    """The run a number is in and `CONTEXT_WORDS` runs on either side."""
+    lo, hi = start, end - 1
+    for _ in range(CONTEXT_WORDS + 1):
+        lo = folded.rfind(" ", 0, lo)
+        if lo == -1:
+            break
+    for _ in range(CONTEXT_WORDS + 1):
+        hi = folded.find(" ", hi + 1)
+        if hi == -1:
+            break
+    return folded[lo + 1 : len(folded) if hi == -1 else hi]
+
+
+#: The rules under which digits are a name or an identifier and hold no value.
+_VALUELESS = (
+    NumberRule.NAME,
+    NumberRule.LINK,
+    NumberRule.DOCUMENT,
+    NumberRule.VERSION_OR_SECTION,
+)
+
+
+def printed(text: str) -> tuple[PrintedNumber, ...]:
+    """Every number in one text, read under the rule `numbers` reads a manuscript with.
+
+    For a text no manifest binds yet, such as another tool's report that a reader is drafting a
+    manifest over: each number stands unbound, or set aside by the rule that reads it as
+    something other than a quantity. Offsets are into the text as `passage_fold` normalizes it.
+    """
+    folded = passage_fold(text)
+    dashes = _dashes(text, folded)
+    marked = _marked(folded)
+    found = []
+    for token in _tokens(folded, dashes):
+        start, end = token.start, token.end
+        rule = _rule(folded, token, marked, dashes)
+        percent = folded[end : end + 1] == "%"
+        found.append(
+            PrintedNumber(
+                text=folded[start : end + 1 if percent else end],
+                value=token.value
+                if _read(token.value) is not None and rule not in _VALUELESS
+                else None,
+                offset=start,
+                context=_context(folded, start, end),
+                standing=Standing.SET_ASIDE_BY_RULE if rule else Standing.UNBOUND,
+                rule=rule,
+                form=NumberForm.CARDINAL_WORD if folded[start].isalpha() else NumberForm.DECIMAL,
+            )
+        )
+    return tuple(found)
+
+
 def _reported(claim: Claim) -> set[decimal.DecimalTuple]:
     """Each value a claim's assertions say the manuscript prints.
 
@@ -421,4 +475,12 @@ def numbers(manifest: Manifest, only: tuple[str, ...] = ()) -> NumbersReport:
     )
 
 
-__all__ = ["CONTEXT_WORDS", "NoTextError", "UnknownArtifactError", "numbers", "telling", "texts"]
+__all__ = [
+    "CONTEXT_WORDS",
+    "NoTextError",
+    "UnknownArtifactError",
+    "numbers",
+    "printed",
+    "telling",
+    "texts",
+]

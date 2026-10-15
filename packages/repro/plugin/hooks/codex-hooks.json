@@ -1,0 +1,47 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "^apply_patch$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$PLUGIN_ROOT/hooks/codex_apply_patch.py\" frozen_file_before_edit.py"
+          }
+        ]
+      },
+      {
+        "matcher": "^Bash$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$PLUGIN_ROOT/hooks/codex_apply_patch.py\" frozen_file_before_edit.py"
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$PLUGIN_ROOT/hooks/unfrozen_plan_before_run.py\""
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "^(apply_patch|Bash)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$PLUGIN_ROOT/hooks/codex_apply_patch.py\" frozen_plan_changed.py"
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$PLUGIN_ROOT/hooks/codex_apply_patch.py\" unverified_quotations.py"
+          },
+          {
+            "type": "command",
+            "command": "python3 \"$PLUGIN_ROOT/hooks/codex_apply_patch.py\" unbound_numbers.py"
+          }
+        ]
+      }
+    ]
+  }
+}

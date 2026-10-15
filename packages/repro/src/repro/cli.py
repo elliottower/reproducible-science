@@ -12,11 +12,13 @@
     repro origins         compare each artifact copied from another repository with its origin
     repro ci              run the checks in a workflow, with a summary on the run page
     repro badges          print a badge per check, each a count from a run on this machine
+    repro venue           draft a venue's appendix or checklist from the records, every answer marked
     repro check           run every tool this project uses, in one pass
     repro audit           clone a repository at a pinned commit and run every tool over it
     repro prereg          run `prereg`: freeze a plan, and record what deviated from it
     repro citations       run `citations`: does every quotation resolve in its source?
     repro results         run `results`: seal a run, record it, verify the chain
+    repro mcp             serve these checks to an agent as MCP tools, over standard input and output
 
 A renderer over the library and nothing more. `verify` calls `claims.verify()` and
 `Policy.assess()`, both of which return values, so anything this prints can also be obtained
@@ -27,8 +29,10 @@ that exits.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import functools
 import importlib
+import io
 import json
 import pathlib
 import subprocess
@@ -82,7 +86,15 @@ from claims.models import (
     Regeneration,
     ReproductionReport,
 )
+from claims.open_items import DRAFT_NAME, ITEMS_NAME
 from claims.policy import PROFILES, Assessment, Policy
+from claims.sources.project import (
+    NothingToScaffoldError,
+    ScaffoldExistsError,
+    ScaffoldRefusedError,
+)
+from claims.sources.project import from_project as scaffold_claims
+from claims.sources.project import present as scaffold_present
 from claims.starter import CONVENTIONAL as CONVENTIONAL
 from claims.starter import MAX_DISCOVERED as MAX_DISCOVERED
 from claims.starter import project_root
@@ -95,9 +107,11 @@ from repro.delegate import BY_NAME, TOOLS
 from repro.delegate import check as delegate_check
 from repro.delegate import run as delegate_run
 from repro.demo import demo
+from repro.proposals import PROJECT_MARKERS
 from repro.reproduce import RECORD
 from repro.reproduce import append as append_reproduction
 from repro.reproduce import reproduce as run_reproduce
+from repro.venue import cli as venue_cli
 
 CLAUDE_MD = """\
 # {name}
@@ -148,6 +162,18 @@ def _run(cmd: list[str], cwd: Path) -> bool:
         return False
 
 
+def _prereg_new(directory: Path, title: str | None = None) -> bool:
+    """`prereg new` in this process, so the `prereg` installed beside this package writes the
+    plan rather than whichever `prereg` comes first on PATH: an older one there wrote
+    `.gitignore` through a dangling symbolic link after the installed one had stopped."""
+    argv = ["new", str(directory), *(["--title", title] if title else [])]
+    with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+        code = delegate_run(BY_NAME["prereg"], argv)
+    if code:
+        print(f"  warning: prereg {' '.join(argv)} failed")
+    return code == 0
+
+
 def _ignore(root: Path) -> tuple[str | None, str | None]:
     """Add the rules of `IGNORE_RULES` that `root/.gitignore` lacks: what was written, and
     what was left out.
@@ -162,6 +188,12 @@ def _ignore(root: Path) -> tuple[str | None, str | None]:
     value says so. Outside a repository, and where git is absent, nothing is tracked.
     """
     path = root / ".gitignore"
+    # A dangling link does not exist, and a write to it lands where it points.
+    if path.is_symlink() or (path.exists() and not path.resolve().is_relative_to(root.resolve())):
+        return (
+            None,
+            "left .gitignore alone: it is a symbolic link, and nothing is written through one",
+        )
     existing = path.read_text(encoding="utf-8") if path.exists() else ""
     held = {line.strip().strip("/") for line in existing.splitlines()}
     folder = f"{SOURCES_DIR}/"
@@ -206,7 +238,33 @@ def _shown(path: Path, root: Path) -> str:
     return f"{path.relative_to(root).as_posix()}/" if path.is_relative_to(root) else str(path)
 
 
-def _init_here() -> int:
+def _scaffold(root: Path, manifest_present: bool, force: bool) -> tuple[list[str], bool]:
+    """Draft the claims of a project with result files and a manuscript and no `repro.yaml`:
+    the lines to print, and whether a draft was written. `repro.yaml` is never touched."""
+    if manifest_present:
+        return [
+            f"claims: {DEFAULT_NAME} exists and was left alone, so nothing was scaffolded"
+        ], False
+    try:
+        made = scaffold_claims(root, overwrite=force)
+    except (ScaffoldExistsError, ScaffoldRefusedError) as e:
+        return [f"claims: {e}"], False
+    except NothingToScaffoldError as e:
+        return [f"claims: {e}, so nothing was scaffolded"], False
+    lines = [
+        f"scaffolded, nothing verified: {made.open} "
+        f"{'number' if made.open == 1 else 'numbers'} left open, "
+        f"{made.unique} with one candidate",
+        f"  {DRAFT_NAME:<18} {len(made.results)} result "
+        f"{'file' if len(made.results) == 1 else 'files'} and {made.manuscript} pinned, "
+        "a claim per number, no assertion",
+        f"  {ITEMS_NAME:<18} an item per number, with the places the result files hold it",
+    ]
+    lines += [f"  not checked: {p.file}, {p.reason}" for p in made.written.not_checked]
+    return lines, True
+
+
+def _init_here(scaffold: bool = True, force: bool = False) -> int:
     """Set up whichever of the four records this project lacks, and touch none it has."""
     root = project_root(Path.cwd())
     print(f"{root}\n")
@@ -226,8 +284,7 @@ def _init_here() -> int:
     }
 
     def plan() -> str | None:
-        made = _run(["prereg", "new", ".", "--title", root.name], cwd=root)
-        return "PREREG.md" if made else None
+        return "PREREG.md" if _prereg_new(root, root.name) else None
 
     def ledger() -> str | None:
         return ".results/" if _run(["results", "init"], cwd=root) else None
@@ -241,7 +298,17 @@ def _init_here() -> int:
             made.append("claims/")
         return ", ".join(made) if library or ".citations/" in made else None
 
+    # The claims are drafted first, so that a project given a draft gets no starter beside it:
+    # one manifest to rename, and nothing to replace.
+    said, scaffolded = (
+        _scaffold(root, bool(present["manifest"]), force) if scaffold else ([], False)
+    )
+    if scaffold and not scaffolded and not present["manifest"] and (here := scaffold_present(root)):
+        present["manifest"] = f"{', '.join(here)} (a scaffold, not yet renamed to {DEFAULT_NAME})"
+
     def manifest() -> str | None:
+        if scaffolded:
+            return f"{DRAFT_NAME}, {ITEMS_NAME} (a draft; no {DEFAULT_NAME} written)"
         starter = write_starter(root, [], root)
         return (
             f"{DEFAULT_NAME} (artifacts pinned: {len(starter.artifacts)}, "
@@ -263,6 +330,9 @@ def _init_here() -> int:
         else:
             print(f"  {label:<12} NOT CREATED")
 
+    if said:
+        print("\n" + "\n".join(f"  {line}" for line in said))
+
     # After the records: `prereg new .` writes a `.gitignore` holding the sidecar rules where
     # the project has none, and this adds to that file only what it lacks.
     ignored, left_out = _ignore(root)
@@ -276,11 +346,17 @@ def _init_here() -> int:
         return 0
     if created:
         print("\nnext:")
+    manifest_step = (
+        f"fill {ITEMS_NAME} with an agent (the open-items skill, or the tools\n"
+        f"  {'':<12} of `repro mcp`), review {DRAFT_NAME}, and rename it to {DEFAULT_NAME}"
+        if scaffolded
+        else f"edit the claims in {DEFAULT_NAME}, then `repro verify`"
+    )
     for label, step in (
         ("plan", "fill in PREREG.md, then `prereg freeze`"),
         ("ledger", "`results seal <inputs>` before a run, `results run <outputs>` after it"),
         ("citations", "`citations pin` writes a quotation into claims/ once it resolves"),
-        ("manifest", f"edit the claims in {DEFAULT_NAME}, then `repro verify`"),
+        ("manifest", manifest_step),
     ):
         if label in created:
             print(f"  {label:<12} {step}")
@@ -294,17 +370,18 @@ def cmd_init(args: argparse.Namespace) -> int:
             print(f"    repro init <name> --directory {args.directory}\n")
             print("to set up an existing project, run `repro init` inside it.")
             return 2
-        return _init_here()
+        return _init_here(scaffold=not args.no_scaffold, force=args.force)
     name = args.name
     # `repro init .` means this directory. Read as a name it scaffolded a new project on top of
     # the one already here: a `CLAUDE.md` headed `# .` and four folders nobody asked for.
     if not args.directory and (Path.cwd() / name).resolve() == Path.cwd().resolve():
-        return _init_here()
+        return _init_here(scaffold=not args.no_scaffold, force=args.force)
     target = Path(args.directory) if args.directory else Path.cwd() / name
     target.mkdir(parents=True, exist_ok=True)
     print(f"initializing {target}")
 
-    for cmd in (["prereg", "new", name], ["results", "init"], ["citations", "init"]):
+    _prereg_new(target / name)
+    for cmd in (["results", "init"], ["citations", "init"]):
         _run(cmd, cwd=target)
     for d in ("claims", "data", "scripts", "figures"):
         (target / d).mkdir(exist_ok=True)
@@ -468,6 +545,29 @@ def cmd_check(args) -> int:
     return 0
 
 
+#: What `repro mcp` prints where the `mcp` extra is not installed.
+MCP_EXTRA = 'pip install "reproducible-science[mcp]"'
+
+
+def cmd_mcp(args: argparse.Namespace) -> int:
+    """Serve the project at `--root` over stdio. The server module is reached by name, as
+    `delegate` reaches the tools, because the MCP SDK is an optional extra and the base
+    install must not need it to run any other command."""
+    try:
+        server = importlib.import_module("repro.mcp_server")
+    except ModuleNotFoundError as e:
+        if e.name is None or e.name.split(".")[0] not in ("mcp", "mcp_types"):
+            raise
+        print(f"`repro mcp` needs the MCP SDK: {MCP_EXTRA}")
+        return 2
+    root = Path(args.root) if args.root else None
+    if root is not None and not root.is_dir():
+        print(f"--root {args.root}: not a directory")
+        return 2
+    server.serve(root)
+    return 0
+
+
 def main(argv: list[str] | None = None, local_record: bool = True) -> int:
     parser = argparse.ArgumentParser(
         prog="repro",
@@ -493,11 +593,25 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
             "With a name, scaffold a new experiment directory: a plan, a results ledger, a "
             f"citations library and a starter {DEFAULT_NAME}. With no name, run inside an "
             "existing project, create whichever of those four it lacks at the top of the "
-            "project and leave the ones it has untouched."
+            "project and leave the ones it has untouched. Where that project has result files "
+            f"and a manuscript and no {DEFAULT_NAME}, also scaffold its claims: "
+            f"{DRAFT_NAME}, with a claim per number the manuscript prints and no assertion, "
+            f"and {ITEMS_NAME}, with an item per number and the places the result files hold "
+            "it. Nothing in them is verified."
         ),
     )
     p_init.add_argument("name", nargs="?", help="a new directory (default: set up this project)")
     p_init.add_argument("--directory", "-d", help="target directory (default: ./<name>)")
+    p_init.add_argument(
+        "--no-scaffold",
+        action="store_true",
+        help=f"write no {DRAFT_NAME} or {ITEMS_NAME}, and read no result file",
+    )
+    p_init.add_argument(
+        "--force",
+        action="store_true",
+        help=f"replace a {DRAFT_NAME} and {ITEMS_NAME} already in the project",
+    )
     p_init.set_defaults(func=cmd_init)
 
     p_demo = sub.add_parser(
@@ -572,6 +686,30 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
         endpoints=badges.command_endpoints,
     )
     badges.add_parser(sub)
+    venue_cli.add_parser(sub)
+
+    p_mcp = sub.add_parser(
+        "mcp",
+        help="serve these checks to an agent as MCP tools, over standard input and output",
+        description=(
+            "Run an MCP server on standard input and output whose tools are this toolkit's "
+            "checks, the open items of a reader's draft one at a time, and four writes: "
+            "propose_binding, add_artifact and mark_reviewed, each one line of a draft "
+            "manifest, and pin_quote. Each call works in the project its path is in: the "
+            f"nearest folder above it holding one of {', '.join(PROJECT_MARKERS)}. Nothing it "
+            "offers freezes, seals, registers or runs a declared command, and only "
+            "citations_audit reaches the network, to read registry records. "
+            f"Needs {MCP_EXTRA}."
+        ),
+    )
+    p_mcp.add_argument(
+        "--root",
+        help=(
+            "the project of a call that names no path or project, until one does (default: "
+            "the project above the working directory)"
+        ),
+    )
+    p_mcp.set_defaults(func=cmd_mcp)
 
     # An audit runs these inside a clone of someone else's repository, and keeps no record of
     # its checks in that clone's git directory.

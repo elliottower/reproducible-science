@@ -47,6 +47,8 @@ RESULTS = ["found", "not found", "ambiguous", "indeterminate", "unchecked"]
 OUTCOME_WIDTH = max(len(r) for r in RESULTS) + 1
 WARNINGS = {
     "truncated": "begins or stops mid-word or mid-number — the source continues it",
+    "line-end hyphen": "begins or ends where the source breaks a word across lines with a hyphen "
+    "— check it does not cut the word",
     "short": "the source may qualify this in the next clause",
     "normalized": "matched after ignoring punctuation and spacing",
     "page": "found, but not on the page recorded",
@@ -279,7 +281,7 @@ def cmd_verify(a) -> int:
                     counts[r.state] += 1
                     _record_extractor(rep, extractors, r)
                     if r.state != "found" or r.warnings:
-                        rep.problems.append((f"{cf.name}:{cid}", q.text[:58], r))
+                        rep.problems.append((f"{cf.name}:{cid}", q.text, r))
         rep.counts = dict(counts)
         rep.extractors = dict(extractors)
         rep.from_cache = extraction_cache.hits()
@@ -314,11 +316,20 @@ def cmd_verify(a) -> int:
             counts[r.state] += 1
             _record_extractor(rep, extractors, r)
             if r.state != "found" or r.warnings:
-                rep.problems.append((rec.slug, q.text[:58], r))
+                rep.problems.append((rec.slug, q.text, r))
     rep.counts = dict(counts)
     rep.extractors = dict(extractors)
     rep.from_cache = extraction_cache.hits()
     return _report(rep, counts, a, source)
+
+
+def _warned(rep: V.Report) -> dict[str, list[dict[str, str]]]:
+    """Each warning, with the quotations carrying it: the claims file and claim, and the text."""
+    out: dict[str, list[dict[str, str]]] = {}
+    for slug, text, r in rep.problems:
+        for w in r.warnings:
+            out.setdefault(w, []).append({"claim": slug, "quote": text, "state": r.state})
+    return out
 
 
 def _report(rep: V.Report, counts, a, source: str = "") -> int:
@@ -340,6 +351,7 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
                     "broken_pins": len(rep.broken_pins),
                     "unpinned_sources": len(rep.unpinned),
                     "skipped_files": len(rep.skipped),
+                    "warnings": _warned(rep),
                 },
                 indent=2,
             )
@@ -450,11 +462,18 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
             f"is in history."
         )
 
-    warns = collections.Counter(w for _, _, r in rep.problems for w in r.warnings)
-    if warns:
+    warned = _warned(rep)
+    if warned:
         print("\nwarnings")
-        for w, n in warns.most_common():
-            print(f"  {n:>7,}  {w} — {WARNINGS.get(w, '')}")
+        for w, which in sorted(warned.items(), key=lambda kv: (-len(kv[1]), kv[0])):
+            print(f"  {len(which):>7,}  {w} — {WARNINGS.get(w, '')}")
+            # Which quotations, under `--verbose`. A count says how many to open and not
+            # which; finding them meant calling `check_one` from a script.
+            if getattr(a, "verbose", False):
+                for one in which:
+                    print(f"             {one['claim'][:38]:<40}{one['quote'][:60]}")
+        if not getattr(a, "verbose", False):
+            print("  `--verbose` lists the quotations carrying each warning.")
 
     # About the sources and not about any quotation, so it sits apart from the counts above
     # and changes neither verdict: a tracked source resolves exactly as an untracked one does.
@@ -646,9 +665,12 @@ def _main(argv: list[str] | None = None) -> int:
     v.add_argument(
         "--json",
         metavar="PATH",
-        help="also write the counts to this file as JSON: quotations by outcome, and sources",
+        help="also write the counts to this file as JSON: quotations by outcome, sources, and "
+        "the quotations carrying each warning",
     )
-    v.add_argument("--verbose", action="store_true", help="also list loose matches")
+    v.add_argument(
+        "--verbose", action="store_true", help="also list the quotations carrying each warning"
+    )
     v.add_argument("--quiet", action="store_true")
     v.set_defaults(fn=cmd_verify)
 

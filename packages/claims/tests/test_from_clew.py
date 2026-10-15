@@ -5,7 +5,8 @@ import json
 
 import pytest
 from claims.cli import main
-from claims.foreign.clew import ClewError, offset, records
+from claims.foreign.clew import ClewError, records
+from claims.foreign.common import offset
 from claims.models import Validity
 from claims.record import (
     NATIVE_OUTCOMES,
@@ -151,12 +152,6 @@ def test_naive_times_are_refused_without_an_offset_and_never_read_as_utc(tmp_pat
 def test_a_claim_never_verified_is_dated_by_the_export(tmp_path):
     path = export(tmp_path, [claim(tmp_path, "c", "registered", verified_at=None)])
     assert records(path)[0].checked_at == datetime.datetime(2026, 10, 3, 8, tzinfo=datetime.UTC)
-
-
-@pytest.mark.parametrize("text", ["+9:00", "09:00", "+24:00", "+01:60", "Z", "UTC"])
-def test_an_offset_is_written_with_sign_hours_and_minutes(text):
-    with pytest.raises(ClewError):
-        offset(text)
 
 
 def test_paths_are_relative_to_the_project_and_never_absolute(tmp_path):

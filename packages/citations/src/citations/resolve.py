@@ -68,9 +68,9 @@ NETWORK_ERRORS = (
     UnicodeDecodeError,
 )
 
-#: Status codes that mean "ask again later" rather than "no such work". Any other 5xx is
-#: retried too.
-RETRY_CODES = (429, 503, 504)
+#: Status codes that mean "ask again later" rather than "no such work". Any other status but
+#: those below raises `Throttled` at once.
+RETRY_CODES = (429, 500, 502, 503, 504)
 
 #: The only status codes that mean the service answered and has no such work. A refusal -- 401
 #: or 403 for a missing or rejected key, a rate limit, a 5xx -- is a question that was not
@@ -144,7 +144,8 @@ def get(url: str, as_json: bool, tries: int = 4, headers: dict | None = None):
     """The payload, or None when the service answered and had nothing.
 
     Raises `Rejected` for a 400 or 422, which answers the query rather than the work, and
-    `Throttled` when it did not answer. Collapsing those two into None is how a batch of
+    `Throttled` when it did not answer: any other status but 404 or 410, or no response.
+    Collapsing those into None is how a batch of
     sixty lookups reported sixty works as unfindable when the real answer was that Crossref had
     started rate-limiting after the first few. A resolver that cannot tell "absent" from "I was
     blocked" will confidently delete information.
@@ -163,11 +164,10 @@ def get(url: str, as_json: bool, tries: int = 4, headers: dict | None = None):
                 return None
             # A rejected query is an answer, and the same with a key: never a keyed retry.
             if e.code in REJECTED_CODES:
-                raise Rejected(url, _body(e)) from e
-            if e.code not in RETRY_CODES and e.code < 500:
-                # 401 or 403: refused, and backing off will not change it. A key might, once.
-                if keyed or not credentials(url):
-                    raise Throttled(url) from e
+                raise Rejected(url, _body(e)) from None
+            # A 401 or 403 is retried once with a key, where one is set; nothing else is.
+            if e.code not in RETRY_CODES and (keyed or not credentials(url)):
+                raise Throttled(url) from None
         except NETWORK_ERRORS:
             pass
         if not keyed and credentials(url):

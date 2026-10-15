@@ -39,6 +39,7 @@ from claims.exceptions import ReproError
 from claims.models import (
     AggregateEvidence,
     ArtifactState,
+    Basis,
     Claim,
     ComparisonMode,
     ComparisonStatus,
@@ -57,6 +58,7 @@ from claims.models import (
     Reason,
     Regeneration,
     RegenerationState,
+    Review,
     StalenessReport,
     TableCellEvidence,
     Validity,
@@ -174,6 +176,8 @@ NATIVE_OUTCOMES: dict[str, frozenset[str]] = {
         {"verified", "suspect", "mismatch", "missing", "registered", "superseded"}
         | {"exception", "frozen", "unsourced"}
     ),
+    # An occurrence's, a claim's and a figure's status in a PaperDelta report.
+    "paperdelta": frozenset({"pass", "mismatch", "unknown"}),
 }
 
 
@@ -288,6 +292,14 @@ class AssertionRef(BaseModel):
     """Where it is among all of the claim's assertions, from 0, as the manifest orders them."""
     line: int | None = Field(default=None, ge=1)
     """The line of the manifest the assertion is declared on."""
+    basis: Basis | None = None
+    """`inferred` where the manifest marks the assertion as proposed and nobody has reviewed
+    it, and absent where it is declared or reviewed. The record of an inferred assertion has
+    `outcome: not-checked` whatever its comparison found, which `native_outcome` gives as
+    `inferred_matched`, `inferred_mismatch` and so on: the check ran, and nobody vouches that
+    the address is the claim's."""
+    reviewed: Review | None = None
+    """Who accepted an inferred assertion, and when."""
 
 
 class Address(BaseModel):
@@ -522,7 +534,7 @@ def _address(
 ) -> Address | None:
     if isinstance(evidence, QuoteEvidence):
         named = evidence.model_dump(
-            mode="json", exclude={"kind", "artifact", "text"}, exclude_defaults=True
+            mode="json", exclude={"kind", "artifact", "text", "basis"}, exclude_defaults=True
         )
         return Address(kind=PASSAGE, **named)
     if isinstance(evidence, TableCellEvidence) and not evidence.addresses_one_row:
@@ -797,6 +809,8 @@ def check_records(
                             position=seen[evidence.kind, getattr(evidence, "name", "")],
                             index=index,
                             line=evidence_lines[index] if index < len(evidence_lines) else None,
+                            basis=Basis.INFERRED if decision.inferred else None,
+                            reviewed=decision.reviewed,
                         ),
                         check_type=check_type(evidence.kind),
                         reads=_reads(evidence, decision, manifest, states, paths),
@@ -804,8 +818,15 @@ def check_records(
                         if isinstance(evidence, QuoteEvidence)
                         else getattr(evidence, "reported", None),
                         comparison=_comparison(evidence, decision),
-                        outcome=normalized(decision.outcome),
-                        native_outcome=decision.outcome.value,
+                        # An inferred assertion's record says `not-checked` in the field every
+                        # reader reads, so one that knows nothing of `basis` passes on no match;
+                        # what the comparison found is in `native_outcome`.
+                        outcome=NormalizedOutcome.NOT_CHECKED
+                        if decision.inferred
+                        else normalized(decision.outcome),
+                        native_outcome=f"inferred_{decision.said}"
+                        if decision.inferred
+                        else decision.outcome.value,
                         native_reason=decision.reason.value,
                         detail=decision.detail,
                         stages=Stages(
@@ -919,13 +940,17 @@ def understood(record: ExportRecord) -> bool:
 
 def read_outcome(record: ExportRecord) -> NormalizedOutcome:
     """The outcome a consumer may act on: the record's, except that a `match` it does not
-    understand is `not-checked`.
+    understand, or a `match` on an inferred assertion, is `not-checked`.
 
     Unknown stays unknown. A record version, a word, a check type or an address kind this
     version has never seen may be a success in the tool that wrote it, and nothing here can tell, so it is never
-    passed on as one. Every exporter reads the outcome through this.
+    passed on as one. An inferred assertion's match says the file holds the value at the
+    proposed address, and not that the address is the one the claim means, so it is not passed
+    on as a match either. Every exporter reads the outcome through this.
     """
-    if record.outcome is NormalizedOutcome.MATCH and not understood(record):
+    if record.outcome is NormalizedOutcome.MATCH and (
+        not understood(record) or record.assertion.basis is Basis.INFERRED
+    ):
         return NormalizedOutcome.NOT_CHECKED
     return record.outcome
 
@@ -1036,7 +1061,8 @@ def problems(record: ExportRecord) -> tuple[str, ...]:
             or stages.comparison.value != record.outcome.value
         ):
             found.append(f"a {record.outcome.value} needs a comparison that ran and found one")
-    else:
+    elif record.assertion.basis is not Basis.INFERRED:
+        # An inferred assertion is compared, and its record says not-checked all the same.
         if stages is not None and stages.comparison is not ComparisonStatus.NOT_APPLICABLE:
             found.append(f"{record.outcome.value} means nothing was compared")
     if record.outcome is NormalizedOutcome.NOT_FOUND:
@@ -1044,7 +1070,14 @@ def problems(record: ExportRecord) -> tuple[str, ...]:
             found.append("not-found needs a readable file; an absent one is not-checked")
         if stages is not None and stages.execution is not ExecutionStatus.COMPLETED:
             found.append("not-found needs a check that ran")
-    if record.outcome in (NormalizedOutcome.NOT_CHECKED, NormalizedOutcome.ERROR) and values:
+    inferred = record.assertion.basis is Basis.INFERRED
+    if inferred and record.outcome is not NormalizedOutcome.NOT_CHECKED:
+        found.append("an inferred assertion's record is not-checked, whatever it compared")
+    if (
+        record.outcome in (NormalizedOutcome.NOT_CHECKED, NormalizedOutcome.ERROR)
+        and values
+        and not inferred
+    ):
         found.append(f"{record.outcome.value} means no check ran, so no stored value was read")
     if (
         record.outcome is NormalizedOutcome.ERROR
