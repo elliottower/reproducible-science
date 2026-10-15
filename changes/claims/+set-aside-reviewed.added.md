@@ -1,0 +1,1 @@
+**A `set_aside` entry may say who set its passage aside and when, as `reviewed: {who, when}`.** It is the shape an inferred assertion's review takes, and `repro bot` writes it. An entry without it dumps, and so hashes, as before.

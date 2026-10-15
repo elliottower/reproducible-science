@@ -1299,7 +1299,9 @@ set_aside:
 ```
 
 A `set_aside` entry names a passage, matched as a quotation is, and a reason, which is
-required. Every number in each place the passage occurs is set aside unless an assertion binds
+required. It may say who set the passage aside and when, as `reviewed: {who, when}`, the shape
+an inferred assertion's review takes; an entry without it serializes as one written before the
+field existed. Every number in each place the passage occurs is set aside unless an assertion binds
 it, and each entry is listed with how many numbers it accounts for.
 
 The rules are applied in this order, and the first that holds is the one named.
