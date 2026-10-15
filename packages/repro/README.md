@@ -1205,6 +1205,7 @@ inside that project. A symlink belongs to the folder it sits in. A call with no 
 |---|---|
 | `verify`, `why`, `stale`, `numbers`, `origins` | as the commands; `verify` writes no record of checks |
 | `prereg_check`, `results_verify`, `citations_verify` | the three tools' checks |
+| `citations_audit` | each `.bib` entry against its registry record, ten a call: agrees, disagrees, not found, or could not check; the one tool that reads the network |
 | `next_open_item`, `get_open_item` | one open item: the claim, the printed value, the sentence, each candidate's address, labels and stored value |
 | `propose_binding` | one assertion filling an item, `basis: inferred`, then its check |
 | `add_artifact` | one file, pinned and `basis: inferred` |
@@ -1218,6 +1219,6 @@ open-items file, which `claims open-items` counts from, flagging an item tried m
 times. An assertion reading an inferred artifact counts as inferred too. `mark_reviewed` writes
 who (git `user.name`), when, how (`approved in chat via` the client) and the digest of what was
 accepted; when that changes, the review no longer counts. Nothing the server offers freezes,
-registers, seals, runs a declared command or fetches.
+registers, seals, runs a declared command, and nothing but `citations_audit` fetches.
 
 MIT licensed.

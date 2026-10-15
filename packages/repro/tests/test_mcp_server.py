@@ -1,11 +1,17 @@
+import io
 import json
 import pathlib
 import shutil
+import urllib.error
+import urllib.parse
+import urllib.request
 from typing import Any
 
 import anyio
 import pytest
 import yaml
+from citations import audit as citations_audit_module
+from citations import resolve as citations_resolve
 from claims.cli import main as claims_main
 from claims.manifest import load
 from claims.models import Digest, Manifest
@@ -13,7 +19,7 @@ from claims.open_items import OpenItem, Source, tally, write_draft
 from claims.verify import verify as run_verify
 from mcp import Client
 from provenance_core import chain
-from repro import proposals
+from repro import mcp_server, proposals
 from repro.mcp_server import INSTRUCTIONS, build
 
 PASSAGE = "the set of changes over which a relationship is invariant"
@@ -197,6 +203,7 @@ def test_the_server_lists_every_tool_and_carries_the_procedure(project):
         "pin_quote",
         "add_artifact",
         "mark_reviewed",
+        "citations_audit",
     }
     assert instructions == INSTRUCTIONS
     for rule in (
@@ -931,3 +938,130 @@ def test_mark_reviewed_refuses_what_did_not_match_and_a_project_with_no_git_user
     same = unchanged(project)
     assert review(project, ["auc/value"]).structured_content["refused"] == "no_reviewer"
     assert same()
+
+
+# --------------------------------------------------------------------------- citations_audit
+
+BIB = """\
+@article{agrees, title = {A Study of Things}, author = {Doe, Jane and Roe, Rick},
+  year = {2020}, doi = {10.1000/agrees}}
+@article{disagrees, title = {A Study of Things}, author = {Doe, Jane and Roe, Rick},
+  year = {2019}, volume = {9}, doi = {10.1000/disagrees}}
+@article{throttled, title = {A Study of Things}, author = {Doe, Jane}, year = {2020},
+  doi = {10.1000/throttled}}
+@book{missing, title = {A Book Nobody Registered}, author = {Poe, Ann}, year = {2001}}
+@book{refused, title = {A Book No Service Would Search}, author = {Coe, Al}, year = {2002}}
+"""
+
+CROSSREF = {
+    "message": {
+        "title": ["A Study of Things"],
+        "author": [{"family": "Doe", "given": "Jane"}, {"family": "Roe", "given": "Rick"}],
+        "issued": {"date-parts": [[2020]]},
+        "volume": "3",
+    }
+}
+
+
+class _Body(io.BytesIO):
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+@pytest.fixture
+def registries(monkeypatch):
+    asked: list[str] = []
+
+    def urlopen(request, timeout=None):
+        url = request.full_url if hasattr(request, "full_url") else str(request)
+        asked.append(url)
+        if "throttled" in url:
+            raise urllib.error.HTTPError(url, 429, "Too Many Requests", {}, None)
+        if "api.crossref.org/works/10.1000" in url:
+            return _Body(json.dumps(CROSSREF).encode())
+        raise AssertionError(f"an unexpected request: {url}")
+
+    def search(url, as_json, tries=4, headers=None):
+        asked.append(url)
+        if "Would" in urllib.parse.unquote_plus(url):
+            raise citations_resolve.Throttled(url)
+        return None
+
+    monkeypatch.setattr(urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(citations_resolve, "get", search)
+    monkeypatch.setattr(citations_audit_module, "DELAY", 0)
+    monkeypatch.setattr(citations_audit_module, "SEARCH_DELAY", 0)
+    return asked
+
+
+def snapshot(root: pathlib.Path) -> dict[str, bytes]:
+    return {
+        p.relative_to(root).as_posix(): p.read_bytes()
+        for p in root.rglob("*")
+        if p.is_file() and ".audit-cache" not in p.parts
+    }
+
+
+def test_citations_audit_reports_each_entry_against_its_registry(project, registries):
+    (project / "paper.bib").write_text(BIB)
+    before = snapshot(project)
+    (result,) = calls(project, [("citations_audit", {"bib": str(project / "paper.bib")})])
+    assert not result.is_error, result.content[0].text
+    rows = {row["key"]: row["registry"] for row in result.structured_content["entries"]}
+    assert rows["agrees"]["result"] == "agrees"
+    assert rows["agrees"]["checked_against"] == "crossref"
+    assert rows["disagrees"]["result"] == "disagrees"
+    assert rows["disagrees"]["fields"] == ["year", "volume"]
+    assert rows["missing"]["result"] == "not_found"
+    assert rows["throttled"]["result"] == "could_not_check"
+    assert rows["refused"]["result"] == "could_not_check"
+    assert "throttled" in rows["refused"]["why_not"]
+    assert result.structured_content["counts"] == {
+        "agrees": 1,
+        "disagrees": 1,
+        "not_found": 1,
+        "could_not_check": 2,
+    }
+    found = {row["key"]: row["search"] for row in result.structured_content["entries"]}
+    assert found["missing"]["searched"] != []
+    assert not any(key in rows["agrees"] for key in found["agrees"])
+    assert snapshot(project) == before
+
+
+def test_citations_audit_pages_past_its_cap(project, registries, monkeypatch):
+    monkeypatch.setattr(mcp_server, "MAX_AUDIT_ENTRIES", 2)
+    (project / "paper.bib").write_text(BIB)
+    first, second, third = calls(
+        project,
+        [
+            ("citations_audit", {"bib": str(project / "paper.bib"), "no_search": True}),
+            ("citations_audit", {"bib": str(project / "paper.bib"), "start": 2}),
+            ("citations_audit", {"bib": str(project / "paper.bib"), "start": 4}),
+        ],
+    )
+    keys = [
+        [row["key"] for row in result.structured_content["entries"]]
+        for result in (first, second, third)
+    ]
+    assert keys == [["agrees", "disagrees"], ["missing", "refused"], ["throttled"]]
+    assert [r.structured_content["next_start"] for r in (first, second, third)] == [2, 4, None]
+    assert third.structured_content["total"] == 5
+
+
+def test_citations_audit_under_strict_fails_on_what_it_could_not_check(project, registries):
+    agrees, _, rest = BIB.partition("@article{disagrees")
+    refused = "@book{refused" + rest.split("@book{refused")[1]
+    (project / "paper.bib").write_text(agrees + refused)
+    lenient, strict = calls(
+        project,
+        [
+            ("citations_audit", {"bib": str(project / "paper.bib")}),
+            ("citations_audit", {"bib": str(project / "paper.bib"), "strict": True}),
+        ],
+    )
+    assert lenient.structured_content["counts"]["could_not_check"] == 1
+    assert lenient.structured_content["passed"] is True
+    assert strict.structured_content["passed"] is False

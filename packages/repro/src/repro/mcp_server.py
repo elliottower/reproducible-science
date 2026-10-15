@@ -3,7 +3,8 @@
 Every tool calls the toolkit in this process: the claims side through its functions, and
 `prereg`, `results` and `citations` through the entry `repro check` uses, each told to write
 what it found as JSON. Nothing here freezes or registers a plan, seals or records a run, runs a
-declared command, publishes or fetches; the instructions say to ask the human for those.
+declared command or publishes, and only `citations_audit` reads over the network, from
+registries; the instructions say to ask the human for the rest.
 
 Each call works in one project, found from its path: the nearest folder at or above it holding
 a marker (`PROJECT_MARKERS`). A call with no path takes its `project` argument, else the
@@ -18,10 +19,12 @@ import contextlib
 import io
 import json
 import pathlib
+import re
 import tempfile
 from collections.abc import Callable, Sequence
 from typing import Any
 
+from citations import audit as citations_audit_module
 from citations import pin as citations_pin
 from claims.exceptions import ReproError
 from claims.manifest import DEFAULT_NAME
@@ -85,6 +88,9 @@ pin_quote with check=true first. A passage that does not resolve is not written.
 (it replaces your failed one) or leave the item open. An open item is a result.
 5. Report each item left open with its reason, and that every filled item is inferred.
 
+A paper's references, without its sources: citations_audit checks each entry of a .bib \
+against the registries, ten at a time.
+
 Reviews: list the matched items to the user first, and call mark_reviewed only for the items \
 the user has explicitly approved in this conversation.
 
@@ -94,10 +100,31 @@ capsule or bundle; call anything verified that a tool did not report verified.
 
 Not offered here, so ask the human to run them: prereg freeze, prereg register, results seal, \
 results run, repro reproduce and anything else that runs a declared command, anything that \
-publishes or registers, and anything that fetches over the network.
+publishes or registers, and any network fetch but citations_audit's registry lookups.
 """
 
 READ_ONLY = ToolAnnotations(read_only_hint=True, open_world_hint=False)
+LOOKS_UP = ToolAnnotations(read_only_hint=True, open_world_hint=True)
+
+#: How many bibliography entries one `citations_audit` call checks. `start` pages past it.
+MAX_AUDIT_ENTRIES = 10
+
+#: Each `citations audit` verdict, as the four answers an agent reports, and why the last.
+AUDITED = {
+    "ok": ("agrees", ""),
+    "mismatch": ("disagrees", ""),
+    "not found": ("not_found", ""),
+    "unresolved": (
+        "could_not_check",
+        "the registry or every search service did not answer: throttled, offline, or not "
+        "registered there",
+    ),
+    "no identifier": ("could_not_check", "no DOI or PMID, and the title search is off"),
+    "found": ("could_not_check", "the title search found an id with no DOI to compare against"),
+}
+
+#: The field a `citations audit` disagreement names, at the start of its message.
+FIELD = re.compile(r"^(title|year|volume|pages|author list|author \d+)")
 WRITES = ToolAnnotations(read_only_hint=False, destructive_hint=False, open_world_hint=False)
 
 Work = Callable[[pathlib.Path], tuple[dict[str, Any], str]]
@@ -137,6 +164,62 @@ def _delegated(root: pathlib.Path, tool: str, argv: Sequence[str]) -> tuple[dict
     command = f"{tool} {argv[0]}"
     data = {"command": command, "exit": code, "found": written, "output": output.getvalue()}
     return data, f"{command}: exit {code}; {last.strip()}"
+
+
+def _audited(path: pathlib.Path, strict: bool, search: bool, start: int) -> tuple[dict, str]:
+    """`citations audit --bib` over one page of entries: the registry's verdict per entry, and
+    apart from it what a title search found. Reads registries; writes only the cache
+    `citations audit` keeps beside the bibliography."""
+    if not path.is_file():
+        raise Refused("not_a_file", f"no bibliography at {path}")
+    if start < 0:
+        raise Refused("start", "start counts entries from 0")
+    entries = citations_audit_module.entries_from_bib(path)
+    page = entries[start : start + MAX_AUDIT_ENTRIES]
+    with contextlib.redirect_stdout(io.StringIO()):
+        report = citations_audit_module.audit(
+            page, path.parent / ".audit-cache", str(path), search=search
+        )
+    rows: list[dict[str, Any]] = []
+    for key, verdict in report.entries.items():
+        result, why_not = AUDITED.get(verdict.status, ("could_not_check", verdict.status))
+        fields = [m.group(1) for p in verdict.problems if (m := FIELD.match(p))]
+        rows.append(
+            {
+                "key": key,
+                "registry": {
+                    "result": result,
+                    "why_not": why_not,
+                    "checked_against": verdict.checked_against,
+                    "fields": fields,
+                    "problems": verdict.problems,
+                    "doi": verdict.doi,
+                    "pmid": verdict.pmid,
+                },
+                "search": {
+                    "found_kind": verdict.found_kind,
+                    "found_id": verdict.found_id,
+                    "found_by": verdict.found_by,
+                    "searched": verdict.searched,
+                },
+            }
+        )
+    counts = {
+        word: sum(r["registry"]["result"] == word for r in rows)
+        for word in ("agrees", "disagrees", "not_found", "could_not_check")
+    }
+    failed = counts["disagrees"] + (counts["could_not_check"] if strict else 0)
+    following = start + len(page)
+    data = {
+        "entries": rows,
+        "counts": counts,
+        "strict": strict,
+        "passed": not failed and bool(rows),
+        "total": len(entries),
+        "next_start": following if following < len(entries) else None,
+    }
+    said = ", ".join(f"{n} {word.replace('_', ' ')}" for word, n in counts.items())
+    return data, f"entries {start + 1}-{following} of {len(entries)}: {said}"
 
 
 def _client(ctx: Context) -> str:
@@ -295,6 +378,20 @@ def build(root: pathlib.Path | None = None) -> MCPServer:
             return _delegated(at, "citations", ["verify", f"--claims={folder}"])
 
         return answer(work, claims, project)
+
+    @server.tool(annotations=LOOKS_UP)
+    async def citations_audit(
+        bib: str, strict: bool = False, no_search: bool = False, start: int = 0
+    ) -> CallToolResult:
+        """`citations audit --bib`: does each entry's title, authors, year, volume and pages
+        agree with the registry record its DOI or PMID resolves to, or that a title search
+        finds? Per entry: agrees, disagrees (with the fields named), not found, or could not
+        check, which is what a throttled or silent service gives. Ten entries a call; pass
+        `next_start` as `start` for more. The only tool that reaches the network, and only to
+        read registries; it writes no .bib, record or claims file."""
+        return answer(
+            lambda at: _audited(inside(at, absolute(bib)), strict, not no_search, start), bib
+        )
 
     @server.tool(annotations=READ_ONLY)
     async def next_open_item(open_items: str, after: str | None = None) -> CallToolResult:

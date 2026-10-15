@@ -44,9 +44,9 @@ from provenance_core import atomic_write_bytes, try_run
 from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError
 
 #: What marks a directory as a project: a manifest or a reader's draft, a results ledger, a
-#: record of frozen plans, a folder of pinned quotations, or the plan itself. The repro mod for
-#: Claude Code reads the same signs (`MARKERS` in `mod/hooks/register.ts`) but for `paper/`,
-#: which marks too many folders to let a write tool settle on one.
+#: record of frozen plans, a folder of pinned quotations, or the plan itself. The repro mod reads
+#: .results, claims, PREREG.md and paper; this list differs on purpose, leaving out a bare paper/
+#: folder as too loose a sign for write tools.
 PROJECT_MARKERS = ("repro.yaml", "repro.draft.yaml", ".results", ".prereg", "claims", "PREREG.md")
 
 #: How many candidates one packet lists, and how much of a sentence and of a stored value.
