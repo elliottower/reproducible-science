@@ -143,16 +143,27 @@ class OpenItems(BaseModel):
 
 
 def write_draft(
-    directory: pathlib.Path, document: dict, source: Source, items: tuple[OpenItem, ...]
+    directory: pathlib.Path,
+    document: dict,
+    source: Source,
+    items: tuple[OpenItem, ...],
+    overwrite: bool = False,
 ) -> pathlib.Path:
-    """Write a reader's draft and its open items into `directory`, refusing to overwrite either.
+    """Write a reader's draft and its open items into `directory`, refusing to overwrite either
+    unless `overwrite` is given, as `repro init --force` gives it, and refusing either path
+    where it is a symbolic link, dangling or not, or resolves outside `directory`.
 
     Returns the path of the open-items file, which names the draft and the digest of the bytes
     written.
     """
     draft, listed = directory / DRAFT_NAME, directory / ITEMS_NAME
     for target in (draft, listed):
-        if target.exists():
+        # A dangling link does not exist, and a write to it lands where it points.
+        if target.is_symlink():
+            raise OpenItemsError(f"{target} is a symbolic link, and nothing is written through one")
+        if target.exists() and not target.resolve().is_relative_to(directory.resolve()):
+            raise OpenItemsError(f"{target} resolves outside {directory}")
+        if target.exists() and not overwrite:
             raise OpenItemsError(f"{target} exists, and a reader never overwrites a file")
     text = yaml.safe_dump(document, sort_keys=False, width=100, allow_unicode=True)
     # Validated before anything is written, so a reader that builds a manifest this package
