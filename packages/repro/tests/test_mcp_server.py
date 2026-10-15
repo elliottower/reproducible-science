@@ -187,11 +187,13 @@ def test_the_server_lists_every_tool_and_carries_the_procedure(project):
         "citations_verify",
         "propose_binding",
         "pin_quote",
+        "set_project",
     }
     assert instructions == INSTRUCTIONS
     for rule in (
         "basis: inferred",
         "matched, inferred: not verified",
+        "call set_project with the project folder first",
         "Never: edit open-items.json",
         "edit a pinned quotation",
         "ask the human to run them: prereg freeze, prereg register, results seal",
@@ -619,3 +621,82 @@ def test_a_client_root_confines_every_path(project):
     assert not result.is_error
     result = roots_call(project.parent, project / "draft", "verify", {"manifest": "../repro.yaml"})
     assert result.structured_content["refused"] == "outside_root"
+
+
+def calls(server_root: pathlib.Path | None, steps: list[tuple[str, dict]], roots=None):
+    """Several calls in one session, as an agent makes them."""
+
+    async def list_roots(context) -> ListRootsResult:
+        return ListRootsResult(roots=[Root(uri=root.as_uri()) for root in roots])
+
+    async def run():
+        callback = list_roots if roots else None
+        async with Client(build(server_root), list_roots_callback=callback) as client:
+            return [await client.call_tool(tool, arguments) for tool, arguments in steps]
+
+    return anyio.run(run)
+
+
+def test_set_project_names_the_root_for_the_rest_of_the_session(project, tmp_path):
+    other = tmp_path / "other"
+    (other / "claims").mkdir(parents=True)
+    named, verified = calls(
+        tmp_path,
+        [("set_project", {"path": str(project)}), ("verify", {"policy": "exploratory"})],
+        roots=[other],
+    )
+    assert named.structured_content == {"root": project.as_posix()}
+    assert verified.structured_content["root"] == project.as_posix()
+    assert verified.structured_content["counts"] == {"verified": 1}
+
+
+@pytest.mark.parametrize("target", ["empty", "file", "missing"])
+def test_set_project_refuses_what_is_not_a_project(project, tmp_path, target):
+    (tmp_path / "empty").mkdir()
+    (tmp_path / "file").write_text("x")
+    refused, verified = calls(
+        project,
+        [("set_project", {"path": str(tmp_path / target)}), ("verify", {"policy": "exploratory"})],
+    )
+    assert refused.is_error
+    assert refused.structured_content["refused"] == "not_a_project"
+    assert verified.structured_content["root"] == project.as_posix()
+
+
+def test_the_project_is_found_above_the_working_directory(project, monkeypatch):
+    monkeypatch.chdir(project / "results")
+    (result,) = calls(None, [("verify", {"policy": "exploratory"})])
+    assert result.structured_content["root"] == project.as_posix()
+    assert result.structured_content["counts"] == {"verified": 1}
+
+
+def test_with_no_project_every_tool_says_to_call_set_project(project, tmp_path, monkeypatch):
+    nowhere = tmp_path / "nowhere"
+    nowhere.mkdir()
+    monkeypatch.chdir(nowhere)
+    proposal = {"open_items": DRAFT_ITEMS, "claim": "auc", "assertion": _candidate("/auc/held")}
+    pin = {"claims_file": "claims/woodward.yaml", "id": "q", "quote": PASSAGE}
+    results = calls(None, [("propose_binding", proposal), ("pin_quote", pin), ("verify", {})])
+    for result in results:
+        assert result.is_error
+        assert result.structured_content["refused"] == "no_project"
+        assert result.content[0].text == "no project: call set_project"
+
+
+def test_paths_stay_inside_the_project_set_project_named(project, tmp_path):
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / "repro.yaml").write_text((project / "repro.yaml").read_text())
+    (project / "elsewhere").symlink_to(outside)
+    results = calls(
+        tmp_path,
+        [
+            ("set_project", {"path": str(project)}),
+            ("verify", {"manifest": "elsewhere/repro.yaml"}),
+            ("verify", {"manifest": "../outside/repro.yaml"}),
+            ("verify", {"manifest": str(outside / "repro.yaml")}),
+        ],
+    )
+    assert results[0].structured_content["root"] == project.as_posix()
+    for result in results[1:]:
+        assert result.structured_content["refused"] == "outside_root"

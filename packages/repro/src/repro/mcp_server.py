@@ -16,8 +16,9 @@ Nothing here freezes or registers a plan, seals or records a run, runs a declare
 publishes anything or reaches the network. The instructions say to ask the human for those.
 
 Every path an agent gives is resolved inside the project root, `--root` or the directory the
-server starts in, and refused where it leaves it. A client that offers MCP roots names the root
-instead, call by call: its first `file://` root. Tool bodies run on the event loop, one at a
+server starts in, and refused where it leaves it. The root is, in order: the folder
+`set_project` named; the client's first `file://` MCP root; `--root`; and the nearest directory
+at or above the working directory holding a project marker. Tool bodies run on the event loop, one at a
 time: the tools reached through their command line read the working directory and print, so
 each runs with the directory changed to the root and its output captured.
 """
@@ -69,6 +70,10 @@ NAME = "reproducible-science"
 INSTRUCTIONS = """\
 Tools for the reproducible-science toolkit: check a manuscript's declared claims against the \
 files they name, and fill the items a reader of another tool's files left open.
+
+Every tool works inside one project folder, and every result names it as `root`. When unsure \
+which project this is, call set_project with the project folder first. A tool that answers \
+"no project: call set_project" found none.
 
 The rule: you propose, the checks decide. Every assertion you write is basis: inferred, and \
 propose_binding writes no other. An inferred assertion that matched is a proposal that held, \
@@ -170,10 +175,30 @@ def _asked_roots(ctx: Context) -> ListRoots | None:
 Roots = Annotated[ListRootsResult | None, Resolve(_asked_roots)]
 
 
-def _client_root(listed: ListRootsResult | None, default: pathlib.Path) -> pathlib.Path:
-    """The project root for this call: the client's first `file://` root that is a directory,
-    which is how an agent that starts the server without `--root` names the project;
-    otherwise `default`, which is `--root` or the directory the server started in."""
+#: What marks a directory as a project: a manifest or a reader's draft, a results ledger, a
+#: record of frozen plans, or a folder of pinned quotations.
+PROJECT_MARKERS = ("repro.yaml", "repro.draft.yaml", ".results", ".prereg", "claims")
+
+#: What every tool answers where no project root could be settled.
+NO_PROJECT = "no project: call set_project"
+
+
+def is_project(directory: pathlib.Path) -> bool:
+    return directory.is_dir() and any((directory / name).exists() for name in PROJECT_MARKERS)
+
+
+def discover(start: pathlib.Path) -> pathlib.Path | None:
+    """The nearest directory at or above `start` holding a project marker, as git finds
+    `.git`; None where no directory up to the filesystem root does."""
+    here = start.resolve()
+    return next((d for d in (here, *here.parents) if is_project(d)), None)
+
+
+def _client_root(
+    listed: ListRootsResult | None, default: pathlib.Path | None
+) -> pathlib.Path | None:
+    """The client's first `file://` root that is a directory, which is how an agent that
+    starts the server without `--root` names the project; otherwise `default`."""
     found = (_file_root(str(root.uri)) for root in (listed.roots if listed else ()))
     return next((path for path in found if path is not None), default)
 
@@ -181,14 +206,19 @@ def _client_root(listed: ListRootsResult | None, default: pathlib.Path) -> pathl
 Work = Callable[[pathlib.Path], tuple[dict[str, Any], str]]
 
 
-def build(root: pathlib.Path) -> MCPServer:
-    """The server for the project at `root`, with every tool registered. A client that offers
-    roots names the root instead, call by call."""
-    default = root.resolve()
+def build(root: pathlib.Path | None = None) -> MCPServer:
+    """The server, with every tool registered. The root of each call is, in order: the folder
+    `set_project` named in this session; the client's first `file://` root, where it offers
+    roots; `root` (`--root`); and the nearest directory at or above the working directory that
+    holds a project marker. Where none is settled every tool answers `NO_PROJECT`."""
+    default = root.resolve() if root is not None else discover(pathlib.Path.cwd())
     server = MCPServer(NAME, instructions=INSTRUCTIONS, version=__version__)
+    chosen: list[pathlib.Path] = []
 
     def answer(roots: ListRootsResult | None, work: Work) -> CallToolResult:
-        here = _client_root(roots, default)
+        here = chosen[-1] if chosen else _client_root(roots, default)
+        if here is None:
+            return _result({"refused": "no_project", "detail": NO_PROJECT}, NO_PROJECT, True)
         # Run on the event loop, not a worker thread: the delegated tools change the working
         # directory and capture standard output, which two calls at once would cross.
         try:
@@ -200,6 +230,27 @@ def build(root: pathlib.Path) -> MCPServer:
         else:
             error = False
         return _result({**data, "root": here.as_posix()}, summary, error)
+
+    @server.tool(annotations=WRITES)
+    async def set_project(path: str, roots: Roots = None) -> CallToolResult:
+        """Name the project folder for the rest of this session: an absolute path, or one
+        relative to the current root. Accepted only where the folder holds repro.yaml,
+        repro.draft.yaml, .results/, .prereg/ or claims/. Answers the root settled on, and
+        every later path is confined to it."""
+        current = chosen[-1] if chosen else _client_root(roots, default)
+        given = pathlib.Path(path).expanduser()
+        if not given.is_absolute():
+            given = (current or pathlib.Path.cwd()) / given
+        folder = given.resolve()
+        if not folder.is_dir():
+            reason = f"{path} resolves to {folder}, which is not a directory"
+        elif not is_project(folder):
+            reason = f"{folder} holds none of {', '.join(PROJECT_MARKERS)}"
+        else:
+            chosen.append(folder)
+            return _result({"root": folder.as_posix()}, f"project root: {folder}")
+        detail = f"not a project: {reason}"
+        return _result({"refused": "not_a_project", "detail": detail}, detail, error=True)
 
     @server.tool(annotations=READ_ONLY)
     async def verify(
@@ -465,6 +516,7 @@ def _said(command: str, ran: dict[str, Any]) -> tuple[dict[str, Any], str]:
     return {"command": command, **ran}, f"{command}: exit {ran['exit']}; {last.strip()}"
 
 
-def serve(root: pathlib.Path) -> None:
-    """Run the server for `root` over standard input and output until the client leaves."""
+def serve(root: pathlib.Path | None) -> None:
+    """Run the server over standard input and output until the client leaves. `root` is
+    `--root`, or None to find the project above the working directory."""
     build(root).run("stdio")

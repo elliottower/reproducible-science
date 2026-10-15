@@ -486,8 +486,8 @@ def cmd_mcp(args: argparse.Namespace) -> int:
             raise
         print(f"`repro mcp` needs the MCP SDK: {MCP_EXTRA}")
         return 2
-    root = Path(args.root) if args.root else Path.cwd()
-    if not root.is_dir():
+    root = Path(args.root) if args.root else None
+    if root is not None and not root.is_dir():
         print(f"--root {args.root}: not a directory")
         return 2
     server.serve(root)
@@ -612,7 +612,13 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
             f"registers, runs a declared command or reaches the network. Needs {MCP_EXTRA}."
         ),
     )
-    p_mcp.add_argument("--root", help="the project root (default: the working directory)")
+    p_mcp.add_argument(
+        "--root",
+        help=(
+            "the project root (default: the nearest directory at or above the working "
+            "directory holding repro.yaml, repro.draft.yaml, .results/, .prereg/ or claims/)"
+        ),
+    )
     p_mcp.set_defaults(func=cmd_mcp)
 
     # An audit runs these inside a clone of someone else's repository, and keeps no record of

@@ -1185,9 +1185,12 @@ uv tool install "reproducible-science[mcp]"   # or: pip install "reproducible-sc
 repro mcp --root /path/to/project
 ```
 
-The project root is the client's first `file://` root where the client offers MCP roots, which
-is how an agent that starts the server without `--root` names the project; otherwise `--root`;
-otherwise the directory the server starts in. Every path a tool is given is resolved inside that
+The project root is, in order: the folder the agent named with `set_project` in this session;
+the client's first `file://` root where the client offers MCP roots; `--root`; and the nearest
+directory at or above the one the server starts in that holds `repro.yaml`, `repro.draft.yaml`,
+`.results/`, `.prereg/` or `claims/`, found as git finds `.git`. `set_project` accepts only a
+folder holding one of those, and where no root is settled every tool answers
+`no project: call set_project`. Every path a tool is given is resolved inside that
 root, and a path that leaves it, through `..` or a symlink, is refused. So is a manifest that
 names a file outside it.
 
@@ -1202,6 +1205,7 @@ names a file outside it.
 | `prereg_check`, `results_verify`, `citations_verify` | `prereg check`, `results verify [--files]`, `citations verify --claims` |
 | `propose_binding` | appends one assertion to a draft manifest to fill an open item, then checks it |
 | `pin_quote` | `citations pin`, which writes a quotation only where it resolves |
+| `set_project` | names the project folder for the rest of the session |
 
 `propose_binding` writes `basis: inferred` and nothing else. It refuses any other basis and
 `reviewed`, a claim the open-items file lists no item for or the draft does not hold, a draft
