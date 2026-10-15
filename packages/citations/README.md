@@ -130,6 +130,7 @@ every quote resolved, but against a source that is not the one pinned.
 | `citations verify --verbose` | Also list, under each warning, the claims file, claim and quotation carrying it |
 | `citations coverage` | Is every quotation in my manuscript pinned at all? |
 | `citations audit` | Does the stored metadata match the record the identifier resolves to? |
+| `citations audit --strict` | Exit 1 on a disagreement or on an entry not found that is not on the checked list, 2 when a lookup failed and nothing else did |
 | `citations resolve` | Backfill missing DOIs and arXiv ids |
 | `citations build` | Rebuild records from bibliographies |
 | `citations lint` | BibTeX correctness, repeated keys, and author lists in a `.bib` |
@@ -836,10 +837,63 @@ the report lists that identifier so it can be added to the entry.
 
 | Row | Meaning | Fails `--strict` |
 |---|---|---|
-| `by search` | The search found a DOI or an arXiv id and the entry was compared with its record. An arXiv id is read as the DataCite DOI `10.48550/arXiv.<id>`. These entries are counted in `checked`. | on a disagreement |
+| `by search` | The search found a DOI or an arXiv id and the entry was compared with its record. An arXiv id is read as the DataCite DOI `10.48550/arXiv.<id>`. These entries are counted in `checked`. | on a disagreement, exit 1 |
 | `found` | The search matched an OpenAlex record that has no DOI, so there is no registry record to compare with. | no |
-| `not found` | At least one service answered and none had a matching record. A book, a report and a thesis land here, and so does a reference to a work that does not exist. | no |
-| `unresolved` | A registry did not return the record, or every search service refused. No measurement was made. | yes |
+| `not found` | A title search that Crossref or OpenAlex answered matched no record, or every registry asked answered that the entry's own DOI or PMID names no record (a 404 or 410, or a 400 or 422 rejecting the identifier as malformed). A book, a report and a thesis land here, and so does a reference to a work that does not exist. | exit 1, unless the key is on the checked list |
+| `marked` | Of those not found, the keys on the checked list. Each is still listed under `not found`, as `(marked as checked)`. | no |
+| `could not check` | A registry refused or did not answer (a 401 or 403, a rate limit, a timeout, a 5xx, a body that is not a record), or a title search in which neither Crossref nor OpenAlex answered. No measurement was made. | exit 2, when nothing else fails |
+
+Without `--strict` every row is reported and the command exits 0. With it, the exit code is 1
+for a disagreement or an unlisted not found, 2 when the only failures are lookups that could
+not be made, and 0 otherwise. A failed lookup exits 2 rather than 1 so that a CI job can retry
+it instead of sending the author after a citation that may be correct, and a disagreement
+outranks it, because no retry changes a disagreement. An audit that checked nothing also exits
+2 under `--strict`, and says `nothing was checked`: an empty bibliography, or one whose every
+entry is `no id` or `could not check`, as under `--no-search`. An entry searched for and not
+found counts as checked, so a bibliography of listed works no registry holds can pass.
+
+A service answers a title search in one of three ways besides a match:
+
+| Answer | Status codes | Counted as |
+|---|---|---|
+| it has nothing | 200 with no match, 404, 410 | answered; listed under `searched` |
+| it rejected the query | 400, 422 | neither answered nor refused; listed under `rejected`, and the report line says `Crossref rejected the query` |
+| it did not answer | 401, 403, 429, 5xx, a timeout, a body that does not parse | refused; listed under `refused`, and the report line says `Semantic Scholar could not be asked` |
+
+A title search is `not found` when nothing matched and Crossref or OpenAlex answered, whatever
+the other services did, because most indexed works are in one of the two:
+`not found by title search (crossref, openalex, arxiv); Semantic Scholar could not be asked`.
+When neither Crossref nor OpenAlex answered, because each refused or rejected the query, the
+entry is `could not check`, even where Semantic Scholar or arXiv answered with nothing. A
+rejected query is asked again on every run with the same result, so it never counts toward
+giving up on the search services after several entries in a row are refused.
+
+### Entries checked by hand
+
+A thesis, a book chapter, a report or a dataset is often in no registry, and `--strict` cannot
+tell it from a reference to a work that does not exist. Once an author has checked such an
+entry by hand, its key goes in a plain file beside the bibliography, named for it:
+`references.checked.txt` for `references.bib`, or `checked.txt` at the root of a library.
+`--checked PATH` names another file.
+
+```text
+# entries checked by hand: in no registry, confirmed against the printed copy
+smith2019thesis       # PhD thesis, University of Edinburgh
+who2021report
+```
+
+One key per line, in UTF-8 (a byte-order mark is ignored); `#` starts a note. A file in another encoding is refused, naming the file. A line with two words before a `#` is refused, so a key
+is never half read. A listed key is still reported as `not found`, marked as checked, and does
+not fail `--strict`. The list excuses nothing else: a listed key that is found and disagrees on
+a field fails as any other does, and a listed key that is found at all is printed as a warning,
+since it may no longer need to be on the list. A listed key whose own DOI or PMID every
+registry answers 404 for is excused, because a DOI registered with neither Crossref nor
+DataCite (mEDRA, JaLC) is real, but a mistyped DOI looks the same, so each such key is printed
+as `listed as checked, but its DOI does not resolve; check it isn't mistyped` and listed under
+`checked_list.identifier_does_not_resolve`. A listed key the bibliography does not have is
+warned about as stale. The report prints the file's path and SHA-256, and `--json` carries both
+with the keys read and the stale ones under `checked_list`, so a run's reliance on the list is
+on record.
 
 An identifier found by title can belong to another version of the work, such as the preprint of
 a journal article, so a year or venue disagreement on a `by search` entry is read before it is
@@ -888,9 +942,16 @@ refused, a record that is a preprint or names no venue identifier, an entry citi
 server, a workshop against a main track, a record identified only by its name, two sides with
 no serial identifier of a common kind, and a garbled name.
 
-A lookup answered with 404 or 410 is an answer and is cached. Any other failure (a 500, a 502,
+A lookup answered with 404 or 410 is an answer and is cached, and so is a 400 or 422, which
+rejects the query and adds no names. Any other failure (a 500, a 502,
 a 403, a rate limit, no response, or a MediaWiki error reported inside an HTTP 200) is a refusal:
 it is never cached, so the next run asks again, and a venue resting on it is not comparable.
+
+A venue that is not comparable never fails `--strict`, and never makes an entry `could not
+check`: the entry's status rests on its other fields. A venue lookup that was refused is
+reported as the reason the venue is not comparable, on the venue's line and under `venue.why`,
+and is not added to the entry's `refused`, which names the registries and search services the
+entry's own status rests on.
 
 Registry lookups are cached like every other request, sent with no contact address, and
 paced; a Wikidata request names the project in its `User-Agent`, as the Wikimedia policy asks.
@@ -902,6 +963,9 @@ because a lookup a service refuses leaves its venue not comparable:
 |---|---|---|
 | `SEMANTIC_SCHOLAR_API_KEY` | Semantic Scholar | on every request, as the `x-api-key` header; Semantic Scholar refuses many anonymous requests, and its answer is often the only one naming the published venue of an arXiv preprint |
 | `OPENALEX_API_KEY` | OpenAlex | as a fallback only: a request goes out unkeyed first, and is retried with the key, as an `Authorization: Bearer` header, only when OpenAlex refuses it, so a key with a small quota is spent only where the shared unkeyed budget has run out |
+
+A query OpenAlex rejects, a 400 or 422, is an answer about the query rather than a refusal, and
+is never retried with the key.
 
 Neither key is ever part of a URL, so neither reaches a cache file, a report, a log line or an
 error message. DBLP's API is not asked, because it answers automated clients with a proof-of-work

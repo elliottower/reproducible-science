@@ -1,3 +1,4 @@
+import hashlib
 import io
 import json
 import pathlib
@@ -1047,6 +1048,35 @@ def test_citations_audit_reports_each_entry_against_its_registry(project, regist
     assert snapshot(project) == before
 
 
+def test_citations_audit_says_which_services_did_not_answer_and_how(project, registries):
+    (project / "paper.bib").write_text(BIB)
+    (result,) = calls(project, [("citations_audit", {"bib": str(project / "paper.bib")})])
+    rows = {row["key"]: row["registry"] for row in result.structured_content["entries"]}
+    assert "crossref, datacite did not answer" in rows["throttled"]["why_not"]
+    assert "semanticscholar, crossref, openalex, arxiv did not answer" in rows["refused"]["why_not"]
+    assert "ask again later" in rows["refused"]["why_not"]
+
+
+def test_citations_audit_tells_a_rejected_query_from_a_refusal(project, monkeypatch):
+    def search(url, as_json, tries=4, headers=None):
+        if "crossref" in url or "openalex" in url:
+            raise citations_resolve.Rejected(url)
+        raise citations_resolve.Throttled(url)
+
+    monkeypatch.setattr(citations_resolve, "get", search)
+    monkeypatch.setattr(citations_audit_module, "SEARCH_DELAY", 0)
+    (project / "paper.bib").write_text(
+        "@book{odd, title = {A Book: With (Odd) Punctuation}, author = {Coe, Al}, year = {2002}}\n"
+    )
+    (result,) = calls(project, [("citations_audit", {"bib": str(project / "paper.bib")})])
+    (row,) = result.structured_content["entries"]
+    why = row["registry"]["why_not"]
+    assert row["registry"]["result"] == "could_not_check"
+    assert "semanticscholar, arxiv did not answer" in why
+    assert "crossref, openalex rejected the query as malformed" in why
+    assert "asking again changes nothing" in why
+
+
 def test_citations_audit_pages_past_its_cap(project, registries, monkeypatch):
     monkeypatch.setattr(mcp_server, "MAX_AUDIT_ENTRIES", 2)
     (project / "paper.bib").write_text(BIB)
@@ -1081,6 +1111,91 @@ def test_citations_audit_under_strict_fails_on_what_it_could_not_check(project, 
     assert lenient.structured_content["counts"]["could_not_check"] == 1
     assert lenient.structured_content["passed"] is True
     assert strict.structured_content["passed"] is False
+
+
+def _entries(*keys: str) -> str:
+    """The entries of BIB with these keys, in BIB's order."""
+    parts = ["@" + p for p in BIB.split("@")[1:]]
+    return "".join(p for p in parts if p.split("{", 1)[1].split(",", 1)[0] in keys)
+
+
+def _audit(project, **args):
+    (result,) = calls(project, [("citations_audit", {"bib": str(project / "paper.bib"), **args})])
+    assert not result.is_error, result.content[0].text
+    return result.structured_content
+
+
+def test_strict_fails_on_a_not_found_the_checked_list_does_not_hold(project, registries):
+    (project / "paper.bib").write_text(_entries("agrees", "missing"))
+    lenient, strict = _audit(project), _audit(project, strict=True)
+    assert lenient["passed"] is True
+    assert (lenient["exit"], lenient["outcome"]) == (None, None)
+    assert (strict["passed"], strict["exit"], strict["outcome"]) == (False, 1, "failed")
+
+
+def test_strict_passes_a_listed_not_found_and_reports_it_as_marked(project, registries):
+    (project / "paper.bib").write_text(_entries("agrees", "missing"))
+    listed = project / "paper.checked.txt"
+    listed.write_text("missing  # a book, checked by hand\nghost\n")
+    strict = _audit(project, strict=True)
+    rows = {row["key"]: row["registry"] for row in strict["entries"]}
+    assert (strict["passed"], strict["exit"], strict["outcome"]) == (True, 0, "passed")
+    assert (rows["missing"]["result"], rows["missing"]["checked_by_hand"]) == ("not_found", True)
+    assert strict["marked"] == ["missing"]
+    assert strict["checked_list"]["sha256"] == hashlib.sha256(listed.read_bytes()).hexdigest()
+    assert strict["warnings"]["stale"] == ["ghost"]
+
+
+def test_strict_still_fails_a_listed_key_that_disagrees(project, registries):
+    (project / "paper.bib").write_text(_entries("disagrees"))
+    (project / "paper.checked.txt").write_text("disagrees\n")
+    strict = _audit(project, strict=True)
+    assert (strict["passed"], strict["exit"]) == (False, 1)
+    assert strict["warnings"]["listed_but_found"] == ["disagrees"]
+
+
+def test_strict_reads_a_checked_list_named_by_path(project, registries):
+    (project / "paper.bib").write_text(_entries("agrees", "missing"))
+    (project / "hand.txt").write_text("missing\n")
+    strict = _audit(project, strict=True, checked=str(project / "hand.txt"))
+    assert (strict["exit"], strict["marked"]) == (0, ["missing"])
+    assert strict["checked_list"]["path"].endswith("hand.txt")
+
+
+def test_a_named_checked_list_that_does_not_exist_is_refused(project, registries):
+    (project / "paper.bib").write_text(_entries("agrees"))
+    (result,) = calls(
+        project,
+        [
+            (
+                "citations_audit",
+                {"bib": str(project / "paper.bib"), "checked": str(project / "absent.txt")},
+            )
+        ],
+    )
+    assert result.structured_content["refused"] == "not_a_file"
+
+
+def test_strict_keeps_a_lookup_that_failed_apart_from_a_failure(project, registries):
+    (project / "paper.bib").write_text(_entries("agrees", "throttled"))
+    strict = _audit(project, strict=True)
+    assert (strict["passed"], strict["exit"], strict["outcome"]) == (
+        False,
+        2,
+        "could_not_check",
+    )
+    (project / "paper.bib").write_text(_entries("disagrees", "throttled"))
+    assert _audit(project, strict=True)["exit"] == 1, "a disagreement outranks a failed lookup"
+
+
+def test_strict_with_nothing_checked_is_could_not_check(project, registries):
+    (project / "paper.bib").write_text(_entries("missing"))
+    strict = _audit(project, strict=True, no_search=True)
+    assert (strict["passed"], strict["exit"], strict["outcome"]) == (
+        False,
+        2,
+        "could_not_check",
+    )
 
 
 def test_an_audit_cache_linked_out_of_the_project_is_refused(project, registries, tmp_path):

@@ -480,7 +480,7 @@ def test_a_preprint_record_found_through_a_preprint_search_answer_is_not_compare
         venue_ids=("openalex:S4306400194", "issn:2331-8422"),
         identifier=("arxiv", "2005.14165"),
     )
-    monkeypatch.setattr(A, "find", lambda e, cache: (found, "openalex", ["openalex"]))
+    monkeypatch.setattr(A, "find", lambda e, cache: (found, "openalex", ["openalex"], [], []))
     _registries(monkeypatch, res("issn:1049-5258", label="NeurIPS"))
     entry = A.Entry(
         key="k",

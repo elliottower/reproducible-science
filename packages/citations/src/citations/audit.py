@@ -4,7 +4,8 @@
     citations audit --bib refs.bib      a BibTeX file directly
     citations audit --only <paper>      records one paper cites
     citations audit --json report.json  machine-readable, one object per entry
-    citations audit --strict            exit 1 on any disagreement, for CI
+    citations audit --strict            exit 1 on any disagreement or unlisted not found, for CI
+    citations audit --checked list.txt  keys checked by hand (default: <stem>.checked.txt beside the bib)
     citations audit --no-search         leave entries with no DOI or PMID unchecked
 
 This is a different question from the three the library already asks, and no combination of
@@ -28,8 +29,24 @@ truncated list looks complete.
 An entry with no DOI and no PMID is searched for by title, under the rule `citations resolve`
 accepts a match on: title, first author's surname and year together. One that is found is
 compared like any other, against an identifier the report prints so it can be added. One that
-no service has is reported as not found and does not fail the audit, because a book, a report
-and a thesis have no registry record either and land in the same row as an invented reference.
+no service has is reported as not found, and so is an entry whose own DOI or PMID resolves to
+no record at any registry asked.
+
+Under `--strict` a not found fails the run, because a book, a report and a thesis land in that
+row beside a reference to a work that does not exist, and nothing in the report tells them
+apart. An author who has checked such an entry by hand lists its key in a plain file beside
+the bibliography (`references.checked.txt` for `references.bib`, or `--checked PATH`). A listed
+key is still reported as not found, marked as checked, and does not fail the run. The list
+excuses nothing else: a listed key that is found and disagrees fails as any other does, and
+the file's SHA-256 is written into the report so its use is on record.
+
+A registry lookup that failed -- a refusal, a rate limit, a timeout, a 5xx -- is `could not
+check`. A title search is `not found` only when Crossref or OpenAlex answered, whatever the
+other services did; otherwise it too is `could not check`. A service that rejected the query (a
+400 or 422) is counted as neither answering nor refusing. Under `--strict` a `could not check`,
+or an audit that checked nothing, exits 2 rather than 1, so a CI job can retry instead of
+blaming the citation. A disagreement or an unlisted not found exits 1 whatever else could not
+be checked.
 
 The venue is compared by identifier, under `venue.decide`: the record's venue is the ISSNs and
 source ids its registries give it, the entry's is whatever registry venue the cited name
@@ -56,6 +73,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
+from collections.abc import Callable
 
 from provenance_core import atomic_write
 from pydantic import BaseModel, ConfigDict, Field
@@ -258,11 +276,30 @@ class EntryAudit(BaseModel):
     """The verdict on one entry."""
 
     status: str
-    """`ok`, `mismatch`, `unresolved`, `no identifier`, `not found` or `found`.
+    """`ok`, `mismatch`, `could not check`, `no identifier`, `not found` or `found`.
 
-    `unresolved` is a check that could not be made: a registry did not return the record, or
-    every search service refused. `not found` is a search that was made and matched nothing.
-    `found` is a search that matched a record carrying no DOI, so nothing was compared."""
+    `could not check` is a check that was not made: a registry or every search service refused,
+    rate-limited, timed out or failed. `not found` is a lookup that was answered and matched
+    nothing: a title search, or the entry's own identifier, which `not_found_by` says. `found`
+    is a search that matched a record carrying no DOI, so nothing was compared."""
+
+    not_found_by: str = ""
+    """`title search` or `identifier`, when the status is `not found`."""
+
+    rejected: list[str] = Field(default_factory=list)
+    """The search services that rejected the title query (a 400 or 422). Such a service is
+    counted neither among those a `not found` rests on nor among those that refused."""
+
+    refused: list[str] = Field(default_factory=list)
+    """The registries or search services that did not answer. On `could not check`, every one
+    asked, or none when no service was asked after several entries in a row were refused. On a
+    `not found` by title search, the services that refused while the others answered: the
+    verdict rests on the ones under `searched`. A venue lookup that was refused is recorded on
+    `venue.why` instead, and leaves the venue not comparable, never the entry unchecked."""
+
+    checked_by_hand: bool = False
+    """The key is on the list of entries the author checked by hand. Changes no status; a
+    `not found` so marked does not fail `--strict`, and nothing else is excused."""
 
     checked_against: str | None = None
     """Which registry the comparison was made against, when one answered."""
@@ -292,6 +329,67 @@ class EntryAudit(BaseModel):
     found` says which services it rests on."""
 
 
+class CheckedList(BaseModel):
+    """The keys an author checked by hand, and the file they were read from."""
+
+    path: str
+    sha256: str
+    """Of the file's bytes, so the report records which list it was read against."""
+
+    keys: list[str] = Field(default_factory=list)
+
+    stale: list[str] = Field(default_factory=list)
+    """Listed keys the audited entries do not have."""
+
+    identifier_does_not_resolve: list[str] = Field(default_factory=list)
+    """Listed keys whose own DOI or PMID every registry asked answered 404 for. The list
+    excuses them, as a DOI registered with neither Crossref nor DataCite is real, but a
+    mistyped DOI looks the same, so each is warned about."""
+
+
+#: The list beside a bibliography `references.bib` is `references.checked.txt`; in a library,
+#: `checked.txt` at its root.
+CHECKED_SUFFIX = ".checked.txt"
+LIBRARY_CHECKED = "checked.txt"
+
+
+def read_checked(path: pathlib.Path) -> list[str]:
+    """The keys in a checked list: one per line, `#` to the end of a line is a comment.
+
+    A line holding two words before any `#` is refused rather than read as one key, because
+    the second word would be silently dropped and the entry it named left unexcused, or the
+    first excused for a note about the second.
+    """
+    keys: list[str] = []
+    try:
+        # `utf-8-sig`, so a byte-order mark an editor wrote is not read into the first key.
+        text = path.read_text(encoding="utf-8-sig")
+    except UnicodeDecodeError as e:
+        raise CitationsError(
+            f"{path}: not UTF-8 (byte {e.start}); save the checked list as UTF-8"
+        ) from e
+    for n, line in enumerate(text.splitlines(), start=1):
+        words = line.split("#", 1)[0].split()
+        if len(words) > 1:
+            raise CitationsError(
+                f"{path}:{n}: one key per line, with any note after a `#`; read {line.strip()!r}"
+            )
+        if words and words[0] not in keys:
+            keys.append(words[0])
+    return keys
+
+
+def load_checked(path: pathlib.Path, audited: list[str]) -> CheckedList:
+    keys = read_checked(path)
+    present = set(audited)
+    return CheckedList(
+        path=str(path),
+        sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
+        keys=keys,
+        stale=[k for k in keys if k not in present],
+    )
+
+
 class AuditReport(BaseModel):
     """Every entry's verdict, plus where they came from.
 
@@ -301,6 +399,9 @@ class AuditReport(BaseModel):
 
     entries: dict[str, EntryAudit] = Field(default_factory=dict)
     where: str = ""
+
+    checked_list: CheckedList | None = None
+    """The list of keys checked by hand this audit was read against, when there was one."""
 
     def by(self, status: str) -> list[str]:
         return [k for k, v in self.entries.items() if v.status == status]
@@ -319,8 +420,8 @@ class AuditReport(BaseModel):
         return self.by("mismatch")
 
     @property
-    def unresolved(self) -> list[str]:
-        return self.by("unresolved")
+    def could_not_check(self) -> list[str]:
+        return self.by("could not check")
 
     @property
     def unidentified(self) -> list[str]:
@@ -329,6 +430,20 @@ class AuditReport(BaseModel):
     @property
     def not_found(self) -> list[str]:
         return self.by("not found")
+
+    @property
+    def not_found_unchecked(self) -> list[str]:
+        """Not found, and not on the list of entries checked by hand: what `--strict` fails."""
+        return [k for k in self.not_found if not self.entries[k].checked_by_hand]
+
+    @property
+    def listed_but_found(self) -> list[str]:
+        """On the checked list, yet a registry had the record and it was compared or found."""
+        return [
+            k
+            for k, v in self.entries.items()
+            if v.checked_by_hand and v.status in ("ok", "mismatch", "found")
+        ]
 
     @property
     def found_only(self) -> list[str]:
@@ -341,11 +456,39 @@ class AuditReport(BaseModel):
 
     @property
     def ok(self) -> bool:
-        """An audit that resolved nothing is not a pass; it made no measurement.
+        """Whether the audit passes `--strict`. An audit that checked nothing is not a pass.
 
-        An entry searched for and not found does not fail it: nothing was found to disagree
-        with, and a book with no DOI is an ordinary entry."""
-        return bool(self.entries) and not self.mismatched and not self.unresolved
+        A not found fails it unless the key is on the checked list: a book with no DOI and a
+        reference to a work that does not exist land in the same row."""
+        return (
+            bool(self.measured)
+            and not self.mismatched
+            and not self.not_found_unchecked
+            and not self.could_not_check
+        )
+
+    @property
+    def measured(self) -> list[str]:
+        """Entries some registry or search service answered for: compared, found or not found.
+
+        `no identifier` and `could not check` are not among them, so an audit made of nothing
+        else checked nothing, whatever it prints."""
+        return [
+            k
+            for k, v in self.entries.items()
+            if v.status in ("ok", "mismatch", "found", "not found")
+        ]
+
+    @property
+    def strict_exit(self) -> int:
+        """1 for a disagreement or an unlisted not found, 2 where nothing else failed but a
+        lookup did, or nothing was measured; 0 otherwise.
+
+        A failed lookup is 2 rather than 1 so that CI can retry it instead of blaming the
+        citation, and a known failure outranks it: no retry changes a disagreement."""
+        if self.mismatched or self.not_found_unchecked:
+            return 1
+        return 2 if (self.could_not_check or not self.measured) else 0
 
 
 # --------------------------------------------------------------------------------- entries
@@ -410,7 +553,12 @@ CACHE_VERSION = 2
 
 
 def fetch(url: str, cache: pathlib.Path, name: str) -> str | None:
-    """A cached registry response, or None when the request did not complete.
+    """A cached registry response, or None when the registry answered that it has no record.
+
+    Raises `resolve.Throttled` when the request did not complete: a 401, 403 or 429, a 5xx, a
+    timeout, a dropped connection. A 404 or 410 is an answer, and so is a 400 or 422, which
+    rejects the identifier itself as malformed. Returning None for both was
+    how a rate-limited Crossref and a DOI that resolves to nothing became one row.
 
     Each entry is wrapped in an envelope naming the URL it answers and a digest of the body.
     A bare file is not a cache hit.
@@ -434,9 +582,16 @@ def fetch(url: str, cache: pathlib.Path, name: str) -> str | None:
     try:
         with urllib.request.urlopen(req, timeout=45) as r:
             body = r.read().decode("utf-8", "replace")
+    except urllib.error.HTTPError as exc:
+        # A 400 or 422 on an identifier lookup is the registry rejecting the identifier itself as
+        # malformed: an answer that it names no record, which asking again will not change.
+        if exc.code in resolve.ABSENT_CODES + resolve.REJECTED_CODES:
+            return None
+        print(f"    could not fetch {name}: {exc}")
+        raise resolve.Throttled(url) from exc
     except NETWORK_ERRORS as exc:
         print(f"    could not fetch {name}: {exc}")
-        return None
+        raise resolve.Throttled(url) from exc
     store(url, cache, name, body)
     return body
 
@@ -480,17 +635,16 @@ def store(url: str, cache: pathlib.Path, name: str, body: str) -> None:
 
 
 def from_crossref(doi: str, cache: pathlib.Path) -> RegistryRecord | None:
-    body = fetch(
-        f"https://api.crossref.org/works/{urllib.parse.quote(doi, safe='')}",
-        cache,
-        f"crossref_{re.sub(r'[^A-Za-z0-9]', '_', doi)}.json",
-    )
+    """The Crossref record, None where Crossref has none, `resolve.Throttled` where it did not
+    answer or answered with a body that is not a record."""
+    url = f"https://api.crossref.org/works/{urllib.parse.quote(doi, safe='')}"
+    body = fetch(url, cache, f"crossref_{re.sub(r'[^A-Za-z0-9]', '_', doi)}.json")
     if not body:
         return None
     try:
         m = json.loads(body)["message"]
-    except (json.JSONDecodeError, KeyError, TypeError):
-        return None
+    except (json.JSONDecodeError, KeyError, TypeError) as exc:
+        raise resolve.Throttled(url) from exc
     years = []
     for field in ("published-print", "published-online", "issued", "created"):
         parts = (m.get(field) or {}).get("date-parts") or []
@@ -532,17 +686,14 @@ def from_datacite(doi: str, cache: pathlib.Path) -> RegistryRecord | None:
     did not resolve, which is a false accusation against a correct bibliography -- the checker
     asked the wrong registry.
     """
-    body = fetch(
-        f"https://api.datacite.org/dois/{urllib.parse.quote(doi, safe='')}",
-        cache,
-        f"datacite_{re.sub(r'[^A-Za-z0-9]', '_', doi)}.json",
-    )
+    url = f"https://api.datacite.org/dois/{urllib.parse.quote(doi, safe='')}"
+    body = fetch(url, cache, f"datacite_{re.sub(r'[^A-Za-z0-9]', '_', doi)}.json")
     if not body:
         return None
     try:
         attrs = json.loads(body)["data"]["attributes"]
-    except (json.JSONDecodeError, KeyError, TypeError):
-        return None
+    except (json.JSONDecodeError, KeyError, TypeError) as exc:
+        raise resolve.Throttled(url) from exc
 
     titles = attrs.get("titles") or []
     year = attrs.get("publicationYear")
@@ -588,18 +739,18 @@ def from_datacite(doi: str, cache: pathlib.Path) -> RegistryRecord | None:
 
 
 def from_pubmed(pmid: str, cache: pathlib.Path) -> RegistryRecord | None:
-    body = fetch(
+    url = (
         "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
-        f"?db=pubmed&id={urllib.parse.quote(pmid)}&retmode=xml",
-        cache,
-        f"pubmed_{pmid}.xml",
+        f"?db=pubmed&id={urllib.parse.quote(pmid)}&retmode=xml"
     )
+    body = fetch(url, cache, f"pubmed_{pmid}.xml")
     if not body:
         return None
     try:
         art = ET.fromstring(body).find(".//PubmedArticle")
-    except ET.ParseError:
-        return None
+    except ET.ParseError as exc:
+        raise resolve.Throttled(url) from exc
+    # A well-formed answer holding no article is PubMed saying it has no such PMID.
     if art is None:
         return None
     title = art.find(".//ArticleTitle")
@@ -730,6 +881,8 @@ def _ask(url: str, cache: pathlib.Path, name: str, headers: dict | None = None) 
             body = resolve.get(url, as_json=False, tries=VENUE_TRIES, headers=headers)
         except resolve.Throttled:
             return None
+        except resolve.Rejected:
+            body = None  # an answer about the query, which adds no names
         finally:
             time.sleep(DELAY)
         if refused_in_body(body):
@@ -816,25 +969,68 @@ def record_venue(record: RegistryRecord, found: Candidate | None, doi: str, ask:
 # ------------------------------------------------------------------------------------- run
 
 
+#: A title search is `not found` only when one of these answered: most indexed works are in
+#: Crossref or OpenAlex, and arXiv or Semantic Scholar alone answering nothing is not enough.
+NOT_FOUND_RESTS_ON = {"crossref", "openalex"}
+
+#: How the report names a search service in prose.
+SERVICE_NAMES = {
+    "semanticscholar": "Semantic Scholar",
+    "crossref": "Crossref",
+    "openalex": "OpenAlex",
+    "arxiv": "arXiv",
+    "datacite": "DataCite",
+    "pubmed": "PubMed",
+}
+
+
+def _identifier(v: EntryAudit, kind_only: bool = False) -> str:
+    """The identifier a verdict rests on: the entry's own, or the one a title search found.
+
+    `kind_only` names the entry's own as `DOI` or `PMID` alone; a found one is always given in
+    full, since the entry does not carry it."""
+    if v.doi or v.pmid:
+        kind, ident = ("DOI", v.doi) if v.doi else ("PMID", v.pmid)
+        return kind if kind_only else f"{kind.lower()} {ident}"
+    kind = {"doi": "DOI", "arxiv": "arXiv id"}.get(v.found_kind, v.found_kind)
+    return f"{kind} {v.found_id}, found by title search,"
+
+
+def _unasked(v: EntryAudit) -> str:
+    """`; X could not be asked; Y rejected the query`, for the services a verdict lacks."""
+    said = ""
+    if v.refused:
+        said += f"; {', '.join(SERVICE_NAMES.get(r, r) for r in v.refused)} could not be asked"
+    if v.rejected:
+        said += f"; {', '.join(SERVICE_NAMES.get(r, r) for r in v.rejected)} rejected the query"
+    return said
+
+
 def _search_file(service: Service, entry: Entry) -> tuple[str, str]:
     """The URL one service is asked about one entry, and the cache file its answer lives in."""
     url = service.url(entry)
     return url, f"search_{service.name}_{hashlib.sha256(url.encode()).hexdigest()[:16]}.json"
 
 
-def find(entry: Entry, cache: pathlib.Path) -> tuple[Candidate | None, str, list[str]]:
+def find(
+    entry: Entry, cache: pathlib.Path
+) -> tuple[Candidate | None, str, list[str], list[str], list[str]]:
     """Search for an entry by title: (the work found, the service that had it, services that
-    answered).
+    answered, services that rejected the query, services that refused).
 
     Each service is asked on its own, as `citations resolve` asks them, and a candidate is
-    accepted by `resolve.match` and by nothing else. An empty third element means every service
-    refused, which is a search that was not made rather than one that found nothing.
+    accepted by `resolve.match` and by nothing else. Empty third and fourth elements mean every
+    service refused, which is a search that was not made rather than one that found nothing. A
+    service that rejected the query (a 400 or 422) answered nothing about the work, so it is in
+    neither the services that answered nor those that refused.
 
     Answers are cached like registry payloads. A service whose answer is already held is read
     first, so a re-run reaches the match it reached before without asking again a service that
     refused the first time. A refusal is never cached.
     """
     answered: list[str] = []
+    rejected: list[str] = []
+    refused: list[str] = []
     for service in sorted(SERVICES, key=lambda s: not (cache / _search_file(s, entry)[1]).exists()):
         url, name = _search_file(service, entry)
         body = cached(url, cache, name)
@@ -849,7 +1045,11 @@ def find(entry: Entry, cache: pathlib.Path) -> tuple[Candidate | None, str, list
                 )
                 if body and service.json:
                     json.loads(body)
+            except resolve.Rejected:
+                rejected.append(service.name)
+                continue
             except (resolve.Throttled, json.JSONDecodeError):
+                refused.append(service.name)
                 continue
             finally:
                 time.sleep(SEARCH_DELAY)
@@ -860,8 +1060,38 @@ def find(entry: Entry, cache: pathlib.Path) -> tuple[Candidate | None, str, list
             continue
         hit = resolve.best(entry, service.candidates(json.loads(body) if service.json else body))
         if hit:
-            return hit, service.name, answered
-    return None, "", answered
+            return hit, service.name, answered, rejected, refused
+    return None, "", answered, rejected, refused
+
+
+def registry_lookup(
+    doi: str, pmid: str, cache: pathlib.Path
+) -> tuple[RegistryRecord | None, list[str]]:
+    """The registry record for an identifier, and the registries that did not answer.
+
+    A record of None with nothing refused is every registry asked answering that it has no
+    such identifier. A record of None with a refusal is a lookup that was not made: the
+    registry that did not answer may be the one holding the record.
+    """
+    asks: list[tuple[str, Callable[[str, pathlib.Path], RegistryRecord | None], str]] = []
+    # Ask the registry the DOI is actually registered with. Asking Crossref about an arXiv or
+    # Zenodo DOI returns 404, which is a fact about the registry rather than about the entry.
+    if doi and is_datacite(doi):
+        asks.append(("datacite", from_datacite, doi))
+    elif doi:
+        asks += [("crossref", from_crossref, doi), ("datacite", from_datacite, doi)]
+    if pmid:
+        asks.append(("pubmed", from_pubmed, pmid))
+    refused: list[str] = []
+    for name, lookup, ident in asks:
+        try:
+            record = lookup(ident, cache)
+        except resolve.Throttled:
+            refused.append(name)
+            continue
+        if record is not None:
+            return record, refused
+    return None, refused
 
 
 def venue_verdict(
@@ -953,39 +1183,52 @@ def name_verdict(
 
 
 def audit(
-    entries: list[Entry], cache: pathlib.Path, where: str = "", search: bool = True
+    entries: list[Entry],
+    cache: pathlib.Path,
+    where: str = "",
+    search: bool = True,
+    checked: CheckedList | None = None,
 ) -> AuditReport:
     """Check every entry against the registry record of its identifier.
 
     An entry that names none is searched for by title unless `search` is off, and compared
-    against the record of whatever identifier the search found.
+    against the record of whatever identifier the search found. A key on `checked` is marked
+    as checked by hand, which changes no verdict.
     """
-    report = AuditReport(where=where)
+    report = AuditReport(where=where, checked_list=checked)
+    by_hand = set(checked.keys) if checked else set()
     refused_in_a_row = 0
     ask = asker(cache)
     # One lookup per distinct cited venue in a run: a bibliography cites one journal many times.
     resolved: dict[tuple[str, ...], Resolution] = {}
     for e in entries:
-        # Unresolved until something below establishes otherwise: no branch that leaves early
-        # without a measurement can report one.
-        verdict = report.entries[e.key] = EntryAudit(status="unresolved", doi=e.doi, pmid=e.pmid)
+        # Could not check until something below establishes otherwise: no branch that leaves
+        # early without a measurement can report one.
+        verdict = report.entries[e.key] = EntryAudit(
+            status="could not check", doi=e.doi, pmid=e.pmid, checked_by_hand=e.key in by_hand
+        )
         doi = e.doi
         found: Candidate | None = None
         if not e.identified:
             if not search or not e.title.strip():
                 verdict.status = "no identifier"
                 continue
-            hit, by, answered = (
-                find(e, cache) if refused_in_a_row < GIVE_UP_AFTER else (None, "", [])
+            asked = refused_in_a_row < GIVE_UP_AFTER
+            hit, by, answered, rejected, refused = (
+                find(e, cache) if asked else (None, "", [], [], [])
             )
-            if not answered:
-                # Nobody was asked, or nobody answered. That is not a work nobody has.
-                refused_in_a_row += 1
-                continue
-            refused_in_a_row = 0
-            verdict.searched = answered
+            # A search that matched stopped at the match: a service refusing before it is
+            # recorded, and the services after it were not asked.
+            verdict.searched, verdict.rejected, verdict.refused = answered, rejected, refused
+            # A rejected query is an answer about the query, made again on every run, so it never
+            # counts toward giving up on the services.
+            refused_in_a_row = refused_in_a_row + 1 if not (answered or rejected) else 0
             if hit is None:
-                verdict.status = "not found"
+                if not set(answered) & NOT_FOUND_RESTS_ON:
+                    # Nobody was asked, or the services most indexed works are in did not
+                    # answer. That is not a work nobody has.
+                    continue
+                verdict.status, verdict.not_found_by = "not found", "title search"
                 continue
             found = hit
             # `resolve.best` accepts no candidate without an identifier.
@@ -998,24 +1241,25 @@ def audit(
                 continue
             # arXiv registers every preprint with DataCite under this DOI.
             doi = ident if kind == "doi" else f"10.48550/arXiv.{ident}"
-        # Ask the registry the DOI is actually registered with. Asking Crossref about an
-        # arXiv or Zenodo DOI returns 404, which is a fact about the registry rather than
-        # about the entry.
-        if doi and is_datacite(doi):
-            record = from_datacite(doi, cache)
-        elif doi:
-            record = from_crossref(doi, cache) or from_datacite(doi, cache)
-        else:
-            record = None
-        if record is None and e.pmid:
-            record = from_pubmed(e.pmid, cache)
+        record, refused = registry_lookup(doi, e.pmid, cache)
         if record is None:
+            if refused:
+                # After a title search, its refusals stay beside the registries'.
+                verdict.refused = list(dict.fromkeys([*verdict.refused, *refused]))
+            else:
+                verdict.status, verdict.not_found_by = "not found", "identifier"
             continue
         check = venue_verdict(e, record, found, doi, ask, resolved)
         verdict.checked_against = record.source
         verdict.venue = check
         verdict.problems = compare(e, record, check)
         verdict.status = "mismatch" if verdict.problems else "ok"
+    if report.checked_list is not None:
+        report.checked_list.identifier_does_not_resolve = [
+            k
+            for k, v in report.entries.items()
+            if v.checked_by_hand and v.not_found_by == "identifier"
+        ]
     return report
 
 
@@ -1064,13 +1308,19 @@ def render(report: AuditReport, quiet: bool) -> int:
         )
     if report.not_found:
         print(
-            f"  not found   {len(report.not_found):>7,}   no identifier, and a title search "
-            "matched no record; usual for a book, report or thesis"
+            f"  not found   {len(report.not_found):>7,}   a title search, or the entry's own DOI "
+            "or PMID, matched no record; usual for a book, report or thesis"
         )
-    if report.unresolved:
+    marked = [k for k in report.not_found if report.entries[k].checked_by_hand]
+    if marked:
         print(
-            f"  unresolved  {len(report.unresolved):>7,}   a registry or every search service "
-            "did not answer; no measurement was made"
+            f"  marked      {len(marked):>7,}   of those not found, on the list of entries "
+            "checked by hand"
+        )
+    if report.could_not_check:
+        print(
+            f"  could not check{len(report.could_not_check):>4,}   a registry or every search "
+            "service refused or did not answer; no measurement was made"
         )
     if report.unidentified:
         print(
@@ -1082,6 +1332,31 @@ def render(report: AuditReport, quiet: bool) -> int:
         print("\nidentifiers found by title search, to add once read")
         for key, v in by_search.items():
             print(f"  {key}  {v.found_kind} {v.found_id}  ({v.found_by})")
+
+    if report.not_found and not quiet:
+        print("\nnot found")
+        for key in report.not_found:
+            v = report.entries[key]
+            if v.not_found_by == "identifier":
+                said = f"{_identifier(v)} resolves to no record"
+            else:
+                said = f"not found by title search ({', '.join(v.searched)})"
+                said += _unasked(v)
+            print(f"  {key}  {said}{'  (marked as checked)' if v.checked_by_hand else ''}")
+
+    if report.could_not_check and not quiet:
+        print("\ncould not check")
+        for key in report.could_not_check:
+            v = report.entries[key]
+            if v.found_id:
+                said = f"{_identifier(v)} could not be read back{_unasked(v)}"
+            elif v.searched:
+                said = f"searched ({', '.join(v.searched)}){_unasked(v)}"
+            elif v.refused or v.rejected:
+                said = _unasked(v).removeprefix("; ")
+            else:
+                said = "not asked"
+            print(f"  {key}  {said}")
 
     if report.venue_not_comparable and not quiet:
         # Both names, side by side: only an identifier comparison may call a venue right or
@@ -1106,6 +1381,23 @@ def render(report: AuditReport, quiet: bool) -> int:
         for kind, count in kinds.most_common():
             print(f"  {count:>7,}  {kind}")
 
+    listed = report.checked_list
+    if listed is not None:
+        print(f"\nchecked by hand  {listed.path}  sha256 {listed.sha256[:12]}")
+        for key in report.listed_but_found:
+            status = report.entries[key].status
+            print(f"  warning: {key} is on the list, but a registry has it ({status})")
+        for key in listed.identifier_does_not_resolve:
+            print(
+                f"  warning: {key} is listed as checked, but its "
+                f"{_identifier(report.entries[key], kind_only=True)} does not resolve; "
+                "check it isn't mistyped"
+            )
+        if listed.stale:
+            print(f"  warning: {len(listed.stale)} listed key(s) not in what was audited:")
+            for key in listed.stale:
+                print(f"    {key}")
+
     print()
     if mismatched:
         print(f"{len(mismatched)} disagree with the record their own identifier resolves to.")
@@ -1115,11 +1407,33 @@ def render(report: AuditReport, quiet: bool) -> int:
                 f"{len(disagree)} of them against an identifier found by title search, which "
                 "can be another version of the work."
             )
-    elif report.unresolved:
-        print(f"nothing disagreed. {len(report.unresolved)} unresolved — no measurement for those.")
-    else:
-        print("every checked entry matches its registry record.")
-    return 1 if (mismatched or report.unresolved) else 0
+    unlisted = report.not_found_unchecked
+    if unlisted:
+        print(
+            f"{len(unlisted)} not found and not on the list of entries checked by hand; "
+            "--strict fails on these."
+        )
+    if report.could_not_check:
+        print(
+            f"{len(report.could_not_check)} could not be checked, because a lookup failed; "
+            "run again. --strict exits 2 on these when nothing else fails."
+        )
+    if not report.measured and not report.could_not_check:
+        print(
+            "nothing was checked: no entry was compared with a registry record or searched for. "
+            "--strict exits 2."
+        )
+    elif not (mismatched or unlisted or report.could_not_check):
+        if report.checked:
+            print("every checked entry matches its registry record.")
+        elif report.not_found:
+            print(
+                "no entry was compared with a registry record; each one not found is on the "
+                "list of entries checked by hand."
+            )
+        else:
+            print("no entry was compared with a registry record.")
+    return report.strict_exit
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1133,8 +1447,15 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument(
         "--strict",
         action="store_true",
-        help="exit 1 on any disagreement or unresolved entry; an entry searched for and not "
-        "found is reported and does not fail the audit",
+        help="exit 1 on any disagreement, and on any entry not found that is not on the "
+        "checked list; exit 2 when nothing else fails but a lookup could not be made, so CI "
+        "can retry (default: report everything and exit 0)",
+    )
+    ap.add_argument(
+        "--checked",
+        help="a file of keys checked by hand, one per line, `#` for a note: a listed key not "
+        "found does not fail --strict (default: <bib stem>.checked.txt beside the bibliography, "
+        f"or {LIBRARY_CHECKED} in the library, when it exists)",
     )
     ap.add_argument(
         "--no-search",
@@ -1154,26 +1475,42 @@ def main(argv: list[str] | None = None) -> int:
         # library with nothing to do with this paper, and the payloads an audit rests on
         # belong with the file they were fetched for.
         cache = pathlib.Path(a.cache or bib.parent / ".audit-cache").expanduser()
+        default_checked = bib.with_name(bib.stem + CHECKED_SUFFIX)
         where = f"bibtex  {bib}"
     else:
         library = paths.home()
         entries = entries_from_library(a.only)
         cache = pathlib.Path(a.cache or library / ".audit-cache").expanduser()
+        default_checked = library / LIBRARY_CHECKED
         where = f"library {library}"
     where += f"\ncache   {cache}"
 
-    report = audit(entries, cache, where, search=not a.no_search)
-    code = render(report, a.quiet)
-    if a.json_out:
-        out = pathlib.Path(a.json_out).expanduser()
+    keys = [e.key for e in entries]
+    if a.checked:
+        listed = pathlib.Path(a.checked).expanduser()
+        if not listed.is_file():
+            raise CitationsError(f"no such file: {listed}")
+        checked: CheckedList | None = load_checked(listed, keys)
+    else:
+        listed = default_checked
+        checked = load_checked(listed, keys) if listed.is_file() else None
+
+    report = audit(entries, cache, where, search=not a.no_search, checked=checked)
+    out = pathlib.Path(a.json_out).expanduser() if a.json_out else None
+    if out is not None:
         out.parent.mkdir(parents=True, exist_ok=True)
+        # Written before the report is printed, so a failure while rendering loses nothing.
         # Replaced rather than truncated and refilled. A CI job reads this file rather than the
         # printed report, and a run killed partway through the write leaves invalid JSON where the
         # previous audit's verdicts were: the next reader gets a parse error whose cause is a
         # killed process, not anything the bibliography did.
         atomic_write(out, report.model_dump_json(indent=2) + "\n")
+    code = render(report, a.quiet)
+    if out is not None:
         print(f"\nwrote {out}")
-    return code if a.strict else (2 if code == 2 else 0)
+    if a.strict or not report.entries:
+        return code
+    return 0
 
 
 if __name__ == "__main__":

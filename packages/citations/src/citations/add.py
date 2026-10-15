@@ -184,11 +184,21 @@ def _payload(url: str, identifier: str, as_json: bool) -> object:
     `Throttled` for a refusal, so a rate limit is never read as an identifier that does not
     exist. Collapsing those two is how a batch of sixty lookups reported sixty works as
     unfindable when Crossref had simply started refusing.
+
+    A 400 or 422 is a different answer from both: the registry read the identifier and will
+    not look it up, so the error says it is malformed or unknown, which asking again will not
+    change.
     """
     try:
         return resolve.get(url, as_json=as_json)
     except resolve.Throttled as e:
         raise MetadataError(identifier, "the registry refused to answer; try again later") from e
+    except resolve.Rejected as e:
+        raise MetadataError(identifier, REJECTED) from e
+
+
+#: Why `citations add` stops on a 400 or 422. Permanent, so it never says to try again.
+REJECTED = "the registry rejected the identifier as malformed or unknown"
 
 
 def _name(value: object) -> str:
@@ -294,10 +304,36 @@ def from_arxiv(identifier: str) -> Work | None:
     way. BibTeX reads both forms, and guessing where a multi-word surname begins (`van
     Beethoven`, `de la Cruz`) is how a name gets filed under the wrong letter.
     """
-    body = _payload(ARXIV.format(urllib.parse.quote(identifier)), identifier, as_json=False)
+    try:
+        body = _payload(ARXIV.format(urllib.parse.quote(identifier)), identifier, as_json=False)
+    except MetadataError as e:
+        rejected = e.__cause__
+        if not isinstance(rejected, resolve.Rejected):
+            raise
+        # arXiv answers an identifier it cannot parse with a 400 whose body is an error feed.
+        # The feed is read as any other, so the error it names is what the author is told.
+        # Reading it through `arxiv_work` keeps an error entry from being cited as a paper.
+        if arxiv_work(rejected.body, identifier) is not None:
+            raise
+        said = arxiv_error(rejected.body)
+        raise MetadataError(
+            identifier, f"arXiv rejected the identifier as malformed or unknown{said}"
+        ) from rejected
     if not isinstance(body, str) or not body:
         return None
     return arxiv_work(body, identifier)
+
+
+def arxiv_error(body: str) -> str:
+    """`: <what arXiv said>` from an arXiv error feed, or empty where the body names nothing."""
+    try:
+        entry = ET.fromstring(body).find(f"{ATOM}entry")
+    except ET.ParseError:
+        return ""
+    if entry is None or "errors#" not in (entry.findtext(f"{ATOM}id") or ""):
+        return ""
+    summary = " ".join((entry.findtext(f"{ATOM}summary") or "").split())
+    return f": {summary}" if summary else ""
 
 
 def arxiv_work(body: str, identifier: str) -> Work | None:

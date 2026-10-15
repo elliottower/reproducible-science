@@ -188,7 +188,7 @@ def locate(source: ClaimSource) -> list[tuple[str, str]]:
         for name, url, read in registries:
             try:
                 found += [(name, u) for u in read(resolve.get(url.rstrip("?"), as_json=True))]
-            except resolve.Throttled:
+            except (resolve.Throttled, resolve.Rejected):
                 continue
     first: dict[str, str] = {}
     for who, url in found:

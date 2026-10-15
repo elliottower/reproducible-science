@@ -68,17 +68,36 @@ NETWORK_ERRORS = (
     UnicodeDecodeError,
 )
 
-#: Status codes that mean "ask again later" rather than "no such work".
+#: Status codes that mean "ask again later" rather than "no such work". Any other status but
+#: those below raises `Throttled` at once.
 RETRY_CODES = (429, 500, 502, 503, 504)
 
-#: The only status codes that mean "answered, and there is no such thing". Any other failure is
-#: a refusal: a 500, a 502 or a 403 says nothing about whether the thing exists, and reading it
-#: as absent turns an outage into a finding.
+#: The only status codes that mean the service answered and has no such work. A refusal -- 401
+#: or 403 for a missing or rejected key, a rate limit, a 5xx -- is a question that was not
+#: answered. Reading those as "nothing here" is how a Semantic Scholar 403 was counted as a
+#: search that found nothing.
 ABSENT_CODES = (404, 410)
+
+#: Status codes that answer the query rather than refuse it: the query, or the identifier in
+#: it, is one the service will not run. Asking again changes nothing, so these are neither a
+#: refusal nor an answer that the work is absent.
+REJECTED_CODES = (400, 422)
 
 
 class Throttled(Exception):
     """The service refused to answer. Distinct from answering that it has nothing."""
+
+
+class Rejected(Exception):
+    """The service rejected the query as malformed or naming nothing it can look up.
+
+    Permanent, unlike `Throttled`: the same request gets the same answer. `body` is what the
+    service said, which for arXiv is an Atom feed naming the error."""
+
+    def __init__(self, url: str, body: str = "") -> None:
+        super().__init__(url)
+        self.url = url
+        self.body = body
 
 
 # --------------------------------------------------------------------------------------------
@@ -124,8 +143,9 @@ def fetch(url: str, timeout: int = 25, headers: dict | None = None, keyed: bool 
 def get(url: str, as_json: bool, tries: int = 4, headers: dict | None = None):
     """The payload, or None when the service answered and had nothing.
 
-    Raises `Throttled` when it did not answer: a status other than 404 or 410, or no response.
-    Collapsing those two into None is how a batch of
+    Raises `Rejected` for a 400 or 422, which answers the query rather than the work, and
+    `Throttled` when it did not answer: any other status but 404 or 410, or no response.
+    Collapsing those into None is how a batch of
     sixty lookups reported sixty works as unfindable when the real answer was that Crossref had
     started rate-limiting after the first few. A resolver that cannot tell "absent" from "I was
     blocked" will confidently delete information.
@@ -142,6 +162,10 @@ def get(url: str, as_json: bool, tries: int = 4, headers: dict | None = None):
         except urllib.error.HTTPError as e:
             if e.code in ABSENT_CODES:
                 return None
+            # A rejected query is an answer, and the same with a key: never a keyed retry.
+            if e.code in REJECTED_CODES:
+                raise Rejected(url, _body(e)) from None
+            # A 401 or 403 is retried once with a key, where one is set; nothing else is.
             if e.code not in RETRY_CODES and (keyed or not credentials(url)):
                 raise Throttled(url) from None
         except NETWORK_ERRORS:
@@ -153,6 +177,14 @@ def get(url: str, as_json: bool, tries: int = 4, headers: dict | None = None):
         time.sleep(delay)
         delay *= 2
     raise Throttled(url)
+
+
+def _body(error: urllib.error.HTTPError) -> str:
+    """What an error response said, or empty where it carried nothing readable."""
+    try:
+        return error.read().decode("utf-8", "replace")
+    except (OSError, AttributeError, ValueError):
+        return ""
 
 
 # --------------------------------------------------------------------------------------------
@@ -218,7 +250,8 @@ def best(rec: Work, candidates) -> Candidate | None:
 
 
 def search(service: Service, rec: Work) -> tuple[str, str] | None:
-    """Ask one service about one record. Raises `Throttled` if it refused."""
+    """Ask one service about one record. Raises `Throttled` if it refused, `Rejected` if it
+    would not run the query."""
     headers = None
     if service.needs_key:
         key = os.environ.get(service.needs_key, "")
@@ -366,13 +399,16 @@ def main(argv: list[str] | None = None) -> int:
     for rec in todo:
         # Each service is tried independently: one of them rate-limiting must not stop the
         # others from answering. A record only counts as blocked when every service refused,
-        # which is different from every service having nothing.
+        # which is different from every service having nothing. A service that rejected the
+        # query answered it, permanently: it is neither a refusal nor a reason to stop.
         hit, refused = None, 0
         for service in SERVICES:
             try:
                 hit = search(service, rec)
             except Throttled:
                 refused += 1
+            except Rejected:
+                pass
             time.sleep(1.5)
             if hit:
                 break

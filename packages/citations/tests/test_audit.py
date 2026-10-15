@@ -11,6 +11,7 @@ from __future__ import annotations
 import io
 import json
 
+import pytest
 from citations import audit as A
 
 
@@ -311,12 +312,16 @@ def test_an_entry_with_no_identifier_is_not_reported_as_matching(tmp_path):
     )
 
 
-def test_an_identifier_that_did_not_fetch_is_not_reported_as_matching(tmp_path, monkeypatch):
+def test_an_identifier_no_registry_has_is_not_found_rather_than_matching(tmp_path, monkeypatch):
     monkeypatch.setattr(A, "from_crossref", lambda doi, cache: None)
+    monkeypatch.setattr(A, "from_datacite", lambda doi, cache: None)
     monkeypatch.setattr(A, "from_pubmed", lambda pmid, cache: None)
     entry = A.Entry(key="k", title="anything", doi="10.1234/gone")
     report = A.audit([entry], tmp_path / "cache")
-    assert report.entries["k"].status == "unresolved"
+    assert (report.entries["k"].status, report.entries["k"].not_found_by) == (
+        "not found",
+        "identifier",
+    )
 
 
 def test_a_cached_response_is_reused_rather_than_refetched(tmp_path, monkeypatch):
@@ -372,7 +377,8 @@ def test_a_hand_written_cache_file_is_not_a_response(tmp_path, monkeypatch):
         '{"message": {"title": ["A Completely Invented Title Nobody Wrote"],'
         ' "author": [{"family": "Nobody", "given": "N"}]}}'
     )
-    A.from_crossref("10.1038/s41586-021-03819-3", cache)
+    with pytest.raises(A.resolve.Throttled):
+        A.from_crossref("10.1038/s41586-021-03819-3", cache)
     assert reached, "a bare file was trusted as a fetched response"
 
 
@@ -390,7 +396,8 @@ def test_a_cache_entry_cannot_answer_a_different_request(tmp_path, monkeypatch):
     _write_cache(
         cache, "crossref_10_1234_x.json", "https://api.crossref.org/works/10.9999%2Fother", body
     )
-    A.from_crossref("10.1234/x", cache)
+    with pytest.raises(A.resolve.Throttled):
+        A.from_crossref("10.1234/x", cache)
     assert reached, "an entry recorded for one URL answered another"
 
 
@@ -409,9 +416,9 @@ def test_a_clean_run_exits_zero():
     assert rep.ok
 
 
-def test_an_unresolved_entry_keeps_the_run_from_passing():
-    rep = A.AuditReport(where="library /x", entries={"a": A.EntryAudit(status="unresolved")})
-    assert A.render(rep, quiet=False) == 1
+def test_an_entry_that_could_not_be_checked_keeps_the_run_from_passing():
+    rep = A.AuditReport(where="library /x", entries={"a": A.EntryAudit(status="could not check")})
+    assert A.render(rep, quiet=False) == 2
     assert not rep.ok, "no measurement was made, so it is not a pass"
 
 
@@ -564,7 +571,7 @@ def test_a_near_title_by_other_authors_is_not_taken_for_the_work(tmp_path, monke
     assert [v.status for v in report.entries.values()] == ["not found", "not found"]
     assert [v.found_id for v in report.entries.values()] == ["", ""]
     assert report.checked == 0
-    assert A.render(report, quiet=False) == 0, "a book with no DOI is not a failed audit"
+    assert A.render(report, quiet=False) == 1, "--strict fails an unlisted not found"
     row = next(x for x in capsys.readouterr().out.splitlines() if x.startswith("  not found"))
     assert "2" in row
     assert not any(word in row for word in ("error", "fabricat", "invent", "fail", "fake"))
@@ -577,10 +584,10 @@ def test_every_service_refusing_is_a_search_not_made(tmp_path, monkeypatch):
     report = A.audit([_unidentified()], tmp_path / "cache")
 
     assert len(asked) == len(A.SERVICES)
-    assert report.entries["naitza2012"].status == "unresolved"
+    assert report.entries["naitza2012"].status == "could not check"
     assert report.not_found == []
     assert not report.ok
-    assert A.render(report, quiet=True) == 1
+    assert A.render(report, quiet=True) == 2
     assert not list((tmp_path / "cache").glob("*")), "a refusal was cached as an answer"
 
 
@@ -602,7 +609,7 @@ def test_searching_stops_once_every_service_keeps_refusing(tmp_path, monkeypatch
     report = A.audit(entries, tmp_path / "cache")
 
     assert len(asked) == A.GIVE_UP_AFTER * len(A.SERVICES)
-    assert len(report.unresolved) == 6, "an entry nobody was asked about was given a verdict"
+    assert len(report.could_not_check) == 6, "an entry nobody was asked about was given a verdict"
 
 
 def test_an_arxiv_match_is_compared_with_the_datacite_record_arxiv_registers(tmp_path, monkeypatch):
@@ -699,14 +706,16 @@ def test_a_second_run_reads_the_search_from_the_cache(tmp_path, monkeypatch, cap
     assert verdict["searched"] == ["semanticscholar", "crossref"]
 
 
-def test_no_search_leaves_an_entry_with_no_identifier_unchecked(tmp_path, monkeypatch, capsys):
+def test_no_search_leaves_every_entry_unchecked_and_strict_says_nothing_was_checked(
+    tmp_path, monkeypatch, capsys
+):
     monkeypatch.setattr(A.resolve, "get", _no_network)
     monkeypatch.setattr(A.urllib.request, "urlopen", _no_network)
     bib = tmp_path / "refs.bib"
     bib.write_text(BIB.split("@book")[0].replace("doi", "note") + "@book" + BIB.split("@book")[1])
     out = tmp_path / "report.json"
 
-    assert A.main(["--bib", str(bib), "--json", str(out), "--no-search", "--strict"]) == 0
+    assert A.main(["--bib", str(bib), "--json", str(out), "--no-search", "--strict"]) == 2
 
     printed = capsys.readouterr().out
     assert printed.split("2 entries\n\n")[1].split("\n\nwrote")[0] == (
@@ -715,7 +724,8 @@ def test_no_search_leaves_an_entry_with_no_identifier_unchecked(tmp_path, monkey
         "  disagree          0\n"
         "  no id             2   nothing can check these until they have a DOI or PMID\n"
         "\n"
-        "every checked entry matches its registry record."
+        "nothing was checked: no entry was compared with a registry record or searched for. "
+        "--strict exits 2."
     )
     assert {v["status"] for v in json.loads(out.read_text())["entries"].values()} == {
         "no identifier"

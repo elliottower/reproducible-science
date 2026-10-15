@@ -72,7 +72,7 @@ READS: dict[tuple[str, str], tuple[str, str]] = {
     ),
     ("citations", "audit"): (
         r"^(?:checked|agree|disagree) [\d,]+",
-        r"^(?:unresolved|no id) [\d,]+.*",
+        r"^(?:could not check|unresolved|no id) [\d,]+.*",
     ),
     ("repro", "verify"): (
         r"^\d+ \w+(?:, \d+ \w+)*$|^policy .*",
