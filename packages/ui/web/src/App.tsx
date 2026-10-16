@@ -6,11 +6,12 @@ import { CitationsTab, PreregTab, ResultsTab } from './Records'
 import { ClaimsPill, FixCtx } from './fix'
 import { IssuesBarPill, ISSUES_BAR } from './barVariant'
 import { IssuesPill } from './issues'
+import { Drawer } from './drawer'
 import { AskAIMenu, ShareMenu, VerifyMenu } from './menus'
 import { ReproduceTab, type PageRun } from './reproduceTab'
 import { SearchBox, type Jump } from './search'
 import { ToastHost, useToast } from './toast'
-import { loadGraph, post, postWhenFree, STATIC } from './api'
+import { loadGraph, post, postWhenFree, showing, STATIC } from './api'
 import { layout, summarize } from './layout'
 import { nodeTypes, UiCtx } from './nodes'
 import { fmt, Panel, when } from './shared'
@@ -24,6 +25,9 @@ interface Recheck {
   runs: PageRun[]
   start: (only: string[] | null) => void
   stop: (run: string) => void
+  /** Switch the page to another project `repro ui` has been run in, or there and run verify. */
+  openProject: (path: string) => Promise<boolean>
+  verifyProject: (path: string) => Promise<void>
 }
 
 function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
@@ -42,6 +46,7 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
   ] as [Tab, string][]).filter(([k]) => k !== 'reproduce' || hasSteps)
   // A step the search box picked: the Reproduce tab opens its panel.
   const [stepFocus, setStepFocus] = useState<{ step: string; at: number } | null>(null)
+  const [drawer, setDrawer] = useState(false)
   // Where Open in UI last took the page: the tab it opened reads it and shows that item.
   const [focus, setFocus] = useState<Focus | null>(null)
   /** Any other way to a tab drops the Open in UI target, so it is not applied again. */
@@ -190,12 +195,17 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
     <UiCtx.Provider value={{ selected: shown, matches, related, toggle, openFiles, toggleFile }}>
       <div className="app">
         <header className="top">
+          {!STATIC && recheck.available && (
+            <button className="burger" onClick={() => setDrawer(true)} title="Projects">☰</button>
+          )}
           <div className="tabs">
             {TABS.map(([k, label]) => (
               <button key={k} className={mode === k ? 'on' : ''} onClick={() => go(k)}>{label}</button>
             ))}
           </div>
+          <span className="spacer" />
           <SearchBox graph={graph} onJump={jump} />
+          <span className="spacer" />
           <ClaimsPill graph={graph} openClaims={() => go('claims')} />
           {ISSUES_BAR ? (
             <>
@@ -205,8 +215,8 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
           ) : (
             <>
               <IssuesPill graph={graph} onOpen={(o) => { setMode(o.tab); setFocus({ ...o, at: Date.now() }) }} />
-              <AskAIMenu graph={graph} />
               <VerifyMenu graph={graph} busy={recheck.busy === 'verify'} serverless={STATIC || !recheck.available} run={(presubmit) => recheck.run('verify', presubmit)} />
+              <AskAIMenu graph={graph} />
             </>
           )}
           <ShareMenu graph={graph} />
@@ -288,6 +298,7 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
             )}
           </div>
         )}
+        {!STATIC && <Drawer open={drawer} onClose={() => setDrawer(false)} onOpen={recheck.openProject} onVerify={recheck.verifyProject} />}
       </div>
     </UiCtx.Provider>
   )
@@ -314,7 +325,7 @@ function Page() {
 
   const load = () =>
     loadGraph()
-      .then((g) => setGraph(g as Graph))
+      .then((g) => { showing((g as Graph).project_dir); setGraph(g as Graph) })
       .catch((e) => setError(String(e)))
 
   useEffect(() => {
@@ -343,7 +354,8 @@ function Page() {
     setBusy('refresh')
     return post('api/refresh', {})
       .then((r) => r.json())
-      .then((res) => (res.ok ? load() : undefined))
+      // Another tab switched the server to another project: said once, at the foot of the page.
+      .then((res) => (res.ok ? load() : /another project/.test(res.error ?? '') ? toast(res.error) : undefined))
       .catch(() => undefined)
       .finally(() => {
         busyRef.current = null
@@ -419,12 +431,35 @@ function Page() {
       .then((res) => { toast(res.ok ? 'Stopping the run' : `Could not stop: ${res.error}`); return readRuns() })
       .catch((e) => toast(`Could not stop: ${e}`))
 
+  /** Switch to another project: the server builds its data, and the page starts over on it. */
+  /** Switch to another project; true once the page shows it. */
+  const openProject = async (path: string): Promise<boolean> => {
+    toast('Opening the project…')
+    try {
+      const res = await post('api/projects/open', { path }).then((r) => r.json())
+      if (!res.ok) { toast(`Could not open it: ${res.error}`); return false }
+      setProjectPath(res.project)
+      runningRef.current = new Set()
+      window.history.replaceState(null, '', '#')
+      await load()
+      setRuns([])
+      return true
+    } catch (e) {
+      toast(`Could not open it: ${e}`)
+      return false
+    }
+  }
+  /** Open the project and verify it there; nothing runs where the switch did not happen. */
+  const verifyProject = async (path: string) => {
+    if (await openProject(path)) await run('verify')
+  }
+
   if (error) return <div className="center">{error}</div>
   if (!graph) return <div className="center muted">Loading…</div>
   return (
-    <FixCtx.Provider value={{ project: projectPath ?? graph.project_dir ?? null }}>
+    <FixCtx.Provider value={{ project: graph.project_dir ?? projectPath ?? null }}>
       <ReactFlowProvider>
-        <Canvas graph={graph} recheck={{ available, busy, run, runs, start, stop }} />
+        <Canvas key={graph.project_dir ?? ''} graph={graph} recheck={{ available, busy, run, runs, start, stop, openProject, verifyProject }} />
       </ReactFlowProvider>
     </FixCtx.Provider>
   )

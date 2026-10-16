@@ -215,3 +215,15 @@ def make_kept(tmp_path: pathlib.Path) -> pathlib.Path:
 def tools():
     """The helpers a test that builds its own project needs: `git`, `cli` and `write_project`."""
     return types.SimpleNamespace(git=git, cli=cli, write_project=write_project)
+
+
+@pytest.fixture(autouse=True)
+def own_config(
+    tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> pathlib.Path:
+    """Every test remembers its projects in a config folder of its own, and keeps the page's data
+    for a project outside git in a home of its own, never the user's."""
+    folder = tmp_path_factory.mktemp("config")
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(folder))
+    monkeypatch.setenv("HOME", str(tmp_path_factory.mktemp("home")))
+    return folder

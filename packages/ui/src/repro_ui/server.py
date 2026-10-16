@@ -43,7 +43,7 @@ import webbrowser
 
 import yaml
 
-from repro_ui import export, runs
+from repro_ui import export, projects, runs
 from repro_ui import graph as build_graph
 
 #: The built page, which every wheel carries.
@@ -56,12 +56,25 @@ MAX_FILE = 2_000_000
 #: What a refused POST says: a stale token, or a request that is not from this server's page.
 OUT_OF_DATE = "This page is out of date: reload it."
 NOT_OURS = "Refused: not a request from this page."
+#: The header a POST names the project it was made from in, and what a request from a page
+#: showing another project than the server now does is told.
+PROJECT_HEADER = "X-Repro-UI-Project"
+SWITCHED = "Another tab switched this page to another project: reload it."
 
 
 def export_name(project: pathlib.Path) -> str:
     """The file name a download of the page gets: the project's folder name, safe as a header."""
     name = "".join(c if c.isalnum() or c in "-_." else "-" for c in project.name) or "project"
     return f"{name}.html"
+
+
+def remember(project: pathlib.Path) -> None:
+    """Add the project to the drawer's list. A list that cannot be written is said and skipped:
+    remembering a project never stops the page from showing it."""
+    try:
+        projects.opened(project)
+    except (OSError, projects.Unreadable) as e:
+        print(f"the list of projects ({projects.config_file()}) was not updated: {e!r}")
 
 
 def data_dir(project: pathlib.Path) -> pathlib.Path:
@@ -140,6 +153,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return NOT_OURS
         if (self.headers.get("Content-Type") or "").split(";")[0].strip() != "application/json":
             return NOT_OURS
+        shown = self.headers.get(PROJECT_HEADER)
+        if shown is not None and shown != str(self.project) and self.path != "/api/projects/open":
+            return SWITCHED
         sent = self.headers.get(TOKEN_HEADER) or ""
         if not (self.token and hmac.compare_digest(sent, self.token)):
             # The only refusal an ordinary user meets: a tab opened before the server restarted
@@ -175,6 +191,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._page()
         if self.path == "/api/health":
             return self._json(200, {"recheck": True, "project": str(self.project)})
+        if self.path == "/api/projects":
+            return self._json(200, {"projects": projects.summaries(data_dir, self.project)})
         if self.path == "/api/runs":
             return self._json(200, {"runs": runs.listed(self.project, self.data)})
         if self.path == "/api/export":
@@ -282,6 +300,30 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return self._json(500, {"ok": False, "error": f"repro could not be started: {e}"})
         return self._json(200, {"ok": True, "run": run})
 
+    def _open_project(self, body: dict) -> None:
+        """Switch the page to another remembered project: its data is built in this server, as
+        at launch, and the page reloads it. A run started in the other project goes on."""
+        path = body.get("path")
+        folder = projects.known(path) if isinstance(path, str) else None
+        if folder is None:
+            return self._json(404, {"ok": False, "error": "not a project this page knows"})
+        if not self.lock.acquire(timeout=120):
+            return self._json(409, {"ok": False, "error": "a check is already running"})
+        try:
+            folder = folder.resolve()
+            data = data_dir(folder)
+            build_graph.build(folder, data / "graph.json", None, check=False, fetch=self.fetch)
+        except Exception as e:  # reported to the page, which stays on the project it showed
+            return self._json(500, {"ok": False, "error": f"could not open {folder}: {e}"})
+        else:
+            # The switch, last, once the data is built: nothing after it can fail the request.
+            cls = type(self)
+            cls.project, cls.data, cls.groups = folder, data, None
+        finally:
+            self.lock.release()
+        remember(folder)
+        return self._json(200, {"ok": True, "project": str(folder)})
+
     def _stop(self, body: dict) -> None:
         run_id = body.get("run")
         if not isinstance(run_id, str) or not runs.stop(self.data, run_id):
@@ -308,7 +350,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     def do_POST(self) -> None:
         refused = self._refusal()
         if refused is not None:
-            return self._json(403, {"ok": False, "error": refused})
+            return self._json(409 if refused == SWITCHED else 403, {"ok": False, "error": refused})
         try:
             body = self._body()
         except RequestRefused as e:
@@ -318,6 +360,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._reproduce(body)
         if self.path == "/api/stop":
             return self._stop(body)
+        if self.path == "/api/projects/open":
+            return self._open_project(body)
         if self.path not in {"/api/refresh", "/api/verify"}:
             return self._json(404, {"error": "not found"})
         if not self.lock.acquire(blocking=False):
@@ -406,6 +450,7 @@ def main(argv: list[str] | None = None) -> int:
     build_graph.build(
         project, Handler.data / "graph.json", a.groups, check=False, fetch=Handler.fetch
     )
+    remember(project)
     try:
         server = http.server.ThreadingHTTPServer(
             ("127.0.0.1", a.port), functools.partial(Handler, directory=str(DIST))
