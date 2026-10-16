@@ -23,7 +23,7 @@ Command-line tools that check whether a paper's claims match its artifacts.
 pip install reproducible-science
 ```
 
-See our [Claude Code plugin](https://reproducible.science/start/claude-code/),
+See our [Claude Code plugin](https://reproducible.science/agents/claude-code-plugin/),
 which traces results at the time of experimentation.
 
 ```text

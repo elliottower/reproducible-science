@@ -31,7 +31,7 @@ from repro.exceptions import ReproError
 
 #: The first line of each file this writes, and how it knows one of its own.
 MARKER = "# Written by `repro ci init --pr-bot`."
-DOCS = "https://reproducible.science/tools/repro/#a-bot-on-pull-requests"
+DOCS = "https://reproducible.science/automation/pr-bot/"
 
 #: The reusable workflow that holds the jobs, in this toolkit's own repository.
 REUSABLE = "elliottower/reproducible-science/.github/workflows/pr-bot.yml"

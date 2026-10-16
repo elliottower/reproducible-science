@@ -1038,6 +1038,15 @@ keys. A braced name is not a finding — `{NASA}`, `{Open Science Collaboration}
 are how BibTeX is told a name has no given part and is printed as written; the same braces keep
 `{U.S. Food and Drug Administration}` one author rather than two.
 
+### A `.bib` exported from Zotero
+
+There is no Zotero plugin. With the Better BibTeX add-on, a Zotero collection or library can be
+exported to a `.bib` with "Keep updated" checked, and Better BibTeX re-exports the file when the
+collection changes ([Better BibTeX: automatic export](https://retorque.re/zotero-better-bibtex/exporting/auto/)).
+`citations` reads that `.bib` as it reads any other. `add` is the one command that writes into a
+`.bib`; on a file Better BibTeX keeps updated, add the entry in Zotero instead, so the library and
+the file hold the same entries.
+
 ## Author lists, against the identifier the entry already carries
 
 `citations lint --authors refs.bib` reads each entry's author list back against the registry its

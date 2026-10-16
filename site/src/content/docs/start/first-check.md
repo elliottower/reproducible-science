@@ -1,5 +1,5 @@
 ---
-title: Your first check
+title: Quick start
 ---
 
 Two files. A result, and a manifest describing what the manuscript says about it.

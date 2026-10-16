@@ -201,7 +201,7 @@ not used here: claims, staleness, prereg, results, citations
 
 The files are the ones `repro manifest init` would pin, found as it finds them. The numbers the manuscript prints are the ones `repro numbers` would count as unbound, in digits, with two digits or a decimal point, so years, labels, citations and single digits are left out. Each is compared with every number a JSON or YAML file holds, in mappings and in lists, and every cell of a CSV, TSV, PSV or columnar table, by the comparison a numeric assertion makes at the precision printed. A number printed with a percent sign is also compared as a percentage. Nothing else is scaled: a number is compared as printed, without its unit or suffix, so `25.6M` is compared as 25.6 and does not match a stored 25557032. A column, a key repeated across the elements of a list, or any other key of a JSON or YAML mapping, is index-like where its whole name, ignoring case and separators, is `id`, `idx`, `index`, `step`, `global_step`, `epoch`, `iter`, `iteration`, `row` or `seed`, or it has no name; `step_size`, `gini_index`, `id_acc` and `row_count` are not. A column or a repeated key is index-like also where it holds at least ten whole numbers and at least three quarters of its consecutive pairs step by one nonzero amount, where every pair that breaks the step drops back to the first value or the least. That keeps a counter that starts again for each run of a long table or each element of an outer list, and leaves out a count with one irregular step. Guesses in an index-like column or key are listed last, each tagged `[index-like column]` or `[index-like key]`, and the headline counts them apart, as `and 4 more numbers agree only with index-like columns or keys`. Nothing is left out. One number agreeing with several rows of a column, or one key of several list elements, is one guess: a place whose value equals the number exactly where one does, then the other rows and what they hold, as `rows 0, 2 hold 0.708 and 0.712`. Guesses in JSON and YAML files are listed before guesses in tables. A long pointer is shortened in the middle in this output and kept whole in JSON. A column of whole numbers that steps exactly linearly, such as a dose series of 25 to 300 mg in steps of 25 or the n of a power table, cannot be told from a counter by its values, so it is demoted; its guesses still appear, last and tagged.
 
-A guess is never counted as verified. At most 10,000 numbers are read from one file, and a delimited file is read no further than that. Notes name files by their path in the project, never an absolute one. At most 1,000,000 comparisons are made. A note says where either limit was reached, and the headline counts the numbers compared and how many were not. A file that cannot be read is a note. The command exits 2, as every command does with nothing to read: nothing was checked, which is neither a pass nor a failure.
+A guess is never counted as verified. At most 10,000 numbers are read from one file, and a delimited file is read no further than that. Notes name files by their path in the project, never an absolute one. At most 1,000,000 comparisons are made. A note says where either limit was reached, and the headline counts the numbers compared and how many were not. A file that cannot be read is a note. Where the project keeps no other record either, the command exits 2, as every command does with nothing to read: nothing was checked, which is neither a pass nor a failure.
 
 `--format json` prints one document:
 
@@ -249,9 +249,22 @@ The two example claims show the commonest shapes: a `metric`, a number at a JSON
 repro verify
 ```
 
-Reads `repro.yaml` and checks every declared evidence assertion against the artifact it names. It spawns nothing: `prereg`, `results` and `citations` are separate commands.
+Checks every record the project keeps, in one report with one exit code:
 
-It changes nothing in the working tree. It does keep a record of what it checked. For every assertion whose `reported` value or passage, address, claim text, artifact digest or outcome differs from the last entry recorded for it, one entry is appended: what the assertion declared, the digest of each file it read, the outcome, and when. A check that finds every assertion as it was last recorded adds nothing, so the record grows with changes and not with runs. `repro why <claim-id>` reads it back.
+| section | what it checks | used where the project has |
+|---|---|---|
+| claims | every evidence assertion `repro.yaml` declares, against the artifact it names | `repro.yaml` |
+| staleness | each declared command against the record of its re-runs, as `repro stale` reports it, graded under `--policy` | a command under `regenerations` |
+| prereg | `prereg check` | a `PREREG.md` or `.prereg/` |
+| results | `results verify --files` | `.results/` |
+| citations | `citations verify --claims <dir>` | a claims directory holding a claims file |
+| cross-tool | a ledger claim naming a freeze that no frozen plan records | a ledger and a plan |
+
+A record the project does not keep is named as not used and is not run. The project is the directory given, or the folder holding the manifest given or found at or above the working directory. It executes nothing a manifest declares and reaches no network: `repro reproduce` is the command that runs things. It exits 0 where every check that ran passed, 1 where one failed or could not check, and 2 where nothing was checked. `--format json` keeps `report` and `assessment` where `claims verify` puts them and adds `staleness`, `prereg`, `results`, `citations`, `cross_tool` and `project` beside them; `--format sarif` is the claims' log with each section's verdict and the exit code under the run's `properties.checks`. With no manifest and another record kept, the claims are a section reported as not used, and the exit code is the other records'. A section's word is `passed`, `failed` or `not used`, and a tool's own check may also give `could not check` or `nothing to read`, which count against the exit code as `failed` does.
+
+`claims verify` checks the claims alone, takes the same options and writes the same record of checks. It is the fast check, and the one a pre-commit hook runs.
+
+Neither command changes anything in the working tree. Each keeps a record of what it checked. For every assertion whose `reported` value or passage, address, claim text, artifact digest or outcome differs from the last entry recorded for it, one entry is appended: what the assertion declared, the digest of each file it read, the outcome, and when. A check that finds every assertion as it was last recorded adds nothing, so the record grows with changes and not with runs. `repro why <claim-id>` reads it back.
 
 | | local record | tracked record |
 |---|---|---|
@@ -443,7 +456,7 @@ A number is digits with an optional sign, grouping commas, a decimal point and a
 | rule | what it sets aside |
 |---|---|
 | `link` | digits inside a URL |
-| `date` | the three parts of a date written `2026-10-13` |
+| `date` | the three parts of a date written `2026-10-13`, and the two of a year and month written `2026-04` |
 | `document identifier` | the number after `rfc`, `iso`, `iec`, `ieee`, `ansi`, `ecma`, `fips`, `pep`, `arxiv`, `doi`, `isbn`, `issn`, `pmid` or `pmcid`, as in `rfc 6901` and `arxiv 2609.22111`, and the digits of a DOI |
 | `name` | digits with a letter immediately before them, `v15zw` and `sha256sum`, digits a hyphen or underscore joins to a part that holds a letter, `gpt-4` and `9750` in `i7-9750h`, and digits that open a run of letters and digits holding more digits, as a hexadecimal digest does |
 | `version or section` | digits joined by two or more full stops, `0.5.5` |
@@ -467,7 +480,7 @@ set_aside:
   reason: how long the form takes, not a result
 ```
 
-`text` is matched as a quotation is, every number inside each place it occurs is set aside, and `reason` is required. `reviewed: {who, when}` is optional and says who set the passage aside and when; [the pull-request bot](#a-bot-on-pull-requests) writes it, with `via: reproducible-science-pr-bot`. An entry whose passage is not in the text is listed with a count of 0. `--format json` prints, per text, every number with the line it is on, its offset in the normalized text, the value read, its standing, and the rule, the claims that bind it or the reason.
+`text` is matched as a quotation is, every number inside each place it occurs is set aside, and `reason` is required. An entry whose passage is not in the text is listed with a count of 0. `--format json` prints, per text, every number with the line it is on, its offset in the normalized text, the value read, its standing, and the rule, the claims that bind it or the reason.
 
 ## A file copied from another repository
 
@@ -725,7 +738,7 @@ next: commit and push. Each badge prints its workflow's name beside `passing` or
 `failing`, for the latest run on the default branch.
 ```
 
-`repro ci init` writes one workflow for each check the repository keeps a record for, says which it skipped and why, and prints two badge lines for each one written, in the order prereg, results, claims, citations, reruns. Which records a repository keeps is decided as `repro check` decides it.
+`repro ci init` writes one workflow for each check the repository keeps a record for, says which it skipped and why, and prints two badge lines for each one written, in the order prereg, results, claims, citations, reruns. Which records a repository keeps is decided as `repro verify` decides it.
 
 | workflow | badge reads | written when the repository has | the workflow runs |
 |---|---|---|---|
@@ -814,7 +827,7 @@ A recorded file the repository does not commit is `missing` in a clone, and the 
 
 ### claims in CI
 
-`repro ci claims` runs what `repro verify` runs: each value and passage the manifest declares against the file it is declared to come from, and each file against its pin. It executes nothing, writes nothing to the project, and keeps no record of checks: `repro verify` is the command that appends to one. `--policy` grades as it does for `repro verify`.
+`repro ci claims` runs what `claims verify` runs: each value and passage the manifest declares against the file it is declared to come from, and each file against its pin. It executes nothing, writes nothing to the project, and keeps no record of checks: `claims verify` and `repro verify` are the commands that append to one. `--policy` grades as it does for `claims verify`.
 
 ```markdown
 ## claims: my_project
@@ -1031,68 +1044,6 @@ The citations endpoint file is read from that record and from no run in the job:
 
 A claims file pins its source by digest, so a source swapped under a pin changes the claims file and the record goes stale. `repro badges --check`, run against the block `init` wrote, compares that record with the claims files and exits 1 where it no longer covers them, naming each file; in a pre-commit hook it stops a commit whose citations badge would read `re-verify locally`. `repro badges --readme` refuses to replace the block `init` wrote.
 
-## A bot on pull requests
-
-```bash
-repro ci init --pr-bot
-```
-
-The pull-request bot comments on a pull request once for each assertion that fails or went stale, and records the answer someone with write access gives. It is its own distribution, `reproducible-science-pr-bot`, and runs from GitHub Actions in your repository with its own token. Nothing is hosted, and no model reads or writes anything.
-
-`repro ci init --pr-bot` writes two short caller workflows. Each calls the reusable workflow `elliottower/reproducible-science/.github/workflows/pr-bot.yml`, which holds the jobs; the callers only choose when it runs and what its token may do.
-
-| caller | runs on | job | token | does |
-|---|---|---|---|---|
-| `repro-pr-bot.yml` | `pull_request`, and `workflow_dispatch` from `reply` | check | `contents: read` | checks out the pull request's head commit, runs `reproducible-science-pr-bot check`, and uploads what it found as the artifact `repro-pr-bot-findings` |
-| `repro-pr-bot-respond.yml` | `workflow_run`, after the check | post | `actions: read`, `issues: write`, `pull-requests: write` | downloads that artifact and runs `reproducible-science-pr-bot post`; checks out nothing |
-| `repro-pr-bot-respond.yml` | `issue_comment`, `pull_request_review_comment` | reply | `actions: write`, `contents: write`, `issues: write`, `pull-requests: write` | runs `reproducible-science-pr-bot reply` on a reply to one of the bot's comments; checks out nothing |
-
-The callers are two because the comments must be posted by a run holding a token that writes, which `pull_request` never gives a pull request from a fork, and that run is started by `workflow_run` after the check. GitHub's documentation does not say that a workflow can be started by its own completion, so a second file starts it. A called workflow can lower the permissions its caller grants and never raise them ([Reusing workflow configurations](https://docs.github.com/en/actions/reference/workflows-and-actions/reusing-workflow-configurations)), so each job of the reusable workflow asks for the token in the table, whatever the caller grants: the check job holds `contents: read` even in a caller that grants more.
-
-`reproducible-science-pr-bot check` decides what fails as `repro export` does: an assertion whose record says `mismatch`, `not-found` or `error`, or whose producing command is `stale`, as `repro ci claims` and `repro ci reruns` report it. An inferred assertion nobody reviewed is `not-checked` and gets no comment. It executes nothing and writes at most fifty findings. `post` comments on each:
-
-```text
-Table 2: `0.931` no longer matches `results/metrics.json` (now `0.928`)
-
-Reply in this thread with a number:
-1. Yes, the paper should say `0.928`
-2. No, the result file is wrong
-3. Ignore this one
-4. Not a claim
-```
-
-The comment is on the manuscript's line where the claim quotes its sentence from a text file that holds it once, as `repro export sarif` places a result, and that line is in the diff. Otherwise it is in the pull request's conversation, where a reply says which comment it answers by quoting it or by starting with the short name the comment prints, such as `r-3f2a9c1b`. Each comment carries a hidden marker naming the claim, the assertion, the assertion's fingerprint, which is the one `repro export sarif` gives GitHub, and a digest of what was found. A second run never posts a comment again: it edits the comment already open on the same assertion where what it says has changed, strikes it through as fixed where the assertion passes and resolves its review thread, and opens both again where it fails again. An answer recorded in a comment is kept when the comment is edited. Text echoed from the pull request is shown as code, with control characters and HTML comment syntax taken out, and a body that would pass GitHub's limit of 65,536 characters drops the echoed passage first.
-
-A reply is read where it is in one of the bot's threads and its text, after any quoted lines and an optional `@repro`, starts with a number from 1 to 4. Words after the number are the reason. A reply naming two numbers or a time, `1-2`, `1, 2`, `1 or 2`, `1:30`, gives no answer. Fullwidth digits, invisible characters and a number in emphasis or code, `**1**`, are read as the plain number. A reply from someone with write access that starts with another number, or with `@repro`, is answered with one line, `reply 1–4`; any other discussion in the thread is left alone, and a reply anywhere else is not read. Of the replies in a thread, the latest from someone the API reports as having `write`, `maintain` or `admin` access holds, and an answer is never replaced by an earlier one. An edited reply is read again when it is edited, as what it now says, and the answer it gives replaces the one it gave; a deleted reply leaves what it recorded, `set_aside` entry included, in place.
-
-| answer | recorded |
-|---|---|
-| 1, yes | in the comment: who accepts the file's value. The manuscript is never edited, and the claim fails until the paper prints the value |
-| 2, no | in the comment: who says the result file is wrong. The claim keeps failing |
-| 3, ignore | a `set_aside` entry for the claim's passage, committed to the pull request's branch |
-| 4, not a claim | the same, with `not a claim` in its reason |
-
-The bot confirms in the thread, `recorded: ignored by @login`. Where the passage is already set aside, by hand or otherwise, it says so, commits nothing and closes the comment. The entry it commits names the passage the claim quotes, and says who answered and when under `reviewed`:
-
-```yaml
-set_aside:
-- artifact: paper
-  text: an accuracy of 0.931
-  reason: 'pull request #7, ignored: a figure from the pilot'
-  reviewed:
-    who: alice
-    when: '2026-10-14T12:00:00Z'
-    via: reproducible-science-pr-bot
-```
-
-The entry is added after the last one, indented as they are, and no other byte of `repro.yaml` changes; the file is never loaded and dumped again. Answers 1 and 2 change no file, except that a 1 or 2 after a 3 or 4 removes the entry the bot wrote for it. The bot knows its own entries by `via: reproducible-science-pr-bot` and never removes another. A claim that quotes no passage has no entry to write, and the bot says so. A `set_aside` entry accounts for the numbers in its passage in `repro numbers` and nothing more: `repro verify` still reports the claim, and the comment, closed as set aside, says so.
-
-The split follows GitHub's advice for workflows that handle pull requests from forks ([Secure use reference](https://docs.github.com/en/actions/reference/security/secure-use)): the job that reads the pull request's files holds a read-only token, and the jobs with a token that writes check out nothing and run nothing from the pull request. `post` treats the findings as data and refuses them unless the pull request they name is at the commit the check ran on and from the repository and branch that were checked, and unless they are about the manifest the workflow names. `reply` commits only to that manifest, whatever a comment says, and answers no comment about another file. The check runs `uvx --no-config`, so a `uv.toml` in the pull request cannot choose where the package is installed from. No workflow uses `pull_request_target`, and none places a comment's text in a shell command. On a pull request from a fork the bot comments only in the conversation, says so in each comment, and commits nothing; an answer of 3 or 4 is recorded in the comment and the entry is left for a maintainer to add. A commit made with the workflow's token starts no other workflow, so after committing `reply` starts `repro-pr-bot.yml` again on the branch with `workflow_dispatch`, which that token may do, and with it each workflow `repro ci init` wrote that has a `workflow_dispatch` trigger. A check started that way reports on the branch's new head commit, so a branch protection rule requiring it does not hold the merge. `repro ci init` writes that trigger; a workflow it wrote before it did is named by `repro ci init --pr-bot`, and `repro ci init --force` then `repro ci init --pr-bot --force` adds it.
-
-Runs of `post` on one branch wait for each other, and so do runs of `reply` on one pull request. A run of `post` and a run of `reply` can overlap: they are kept apart because GitHub cancels a run waiting in a concurrency group when another queues behind it, and a shared group would drop findings or answers. Each reads a comment again right before it edits it and changes only its own part: `post` never changes the recorded answer, and `reply` changes whether a comment is open or fixed only by setting it aside or undoing that. Each run of `reply` records every answer on the pull request not yet in its comment, not only the one that started it, and reads the thread and the manifest again right before it commits. When `check` found more than fifty assertions failing, `post` closes no comment, because one left out of the findings may still fail.
-
-GitHub runs `workflow_run` and `issue_comment` workflows only from the default branch, so the bot comments on no pull request until the two callers are merged there. `repro ci init --pr-bot` never replaces a file it did not write; `--force` replaces the two it wrote. Each caller and the reusable workflow grant nothing at their top, `permissions: {}`, and each job names what it needs, with a comment saying why. Every action the reusable workflow uses is pinned by commit, as in the workflows `repro ci init` writes.
-
 ## On a pull request, as SARIF
 
 ```yaml
@@ -1125,7 +1076,7 @@ SARIF has no property for most of what a record holds. The whole record is in ea
 
 GitHub keeps the 5,000 most severe results of a run and rejects a file over 10 MB compressed. The default output holds only what did not match; with `--include-matches` a log over 5,000 results is written whole and a warning says so.
 
-`repro verify --format sarif` is an older log built from the report, graded by `--policy`, and is unchanged.
+`claims verify --format sarif` is an older log built from the report and graded by `--policy`. `repro verify --format sarif` is that log with each section's verdict and the exit code under the run's `properties.checks`.
 
 ## As an RO-Crate
 
@@ -1139,72 +1090,6 @@ repro export ro-crate             # the same document on standard output
 Experimental. RO-Crate has no term for the address inside a file, for a printed value against a stored one or for the outcome of comparing them, so those come from a profile of this tool's own, [`https://reproducible.science/ro-crate/claim-check/0.1/`](https://reproducible.science/ro-crate/claim-check/0.1/), version `0.1-experimental`. It is this tool's export format and nothing more, and its terms may change before `1.0`.
 
 The crate is written from the records alone and loses none of them: `repro.export.rocrate.from_ro_crate` reads one back into the records it came from. Two consequences follow. A file no record names is not in the crate, which is an artifact that no assertion reads and no command upstream of one touches. And a record knows no license, which RO-Crate requires of a crate, so the document says none is stated; add the project's own before publishing one.
-
-## For a venue
-
-```bash
-repro venue acm                          # an Artifact Appendix, as Markdown
-repro venue acm --format latex -o ae.tex # in the layout of the template, as LaTeX
-```
-
-`repro venue acm` drafts an Artifact Appendix in the layout of the [Unified Artifact Appendix template](https://github.com/ctuning/artifact-evaluation/blob/307966059368634d9882a3daa42e4b63ef1946d6/docs/template/ae.tex) that ACM conferences running artifact evaluation ask for. The headings and field labels are the template's, stored in the package with the commit and the day they were copied. A field that a record in the repository bears on carries what that record says, one line per fact, each line naming its record:
-
-| field | read from |
-|---|---|
-| Run-time environment, Software dependencies | lockfiles and environment files at the top of the project, and the environment of the most recent re-run that is still current |
-| Hardware | the machine and GPUs of the most recent current re-run in `.repro/reproductions.jsonl` |
-| Execution, time to complete | the durations of the re-runs that are current, added up |
-| Output | the claims and pinned artifacts `repro.yaml` declares, and the claims the ledger binds to runs |
-| Experiments, Workflow automation framework | each command under `regenerations`, with the file it writes |
-| Code licenses | `LICENSE` by its first line, and the license `CITATION.cff` names |
-| Archived (provide DOI)? | the DOI `CITATION.cff` names |
-| How to access | `git remote get-url origin` with any user name, password or token taken out and "author: confirm this repository is public", that DOI, and the project's own code repository |
-| Experiment workflow | the commands, each plan frozen with `prereg` and its commit, and the ledger's count of seals and runs |
-| Evaluation and expected results | the claims, whether each declared command's output is current, stale or never re-run as `repro stale` decides it, and each origin as `repro origins` finds it with no network |
-
-Each such field is marked **DRAFT** and names the records it was generated from. Every other field is marked **TODO** and left empty for the authors: the abstract, the algorithm, the data sets, installation and the rest are not in any record, and generated prose in their place would read as the authors' own. A yes or no is filled in only where a record settles it with no judgment involved, marked DRAFT with the record named, and only from the project's own identifiers: `doi`, `identifiers` and `repository-code` at the top of `CITATION.cff`, and `identifier` and `codeRepository` in `codemeta.json`. A DOI or Software Heritage ID (`swh:1:...`) there answers Yes to *Archived (provide DOI)?*; a GitHub or GitLab address alone does not. Any of those, or the code repository, answers Yes to *Publicly available?*, with "author: confirm this repository is public", since whether it is public cannot be seen offline. A declared command answers Yes to *Workflow automation framework used?*. References, cited works, the README and the origins of copied files are never read for these. Every other yes or no is left to the authors. Plans are found as `prereg check` finds them, leaving out any under a folder named `tests`, `test`, `testdata`, `fixtures`, `fixture` or `examples`; `--plan PATH` names one instead, and must exist. A ledger whose chain does not verify is said to, and a claim in it counts as bound only where the run it names is recorded. `--format json` gives every answer with its status and its records. `-o FILE` refuses to replace a file that exists, since the authors may have edited it; `--force` replaces it.
-
-### Evidence against the badging criteria
-
-```bash
-repro venue acm-evidence -o evidence.html     # one page, no images
-repro venue acm-evidence --format json
-```
-
-`repro venue acm-evidence` lists, for each criterion of [ACM Artifact Review and Badging](https://www.acm.org/publications/policies/artifact-review-and-badging-current) version 1.1, the records in the repository that bear on it, under the policy's own words for the criterion. It is labelled, in every format, "Evidence mapped to ACM Artifact Review and Badging v1.1 criteria; not an ACM badge." It never says whether a criterion is met, which is the evaluators' decision, and it uses no badge's name or image as a label or a status.
-
-| criterion | records listed |
-|---|---|
-| placed on an archival repository, with an identifier | a DOI or Software Heritage ID among the project's own identifiers in `CITATION.cff` or `codemeta.json`; never the origin of a copied file, which is someone else's repository |
-| documented, consistent, complete and exercisable | the declared commands, the last re-run of each, the claims in `repro.yaml` and the ledger, the README, `docs/` and `CITATION.cff` |
-| documented and structured for reuse | all of those, the license, and the lockfiles at the top of the project |
-| main results obtained by others, with or without the authors' artifacts | none: `not determinable by this tool` |
-
-Each criterion's standing is `records listed`, `no record found` or `not determinable by this tool`, shown as `DRAFT: records listed` where records are listed and `TODO: ...` otherwise, and the page and the JSON open with a DRAFT notice. The last two criteria are always the third: the policy asks for the results to be obtained by a person or team other than the authors, which nothing in the authors' repository can show. acm.org refuses scripted requests, so the policy page was saved from a browser on 2026-10-11 and converted to text. Each criterion's words are quoted from that text verbatim, ACM's spelling *publically* included, and stored in the package with the page's address, the retrieval date, the sha256 of the saved text and of the saved page, the line each quotation is on, and the sha256 of each quotation, so a copy saved independently can be checked against them. There is no SARIF output: SARIF reports results of an analysis, and a list of records under a criterion is not a result.
-
-### NeurIPS and ACL checklists
-
-```bash
-repro venue neurips --format latex -o checklist-draft.tex
-repro venue acl
-```
-
-`repro venue neurips` drafts the NeurIPS Paper Checklist from `checklist.tex` in the [NeurIPS 2026 formatting archive](https://media.neurips.cc/Conferences/NeurIPS2026/Formatting_Instructions_For_NeurIPS_2026.zip); `repro venue acl` drafts the [ACL Responsible NLP Research checklist](https://aclrollingreview.org/responsibleNLPresearch/). The question text of each is stored in the package, verbatim, with the address and the day it was read, 2026-10-14.
-
-A NeurIPS question asks what the paper discloses, and no record can say that, so a NeurIPS answer stays `\answerTODO{}`, with one exception: open access (5) is `\answerYes{}` followed by a mark that prints, such as **(DRAFT: from `CITATION.cff`; author: confirm this repository is public)**, where the project's own DOI, Software Heritage ID or code repository is recorded, as for ACM's *Publicly available?*. No ACL answer is chosen: no ACL question asks whether code or data were released, and whether a file a claim reads is a scientific artifact in ACL's sense is the authors' judgment, so question B lists the artifacts `repro.yaml` declares and leaves the answer TODO. Where a record bears on a question, the justification is a draft listing what the record says, marked DRAFT with the record named, for the authors to check against the paper and rewrite:
-
-| question | records |
-|---|---|
-| NeurIPS 1, claims | the claims in `repro.yaml` and the ledger |
-| NeurIPS 4, experimental result reproducibility | the declared commands, their last re-runs, the frozen plans |
-| NeurIPS 5, open access to data and code | the DOI, origins, commands, lockfiles and license |
-| NeurIPS 8, compute resources; ACL C1 | the duration and environment of the last re-runs |
-| NeurIPS 12, licenses for existing assets; ACL B1 | each artifact's `origin` |
-| NeurIPS 13, new assets; ACL B5 | the README, `docs/` and `CITATION.cff` (with the license, for NeurIPS) |
-| ACL B2 | `LICENSE` and the license `CITATION.cff` names |
-| ACL C4 | the lockfiles at the top of the project |
-
-The LaTeX for NeurIPS keeps the shape of `checklist.tex` without the guidelines under each question, which stay as that file has them. ACL's checklist is filled in on the submission form, so its draft is Markdown or JSON.
 
 ## Audit a repository you did not write
 
@@ -1220,7 +1105,7 @@ Clones the repository into a cache directory at that commit (default: the remote
 | `.results/ledger.jsonl` | `results verify --files` |
 | a claims directory | `citations verify --claims <dir>` |
 | each tracked `.bib` file | `citations audit --bib <file>` |
-| `repro.yaml` | `repro verify` |
+| `repro.yaml` | `claims verify` |
 
 ```text
 command           exit  outcome          what it found                                 what it could not establish
@@ -1230,7 +1115,7 @@ results.verify    1     failed           chain intact: 153 events, anchored; 4  
                                          file(s) changed or missing since they were
                                          recorded.
 citations.verify  1     could not check  not found 0                                   unchecked 18 file not found
-repro.verify      2     nothing to read  no repro.yaml here or above.                  -
+claims.verify     2     nothing to read  no repro.yaml here or above.                  -
 ```
 
 Each row carries one of four outcomes. `failed` is a finding about the repository. `could not check` means a source is not on this machine or a registry did not answer, and `nothing to read` means the repository keeps no record of that kind. Neither is a pass. A step left out is listed as `not run` with the reason. The command exits 1 when a check failed, 2 when one could not be made or nothing was established, and 0 otherwise.
@@ -1276,115 +1161,10 @@ repro verify                          # check everything
 | citations | `citations` | [`citations`](https://pypi.org/project/citations/) | Verify quotations resolve in pinned source artifacts |
 | results | `results` | [`results-cli`](https://pypi.org/project/results-cli/) | Seal inputs, record outputs, bind claims to runs, verify the chain |
 
-## Inside adduce
+## Integrations
 
-[adduce](https://github.com/QHarshil/adduce) scores a repository for reproducibility across
-categories. Installing the extra registers one rule with it, so a repository that declares a
-`repro.yaml` has its evidence assertions checked as part of `adduce check`:
-
-```bash
-pip install "reproducible-science[adduce]"
-adduce check .
-```
-
-The rule reports one finding for the manifest — every assertion holding is a pass, some
-holding is partial, a pinned artifact having changed is a failure naming it — with one item
-per checked assertion under it: its status, the printed and stored values, the comparison
-rule, and the manifest line and files it read. adduce never scores an item on its own, so the
-finding weighs what it did. Past adduce's envelope of 10,000 items the finding says how many
-more there are, and the full report is written to `.adduce/repro-report.json` in every case.
-A repository with no manifest is out of scope rather than failing, and a verifier that cannot
-run reports `UNKNOWN`: a missing toolchain is not the repository's fault.
-
-adduce is not a dependency of this package, and this package is not a dependency of adduce.
-
-## Claude Code
-
-This repository is a Claude Code plugin marketplace. One plugin carries all four tools:
-
-```bash
-/plugin marketplace add elliottower/reproducible-science
-/plugin install reproducible-science@reproducible-science
-```
-
-It installs a skill for each tool, `prereg-style` and `osf-registration` beside them, four commands and five hooks. The hooks are the part a CLI
-cannot do, because each fires at a moment rather than when you remember to run something:
-
-| hook | fires when |
-|---|---|
-| frozen file before edit | an edit targets a frozen plan or a frozen amendment; the edit is refused |
-| frozen plan changed | a preregistration no longer matches the digest it was frozen with |
-| unverified quotation | a passage enters a manuscript that no claim file pins to a source |
-| unbound number | a number enters a manuscript that no recorded claim names |
-
-An edit to a frozen plan or a frozen amendment is refused, with the instruction to record a note
-with `prereg log` or a change with `prereg amend`. Every other hook reports and never blocks. All
-of them stay silent in a project that has not opted in: no ledger, no claims directory and no
-frozen plan means nothing to check and nothing said.
-
-The commands are `/prereg-check`, `/citations-check`, `/results-check` and `/repro-check`, named alike so
-there is nothing to remember about which tool answers which question.
-
-Each tool also ships on its own, for anyone who wants one of them:
-
-```bash
-/plugin install prereg@reproducible-science
-/plugin install citations@reproducible-science
-/plugin install results@reproducible-science
-```
-
-The plugin ships instructions and hooks, not binaries, so install the tools as well:
-
-```bash
-uv tool install reproducible-science   # or: pip install reproducible-science
-```
-
-## MCP server
-
-`repro mcp` serves the toolkit's checks to any coding agent that speaks MCP. Register it once
-per agent, for every project:
-
-```bash
-uv tool install "reproducible-science[mcp]"
-claude mcp add --transport stdio --scope user reproducible-science -- repro mcp
-```
-
-Codex, in `~/.codex/config.toml`:
-
-```toml
-[mcp_servers.reproducible-science]
-command = "repro"
-args = ["mcp"]
-```
-
-Gemini CLI takes the same `command` and `args` under `mcpServers` in `~/.gemini/settings.json`,
-and Cursor under `mcpServers` in `~/.cursor/mcp.json`, with `"type": "stdio"`.
-
-The server follows the paths the agent passes. Each call works in the project its path is in,
-the nearest folder above it holding one of `PROJECT_MARKERS` (`repro.yaml`, `.results/`,
-`.prereg/`, `claims/`, `PREREG.md`, or a reader's `repro.draft.yaml`), and every path is kept
-inside that project. A symlink belongs to the folder it sits in. A call with no path takes a
-`project` argument, or the project of the last call.
-
-| tool | what it does |
-|---|---|
-| `verify`, `why`, `stale`, `numbers`, `origins` | as the commands; `verify` writes no record of checks |
-| `prereg_check`, `results_verify`, `citations_verify` | the three tools' checks |
-| `citations_audit` | each `.bib` entry against its registry record, ten a call: agrees, disagrees, not found, or could not check; the one tool that reads the network |
-| `next_open_item`, `get_open_item` | one open item: the claim, the printed value, the sentence, each candidate's address, labels and stored value |
-| `propose_binding` | one assertion filling an item, `basis: inferred`, then its check |
-| `add_artifact` | one file, pinned and `basis: inferred` |
-| `mark_reviewed` | what the user approved in the chat, as `reviewed` |
-| `pin_quote` | `citations pin`, which writes only a passage that resolves |
-
-Each write is one line of the draft, and no other byte changes. `propose_binding` reports a
-match as `matched, inferred: not verified`, and a retry replaces only its own proposal that did
-not match. Every attempt is appended to a hash chain in `.repro/attempts.jsonl` beside the
-open-items file, which `claims open-items` counts from, flagging an item tried more than five
-times. An assertion reading an inferred artifact counts as inferred too. `mark_reviewed` writes
-who (git `user.name`), when, how (`approved in chat via` the client) and the digest of what was
-accepted; when that changes, the review no longer counts. Nothing the server offers freezes,
-registers, seals, runs a declared command, and nothing but `citations_audit` fetches.
+Claude Code, Codex, the MCP server, and the readers for other systems' records are on
+[reproducible.science/integrations](https://reproducible.science/integrations/).
 
 MIT licensed.
 

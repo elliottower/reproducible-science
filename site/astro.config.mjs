@@ -6,6 +6,16 @@ export default defineConfig({
   // GitHub Pages serving the custom domain. DNS is on Cloudflare; the old
   // elliottower.github.io/reproducible-science address redirects here.
   site: "https://reproducible.science",
+  redirects: {
+    "/integrations/osf/": "/tools/prereg/#osf-integration",
+    "/integrations/opentimestamps/": "/tools/results/#timestamp",
+    "/integrations/zotero/": "/tools/citations/#a-bib-exported-from-zotero",
+    "/integrations/adduce/": "/integrations/",
+    "/integrations/open-items/": "/agents/open-items/",
+    "/integrations/init-scaffold/": "/start/init-scaffold/",
+    "/start/codex/": "/agents/codex-plugin/",
+    "/start/claude-code/": "/agents/claude-code-plugin/",
+  },
   integrations: [
     starlight({
       head: [
@@ -60,13 +70,14 @@ export default defineConfig({
           label: "Get started",
           items: [
             { label: "Installation", link: "/start/install/" },
-            { label: "Your first check", link: "/start/first-check/" },
+            { label: "Quick start", link: "/start/first-check/" },
+            { label: "repro init scaffolding", link: "/start/init-scaffold/" },
           ],
         },
         {
           label: "Concepts",
           items: [
-            { label: "The evidence contract", link: "/concepts/evidence-contract/" },
+            { label: "Declaring evidence", link: "/concepts/evidence-contract/" },
             { label: "Outcomes and reasons", link: "/concepts/outcomes/" },
             { label: "Pinning", link: "/concepts/pinning/" },
             { label: "The check record", link: "/concepts/check-record/" },
@@ -80,13 +91,43 @@ export default defineConfig({
             { label: "Citations", link: "/tools/citations/", attrs: { "data-tool": "citations" } },
             { label: "Repro", link: "/tools/repro/", attrs: { "data-tool": "repro" } },
             { label: "Claims", link: "/tools/claims/", attrs: { "data-tool": "claims" } },
+            { label: "Web UI", link: "/tools/ui/" },
           ],
         },
         {
           label: "Reference",
           items: [
             { label: "Specification", link: "/reference/spec/" },
+            { label: "Exports: JSON, SARIF, RO-Crate", link: "/reference/exports/" },
             { label: "Changelog", link: "/reference/changelog/" },
+          ],
+        },
+        {
+          label: "Agents",
+          items: [
+            { label: "Claude Code plugin", link: "/agents/claude-code-plugin/" },
+            { label: "Claude Code mod", link: "/agents/claude-code-mod/" },
+            { label: "Codex plugin", link: "/agents/codex-plugin/" },
+            { label: "MCP server", link: "/agents/mcp/" },
+            { label: "Open items", link: "/agents/open-items/" },
+          ],
+        },
+        {
+          label: "Automation",
+          items: [
+            { label: "GitHub CI", link: "/automation/github-ci/" },
+            { label: "README badges", link: "/tools/repro/#badges-with-counts" },
+            { label: "Pull-request bot", link: "/automation/pr-bot/" },
+          ],
+        },
+        {
+          label: "Integrations",
+          collapsed: true,
+          items: [
+            { label: "CODECHECK", link: "/integrations/codecheck/" },
+            { label: "CORE-Bench", link: "/integrations/core-bench/" },
+            { label: "PaperDelta", link: "/integrations/paperdelta/" },
+            { label: "ClawBio", link: "/integrations/clawbio/" },
           ],
         },
       ],
