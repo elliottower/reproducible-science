@@ -50,7 +50,7 @@ export function Drawer({ open, onClose, onOpen, onVerify }: {
       .then((b) => { setList(b.projects); setError(null) })
       .catch((e) => { setList([]); setError(`The projects could not be read: ${e.message ?? e}`) })
   useEffect(() => {
-    if (!open) return
+    if (!open) { setEverything(false); return }
     read()
     requestAnimationFrame(() => search.current?.focus())
   }, [open])
@@ -80,13 +80,13 @@ export function Drawer({ open, onClose, onOpen, onVerify }: {
           {shown.map((p) => (
             <div key={p.path} className={`card ${p.current ? 'here' : ''}`} onClick={() => pick(p)} title={p.path}>
               <div className="t">{p.title ?? p.name}</div>
-              <div className="r mono">{p.name}{p.current && <span className="now">Viewing</span>}{!p.available && <span className="gone">not found</span>}</div>
+              <div className="r mono">{p.name}{p.current && <span className="now">Viewing</span>}{!p.available && <span className="gone">unavailable</span>}</div>
               <div className="l">
                 <div>
                   <i style={{ background: p.claims ? (p.claims.verified === p.claims.total ? '#1f9d55' : '#c7321c') : '#9aa1ae' }} />
-                  {claimsLine(p) ?? (
+                  {claimsLine(p) ?? (!p.available ? 'claims: not checked' : (
                     <>claims: not checked · <a className="lnk" onClick={(e) => { e.stopPropagation(); onClose(); onVerify(p.path) }}>Verify (repro verify)</a></>
-                  )}
+                  ))}
                 </div>
               </div>
             </div>

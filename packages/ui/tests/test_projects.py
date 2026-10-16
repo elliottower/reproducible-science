@@ -267,7 +267,7 @@ def test_a_card_falls_back_to_the_check_history_without_the_pages_report(project
     (server.data_dir(project) / "verify-report.json").unlink()
     found = projects.claims_of(project, server.data_dir(project))
     assert (found["verified"], found["total"]) == (1, 1)
-    assert set(found) == {"verified", "total"}, "no date of the last check yet"
+    assert set(found) == {"verified", "total"}, "no date of the last check"
 
 
 def test_a_project_whose_repro_yaml_is_malformed_is_listed_unavailable_beside_the_others(
