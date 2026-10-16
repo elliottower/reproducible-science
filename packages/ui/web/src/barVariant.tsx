@@ -74,7 +74,7 @@ export function IssuesBarPill({ graph, onOpen, busy, serverless, verify }: {
                   <div className="issue-actions">
                     <button className="repro-main" disabled={busy}
                       onClick={() => { close(); if (serverless || STATIC) toast(staticMessage('verify')); else { toast('Running repro verify…'); verify() } }}>
-                      {busy ? 'Verifying…' : 'Run repro verify'}
+                      {busy ? <><span className="spin" /> Checking…</> : 'Run repro verify'}
                     </button>
                     <button className="copy-prompt small" onClick={() => copy(terminalCommand(graph.project_dir ?? undefined, 'repro verify'), 'Copied the command')}>Copy command</button>
                   </div>

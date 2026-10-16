@@ -9,9 +9,11 @@ import { useCopy, useToast } from './toast'
 import type { Graph } from './types'
 
 /** A button that opens a menu below it; a click outside, or Escape, closes it. */
-function Dropdown({ label, className, children, width, onClosed }: {
+function Dropdown({ label, className, children, width, onClosed, disabled }: {
   label: ReactNode
   className: string
+  /** The button cannot open its menu, as while the check it starts is going. */
+  disabled?: boolean
   width?: number
   children: (close: () => void) => ReactNode
   /** Called whenever the menu closes, so a card opened inside it starts over next time. */
@@ -35,7 +37,7 @@ function Dropdown({ label, className, children, width, onClosed }: {
   }, [open])
   return (
     <div className="dd" ref={box}>
-      <button className={className} onClick={() => setOpen((v) => !v)}>{label}</button>
+      <button className={className} disabled={disabled} onClick={() => setOpen((v) => !v)}>{label}</button>
       {open && <div className="dd-menu" style={width ? { width } : undefined}>{children(() => setOpen(false))}</div>}
     </div>
   )
@@ -62,7 +64,8 @@ export function VerifyMenu({ graph, busy, serverless, run }: {
   const found = graph.presubmit
   return (
     <>
-      <Dropdown className="btn ghost-dark" label={<>{busy ? 'Verifying…' : '✓ repro verify'} ▾</>}>
+      <Dropdown className="btn ghost-dark" disabled={busy}
+        label={busy ? <><span className="spin" /> Checking…</> : <>✓ repro verify ▾</>}>
         {(close) => (
           <>
             <Item title="Verify" text="Check every claim, and that prereg, results and citations verify with no errors." code="repro verify"

@@ -19,7 +19,6 @@ import type { Focus, Graph } from './types'
 interface Recheck {
   available: boolean
   busy: 'refresh' | 'verify' | 'reproduce' | null
-  message: string | null
   run: (kind: 'refresh' | 'verify', presubmit?: boolean) => Promise<void> | void
   /** The re-runs started from the page, newest first, as GET /api/runs reports them. */
   runs: PageRun[]
@@ -211,7 +210,6 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
             </>
           )}
           <ShareMenu graph={graph} />
-          {recheck.message && <span className="error-note">{recheck.message}</span>}
         </header>
         <div className="toolbar" style={mode === 'overview' ? { display: 'none' } : undefined}>
           <input
@@ -309,7 +307,6 @@ function Page() {
   const [available, setAvailable] = useState(false)
   const [projectPath, setProjectPath] = useState<string | null>(null)
   const [busy, setBusy] = useState<'refresh' | 'verify' | null>(null)
-  const [message, setMessage] = useState<string | null>(null)
   const [runs, setRuns] = useState<PageRun[]>([])
   const graphRef = useRef<Graph | null>(null)
   graphRef.current = graph
@@ -391,14 +388,14 @@ function Page() {
     if (STATIC) return
     busyRef.current = kind
     setBusy(kind)
-    setMessage(null)
     return postWhenFree(`api/${kind}`, { presubmit })
       .then((r) => r.json())
       .then((res) => {
-        setMessage(res.ok ? null : `${kind === 'verify' ? 'repro verify' : 'Refresh'} failed: ${res.error}`)
+        // Said once, at the foot of the page; the bar only ever shows the button's own state.
+        if (!res.ok) toast(`${kind === 'verify' ? 'repro verify' : 'Refresh'} failed: ${res.error}`)
         return res.ok ? load() : undefined
       })
-      .catch((e) => setMessage(`${kind} failed: ${e}`))
+      .catch((e) => toast(`${kind === 'verify' ? 'repro verify' : 'Refresh'} failed: ${e}`))
       .finally(() => {
         busyRef.current = null
         setBusy(null)
@@ -427,7 +424,7 @@ function Page() {
   return (
     <FixCtx.Provider value={{ project: projectPath ?? graph.project_dir ?? null }}>
       <ReactFlowProvider>
-        <Canvas graph={graph} recheck={{ available, busy, message, run, runs, start, stop }} />
+        <Canvas graph={graph} recheck={{ available, busy, run, runs, start, stop }} />
       </ReactFlowProvider>
     </FixCtx.Provider>
   )
