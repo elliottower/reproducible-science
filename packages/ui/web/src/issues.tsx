@@ -35,7 +35,7 @@ export function IssuesPill({ graph, onOpen }: { graph: Graph; onOpen: (o: IssueO
   )
 }
 
-function IssueRow({ row, onOpen }: { row: Issue; onOpen: (o: IssueOpen) => void }) {
+export function IssueRow({ row, onOpen }: { row: Issue; onOpen: (o: IssueOpen) => void }) {
   const { project } = useContext(FixCtx)
   const first = row.items[0]
   return (

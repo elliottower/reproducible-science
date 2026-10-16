@@ -4,6 +4,7 @@ import Catalog from './Catalog'
 import Overview, { type Tab } from './Overview'
 import { CitationsTab, PreregTab, ResultsTab } from './Records'
 import { ClaimsPill, FixCtx } from './fix'
+import { IssuesBarPill, ISSUES_BAR, ReproducedPill } from './barVariant'
 import { IssuesPill } from './issues'
 import { AskAIMenu, ShareMenu, VerifyMenu } from './menus'
 import { ReproduceTab, type PageRun } from './reproduceTab'
@@ -197,9 +198,19 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
           </div>
           <SearchBox graph={graph} onJump={jump} />
           <ClaimsPill graph={graph} openClaims={() => go('claims')} />
-          <IssuesPill graph={graph} onOpen={(o) => { setMode(o.tab); setFocus({ ...o, at: Date.now() }) }} />
-          <AskAIMenu graph={graph} />
-          <VerifyMenu graph={graph} busy={recheck.busy === 'verify'} serverless={STATIC || !recheck.available} run={(presubmit) => recheck.run('verify', presubmit)} />
+          {ISSUES_BAR ? (
+            <>
+              <ReproducedPill graph={graph} openTab={() => go('reproduce')} />
+              <IssuesBarPill graph={graph} onOpen={(o) => { setMode(o.tab); setFocus({ ...o, at: Date.now() }) }}
+                busy={recheck.busy === 'verify'} serverless={STATIC || !recheck.available} verify={() => recheck.run('verify')} />
+            </>
+          ) : (
+            <>
+              <IssuesPill graph={graph} onOpen={(o) => { setMode(o.tab); setFocus({ ...o, at: Date.now() }) }} />
+              <AskAIMenu graph={graph} />
+              <VerifyMenu graph={graph} busy={recheck.busy === 'verify'} serverless={STATIC || !recheck.available} run={(presubmit) => recheck.run('verify', presubmit)} />
+            </>
+          )}
           <ShareMenu graph={graph} />
           {recheck.message && <span className="error-note">{recheck.message}</span>}
         </header>

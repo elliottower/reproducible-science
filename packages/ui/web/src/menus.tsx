@@ -133,7 +133,7 @@ function PresubmitCard({ found, graph, onClose }: { found: Presubmit; graph: Gra
 }
 
 /** A prompt shown in full, with Copy prompt under it. */
-function PromptCard({ title, about, prompt, onCopied }: { title: string; about: string; prompt: string; onCopied: () => void }) {
+export function PromptCard({ title, about, prompt, onCopied }: { title: string; about: string; prompt: string; onCopied: () => void }) {
   const copy = useCopy()
   return (
     <div className="pop">
