@@ -9,6 +9,7 @@ in the file: it is built from the built page, not from the page the server serve
 from __future__ import annotations
 
 import html
+import json
 import pathlib
 import re
 
@@ -24,21 +25,37 @@ def embedded_json(data: bytes) -> str:
     return data.decode("utf-8").replace("<", "\\u003c")
 
 
+class ExportError(Exception):
+    """The built page could not be made into one file."""
+
+
+def shareable(graph: bytes) -> bytes:
+    """graph.json without the project's absolute folder on this machine, which a shared or
+    published file has no business carrying."""
+    data = json.loads(graph)
+    data["project_dir"] = None
+    return json.dumps(data).encode()
+
+
 def export_html(static: pathlib.Path, graph: bytes, title: str) -> str:
     """The single file: `static`'s index.html with its assets inlined and `graph` embedded."""
-    page = (static / "index.html").read_text()
+    page = (static / "index.html").read_text(encoding="utf-8")
 
     def script(m: re.Match) -> str:
-        code = (static / m.group(1)).read_text().replace("</script", "<\\/script")
+        code = (static / m.group(1)).read_text(encoding="utf-8").replace("</script", "<\\/script")
         return f'<script type="module">{code}</script>'
 
     def style(m: re.Match) -> str:
-        css = (static / m.group(1)).read_text().replace("</style", "<\\/style")
+        css = (static / m.group(1)).read_text(encoding="utf-8").replace("</style", "<\\/style")
         return f"<style>{css}</style>"
 
     page = SCRIPT.sub(script, page)
     page = STYLE.sub(style, page)
-    data = f'<script type="application/json" id="repro-graph">{embedded_json(graph)}</script>'
+    if (
+        "./assets/" in page
+    ):  # a build whose tags these patterns do not match: refuse, not half-export
+        raise ExportError("the built page names assets this export could not inline")
+    data = f'<script type="application/json" id="repro-graph">{embedded_json(shareable(graph))}</script>'
     page = page.replace("<head>", f"<head>\n    {STATIC_META}", 1)
     named = f"<title>{html.escape(title)}</title>"
     page = re.sub(r"<title>[^<]*</title>", lambda _: named, page, count=1)

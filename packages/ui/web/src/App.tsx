@@ -19,7 +19,7 @@ interface Recheck {
   available: boolean
   busy: 'refresh' | 'verify' | 'reproduce' | null
   message: string | null
-  run: (kind: 'refresh' | 'verify') => void
+  run: (kind: 'refresh' | 'verify', presubmit?: boolean) => Promise<void> | void
   /** The re-runs started from the page, newest first, as GET /api/runs reports them. */
   runs: PageRun[]
   start: (only: string[] | null) => void
@@ -199,7 +199,7 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
           <ClaimsPill graph={graph} openClaims={() => go('claims')} />
           <IssuesPill graph={graph} onOpen={(o) => { setMode(o.tab); setFocus({ ...o, at: Date.now() }) }} />
           <AskAIMenu graph={graph} />
-          <VerifyMenu busy={recheck.busy === 'verify'} run={() => recheck.run('verify')} />
+          <VerifyMenu graph={graph} busy={recheck.busy === 'verify'} serverless={STATIC || !recheck.available} run={(presubmit) => recheck.run('verify', presubmit)} />
           <ShareMenu graph={graph} />
           {recheck.message && <span className="error-note">{recheck.message}</span>}
         </header>
@@ -228,7 +228,7 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
         ) : mode === 'citations' ? (
           <CitationsTab graph={graph} query={query} focus={focus?.tab === 'citations' ? focus : null} />
         ) : mode === 'reproduce' ? (
-          <ReproduceTab graph={graph} query={query} runs={recheck.runs} start={recheck.start} stop={recheck.stop} focus={stepFocus} />
+          <ReproduceTab graph={graph} query={query} runs={recheck.runs} start={recheck.start} stop={recheck.stop} focus={stepFocus} serverless={STATIC || !recheck.available} />
         ) : mode === 'claims' ? (
           <Catalog graph={graph} query={query} />
         ) : (
@@ -301,6 +301,8 @@ function Page() {
   const [busy, setBusy] = useState<'refresh' | 'verify' | null>(null)
   const [message, setMessage] = useState<string | null>(null)
   const [runs, setRuns] = useState<PageRun[]>([])
+  const graphRef = useRef<Graph | null>(null)
+  graphRef.current = graph
   const toast = useToast()
 
   const load = () =>
@@ -324,14 +326,23 @@ function Page() {
   // view, and every 30 s while it is in view. Never while a check is going.
   const busyRef = useRef(busy)
   busyRef.current = busy
-  const refresh = () => {
-    if (busyRef.current !== null) return Promise.resolve()
+  // A refresh asked for while another refresh or a check is going runs once that one ends,
+  // rather than being dropped: a run that ended meanwhile would otherwise show its old result.
+  const again = useRef(false)
+  const refresh = (): Promise<void> => {
+    if (busyRef.current !== null) { again.current = true; return Promise.resolve() }
+    again.current = false
+    busyRef.current = 'refresh'
     setBusy('refresh')
     return post('api/refresh', {})
       .then((r) => r.json())
       .then((res) => (res.ok ? load() : undefined))
       .catch(() => undefined)
-      .finally(() => setBusy((b) => (b === 'refresh' ? null : b)))
+      .finally(() => {
+        busyRef.current = null
+        setBusy((b) => (b === 'refresh' ? null : b))
+        if (again.current) refresh()
+      })
   }
   useEffect(() => {
     if (!available) return
@@ -352,7 +363,10 @@ function Page() {
         const now = new Set(body.runs.filter((r) => r.state === 'running').map((r) => r.run_id))
         const ended = [...runningRef.current].some((id) => !now.has(id))
         runningRef.current = now
-        if (ended) refresh()
+        // Also a run that ended after the data was built, while no page was watching.
+        const built = graphRef.current?.built_at ?? ''
+        const newer = body.runs.some((r) => r.state === 'done' && (r.ended_at ?? '') > built)
+        if (ended || newer) refresh()
       })
       .catch(() => undefined)
   const anyRunning = runs.some((r) => r.state === 'running')
@@ -363,18 +377,23 @@ function Page() {
     return () => clearInterval(t)
   }, [available, anyRunning])
 
-  const run = (kind: 'refresh' | 'verify') => {
+  const run = (kind: 'refresh' | 'verify', presubmit = false) => {
     if (STATIC) return
+    busyRef.current = kind
     setBusy(kind)
     setMessage(null)
-    postWhenFree(`api/${kind}`, {})
+    return postWhenFree(`api/${kind}`, { presubmit })
       .then((r) => r.json())
       .then((res) => {
         setMessage(res.ok ? null : `${kind === 'verify' ? 'repro verify' : 'Refresh'} failed: ${res.error}`)
         return res.ok ? load() : undefined
       })
       .catch((e) => setMessage(`${kind} failed: ${e}`))
-      .finally(() => setBusy(null))
+      .finally(() => {
+        busyRef.current = null
+        setBusy(null)
+        if (again.current) refresh()
+      })
   }
 
   const start = (only: string[] | null) =>

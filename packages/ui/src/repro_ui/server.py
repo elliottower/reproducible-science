@@ -5,7 +5,8 @@
 Serves the built page on localhost only. POST /api/refresh re-reads the
 project's records (`repro stale`, `results verify --files`, `prereg check`, the ledger and the check history)
 and writes nothing to the project. POST /api/verify also runs `repro verify`, which records the check
-in the project's history. Either rewrites graph.json; the page then reloads it.
+in the project's history; with {"presubmit": true} it also runs `repro numbers`, which writes
+nothing, for the Pre-submit check. Either rewrites graph.json; the page then reloads it.
 GET /api/health tells the page that re-checking is available, so the button stays hidden when the
 same files are served by a plain static host. GET /api/diff?issue=<id>&path=<path> shows the
 recorded bytes of a file an issue names (a frozen plan, a sealed file) against the file now, read
@@ -97,6 +98,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     #: Made at launch and written into the page this server serves; a POST must carry it back.
     token: str = ""
     lock = threading.Lock()
+    #: Held while a run is checked against the live ones and started, so two clicks cannot both
+    #: pass the check.
+    runs_lock = threading.Lock()
     #: Seconds a request may leave its socket idle. A body shorter than the length it declared
     #: would otherwise hold its thread until the client goes away.
     timeout = 5
@@ -244,6 +248,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         return self._json(200, body)
 
     def _reproduce(self, body: dict) -> None:
+        if "only" not in body:
+            return self._json(400, {"ok": False, "error": "only must be given: null or a list"})
         only = body.get("only")
         declared = {
             r.get("id")
@@ -267,7 +273,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             *[x for i in (only or []) for x in ("--only", i)],
             str(self.project / "repro.yaml"),
         ]
-        with self.lock:
+        with self.runs_lock:  # not the build's lock: a run starts while the page re-reads
             try:
                 run = runs.start(self.project, self.data, argv, only)
             except runs.Busy as e:
@@ -324,6 +330,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 self.groups,
                 check=self.path == "/api/verify",
                 fetch=self.fetch,
+                presubmit=self.path == "/api/verify" and body.get("presubmit") is True,
             )
             self._json(
                 200,
@@ -384,9 +391,10 @@ def main(argv: list[str] | None = None) -> int:
         data = data_dir(project)
         print(f"reading {project} ...")
         build_graph.build(project, data / "graph.json", a.groups, check=False, fetch=not a.offline)
-        out = a.export if a.export.suffix == ".html" else a.export / "index.html"
+        out = a.export if a.export.suffix.lower() in (".html", ".htm") else a.export / "index.html"
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(export.export_html(DIST, (data / "graph.json").read_bytes(), project.name))
+        page = export.export_html(DIST, (data / "graph.json").read_bytes(), project.name)
+        out.write_text(page, encoding="utf-8")
         print(f"wrote {out}")
         return 0
     Handler.project = project

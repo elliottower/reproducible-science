@@ -1,6 +1,10 @@
 /** The page as one exported file has no server: `repro ui --export` marks it, and embeds the data. */
 export const STATIC = typeof document !== 'undefined' && Boolean(document.querySelector('meta[name="repro-ui-static"]'))
 
+/** The export file as it was opened, read before the page draws anything into it, so Download as
+ * HTML from an export saves the same bytes rather than the drawn page. */
+export const ORIGINAL = STATIC ? `<!doctype html>\n${document.documentElement.outerHTML}` : ''
+
 /** graph.json: embedded in an export, fetched from the server otherwise. */
 export function loadGraph(): Promise<unknown> {
   if (STATIC) {

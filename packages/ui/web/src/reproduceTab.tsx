@@ -1,8 +1,7 @@
 import { useContext, useEffect, useMemo, useState } from 'react'
-import { STATIC } from './api'
 import { FixCtx } from './fix'
 import {
-  clock, duration, fmt, reproduceCommand, sortRows, staticMessage, stepLog, terminalCommand,
+  changedSaid, clock, duration, fmt, reproduceCommand, sortRows, staticMessage, stepLog, terminalCommand,
   type SortKey, type StepRow, type StepState,
 } from './format'
 import { DiffView } from './issues'
@@ -41,10 +40,7 @@ export function stepRow(st: Step, runs: PageRun[]): StepRow {
   if (newest?.state === 'interrupted' && (!when || when < newest.started_at)) {
     return { ...base, when: newest.started_at, state: 'int', detail: '' }
   }
-  if (st.state === 'stale') {
-    const files = new Set(st.causes.map((c) => c.artifact)).size
-    return { ...base, when, state: 'changed', detail: files ? `${files} file${files === 1 ? '' : 's'}` : '' }
-  }
+  if (st.state === 'stale') return { ...base, when, state: 'changed', detail: changedSaid(st.causes) }
   if (last?.state === 'failed') return { ...base, when, state: 'err', detail: last.exit_code != null ? `exit ${last.exit_code}` : '' }
   if (last?.state === 'changed') return { ...base, when, state: 'changed', detail: 'output differs' }
   if (st.state === 'current') return { ...base, when, state: 'ok', detail: last?.bytes_identical === false ? '' : 'bytes identical' }
@@ -89,8 +85,10 @@ const HEADS: [SortKey, string][] = [['step', 'Step'], ['when', 'Last re-run'], [
 
 /** The Reproduce tab: every rebuild step repro.yaml declares, sortable and filtered, and a panel
  * for the one picked. Runs go on in the background if the page is closed. */
-export function ReproduceTab({ graph, query, runs, start, stop, focus }: {
+export function ReproduceTab({ graph, query, runs, start, stop, focus, serverless }: {
   graph: Graph
+  /** No server to run anything: a click says which command to run instead. */
+  serverless: boolean
   query: string
   runs: PageRun[]
   start: (only: string[] | null) => void
@@ -110,7 +108,7 @@ export function ReproduceTab({ graph, query, runs, start, stop, focus }: {
   const count = (f: Filter) => rows.filter((r) => inFilter(f, r)).length
   const n = { ok: count('ok'), changed: rows.filter((r) => r.state === 'changed').length, run: count('run'), err: rows.filter((r) => r.state === 'err').length }
   const summary = [`${fmt(n.ok)} of ${fmt(rows.length)} reproduced`, n.changed ? `${fmt(n.changed)} changed` : '', n.err ? `${fmt(n.err)} failed` : '', n.run ? `${fmt(n.run)} running` : ''].filter(Boolean).join(', ')
-  const runAll = () => (STATIC ? toast(staticMessage('all')) : start(null))
+  const runAll = () => (serverless ? toast(staticMessage('all')) : start(null))
   const click = (k: SortKey) => setSort((s) => (s.key === k ? { key: k, dir: (s.dir === 1 ? -1 : 1) } : { key: k, dir: k === 'when' ? -1 : 1 }))
   const picked = steps.find((s) => s.id === sel)
   return (
@@ -151,13 +149,28 @@ export function ReproduceTab({ graph, query, runs, start, stop, focus }: {
       </table>
       {picked && (
         <StepPanel step={picked} row={rows.find((r) => r.step === picked.id)!} run={runFor(runs, picked.id)}
-          dir={graph.project_dir} onClose={() => setSel(null)} start={start} stop={stop} />
+          dir={graph.project_dir} onClose={() => setSel(null)} start={start} stop={stop} serverless={serverless} />
       )}
     </div>
   )
 }
 
-function StepPanel({ step, row, run, dir, onClose, start, stop }: {
+const CAUSE_SAID: Record<string, string> = { input_changed: 'input', output_changed: 'output' }
+
+/** What changed since the step's last re-run, from its causes: which files (input or output) and
+ * whether the command did, then where the diff is. */
+function changedNote(step: Step): string {
+  const files = step.causes.filter((c) => c.cause !== 'command_changed')
+  const said = [
+    ...files.map((c) => `${step.inputs?.find((i) => i.artifact === c.artifact)?.path || (c.artifact === step.artifact ? step.output_path : '') || c.artifact} (${CAUSE_SAID[c.cause] ?? c.cause})`),
+    ...(step.causes.some((c) => c.cause === 'command_changed') ? ['the command'] : []),
+  ]
+  if (step.state !== 'stale') return 'The output differs from the recorded one.'
+  return `Changed since the last re-run: ${said.join(', ')}.${(step.diffs ?? []).length ? ' The diff is open below.' : ''}`
+}
+
+function StepPanel({ step, row, run, dir, onClose, start, stop, serverless }: {
+  serverless: boolean
   step: Step
   row: StepRow
   run: PageRun | undefined
@@ -181,7 +194,7 @@ function StepPanel({ step, row, run, dir, onClose, start, stop }: {
       <div className="kicker">REBUILD STEP</div>
       <h2 className="mono">{step.id}</h2>
       <p><Result row={row} started={run?.started_at} /></p>
-      {row.state === 'changed' && <div className="rp-note">{diffs.length ? 'The output differs from the recorded one. The diff is open below.' : 'A file this step reads or writes changed since its last re-run.'}</div>}
+      {row.state === 'changed' && <div className="rp-note">{changedNote(step)}</div>}
       {row.state === 'err' && <div className="rp-note">The command failed. The log is open below.</div>}
       {row.state === 'int' && <div className="rp-note">The run stopped before it recorded a result.</div>}
       <dl className="kv2">
@@ -193,12 +206,12 @@ function StepPanel({ step, row, run, dir, onClose, start, stop }: {
       <div className="rp-actions">
         {running
           ? <button className="btn" onClick={() => run && stop(run.run_id)}>Stop</button>
-          : <button className="btn primary" onClick={() => (STATIC ? toast(staticMessage('step', step.id)) : start([step.id]))}>▶ Run again</button>}
+          : <button className="btn primary" onClick={() => (serverless ? toast(staticMessage('step', step.id)) : start([step.id]))}>▶ Run again</button>}
         <button className="btn" onClick={() => copy(command, 'Copied the command')}>Copy command</button>
       </div>
       {row.state === 'changed' && diffs.length > 0 && (
         <details open>
-          <summary>Diff against the recorded output</summary>
+          <summary>Diff against the bytes the last re-run saw</summary>
           {diffs.map((d) => <DiffView key={d.label} issue={d.open.diff!} path={d.open.path!} label={d.label} />)}
         </details>
       )}

@@ -711,6 +711,8 @@ def remote_of(project: pathlib.Path) -> dict | None:
     if not m:
         return None
     host, path = m.group(1) or m.group(2) or m.group(3), m.group(4)
+    if m.group(2):  # ssh://git@host:22/...: the port is ssh's, not the web address's
+        host = re.sub(r":\d+$", "", host)
     owner, _, name = path.rpartition("/")
     prefix = (run_text(["git", "rev-parse", "--show-prefix"], project) or "").strip().rstrip("/")
     return {
@@ -1650,6 +1652,66 @@ def issue_diff(project: pathlib.Path, graph_data: dict, issue: str, path: str) -
     }
 
 
+#: How many numbers with no claim graph.json lists; the count is always whole.
+UNBOUND_SHOWN = 200
+
+
+def presubmit_findings(
+    project: pathlib.Path, out_dir: pathlib.Path, tabs: dict, run: bool
+) -> dict | None:
+    """What the Pre-submit check flags beyond `repro verify`: numbers the manuscript prints that
+    no claim accounts for (from `repro numbers`, run with `run` and kept beside graph.json),
+    sources whose claims file pins no sha256, and runs with nothing sealed before them. None until
+    a Pre-submit check has run."""
+    kept = out_dir / "presubmit.json"
+    if run:
+        said = run_text(
+            [tool("repro"), "numbers", "--format", "json", str(project / "repro.yaml")],
+            project,
+            300,
+        )
+        try:
+            counted = json.loads(said or "")
+        except ValueError:
+            counted = None
+        unbound = [
+            {
+                "path": t.get("path", ""),
+                "line": n.get("line"),
+                "text": n.get("text", ""),
+                "context": n.get("context", ""),
+            }
+            for t in (counted or {}).get("texts", [])
+            for n in t.get("numbers", [])
+            if n.get("standing") == "unbound"
+        ]
+        out_dir.mkdir(parents=True, exist_ok=True)
+        kept.write_text(
+            json.dumps(
+                {
+                    "checked_at": datetime.datetime.now(datetime.UTC).isoformat(),
+                    "numbers_read": counted is not None,
+                    "unbound": unbound,
+                }
+            )
+        )
+    if not kept.exists():
+        return None
+    found = json.loads(kept.read_text())
+    return {
+        "checked_at": found["checked_at"],
+        "numbers_read": found["numbers_read"],
+        "unbound_count": len(found["unbound"]),
+        "unbound": found["unbound"][:UNBOUND_SHOWN],
+        "unpinned": [s["citation"] for s in tabs["citations"]["sources"] if not s["sha256"]],
+        "unsealed": [
+            r["run_id"]
+            for r in tabs["results"]["runs"]
+            if not r["sealed_before"] and not TEST_RUN.match(r["run_id"] or "")
+        ],
+    }
+
+
 #: What `repro stale` reports for a project that declares no rebuild step. It prints a sentence
 #: rather than JSON then, so the page is built from this instead of from its output.
 NOTHING_STALE = {
@@ -1667,8 +1729,13 @@ def build(
     groups_file: pathlib.Path | None = None,
     check: bool = True,
     fetch: bool = True,
+    presubmit: bool = False,
 ) -> str:
     """Write graph.json for `project` to `out_path` and return a one-line summary.
+
+    With `presubmit` (which needs `check`), also runs `repro numbers`, which reads the texts the
+    claims read and writes nothing, and keeps the numbers no claim accounts for beside graph.json
+    for the Pre-submit check.
 
     With `check`, runs `repro verify`, which records the check in the project's history. Without
     it, reuses the report of the last check (kept beside graph.json) and re-reads everything else,
@@ -1939,6 +2006,7 @@ def build(
         "manuscript_path": artifacts.get("manuscript", {}).get("path"),
         "tabs": tabs,
         "issues": issues(project, sections, ledger, tabs, out_path.parent),
+        "presubmit": presubmit_findings(project, out_path.parent, tabs, presubmit),
         "manifest_digest": report["manifest_digest"],
         "totals": {
             "claims": len(report["claims"]),

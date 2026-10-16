@@ -127,17 +127,15 @@ export function issuePrompt(row: Issue, project: string | null): string {
     `\`${row.tool}\`'s own check reports this. Find out what it reports and why.`,
     '',
   ]
+  const items = row.items.slice(0, 20).map((i) => i.label).join('; ')
   return [
     `In ${project ?? 'this project'}, ${row.tool} reports: ${row.title}.`,
-    ...row.items.slice(0, 20).map((i) => `- ${i.label}`),
-    ...(row.items.length > 20 ? [`- and ${row.items.length - 20} more`] : []),
+    ...(items ? [`Items: ${items}${row.items.length > 20 ? `; and ${row.items.length - 20} more` : ''}.`] : []),
     row.note,
-    '',
     look,
     ...(options ? [`Options might include ${options}; say which fit what you found, and what else would.`] : []),
-    '',
     ASK_FIRST,
-  ].join('\n')
+  ].join('\n\n')
 }
 
 // ---------------------------------------------------------------------------------- prompts
@@ -315,8 +313,13 @@ export function sortRows(rows: StepRow[], key: SortKey, dir: 1 | -1): StepRow[] 
 /** "4m 05s", for a running step's clock. */
 export const clock = (seconds: number) => `${Math.floor(seconds / 60)}m ${String(Math.floor(seconds % 60)).padStart(2, '0')}s`
 /** A duration as the table shows it. */
-export const duration = (s: number | null | undefined) =>
-  s == null ? '' : s < 1 ? `${Math.round(s * 1000)} ms` : s < 60 ? `${s.toFixed(2)} s` : `${Math.floor(s / 60)}m ${Math.round(s % 60)}s`
+export const duration = (s: number | null | undefined) => {
+  if (s == null) return ''
+  if (s < 1) return `${Math.round(s * 1000)} ms`
+  if (s < 60) return `${s.toFixed(2)} s`
+  const whole = Math.round(s)
+  return `${Math.floor(whole / 60)}m ${whole % 60}s`
+}
 
 /** The lines of a `repro reproduce` log that belong to one step: its result line and the lines
  * indented under it. The whole log where the run was of that step alone. */
@@ -331,4 +334,37 @@ export function stepLog(log: string, step: string, only: string[] | null): strin
     if (mine) out.push(line)
   }
   return out.join('\n')
+}
+
+/** What Copy clone instructions says it copied. */
+export const cloneToast = (remote: Remote | null | undefined) =>
+  remote ? 'Copied: git clone, pip install, repro ui' : 'Copied: pip install, repro ui'
+
+/** The words for what changed since a step's last re-run, from the causes `repro stale` gives:
+ * the files whose bytes changed, and whether the command did. */
+export function changedSaid(causes: { cause: string; artifact: string }[]): string {
+  const files = new Set(causes.filter((c) => c.cause !== 'command_changed').map((c) => c.artifact)).size
+  const command = causes.some((c) => c.cause === 'command_changed')
+  return [files ? `${files} file${files === 1 ? '' : 's'}` : '', command ? 'command' : ''].filter(Boolean).join(' and ')
+}
+
+/** The Pre-submit check's findings, as a prompt for an agent to lay out what each one needs. */
+export interface Presubmit {
+  checked_at: string
+  numbers_read: boolean
+  unbound_count: number
+  unbound: { path: string; line: number | null; text: string; context: string }[]
+  unpinned: string[]
+  unsealed: string[]
+}
+export function presubmitPrompt(p: Presubmit, project: string | null): string {
+  const numbers = p.unbound.slice(0, 40).map((n) => `${n.path}:${n.line ?? '?'} "${n.text}" in "${n.context.replace(/\s+/g, ' ').trim()}"`).join('; ')
+  return [
+    `In ${project ?? 'this project'}, a Pre-submit check found ${p.unbound_count} number${p.unbound_count === 1 ? '' : 's'} the manuscript prints that no claim accounts for, ${p.unpinned.length} source${p.unpinned.length === 1 ? '' : 's'} whose quotations are not pinned to a file, and ${p.unsealed.length} run${p.unsealed.length === 1 ? '' : 's'} with nothing sealed before ${p.unsealed.length === 1 ? 'it' : 'them'}.`,
+    ...(numbers ? [`Numbers: ${numbers}${p.unbound_count > 40 ? `; and ${p.unbound_count - 40} more` : ''}.`] : []),
+    ...(p.unpinned.length ? [`Sources not pinned: ${p.unpinned.join(', ')}.`] : []),
+    ...(p.unsealed.length ? [`Runs with nothing sealed before them: ${p.unsealed.join(', ')}.`] : []),
+    'For each finding, say what record it needs: a declared claim for a number, a pinned source for a quotation, or for a run, whether its inputs can still be sealed for a new run. Note any number that needs no record, such as a section number, and why. Then stop and ask me which to do.',
+    NEVER_ACT,
+  ].join('\n\n')
 }

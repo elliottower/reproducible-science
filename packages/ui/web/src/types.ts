@@ -73,6 +73,8 @@ export interface Graph {
   /** The origin remote: where to clone from, and the repository on its host. */
   remote?: { clone: string; host: string; owner: string; name: string; subdir: string } | null
   manuscript_path?: string | null
+  /** The last Pre-submit check's findings; absent until one has run. */
+  presubmit?: import('./format').Presubmit | null
   tabs?: {
     prereg: {
       /** Each plan `prereg check` read, with what its freeze recorded. */

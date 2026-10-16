@@ -1,8 +1,8 @@
 import { execFileSync } from 'node:child_process'
 import { describe, expect, it } from 'vitest'
 import {
-  auditPrompt, cloneInstructions, fixPrompt, NEVER_ACT, pagesPrompt, pagesSteps, sortRows, staticMessage, stepLog,
-  type StepRow,
+  auditPrompt, changedSaid, cloneInstructions, cloneToast, duration, fixPrompt, NEVER_ACT, pagesPrompt, pagesSteps, presubmitPrompt,
+  sortRows, staticMessage, stepLog, type StepRow,
 } from './format'
 import { runFor, stepRow, type PageRun } from './reproduceTab'
 import { search, searchIndex } from './search'
@@ -30,6 +30,14 @@ describe('sorting the steps', () => {
   it('sorts durations as numbers, with untimed steps after every timed one', () => {
     expect(sortRows(ROWS, 'dur', 1).map((r) => r.step)).toEqual(['a', 'b', 'e', 'c', 'd'])
   })
+  it('breaks ties by step name, whichever way the column sorts', () => {
+    const tied = [row('z', 't', 'ok', 1), row('m', 't', 'ok', 1), row('a', 't', 'ok', 1)]
+    expect(sortRows(tied, 'state', 1).map((r) => r.step)).toEqual(['a', 'm', 'z'])
+    expect(sortRows(tied, 'dur', -1).map((r) => r.step)).toEqual(['a', 'm', 'z'])
+  })
+  it('writes durations in whole minutes and seconds, never "1m 60s"', () => {
+    expect([duration(0.0931), duration(3.92), duration(119.7), duration(61), duration(null)]).toEqual(['93 ms', '3.92 s', '2m 0s', '1m 1s', ''])
+  })
   it('sorts by name and by command, both ways, and leaves its input alone', () => {
     const before = ROWS.map((r) => r.step)
     expect(sortRows(ROWS, 'step', 1).map((r) => r.step)).toEqual(['a', 'b', 'c', 'd', 'e'])
@@ -54,7 +62,11 @@ describe('a step row', () => {
   })
   it('folds what changed into the result', () => {
     const r = stepRow(step({ state: 'stale', causes: [{ cause: 'input_changed', artifact: 'x' }, { cause: 'output_changed', artifact: 'y' }, { cause: 'command_changed', artifact: 'y' }] }), [])
-    expect([r.state, r.detail]).toEqual(['changed', '2 files'])
+    expect([r.state, r.detail]).toEqual(['changed', '2 files and command'])
+  })
+  it('says a command change is not a file change', () => {
+    expect(changedSaid([{ cause: 'command_changed', artifact: 'out' }])).toBe('command')
+    expect(changedSaid([{ cause: 'input_changed', artifact: 'x' }])).toBe('1 file')
   })
   it('says interrupted when the page run ended with nothing recorded, until a re-run is recorded', () => {
     expect(stepRow(step({}), [pageRun({ state: 'interrupted' })]).state).toBe('int')
@@ -113,6 +125,8 @@ describe('prompts', () => {
     auditUnknown: auditPrompt(null, null),
     fix: fixPrompt(ISSUES, '/work/my paper'),
     pages: pagesPrompt(REMOTE, '/work/my paper'),
+    presubmit: presubmitPrompt({ checked_at: '', numbers_read: true, unbound_count: 2, unpinned: ['fox2020'], unsealed: ['count'],
+      unbound: [{ path: 'paper.txt', line: 3, text: '6', context: 'The total is 6.' }, { path: 'paper.txt', line: 9, text: '12', context: 'twelve\nlines' }] }, '/w'),
   }
   it.each(Object.entries(prompts))('%s: every paragraph is one line, and the last is the rule', (_, p) => {
     const paragraphs = p.split('\n\n')
@@ -132,7 +146,7 @@ describe('prompts', () => {
     expect(prompts.fix).toMatch(/stop and ask me/)
   })
   it('never tells the agent to change a record outside an options sentence or the closing rule', () => {
-    for (const p of [prompts.fix, prompts.pages]) {
+    for (const p of [prompts.fix, prompts.pages, prompts.presubmit]) {
       const body = p.slice(0, -NEVER_ACT.length).replace(/Options might include [^.]*\./g, '')
       const prose = body.split('\n').filter((l) => !/^(\s|name:|on:|permissions:|jobs:|- )/.test(l) && !/^\d\. Add this workflow/.test(l))
       for (const line of prose) {
@@ -150,6 +164,10 @@ describe('share', () => {
     const words = (line: string) => sh(`printf '%s\\0' ${line}`).split('\0').slice(0, -1)
     expect(words(lines[0])).toEqual(['git', 'clone', 'https://github.com/o/my paper.git'])
     expect(words(lines[1])).toEqual(['cd', "my paper/it's here"])
+  })
+  it('says git clone was copied only when it was', () => {
+    expect(cloneToast(REMOTE)).toBe('Copied: git clone, pip install, repro ui')
+    expect(cloneToast(null)).toBe('Copied: pip install, repro ui')
   })
   it('without a remote, starts from the project folder', () => {
     expect(cloneInstructions(null, '/a b')).toBe("cd '/a b'\npip install \"reproducible-science[ui]\"\nrepro ui")

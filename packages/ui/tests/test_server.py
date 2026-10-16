@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import functools
+import hashlib
 import http.server
 import json
+import os
 import pathlib
 import socket
 import subprocess
@@ -16,6 +18,7 @@ import urllib.parse
 import urllib.request
 
 import pytest
+import yaml
 from repro_ui import export, graph, runs, server
 
 TOKEN = "launch-token"
@@ -398,7 +401,7 @@ def test_the_export_is_one_file_with_the_data_and_no_token(served, project, tmp_
     assert TOKEN not in page and "repro-ui-token" not in page
     assert '<meta name="repro-ui-static" content="1" />' in page
     _, g = get(f"{served}/graph.json")
-    assert embedded(page) == g
+    assert embedded(page) == {**g, "project_dir": None}
 
 
 def test_embedded_data_cannot_end_its_script_element():
@@ -430,3 +433,194 @@ def test_repro_ui_export_writes_the_file_to_a_folder_or_to_the_name_given(
         assert "<\\/script>" in page and "./assets/" not in page
         assert "<style>body{}</style>" in page and "<title>project</title>" in page
         assert embedded(page)["project_name"] == "project"
+
+
+def two_steps(project: pathlib.Path) -> None:
+    """A second rebuild step beside `results`, so a run of one step differs from a run of all."""
+    (project / "double.py").write_text(
+        "import json\njson.dump({'double': 12}, open('double.json', 'w'))\n"
+    )
+    (project / "double.json").write_text(json.dumps({"double": 12}))
+    manifest = yaml.safe_load((project / "repro.yaml").read_text())
+    digest = lambda p: {"algorithm": "sha256", "value": hashlib.sha256(p.read_bytes()).hexdigest()}  # noqa: E731
+    manifest["artifacts"] += [
+        {
+            "id": "double-code",
+            "path": "double.py",
+            "media_type": "text/x-python",
+            "digest": digest(project / "double.py"),
+        },
+        {
+            "id": "double",
+            "path": "double.json",
+            "media_type": "application/json",
+            "digest": digest(project / "double.json"),
+        },
+    ]
+    manifest["regenerations"].append(
+        {
+            "id": "double",
+            "command": ["python3", "double.py"],
+            "inputs": [{"artifact": "double-code", "digest": digest(project / "double.py")}],
+            "output": {"artifact": "double", "digest": digest(project / "double.json")},
+        }
+    )
+    (project / "repro.yaml").write_text(yaml.safe_dump(manifest, sort_keys=False))
+
+
+def test_a_run_of_one_step_runs_only_that_step_and_a_later_run_reads_its_own_record(
+    project, tmp_path
+):
+    two_steps(project)
+    httpd = serve(project, tmp_path)
+    url = f"http://127.0.0.1:{httpd.server_address[1]}"
+    try:
+        for n, only in enumerate((["double"], ["results"]), start=1):
+            status, body = post(f"{url}/api/reproduce", {"only": only})
+            assert status == 200 and body["run"]["record_before"] == n - 1
+            run_id = body["run"]["run_id"]
+            done = wait_for(
+                lambda run_id=run_id: (r := run_named(url, run_id))["state"] == "done" and r
+            )
+            assert [s["id"] for s in done["steps"]] == only
+            record = (project / ".repro" / "reproductions.jsonl").read_text().splitlines()
+            assert len(record) == n
+            ran = [
+                r["regeneration_id"]
+                for r in json.loads(record[-1])["regenerations"]
+                if r["state"] != "not_rerun"
+            ]
+            assert ran == only
+            assert (tmp_path / "data" / "runs" / f"{body['run']['run_id']}.log").is_file()
+        assert post(f"{url}/api/reproduce", {})[0] == 400, "a body without only starts nothing"
+    finally:
+        httpd.shutdown()
+
+
+def test_stop_ends_the_whole_process_group_including_what_the_step_started(project, tmp_path):
+    data = tmp_path / "data"
+    child = tmp_path / "child.pid"
+    marker = runs.start(
+        project, data, ["sh", "-c", f"sleep 600 & echo $! > {child}; wait"], ["results"]
+    )
+    pid = int(wait_for(lambda: child.exists() and child.read_text().strip()))
+    assert runs.stop(data, marker["run_id"])
+
+    def gone(p: int) -> bool:
+        try:
+            os.kill(p, 0)
+        except ProcessLookupError:
+            return True
+        return False
+
+    try:
+        wait_for(lambda: gone(pid) and not runs.alive(marker), 15)
+    finally:
+        if not gone(pid):
+            os.kill(pid, 9)
+    (listed,) = runs.listed(project, data)
+    assert listed["state"] == "interrupted"
+
+
+def test_a_run_reads_nothing_from_a_terminal(project, tmp_path):
+    data = tmp_path / "data"
+    marker = runs.start(project, data, ["sh", "-c", "cat; echo stdin-closed"], None)
+    wait_for(lambda: not runs.alive(marker), 20)
+    assert "stdin-closed" in (data / "runs" / f"{marker['run_id']}.log").read_text()
+
+
+def test_a_process_that_took_a_runs_id_is_never_read_as_the_run_nor_stopped(project, tmp_path):
+    data = tmp_path / "data"
+    stranger = subprocess.Popen(["sleep", "60"], start_new_session=True)
+    try:
+        folder = runs.folder(data)
+        folder.mkdir(parents=True)
+        run_id = "20200101T000000-abcdef"
+        (folder / f"{run_id}.json").write_text(
+            json.dumps(
+                {
+                    "run_id": run_id,
+                    "pid": stranger.pid,
+                    "only": ["results"],
+                    "started_at": "2020-01-01T00:00:00+00:00",
+                    "record_before": 0,
+                    "process_started": "Wed Jan  1 00:00:00 2020",
+                }
+            )
+        )
+        (listed,) = runs.listed(project, data)
+        assert listed["state"] == "interrupted"
+        assert not runs.stop(data, run_id)
+        assert stranger.poll() is None, "the stranger was not signalled"
+        started = runs.start(
+            project, data, ["true"], ["results"]
+        )  # not blocked by the stale marker
+        assert started["run_id"] != run_id
+    finally:
+        stranger.kill()
+        stranger.wait()
+
+
+def test_markers_that_are_not_markers_are_skipped_and_never_followed_out_of_the_folder(
+    project, tmp_path
+):
+    data = tmp_path / "data"
+    folder = runs.folder(data)
+    folder.mkdir(parents=True)
+    (tmp_path / "outside.log").write_text("outside")
+    bad = {
+        "20260101T000000-000001": [],
+        "20260101T000000-000002": {
+            "run_id": "20260101T000000-000002",
+            "only": None,
+            "record_before": 0,
+        },
+        "20260101T000000-000003": {
+            "run_id": "20260101T000000-000003",
+            "pid": "x",
+            "only": None,
+            "record_before": 0,
+        },
+        "20260101T000000-000004": {
+            "run_id": "../../outside",
+            "pid": 1,
+            "only": None,
+            "record_before": 0,
+        },
+        "20260101T000000-000005": {
+            "run_id": "20260101T000000-000005",
+            "pid": 1,
+            "only": "results",
+            "record_before": 0,
+        },
+    }
+    for name, body in bad.items():
+        (folder / f"{name}.json").write_text(json.dumps(body))
+    assert runs.listed(project, data) == []
+    runs.prune(data)
+    assert (tmp_path / "outside.log").read_text() == "outside"
+    assert runs.start(project, data, ["true"], None)["run_id"]
+
+
+def test_a_presubmit_check_lists_numbers_no_claim_accounts_for(project, tmp_path):
+    (project / "paper.txt").write_text(
+        "We count the values. The total is 6. We drew 4321 samples.\n"
+    )
+    g = graph.build(
+        project, tmp_path / "out" / "graph.json", check=True, fetch=False, presubmit=True
+    )
+    del g
+    found = json.loads((tmp_path / "out" / "graph.json").read_text())["presubmit"]
+    assert found["numbers_read"] is True
+    assert [n["text"] for n in found["unbound"]] == ["4321"]
+    assert (found["unpinned"], found["unsealed"]) == ([], [])
+    graph.build(project, tmp_path / "out" / "graph.json", check=False, fetch=False)
+    kept = json.loads((tmp_path / "out" / "graph.json").read_text())["presubmit"]
+    assert kept["unbound_count"] == 1, "a refresh keeps the last Pre-submit check"
+
+
+def test_the_export_does_not_carry_the_projects_folder_on_this_machine(served, project):
+    with urllib.request.urlopen(f"{served}/api/export") as r:
+        page = r.read().decode()
+    assert embedded(page)["project_dir"] is None
+    assert str(project) not in page
