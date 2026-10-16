@@ -11,7 +11,7 @@ import { AskAIMenu, ShareMenu, VerifyMenu } from './menus'
 import { ReproduceTab, type PageRun } from './reproduceTab'
 import { SearchBox, type Jump } from './search'
 import { ToastHost, useToast } from './toast'
-import { loadGraph, post, postWhenFree, STATIC } from './api'
+import { loadGraph, post, postWhenFree, showing, STATIC } from './api'
 import { layout, summarize } from './layout'
 import { nodeTypes, UiCtx } from './nodes'
 import { fmt, Panel, when } from './shared'
@@ -26,7 +26,7 @@ interface Recheck {
   start: (only: string[] | null) => void
   stop: (run: string) => void
   /** Switch the page to another project `repro ui` has been run in, or there and run verify. */
-  openProject: (path: string) => Promise<void>
+  openProject: (path: string) => Promise<boolean>
   verifyProject: (path: string) => Promise<void>
 }
 
@@ -325,7 +325,7 @@ function Page() {
 
   const load = () =>
     loadGraph()
-      .then((g) => setGraph(g as Graph))
+      .then((g) => { showing((g as Graph).project_dir); setGraph(g as Graph) })
       .catch((e) => setError(String(e)))
 
   useEffect(() => {
@@ -354,7 +354,7 @@ function Page() {
     setBusy('refresh')
     return post('api/refresh', {})
       .then((r) => r.json())
-      .then((res) => (res.ok ? load() : undefined))
+      .then((res) => (res.ok ? load() : setMessage(res.error ?? null)))
       .catch(() => undefined)
       .finally(() => {
         busyRef.current = null
@@ -431,29 +431,33 @@ function Page() {
       .catch((e) => toast(`Could not stop: ${e}`))
 
   /** Switch to another project: the server builds its data, and the page starts over on it. */
-  const openProject = async (path: string) => {
+  /** Switch to another project; true once the page shows it. */
+  const openProject = async (path: string): Promise<boolean> => {
     toast('Opening the project…')
     try {
       const res = await post('api/projects/open', { path }).then((r) => r.json())
-      if (!res.ok) { toast(`Could not open it: ${res.error}`); return }
+      if (!res.ok) { toast(`Could not open it: ${res.error}`); return false }
       setProjectPath(res.project)
+      setMessage(null)
       runningRef.current = new Set()
-      await load()
       window.history.replaceState(null, '', '#')
-      await readRuns()
+      await load()
+      setRuns([])
+      return true
     } catch (e) {
       toast(`Could not open it: ${e}`)
+      return false
     }
   }
+  /** Open the project and verify it there; nothing runs where the switch did not happen. */
   const verifyProject = async (path: string) => {
-    await openProject(path)
-    await run('verify')
+    if (await openProject(path)) await run('verify')
   }
 
   if (error) return <div className="center">{error}</div>
   if (!graph) return <div className="center muted">Loading…</div>
   return (
-    <FixCtx.Provider value={{ project: projectPath ?? graph.project_dir ?? null }}>
+    <FixCtx.Provider value={{ project: graph.project_dir ?? projectPath ?? null }}>
       <ReactFlowProvider>
         <Canvas key={graph.project_dir ?? ''} graph={graph} recheck={{ available, busy, run, runs, start, stop, openProject, verifyProject }} />
       </ReactFlowProvider>

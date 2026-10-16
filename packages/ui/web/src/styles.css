@@ -527,3 +527,4 @@ td.clickable:hover .claim-cell { color: var(--text); }
 .drawer .row .mono { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .drawer .row .when { margin-left: auto; margin-right: 8px; white-space: nowrap; flex: none; color: var(--muted); font-size: 12px; }
 .drawer .row.more { color: var(--accent); border: 0; font-weight: 500; }
+.drawer .gone { font-size: 11px; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; flex: none; }

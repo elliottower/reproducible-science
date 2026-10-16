@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { post } from './api'
 import { useToast } from './toast'
 
@@ -48,7 +48,7 @@ export function Drawer({ open, onClose, onOpen, onVerify }: {
   open: boolean
   onClose: () => void
   /** Switch the page to the project at this folder. */
-  onOpen: (path: string) => Promise<void>
+  onOpen: (path: string) => Promise<boolean>
   /** Switch to the project, then run repro verify there. */
   onVerify: (path: string) => Promise<void>
 }) {
@@ -56,8 +56,18 @@ export function Drawer({ open, onClose, onOpen, onVerify }: {
   const [list, setList] = useState<Project[] | null>(null)
   const [q, setQ] = useState('')
   const [everything, setEverything] = useState(false)
-  const read = () => fetch('api/projects').then((r) => r.json()).then((b) => setList(b.projects)).catch(() => setList([]))
-  useEffect(() => { if (open) read() }, [open])
+  const [error, setError] = useState<string | null>(null)
+  const search = useRef<HTMLInputElement>(null)
+  const read = () =>
+    fetch('api/projects')
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`the server answered ${r.status}`))))
+      .then((b) => { setList(b.projects); setError(null) })
+      .catch((e) => { setList([]); setError(`The projects could not be read: ${e.message ?? e}`) })
+  useEffect(() => {
+    if (!open) return
+    read()
+    requestAnimationFrame(() => search.current?.focus())
+  }, [open])
   useEffect(() => {
     if (!open) return
     const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
@@ -70,6 +80,7 @@ export function Drawer({ open, onClose, onOpen, onVerify }: {
     post('api/projects/star', { path: p.path, starred: !p.starred })
       .then((r) => r.json())
       .then((res) => (res.ok ? read() : toast(`Could not star it: ${res.error}`)))
+      .catch((e) => toast(`Could not star it: ${e}`))
   const pick = (p: Project) => {
     if (p.current) return onClose()
     if (!p.available) return toast(`${p.path} holds no repro.yaml now`)
@@ -79,11 +90,12 @@ export function Drawer({ open, onClose, onOpen, onVerify }: {
   return (
     <>
       <div className={`scrim ${open ? 'open' : ''}`} onClick={onClose} />
-      <aside className={`drawer ${open ? 'open' : ''}`} aria-hidden={!open}>
+      <aside className={`drawer ${open ? 'open' : ''}`} aria-hidden={!open} inert={!open}>
         <header><b>Projects</b><button className="x" onClick={onClose}>×</button></header>
         <div className="cards">
-          <input className="dsearch" placeholder="Search projects" value={q} onChange={(e) => setQ(e.target.value)} />
+          <input ref={search} className="dsearch" placeholder="Search projects" value={q} onChange={(e) => setQ(e.target.value)} />
           {list === null && <div className="small muted">Loading…</div>}
+          {error && <div className="small stale-text">{error}</div>}
           {starred.length > 0 && <div className="sec2">Starred</div>}
           {starred.map((p) => (
             <div key={p.path} className={`card ${p.current ? 'here' : ''}`} onClick={() => pick(p)} title={p.path}>
@@ -103,7 +115,7 @@ export function Drawer({ open, onClose, onOpen, onVerify }: {
           {rows.map((p) => (
             <div key={p.path} className="row" onClick={() => pick(p)} title={p.path}>
               <span className="mono">{p.name}</span>
-              {p.current && <span className="now">Viewing</span>}
+              {!p.available && <span className="gone">not found</span>}
               <span className="when">{opened(p.opened_at)}</span>
               <Star p={p} onStar={star} />
             </div>
