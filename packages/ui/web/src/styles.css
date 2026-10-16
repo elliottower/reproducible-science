@@ -515,16 +515,8 @@ td.clickable:hover .claim-cell { color: var(--text); }
 .drawer .card .r { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
 .drawer .card .l { font: 12px/1.7 var(--mono); color: #3a4252; }
 .drawer .card .l i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
-.drawer .head { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; }
-.drawer .head .gstar { flex: none; margin-top: 1px; }
 .dsearch { border: 1px solid var(--border); border-radius: 8px; padding: 8px 11px; font: inherit; width: 100%; }
-.sec2 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; margin: 8px 2px 0; }
-.gstar { font: inherit; font-size: 12px; border: 1px solid var(--border); border-radius: 6px; padding: 2px 8px; color: #3a4252; background: #f6f8fa; cursor: pointer; white-space: nowrap; flex: none; }
-.gstar.on { color: #9a6b00; }
 .now { font-size: 11px; font-weight: 600; color: var(--accent); background: #e8eefc; border-radius: 999px; padding: 1px 8px; margin-left: 8px; font-family: Inter, system-ui, sans-serif; white-space: nowrap; }
 .lnk { color: var(--accent); cursor: pointer; font-family: Inter, system-ui, sans-serif; }
-.drawer .row { display: flex; gap: 10px; align-items: center; padding: 7px 4px; border-bottom: 1px solid #f0f2f5; cursor: pointer; font-size: 13px; white-space: nowrap; }
-.drawer .row .mono { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.drawer .row .when { margin-left: auto; margin-right: 8px; white-space: nowrap; flex: none; color: var(--muted); font-size: 12px; }
-.drawer .row.more { color: var(--accent); border: 0; font-weight: 500; }
-.drawer .gone { font-size: 11px; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; flex: none; }
+.drawer .row.more { color: var(--accent); font-weight: 500; padding: 7px 4px; cursor: pointer; }
+.drawer .card .gone { margin-left: 8px; display: inline-block; font-size: 11px; color: var(--muted); border: 1px solid var(--border); border-radius: 4px; padding: 0 5px; flex: none; }

@@ -1,4 +1,4 @@
-"""The projects the drawer lists: remembered in the user's config folder, starred there, and
+"""The projects the drawer lists: remembered in the user's config folder, and
 switched between in one server."""
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from repro_ui import graph, projects, runs, server
 TOKEN = "drawer-token"
 
 
-def test_a_project_is_remembered_once_newest_first_and_keeps_its_star(tmp_path, own_config):
+def test_a_project_is_remembered_once_newest_first_with_nothing_but_when(tmp_path, own_config):
     a, b = tmp_path / "a", tmp_path / "b"
     a.mkdir()
     b.mkdir()
@@ -29,12 +29,12 @@ def test_a_project_is_remembered_once_newest_first_and_keeps_its_star(tmp_path, 
     time.sleep(1.1)
     projects.opened(b)
     assert [e["path"] for e in projects.read()] == [str(b.resolve()), str(a.resolve())]
-    assert projects.star(str(a.resolve()), True)
     time.sleep(1.1)
     projects.opened(a)
     (first, second) = projects.read()
-    assert (first["path"], first["starred"], second["starred"]) == (str(a.resolve()), True, False)
-    assert not projects.star(str(tmp_path / "never-opened"), True)
+    assert (first["path"], second["path"]) == (str(a.resolve()), str(b.resolve()))
+    stored = json.loads(projects.config_file().read_text())["projects"]
+    assert all(set(e) == {"path", "opened_at"} for e in stored), "nothing else is stored"
     assert projects.config_file() == own_config / "reproducible-science" / "ui-projects.json"
     assert not list(tmp_path.rglob("ui-projects.json")), "nothing is written into a project"
 
@@ -63,7 +63,7 @@ def test_the_title_is_the_manuscripts_and_absent_without_one(tmp_path):
 
 
 def test_a_card_says_whether_the_project_was_checked(project, tmp_path):
-    entry = {"path": str(project), "opened_at": "", "starred": False}
+    entry = {"path": str(project), "opened_at": ""}
     never = projects.summary(entry, server.data_dir, project)
     assert (never["claims"], never["name"], never["current"], never["title"]) == (
         None,
@@ -126,17 +126,13 @@ def test_the_page_switches_project_in_one_server_and_a_run_in_the_other_keeps_go
         folder.mkdir()
         tools.write_project(folder, with_step=True)
         projects.opened(folder)
-    projects.star(str(a.resolve()), True)
     httpd, url = serve(a, tmp_path / "static")
     try:
         status, body = call(f"{url}/api/projects")
         listed = {pathlib.Path(p["path"]).name: p for p in body["projects"]}
         assert status == 200 and set(listed) == {"a", "b"}
-        assert (listed["a"]["current"], listed["a"]["starred"], listed["b"]["current"]) == (
-            True,
-            True,
-            False,
-        )
+        assert "starred" not in listed["a"]
+        assert (listed["a"]["current"], listed["b"]["current"]) == (True, False)
 
         # A run in a, going while the page moves to b.
         going = runs.start(a, server.data_dir(a), ["sleep", "30"], ["results"])
@@ -151,15 +147,10 @@ def test_the_page_switches_project_in_one_server_and_a_run_in_the_other_keeps_go
         assert [r["run_id"] for r in call(f"{url}/api/runs")[1]["runs"]] == [going["run_id"]]
         assert runs.stop(server.data_dir(a), going["run_id"])
 
-        assert (
-            call(f"{url}/api/projects/star", {"path": str(b.resolve()), "starred": True})[0] == 200
-        )
-        assert [e["starred"] for e in projects.read() if e["path"] == str(b.resolve())] == [True]
         for path in (str(tmp_path), "/etc", str(tmp_path / "c"), 3):
             assert call(f"{url}/api/projects/open", {"path": path})[0] == 404, path
-            assert call(f"{url}/api/projects/star", {"path": path, "starred": True})[0] == 404, path
         assert (
-            call(f"{url}/api/projects/star", {"path": str(b.resolve()), "starred": "yes"})[0] == 404
+            call(f"{url}/api/projects/star", {"path": str(b.resolve()), "starred": True})[0] == 404
         )
     finally:
         httpd.shutdown()
@@ -219,8 +210,8 @@ def test_one_folder_is_one_project_whatever_its_unicode_form_and_however_often_l
         json.dumps(
             {
                 "projects": [
-                    {"path": nfd, "opened_at": "2026-01-01", "starred": True},
-                    {"path": nfc, "opened_at": "2026-02-01", "starred": False},
+                    {"path": nfd, "opened_at": "2026-01-01"},
+                    {"path": nfc, "opened_at": "2026-02-01"},
                     {"path": "/w/x", "opened_at": "2026-01-03"},
                     {"path": "/w/x", "opened_at": "2026-01-02"},
                 ]
@@ -236,10 +227,10 @@ def test_one_folder_is_one_project_whatever_its_unicode_form_and_however_often_l
 def test_a_list_this_cannot_read_is_never_written_over(tmp_path, own_config):
     path = projects.config_file()
     path.parent.mkdir(parents=True)
-    path.write_text("{ not json, but someone's stars")
+    path.write_text("{ not json, but someone's list")
     with pytest.raises(projects.Unreadable):
         projects.opened(tmp_path)
-    assert path.read_text() == "{ not json, but someone's stars"
+    assert path.read_text() == "{ not json, but someone's list"
 
 
 def test_processes_remembering_at_once_lose_nothing(tmp_path, own_config):
@@ -276,7 +267,7 @@ def test_a_card_falls_back_to_the_check_history_without_the_pages_report(project
     (server.data_dir(project) / "verify-report.json").unlink()
     found = projects.claims_of(project, server.data_dir(project))
     assert (found["verified"], found["total"]) == (1, 1)
-    assert found["checked_at"] == graph.read_checks(project)[-1]["timestamp"]
+    assert set(found) == {"verified", "total"}, "no date of the last check yet"
 
 
 def test_a_project_whose_repro_yaml_is_malformed_is_listed_unavailable_beside_the_others(
@@ -335,8 +326,6 @@ def test_a_list_that_cannot_be_written_never_stops_a_switch(tmp_path, tools, own
         status, body = call(f"{url}/api/projects/open", {"path": str(b.resolve())})
         assert (status, body["project"]) == (200, str(b.resolve()))
         assert call(f"{url}/api/health")[1]["project"] == str(b.resolve())
-        status, body = call(f"{url}/api/projects/star", {"path": str(a.resolve()), "starred": True})
-        assert status == 500 and "could not be written" in body["error"]
     finally:
         folder.chmod(0o700)
         httpd.shutdown()

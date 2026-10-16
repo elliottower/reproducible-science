@@ -4,7 +4,7 @@ Kept in one small JSON file in the user's config folder, never in a repository:
 
     $XDG_CONFIG_HOME/reproducible-science/ui-projects.json   (~/.config/... by default)
 
-Each entry is a project folder, when the page last opened it, and whether it is starred. What a
+Each entry is a project folder and when the page last opened it. What a
 drawer card shows about a project (its title, its claims) is read from the project and from the
 page's own data for it when the drawer asks, so nothing here goes stale.
 """
@@ -60,7 +60,6 @@ def entries_in(text: str) -> list[dict]:
         entry = {
             "path": norm(e["path"]),
             "opened_at": e.get("opened_at") if isinstance(e.get("opened_at"), str) else "",
-            "starred": e.get("starred") is True,
         }
         if entry["path"] not in seen or entry["opened_at"] > seen[entry["path"]]["opened_at"]:
             seen[entry["path"]] = entry
@@ -90,7 +89,7 @@ def locked():
 
 
 def current_entries() -> list[dict]:
-    """The list, for a change to it. Raises Unreadable rather than let a write lose the stars of
+    """The list, for a change to it. Raises Unreadable rather than let a write lose the projects of
     a file this cannot read."""
     try:
         text = config_file().read_text()
@@ -109,34 +108,20 @@ def write(entries: list[dict]) -> None:
 
 
 def opened(project: pathlib.Path) -> None:
-    """Remember that the page opened `project` now, keeping its star. Raises OSError or
+    """Remember that the page opened `project` now. Raises OSError or
     Unreadable where the list cannot be written; the caller goes on without it."""
     key = norm(str(project.resolve()))
     with locked():
         entries = current_entries()
-        before = next((e for e in entries if e["path"] == key), None)
         entries = [e for e in entries if e["path"] != key]
         entries.insert(
             0,
             {
                 "path": key,
                 "opened_at": datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds"),
-                "starred": bool(before and before["starred"]),
             },
         )
         write(entries)
-
-
-def star(path: str, starred: bool) -> bool:
-    """Star or unstar a remembered project. False where `path` is not one."""
-    with locked():
-        entries = current_entries()
-        hit = next((e for e in entries if e["path"] == norm(path)), None)
-        if hit is None:
-            return False
-        hit["starred"] = starred
-        write(entries)
-    return True
 
 
 def known(path: str) -> pathlib.Path | None:
@@ -220,7 +205,6 @@ def claims_of(folder: pathlib.Path, data: pathlib.Path) -> dict | None:
     else from the last entry of its check history. None where it was never checked."""
     verified_ = lambda outcomes: all(o == "verified" for o in outcomes)  # noqa: E731
     checks = build_graph.read_checks(folder)
-    when = checks[-1].get("timestamp") if checks else None
     try:
         report = json.loads((data / "verify-report.json").read_text())["report"]
         by_claim = [
@@ -240,7 +224,6 @@ def claims_of(folder: pathlib.Path, data: pathlib.Path) -> dict | None:
     return {
         "verified": sum(1 for outcomes in by_claim if verified_(outcomes)),
         "total": len(by_claim),
-        "checked_at": when,
     }
 
 
@@ -257,7 +240,6 @@ def summaries(data_dir, current: pathlib.Path) -> list[dict]:
                 "name": pathlib.Path(entry["path"]).name,
                 "title": None,
                 "opened_at": entry["opened_at"],
-                "starred": entry["starred"],
                 "current": False,
                 "available": False,
                 "claims": None,
@@ -294,7 +276,6 @@ def summary(entry: dict, data_dir, current: pathlib.Path) -> dict:
         "name": name,
         "title": title_of(folder, manuscript) if manifest_ok else None,
         "opened_at": entry["opened_at"],
-        "starred": entry["starred"],
         "current": folder.resolve() == current.resolve(),
         "available": manifest_ok,
         "claims": claims,

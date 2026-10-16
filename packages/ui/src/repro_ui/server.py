@@ -360,18 +360,6 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._reproduce(body)
         if self.path == "/api/stop":
             return self._stop(body)
-        if self.path == "/api/projects/star":
-            path, starred = body.get("path"), body.get("starred")
-            if not isinstance(path, str) or not isinstance(starred, bool):
-                return self._json(404, {"ok": False, "error": "not a project this page knows"})
-            try:
-                found = projects.star(path, starred)
-            except (OSError, projects.Unreadable) as e:
-                said = f"the list of projects could not be written: {e!r}"
-                return self._json(500, {"ok": False, "error": said})
-            if not found:
-                return self._json(404, {"ok": False, "error": "not a project this page knows"})
-            return self._json(200, {"ok": True})
         if self.path == "/api/projects/open":
             return self._open_project(body)
         if self.path not in {"/api/refresh", "/api/verify"}:
