@@ -1,20 +1,25 @@
 """Build graph.json, the data behind the page, for one project.
 
-Reads the project's repro.yaml, runs `repro verify --format json` and `repro stale --format json`
-(both read-only apart from the check history `repro verify` already keeps), and reads the
-results ledger and the local record of checks. Writes one JSON file the page loads.
+Reads the project's repro.yaml, runs `repro verify --format json` (read-only apart from the check
+history it keeps), and reads the results ledger and the local record of checks. `repro verify`
+reports the claims and, beside them, staleness, `prereg check`, `results verify --files` and
+`citations verify`, so one call gives every section the page shows. A refresh without a check
+reuses the last report for the claims and the quotations, and re-reads staleness, the plans and
+the ledger with the tools' own commands, which write nothing. Writes one JSON file the page loads.
 """
 
 from __future__ import annotations
 
 import collections
 import datetime
+import difflib
 import hashlib
 import json
 import pathlib
 import re
 import subprocess
 import sysconfig
+import tempfile
 import unicodedata
 import urllib.error
 import urllib.parse
@@ -298,81 +303,100 @@ def run_text(argv: list[str], cwd: pathlib.Path, timeout: int = 60) -> str | Non
 TEST_RUN = re.compile(r"^(smoke|prefreeze|test|dryrun)[_-]")
 
 
-def plural(n: int, word: str) -> str:
-    return f"{n:,} {word}{'' if n == 1 else 's'}"
+#: The states of a recorded file `results verify --files` fails on, as `repro verify` reads them.
+RESULTS_FAILING = ("changed", "missing", "reverted", "reappeared", "not a tree", "not a file")
+#: The states of a registration pinned by a Commit SHA line that `prereg check` passes.
+PINNED_STANDING = ("unchanged", "appended", "superseded", "withdrawn")
+#: The tool sections `repro verify --format json` writes beside the claims.
+TOOL_SECTIONS = ("prereg", "results", "citations")
 
 
-def status_lines(project: pathlib.Path, report: dict) -> dict:
-    """The four fields the repro mod draws above the prompt, computed the same way: `prereg check`,
-    `results verify` and the ledger, a count of pinned quotations, and the repro counts. Each field
-    is a short text plus `ok`: True, False (something is wrong) or None (nothing there to check).
-    Read-only: none of these commands writes."""
-    fields: dict[str, dict] = {}
+def tool_account(project: pathlib.Path, argv: list[str]) -> dict:
+    """One tool's check run as `repro verify` runs it, for a refresh that runs no `repro verify`:
+    what it wrote with `--json`, in the shape of that tool's section of the verify report. Read-only."""
+    with tempfile.TemporaryDirectory() as scratch:
+        wrote = pathlib.Path(scratch) / "account.json"
+        printed = run_text([*argv, "--json", str(wrote)], project)
+        account = json.loads(wrote.read_text()) if wrote.is_file() else {}
+    return {
+        "used": True,
+        "outcome": "could not check" if printed is None or not account else "read",
+        "account": account,
+        "output": printed or "",
+    }
 
-    plans = run_text([tool("prereg"), "check"], project)
-    counts = collections.Counter()
-    for line in (plans or "").splitlines():
-        pinned = re.match(r"^(unchanged|appended|CHANGED|pending|unknown commit)\s{2,}[^/\s]", line)
-        m = re.match(r"^([A-Za-z][A-Za-z ]*?)\s{2,}/", line)
-        label = (m.group(1).lower() if m else None) or (
-            {
-                "unchanged": "unchanged",
-                "appended": "unchanged",
-                "CHANGED": "changed",
-            }.get(pinned.group(1), "not frozen")
-            if pinned
-            else None
-        )
-        if label and label != "log":
-            counts[label] += 1
-    total, frozen = sum(counts.values()), counts["unchanged"]
-    broken = total - frozen - counts["not frozen"]
-    fields["prereg"] = (
-        {"text": "not read (timed out)", "ok": False}
-        if plans is None
-        else {"text": "none drafted", "ok": None, "next": "prereg new"}
-        if total == 0
-        else {"text": f"{broken} changed", "ok": False}
-        if broken
-        else {"text": f"{frozen}/{total} frozen", "ok": True}
-    )
 
-    ledger = project / ".results" / "ledger.jsonl"
-    if ledger.exists():
-        verified = run_text([tool("results"), "verify"], project) or ""
-        head = verified.split("\n")[0]
-        if re.search(r"chain intact: \d+ events", head):
-            events = [json.loads(x) for x in ledger.read_text().splitlines() if x.strip()]
-            claims = [e for e in events if e.get("event") == "claim"]
-            has_seal, runs, sealed = False, 0, 0
-            for e in events:
-                if e.get("event") == "seal":
-                    has_seal = True
-                elif e.get("event") == "run" and not TEST_RUN.match(e.get("run_id") or ""):
-                    runs += 1
-                    sealed += has_seal
-            changed = len(re.findall(r"^\s+(CHANGED|MISSING)\s", verified, flags=re.MULTILINE))
-            fields["results"] = {
-                "text": (f"{changed} changed, " if changed else "")
-                + (f"{sealed}/{runs} runs sealed" if runs else "0 runs")
-                + f", {plural(len(claims), 'claim')} bound",
-                "ok": not changed and sealed == runs,
-                "counts": {
-                    "runs": runs,
-                    "sealed": sealed,
-                    "bound": len(claims),
-                    "changed": changed,
-                },
-            }
-        else:
-            m = re.match(r"^(?:CHAIN|NO)\s+(\w+)", head)
-            fields["results"] = {
-                "text": (m.group(1).lower() if m else "unreadable"),
-                "ok": False,
-            }
-    else:
-        fields["results"] = {"text": "no ledger", "ok": None, "next": "results init"}
+def unused() -> dict:
+    """A tool section for a record the project does not keep."""
+    return {"used": False, "outcome": "nothing to read", "account": {}, "output": ""}
 
+
+#: How deep below the project `repro verify` looks for a PREREG.md, and the folders it skips.
+MARKER_DEPTH = 3
+SKIPPED = frozenset({"node_modules", "venv", ".venv", "site-packages", "build", "dist"})
+
+
+def prereg_used(project: pathlib.Path) -> bool:
+    """Whether `repro verify` counts the project as keeping plans: a `.prereg/` at its root, or
+    a PREREG.md at most three folders down outside hidden and build folders. The same rule as
+    `repro.delegate`, restated because the page imports none of the tools; a refresh that used
+    another rule would turn the line over every 30 seconds."""
+    if (project / ".prereg").exists():
+        return True
+    for depth in range(MARKER_DEPTH + 1):
+        for f in project.glob("*/" * depth + "PREREG.md"):
+            parts = f.relative_to(project).parts
+            if f.is_file() and not any(x.startswith(".") or x in SKIPPED for x in parts):
+                return True
+    return False
+
+
+def read_sections(verify: dict | None, project: pathlib.Path, manifest: dict, cached: dict) -> dict:
+    """Staleness and the three tools' sections, each as `repro verify --format json` writes it.
+
+    From `verify` where a check just ran. Without one (a refresh), staleness comes from `repro
+    stale`, the plans from `prereg check` and the ledger from `results verify --files`, each run
+    here; the quotations keep what the last `repro verify` found, which `cached` holds, because
+    `citations verify` reads every source and a refresh every 30 seconds should not."""
+    if verify is not None:
+        stale = verify.get("staleness") or {}
+        return {
+            "staleness": stale.get("report") or NOTHING_STALE,
+            **{name: verify.get(name) or unused() for name in TOOL_SECTIONS},
+        }
+    return {
+        "staleness": (
+            repro_json(project, "stale")["staleness"]
+            if manifest.get("regenerations")
+            else NOTHING_STALE
+        ),
+        "prereg": (
+            tool_account(project, [tool("prereg"), "check"]) if prereg_used(project) else unused()
+        ),
+        "results": (
+            tool_account(project, [tool("results"), "verify", "--files"])
+            if (project / ".results").exists()
+            else unused()
+        ),
+        # None: not checked since the page's data was first built, which the status line says.
+        "citations": cached.get("citations"),
+    }
+
+
+def ledger_runs(ledger: list[dict]) -> tuple[int, int]:
+    """Runs the ledger recorded, leaving rehearsals out, and how many had a seal before them."""
+    has_seal, runs, sealed = False, 0, 0
+    for e in ledger:
+        if e.get("event") == "seal":
+            has_seal = True
+        elif e.get("event") == "run" and not TEST_RUN.match(e.get("run_id") or ""):
+            runs += 1
+            sealed += has_seal
+    return runs, sealed
+
+
+def pinned_quotes(project: pathlib.Path) -> int | None:
+    """Quotations pinned under every `claims` folder, or None where there is no such folder."""
     folders = [
         d
         for d in project.rglob("claims")
@@ -381,43 +405,119 @@ def status_lines(project: pathlib.Path, report: dict) -> dict:
         and "node_modules" not in d.parts
         and len(d.relative_to(project).parts) <= 4
     ]
-    pinned_n = 0
-    for d in folders:
-        for f in d.rglob("*"):
-            if f.is_file():
-                pinned_n += len(
-                    re.findall(
-                        r"^[ \t]*-?[ \t]*exact:",
-                        f.read_text(errors="replace"),
-                        flags=re.MULTILINE,
-                    )
-                )
-    fields["citations"] = (
-        {
-            "text": f"{pinned_n:,} pinned, not verified",
-            "ok": None,
-            "counts": {"pinned": pinned_n},
-        }
-        if folders
-        else {"text": "none pinned", "ok": None, "next": "citations pin"}
+    if not folders:
+        return None
+    return sum(
+        len(re.findall(r"^[ \t]*-?[ \t]*exact:", f.read_text(errors="replace"), flags=re.MULTILINE))
+        for d in folders
+        for f in d.rglob("*")
+        if f.is_file()
     )
 
-    outcomes = collections.Counter(
-        "verified"
-        if d["comparison"] == "match" and d["execution"] == "completed"
-        else d["comparison"]
-        for c in report["claims"]
-        for d in c["decisions"]
-    )
-    n = sum(outcomes.values())
-    fields["repro"] = (
-        {"text": "no claims declared", "ok": None}
-        if n == 0
-        else {
-            "text": f"{outcomes['verified']:,}/{n:,} checks verified",
-            "ok": outcomes["verified"] == n,
+
+def status_lines(
+    project: pathlib.Path, report: dict, sections: dict, ledger: list[dict], reruns: list[dict]
+) -> dict:
+    """The counts behind the five status lines, in the order the page shows them: prereg, results,
+    citations, claims, repro. Each field has `state` and `ok`: True, False (something is wrong) or
+    None (nothing there to check). The page words them."""
+    fields: dict[str, dict] = {}
+
+    prereg = sections["prereg"]
+    plans = prereg["account"].get("plans", [])
+    pinned = prereg["account"].get("commit_pinned", [])
+    if not prereg["used"]:
+        fields["prereg"] = {"state": "none", "ok": None}
+    elif not prereg["account"]:
+        fields["prereg"] = {"state": "unread", "ok": False}
+    else:
+        changed = sum(1 for x in plans if x["frozen"] and x["check"] == "changed") + sum(
+            1 for d in pinned if d["status"] == "changed"
+        )
+        drafts = sum(1 for x in plans if not x["frozen"])
+        amendments = sum(1 for x in plans if x["frozen"] and x["check"] == "not frozen")
+        # A registration pinned by a Commit SHA line whose log only grew is `appended`, which
+        # `prereg check` passes; one that names no commit this repository holds cannot be read.
+        unchanged = sum(1 for x in plans if x["frozen"] and x["check"] == "unchanged") + sum(
+            1 for d in pinned if d["status"] in PINNED_STANDING
+        )
+        unknown = sum(1 for d in pinned if d["status"] in ("pending", "unknown commit"))
+        fields["prereg"] = {
+            "state": "read",
+            "plans": len(plans) + len(pinned),
+            "frozen": unchanged,
+            "changed": changed,
+            "drafts": drafts,
+            "amendments": amendments,
+            "unknown": unknown,
+            "ok": not (changed or drafts or amendments or unknown),
         }
+
+    results = sections["results"]
+    account = results["account"]
+    if not results["used"]:
+        fields["results"] = {"state": "none", "ok": None}
+    elif "events" not in account:
+        fields["results"] = {
+            "state": "broken",
+            "chain": str(account.get("chain") or "unreadable").replace("_", " "),
+            "ok": False,
+        }
+    else:
+        runs, sealed = ledger_runs(ledger)
+        changed = sum(1 for f in account.get("files", []) if f["state"] in RESULTS_FAILING)
+        fields["results"] = {
+            "state": "read",
+            "runs": runs,
+            "sealed": sealed,
+            "changed": changed,
+            "ok": not changed and sealed == runs,
+        }
+
+    citations = sections["citations"]
+    if citations is None:
+        n = pinned_quotes(project)
+        fields["citations"] = (
+            {"state": "none", "ok": None}
+            if n is None
+            else {"state": "unverified", "pinned": n, "ok": None}
+        )
+    elif not citations["used"]:
+        fields["citations"] = {"state": "none", "ok": None}
+    else:
+        counts = citations["account"].get("counts", {})
+        fields["citations"] = {
+            "state": "read" if citations["account"] else "unread",
+            "quotes": citations["account"].get("quotes", 0),
+            "found": counts.get("found", 0),
+            "not_found": counts.get("not found", 0),
+            "ok": citations.get("passed", citations["outcome"] == "passed")
+            and not counts.get("not found", 0),
+        }
+
+    verified = sum(
+        1
+        for c in report["claims"]
+        if all(d["comparison"] == "match" and d["execution"] == "completed" for d in c["decisions"])
     )
+    fields["claims"] = {
+        "state": "read" if report["claims"] else "none",
+        "total": len(report["claims"]),
+        "verified": verified,
+        "ok": verified == len(report["claims"]) if report["claims"] else None,
+    }
+
+    steps = sections["staleness"]["regenerations"]
+    states = collections.Counter(r["state"] for r in steps)
+    fields["repro"] = {
+        "state": "read" if steps else "none",
+        "steps": len(steps),
+        "current": states["current"],
+        "changed": states["stale"],
+        "never": states["never_rerun"],
+        "last_at": reruns[-1].get("ended_at") if reruns else None,
+        "ok": states["current"] == len(steps) if steps else None,
+    }
     return fields
 
 
@@ -607,34 +707,41 @@ def commit_url(project: pathlib.Path) -> str | None:
     return f"https://{m.group(1) or m.group(2) or m.group(3)}/{m.group(4)}/commit/" if m else None
 
 
-def run_commits(project: pathlib.Path, runs: list[dict], out_dir: pathlib.Path) -> None:
-    """Add to each run the commit that holds its outputs: per output, the oldest commit whose copy of
-    the file has exactly the recorded sha256, checking at most HISTORY_CAP commits per path. With
-    several outputs, the latest of their commits. A run is `committed` when every output was found.
+def find_commits(
+    project: pathlib.Path, pairs: set[tuple[str, str]], out_dir: pathlib.Path
+) -> dict[tuple[str, str], dict | None]:
+    """For each (path, sha256), the oldest commit whose copy of the file has exactly those bytes,
+    as {"commit", "time"}, checking at most HISTORY_CAP commits per path; a miss has no "commit".
 
     Found commits are cached beside graph.json by path and sha256; a miss is cached against HEAD,
     so it is looked for again once the project has new commits."""
     head = (run_text(["git", "rev-parse", "HEAD"], project) or "").strip()
     if not head:  # not a git repository, or one with no commits
-        for run in runs:
-            run.pop("_outputs")
-            run.update(commit=None, committed=False, remote_url=None)
-        return
-    base = commit_url(project)
+        return dict.fromkeys(pairs)
     cache_path = out_dir / "run_commits.json"
     cache = json.loads(cache_path.read_text()) if cache_path.exists() else {}
     pending = {
         (path, digest)
-        for run in runs
-        for path, digest in run["_outputs"]
+        for path, digest in pairs
         if "commit" not in cache.get(f"{path}@{digest}", {})
         and cache.get(f"{path}@{digest}", {}).get("head") != head
+    }
+    # A path outside the repository (a ledger may record one through a symlink) makes `git log`
+    # refuse every path given with it, so such a path is never asked about; nor is one git's
+    # line-based batch input cannot carry.
+    top_dir = (run_text(["git", "rev-parse", "--show-toplevel"], project) or "").strip()
+    pending = {
+        (path, digest)
+        for path, digest in pending
+        if top_dir
+        and "\n" not in path
+        and (project / path).resolve().is_relative_to(pathlib.Path(top_dir).resolve())
     }
     if pending:
         # One walk of the history for every path still to look up, rather than a `git log` per path.
         paths = sorted({path for path, _ in pending})
-        log = (
-            run_text(
+        try:
+            walked = subprocess.run(
                 [
                     "git",
                     "-c",
@@ -646,13 +753,20 @@ def run_commits(project: pathlib.Path, runs: list[dict], out_dir: pathlib.Path) 
                     "--",
                     *paths,
                 ],
-                project,
+                cwd=project,
+                capture_output=True,
+                text=True,
+                timeout=60,
+                check=False,
             )
-            or ""
-        )
+        except subprocess.TimeoutExpired:
+            walked = None
+        if walked is None or walked.returncode != 0:
+            # Nothing was looked at, so nothing is recorded as missing: the next build asks again.
+            return {pair: cache.get(f"{pair[0]}@{pair[1]}") for pair in pairs}
         history: dict[str, list[tuple[str, int]]] = collections.defaultdict(list)
         commit = None
-        for line in log.splitlines():
+        for line in walked.stdout.splitlines():
             if line.startswith("@"):
                 sha, ct = line[1:].split()
                 commit = (sha, int(ct))
@@ -672,10 +786,12 @@ def run_commits(project: pathlib.Path, runs: list[dict], out_dir: pathlib.Path) 
             ]:  # oldest first
                 blobs.stdin.write(f"{sha}:./{path}\n".encode())
                 blobs.stdin.flush()
-                header = blobs.stdout.readline().split()
-                if len(header) < 3:  # "<object> missing": the commit deleted the file
+                # "<sha> <type> <size>", or "<what was asked> missing" (the commit deleted the
+                # file) or "... ambiguous", where what was asked may itself hold spaces.
+                header = blobs.stdout.readline().rstrip(b"\n").split(b" ")
+                if header[-1] in (b"missing", b"ambiguous") or not header[-1].isdigit():
                     continue
-                body = blobs.stdout.read(int(header[2]))
+                body = blobs.stdout.read(int(header[-1]))
                 blobs.stdout.read(1)
                 if hashlib.sha256(body).hexdigest() == digest:
                     hit = {"commit": sha, "time": ct}
@@ -683,31 +799,89 @@ def run_commits(project: pathlib.Path, runs: list[dict], out_dir: pathlib.Path) 
             cache[f"{path}@{digest}"] = hit
         blobs.stdin.close()
         blobs.wait()
+        out_dir.mkdir(parents=True, exist_ok=True)
+        cache_path.write_text(json.dumps(cache, indent=1))
+    return {pair: cache.get(f"{pair[0]}@{pair[1]}") for pair in pairs}
 
+
+def run_commits(project: pathlib.Path, runs: list[dict], out_dir: pathlib.Path) -> None:
+    """Add to each run the commit that holds its outputs (`find_commits`). With several outputs,
+    the latest of their commits. A run is `committed` when every output was found."""
+    found = find_commits(project, {pair for run in runs for pair in run["_outputs"]}, out_dir)
+    base = commit_url(project)
     for run in runs:
-        found = [cache[f"{path}@{digest}"] for path, digest in run.pop("_outputs")]
-        hits = [f for f in found if "commit" in f]
-        latest = max(hits, key=lambda f: f["time"]) if hits else None
-        run["commit"] = latest and latest["commit"]
-        run["committed"] = bool(found) and len(hits) == len(found)
-        run["remote_url"] = latest and base and base + latest["commit"]
-    out_dir.mkdir(parents=True, exist_ok=True)
-    cache_path.write_text(json.dumps(cache, indent=1))
+        looked = [found.get(pair) or {} for pair in run.pop("_outputs")]
+        hits = [f for f in looked if "commit" in f]
+        latest = max(hits, key=lambda f: f["time"])["commit"] if hits else None
+        run["commit"] = latest
+        run["committed"] = bool(looked) and len(hits) == len(looked)
+        run["remote_url"] = latest and base and base + latest
+
+
+def project_relative(project: pathlib.Path, path: str) -> str:
+    """`path` as a tool printed it, relative to the project where it lies inside it."""
+    p = pathlib.Path(path)
+    if p.is_absolute() and p.is_relative_to(project):
+        return p.relative_to(project).as_posix()
+    return p.as_posix()
+
+
+def freeze_record(project: pathlib.Path, rel: str) -> dict:
+    """What `prereg freeze` recorded of the plan at `rel`, from `.prereg/<name>.json` beside it:
+    the commit and the sha256 it froze. Empty where there is no such record."""
+    where = (project / rel).parent / ".prereg" / f"{pathlib.Path(rel).name}.json"
+    try:
+        return json.loads(where.read_text()) if where.is_file() else {}
+    except ValueError:
+        return {}
+
+
+def prereg_plans(project: pathlib.Path, section: dict) -> list[dict]:
+    """Each plan `prereg check` read, with its freeze record: path, state, commit, frozen_at."""
+    out = []
+    for plan in section["account"].get("plans", []):
+        rel = project_relative(project, plan["path"])
+        rec = freeze_record(project, rel)
+        out.append(
+            {
+                "path": rel,
+                "frozen": plan["frozen"],
+                "check": plan["check"] if plan["frozen"] else "never frozen",
+                "commit": rec.get("commit"),
+                "sha256": plan.get("sha256") or rec.get("sha256"),
+                "frozen_at": rec.get("frozen_at"),
+                "amendments": plan.get("amendments", 0),
+                "amendment_drafts": plan.get("amendment_drafts", 0),
+                "log_entries": plan.get("log_entries", 0),
+                "pinned_by": "freeze",
+            }
+        )
+    for doc in section["account"].get("commit_pinned", []):
+        out.append(
+            {
+                "path": project_relative(project, doc["path"]),
+                "frozen": True,
+                "check": doc["status"],
+                "commit": doc.get("commit"),
+                "sha256": None,
+                "frozen_at": None,
+                "pinned_by": "commit line",
+            }
+        )
+    return out
 
 
 def record_tabs(
     project: pathlib.Path,
     manifest: dict,
     ledger: list[dict],
-    staleness: dict,
+    sections: dict,
     out_dir: pathlib.Path,
     fetch: bool = True,
 ) -> dict:
     """What the Prereg, Results, Citations and Reproduce tabs list, read from the records themselves."""
-    # prereg: what `prereg check` printed, one line per plan.
-    plans = [
-        ln for ln in (run_text([tool("prereg"), "check"], project) or "").splitlines() if ln.strip()
-    ]
+    staleness = sections["staleness"]
+    plans = prereg_plans(project, sections["prereg"])
 
     # results: every run, whether a seal came before it, and the sentences bound with `results claim`.
     runs, sealed_yet, seals = [], False, 0
@@ -931,10 +1105,490 @@ def record_tabs(
     out_dir.mkdir(parents=True, exist_ok=True)
     cache_path.write_text(json.dumps(cache, indent=1))
     return {
-        "prereg": {"lines": plans},
+        "prereg": {
+            "plans": plans,
+            "used": sections["prereg"]["used"],
+            "output": sections["prereg"]["output"],
+        },
         "results": {"runs": runs, "seals": seals, "bound": bound},
         "citations": {"sources": sources},
         "reproduce": {"steps": steps, "reruns": reruns},
+    }
+
+
+def latest_recorded(ledger: list[dict]) -> dict[str, dict]:
+    """Path -> the bytes the ledger last recorded for it, from a seal or a run's outputs, and the
+    run that recorded them: the run itself, or for a sealed input the first run after the seal."""
+    latest: dict[str, dict] = {}
+    waiting: list[str] = []
+    for e in ledger:
+        if e.get("event") == "seal":
+            for f in e.get("files", []):
+                latest[f["path"]] = {"sha256": f.get("sha256"), "run": None}
+                waiting.append(f["path"])
+        elif e.get("event") == "run":
+            run = {"run_id": e.get("run_id"), "timestamp": e.get("timestamp")}
+            for path in waiting:
+                if latest[path]["run"] is None:
+                    latest[path]["run"] = run
+            waiting = []
+            for o in e.get("outputs", []):
+                latest[o["path"]] = {"sha256": o.get("sha256"), "run": run}
+    return latest
+
+
+def plural_s(n: int, one: str, many: str) -> str:
+    return one if n == 1 else many
+
+
+#: What `citations verify` prints for each quotation it did not find: the claims file's stem and
+#: the claim, cut to 30 characters and padded to 32, then the first 44 characters of the quote.
+NOT_FOUND_LINE = re.compile(r"^  not found  (.{32})(.*)$")
+
+
+def squash(text: str) -> str:
+    return " ".join(text.split())
+
+
+def not_found_quotes(output: str, sources: list[dict]) -> list[dict]:
+    """The quotations `citations verify` printed as not found, matched to the claims file,
+    statement and quote they are in. A line that matches none is kept with what it printed."""
+    out = []
+    for line in output.splitlines():
+        m = NOT_FOUND_LINE.match(line)
+        if not m:
+            continue
+        slug, text = m.group(1).rstrip(), squash(m.group(2))
+        hit = next(
+            (
+                {"source": s, "statement": st["id"], "index": k}
+                for s in sources
+                for st in s["statements"]
+                if f"{pathlib.Path(s['file']).stem}:{st['id']}".startswith(slug)
+                for k, q in enumerate(st["quotes"])
+                if squash(q["exact"]).startswith(text)
+            ),
+            None,
+        )
+        out.append(
+            {
+                "key": hit["source"]["citation"] if hit else slug.split(":")[0],
+                "label": f"{slug}: {text}",
+                "quote": (
+                    {
+                        "file": hit["source"]["file"],
+                        "statement": hit["statement"],
+                        "index": hit["index"],
+                    }
+                    if hit
+                    else None
+                ),
+            }
+        )
+    return out
+
+
+def broken_pins(output: str, sources: list[dict]) -> list[dict]:
+    """The sources `citations verify` printed as changed since they were pinned."""
+    out, inside = [], False
+    for line in output.splitlines():
+        if re.match(r"^\d+ sources? changed since being pinned", line):
+            inside = True
+            continue
+        if inside and line.startswith("  ") and " pinned " in line:
+            name = line[2:42].strip()
+            s = next((s for s in sources if pathlib.Path(s["file"]).stem.startswith(name)), None)
+            out.append({"key": s["citation"] if s else name, "file": s["file"] if s else None})
+        elif inside:
+            inside = False
+    return out
+
+
+def issues(
+    project: pathlib.Path,
+    sections: dict,
+    ledger: list[dict],
+    tabs: dict,
+    out_dir: pathlib.Path,
+) -> list[dict]:
+    """One row per kind of problem prereg, results or citations report. Claims and re-runs are
+    never here: each has its own count. A row names its items; an item says where the page opens
+    it, and, for a file whose recorded bytes differ from the disk, which commit holds the
+    recorded bytes, so the diff endpoint serves only what this list names."""
+    rows: list[dict] = []
+
+    def row(rid: str, tool_name: str, title: str, note: str, items: list[dict], fix: bool = True):
+        rows.append(
+            {"id": rid, "tool": tool_name, "title": title, "note": note, "items": items, "fix": fix}
+        )
+
+    prereg = sections["prereg"]
+    if prereg["used"] and not prereg["account"]:
+        said = [ln for ln in prereg["output"].splitlines() if ln.strip()]
+        row(
+            "prereg-unread",
+            "prereg",
+            "the preregistrations could not be read",
+            said[-1] if said else "",
+            [{"label": "Prereg", "open": {"tab": "prereg"}}],
+        )
+    plans = tabs["prereg"]["plans"]
+    changed = [
+        p for p in plans if p["pinned_by"] == "freeze" and p["frozen"] and p["check"] == "changed"
+    ]
+    if changed:
+        row(
+            "prereg-changed",
+            "prereg",
+            f"{changed[0]['path']} changed after it was frozen"
+            if len(changed) == 1
+            else f"{len(changed)} preregistrations changed after they were frozen",
+            "The preregistration on disk is not the text that was frozen.",
+            [
+                {
+                    "label": p["path"],
+                    "open": {"tab": "prereg", "diff": "prereg-changed", "path": p["path"]},
+                    "diff": {"commit": p["commit"], "sha256": p["sha256"]},
+                }
+                for p in changed
+            ],
+        )
+    pinned_changed = [
+        p for p in plans if p["pinned_by"] == "commit line" and p["check"] == "changed"
+    ]
+    if pinned_changed:
+        row(
+            "prereg-pinned-changed",
+            "prereg",
+            f"{pinned_changed[0]['path']} changed after the commit its Commit SHA line names"
+            if len(pinned_changed) == 1
+            else f"{len(pinned_changed)} registrations changed after the commits their Commit SHA lines name",
+            "The file on disk is not its copy in that commit.",
+            [
+                {
+                    "label": p["path"],
+                    "open": {"tab": "prereg", "diff": "prereg-pinned-changed", "path": p["path"]},
+                    "diff": {"commit": p["commit"], "sha256": None},
+                }
+                for p in pinned_changed
+            ],
+        )
+    unknown = [
+        p
+        for p in plans
+        if p["pinned_by"] == "commit line" and p["check"] in ("pending", "unknown commit")
+    ]
+    if unknown:
+        row(
+            "prereg-pinned-unknown",
+            "prereg",
+            f"{unknown[0]['path']}: {unknown[0]['check']}"
+            if len(unknown) == 1
+            else f"{len(unknown)} registrations name no commit this repository holds",
+            "The commit its Commit SHA line names cannot be read here.",
+            [{"label": p["path"], "open": {"tab": "prereg"}} for p in unknown],
+        )
+    drafted = [
+        p
+        for p in plans
+        if p["pinned_by"] == "freeze" and p["frozen"] and p["check"] == "not frozen"
+    ]
+    if drafted:
+        row(
+            "prereg-amendment-draft",
+            "prereg",
+            f"{drafted[0]['path']} has an amendment that is not frozen"
+            if len(drafted) == 1
+            else f"{len(drafted)} preregistrations have an amendment that is not frozen",
+            "An amendment beside the preregistration has no freeze record.",
+            [{"label": p["path"], "open": {"tab": "prereg"}} for p in drafted],
+        )
+    never = [p for p in plans if p["pinned_by"] == "freeze" and not p["frozen"]]
+    if never:
+        row(
+            "prereg-never-frozen",
+            "prereg",
+            f"{never[0]['path']} was never frozen"
+            if len(never) == 1
+            else f"{len(never)} preregistrations were never frozen",
+            "A draft has no frozen text to compare against.",
+            [{"label": p["path"], "open": {"tab": "prereg"}} for p in never],
+        )
+
+    results = sections["results"]
+    account = results["account"]
+    if results["used"] and "events" not in account:
+        problems = "; ".join(account.get("problems", [])) or str(account.get("chain") or "")
+        row(
+            "results-chain",
+            "results",
+            "the ledger's chain does not verify",
+            problems.replace("_", " ")[:300] or "results verify could not read the ledger.",
+            [{"label": "Results", "open": {"tab": "results"}}],
+        )
+    if results["used"] and "events" in account:
+        latest = latest_recorded(ledger)
+        failing = [f for f in account.get("files", []) if f["state"] in RESULTS_FAILING]
+        held = find_commits(
+            project,
+            {
+                (f["path"], latest[f["path"]]["sha256"])
+                for f in failing
+                if f["path"] in latest and latest[f["path"]]["sha256"]
+            },
+            out_dir,
+        )
+        said = {
+            "changed": (
+                "changed after it was sealed",
+                "files changed after they were sealed",
+                "The file on disk is not the bytes the ledger recorded for it.",
+            ),
+            "missing": (
+                "is missing; the ledger recorded it",
+                "recorded files are missing",
+                "The ledger recorded bytes at this path, and no file is there now.",
+            ),
+        }
+        for state in RESULTS_FAILING:
+            these = [f for f in failing if f["state"] == state]
+            if not these:
+                continue
+            one, many, note = said.get(
+                state,
+                (
+                    f"is {state}",
+                    f"recorded files are {state}",
+                    f"results verify reports it as {state}.",
+                ),
+            )
+            items = []
+            for f in these:
+                rec = latest.get(f["path"], {})
+                found = held.get((f["path"], rec.get("sha256"))) or {}
+                diffable = state in said
+                items.append(
+                    {
+                        "label": f["path"],
+                        "open": {
+                            "tab": "results",
+                            "path": f["path"],
+                            "run": rec.get("run"),
+                            **({"diff": f"results-{state}"} if diffable else {}),
+                        },
+                        **(
+                            {"diff": {"commit": found.get("commit"), "sha256": rec.get("sha256")}}
+                            if diffable
+                            else {}
+                        ),
+                    }
+                )
+            row(
+                f"results-{state}",
+                "results",
+                f"{these[0]['path']} {one}" if len(these) == 1 else f"{len(these)} {many}",
+                note,
+                items,
+            )
+    unsealed = [
+        r
+        for r in tabs["results"]["runs"]
+        if not r["sealed_before"] and not TEST_RUN.match(r["run_id"] or "")
+    ]
+    if unsealed:
+        row(
+            "results-unsealed",
+            "results",
+            f"{len(unsealed)} {plural_s(len(unsealed), 'run', 'runs')} with nothing sealed before "
+            f"{plural_s(len(unsealed), 'it', 'them')}",
+            "The ledger holds no seal before "
+            + plural_s(len(unsealed), "this run", "these runs")
+            + ", so nothing recorded the inputs in advance. A record made later cannot supply that.",
+            [],
+            fix=False,
+        )
+
+    citations = sections["citations"]
+    sources = tabs["citations"]["sources"]
+    if citations is not None and citations["used"]:
+        if not citations["account"]:
+            said_lines = [ln for ln in citations["output"].splitlines() if ln.strip()]
+            row(
+                "citations-unread",
+                "citations",
+                "the quotations could not be checked",
+                said_lines[-1] if said_lines else "",
+                [{"label": "Citations", "open": {"tab": "citations"}}],
+            )
+        missed = not_found_quotes(citations["output"], sources)
+        n_missed = citations["account"].get("counts", {}).get("not found", 0) or len(missed)
+        if n_missed:
+            keys = list(dict.fromkeys(m["key"] for m in missed))
+            row(
+                "citations-not-found",
+                "citations",
+                f"{n_missed} {plural_s(n_missed, 'quotation', 'quotations')} not found in "
+                f"{plural_s(n_missed, 'its source', 'their sources')}"
+                + (f" ({', '.join(keys[:3])}{', …' if len(keys) > 3 else ''})" if keys else ""),
+                "The quote, the pinned file or the reading may be wrong.",
+                [
+                    {
+                        "label": m["label"],
+                        "open": {
+                            "tab": "citations",
+                            **({"quote": m["quote"]} if m["quote"] else {}),
+                        },
+                    }
+                    for m in missed
+                ],
+            )
+        moved = broken_pins(citations["output"], sources)
+        n_moved = citations["account"].get("broken_pins", 0) or len(moved)
+        if n_moved:
+            row(
+                "citations-pin",
+                "citations",
+                f"{n_moved} {plural_s(n_moved, 'source', 'sources')} changed since "
+                f"{plural_s(n_moved, 'it was', 'they were')} pinned"
+                + (f" ({', '.join(m['key'] for m in moved[:3])})" if moved else ""),
+                "The file on disk is not the bytes its claims file pinned.",
+                [
+                    {
+                        "label": m["key"],
+                        "open": {
+                            "tab": "citations",
+                            **({"source": m["file"]} if m["file"] else {}),
+                        },
+                    }
+                    for m in moved
+                ],
+            )
+    return rows
+
+
+#: A commit as a freeze or the commit lookup names one: hexadecimal, nothing a shell or git
+#: would read as an option.
+COMMIT = re.compile(r"^[0-9a-f]{7,64}$")
+#: The largest file either side of a diff is read at.
+MAX_DIFF_BYTES = 2_000_000
+
+
+class NotNamed(LookupError):
+    """A diff asked for a path the records do not name."""
+
+
+def issue_diff(project: pathlib.Path, graph_data: dict, issue: str, path: str) -> dict:
+    """The recorded bytes of `path` against the file on disk, for an item of the issue `issue`.
+
+    Only an item of the issues list in graph.json is served, by its exact path, and only a path
+    inside the project. The recorded bytes come from `git show <commit>:<path>`, the commit the
+    record names. A binary file, or one too large, gives each side's hash and size only."""
+    row = next((r for r in graph_data.get("issues", []) if r["id"] == issue), None)
+    item = next(
+        (
+            i
+            for i in (row or {}).get("items", [])
+            if "diff" in i and i.get("open", {}).get("path") == path
+        ),
+        None,
+    )
+    if item is None or pathlib.PurePath(path).is_absolute():
+        raise NotNamed(path)
+    target = (project / path).resolve()
+    if not target.is_relative_to(project):
+        raise NotNamed(path)
+    commit, recorded = item["diff"].get("commit"), item["diff"].get("sha256")
+    tool_name = row["tool"]
+    old, old_size = None, None
+    if commit and COMMIT.match(commit):
+        # The committed copy's size first, so a large one is never read into memory.
+        sized = subprocess.run(
+            ["git", "cat-file", "-s", f"{commit}:./{path}"],
+            cwd=project,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        old_size = (
+            int(sized.stdout) if sized.returncode == 0 and sized.stdout.strip().isdigit() else None
+        )
+        if old_size is not None and old_size <= MAX_DIFF_BYTES:
+            shown = subprocess.run(
+                ["git", "show", f"{commit}:./{path}"],
+                cwd=project,
+                capture_output=True,
+                timeout=30,
+                check=False,
+            )
+            old = shown.stdout if shown.returncode == 0 else None
+    new = (
+        target.read_bytes()
+        if target.is_file() and target.stat().st_size <= MAX_DIFF_BYTES
+        else None
+    )
+    old_too_big = old_size is not None and old_size > MAX_DIFF_BYTES
+    too_big = (target.is_file() and new is None) or old_too_big
+
+    def side(data: bytes | None) -> dict | None:
+        return (
+            None
+            if data is None
+            else {"sha256": hashlib.sha256(data).hexdigest(), "size": len(data)}
+        )
+
+    notes = []
+    if old is None and not old_too_big:
+        notes.append(
+            "No copy of the sealed bytes was kept: no commit holds them."
+            if tool_name == "results"
+            else "The freeze recorded no commit this repository holds, so there is no frozen copy to show."
+            if not commit or not COMMIT.match(commit)
+            else f"Commit {commit[:12]} does not hold {path}."
+        )
+    elif recorded and side(old)["sha256"] != recorded:
+        notes.append(
+            f"Commit {commit[:12]} holds other bytes than the ones recorded "
+            f"({recorded[:12]}…); the diff is against that commit's copy."
+        )
+    if not target.is_file():
+        notes.append("There is no file at this path now.")
+    if too_big:
+        notes.append("Too large to compare here; the hashes and sizes are shown.")
+    texts = []
+    for data in (old, new) if not too_big else ():
+        try:
+            texts.append(None if data is None else data.decode("utf-8"))
+        except UnicodeDecodeError:
+            texts.append(False)
+    binary = any(t is False for t in texts) or any(b"\0" in d for d in (old, new) if d)
+    diff = ""
+    if not binary and old is not None and not too_big:
+        # A last line with no newline is marked as git marks it, so it does not run into the next.
+        diff = "".join(
+            line if line.endswith("\n") else line + "\n\\ No newline at end of file\n"
+            for line in difflib.unified_diff(
+                (texts[0] or "").splitlines(keepends=True),
+                (texts[1] or "").splitlines(keepends=True),
+                fromfile=f"{path} @ {commit[:12]}",
+                tofile=f"{path} (now)",
+            )
+        )
+    return {
+        "ok": True,
+        "path": path,
+        "commit": commit,
+        "old": (
+            {"sha256": recorded if recorded else None, "size": old_size}
+            if old_too_big
+            else side(old)
+        ),
+        "new": side(new)
+        if new is not None
+        else ({"sha256": None, "size": target.stat().st_size} if too_big else None),
+        "binary": binary or too_big,
+        "diff": diff,
+        "note": " ".join(notes),
     }
 
 
@@ -966,31 +1620,32 @@ def build(
 
     manifest = yaml.safe_load((project / "repro.yaml").read_text())
     cache = out_path.with_name("verify-report.json")
+    ledger_path = project / ".results" / "ledger.jsonl"
+    ledger = (
+        [json.loads(x) for x in ledger_path.read_text().splitlines() if x.strip()]
+        if ledger_path.exists()
+        else []
+    )
     if check or not cache.exists():
-        report = repro_json(project, "verify")["report"]
+        verify = repro_json(project, "verify")
+        report = verify["report"]
+        sections = read_sections(verify, project, manifest, {})
         out_path.parent.mkdir(parents=True, exist_ok=True)
         cache.write_text(
             json.dumps(
                 {
                     "checked_at": datetime.datetime.now(datetime.UTC).isoformat(),
                     "report": report,
+                    "citations": sections["citations"],
                 }
             )
         )
     else:
-        report = json.loads(cache.read_text())["report"]
+        cached = json.loads(cache.read_text())
+        report = cached["report"]
+        sections = read_sections(None, project, manifest, cached)
     checked_at = json.loads(cache.read_text())["checked_at"]
-    staleness = (
-        repro_json(project, "stale")["staleness"]
-        if manifest.get("regenerations")
-        else NOTHING_STALE
-    )
-    ledger_path = project / ".results" / "ledger.jsonl"
-    ledger = (
-        [json.loads(x) for x in ledger_path.read_text().splitlines()]
-        if ledger_path.exists()
-        else []
-    )
+    staleness = sections["staleness"]
     checks = read_checks(project)
 
     artifacts = {x["id"]: x for x in manifest["artifacts"]}
@@ -1213,15 +1868,17 @@ def build(
             if d["kind"] != "quote"
         )
     )
+    tabs = record_tabs(project, manifest, ledger, sections, out_path.parent, fetch)
     out = {
         "project": report["project"],
         "built_at": datetime.datetime.now(datetime.UTC).isoformat(),
         "checked_at": checked_at,
         "project_dir": str(project),
-        "status": status_lines(project, report),
+        "status": status_lines(project, report, sections, ledger, reruns),
         "reproduce": reproduce,
         "project_name": project.name,
-        "tabs": record_tabs(project, manifest, ledger, staleness, out_path.parent, fetch),
+        "tabs": tabs,
+        "issues": issues(project, sections, ledger, tabs, out_path.parent),
         "manifest_digest": report["manifest_digest"],
         "totals": {
             "claims": len(report["claims"]),
@@ -1240,5 +1897,8 @@ def build(
         "edges": edges,
     }
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text(json.dumps(out, indent=1))
+    # Written beside and renamed over, so the server never reads half a file.
+    partial = out_path.with_name(out_path.name + ".partial")
+    partial.write_text(json.dumps(out, indent=1))
+    partial.replace(out_path)
     return f"{len(nodes)} nodes, {len(edges)} edges, {len(groups)} groups -> {out_path}"

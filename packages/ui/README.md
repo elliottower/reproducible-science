@@ -26,16 +26,19 @@ manifest and manuscript, then serves it on localhost only.
 
 ## What it writes
 
-- **Refresh** re-reads the records and writes nothing to the project.
+- The page re-reads the records by itself, which writes nothing to the project: when its tab
+  comes back into view, and every 30 seconds while it is in view.
 - **repro verify** checks every claim again, which adds one line to the project's local check
   history, kept inside `.git` and never committed. It asks first.
-- **Reproduce** runs the rebuild steps you choose with `repro reproduce`, which executes the
+- **repro reproduce** runs the rebuild steps you choose with `repro reproduce`, which executes the
   commands `repro.yaml` declares and adds the re-run to `.repro/reproductions.jsonl`. It lists
-  each command before anything runs.
-- **Fix with Claude Code**, on a failing or stale count, appends a request to
-  `~/.claude/repro-fixes/queue.jsonl`, which the `repro` Claude Code mod shows above the prompt
-  of a session working in the project. Nothing runs until it is loaded and sent. **Copy prompt
-  to fix** puts the same prompt on the clipboard, for any other agent.
+  each command before anything runs, streams the output while it runs, and shows how long each
+  step took. **Copy command** gives the same re-run as a line to paste into any terminal:
+  `cd '<project>' && repro reproduce --only <step>`.
+- **Copy prompt**, on a failing claim or on all of them in the Claims tab, puts a prompt on the
+  clipboard to paste into Claude Code, Codex or any other agent. The prompt asks the agent to
+  look into the failure and lay out the options, then to wait for you to choose; it never asks
+  the agent to change anything. Copying writes nothing.
 
 The page's own data and caches are kept inside the project's git directory
 (`.git/repro/ui/`), or under `~/.cache/reproducible-science-ui/` for a project outside git.
