@@ -1,5 +1,5 @@
 ---
-title: repro ui
+title: Web UI
 description: A local web page over a project's records, served by repro ui.
 ---
 
@@ -29,8 +29,9 @@ manuscript. It is served on localhost only.
 ## Writes
 
 - **Refresh** re-reads the records and writes nothing to the project.
-- **repro verify** checks every claim again, which adds one line to the project's local check
-  history, kept inside `.git` and never committed. It asks first.
+- **repro verify** runs the whole-project check (the claims, the plan, the ledger, the
+  quotations and what went stale), which adds one line to the project's local check history,
+  kept inside `.git` and never committed. It asks first.
 - **Reproduce** runs the rebuild steps you choose with `repro reproduce`, which executes the
   commands `repro.yaml` declares and adds the re-run to `.repro/reproductions.jsonl`. It lists
   each command before anything runs.
