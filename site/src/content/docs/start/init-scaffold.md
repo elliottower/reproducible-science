@@ -38,7 +38,7 @@ repro init
 `repro init NAME` scaffolds a new experiment directory instead. `--no-scaffold` writes neither
 draft file and reads no result file.
 
-## Refuses or never does
+## Limits
 
 - Never writes or edits `repro.yaml`. Where one exists, nothing is scaffolded.
 - Never edits a record that exists, so a second run creates nothing.

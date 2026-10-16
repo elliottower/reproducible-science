@@ -50,7 +50,7 @@ reproducible-science-pr-bot post    # after the check: comments; checks out noth
 reproducible-science-pr-bot reply   # on a reply: records the answer; checks out nothing
 ```
 
-## Refuses or never does
+## Limits
 
 - `post` refuses findings that do not belong to the pull request, commit and branch the run
   checked, or that name a file other than the manifest. `post` and `reply` check out nothing.

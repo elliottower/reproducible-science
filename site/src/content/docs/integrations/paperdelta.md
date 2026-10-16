@@ -37,7 +37,7 @@ JSON Lines, one check record per occurrence and per comparative claim, to standa
 claims from-paperdelta report.json --config paperdelta.yaml --rerun -o paperdelta.jsonl
 ```
 
-## Refuses or never does
+## Limits
 
 - Refuses the configuration unless the report records its sha256 and it matches, and refuses a
   report that records none.

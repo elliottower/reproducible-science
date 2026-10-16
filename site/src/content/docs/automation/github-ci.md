@@ -43,7 +43,7 @@ version that wrote it:
 - run: uvx --from reproducible-science==0.6.1 repro ci claims
 ```
 
-## Refuses or never does
+## Limits
 
 - `repro ci init` never replaces a workflow it did not write, and replaces its own only with
   `--force`. `--prefix` writes beside an existing file instead.

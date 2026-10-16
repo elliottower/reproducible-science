@@ -4,7 +4,7 @@ description: What each integration reads and writes, and where it stops.
 ---
 
 Reproducible Science reads the records other tools keep. Each page in this section says what one integration reads, what it writes, the
-command, what it refuses, and what it does not claim. Each page describes the code on `main`;
+command, its limits, and what it does not claim. Each page describes the code on `main`;
 the integrations marked 0.7.0 are on `main` and in no published release yet.
 
 `repro mcp` serves the checks to any agent that uses the Model Context Protocol, and is the

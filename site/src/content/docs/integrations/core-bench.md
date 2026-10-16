@@ -34,7 +34,7 @@ not say which file holds the value, so the address of every value is left open.
 claims from-corebench capsule-5507257 core_test.json -o draft/
 ```
 
-## Refuses or never does
+## Limits
 
 - Never writes a candidate into the draft, unique or not.
 - Runs nothing in the capsule.

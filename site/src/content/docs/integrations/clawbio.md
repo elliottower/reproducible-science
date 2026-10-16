@@ -38,7 +38,7 @@ each number is left open.
 claims from-clawbio output/ -o draft/
 ```
 
-## Refuses or never does
+## Limits
 
 - Pins the digest ClawBio recorded, never one computed now.
 - Never writes a candidate into the draft.

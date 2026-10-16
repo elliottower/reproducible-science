@@ -35,7 +35,7 @@ is left open.
 claims from-codecheck 2024-001 --register register.json --bundle ../codecheck-2024-001 -o draft/
 ```
 
-## Refuses or never does
+## Limits
 
 - Writes no certificate field, and names no claim, artifact or project of the draft by the
   certificate's identifier.

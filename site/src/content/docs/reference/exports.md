@@ -34,7 +34,7 @@ repro export record -o records.jsonl
 
 `claims export record` writes the same output.
 
-### Refuses or never does
+### Limits
 
 - Refuses a record under any version other than the current one and the 0.5.6 name
   `repro.check/0.1-experimental`, which is read and never written.
@@ -91,7 +91,7 @@ The SARIF log is uploaded with GitHub's own action. This repository's
 
 The job needs `security-events: write`. `repro ci init` does not write this workflow.
 
-### Refuses or never does
+### Limits
 
 - An assertion that was not checked is a notification, never a result.
 - An outcome word this version does not know is never shown as a pass.
@@ -145,7 +145,7 @@ output.
 repro export ro-crate -o .
 ```
 
-### Refuses or never does
+### Limits
 
 - Declares conformance to Process Run Crate only where a re-run is recorded.
 - Refuses to read back a document that does not conform to the claim-check profile, and records
