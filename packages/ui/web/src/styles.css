@@ -401,7 +401,7 @@ td.clickable:hover .claim-cell { color: var(--text); }
 .src-words.flash { animation: flash 1.8s ease; }
 
 /* top bar: search, menus */
-.top-search { position: relative; flex: 1 1 320px; max-width: 420px; margin: 0 auto; display: flex; align-items: center; gap: 8px; background: #1f2532; border: 1px solid #2c3445; border-radius: 8px; padding: 4px 10px; color: #7d879b; }
+.top-search { position: relative; flex: 0 1 420px; min-width: 140px; display: flex; align-items: center; gap: 8px; background: #1f2532; border: 1px solid #2c3445; border-radius: 8px; padding: 4px 10px; color: #7d879b; }
 .top-search input { flex: 1; min-width: 0; background: none; border: 0; outline: 0; color: #e3e8f2; font: inherit; }
 .top-search kbd { font: 11px var(--mono); border: 1px solid #3a4357; border-radius: 4px; padding: 1px 5px; }
 .top > .top-search { flex-shrink: 1; }
@@ -492,3 +492,38 @@ td.clickable:hover .claim-cell { color: var(--text); }
 /* A button carries no margin of its own: rows space their buttons with gap. */
 .btn { margin: 0; }
 .btn .spin { margin-right: 6px; flex: none; }
+
+
+
+
+/* project drawer */
+.burger { background: none; border: 0; color: #c9d1e0; font-size: 20px; cursor: pointer; padding: 2px 6px; border-radius: 6px; line-height: 1; }
+.burger:hover { background: #2c3445; }
+.top > .spacer { flex: 1 1 0; min-width: 0; flex-shrink: 1; }
+.scrim { position: fixed; inset: 0; background: rgba(15, 19, 32, 0.35); opacity: 0; pointer-events: none; transition: opacity 0.18s; z-index: 80; }
+.scrim.open { opacity: 1; pointer-events: auto; }
+.drawer { position: fixed; top: 0; left: 0; bottom: 0; width: 440px; max-width: 92vw; background: #fff; color: var(--text); z-index: 81; transform: translateX(-100%); transition: transform 0.2s ease; display: flex; flex-direction: column; box-shadow: 8px 0 30px rgba(20, 25, 40, 0.15); white-space: normal; }
+.drawer.open { transform: none; }
+.drawer header { padding: 16px 18px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+.drawer header b { font-size: 15px; }
+.drawer .x { border: 0; background: none; font-size: 20px; color: var(--muted); cursor: pointer; }
+.drawer .cards { padding: 12px; display: flex; flex-direction: column; gap: 10px; overflow: auto; }
+.drawer .card { border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; cursor: pointer; }
+.drawer .card:hover { border-color: #c9d2e6; background: #fafbfd; }
+.drawer .card.here { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.drawer .card .t { font-weight: 600; line-height: 1.35; margin-bottom: 3px; }
+.drawer .card .r { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+.drawer .card .l { font: 12px/1.7 var(--mono); color: #3a4252; }
+.drawer .card .l i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+.drawer .head { display: flex; gap: 12px; align-items: flex-start; justify-content: space-between; }
+.drawer .head .gstar { flex: none; margin-top: 1px; }
+.dsearch { border: 1px solid var(--border); border-radius: 8px; padding: 8px 11px; font: inherit; width: 100%; }
+.sec2 { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); font-weight: 600; margin: 8px 2px 0; }
+.gstar { font: inherit; font-size: 12px; border: 1px solid var(--border); border-radius: 6px; padding: 2px 8px; color: #3a4252; background: #f6f8fa; cursor: pointer; white-space: nowrap; flex: none; }
+.gstar.on { color: #9a6b00; }
+.now { font-size: 11px; font-weight: 600; color: var(--accent); background: #e8eefc; border-radius: 999px; padding: 1px 8px; margin-left: 8px; font-family: Inter, system-ui, sans-serif; white-space: nowrap; }
+.lnk { color: var(--accent); cursor: pointer; font-family: Inter, system-ui, sans-serif; }
+.drawer .row { display: flex; gap: 10px; align-items: center; padding: 7px 4px; border-bottom: 1px solid #f0f2f5; cursor: pointer; font-size: 13px; white-space: nowrap; }
+.drawer .row .mono { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.drawer .row .when { margin-left: auto; margin-right: 8px; white-space: nowrap; flex: none; color: var(--muted); font-size: 12px; }
+.drawer .row.more { color: var(--accent); border: 0; font-weight: 500; }

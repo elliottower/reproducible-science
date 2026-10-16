@@ -1,0 +1,183 @@
+"""The projects the drawer lists: remembered in the user's config folder, starred there, and
+switched between in one server."""
+
+from __future__ import annotations
+
+import functools
+import http.server
+import json
+import pathlib
+import threading
+import time
+import urllib.error
+import urllib.request
+
+from repro_ui import graph, projects, runs, server
+
+TOKEN = "drawer-token"
+
+
+def test_a_project_is_remembered_once_newest_first_and_keeps_its_star(tmp_path, own_config):
+    a, b = tmp_path / "a", tmp_path / "b"
+    a.mkdir()
+    b.mkdir()
+    projects.opened(a)
+    time.sleep(1.1)
+    projects.opened(b)
+    assert [e["path"] for e in projects.read()] == [str(b.resolve()), str(a.resolve())]
+    assert projects.star(str(a.resolve()), True)
+    time.sleep(1.1)
+    projects.opened(a)
+    (first, second) = projects.read()
+    assert (first["path"], first["starred"], second["starred"]) == (str(a.resolve()), True, False)
+    assert not projects.star(str(tmp_path / "never-opened"), True)
+    assert projects.config_file() == own_config / "reproducible-science" / "ui-projects.json"
+    assert not list(tmp_path.rglob("ui-projects.json")), "nothing is written into a project"
+
+
+def test_an_unreadable_file_reads_as_no_projects(own_config):
+    path = projects.config_file()
+    path.parent.mkdir(parents=True)
+    for body in ("not json", "[]", '{"projects": [1, {"path": 2}, {"nopath": true}]}'):
+        path.write_text(body)
+        assert projects.read() == []
+
+
+def test_the_title_is_the_manuscripts_and_absent_without_one(tmp_path):
+    (tmp_path / "paper.tex").write_text(
+        "% \\title{commented out}\n\\title[Short]{Reproducible Science: Machine-Checkable\n"
+        "Claims\\thanks{Draft.} from N\\\"ust's {\\em Preregistration}}\n\\begin{document}\n"
+    )
+    assert (
+        projects.title_of(tmp_path, "paper.tex")
+        == "Reproducible Science: Machine-Checkable Claims from Nüst's Preregistration"
+    )
+    (tmp_path / "plain.tex").write_text("\\section{No title here}")
+    assert projects.title_of(tmp_path, "plain.tex") is None
+    assert projects.title_of(tmp_path, None) is None
+    assert projects.title_of(tmp_path, "missing.tex") is None
+
+
+def test_a_card_says_whether_the_project_was_checked(project, tmp_path):
+    entry = {"path": str(project), "opened_at": "", "starred": False}
+    never = projects.summary(entry, server.data_dir, project)
+    assert (never["claims"], never["name"], never["current"], never["title"]) == (
+        None,
+        "project",
+        True,
+        None,
+    )
+    graph.build(project, server.data_dir(project) / "graph.json", check=True, fetch=False)
+    checked = projects.summary(entry, server.data_dir, tmp_path)
+    assert (checked["claims"]["verified"], checked["claims"]["total"], checked["current"]) == (
+        1,
+        1,
+        False,
+    )
+
+
+def serve(project: pathlib.Path, static: pathlib.Path):
+    graph.build(project, server.data_dir(project) / "graph.json", check=False, fetch=False)
+    static.mkdir(exist_ok=True)
+    (static / "index.html").write_text("<!doctype html><html><head></head></html>")
+    handler = type(
+        "DrawerHandler",
+        (server.Handler,),
+        {
+            "project": project,
+            "groups": None,
+            "data": server.data_dir(project),
+            "fetch": False,
+            "token": TOKEN,
+        },
+    )
+    httpd = http.server.ThreadingHTTPServer(
+        ("127.0.0.1", 0), functools.partial(handler, directory=str(static))
+    )
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    return httpd, f"http://127.0.0.1:{httpd.server_address[1]}"
+
+
+def call(url: str, body: dict | None = None) -> tuple[int, dict]:
+    req = urllib.request.Request(
+        url,
+        data=None if body is None else json.dumps(body).encode(),
+        method="GET" if body is None else "POST",
+        headers={}
+        if body is None
+        else {"Content-Type": "application/json", server.TOKEN_HEADER: TOKEN},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r:
+            return r.status, json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        return e.code, json.loads(e.read())
+
+
+def test_the_page_switches_project_in_one_server_and_a_run_in_the_other_keeps_going(
+    tmp_path, tools
+):
+    a, b = tmp_path / "a", tmp_path / "b"
+    for folder in (a, b):
+        folder.mkdir()
+        tools.write_project(folder, with_step=True)
+        projects.opened(folder)
+    projects.star(str(a.resolve()), True)
+    httpd, url = serve(a, tmp_path / "static")
+    try:
+        status, body = call(f"{url}/api/projects")
+        listed = {pathlib.Path(p["path"]).name: p for p in body["projects"]}
+        assert status == 200 and set(listed) == {"a", "b"}
+        assert (listed["a"]["current"], listed["a"]["starred"], listed["b"]["current"]) == (
+            True,
+            True,
+            False,
+        )
+
+        # A run in a, going while the page moves to b.
+        going = runs.start(a, server.data_dir(a), ["sleep", "30"], ["results"])
+        status, body = call(f"{url}/api/projects/open", {"path": str(b.resolve())})
+        assert (status, body["project"]) == (200, str(b.resolve()))
+        _, g = call(f"{url}/graph.json")
+        assert g["project_dir"] == str(b.resolve())
+        assert call(f"{url}/api/runs")[1]["runs"] == []
+        assert runs.alive(going), "the run in the other project goes on"
+        status, _ = call(f"{url}/api/projects/open", {"path": str(a.resolve())})
+        assert status == 200
+        assert [r["run_id"] for r in call(f"{url}/api/runs")[1]["runs"]] == [going["run_id"]]
+        assert runs.stop(server.data_dir(a), going["run_id"])
+
+        assert (
+            call(f"{url}/api/projects/star", {"path": str(b.resolve()), "starred": True})[0] == 200
+        )
+        assert [e["starred"] for e in projects.read() if e["path"] == str(b.resolve())] == [True]
+        for path in (str(tmp_path), "/etc", str(tmp_path / "c"), 3):
+            assert call(f"{url}/api/projects/open", {"path": path})[0] == 404, path
+            assert call(f"{url}/api/projects/star", {"path": path, "starred": True})[0] == 404, path
+        assert (
+            call(f"{url}/api/projects/star", {"path": str(b.resolve()), "starred": "yes"})[0] == 404
+        )
+    finally:
+        httpd.shutdown()
+
+
+def test_switching_needs_this_pages_token(tmp_path, tools):
+    a = tmp_path / "a"
+    a.mkdir()
+    tools.write_project(a, with_step=False)
+    projects.opened(a)
+    httpd, url = serve(a, tmp_path / "static")
+    try:
+        req = urllib.request.Request(
+            f"{url}/api/projects/open",
+            data=json.dumps({"path": str(a.resolve())}).encode(),
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        try:
+            urllib.request.urlopen(req, timeout=30)
+            raise AssertionError("refused")
+        except urllib.error.HTTPError as e:
+            assert e.code == 403
+    finally:
+        httpd.shutdown()

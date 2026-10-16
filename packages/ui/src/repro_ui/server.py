@@ -43,7 +43,7 @@ import webbrowser
 
 import yaml
 
-from repro_ui import export, runs
+from repro_ui import export, projects, runs
 from repro_ui import graph as build_graph
 
 #: The built page, which every wheel carries.
@@ -175,6 +175,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._page()
         if self.path == "/api/health":
             return self._json(200, {"recheck": True, "project": str(self.project)})
+        if self.path == "/api/projects":
+            current = self.project
+            listed = [projects.summary(e, data_dir, current) for e in projects.read()]
+            return self._json(200, {"projects": listed})
         if self.path == "/api/runs":
             return self._json(200, {"runs": runs.listed(self.project, self.data)})
         if self.path == "/api/export":
@@ -282,6 +286,28 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 return self._json(500, {"ok": False, "error": f"repro could not be started: {e}"})
         return self._json(200, {"ok": True, "run": run})
 
+    def _open_project(self, body: dict) -> None:
+        """Switch the page to another remembered project: its data is built in this server, as
+        at launch, and the page reloads it. A run started in the other project goes on."""
+        path = body.get("path")
+        folder = projects.known(path) if isinstance(path, str) else None
+        if folder is None:
+            return self._json(404, {"ok": False, "error": "not a project this page knows"})
+        if not self.lock.acquire(timeout=120):
+            return self._json(409, {"ok": False, "error": "a check is already running"})
+        try:
+            folder = folder.resolve()
+            data = data_dir(folder)
+            build_graph.build(folder, data / "graph.json", None, check=False, fetch=self.fetch)
+            cls = type(self)
+            cls.project, cls.data, cls.groups = folder, data, None
+            projects.opened(folder)
+        except Exception as e:  # reported to the page, which stays on the project it showed
+            return self._json(500, {"ok": False, "error": f"could not open {folder}: {e}"})
+        finally:
+            self.lock.release()
+        return self._json(200, {"ok": True, "project": str(folder)})
+
     def _stop(self, body: dict) -> None:
         run_id = body.get("run")
         if not isinstance(run_id, str) or not runs.stop(self.data, run_id):
@@ -318,6 +344,17 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._reproduce(body)
         if self.path == "/api/stop":
             return self._stop(body)
+        if self.path == "/api/projects/star":
+            path, starred = body.get("path"), body.get("starred")
+            if (
+                not isinstance(path, str)
+                or not isinstance(starred, bool)
+                or not projects.star(path, starred)
+            ):
+                return self._json(404, {"ok": False, "error": "not a project this page knows"})
+            return self._json(200, {"ok": True})
+        if self.path == "/api/projects/open":
+            return self._open_project(body)
         if self.path not in {"/api/refresh", "/api/verify"}:
             return self._json(404, {"error": "not found"})
         if not self.lock.acquire(blocking=False):
@@ -406,6 +443,7 @@ def main(argv: list[str] | None = None) -> int:
     build_graph.build(
         project, Handler.data / "graph.json", a.groups, check=False, fetch=Handler.fetch
     )
+    projects.opened(project)
     try:
         server = http.server.ThreadingHTTPServer(
             ("127.0.0.1", a.port), functools.partial(Handler, directory=str(DIST))
