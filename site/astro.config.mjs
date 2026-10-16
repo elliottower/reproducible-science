@@ -14,6 +14,7 @@ export default defineConfig({
     "/integrations/open-items/": "/agents/open-items/",
     "/integrations/init-scaffold/": "/start/init-scaffold/",
     "/start/codex/": "/agents/codex-plugin/",
+    "/start/claude-code/": "/agents/claude-code-plugin/",
   },
   integrations: [
     starlight({

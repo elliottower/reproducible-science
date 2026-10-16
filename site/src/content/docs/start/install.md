@@ -31,7 +31,7 @@ Python 3.11 or newer. Every package carries the same version and is released the
 ## Coding agent plugins
 
 The skills, hooks and commands that run the tools from inside a coding agent install as a
-plugin: for [Claude Code](/start/claude-code/) or for [Codex](/agents/codex-plugin/).
+plugin: for [Claude Code](/agents/claude-code-plugin/) or for [Codex](/agents/codex-plugin/).
 
 ## Optional extras
 
