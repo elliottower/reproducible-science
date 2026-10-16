@@ -354,7 +354,8 @@ function Page() {
     setBusy('refresh')
     return post('api/refresh', {})
       .then((r) => r.json())
-      .then((res) => (res.ok ? load() : setMessage(res.error ?? null)))
+      // Another tab switched the server to another project: said once, at the foot of the page.
+      .then((res) => (res.ok ? load() : /another project/.test(res.error ?? '') ? toast(res.error) : undefined))
       .catch(() => undefined)
       .finally(() => {
         busyRef.current = null
@@ -438,7 +439,6 @@ function Page() {
       const res = await post('api/projects/open', { path }).then((r) => r.json())
       if (!res.ok) { toast(`Could not open it: ${res.error}`); return false }
       setProjectPath(res.project)
-      setMessage(null)
       runningRef.current = new Set()
       window.history.replaceState(null, '', '#')
       await load()
