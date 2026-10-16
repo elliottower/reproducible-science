@@ -1,7 +1,7 @@
 import { useContext, useEffect, useRef, useState } from 'react'
 import { STATIC } from './api'
 import { FixCtx } from './fix'
-import { auditPrompt, fmt, fixPrompt, staticMessage, terminalCommand } from './format'
+import { auditPrompt, fixPrompt, staticMessage, terminalCommand } from './format'
 import { IssueRow } from './issues'
 import { PromptCard } from './menus'
 import { useCopy, useToast } from './toast'
@@ -10,20 +10,6 @@ import type { Graph, IssueOpen } from './types'
 /** The bar's right side to try: `?bar=issues` in the address. The layout without it stays the
  * default until one is picked. */
 export const ISSUES_BAR = typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('bar') === 'issues'
-
-/** `◐ 20/20 reproduced`: the rebuild steps that re-ran since their inputs last changed. Green
- * when all did, amber otherwise. Opens the Reproduce tab. Absent when repro.yaml declares none. */
-export function ReproducedPill({ graph, openTab }: { graph: Graph; openTab: () => void }) {
-  const steps = graph.tabs?.reproduce.steps ?? []
-  if (steps.length === 0) return null
-  const current = steps.filter((s) => s.state === 'current').length
-  return (
-    <button className={`pill big pill-btn ${current === steps.length ? 'good' : 'stale'}`} onClick={openTab}
-      title="The rebuild steps repro.yaml declares that re-ran since their inputs last changed · open the Reproduce tab">
-      ◐ {fmt(current)}/{fmt(steps.length)} reproduced
-    </button>
-  )
-}
 
 type Card = 'audit' | 'fix' | null
 

@@ -475,3 +475,7 @@ td.clickable:hover .claim-cell { color: var(--text); }
 .issue-top { border-bottom: 1px solid var(--border); padding: 4px 4px 8px; }
 .issue-verify { cursor: default; }
 .issue-verify:hover { background: none; }
+
+/* Every control on the bar's right side shares one height and centre line. */
+.top .dd, .top .issues { display: flex; align-items: center; }
+.top .btn { height: 28px; display: inline-flex; align-items: center; padding-top: 0; padding-bottom: 0; font-size: 12px; box-sizing: border-box; }
