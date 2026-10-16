@@ -5,18 +5,20 @@
 Serves the built page on localhost only. POST /api/refresh re-reads the
 project's records (`repro stale`, `results verify --files`, `prereg check`, the ledger and the check history)
 and writes nothing to the project. POST /api/verify also runs `repro verify`, which records the check
-in the project's history. Either rewrites graph.json; the page then reloads it.
+in the project's history; with {"presubmit": true} it also runs `repro numbers`, which writes
+nothing, for the Pre-submit check. Either rewrites graph.json; the page then reloads it.
 GET /api/health tells the page that re-checking is available, so the button stays hidden when the
 same files are served by a plain static host. GET /api/diff?issue=<id>&path=<path> shows the
 recorded bytes of a file an issue names (a frozen plan, a sealed file) against the file now, read
 with `git show` from the commit the record names; any other path is refused.
 
-POST /api/reproduce with {"only": [step ids]} or {"only": null} runs `repro reproduce` for those
-rebuild steps, or for all of them. That executes the commands repro.yaml declares, so the page asks
-before calling it. The answer streams as it happens, one JSON object per line: {"line": text} for
-each line `repro reproduce` prints, then {"done": true, ...} with what the re-run recorded. `repro
-reproduce` appends the re-run to the project's .repro/reproductions.jsonl; the graph is then rebuilt
-from the records.
+POST /api/reproduce with {"only": [step ids]} or {"only": null} starts `repro reproduce` for those
+rebuild steps, or for all of them, as a process of its own (see `runs`): closing the page or
+stopping this server does not stop it. That executes the commands repro.yaml declares, so the page
+asks before calling it. GET /api/runs lists the runs started from the page, each running, done or
+interrupted, with its log; POST /api/stop with {"run": id} sends SIGTERM to a live run. GET
+/api/export answers the page as one read-only .html file, the same bytes `repro ui --export`
+writes.
 
 Every request must name this server by a loopback address. Every POST must also come from this
 server's own page: JSON, from its own origin, carrying the token the server put in the page it
@@ -31,7 +33,6 @@ import hashlib
 import hmac
 import http.server
 import json
-import os
 import pathlib
 import secrets
 import subprocess
@@ -42,6 +43,7 @@ import webbrowser
 
 import yaml
 
+from repro_ui import export, runs
 from repro_ui import graph as build_graph
 
 #: The built page, which every wheel carries.
@@ -51,10 +53,15 @@ TOKEN_HEADER = "X-Repro-UI-Token"
 #: The largest request body read. A larger declared length is refused unread.
 MAX_BODY = 64_000
 MAX_FILE = 2_000_000
-REPRODUCE_TIMEOUT = 3600
 #: What a refused POST says: a stale token, or a request that is not from this server's page.
 OUT_OF_DATE = "This page is out of date: reload it."
 NOT_OURS = "Refused: not a request from this page."
+
+
+def export_name(project: pathlib.Path) -> str:
+    """The file name a download of the page gets: the project's folder name, safe as a header."""
+    name = "".join(c if c.isalnum() or c in "-_." else "-" for c in project.name) or "project"
+    return f"{name}.html"
 
 
 def data_dir(project: pathlib.Path) -> pathlib.Path:
@@ -91,6 +98,9 @@ class Handler(http.server.SimpleHTTPRequestHandler):
     #: Made at launch and written into the page this server serves; a POST must carry it back.
     token: str = ""
     lock = threading.Lock()
+    #: Held while a run is checked against the live ones and started, so two clicks cannot both
+    #: pass the check.
+    runs_lock = threading.Lock()
     #: Seconds a request may leave its socket idle. A body shorter than the length it declared
     #: would otherwise hold its thread until the client goes away.
     timeout = 5
@@ -165,6 +175,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._page()
         if self.path == "/api/health":
             return self._json(200, {"recheck": True, "project": str(self.project)})
+        if self.path == "/api/runs":
+            return self._json(200, {"runs": runs.listed(self.project, self.data)})
+        if self.path == "/api/export":
+            return self._export()
         if self.path.startswith("/api/file?"):
             return self._file(
                 urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query).get("path", [""])[0]
@@ -234,6 +248,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         return self._json(200, body)
 
     def _reproduce(self, body: dict) -> None:
+        if "only" not in body:
+            return self._json(400, {"ok": False, "error": "only must be given: null or a list"})
         only = body.get("only")
         declared = {
             r.get("id")
@@ -251,105 +267,43 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 400,
                 {"ok": False, "error": "only must be null or a list of declared step ids"},
             )
-        if not self.lock.acquire(blocking=False):
-            return self._json(409, {"ok": False, "error": "a check is already running"})
-        try:
-            self._stream_reproduce(only)
-        finally:
-            self.lock.release()
-
-    def _stream_reproduce(self, only: list[str] | None) -> None:
-        """Run `repro reproduce` and send each line it prints as it prints it, then what the
-        re-run recorded. The response has no length, so the connection closes when it ends.
-
-        A page that goes away mid-run (a reload, a closed tab) does not stop the run: it goes on to
-        the end, is recorded, and the page's data is rebuilt, so the next load shows it."""
-        args = ["reproduce", *[x for i in (only or []) for x in ("--only", i)]]
-        record = self.project / ".repro" / "reproductions.jsonl"
-        before = record.read_text().count("\n") if record.exists() else 0
-        self.send_response(200)
-        self.send_header("Content-Type", "application/x-ndjson")
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-        self.close_connection = True
-        gone = False
-
-        def send(event: dict) -> None:
-            nonlocal gone
-            if gone:
-                return
+        argv = [
+            build_graph.tool("repro"),
+            "reproduce",
+            *[x for i in (only or []) for x in ("--only", i)],
+            str(self.project / "repro.yaml"),
+        ]
+        with self.runs_lock:  # not the build's lock: a run starts while the page re-reads
             try:
-                self.wfile.write((json.dumps(event) + "\n").encode())
-                self.wfile.flush()
-            except (BrokenPipeError, ConnectionResetError):
-                gone = True
+                run = runs.start(self.project, self.data, argv, only)
+            except runs.Busy as e:
+                return self._json(409, {"ok": False, "error": str(e), "run": e.run["run_id"]})
+            except OSError as e:  # `repro` could not be started at all
+                return self._json(500, {"ok": False, "error": f"repro could not be started: {e}"})
+        return self._json(200, {"ok": True, "run": run})
 
-        send({"line": "$ repro " + " ".join(args)})
-        started = time.monotonic()
-        try:
-            proc = subprocess.Popen(
-                [build_graph.tool("repro"), *args, str(self.project / "repro.yaml")],
-                cwd=self.project,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-                bufsize=1,
-                env={**os.environ, "PYTHONUNBUFFERED": "1"},
-            )
-        except OSError as e:  # `repro` could not be started at all
-            send({"done": True, "ok": False, "error": f"repro could not be started: {e}"})
-            return
-        # A step that prints nothing still has to stop: the timer kills it, which ends the read.
-        watchdog = threading.Timer(REPRODUCE_TIMEOUT, proc.kill)
-        watchdog.start()
-        try:
-            for line in proc.stdout:  # read to the end even once the page has gone
-                send({"line": line.rstrip("\n")})
-        finally:
-            watchdog.cancel()
-            exit_code = proc.wait()
-        seconds = round(time.monotonic() - started, 2)
-        if seconds >= REPRODUCE_TIMEOUT:
-            send({"line": f"stopped after {REPRODUCE_TIMEOUT} seconds"})
-        try:
-            lines = record.read_text().splitlines() if record.exists() else []
-            steps = json.loads(lines[-1]).get("regenerations", []) if len(lines) > before else []
-            rebuilt = time.monotonic()
-            build_graph.build(
-                self.project, self.data / "graph.json", self.groups, check=False, fetch=self.fetch
-            )
-            rebuild_seconds = round(time.monotonic() - rebuilt, 2)
-        except Exception as e:  # the re-run ended; say what failed after it, not a lost connection
-            send(
-                {
-                    "done": True,
-                    "ok": False,
-                    "exit_code": exit_code,
-                    "seconds": seconds,
-                    "error": f"the re-run ended, but reading its record failed: {e}",
-                }
-            )
-            return
-        states = [r.get("state") for r in steps]
-        send(
-            {
-                "done": True,
-                "ok": bool(steps),
-                "exit_code": exit_code,
-                "seconds": seconds,
-                "rebuild_seconds": rebuild_seconds,
-                "counts": {k: states.count(k) for k in set(states)},
-                "steps": [
-                    {
-                        "id": r.get("regeneration_id"),
-                        "state": r.get("state"),
-                        "seconds": r.get("duration_seconds"),
-                    }
-                    for r in steps
-                ],
-                "error": "" if steps else "repro reproduce recorded no re-run",
-            }
+    def _stop(self, body: dict) -> None:
+        run_id = body.get("run")
+        if not isinstance(run_id, str) or not runs.stop(self.data, run_id):
+            return self._json(404, {"ok": False, "error": "no such run is going"})
+        return self._json(200, {"ok": True})
+
+    def _export(self) -> None:
+        """The page as one file, as `repro ui --export` writes it, with the data as of now."""
+        data = export.export_html(
+            pathlib.Path(self.directory),
+            (self.data / "graph.json").read_bytes(),
+            self.project.name,
+        ).encode()
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header(
+            "Content-Disposition", f'attachment; filename="{export_name(self.project)}"'
         )
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
 
     def do_POST(self) -> None:
         refused = self._refusal()
@@ -362,6 +316,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             return self._json(e.status, {"ok": False, "error": e.error})
         if self.path == "/api/reproduce":
             return self._reproduce(body)
+        if self.path == "/api/stop":
+            return self._stop(body)
         if self.path not in {"/api/refresh", "/api/verify"}:
             return self._json(404, {"error": "not found"})
         if not self.lock.acquire(blocking=False):
@@ -374,6 +330,7 @@ class Handler(http.server.SimpleHTTPRequestHandler):
                 self.groups,
                 check=self.path == "/api/verify",
                 fetch=self.fetch,
+                presubmit=self.path == "/api/verify" and body.get("presubmit") is True,
             )
             self._json(
                 200,
@@ -413,6 +370,13 @@ def main(argv: list[str] | None = None) -> int:
         help="look up no DOI landing page; only those already cached are linked",
     )
     ap.add_argument("--no-browser", action="store_true", help="print the address and open nothing")
+    ap.add_argument(
+        "--export",
+        type=pathlib.Path,
+        metavar="DIR_OR_FILE.html",
+        help="write the page as one read-only .html file (DIR/index.html, or the .html named) "
+        "and serve nothing",
+    )
     a = ap.parse_args(argv)
     project = a.project.resolve()
     if not (project / "repro.yaml").is_file():
@@ -423,6 +387,16 @@ def main(argv: list[str] | None = None) -> int:
             f"the page is not built: no {DIST / 'index.html'}. In packages/ui/web: npm ci && npm run build"
         )
         return 2
+    if a.export is not None:
+        data = data_dir(project)
+        print(f"reading {project} ...")
+        build_graph.build(project, data / "graph.json", a.groups, check=False, fetch=not a.offline)
+        out = a.export if a.export.suffix.lower() in (".html", ".htm") else a.export / "index.html"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        page = export.export_html(DIST, (data / "graph.json").read_bytes(), project.name)
+        out.write_text(page, encoding="utf-8")
+        print(f"wrote {out}")
+        return 0
     Handler.project = project
     Handler.groups = a.groups
     Handler.data = data_dir(project)
