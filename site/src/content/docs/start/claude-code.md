@@ -78,3 +78,5 @@ Verification runs from the command line:
 pip install reproducible-science
 repro verify
 ```
+
+See the [Claude Code plugin](/agents/claude-code-plugin/) page for more information.

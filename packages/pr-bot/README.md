@@ -17,4 +17,4 @@ reproducible-science-pr-bot post    # after the check: comments; checks out noth
 reproducible-science-pr-bot reply   # on a reply: records the answer; checks out nothing
 ```
 
-Documentation: <https://reproducible.science/tools/repro/#a-bot-on-pull-requests>
+Documentation: <https://reproducible.science/automation/pr-bot/>

@@ -90,6 +90,7 @@ export default defineConfig({
             { label: "Citations", link: "/tools/citations/", attrs: { "data-tool": "citations" } },
             { label: "Repro", link: "/tools/repro/", attrs: { "data-tool": "repro" } },
             { label: "Claims", link: "/tools/claims/", attrs: { "data-tool": "claims" } },
+            { label: "repro ui", link: "/tools/ui/" },
           ],
         },
         {
@@ -114,6 +115,7 @@ export default defineConfig({
           label: "Automation",
           items: [
             { label: "GitHub CI", link: "/automation/github-ci/" },
+            { label: "Pull-request bot", link: "/automation/pr-bot/" },
             { label: "Badges", link: "/tools/repro/#badges-with-counts" },
           ],
         },
