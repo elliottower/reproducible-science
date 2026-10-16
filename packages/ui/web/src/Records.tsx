@@ -54,13 +54,13 @@ export function PreregTab({ graph, focus }: { graph: Graph; focus?: Focus | null
   return (
     <div className="rec">
       <Head cmd="prereg" line={line.text}
-        what="A preregistration is the analysis plan, frozen against a commit and a content hash before the analysis runs. Every later change is logged as an amendment or a deviation. Optional: a project without a plan is not failing." />
+        what="A preregistration states the analysis before it runs, frozen against a commit and a content hash. Every later change is logged as an amendment or a deviation. Optional: a project without a preregistration is not failing." />
       {line.next === 'prereg new' && (
         <p className="rec-next">To preregister: <span className="mono">prereg new</span>, then <span className="mono">prereg freeze</span>.</p>
       )}
       {plans.length > 0 && (
         <table>
-          <thead><tr><th>Plan</th><th>State</th><th>Frozen</th><th>Commit</th></tr></thead>
+          <thead><tr><th>Preregistration</th><th>State</th><th>Frozen</th><th>Commit</th></tr></thead>
           <tbody>
             {plans.map((p) => {
               const [label, tone] = PLAN_STATE[p.check] ?? [p.check, 'none']
@@ -82,9 +82,9 @@ export function PreregTab({ graph, focus }: { graph: Graph; focus?: Focus | null
       {diff && (
         <aside className="panel">
           <button className="close" onClick={() => setDiff(null)}>×</button>
-          <div className="kicker">PLAN</div>
+          <div className="kicker">PREREGISTRATION</div>
           <h2 className="mono">{diff.path}</h2>
-          <DiffView issue={diff.issue} path={diff.path} label="The frozen plan against the file now" />
+          <DiffView issue={diff.issue} path={diff.path} label="The frozen preregistration against the file now" />
         </aside>
       )}
       <pre className="rec-pre">{t?.used ? t.output : 'No PREREG.md'}</pre>

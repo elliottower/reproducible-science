@@ -190,7 +190,7 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
           <input
             className="search"
             placeholder={({
-              prereg: 'Search plans', results: 'Search runs, notes and files', citations: 'Search sources, quotations and interpretations',
+              prereg: 'Search preregistrations', results: 'Search runs, notes and files', citations: 'Search sources, quotations and interpretations',
               claims: 'Search claims, sections and files', reproduce: 'Search rebuild steps and commands', graph: 'Search files, sections, claim text… (e.g. 1,062 or timings)',
             } as Record<string, string>)[mode] ?? 'Search'}
             value={query}

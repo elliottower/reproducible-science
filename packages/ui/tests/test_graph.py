@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import pathlib
+import re
 import urllib.request
 
 import pytest
@@ -353,3 +355,29 @@ def test_a_project_in_a_subfolder_finds_the_commit_of_each_sealed_file_despite_s
         "-second",
         "+third",
     ]
+
+
+def test_the_page_says_preregistration_never_plan(kept, tmp_path):
+    # The sentences graph.py writes for the page: every string literal that holds a space.
+    tree = ast.parse(pathlib.Path(graph.__file__).read_text())
+    docstrings = {
+        id(node.body[0].value)
+        for node in ast.walk(tree)
+        if isinstance(node, (ast.Module, ast.FunctionDef, ast.ClassDef))
+        and node.body
+        and isinstance(node.body[0], ast.Expr)
+        and isinstance(node.body[0].value, ast.Constant)
+    }
+    sentences = [
+        node.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and " " in node.value
+        and id(node) not in docstrings
+    ]
+    assert [s for s in sentences if re.search(r"\bplans?\b", s, re.I)] == []
+    # And what a project with a changed preregistration actually shows.
+    g = built(kept, tmp_path / "out")
+    shown = [f"{r['title']} {r['note']}" for r in g["issues"]]
+    assert [s for s in shown if re.search(r"\bplans?\b", s, re.I)] == []

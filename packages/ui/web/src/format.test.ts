@@ -101,7 +101,7 @@ describe('status lines', () => {
     }
     expect(statusLines(failing).map(lineText)).toEqual([
       'prereg: 1/2 frozen, 1 changed since frozen',
-      'results: 70/72 runs sealed, 3 files changed since sealed',
+      'results: 70/72 runs sealed, 3 files changed after sealing',
       'citations: 1,292/1,293 quotes verified, 1 not found',
       'claims: 528/531 verified',
       'repro: 20/20 reproduced',
@@ -136,7 +136,7 @@ describe('status lines', () => {
     expect(l.tone).toBe('bad')
   })
 
-  it('asks for a freeze, not a new plan, when a plan is drafted and not frozen', () => {
+  it('asks for a freeze, not a new preregistration, when one is drafted and not frozen', () => {
     const l = statusLine('prereg', { prereg: { state: 'read', plans: 1, frozen: 0, changed: 0, drafts: 1, amendments: 0, ok: false } })
     expect(lineText(l)).toBe('prereg: 0/1 frozen  →  prereg freeze')
     expect(l.tone).toBe('warn')

@@ -53,7 +53,7 @@ export function statusLine(key: StatusKey, s: Status | undefined): Line {
     const runs = f.runs ?? 0
     const sealed = f.sealed ?? 0
     const parts = [runs ? `${fmt(sealed)}/${fmt(runs)} runs sealed` : 'no runs recorded']
-    if (f.changed) parts.push(`${plural(f.changed, 'file', 'files')} changed since sealed`)
+    if (f.changed) parts.push(`${plural(f.changed, 'file', 'files')} changed after sealing`)
     return { key, text: parts.join(', '), tone: f.changed ? 'bad' : sealed < runs ? 'warn' : 'good' }
   }
   if (key === 'citations') {
@@ -93,7 +93,7 @@ export const ASK_FIRST =
 /** What to look at, and the options to lay out, for each kind of issue. */
 const LOOK: Record<string, [string, string]> = {
   'prereg-changed': [
-    'The record in the .prereg/ folder beside each plan names the commit and the sha256 of the frozen text. Compare that commit\'s copy of the plan with the file now, and say what changed and whether it reads as a deliberate change to the plan.',
+    'The record in the .prereg/ folder beside each preregistration names the commit and the sha256 of the frozen text. Compare that commit\'s copy of the preregistration with the file now, and say what changed and whether it reads as a deliberate change to the preregistration.',
     'logging an amendment that covers the change, or restoring the frozen text',
   ],
   'prereg-pinned-changed': [

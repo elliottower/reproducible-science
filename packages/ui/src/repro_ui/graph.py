@@ -1228,7 +1228,7 @@ def issues(
         row(
             "prereg-unread",
             "prereg",
-            "the plans could not be read",
+            "the preregistrations could not be read",
             said[-1] if said else "",
             [{"label": "Prereg", "open": {"tab": "prereg"}}],
         )
@@ -1242,8 +1242,8 @@ def issues(
             "prereg",
             f"{changed[0]['path']} changed after it was frozen"
             if len(changed) == 1
-            else f"{len(changed)} plans changed after they were frozen",
-            "The plan on disk is not the text that was frozen.",
+            else f"{len(changed)} preregistrations changed after they were frozen",
+            "The preregistration on disk is not the text that was frozen.",
             [
                 {
                     "label": p["path"],
@@ -1299,8 +1299,8 @@ def issues(
             "prereg",
             f"{drafted[0]['path']} has an amendment that is not frozen"
             if len(drafted) == 1
-            else f"{len(drafted)} plans have an amendment that is not frozen",
-            "An amendment beside the plan has no freeze record.",
+            else f"{len(drafted)} preregistrations have an amendment that is not frozen",
+            "An amendment beside the preregistration has no freeze record.",
             [{"label": p["path"], "open": {"tab": "prereg"}} for p in drafted],
         )
     never = [p for p in plans if p["pinned_by"] == "freeze" and not p["frozen"]]
@@ -1310,7 +1310,7 @@ def issues(
             "prereg",
             f"{never[0]['path']} was never frozen"
             if len(never) == 1
-            else f"{len(never)} plans were never frozen",
+            else f"{len(never)} preregistrations were never frozen",
             "A draft has no frozen text to compare against.",
             [{"label": p["path"], "open": {"tab": "prereg"}} for p in never],
         )
