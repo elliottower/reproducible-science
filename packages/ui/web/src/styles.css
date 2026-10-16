@@ -479,3 +479,12 @@ td.clickable:hover .claim-cell { color: var(--text); }
 /* Every control on the bar's right side shares one height and centre line. */
 .top .dd, .top .issues { display: flex; align-items: center; }
 .top .btn { height: 28px; display: inline-flex; align-items: center; padding-top: 0; padding-bottom: 0; font-size: 12px; box-sizing: border-box; }
+
+/* Paired buttons: a primary beside a secondary, in every row that holds them, one size and one
+   centre line. The old `.primary` rule (a margin and no border) never applies to them. */
+.btn.primary { margin-bottom: 0; border: 1px solid var(--accent); border-radius: 7px; }
+.rp-head, .rp-actions, .pa, .issue-actions, .confirm-actions { display: flex; align-items: center; }
+:is(.rp-head, .rp-actions, .pa, .issue-actions, .confirm-actions) > :is(.btn, .repro-main, .copy-prompt, .plain) {
+  height: 28px; box-sizing: border-box; display: inline-flex; align-items: center; justify-content: center;
+  padding: 0 12px; margin: 0; font-size: 12px; font-weight: 500; line-height: 1; border-radius: 7px;
+}
