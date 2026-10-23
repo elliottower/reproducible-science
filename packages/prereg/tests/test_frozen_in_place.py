@@ -204,7 +204,7 @@ def test_each_format_in_one_project_is_checked_under_its_own_rule(study):
     for plan in (study / "PREREG.md", top / "later" / "PREREG.md"):
         plan.chmod(0o644)
         plan.write_text(plan.read_text() + "\n")
-    document.write_text(document.read_text() + "\nA note added after the freeze.\n")
+    document.write_text(document.read_text() + "\n2026-07-09  A note added after the freeze.\n")
     r = run(["check"], top)
     assert r.returncode == 1
     lines = r.stdout.splitlines()
@@ -235,7 +235,7 @@ def test_the_index_may_not_hold_an_edit_to_a_document_frozen_by_a_commit_line(tm
     )
     commit(tmp_path, "record the commit")
 
-    document.write_text(document.read_text() + "\nA note added after the freeze.\n")
+    document.write_text(document.read_text() + "\n2026-07-09  A note added after the freeze.\n")
     git(tmp_path, "add", "-A")
     assert run(["check", "--staged"], tmp_path).returncode == 0, (
         "lines added at the end are allowed"

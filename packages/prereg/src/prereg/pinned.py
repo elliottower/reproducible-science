@@ -61,6 +61,14 @@ Neither line excuses a document that names a commit: that one is compared. Its h
 of the compared text, so adding either line to it after the freeze is itself an edit, and is
 reported as changed.
 
+Lines added after the frozen text are `appended` only where they are a log: dated entries,
+their indented continuations, and the fences, table rules and log headings they sit in. Other
+text added there is new plan text the commit line does not cover, and is `changed`.
+
+The commit line is fixed once it names a commit. Pointing it at a later commit that holds an
+edited text makes the edit compare as unchanged, so the line is also read through the
+document's history, and one that named another commit in any committed version is `changed`.
+
 Leaving the record out is also the limit of the check. Text written onto the record line after
 the hash is not compared, as a `**Status:**` line is not hashed in a plan `prereg freeze` froze.
 
@@ -192,6 +200,45 @@ def _appended(old: list[str], new: list[str]) -> bool:
     return bool(FENCE.match(old[-1])) and new[-1] == old[-1] and new[: len(old) - 1] == old[:-1]
 
 
+#: A log entry: its date first, after a list marker, a table cell's bar or bold, if any.
+DATED = re.compile(r"^[ \t]*(?:[-*+][ \t]+|\|[ \t]*)?(?:\*\*|`)?\d{4}-\d{2}-\d{2}")
+#: A heading that opens a log: `## Log`, `## Deviations`, `### Deviation log`, `## Changelog`.
+LOG_HEADING = re.compile(
+    r"^#{1,6}[ \t]+(?:[\w-]+[ \t]+)?(?:log|deviations?|changelog|updates?)(?:[ \t]+log)?[ \t]*$",
+    re.I,
+)
+#: The rule under a table's header row: `|---|:---:|`.
+TABLE_RULE = re.compile(r"^[ \t]*\|[ \t:|-]+\|?[ \t]*$")
+
+
+def _not_a_log(added: list[str]) -> str | None:
+    """The first of `added` that is not part of a log, or None where every line is.
+
+    What a log adds is dated entries: lines that start with a date, an indented line that
+    continues one, and the scaffolding a log is written in -- a fence, a heading naming a log,
+    a table's header row and its rule. Anything else added after a freeze is new plan text,
+    such as a criteria section, which the commit line does not cover.
+    """
+    entry = False
+    for i, line in enumerate(added):
+        following = added[i + 1] if i + 1 < len(added) else ""
+        if DATED.match(line):
+            entry = True
+        elif line[:1] in (" ", "\t") and line.strip() and entry:
+            continue
+        elif (
+            not line.strip()
+            or FENCE.match(line)
+            or LOG_HEADING.match(line)
+            or TABLE_RULE.match(line)
+            or (line.lstrip().startswith("|") and TABLE_RULE.match(following))
+        ):
+            entry = False
+        else:
+            return line
+    return None
+
+
 def compare(
     path: pathlib.Path, commit: str, frozen: str, current: Lines, statuses: list[str]
 ) -> Pinned:
@@ -211,7 +258,21 @@ def compare(
         return Pinned(path, UNCHANGED, commit, note)
     if _appended(old, new):
         added = f"{_count(len(new) - len(old))} added after the frozen text"
-        return Pinned(path, APPENDED, commit, (added, *note))
+        inside = new[len(old) - 1 : -1] if new[: len(old)] != old else new[len(old) :]
+        stray = _not_a_log(inside)
+        if stray is None:
+            return Pinned(path, APPENDED, commit, (added, *note))
+        return Pinned(
+            path,
+            CHANGED,
+            commit,
+            (
+                f"{added}, and they are not log entries: a log entry starts with its date",
+                f"+ {stray[:100]}",
+                "text added to a frozen registration is an amendment, in a document of its own",
+                *note,
+            ),
+        )
 
     edits = [
         op
@@ -258,7 +319,45 @@ def check_document(
     if frozen is None:
         why = f"{shown} is not in commit {named}, so nothing was compared"
         return Pinned(shown, UNKNOWN, named, (why,))
-    return compare(shown, named, frozen, body, statuses)
+    result = compare(shown, named, frozen, body, statuses)
+    repointed = _repointed(here, path, named)
+    if repointed:
+        return Pinned(shown, CHANGED, named, (repointed, *result.detail))
+    return result
+
+
+def _named_commit(here: pathlib.Path, text: str, cache: dict[str, str]) -> str | None:
+    """The full commit a version of a document names on its commit line, or None where it names
+    none. A value git cannot resolve is kept as written, lowercased."""
+    values = split_record(text)[1]
+    named = next((m.group(1) for m in map(HASH.match, values) if m), None)
+    if named is None:
+        return None
+    if named not in cache:
+        full = try_run("rev-parse", "--verify", "--quiet", f"{named}^{{commit}}", cwd=here)
+        cache[named] = full or named.lower()
+    return cache[named]
+
+
+def _repointed(here: pathlib.Path, path: pathlib.Path, named: str) -> str | None:
+    """Where the commit line of `path` once named a different commit, what it named and where.
+
+    The commit a registration was frozen at is fixed once it is written. Pointing the line at a
+    later commit that holds an edited text makes the edit compare as unchanged, and only the
+    document's history shows it. The same commit at another length is the same commit.
+    """
+    listed = try_run("log", "--format=%H", "--full-history", "--", f"./{path.as_posix()}", cwd=here)
+    cache: dict[str, str] = {}
+    now = _named_commit(here, f"**Commit SHA:** {named}", cache)
+    for commit in reversed((listed or "").split()):
+        text = try_run("show", f"{commit}:./{path.as_posix()}", cwd=here)
+        was = _named_commit(here, text, cache) if text is not None else None
+        if was is not None and was != now:
+            return (
+                f"its commit line named {was[:12]} in commit {commit[:12]} and names "
+                f"{named[:12]} now: the commit a registration was frozen at never changes"
+            )
+    return None
 
 
 def _header_line(text: str, key: re.Pattern[str]) -> re.Match[str] | None:
@@ -473,6 +572,22 @@ def _disposition(
     at = f" at {head.result.commit}" if head.result.commit else ""
     by = f"a draft never frozen; says it is superseded by {names}, which is {status}{at}"
     return Pinned(path, SUPERSEDED, "", (by,)), head
+
+
+def any_below(here: pathlib.Path) -> bool:
+    """Whether git tracks a commit-pinned document at or below `here`, as `check_below` lists
+    them, without checking any."""
+    prefix = try_run("rev-parse", "--show-prefix", cwd=here)
+    top = try_run("rev-parse", "--show-toplevel", cwd=here)
+    if prefix is None or top is None:
+        return False
+    listed = try_run("ls-files", "-z", "--full-name", "--", "*.md", cwd=pathlib.Path(top)) or ""
+    for name in listed.split("\0"):
+        path = pathlib.Path(top) / name
+        if name.startswith(prefix) and path.name != PREREG and path.is_file():
+            if split_record(path.read_text(errors="replace"))[1]:
+                return True
+    return False
 
 
 def check_below(
