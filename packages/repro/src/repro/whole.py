@@ -143,8 +143,11 @@ def strict_failures(
 
     Nothing is run again: the claims report, the staleness report and the coverage findings
     are graded a second time under `strict`, and a finding counts where `strict` makes it an
-    error and `policy` did not. Empty under `strict`. A check that grades by policy adds its
-    own findings here, so the line `repro verify` closes on counts them too.
+    error and `policy` did not. The claims report carries the notes on `reported` values
+    (a coarse precision, a loose tolerance), so they count here as graded. What `results` and
+    `citations` pass and fail only under their own `--strict` is added from their accounts.
+    Empty under `strict`. A check that grades by policy adds its own findings here, so the line
+    `repro verify` closes on counts them too.
     """
     if policy.name == STRICT.name:
         return ()
@@ -167,7 +170,56 @@ def strict_failures(
         found += [
             v for v in strict if v.severity is Severity.ERROR and (v.rule, v.subject) not in failed
         ]
-    return tuple(found)
+    return (*found, *_tool_strict(project))
+
+
+def _tool_strict(project: Project) -> list[Violation]:
+    """What a tool reports and passes, and fails under its own `--strict`: a claim printing
+    numbers its run's outputs do not hold, a claim whose run's outputs were all retired and a
+    timestamp proof history holds and the disk does not, from `results verify`; and a found
+    quotation carrying a warning `citations verify --strict` fails, or a pin finding it fails."""
+
+    def error(rule: str, subject: str, detail: str) -> Violation:
+        return Violation(severity=Severity.ERROR, rule=rule, subject=subject, detail=detail)
+
+    found = []
+    results = project.tools.get("results")
+    if results is not None and results.command:
+        for account in (results.account, *results.account.get("nested", [])):
+            found += [
+                error(
+                    "results.claim_numbers_not_in_outputs",
+                    str(c.get("run_id")),
+                    f"{', '.join(c.get('numbers', []))} in: {c.get('claim', '')}",
+                )
+                for c in account.get("claims_numbers_not_in_outputs", [])
+            ]
+            found += [
+                error("results.claim_on_retired_outputs", "", str(claim))
+                for claim in account.get("claims_on_retired_outputs", [])
+            ]
+            found += [
+                error("results.timestamp_proof_missing", str(p.get("path")), "deleted from disk")
+                for p in account.get("missing_proofs", [])
+            ]
+    citations = project.tools.get("citations")
+    if citations is not None and citations.command:
+        account = citations.account
+        failing = set(account.get("strict_warnings", []))
+        found += [
+            error(
+                f"citations.{warning.replace(' ', '_')}", str(q.get("claim")), str(q.get("quote"))
+            )
+            for warning, quotes in account.get("warnings", {}).items()
+            if warning in failing
+            for q in quotes
+            if q.get("state") == "found"
+        ]
+        found += [
+            error("citations.pins", str(f.get("file")), str(f.get("finding")))
+            for f in account.get("strict_findings", [])
+        ]
+    return found
 
 
 def _strict_said(failures: tuple[Violation, ...], policy: Policy) -> str:

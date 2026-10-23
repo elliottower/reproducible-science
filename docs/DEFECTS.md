@@ -10,10 +10,10 @@ marked withdrawn and keeps its number.
 
 | | |
 |---|---|
-| **Pinning and extraction** | RD-001 – RD-005, RD-021 |
+| **Pinning and extraction** | RD-001 – RD-005, RD-022 |
 | **Repository structure** | RD-006 – RD-011 |
 | **Manuscript** | RD-012 – RD-015 |
-| **Tooling** | RD-016 – RD-021 |
+| **Tooling** | RD-016 – RD-021, RD-023 |
 
 ---
 
@@ -82,7 +82,7 @@ bibliography, seven more from the citation library's own records, two from arXiv
 recorded in `note` fields, and six by fetching the candidate page and confirming a distinctive
 string from the pinned text appeared on it.
 
-### RD-021 — A quotation that resolves without the words that govern it
+### RD-022 — A quotation that resolves without the words that govern it
 
 **Detected by** `citations verify` (`after negation`, `after hedge`, `quoted in source`,
 `references`, `joined`, `invisible`), and `citations coverage` for an ellipsis that leaves out
@@ -345,7 +345,7 @@ backdated commit, a commit line pointed at a later edited commit, and a freeze d
 backdated with `GIT_COMMITTER_DATE`, which let a plan frozen after the outcomes were seen protect
 a confirmatory claim.
 
-### RD-021 — A re-run that reads the answer it is compared against
+### RD-023 — A re-run that reads the answer it is compared against
 
 **Detected by** running the declared command with its pinned output out of reach.
 

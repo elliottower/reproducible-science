@@ -498,3 +498,46 @@ def test_a_stale_claim_is_counted_among_what_strict_would_fail(project, capsys):
     capsys.readouterr()
     assert main(["verify"]) == 0
     assert "2 of 2 checks passed (default policy; strict: 1 failure)" in capsys.readouterr().out
+
+
+def test_a_claim_number_its_run_does_not_hold_is_counted_among_what_strict_would_fail(
+    project, capsys
+):
+    ledger()
+    assert main(["results", "claim", "The total was 9.913.", "--run-id", "r1"]) == 0
+    pin_manifest(project)
+    code, found = verified(capsys)
+    assert code == 0
+    assert found["project"]["checks"]["results"] == "passed"
+    (failure,) = found["project"]["strict_failures"]
+    assert (failure["rule"], failure["subject"]) == ("results.claim_numbers_not_in_outputs", "r1")
+
+    assert main(["verify"]) == 0
+    out = capsys.readouterr().out
+    assert "2 of 2 checks passed (default policy; strict: 1 failure)" in out
+
+
+def test_a_coarse_reported_value_is_counted_among_what_strict_would_fail(project, capsys):
+    (project / "figures.json").write_text(json.dumps({"total": 6.4}, indent=2))
+    pin_manifest(project, reported="6")
+    code, found = verified(capsys)
+    assert code == 0
+    assert [v["rule"] for v in found["project"]["strict_failures"]] == ["evidence.coarse_precision"]
+
+
+def test_a_quotation_found_after_a_negation_is_counted_among_what_strict_would_fail(
+    project, capsys
+):
+    cite(project, "smith", quote="the treatment reduced mortality in every subgroup")
+    (project / "sources" / "smith.txt").write_text(
+        "We found no evidence that the treatment reduced mortality in every subgroup we "
+        "examined across the three sites.\n"
+    )
+    document = yaml.safe_load((project / "claims" / "smith.yaml").read_text())
+    document["source"]["sha256"] = Digest.of_file(project / "sources" / "smith.txt").value
+    (project / "claims" / "smith.yaml").write_text(yaml.safe_dump(document))
+    pin_manifest(project)
+    code, found = verified(capsys)
+    assert code == 0
+    assert found["project"]["checks"]["citations"] == "passed"
+    assert [v["rule"] for v in found["project"]["strict_failures"]] == ["citations.after_negation"]
