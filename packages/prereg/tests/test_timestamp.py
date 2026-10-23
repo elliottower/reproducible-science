@@ -242,3 +242,16 @@ def test_a_plan_frozen_in_place_is_stamped_and_dated_as_before(in_place, calenda
     assert cli.main(["timestamp"]) == 0
     assert "Bitcoin block 915000, 2025-10-03 14:00 UTC" in capsys.readouterr().out
     assert in_place.read_bytes() == written
+
+
+def test_a_committed_proof_deleted_is_reported_as_deleted_not_owed(plan, calendars, capsys):
+    assert cli.main(["freeze"]) == 0
+    git("add", "-A", cwd=plan.parent.parent)
+    git("commit", "-q", "-m", "freeze", cwd=plan.parent.parent)
+    plan.with_name("PREREG.md.ots").unlink()
+    capsys.readouterr()
+
+    assert cli.main(["check"]) == 0
+    out = capsys.readouterr().out
+    assert "timestamp  DELETED. PREREG.md.ots was committed in" in out
+    assert "owed" not in out

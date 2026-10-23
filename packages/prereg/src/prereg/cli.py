@@ -683,6 +683,12 @@ def _check_in_place(path: pathlib.Path) -> int:
     return _report_timestamp(path, found.frozen)
 
 
+def _committed_proof(proof: pathlib.Path) -> str | None:
+    """The commit that added `proof`, where history holds one; None where no commit did."""
+    added = try_run("log", "--diff-filter=A", "--format=%H", "--", proof.name, cwd=proof.parent)
+    return added.split()[-1] if added else None
+
+
 def _report_timestamp(path: pathlib.Path, digest: str, owed: bool = False) -> int:
     """One line on the freeze's outside timestamp, read from the proof with no network.
 
@@ -693,7 +699,12 @@ def _report_timestamp(path: pathlib.Path, digest: str, owed: bool = False) -> in
     """
     proof = proof_path(path)
     if not proof.exists():
-        if owed:
+        if added := _committed_proof(proof):
+            # A proof deleted after it was committed read as `owed`, the state of a freeze
+            # whose calendars could not be reached, and nothing said the date had existed.
+            print(f"  timestamp  DELETED. {proof.name} was committed in {added[:12]} and is")
+            print(f"             not on disk: `git checkout {added[:12]} -- {proof.name}`.")
+        elif owed:
             print("  timestamp  owed. `prereg timestamp` completes it.")
         else:
             print("  timestamp  none. `prereg timestamp` makes one.")
