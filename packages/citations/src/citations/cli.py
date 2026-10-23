@@ -29,7 +29,7 @@ import pathlib
 from provenance_core import atomic_write, hint
 
 from citations import coverage as C
-from citations import extraction_cache, paths, projects, tracked, web
+from citations import extraction_cache, paths, pinlog, projects, tracked, web
 from citations import verify as V
 from citations.entry import DELEGATED
 from citations.entry import delegate as _delegate
@@ -54,6 +54,15 @@ WARNINGS = {
     "page": "found, but not on the page recorded",
     "page unchecked": "a page is recorded and was not checked: the source has no pages to ask "
     "for, or the passage matched only with spacing ignored",
+    "joined": "matched only by joining what the source separates, or splitting a word into a "
+    "negation — the words differ",
+    "after negation": "begins mid-sentence after a negation in the source — the source may "
+    "say the opposite",
+    "after hedge": "begins mid-sentence after a hedge in the source — `may`, `whether`, `suggest`",
+    "quoted in source": "inside quotation marks in the source — the words of someone it quotes",
+    "references": "found only in the source's reference list",
+    "superscript": "matched after folding changed a superscript or subscript",
+    "invisible": "found only in text the PDF does not show — white, tiny or off the page",
 }
 
 
@@ -112,6 +121,48 @@ def _check_reading(rep: V.Report, cf: ClaimFile, artifact, allowed) -> None:
     derived = V.check_derived(text, cf.source.derived_sha256)
     if derived.state == "broken":
         rep.changed_readings.append((cf.name, derived))
+
+
+def _check_provenance(
+    rep: V.Report,
+    cf: ClaimFile,
+    present: bool,
+    first: dict[str, str],
+    held: dict[str, set[str]],
+    logging: bool,
+) -> int:
+    """Note what the pin log says of this claims file, and what an absent source's record is.
+
+    Returns how many of its quotations are against an absent source and in no log line, which
+    the caller reports once where there is no log at all. See `pinlog`.
+    """
+    name = cf.path.name if cf.path else f"{cf.name}.yaml"
+    current = (cf.source.sha256 or "").strip().lower()
+    if name in first and current and current != first[name]:
+        rep.findings.append(
+            (
+                cf.name,
+                f"pinned again against other bytes: first pinned at {first[name][:12]}, "
+                f"now names {current[:12]}",
+            )
+        )
+    quotes = [q.text for claim in cf.claims.values() for q in claim.quotes if q.text]
+    unlogged = [t for t in quotes if pinlog.quote_digest(t) not in held.get(name, set())]
+    if logging and unlogged and (name in held or not present):
+        rep.findings.append(
+            (cf.name, f"{len(unlogged)} quotation(s) no `citations pin` recorded in {pinlog.LOG}")
+        )
+    doi = pinlog.doi_shape((cf.source.model_extra or {}).get("doi"))
+    if present:
+        if doi:
+            rep.findings.append((cf.name, doi))
+        return 0
+    # Absent, as a source is on any clone: what can still be checked is that the record names
+    # something that could exist.
+    for wrong in (pinlog.sha256_shape(cf.source.sha256), doi):
+        if wrong:
+            rep.strict_findings.append((cf.name, f"source absent and its {wrong}"))
+    return len(unlogged)
 
 
 COVERAGE = ["covered", "uncovered", "unresolvable"]
@@ -224,6 +275,13 @@ def cmd_verify(a) -> int:
         if extraction_cache.enabled() and len(files) > 1:
             _extract_ahead(files, allowed)
         read: list[tuple[str, pathlib.Path]] = []
+        log = pinlog.read(root)
+        first, in_log = pinlog.first_pins(log), pinlog.logged(log)
+        for line in pinlog.rewritten(root):
+            rep.strict_findings.append(
+                (pinlog.LOG, f"a line was taken out of the log: {line[:90]}")
+            )
+        unlogged_absent = 0
         for cf in files:
             artifact = cf.artifact()
             missing = V.MISSING
@@ -247,10 +305,12 @@ def cmd_verify(a) -> int:
             elif pin.state == "unpinned":
                 rep.unpinned.append(cf.name)
             rep.sources += 1
-            if artifact is not None and artifact.is_file():
+            present = artifact is not None and artifact.is_file()
+            if present:
                 read.append((cf.name, artifact))
             else:
                 rep.absent_sources += 1
+            unlogged_absent += _check_provenance(rep, cf, present, first, in_log, bool(log))
             _check_reading(rep, cf, artifact, allowed)
             if cf.version_inferred:
                 rep.inferred.append((cf.name, cf.version_inferred))
@@ -282,6 +342,14 @@ def cmd_verify(a) -> int:
                     _record_extractor(rep, extractors, r)
                     if r.state != "found" or r.warnings:
                         rep.problems.append((f"{cf.name}:{cid}", q.text, r))
+        if unlogged_absent and not log:
+            rep.findings.append(
+                (
+                    pinlog.LOG,
+                    f"no pin log, so nothing records that the {unlogged_absent} quotation(s) "
+                    f"against absent sources went through `citations pin`",
+                )
+            )
         rep.counts = dict(counts)
         rep.extractors = dict(extractors)
         rep.from_cache = extraction_cache.hits()
@@ -328,7 +396,10 @@ def _warned(rep: V.Report) -> dict[str, list[dict[str, str]]]:
     out: dict[str, list[dict[str, str]]] = {}
     for slug, text, r in rep.problems:
         for w in r.warnings:
-            out.setdefault(w, []).append({"claim": slug, "quote": text, "state": r.state})
+            one = {"claim": slug, "quote": text, "state": r.state}
+            if note := r.notes.get(w):
+                one["note"] = note
+            out.setdefault(w, []).append(one)
     return out
 
 
@@ -352,6 +423,9 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
                     "unpinned_sources": len(rep.unpinned),
                     "skipped_files": len(rep.skipped),
                     "warnings": _warned(rep),
+                    "strict_warnings": sorted(V.STRICT_WARNINGS),
+                    "findings": [{"file": f, "finding": d} for f, d in rep.findings],
+                    "strict_findings": [{"file": f, "finding": d} for f, d in rep.strict_findings],
                 },
                 indent=2,
             )
@@ -472,8 +546,22 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
             if getattr(a, "verbose", False):
                 for one in which:
                     print(f"             {one['claim'][:38]:<40}{one['quote'][:60]}")
+                    if one.get("note"):
+                        print(f"               {one['note'][:160]}")
         if not getattr(a, "verbose", False):
             print("  `--verbose` lists the quotations carrying each warning.")
+        if strict := sorted(w for w in warned if w in V.STRICT_WARNINGS):
+            print(f"  `--strict` fails on {', '.join(strict)}.")
+
+    # About the records and not about any one quotation: a source pinned again against other
+    # bytes, quotations no `citations pin` recorded, a record of an absent source that names
+    # no sha256 or DOI there could be. See `pinlog`.
+    if rep.findings or rep.strict_findings:
+        print("\npins")
+        for name, said in rep.strict_findings:
+            print(f"  {name[:38]:<40}{said}  (fails --strict)")
+        for name, said in rep.findings:
+            print(f"  {name[:38]:<40}{said}")
 
     # About the sources and not about any quotation, so it sits apart from the counts above
     # and changes neither verdict: a tracked source resolves exactly as an untracked one does.
@@ -605,7 +693,22 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
             print(f"{len(rep.unpinned)} source(s) carry no digest: {', '.join(rep.unpinned[:3])}")
         if rep.skipped:
             print(f"{len(rep.skipped)} claims file(s) did not parse and were never examined.")
-        print("--strict fails on these: nothing was established about them either way.")
+        if rep.unresolved or rep.unpinned or rep.skipped:
+            print("--strict fails on these: nothing was established about them either way.")
+        if warned_strict := rep.strict_warned:
+            print(
+                f"\n{len(warned_strict)} quotation(s) found with a warning that says the record "
+                f"misstates the source:"
+            )
+            for slug, text, r in warned_strict[:20]:
+                print(f"  {', '.join(r.strict_warnings):<16}{slug[:30]:<32}{text[:44]}")
+                for w in r.strict_warnings:
+                    if note := r.notes.get(w):
+                        print(f"                {note[:160]}")
+            if len(warned_strict) > 20:
+                print(f"                ... and {len(warned_strict) - 20} more")
+        if rep.strict_findings:
+            print(f"{len(rep.strict_findings)} record(s) under `pins` above fail `--strict`.")
     return 0 if (rep.strict_ok if a.strict else rep.ok) else 1
 
 

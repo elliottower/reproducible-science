@@ -839,6 +839,13 @@ goes looking for a broken anchor.
 | `normalized` | `quote` | the passage matched only with spacing ignored (§3.1) |
 | `wrong_page` | `quote` | the passage is on another page than the one declared; the decision is a `mismatch` with reason `wrong_page` |
 | `page_unchecked` | `quote` | a `page` is declared and was not checked (§3.1) |
+| `joined` | `quote` | the passage matched only by joining two of the source's words or numbers into one, or splitting one into a negation: `notable` against `not able`, `12.5` against `1 2.5` |
+| `after_negation` | `quote` | the passage begins mid-sentence after a negation in its source, which may say the opposite of the passage quoted alone |
+| `after_hedge` | `quote` | the passage begins mid-sentence after a hedge in its source, such as `may`, `whether` or `suggest` |
+| `quoted_in_source` | `quote` | the passage sits inside quotation marks in its source, so the words are someone the source quotes |
+| `references` | `quote` | the passage is found only in the source's reference list |
+| `superscript` | `quote` | the passage matched after folding changed a superscript or subscript: `x²` as `x2` |
+| `invisible` | `quote` | the passage is found only in text the PDF does not show: white, under a point high, or off the page |
 | `positional_address` | `table`, `value` | the cell is addressed by row index, which names another cell once the table is reordered |
 
 `truncated` exists because *"an accuracy of 0.9"* genuinely occurs in a source reporting

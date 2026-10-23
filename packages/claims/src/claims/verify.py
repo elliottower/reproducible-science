@@ -220,6 +220,13 @@ _QUOTE_WARNINGS = {
     "normalized": Warning_.NORMALIZED,
     "page": Warning_.WRONG_PAGE,
     "page unchecked": Warning_.PAGE_UNCHECKED,
+    "joined": Warning_.JOINED,
+    "after negation": Warning_.AFTER_NEGATION,
+    "after hedge": Warning_.AFTER_HEDGE,
+    "quoted in source": Warning_.QUOTED_IN_SOURCE,
+    "references": Warning_.REFERENCES,
+    "superscript": Warning_.SUPERSCRIPT,
+    "invisible": Warning_.INVISIBLE,
 }
 
 
