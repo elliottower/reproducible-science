@@ -187,9 +187,23 @@ def _tool_lines(run: ci.ToolRun) -> list[str]:
         # What the tool itself flagged without failing, such as a freeze held to an access
         # floor lowered after the fact, so a pass does not hide it.
         flagged = [f"      note: {n}" for n in (run.account or {}).get("notes", [])]
-        return [f"  {run.check:<12} passed{note}  ({said})", *flagged]
+        return [f"  {run.check:<12} passed{note}  ({said})", *flagged, *_resealed(run)]
     lines = [f"  {run.check:<12} {run.outcome.upper()} (exit {run.exit})  ({said})"]
     return lines + [f"      {line}" for line in run.output.rstrip().splitlines()]
+
+
+def _resealed(run: ci.ToolRun) -> list[str]:
+    """Each path `results verify` passed as RESEALED, which a passing line would hide: a path
+    recorded under more than one hash is one a reader should see, though it does not fail."""
+    if run.check != "results":
+        return []
+    paths = [
+        f.get("path", "?")
+        for account in (run.account, *run.account.get("nested", []))
+        for f in account.get("files", [])
+        if f.get("state") == "resealed"
+    ]
+    return [f"      RESEALED   {path}  recorded under more than one hash" for path in paths]
 
 
 def _project_text(

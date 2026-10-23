@@ -30,7 +30,14 @@ try:
     # One source of truth for what counts as a number and what owes no run. The hook runs as
     # a bare script, so the package may not be importable; the fallbacks below keep it
     # working rather than silently doing nothing.
-    from results.manuscript import LAYOUT, NUMBER, SUFFIXES, constraining_digits, needs_no_claim
+    from results.manuscript import (
+        LAYOUT,
+        NUMBER,
+        SUFFIXES,
+        canonical,
+        constraining_digits,
+        needs_no_claim,
+    )
 except ImportError:  # pragma: no cover - exercised only outside an installed environment
     NUMBER = re.compile(
         r"(?<![\w.])(?:(?<![-‐‑‒–—])[-+])?"
@@ -71,6 +78,9 @@ except ImportError:  # pragma: no cover - exercised only outside an installed en
             return max(1, len(body.replace(".", "").lstrip("0")))
         return max(1, len(body.strip("0") or "0"))
 
+    def canonical(printed: str) -> str:
+        return printed.replace(",", "")
+
     def needs_no_claim(printed: str, line: str, at: int) -> str | None:
         if printed in _CONSTANTS:
             return "a constant of the formula"
@@ -106,7 +116,7 @@ def added_numbers(payload: dict) -> set[str]:
         for line in stripped.splitlines():
             for match in NUMBER.finditer(line):
                 if needs_no_claim(match.group(0), line, match.start()) is None:
-                    found.add(match.group(0))
+                    found.add(canonical(match.group(0)))
         return found
 
     return owing(after) - owing(before)
@@ -127,7 +137,7 @@ def bound_values(start: pathlib.Path) -> tuple[set[str], pathlib.Path] | None:
                     continue
                 record = json.loads(line)
                 if record.get("event") == "claim":
-                    found.update(NUMBER.findall(record.get("claim", "")))
+                    found.update(canonical(n) for n in NUMBER.findall(record.get("claim", "")))
             return found, ledger
         except (OSError, ValueError):
             return None

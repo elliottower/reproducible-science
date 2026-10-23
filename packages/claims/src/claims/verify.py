@@ -28,6 +28,7 @@ import statistics
 from collections.abc import Mapping
 from typing import Protocol
 
+from claims import reported
 from claims.adapters.base import Occurrence
 from claims.adapters.prose import GROUPED, placed
 from claims.adapters.reads import once, reading_once
@@ -1541,8 +1542,14 @@ def verify(
     with reading_once():
         states, paths = artifact_states(manifest)
         for claim in manifest.claims:
+            passages = [e.text for e in claim.evidence if isinstance(e, QuoteEvidence)]
             decisions = tuple(
-                check_evidence(claim, evidence, manifest, paths, states, registry)
+                _noted(
+                    claim,
+                    evidence,
+                    check_evidence(claim, evidence, manifest, paths, states, registry),
+                    passages,
+                )
                 for evidence in claim.evidence
             )
             ordering, ordering_reason, ordering_detail, authority = _ordering(
@@ -1570,6 +1577,15 @@ def verify(
         artifacts=tuple(states.values()),
         claims=tuple(assessments),
     )
+
+
+def _noted(claim: Claim, evidence: Evidence, decision: Decision, passages: list[str]) -> Decision:
+    """The decision with what `claims.reported` notes of its `reported` value added to its
+    warnings. A decision with nothing to note is returned as it was."""
+    found = reported.notes(claim, evidence, decision, passages)
+    if not found:
+        return decision
+    return decision.model_copy(update={"warnings": (*decision.warnings, *found)})
 
 
 def check_evidence(

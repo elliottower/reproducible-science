@@ -76,6 +76,7 @@ def cmd_claim(a) -> int:
         a.anyway,
         getattr(a, "frozen_at", None),
         a.location,
+        getattr(a, "strict", False),
     )
 
 
@@ -96,7 +97,7 @@ def cmd_reanchor(a) -> int:
 
 
 def cmd_verify(a) -> int:
-    return audit.verify(a.files, a.json)
+    return audit.verify(a.files, a.json, getattr(a, "strict", False))
 
 
 def cmd_timestamp(a) -> int:
@@ -199,6 +200,12 @@ def _main(argv: list[str] | None = None) -> int:
         "claim is confirmatory with the exposure logged rather than retrospective",
     )
     cl.add_argument("--location", help="where in the manuscript: Table 2, Section 4.1, etc.")
+    cl.add_argument(
+        "--strict",
+        action="store_true",
+        help="refuse a claim printing a number the run's outputs do not hold at the printed "
+        "precision (default: warn)",
+    )
     cl.set_defaults(fn=cmd_claim)
 
     rv = sub.add_parser(
@@ -250,6 +257,13 @@ def _main(argv: list[str] | None = None) -> int:
         "--json",
         metavar="PATH",
         help="also write the findings to this file as JSON: the chain, and each recorded file",
+    )
+    v.add_argument(
+        "--strict",
+        action="store_true",
+        help="also fail on what is otherwise a warning: a claim's number its run's outputs do "
+        "not hold, a claim whose run's outputs were all retired, a timestamp proof history "
+        "holds and the disk does not",
     )
     v.set_defaults(fn=cmd_verify)
 

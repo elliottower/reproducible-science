@@ -220,7 +220,15 @@ MAX_SHOWN = 80
 MAX_READS = 3
 
 #: The states `results verify --files --json` gives a recorded file that fail the check.
-RESULTS_FAILING = ("changed", "missing", "reverted", "reappeared", "not a tree", "not a file")
+RESULTS_FAILING = (
+    "changed",
+    "missing",
+    "reverted",
+    "reappeared",
+    "rerecorded",
+    "not a tree",
+    "not a file",
+)
 #: The states that pass besides `ok`, each said on a line of its own and listed as no problem:
 #: a path that holds the latest of its records, a plan frozen in place whose log only grew,
 #: one of the ledger's own files, which is not compared, and a path `results retire` recorded

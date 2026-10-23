@@ -225,6 +225,19 @@ class Warning_(enum.StrEnum):
     run."""
     POSITIONAL_ADDRESS = "positional_address"
     """Addressed by row index, which names a different cell if the table is reordered."""
+    REPORTED_NOT_IN_CLAIM = "reported_not_in_claim"
+    """The claim's text prints numbers and none agrees with `reported` at the coarser of the
+    two precisions: the file was compared with a value the sentence does not state."""
+    REPORTED_NOT_IN_MANUSCRIPT = "reported_not_in_manuscript"
+    """The passages the claim quotes from its manuscript print numbers and none agrees with
+    `reported`."""
+    COARSE_PRECISION = "coarse_precision"
+    """`reported` has fewer than two significant digits and differs from the stored value, so
+    printed precision accepted a wide range: `0.0` against `0.0491`."""
+    ROUNDING_CROSSES_THRESHOLD = "rounding_crosses_threshold"
+    """The stored value and `reported` lie on opposite sides of 0.05: `0.0496` printed `0.05`."""
+    LOOSE_TOLERANCE = "loose_tolerance"
+    """An absolute tolerance above a tenth of `reported`, or a relative one above 0.1."""
 
 
 class Tie(BaseModel):

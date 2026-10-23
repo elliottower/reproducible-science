@@ -174,3 +174,50 @@ def test_a_citation_marks_the_line_it_sits_on(tmp_path):
     records = {n["printed"]: n["attributed"] for n in manuscript.numbers(paper)}
     assert records["55.44"] is True
     assert records["43.21"] is False
+
+
+def test_a_value_set_by_a_macro_is_counted_where_it_is_used(tmp_path):
+    (tmp_path / "macros.tex").write_text("\\def\\pval{0.049}\n")
+    paper = write(
+        tmp_path,
+        "p.tex",
+        "\\documentclass{article}\n\\newcommand{\\icc}{0.4213}\n\\input{macros}\n"
+        "\\begin{document}\nThe ICC was \\icc{} with p = \\pval.\n\\end{document}\n",
+    )
+
+    assert owed(manuscript.numbers(paper)) == ["0.4213", "0.049"]
+
+
+def test_a_decimal_with_no_leading_zero_is_read(tmp_path):
+    paper = write(tmp_path, "p.tex", r"\begin{document} with p = .049 and r = .31 \end{document}")
+
+    assert [r["value"] for r in manuscript.numbers(paper)] == ["0.049", "0.31"]
+
+
+def test_a_unicode_minus_and_thin_space_grouping_are_read(tmp_path):
+    paper = write(
+        tmp_path,
+        "p.tex",
+        "\\begin{document} a shift of \u22120.37 over 12\\,500 rows and 3\u2009400 more \\end{document}",
+    )
+
+    assert [r["value"] for r in manuscript.numbers(paper)] == ["-0.37", "12500", "3400"]
+
+
+def test_a_constant_is_exempt_only_where_a_formula_prints_it(tmp_path):
+    paper = write(
+        tmp_path,
+        "p.tex",
+        "\\begin{document}\n"
+        "We enrolled 100 participants and the AUC was 0.95, with d = 0.5.\n"
+        "Significance was p < 0.05 and p < 0.001, with 95\\% CI and the 0.95 quantile.\n"
+        "\\end{document}\n",
+    )
+
+    assert owed(manuscript.numbers(paper)) == ["100", "0.95", "0.5"]
+
+
+def test_claimed_values_compares_printings_of_one_value():
+    events = [{"event": "claim", "run_id": "r1", "claim": "p = .049, a shift of \u22120.37"}]
+
+    assert manuscript.claimed_values(events) == {"0.049", "-0.37"}

@@ -11,11 +11,16 @@ from results import cli
 HOOK = pathlib.Path(__file__).resolve().parents[1] / "plugin" / "hooks" / "unbound_numbers.py"
 
 
-def tracked_repo(tmp_path, claims=()):
-    """A directory with a ledger holding the given claim texts."""
+def tracked_repo(tmp_path, claims=(), wrote=""):
+    """A directory with a ledger holding the given claim texts, all bound to run `r1`. With
+    `wrote`, the run recorded one output holding that text."""
     results = tmp_path / ".results"
     results.mkdir()
-    lines = [{"event": "init"}, {"event": "run", "run_id": "r1"}]
+    run = {"event": "run", "run_id": "r1"}
+    if wrote:
+        (tmp_path / "out.json").write_text(wrote)
+        run["outputs"] = [{"path": "out.json", "sha256": "0" * 64}]
+    lines = [{"event": "init"}, run]
     lines += [{"event": "claim", "run_id": "r1", "claim": text} for text in claims]
     (results / "ledger.jsonl").write_text("\n".join(json.dumps(line) for line in lines) + "\n")
     return tmp_path
@@ -51,7 +56,9 @@ def fire(payload):
 
 
 def test_coverage_counts_bound_against_owed(tmp_path, monkeypatch, capsys):
-    root = tracked_repo(tmp_path, ["accuracy reached 87.65 on the held-out split"])
+    root = tracked_repo(
+        tmp_path, ["accuracy reached 87.65 on the held-out split"], wrote='{"acc": 87.6512}'
+    )
     paper = root / "paper.tex"
     paper.write_text(r"\begin{document}we report 87.65 and also 43.21\end{document}")
     monkeypatch.chdir(root)
@@ -242,3 +249,48 @@ def test_hook_survives_input_that_is_not_a_tool_call():
 
     assert done.returncode == 0
     assert done.stdout.strip() == ""
+
+
+def coverage(root, paper, monkeypatch, capsys, *extra):
+    monkeypatch.chdir(root)
+    monkeypatch.setattr(sys, "argv", ["results", "coverage", str(paper), *extra])
+    code = cli.main()
+    return code, capsys.readouterr().out
+
+
+def test_a_claim_that_lists_numbers_binds_none_of_them(tmp_path, monkeypatch, capsys):
+    values = [f"{n}.{n + 11}" for n in range(11, 26)]
+    root = tracked_repo(tmp_path, [", ".join(values)], wrote='{"other": 0.4213}')
+    paper = root / "paper.tex"
+    sentences = "\n".join(f"Model {chr(65 + i)} reached {v}." for i, v in enumerate(values))
+    paper.write_text(f"\\begin{{document}}\n{sentences}\n\\end{{document}}\n")
+
+    code, out = coverage(root, paper, monkeypatch, capsys, "--strict")
+
+    assert summary(out)["bound"] == 0
+    assert summary(out)["unbound"] == 15
+    assert code == 1
+
+
+def test_a_claim_printing_the_sentence_binds_its_number(tmp_path, monkeypatch, capsys):
+    root = tracked_repo(tmp_path, ["The ICC was 0.4213 (Table 2)."])
+    paper = root / "paper.tex"
+    paper.write_text(
+        "\\begin{document}\nThe ICC was 0.4213 (Table 2), and 43.21.\n\\end{document}\n"
+    )
+
+    _, out = coverage(root, paper, monkeypatch, capsys)
+
+    assert summary(out)["bound"] == 1
+    assert summary(out)["unbound"] == 1
+
+
+def test_a_number_the_run_wrote_is_bound_whatever_the_wording(tmp_path, monkeypatch, capsys):
+    root = tracked_repo(tmp_path, ["agreement 0.42"], wrote='{"icc": 0.4213}')
+    paper = root / "paper.tex"
+    paper.write_text("\\begin{document}\nWe found an ICC of 0.42 overall.\n\\end{document}\n")
+
+    code, out = coverage(root, paper, monkeypatch, capsys, "--strict")
+
+    assert summary(out)["bound"] == 1
+    assert code == 0

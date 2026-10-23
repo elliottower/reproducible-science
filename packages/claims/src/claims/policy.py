@@ -18,16 +18,31 @@ from pydantic import BaseModel, ConfigDict, Field
 from claims.models import (
     Availability,
     Freshness,
+    NumbersReport,
     Ordering,
     Outcome,
     Regeneration,
     RegistrationAuthority,
     ReproductionReport,
     StalenessReport,
+    Standing,
     Validity,
     VerificationReport,
     Warning_,
 )
+
+#: What each note `claims.reported` puts on a decision says, by warning.
+REPORTED_SAID = {
+    Warning_.REPORTED_NOT_IN_CLAIM: "the claim's text prints numbers and none agrees with "
+    "`reported`",
+    Warning_.REPORTED_NOT_IN_MANUSCRIPT: "the passages the claim quotes print numbers and none "
+    "agrees with `reported`",
+    Warning_.COARSE_PRECISION: "`reported` has under two significant digits, so printed "
+    "precision accepts a wide range of stored values",
+    Warning_.ROUNDING_CROSSES_THRESHOLD: "the stored value and `reported` lie on opposite "
+    "sides of 0.05",
+    Warning_.LOOSE_TOLERANCE: "the tolerance is more than a tenth of the reported value",
+}
 
 
 class Severity(enum.StrEnum):
@@ -128,6 +143,16 @@ class Policy(BaseModel):
     """An assertion the manifest marks `basis: inferred`: proposed by a program or a model and
     not accepted by an author. Graded whatever its outcome, so a draft binding that happens to
     match never passes as a verified one."""
+
+    reported_consistency: Severity = Severity.WARNING
+    """A `reported` value the claim's text or its quoted passages do not print, one printed to
+    under two significant digits or rounded across 0.05, or a tolerance above a tenth of the
+    value: what `claims.reported` notes. A warning by default and an error under `strict`."""
+
+    unbound_numbers: Severity = Severity.WARNING
+    """Numbers the manuscript prints that no assertion accounts for, as `repro numbers`
+    counts them. A warning wherever there are any; `--max-unbound N` makes more than N an
+    error under any policy. Graded by `assess_numbers`, never by `assess`."""
 
     require_one_check: bool = True
     """A run that evaluated nothing is not a pass. Without this a project with no evidence
@@ -284,6 +309,17 @@ class Policy(BaseModel):
                             detail=decision.detail or "the declared page was not checked",
                         )
                     )
+                if self.reported_consistency is not Severity.IGNORE:
+                    violations.extend(
+                        Violation(
+                            severity=self.reported_consistency,
+                            rule=f"evidence.{warning.value}",
+                            subject=f"{claim.claim_id}/{decision.kind}",
+                            detail=REPORTED_SAID[warning],
+                        )
+                        for warning in decision.warnings
+                        if warning in REPORTED_SAID
+                    )
 
         if self.require_one_check and checked == 0:
             violations.append(
@@ -299,6 +335,29 @@ class Policy(BaseModel):
             policy=self.name,
             violations=tuple(violations),
             passed=not any(v.severity is Severity.ERROR for v in violations),
+        )
+
+    def assess_numbers(self, report: NumbersReport, limit: int | None = None) -> Assessment:
+        """Whether the manuscript's unbound numbers are acceptable: a warning where there are
+        any, and an error where there are more than `limit`. With no limit, never an error:
+        how many numbers a manuscript may leave unbound is the author's to say."""
+        unbound = report.counts[Standing.UNBOUND]
+        if not unbound:
+            return Assessment(policy=self.name, passed=True)
+        severity = Severity.ERROR if limit is not None and unbound > limit else self.unbound_numbers
+        if severity is Severity.IGNORE:
+            return Assessment(policy=self.name, passed=True)
+        bound = f"; at most {limit} allowed" if limit is not None else ""
+        violation = Violation(
+            severity=severity,
+            rule="numbers.unbound",
+            subject=report.project,
+            detail=f"{unbound} printed number(s) no assertion accounts for{bound}",
+        )
+        return Assessment(
+            policy=self.name,
+            violations=(violation,),
+            passed=severity is not Severity.ERROR,
         )
 
     def assess_reproduction(self, report: ReproductionReport) -> Assessment:
@@ -402,6 +461,7 @@ STRICT = Policy(
     ordering_unchecked=Severity.ERROR,
     regeneration_unchecked=Severity.ERROR,
     regeneration_not_rerun=Severity.WARNING,
+    reported_consistency=Severity.ERROR,
     stale=Severity.ERROR,
     never_rerun=Severity.ERROR,
     staleness_undetermined=Severity.ERROR,

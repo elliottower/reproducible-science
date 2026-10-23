@@ -835,11 +835,18 @@ goes looking for a broken anchor.
 | `wrong_page` | `quote` | the passage is on another page than the one declared; the decision is a `mismatch` with reason `wrong_page` |
 | `page_unchecked` | `quote` | a `page` is declared and was not checked (§3.1) |
 | `positional_address` | `table`, `value` | the cell is addressed by row index, which names another cell once the table is reordered |
+| `reported_not_in_claim` | `metric`, `table`, `value`, `aggregate` | the claim's text prints numbers and none agrees with `reported`, as printed, as a percentage of it or as a fraction of it, at the coarser of the two precisions |
+| `reported_not_in_manuscript` | `metric`, `table`, `value`, `aggregate` | the passages the claim's own quotations read print numbers and none agrees with `reported` |
+| `coarse_precision` | `metric`, `table`, `value`, `aggregate` | compared at printed precision, `reported` has fewer than two significant digits and differs from the stored value: `0.0` against `0.0491` |
+| `rounding_crosses_threshold` | `metric`, `table`, `value`, `aggregate` | the stored value and `reported` lie on opposite sides of 0.05 |
+| `loose_tolerance` | `metric`, `table`, `value`, `aggregate` | an absolute tolerance above a tenth of `reported`, or a relative one above 0.1 |
 
 `truncated` exists because *"an accuracy of 0.9"* genuinely occurs in a source reporting
 **0.95**, so the passage is present and the reader is told a true thing that misstates the
-result. `page_unchecked` is the one warning a policy reads (§6): the others qualify a check
-that ran, and it says a declared check did not.
+result. `page_unchecked` is graded as an unchecked assertion is (§6), since it says a declared
+check did not run. The five notes on `reported` are graded by the policy's
+`reported_consistency`. A value read from prose is the printed number already and carries none
+of them.
 
 ## 5. Backends
 
@@ -942,7 +949,16 @@ from its declared path is a warning under `exploratory` and an error under the o
 the profile grades `unchecked` for that claim, under the rule `evidence.page_unchecked`. Two
 artifact ids for one file (§2) are the rule `artifact.alias`, a warning under `exploratory` and
 `publication` and an error under `strict`; two files holding the same bytes are the rule
-`artifact.same_bytes`, a warning under every profile.
+`artifact.same_bytes`, a warning under every profile. The notes on `reported` (§4.1) are the
+rules `evidence.reported_not_in_claim`, `evidence.reported_not_in_manuscript`,
+`evidence.coarse_precision`, `evidence.rounding_crosses_threshold` and
+`evidence.loose_tolerance`, a warning under `exploratory` and `publication` and an error under
+`strict`.
+
+Numbers the manuscript prints that no assertion accounts for, as `repro numbers` counts them,
+are the rule `numbers.unbound`: one warning under every profile where there are any.
+`verify --max-unbound N` makes more than N an error under any profile. A manifest naming no
+text a claim reads its sentence from adds no such rule.
 
 Every policy requires at least one assertion to have been evaluated. A run that checked
 nothing is not a pass, and without that condition a project with no evidence anywhere
