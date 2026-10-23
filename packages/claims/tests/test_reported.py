@@ -109,6 +109,16 @@ def test_a_coarse_printed_precision_is_noted(results, text, reported, pointer, c
     assert ("evidence.coarse_precision", Severity.ERROR) in noted(STRICT.assess(checked))
 
 
+def test_a_mismatch_carries_no_precision_note(tmp_path):
+    (tmp_path / "out.json").write_text(json.dumps({"total": 6, "p": 0.0491}))
+    (tmp_path / "paper.md").write_text("")
+    for text, reported, pointer in (("a total of 7", "7", "/total"), ("p = 0.3", "0.3", "/p")):
+        found = decision(verify(manifest(tmp_path, text, metric(reported, pointer))))
+        assert found.outcome is Outcome.MISMATCH
+        assert Warning_.COARSE_PRECISION not in found.warnings
+        assert Warning_.ROUNDING_CROSSES_THRESHOLD not in found.warnings
+
+
 def test_rounding_across_the_significance_threshold_is_noted(tmp_path):
     (tmp_path / "out.json").write_text(json.dumps({"p": 0.0496}))
     (tmp_path / "paper.md").write_text("")

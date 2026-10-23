@@ -482,20 +482,26 @@ def _account(path: pathlib.Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
 
 
-def tool(check: str, root: pathlib.Path, *, fetch: bool = False) -> ToolRun:
+#: The tools that take `--strict`, which `repro verify --policy strict` passes them, so what
+#: they report and pass by default fails there as it fails when run alone.
+STRICT_TOOLS = ("results", "citations")
+
+
+def tool(check: str, root: pathlib.Path, *, fetch: bool = False, strict: bool = False) -> ToolRun:
     """Run one tool's check over the project at `root` and read what it found.
 
     The tool is found and pointed by `repro.delegate`, run by `repro.audit.run_step`, and its
     outcome is the word `repro.audit.read` gives it, with one difference for `citations`: a run
     in which some quotations were found, none was not found and the rest were unchecked is
     `passed`, as `citations verify` exits 0 for it, where `repro audit` calls any unchecked
-    quotation `could not check`. A run that read no source stays `could not check`.
+    quotation `could not check`. A run that read no source stays `could not check`. With
+    `strict`, `results` and `citations` are run with their own `--strict`.
     """
     found = BY_NAME[check]
     if not found.used_by(root):
         return ToolRun(check=check, outcome=audit.NOTHING, output=NO_RECORD[check])
     command = TOOL_COMMANDS[check]
-    argv = command.argv(check, root)
+    argv = [*command.argv(check, root), *(["--strict"] if strict and check in STRICT_TOOLS else [])]
     fetched, output = None, ""
     with tempfile.TemporaryDirectory() as scratch:
         if fetch:

@@ -14,7 +14,8 @@ a claim stating a conclusion and offering a count as support prints none.
 **Precision and tolerance.** A comparison at printed precision verifies `0.0` against a stored
 `0.0491`, and an absolute tolerance of `0.5` verifies `0.95` against `0.712`. Neither is a
 mismatch, and either lets a manuscript print almost anything; each is noted where a stored
-value was read. `claims.policy.REPORTED_SAID` says each note in words.
+value was read. The precision notes are made only of a comparison that matched: a mismatch
+accepted no value, and fails without them. `claims.policy.REPORTED_SAID` says each note in words.
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ from claims.models import (
     AggregateEvidence,
     Claim,
     ComparisonMode,
+    ComparisonStatus,
     Decision,
     Evidence,
     ProseLocator,
@@ -108,7 +110,14 @@ def notes(
         or _decimal(decision.converted)
         or _decimal(decision.extracted)
     )
-    if mode is ComparisonMode.PRINTED_PRECISION and stored is not None and stored != reported:
+    # Both notes say what a loose comparison let through, so they are made only of a match: a
+    # mismatch accepted nothing, and fails on its own.
+    if (
+        mode is ComparisonMode.PRINTED_PRECISION
+        and decision.comparison is ComparisonStatus.MATCH
+        and stored is not None
+        and stored != reported
+    ):
         significant = len(reported.normalize().as_tuple().digits) if reported else 0
         if significant < MIN_SIGNIFICANT:
             found.append(Warning_.COARSE_PRECISION)

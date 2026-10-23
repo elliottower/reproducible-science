@@ -164,8 +164,12 @@ def _numbers(root: pathlib.Path, papers: tuple[pathlib.Path, ...]) -> tuple[Numb
     return tuple(found)
 
 
-def coverage(root: pathlib.Path, manifest: Manifest | None, policy: str) -> Coverage:
+def coverage(
+    root: pathlib.Path, manifest: Manifest | None, policy: str, limit: int | None = None
+) -> Coverage:
     """Run both coverage checks over the manuscript and grade what they find under `policy`.
+    With `limit`, more unbound numbers than that in a manuscript is an error under any policy,
+    as `--max-unbound` says.
 
     Not used where there is no manifest, no manuscript, or neither a claims directory nor a
     ledger to cover it with.
@@ -203,12 +207,14 @@ def coverage(root: pathlib.Path, manifest: Manifest | None, policy: str) -> Cove
                 )
             )
         elif n.unbound:
+            over = limit is not None and n.unbound > limit
             violations.append(
                 Violation(
-                    severity=severity,
+                    severity=Severity.ERROR if over else severity,
                     rule="coverage.numbers_unbound",
                     subject=n.manuscript,
-                    detail=f"{n.unbound} printed number(s) no ledger claim names",
+                    detail=f"{n.unbound} printed number(s) no ledger claim names"
+                    + (f"; at most {limit} allowed" if limit is not None else ""),
                 )
             )
     return Coverage(

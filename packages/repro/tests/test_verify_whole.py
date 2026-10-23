@@ -541,3 +541,65 @@ def test_a_quotation_found_after_a_negation_is_counted_among_what_strict_would_f
     assert code == 0
     assert found["project"]["checks"]["citations"] == "passed"
     assert [v["rule"] for v in found["project"]["strict_failures"]] == ["citations.after_negation"]
+
+
+def test_what_the_default_run_says_strict_would_fail_is_what_strict_fails(project, capsys):
+    ledger()
+    assert main(["results", "claim", "The total was 9.913.", "--run-id", "r1"]) == 0
+    cite(project, "smith", quote="the treatment reduced mortality in every subgroup")
+    (project / "sources" / "smith.txt").write_text(
+        "We found no evidence that the treatment reduced mortality in every subgroup we "
+        "examined across the three sites.\n"
+    )
+    document = yaml.safe_load((project / "claims" / "smith.yaml").read_text())
+    document["source"]["sha256"] = Digest.of_file(project / "sources" / "smith.txt").value
+    (project / "claims" / "smith.yaml").write_text(yaml.safe_dump(document))
+    pin_manifest(project)
+
+    code, default = verified(capsys)
+    assert code == 0
+    named = sorted(v["rule"] for v in default["project"]["strict_failures"])
+    assert named == ["citations.after_negation", "results.claim_numbers_not_in_outputs"]
+
+    code, strict = verified(capsys, "--policy", "strict")
+    assert code == 1
+    failed = sorted(name for name, word in strict["project"]["checks"].items() if word == "failed")
+    assert failed == sorted({rule.split(".")[0] for rule in named})
+    assert "--strict" in strict["results"]["command"]
+    assert "--strict" in strict["citations"]["command"]
+    held = strict["results"]["account"]["claims_numbers_not_in_outputs"]
+    negated = strict["citations"]["account"]["warnings"]["after negation"]
+    assert len(held) + len(negated) == len(named)
+
+
+def claimed_paper(root, text):
+    """A manuscript the claim reads its sentence from, so `numbers` and coverage both count it."""
+    with_paper(root, text, "paper.md")
+    path = root / "repro.yaml"
+    document = yaml.safe_load(path.read_text())
+    document["claims"][0]["evidence"].append(
+        {"kind": "quote", "artifact": "paper", "text": "We report a total of 6"}
+    )
+    path.write_text(yaml.safe_dump(document))
+
+
+def test_unbound_numbers_are_reported_once_and_max_unbound_acts_on_that_report(project, capsys):
+    ledger()
+    claimed_paper(project, "We report a total of 6. We enrolled 57 people; the ICC was 0.4213.\n")
+    code, found = verified(capsys)
+    assert code == 0
+    assert "numbers.unbound" not in [v["rule"] for v in found["assessment"]["violations"]]
+    (unbound,) = [v for v in found["coverage"]["violations"] if "numbers" in v["rule"]]
+    assert (unbound["rule"], unbound["severity"]) == ("coverage.numbers_unbound", "warning")
+
+    code, found = verified(capsys, "--max-unbound", "0")
+    assert code == 1
+    assert found["project"]["checks"]["coverage"] == "failed"
+    assert "numbers.unbound" not in [v["rule"] for v in found["assessment"]["violations"]]
+
+
+def test_without_a_ledger_the_claims_section_keeps_the_unbound_numbers(project, capsys):
+    claimed_paper(project, "We report a total of 6. We enrolled 57 people; the ICC was 0.4213.\n")
+    code, found = verified(capsys)
+    assert code == 0
+    assert "numbers.unbound" in [v["rule"] for v in found["assessment"]["violations"]]

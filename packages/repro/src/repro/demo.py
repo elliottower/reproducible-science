@@ -276,19 +276,18 @@ PAPER_MD = """\
 
 ## Methods
 
-Twelve subjects were measured before and after the intervention. We compared the paired
-differences with a bootstrap over 2000 resamples, drawn from a generator seeded at 8675309,
-and report the 2.5th and 97.5th percentiles of the resampled means.
+Each subject was measured before and after the intervention. We compared the paired
+differences with a bootstrap over 2000 resamples, drawn from a seeded generator, and report the
+percentile interval of the resampled means.
 
 ## Results
 
-The intervention moved the mean score by 0.045 points, with a 95 percent bootstrap interval
-of [0.0365, 0.0552].
+The intervention moved the mean score by 0.045 points.
 
 ## Discussion
 
-The interval excludes zero, and the effect is moderate against the spread of the twelve
-paired differences. The data are invented and the numbers describe nothing. Every number
+Both ends of the bootstrap interval are positive, and the effect is moderate against the spread
+of the paired differences. The data are invented and the numbers describe nothing. Every number
 above has an address in `repro.yaml`.
 """
 

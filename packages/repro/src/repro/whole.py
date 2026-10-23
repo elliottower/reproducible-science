@@ -50,6 +50,13 @@ from repro import coverage as manuscript
 TOOLS = ci.TOOLS
 SECTIONS = ("claims", "staleness", *TOOLS, "cross_tool", "coverage")
 
+#: The quotation states `citations verify --strict` fails as reaching no verdict.
+CITATIONS_UNRESOLVED = ("unchecked", "indeterminate", "ambiguous")
+
+#: The claims' rule for numbers no assertion accounts for, which coverage reports instead where
+#: it counts them.
+UNBOUND_RULE = "numbers.unbound"
+
 #: What the report says of the staleness check where the manifest declares no command.
 NO_COMMAND = f"{DEFAULT_NAME} declares no command under `regenerations`"
 
@@ -103,8 +110,11 @@ def tool_passed(run: ci.ToolRun) -> bool | None:
     return run.outcome == audit.PASSED if run.command else None
 
 
-def check(root: Path, manifest: Manifest | None, policy: Policy) -> Project:
-    """Check every record the project at `root` keeps beside the manifest's claims."""
+def check(
+    root: Path, manifest: Manifest | None, policy: Policy, limit: int | None = None
+) -> Project:
+    """Check every record the project at `root` keeps beside the manifest's claims. `limit` is
+    `--max-unbound`, which the coverage section applies where it counts unbound numbers."""
     if manifest is None:
         staleness = Staleness(used=False, reason=f"no {DEFAULT_NAME} here or above")
     elif not manifest.regenerations:
@@ -115,12 +125,12 @@ def check(root: Path, manifest: Manifest | None, policy: Policy) -> Project:
     return Project(
         root=root.as_posix(),
         staleness=staleness,
-        tools={name: ci.tool(name, root) for name in TOOLS},
+        tools={name: ci.tool(name, root, strict=policy.name == STRICT.name) for name in TOOLS},
         cross_tool=CrossTool(
             unmatched=tuple({"claim": c.claim, "ref": c.ref} for c in crosscheck.unmatched(root)),
             confirmatory_without_a_plan=tuple(crosscheck.confirmatory_without_a_plan(root)),
         ),
-        coverage=manuscript.coverage(root, manifest, policy.name),
+        coverage=manuscript.coverage(root, manifest, policy.name, limit),
     )
 
 
@@ -176,8 +186,10 @@ def strict_failures(
 def _tool_strict(project: Project) -> list[Violation]:
     """What a tool reports and passes, and fails under its own `--strict`: a claim printing
     numbers its run's outputs do not hold, a claim whose run's outputs were all retired and a
-    timestamp proof history holds and the disk does not, from `results verify`; and a found
-    quotation carrying a warning `citations verify --strict` fails, or a pin finding it fails."""
+    timestamp proof history holds and the disk does not, from `results verify`; and from
+    `citations verify`, a found quotation carrying a warning its `--strict` fails, a pin finding
+    it fails, and each unresolved quotation, unpinned source and unparsed claims file. Under
+    `--policy strict` both run with `--strict`, so these are what that run fails."""
 
     def error(rule: str, subject: str, detail: str) -> Violation:
         return Violation(severity=Severity.ERROR, rule=rule, subject=subject, detail=detail)
@@ -219,7 +231,35 @@ def _tool_strict(project: Project) -> list[Violation]:
             error("citations.pins", str(f.get("file")), str(f.get("finding")))
             for f in account.get("strict_findings", [])
         ]
+        # Counted and not listed by `citations verify`, so one finding each, by count.
+        counts = account.get("counts", {})
+        unresolved = sum(counts.get(state, 0) for state in CITATIONS_UNRESOLVED)
+        found += [
+            error("citations.unresolved", "", "a quotation no verdict was reached on")
+        ] * unresolved
+        found += [error("citations.unpinned", "", "a source with no digest")] * account.get(
+            "unpinned_sources", 0
+        )
+        found += [error("citations.skipped", "", "a claims file that did not parse")] * account.get(
+            "skipped_files", 0
+        )
     return found
+
+
+def _unbound_once(assessment: Assessment, project: Project) -> Assessment:
+    """The claims' assessment without `numbers.unbound` where the coverage section counts the
+    manuscript's unbound numbers, so they are reported, and `--max-unbound` applied, in one
+    place. Where coverage counts none, having no ledger, the claims section keeps them."""
+    if not project.coverage.numbers:
+        return assessment
+    kept = tuple(v for v in assessment.violations if v.rule != UNBOUND_RULE)
+    if len(kept) == len(assessment.violations):
+        return assessment
+    return Assessment(
+        policy=assessment.policy,
+        violations=kept,
+        passed=not any(v.severity is Severity.ERROR for v in kept),
+    )
 
 
 def _strict_said(failures: tuple[Violation, ...], policy: Policy) -> str:
@@ -413,7 +453,7 @@ def command(args: argparse.Namespace) -> int:
     root, path = locate(args.manifest)
     policy = PROFILES[args.policy]
     if path is None:
-        project = check(root, None, policy)
+        project = check(root, None, policy, getattr(args, "max_unbound", None))
         found = verdicts(None, project)
         stricter = strict_failures(project, policy)
         listed = survey(root)
@@ -458,7 +498,8 @@ def command(args: argparse.Namespace) -> int:
         return exit_code(found)
 
     manifest, report, policy, assessment = _checked(args, path)
-    project = check(root, manifest, policy)
+    project = check(root, manifest, policy, getattr(args, "max_unbound", None))
+    assessment = _unbound_once(assessment, project)
     found = verdicts(assessment.passed, project)
     stricter = strict_failures(project, policy, report)
     if args.format == "sarif":

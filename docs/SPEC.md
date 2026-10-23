@@ -844,8 +844,8 @@ goes looking for a broken anchor.
 | `positional_address` | `table`, `value` | the cell is addressed by row index, which names another cell once the table is reordered |
 | `reported_not_in_claim` | `metric`, `table`, `value`, `aggregate` | the claim's text prints numbers and none agrees with `reported`, as printed, as a percentage of it or as a fraction of it, at the coarser of the two precisions |
 | `reported_not_in_manuscript` | `metric`, `table`, `value`, `aggregate` | the passages the claim's own quotations read print numbers and none agrees with `reported` |
-| `coarse_precision` | `metric`, `table`, `value`, `aggregate` | compared at printed precision, `reported` has fewer than two significant digits and differs from the stored value: `0.0` against `0.0491` |
-| `rounding_crosses_threshold` | `metric`, `table`, `value`, `aggregate` | the stored value and `reported` lie on opposite sides of 0.05 |
+| `coarse_precision` | `metric`, `table`, `value`, `aggregate` | matched at printed precision, `reported` has fewer than two significant digits and differs from the stored value: `0.0` against `0.0491` |
+| `rounding_crosses_threshold` | `metric`, `table`, `value`, `aggregate` | matched at printed precision, the stored value and `reported` lie on opposite sides of 0.05 |
 | `loose_tolerance` | `metric`, `table`, `value`, `aggregate` | an absolute tolerance above a tenth of `reported`, or a relative one above 0.1 |
 
 `truncated` exists because *"an accuracy of 0.9"* genuinely occurs in a source reporting
