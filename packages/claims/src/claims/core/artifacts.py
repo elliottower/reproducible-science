@@ -58,7 +58,7 @@ class Review(BaseModel):
     who: str = Field(min_length=1)
     when: AwareDatetime | datetime.date
     how: str = ""
-    """How it was accepted, such as `approved in chat via claude-code`."""
+    """How it was accepted. `repro mcp` writes `agent-recorded: ...` with the client's name."""
     digest: str | None = Field(default=None, pattern=_SHA256_HEX)
     """`review_digest` of what was accepted. A review that names one holds only while the
     assertion or artifact still has that digest, so changing a binding undoes its review. A
