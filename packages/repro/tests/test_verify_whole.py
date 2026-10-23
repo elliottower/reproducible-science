@@ -388,3 +388,22 @@ def test_repro_claims_runs_claims_where_only_repro_is_on_path(project, capsys):
     assert claims_main(["verify", "--format", "json"]) == 1
     assert json.loads(through_repro) == json.loads(capsys.readouterr().out)
     assert main(["claims", "--version"]) == 0
+
+
+def test_a_resealed_output_is_named_in_the_report_though_it_passes(project, capsys):
+    ledger()
+    (project / "figures.json").write_text(json.dumps({"total": 7}, indent=2))
+    assert main(["results", "seal", "make.py"]) == 0
+    assert main(["results", "run", "figures.json", "--run-id", "r2"]) == 0
+    pin_manifest(project, reported="7")
+    capsys.readouterr()
+
+    assert main(["verify"]) == 0
+    assert "RESEALED   figures.json" in capsys.readouterr().out
+
+
+def test_an_output_recorded_again_with_nothing_sealed_fails_the_project(project, capsys):
+    ledger()
+    (project / "figures.json").write_text(json.dumps({"total": 7}, indent=2))
+
+    assert main(["results", "run", "figures.json", "--run-id", "r2"]) == 1
