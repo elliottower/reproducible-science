@@ -252,8 +252,11 @@ Checks every record the project keeps, in one report with one exit code:
 | results | `results verify --files` | `.results/` |
 | citations | `citations verify --claims <dir>` | a claims directory holding a claims file |
 | cross-tool | a ledger claim naming a freeze that no frozen plan records | a ledger and a plan |
+| coverage | every quotation the manuscript makes that no claims file pins (`citations coverage`), and every number it prints that no ledger claim binds (`results coverage`); a warning by default, a failure under `strict`, reported only under `exploratory` | a manuscript the manifest declares, and a claims directory or a ledger |
 
-A record the project does not keep is named as not used and is not run. The project is the directory given, or the folder holding the manifest given or found at or above the working directory. It executes nothing a manifest declares and reaches no network: `repro reproduce` is the command that runs things. It exits 0 where every check that ran passed, 1 where one failed or could not check, and 2 where nothing was checked. `--format json` keeps `report` and `assessment` where `claims verify` puts them and adds `staleness`, `prereg`, `results`, `citations`, `cross_tool` and `project` beside them; `--format sarif` is the claims' log with each section's verdict and the exit code under the run's `properties.checks`. With no manifest and another record kept, the claims are a section reported as not used, and the exit code is the other records'. A section's word is `passed`, `failed` or `not used`, and a tool's own check may also give `could not check` or `nothing to read`, which count against the exit code as `failed` does.
+The manuscript is each text a claim reads its sentence from, or, where none does, each declared artifact ending `.tex`, `.md`, `.qmd` or `.rst`. Where every check passes under a policy other than `strict`, the summary line says how many findings `strict` would fail, read off the same results with nothing run again: `3 of 3 checks passed (default policy; strict: 1 failure)`. `--explain` lists them, and `--format json` carries them as `project.strict_failures`. Under `strict`, or where `strict` would fail nothing more, the line is as it was.
+
+A record the project does not keep is named as not used and is not run. The project is the directory given, or the folder holding the manifest given or found at or above the working directory. It executes nothing a manifest declares and reaches no network: `repro reproduce` is the command that runs things. It exits 0 where every check that ran passed, 1 where one failed or could not check, and 2 where nothing was checked. `--format json` keeps `report` and `assessment` where `claims verify` puts them and adds `staleness`, `prereg`, `results`, `citations`, `cross_tool`, `coverage` and `project` beside them; `--format sarif` is the claims' log with each section's verdict and the exit code under the run's `properties.checks`. With no manifest and another record kept, the claims are a section reported as not used, and the exit code is the other records'. A section's word is `passed`, `failed` or `not used`, and a tool's own check may also give `could not check` or `nothing to read`, which count against the exit code as `failed` does.
 
 The claims section also notes, on each assertion with a `reported` value, a claim text or quoted manuscript passage that prints numbers none of which agrees with `reported`, a value printed to under two significant digits or rounded across 0.05, and a tolerance above a tenth of the value: warnings, and errors under `--policy strict`. Numbers the manuscript prints that no assertion accounts for, as `repro numbers` counts them, are one warning; `--max-unbound N` fails where there are more than N. A `results` section that passes names each path it reported `RESEALED`.
 
@@ -311,9 +314,13 @@ A number that changed is printed as stored then and now beside what the paper pr
                 attrition  0.044 (4.4 as a percentage) then, 0.042 (4.2 as a percentage) now, paper prints 4.4
 ```
 
+The directory is not a wall: a command can still name a file in the project by its absolute path, and `cp <project>/results/out.json results/out.json` would reproduce any output byte for byte. A command whose arguments name a path inside the project by its absolute path, or name the output's own path, is therefore `failed` with `command_names_the_project` and never started; name files relative to the project, as the copies in the directory are. While a command runs, its pinned output is set aside beside itself as `.<name>.repro-set-aside` and put back afterwards, so a command that reaches for it by a path no argument spells finds nothing there, as it would in a fresh clone. A file already at that name, left by a run that was interrupted, is never moved over: the record is `not re-run` with `output_already_set_aside` until it is moved back. Neither guard stops a command that copies some other file holding the same bytes. `--isolate` does: each command runs under `sandbox-exec` on macOS or `bwrap` on Linux with the project's directory unreadable to it, except a virtual environment inside it that the program lives in, and the entry records `isolated: true`. Where neither is installed, the record is `failed` with `runner_unavailable` and nothing runs.
+
 `--skip ID` leaves a record out, such as a long training run, and `--only ID` runs the ones named. A record that reads the output of one that did not reproduce still runs, over the pinned copy, and says so. Each invocation appends what it observed to `.repro/reproductions.jsonl`.
 
-Run under GitHub Actions, an entry also says where: a `witness` with `kind`, `repository`, `workflow`, `run_id`, `run_attempt`, `sha`, `ref` and `runner_os`, copied from the `GITHUB_*` and `RUNNER_OS` variables when `GITHUB_ACTIONS` is `true`, and absent from every other run. The command prints `witnessed in GitHub Actions run 123456 of owner/repo, as the environment said`, and `repro stale` and `repro why` name the run beside the re-run they compare with. The variables are whatever the process was given and nothing is checked against GitHub: the run's page and log, at `https://github.com/<repository>/actions/runs/<run_id>`, are what a reader checks the entry against.
+Run under GitHub Actions, an entry also says where: a `witness` with `kind`, `repository`, `workflow`, `run_id`, `run_attempt`, `sha`, `ref` and `runner_os`, copied from the `GITHUB_*` and `RUNNER_OS` variables when `GITHUB_ACTIONS` is `true`, and absent from every other run. The variables are whatever the process was given, and a process started with `GITHUB_ACTIONS=true` and a run id set by hand records the same entry a runner does, so a witness is never said to have witnessed anything. The command prints `the environment named a run in GitHub Actions run 123456 of owner/repo (unverified: from its environment variables)` and the run's page, `https://github.com/<repository>/actions/runs/<run_id>`, which is what a reader checks the entry against; `repro stale`, `repro why` and the CI summaries name the run with the same `unverified` clause. Nothing is checked against GitHub.
+
+The record is a hash chain, as the `results` ledger is. Each entry carries its position, `seq`, and the SHA-256 of the entry before it as stored, `prev_hash`, and `.repro/reproductions.head` holds the number of entries and the hash of the last; commit it with the record. Each append checks the record first and refuses one that was edited, reordered, cut or holds a line that is not an entry: the run is still reported, and `record not written: ...` on standard error says why. Entries written before the chain stay where they are, counted as `unchained`, and the first chained entry names the last of them. `repro stale` and the staleness section of `repro verify` report the record's state: a broken record fails under `publication` and `strict` and warns under `exploratory`, a missing or lagging head file warns and fails `strict`, and unchained entries warn under `strict` only. As with the ledger, whoever can rewrite the record, its head file and the history can rewrite all three.
 
 This executes what the manifest names. `repro verify` never does.
 
@@ -892,7 +899,7 @@ reruns: each declared command against the record of its re-runs. What this means
 |---|---|
 | commands | 6 of 7 declared commands have a recorded re-run over the current files that reproduced, 1 stale |
 | record | `.repro/reproductions.jsonl` holds 3 re-runs |
-| where | of the 7 re-runs compared: 2 recorded in GitHub Actions [run 123456](https://github.com/you/my_project/actions/runs/123456) of you/my_project, as the environment said; 5 recorded with no witness, which is how a re-run on someone's own machine is recorded |
+| where | of the 7 re-runs compared: 2 recorded in GitHub Actions [run 123456](https://github.com/you/my_project/actions/runs/123456) of you/my_project (unverified: from its environment variables); 5 recorded with no witness, which is how a re-run on someone's own machine is recorded |
 
 ### Commands with no current re-run on record
 
@@ -1296,7 +1303,7 @@ inside that project. A symlink belongs to the folder it sits in. A call with no 
 | `next_open_item`, `get_open_item` | one open item: the claim, the printed value, the sentence, each candidate's address, labels and stored value |
 | `propose_binding` | one assertion filling an item, `basis: inferred`, then its check |
 | `add_artifact` | one file, pinned and `basis: inferred` |
-| `mark_reviewed` | what the user approved in the chat, as `reviewed` |
+| `mark_reviewed` | what the agent reports the user approved in the chat, as `reviewed`, marked agent-recorded |
 | `pin_quote` | `citations pin`, which writes only a passage that resolves |
 
 Each write is one line of the draft, and no other byte changes. `propose_binding` reports a
@@ -1304,8 +1311,13 @@ match as `matched, inferred: not verified`, and a retry replaces only its own pr
 not match. Every attempt is appended to a hash chain in `.repro/attempts.jsonl` beside the
 open-items file, which `claims open-items` counts from, flagging an item tried more than five
 times. An assertion reading an inferred artifact counts as inferred too. `mark_reviewed` writes
-who (git `user.name`), when, how (`approved in chat via` the client) and the digest of what was
-accepted; when that changes, the review no longer counts. Nothing the server offers freezes,
+who (git `user.name`), when, `via: repro mcp, agent-recorded`, how (`agent-recorded: the agent
+reports the person approved this in chat; no confirmation from the person reached this tool`,
+with the client's name) and the digest of what was accepted; when that changes, the review no
+longer counts. The agent is what calls the tool, so the record shows that an agent reported an
+approval for the person git names. It does not show that the person gave it: nothing the server
+receives comes from the person. A review the person writes into the manifest by hand, or gives
+on a pull request to the bot, carries no such mark. Nothing the server offers freezes,
 registers, seals, runs a declared command, and nothing but `citations_audit` fetches.
 
 MIT licensed.

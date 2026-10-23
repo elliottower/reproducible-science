@@ -687,12 +687,14 @@ def mark_reviewed(
     item_ids: list[str],
     artifact_ids: list[str],
     how: str,
+    via: str | None = None,
 ) -> Reviewed:
     """Record that a person accepted the inferred assertion filling each item and each
     inferred artifact: `reviewed` with who, when, how and the digest of what was accepted. A
     review counts only while that digest is the item's, so a changed binding lapses. Refused:
     an item the file does not list, one not filled by an inferred assertion that matched, an
-    artifact that is not inferred, and a project where git names no user."""
+    artifact that is not inferred, and a project where git names no user. `via` names the
+    program that wrote the review for the person named, where one did."""
     for value in (*item_ids, *artifact_ids):
         capped("an id", value, MAX_NAME)
     capped("how", how, MAX_TEXT)
@@ -705,6 +707,7 @@ def mark_reviewed(
         "who": reviewer(root),
         "when": datetime.datetime.now(datetime.UTC).isoformat(timespec="seconds"),
         "how": how,
+        **({"via": via} if via else {}),
     }
     text, manifest = _read(draft), load_inside(root, draft)
     decisions = verify(manifest)

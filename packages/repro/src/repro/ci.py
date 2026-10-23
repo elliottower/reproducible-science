@@ -661,10 +661,9 @@ def _where(witness: Witness) -> str:
     """Where a re-run happened, as its entry in the record says, with the run linked. The
     clause is `Witness.said`, which `repro why` and `repro stale` print."""
     said = witness.said
-    if witness.repository and witness.run_id:
-        page = f"https://github.com/{witness.repository}/actions/runs/{witness.run_id}"
-        said = said.replace(f"run {witness.run_id}", f"[run {witness.run_id}]({page})", 1)
-    return f"{said}, as the environment said"
+    if witness.page:
+        said = said.replace(f"run {witness.run_id}", f"[run {witness.run_id}]({witness.page})", 1)
+    return said
 
 
 def _witnesses_found(report: StalenessReport) -> str:

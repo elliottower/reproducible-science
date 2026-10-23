@@ -532,6 +532,14 @@ def _stale_lines(report: StalenessReport) -> list[str]:
             lines.append(
                 f"  {label:<13} {node.artifact}: no re-run of {node.id} that reproduced is recorded"
             )
+    record = report.record
+    if record is not None and record.status not in ("absent", "intact"):
+        label = "BROKEN" if record.broken else "note"
+        said = "; ".join(record.problems) or (
+            f"{record.unchained} of {record.entries} entries were written before the record "
+            "was chained"
+        )
+        lines.append(f"  {label:<13} record of re-runs {record.status}: {said}")
     for note in report.record_disagrees_with_pin:
         lines.append(
             f"  {'note':<13} {note.regeneration}: record disagrees with pin: "

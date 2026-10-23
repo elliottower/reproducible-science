@@ -6,6 +6,8 @@
     results     `results verify --files`
     citations   `citations verify --claims <dir>`
     cross-tool  a ledger claim naming a freeze no frozen plan records
+    coverage    `citations coverage` and `results coverage` over the manuscript: a quotation
+                nothing pins, a number nothing binds (see `repro.coverage`)
 
 A record the project does not keep is named as not used and is not run: reporting it as passing
 would be a clean line standing for a check that never happened. The three tools are found,
@@ -34,18 +36,19 @@ from claims.cli import (
     add_verify,
 )
 from claims.manifest import DEFAULT_NAME, find
-from claims.models import Manifest, StalenessReport
-from claims.policy import PROFILES, Assessment, Policy
+from claims.models import Manifest, StalenessReport, VerificationReport
+from claims.policy import PROFILES, STRICT, Assessment, Policy, Severity, Violation
 from claims.renderers import survey_to_sarif, to_sarif
 from claims.stale import stale as run_stale
 from claims.starter import SURVEY_SCHEMA, survey
 from pydantic import BaseModel, ConfigDict
 
 from repro import __version__, audit, ci, crosscheck
+from repro import coverage as manuscript
 
 #: The sections of the report other than the claims, in the order they are printed.
 TOOLS = ci.TOOLS
-SECTIONS = ("claims", "staleness", *TOOLS, "cross_tool")
+SECTIONS = ("claims", "staleness", *TOOLS, "cross_tool", "coverage")
 
 #: What the report says of the staleness check where the manifest declares no command.
 NO_COMMAND = f"{DEFAULT_NAME} declares no command under `regenerations`"
@@ -92,6 +95,7 @@ class Project(BaseModel):
     staleness: Staleness
     tools: dict[str, ci.ToolRun]
     cross_tool: CrossTool
+    coverage: manuscript.Coverage
 
 
 def tool_passed(run: ci.ToolRun) -> bool | None:
@@ -116,6 +120,7 @@ def check(root: Path, manifest: Manifest | None, policy: Policy) -> Project:
             unmatched=tuple({"claim": c.claim, "ref": c.ref} for c in crosscheck.unmatched(root)),
             confirmatory_without_a_plan=tuple(crosscheck.confirmatory_without_a_plan(root)),
         ),
+        coverage=manuscript.coverage(root, manifest, policy.name),
     )
 
 
@@ -126,7 +131,51 @@ def verdicts(claims: bool | None, project: Project) -> dict[str, bool | None]:
         "staleness": project.staleness.passed,
         **{name: tool_passed(run) for name, run in project.tools.items()},
         "cross_tool": project.cross_tool.passed,
+        # Named only where it ran, so a project with no manuscript to cover reads as before.
+        **({"coverage": project.coverage.passed} if project.coverage.used else {}),
     }
+
+
+def strict_failures(
+    project: Project, policy: Policy, report: VerificationReport | None = None
+) -> tuple[Violation, ...]:
+    """Every finding `strict` fails that `policy` does not, read off results already in hand.
+
+    Nothing is run again: the claims report, the staleness report and the coverage findings
+    are graded a second time under `strict`, and a finding counts where `strict` makes it an
+    error and `policy` did not. Empty under `strict`. A check that grades by policy adds its
+    own findings here, so the line `repro verify` closes on counts them too.
+    """
+    if policy.name == STRICT.name:
+        return ()
+    pairs: list[tuple[tuple[Violation, ...], tuple[Violation, ...]]] = []
+    if report is not None:
+        pairs.append((STRICT.assess(report).violations, policy.assess(report).violations))
+    if project.staleness.report is not None:
+        staleness = project.staleness.report
+        pairs.append(
+            (
+                STRICT.assess_staleness(staleness).violations,
+                policy.assess_staleness(staleness).violations,
+            )
+        )
+    if project.coverage.used:
+        pairs.append((project.coverage.under(STRICT.name), project.coverage.violations))
+    found = []
+    for strict, applied in pairs:
+        failed = {(v.rule, v.subject) for v in applied if v.severity is Severity.ERROR}
+        found += [
+            v for v in strict if v.severity is Severity.ERROR and (v.rule, v.subject) not in failed
+        ]
+    return tuple(found)
+
+
+def _strict_said(failures: tuple[Violation, ...], policy: Policy) -> str:
+    """` (default policy; strict: 2 failures)`, or nothing where strict would add none."""
+    if not failures:
+        return ""
+    named = "default policy" if policy.name == "publication" else f"policy {policy.name}"
+    return f" ({named}; strict: {len(failures)} failure{'' if len(failures) == 1 else 's'})"
 
 
 def exit_code(found: dict[str, bool | None]) -> int:
@@ -147,7 +196,9 @@ def words(project: Project, found: dict[str, bool | None]) -> dict[str, str]:
     return said | {name: run.outcome for name, run in project.tools.items() if run.command}
 
 
-def sections(project: Project, found: dict[str, bool | None]) -> dict:
+def sections(
+    project: Project, found: dict[str, bool | None], stricter: tuple[Violation, ...] = ()
+) -> dict:
     """The keys `--format json` adds beside the claims' own, which it leaves as they were."""
     staleness = project.staleness
     return {
@@ -169,10 +220,12 @@ def sections(project: Project, found: dict[str, bool | None]) -> dict:
             for name, run in project.tools.items()
         },
         "cross_tool": {"passed": project.cross_tool.passed, **project.cross_tool.model_dump()},
+        "coverage": {"passed": project.coverage.passed, **project.coverage.model_dump(mode="json")},
         "project": {
             "root": project.root,
             "checks": words(project, found),
             "exit_code": exit_code(found),
+            "strict_failures": [v.model_dump(mode="json") for v in stricter],
         },
     }
 
@@ -207,7 +260,12 @@ def _resealed(run: ci.ToolRun) -> list[str]:
 
 
 def _project_text(
-    project: Project, policy: Policy, found: dict[str, bool | None], claims: str = ""
+    project: Project,
+    policy: Policy,
+    found: dict[str, bool | None],
+    claims: str = "",
+    stricter: tuple[Violation, ...] = (),
+    explain: bool = False,
 ) -> None:
     """The sections beside the claims. `claims` is the line said of them where they were not
     checked, which is printed among the others."""
@@ -228,6 +286,8 @@ def _project_text(
             print(f"    {line}" if line else "")
     for run in project.tools.values():
         print("\n".join(_tool_lines(run)))
+    if project.coverage.used:
+        print("\n".join(manuscript.lines(project.coverage, policy.name)))
 
     cross = project.cross_tool
     if cross.unmatched:
@@ -248,11 +308,18 @@ def _project_text(
         )
 
     print()
-    print("\n".join(_summary(project, found)))
+    print("\n".join(_summary(project, found, policy, stricter, explain)))
 
 
-def _summary(project: Project, found: dict[str, bool | None]) -> list[str]:
-    """How many checks passed, the others by their word, and the sections not used."""
+def _summary(
+    project: Project,
+    found: dict[str, bool | None],
+    policy: Policy = STRICT,
+    stricter: tuple[Violation, ...] = (),
+    explain: bool = False,
+) -> list[str]:
+    """How many checks passed, the others by their word, and the sections not used. Where all
+    passed, how many findings `strict` would fail, and with `explain` each of them."""
     said = words(project, found)
     ran = [name for name, passed in found.items() if passed is not None]
     passed = [name for name in ran if found[name]]
@@ -265,7 +332,10 @@ def _summary(project: Project, found: dict[str, bool | None]) -> list[str]:
         lines.append(
             f"{len(passed)} of {len(ran)} checks passed"
             + "".join(f"; {word}: {', '.join(names)}" for word, names in by_word.items())
+            + (_strict_said(stricter, policy) if not by_word else "")
         )
+        if explain and stricter and not by_word:
+            lines += [f"  strict: {v.rule}  {v.subject}  {v.detail[:70]}" for v in stricter]
     unused = [name for name, passed in found.items() if passed is None and name != "cross_tool"]
     if unused:
         lines.append(f"not used here: {', '.join(unused)}")
@@ -293,6 +363,7 @@ def command(args: argparse.Namespace) -> int:
     if path is None:
         project = check(root, None, policy)
         found = verdicts(None, project)
+        stricter = strict_failures(project, policy)
         listed = survey(root)
         if args.format == "json":
             print(
@@ -302,7 +373,7 @@ def command(args: argparse.Namespace) -> int:
                         "manifest": None,
                         "verified": 0,
                         "survey": listed.model_dump(mode="json"),
-                        **sections(project, found),
+                        **sections(project, found, stricter),
                     },
                     indent=2,
                 )
@@ -329,12 +400,15 @@ def command(args: argparse.Namespace) -> int:
                 policy,
                 found,
                 claims=f"no {DEFAULT_NAME} here or above; `repro manifest init` writes one",
+                stricter=stricter,
+                explain=args.explain,
             )
         return exit_code(found)
 
     manifest, report, policy, assessment = _checked(args, path)
     project = check(root, manifest, policy)
     found = verdicts(assessment.passed, project)
+    stricter = strict_failures(project, policy, report)
     if args.format == "sarif":
         sarif = to_sarif(report, assessment, version=__version__)
         print(json.dumps(_with_checks(sarif, project, found), indent=2))
@@ -344,14 +418,14 @@ def command(args: argparse.Namespace) -> int:
                 {
                     "report": report.model_dump(mode="json"),
                     "assessment": assessment.model_dump(mode="json"),
-                    **sections(project, found),
+                    **sections(project, found, stricter),
                 },
                 indent=2,
             )
         )
     else:
         _verify_text(path, report, policy, assessment)
-        _project_text(project, policy, found)
+        _project_text(project, policy, found, stricter=stricter, explain=args.explain)
     return exit_code(found)
 
 
@@ -371,7 +445,10 @@ DESCRIPTION = (
     f"{DEFAULT_NAME} declares, as `claims verify` checks them; each declared command against "
     "the record of its re-runs, as `repro stale` reports it, graded under --policy; `prereg "
     "check`; `results verify --files`; `citations verify` over the claims directory; and a "
-    "ledger claim naming a freeze no frozen plan records. A record the project does not keep "
+    "ledger claim naming a freeze no frozen plan records; and, where the project keeps a claims "
+    "directory or a ledger, every quotation the manuscript makes that nothing pins and every "
+    "number it prints that no run binds, a warning by default and a failure under strict. A "
+    "record the project does not keep "
     "is named as not used and is not run. Executes nothing a manifest declares and reaches no "
     "network. Exits 0 where every check that ran passed, 1 where one failed or could not "
     "check, and 2 where nothing was checked. `claims verify` checks the claims alone."
@@ -380,8 +457,8 @@ DESCRIPTION = (
 
 def add_parser(sub: argparse._SubParsersAction) -> argparse.ArgumentParser:
     # `claims.cli.add_verify` holds the options, so `repro verify` and `claims verify` take the
-    # same ones and write the same record of checks.
-    return add_verify(
+    # same ones and write the same record of checks. `--explain` is this command's own.
+    parser = add_verify(
         sub,
         func=command,
         summary="check the claims and every other record this project keeps, in one pass",
@@ -389,6 +466,13 @@ def add_parser(sub: argparse._SubParsersAction) -> argparse.ArgumentParser:
         target=f"{DEFAULT_NAME}, or the project's directory (default: the {DEFAULT_NAME} here "
         "or above)",
     )
+    parser.add_argument(
+        "--explain",
+        action="store_true",
+        help="where every check passed under a policy other than strict, list each finding "
+        "strict would fail; the summary line counts them either way",
+    )
+    return parser
 
 
 __all__ = [
@@ -400,5 +484,6 @@ __all__ = [
     "check",
     "command",
     "exit_code",
+    "strict_failures",
     "verdicts",
 ]

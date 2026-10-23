@@ -920,7 +920,14 @@ def test_mark_reviewed_promotes_an_item_and_records_the_chat(project, reviewer):
     (written,) = auc_evidence(project)
     assert written["basis"] == "inferred"
     assert written["reviewed"]["who"] == "A Reviewer <reviewer@example.org>"
-    assert written["reviewed"]["how"].startswith("approved in chat via ")
+    # The agent made the call, so the record says so: the person named is the one whose
+    # approval the agent reports, and nothing from that person reached the tool.
+    assert written["reviewed"]["via"] == "repro mcp, agent-recorded"
+    assert written["reviewed"]["how"].startswith(
+        "agent-recorded: the agent reports the person approved this in chat; no confirmation "
+        "from the person reached this tool via "
+    )
+    assert "approved in chat via" not in written["reviewed"]["how"]
     assert written["reviewed"]["how"].endswith(": looked fine")
     assert len(written["reviewed"]["digest"]) == 64
     counts = tallied(project)["items"]

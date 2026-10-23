@@ -35,6 +35,7 @@ import functools
 import importlib
 import io
 import json
+import os
 import pathlib  # noqa: F401  (a name this module had; see test_names_kept.py)
 import subprocess
 from pathlib import Path
@@ -109,7 +110,7 @@ from repro.delegate import BY_NAME, TOOLS
 from repro.delegate import run as delegate_run
 from repro.demo import demo
 from repro.proposals import PROJECT_MARKERS
-from repro.reproduce import RECORD
+from repro.reproduce import RECORD, RecordBrokenError
 from repro.reproduce import append as append_reproduction
 from repro.reproduce import reproduce as run_reproduce
 from repro.venue import cli as venue_cli
@@ -428,10 +429,21 @@ def cmd_reproduce(args: argparse.Namespace) -> int:
         print("  `regenerations` names a command, the files it reads and the file it writes.")
         return 2
 
-    report = run_reproduce(manifest, only=tuple(args.only or ()), skip=tuple(args.skip or ()))
+    report = run_reproduce(
+        manifest,
+        only=tuple(args.only or ()),
+        skip=tuple(args.skip or ()),
+        isolate=args.isolate,
+    )
     policy = PROFILES[args.policy]
     assessment = policy.assess_reproduction(report)
-    recorded = append_reproduction(report, path.resolve().parent)
+    try:
+        recorded: Path | None = append_reproduction(report, path.resolve().parent)
+    except RecordBrokenError as e:
+        # The run's verdict stands; only its entry is withheld, and the reason is said where a
+        # script reading standard output does not take it for part of the report.
+        recorded = None
+        os.write(2, f"record not written: {e}\n".encode())
 
     if args.format == "json":
         print(
@@ -454,7 +466,7 @@ def _reproduce_text(
     report: ReproductionReport,
     policy: Policy,
     assessment: Assessment,
-    recorded: Path,
+    recorded: Path | None,
 ) -> None:
     states = report.regenerations
     print(f"{path}\n")
@@ -494,9 +506,16 @@ def _reproduce_text(
         f"  policy {policy.name}: {'passed' if assessment.passed else 'FAILED'}"
         f"  ({len(assessment.errors)} errors, {len(assessment.warnings)} warnings)"
     )
-    print(f"  recorded in {recorded.relative_to(path.resolve().parent).as_posix()}")
+    if recorded is None:
+        print(f"  not recorded: {RECORD.as_posix()} does not verify as a chain")
+    else:
+        print(f"  recorded in {recorded.relative_to(path.resolve().parent).as_posix()}")
     if report.witness is not None:
-        print(f"  witnessed {report.witness.said}, as the environment said")
+        # A claim about where the run happened that nothing checked, so it is never said as
+        # "witnessed": the page is what a reader checks it against.
+        print(f"  the environment named a run {report.witness.said}")
+        if report.witness.page:
+            print(f"  nothing was checked against GitHub; its page is {report.witness.page}")
 
 
 def cmd_mcp(args: argparse.Namespace) -> int:
@@ -607,6 +626,13 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
     )
     p_reproduce.add_argument(
         "--skip", action="append", metavar="ID", help="leave this record out; repeatable"
+    )
+    p_reproduce.add_argument(
+        "--isolate",
+        action="store_true",
+        help="run each command with the project's directory unreadable to it, under "
+        "sandbox-exec (macOS) or bwrap (Linux); without it the pinned output is set aside "
+        "while the command runs, and a command naming the project by absolute path is refused",
     )
     p_reproduce.add_argument("--policy", choices=sorted(PROFILES), default="publication")
     p_reproduce.add_argument("--format", choices=("text", "json"), default="text")

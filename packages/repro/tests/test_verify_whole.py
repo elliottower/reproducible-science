@@ -226,6 +226,7 @@ def test_the_claims_report_is_where_and_what_it_was_and_the_tools_sit_beside_it(
         "results",
         "citations",
         "cross_tool",
+        "coverage",
         "project",
     }
 
@@ -407,3 +408,93 @@ def test_an_output_recorded_again_with_nothing_sealed_fails_the_project(project,
     (project / "figures.json").write_text(json.dumps({"total": 7}, indent=2))
 
     assert main(["results", "run", "figures.json", "--run-id", "r2"]) == 1
+
+
+# -- the manuscript's coverage ----------------------------------------------------------------
+
+PAPER = (
+    "We report a total of 6.\n"
+    f"As \\citet{{smith}} put it, ``{QUOTE}''.\n"
+    "They also wrote that ``the treatment cured every patient in the trial''.\n"
+)
+
+
+def with_paper(root, text=PAPER, name="paper.tex"):
+    """The manifest, with the manuscript declared as one of its artifacts."""
+    (root / name).write_text(text)
+    manifest = pin_manifest(root)
+    document = yaml.safe_load(manifest.path.read_text())
+    document["artifacts"].append(
+        {"id": "paper", "path": name, "digest": Digest.of_file(root / name).model_dump()}
+    )
+    manifest.path.write_text(yaml.safe_dump(document))
+
+
+def test_a_quotation_nothing_pins_warns_by_default_and_fails_under_strict(project, capsys):
+    """The red-team attack: a fabricated quotation in the manuscript, which no claims file
+    pins, passed `repro verify` under every policy."""
+    cite(project, "smith")
+    with_paper(project)
+    code, found = verified(capsys)
+    assert code == 0
+    assert found["project"]["checks"]["coverage"] == "passed"
+    statuses = [(q["line"], q["status"]) for q in found["coverage"]["quotations"]]
+    assert statuses == [(2, "covered"), (3, "uncovered")]
+    (warned,) = found["coverage"]["violations"]
+    assert (warned["severity"], warned["rule"], warned["subject"]) == (
+        "warning",
+        "coverage.quotation_uncovered",
+        "paper.tex:3",
+    )
+    assert [v["rule"] for v in found["project"]["strict_failures"]] == [
+        "coverage.quotation_uncovered"
+    ]
+
+    code, found = verified(capsys, "--policy", "strict")
+    assert code == 1
+    assert found["project"]["checks"]["coverage"] == "failed"
+    assert found["project"]["strict_failures"] == []
+
+
+def test_a_number_no_run_binds_warns_by_default_and_fails_under_strict(project, capsys):
+    ledger()
+    with_paper(project, "We enrolled 57 participants and the ICC was 0.4213.\n", "paper.md")
+    code, found = verified(capsys)
+    assert code == 0
+    (numbers,) = found["coverage"]["numbers"]
+    assert numbers["manuscript"] == "paper.md" and numbers["unbound"] == 2
+    assert [v["rule"] for v in found["coverage"]["violations"]] == ["coverage.numbers_unbound"]
+    code, found = verified(capsys, "--policy", "strict")
+    assert code == 1
+    assert found["project"]["checks"]["coverage"] == "failed"
+
+
+def test_the_summary_says_how_many_findings_strict_would_fail(project, capsys):
+    cite(project, "smith")
+    with_paper(project)
+    capsys.readouterr()
+    assert main(["verify"]) == 0
+    out = capsys.readouterr().out
+    (summary,) = [line for line in out.splitlines() if "checks passed" in line]
+    assert summary == "3 of 3 checks passed (default policy; strict: 1 failure)"
+    assert "  strict: coverage.quotation_uncovered" not in out
+
+    assert main(["verify", "--explain"]) == 0
+    out = capsys.readouterr().out
+    assert "  strict: coverage.quotation_uncovered  paper.tex:3  " in out
+
+    # Under strict the line is as it was, and so it is where strict would fail nothing.
+    assert main(["verify", "--policy", "strict"]) == 1
+    assert "2 of 3 checks passed; failed: coverage\n" in capsys.readouterr().out
+    with_paper(project, PAPER.splitlines(keepends=True)[1])
+    assert main(["verify"]) == 0
+    assert "\n3 of 3 checks passed\n" in capsys.readouterr().out
+
+
+def test_a_stale_claim_is_counted_among_what_strict_would_fail(project, capsys):
+    rerun(pin_manifest(project, script=True))
+    files(project, xs=(1, 2, 4))
+    pin_manifest(project, script=True)
+    capsys.readouterr()
+    assert main(["verify"]) == 0
+    assert "2 of 2 checks passed (default policy; strict: 1 failure)" in capsys.readouterr().out

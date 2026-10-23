@@ -9,6 +9,7 @@ checked. Nothing here executes a command; the entries are written with the model
 
 from __future__ import annotations
 
+import hashlib
 import json
 
 import pytest
@@ -27,11 +28,21 @@ from repro.models import (
     RegenerationRecord,
     RegenerationState,
     ReproductionReport,
+    RerunRecordState,
     RunOutput,
     StaleCause,
     Witness,
 )
-from repro.reproduce import GITHUB_ACTIONS_VARIABLES, RECORD, append, witness
+from repro.policy import PUBLICATION, STRICT
+from repro.reproduce import (
+    GITHUB_ACTIONS_VARIABLES,
+    HEAD,
+    RECORD,
+    RecordBrokenError,
+    append,
+    witness,
+)
+from repro.reruns import chain
 from repro.stale import reruns, stale
 from repro.why import why
 
@@ -128,11 +139,19 @@ def test_a_variable_that_is_missing_or_empty_is_left_out_and_the_rest_are_kept(m
 def test_a_runner_that_set_nothing_else_is_still_a_witness_of_its_kind():
     found = witness({"GITHUB_ACTIONS": "true"})
     assert found.model_dump(mode="json") == {"kind": "github_actions"}
-    assert found.said == "in GitHub Actions"
-    assert witness({"GITHUB_ACTIONS": "true", "GITHUB_RUN_ID": "7"}).said == (
+    assert found.place == "in GitHub Actions"
+    assert witness({"GITHUB_ACTIONS": "true", "GITHUB_RUN_ID": "7"}).place == (
         "in GitHub Actions run 7"
     )
-    assert WITNESSED.said == "in GitHub Actions run 123456 of owner/repo"
+    assert WITNESSED.place == "in GitHub Actions run 123456 of owner/repo"
+    # Every way a witness is said carries that nothing checked it.
+    assert (
+        WITNESSED.said
+        == "in GitHub Actions run 123456 of owner/repo (unverified: from its environment variables)"
+    )
+    assert found.said == "in GitHub Actions (unverified: from its environment variables)"
+    assert WITNESSED.page == "https://github.com/owner/repo/actions/runs/123456"
+    assert found.page is None
 
 
 # -- the entry in the record -----------------------------------------------------------------
@@ -290,7 +309,7 @@ def test_stale_and_why_say_where_a_witnessed_rerun_ran(tmp_path, capsys):
     assert main(["why", "total", str(manifest.path)]) == 0
     shown = capsys.readouterr().out
     assert (
-        f"      re-run of {THEN} reproduced in GitHub Actions run 123456 of owner/repo, "
+        f"      re-run of {THEN} reproduced in GitHub Actions run 123456 of owner/repo (unverified: from its environment variables), "
         "and its output is the bytes now on disk\n"
     ) in shown
 
@@ -305,7 +324,9 @@ def test_stale_and_why_say_where_a_witnessed_rerun_ran(tmp_path, capsys):
     assert (found.cause, found.witness) == (StaleCause.INPUT_CHANGED, WITNESSED)
     main(["stale", str(manifest.path)])
     (line,) = [line for line in capsys.readouterr().out.splitlines() if "input changed" in line]
-    assert line.endswith("; that re-run was in GitHub Actions run 123456 of owner/repo")
+    assert line.endswith(
+        "; that re-run was in GitHub Actions run 123456 of owner/repo (unverified: from its environment variables)"
+    )
     assert f"the re-run of {THEN} read " in line
 
     main(["stale", str(manifest.path), "--format", "json"])
@@ -315,7 +336,10 @@ def test_stale_and_why_say_where_a_witnessed_rerun_ran(tmp_path, capsys):
 
     main(["why", "total", str(manifest.path)])
     shown = capsys.readouterr().out
-    assert "; that re-run was in GitHub Actions run 123456 of owner/repo\n" in shown
+    assert (
+        "; that re-run was in GitHub Actions run 123456 of owner/repo (unverified: from its environment variables)\n"
+        in shown
+    )
 
 
 def test_each_rerun_is_named_with_its_own_witness(tmp_path):
@@ -327,3 +351,104 @@ def test_each_rerun_is_named_with_its_own_witness(tmp_path):
     append(later, tmp_path)
     (node,) = stale(manifest).regenerations
     assert (node.rerun_at, node.witness) == ("2026-02-01T00:00:00+00:00", WITNESSED)
+
+
+# -- the record is a chain --------------------------------------------------------------------
+
+
+def lines(root):
+    return (root / RECORD).read_text().splitlines()
+
+
+def test_each_entry_names_the_one_before_it_and_the_head_file_names_the_last(tmp_path):
+    _, made = project(tmp_path)
+    for _ in range(3):
+        append(entry(tmp_path, made), tmp_path)
+    written = [json.loads(line) for line in lines(tmp_path)]
+    assert [e["seq"] for e in written] == [0, 1, 2]
+    assert written[0]["prev_hash"] == "0" * 64
+    for before, after in zip(lines(tmp_path), written[1:], strict=False):
+        assert after["prev_hash"] == hashlib.sha256(before.encode()).hexdigest()
+    head = json.loads((tmp_path / HEAD).read_text())
+    assert head["count"] == 3
+    assert head["head"] == hashlib.sha256(lines(tmp_path)[-1].encode()).hexdigest()
+    assert chain(tmp_path) == RerunRecordState(status="intact", entries=3)
+    assert len(reruns(tmp_path)) == 3
+
+
+def test_an_entry_edited_by_hand_breaks_the_chain_fails_stale_and_is_appended_to_no_further(
+    tmp_path, capsys
+):
+    """An entry rewritten to say a re-run reproduced, or ran in CI, reads as any other unless
+    the record is a chain."""
+    manifest, made = project(tmp_path)
+    append(entry(tmp_path, made), tmp_path)
+    append(entry(tmp_path, made), tmp_path)
+    first, second = lines(tmp_path)
+    forged = json.loads(first) | {"witness": {"kind": "github_actions", "run_id": "999999"}}
+    (tmp_path / RECORD).write_text(json.dumps(forged, sort_keys=True) + "\n" + second + "\n")
+
+    state = chain(tmp_path)
+    assert state.status == "edited" and state.broken
+    assert "entry 1 does not hash" in state.problems[0]
+    report = stale(manifest)
+    assert report.record == state
+    assessment = PUBLICATION.assess_staleness(report)
+    assert assessment.passed is False
+    assert [v.rule for v in assessment.errors] == ["staleness.record.edited"]
+
+    before = (tmp_path / RECORD).read_bytes()
+    with pytest.raises(RecordBrokenError, match="edited"):
+        append(entry(tmp_path, made), tmp_path)
+    assert (tmp_path / RECORD).read_bytes() == before
+
+    assert main(["stale", str(manifest.path)]) == 1
+    assert "BROKEN        record of re-runs edited" in capsys.readouterr().out
+
+
+def test_entries_cut_from_the_end_are_found_while_the_head_file_stands(tmp_path):
+    manifest, made = project(tmp_path)
+    for _ in range(2):
+        append(entry(tmp_path, made), tmp_path)
+    (tmp_path / RECORD).write_text(lines(tmp_path)[0] + "\n")
+    assert chain(tmp_path).status == "truncated"
+    assert PUBLICATION.assess_staleness(stale(manifest)).passed is False
+
+
+def test_a_missing_head_file_warns_and_strict_fails_it(tmp_path):
+    manifest, made = project(tmp_path)
+    append(entry(tmp_path, made), tmp_path)
+    (tmp_path / HEAD).unlink()
+    assert chain(tmp_path).status == "no_anchor"
+    report = stale(manifest)
+    assert PUBLICATION.assess_staleness(report).passed is True
+    assert [v.rule for v in PUBLICATION.assess_staleness(report).warnings] == [
+        "staleness.record.no_anchor"
+    ]
+    assert STRICT.assess_staleness(report).passed is False
+    append(entry(tmp_path, made), tmp_path)
+    assert chain(tmp_path).status == "intact"
+
+
+def test_entries_written_before_the_chain_are_kept_and_counted_and_pass_by_default(tmp_path):
+    manifest, made = project(tmp_path)
+    old_log(tmp_path, made)
+    assert chain(tmp_path) == RerunRecordState(status="unchained", entries=1, unchained=1)
+    append(entry(tmp_path, made), tmp_path)
+    old, new = lines(tmp_path)
+    assert "seq" not in json.loads(old)
+    assert json.loads(new)["prev_hash"] == hashlib.sha256(old.encode()).hexdigest()
+    assert chain(tmp_path) == RerunRecordState(status="intact", entries=2, unchained=1)
+    report = stale(manifest)
+    assert PUBLICATION.assess_staleness(report).violations == ()
+    assert [v.rule for v in STRICT.assess_staleness(report).warnings] == [
+        "staleness.record.unchained"
+    ]
+
+
+def test_an_entry_without_chain_fields_after_chained_ones_is_corrupt(tmp_path):
+    _, made = project(tmp_path)
+    append(entry(tmp_path, made), tmp_path)
+    with (tmp_path / RECORD).open("a") as handle:
+        handle.write(json.dumps(entry(tmp_path, made).model_dump(mode="json")) + "\n")
+    assert chain(tmp_path).status == "corrupt"
