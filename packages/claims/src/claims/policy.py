@@ -123,6 +123,15 @@ class Policy(BaseModel):
     staleness_undetermined: Severity = Severity.WARNING
     """A regeneration that could not be compared: a file is missing, or the records form a
     cycle."""
+    rerun_record_broken: Severity = Severity.ERROR
+    """The record of re-runs does not verify as a chain: an entry edited, removed, moved or
+    unreadable, or entries cut from the end. Every `current` rests on that record, so one
+    rewritten by hand can make any file current."""
+    rerun_record_unanchored: Severity = Severity.WARNING
+    """The chain verifies and its head file is missing or behind it, so entries cut from the
+    end would not be found."""
+    rerun_record_unchained: Severity = Severity.IGNORE
+    """Entries written before the record was chained, which nothing links but their order."""
 
     inferred: Severity = Severity.ERROR
     """An assertion the manifest marks `basis: inferred`: proposed by a program or a model and
@@ -348,11 +357,38 @@ class Policy(BaseModel):
             )
             for node in report.regenerations
             if node.state in severities
-        )
+        ) + self._record_violations(report)
         return Assessment(
             policy=self.name,
             violations=violations,
             passed=not any(v.severity is Severity.ERROR for v in violations),
+        )
+
+    def _record_violations(self, report: StalenessReport) -> tuple[Violation, ...]:
+        """The record of re-runs itself, where it is not the chain `repro reproduce` wrote."""
+        record = report.record
+        if record is None:
+            return ()
+        if record.broken:
+            severity, rule = self.rerun_record_broken, record.status
+        elif record.status in ("no_anchor", "extended"):
+            severity, rule = self.rerun_record_unanchored, record.status
+        elif record.unchained:
+            severity, rule = self.rerun_record_unchained, "unchained"
+        else:
+            return ()
+        if severity is Severity.IGNORE:
+            return ()
+        detail = "; ".join(record.problems) or (
+            f"{record.unchained} of {record.entries} entries predate the chain"
+        )
+        return (
+            Violation(
+                severity=severity,
+                rule=f"staleness.record.{rule}",
+                subject=".repro/reproductions.jsonl",
+                detail=detail,
+            ),
         )
 
 
@@ -373,6 +409,8 @@ EXPLORATORY = Policy(
     ordering_unchecked=Severity.IGNORE,
     never_rerun=Severity.IGNORE,
     staleness_undetermined=Severity.IGNORE,
+    rerun_record_broken=Severity.WARNING,
+    rerun_record_unanchored=Severity.IGNORE,
 )
 
 PUBLICATION = Policy(
@@ -405,6 +443,8 @@ STRICT = Policy(
     stale=Severity.ERROR,
     never_rerun=Severity.ERROR,
     staleness_undetermined=Severity.ERROR,
+    rerun_record_unanchored=Severity.ERROR,
+    rerun_record_unchained=Severity.WARNING,
 )
 
 PROFILES = {p.name: p for p in (EXPLORATORY, PUBLICATION, STRICT)}

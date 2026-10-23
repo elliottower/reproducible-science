@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import enum
-from typing import Literal
+from typing import ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_serializer
 
@@ -187,14 +187,32 @@ class Witness(BaseModel):
     def _omit_what_was_not_given(self, handler):
         return {name: value for name, value in handler(self).items() if value is not None}
 
+    #: Said beside every witness, because the variables are all a witness is. A process given
+    #: `GITHUB_ACTIONS=true` and a run id by hand records the same entry as a runner does.
+    UNVERIFIED: ClassVar[str] = "unverified: from its environment variables"
+
     @property
-    def said(self) -> str:
-        """Where it ran, as a clause: `in GitHub Actions run 123456 of owner/repo`."""
+    def place(self) -> str:
+        """Where the environment said it ran: `in GitHub Actions run 123456 of owner/repo`."""
         return (
             "in GitHub Actions"
             + (f" run {self.run_id}" if self.run_id else "")
             + (f" of {self.repository}" if self.repository else "")
         )
+
+    @property
+    def said(self) -> str:
+        """Where it ran, as a clause that says nothing checked it: `in GitHub Actions run
+        123456 of owner/repo (unverified: from its environment variables)`."""
+        return f"{self.place} ({self.UNVERIFIED})"
+
+    @property
+    def page(self) -> str | None:
+        """The run's page, which is what a reader checks the entry against, where the entry
+        names a repository and a run."""
+        if not (self.repository and self.run_id):
+            return None
+        return f"https://github.com/{self.repository}/actions/runs/{self.run_id}"
 
 
 class ReproductionReport(BaseModel):
@@ -213,14 +231,21 @@ class ReproductionReport(BaseModel):
     """Where the re-run happened, where the environment said. None for a run that was given
     no such variables, which is every run on an author's machine."""
     regenerations: tuple[RegenerationState, ...] = ()
+    seq: int | None = None
+    """The entry's position in the record of re-runs, from 0. Written by `repro reproduce`
+    when it appends the entry, with `prev_hash`; absent from an entry written before the record
+    was chained, and from a report that was never recorded."""
+    prev_hash: str | None = None
+    """SHA-256 of the entry before this one as stored, or of nothing for the first."""
 
     @model_serializer(mode="wrap")
     def _omit_no_witness(self, handler):
-        """Leave the field out where there is none, so an entry for a local run is the entry
-        it was before the field existed."""
+        """Leave the fields out where there are none, so an entry for a local run is the entry
+        it was before the fields existed."""
         dumped = handler(self)
-        if self.witness is None:
-            dumped.pop("witness", None)
+        for field in ("witness", "seq", "prev_hash"):
+            if getattr(self, field) is None:
+                dumped.pop(field, None)
         return dumped
 
     @property
@@ -229,6 +254,43 @@ class ReproductionReport(BaseModel):
         for state in self.regenerations:
             tally[state.state.value] = tally.get(state.state.value, 0) + 1
         return tally
+
+
+class RerunRecordState(BaseModel):
+    """Whether the record of re-runs is the chain `repro reproduce` wrote.
+
+    Each entry carries its position and the SHA-256 of the entry before it, and a head file
+    beside the record holds the number of entries and the hash of the last, as the `results`
+    ledger does. Entries written before the record was chained are counted under `unchained`:
+    they sit at its start, and the first chained entry names the last of them, so none can be
+    edited without the chain showing it, but each can be told apart only by that one link.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    status: Literal[
+        "absent",
+        "unchained",
+        "intact",
+        "no_anchor",
+        "extended",
+        "truncated",
+        "edited",
+        "reordered",
+        "corrupt",
+    ]
+    """`absent`: no record. `unchained`: every entry predates the chain. `intact`: the chain
+    and its head file agree. `no_anchor`: no head file, so entries cut from the end would not be
+    found. `extended`: more entries than the head file records, which a crash between writing
+    an entry and its head leaves. The last four are damage to the record."""
+    entries: int = 0
+    unchained: int = 0
+    problems: tuple[str, ...] = ()
+
+    @property
+    def broken(self) -> bool:
+        """An entry edited, removed, moved or unreadable, or entries cut from the end."""
+        return self.status in ("truncated", "edited", "reordered", "corrupt")
 
 
 # --------------------------------------------------------------------------------- staleness
@@ -380,6 +442,8 @@ class StalenessReport(BaseModel):
     edges: tuple[Edge, ...] = ()
     findings: tuple[StaleFinding, ...] = ()
     record_disagrees_with_pin: tuple[PinDisagreement, ...] = ()
+    record: RerunRecordState | None = None
+    """Whether the record of re-runs read is the chain `repro reproduce` wrote."""
 
 
 # --------------------------------------------------------------------------------- one claim

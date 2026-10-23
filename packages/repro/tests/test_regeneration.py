@@ -962,7 +962,10 @@ def test_a_rerun_records_where_it_ran_only_where_its_variables_say(tmp_path):
         "runner_os": "Linux",
     }
     # Beside `environment`, and nothing else about the entry differs in shape.
-    assert set(recorded) - {"witness"} == set(json.loads(local.model_dump_json()))
+    # The chain's two fields are written as the entry is appended, and a report carries none.
+    assert set(recorded) - {"witness", "seq", "prev_hash"} == set(
+        json.loads(local.model_dump_json())
+    )
 
 
 def test_the_command_names_the_witness_after_the_record_and_only_where_there_is_one(
@@ -981,11 +984,20 @@ def test_the_command_names_the_witness_after_the_record_and_only_where_there_is_
     for name, value in RUNNER.items():
         monkeypatch.setenv(name, value)
     assert main(["reproduce", str(path)]) == 0
-    recorded, witnessed = capsys.readouterr().out.rstrip().splitlines()[-2:]
+    # These variables were set by hand, which is the red-team attack: nothing tells them apart
+    # from a runner's, so the run is never said to have been witnessed, only named.
+    out = capsys.readouterr().out
+    recorded, named, page = out.rstrip().splitlines()[-3:]
     assert recorded == f"  recorded in {RECORD.as_posix()}"
-    assert witnessed == (
-        "  witnessed in GitHub Actions run 123456 of owner/repo, as the environment said"
+    assert named == (
+        "  the environment named a run in GitHub Actions run 123456 of owner/repo "
+        "(unverified: from its environment variables)"
     )
+    assert page == (
+        "  nothing was checked against GitHub; its page is "
+        "https://github.com/owner/repo/actions/runs/123456"
+    )
+    assert "witnessed" not in out
     assert json.loads((tmp_path / RECORD).read_text().splitlines()[-1])["witness"]["run_id"] == (
         "123456"
     )
@@ -1121,3 +1133,22 @@ def test_a_message_naming_both_spellings_of_a_directory_keeps_neither():
     assert "private" not in scrubbed
     assert "folders" not in scrubbed
     assert scrubbed == " ".join("./a.txt and ./b.txt" for _ in places)
+
+
+def test_a_record_that_does_not_verify_is_not_appended_to_and_the_run_still_reports(
+    tmp_path, capfd
+):
+    path = on_disk(tmp_path, SCRIPT)
+    assert main(["reproduce", str(path)]) == 0
+    assert main(["reproduce", str(path)]) == 0
+    first, second = (tmp_path / RECORD).read_text().splitlines()
+    (tmp_path / RECORD).write_text(
+        first.replace('"reproduced"', '"changed"') + "\n" + second + "\n"
+    )
+    before = (tmp_path / RECORD).read_bytes()
+    capfd.readouterr()
+    assert main(["reproduce", str(path)]) == 0
+    out, err = capfd.readouterr()
+    assert f"  not recorded: {RECORD.as_posix()} does not verify as a chain" in out
+    assert err.startswith("record not written: ") and "reported as edited" in err
+    assert (tmp_path / RECORD).read_bytes() == before

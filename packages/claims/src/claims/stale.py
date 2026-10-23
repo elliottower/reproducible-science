@@ -47,7 +47,7 @@ from claims.models import (
     StalenessReport,
 )
 from claims.reruns import RecordUnreadableError as RecordUnreadableError
-from claims.reruns import canonical_digest, upstream
+from claims.reruns import canonical_digest, chain, upstream
 from claims.reruns import reruns as reruns
 from claims.verify import artifact_states
 
@@ -327,6 +327,7 @@ def stale(manifest: Manifest) -> StalenessReport:
             for found in each
         ),
         record_disagrees_with_pin=tuple(disagreements),
+        record=chain(root),
     )
 
 

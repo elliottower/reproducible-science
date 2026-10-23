@@ -313,7 +313,9 @@ The directory is not a wall: a command can still name a file in the project by i
 
 `--skip ID` leaves a record out, such as a long training run, and `--only ID` runs the ones named. A record that reads the output of one that did not reproduce still runs, over the pinned copy, and says so. Each invocation appends what it observed to `.repro/reproductions.jsonl`.
 
-Run under GitHub Actions, an entry also says where: a `witness` with `kind`, `repository`, `workflow`, `run_id`, `run_attempt`, `sha`, `ref` and `runner_os`, copied from the `GITHUB_*` and `RUNNER_OS` variables when `GITHUB_ACTIONS` is `true`, and absent from every other run. The command prints `witnessed in GitHub Actions run 123456 of owner/repo, as the environment said`, and `repro stale` and `repro why` name the run beside the re-run they compare with. The variables are whatever the process was given and nothing is checked against GitHub: the run's page and log, at `https://github.com/<repository>/actions/runs/<run_id>`, are what a reader checks the entry against.
+Run under GitHub Actions, an entry also says where: a `witness` with `kind`, `repository`, `workflow`, `run_id`, `run_attempt`, `sha`, `ref` and `runner_os`, copied from the `GITHUB_*` and `RUNNER_OS` variables when `GITHUB_ACTIONS` is `true`, and absent from every other run. The variables are whatever the process was given, and a process started with `GITHUB_ACTIONS=true` and a run id set by hand records the same entry a runner does, so a witness is never said to have witnessed anything. The command prints `the environment named a run in GitHub Actions run 123456 of owner/repo (unverified: from its environment variables)` and the run's page, `https://github.com/<repository>/actions/runs/<run_id>`, which is what a reader checks the entry against; `repro stale`, `repro why` and the CI summaries name the run with the same `unverified` clause. Nothing is checked against GitHub.
+
+The record is a hash chain, as the `results` ledger is. Each entry carries its position, `seq`, and the SHA-256 of the entry before it as stored, `prev_hash`, and `.repro/reproductions.head` holds the number of entries and the hash of the last; commit it with the record. Each append checks the record first and refuses one that was edited, reordered, cut or holds a line that is not an entry: the run is still reported, and `record not written: ...` on standard error says why. Entries written before the chain stay where they are, counted as `unchained`, and the first chained entry names the last of them. `repro stale` and the staleness section of `repro verify` report the record's state: a broken record fails under `publication` and `strict` and warns under `exploratory`, a missing or lagging head file warns and fails `strict`, and unchained entries warn under `strict` only. As with the ledger, whoever can rewrite the record, its head file and the history can rewrite all three.
 
 This executes what the manifest names. `repro verify` never does.
 
@@ -892,7 +894,7 @@ reruns: each declared command against the record of its re-runs. What this means
 |---|---|
 | commands | 6 of 7 declared commands have a recorded re-run over the current files that reproduced, 1 stale |
 | record | `.repro/reproductions.jsonl` holds 3 re-runs |
-| where | of the 7 re-runs compared: 2 recorded in GitHub Actions [run 123456](https://github.com/you/my_project/actions/runs/123456) of you/my_project, as the environment said; 5 recorded with no witness, which is how a re-run on someone's own machine is recorded |
+| where | of the 7 re-runs compared: 2 recorded in GitHub Actions [run 123456](https://github.com/you/my_project/actions/runs/123456) of you/my_project (unverified: from its environment variables); 5 recorded with no witness, which is how a re-run on someone's own machine is recorded |
 
 ### Commands with no current re-run on record
 
@@ -1296,7 +1298,7 @@ inside that project. A symlink belongs to the folder it sits in. A call with no 
 | `next_open_item`, `get_open_item` | one open item: the claim, the printed value, the sentence, each candidate's address, labels and stored value |
 | `propose_binding` | one assertion filling an item, `basis: inferred`, then its check |
 | `add_artifact` | one file, pinned and `basis: inferred` |
-| `mark_reviewed` | what the user approved in the chat, as `reviewed` |
+| `mark_reviewed` | what the agent reports the user approved in the chat, as `reviewed`, marked agent-recorded |
 | `pin_quote` | `citations pin`, which writes only a passage that resolves |
 
 Each write is one line of the draft, and no other byte changes. `propose_binding` reports a
@@ -1304,8 +1306,13 @@ match as `matched, inferred: not verified`, and a retry replaces only its own pr
 not match. Every attempt is appended to a hash chain in `.repro/attempts.jsonl` beside the
 open-items file, which `claims open-items` counts from, flagging an item tried more than five
 times. An assertion reading an inferred artifact counts as inferred too. `mark_reviewed` writes
-who (git `user.name`), when, how (`approved in chat via` the client) and the digest of what was
-accepted; when that changes, the review no longer counts. Nothing the server offers freezes,
+who (git `user.name`), when, `via: repro mcp, agent-recorded`, how (`agent-recorded: the agent
+reports the person approved this in chat; no confirmation from the person reached this tool`,
+with the client's name) and the digest of what was accepted; when that changes, the review no
+longer counts. The agent is what calls the tool, so the record shows that an agent reported an
+approval for the person git names. It does not show that the person gave it: nothing the server
+receives comes from the person. A review the person writes into the manifest by hand, or gives
+on a pull request to the bot, carries no such mark. Nothing the server offers freezes,
 registers, seals, runs a declared command, and nothing but `citations_audit` fetches.
 
 MIT licensed.
