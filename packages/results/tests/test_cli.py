@@ -640,7 +640,15 @@ def a_repo_with_a_frozen_plan(tmp_path, plan="plan.md"):
 
 
 def test_a_plan_frozen_before_the_exposure_is_confirmatory(tmp_path):
-    sha = a_repo_with_a_frozen_plan(tmp_path)
+    sha = a_repo_with_a_frozen_plan(tmp_path, "PREREG.md")
+    frozen = subprocess.run(
+        [sys.executable, "-m", "prereg.cli", "freeze"],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        env=clean_env(PROVENANCE_CALENDARS=""),
+    )
+    assert frozen.returncode == 0, frozen.stdout
     run_cli("init", cwd=tmp_path)
     run_cli("access", "read the outcomes", "--level", "outcomes seen", cwd=tmp_path)
     (tmp_path / "out.json").write_text('{"d": 0.103}\n')
@@ -680,7 +688,7 @@ def test_a_freeze_that_does_not_resolve_is_refused(tmp_path):
         "late",
         "--confirmatory",
         "--frozen-at",
-        "deadbeef",
+        "deadbeef" * 5,
         cwd=tmp_path,
     )
     assert r.returncode == 1

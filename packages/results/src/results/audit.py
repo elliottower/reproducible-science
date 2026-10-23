@@ -18,10 +18,10 @@ import pathlib
 
 from provenance_core import anchor, atomic_write, sha256_of_tree, try_run
 
-from results import ledger, manuscript, plans, stamps
+from results import freezes, ledger, manuscript, plans, stamps
 from results.paths import ledger_own, ledger_path, require_root
 from results.record import LINKED, retired
-from results.timeline import first_outcomes_seen, first_run_timestamp, precedes
+from results.timeline import first_outcomes_seen, first_run_timestamp
 
 #: Said of a recorded path that is one of the ledger's own files, in the text and the JSON.
 OWN_FILE = "the ledger's own file, which changes with every event; not compared"
@@ -486,6 +486,8 @@ def _verify(check_files: bool, report: dict) -> int:
     unlinked = []
     contested = []
     protected = []
+    unrecorded = []
+    unplanned = []
     if claims:
         for c in claims:
             run_events = [
@@ -500,7 +502,13 @@ def _verify(check_files: bool, report: dict) -> int:
 
         # Recomputed from timestamps rather than read off the claim event, so a
         # ledger written by an older version, or edited by hand, is still caught.
+        # The freeze is placed by its record, in the ledger's order where the record gives a
+        # position, and never by the claim's `frozen_at_time`, which an older version took from
+        # the commit date the committer sets.
+        recorded = freezes.read_all(root.parent, lp)
+        lines = freezes.lines_of(lp)
         seen = first_outcomes_seen(events)
+        seen_at = freezes.index_of(lines, "access", lambda e: e.get("level") == "outcomes seen")
         if seen is not None:
             late = [
                 c
@@ -508,13 +516,23 @@ def _verify(check_files: bool, report: dict) -> int:
                 if c.get("confirmatory")
                 and (first_run_timestamp(events, str(c.get("run_id") or "")) or "") > seen
             ]
-            # The same instant comparison the claim path uses. This line held the string
-            # form of the defect after the claim path was fixed, so the claim was accepted
-            # and then reported as unprotected by the command that checks it.
-            protected = [
-                c for c in late if c.get("frozen_at_time") and precedes(c["frozen_at_time"], seen)
-            ]
-            contested = [c for c in late if c not in protected]
+            for c in late:
+                freeze = freezes.named(recorded, str(c.get("frozen_at") or ""))
+                if freeze is not None and freezes.before(freeze, seen_at, seen):
+                    protected.append(c)
+                elif c.get("frozen_at") and freeze is None:
+                    unrecorded.append(c)
+            contested = [c for c in late if c not in protected and c not in unrecorded]
+        for c in claims:
+            if not c.get("confirmatory"):
+                continue
+            named = freezes.named(recorded, str(c.get("frozen_at") or ""))
+            compared = [named] if named else recorded
+            run_id = str(c.get("run_id") or "")
+            run_at = freezes.run_index(lines, run_id)
+            stamp = first_run_timestamp(events, run_id)
+            if compared and all(freezes.before(f, run_at, stamp) is False for f in compared):
+                unplanned.append(c)
         if protected:
             print(
                 f"\n{len(protected)} confirmatory claim(s) rest on plans frozen "
@@ -527,12 +545,29 @@ def _verify(check_files: bool, report: dict) -> int:
         if contested:
             print(
                 f"\n{len(contested)} confirmatory claim(s) rest on runs recorded "
-                f"after outcomes were seen, with no freeze reference:"
+                f"after outcomes were seen, with no freeze before them:"
             )
             for c in contested:
                 print(f"  {c['claim'][:60]}  (run: {c.get('run_id')})")
-            print("  these are retrospective unless a commit fixed the choices they")
-            print("  rest on; if one did, re-record with --frozen-at.")
+            print("  these are retrospective unless a plan frozen before the exposure fixed")
+            print("  the choices they rest on; if one did, re-record with --frozen-at.")
+        if unrecorded:
+            print(
+                f"\n{len(unrecorded)} confirmatory claim(s) rest on runs recorded after "
+                f"outcomes were seen, and cite a commit no freeze record names:"
+            )
+            for c in unrecorded:
+                print(f"  {c['claim'][:56]}  (frozen at {c.get('frozen_at')})")
+            print("  a commit's date is whatever its committer set, so it dates no freeze.")
+        if unplanned:
+            print(
+                f"\n{len(unplanned)} confirmatory claim(s) rest on runs recorded before the "
+                f"plan was frozen:"
+            )
+            for c in unplanned:
+                print(f"  {c['claim'][:60]}  (run: {c.get('run_id')})")
+            print("  no frozen plan governed these runs. Reported, not failed: a pilot can")
+            print("  come before the plan it informs.")
 
     print()
     if unlinked:
@@ -541,7 +576,7 @@ def _verify(check_files: bool, report: dict) -> int:
     if not check_files:
         print("chain intact. file hashes were not checked — pass --files to check them.")
         return 0
-    if contested:
+    if contested or unrecorded or unplanned:
         print("chain intact and every file hash matches, with the notes above.")
         return 0
     print("all checks passed.")

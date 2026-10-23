@@ -72,10 +72,13 @@ code that computes the result, or abandoning an arm after a null.
 | a null caused an arm to be dropped | exploratory — continuation was data-contingent |
 | a human saw results and then exercised discretion | exploratory unless those choices were already fixed |
 
-Row two is the one that gets mishandled. A plan committed to git before the exposure cannot
-be reached by it, so `results claim --confirmatory --frozen-at <commit>` records the claim
-as confirmatory with the exposure logged. `verify` reports it separately from contested
-claims. Without a freeze reference the tool refuses, because it cannot tell the two apart.
+Row two is the one that gets mishandled. A plan frozen before the exposure cannot be reached
+by it, so `results claim --confirmatory --frozen-at <commit>` records the claim as
+confirmatory with the exposure logged. The commit is the full id a `prereg freeze` record
+names, and the freeze is placed by that record's position in the ledger, never by the
+commit's date, which the committer sets. `verify` reports it separately from contested
+claims. Without a freeze reference the tool refuses, because it cannot tell the two apart. A
+confirmatory claim whose run was recorded before the plan was frozen is flagged, not refused.
 
 **Demote the affected decisions, never the study.** Blanket demotion is a category error, and
 it is why exposures get hidden rather than logged: if disclosure costs everything, nobody
