@@ -13,7 +13,7 @@ marked withdrawn and keeps its number.
 | **Pinning and extraction** | RD-001 – RD-005 |
 | **Repository structure** | RD-006 – RD-011 |
 | **Manuscript** | RD-012 – RD-015 |
-| **Tooling** | RD-016 – RD-020 |
+| **Tooling** | RD-016 – RD-021 |
 
 ---
 
@@ -305,3 +305,22 @@ The suite's 1115 tests included one that parsed `hooks.json` and asserted every 
 was present and executable; it passed throughout. `claude plugin validate` reported the error in
 one line and had never been run. The defect surfaced during an unrelated cleanup of installed
 plugins, not from any check the project performs.
+
+### RD-021 — A re-run that reads the answer it is compared against
+
+**Detected by** running the declared command with its pinned output out of reach.
+
+A reproduction check runs a command and compares what it writes with the file the manuscript
+was checked against. Where the command can read that file, it can write it back, and the
+comparison then reports a reproduction byte for byte whatever the code computes. Running the
+command in a directory holding only its declared inputs looks like isolation and is not: an
+absolute path, or a path assembled at run time, reaches the working tree from anywhere.
+
+The defect is invisible in the result, since an honest deterministic command writes exactly
+the same bytes. Only the conditions of the run can tell the two apart: whether the pinned file
+was there to be read.
+
+**Observed.** A declared command of `cp <project>/results/out.json results/out.json` reported
+`reproduced, bytes identical` from `repro reproduce`, and `repro stale` and the CI re-runs
+summary then counted the output as current. A record whose output was also one of its declared
+inputs had been refused for the same reason; reaching the output by path had not.
