@@ -180,14 +180,15 @@ def cmd_coverage(a) -> int:
         print(f"no claims directory at {claims_dir}")
         return 2
 
-    quotes = C.quotations(manuscript.read_text(errors="replace"))
+    latex = manuscript.suffix.lower() in C.TEX_SUFFIXES
+    quotes = C.quotations(manuscript.read_text(errors="replace"), latex=latex)
     print(f"manuscript  {manuscript}")
     print(f"claims      {claims_dir}")
     print()
     if not quotes:
-        # Not a pass. A manuscript with no ``...'' may quote nothing, or may quote with a
+        # Not a pass. A manuscript with no quotation may quote nothing, or may quote with a
         # convention this does not read, and the two are worth telling apart by eye.
-        print("no ``...'' quotations found. nothing was checked.")
+        print("no quotations found. nothing was checked.")
         return 1 if a.strict else 0
 
     skipped: list = []
@@ -216,6 +217,23 @@ def cmd_coverage(a) -> int:
             print(f"    ``{f.quotation.raw.strip()[:96]}''")
             print(f"    {f.detail}")
 
+    # Covered, and only with text left out. Counted apart, because what an ellipsis leaves
+    # out can be what the sentence turns on: `did ... improve` against `did not improve`.
+    elided = [f for f in findings if f.status == "covered" and (f.omitted or not f.ordered)]
+    negated = [f for f in elided if f.negation]
+    if elided:
+        print(f"\n  covered with an ellipsis{len(elided):>7,}")
+        for f in elided:
+            head = "DROPS A NEGATION" if f.negation else "ellipsis"
+            print(f"  {head}  {manuscript.name}:{f.quotation.line}  ({f.source})")
+            print(f"    ``{f.quotation.raw.strip()[:96]}''")
+            if not f.ordered:
+                print("    the fragments are in the source in another order")
+            for gap in f.omitted:
+                print(f"    left out: [[{gap[:120]}]]")
+        if negated:
+            print(f"  {len(negated)} ellipsis(es) leave out a negation; `--strict` fails them.")
+
     print()
     uncovered = counts.get("uncovered", 0)
     unresolvable = counts.get("unresolvable", 0)
@@ -228,7 +246,7 @@ def cmd_coverage(a) -> int:
         print(f"every quotation is {'attributed' if a.attribute else 'covered'}.")
 
     if a.strict:
-        return 1 if (uncovered or unresolvable) else 0
+        return 1 if (uncovered or unresolvable or negated) else 0
     return 1 if uncovered else 0
 
 
