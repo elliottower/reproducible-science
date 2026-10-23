@@ -123,10 +123,43 @@ def test_lines_added_to_the_log_are_appended_and_counted(repo, check):
     doc.write_text(doc.read_text() + "\n## Amendment\n\nOne more family.\n")
     code, out = check()
     assert code == 1, "text added below a log that also grew is not one appended block"
-    doc.write_text(doc.read_text().replace(entries, ""))
+
+
+def test_a_section_appended_after_the_frozen_text_is_a_change_not_a_log(repo, check):
+    freeze(repo)
+    doc = repo / "PREREGISTRATION.md"
+    doc.write_text(doc.read_text() + "\n## Additional inference criteria\n\n| H2 | p < 0.10 |\n")
     code, out = check()
-    assert code == 0
-    assert "4 lines added after the frozen text" in out
+    assert code == 1
+    assert "CHANGED      PREREGISTRATION.md" in out
+    assert "4 lines added after the frozen text, and they are not log entries" in out
+    assert "+ ## Additional inference criteria" in out
+
+    doc.write_text(
+        doc.read_text().replace(
+            "\n## Additional inference criteria\n\n| H2 | p < 0.10 |\n",
+            "\n## Amendment\n\nOne more family.\n",
+        )
+    )
+    assert check()[0] == 1
+
+
+def test_dated_entries_under_a_log_heading_appended_after_the_frozen_text_are_appended(repo, check):
+    freeze(repo)
+    doc = repo / "PREREGISTRATION.md"
+    log = (
+        "\n## Deviation log\n\n| date | what |\n|---|---|\n| 2026-07-09 | reran family 3 |\n"
+        "\n- 2026-07-10  H1 held\n  in all families but one\n"
+    )
+    doc.write_text(doc.read_text() + log)
+    code, out = check()
+    assert code == 0, out
+    assert "appended     PREREGISTRATION.md" in out
+
+    doc.write_text(doc.read_text() + "Also accept p < 0.10.\n")
+    code, out = check()
+    assert code == 1
+    assert "+ Also accept p < 0.10." in out
 
 
 def test_a_line_inserted_above_the_end_is_not_appended(repo, check):
@@ -136,6 +169,32 @@ def test_a_line_inserted_above_the_end_is_not_appended(repo, check):
     code, out = check()
     assert code == 1
     assert "2 lines added, 0 removed" in out
+
+
+def test_a_commit_line_pointed_at_a_later_edited_commit_is_a_change(repo, check):
+    first = freeze(repo)
+    doc = repo / "PREREGISTRATION.md"
+    doc.write_text(doc.read_text().replace("exceeds 0.10", "exceeds 0.05"))
+    later = commit(repo, "edit")
+    doc.write_text(doc.read_text().replace(first[:7], later))
+    commit(repo, "point the line at the edit")
+    code, out = check()
+    assert code == 1
+    assert f"CHANGED      PREREGISTRATION.md  at {later}" in out
+    assert (
+        f"its commit line named {first[:12]} in commit {git(repo, 'rev-parse', 'HEAD~2')[:12]}"
+        in out
+    )
+
+
+def test_a_commit_line_written_out_at_full_length_names_the_same_commit(repo, check):
+    first = freeze(repo)
+    doc = repo / "PREREGISTRATION.md"
+    doc.write_text(doc.read_text().replace(first[:7], first))
+    commit(repo, "the full id")
+    code, out = check()
+    assert code == 0, out
+    assert f"unchanged    PREREGISTRATION.md  at {first}" in out
 
 
 def test_a_commit_under_its_own_heading_is_read_from_the_next_line(repo, check):

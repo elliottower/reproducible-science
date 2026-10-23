@@ -24,6 +24,7 @@ import datetime
 import hashlib
 import io
 import json
+import os
 import pathlib
 import re
 import stat
@@ -44,6 +45,7 @@ from provenance_core.gitref import try_run
 from prereg import (
     amendment,
     attributes,
+    history,
     inplace,
     osf,
     pinned,
@@ -235,6 +237,35 @@ def _commit_to_name(a, path: pathlib.Path) -> str | None:
     return commit
 
 
+def _companions(a, path: pathlib.Path) -> dict[str, str] | None:
+    """Each `--companion` file by its path from `path`'s directory and its digest, or None after
+    refusing the freeze over one.
+
+    A companion is part of the plan held in another file, such as an analysis configuration the
+    plan points at. It is frozen with the plan, under the plan's rules: committed first, inside
+    the repository, and never changed afterwards.
+    """
+    found: dict[str, str] = {}
+    top = history.top_of(path.parent)
+    for given in getattr(a, "companion", None) or []:
+        p = pathlib.Path(given).resolve()
+        if not p.is_file():
+            print(f"--companion {given} is not a file. Nothing was frozen.")
+            return None
+        if p == path.resolve() or record.RECORDS in p.parts:
+            print(f"--companion {given} is the file being frozen or a freeze record.")
+            return None
+        if top is None or history.name_in(top, p) is None:
+            print(f"--companion {given} is outside the repository, so no commit can hold it.")
+            return None
+        if git("status", "--porcelain", str(p), cwd=path.parent) and not a.force:
+            print(f"{given} has uncommitted changes. Commit first — the freeze names a commit.")
+            return None
+        name = pathlib.Path(os.path.relpath(p, path.parent)).as_posix()
+        found[name] = sha256_of_file(p)
+    return found
+
+
 def _tracked_sources(a, path: pathlib.Path) -> list[sources.Held] | None:
     """The pinned sources git holds, or None after refusing a freeze of `path` over them.
 
@@ -282,6 +313,15 @@ def _freeze_whole(
     commit = _commit_to_name(a, path)
     if commit is None:
         return 1
+    companions = _companions(a, path)
+    if companions is None:
+        return 1
+    # `_commit_to_name` refuses an uncommitted change unless forced. A forced one is recorded,
+    # so `check` does not read the commit named as holding bytes it was never given.
+    uncommitted = any(
+        git("status", "--porcelain", str(p), cwd=path.parent)
+        for p in [path, *(path.parent / name for name in companions)]
+    )
 
     parent = None
     try:
@@ -320,25 +360,42 @@ def _freeze_whole(
             print(f"{e}\nNothing was frozen and nothing was sent.")
             return 1
     digest = hashlib.sha256(data).hexdigest()
-    where = record.write(
-        path, record.Record(path.name, digest, commit, record.now(), access, parent)
+    frozen = record.Record(
+        path.name,
+        digest,
+        commit,
+        record.now(),
+        access,
+        parent,
+        ledger=ledger.position(path.parent) if ledger is not None else None,
+        companions=companions or None,
+        uncommitted=uncommitted,
     )
+    where = record.write(path, frozen)
     # Read-only stops an accidental save. It is not the guard: git does not carry the flag to
     # another machine, and `check` is what fails on a change.
     path.chmod(stat.S_IMODE(path.stat().st_mode) & ~0o222)
     print(f"frozen  {path}")
-    print(f"  commit  {commit[:12]}")
+    # Whole: `results claim --frozen-at` takes the full commit a freeze record names.
+    print(f"  commit  {commit}")
     print(f"  sha256  {digest[:16]}…  (of the whole file)")
     print(f"  access  {access}")
     print(f"  record  {where.relative_to(path.parent)}")
+    for name, held in companions.items():
+        print(f"  with    {name}  sha256 {held[:16]}…")
     print("  The file is read-only now, and nothing writes to it again.")
     if ledger is not None and ledger.floor:
         print(f"  ledger  {ledger.summary}  ({ledger.path})")
+    if ledger is not None and ledger.late_ids:
+        print(
+            f"          declared after the run, and kept in the record: {', '.join(ledger.late_ids)}"
+        )
     # The plan's rule covers its amendments and its log, so an amendment to a plan frozen whole
     # adds nothing. An amendment to a plan frozen in place adds the amendments' rule alone.
     marked = [f"{plan.stem}_AMENDMENT_*.md"]
     if path == plan:
         marked = [plan.name, *marked, sidelog.log_path(plan).name]
+    marked += [name for name in companions if not name.startswith("../")]
     attributes_file, rules = attributes.mark_binary_safe(path.parent, marked)
     if rules:
         print(f"  {attributes_file.name}  {len(rules)} `-text` rules added, so no checkout")
@@ -394,6 +451,9 @@ def _refreeze_in_place(a, path: pathlib.Path, tracked: list[sources.Held]) -> in
     it there. Assumes the caller holds the lock for `path`.
     """
     text = path.read_text()
+    if getattr(a, "companion", None):
+        print(f"{path} is frozen in place, and only a freeze record can hold companion files.")
+        return 1
     if STATUS_BLOCK.search(text) is None:
         print(f"{path} has no `**Status:**` line, so there is nowhere to record the freeze.")
         return 1
@@ -739,8 +799,33 @@ def _check_whole(path: pathlib.Path, whole: record.Record, parents: dict[str, st
             "  a frozen file never changes: restore it, and record the change with `prereg amend`"
         )
         return 1
+    changed = _companions_changed(path, whole)
+    if changed:
+        print(f"CHANGED      {what}")
+        for problem in changed:
+            print(f"  - {problem}")
+        print("  a companion is frozen with the file: restore it, and record the change with")
+        print("  `prereg amend`")
+        return 1
+    bad, notes = _against_history(path, whole)
+    if bad:
+        print(f"REWRITTEN    {what}")
+        for problem in bad:
+            print(f"  - {problem}")
+        print("  a freeze is recorded once and never made again: the file and its record agree")
+        print("  on disk, and history shows the freeze was made over")
+        return 1
     orphaned = whole.parent is not None and whole.parent not in parents
     print(f"{'orphaned' if orphaned else 'unchanged':<12} {what}")
+    for note in notes:
+        print(f"  note       {note}")
+    for name in sorted(whole.companions or {}):
+        print(f"  with       {name}, unchanged")
+    if late := _declared_late(whole):
+        print(
+            f"  ledger     frozen at an access floor that `results label` lowered after the fact: "
+            f"{', '.join(late)}"
+        )
     if whole.parent is not None:
         if orphaned:
             print(f"  amends     {whole.parent[:16]}…, which is the digest of no frozen file here")
@@ -750,6 +835,37 @@ def _check_whole(path: pathlib.Path, whole: record.Record, parents: dict[str, st
             print("  written after results were seen")
     stamped = _report_timestamp(path, whole.sha256, owed=True)
     return 1 if orphaned else stamped
+
+
+def _companions_changed(path: pathlib.Path, whole: record.Record) -> list[str]:
+    """Each companion frozen with `path` that is gone or holds other bytes now."""
+    found = []
+    for name, digest in sorted((whole.companions or {}).items()):
+        companion = path.parent / name
+        if not companion.is_file():
+            found.append(f"{name} was frozen with it and is gone")
+        elif (now := sha256_of_file(companion)) != digest:
+            found.append(f"{name} was frozen with it as {digest[:16]}… and is {now[:16]}… now")
+    return found
+
+
+def _against_history(path: pathlib.Path, whole: record.Record) -> tuple[list[str], list[str]]:
+    """What history shows of a freeze whose file and record agree on disk: problems, which fail
+    the check, and notes on what could not be compared, which do not."""
+    bad = history.record_problems(path, whole.sha256)
+    notes = []
+    files = [(path, whole.sha256)]
+    files += [(path.parent / n, d) for n, d in sorted((whole.companions or {}).items())]
+    for p, digest in files:
+        problem, note = history.at_commit(p, whole.commit, digest, whole.uncommitted)
+        bad += [problem] if problem else []
+        notes += [note] if note and note not in notes else []
+    return bad, notes
+
+
+def _declared_late(whole: record.Record) -> list[str]:
+    """The runs `results label` declared after the fact, which lowered this freeze's floor."""
+    return [str(r) for r in (whole.ledger or {}).get("declared_late", [])]
 
 
 def _check_sidelog(plan: pathlib.Path, digest: str) -> int:
@@ -777,6 +893,11 @@ def check_one(path: pathlib.Path, manuscript: str | None = None) -> int:
     whole = record.read(path)
     parents = _frozen_here(path)
     codes = [_check_in_place(path) if whole is None else _check_whole(path, whole, parents)]
+    if whole is None and (gone := history.record_gone(path)):
+        print(f"RECORD GONE  {path}\n  - {gone}")
+        print("  a frozen file stays frozen: restore the record, and record a change with")
+        print("  `prereg amend`")
+        codes.append(1)
     if manuscript is not None and codes[0] == 0:
         missing = unreported(path.read_text(), manuscript)
         if missing:
@@ -796,6 +917,10 @@ def check_one(path: pathlib.Path, manuscript: str | None = None) -> int:
     for found, p in sorted(frozen, key=lambda pair: pair[0].frozen_at):
         codes.append(_check_whole(p, found, parents))
     for p in drafts:
+        if gone := history.record_gone(p):
+            print(f"RECORD GONE  {p}\n  - {gone}")
+            codes.append(1)
+            continue
         print(f"not frozen   {p}")
         codes.append(2)
     if whole is not None:
@@ -1099,6 +1224,17 @@ def _plans_below(root: pathlib.Path) -> list[pathlib.Path]:
     return sorted(found)
 
 
+def has_registrations(root: pathlib.Path) -> bool:
+    """Whether `prereg check` run at `root` has anything below it to check: a plan on disk or
+    frozen and since deleted, at any depth, or a registration frozen by a commit line.
+
+    What `repro verify` asks before it runs the check. It counted a `PREREG.md` three levels
+    down at most and never a commit line, so a study registered either way was reported as not
+    using preregistration, and an edit to it passed.
+    """
+    return bool(_plans_below(root)) or pinned.any_below(root)
+
+
 def cmd_check(a) -> int:
     """Check the governing plan and every plan below here.
 
@@ -1173,10 +1309,19 @@ def _write_account(
     if not where:
         return
     account = []
+    notes = []
     for plan, code in zip(plans, codes, strict=True):
         beside = amendment.beside(plan)
         frozen = [p for p in beside if record.read(p) is not None]
         digest = frozen_digest(plan)
+        late = sorted(
+            {r for p in (plan, *frozen) if (w := record.read(p)) for r in _declared_late(w)}
+        )
+        if late:
+            notes.append(
+                f"{plan}: frozen at an access floor that `results label` lowered after the "
+                f"fact: {', '.join(late)}"
+            )
         account.append(
             {
                 "path": str(plan),
@@ -1186,14 +1331,14 @@ def _write_account(
                 "amendments": len(frozen),
                 "amendment_drafts": len(beside) - len(frozen),
                 "log_entries": len(_entries(plan)) if plan.is_file() or digest else 0,
+                "declared_late": late,
             }
         )
     pinned_documents = [
         {"path": str(d.path), "status": d.status, "commit": d.commit} for d in documents
     ]
-    atomic_write(
-        where, json.dumps({"plans": account, "commit_pinned": pinned_documents}, indent=2) + "\n"
-    )
+    held = {"plans": account, "commit_pinned": pinned_documents, "notes": notes}
+    atomic_write(where, json.dumps(held, indent=2) + "\n")
 
 
 def _plan_result(path: pathlib.Path) -> int | None:
@@ -1351,6 +1496,13 @@ def _main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="freeze although git tracks a source the project's quotations are pinned to; "
         "without it such a freeze is refused before anything is written",
+    )
+    f.add_argument(
+        "--companion",
+        action="append",
+        metavar="PATH",
+        help="also freeze this file with the plan, such as an analysis configuration the plan "
+        "points at: its digest goes in the freeze record and `check` fails on any change to it",
     )
     f.add_argument("--osf", action="store_true", help="push as a draft registration to OSF")
     f.add_argument(

@@ -18,7 +18,7 @@ import re
 
 from provenance_core import sha256_of_tree
 
-from results import ledger, timeline
+from results import freezes, ledger, timeline
 from results.paths import RESULTS_DIR, ledger_own, ledger_path, record_path, require_root
 
 ACCESS_LEVELS = [
@@ -357,67 +357,121 @@ def claim(
         print(f"known runs: {', '.join(sorted(run_ids)) or '(none)'}")
         return 1
 
-    retrospective = None
-    frozen_time = timeline.freeze_timestamp(root, frozen_at) if frozen_at else None
-    if frozen_at and frozen_time is None:
-        print(f"cannot resolve --frozen-at '{frozen_at}': not a commit in this repository.")
-        print("a freeze reference must name a commit that contains the frozen plan.")
-        return 1
+    recorded = freezes.read_all(root.parent, lp)
+    freeze = None
+    if frozen_at:
+        freeze = _named_freeze(root, frozen_at, recorded)
+        if freeze is None:
+            return 1
+    lines = freezes.lines_of(lp)
+    seen = timeline.first_outcomes_seen(events)
+    seen_at = freezes.index_of(lines, "access", lambda e: e.get("level") == "outcomes seen")
+    run_at = freezes.run_index(lines, run_id)
+    recorded_at = timeline.first_run_timestamp(events, run_id)
 
-    if confirmatory:
-        seen = timeline.first_outcomes_seen(events)
-        if seen is not None:
-            recorded = timeline.first_run_timestamp(events, run_id)
-            if recorded is None or recorded > seen:
-                retrospective = seen
+    retrospective = None
+    if confirmatory and seen is not None:
+        if recorded_at is None or recorded_at > seen:
+            retrospective = seen
 
     # Exposure is evidence of possible contamination, not contamination. What
     # threatens a confirmatory reading is propagation: outcome information
-    # reaching a consequential choice. A plan committed before the exposure
+    # reaching a consequential choice. A plan frozen before the exposure
     # cannot be reached by it, so the disposition is confirmatory with the
     # exposure logged, and the demotion is scoped to decisions not so protected.
-    protected = bool(
-        retrospective and frozen_time and timeline.precedes(frozen_time, retrospective)
-    )
+    # Before means before in the ledger's order, read from the freeze record: never the commit
+    # date, which the committer sets.
+    ordered = freezes.before(freeze, seen_at, seen) if freeze and retrospective else None
+    protected = bool(retrospective and ordered)
     if protected:
         retrospective = None
+
+    # A confirmatory claim rests on a run the plan governed. A run recorded before the plan it
+    # cites, or before every plan where it cites none, was not governed by one. Said, and kept
+    # in the claim, and never refused: an earlier run can be a pilot the plan was written from.
+    compared = [freeze] if freeze else recorded
+    unplanned = bool(
+        confirmatory
+        and compared
+        and all(freezes.before(f, run_at, recorded_at) is False for f in compared)
+    )
 
     if retrospective and not anyway:
         print(
             f"refusing: outcomes were seen at {retrospective[:19]}, and run "
             f"'{run_id}' was recorded after that."
         )
+        if freeze is not None and ordered is False:
+            print(f"the freeze record {freeze.record} was written after the outcomes were seen.")
+        elif freeze is not None:
+            print(f"the freeze record {freeze.record} cannot be placed before the exposure:")
+            print(f"  {freeze.misplaced or 'it holds no position in this ledger and no time'}")
         print("a claim from a run that postdates seeing the outcomes is retrospective,")
         print("unless the choices it rests on were fixed before the exposure.")
-        print("if a commit contains the frozen plan, pass --frozen-at <commit>;")
+        print("if a plan was frozen before then, pass --frozen-at <the commit its record names>;")
         print("otherwise drop --confirmatory, or pass --anyway to record it as")
         print("confirmatory with the ordering noted permanently in the ledger.")
         return 1
 
-    ledger.append_event(
-        lp,
-        {
-            "event": "claim",
-            "claim": text,
-            "run_id": run_id,
-            "confirmatory": confirmatory,
-            "after_outcomes_seen": bool(retrospective),
-            "frozen_at": frozen_at or "",
-            "frozen_at_time": frozen_time or "",
-            "location": location or "",
-        },
-    )
+    event = {
+        "event": "claim",
+        "claim": text,
+        "run_id": run_id,
+        "confirmatory": confirmatory,
+        "after_outcomes_seen": bool(retrospective),
+        "frozen_at": frozen_at or "",
+        "frozen_at_time": freeze.frozen_at if freeze else "",
+        "location": location or "",
+    }
+    if unplanned:
+        event["run_before_freeze"] = True
+    ledger.append_event(lp, event)
     status = "confirmatory" if confirmatory else "exploratory"
     print(f"claim ({status}): {text[:72]}")
     print(f"  backed by run: {run_id}")
     if location:
         print(f"  appears in: {location}")
-    if protected and frozen_time:
-        print(f"  plan frozen at {frozen_at} on {frozen_time[:19]}, before outcomes")
+    if protected and freeze is not None:
+        print(f"  plan frozen at {frozen_at} on {freeze.frozen_at[:19]}, before outcomes")
         print("  were seen: confirmatory, exposure logged")
     elif retrospective:
         print(f"  recorded after outcomes were seen at {retrospective[:19]}; verify will report it")
+    if unplanned:
+        which = "the plan it cites" if freeze else "every plan frozen here"
+        print(f"  run '{run_id}' was recorded before {which} was frozen; verify will report it")
     return 0
+
+
+def _named_freeze(
+    root: pathlib.Path, frozen_at: str, recorded: list[freezes.Freeze]
+) -> freezes.Freeze | None:
+    """The freeze record `--frozen-at` names, or None after saying why it names none.
+
+    A full commit id, which a record beside a frozen plan holds. Any reference git resolves was
+    accepted before, `HEAD` included, and then dated by its commit date.
+    """
+
+    def known() -> None:
+        if recorded:
+            print("the freeze records here name:")
+            for f in recorded:
+                print(f"  {f.commit}  {f.record}")
+        else:
+            print("no freeze record is here: `prereg freeze` writes one beside the plan.")
+
+    if not freezes.FULL_COMMIT.fullmatch(frozen_at):
+        print(f"--frozen-at takes the full commit id a freeze record names, not '{frozen_at}'.")
+        known()
+        return None
+    if timeline.freeze_timestamp(root, frozen_at) is None:
+        print(f"cannot resolve --frozen-at '{frozen_at}': not a commit in this repository.")
+        print("a freeze reference must name a commit that contains the frozen plan.")
+        return None
+    freeze = freezes.named(recorded, frozen_at)
+    if freeze is None:
+        print(f"no freeze record names commit {frozen_at}.")
+        known()
+    return freeze
 
 
 def session(model: str | None) -> dict[str, str]:

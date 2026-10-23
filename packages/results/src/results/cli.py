@@ -194,9 +194,9 @@ def _main(argv: list[str] | None = None) -> int:
     )
     cl.add_argument(
         "--frozen-at",
-        help="a commit containing the frozen plan this claim rests on; if it "
-        "predates the exposure, the claim is confirmatory with the "
-        "exposure logged rather than retrospective",
+        help="the full commit id a `prereg freeze` record names for the plan this claim "
+        "rests on; if the record places the freeze before the exposure in the ledger, the "
+        "claim is confirmatory with the exposure logged rather than retrospective",
     )
     cl.add_argument("--location", help="where in the manuscript: Table 2, Section 4.1, etc.")
     cl.set_defaults(fn=cmd_claim)

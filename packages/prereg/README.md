@@ -39,6 +39,7 @@ log          V16_reliability_ceilings/PREREG.log  1 entry, chain intact
 | `prereg new <name>` | Scaffold a plan in OSF's headings |
 | `prereg freeze` | Record the file's hash, the commit and the time beside the plan, and set the plan read-only |
 | `prereg freeze PREREG_AMENDMENT_N.md` | Freeze an amendment, the same way |
+| `prereg freeze --companion PATH` | Also freeze a file the plan relies on, such as `analysis_plan.yaml`: its digest goes in the record, and `check` fails on any change to it |
 | `prereg freeze --allow-tracked-sources` | Freeze although git tracks a source the project's quotations are pinned to |
 | `prereg freeze --osf` | Freeze and push as a draft registration to OSF |
 | `prereg freeze --osf --attach PATH` | Also upload a file into the draft, so it is registered with the plan |
@@ -112,8 +113,9 @@ Commit all of it. A freeze is evidence once its record is in history.
 then:
 
 1. takes one sha256 over the whole file;
-2. writes the record to `.prereg/PREREG.md.json`: the digest, the commit, the time in UTC, and
-   the access level;
+2. writes the record to `.prereg/PREREG.md.json`: the digest, the commit, the time in UTC, the
+   access level, and, where there is a results ledger, how many events it held and the digest
+   of the last, which places the freeze in the ledger's order;
 3. sets the plan read-only;
 4. adds `-text` rules for the plan, its amendments and its log to the nearest `.gitattributes`
    at or above the plan, or to a new one beside it, leaving the lines already there as they are;
@@ -130,6 +132,12 @@ bytes arrive on every machine.
 
 Nothing is written into the plan. A second `prereg freeze` is refused, with or without
 `--force`: a change to a frozen plan is an amendment.
+
+`--companion PATH`, given once per file, freezes a file the plan relies on with it, such as an
+analysis configuration. The companion has to be committed and inside the repository, and its
+digest is kept in the record under `companions`. A run declared by `results label` after it
+was recorded lowers the access floor a freeze is held to; the record keeps those runs under
+`ledger.declared_late`, and `check` prints them on every run.
 
 ```json
 {
@@ -277,9 +285,16 @@ log          PREREG.log  4 entries, chain intact
 | 0 | `unchanged` | The file is byte for byte what was frozen |
 | 1 | `CHANGED` | A frozen file differs from its freeze by at least one byte |
 | 1 | `MISSING` | A file was frozen and is gone |
+| 1 | `CHANGED` | A companion frozen with the file is gone or differs from its freeze |
+| 1 | `REWRITTEN` | The file and its record agree on disk, and history shows the freeze was made over: the record was rewritten, or deleted and written again, the file at the commit the record names is not the file it froze, or an earlier freeze's timestamp proof sits beside it |
+| 1 | `RECORD GONE` | History holds a freeze record of the file and the disk does not |
 | 1 | `orphaned` | An amendment's parent digest matches no frozen file present |
 | 1 | `LOG ALTERED` | The log's chain does not verify, or the log is shorter than its anchor records |
 | 2 | `not frozen` | No freeze recorded for the plan, or for an amendment still in draft |
+
+The commit a record names is read from history. Where the repository does not hold it, or the
+file is not in it, or the freeze was forced over uncommitted bytes, the check says so in a
+`note` line and the exit code does not change.
 
 `not frozen` is not a pass. It is the absence of a check. A timestamp that is owed or pending
 is reported and does not change the exit code.
@@ -288,7 +303,7 @@ is reported and does not change the exit code.
 
 A file on the author's disk can be changed by anyone who removes the read-only flag, and git
 does not carry that flag to another machine. `prereg check --staged` exits 1 when the git index
-holds a change to a frozen file, an amendment or a committed freeze record, a log that no longer
+holds a change to a frozen file, an amendment, a companion or a committed freeze record, a log that no longer
 begins with its committed entries, or a log anchor whose count went down, and names each path. `prereg` installs no hook. To have git refuse such a commit, put this in
 `.git/hooks/pre-commit` and make it executable:
 
@@ -335,7 +350,15 @@ commit line out of both sides. The line is bold and starts a line, `**Commit SHA
 of one of those names. The hash is 7 to 40 digits, bare, in backticks or in bold. A bold
 `**Status:**` line before the first heading after the title is part of the freeze record too:
 it is left out of the comparison, and a status that differs from the frozen one is reported
-under the document without counting as an edit. These
+under the document without counting as an edit.
+
+Lines added after the frozen text count as `appended` only where they are a log: each starts
+with its date (`2026-07-09  ...`, `- 2026-07-09 ...`, `| 2026-07-09 | ...`), or continues the
+entry above it indented, or is a fence, a table's header and rule, or a heading naming a log
+(`## Log`, `## Deviations`, `## Deviation log`). Anything else, such as a new criteria section,
+is `CHANGED`: an addition to the plan is an amendment. The commit line itself is read through
+the document's history, and a line that once named another commit is `CHANGED`, so pointing it
+at a later commit that holds an edit does not make the edit compare as unchanged. These
 documents are listed under their own heading, after the plans:
 
 ```text
@@ -357,8 +380,8 @@ pending      PREREGISTRATION_AMENDMENT_3.md
 | Exit | Result | Meaning |
 |------|--------|---------|
 | 0 | `unchanged` | The document equals the file at its commit, apart from the commit line |
-| 0 | `appended` | Lines were added after the end of the frozen text, or at the end of the fenced log that closes it |
-| 1 | `CHANGED` | Frozen text was edited or removed, or lines were added inside it |
+| 0 | `appended` | Log entries were added after the end of the frozen text, or at the end of the fenced log that closes it |
+| 1 | `CHANGED` | Frozen text was edited or removed, lines were added inside it, lines added after it are not log entries, or the commit line once named another commit |
 | 2 | `pending` | The commit line holds a placeholder, so there is nothing to compare with |
 | 2 | `unknown commit` | The repository does not hold the named commit, or the file is not in it |
 | 0 | `superseded` | A draft never frozen, whose header names the document that replaced it; the document at the end of its chain carries the result |

@@ -17,6 +17,8 @@ import os
 import pathlib
 import re
 
+from provenance_core import sha256_of_text
+
 from prereg.log import ACCESS
 from prereg.record import RECORDS
 
@@ -74,6 +76,24 @@ class Ledger:
     """How many of `runs` were recorded as holding metadata or structure and no outcome."""
     declared_late: int = 0
     """How many of `no_outcome_runs` were declared so by `results label`, after the run."""
+    late_ids: tuple[str, ...] = ()
+    """The runs counted in `declared_late`, by id."""
+    events: int = 0
+    """How many events the ledger held when it was read: where a freeze made now sits in it."""
+    head: str = ""
+    """The digest of the last of those events, so the position can be checked against the
+    ledger later. Empty where it holds none."""
+
+    def position(self, plan_dir: pathlib.Path) -> dict:
+        """Where a freeze made now sits in this ledger, as its record keeps it."""
+        held: dict = {
+            "path": pathlib.Path(os.path.relpath(self.path, plan_dir)).as_posix(),
+            "events": self.events,
+            "head": self.head,
+        }
+        if self.late_ids:
+            held["declared_late"] = list(self.late_ids)
+        return held
 
     @property
     def floor(self) -> str | None:
@@ -128,7 +148,8 @@ def read_ledger(start: pathlib.Path) -> Ledger | None:
     if path is None:
         return None
     try:
-        events = [json.loads(line) for line in path.read_text().splitlines() if line.strip()]
+        lines = [line for line in path.read_text().splitlines() if line.strip()]
+        events = [json.loads(line) for line in lines]
         levels = [e["level"] for e in events if e.get("event") == "access"]
         level = max(levels, key=list(LEDGER_ACCESS).index, default=None)
     except (ValueError, KeyError, AttributeError) as e:
@@ -147,7 +168,16 @@ def read_ledger(start: pathlib.Path) -> Ledger | None:
         and unlabelled.count(e.get("run_id")) == 1
         and sum(r.get("run_id") == e.get("run_id") for r in runs) == 1
     }
-    return Ledger(path, level, len(runs), at_record + len(late), len(late))
+    return Ledger(
+        path,
+        level,
+        len(runs),
+        at_record + len(late),
+        len(late),
+        tuple(sorted(str(run_id) for run_id in late)),
+        len(lines),
+        sha256_of_text(lines[-1]) if lines else "",
+    )
 
 
 def path_for(plan: pathlib.Path, n: int) -> pathlib.Path:
