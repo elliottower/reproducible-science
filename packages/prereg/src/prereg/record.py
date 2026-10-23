@@ -44,6 +44,17 @@ class Record:
     access: str
     #: An amendment's parent, by digest. None for a plan.
     parent: str | None = None
+    #: Where the freeze sits in the results ledger at or above the file, where there is one:
+    #: `path` from the file's directory, `events` it held, `head` the digest of the last of them,
+    #: and `declared_late`, each run `results label` declared as holding no outcome after it was
+    #: recorded, which lowered the access floor this freeze was held to. None where no ledger.
+    ledger: dict | None = None
+    #: Each companion file frozen with the plan, by its path from the file's directory, and its
+    #: digest. None where the freeze named none.
+    companions: dict[str, str] | None = None
+    #: True where `--force` froze bytes that differed from the commit named, so the file at that
+    #: commit is not expected to hold them.
+    uncommitted: bool = False
 
     @property
     def date(self) -> str:
@@ -70,8 +81,18 @@ def read(path: pathlib.Path) -> Record | None:
         raise RecordError(where, str(e)) from e
 
 
+#: Fields written only where they hold something, so a record that uses none of them has the
+#: shape every earlier version wrote and read.
+OPTIONAL = ("ledger", "companions", "uncommitted")
+
+
 def write(path: pathlib.Path, record: Record) -> pathlib.Path:
     where = record_path(path)
     where.parent.mkdir(exist_ok=True)
-    atomic_write(where, json.dumps(dataclasses.asdict(record), indent=2) + "\n")
+    held = {
+        name: value
+        for name, value in dataclasses.asdict(record).items()
+        if name not in OPTIONAL or value
+    }
+    atomic_write(where, json.dumps(held, indent=2) + "\n")
     return where
