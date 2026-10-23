@@ -10,7 +10,7 @@ marked withdrawn and keeps its number.
 
 | | |
 |---|---|
-| **Pinning and extraction** | RD-001 – RD-005 |
+| **Pinning and extraction** | RD-001 – RD-005, RD-021 |
 | **Repository structure** | RD-006 – RD-011 |
 | **Manuscript** | RD-012 – RD-015 |
 | **Tooling** | RD-016 – RD-021 |
@@ -81,6 +81,24 @@ checkable by the author and by nobody else.
 bibliography, seven more from the citation library's own records, two from arXiv identifiers
 recorded in `note` fields, and six by fetching the candidate page and confirming a distinctive
 string from the pinned text appeared on it.
+
+### RD-021 — A quotation that resolves without the words that govern it
+
+**Detected by** `citations verify` (`after negation`, `after hedge`, `quoted in source`,
+`references`, `joined`, `invisible`), and `citations coverage` for an ellipsis that leaves out
+a negation.
+
+Every character of the quotation is in the source, so it is `found`, and the source says
+something else. The words that decide what it says sit outside the quoted span: a negation
+before it in the same clause, the quotation marks around it that make it someone the source
+quotes, the reference-list heading above it, an ellipsis standing where a `not` was. Or they
+sit inside it and the comparison folded them away, joining `not able` into `notable`. A check
+of the span alone cannot see any of these, because the span is correct.
+
+**Observed.** In a red-team pass over this toolkit, a source reading `We found no evidence that
+the treatment reduced mortality in every subgroup we examined` and a quotation of it from `the
+treatment` on resolved as `found` with no warning, as did `did ... improve` against a pin
+reading `did not improve`, and text set in white on a white PDF page.
 
 ---
 

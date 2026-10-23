@@ -28,8 +28,9 @@ import sys
 #: Manuscript sources a quotation can be written into.
 MANUSCRIPT = {".tex", ".md", ".rmd", ".qmd", ".typ", ".org", ".rst", ".txt"}
 
-#: How a quotation is written. LaTeX prefers ``like this'', packages add \enquote and
-#: \textquote, and Markdown uses ordinary double quotes.
+#: How a quotation is written, for when `citations` is not importable here and the hook can only
+#: say that a check was skipped. Where it is importable, `citations.coverage.QUOTATIONS` is read
+#: instead, so the hook and `citations coverage` count the same quotations.
 QUOTATIONS = [
     re.compile(r"``(.+?)''", re.S),
     re.compile(r"\\(?:enquote|textquote|blockquote)\s*\{(.+?)\}", re.S),
@@ -57,8 +58,16 @@ try:
 except ImportError:
     passage_fold = None
 
+try:
+    from citations.coverage import quotations
+except ImportError:
+    quotations = None
 
-def quoted(text: str) -> set[str]:
+
+def quoted(text: str, latex: bool = True) -> set[str]:
+    if quotations is not None:
+        found = {" ".join(q.raw.split()) for q in quotations(text, latex=latex)}
+        return {passage for passage in found if len(passage) >= MIN_QUOTE_CHARS}
     found = set()
     for pattern in QUOTATIONS:
         for match in pattern.finditer(text):
@@ -71,6 +80,7 @@ def quoted(text: str) -> set[str]:
 def added(payload: dict) -> set[str]:
     """Passages this edit quoted that the text it replaced did not."""
     tool_input = payload.get("tool_input") or {}
+    latex = pathlib.Path(str(tool_input.get("file_path", ""))).suffix.lower() in (".tex", ".latex")
     before, after = "", ""
     if "content" in tool_input:
         after = str(tool_input["content"])
@@ -81,7 +91,7 @@ def added(payload: dict) -> set[str]:
     else:
         before = str(tool_input.get("old_string", ""))
         after = str(tool_input.get("new_string", ""))
-    return quoted(after) - quoted(before)
+    return quoted(after, latex) - quoted(before, latex)
 
 
 def pinned(start: pathlib.Path) -> tuple[set[str], pathlib.Path] | None:

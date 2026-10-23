@@ -79,6 +79,7 @@ from importlib.metadata import PackageNotFoundError, distribution
 import yaml
 from provenance_core import atomic_write, exclusive_lock
 
+from . import pinlog
 from . import verify as V
 from .exceptions import CitationsError
 from .models import ClaimFile, load_claim_file
@@ -353,6 +354,10 @@ def main(argv: list[str] | None = None) -> int:
                 atomic_write(
                     out, checked(document(out, source, new_id, derived), new_id, cf, allowed)
                 )
+            # Resolved in the source like a pin, so logged like one. See `pinlog`.
+            pinlog.record(
+                out, new_id, derived["quotes"][0]["exact"], str(source.get("sha256") or "")
+            )
     except RestoreRefused as e:
         print(f"refused   {a.id}")
         print(f"  {e}")

@@ -32,6 +32,23 @@ The warnings -- is the quote well formed? A quote can be `found` and still carry
     normalized   matched only after ignoring punctuation and spacing
     page         found, but not on the page the record claims
     page unchecked  found, and nothing could check the page the record claims
+    joined       matched only by joining what the source separates: `not able` read as
+                 `notable`, `1 2.5` as `12.5`. See `_joined`
+    after negation  begins mid-sentence after a negation in the source: `We found no
+                 evidence that` dropped from the front of `the treatment reduced mortality`
+    after hedge  the same after a hedge: `may`, `whether`, `suggest`
+    quoted in source  sits inside quotation marks in the source, so the words are someone
+                 the source quotes and not the source's own
+    references   found only in the source's reference list
+    superscript  matched after folding changed a superscript or subscript: `x²` as `x2`,
+                 `10⁻⁵` as `10-5`
+    invisible    found only in text a PDF does not show: white, under a point, or off the
+                 page. See `invisible`
+
+`STRICT_WARNINGS` are the ones `--strict` fails on. Each says the quotation as recorded is a
+wrong statement about the source with a remedy in the author's hands: quote the negation,
+correct the page, quote the spacing the source has. The others say something a reader should
+look at and that an honest quotation can carry.
 
 One warning is about the source and not about any quotation: a source read from a file git
 tracks is listed after these, because publishing the repository then republishes its text. It
@@ -125,7 +142,7 @@ from typing import Literal
 
 from provenance_core import sha256_of_file
 
-from citations import extraction_cache, extractors, readers
+from citations import extraction_cache, extractors, invisible, readers
 from citations.exceptions import SourceUnreadableError
 
 # Long enough to carry its own qualifiers. "We trained 50" resolves against a sentence that
@@ -305,6 +322,9 @@ EXTRACT_TIMEOUT = 120
 #: arriving from elsewhere does not.
 DEFAULT_EXTRACTORS = frozenset({"pdftotext", "detex"})
 
+#: Warnings `--strict` fails on. See the module docstring.
+STRICT_WARNINGS = frozenset({"page", "joined", "after negation", "references", "invisible"})
+
 State = Literal["found", "not found", "ambiguous", "indeterminate", "unchecked"]
 PinState = Literal["ok", "broken", "unpinned", "missing"]
 
@@ -406,6 +426,16 @@ class Result:
     single-extractor check: an empty mapping means agreement was never measured, not that the
     extractors agreed. Availability and agreement are different questions and this field
     answers only the second."""
+
+    notes: dict[str, str] = field(default_factory=dict)
+    """What the source reads where a warning was given, keyed by the warning: the negation
+    before the quotation, the two spellings a `joined` match folded together. Only for the
+    warnings that read the source around the match."""
+
+    @property
+    def strict_warnings(self) -> list[str]:
+        """The warnings on this result that `--strict` fails on."""
+        return [w for w in self.warnings if w in STRICT_WARNINGS]
 
 
 @dataclass
@@ -531,7 +561,28 @@ class Report:
         one, a claims file that would not parse, and a missing `pdftotext` all left a build
         green while nothing had been verified at all.
         """
-        return self.ok and not self.unresolved and not self.unpinned and not self.skipped
+        return (
+            self.ok
+            and not self.unresolved
+            and not self.unpinned
+            and not self.skipped
+            and not self.strict_warned
+            and not self.strict_findings
+        )
+
+    @property
+    def strict_warned(self) -> list[tuple[str, str, Result]]:
+        """Quotations found and carrying a warning in `STRICT_WARNINGS`."""
+        return [(s, q, r) for s, q, r in self.problems if r.state == "found" and r.strict_warnings]
+
+    strict_findings: list[tuple[str, str]] = field(default_factory=list)
+    """Facts about a claims file that `--strict` fails on, with the file: a pin log with lines
+    taken out of it, and an absent source whose sha256 or DOI is not one. See `pinlog`."""
+
+    findings: list[tuple[str, str]] = field(default_factory=list)
+    """The same kind of fact, reported and failing nothing: a source pinned again against
+    other bytes, quotations no `citations pin` recorded, a DOI that is not one on a source
+    that is here to read."""
 
     @property
     def ok(self) -> bool:
@@ -1250,8 +1301,12 @@ def clear_caches() -> None:
         skeleton,
         _digest,
         sha256,
+        _unspaced,
+        _reference_list,
+        _has_scripts,
     ):
         cached.cache_clear()
+    invisible.cache_clear()
     _PROVENANCE.clear()
 
 
@@ -2207,13 +2262,14 @@ def _verdict(
                 passage_folded=found.folded,
             )
         return Result("not found", _not_found(quote, full), warn)
+    notes = _around(quote, full, prefix, suffix, warn)
     if m.normalized:
         # The skeleton dropped the whitespace the token check reads, so neither a cut word
         # nor a page number means anything against it. A page that was recorded is said to
         # have gone unchecked, where it used to be dropped.
         if page:
             warn.append("page unchecked")
-        return Result("found", "", warn)
+        return _seen(Result("found", "", warn, notes=notes), quote, artifact, extractor)
     cuts = _cuts(quote, full, folds)
     if cuts and all(cuts):
         warn.append("truncated")
@@ -2225,8 +2281,14 @@ def _verdict(
         detail = f"not on page {page}"
         if found_at is None and capped:
             detail += f"; searched the first {PAGE_SCAN_LIMIT} pages"
-        return Result("found", detail, warn, found_at)
-    return Result("found", "", warn)
+        if found_at is not None:
+            notes["page"] = f"recorded as page {page}; the passage is on page {found_at}"
+        else:
+            notes["page"] = f"recorded as page {page}; the passage is not on that page"
+        return _seen(
+            Result("found", detail, warn, found_at, notes=notes), quote, artifact, extractor
+        )
+    return _seen(Result("found", "", warn, notes=notes), quote, artifact, extractor)
 
 
 def _in(quote: str, text: str) -> bool:
@@ -2305,6 +2367,300 @@ def _cuts_a_token(q: str, doc: str) -> bool:
             return False
         at = doc.find(q, at + 1)
     return seen
+
+
+#: Words that, standing in the source between the start of a clause and the start of a
+#: quotation, reverse what the quotation says. `We found no evidence that the treatment
+#: reduced mortality` quoted from `the treatment` on asserts what the source denies.
+NEGATIONS = frozenset(
+    "no not never neither nor none nothing nobody without cannot lack lacks lacked "
+    "absence fail fails failed refute refuted refutes deny denies denied".split()
+)
+
+#: Words that make what follows a possibility, a question or a prediction rather than a
+#: finding. Separate from `NEGATIONS`, and not failed on by `--strict`: `we could show that`
+#: uses `could` for an ability, and the source then asserts what follows.
+HEDGES = frozenset(
+    "may might could would whether if unless perhaps possibly unlikely suggest suggests "
+    "suggested hypothesis hypothesize hypothesized hypothesise hypothesised predict predicts "
+    "predicted expect expects expected speculate speculated".split()
+)
+
+#: Where a clause begins in folded text: after sentence or clause punctuation followed by a
+#: space, so the point of `0.5` is not one. A negation before a comma governs its own clause
+#: (`although we did not measure it, the model performs well`), and the words after `but`
+#: are a new assertion.
+_CLAUSE = re.compile(r"[.!?;:,](?= |$)| but | however | yet | whereas ")
+
+#: How far back the clause a quotation begins in is looked for, in folded characters.
+CLAUSE_REACH = 200
+
+#: How far either side of a match an open quotation mark is looked for.
+QUOTE_REACH = 300
+
+#: A heading that opens a reference list, on a line of its own, perhaps numbered.
+_REFERENCES = re.compile(
+    r"^[ \t]*(?:\d+\.?|[IVXLC]+\.)?[ \t]*(references|bibliography|works cited|literature cited|"
+    r"reference list|cited literature)[ \t]*$",
+    re.I | re.M,
+)
+
+#: A heading that closes one: what follows a reference list in a paper is an appendix.
+_AFTER_REFERENCES = re.compile(
+    r"^[ \t]*(?:[A-Z]\.?|\d+\.?)?[ \t]*(appendix|appendices|supplementary|supplemental)\b",
+    re.I | re.M,
+)
+
+#: A word a quotation can split off a source word to say the opposite: `not able` against a
+#: source reading `notable`.
+_SPLIT_NEGATIONS = frozenset({"not", "no", "never", "nor", "non"})
+
+
+@functools.lru_cache(maxsize=16)
+def _unspaced(s: str) -> tuple[str, tuple[int, ...], tuple[bool, ...]]:
+    """`s` without its spaces, where each character was in `s`, and whether a space preceded it."""
+    chars: list[str] = []
+    at: list[int] = []
+    gap: list[bool] = []
+    spaced = False
+    for k, c in enumerate(s):
+        if c == " ":
+            spaced = True
+            continue
+        chars.append(c)
+        at.append(k)
+        gap.append(spaced and len(chars) > 1)
+        spaced = False
+    return "".join(chars), tuple(at), tuple(gap)
+
+
+@dataclass(frozen=True)
+class _Place:
+    """Where a found quotation sits in `passage_fold` of the source, and how it got there."""
+
+    start: int
+    end: int
+    joined: str = ""
+    """Where the match folded two source words or numbers into one, as `source -> quoted`."""
+
+
+def _word_at(s: str, i: int) -> str:
+    """The word of `s` around index `i`, as far as the spaces either side."""
+    lo = s.rfind(" ", 0, i) + 1
+    hi = s.find(" ", i)
+    return s[lo : len(s) if hi < 0 else hi]
+
+
+def _joined(
+    qn: str, gq: tuple[bool, ...], q: str, qat: tuple[int, ...], o: int, doc: str, read: tuple
+) -> str:
+    """Where a match of the unspaced quotation at `o` changes the source's words, or empty.
+
+    `skeleton` deletes white space so that an extractor dropping or inserting a space inside a
+    word does not hide a passage: `logit difference` against `logitdifference`, and against
+    `differ ence`. The same rule also reads `notable` against a source saying `not able`, and
+    `12.5` against `1 2.5`, which change what is said. Those are told apart here:
+
+        two digits      any difference in spacing, except a space the source uses to group
+                        digits (`12 500`), which is one number
+        two letters     a difference in spacing where the word on either side of it, in
+                        whichever text has the space, is a negation: `not able` against
+                        `notable`, either way round
+
+    A difference between two letters that makes no negation is what an extractor does, and is
+    left to `normalized`. Without a dictionary nothing here can tell `the rapist` from
+    `therapist`; the negations are the joins that reverse a sentence.
+    """
+    _, dat, gd, made = read
+    for i in range(1, len(qn)):
+        source_gap, quote_gap = gd[o + i], gq[i]
+        if source_gap == quote_gap:
+            continue
+        if source_gap and (dat[o + i] - 1) in made:
+            continue  # a space that groups digits, or that the fold made
+        a, b = qn[i - 1], qn[i]
+        source = (
+            f"{_word_at(doc, dat[o + i - 1])} {_word_at(doc, dat[o + i])}"
+            if source_gap
+            else _word_at(doc, dat[o + i])
+        )
+        quoted = (
+            f"{_word_at(q, qat[i - 1])} {_word_at(q, qat[i])}" if quote_gap else _word_at(q, qat[i])
+        )
+        if a.isdigit() and b.isdigit():
+            return f"source `{source}`, quoted `{quoted}`"
+        if (
+            a.isalpha()
+            and b.isalpha()
+            and set((source if source_gap else quoted).split()) & (_SPLIT_NEGATIONS)
+        ):
+            return f"source `{source}`, quoted `{quoted}`"
+    return ""
+
+
+def _places(quote: str, full: str, prefix: str, suffix: str) -> tuple[str, list[_Place]]:
+    """Where a found quotation is in `passage_fold(full)`, as many places as it may be.
+
+    Verbatim first, on token boundaries as `_positions` reads them. A quotation found only
+    under the skeleton is looked for with the spaces taken out of both sides and nothing else,
+    which places one that differs from the source in spacing and not one that differs in a
+    hyphen or in markup. Those are not placed, and the checks that read around a place are
+    then not made: a `found` with fewer warnings, never a wrong one.
+    """
+    doc, q = passage_fold(full), passage_fold(quote)
+    if not q:
+        return doc, []
+    anchored = passage_fold(prefix + quote + suffix) if (prefix or suffix) else ""
+    lead = len(passage_fold(prefix + quote)) - len(q) if prefix else 0
+    if q in doc:
+        starts = _positions(q, doc)
+        if anchored and len(starts) > 1:
+            held = [a + lead for a in _positions(anchored, doc)]
+            starts = [s for s in starts if s in held] or starts
+        return doc, [_Place(s, s + len(q)) for s in starts]
+    dn, dat, gd = _unspaced(doc)
+    qn, qat, gq = _unspaced(q)
+    if not qn:
+        return doc, []
+    tokens = _tokens(full)
+    made = tokens[1] if tokens is not None and tokens[0] == doc else frozenset()
+    read = (dn, dat, gd, made)
+    places: list[_Place] = []
+    o = dn.find(qn)
+    while o >= 0:
+        start, end = dat[o], dat[o + len(qn) - 1] + 1
+        places.append(_Place(start, end, _joined(qn, gq, q, qat, o, doc, read)))
+        o = dn.find(qn, o + 1)
+    if anchored and len(places) > 1:
+        pf = passage_fold(prefix).replace(" ", "")
+        sf = passage_fold(suffix).replace(" ", "")
+        held_places = []
+        for p in places:
+            o = dat.index(p.start)
+            if dn[max(0, o - len(pf)) : o] == pf and dn[o + len(qn) : o + len(qn) + len(sf)] == sf:
+                held_places.append(p)
+        places = held_places or places
+    return doc, places
+
+
+def _qualifier(doc: str, start: int, words: frozenset[str]) -> str:
+    """The words of `doc` from the start of the clause up to `start`, where one is in `words`."""
+    window = doc[max(0, start - CLAUSE_REACH) : start]
+    cuts = [m.end() for m in _CLAUSE.finditer(window)]
+    lead = window[cuts[-1] :] if cuts else window
+    said = re.findall(r"[a-z]+(?:'[a-z]+)?", lead)
+    if any(w in words or (words is NEGATIONS and w.endswith("n't")) for w in said):
+        return lead.strip()
+    return ""
+
+
+def _inside_quotes(doc: str, start: int, end: int) -> bool:
+    """Whether `doc[start:end]` sits between quotation marks in the source.
+
+    Folded text writes every double quotation mark as `"`. An odd number of them in the
+    stretch before the match, and one after it, puts the match inside a pair; so does a match
+    that begins with one.
+    """
+    before = doc[max(0, start - QUOTE_REACH) : start]
+    if doc[start : start + 1] == '"':
+        return True
+    return before.count('"') % 2 == 1 and '"' in doc[start : end + QUOTE_REACH]
+
+
+@functools.lru_cache(maxsize=16)
+def _reference_list(full: str) -> tuple[int, int] | None:
+    """Where the reference list is in `passage_fold(full)`, as start and end, or None.
+
+    The last heading that opens one, up to the first heading of an appendix after it, or to
+    the end. Positions are those of the heading in the folded text, so a match starting there
+    or later and before the end is in the list.
+    """
+    heads = list(_REFERENCES.finditer(full))
+    if not heads:
+        return None
+    head = heads[-1]
+    fold = passage_fold.__wrapped__
+    start = len(fold(full[: head.start()]))
+    after = _AFTER_REFERENCES.search(full, head.end())
+    end = len(fold(full[: after.start()])) if after else len(fold(full))
+    return start, end
+
+
+def _scripted(s: str) -> list[str]:
+    """The superscript and subscript characters in `s`, in order."""
+    return [
+        c
+        for c in s
+        if not c.isascii() and unicodedata.decomposition(c).startswith(("<super>", "<sub>"))
+    ]
+
+
+@functools.lru_cache(maxsize=16)
+def _has_scripts(full: str) -> bool:
+    return bool(_scripted("".join(set(full))))
+
+
+def _around(quote: str, full: str, prefix: str, suffix: str, warn: list[str]) -> dict[str, str]:
+    """The warnings that read the source around a found quotation, added to `warn`.
+
+    Each is given only where every place the quotation may be carries it, so a passage the
+    source has once cleanly and once after a negation is not called negated.
+    """
+    doc, places = _places(quote, full, prefix, suffix)
+    notes: dict[str, str] = {}
+    if not places:
+        return notes
+
+    def every(test: Callable[[_Place], str]) -> str:
+        said = [test(p) for p in places]
+        return said[0] if all(said) else ""
+
+    if joined := every(lambda p: p.joined):
+        warn.append("joined")
+        notes["joined"] = joined
+    for name, words in (("after negation", NEGATIONS), ("after hedge", HEDGES)):
+        if lead := every(lambda p, words=words: _qualifier(doc, p.start, words)):
+            warn.append(name)
+            notes[name] = (
+                f"the source reads `...{lead[-80:]} {doc[places[0].start : places[0].start + 30]}...`"
+            )
+    if every(lambda p: "yes" if _inside_quotes(doc, p.start, p.end) else ""):
+        warn.append("quoted in source")
+        notes["quoted in source"] = (
+            "the passage is inside quotation marks in the source: words the source quotes, "
+            "which are not the source's own"
+        )
+    if (refs := _reference_list(full)) is not None and every(
+        lambda p: "yes" if refs[0] <= p.start < refs[1] else ""
+    ):
+        warn.append("references")
+        notes["references"] = "found only in the source's reference list, after its heading"
+    if _has_scripts(full) or _scripted(quote):
+        p = places[0]
+        held = _stretch(full, doc, p.start, p.end)
+        if held is not None and _scripted(full[held[0] : held[1]]) != _scripted(quote):
+            warn.append("superscript")
+            notes["superscript"] = (
+                f"the source reads `{' '.join(full[held[0] : held[1]].split())[:80]}`, the "
+                f"quotation `{' '.join(quote.split())[:80]}`"
+            )
+    return notes
+
+
+def _seen(r: Result, quote: str, artifact: pathlib.Path, extractor: str) -> Result:
+    """`r`, with `invisible` where the PDF shows none of the text the passage was found in."""
+    if extractor == PLAIN_TEXT or extractors.is_builtin(extractor) or not is_paginated(artifact):
+        return r
+    q = passage_fold(quote)
+    for number, (whole, shown) in invisible.pages(artifact).items():
+        if q in passage_fold(whole) and q not in passage_fold(shown):
+            r.warnings.append("invisible")
+            r.notes["invisible"] = (
+                f"on page {number} the passage is in the PDF's text and not in what the page "
+                f"shows: some of it is white, under a point high, or off the page"
+            )
+            break
+    return r
 
 
 def is_paginated(artifact: pathlib.Path) -> bool:

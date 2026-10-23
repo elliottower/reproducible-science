@@ -223,6 +223,22 @@ class Warning_(enum.StrEnum):
     ignored. The passage is in the artifact, so the assertion is `verified`; the page is
     neither confirmed nor refuted, and a policy grades it as it grades a check that did not
     run."""
+    JOINED = "joined"
+    """The passage matched only by joining two of the source's words or numbers into one, or
+    splitting one into a negation: `notable` against `not able`, `12.5` against `1 2.5`."""
+    AFTER_NEGATION = "after_negation"
+    """The passage begins mid-sentence after a negation in its source, which may say the
+    opposite of the passage quoted alone."""
+    AFTER_HEDGE = "after_hedge"
+    """The passage begins mid-sentence after a hedge in its source: `may`, `whether`."""
+    QUOTED_IN_SOURCE = "quoted_in_source"
+    """The passage sits inside quotation marks in its source: words the source quotes."""
+    REFERENCES = "references"
+    """The passage is found only in the source's reference list."""
+    SUPERSCRIPT = "superscript"
+    """The passage matched after folding changed a superscript or subscript."""
+    INVISIBLE = "invisible"
+    """The passage is found only in text the PDF does not show: white, tiny or off the page."""
     POSITIONAL_ADDRESS = "positional_address"
     """Addressed by row index, which names a different cell if the table is reordered."""
     REPORTED_NOT_IN_CLAIM = "reported_not_in_claim"
