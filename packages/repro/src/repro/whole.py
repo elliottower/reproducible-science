@@ -184,7 +184,10 @@ def _tool_lines(run: ci.ToolRun) -> list[str]:
     if run.outcome == audit.PASSED:
         missed = ci.unchecked(run)
         note = f", {ci.verified(run)}: {missed} not checked" if missed else ""
-        return [f"  {run.check:<12} passed{note}  ({said})"]
+        # What the tool itself flagged without failing, such as a freeze held to an access
+        # floor lowered after the fact, so a pass does not hide it.
+        flagged = [f"      note: {n}" for n in (run.account or {}).get("notes", [])]
+        return [f"  {run.check:<12} passed{note}  ({said})", *flagged]
     lines = [f"  {run.check:<12} {run.outcome.upper()} (exit {run.exit})  ({said})"]
     return lines + [f"      {line}" for line in run.output.rstrip().splitlines()]
 

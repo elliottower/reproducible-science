@@ -15,6 +15,7 @@ an interpreter start per tool for no isolation this needs.
 
 from __future__ import annotations
 
+import importlib
 import pathlib
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -88,6 +89,16 @@ class Tool:
 
     keys: tuple[str, ...] = ()
 
+    finder: str | None = None
+    """A function of the tool's own module that answers `used_by`, where the tool can say better
+    than any marker whether a project gives its check something to read.
+
+    `prereg check` reads a `PREREG.md` at any depth and a registration frozen by a commit line.
+    The markers saw neither past three levels and the second not at all, so `repro verify`
+    reported a commit-pinned registration that `prereg check` found changed as not used here,
+    and exited 0.
+    """
+
     points_at: str | None = None
     """The flag that tells this tool's check where the data is, where it must be told.
 
@@ -102,8 +113,6 @@ class Tool:
         return self.state_markers + self.data_markers
 
     def entry(self) -> Callable[[Sequence[str] | None], int]:
-        import importlib
-
         return importlib.import_module(self.module).main
 
     def holds_evidence(self, directory: pathlib.Path) -> bool:
@@ -152,6 +161,9 @@ class Tool:
         return False
 
     def used_by(self, root: pathlib.Path) -> bool:
+        if self.finder:
+            found = getattr(importlib.import_module(self.module), self.finder)(root)
+            return bool(found) or any((root / m).exists() for m in self.state_markers)
         if self.points_at:
             return self.data_dir(root) is not None
         return (
@@ -176,6 +188,7 @@ TOOLS: tuple[Tool, ...] = (
         check_argv=("check",),
         state_markers=(".prereg",),
         file_markers=("PREREG.md",),
+        finder="has_registrations",
     ),
     Tool(
         name="citations",
