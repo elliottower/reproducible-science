@@ -79,7 +79,7 @@ from claims.open_items import ATTEMPT_LIMIT, ClaimState, Tally, tally_json
 from claims.open_items import tally as run_tally
 from claims.origins import OriginCheck, OriginsReport, OriginState, fetch_url
 from claims.origins import origins as run_origins
-from claims.policy import PROFILES, Assessment, Policy
+from claims.policy import PROFILES, REPORTED_SAID, Assessment, Policy
 from claims.record import check_records, to_jsonl
 from claims.renderers import survey_to_sarif, to_sarif
 from claims.reruns import RECORD
@@ -337,7 +337,7 @@ def _checked(
     manifest = load(path)
     report = run_verify(manifest)
     policy = PROFILES[args.policy]
-    assessment = policy.assess(report)
+    assessment = _with_unbound(manifest, policy, policy.assess(report), args)
     # The record sits beside the check and never decides it: where it cannot be written, one
     # line on standard error says so and why, and the report and the exit code are the
     # verification's. Standard error, so `--format json` still prints one document. Outside a
@@ -369,6 +369,37 @@ def _checked(
     except OSError as e:
         os.write(2, f"record not written: {e.filename}: {e.strerror}\n".encode())
     return manifest, report, policy, assessment
+
+
+def _with_unbound(
+    manifest: Manifest, policy: Policy, assessment: Assessment, args: argparse.Namespace
+) -> Assessment:
+    """The assessment with the manuscript's unbound numbers graded into it.
+
+    Counted as `numbers` counts them, where the manifest names a text a claim reads its
+    sentence from; a manifest naming none, or a text that cannot be read, adds nothing here,
+    and `numbers` is the command that says why. A warning by default; `--max-unbound N` makes
+    more than N unbound numbers an error.
+    """
+    try:
+        counted = run_numbers(manifest)
+    except ReproError:
+        return assessment
+    graded = policy.assess_numbers(counted, getattr(args, "max_unbound", None))
+    if not graded.violations:
+        return assessment
+    return Assessment(
+        policy=assessment.policy,
+        violations=(*assessment.violations, *graded.violations),
+        passed=assessment.passed and graded.passed,
+    )
+
+
+#: The rules whose warnings `verify` prints with their detail.
+NOTED_RULES = (
+    "numbers.unbound",
+    *(f"evidence.{w.value}" for w in REPORTED_SAID),
+)
 
 
 def _verify_text(
@@ -424,6 +455,10 @@ def _verify_text(
     )
     for v in assessment.errors[:10]:
         print(f"    error   {v.rule:<26} {v.subject}: {v.detail[:44]}")
+    # The two warnings whose subject a reader cannot see in the lines above: the bracketed
+    # name on a decision says which note, and not what it means.
+    for v in [w for w in assessment.warnings if w.rule.startswith(NOTED_RULES)][:10]:
+        print(f"    warning {v.rule:<26} {v.subject}: {v.detail}")
 
 
 def _said(state: enum.StrEnum) -> str:
@@ -1263,6 +1298,15 @@ def add_verify(
             "where the record of checks does not verify, keep it under a name that says when "
             "it was set aside and start a new one whose first entry says so; with --record, "
             "the tracked record as well. Refused where every record verifies"
+        ),
+    )
+    p_verify.add_argument(
+        "--max-unbound",
+        type=int,
+        metavar="N",
+        help=(
+            "fail where the manuscript prints more than N numbers no assertion accounts for, "
+            f"as `{program} numbers` counts them (default: any is a warning, and none fails)"
         ),
     )
     p_verify.set_defaults(func=func or cmd_verify, program=program)
