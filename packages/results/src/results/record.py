@@ -16,9 +16,9 @@ import os
 import pathlib
 import re
 
-from provenance_core import sha256_of_tree
+from provenance_core import SIDECAR_SUFFIXES, sha256_of_tree
 
-from results import ledger, timeline
+from results import ledger, outputs, timeline
 from results.paths import RESULTS_DIR, ledger_own, ledger_path, record_path, require_root
 
 ACCESS_LEVELS = [
@@ -150,7 +150,43 @@ def seal(files: list[str], role: str) -> int:
     print(f"sealed {what} as {role}")
     for entry in sealed:
         print(f"  {str(entry['sha256'])[:16]}…  {entry['path']}")
+        # Recorded in the event and said nowhere, so a symlink to data outside the tree, or a
+        # cache directory, sat outside a seal its author read as covering the directory.
+        for line in skipped_lines(entry.get("skipped"), root.parent / str(entry["path"])):
+            print(line)
     return 0
+
+
+#: Skipped names listed when a tree is sealed or verified; the ledger holds all of them.
+SHOWN_SKIPPED = 10
+
+#: Names skipped that are filesystem droppings and nothing else, never worth a warning.
+DROPPINGS = (".DS_Store", "Thumbs.db")
+
+
+def skipped_lines(skipped: object, tree: pathlib.Path) -> list[str]:
+    """A warning naming what a tree digest did not cover and why, or nothing.
+
+    A symlink is not followed and a cache directory is not read, so a dataset whose files are
+    symlinks into a store elsewhere seals as an empty tree, and nothing said so. `.DS_Store`
+    and its kind are left unsaid: they differ between two checkouts of the same data.
+    """
+    if not isinstance(skipped, list):
+        return []
+    notable = [
+        str(name)
+        for name in skipped
+        if not str(name).endswith(DROPPINGS) and not str(name).endswith(tuple(SIDECAR_SUFFIXES))
+    ]
+    if not notable:
+        return []
+    lines = [f"    warning: {len(notable)} name(s) the digest does not cover:"]
+    for name in notable[:SHOWN_SKIPPED]:
+        why = "a symlink, not followed" if (tree / name).is_symlink() else "a cache directory"
+        lines.append(f"      {name}  ({why})")
+    if len(notable) > SHOWN_SKIPPED:
+        lines.append(f"      ... and {len(notable) - SHOWN_SKIPPED} more, listed in the ledger")
+    return lines
 
 
 def access(note: str, level: str) -> int:
@@ -198,7 +234,7 @@ def run(
         print("one run id names one run: choose another, or pass --anyway to record both")
         print("and accept that a claim naming this id is ordered by the later run.")
         return 1
-    outputs = []
+    written = []
     for name in files:
         p = pathlib.Path(name).resolve()
         if refusal := own_files(p, root):
@@ -209,11 +245,24 @@ def run(
             print(f"not a file: {name}")
             return 1
         digest = ledger.sha256_of_file(p)
-        outputs.append({"path": record_path(p, root), "sha256": digest})
+        path = record_path(p, root)
+        if (earlier := rerecorded(existing, path, digest)) is not None:
+            # An output edited by hand and then recorded again, under the same id with
+            # `--anyway` or under a new one, read as an honest re-run: verify said RESEALED
+            # and passed. A re-run is a run of its inputs, and the ledger shows one as a seal.
+            print(
+                f"not recorded: {name} was recorded by run '{earlier}' with other bytes, "
+                "and nothing has been sealed since."
+            )
+            print("nothing was written. A re-run reads its inputs: seal them before recording")
+            print("what it wrote (`results seal <script> <data>`), or write the new version to")
+            print("a new file.")
+            return 1
+        written.append({"path": path, "sha256": digest})
     event = {
         "event": "run",
         "run_id": run_id,
-        "outputs": outputs,
+        "outputs": written,
         "note": note or "",
     }
     if holds is not None:
@@ -221,10 +270,35 @@ def run(
         # so the declaration is in the chain before anything that reads it.
         event["holds"] = holds
     ledger.append_event(lp, event)
-    print(f"run {run_id}: {len(outputs)} output(s){f', holding {holds}' if holds else ''}")
-    for o in outputs:
+    print(f"run {run_id}: {len(written)} output(s){f', holding {holds}' if holds else ''}")
+    for o in written:
         print(f"  {o['sha256'][:16]}…  {o['path']}")
     return 0
+
+
+def rerecorded(events: list[dict], path: str, digest: str) -> str | None:
+    """The run that last recorded `path` as an output, where it recorded other bytes than
+    `digest` and no seal follows it; None where recording `path` now is a re-run or a first.
+
+    What separates a re-run from an output edited and recorded again is that a re-run reads
+    its inputs, and an input the ledger knows is a seal. A seal after the earlier run, of the
+    script or the data or anything else the run reads, is that record.
+    """
+    last: tuple[str, str] | None = None
+    sealed_since = False
+    for e in events:
+        if e.get("event") == "seal":
+            sealed_since = True
+        elif e.get("event") == "retire" and path in e.get("paths", []):
+            # Retired, the path left the project; bytes recorded there afterwards are new.
+            last = None
+        elif e.get("event") == "run":
+            for o in e.get("outputs", []):
+                if o.get("path") == path:
+                    last, sealed_since = (str(e.get("run_id", "")), o.get("sha256", "")), False
+    if last is None or last[1] == digest or sealed_since:
+        return None
+    return last[0]
 
 
 def label(run_id: str, holds: str, note: str) -> int:
@@ -346,6 +420,7 @@ def claim(
     anyway: bool,
     frozen_at: str | None,
     location: str | None,
+    strict: bool = False,
 ) -> int:
     root = require_root()
     lp = ledger_path(root)
@@ -356,6 +431,29 @@ def claim(
         print(f"no run with id '{run_id}' in the ledger.")
         print(f"known runs: {', '.join(sorted(run_ids)) or '(none)'}")
         return 1
+
+    # The numbers the sentence prints, against what the run wrote. Said before anything is
+    # written, and under `--strict` a refusal, so a claim the run does not back never enters
+    # the ledger by accident; without it a warning, since a run's outputs may hold a number in
+    # a form this cannot read.
+    held = outputs.held_by(events, run_id, root.parent)
+    owed = outputs.owed(text)
+    absent = outputs.missing(text, held) if held.read else owed
+    if owed and absent:
+        if held.read:
+            print(
+                f"{'refusing' if strict else 'warning'}: run '{run_id}' wrote no value that "
+                f"rounds to {', '.join(absent)} at the precision the claim prints."
+            )
+        else:
+            print(
+                f"{'refusing' if strict else 'warning'}: run '{run_id}' records no output "
+                "this can read as text, so the claim's numbers were not checked against it."
+            )
+        print("  `results verify` reports it until the claim and the run agree.")
+        if strict:
+            print("nothing was written. Name the run that wrote these numbers.")
+            return 1
 
     retrospective = None
     frozen_time = timeline.freeze_timestamp(root, frozen_at) if frozen_at else None

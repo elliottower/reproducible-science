@@ -164,6 +164,7 @@ An analysis registered after `outcomes seen` is retrospective.
 | `CHAIN BROKEN` | The ledger was edited after it was written |
 | `ok` | File matches its recorded hash |
 | `RESEALED` | Recorded under more than one hash, and the file matches the latest record. Reported; passes |
+| `RERECORDED` | Recorded as an output by a later run under other bytes, with no seal between the two runs: an output changed and recorded again, not a run of its inputs. Fails |
 | `APPENDED` | A plan `prereg freeze` froze in place, which `prereg check` finds unchanged, and which differs from its latest seal only by entries `prereg log` appended and the `**Log:**` line it recounts. Passes |
 | `IGNORED` | One of the ledger's own files (`.results/`, a lock sidecar), recorded by an earlier version. Not compared; passes |
 | `REVERTED` | Recorded under more than one hash, and the file matches an earlier record and not the latest. Fails |
@@ -172,6 +173,21 @@ An analysis registered after `outcomes seen` is retrospective.
 | `CHANGED` | File was modified since it was recorded. Fails |
 | `MISSING` | File no longer exists. Fails |
 | `NOT A TREE`, `NOT A FILE` | Sealed as a directory and now a file, or the reverse. Fails |
+| `LEDGER HISTORY REWRITTEN` | A commit holds a version of the ledger, or of its anchor, that the ledger on disk does not extend: an event removed or changed and the chain recomputed. Fails |
+| `TIMESTAMP PROOF MISSING` | A commit added a proof under `.results/timestamps/` that is not on disk. Reported; fails under `--strict` |
+
+`results run` refuses to record an output whose path a run already recorded under other bytes
+when nothing has been sealed since: a re-run reads its inputs, so seal them first. `results
+reanchor` refuses where a commit holds a longer ledger or anchor than the one on disk.
+
+`results claim` reads the run's outputs as text and warns where a number the claim prints is held
+by none of them at the printed precision, with half-up or half-even rounding, or as a percentage
+of a stored fraction or the reverse; `--strict` refuses the claim and writes nothing. `results
+verify` lists such claims, and claims whose run's every output was retired, and passes them;
+`results verify --strict` fails them, and a missing timestamp proof. A tree a seal or a verify
+reads says which names its digest skipped: symlinks, which are not followed, and cache
+directories. Every `.results/` ledger below the project's own is verified after it, and the exit
+code covers them all.
 
 A path is meant to be sealed once, and a new version is a new file, so `RESEALED` stays in the
 report although it does not fail. `APPENDED` reads the sealed bytes from the repository's
@@ -199,8 +215,8 @@ the ledger says nothing about what is there.
 `.results/`: each changes with every event, so a seal of one is out of date at the next command.
 
 With `--json PATH`, each recorded file is `{"path", "state"}`, with `state` one of `ok`,
-`resealed`, `appended`, `ignored`, `retired`, `reverted`, `reappeared`, `changed`, `missing`,
-`not a tree` and `not a file`. `resealed` and `reverted` also carry `hashes`, the number of distinct hashes
+`resealed`, `rerecorded`, `appended`, `ignored`, `retired`, `reverted`, `reappeared`, `changed`,
+`missing`, `not a tree` and `not a file`; `rerecorded` carries `runs`, the two run ids. `resealed` and `reverted` also carry `hashes`, the number of distinct hashes
 recorded for the path, and `reverted` carries `matches`, the position of the one the file holds,
 counted from 1 in the order recorded; `appended` carries `entries`, the log entries added since
 the seal; `ignored` carries `note`; `retired` and `reappeared` carry `note`, and
