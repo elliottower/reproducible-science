@@ -13,7 +13,7 @@ marked withdrawn and keeps its number.
 | **Pinning and extraction** | RD-001 – RD-005 |
 | **Repository structure** | RD-006 – RD-011 |
 | **Manuscript** | RD-012 – RD-015 |
-| **Tooling** | RD-016 – RD-020 |
+| **Tooling** | RD-016 – RD-021 |
 
 ---
 
@@ -305,3 +305,24 @@ The suite's 1115 tests included one that parsed `hooks.json` and asserted every 
 was present and executable; it passed throughout. `claude plugin validate` reported the error in
 one line and had never been run. The defect surfaced during an unrelated cleanup of installed
 plugins, not from any check the project performs.
+
+### RD-021 — A record checked only against the disk it sits on
+
+**Detected by** editing the record together with the file it describes, committing both, and
+running the check.
+
+A freeze record holds a digest, and the check compares the file on disk with it. Both sit in
+the same working tree, so anyone who can edit the file can edit the digest, and the pair then
+agrees. The check reads two files written by the same hand and reports that they match. A date
+the committer sets, such as a commit date, is the same defect in time: the value that is
+supposed to witness the order of events is one the actor chooses.
+
+The witness has to be something the edit cannot reach at the same moment: the file as it was
+at the commit the record names, the record's own history, a position in a hash chain, or a
+timestamp held outside the repository.
+
+**Observed.** A frozen plan edited with the digest in its freeze record, committed, passed
+`prereg check` and `repro verify`. The same held for a record deleted and frozen again over a
+backdated commit, a commit line pointed at a later edited commit, and a freeze dated by a commit
+backdated with `GIT_COMMITTER_DATE`, which let a plan frozen after the outcomes were seen protect
+a confirmatory claim.
