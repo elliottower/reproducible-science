@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import json
 import pathlib
+import platform
+import shutil
 import sys
 
 import pytest
@@ -30,7 +32,7 @@ from repro.models import (
     RunOutput,
 )
 from repro.policy import PUBLICATION, STRICT, Severity
-from repro.regenerate import _scrub
+from repro.regenerate import ISOLATORS, _scrub
 from repro.reproduce import RECORD, UnknownRegenerationError, append, reproduce
 from repro.verify import verify
 
@@ -278,6 +280,156 @@ def test_the_working_tree_is_never_written_to(tmp_path):
     state(manifest)
     assert Digest.of_file(tmp_path / "figures.json").value == before
     assert (tmp_path / "figures.json").stat().st_mtime_ns == mtime
+
+
+# -- a command that copies the answer is not a reproduction ----------------------------------
+
+
+def copies(manifest, command):
+    record = manifest.regenerations[0]
+    return manifest.model_copy(
+        update={"regenerations": (record.model_copy(update={"command": command}),)}
+    )
+
+
+def test_copying_the_pinned_output_by_its_absolute_path_is_refused_before_it_runs(tmp_path):
+    """The red-team attack: `cp <project>/figures.json figures.json` was reported reproduced,
+    bytes identical, by a command that computes nothing."""
+    manifest = copies(project(tmp_path), ("cp", str(tmp_path / "figures.json"), "figures.json"))
+    result = state(manifest)
+    assert result.state is Regeneration.FAILED
+    assert result.reason is RegenerationReason.COMMAND_NAMES_THE_PROJECT
+    assert result.executed is False
+    assert PUBLICATION.assess_reproduction(reproduce(manifest)).passed is False
+
+
+@pytest.mark.parametrize("resolved", [False, True])
+def test_any_path_inside_the_project_named_absolutely_is_refused(tmp_path, resolved):
+    """Not only the output: a backup holding the same bytes is as good a copy. On macOS the
+    temporary directory resolves to another spelling, and both are the project."""
+    manifest = project(tmp_path)
+    backup = tmp_path / "backup.json"
+    backup.write_bytes((tmp_path / "figures.json").read_bytes())
+    at = str(backup.resolve() if resolved else backup)
+    result = state(copies(manifest, ("cp", f"--from={at}", "figures.json")))
+    assert (result.state, result.reason) == (
+        Regeneration.FAILED,
+        RegenerationReason.COMMAND_NAMES_THE_PROJECT,
+    )
+
+
+def test_a_copy_that_spells_the_path_another_way_finds_no_output_to_copy(tmp_path):
+    """The path is assembled at run time, so no argument names it. The pinned output is set
+    aside while the command runs, as a fresh clone would lack it, and the copy fails."""
+    pieces = list(tmp_path.resolve().parts[1:])
+    reach = (
+        f"import os, shutil; p = os.sep + os.sep.join({pieces!r}); "
+        "shutil.copy(os.path.join(p, 'figures.json'), 'figures.json')"
+    )
+    manifest = copies(project(tmp_path), (sys.executable, "-c", reach))
+    before = (tmp_path / "figures.json").read_bytes()
+    result = state(manifest)
+    assert result.state is Regeneration.FAILED
+    assert result.reason is RegenerationReason.COMMAND_FAILED
+    assert "set aside while it ran" in result.detail
+    # Put back as it was, and nothing left beside it.
+    assert (tmp_path / "figures.json").read_bytes() == before
+    assert not [p.name for p in tmp_path.iterdir() if "set-aside" in p.name]
+
+
+def test_an_honest_command_is_untouched_by_the_guards(tmp_path):
+    """Naming the output relative to the sandbox, as every honest command does, is fine."""
+    script = SCRIPT.replace('"figures.json"', "sys.argv[1]").replace(
+        "import json, pathlib", "import json, pathlib, sys"
+    )
+    manifest = project(tmp_path, script=script)
+    result = state(copies(manifest, (sys.executable, "make.py", "figures.json")))
+    assert result.state is Regeneration.REPRODUCED and result.bytes_identical is True
+
+
+def test_the_set_aside_output_is_put_back_over_whatever_the_command_wrote_there(tmp_path):
+    target = tmp_path / "figures.json"
+    script = SCRIPT + f"\npathlib.Path({str(target)!r}).write_text('overwritten')\n"
+    manifest = project(tmp_path, script=script)
+    before = target.read_bytes()
+    state(manifest)
+    assert target.read_bytes() == before
+
+
+def test_a_file_left_set_aside_is_never_moved_over(tmp_path):
+    """Left by an interrupted run, it may be the only copy of the pinned output."""
+    manifest = project(tmp_path)
+    left = tmp_path / ".figures.json.repro-set-aside"
+    left.write_text("the only copy")
+    result = state(manifest)
+    assert (result.state, result.reason) == (
+        Regeneration.NOT_RERUN,
+        RegenerationReason.OUTPUT_ALREADY_SET_ASIDE,
+    )
+    assert result.executed is False
+    assert left.read_text() == "the only copy"
+
+
+ISOLATOR = ISOLATORS.get(platform.system())
+needs_isolator = pytest.mark.skipif(
+    ISOLATOR is None or shutil.which(ISOLATOR) is None,
+    reason="no sandbox-exec or bwrap on this system",
+)
+
+
+def reads_a_backup(tmp_path):
+    """A command that copies another file in the project holding the output's bytes, by a
+    path no argument names. Setting the output aside cannot stop it; isolating does."""
+    manifest = project(tmp_path)
+    (tmp_path / "backup.json").write_bytes((tmp_path / "figures.json").read_bytes())
+    pieces = list(tmp_path.resolve().parts[1:])
+    reach = (
+        f"import os, shutil; p = os.sep + os.sep.join({pieces!r}); "
+        "shutil.copy(os.path.join(p, 'backup.json'), 'figures.json')"
+    )
+    return copies(manifest, (sys.executable, "-c", reach))
+
+
+def test_without_isolation_a_copy_of_another_file_is_not_caught(tmp_path):
+    """The limit of the default, stated as a test so a change to it is seen."""
+    result = state(reads_a_backup(tmp_path))
+    assert result.state is Regeneration.REPRODUCED
+    assert result.isolated is False
+    assert "isolated" not in result.model_dump(mode="json")
+
+
+@needs_isolator
+def test_isolated_a_command_cannot_read_the_project(tmp_path):
+    result = state(reads_a_backup(tmp_path), isolate=True)
+    assert result.state is Regeneration.FAILED
+    assert result.reason is RegenerationReason.COMMAND_FAILED
+    assert result.isolated is True
+    assert result.model_dump(mode="json")["isolated"] is True
+
+
+@needs_isolator
+def test_isolated_an_honest_command_reproduces_even_with_its_interpreter_in_the_project(tmp_path):
+    """A virtual environment inside the project is where an interpreter usually lives, and
+    the program the command names is let read it."""
+    venv = tmp_path / ".venv"
+    (venv / "bin").mkdir(parents=True)
+    (venv / "pyvenv.cfg").write_text("home = elsewhere\n")
+    (venv / "bin" / "python").symlink_to(sys.executable)
+    manifest = copies(project(tmp_path), (str(venv / "bin" / "python"), "make.py"))
+    result = state(manifest, isolate=True)
+    assert result.state is Regeneration.REPRODUCED, result.detail
+    assert result.isolated is True
+
+
+def test_isolation_with_no_sandbox_to_use_fails_and_runs_nothing(tmp_path, monkeypatch):
+    manifest, mark = leaves_a_mark(tmp_path)
+    monkeypatch.setattr(shutil, "which", lambda name, *a, **k: None)
+    result = state(manifest, isolate=True)
+    assert (result.state, result.reason) == (
+        Regeneration.FAILED,
+        RegenerationReason.RUNNER_UNAVAILABLE,
+    )
+    assert not mark.exists()
 
 
 # -- opt-in ----------------------------------------------------------------------------------

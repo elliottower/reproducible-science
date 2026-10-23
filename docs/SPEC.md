@@ -1099,6 +1099,19 @@ This is a working directory, not a sandbox in the security sense: nothing stops 
 writing to an absolute path elsewhere. Running `repro reproduce` on a manifest you have not
 read is running a program you have not read. That makes the record a claim about sufficiency and not only about provenance.
 
+Nor does the directory stop a command reading the project, and a command that copies the pinned
+output out of the working tree writes the pinned bytes. Two guards apply by default. A command
+whose arguments name a path inside the project by its absolute path, or the output's own path,
+is `failed` with `command_names_the_project` before it starts. While a command runs, its pinned
+output is renamed to `.<name>.repro-set-aside` beside itself and renamed back afterwards, so a
+command that reaches for it by a path no argument spells finds nothing; a file already at that
+name is never moved over, and the record is `not_rerun` with `output_already_set_aside`.
+Neither stops a command copying another file that holds the same bytes. `--isolate` runs each
+command under `sandbox-exec` (macOS) or `bwrap` (Linux) with the project's directory
+unreadable, apart from a virtual environment inside it holding the program, and the state
+records `isolated: true`; with neither available the record is `failed` with
+`runner_unavailable` and nothing runs.
+
 The verdict is about the numbers the manuscript prints, not the output's bytes. Where the
 command writes the pinned bytes, the record reproduced. Where it writes other bytes, every
 assertion that reads the output is put to the new file, by the comparison §5 defines and at the

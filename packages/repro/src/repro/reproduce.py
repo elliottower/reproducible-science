@@ -251,12 +251,15 @@ def reproduce(
     skip: tuple[str, ...] = (),
     backends: tuple[Backend, ...] = DEFAULT_BACKENDS,
     variables: Mapping[str, str] | None = None,
+    isolate: bool = False,
 ) -> ReproductionReport:
     """Run the manifest's declared regenerations and report what each one found.
 
     Executes the commands the manifest names. `only` restricts the run to those records and
     `skip` leaves those out; a record left out is reported `not_rerun`, never omitted.
     `variables` is what `witness` reads, the process's environment where none is given.
+    `isolate` runs each command with the project's directory unreadable to it; see
+    `repro.regenerate`.
 
     Writes nothing to the project. `append` is what records a report.
     """
@@ -285,7 +288,9 @@ def reproduce(
     for record in manifest.regenerations:
         left_out = record.id in skip or (bool(only) and record.id not in only)
         states[record.id] = (
-            skipped(record) if left_out else check(record, manifest, artifacts, reader(record))
+            skipped(record)
+            if left_out
+            else check(record, manifest, artifacts, reader(record), isolate=isolate)
         )
 
     producers = {record.output.artifact: record for record in manifest.regenerations}

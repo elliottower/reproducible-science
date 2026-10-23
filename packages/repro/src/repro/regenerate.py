@@ -17,6 +17,18 @@ directory and the command runs there, so nothing in the working tree is written 
 makes the check say something extra: a command needing a file the manifest never declared
 fails, which is a real defect in the declaration rather than a passing run.
 
+**The sandbox is a directory, not a wall.** The command can still name a file in the project by
+its absolute path, and `cp <project>/results/out.json results/out.json` then reproduces any
+output byte for byte. Two things stand against that by default. A command whose arguments name
+a path inside the project by its absolute path, or name the output's own path, is refused
+before it runs: what it would read is the working tree, not the copies of its declared inputs.
+And while the command runs, the pinned output is set aside under a hidden name beside it and
+put back afterwards, so a command that reaches for it however it spells the path finds nothing
+there, as it would in a fresh clone. Neither stops a command that copies another file holding
+the same bytes. `isolate` does: the command runs under the operating system's sandbox
+(`sandbox-exec` on macOS, `bwrap` on Linux) with the project's directory unreadable to it,
+apart from a virtual environment inside it that the program itself lives in.
+
 **The byte comparison is canonical, not literal.** An output carrying a timestamp or an
 absolute path never reproduces byte for byte, so a record names those fields as `volatile` and
 they are removed before hashing. Naming them keeps the comparison exact everywhere else, where
@@ -28,13 +40,17 @@ below the verification engine it would otherwise have to import.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
+import json
+import os
 import pathlib
+import platform
 import shutil
 import subprocess
 import tempfile
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 
 from claims.models import (
     ArtifactState,
@@ -106,6 +122,128 @@ def _digest(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8", "replace")).hexdigest()
 
 
+def _spellings(place: pathlib.Path) -> set[str]:
+    """The ways an argument can name a directory: as given, resolved, and from `~`."""
+    found = {str(place), str(place.resolve())}
+    home = pathlib.Path.home()
+    for spelled in tuple(found):
+        if pathlib.Path(spelled).is_relative_to(home):
+            found.add("~/" + pathlib.Path(spelled).relative_to(home).as_posix())
+    return found
+
+
+def names_the_project(
+    command: tuple[str, ...], root: pathlib.Path, output: pathlib.Path
+) -> str | None:
+    """Why an argument of `command` reaches past its sandbox, or None where none does.
+
+    An argument naming a path inside the project by its absolute path reads the working tree,
+    so what the command is handed is not the copy of a declared input, and a command that
+    copies the pinned output that way reproduces it whatever the code does. An argument naming
+    the output's own absolute path is the same thing said directly. The program itself, the
+    first argument, may live in the project: a virtual environment inside it is the ordinary
+    place for an interpreter.
+    """
+    inside = _spellings(root)
+    outputs = _spellings(output)
+    for position, argument in enumerate(command):
+        if any(spelled in argument for spelled in outputs):
+            return f"argument {position + 1} names the output's own path"
+        if position == 0:
+            continue
+        for spelled in inside:
+            if argument == spelled or f"{spelled}{os.sep}" in argument:
+                return (
+                    f"argument {position + 1} names a path inside the project by its absolute "
+                    "path, so the command would read the working tree and not the declared "
+                    "inputs; name the file relative to the project"
+                )
+    return None
+
+
+#: Where a pinned output waits while its command runs: beside it, so the move is a rename.
+SET_ASIDE = ".{name}.repro-set-aside"
+
+
+def waiting_place(output: pathlib.Path) -> pathlib.Path:
+    return output.with_name(SET_ASIDE.format(name=output.name))
+
+
+@contextlib.contextmanager
+def set_aside(output: pathlib.Path) -> Iterator[pathlib.Path | None]:
+    """Move the pinned output out of its place for the length of the block, and put it back.
+
+    A fresh clone of a project whose outputs are not committed has none, and a command that
+    regenerates its output does not need it. A command that copies it does, and finds nothing.
+    Yields where it waits, or None where there was no file to move. The file is put back
+    however the block ends, over anything written at its path meanwhile, so the working tree
+    is left as it was found.
+    """
+    if not output.is_file():
+        yield None
+        return
+    waiting = waiting_place(output)
+    if waiting.exists():
+        raise FileExistsError(17, "File exists", str(waiting))
+    os.replace(output, waiting)
+    try:
+        yield waiting
+    finally:
+        os.replace(waiting, output)
+
+
+def _environment_of(program: str, root: pathlib.Path) -> tuple[pathlib.Path, ...]:
+    """The virtual environment inside the project that `program` lives in, as written and
+    resolved, or nothing."""
+    found = shutil.which(program)
+    if found is None:
+        return ()
+    for parent in pathlib.Path(found).absolute().parents:
+        if (parent / "pyvenv.cfg").is_file() and parent.resolve().is_relative_to(root):
+            return tuple(dict.fromkeys((parent.absolute(), parent.resolve())))
+    return ()
+
+
+#: What `isolate` needs, by the operating system it runs on.
+ISOLATORS = {"Darwin": "sandbox-exec", "Linux": "bwrap"}
+
+
+def isolated(
+    command: tuple[str, ...], root: pathlib.Path, sandbox: pathlib.Path
+) -> tuple[str, ...] | None:
+    """`command` under the operating system's sandbox with the project's directory unreadable
+    to it, or None where this system has no sandbox this knows how to use."""
+    real = root.resolve()
+    keep = _environment_of(command[0], real)
+    tool = ISOLATORS.get(platform.system())
+    if tool is None or shutil.which(tool) is None:
+        return None
+    if tool == "sandbox-exec":
+        # The last rule that matches wins, so the environment is let back in after the
+        # project is shut. A path is written as a JSON string, which is how the profile
+        # language quotes one.
+        profile = (
+            "(version 1)(allow default)"
+            f"(deny file-read* file-write* (subpath {json.dumps(str(real))}))"
+            + "".join(f"(allow file-read* (subpath {json.dumps(str(k))}))" for k in keep)
+        )
+        return ("sandbox-exec", "-p", profile, *command)
+    binds = [part for k in keep for part in ("--ro-bind", str(k), str(k))]
+    return (
+        "bwrap",
+        "--dev-bind",
+        "/",
+        "/",
+        "--tmpfs",
+        str(real),
+        *binds,
+        "--chdir",
+        str(sandbox),
+        "--",
+        *command,
+    )
+
+
 def skipped(record: RegenerationRecord) -> RegenerationState:
     """The state of a record the caller chose not to run."""
     return RegenerationState(
@@ -124,8 +262,12 @@ def check(
     manifest: Manifest,
     states: dict[str, ArtifactState],
     read_claims: ReadClaims,
+    isolate: bool = False,
 ) -> RegenerationState:
-    """Run one regeneration record in a sandbox and compare what it produced."""
+    """Run one regeneration record in a sandbox and compare what it produced.
+
+    With `isolate`, under the operating system's sandbox with the project unreadable; a system
+    with none is `failed`, `runner_unavailable`, and nothing runs."""
     root = manifest.path.parent if manifest.path else pathlib.Path.cwd()
     # Every state this returns starts from the same facts about the record, so they are set
     # once and each return says only what it adds.
@@ -176,6 +318,18 @@ def check(
                 f"manifest declares no artifact {wanted.artifact!r}",
             )
         files[wanted.artifact] = manifest.resolve(artifact)
+
+    # Failed, not "not re-run": a command that copies the answer out of the working tree is
+    # the one thing this check exists to tell apart from a reproduction, and a policy that
+    # ignores a record it chose not to run would pass it.
+    if reaches := names_the_project(record.command, root, files[record.output.artifact]):
+        return base.model_copy(
+            update={
+                "state": Regeneration.FAILED,
+                "reason": RegenerationReason.COMMAND_NAMES_THE_PROJECT,
+                "detail": reaches,
+            }
+        )
 
     for wanted in record.inputs:
         state = states.get(wanted.artifact)
@@ -281,18 +435,50 @@ def check(
                 }
             )
 
-        try:
-            completed = subprocess.run(
-                record.command,
-                cwd=sandbox,
-                capture_output=True,
-                text=True,
-                timeout=record.timeout_seconds,
-                check=False,
+        command = record.command
+        if isolate:
+            wrapped = isolated(record.command, root, sandbox)
+            if wrapped is None:
+                wanted = ISOLATORS.get(platform.system())
+                return failed(
+                    base,
+                    RegenerationReason.RUNNER_UNAVAILABLE,
+                    f"--isolate needs {wanted}, which is not on PATH"
+                    if wanted
+                    else f"--isolate has no sandbox to use on {platform.system()}",
+                )
+            command = wrapped
+            base = base.model_copy(update={"isolated": True})
+        # The variable a shell reads the working directory from is the sandbox's, so `$PWD`
+        # does not name the project the command was started from.
+        variables = {k: v for k, v in os.environ.items() if k != "OLDPWD"} | {"PWD": str(sandbox)}
+        pinned_output = files[record.output.artifact]
+        waiting = waiting_place(pinned_output)
+        if not isolate and waiting.exists():
+            # Never moved over: that file may be the only copy of the pinned output.
+            return not_rerun(
+                RegenerationReason.OUTPUT_ALREADY_SET_ASIDE,
+                f"{_shown(waiting, root)} is there already, left by a `repro reproduce` that "
+                f"was interrupted or is still running; if none is running, move it back to "
+                f"{_shown(pinned_output, root)}",
             )
+        # Under `isolate` the project is out of reach already, and nothing in it is moved.
+        hiding = contextlib.nullcontext(None) if isolate else set_aside(pinned_output)
+        moved = not isolate and pinned_output.is_file()
+        try:
+            with hiding:
+                completed = subprocess.run(
+                    command,
+                    cwd=sandbox,
+                    env=variables,
+                    capture_output=True,
+                    text=True,
+                    timeout=record.timeout_seconds,
+                    check=False,
+                )
         except FileNotFoundError:
             return failed(
-                base, RegenerationReason.RUNNER_UNAVAILABLE, f"{record.command[0]} is not on PATH"
+                base, RegenerationReason.RUNNER_UNAVAILABLE, f"{command[0]} is not on PATH"
             )
         except subprocess.TimeoutExpired:
             return failed(
@@ -321,11 +507,19 @@ def check(
         )
 
         if completed.returncode != 0:
-            tail = (completed.stderr or completed.stdout or "").strip().splitlines()
+            said = (completed.stderr or completed.stdout or "").strip()
+            tail = said.splitlines()
+            # Said only where the command's own words name the file, so an ordinary failure
+            # is not explained by something it had nothing to do with.
+            note = (
+                f"; {pinned_output.name} was set aside while it ran, as a fresh clone lacks it"
+                if moved and pinned_output.name in said
+                else ""
+            )
             return failed(
                 ran,
                 RegenerationReason.COMMAND_FAILED,
-                f"exit {completed.returncode}: {tail[-1] if tail else 'no output'}",
+                f"exit {completed.returncode}: {tail[-1] if tail else 'no output'}{note}",
             )
         if not produced.is_file():
             # Exit 0 and nothing written is not a pass, and is not a difference either: there is

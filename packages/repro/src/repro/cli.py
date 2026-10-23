@@ -428,7 +428,12 @@ def cmd_reproduce(args: argparse.Namespace) -> int:
         print("  `regenerations` names a command, the files it reads and the file it writes.")
         return 2
 
-    report = run_reproduce(manifest, only=tuple(args.only or ()), skip=tuple(args.skip or ()))
+    report = run_reproduce(
+        manifest,
+        only=tuple(args.only or ()),
+        skip=tuple(args.skip or ()),
+        isolate=args.isolate,
+    )
     policy = PROFILES[args.policy]
     assessment = policy.assess_reproduction(report)
     recorded = append_reproduction(report, path.resolve().parent)
@@ -607,6 +612,13 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
     )
     p_reproduce.add_argument(
         "--skip", action="append", metavar="ID", help="leave this record out; repeatable"
+    )
+    p_reproduce.add_argument(
+        "--isolate",
+        action="store_true",
+        help="run each command with the project's directory unreadable to it, under "
+        "sandbox-exec (macOS) or bwrap (Linux); without it the pinned output is set aside "
+        "while the command runs, and a command naming the project by absolute path is refused",
     )
     p_reproduce.add_argument("--policy", choices=sorted(PROFILES), default="publication")
     p_reproduce.add_argument("--format", choices=("text", "json"), default="text")

@@ -108,7 +108,8 @@ class Regeneration(enum.StrEnum):
     UNCHECKED = "unchecked"
     """Re-ran and wrote the output, but a number could not be read from it."""
     FAILED = "failed"
-    """The command did not finish, or finished and wrote nothing."""
+    """The command did not finish, or finished and wrote nothing, or was refused because it
+    names the project's own files by absolute path, which is where a copy of the answer is."""
     NOT_RERUN = "not_rerun"
     """Never executed. The reason says why: skipped, or the inputs are not the ones declared."""
 
@@ -141,6 +142,14 @@ class RegenerationReason(enum.StrEnum):
     """The output was copied into the sandbox as one of its own inputs, so a command that does
     nothing reproduces it."""
     OUTPUT_OUTSIDE_SANDBOX = "output_outside_sandbox"
+    COMMAND_NAMES_THE_PROJECT = "command_names_the_project"
+    """An argument names a path inside the project by its absolute path, or names the output's
+    own path. The command would then read the working tree rather than the copies of the
+    declared inputs, and `cp <project>/results/out.json results/out.json` reproduces any file
+    byte for byte. Refused before it runs."""
+    OUTPUT_ALREADY_SET_ASIDE = "output_already_set_aside"
+    """The pinned output is set aside while its command runs, and a file from an earlier
+    run that was interrupted, or from one still running, already holds that place."""
     RUNNER_UNAVAILABLE = "runner_unavailable"
 
 
@@ -261,6 +270,17 @@ class RegenerationState(BaseModel):
     inputs: tuple[InputReading, ...] = ()
     undeclared_outputs: tuple[str, ...] = ()
     """Files the command wrote that the record does not declare, relative to its directory."""
+    isolated: bool = False
+    """Whether the command ran with the project's directory unreadable to it (`repro reproduce
+    --isolate`). Left out of a record where False, so an entry written without it is the
+    entry it was."""
+
+    @model_serializer(mode="wrap")
+    def _omit_not_isolated(self, handler):
+        dumped = handler(self)
+        if not self.isolated:
+            dumped.pop("isolated", None)
+        return dumped
 
 
 class SetAside(BaseModel):
