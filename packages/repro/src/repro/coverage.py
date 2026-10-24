@@ -21,7 +21,7 @@ from __future__ import annotations
 import pathlib
 import re
 
-from citations.coverage import cover, pinned_spans, quotations
+from citations.coverage import TEX_SUFFIXES, cover, pinned_spans, quotations
 from citations.exceptions import ClaimFileError
 from citations.models import load_claim_file
 from claims.models import Manifest
@@ -99,14 +99,24 @@ class Coverage(BaseModel):
         return tuple(v.model_copy(update={"severity": severity}) for v in self.violations)
 
 
+def _plan(path: pathlib.Path) -> bool:
+    """Whether `path` is a preregistration: frozen by `prereg`, or named as one. A claim may
+    quote its plan, and the plan is not the manuscript its numbers and quotations are owed by."""
+    return (
+        path.parent / ".prereg" / f"{path.name}.json"
+    ).is_file() or path.name.upper().startswith("PREREG")
+
+
 def manuscripts(manifest: Manifest) -> tuple[pathlib.Path, ...]:
     """The manuscript's files: the texts a claim reads its sentence from, or else every
-    declared artifact with a manuscript's suffix."""
+    declared artifact with a manuscript's suffix. A preregistration is neither."""
     named = texts(manifest)
-    chosen = [a for a in manifest.artifacts if a.id in named] or [
-        a for a in manifest.artifacts if a.path.suffix.lower() in MANUSCRIPT_SUFFIXES
+    declared = [(a, manifest.resolve(a)) for a in manifest.artifacts]
+    declared = [(a, p) for a, p in declared if p.is_file() and not _plan(p)]
+    chosen = [p for a, p in declared if a.id in named] or [
+        p for a, p in declared if a.path.suffix.lower() in MANUSCRIPT_SUFFIXES
     ]
-    return tuple(p for a in chosen if (p := manifest.resolve(a)).is_file())
+    return tuple(chosen)
 
 
 def _shown(path: pathlib.Path, root: pathlib.Path) -> str:
@@ -137,7 +147,14 @@ def _quotations(root: pathlib.Path, papers: tuple[pathlib.Path, ...]) -> tuple[Q
             detail=found.detail,
         )
         for paper in papers
-        for found in (cover(q, pool) for q in quotations(paper.read_text(errors="replace")))
+        for found in (
+            cover(q, pool)
+            for q in quotations(
+                paper.read_text(errors="replace"),
+                # Markdown read as LaTeX lost every `>` block and everything after a `%`.
+                latex=paper.suffix.lower() in TEX_SUFFIXES,
+            )
+        )
     )
 
 

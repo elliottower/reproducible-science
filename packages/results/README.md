@@ -164,7 +164,7 @@ An analysis registered after `outcomes seen` is retrospective.
 | `CHAIN BROKEN` | The ledger was edited after it was written |
 | `ok` | File matches its recorded hash |
 | `RESEALED` | Recorded under more than one hash, and the file matches the latest record. Reported; passes |
-| `RERECORDED` | Recorded as an output by a later run under other bytes, with no seal between the two runs: an output changed and recorded again, not a run of its inputs. Fails |
+| `RERECORDED` | Recorded as an output by a later run under other bytes, with no input of the earlier run (a path sealed before it) sealed again between the two: an output changed and recorded again, or a re-run with no record of its inputs. Reported, and the path is still compared, so `CHANGED` shows beside it; fails under `--strict` |
 | `APPENDED` | A plan `prereg freeze` froze in place, which `prereg check` finds unchanged, and which differs from its latest seal only by entries `prereg log` appended and the `**Log:**` line it recounts. Passes |
 | `IGNORED` | One of the ledger's own files (`.results/`, a lock sidecar), recorded by an earlier version. Not compared; passes |
 | `REVERTED` | Recorded under more than one hash, and the file matches an earlier record and not the latest. Fails |
@@ -176,15 +176,22 @@ An analysis registered after `outcomes seen` is retrospective.
 | `LEDGER HISTORY REWRITTEN` | A commit holds a version of the ledger, or of its anchor, that the ledger on disk does not extend: an event removed or changed and the chain recomputed. Fails |
 | `TIMESTAMP PROOF MISSING` | A commit added a proof under `.results/timestamps/` that is not on disk. Reported; fails under `--strict` |
 
-`results run` refuses to record an output whose path a run already recorded under other bytes
-when nothing has been sealed since: a re-run reads its inputs, so seal them first. `results
-reanchor` refuses where a commit holds a longer ledger or anchor than the one on disk.
+`results run` warns when it records an output whose path a run already recorded under other
+bytes and no input of that run has been sealed since: a re-run reads its inputs, so seal them
+first. Sealing some other file does not count. `--strict` refuses it. `results reanchor`, and
+`results claim`, refuse where a commit holds a longer ledger or anchor than the one on disk.
 
 `results claim` reads the run's outputs as text and warns where a number the claim prints is held
-by none of them at the printed precision, with half-up or half-even rounding, or as a percentage
-of a stored fraction or the reverse; `--strict` refuses the claim and writes nothing. `results
-verify` lists such claims, and claims whose run's every output was retired, and passes them;
-`results verify --strict` fails them, and a missing timestamp proof. A tree a seal or a verify
+by none of them at the printed precision, with half-up or half-even rounding; a number printed
+with `%` or `percent` beside it is also held by a stored fraction or the reverse. `--strict`
+refuses the claim and writes nothing. The check is that some output holds the value, not that
+it is the value the sentence is about. A claim whose numbers are derived from the outputs, a
+mean of stored values for instance, says so with `--derived "how"`: the note is recorded,
+shown by `verify`, and the numbers are not compared. Zero-width and other format characters are
+removed before numbers are read, with a warning. `results verify` counts such claims on one
+line (`--explain` lists them, and the JSON always does), lists claims whose run's every output
+was retired, and passes them; `results verify --strict` fails them, a missing timestamp proof
+and a `RERECORDED` output. A tree a seal or a verify
 reads says which names its digest skipped: symlinks, which are not followed, and cache
 directories. Every `.results/` ledger below the project's own is verified after it, and the exit
 code covers them all.

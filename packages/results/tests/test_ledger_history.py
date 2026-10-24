@@ -145,3 +145,13 @@ def test_a_tree_holding_a_symlink_says_so_at_seal_and_at_verify(tmp_path, monkey
 
     assert cli.main(["verify", "--files"]) == 0
     assert "b.csv  (a symlink, not followed)" in capsys.readouterr().out
+
+
+def test_a_confirmatory_claim_on_a_rewritten_ledger_is_refused(committed, capsys):
+    rechain(lp(committed), lambda e: e.get("level") != "outcomes seen")
+    before = len(ledger.read_ledger(lp(committed)))
+    capsys.readouterr()
+
+    assert cli.main(["claim", "The ICC was 0.4213", "--run-id", "r1", "--confirmatory"]) == 1
+    assert "git history holds a ledger this one does not extend" in capsys.readouterr().out
+    assert len(ledger.read_ledger(lp(committed))) == before

@@ -186,9 +186,10 @@ def strict_failures(
 def _tool_strict(project: Project) -> list[Violation]:
     """What a tool reports and passes, and fails under its own `--strict`: a claim printing
     numbers its run's outputs do not hold, a claim whose run's outputs were all retired and a
-    timestamp proof history holds and the disk does not, from `results verify`; and from
-    `citations verify`, a found quotation carrying a warning its `--strict` fails, a pin finding
-    it fails, and each unresolved quotation, unpinned source and unparsed claims file. Under
+    timestamp proof history holds and the disk does not, and an output recorded again with no
+    input sealed between, from `results verify`; and from `citations verify`, each found
+    quotation carrying a warning its `--strict` fails, a pin finding it fails, and each
+    unresolved quotation, unpinned source and unparsed claims file. Under
     `--policy strict` both run with `--strict`, so these are what that run fails."""
 
     def error(rule: str, subject: str, detail: str) -> Violation:
@@ -214,18 +215,27 @@ def _tool_strict(project: Project) -> list[Violation]:
                 error("results.timestamp_proof_missing", str(p.get("path")), "deleted from disk")
                 for p in account.get("missing_proofs", [])
             ]
+            found += [
+                error("results.rerecorded", str(path), "recorded again with no input sealed")
+                for path in account.get("rerecorded", [])
+            ]
     citations = project.tools.get("citations")
     if citations is not None and citations.command:
         account = citations.account
         failing = set(account.get("strict_warnings", []))
+        # One finding per quotation, as `citations verify --strict` lists them: a quotation
+        # carrying two warnings it fails on is one line there, and one here.
+        per_quote: dict[tuple[str, str], list[str]] = {}
+        for warning, quotes in account.get("warnings", {}).items():
+            if warning not in failing:
+                continue
+            for q in quotes:
+                if q.get("state") == "found":
+                    key = (str(q.get("claim")), str(q.get("quote")))
+                    per_quote.setdefault(key, []).append(warning.replace(" ", "_"))
         found += [
-            error(
-                f"citations.{warning.replace(' ', '_')}", str(q.get("claim")), str(q.get("quote"))
-            )
-            for warning, quotes in account.get("warnings", {}).items()
-            if warning in failing
-            for q in quotes
-            if q.get("state") == "found"
+            error(f"citations.{'+'.join(sorted(warnings))}", claim, quote)
+            for (claim, quote), warnings in per_quote.items()
         ]
         found += [
             error("citations.pins", str(f.get("file")), str(f.get("finding")))

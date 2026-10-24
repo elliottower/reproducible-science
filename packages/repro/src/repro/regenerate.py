@@ -22,12 +22,18 @@ its absolute path, and `cp <project>/results/out.json results/out.json` then rep
 output byte for byte. Two things stand against that by default. A command whose arguments name
 a path inside the project by its absolute path, or name the output's own path, is refused
 before it runs: what it would read is the working tree, not the copies of its declared inputs.
-And while the command runs, the pinned output is set aside under a hidden name beside it and
-put back afterwards, so a command that reaches for it however it spells the path finds nothing
-there, as it would in a fresh clone. Neither stops a command that copies another file holding
-the same bytes. `isolate` does: the command runs under the operating system's sandbox
-(`sandbox-exec` on macOS, `bwrap` on Linux) with the project's directory unreadable to it,
-apart from a virtual environment inside it that the program itself lives in.
+And while the command runs, the pinned output is moved to a directory outside the project
+under a name made at random and put back afterwards, so a command that reaches for it however
+it spells the path finds nothing there, as it would in a fresh clone.
+
+Neither stops a command that copies another file inside the project holding the same bytes, or
+reads the committed output with `git show`. `isolate` stops both: the command runs under the
+operating system's sandbox (`sandbox-exec` on macOS, `bwrap` on Linux) with the project's
+directory unreadable to it, apart from a virtual environment inside it that the program itself
+lives in. Nothing here stops a copy kept outside the project, such as a cache in the home
+directory or a download: `isolate` hides the project, not the machine. A command that `isolate`
+leaves unable to read what it needs fails or writes nothing, and the record is said as
+unchecked rather than reproduced.
 
 **The byte comparison is canonical, not literal.** An output carrying a timestamp or an
 absolute path never reproduces byte for byte, so a record names those fields as `volatile` and
@@ -161,35 +167,92 @@ def names_the_project(
     return None
 
 
-#: Where a pinned output waits while its command runs: beside it, so the move is a rename.
-SET_ASIDE = ".{name}.repro-set-aside"
+#: The note, in the project, of each pinned output moved out while its command runs and where
+#: it waits. Written before the move and cleared after the move back, so a run that dies in
+#: between leaves the way back on disk, and the next run takes it.
+SET_ASIDE_NOTE = pathlib.Path(".repro") / "set-aside.json"
 
 
-def waiting_place(output: pathlib.Path) -> pathlib.Path:
-    return output.with_name(SET_ASIDE.format(name=output.name))
+def _notes(root: pathlib.Path) -> dict[str, str]:
+    try:
+        held = json.loads((root / SET_ASIDE_NOTE).read_text())
+    except (OSError, ValueError):
+        return {}
+    return held if isinstance(held, dict) else {}
+
+
+def _note(root: pathlib.Path, key: str, held: pathlib.Path | None) -> None:
+    notes = _notes(root)
+    if held is None:
+        notes.pop(key, None)
+    else:
+        notes[key] = str(held)
+    where = root / SET_ASIDE_NOTE
+    where.parent.mkdir(exist_ok=True)
+    where.write_text(json.dumps(notes, indent=2, sort_keys=True) + "\n")
+
+
+def _key(output: pathlib.Path, root: pathlib.Path) -> str:
+    return _shown(output, root)
+
+
+def waiting_place(output: pathlib.Path, root: pathlib.Path) -> pathlib.Path | None:
+    """Where an earlier run left `output` set aside, by its note, or None."""
+    held = _notes(root).get(_key(output, root))
+    return pathlib.Path(held) if held else None
+
+
+def recover(output: pathlib.Path, root: pathlib.Path) -> str | None:
+    """Put back an output an interrupted run left set aside, where nothing has taken its place.
+    Returns why it cannot be, where a copy waits and another file is at its path; else None."""
+    held = waiting_place(output, root)
+    if held is None:
+        return None
+    if held.is_file() and output.exists():
+        return (
+            f"{_shown(output, root)} was set aside at {held} by a run that did not finish, and "
+            f"a file is at its path again; compare the two and remove the one that is not it"
+        )
+    if held.is_file():
+        shutil.move(held, output)
+        with contextlib.suppress(OSError):
+            held.parent.rmdir()
+    _note(root, _key(output, root), None)
+    return None
 
 
 @contextlib.contextmanager
-def set_aside(output: pathlib.Path) -> Iterator[pathlib.Path | None]:
-    """Move the pinned output out of its place for the length of the block, and put it back.
+def set_aside(output: pathlib.Path, root: pathlib.Path) -> Iterator[pathlib.Path | None]:
+    """Move the pinned output out of the project for the length of the block, and put it back.
 
     A fresh clone of a project whose outputs are not committed has none, and a command that
     regenerates its output does not need it. A command that copies it does, and finds nothing.
-    Yields where it waits, or None where there was no file to move. The file is put back
-    however the block ends, over anything written at its path meanwhile, so the working tree
-    is left as it was found.
+    It waits in a directory outside the project under a name made at random, so no command can
+    name where it went; beside the output, under a fixed hidden name, a command copied it from
+    there. Yields where it waits, or None where there was no file to move. The file is put back
+    however the block ends, over anything written at its path meanwhile, and where the move back
+    fails the note in `.repro/set-aside.json` says where it is.
     """
     if not output.is_file():
         yield None
         return
-    waiting = waiting_place(output)
-    if waiting.exists():
-        raise FileExistsError(17, "File exists", str(waiting))
-    os.replace(output, waiting)
+    holding = pathlib.Path(tempfile.mkdtemp(prefix="repro-held-"))
+    waiting = holding / output.name
+    _note(root, _key(output, root), waiting)
+    shutil.move(output, waiting)
     try:
         yield waiting
     finally:
-        os.replace(waiting, output)
+        try:
+            shutil.move(waiting, output)
+        except OSError as e:
+            raise OSError(
+                f"the pinned output could not be put back: it is at {waiting}; move it to "
+                f"{output} ({e})"
+            ) from e
+        _note(root, _key(output, root), None)
+        with contextlib.suppress(OSError):
+            holding.rmdir()
 
 
 def _environment_of(program: str, root: pathlib.Path) -> tuple[pathlib.Path, ...]:
@@ -453,17 +516,11 @@ def check(
         # does not name the project the command was started from.
         variables = {k: v for k, v in os.environ.items() if k != "OLDPWD"} | {"PWD": str(sandbox)}
         pinned_output = files[record.output.artifact]
-        waiting = waiting_place(pinned_output)
-        if not isolate and waiting.exists():
-            # Never moved over: that file may be the only copy of the pinned output.
-            return not_rerun(
-                RegenerationReason.OUTPUT_ALREADY_SET_ASIDE,
-                f"{_shown(waiting, root)} is there already, left by a `repro reproduce` that "
-                f"was interrupted or is still running; if none is running, move it back to "
-                f"{_shown(pinned_output, root)}",
-            )
+        if problem := recover(pinned_output, root):
+            # Never moved over: the copy set aside may be the only copy of the pinned output.
+            return not_rerun(RegenerationReason.OUTPUT_ALREADY_SET_ASIDE, problem)
         # Under `isolate` the project is out of reach already, and nothing in it is moved.
-        hiding = contextlib.nullcontext(None) if isolate else set_aside(pinned_output)
+        hiding = contextlib.nullcontext(None) if isolate else set_aside(pinned_output, root)
         moved = not isolate and pinned_output.is_file()
         try:
             with hiding:

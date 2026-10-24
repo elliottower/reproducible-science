@@ -211,17 +211,40 @@ LOG_HEADING = re.compile(
 TABLE_RULE = re.compile(r"^[ \t]*\|[ \t:|-]+\|?[ \t]*$")
 
 
-def _not_a_log(added: list[str]) -> str | None:
+#: A hypothesis named by number: `H2`, `**H2.**`, `H3a`.
+HYPOTHESIS = re.compile(r"\bH(\d+[a-z]?)\b")
+#: Any Markdown heading.
+ANY_HEADING = re.compile(r"^#{1,6}[ \t]+\S")
+
+
+def _not_a_log(added: list[str], old: list[str] | None = None) -> str | None:
     """The first of `added` that is not part of a log, or None where every line is.
 
     What a log adds is dated entries: lines that start with a date, an indented line that
     continues one, and the scaffolding a log is written in -- a fence, a heading naming a log,
     a table's header row and its rule. Anything else added after a freeze is new plan text,
-    such as a criteria section, which the commit line does not cover.
+    such as a criteria section, which the commit line does not cover. A date does not make a
+    line a log entry where it names a hypothesis the frozen text does not, since that states a
+    new hypothesis; nor does it make a table row one under a heading that does not open a log,
+    since a row under the criteria is a new criterion.
     """
+    old = old or []
+    named = {m.group(1) for line in old for m in HYPOTHESIS.finditer(line)}
+    headings = [line for line in old if ANY_HEADING.match(line)]
+    in_log = bool(headings) and bool(LOG_HEADING.match(headings[-1]))
     entry = False
     for i, line in enumerate(added):
         following = added[i + 1] if i + 1 < len(added) else ""
+        if any(m.group(1) not in named for m in HYPOTHESIS.finditer(line)):
+            return line
+        if ANY_HEADING.match(line):
+            if not LOG_HEADING.match(line):
+                return line
+            in_log, entry = True, False
+            continue
+        row = line.lstrip().startswith("|")
+        if row and not in_log and not TABLE_RULE.match(line) and not TABLE_RULE.match(following):
+            return line
         if DATED.match(line):
             entry = True
         elif line[:1] in (" ", "\t") and line.strip() and entry:
@@ -229,9 +252,8 @@ def _not_a_log(added: list[str]) -> str | None:
         elif (
             not line.strip()
             or FENCE.match(line)
-            or LOG_HEADING.match(line)
             or TABLE_RULE.match(line)
-            or (line.lstrip().startswith("|") and TABLE_RULE.match(following))
+            or (row and TABLE_RULE.match(following))
         ):
             entry = False
         else:
@@ -259,7 +281,7 @@ def compare(
     if _appended(old, new):
         added = f"{_count(len(new) - len(old))} added after the frozen text"
         inside = new[len(old) - 1 : -1] if new[: len(old)] != old else new[len(old) :]
-        stray = _not_a_log(inside)
+        stray = _not_a_log(inside, old)
         if stray is None:
             return Pinned(path, APPENDED, commit, (added, *note))
         return Pinned(

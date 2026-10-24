@@ -225,7 +225,6 @@ RESULTS_FAILING = (
     "missing",
     "reverted",
     "reappeared",
-    "rerecorded",
     "not a tree",
     "not a file",
 )
@@ -238,6 +237,7 @@ RESULTS_PASSING = {
     "appended": "appended, a plan frozen in place whose log only grew",
     "ignored": "ignored, the ledger's own files, not compared",
     "retired": "retired, no longer part of the project",
+    "rerecorded": "rerecorded, recorded again with no input sealed between; `--strict` fails them",
 }
 
 CLAIMS_SHOWS = (

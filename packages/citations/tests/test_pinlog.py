@@ -115,17 +115,32 @@ def test_a_quotation_written_by_hand_into_a_logged_file_is_marked(tmp_path):
     assert "1 quotation(s) no `citations pin` recorded in pins.jsonl" in said(found, "findings")
 
 
-def test_lines_taken_out_of_a_committed_log_fail_strict(tmp_path):
+def test_lines_taken_out_of_a_committed_log_fail_by_default(tmp_path):
     git(tmp_path, "init", "-q")
     claims = project(tmp_path)
     assert pin.main([str(claims), "--id", "c1", "--quote", HONEST]) == 0
     commit(tmp_path, "pin")
     (claims.parent / pinlog.LOG).write_text("")
     code, found = account(tmp_path)
-    assert code == 0
-    assert any("taken out of the log" in s for s in said(found, "strict_findings"))
-    code, _ = account(tmp_path, "--strict")
     assert code == 1
+    assert any("taken out of the log" in s for s in said(found, "tampered"))
+
+
+@pytest.mark.parametrize("citation", ["smith", "smith2026"])
+def test_renaming_the_claims_file_does_not_hide_a_repin(tmp_path, citation):
+    claims = project(tmp_path)
+    assert pin.main([str(claims), "--id", "c1", "--quote", HONEST]) == 0
+    (tmp_path / "sources" / "smith.txt").write_text(EDITED + TEXT)
+    doc = yaml.safe_load(claims.read_text())
+    doc["source"]["sha256"] = hashlib.sha256((EDITED + TEXT).encode()).hexdigest()
+    doc["source"]["citation"] = citation
+    claims.write_text(yaml.safe_dump(doc))
+    renamed = claims.rename(claims.with_name("smith_v2.yaml"))
+    V.clear_caches()
+    assert pin.main([str(renamed), "--id", "c2", "--quote", FABRICATED]) == 0
+    _, found = account(tmp_path)
+    first = hashlib.sha256(TEXT.encode()).hexdigest()[:12]
+    assert any(f"first pinned at {first}" in s for s in said(found, "findings"))
 
 
 def test_a_log_two_branches_added_to_is_not_rewritten(tmp_path):

@@ -15,7 +15,8 @@ shape of another colour shows that text, and its characters are counted as shown
 Text a PDF sets with render mode 3 is not looked for. That is how a scanned document carries its
 OCR layer, which is the text an honest quotation of a scan comes from.
 
-Where `pypdf` or `pdfplumber` is not installed, nothing is looked for and nothing is reported.
+Where `pypdf` or `pdfplumber` is not installed, nothing is looked for, and `verify` says once
+that the check did not run (`available`).
 """
 
 from __future__ import annotations
@@ -157,6 +158,21 @@ def pages(pdf: pathlib.Path) -> dict[int, tuple[str, str]]:
         except OSError:
             return {}
     return _pages(pdf, (st.st_size, st.st_mtime_ns))
+
+
+def available() -> bool:
+    """Whether the two readers the check needs are installed: `citations[pdf]`."""
+    return readers.pypdf is not None and readers.pdfplumber is not None
+
+
+def is_pdf(path: pathlib.Path) -> bool:
+    if path.suffix.lower() == ".pdf":
+        return True
+    try:
+        with path.open("rb") as handle:
+            return handle.read(5).startswith(b"%PDF")
+    except OSError:
+        return False
 
 
 def cache_clear() -> None:

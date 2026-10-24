@@ -576,8 +576,16 @@ class Report:
         return [(s, q, r) for s, q, r in self.problems if r.state == "found" and r.strict_warnings]
 
     strict_findings: list[tuple[str, str]] = field(default_factory=list)
-    """Facts about a claims file that `--strict` fails on, with the file: a pin log with lines
-    taken out of it, and an absent source whose sha256 or DOI is not one. See `pinlog`."""
+    """Facts about a claims file that `--strict` fails on, with the file: an absent source whose
+    sha256 or DOI is not one. See `pinlog`."""
+
+    invisible_unchecked: int = 0
+    """PDF sources read with no check for text the page does not show, because
+    `citations[pdf]` is not installed. Said once, and failing nothing."""
+
+    tampered: list[tuple[str, str]] = field(default_factory=list)
+    """Facts that fail every run: lines taken out of the committed pin log, which is
+    append-only, so only an edit removes one. See `pinlog`."""
 
     findings: list[tuple[str, str]] = field(default_factory=list)
     """The same kind of fact, reported and failing nothing: a source pinned again against
@@ -605,7 +613,7 @@ class Report:
             return False
         if self.unresolved >= self.checked:
             return False
-        if self.broken_pins or self.changed_readings:
+        if self.broken_pins or self.changed_readings or self.tampered:
             return False
         return not any(r.state == "not found" for _, _, r in self.problems)
 

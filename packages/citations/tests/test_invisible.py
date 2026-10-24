@@ -6,13 +6,16 @@ a sentence planted there resolved as `found`. The PDFs are built here, so the by
 
 from __future__ import annotations
 
+import hashlib
 import pathlib
 import shutil
 import zlib
 
 import pytest
+import yaml
 from citations import readers as R
 from citations import verify as V
+from citations.cli import main
 
 pytestmark = pytest.mark.skipif(
     R.pdfplumber is None or R.pypdf is None or shutil.which("pdftotext") is None,
@@ -110,3 +113,31 @@ def test_the_shown_passage_beside_a_hidden_one_is_not_warned(tmp_path):
     r = V.check_one(SHOWN, p)
     assert r.state == "found"
     assert "invisible" not in r.warnings
+
+
+def test_without_the_pdf_readers_verify_says_once_the_check_did_not_run(
+    tmp_path, monkeypatch, capsys
+):
+    (tmp_path / "sources").mkdir()
+    (tmp_path / "claims").mkdir()
+    source = pdf(tmp_path / "sources" / "smith.pdf", [("", SHOWN)])
+    for name in ("smith", "jones"):
+        (tmp_path / "claims" / f"{name}.yaml").write_text(
+            yaml.safe_dump(
+                {
+                    "source": {
+                        "citation": name,
+                        "local": "sources/smith.pdf",
+                        "sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
+                    },
+                    "claims": {"c1": {"quotes": [{"exact": SHOWN[:40]}]}},
+                }
+            )
+        )
+    monkeypatch.setattr(R, "pypdf", None)
+    V.clear_caches()
+    code = main(["verify", "--claims", str(tmp_path / "claims")])
+    out = capsys.readouterr().out
+    assert code == 0
+    assert out.count("invisible text not checked") == 1
+    assert "invisible text not checked in 2 PDF source(s)" in out

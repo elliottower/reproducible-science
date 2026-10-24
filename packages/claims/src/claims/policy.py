@@ -318,6 +318,19 @@ class Policy(BaseModel):
                             detail=decision.detail or "the declared page was not checked",
                         )
                     )
+                if (
+                    self.reported_consistency is not Severity.IGNORE
+                    and Warning_.REPORTED_UNCOMPARED in decision.warnings
+                ):
+                    violations.append(
+                        Violation(
+                            severity=Severity.WARNING,
+                            rule=f"evidence.{Warning_.REPORTED_UNCOMPARED.value}",
+                            subject=f"{claim.claim_id}/{decision.kind}",
+                            detail="`reported` is checked against nothing the claim or its "
+                            "manuscript prints",
+                        )
+                    )
                 if self.reported_consistency is not Severity.IGNORE:
                     violations.extend(
                         Violation(

@@ -221,3 +221,11 @@ def test_claimed_values_compares_printings_of_one_value():
     events = [{"event": "claim", "run_id": "r1", "claim": "p = .049, a shift of \u22120.37"}]
 
     assert manuscript.claimed_values(events) == {"0.049", "-0.37"}
+
+
+def test_a_zero_width_character_inside_a_manuscript_number_is_read_past(tmp_path):
+    paper = tmp_path / "paper.md"
+    paper.write_text("The ICC was 0.71​57 overall, and 12% of 57 sites.\n")
+    found, _ = manuscript.read(paper)
+    assert [n["value"] for n in found] == ["0.7157", "12", "57"]
+    assert [n["percent"] for n in found] == [False, True, False]

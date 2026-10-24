@@ -10,10 +10,12 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from types import SimpleNamespace
 
 import pytest
 import yaml
 from claims.cli import main as claims_main
+from repro import ci, whole
 from repro.cli import main
 from repro.models import (
     ArtifactRef,
@@ -403,11 +405,19 @@ def test_a_resealed_output_is_named_in_the_report_though_it_passes(project, caps
     assert "RESEALED   figures.json" in capsys.readouterr().out
 
 
-def test_an_output_recorded_again_with_nothing_sealed_fails_the_project(project, capsys):
+def test_an_output_recorded_again_with_nothing_sealed_fails_only_under_strict(project, capsys):
     ledger()
     (project / "figures.json").write_text(json.dumps({"total": 7}, indent=2))
+    assert main(["results", "run", "figures.json", "--run-id", "r2", "--strict"]) == 1
+    assert main(["results", "run", "figures.json", "--run-id", "r2"]) == 0
+    pin_manifest(project, reported="7")
 
-    assert main(["results", "run", "figures.json", "--run-id", "r2"]) == 1
+    code, found = verified(capsys)
+    assert code == 0
+    assert [v["rule"] for v in found["project"]["strict_failures"]] == ["results.rerecorded"]
+    code, found = verified(capsys, "--policy", "strict")
+    assert code == 1
+    assert found["project"]["checks"]["results"] == "failed"
 
 
 # -- the manuscript's coverage ----------------------------------------------------------------
@@ -603,3 +613,51 @@ def test_without_a_ledger_the_claims_section_keeps_the_unbound_numbers(project, 
     code, found = verified(capsys)
     assert code == 0
     assert "numbers.unbound" in [v["rule"] for v in found["assessment"]["violations"]]
+
+
+def test_a_markdown_manuscript_is_read_as_markdown(project, capsys):
+    cite(project, "smith")
+    text = (
+        "We report a total of 6.\n\n"
+        "> the treatment cured every patient in the trial and then some\n\n"
+        'About 50% agreed, and one wrote "the second fabricated passage nobody pinned" later.\n'
+    )
+    with_paper(project, text, "paper.md")
+    code, found = verified(capsys)
+    assert code == 0
+    quoted = [q["text"] for q in found["coverage"]["quotations"]]
+    assert any("cured every patient" in q for q in quoted)
+    assert any("second fabricated passage" in q for q in quoted)
+
+
+def test_a_preregistration_a_claim_quotes_is_not_read_as_the_manuscript(project, capsys):
+    cite(project, "smith")
+    (project / "PREREG.md").write_text('H1 holds. "An unpinned quotation in the plan itself."\n')
+    manifest = pin_manifest(project)
+    document = yaml.safe_load(manifest.path.read_text())
+    document["artifacts"].append(
+        {
+            "id": "plan",
+            "path": "PREREG.md",
+            "digest": Digest.of_file(project / "PREREG.md").model_dump(),
+        }
+    )
+    document["claims"][0]["evidence"].append(
+        {"kind": "quote", "artifact": "plan", "text": "H1 holds"}
+    )
+    manifest.path.write_text(yaml.safe_dump(document))
+    _, found = verified(capsys)
+    assert "PREREG.md" not in found["coverage"].get("manuscripts", ())
+
+
+def test_a_quotation_with_two_strict_warnings_counts_once():
+    quote = {"claim": "smith:c1", "quote": "the treatment reduced mortality", "state": "found"}
+    account = {
+        "strict_warnings": ["after negation", "references"],
+        "warnings": {"after negation": [quote], "references": [quote], "after hedge": [quote]},
+    }
+    run = ci.ToolRun(check="citations", command=("citations",), outcome="passed", account=account)
+    found = whole._tool_strict(SimpleNamespace(tools={"citations": run}))
+    assert [(v.rule, v.subject) for v in found] == [
+        ("citations.after_negation+references", "smith:c1")
+    ]

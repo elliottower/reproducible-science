@@ -18,7 +18,8 @@ import re
 
 from provenance_core import SIDECAR_SUFFIXES, sha256_of_tree
 
-from results import freezes, ledger, outputs, timeline
+from results import freezes, history, ledger, outputs, timeline
+from results.manuscript import readable
 from results.paths import RESULTS_DIR, ledger_own, ledger_path, record_path, require_root
 
 ACCESS_LEVELS = [
@@ -216,7 +217,12 @@ RUN_HOLDS = ["metadata only", "structure seen"]
 
 
 def run(
-    files: list[str], run_id: str, note: str | None, anyway: bool, holds: str | None = None
+    files: list[str],
+    run_id: str,
+    note: str | None,
+    anyway: bool,
+    holds: str | None = None,
+    strict: bool = False,
 ) -> int:
     if holds is not None and holds not in RUN_HOLDS:
         print(f"--holds must be one of: {', '.join(RUN_HOLDS)}")
@@ -250,14 +256,18 @@ def run(
             # An output edited by hand and then recorded again, under the same id with
             # `--anyway` or under a new one, read as an honest re-run: verify said RESEALED
             # and passed. A re-run is a run of its inputs, and the ledger shows one as a seal.
+            # A warning by default, since iterating under new ids is ordinary; `--strict`
+            # refuses, as `verify --strict` fails it.
             print(
-                f"not recorded: {name} was recorded by run '{earlier}' with other bytes, "
-                "and nothing has been sealed since."
+                f"{'not recorded' if strict else 'warning'}: {name} was recorded by run "
+                f"'{earlier}' with other bytes, and no input of that run has been sealed since."
             )
-            print("nothing was written. A re-run reads its inputs: seal them before recording")
-            print("what it wrote (`results seal <script> <data>`), or write the new version to")
-            print("a new file.")
-            return 1
+            print("  a re-run reads its inputs: seal them before recording what it wrote")
+            print("  (`results seal <script> <data>`), or write the new version to a new file.")
+            if strict:
+                print("nothing was written.")
+                return 1
+            print("  `results verify` reports it as RERECORDED.")
         written.append({"path": path, "sha256": digest})
     event = {
         "event": "run",
@@ -276,29 +286,46 @@ def run(
     return 0
 
 
-def rerecorded(events: list[dict], path: str, digest: str) -> str | None:
-    """The run that last recorded `path` as an output, where it recorded other bytes than
-    `digest` and no seal follows it; None where recording `path` now is a re-run or a first.
+def rerecorded_paths(events: list[dict]) -> dict[str, tuple[str, str]]:
+    """Each path a run recorded as an output under other bytes than an earlier run recorded
+    there, with no input of the earlier run sealed again between the two, and the two runs.
 
     What separates a re-run from an output edited and recorded again is that a re-run reads
-    its inputs, and an input the ledger knows is a seal. A seal after the earlier run, of the
-    script or the data or anything else the run reads, is that record.
+    its inputs, and an input the ledger knows is a seal. The inputs of a run are the paths
+    sealed before it was recorded, and a seal of one of them after it is the record of a re-run.
+    A seal of anything else is not: sealing an unrelated file cleared the check. A retirement
+    in between makes the later bytes new rather than a re-record.
     """
-    last: tuple[str, str] | None = None
-    sealed_since = False
+    sealed: set[str] = set()
+    last: dict[str, tuple[str, str, frozenset[str]]] = {}
+    refreshed: set[str] = set()
+    found: dict[str, tuple[str, str]] = {}
     for e in events:
-        if e.get("event") == "seal":
-            sealed_since = True
-        elif e.get("event") == "retire" and path in e.get("paths", []):
-            # Retired, the path left the project; bytes recorded there afterwards are new.
-            last = None
-        elif e.get("event") == "run":
+        kind = e.get("event")
+        if kind == "seal":
+            now = {f.get("path", "") for f in e.get("files", [])}
+            refreshed |= {path for path, (_, _, inputs) in last.items() if now & inputs}
+            sealed |= now
+        elif kind == "retire":
+            for path in e.get("paths", []):
+                last.pop(path, None)
+        elif kind == "run":
+            run_id = str(e.get("run_id", ""))
             for o in e.get("outputs", []):
-                if o.get("path") == path:
-                    last, sealed_since = (str(e.get("run_id", "")), o.get("sha256", "")), False
-    if last is None or last[1] == digest or sealed_since:
-        return None
-    return last[0]
+                path, digest = o.get("path", ""), o.get("sha256", "")
+                if path in last and last[path][1] != digest and path not in refreshed:
+                    found.setdefault(path, (last[path][0], run_id))
+                last[path] = (run_id, digest, frozenset(sealed - {path}))
+                refreshed.discard(path)
+    return found
+
+
+def rerecorded(events: list[dict], path: str, digest: str) -> str | None:
+    """The run that last recorded `path` as an output, where recording it now under `digest`
+    would be a re-record (see `rerecorded_paths`); None where it is a re-run or a first."""
+    probe = {"event": "run", "run_id": "", "outputs": [{"path": path, "sha256": digest}]}
+    found = rerecorded_paths([*events, probe])
+    return found[path][0] if path in found and found[path][1] == "" else None
 
 
 def label(run_id: str, holds: str, note: str) -> int:
@@ -421,9 +448,19 @@ def claim(
     frozen_at: str | None,
     location: str | None,
     strict: bool = False,
+    derived: str | None = None,
 ) -> int:
     root = require_root()
     lp = ledger_path(root)
+
+    # A claim on a ledger whose committed history it does not extend rests on a chain that was
+    # rewritten: `verify` fails it, and recording a claim on it is refused as `reanchor` is.
+    if rewrites := history.rewritten(lp):
+        print("refusing: git history holds a ledger this one does not extend.")
+        for problem in rewrites:
+            print(f"  {problem}")
+        print("nothing was written. Restore the ledger from the commit, then record the claim.")
+        return 1
 
     events = ledger.read_ledger(lp)
     run_ids = {e["run_id"] for e in events if e.get("event") == "run"}
@@ -436,10 +473,18 @@ def claim(
     # written, and under `--strict` a refusal, so a claim the run does not back never enters
     # the ledger by accident; without it a warning, since a run's outputs may hold a number in
     # a form this cannot read.
+    if (hidden := readable(text)[1]) and not derived:
+        print(
+            f"warning: the claim holds {hidden} format character(s), zero-width or invisible; "
+            "its numbers are read without them."
+        )
     held = outputs.held_by(events, run_id, root.parent)
     owed = outputs.owed(text)
     absent = outputs.missing(text, held) if held.read else owed
-    if owed and absent:
+    if derived is not None and not derived.strip():
+        print("--derived takes how the number was derived, in words.")
+        return 1
+    if owed and absent and not derived:
         if held.read:
             print(
                 f"{'refusing' if strict else 'warning'}: run '{run_id}' wrote no value that "
@@ -521,6 +566,8 @@ def claim(
         "frozen_at_time": freeze.frozen_at if freeze else "",
         "location": location or "",
     }
+    if derived:
+        event["derived"] = derived
     if unplanned:
         event["run_before_freeze"] = True
     ledger.append_event(lp, event)
@@ -529,6 +576,8 @@ def claim(
     print(f"  backed by run: {run_id}")
     if location:
         print(f"  appears in: {location}")
+    if derived:
+        print(f"  derived: {derived}; its numbers are not compared with the run's outputs")
     if protected and freeze is not None:
         print(f"  plan frozen at {frozen_at} on {freeze.frozen_at[:19]}, before outcomes")
         print("  were seen: confirmatory, exposure logged")

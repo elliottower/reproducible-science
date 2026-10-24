@@ -109,6 +109,25 @@ def test_a_coarse_printed_precision_is_noted(results, text, reported, pointer, c
     assert ("evidence.coarse_precision", Severity.ERROR) in noted(STRICT.assess(checked))
 
 
+def test_a_claim_printing_no_number_and_quoting_nothing_is_noted_once(results):
+    checked = verify(manifest(results, "The ICC exceeded the threshold", metric("0.4213", "/icc")))
+
+    assert decision(checked).warnings.count(Warning_.REPORTED_UNCOMPARED) == 1
+    graded = {(v.rule, v.severity) for v in STRICT.assess(checked).violations}
+    assert ("evidence.reported_uncompared", Severity.WARNING) in graded
+    assert ("evidence.reported_uncompared", Severity.ERROR) not in graded
+
+
+def test_a_quoted_passage_printing_the_value_is_what_it_is_compared_with(results):
+    quote = QuoteEvidence(artifact="paper", text="The ICC was 0.9913")
+    checked = verify(
+        manifest(results, "The ICC exceeded the threshold", metric("0.4213", "/icc"), quote)
+    )
+    found = decision(checked)
+    assert Warning_.REPORTED_UNCOMPARED not in found.warnings
+    assert Warning_.REPORTED_NOT_IN_MANUSCRIPT in found.warnings
+
+
 def test_a_mismatch_carries_no_precision_note(tmp_path):
     (tmp_path / "out.json").write_text(json.dumps({"total": 6, "p": 0.0491}))
     (tmp_path / "paper.md").write_text("")

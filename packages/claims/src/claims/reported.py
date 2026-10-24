@@ -8,8 +8,10 @@ sees was never read. Each note here is a warning on the decision, which a policy
 **Agreement.** A printed number and `reported` agree where either, rounded to the decimal
 places of the other, is the other, as printed or as a percentage of it or a fraction of it:
 `92.7` agrees with `0.92655`, and `1,593` with `1593`. The claim's text, and the passages its
-own quotations read from the manuscript, are compared only where they print a number at all:
-a claim stating a conclusion and offering a count as support prints none.
+own quotations read from the manuscript or its prose addresses select there, are compared
+only where they print a number at all: a claim stating a conclusion and offering a count as
+support prints none, and where the manifest names a manuscript and nothing the claim reads
+prints one, that is itself noted, once, as a warning under every policy.
 
 **Precision and tolerance.** A comparison at printed precision verifies `0.0` against a stored
 `0.0491`, and an absolute tolerance of `0.5` verifies `0.95` against `0.712`. Neither is a
@@ -29,11 +31,24 @@ from claims.models import (
     ComparisonStatus,
     Decision,
     Evidence,
+    Manifest,
     ProseLocator,
     ValueEvidence,
     Warning_,
 )
-from claims.numbers import printed
+from claims.numbers import printed, texts
+
+#: What a manuscript is written in, where no claim reads its sentence from one.
+MANUSCRIPT_SUFFIXES = (".tex", ".md", ".qmd", ".rst", ".docx")
+
+
+def names_a_manuscript(manifest: Manifest) -> bool:
+    """Whether the manifest names a manuscript: a text a claim reads its sentence from, or an
+    artifact written as one."""
+    return bool(texts(manifest)) or any(
+        a.path.suffix.lower() in MANUSCRIPT_SUFFIXES for a in manifest.artifacts
+    )
+
 
 #: A tolerance larger than this share of the value it bounds is noted.
 LOOSE = decimal.Decimal("0.1")
@@ -89,10 +104,14 @@ def _read_from_text(evidence: Evidence) -> bool:
 
 
 def notes(
-    claim: Claim, evidence: Evidence, decision: Decision, passages: list[str]
+    claim: Claim,
+    evidence: Evidence,
+    decision: Decision,
+    passages: list[str],
+    manuscript: bool = False,
 ) -> list[Warning_]:
     """The notes for one assertion. `passages` are the quotations the claim reads from its
-    manuscript."""
+    manuscript, and `manuscript` whether the manifest names one."""
     reported = _decimal(getattr(evidence, "reported", None))
     if reported is None or _read_from_text(evidence):
         return []
@@ -103,6 +122,10 @@ def notes(
     quoted = [shown for passage in passages for shown in values(passage)]
     if quoted and not any(agrees(reported, shown) for shown in quoted):
         found.append(Warning_.REPORTED_NOT_IN_MANUSCRIPT)
+    if manuscript and not said and not quoted:
+        # A claim stating a conclusion with no number, and no passage of the manuscript read:
+        # the reported value was compared with the file and with nothing printed.
+        found.append(Warning_.REPORTED_UNCOMPARED)
 
     mode = getattr(evidence, "mode", ComparisonMode.PRINTED_PRECISION)
     stored = (

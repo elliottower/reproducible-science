@@ -247,6 +247,9 @@ class Warning_(enum.StrEnum):
     REPORTED_NOT_IN_MANUSCRIPT = "reported_not_in_manuscript"
     """The passages the claim quotes from its manuscript print numbers and none agrees with
     `reported`."""
+    REPORTED_UNCOMPARED = "reported_uncompared"
+    """Neither the claim's text nor any passage it quotes or locates in its manuscript prints a
+    number, so `reported` was compared with the file and with nothing a reader sees."""
     COARSE_PRECISION = "coarse_precision"
     """`reported` has fewer than two significant digits and differs from the stored value, so
     printed precision accepted a wide range: `0.0` against `0.0491`."""

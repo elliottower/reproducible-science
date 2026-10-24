@@ -844,6 +844,7 @@ goes looking for a broken anchor.
 | `positional_address` | `table`, `value` | the cell is addressed by row index, which names another cell once the table is reordered |
 | `reported_not_in_claim` | `metric`, `table`, `value`, `aggregate` | the claim's text prints numbers and none agrees with `reported`, as printed, as a percentage of it or as a fraction of it, at the coarser of the two precisions |
 | `reported_not_in_manuscript` | `metric`, `table`, `value`, `aggregate` | the passages the claim's own quotations read print numbers and none agrees with `reported` |
+| `reported_uncompared` | `metric`, `table`, `value`, `aggregate` | the manifest names a manuscript, and neither the claim's text nor any passage it quotes or value its prose addresses select prints a number: `reported` is compared with nothing a reader sees; a warning under every policy |
 | `coarse_precision` | `metric`, `table`, `value`, `aggregate` | matched at printed precision, `reported` has fewer than two significant digits and differs from the stored value: `0.0` against `0.0491` |
 | `rounding_crosses_threshold` | `metric`, `table`, `value`, `aggregate` | matched at printed precision, the stored value and `reported` lie on opposite sides of 0.05 |
 | `loose_tolerance` | `metric`, `table`, `value`, `aggregate` | an absolute tolerance above a tenth of `reported`, or a relative one above 0.1 |
@@ -851,8 +852,9 @@ goes looking for a broken anchor.
 `truncated` exists because *"an accuracy of 0.9"* genuinely occurs in a source reporting
 **0.95**, so the passage is present and the reader is told a true thing that misstates the
 result. `page_unchecked` is graded as an unchecked assertion is (§6), since it says a declared
-check did not run. The five notes on `reported` are graded by the policy's
-`reported_consistency`. A value read from prose is the printed number already and carries none
+check did not run. Five of the notes on `reported` are graded by the policy's
+`reported_consistency`, and `reported_uncompared` is a warning under every policy that does not
+ignore them. A value read from prose is the printed number already and carries none
 of them.
 
 ## 5. Backends
@@ -1126,10 +1128,12 @@ Nor does the directory stop a command reading the project, and a command that co
 output out of the working tree writes the pinned bytes. Two guards apply by default. A command
 whose arguments name a path inside the project by its absolute path, or the output's own path,
 is `failed` with `command_names_the_project` before it starts. While a command runs, its pinned
-output is renamed to `.<name>.repro-set-aside` beside itself and renamed back afterwards, so a
-command that reaches for it by a path no argument spells finds nothing; a file already at that
-name is never moved over, and the record is `not_rerun` with `output_already_set_aside`.
-Neither stops a command copying another file that holds the same bytes. `--isolate` runs each
+output is moved to a directory outside the project under a name made at random, noted in
+`.repro/set-aside.json`, and moved back afterwards, so a command that reaches for it by a path no
+argument spells finds nothing. A run that dies leaves the note: the next run puts the output
+back first, and where a file is at the output's path again it never moves over either, and the
+record is `not_rerun` with `output_already_set_aside`. Neither guard stops a command copying
+another file that holds the same bytes, or reading the committed output with `git show`. `--isolate` runs each
 command under `sandbox-exec` (macOS) or `bwrap` (Linux) with the project's directory
 unreadable, apart from a virtual environment inside it holding the program, and the state
 records `isolated: true`; with neither available the record is `failed` with

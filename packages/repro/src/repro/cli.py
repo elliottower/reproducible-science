@@ -499,8 +499,18 @@ def _reproduce_text(
             )
             print(f"  {'':<11}   {claim.name:<{width}}  {values}{note}")
 
+    # A record left unchecked under `--isolate` may be one whose command the sandbox kept from
+    # what it reads, `git show` of a committed output among them: said on the line, since a
+    # policy that passes unchecked records would otherwise read as a reproduction.
+    hidden = sum(1 for s in states if s.isolated and s.state is Regeneration.UNCHECKED)
     print(
         f"\n  {', '.join(f'{v} {SHOWN[Regeneration(k)]}' for k, v in sorted(report.counts.items()))}"
+        + (
+            f"; {hidden} unchecked under --isolate, so not reproduced: the sandbox may have "
+            "kept the command from what it reads"
+            if hidden
+            else ""
+        )
     )
     print(
         f"  policy {policy.name}: {'passed' if assessment.passed else 'FAILED'}"

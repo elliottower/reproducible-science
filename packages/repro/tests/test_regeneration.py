@@ -356,18 +356,54 @@ def test_the_set_aside_output_is_put_back_over_whatever_the_command_wrote_there(
     assert target.read_bytes() == before
 
 
-def test_a_file_left_set_aside_is_never_moved_over(tmp_path):
+def test_a_copy_left_set_aside_is_never_moved_over(tmp_path):
     """Left by an interrupted run, it may be the only copy of the pinned output."""
     manifest = project(tmp_path)
-    left = tmp_path / ".figures.json.repro-set-aside"
-    left.write_text("the only copy")
+    held = tmp_path.parent / f"{tmp_path.name}-held" / "figures.json"
+    held.parent.mkdir()
+    held.write_text("the only copy")
+    (tmp_path / ".repro").mkdir(exist_ok=True)
+    (tmp_path / ".repro" / "set-aside.json").write_text(json.dumps({"figures.json": str(held)}))
     result = state(manifest)
     assert (result.state, result.reason) == (
         Regeneration.NOT_RERUN,
         RegenerationReason.OUTPUT_ALREADY_SET_ASIDE,
     )
     assert result.executed is False
-    assert left.read_text() == "the only copy"
+    assert held.read_text() == "the only copy"
+
+
+def test_an_output_an_interrupted_run_left_set_aside_is_put_back_first(tmp_path):
+    manifest = project(tmp_path)
+    output = tmp_path / "figures.json"
+    before = output.read_bytes()
+    held = tmp_path.parent / f"{tmp_path.name}-held" / "figures.json"
+    held.parent.mkdir()
+    output.rename(held)
+    (tmp_path / ".repro").mkdir(exist_ok=True)
+    (tmp_path / ".repro" / "set-aside.json").write_text(json.dumps({"figures.json": str(held)}))
+    result = state(manifest)
+    assert result.state is Regeneration.REPRODUCED
+    assert output.read_bytes() == before
+    assert json.loads((tmp_path / ".repro" / "set-aside.json").read_text()) == {}
+
+
+def test_the_output_waits_outside_the_project_under_no_name_a_command_can_know(tmp_path):
+    """A command that copied `.figures.json.repro-set-aside`, the name it waited under beside
+    the output, reproduced byte for byte. The path is assembled at run time, past the argument
+    guard."""
+    pieces = list(tmp_path.resolve().parts[1:])
+    reach = (
+        f"import os, shutil; p = os.sep + os.sep.join({pieces!r}); "
+        "shutil.copy(os.path.join(p, '.figures.json.repro-set-aside'), 'figures.json')"
+    )
+    manifest = copies(project(tmp_path), (sys.executable, "-c", reach))
+    result = state(manifest)
+    assert (result.state, result.reason) == (
+        Regeneration.FAILED,
+        RegenerationReason.COMMAND_FAILED,
+    )
+    assert not [p.name for p in tmp_path.iterdir() if "set-aside" in p.name]
 
 
 ISOLATOR = ISOLATORS.get(platform.system())
@@ -1152,3 +1188,15 @@ def test_a_record_that_does_not_verify_is_not_appended_to_and_the_run_still_repo
     assert f"  not recorded: {RECORD.as_posix()} does not verify as a chain" in out
     assert err.startswith("record not written: ") and "reported as edited" in err
     assert (tmp_path / RECORD).read_bytes() == before
+
+
+@needs_isolator
+def test_a_record_left_unchecked_under_isolate_is_said_on_the_summary_line(tmp_path, capsys):
+    """What `git show` of a committed output becomes under `--isolate`: git is denied, the
+    output is written empty, and the record is unchecked rather than reproduced."""
+    empty = 'import pathlib\npathlib.Path("figures.json").write_text("{}")\n'
+    code = main(["reproduce", str(on_disk(tmp_path, empty)), "--isolate"])
+    out = capsys.readouterr().out
+    (line,) = [line for line in out.splitlines() if "under --isolate" in line]
+    assert "1 unchecked under --isolate, so not reproduced" in line, out
+    assert code in (0, 1)

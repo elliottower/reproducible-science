@@ -419,8 +419,9 @@ def main(argv: list[str] | None = None) -> int:
 
     add_to(path, a.id, claim, record)
     sha = (record.get("sha256") or cf.source.sha256 or "").strip().lower()
-    earlier = pinlog.first_pins(pinlog.read(path.parent)).get(path.name)
-    pinlog.record(path, a.id, a.quote, sha)
+    key = pinlog.source_key(cf.source.citation, cf.source.local, path.name)
+    earlier = pinlog.first_pins(pinlog.read(path.parent)).get(key)
+    pinlog.record(path, a.id, a.quote, sha, key)
     print(f"found     {a.quote[:60]}")
     print(f"added     {a.id} to {path.name}")
     if earlier and sha and earlier != sha:

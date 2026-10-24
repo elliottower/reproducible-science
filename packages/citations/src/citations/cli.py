@@ -29,7 +29,7 @@ import pathlib
 from provenance_core import atomic_write, hint
 
 from citations import coverage as C
-from citations import extraction_cache, paths, pinlog, projects, tracked, web
+from citations import extraction_cache, invisible, paths, pinlog, projects, tracked, web
 from citations import verify as V
 from citations.entry import DELEGATED
 from citations.entry import delegate as _delegate
@@ -137,18 +137,31 @@ def _check_provenance(
     the caller reports once where there is no log at all. See `pinlog`.
     """
     name = cf.path.name if cf.path else f"{cf.name}.yaml"
+    key = pinlog.source_key(cf.source.citation, cf.source.local, name)
     current = (cf.source.sha256 or "").strip().lower()
-    if name in first and current and current != first[name]:
+    quotes = [q.text for claim in cf.claims.values() for q in claim.quotes if q.text]
+    digests = [pinlog.quote_digest(t) for t in quotes]
+    # Keyed by the source and by each quotation, not by the claims file's name, which a rename
+    # changes: a quotation the log holds only under other bytes was pinned against them.
+    elsewhere = {
+        sha for d in digests for sha in held.get(d, set()) if current and sha != current
+    } - {current}
+    moved = [d for d in digests if held.get(d) and current not in held[d]]
+    earlier = first.get(key)
+    if current and ((earlier and earlier != current) or moved):
+        was = earlier if earlier and earlier != current else sorted(elsewhere)[0]
         rep.findings.append(
             (
                 cf.name,
-                f"pinned again against other bytes: first pinned at {first[name][:12]}, "
+                f"pinned again against other bytes: first pinned at {was[:12]}, "
                 f"now names {current[:12]}",
             )
         )
-    quotes = [q.text for claim in cf.claims.values() for q in claim.quotes if q.text]
-    unlogged = [t for t in quotes if pinlog.quote_digest(t) not in held.get(name, set())]
-    if logging and unlogged and (name in held or not present):
+    unlogged = [
+        t for t, d in zip(quotes, digests, strict=True) if current not in held.get(d, set())
+    ]
+    known = key in first or any(d in held for d in digests)
+    if logging and unlogged and (known or not present):
         rep.findings.append(
             (cf.name, f"{len(unlogged)} quotation(s) no `citations pin` recorded in {pinlog.LOG}")
         )
@@ -296,9 +309,7 @@ def cmd_verify(a) -> int:
         log = pinlog.read(root)
         first, in_log = pinlog.first_pins(log), pinlog.logged(log)
         for line in pinlog.rewritten(root):
-            rep.strict_findings.append(
-                (pinlog.LOG, f"a line was taken out of the log: {line[:90]}")
-            )
+            rep.tampered.append((pinlog.LOG, f"a line was taken out of the log: {line[:90]}"))
         unlogged_absent = 0
         for cf in files:
             artifact = cf.artifact()
@@ -368,6 +379,8 @@ def cmd_verify(a) -> int:
                     f"against absent sources went through `citations pin`",
                 )
             )
+        if not invisible.available():
+            rep.invisible_unchecked = sum(1 for _, artifact in read if invisible.is_pdf(artifact))
         rep.counts = dict(counts)
         rep.extractors = dict(extractors)
         rep.from_cache = extraction_cache.hits()
@@ -444,6 +457,8 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
                     "strict_warnings": sorted(V.STRICT_WARNINGS),
                     "findings": [{"file": f, "finding": d} for f, d in rep.findings],
                     "strict_findings": [{"file": f, "finding": d} for f, d in rep.strict_findings],
+                    "tampered": [{"file": f, "finding": d} for f, d in rep.tampered],
+                    "invisible_unchecked": rep.invisible_unchecked,
                 },
                 indent=2,
             )
@@ -574,8 +589,16 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
     # About the records and not about any one quotation: a source pinned again against other
     # bytes, quotations no `citations pin` recorded, a record of an absent source that names
     # no sha256 or DOI there could be. See `pinlog`.
-    if rep.findings or rep.strict_findings:
+    if rep.invisible_unchecked:
+        print(
+            f"\ninvisible text not checked in {rep.invisible_unchecked} PDF source(s): "
+            "install citations[pdf] (pypdf and pdfplumber) to look for text a page does not show"
+        )
+
+    if rep.findings or rep.strict_findings or rep.tampered:
         print("\npins")
+        for name, said in rep.tampered:
+            print(f"  {name[:38]:<40}{said}  (fails)")
         for name, said in rep.strict_findings:
             print(f"  {name[:38]:<40}{said}  (fails --strict)")
         for name, said in rep.findings:

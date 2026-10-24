@@ -21,7 +21,7 @@ from provenance_core import anchor, atomic_write, sha256_of_tree, try_run
 
 from results import freezes, history, ledger, manuscript, outputs, plans, stamps
 from results.paths import RESULTS_DIR, ledger_own, ledger_path, require_root
-from results.record import LINKED, retired, skipped_lines
+from results.record import LINKED, rerecorded_paths, retired, skipped_lines
 from results.timeline import first_outcomes_seen, first_run_timestamp
 
 #: Said of a recorded path that is one of the ledger's own files, in the text and the JSON.
@@ -130,6 +130,7 @@ def coverage(manuscript_path: str, limit: int, strict: bool) -> int:
     except manuscript.UnreadableManuscript as error:
         print(error)
         return 1
+    hidden = manuscript.readable(pathlib.Path(manuscript_path).read_text(errors="replace"))[1]
 
     checkable = [n for n in found if n["exempt"] is None]
     binding = Binding(events, root.parent, stream)
@@ -143,6 +144,11 @@ def coverage(manuscript_path: str, limit: int, strict: bool) -> int:
     owed = bound + unbound
 
     print(f"{manuscript_path}")
+    if hidden:
+        print(
+            f"  warning: {hidden} format character(s), zero-width or invisible, were removed "
+            "before the numbers were read"
+        )
     print(
         f"  {claims} claim{'' if claims == 1 else 's'} in the ledger, "
         f"naming {len(claimed)} distinct value{'' if len(claimed) == 1 else 's'}"
@@ -209,7 +215,8 @@ class Binding:
         naming = [(c, said) for c, said in self.claims if value in said]
         if any(manuscript.stated_by(self.stream, number["at"], said) for _, said in naming):
             return True
-        return any(self.held(str(c.get("run_id") or "")).holds(value) for c, _ in naming)
+        percent = bool(number.get("percent"))
+        return any(self.held(str(c.get("run_id") or "")).holds(value, percent) for c, _ in naming)
 
 
 def reanchor() -> int:
@@ -348,7 +355,9 @@ def nested(root: pathlib.Path) -> list[pathlib.Path]:
     return sorted(found)
 
 
-def verify(check_files: bool, json_path: str | None = None, strict: bool = False) -> int:
+def verify(
+    check_files: bool, json_path: str | None = None, strict: bool = False, explain: bool = False
+) -> int:
     """Check the chain and, with `check_files`, every recorded file. With `json_path`, the
     same findings are also written there as one JSON object: the chain's status and problems,
     the number of events, and each recorded path with what was found at it. Every ledger below
@@ -359,14 +368,14 @@ def verify(check_files: bool, json_path: str | None = None, strict: bool = False
     history holds and the disk does not."""
     root = require_root()
     report: dict = {"files_checked": check_files, "files": []}
-    code = _verify(check_files, report, root, strict)
+    code = _verify(check_files, report, root, strict, explain)
     below = nested(root)
     if below:
         report["nested"] = []
     for other in below:
         print(f"\n--- nested ledger {other.relative_to(root.parent).as_posix()} ---\n")
         found: dict = {"root": other.relative_to(root.parent).as_posix(), "files": []}
-        found["exit"] = _verify(check_files, found, other, strict)
+        found["exit"] = _verify(check_files, found, other, strict, explain)
         report["nested"].append(found)
         code = max(code, found["exit"])
     if below:
@@ -376,7 +385,13 @@ def verify(check_files: bool, json_path: str | None = None, strict: bool = False
     return code
 
 
-def _verify(check_files: bool, report: dict, root: pathlib.Path, strict: bool = False) -> int:
+def _verify(
+    check_files: bool,
+    report: dict,
+    root: pathlib.Path,
+    strict: bool = False,
+    explain: bool = False,
+) -> int:
     lp = ledger_path(root)
 
     status, problems = ledger.verify(lp)
@@ -459,6 +474,7 @@ def _verify(check_files: bool, report: dict, root: pathlib.Path, strict: bool = 
         print(f"  {t:<12}{n:>5}")
 
     drift = resealed = 0
+    rerecords: list[str] = []
     if check_files:
         print("\nfile hashes:")
         # Keyed by path, the last seal of a path silently replaced every earlier one, so
@@ -487,17 +503,18 @@ def _verify(check_files: bool, report: dict, root: pathlib.Path, strict: bool = 
         for path, recorded in sorted(file_hashes.items()):
             p = base / path
             if path in again and path not in gone:
-                # Recorded as an output under other bytes with no seal between: the output was
-                # changed and recorded again, not produced by a run of its inputs.
+                # Recorded as an output under other bytes with no input of the earlier run
+                # sealed between: changed and recorded again, or re-run without a record of
+                # its inputs. A warning, failed under `--strict`; the path is still compared
+                # below, so a file that also changed since is said to have.
                 run_ids = again[path]
                 print(f"  RERECORDED {path}")
                 print(
                     f"    recorded again by run '{run_ids[1]}' under other bytes than run "
-                    f"'{run_ids[0]}' wrote, with nothing sealed between"
+                    f"'{run_ids[0]}' wrote, with no input of that run sealed between"
                 )
                 found.append({"path": path, "state": "rerecorded", "runs": list(run_ids)})
-                drift += 1
-                continue
+                rerecords.append(path)
             if ledger_own(path):
                 # Recorded before `seal` refused these. The file changes with every event, so
                 # comparing it says nothing about the work, and failing on it would fail every
@@ -707,12 +724,34 @@ def _verify(check_files: bool, report: dict, root: pathlib.Path, strict: bool = 
             print(f"  {c['claim'][:60]}  (run: {c.get('run_id')})")
         print("  the run no longer names a file in the project; bind the claim to the run")
         print("  that replaced it.")
-    if unheld:
+    if unheld and (explain or strict):
         print(f"\n{len(unheld)} claim(s) print numbers their run's outputs do not hold:")
         for c, absent in unheld:
             print(f"  {c['claim'][:60]}  (run: {c.get('run_id')})")
             print(f"    no output rounds to {', '.join(absent)} at the printed precision")
-    warned = bool(orphaned or unheld or gone_proofs)
+        print("  a number derived from the outputs is declared with `results claim --derived`.")
+    elif unheld:
+        # One line, since a paper reporting derived statistics prints dozens of these; the
+        # JSON lists each, and `--strict` fails them.
+        print(
+            f"\n{len(unheld)} claim(s) print numbers their run's outputs do not hold; "
+            "list with --explain"
+        )
+    derived = [c for c in claims if c.get("derived")]
+    report["claims_derived"] = [{"claim": c["claim"], "how": c["derived"]} for c in derived]
+    if derived:
+        print(f"\n{len(derived)} claim(s) print numbers derived from their run's outputs:")
+        for c in derived:
+            print(f"  {c['claim'][:60]}")
+            print(f"    derived: {str(c['derived'])[:70]}")
+        print("  not compared with the outputs: the claim says how the number was derived.")
+    report["rerecorded"] = rerecords
+    if rerecords:
+        print(
+            f"\n{len(rerecords)} output(s) recorded again with no input of the earlier run sealed:"
+        )
+        print("  a re-run seals what it reads first; `--strict` fails these.")
+    warned = bool(orphaned or unheld or gone_proofs or rerecords)
 
     print()
     if unlinked:
@@ -746,6 +785,11 @@ def claim_backing(
     for c in claims:
         run_id = str(c.get("run_id") or "")
         paths = outputs.run_outputs(events, run_id)
+        if c.get("derived"):
+            # Declared derived: the number is computed from the outputs and is not in them.
+            if paths and all(path in gone for path in paths):
+                orphaned.append(c)
+            continue
         if paths and all(path in gone for path in paths):
             orphaned.append(c)
             continue
@@ -755,27 +799,3 @@ def claim_backing(
         if held.read and (absent := outputs.missing(c.get("claim", ""), held)):
             unheld.append((c, absent))
     return orphaned, unheld
-
-
-def rerecorded_paths(events: list[dict]) -> dict[str, tuple[str, str]]:
-    """Each path a run recorded as an output under other bytes than an earlier run recorded
-    there, with no seal between the two, and the two runs. A retirement in between makes the
-    later bytes new rather than a re-record."""
-    last: dict[str, tuple[str, str]] = {}
-    sealed_after: set[str] = set()
-    found: dict[str, tuple[str, str]] = {}
-    for e in events:
-        if e.get("event") == "seal":
-            sealed_after |= set(last)
-        elif e.get("event") == "retire":
-            for path in e.get("paths", []):
-                last.pop(path, None)
-        elif e.get("event") == "run":
-            run_id = str(e.get("run_id", ""))
-            for o in e.get("outputs", []):
-                path, digest = o.get("path", ""), o.get("sha256", "")
-                if path in last and last[path][1] != digest and path not in sealed_after:
-                    found.setdefault(path, (last[path][0], run_id))
-                last[path] = (run_id, digest)
-                sealed_after.discard(path)
-    return found

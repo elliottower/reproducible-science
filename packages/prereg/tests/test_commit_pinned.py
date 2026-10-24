@@ -162,6 +162,29 @@ def test_dated_entries_under_a_log_heading_appended_after_the_frozen_text_are_ap
     assert "+ Also accept p < 0.10." in out
 
 
+def test_a_dated_line_stating_a_new_hypothesis_is_a_change(repo, check):
+    freeze(repo)
+    doc = repo / "PREREGISTRATION.md"
+    entry = "2026-10-23  **H2.** Recall improves at the top dose. H2 is the primary outcome.\n"
+    doc.write_text(doc.read_text().removesuffix("```\n") + entry + "```\n")
+    code, out = check()
+    assert code == 1
+    assert "CHANGED      PREREGISTRATION.md" in out
+
+    doc.write_text(doc.read_text().replace(entry, "2026-10-23  H1 held in every family\n"))
+    assert check()[0] == 0
+
+
+def test_a_dated_table_row_under_the_criteria_is_a_change(repo, check):
+    text = PLAN.split("## Deviations")[0] + "## Inference criteria\n\n| when | rule |\n|---|---|\n"
+    freeze(repo, text=text)
+    doc = repo / "PREREGISTRATION.md"
+    doc.write_text(doc.read_text() + "| 2026-10-23 | H1 also holds at p < 0.20 |\n")
+    code, out = check()
+    assert code == 1
+    assert "+ | 2026-10-23 | H1 also holds at p < 0.20 |" in out
+
+
 def test_a_line_inserted_above_the_end_is_not_appended(repo, check):
     freeze(repo)
     doc = repo / "PREREGISTRATION.md"

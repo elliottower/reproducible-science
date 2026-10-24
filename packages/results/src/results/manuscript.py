@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import pathlib
 import re
+import unicodedata
 
 #: A number in prose. Two lookbehinds earn their place. Every comma must be followed by a
 #: digit, so a value ending a clause is not captured with its punctuation: `UMR 7222, Paris`
@@ -40,6 +41,26 @@ WORD = re.compile(r"(?<![\\A-Za-z])[A-Za-z]+")
 
 #: A number or a word, in the order the text gives them.
 TOKEN = re.compile(f"(?P<number>{NUMBER.pattern})|(?P<word>{WORD.pattern})")
+
+
+def readable(text: str) -> tuple[str, int]:
+    """`text` without format characters, and how many were taken out.
+
+    A zero-width space, joiner or mark (Unicode category Cf) prints nothing, so `0.71\u200b57`
+    reads as 0.7157 and was matched as the two numbers `0.71` and `57`. They are removed before
+    any number is read, and the count is said, since a manuscript has no reason to hold one.
+    """
+    kept = [c for c in text if unicodedata.category(c) != "Cf"]
+    return "".join(kept), len(text) - len(kept)
+
+
+#: What marks a number as a percentage when it follows it: `%`, LaTeX's `\%`, or the word.
+PERCENT = re.compile(r"\s*(?:\\?%|percent\b|per\s+cent\b)", re.I)
+
+
+def percent_after(text: str, end: int) -> bool:
+    """Whether the number ending at `end` is printed as a percentage."""
+    return bool(PERCENT.match(text, end))
 
 
 def canonical(printed: str) -> str:
@@ -73,6 +94,9 @@ LAYOUT = re.compile(
 )
 
 COMMENT = re.compile(r"(?<!\\)%.*$", re.M)
+
+#: Sources in which `%` opens a comment.
+LATEX = {".tex", ".ltx", ".sty", ".cls"}
 
 #: A macro taking no argument whose body is plain text: `\newcommand{\icc}{0.42}`,
 #: `\newcommand\icc{0.42}`, `\def\icc{0.42}`. A paper that sets its numbers this way prints
@@ -297,7 +321,10 @@ def body(
     visited = visited if visited is not None else set()
     if root is None and base is not None:
         root = base.parent
-    source = COMMENT.sub("", source)
+    # `%` opens a comment in LaTeX alone: in Markdown it is a percent sign, and stripping from
+    # it to the end of the line dropped every number after `50%`.
+    if base is None or base.suffix.lower() in LATEX:
+        source = COMMENT.sub("", source)
     if macros is None:
         # Read before the preamble is cut, since that is where a paper defines its macros.
         macros = definitions(source, base, root)
@@ -356,7 +383,7 @@ def tokens(text: str) -> list[str]:
     canonical spelling. What a number is read beside, to say which claim states it."""
     return [
         canonical(m["number"]) if m["number"] is not None else m["word"].lower()
-        for m in TOKEN.finditer(text)
+        for m in TOKEN.finditer(readable(text)[0])
     ]
 
 
@@ -381,6 +408,7 @@ def read(path: pathlib.Path) -> tuple[list[dict], list[str]]:
         source = path.read_text(errors="replace")
     except OSError as error:
         raise UnreadableManuscript(f"{path}: {error}") from error
+    source, _ = readable(source)
 
     found: list[dict] = []
     stream: list[str] = []
@@ -400,6 +428,7 @@ def read(path: pathlib.Path) -> tuple[list[dict], list[str]]:
                     "context": line.strip()[:160],
                     "exempt": needs_no_claim(printed, line, match.start()),
                     "attributed": cited,
+                    "percent": percent_after(line, match.end()),
                 }
             )
             stream.append(canonical(printed))
@@ -411,7 +440,8 @@ def claimed_values(events: list[dict]) -> set[str]:
     values: set[str] = set()
     for event in events:
         if event.get("event") == "claim":
-            values.update(canonical(n) for n in NUMBER.findall(event.get("claim", "")))
+            text = readable(event.get("claim", ""))[0]
+            values.update(canonical(n) for n in NUMBER.findall(text))
     return values
 
 

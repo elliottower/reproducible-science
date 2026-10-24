@@ -40,6 +40,8 @@ from provenance_core import (
     sha256_of_file,
     shared_lock,
 )
+from provenance_core.chain import ChainError
+from provenance_core.chain import append_event as append_to_chain
 from provenance_core.gitref import try_run
 
 from prereg import (
@@ -372,6 +374,24 @@ def _freeze_whole(
         uncommitted=uncommitted,
     )
     where = record.write(path, frozen)
+    if ledger is not None:
+        # The position the record states sits in a file anyone can edit before it is committed.
+        # An event in the ledger's chain cannot be moved without breaking the chain, so the
+        # freeze is placed by it: `results` reads this event before the record's own position.
+        project = ledger.path.parent.parent
+        try:
+            append_to_chain(
+                ledger.path,
+                {
+                    "event": "freeze",
+                    "file": pathlib.Path(os.path.relpath(path, project)).as_posix(),
+                    "record": pathlib.Path(os.path.relpath(where, project)).as_posix(),
+                    "commit": commit,
+                    "sha256": digest,
+                },
+            )
+        except (ChainError, OSError) as e:
+            print(f"note: the freeze was not written into the results ledger: {e}")
     # Read-only stops an accidental save. It is not the guard: git does not carry the flag to
     # another machine, and `check` is what fails on a change.
     path.chmod(stat.S_IMODE(path.stat().st_mode) & ~0o222)

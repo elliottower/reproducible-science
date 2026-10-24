@@ -7,6 +7,7 @@ confirmatory claim from a run recorded before any plan was frozen raised no flag
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import sys
@@ -158,7 +159,75 @@ def test_a_ledger_rewritten_under_a_freeze_cannot_place_it(repo):
     results("run", "out.json", "--run-id", "late", cwd=repo)
     r = confirm(repo, "late", named)
     assert r.returncode == 1
-    assert "event 1 of the ledger is not the event it recorded as the last" in r.stdout
+    # The rewritten ledger was committed with the freeze, so the claim is refused on history
+    # before the record is read; uncommitted, the record's head is what refuses it.
+    assert "git history holds a ledger this one does not extend" in r.stdout
+    assert not claims(repo)
+
+
+def by_hand(repo, plan_commit, **fields) -> None:
+    """A freeze record written by hand, as an older `prereg` or an editor would leave one."""
+    held = {
+        "file": "PREREG.md",
+        "sha256": hashlib.sha256((repo / "PREREG.md").read_bytes()).hexdigest(),
+        "commit": plan_commit,
+        "frozen_at": "2025-01-01T00:00:00+00:00",
+        "access": "nothing run",
+        **fields,
+    }
+    (repo / ".prereg").mkdir(exist_ok=True)
+    (repo / ".prereg" / "PREREG.md.json").write_text(json.dumps(held))
+
+
+def test_prereg_freeze_writes_the_freeze_into_the_ledger(repo):
+    named = freeze(repo)
+    lines = (repo / ".results" / "ledger.jsonl").read_text().splitlines()
+    (event,) = [e for e in map(json.loads, lines) if e["event"] == "freeze"]
+    assert (event["commit"], event["file"]) == (named, "PREREG.md")
+
+
+def test_a_ghost_record_with_no_plan_places_nothing(repo):
+    results("access", "read the outcomes", "--level", "outcomes seen", cwd=repo)
+    head = git(repo, "rev-parse", "HEAD")
+    ghost = repo / "notes" / ".prereg"
+    ghost.mkdir(parents=True)
+    (ghost / "GHOST.md.json").write_text(
+        json.dumps({"file": "GHOST.md", "sha256": "0" * 64, "commit": head,
+                    "frozen_at": "2025-01-01T00:00:00+00:00", "access": "nothing run"})
+    )  # fmt: skip
+    results("run", "out.json", "--run-id", "late", cwd=repo)
+    r = confirm(repo, "late", head)
+    assert r.returncode == 1
+    assert "no plan GHOST.md stands beside the record" in r.stdout
+    assert not claims(repo)
+
+
+def test_a_record_with_no_position_and_a_backdated_time_places_nothing(repo):
+    results("access", "read the outcomes", "--level", "outcomes seen", cwd=repo)
+    plan_commit = git(repo, "rev-parse", "HEAD")
+    by_hand(repo, plan_commit)
+    results("run", "out.json", "--run-id", "late", cwd=repo)
+    r = confirm(repo, "late", plan_commit)
+    assert r.returncode == 1
+    assert not claims(repo)
+
+
+def test_a_record_claiming_fewer_events_than_its_commit_held_places_nothing(repo):
+    results("access", "read the outcomes", "--level", "outcomes seen", cwd=repo)
+    plan = repo / "PREREG.md"
+    plan.write_text(plan.read_text() + "\n**H2.** Chosen after looking.\n")
+    plan_commit = commit(repo, "plan after looking")
+    first = (repo / ".results" / "ledger.jsonl").read_text().splitlines()[0]
+    by_hand(
+        repo,
+        plan_commit,
+        ledger={"path": ".results/ledger.jsonl", "events": 1, "head": sha256_of_text(first)},
+    )
+    results("run", "out.json", "--run-id", "late", cwd=repo)
+    r = confirm(repo, "late", plan_commit)
+    assert r.returncode == 1
+    assert f"the ledger as committed at {plan_commit[:12]} already held 2 events" in r.stdout
+    assert not claims(repo)
 
 
 def test_a_run_recorded_before_the_freeze_is_flagged_and_kept(repo):

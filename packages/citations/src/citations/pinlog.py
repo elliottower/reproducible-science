@@ -5,17 +5,20 @@ together. Change a sentence in the source, write the new sha256 into the claims 
 passage that only the edited source holds, and `verify` reports every quotation found: the file
 on disk matches the pin, and the pin is the one the file now names.
 
-So `citations pin` also appends one line to `pins.jsonl` beside the claims files: the claims
-file, the claim, the sha256 the source had and a digest of the quotation. Nothing rewrites a
-line. `verify` then reports
+So `citations pin` also appends one line to `pins.jsonl` beside the claims files: the source,
+the sha256 it had, a digest of the quotation, and the claims file and claim for information.
+A line is keyed by the source and by the pair of sha256 and quotation, never by the claims
+file's name, which a rename changes: renaming the file hid a repin. Nothing rewrites a line.
+`verify` then reports
 
-    repinned     a claims file naming a sha256 other than the first one the log recorded for
-                 it: the source was pinned again against other bytes. A new version of a paper
-                 is an honest reason, and the report says which bytes each pin named
-    unlogged     quotations in a claims file the log has lines for that no `citations pin`
-                 recorded: written into the file by hand
-    rewritten    lines git history shows were taken out of the log, which only an edit does;
-                 `--strict` fails on it
+    repinned     a source naming a sha256 other than the first one the log recorded for it, or a
+                 quotation the log holds only under other bytes: the source was pinned again
+                 against other bytes. A new version of a paper is an honest reason, and the
+                 report says which bytes each pin named
+    unlogged     quotations no `citations pin` recorded against the sha256 the source names:
+                 written into the file by hand
+    rewritten    lines git history shows were taken out of the log, which only an edit does,
+                 and which fails `verify`
 
 The log is lines and not a chain, so two branches that each pin something merge into a log
 holding both. Git is what holds the earlier versions, so a log that was never committed shows
@@ -55,10 +58,18 @@ def path(claims_dir: pathlib.Path) -> pathlib.Path:
     return claims_dir / LOG
 
 
-def record(claims_file: pathlib.Path, claim: str, quote: str, sha256: str | None) -> None:
+def source_key(citation: str | None, local: str | None, fallback: str) -> str:
+    """What names a source in the log: its citation key, else its local path, else `fallback`."""
+    return (citation or "").strip() or (local or "").strip() or fallback
+
+
+def record(
+    claims_file: pathlib.Path, claim: str, quote: str, sha256: str | None, source: str = ""
+) -> None:
     """Append one pin to the log beside `claims_file`."""
     log = path(claims_file.parent)
     line = {
+        "source": source or claims_file.name,
         "file": claims_file.name,
         "claim": claim,
         "sha256": (sha256 or "").strip().lower(),
@@ -85,23 +96,29 @@ def read(claims_dir: pathlib.Path) -> list[dict]:
     return out
 
 
+def _key(line: dict) -> str | None:
+    """The source a line names. A line an earlier version wrote names only the claims file."""
+    key = line.get("source") or line.get("file")
+    return key if isinstance(key, str) else None
+
+
 def first_pins(lines: list[dict]) -> dict[str, str]:
-    """The first sha256 the log recorded for each claims file."""
+    """The first sha256 the log recorded for each source."""
     first: dict[str, str] = {}
     for line in lines:
-        name, sha = line.get("file"), line.get("sha256")
-        if isinstance(name, str) and isinstance(sha, str) and sha:
-            first.setdefault(name, sha)
+        key, sha = _key(line), line.get("sha256")
+        if key and isinstance(sha, str) and sha:
+            first.setdefault(key, sha)
     return first
 
 
 def logged(lines: list[dict]) -> dict[str, set[str]]:
-    """The quotation digests the log holds for each claims file."""
+    """The sha256 values each quotation digest was pinned against."""
     out: dict[str, set[str]] = {}
     for line in lines:
-        name, quote = line.get("file"), line.get("quote")
-        if isinstance(name, str) and isinstance(quote, str):
-            out.setdefault(name, set()).add(quote)
+        quote, sha = line.get("quote"), line.get("sha256")
+        if isinstance(quote, str) and isinstance(sha, str):
+            out.setdefault(quote, set()).add(sha)
     return out
 
 

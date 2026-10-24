@@ -9,19 +9,32 @@ existed, how many of its events it held then and the digest of the last. The pos
 part no clock can move. An event the ledger held at the freeze came before it, and one it did
 not came after, and the chain fixes which is which.
 
+The record is a file in the working tree, so its position and its time are only as good as
+the checks made of it here. A record is placed only where its plan exists and the commit it
+names holds the plan with the digest it records; a record with no plan behind it, or one whose
+plan the commit does not hold, places nothing. Where `prereg freeze` wrote a `freeze` event
+into the ledger, that event is the position, since it sits inside the hash chain and the
+record does not. Otherwise the position the record states is checked against the ledger as
+committed at the record's commit: the freeze came after that commit, so a record saying the
+ledger held fewer events than the commit already did is false. Where a ledger exists and the
+record cannot be placed in it, the record's `frozen_at`, a time anyone can write, places
+nothing either.
+
 This module reads those records and never imports `prereg`, as `prereg` reads the ledger and
 never imports this package.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 import pathlib
 import re
+import subprocess
 from dataclasses import dataclass
 
 from provenance_core import sha256_of_text
-from provenance_core.gitref import try_run
+from provenance_core.gitref import clean_env, try_run
 
 from results.timeline import precedes
 
@@ -44,6 +57,8 @@ class Freeze:
     position: int | None
     #: Why the record's position in the ledger could not be used, where it names one.
     misplaced: str = ""
+    #: Whether a ledger exists to place it in, in which case `frozen_at` places nothing.
+    ledgered: bool = False
 
 
 def lines_of(ledger: pathlib.Path) -> list[str]:
@@ -51,7 +66,70 @@ def lines_of(ledger: pathlib.Path) -> list[str]:
     return [line for line in ledger.read_text().splitlines() if line.strip()]
 
 
-def _place(record: pathlib.Path, held: dict, ledger: pathlib.Path, lines: list[str]):
+def _blob(top: pathlib.Path, spec: str) -> bytes | None:
+    """The bytes git holds as `<commit>:<path>`, or None."""
+    done = subprocess.run(
+        ["git", "cat-file", "blob", spec],
+        cwd=top,
+        env=clean_env(),
+        capture_output=True,
+        check=False,
+    )
+    return done.stdout if done.returncode == 0 else None
+
+
+def _name(top: pathlib.Path, path: pathlib.Path) -> str | None:
+    try:
+        return path.resolve().relative_to(top.resolve()).as_posix()
+    except ValueError:
+        return None
+
+
+def _plan_problem(record: pathlib.Path, held: dict, top: pathlib.Path | None) -> str:
+    """Why the record's plan does not stand behind it, or "" where it does: the plan exists,
+    and the commit the record names holds it with the digest the record gives."""
+    plan = record.parent.parent / record.name.removesuffix(".json")
+    if not plan.is_file():
+        return f"no plan {plan.name} stands beside the record"
+    if held.get("uncommitted"):
+        return f"{plan.name} was frozen from bytes no commit holds"
+    name = _name(top, plan) if top is not None else None
+    if top is None or name is None:
+        return f"{plan.name} is not in a git repository, so its commit cannot be read"
+    stored = _blob(top, f"{held['commit']}:{name}")
+    if stored is None:
+        return f"commit {held['commit'][:12]} does not hold {name}"
+    if hashlib.sha256(stored).hexdigest() != held.get("sha256"):
+        return f"{name} at commit {held['commit'][:12]} is not the file the record froze"
+    return ""
+
+
+def _event_position(record: pathlib.Path, held: dict, ledger: pathlib.Path, lines: list[str]):
+    """The index of the `freeze` event `prereg freeze` wrote into the ledger for this record,
+    or None."""
+    plan = (record.parent.parent / record.name.removesuffix(".json")).resolve()
+    for i, line in enumerate(lines):
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if (
+            event.get("event") == "freeze"
+            and event.get("commit") == held.get("commit")
+            and event.get("sha256") == held.get("sha256")
+            and (ledger.parent.parent / str(event.get("file", ""))).resolve() == plan
+        ):
+            return i
+    return None
+
+
+def _place(
+    record: pathlib.Path,
+    held: dict,
+    ledger: pathlib.Path,
+    lines: list[str],
+    top: pathlib.Path | None,
+):
     """The record's position in `ledger`, or None and why where it names one but cannot be
     placed there."""
     where = held.get("ledger")
@@ -66,6 +144,17 @@ def _place(record: pathlib.Path, held: dict, ledger: pathlib.Path, lines: list[s
     head = where.get("head") or ""
     if events and sha256_of_text(lines[events - 1]) != head:
         return None, f"event {events} of the ledger is not the event it recorded as the last"
+    # The freeze came after the commit it names, so the ledger then held at least what that
+    # commit holds. A record saying it held fewer was written to move the freeze earlier.
+    name = _name(top, ledger) if top is not None else None
+    stored = _blob(top, f"{held['commit']}:{name}") if top is not None and name else None
+    if stored is not None:
+        committed = len([x for x in stored.decode(errors="replace").splitlines() if x.strip()])
+        if committed > events:
+            return None, (
+                f"the ledger as committed at {held['commit'][:12]} already held {committed} "
+                f"events, and the record says {events}"
+            )
     return events, ""
 
 
@@ -73,6 +162,7 @@ def read_all(project: pathlib.Path, ledger: pathlib.Path) -> list[Freeze]:
     """Every freeze record in the repository holding `project`, or below `project` outside one."""
     top = try_run("rev-parse", "--show-toplevel", cwd=project)
     base = pathlib.Path(top) if top else project
+    repo = pathlib.Path(top) if top else None
     lines = lines_of(ledger) if ledger.is_file() else []
     found = []
     for record in sorted(base.rglob(f"{RECORDS}/*.json")):
@@ -84,9 +174,20 @@ def read_all(project: pathlib.Path, ledger: pathlib.Path) -> list[Freeze]:
             continue
         if not isinstance(held, dict) or not isinstance(held.get("commit"), str):
             continue
-        position, misplaced = _place(record, held, ledger, lines)
+        frozen_at = str(held.get("frozen_at", ""))
+        if problem := _plan_problem(record, held, repo):
+            found.append(Freeze(record, held["commit"], frozen_at, None, problem, True))
+            continue
+        stated, misplaced = _place(record, held, ledger, lines, repo)
+        position = _event_position(record, held, ledger, lines)
+        if position is None:
+            position = stated
+        elif misplaced:
+            # The chain places the freeze, and the record's own account of the ledger is
+            # false: the ledger it describes is not this one.
+            position = None
         found.append(
-            Freeze(record, held["commit"], str(held.get("frozen_at", "")), position, misplaced)
+            Freeze(record, held["commit"], frozen_at, position, misplaced, ledger.is_file())
         )
     return found
 
@@ -125,13 +226,13 @@ def before(freeze: Freeze, index: int | None, stamp: str | None) -> bool | None:
     """Whether the freeze came before the event at `index` of the ledger, stamped `stamp`.
 
     By position where the record places the freeze in this ledger: the event came after it
-    exactly when the ledger did not yet hold it. Otherwise by the instant the record gives,
-    which `prereg freeze` wrote from the clock, as the ledger writes its own. Never by a commit
-    date. None where neither can say.
+    exactly when the ledger did not yet hold it. Where there is no ledger, by the instant the
+    record gives, which `prereg freeze` wrote from the clock. Never by a commit date, and never
+    by the record's time where a ledger exists to place it in. None where neither can say.
     """
     if freeze.position is not None and index is not None:
         return index >= freeze.position
-    if freeze.misplaced:
+    if freeze.misplaced or freeze.ledgered:
         return None
     if freeze.frozen_at and stamp:
         return precedes(freeze.frozen_at, stamp)

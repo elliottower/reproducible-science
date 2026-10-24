@@ -639,17 +639,37 @@ def a_repo_with_a_frozen_plan(tmp_path, plan="plan.md"):
     return sha
 
 
-def test_a_plan_frozen_before_the_exposure_is_confirmatory(tmp_path):
-    sha = a_repo_with_a_frozen_plan(tmp_path, "PREREG.md")
+def prereg_freeze(cwd):
     frozen = subprocess.run(
         [sys.executable, "-m", "prereg.cli", "freeze"],
-        cwd=tmp_path,
+        cwd=cwd,
         capture_output=True,
         text=True,
         env=clean_env(PROVENANCE_CALENDARS=""),
     )
     assert frozen.returncode == 0, frozen.stdout
+
+
+def test_a_freeze_made_before_any_ledger_existed_places_nothing_once_one_does(tmp_path):
+    """The record holds no position, and its time is one anyone can write, so where a ledger
+    exists to place the freeze in, the record's time does not."""
+    sha = a_repo_with_a_frozen_plan(tmp_path, "PREREG.md")
+    prereg_freeze(tmp_path)
     run_cli("init", cwd=tmp_path)
+    run_cli("access", "read the outcomes", "--level", "outcomes seen", cwd=tmp_path)
+    (tmp_path / "out.json").write_text('{"d": 0.103}\n')
+    run_cli("run", "out.json", "--run-id", "late", cwd=tmp_path)
+    r = run_cli(
+        "claim", "d = 0.103", "--run-id", "late", "--confirmatory", "--frozen-at", sha, cwd=tmp_path
+    )
+    assert r.returncode == 1
+    assert "cannot be placed before the exposure" in r.stdout
+
+
+def test_a_plan_frozen_before_the_exposure_is_confirmatory(tmp_path):
+    sha = a_repo_with_a_frozen_plan(tmp_path, "PREREG.md")
+    run_cli("init", cwd=tmp_path)
+    prereg_freeze(tmp_path)
     run_cli("access", "read the outcomes", "--level", "outcomes seen", cwd=tmp_path)
     (tmp_path / "out.json").write_text('{"d": 0.103}\n')
     run_cli("run", "out.json", "--run-id", "late", cwd=tmp_path)
