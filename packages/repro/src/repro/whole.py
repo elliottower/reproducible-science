@@ -332,6 +332,12 @@ def sections(
     }
 
 
+def _escaped(text: object) -> str:
+    """`text` with each character that prints nothing written as its escape, so a zero-width
+    space inside a number is seen."""
+    return "".join(c if c.isprintable() else f"\\u{ord(c):04x}" for c in str(text))
+
+
 def _derived(run: ci.ToolRun, explain: bool) -> list[str]:
     """The claims `results claim --derived` exempted from the number check, counted on the
     results line and listed with `explain`: allowed, and never out of sight."""
@@ -349,7 +355,7 @@ def _derived(run: ci.ToolRun, explain: bool) -> list[str]:
     ]
     if explain:
         lines += [
-            f"        {str(c.get('claim'))[:60]}  derived: {str(c.get('how'))[:50]}"
+            f"        {_escaped(c.get('claim'))[:60]}  derived: {_escaped(c.get('how'))[:50]}"
             for c in derived
         ]
     return lines

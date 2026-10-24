@@ -730,6 +730,58 @@ def test_a_pre_ledger_record_rewritten_in_place_after_the_ledger_places_nothing(
     assert "cannot be placed before the exposure" in r.stdout
 
 
+@pytest.mark.parametrize("ledger_key", ["absent", "null"])
+def test_a_side_branch_re_adding_the_ledger_and_merged_places_nothing(tmp_path, ledger_key):
+    """The record is committed on a branch from before the ledger, the ledger is re-added
+    there byte for byte, and main is merged in and fast-forwarded: git's default history
+    simplification then hid the ledger's first commit behind the side's re-add."""
+    before = a_repo_with_a_frozen_plan(tmp_path, "PREREG.md")
+    main = git_in(tmp_path, "rev-parse", "--abbrev-ref", "HEAD")
+    run_cli("init", cwd=tmp_path)
+    commit_paths(tmp_path, "ledger", ".results")
+    run_cli("access", "read the outcomes", "--level", "outcomes seen", cwd=tmp_path)
+    plan = tmp_path / "PREREG.md"
+    plan.write_text(plan.read_text() + "H2. chosen after looking.\n")
+    commit_paths(tmp_path, "plan after looking", "PREREG.md", ".results")
+    after = git_in(tmp_path, "rev-parse", "HEAD")
+    planned = plan.read_bytes()
+
+    git_in(tmp_path, "checkout", "-q", "-b", "side", before)
+    plan.write_bytes(planned)
+    record = {
+        "file": "PREREG.md",
+        "sha256": hashlib.sha256(planned).hexdigest(),
+        "commit": after,
+        "frozen_at": "2025-01-01T00:00:00+00:00",
+        "access": "nothing run",
+    }
+    if ledger_key == "null":
+        record["ledger"] = None
+    (tmp_path / ".prereg").mkdir()
+    (tmp_path / ".prereg" / "PREREG.md.json").write_text(json.dumps(record))
+    commit_paths(tmp_path, "record", ".prereg", "PREREG.md")
+    git_in(tmp_path, "checkout", "-q", main, "--", ".results")
+    commit_paths(tmp_path, "ledger again", ".results")
+    git_in(tmp_path, "merge", "-q", "--no-edit", main)
+    git_in(tmp_path, "checkout", "-q", main)
+    git_in(tmp_path, "merge", "-q", "--ff-only", "side")
+
+    (tmp_path / "out.json").write_text('{"d": 0.103}\n')
+    run_cli("run", "out.json", "--run-id", "late", cwd=tmp_path)
+    r = run_cli(
+        "claim",
+        "d = 0.103",
+        "--run-id",
+        "late",
+        "--confirmatory",
+        "--frozen-at",
+        after,
+        cwd=tmp_path,
+    )
+    assert r.returncode == 1, r.stdout
+    assert "confirmatory, exposure logged" not in r.stdout
+
+
 @pytest.mark.parametrize("order", ["same commit", "sibling branch"])
 def test_a_record_not_committed_before_the_ledger_places_nothing(tmp_path, order):
     sha = a_repo_with_a_frozen_plan(tmp_path, "PREREG.md")

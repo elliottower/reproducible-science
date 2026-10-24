@@ -118,7 +118,9 @@ def manuscripts(manifest: Manifest) -> tuple[tuple[pathlib.Path, ...], tuple[pat
     chosen = [p for a, p in declared if a.id in named] or [
         p for a, p in declared if a.path.suffix.lower() in MANUSCRIPT_SUFFIXES
     ]
-    return tuple(p for p in chosen if p.is_file()), tuple(p for p in chosen if not p.is_file())
+    # A declared source a claim quotes, a PDF for one, is not a manuscript gone missing.
+    gone = tuple(p for p in chosen if not p.is_file() and p.suffix.lower() in MANUSCRIPT_SUFFIXES)
+    return tuple(p for p in chosen if p.is_file()), gone
 
 
 def _shown(path: pathlib.Path, root: pathlib.Path) -> str:

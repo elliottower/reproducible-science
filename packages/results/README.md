@@ -178,7 +178,13 @@ An analysis registered after `outcomes seen` is retrospective.
 
 `results run` warns when it records an output whose path a run already recorded under other
 bytes and no input of that run has been sealed since: a re-run reads its inputs, so seal them
-first. Sealing some other file does not count. `--strict` refuses it. `results reanchor`, and
+first. Sealing some other file, or an input again with the bytes it had, does not count. A
+limit: the inputs of a run are every path sealed before it, so resealing one of them that the
+run never read, with new bytes, clears `RERECORDED`; that matters under `--strict` only.
+
+A ledger that is never committed, one a `.gitignore` keeps out of git, has no history to be
+checked against: it can be rewritten and anchored again, a forged freeze event included, and
+nothing here can tell. Commit the ledger; every check of the order of events rests on it. `--strict` refuses it. `results reanchor`, and
 `results claim`, refuse where a commit holds a longer ledger or anchor than the one on disk.
 
 `results claim` reads the run's outputs as text and warns where a number the claim prints is held

@@ -700,3 +700,7 @@ def test_a_declared_manuscript_missing_is_said_and_no_other_file_is_read(project
     rules = [(v["rule"], v["subject"]) for v in found["coverage"]["violations"]]
     assert ("coverage.manuscript_missing", "paper.md") in rules
     assert found["coverage"]["manuscripts"] == []
+
+
+def test_an_invisible_character_in_a_listed_claim_is_shown_as_its_escape():
+    assert whole._escaped("0.71​57") == "0.71\\u200b57"

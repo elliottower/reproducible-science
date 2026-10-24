@@ -16,8 +16,8 @@ plan the commit does not hold, places nothing. Where `prereg freeze` wrote a `fr
 into the ledger, that event is the position, since it sits inside the hash chain and the
 record does not: a record stating a position is placed only where the chain holds that event
 at that position. A record written before any ledger existed holds no position; it precedes
-every ledger event where the newest commit that touched it is a strict ancestor, in the commit
-graph, of the first commit that added the ledger. The position a record states is also checked
+every ledger event where every commit that touched it is a strict ancestor, in the commit
+graph, of every commit that added the ledger. The position a record states is also checked
 against the ledger as committed at the record's commit: the freeze came after that commit, so a record saying the
 ledger held fewer events than the commit already did is false. Where a ledger exists and the
 record cannot be placed in it, the record's `frozen_at`, a time anyone can write, places
@@ -161,50 +161,53 @@ def _place(
     return events, ""
 
 
-def _touched_in(top: pathlib.Path, name: str, newest: bool) -> str | None:
-    """The newest commit that touched `name` in any way, or the oldest that added it."""
-    if newest:
-        said = try_run("log", "-1", "--format=%H", "--", name, cwd=top)
-    else:
-        said = try_run("log", "--diff-filter=A", "--format=%H", "--", name, cwd=top)
-    commits = (said or "").split()
-    if not commits:
-        return None
-    return commits[0] if newest else commits[-1]
+def _commits(top: pathlib.Path, name: str, *only: str) -> list[str]:
+    """Every commit, on every line of history, that touched `name` (or, with `only`, did so as
+    `--diff-filter` says). `--full-history`, because git's default simplification follows one
+    parent where a merge leaves the path as both had it, and that hid the first commit adding
+    the ledger behind a re-add on a side branch."""
+    said = try_run(
+        "log", "--full-history", "--no-merges", *only, "--format=%H", "--", name, cwd=top
+    )
+    return (said or "").split()
 
 
-def _before_the_ledger(record: pathlib.Path, ledger: pathlib.Path, top: pathlib.Path) -> int | None:
-    """0, before every ledger event, where the record was frozen before any ledger existed and
-    git shows it: the commit that added the record is a strict ancestor of the first commit that
-    added the ledger. By the order of commits in the graph, which no date moves. None otherwise,
-    including where either was never committed or both arrived in one commit.
-
-    The newest commit that touched the record is taken, so a record rewritten in place, or
-    deleted and written again, is read as written by the later commit; a record that differs
-    from that commit's version on disk places nothing. The oldest commit adding the ledger is
-    its first appearance.
-    """
-    record_name, ledger_name = _name(top, record), _name(top, ledger)
-    if record_name is None or ledger_name is None:
-        return None
-    added = _touched_in(top, record_name, newest=True)
-    first = _touched_in(top, ledger_name, newest=False)
-    if added is None or first is None or added == first:
-        return None
-    try:
-        current = record.read_bytes()
-    except OSError:
-        return None
-    if _blob(top, f"{added}:{record_name}") != current:
-        return None
+def _ancestor(top: pathlib.Path, older: str, newer: str) -> bool:
     done = subprocess.run(
-        ["git", "merge-base", "--is-ancestor", added, first],
+        ["git", "merge-base", "--is-ancestor", older, newer],
         cwd=top,
         env=clean_env(),
         capture_output=True,
         check=False,
     )
-    return 0 if done.returncode == 0 else None
+    return done.returncode == 0
+
+
+def _before_the_ledger(record: pathlib.Path, ledger: pathlib.Path, top: pathlib.Path) -> int | None:
+    """0, before every ledger event, where the record was frozen before any ledger existed and
+    git shows it: every commit that touched the record is a strict ancestor of every commit
+    that added the ledger, on every line of history. By the order of commits in the graph,
+    which no date moves. The record on disk must be the one the last commit holds. None
+    otherwise, including where either was never committed or both arrived in one commit.
+    """
+    record_name, ledger_name = _name(top, record), _name(top, ledger)
+    if record_name is None or ledger_name is None:
+        return None
+    touched = _commits(top, record_name)
+    added = _commits(top, ledger_name, "--diff-filter=A")
+    if not touched or not added:
+        return None
+    try:
+        current = record.read_bytes()
+    except OSError:
+        return None
+    if _blob(top, f"HEAD:{record_name}") != current:
+        return None
+    for older in touched:
+        for newer in added:
+            if older == newer or not _ancestor(top, older, newer):
+                return None
+    return 0
 
 
 def read_all(project: pathlib.Path, ledger: pathlib.Path) -> list[Freeze]:

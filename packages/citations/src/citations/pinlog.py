@@ -146,6 +146,24 @@ def _diff(sha: str, claims_dir: pathlib.Path) -> tuple[list[str], list[str]]:
     return added, gone
 
 
+def _changes(older: str, newer: str, claims_dir: pathlib.Path) -> list[str] | None:
+    """The lines `git diff older newer` adds and removes, in every file, or None where git
+    cannot say, as for the parent of a first commit."""
+    said = try_run("diff", older, newer, cwd=claims_dir)
+    if said is None:
+        return None
+    return [x for x in said.splitlines() if x[:1] in "+-" and not x.startswith(("+++", "---"))]
+
+
+def _inverse(sha: str, reverted: str, claims_dir: pathlib.Path) -> bool:
+    """Whether commit `sha` undid exactly what `reverted` did, in the log and in every other
+    file: what `git revert` writes. A commit taking out only the log line, while the claims
+    file keeps the quotation the pin added, is not a revert of the pin."""
+    mine = _changes(f"{sha}^", sha, claims_dir)
+    undone = _changes(reverted, f"{reverted}^", claims_dir)
+    return mine is not None and undone is not None and bool(mine) and mine == undone
+
+
 def rewritten(claims_dir: pathlib.Path) -> list[Removed]:
     """Lines taken out of the log: in any commit that changed it, or since the last one, each
     with the commit that removed it and, where that commit is a `git revert` of the commit that
@@ -166,6 +184,10 @@ def rewritten(claims_dir: pathlib.Path) -> list[Removed]:
         message = try_run("log", "-1", "--format=%B", sha, cwd=claims_dir) or ""
         named = _REVERTS.search(message)
         reverted = try_run("rev-parse", named.group(1), cwd=claims_dir) if named else None
+        # The message names a commit; only the change says whether it reverses it. A line in a
+        # message is anyone's to write, and alone it turned a removal into a note.
+        if reverted and not _inverse(sha, reverted, claims_dir):
+            reverted = None
         put = set(_diff(reverted, claims_dir)[0]) if reverted else set()
         removed += [
             Removed(line, sha, reverted if reverted and line in put else "")

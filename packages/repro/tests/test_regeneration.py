@@ -9,12 +9,14 @@ the same numbers has reproduced them.
 from __future__ import annotations
 
 import json
+import os
 import pathlib
 import platform
 import shutil
 import sys
 
 import pytest
+from repro import regenerate
 from repro.cli import main
 from repro.exceptions import ManifestError
 from repro.manifest import load
@@ -409,6 +411,68 @@ def test_a_planted_note_moves_nothing(tmp_path, planted_in):
     assert victim.read_text() == "somebody's file"
     if planted_in == "project":
         assert legacy_note(tmp_path) is not None
+
+
+def test_a_second_run_on_the_project_waits_and_then_refuses(tmp_path, monkeypatch):
+    manifest = project(tmp_path)
+    monkeypatch.setattr(regenerate, "LOCK_WAIT", 0.2)
+    before = (tmp_path / "figures.json").read_bytes()
+    with regenerate.project_lock(tmp_path) as held:
+        assert held
+        result = state(manifest)
+    assert (result.state, result.reason) == (
+        Regeneration.NOT_RERUN,
+        RegenerationReason.OUTPUT_ALREADY_SET_ASIDE,
+    )
+    assert "another `repro reproduce` is running" in result.detail
+    assert (tmp_path / "figures.json").read_bytes() == before
+    assert state(manifest).state is Regeneration.REPRODUCED
+
+
+def test_an_output_outside_the_project_is_never_set_aside(tmp_path):
+    root = tmp_path / "project"
+    root.mkdir()
+    elsewhere = tmp_path / "elsewhere.json"
+    elsewhere.write_text("{}")
+    with regenerate.set_aside(elsewhere, root) as waiting:
+        assert waiting is None
+        assert elsewhere.read_text() == "{}"
+
+
+@pytest.mark.parametrize("how", ["linked folder", "hard link"])
+def test_a_held_file_reached_through_a_link_is_never_moved(tmp_path, how):
+    manifest = project(tmp_path)
+    output = tmp_path / "figures.json"
+    output.rename(tmp_path.parent / f"{tmp_path.name}-gone.json")
+    victim_dir = tmp_path.parent / f"{tmp_path.name}-user"
+    (victim_dir / "run-x").mkdir(parents=True)
+    victim = victim_dir / "run-x" / "figures.json"
+    victim.write_text("the user's file")
+    home = held_root(tmp_path)
+    home.parent.mkdir(parents=True, exist_ok=True)
+    if how == "linked folder":
+        home.symlink_to(victim_dir)
+        held = home / "run-x" / "figures.json"
+    else:
+        (home / "run-x").mkdir(parents=True)
+        held = home / "run-x" / "figures.json"
+        os.link(victim, held)
+    (victim_dir / "set-aside.json").write_text(json.dumps({"figures.json": str(held)}))
+    if how == "hard link":
+        (home / "set-aside.json").write_text(json.dumps({"figures.json": str(held)}))
+    state(manifest)
+    assert victim.read_text() == "the user's file"
+    assert not output.exists() or output.read_text() != "the user's file"
+
+
+def test_a_relative_cache_setting_is_ignored_and_said(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv(regenerate.HELD_ENV, ".held")
+    monkeypatch.setenv("XDG_CACHE_HOME", "cache")
+    assert not held_root(tmp_path).is_relative_to(tmp_path.resolve())
+    said = regenerate.held_notes(tmp_path)
+    assert any("REPRO_HELD_DIR=.held is not an absolute path" in line for line in said)
+    assert any("XDG_CACHE_HOME=cache is not an absolute path" in line for line in said)
 
 
 def test_an_honest_run_leaves_no_file_in_the_project(tmp_path):

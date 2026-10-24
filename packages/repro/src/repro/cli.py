@@ -110,7 +110,7 @@ from repro.delegate import BY_NAME, TOOLS
 from repro.delegate import run as delegate_run
 from repro.demo import demo
 from repro.proposals import PROJECT_MARKERS
-from repro.regenerate import legacy_note
+from repro.regenerate import held_notes, outside
 from repro.reproduce import RECORD, RecordBrokenError
 from repro.reproduce import append as append_reproduction
 from repro.reproduce import reproduce as run_reproduce
@@ -430,8 +430,16 @@ def cmd_reproduce(args: argparse.Namespace) -> int:
         print("  `regenerations` names a command, the files it reads and the file it writes.")
         return 2
 
-    if planted := legacy_note(path.resolve().parent):
-        os.write(2, f"warning: {planted}\n".encode())
+    project = path.resolve().parent
+    said = held_notes(project) + [
+        f"output {made.output.artifact} lies outside the project and is not set aside while "
+        "its command runs"
+        for made in manifest.regenerations
+        if (where := manifest.artifact(made.output.artifact)) is not None
+        and outside(manifest.resolve(where), project)
+    ]
+    for line in said:
+        os.write(2, f"warning: {line}\n".encode())
     report = run_reproduce(
         manifest,
         only=tuple(args.only or ()),

@@ -59,6 +59,13 @@ import tempfile
 import time
 from collections.abc import Callable, Iterator
 
+from provenance_core import exclusive_lock
+
+try:
+    import fcntl
+except ImportError:  # Windows: the shared lock, which waits rather than refusing
+    fcntl = None
+
 from claims.models import (
     ArtifactState,
     ClaimReading,
@@ -178,15 +185,41 @@ HELD_ENV = "REPRO_HELD_DIR"
 LEGACY_NOTE = pathlib.Path(".repro") / "set-aside.json"
 
 
+def _absolute(name: str) -> str | None:
+    """The environment variable's value where it is an absolute path; a relative one is ignored,
+    as the XDG specification says, since it would put the cache wherever the command ran."""
+    value = os.environ.get(name) or ""
+    return value if os.path.isabs(value) else None
+
+
 def held_root(root: pathlib.Path) -> pathlib.Path:
     """Where this project's pinned outputs wait while their commands run: a directory in the
     user's cache, outside the project, named by a digest of the project's path. Not the system
-    temporary directory, which a purge can clear while an uncommitted output waits there."""
-    base = os.environ.get(HELD_ENV) or os.path.join(
-        os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"), "repro", "held"
+    temporary directory, which a purge can clear while an uncommitted output waits there. The
+    base is resolved, so a cache that is itself a link elsewhere is read where it is."""
+    base = _absolute(HELD_ENV) or os.path.join(
+        _absolute("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"), "repro", "held"
     )
     digest = hashlib.sha256(str(root.resolve()).encode()).hexdigest()[:16]
-    return pathlib.Path(base) / digest
+    return pathlib.Path(os.path.realpath(base)) / digest
+
+
+def held_notes(root: pathlib.Path) -> list[str]:
+    """What to say before a run about where outputs are held: a relative cache setting that was
+    ignored, and a set-aside note in the project that is never acted on."""
+    said = [
+        f"{name}={os.environ[name]} is not an absolute path and was ignored"
+        for name in (HELD_ENV, "XDG_CACHE_HOME")
+        if os.environ.get(name) and not os.path.isabs(os.environ[name])
+    ]
+    if note := legacy_note(root):
+        said.append(note)
+    return said
+
+
+def outside(output: pathlib.Path, root: pathlib.Path) -> bool:
+    """Whether a declared output lies outside the project, where it is never set aside."""
+    return not output.resolve().is_relative_to(root.resolve())
 
 
 def legacy_note(root: pathlib.Path) -> str | None:
@@ -224,20 +257,24 @@ def _key(output: pathlib.Path, root: pathlib.Path) -> str:
 
 def waiting_place(output: pathlib.Path, root: pathlib.Path) -> pathlib.Path | None:
     """Where an earlier run left `output` set aside, by its note, or None. An entry is taken
-    only where the file it names sits in this project's directory in the cache and has the
+    only where the file it names sits directly in a run directory of this project's directory
+    in the cache, by its path as written and as resolved, is no link, has one name, and has the
     output's own name, and the output is a path inside the project: anything else in a note
     names a file this tool did not put there."""
     held = _notes(root).get(_key(output, root))
-    if not held:
+    if not held or outside(output, root):
         return None
+    home = held_root(root)
     path = pathlib.Path(held)
-    inside = path.resolve().is_relative_to(held_root(root).resolve())
-    if (
-        not inside
-        or path.name != output.name
-        or not output.resolve().is_relative_to(root.resolve())
-    ):
+    if path.name != output.name or ".." in path.parts or path.parent.parent != home:
         return None
+    if home.is_symlink() or path.parent.is_symlink() or path.is_symlink():
+        return None
+    if not path.resolve().is_relative_to(home.resolve()):
+        return None
+    with contextlib.suppress(OSError):
+        if path.stat().st_nlink > 1:
+            return None
     return path
 
 
@@ -259,6 +296,40 @@ def recover(output: pathlib.Path, root: pathlib.Path) -> str | None:
     return None
 
 
+#: How long a run waits for another on the same project before it refuses, in seconds.
+LOCK_WAIT = 5.0
+
+
+@contextlib.contextmanager
+def project_lock(root: pathlib.Path, wait: float | None = None) -> Iterator[bool]:
+    """Hold this project's lock in the cache for the block, yielding True; or, where another
+    run holds it for longer than `wait`, yield False having taken nothing."""
+    held = held_root(root)
+    held.mkdir(parents=True, exist_ok=True)
+    if fcntl is None:
+        with exclusive_lock(held / "run"):
+            yield True
+        return
+    handle = (held / "run.lock").open("a")
+    try:
+        deadline = time.monotonic() + (LOCK_WAIT if wait is None else wait)
+        while True:
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    yield False
+                    return
+                time.sleep(0.1)
+        try:
+            yield True
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    finally:
+        handle.close()
+
+
 @contextlib.contextmanager
 def set_aside(output: pathlib.Path, root: pathlib.Path) -> Iterator[pathlib.Path | None]:
     """Move the pinned output out of the project for the length of the block, and put it back.
@@ -270,11 +341,13 @@ def set_aside(output: pathlib.Path, root: pathlib.Path) -> Iterator[pathlib.Path
     put back however the block ends, over anything written at its path meanwhile, and where
     the move back fails the note says where it is and the next run puts it back.
     """
-    if not output.is_file():
+    if not output.is_file() or outside(output, root):
         yield None
         return
     held = held_root(root)
     held.mkdir(parents=True, exist_ok=True)
+    if held.is_symlink():
+        raise OSError(f"{held} is a link, and outputs are not set aside through one")
     holding = pathlib.Path(tempfile.mkdtemp(prefix="run-", dir=held))
     waiting = holding / output.name
     _note(root, _key(output, root), waiting)
@@ -556,14 +629,25 @@ def check(
         # does not name the project the command was started from.
         variables = {k: v for k, v in os.environ.items() if k != "OLDPWD"} | {"PWD": str(sandbox)}
         pinned_output = files[record.output.artifact]
+        # One run at a time per project, from putting back what a run left to putting back
+        # what this one set aside: a second run took a live set-aside for a dead one, moved
+        # the output back under the first, and the first then died putting it back.
+        guard = contextlib.ExitStack()
+        if not guard.enter_context(project_lock(root)):
+            guard.close()
+            return not_rerun(
+                RegenerationReason.OUTPUT_ALREADY_SET_ASIDE,
+                "another `repro reproduce` is running on this project; run again when it ends",
+            )
         if problem := recover(pinned_output, root):
+            guard.close()
             # Never moved over: the copy set aside may be the only copy of the pinned output.
             return not_rerun(RegenerationReason.OUTPUT_ALREADY_SET_ASIDE, problem)
         # Under `isolate` the project is out of reach already, and nothing in it is moved.
         hiding = contextlib.nullcontext(None) if isolate else set_aside(pinned_output, root)
-        moved = not isolate and pinned_output.is_file()
+        moved = not isolate and pinned_output.is_file() and not outside(pinned_output, root)
         try:
-            with hiding:
+            with guard, hiding:
                 completed = subprocess.run(
                     command,
                     cwd=sandbox,
@@ -583,6 +667,9 @@ def check(
                 RegenerationReason.COMMAND_TIMED_OUT,
                 f"exceeded {record.timeout_seconds:g}s",
             )
+        except OSError as e:
+            # Setting the output aside or putting it back failed; the message says where it is.
+            return not_rerun(RegenerationReason.OUTPUT_ALREADY_SET_ASIDE, str(e))
 
         written = sorted(
             path.relative_to(sandbox).as_posix()

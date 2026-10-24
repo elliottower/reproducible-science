@@ -142,6 +142,29 @@ def test_a_git_revert_of_a_pin_commit_is_a_note_with_the_way_back(tmp_path):
     )
 
 
+def test_a_revert_line_in_a_message_does_not_make_a_removal_a_revert(tmp_path):
+    git(tmp_path, "init", "-q")
+    claims = project(tmp_path)
+    assert pin.main([str(claims), "--id", "c0", "--quote", HONEST[:30]]) == 0
+    commit(tmp_path, "first pin")
+    assert pin.main([str(claims), "--id", "c1", "--quote", HONEST]) == 0
+    commit(tmp_path, "pin")
+    pinned = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=tmp_path, capture_output=True, text=True, check=True
+    ).stdout.strip()
+    log = claims.parent / pinlog.LOG
+    log.write_text(log.read_text().splitlines(keepends=True)[0])
+    # A real revert of `pin` would take out c1 from the claims file as well; this keeps it, and
+    # also takes the log line back to a different first line, so the change is not an inverse.
+    doc = yaml.safe_load(claims.read_text())
+    doc["claims"]["c2"] = {"quotes": [{"exact": "recall in older adults"}]}
+    claims.write_text(yaml.safe_dump(doc))
+    commit(tmp_path, f'Revert "pin"\n\nThis reverts commit {pinned}.')
+    code, found = account(tmp_path)
+    assert code == 1
+    assert found["tampered"]
+
+
 @pytest.mark.parametrize("citation", ["smith", "smith2026"])
 def test_renaming_the_claims_file_does_not_hide_a_repin(tmp_path, citation):
     claims = project(tmp_path)
