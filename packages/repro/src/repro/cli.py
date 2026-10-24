@@ -110,6 +110,7 @@ from repro.delegate import BY_NAME, TOOLS
 from repro.delegate import run as delegate_run
 from repro.demo import demo
 from repro.proposals import PROJECT_MARKERS
+from repro.regenerate import legacy_note
 from repro.reproduce import RECORD, RecordBrokenError
 from repro.reproduce import append as append_reproduction
 from repro.reproduce import reproduce as run_reproduce
@@ -429,6 +430,8 @@ def cmd_reproduce(args: argparse.Namespace) -> int:
         print("  `regenerations` names a command, the files it reads and the file it writes.")
         return 2
 
+    if planted := legacy_note(path.resolve().parent):
+        os.write(2, f"warning: {planted}\n".encode())
     report = run_reproduce(
         manifest,
         only=tuple(args.only or ()),

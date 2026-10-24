@@ -14,9 +14,10 @@ the checks made of it here. A record is placed only where its plan exists and th
 names holds the plan with the digest it records; a record with no plan behind it, or one whose
 plan the commit does not hold, places nothing. Where `prereg freeze` wrote a `freeze` event
 into the ledger, that event is the position, since it sits inside the hash chain and the
-record does not. A record written before any ledger existed holds no position; it precedes
-every ledger event where the commit that added it is a strict ancestor, in the commit graph, of
-the first commit that added the ledger. Otherwise the position the record states is checked
+record does not: a record stating a position is placed only where the chain holds that event
+at that position. A record written before any ledger existed holds no position; it precedes
+every ledger event where the newest commit that touched it is a strict ancestor, in the commit
+graph, of the first commit that added the ledger. The position a record states is also checked
 against the ledger as committed at the record's commit: the freeze came after that commit, so a record saying the
 ledger held fewer events than the commit already did is false. Where a ledger exists and the
 record cannot be placed in it, the record's `frozen_at`, a time anyone can write, places
@@ -160,9 +161,12 @@ def _place(
     return events, ""
 
 
-def _added_in(top: pathlib.Path, name: str, newest: bool) -> str | None:
-    """The commit that added `name`: the newest such commit, or the oldest."""
-    said = try_run("log", "--diff-filter=A", "--format=%H", "--", name, cwd=top)
+def _touched_in(top: pathlib.Path, name: str, newest: bool) -> str | None:
+    """The newest commit that touched `name` in any way, or the oldest that added it."""
+    if newest:
+        said = try_run("log", "-1", "--format=%H", "--", name, cwd=top)
+    else:
+        said = try_run("log", "--diff-filter=A", "--format=%H", "--", name, cwd=top)
     commits = (said or "").split()
     if not commits:
         return None
@@ -175,15 +179,23 @@ def _before_the_ledger(record: pathlib.Path, ledger: pathlib.Path, top: pathlib.
     added the ledger. By the order of commits in the graph, which no date moves. None otherwise,
     including where either was never committed or both arrived in one commit.
 
-    The newest commit adding the record is taken, so a record deleted and written again is read
-    as written by the later commit, and the oldest adding the ledger, its first appearance.
+    The newest commit that touched the record is taken, so a record rewritten in place, or
+    deleted and written again, is read as written by the later commit; a record that differs
+    from that commit's version on disk places nothing. The oldest commit adding the ledger is
+    its first appearance.
     """
     record_name, ledger_name = _name(top, record), _name(top, ledger)
     if record_name is None or ledger_name is None:
         return None
-    added = _added_in(top, record_name, newest=True)
-    first = _added_in(top, ledger_name, newest=False)
+    added = _touched_in(top, record_name, newest=True)
+    first = _touched_in(top, ledger_name, newest=False)
     if added is None or first is None or added == first:
+        return None
+    try:
+        current = record.read_bytes()
+    except OSError:
+        return None
+    if _blob(top, f"{added}:{record_name}") != current:
         return None
     done = subprocess.run(
         ["git", "merge-base", "--is-ancestor", added, first],
@@ -215,16 +227,26 @@ def read_all(project: pathlib.Path, ledger: pathlib.Path) -> list[Freeze]:
         if problem := _plan_problem(record, held, repo):
             found.append(Freeze(record, held["commit"], frozen_at, None, problem, True))
             continue
-        stated, misplaced = _place(record, held, ledger, lines, repo)
-        position = _event_position(record, held, ledger, lines)
-        if position is None:
-            position = stated
-            if position is None and not misplaced and "ledger" not in held and repo is not None:
-                position = _before_the_ledger(record, ledger, repo)
-        elif misplaced:
-            # The chain places the freeze, and the record's own account of the ledger is
-            # false: the ledger it describes is not this one.
+        if isinstance(held.get("ledger"), dict):
+            # A record stating a position is placed only where the chain holds the freeze
+            # event `prereg freeze` wrote with it, at that position: a position written by
+            # hand, with no event behind it, made a freeze after the outcomes read as before.
+            stated, misplaced = _place(record, held, ledger, lines, repo)
+            event_at = _event_position(record, held, ledger, lines)
             position = None
+            if stated is not None and not misplaced:
+                if event_at is None:
+                    misplaced = "no freeze event in the ledger stands where the record says"
+                elif event_at != stated:
+                    misplaced = (
+                        f"the ledger's freeze event is at {event_at}, and the record says {stated}"
+                    )
+                else:
+                    position = stated
+        else:
+            # No position: written before any ledger existed, and placed by commit order alone.
+            misplaced = ""
+            position = _before_the_ledger(record, ledger, repo) if repo is not None else None
         found.append(
             Freeze(record, held["commit"], frozen_at, position, misplaced, ledger.is_file())
         )

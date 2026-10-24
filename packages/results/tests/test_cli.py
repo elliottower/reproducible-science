@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import sys
@@ -692,6 +693,39 @@ def test_a_freeze_made_before_any_ledger_and_never_committed_places_nothing(tmp_
     prereg_freeze(tmp_path)
     run_cli("init", cwd=tmp_path)
     r = claim_after_exposure(tmp_path, sha)
+    assert r.returncode == 1
+    assert "cannot be placed before the exposure" in r.stdout
+
+
+def test_a_pre_ledger_record_rewritten_in_place_after_the_ledger_places_nothing(tmp_path):
+    a_repo_with_a_frozen_plan(tmp_path, "PREREG.md")
+    prereg_freeze(tmp_path)
+    commit_paths(tmp_path, "freeze", ".prereg")
+    run_cli("init", cwd=tmp_path)
+    commit_paths(tmp_path, "ledger", ".results")
+    run_cli("access", "read the outcomes", "--level", "outcomes seen", cwd=tmp_path)
+    plan = tmp_path / "PREREG.md"
+    plan.chmod(0o644)
+    plan.write_text(plan.read_text() + "H2. chosen after looking.\n")
+    commit_paths(tmp_path, "plan after looking", "PREREG.md")
+    later = git_in(tmp_path, "rev-parse", "HEAD")
+    record = tmp_path / ".prereg" / "PREREG.md.json"
+    held = json.loads(record.read_text())
+    held |= {"commit": later, "sha256": hashlib.sha256(plan.read_bytes()).hexdigest()}
+    record.write_text(json.dumps(held))
+    commit_paths(tmp_path, "record rewritten", ".prereg")
+    (tmp_path / "out.json").write_text('{"d": 0.103}\n')
+    run_cli("run", "out.json", "--run-id", "late", cwd=tmp_path)
+    r = run_cli(
+        "claim",
+        "d = 0.103",
+        "--run-id",
+        "late",
+        "--confirmatory",
+        "--frozen-at",
+        later,
+        cwd=tmp_path,
+    )
     assert r.returncode == 1
     assert "cannot be placed before the exposure" in r.stdout
 

@@ -661,3 +661,42 @@ def test_a_quotation_with_two_strict_warnings_counts_once():
     assert [(v.rule, v.subject) for v in found] == [
         ("citations.after_negation+references", "smith:c1")
     ]
+
+
+def test_a_derived_claim_is_counted_on_the_results_line_and_listed_with_explain(project, capsys):
+    ledger()
+    how = "the mean of the per-family values"
+    assert (
+        main(["results", "claim", "The mean was 0.872.", "--run-id", "r1", "--derived", how]) == 0
+    )
+    pin_manifest(project)
+    capsys.readouterr()
+    assert main(["verify"]) == 0
+    out = capsys.readouterr().out
+    assert "1 claim(s) marked derived, their numbers not compared with outputs" in out
+    assert how not in out
+    assert main(["verify", "--explain"]) == 0
+    assert f"derived: {how}" in capsys.readouterr().out
+    _, found = verified(capsys)
+    assert found["project"]["strict_failures"] == []
+
+
+def test_a_declared_manuscript_missing_is_said_and_no_other_file_is_read(project, capsys):
+    ledger()
+    claimed_paper(project, "We report a total of 6. We enrolled 57 people; the ICC was 0.4213.\n")
+    (project / "paper.md").rename(project / "elsewhere.txt")
+    (project / "NOTES.md").write_text("A result file printing 0.123 and 0.456.\n")
+    manifest = project / "repro.yaml"
+    document = yaml.safe_load(manifest.read_text())
+    document["artifacts"].append(
+        {
+            "id": "notes",
+            "path": "NOTES.md",
+            "digest": Digest.of_file(project / "NOTES.md").model_dump(),
+        }
+    )
+    manifest.write_text(yaml.safe_dump(document))
+    _, found = verified(capsys)
+    rules = [(v["rule"], v["subject"]) for v in found["coverage"]["violations"]]
+    assert ("coverage.manuscript_missing", "paper.md") in rules
+    assert found["coverage"]["manuscripts"] == []

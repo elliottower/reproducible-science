@@ -123,6 +123,32 @@ def _check_reading(rep: V.Report, cf: ClaimFile, artifact, allowed) -> None:
         rep.changed_readings.append((cf.name, derived))
 
 
+def _removed(rep: V.Report, gone: pinlog.Removed, quoted: set[str]) -> None:
+    """File a line taken out of the pin log: a failure where its quotation is still in a claims
+    file and no `git revert` took it out, and otherwise a note saying how to put it back."""
+    try:
+        digest = json.loads(gone.line).get("quote")
+    except (ValueError, AttributeError):
+        digest = None
+    back = f"to keep the log whole, append the line to {pinlog.LOG} again"
+    if gone.reverts:
+        rep.findings.append(
+            (pinlog.LOG, f"a line was taken out by a revert of {gone.reverts[:12]}; {back}")
+        )
+    elif digest not in quoted:
+        rep.findings.append(
+            (pinlog.LOG, f"a line was taken out with its quotation; {back}: {gone.line[:60]}")
+        )
+    else:
+        rep.tampered.append(
+            (
+                pinlog.LOG,
+                f"a line was taken out of the log while its quotation stays; {back}: "
+                f"{gone.line[:60]}",
+            )
+        )
+
+
 def _check_provenance(
     rep: V.Report,
     cf: ClaimFile,
@@ -308,8 +334,15 @@ def cmd_verify(a) -> int:
         read: list[tuple[str, pathlib.Path]] = []
         log = pinlog.read(root)
         first, in_log = pinlog.first_pins(log), pinlog.logged(log)
-        for line in pinlog.rewritten(root):
-            rep.tampered.append((pinlog.LOG, f"a line was taken out of the log: {line[:90]}"))
+        quoted = {
+            pinlog.quote_digest(q.text)
+            for cf in files
+            for claim in cf.claims.values()
+            for q in claim.quotes
+            if q.text
+        }
+        for gone in pinlog.rewritten(root):
+            _removed(rep, gone, quoted)
         unlogged_absent = 0
         for cf in files:
             artifact = cf.artifact()

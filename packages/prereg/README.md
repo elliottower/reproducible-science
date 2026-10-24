@@ -355,8 +355,13 @@ under the document without counting as an edit.
 Lines added after the frozen text count as `appended` only where they are a log: each starts
 with its date (`2026-07-09  ...`, `- 2026-07-09 ...`, `| 2026-07-09 | ...`), or continues the
 entry above it indented, or is a fence, a table's header and rule, or a heading naming a log
-(`## Log`, `## Deviations`, `## Deviation log`). Anything else, such as a new criteria section,
-is `CHANGED`: an addition to the plan is an amendment. The commit line itself is read through
+(`## Log`, `## Deviations`, `## Deviation log`). A dated line naming a hypothesis the frozen text
+does not, a heading other than a log's, and a table row under a heading that does not open a
+log are not log entries. Anything else, such as a new criteria section, is `CHANGED`: an
+addition to the plan is an amendment. A limit: a dated line under the log heading that changes
+the plan without naming a new hypothesis, such as `- 2026-10-23 The primary outcome is now the
+AUC`, reads as `appended`. Accepting a log means accepting dated text, and what the text says is
+for a reader of the log. The commit line itself is read through
 the document's history, and a line that once named another commit is `CHANGED`, so pointing it
 at a later commit that holds an edit does not make the edit compare as unchanged. These
 documents are listed under their own heading, after the plans:

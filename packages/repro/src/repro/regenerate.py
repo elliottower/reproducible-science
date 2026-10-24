@@ -19,21 +19,22 @@ fails, which is a real defect in the declaration rather than a passing run.
 
 **The sandbox is a directory, not a wall.** The command can still name a file in the project by
 its absolute path, and `cp <project>/results/out.json results/out.json` then reproduces any
-output byte for byte. Two things stand against that by default. A command whose arguments name
-a path inside the project by its absolute path, or name the output's own path, is refused
-before it runs: what it would read is the working tree, not the copies of its declared inputs.
-And while the command runs, the pinned output is moved to a directory outside the project
-under a name made at random and put back afterwards, so a command that reaches for it however
-it spells the path finds nothing there, as it would in a fresh clone.
+output byte for byte. Two guards stand against accidents and naive copying, and neither
+against a command written to get around them. A command whose arguments name a path inside
+the project by its absolute path, or name the output's own path, is refused before it runs.
+And while the command runs, the pinned output is moved out of the project to a directory in
+the user's cache, so a command that reaches for it at its path finds nothing, as it would in a
+fresh clone. A script that looks for it can find it: the cache directory is the user's own,
+named by a digest of the project's path, and readable to anything the user runs. Nor do the
+guards stop a command copying another file in the project that holds the same bytes, or
+reading the committed output with `git show`.
 
-Neither stops a command that copies another file inside the project holding the same bytes, or
-reads the committed output with `git show`. `isolate` stops both: the command runs under the
-operating system's sandbox (`sandbox-exec` on macOS, `bwrap` on Linux) with the project's
-directory unreadable to it, apart from a virtual environment inside it that the program itself
-lives in. Nothing here stops a copy kept outside the project, such as a cache in the home
-directory or a download: `isolate` hides the project, not the machine. A command that `isolate`
-leaves unable to read what it needs fails or writes nothing, and the record is said as
-unchecked rather than reproduced.
+`isolate` is the guard against a command that means to copy: it runs under the operating
+system's sandbox (`sandbox-exec` on macOS, `bwrap` on Linux) with the project's directory
+unreadable to it, apart from a virtual environment inside it that the program itself lives
+in. It hides the project and not the machine: a copy kept elsewhere, such as a cache in the
+home directory or a download, is in reach. A command that `isolate` leaves unable to read what it needs fails or writes
+nothing, and the record is said as unchecked rather than reproduced.
 
 **The byte comparison is canonical, not literal.** An output carrying a timestamp or an
 absolute path never reproduces byte for byte, so a record names those fields as `volatile` and
@@ -167,15 +168,40 @@ def names_the_project(
     return None
 
 
-#: The note, in the project, of each pinned output moved out while its command runs and where
-#: it waits. Written before the move and cleared after the move back, so a run that dies in
-#: between leaves the way back on disk, and the next run takes it.
-SET_ASIDE_NOTE = pathlib.Path(".repro") / "set-aside.json"
+#: Overrides where pinned outputs wait while their commands run, for a test or a machine whose
+#: cache directory is somewhere else.
+HELD_ENV = "REPRO_HELD_DIR"
+
+#: The note an earlier version wrote inside the project. Never read: a note in the project is a
+#: file anyone committing to it can write, and acting on one moved any file the user could read
+#: into the project.
+LEGACY_NOTE = pathlib.Path(".repro") / "set-aside.json"
+
+
+def held_root(root: pathlib.Path) -> pathlib.Path:
+    """Where this project's pinned outputs wait while their commands run: a directory in the
+    user's cache, outside the project, named by a digest of the project's path. Not the system
+    temporary directory, which a purge can clear while an uncommitted output waits there."""
+    base = os.environ.get(HELD_ENV) or os.path.join(
+        os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"), "repro", "held"
+    )
+    digest = hashlib.sha256(str(root.resolve()).encode()).hexdigest()[:16]
+    return pathlib.Path(base) / digest
+
+
+def legacy_note(root: pathlib.Path) -> str | None:
+    """What to say of a set-aside note inside the project, which is never acted on."""
+    if (root / LEGACY_NOTE).exists():
+        return (
+            f"{LEGACY_NOTE.as_posix()} is in the project and was ignored: notes of outputs set "
+            f"aside are kept in {held_root(root)}, and one in the project is not trusted"
+        )
+    return None
 
 
 def _notes(root: pathlib.Path) -> dict[str, str]:
     try:
-        held = json.loads((root / SET_ASIDE_NOTE).read_text())
+        held = json.loads((held_root(root) / "set-aside.json").read_text())
     except (OSError, ValueError):
         return {}
     return held if isinstance(held, dict) else {}
@@ -187,8 +213,8 @@ def _note(root: pathlib.Path, key: str, held: pathlib.Path | None) -> None:
         notes.pop(key, None)
     else:
         notes[key] = str(held)
-    where = root / SET_ASIDE_NOTE
-    where.parent.mkdir(exist_ok=True)
+    where = held_root(root) / "set-aside.json"
+    where.parent.mkdir(parents=True, exist_ok=True)
     where.write_text(json.dumps(notes, indent=2, sort_keys=True) + "\n")
 
 
@@ -197,14 +223,28 @@ def _key(output: pathlib.Path, root: pathlib.Path) -> str:
 
 
 def waiting_place(output: pathlib.Path, root: pathlib.Path) -> pathlib.Path | None:
-    """Where an earlier run left `output` set aside, by its note, or None."""
+    """Where an earlier run left `output` set aside, by its note, or None. An entry is taken
+    only where the file it names sits in this project's directory in the cache and has the
+    output's own name, and the output is a path inside the project: anything else in a note
+    names a file this tool did not put there."""
     held = _notes(root).get(_key(output, root))
-    return pathlib.Path(held) if held else None
+    if not held:
+        return None
+    path = pathlib.Path(held)
+    inside = path.resolve().is_relative_to(held_root(root).resolve())
+    if (
+        not inside
+        or path.name != output.name
+        or not output.resolve().is_relative_to(root.resolve())
+    ):
+        return None
+    return path
 
 
 def recover(output: pathlib.Path, root: pathlib.Path) -> str | None:
     """Put back an output an interrupted run left set aside, where nothing has taken its place.
-    Returns why it cannot be, where a copy waits and another file is at its path; else None."""
+    Returns why it cannot be, where a copy waits and another file is at its path; else None.
+    Nothing but the file is moved, and no directory is removed."""
     held = waiting_place(output, root)
     if held is None:
         return None
@@ -215,8 +255,6 @@ def recover(output: pathlib.Path, root: pathlib.Path) -> str | None:
         )
     if held.is_file():
         shutil.move(held, output)
-        with contextlib.suppress(OSError):
-            held.parent.rmdir()
     _note(root, _key(output, root), None)
     return None
 
@@ -226,17 +264,18 @@ def set_aside(output: pathlib.Path, root: pathlib.Path) -> Iterator[pathlib.Path
     """Move the pinned output out of the project for the length of the block, and put it back.
 
     A fresh clone of a project whose outputs are not committed has none, and a command that
-    regenerates its output does not need it. A command that copies it does, and finds nothing.
-    It waits in a directory outside the project under a name made at random, so no command can
-    name where it went; beside the output, under a fixed hidden name, a command copied it from
-    there. Yields where it waits, or None where there was no file to move. The file is put back
-    however the block ends, over anything written at its path meanwhile, and where the move back
-    fails the note in `.repro/set-aside.json` says where it is.
+    regenerates its output does not need it, while one that copies it by its path finds
+    nothing. It waits in a directory made for this run in the user's cache (`held_root`), with
+    the note of where it went beside it, so the project holds no trace of either. The file is
+    put back however the block ends, over anything written at its path meanwhile, and where
+    the move back fails the note says where it is and the next run puts it back.
     """
     if not output.is_file():
         yield None
         return
-    holding = pathlib.Path(tempfile.mkdtemp(prefix="repro-held-"))
+    held = held_root(root)
+    held.mkdir(parents=True, exist_ok=True)
+    holding = pathlib.Path(tempfile.mkdtemp(prefix="run-", dir=held))
     waiting = holding / output.name
     _note(root, _key(output, root), waiting)
     shutil.move(output, waiting)
@@ -251,6 +290,7 @@ def set_aside(output: pathlib.Path, root: pathlib.Path) -> Iterator[pathlib.Path
                 f"{output} ({e})"
             ) from e
         _note(root, _key(output, root), None)
+        # Made by this run with `mkdtemp`, and empty now.
         with contextlib.suppress(OSError):
             holding.rmdir()
 

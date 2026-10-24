@@ -332,7 +332,30 @@ def sections(
     }
 
 
-def _tool_lines(run: ci.ToolRun) -> list[str]:
+def _derived(run: ci.ToolRun, explain: bool) -> list[str]:
+    """The claims `results claim --derived` exempted from the number check, counted on the
+    results line and listed with `explain`: allowed, and never out of sight."""
+    if run.check != "results" or not run.command:
+        return []
+    derived = [
+        c
+        for account in (run.account, *run.account.get("nested", []))
+        for c in account.get("claims_derived", [])
+    ]
+    if not derived:
+        return []
+    lines = [
+        f"      {len(derived)} claim(s) marked derived, their numbers not compared with outputs"
+    ]
+    if explain:
+        lines += [
+            f"        {str(c.get('claim'))[:60]}  derived: {str(c.get('how'))[:50]}"
+            for c in derived
+        ]
+    return lines
+
+
+def _tool_lines(run: ci.ToolRun, explain: bool = False) -> list[str]:
     if not run.command:
         return [f"  {run.check:<12} not used here: {run.output}"]
     said = " ".join(run.command)
@@ -342,8 +365,14 @@ def _tool_lines(run: ci.ToolRun) -> list[str]:
         # What the tool itself flagged without failing, such as a freeze held to an access
         # floor lowered after the fact, so a pass does not hide it.
         flagged = [f"      note: {n}" for n in (run.account or {}).get("notes", [])]
-        return [f"  {run.check:<12} passed{note}  ({said})", *flagged, *_resealed(run)]
+        return [
+            f"  {run.check:<12} passed{note}  ({said})",
+            *flagged,
+            *_resealed(run),
+            *_derived(run, explain),
+        ]
     lines = [f"  {run.check:<12} {run.outcome.upper()} (exit {run.exit})  ({said})"]
+    # The tool's own output, printed whole on a failure, already lists the derived claims.
     return lines + [f"      {line}" for line in run.output.rstrip().splitlines()]
 
 
@@ -387,7 +416,7 @@ def _project_text(
         for line in [*_stale_lines(staleness.report), *_stale_summary(staleness.report)]:
             print(f"    {line}" if line else "")
     for run in project.tools.values():
-        print("\n".join(_tool_lines(run)))
+        print("\n".join(_tool_lines(run, explain)))
     if project.coverage.used:
         print("\n".join(manuscript.lines(project.coverage, policy.name)))
 

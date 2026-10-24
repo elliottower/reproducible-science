@@ -229,3 +229,10 @@ def test_a_zero_width_character_inside_a_manuscript_number_is_read_past(tmp_path
     found, _ = manuscript.read(paper)
     assert [n["value"] for n in found] == ["0.7157", "12", "57"]
     assert [n["percent"] for n in found] == [False, True, False]
+
+
+@pytest.mark.parametrize(
+    "blank", ["\u034f", "\ufe0f", "\U000e0100", "\u3164", "\u2800", "\u115f", "\u1160", "\uffa0"]
+)
+def test_a_blank_that_is_not_a_format_character_is_read_past(blank):
+    assert manuscript.readable(f"0.71{blank}57") == ("0.7157", 1)

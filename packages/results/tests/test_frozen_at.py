@@ -271,3 +271,22 @@ def test_verify_does_not_take_a_claims_commit_date_for_a_freeze(repo):
     assert v.returncode == 0, v.stdout
     assert "frozen before outcomes were seen" not in v.stdout
     assert "cite a commit no freeze record names" in v.stdout
+
+
+def test_a_hand_written_position_with_no_freeze_event_places_nothing(repo):
+    """The plan commit predates the ledger, so nothing committed contradicts the position the
+    record states; the chain holds no freeze event for it."""
+    plan_commit = git(repo, "rev-parse", "HEAD")
+    results("run", "out.json", "--run-id", "early", cwd=repo)
+    results("access", "read the outcomes", "--level", "outcomes seen", cwd=repo)
+    first = (repo / ".results" / "ledger.jsonl").read_text().splitlines()[0]
+    by_hand(
+        repo,
+        plan_commit,
+        ledger={"path": ".results/ledger.jsonl", "events": 1, "head": sha256_of_text(first)},
+    )
+    results("run", "out.json", "--run-id", "late", cwd=repo)
+    r = confirm(repo, "late", plan_commit)
+    assert r.returncode == 1
+    assert "no freeze event in the ledger stands where the record says" in r.stdout
+    assert not claims(repo)

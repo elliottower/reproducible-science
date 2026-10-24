@@ -17,8 +17,10 @@ file's name, which a rename changes: renaming the file hid a repin. Nothing rewr
                  report says which bytes each pin named
     unlogged     quotations no `citations pin` recorded against the sha256 the source names:
                  written into the file by hand
-    rewritten    lines git history shows were taken out of the log, which only an edit does,
-                 and which fails `verify`
+    rewritten    lines git history shows were taken out of the log. Taken out while the claims
+                 files still hold the quotation, it fails `verify`: only an edit does that. Taken
+                 out by a `git revert` of the commit that added it, or with its quotation gone
+                 from the claims files too, it is a note with the way back
 
 The log is lines and not a chain, so two branches that each pin something merge into a log
 holding both. Git is what holds the earlier versions, so a log that was never committed shows
@@ -39,6 +41,7 @@ import hashlib
 import json
 import pathlib
 import re
+from dataclasses import dataclass
 
 from provenance_core import exclusive_lock, try_run
 
@@ -122,24 +125,60 @@ def logged(lines: list[dict]) -> dict[str, set[str]]:
     return out
 
 
-def rewritten(claims_dir: pathlib.Path) -> list[str]:
-    """Lines taken out of the log: in any commit that changed it, or since the last one.
+@dataclass(frozen=True)
+class Removed:
+    """A line taken out of the log, and what took it out."""
 
-    One `git log -p` over the one file. A merge is not diffed by it, so a log that two branches
-    added to reads as two sets of additions. Empty outside a repository, where git is absent,
-    and for a log git has never held.
+    line: str
+    #: The commit that removed it, or "" where the removal is not committed yet.
+    commit: str = ""
+    #: The commit that added it, where the removal is a `git revert` of that commit.
+    reverts: str = ""
+
+
+_REVERTS = re.compile(r"This reverts commit ([0-9a-f]{7,64})")
+
+
+def _diff(sha: str, claims_dir: pathlib.Path) -> tuple[list[str], list[str]]:
+    said = try_run("show", "--format=", sha, "--", LOG, cwd=claims_dir) or ""
+    added = [x[1:] for x in said.splitlines() if x.startswith("+") and not x.startswith("+++")]
+    gone = [x[1:] for x in said.splitlines() if x.startswith("-") and not x.startswith("---")]
+    return added, gone
+
+
+def rewritten(claims_dir: pathlib.Path) -> list[Removed]:
+    """Lines taken out of the log: in any commit that changed it, or since the last one, each
+    with the commit that removed it and, where that commit is a `git revert` of the commit that
+    added the line, that commit.
+
+    A merge is not diffed, so a log that two branches added to reads as two sets of additions.
+    Empty outside a repository, where git is absent, and for a log git has never held.
     """
     log = path(claims_dir)
-    removed: list[str] = []
-    for said in (
-        try_run("log", "-p", "--format=", "--", LOG, cwd=claims_dir),
-        try_run("diff", "HEAD", "--", LOG, cwd=claims_dir),
-    ):
-        for line in (said or "").splitlines():
-            if line.startswith("-") and not line.startswith("---"):
-                removed.append(line[1:])
     held = set(log.read_text(errors="replace").splitlines()) if log.is_file() else set()
-    return [line for line in removed if line.strip() and line not in held]
+    removed: list[Removed] = []
+    for sha in (
+        try_run("log", "--no-merges", "--format=%H", "--", LOG, cwd=claims_dir) or ""
+    ).split():
+        _, gone = _diff(sha, claims_dir)
+        if not gone:
+            continue
+        message = try_run("log", "-1", "--format=%B", sha, cwd=claims_dir) or ""
+        named = _REVERTS.search(message)
+        reverted = try_run("rev-parse", named.group(1), cwd=claims_dir) if named else None
+        put = set(_diff(reverted, claims_dir)[0]) if reverted else set()
+        removed += [
+            Removed(line, sha, reverted if reverted and line in put else "")
+            for line in gone
+            if line.strip()
+        ]
+    said = try_run("diff", "HEAD", "--", LOG, cwd=claims_dir) or ""
+    removed += [
+        Removed(x[1:])
+        for x in said.splitlines()
+        if x.startswith("-") and not x.startswith("---") and x[1:].strip()
+    ]
+    return [r for r in removed if r.line not in held]
 
 
 def sha256_shape(value: str | None) -> str:

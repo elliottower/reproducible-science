@@ -292,20 +292,24 @@ def rerecorded_paths(events: list[dict]) -> dict[str, tuple[str, str]]:
 
     What separates a re-run from an output edited and recorded again is that a re-run reads
     its inputs, and an input the ledger knows is a seal. The inputs of a run are the paths
-    sealed before it was recorded, and a seal of one of them after it is the record of a re-run.
+    sealed before it was recorded, and a seal of one of them after it, with bytes other than
+    its previous seal held, is the record of a re-run.
     A seal of anything else is not: sealing an unrelated file cleared the check. A retirement
     in between makes the later bytes new rather than a re-record.
     """
-    sealed: set[str] = set()
+    sealed: dict[str, str] = {}
     last: dict[str, tuple[str, str, frozenset[str]]] = {}
     refreshed: set[str] = set()
     found: dict[str, tuple[str, str]] = {}
     for e in events:
         kind = e.get("event")
         if kind == "seal":
-            now = {f.get("path", "") for f in e.get("files", [])}
+            files = {f.get("path", ""): f.get("sha256", "") for f in e.get("files", [])}
+            # A seal of an input with the bytes it already had records no change to what the
+            # run reads, so it is no record of a re-run.
+            now = {path for path, digest in files.items() if sealed.get(path) != digest}
             refreshed |= {path for path, (_, _, inputs) in last.items() if now & inputs}
-            sealed |= now
+            sealed |= files
         elif kind == "retire":
             for path in e.get("paths", []):
                 last.pop(path, None)
@@ -315,7 +319,7 @@ def rerecorded_paths(events: list[dict]) -> dict[str, tuple[str, str]]:
                 path, digest = o.get("path", ""), o.get("sha256", "")
                 if path in last and last[path][1] != digest and path not in refreshed:
                     found.setdefault(path, (last[path][0], run_id))
-                last[path] = (run_id, digest, frozenset(sealed - {path}))
+                last[path] = (run_id, digest, frozenset(set(sealed) - {path}))
                 refreshed.discard(path)
     return found
 
@@ -473,7 +477,7 @@ def claim(
     # written, and under `--strict` a refusal, so a claim the run does not back never enters
     # the ledger by accident; without it a warning, since a run's outputs may hold a number in
     # a form this cannot read.
-    if (hidden := readable(text)[1]) and not derived:
+    if hidden := readable(text)[1]:
         print(
             f"warning: the claim holds {hidden} format character(s), zero-width or invisible; "
             "its numbers are read without them."

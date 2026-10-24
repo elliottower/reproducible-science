@@ -32,7 +32,7 @@ from repro.models import (
     RunOutput,
 )
 from repro.policy import PUBLICATION, STRICT, Severity
-from repro.regenerate import ISOLATORS, _scrub
+from repro.regenerate import ISOLATORS, _scrub, held_root, legacy_note
 from repro.reproduce import RECORD, UnknownRegenerationError, append, reproduce
 from repro.verify import verify
 
@@ -356,14 +356,22 @@ def test_the_set_aside_output_is_put_back_over_whatever_the_command_wrote_there(
     assert target.read_bytes() == before
 
 
+def leave_held(root, output_name="figures.json", text=None):
+    """An output an interrupted run left in this project's held directory, and its note."""
+    held = held_root(root) / "run-left" / output_name
+    held.parent.mkdir(parents=True)
+    if text is None:
+        (root / output_name).rename(held)
+    else:
+        held.write_text(text)
+    (held_root(root) / "set-aside.json").write_text(json.dumps({output_name: str(held)}))
+    return held
+
+
 def test_a_copy_left_set_aside_is_never_moved_over(tmp_path):
     """Left by an interrupted run, it may be the only copy of the pinned output."""
     manifest = project(tmp_path)
-    held = tmp_path.parent / f"{tmp_path.name}-held" / "figures.json"
-    held.parent.mkdir()
-    held.write_text("the only copy")
-    (tmp_path / ".repro").mkdir(exist_ok=True)
-    (tmp_path / ".repro" / "set-aside.json").write_text(json.dumps({"figures.json": str(held)}))
+    held = leave_held(tmp_path, text="the only copy")
     result = state(manifest)
     assert (result.state, result.reason) == (
         Regeneration.NOT_RERUN,
@@ -377,15 +385,37 @@ def test_an_output_an_interrupted_run_left_set_aside_is_put_back_first(tmp_path)
     manifest = project(tmp_path)
     output = tmp_path / "figures.json"
     before = output.read_bytes()
-    held = tmp_path.parent / f"{tmp_path.name}-held" / "figures.json"
-    held.parent.mkdir()
-    output.rename(held)
-    (tmp_path / ".repro").mkdir(exist_ok=True)
-    (tmp_path / ".repro" / "set-aside.json").write_text(json.dumps({"figures.json": str(held)}))
+    leave_held(tmp_path)
     result = state(manifest)
     assert result.state is Regeneration.REPRODUCED
     assert output.read_bytes() == before
-    assert json.loads((tmp_path / ".repro" / "set-aside.json").read_text()) == {}
+    assert json.loads((held_root(tmp_path) / "set-aside.json").read_text()) == {}
+
+
+@pytest.mark.parametrize("planted_in", ["project", "cache"])
+def test_a_planted_note_moves_nothing(tmp_path, planted_in):
+    """A note naming a file outside the held directory, as one committed to a repository
+    would, moved that file into the project and removed the directory it sat in."""
+    manifest = project(tmp_path)
+    (tmp_path / "figures.json").rename(tmp_path.parent / f"{tmp_path.name}-gone.json")
+    victim = tmp_path.parent / f"{tmp_path.name}-victim" / "figures.json"
+    victim.parent.mkdir()
+    victim.write_text("somebody's file")
+    note = {"figures.json": str(victim)}
+    where = (tmp_path / ".repro") if planted_in == "project" else held_root(tmp_path)
+    where.mkdir(parents=True, exist_ok=True)
+    (where / "set-aside.json").write_text(json.dumps(note))
+    state(manifest)
+    assert victim.read_text() == "somebody's file"
+    if planted_in == "project":
+        assert legacy_note(tmp_path) is not None
+
+
+def test_an_honest_run_leaves_no_file_in_the_project(tmp_path):
+    manifest = project(tmp_path)
+    before = sorted(p.relative_to(tmp_path) for p in tmp_path.rglob("*"))
+    assert state(manifest).state is Regeneration.REPRODUCED
+    assert sorted(p.relative_to(tmp_path) for p in tmp_path.rglob("*")) == before
 
 
 def test_the_output_waits_outside_the_project_under_no_name_a_command_can_know(tmp_path):

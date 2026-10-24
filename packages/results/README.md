@@ -185,7 +185,9 @@ first. Sealing some other file does not count. `--strict` refuses it. `results r
 by none of them at the printed precision, with half-up or half-even rounding; a number printed
 with `%` or `percent` beside it is also held by a stored fraction or the reverse. `--strict`
 refuses the claim and writes nothing. The check is that some output holds the value, not that
-it is the value the sentence is about. A claim whose numbers are derived from the outputs, a
+it is the value the sentence is about: a limit, since a number held under another key of the
+run's outputs passes, and so does a claim reading the wrong field that happens to hold the
+same digits. A claim whose numbers are derived from the outputs, a
 mean of stored values for instance, says so with `--derived "how"`: the note is recorded,
 shown by `verify`, and the numbers are not compared. Zero-width and other format characters are
 removed before numbers are read, with a warning. `results verify` counts such claims on one

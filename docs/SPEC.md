@@ -1128,9 +1128,11 @@ Nor does the directory stop a command reading the project, and a command that co
 output out of the working tree writes the pinned bytes. Two guards apply by default. A command
 whose arguments name a path inside the project by its absolute path, or the output's own path,
 is `failed` with `command_names_the_project` before it starts. While a command runs, its pinned
-output is moved to a directory outside the project under a name made at random, noted in
-`.repro/set-aside.json`, and moved back afterwards, so a command that reaches for it by a path no
-argument spells finds nothing. A run that dies leaves the note: the next run puts the output
+output is moved to this project's directory in the user's cache (`~/.cache/repro/held/<digest of
+the project's path>/`, or `$REPRO_HELD_DIR`), with the note of where it went beside it, and
+moved back afterwards, so a command that reaches for it at its path finds nothing. This stops
+accidental or naive copying only; a script that looks in the cache finds it, and `--isolate` is
+the guard. A note inside the project is never read, and is warned of. A run that dies leaves the note: the next run puts the output
 back first, and where a file is at the output's path again it never moves over either, and the
 record is `not_rerun` with `output_already_set_aside`. Neither guard stops a command copying
 another file that holds the same bytes, or reading the committed output with `git show`. `--isolate` runs each

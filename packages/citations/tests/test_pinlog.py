@@ -126,6 +126,22 @@ def test_lines_taken_out_of_a_committed_log_fail_by_default(tmp_path):
     assert any("taken out of the log" in s for s in said(found, "tampered"))
 
 
+def test_a_git_revert_of_a_pin_commit_is_a_note_with_the_way_back(tmp_path):
+    git(tmp_path, "init", "-q")
+    claims = project(tmp_path)
+    assert pin.main([str(claims), "--id", "c0", "--quote", HONEST[:30]]) == 0
+    commit(tmp_path, "first pin")
+    assert pin.main([str(claims), "--id", "c1", "--quote", HONEST]) == 0
+    commit(tmp_path, "pin")
+    git(tmp_path, "-c", "user.email=t@t", "-c", "user.name=t", "revert", "--no-edit", "HEAD")
+    code, found = account(tmp_path)
+    assert code == 0
+    assert found["tampered"] == []
+    assert any(
+        "taken out by a revert of" in s and "append the line" in s for s in said(found, "findings")
+    )
+
+
 @pytest.mark.parametrize("citation", ["smith", "smith2026"])
 def test_renaming_the_claims_file_does_not_hide_a_repin(tmp_path, citation):
     claims = project(tmp_path)

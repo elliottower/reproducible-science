@@ -98,3 +98,11 @@ def test_a_rerecorded_output_changed_since_is_also_reported_changed(project, cap
     out = capsys.readouterr().out
     assert "RERECORDED out.json" in out
     assert "CHANGED    out.json" in out
+
+
+def test_resealing_an_input_with_the_same_bytes_does_not_make_a_rerecord_a_rerun(project, capsys):
+    edit_output(project)
+    assert cli.main(["seal", "analysis.py"]) == 0
+    capsys.readouterr()
+    assert cli.main(["run", "out.json", "--run-id", "r2", "--strict"]) == 1
+    assert "no input of that run has been sealed since" in capsys.readouterr().out

@@ -107,16 +107,18 @@ def _plan(path: pathlib.Path) -> bool:
     ).is_file() or path.name.upper().startswith("PREREG")
 
 
-def manuscripts(manifest: Manifest) -> tuple[pathlib.Path, ...]:
-    """The manuscript's files: the texts a claim reads its sentence from, or else every
-    declared artifact with a manuscript's suffix. A preregistration is neither."""
+def manuscripts(manifest: Manifest) -> tuple[tuple[pathlib.Path, ...], tuple[pathlib.Path, ...]]:
+    """The manuscript's files, and those declared and not on disk: the texts a claim reads its
+    sentence from, or else every declared artifact with a manuscript's suffix. A
+    preregistration is neither. Where the texts declared are missing, they are said missing and
+    nothing else is read in their place: another `.md` in the project is not the manuscript."""
     named = texts(manifest)
     declared = [(a, manifest.resolve(a)) for a in manifest.artifacts]
-    declared = [(a, p) for a, p in declared if p.is_file() and not _plan(p)]
+    declared = [(a, p) for a, p in declared if not _plan(p)]
     chosen = [p for a, p in declared if a.id in named] or [
         p for a, p in declared if a.path.suffix.lower() in MANUSCRIPT_SUFFIXES
     ]
-    return tuple(chosen)
+    return tuple(p for p in chosen if p.is_file()), tuple(p for p in chosen if not p.is_file())
 
 
 def _shown(path: pathlib.Path, root: pathlib.Path) -> str:
@@ -193,8 +195,8 @@ def coverage(
     """
     if manifest is None:
         return Coverage(used=False, reason="no manifest names a manuscript")
-    papers = manuscripts(manifest)
-    if not papers:
+    papers, gone = manuscripts(manifest)
+    if not papers and not gone:
         return Coverage(used=False, reason="the manifest declares no manuscript")
     pins = BY_NAME["citations"].data_dir(root) is not None
     if not pins and not (root / ".results").is_dir():
@@ -204,6 +206,14 @@ def coverage(
     quoted, counted = _quotations(root, papers), _numbers(root, papers)
     severity = SEVERITY.get(policy, Severity.WARNING)
     violations = [
+        Violation(
+            severity=severity,
+            rule="coverage.manuscript_missing",
+            subject=_shown(path, root),
+            detail=f"manuscript missing: {_shown(path, root)}; nothing was read in its place",
+        )
+        for path in gone
+    ] + [
         Violation(
             severity=severity,
             rule=f"coverage.quotation_{q.status}",

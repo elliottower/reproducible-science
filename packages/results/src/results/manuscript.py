@@ -44,14 +44,25 @@ TOKEN = re.compile(f"(?P<number>{NUMBER.pattern})|(?P<word>{WORD.pattern})")
 
 
 def readable(text: str) -> tuple[str, int]:
-    """`text` without format characters, and how many were taken out.
+    """`text` without format characters and other characters that print nothing, and how many
+    were taken out.
 
     A zero-width space, joiner or mark (Unicode category Cf) prints nothing, so `0.71\u200b57`
     reads as 0.7157 and was matched as the two numbers `0.71` and `57`. They are removed before
     any number is read, and the count is said, since a manuscript has no reason to hold one.
     """
-    kept = [c for c in text if unicodedata.category(c) != "Cf"]
+    kept = [c for c in text if unicodedata.category(c) != "Cf" and not _blank(c)]
     return "".join(kept), len(text) - len(kept)
+
+
+#: Characters that print nothing and are not format characters: the combining grapheme joiner,
+#: the variation selectors, and the Hangul and Braille blanks.
+BLANKS = frozenset("\u034f\u3164\u2800\u115f\u1160\uffa0")
+
+
+def _blank(c: str) -> bool:
+    point = ord(c)
+    return c in BLANKS or 0xFE00 <= point <= 0xFE0F or 0xE0100 <= point <= 0xE01EF
 
 
 #: What marks a number as a percentage when it follows it: `%`, LaTeX's `\%`, or the word.

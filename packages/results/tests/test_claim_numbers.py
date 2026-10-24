@@ -122,3 +122,9 @@ def test_a_derived_claim_is_recorded_shown_and_not_compared(project, capsys):
     out = capsys.readouterr().out
     assert f"derived: {how}" in out
     assert "do not hold" not in out
+
+
+def test_a_derived_claim_still_gets_the_format_character_warning(project, capsys):
+    capsys.readouterr()
+    assert cli.main(["claim", "The mean was 0.87​2", "--run-id", "r1", "--derived", "a mean"]) == 0
+    assert "1 format character(s)" in capsys.readouterr().out
