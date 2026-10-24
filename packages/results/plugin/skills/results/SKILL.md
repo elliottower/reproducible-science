@@ -75,8 +75,10 @@ code that computes the result, or abandoning an arm after a null.
 Row two is the one that gets mishandled. A plan frozen before the exposure cannot be reached
 by it, so `results claim --confirmatory --frozen-at <commit>` records the claim as
 confirmatory with the exposure logged. The commit is the full id a `prereg freeze` record
-names, and the freeze is placed by that record's position in the ledger, never by the
-commit's date, which the committer sets. `verify` reports it separately from contested
+names, and the freeze is placed by the `freeze` event `prereg freeze` writes into the ledger,
+or by the record's position there, never by the commit's date, which the committer sets. A plan
+frozen before `results init` is placed before every ledger event where the commit adding its
+record is an ancestor of the first commit adding the ledger: commit both. `verify` reports it separately from contested
 claims. Without a freeze reference the tool refuses, because it cannot tell the two apart. A
 confirmatory claim whose run was recorded before the plan was frozen is flagged, not refused.
 

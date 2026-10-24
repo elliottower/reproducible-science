@@ -6,6 +6,7 @@ import json
 import subprocess
 import sys
 
+import pytest
 from provenance_core.gitref import clean_env
 from results import ledger
 
@@ -650,18 +651,68 @@ def prereg_freeze(cwd):
     assert frozen.returncode == 0, frozen.stdout
 
 
-def test_a_freeze_made_before_any_ledger_existed_places_nothing_once_one_does(tmp_path):
-    """The record holds no position, and its time is one anyone can write, so where a ledger
-    exists to place the freeze in, the record's time does not."""
-    sha = a_repo_with_a_frozen_plan(tmp_path, "PREREG.md")
-    prereg_freeze(tmp_path)
-    run_cli("init", cwd=tmp_path)
+def git_in(cwd, *args) -> str:
+    done = subprocess.run(
+        ["git", *args], cwd=cwd, capture_output=True, text=True, env=clean_env(), check=True
+    )
+    return done.stdout.strip()
+
+
+def commit_paths(cwd, message, *paths) -> None:
+    git_in(cwd, "add", *paths)
+    git_in(cwd, "commit", "-q", "-m", message)
+
+
+def claim_after_exposure(tmp_path, sha):
     run_cli("access", "read the outcomes", "--level", "outcomes seen", cwd=tmp_path)
     (tmp_path / "out.json").write_text('{"d": 0.103}\n')
     run_cli("run", "out.json", "--run-id", "late", cwd=tmp_path)
-    r = run_cli(
+    return run_cli(
         "claim", "d = 0.103", "--run-id", "late", "--confirmatory", "--frozen-at", sha, cwd=tmp_path
     )
+
+
+def test_a_freeze_committed_before_the_ledger_was_committed_protects_the_claim(tmp_path):
+    """Freeze the plan, then `results init`: the record holds no position, and the commit that
+    added it is an ancestor of the one that added the ledger."""
+    sha = a_repo_with_a_frozen_plan(tmp_path, "PREREG.md")
+    prereg_freeze(tmp_path)
+    commit_paths(tmp_path, "freeze", ".prereg")
+    run_cli("init", cwd=tmp_path)
+    commit_paths(tmp_path, "ledger", ".results")
+    r = claim_after_exposure(tmp_path, sha)
+    assert r.returncode == 0, r.stdout
+    assert "confirmatory, exposure logged" in r.stdout
+
+
+def test_a_freeze_made_before_any_ledger_and_never_committed_places_nothing(tmp_path):
+    """The record holds no position, git shows no order, and its time is one anyone can
+    write, so where a ledger exists to place the freeze in, the record's time does not."""
+    sha = a_repo_with_a_frozen_plan(tmp_path, "PREREG.md")
+    prereg_freeze(tmp_path)
+    run_cli("init", cwd=tmp_path)
+    r = claim_after_exposure(tmp_path, sha)
+    assert r.returncode == 1
+    assert "cannot be placed before the exposure" in r.stdout
+
+
+@pytest.mark.parametrize("order", ["same commit", "sibling branch"])
+def test_a_record_not_committed_before_the_ledger_places_nothing(tmp_path, order):
+    sha = a_repo_with_a_frozen_plan(tmp_path, "PREREG.md")
+    if order == "same commit":
+        prereg_freeze(tmp_path)
+        run_cli("init", cwd=tmp_path)
+        commit_paths(tmp_path, "both", ".prereg", ".results")
+    else:
+        main = git_in(tmp_path, "rev-parse", "--abbrev-ref", "HEAD")
+        git_in(tmp_path, "checkout", "-q", "-b", "side")
+        prereg_freeze(tmp_path)
+        commit_paths(tmp_path, "freeze", ".prereg")
+        git_in(tmp_path, "checkout", "-q", main)
+        run_cli("init", cwd=tmp_path)
+        commit_paths(tmp_path, "ledger", ".results")
+        git_in(tmp_path, "merge", "-q", "--no-edit", "side")
+    r = claim_after_exposure(tmp_path, sha)
     assert r.returncode == 1
     assert "cannot be placed before the exposure" in r.stdout
 

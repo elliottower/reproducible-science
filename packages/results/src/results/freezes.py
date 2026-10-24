@@ -14,8 +14,10 @@ the checks made of it here. A record is placed only where its plan exists and th
 names holds the plan with the digest it records; a record with no plan behind it, or one whose
 plan the commit does not hold, places nothing. Where `prereg freeze` wrote a `freeze` event
 into the ledger, that event is the position, since it sits inside the hash chain and the
-record does not. Otherwise the position the record states is checked against the ledger as
-committed at the record's commit: the freeze came after that commit, so a record saying the
+record does not. A record written before any ledger existed holds no position; it precedes
+every ledger event where the commit that added it is a strict ancestor, in the commit graph, of
+the first commit that added the ledger. Otherwise the position the record states is checked
+against the ledger as committed at the record's commit: the freeze came after that commit, so a record saying the
 ledger held fewer events than the commit already did is false. Where a ledger exists and the
 record cannot be placed in it, the record's `frozen_at`, a time anyone can write, places
 nothing either.
@@ -158,6 +160,41 @@ def _place(
     return events, ""
 
 
+def _added_in(top: pathlib.Path, name: str, newest: bool) -> str | None:
+    """The commit that added `name`: the newest such commit, or the oldest."""
+    said = try_run("log", "--diff-filter=A", "--format=%H", "--", name, cwd=top)
+    commits = (said or "").split()
+    if not commits:
+        return None
+    return commits[0] if newest else commits[-1]
+
+
+def _before_the_ledger(record: pathlib.Path, ledger: pathlib.Path, top: pathlib.Path) -> int | None:
+    """0, before every ledger event, where the record was frozen before any ledger existed and
+    git shows it: the commit that added the record is a strict ancestor of the first commit that
+    added the ledger. By the order of commits in the graph, which no date moves. None otherwise,
+    including where either was never committed or both arrived in one commit.
+
+    The newest commit adding the record is taken, so a record deleted and written again is read
+    as written by the later commit, and the oldest adding the ledger, its first appearance.
+    """
+    record_name, ledger_name = _name(top, record), _name(top, ledger)
+    if record_name is None or ledger_name is None:
+        return None
+    added = _added_in(top, record_name, newest=True)
+    first = _added_in(top, ledger_name, newest=False)
+    if added is None or first is None or added == first:
+        return None
+    done = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", added, first],
+        cwd=top,
+        env=clean_env(),
+        capture_output=True,
+        check=False,
+    )
+    return 0 if done.returncode == 0 else None
+
+
 def read_all(project: pathlib.Path, ledger: pathlib.Path) -> list[Freeze]:
     """Every freeze record in the repository holding `project`, or below `project` outside one."""
     top = try_run("rev-parse", "--show-toplevel", cwd=project)
@@ -182,6 +219,8 @@ def read_all(project: pathlib.Path, ledger: pathlib.Path) -> list[Freeze]:
         position = _event_position(record, held, ledger, lines)
         if position is None:
             position = stated
+            if position is None and not misplaced and "ledger" not in held and repo is not None:
+                position = _before_the_ledger(record, ledger, repo)
         elif misplaced:
             # The chain places the freeze, and the record's own account of the ledger is
             # false: the ledger it describes is not this one.
