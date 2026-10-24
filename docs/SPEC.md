@@ -1134,7 +1134,7 @@ moved back afterwards, so a command that reaches for it at its path finds nothin
 accidental or naive copying only; a script that looks in the cache finds it, and `--isolate` is
 the guard. A note inside the project is never read, and is warned of. A run that dies leaves the note: the next run puts the output
 back first, and where a file is at the output's path again it never moves over either, and the
-record is `not_rerun` with `output_already_set_aside`. Neither guard stops a command copying
+record is `not_rerun` with `output_already_set_aside`. One run at a time holds a project: a second waits briefly and then fails with `project_busy`, as it does where the cache directory cannot be used. Neither guard stops a command copying
 another file that holds the same bytes, or reading the committed output with `git show`. `--isolate` runs each
 command under `sandbox-exec` (macOS) or `bwrap` (Linux) with the project's directory
 unreadable, apart from a virtual environment inside it holding the program, and the state

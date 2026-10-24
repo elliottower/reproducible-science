@@ -31,6 +31,7 @@ from repro.models import (
     Regeneration,
     RegenerationReason,
     RegenerationRecord,
+    ReproductionReport,
     RunOutput,
 )
 from repro.policy import PUBLICATION, STRICT, Severity
@@ -421,12 +422,37 @@ def test_a_second_run_on_the_project_waits_and_then_refuses(tmp_path, monkeypatc
         assert held
         result = state(manifest)
     assert (result.state, result.reason) == (
-        Regeneration.NOT_RERUN,
-        RegenerationReason.OUTPUT_ALREADY_SET_ASIDE,
+        Regeneration.FAILED,
+        RegenerationReason.PROJECT_BUSY,
     )
     assert "another `repro reproduce` is running" in result.detail
+    assert not PUBLICATION.assess_reproduction(
+        ReproductionReport(started_at="2026-01-01T00:00:00+00:00", regenerations=(result,))
+    ).passed
     assert (tmp_path / "figures.json").read_bytes() == before
     assert state(manifest).state is Regeneration.REPRODUCED
+
+
+@pytest.mark.parametrize(
+    "plant", ["directory at the lock", "file at the held folder", "linked lock"]
+)
+def test_a_planted_cache_entry_is_refused_cleanly(tmp_path, plant):
+    manifest = project(tmp_path)
+    before = (tmp_path / "figures.json").read_bytes()
+    home = held_root(tmp_path)
+    home.parent.mkdir(parents=True, exist_ok=True)
+    if plant == "directory at the lock":
+        (home / "run.lock").mkdir(parents=True)
+    elif plant == "file at the held folder":
+        home.write_text("planted")
+    else:
+        home.mkdir()
+        elsewhere = tmp_path.parent / f"{tmp_path.name}-lock"
+        elsewhere.write_text("")
+        (home / "run.lock").symlink_to(elsewhere)
+    result = state(manifest)
+    assert (result.state, result.reason) == (Regeneration.FAILED, RegenerationReason.PROJECT_BUSY)
+    assert (tmp_path / "figures.json").read_bytes() == before
 
 
 def test_an_output_outside_the_project_is_never_set_aside(tmp_path):

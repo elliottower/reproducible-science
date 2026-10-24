@@ -187,8 +187,9 @@ def _before_the_ledger(record: pathlib.Path, ledger: pathlib.Path, top: pathlib.
     """0, before every ledger event, where the record was frozen before any ledger existed and
     git shows it: every commit that touched the record is a strict ancestor of every commit
     that added the ledger, on every line of history. By the order of commits in the graph,
-    which no date moves. The record on disk must be the one the last commit holds. None
-    otherwise, including where either was never committed or both arrived in one commit.
+    which no date moves. The record on disk must be the one HEAD holds and one a non-merge
+    commit wrote, and the plan commit it names must precede that commit. None otherwise,
+    including where either was never committed or both arrived in one commit.
     """
     record_name, ledger_name = _name(top, record), _name(top, ledger)
     if record_name is None or ledger_name is None:
@@ -202,6 +203,21 @@ def _before_the_ledger(record: pathlib.Path, ledger: pathlib.Path, top: pathlib.
     except OSError:
         return None
     if _blob(top, f"HEAD:{record_name}") != current:
+        return None
+    # The bytes must be ones an ordinary commit wrote. Written inside a merge, which
+    # `--no-merges` leaves out, a record reached HEAD without any commit in `touched` holding it.
+    wrote = [sha for sha in touched if _blob(top, f"{sha}:{record_name}") == current]
+    if not wrote:
+        return None
+    # The plan the record names was committed before the record that names it: a record
+    # standing before a plan commit it cites is history rewritten around it.
+    try:
+        named = json.loads(current).get("commit")
+    except (ValueError, AttributeError):
+        return None
+    if not isinstance(named, str) or not all(
+        sha == named or _ancestor(top, named, sha) for sha in wrote
+    ):
         return None
     for older in touched:
         for newer in added:

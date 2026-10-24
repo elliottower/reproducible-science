@@ -7,8 +7,7 @@ names its own calendars.
 
 `citations verify` keeps extracted text in the user's cache directory. The suite turns that off
 the same way, so no test reads what an earlier run filed or writes outside its own directory. A
-test of the cache names a directory of its own, and so do the outputs `repro reproduce` holds
-while a command runs.
+test of the cache names a directory of its own.
 """
 
 from __future__ import annotations
@@ -16,7 +15,6 @@ from __future__ import annotations
 import pytest
 from citations.extraction_cache import DISABLE_ENV
 from provenance_core.anchor import CALENDARS_ENV
-from repro.regenerate import HELD_ENV
 
 
 @pytest.fixture(autouse=True)
@@ -27,10 +25,3 @@ def no_public_calendars(monkeypatch):
 @pytest.fixture(autouse=True)
 def no_extraction_cache(monkeypatch):
     monkeypatch.setenv(DISABLE_ENV, "1")
-
-
-@pytest.fixture(autouse=True)
-def held_outputs_in_the_test(monkeypatch, tmp_path_factory):
-    """`repro reproduce` holds pinned outputs in the user's cache while a command runs; the
-    suite holds them in a directory of its own."""
-    monkeypatch.setenv(HELD_ENV, str(tmp_path_factory.mktemp("held")))

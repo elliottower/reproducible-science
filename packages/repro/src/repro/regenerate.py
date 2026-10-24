@@ -306,6 +306,11 @@ def project_lock(root: pathlib.Path, wait: float | None = None) -> Iterator[bool
     run holds it for longer than `wait`, yield False having taken nothing."""
     held = held_root(root)
     held.mkdir(parents=True, exist_ok=True)
+    # Checked before the lock file is made, so nothing is created through a link.
+    if held.is_symlink() or not held.is_dir():
+        raise OSError(f"{held} is a link or not a directory")
+    if (held / "run.lock").is_symlink():
+        raise OSError(f"{held / 'run.lock'} is a link")
     if fcntl is None:
         with exclusive_lock(held / "run"):
             yield True
@@ -633,13 +638,28 @@ def check(
         # what this one set aside: a second run took a live set-aside for a dead one, moved
         # the output back under the first, and the first then died putting it back.
         guard = contextlib.ExitStack()
-        if not guard.enter_context(project_lock(root)):
+        try:
+            acquired = guard.enter_context(project_lock(root))
+        except OSError as e:
             guard.close()
-            return not_rerun(
-                RegenerationReason.OUTPUT_ALREADY_SET_ASIDE,
+            return failed(
+                base,
+                RegenerationReason.PROJECT_BUSY,
+                f"the directory outputs are held in, {held_root(root)}, cannot be used: {e}",
+            )
+        if not acquired:
+            guard.close()
+            return failed(
+                base,
+                RegenerationReason.PROJECT_BUSY,
                 "another `repro reproduce` is running on this project; run again when it ends",
             )
-        if problem := recover(pinned_output, root):
+        try:
+            problem = recover(pinned_output, root)
+        except OSError as e:
+            guard.close()
+            return not_rerun(RegenerationReason.OUTPUT_ALREADY_SET_ASIDE, str(e))
+        if problem:
             guard.close()
             # Never moved over: the copy set aside may be the only copy of the pinned output.
             return not_rerun(RegenerationReason.OUTPUT_ALREADY_SET_ASIDE, problem)

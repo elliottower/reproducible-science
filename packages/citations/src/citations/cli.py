@@ -125,27 +125,29 @@ def _check_reading(rep: V.Report, cf: ClaimFile, artifact, allowed) -> None:
 
 def _removed(rep: V.Report, gone: pinlog.Removed, quoted: set[str]) -> None:
     """File a line taken out of the pin log: a failure where its quotation is still in a claims
-    file and no `git revert` took it out, and otherwise a note saying how to put it back."""
+    file, whatever took it out, and otherwise a note saying how to put it back."""
     try:
         digest = json.loads(gone.line).get("quote")
     except (ValueError, AttributeError):
         digest = None
     back = f"to keep the log whole, append the line to {pinlog.LOG} again"
-    if gone.reverts:
-        rep.findings.append(
-            (pinlog.LOG, f"a line was taken out by a revert of {gone.reverts[:12]}; {back}")
-        )
-    elif digest not in quoted:
-        rep.findings.append(
-            (pinlog.LOG, f"a line was taken out with its quotation; {back}: {gone.line[:60]}")
-        )
-    else:
+    # A quotation still in a claims file needs its log line, whatever took the line out: even a
+    # true revert of a commit that changed the log alone leaves the quotation unlogged.
+    if digest in quoted:
         rep.tampered.append(
             (
                 pinlog.LOG,
                 f"a line was taken out of the log while its quotation stays; {back}: "
                 f"{gone.line[:60]}",
             )
+        )
+    elif gone.reverts:
+        rep.findings.append(
+            (pinlog.LOG, f"a line was taken out by a revert of {gone.reverts[:12]}; {back}")
+        )
+    else:
+        rep.findings.append(
+            (pinlog.LOG, f"a line was taken out with its quotation; {back}: {gone.line[:60]}")
         )
 
 

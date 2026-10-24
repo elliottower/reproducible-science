@@ -151,6 +151,10 @@ class RegenerationReason(enum.StrEnum):
     """The pinned output is set aside while its command runs, and a file from an earlier
     run that was interrupted, or from one still running, already holds that place."""
     RUNNER_UNAVAILABLE = "runner_unavailable"
+    PROJECT_BUSY = "project_busy"
+    """Another `repro reproduce` held the project for longer than a run waits, or the directory
+    in the user's cache where outputs are held could not be used. Nothing ran, and the record
+    fails: a run that checked nothing is not a pass."""
 
 
 class RegenerationRecord(BaseModel):

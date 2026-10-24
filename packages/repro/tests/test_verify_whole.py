@@ -704,3 +704,19 @@ def test_a_declared_manuscript_missing_is_said_and_no_other_file_is_read(project
 
 def test_an_invisible_character_in_a_listed_claim_is_shown_as_its_escape():
     assert whole._escaped("0.71​57") == "0.71\\u200b57"
+
+
+def test_a_missing_text_a_claim_names_is_reported_whatever_its_suffix(project, capsys):
+    ledger()
+    claimed_paper(project, "We report a total of 6.\n")
+    manifest = project / "repro.yaml"
+    document = yaml.safe_load(manifest.read_text())
+    (project / "paper.md").rename(project / "paper.txt")
+    for artifact in document["artifacts"]:
+        if artifact["id"] == "paper":
+            artifact["path"] = "paper.txt"
+    manifest.write_text(yaml.safe_dump(document))
+    (project / "paper.txt").rename(project / "gone.txt")
+    _, found = verified(capsys)
+    rules = [(v["rule"], v["subject"]) for v in found["coverage"]["violations"]]
+    assert ("coverage.manuscript_missing", "paper.txt") in rules

@@ -147,12 +147,17 @@ def _diff(sha: str, claims_dir: pathlib.Path) -> tuple[list[str], list[str]]:
 
 
 def _changes(older: str, newer: str, claims_dir: pathlib.Path) -> list[str] | None:
-    """The lines `git diff older newer` adds and removes, in every file, or None where git
-    cannot say, as for the parent of a first commit."""
+    """What `git diff older newer` changes, file by file: each file's header and the lines it
+    adds and removes, or None where git cannot say, as for the parent of a first commit. Kept
+    by file, so lines a decoy file supplies never stand for the log's."""
     said = try_run("diff", older, newer, cwd=claims_dir)
     if said is None:
         return None
-    return [x for x in said.splitlines() if x[:1] in "+-" and not x.startswith(("+++", "---"))]
+    return [
+        x
+        for x in said.splitlines()
+        if x.startswith("diff --git ") or (x[:1] in "+-" and not x.startswith(("+++", "---")))
+    ]
 
 
 def _inverse(sha: str, reverted: str, claims_dir: pathlib.Path) -> bool:

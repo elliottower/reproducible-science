@@ -165,6 +165,53 @@ def test_a_revert_line_in_a_message_does_not_make_a_removal_a_revert(tmp_path):
     assert found["tampered"]
 
 
+def git_out(folder: pathlib.Path, *args: str) -> str:
+    env = {k: v for k, v in os.environ.items() if not k.startswith("GIT_")}
+    done = subprocess.run(
+        ["git", *args], cwd=folder, check=True, env=env, capture_output=True, text=True
+    )
+    return done.stdout
+
+
+def test_a_decoy_file_does_not_make_a_removal_a_revert(tmp_path):
+    """The decoy's own change reproduces, line for line, what the pin did to the claims file,
+    so the forged commit's lines equal the pin's reversed once file names are dropped."""
+    git(tmp_path, "init", "-q")
+    claims = project(tmp_path)
+    assert pin.main([str(claims), "--id", "c0", "--quote", HONEST[:30]]) == 0
+    commit(tmp_path, "first pin")
+    assert pin.main([str(claims), "--id", "c1", "--quote", HONEST]) == 0
+    commit(tmp_path, "pin")
+    pinned = git_out(tmp_path, "rev-parse", "HEAD").strip()
+    shown = git_out(tmp_path, "show", pinned, "--", "claims/smith.yaml").splitlines()
+    plus = [x[1:] for x in shown if x.startswith("+") and not x.startswith("+++")]
+    minus = [x[1:] for x in shown if x.startswith("-") and not x.startswith("---")]
+    (tmp_path / "claims" / "q.txt").write_text("".join(f"{x}\n" for x in plus))
+    commit(tmp_path, "notes")
+    (tmp_path / "claims" / "q.txt").write_text("".join(f"{x}\n" for x in minus))
+    log = claims.parent / pinlog.LOG
+    log.write_text(log.read_text().splitlines(keepends=True)[0])
+    commit(tmp_path, f'Revert "pin"\n\nThis reverts commit {pinned}.')
+    code, found = account(tmp_path)
+    assert code == 1
+    assert found["tampered"]
+
+
+def test_a_true_revert_of_a_log_only_commit_fails_while_the_quotation_stays(tmp_path):
+    git(tmp_path, "init", "-q")
+    claims = project(tmp_path)
+    assert pin.main([str(claims), "--id", "c0", "--quote", HONEST[:30]]) == 0
+    commit(tmp_path, "first pin")
+    assert pin.main([str(claims), "--id", "c1", "--quote", HONEST]) == 0
+    git(tmp_path, "add", "claims/smith.yaml")
+    git(tmp_path, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "quote")
+    commit(tmp_path, "log")
+    git(tmp_path, "-c", "user.email=t@t", "-c", "user.name=t", "revert", "--no-edit", "HEAD")
+    code, found = account(tmp_path)
+    assert code == 1
+    assert found["tampered"]
+
+
 @pytest.mark.parametrize("citation", ["smith", "smith2026"])
 def test_renaming_the_claims_file_does_not_hide_a_repin(tmp_path, citation):
     claims = project(tmp_path)
