@@ -42,7 +42,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
-      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e  # v10.3.2
         with:
           enable-cache: false
       # --no-config: a uv.toml or pyproject.toml in the pull request does not choose where the
@@ -50,7 +50,7 @@ jobs:
       - run: uvx --no-config --from reproducible-science-pr-bot==0.6.1 reproducible-science-pr-bot check "$MANIFEST"
         env:
           MANIFEST: ${{ inputs.manifest }}
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: repro-pr-bot-findings
           path: ${{ runner.temp }}/repro-pr-bot/findings.json
@@ -72,10 +72,10 @@ jobs:
       group: repro-pr-bot-post-${{ github.event.workflow_run.head_repository.full_name }}-${{ github.event.workflow_run.head_branch }}
       cancel-in-progress: false
     steps:
-      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e  # v10.3.2
         with:
           enable-cache: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
         with:
           name: repro-pr-bot-findings
           path: ${{ runner.temp }}/repro-pr-bot
@@ -107,7 +107,7 @@ jobs:
       group: repro-pr-bot-reply-${{ github.event.issue.number || github.event.pull_request.number }}
       cancel-in-progress: false
     steps:
-      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e  # v10.3.2
         with:
           enable-cache: false
       - run: uvx --no-config --from reproducible-science-pr-bot==0.6.1 reproducible-science-pr-bot reply --manifest "$MANIFEST" --dispatch "$DISPATCH"
