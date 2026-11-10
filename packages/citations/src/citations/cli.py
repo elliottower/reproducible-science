@@ -27,7 +27,7 @@ import json
 import os
 import pathlib
 
-from provenance_core import atomic_write, hint
+from provenance_core import atomic_write, atomic_write_bytes, exclusive_lock, hint
 
 from citations import coverage as C
 from citations import extraction_cache, paths, projects, tracked, web
@@ -357,6 +357,8 @@ def cmd_manual_check(a) -> int:
     """
     if a.note and ("\n" in a.note or "\r" in a.note):
         raise CitationsError("--note is one line: it is written after a `#` on the quotation's")
+    if a.page is not None and a.page < 1:
+        raise CitationsError(f"--page is 1 or more; read {a.page}")
     path = pathlib.Path(a.claims_file).expanduser().resolve()
     cf = load_claim_file(path)
     key = next((k for k, names in MC.quotation_ids(cf).items() if a.id in names), None)
@@ -376,51 +378,80 @@ def cmd_manual_check(a) -> int:
             "records no derived_sha256, so there is no reading to fingerprint"
         )
     list_file = MC.list_path(path)
-    listed = MC.read(list_file, cf.name) if list_file.is_file() else None
-    if listed is not None and listed.problems:
-        # Written into, a list must parse: a line appended below one that does not would be
-        # recorded beside a problem nobody has looked at.
-        raise CitationsError("\n".join(listed.problems))
-    entry = MC.match(listed, cf).found.get(key) if listed is not None else None
-    if entry is not None and entry.fingerprint == fingerprint:
-        raise CitationsError(
-            f"{list_file}:{entry.line}: `{a.id}` is listed already, as `{entry.id}`, with the "
-            "fingerprint it has now"
-        )
-    if entry is not None and not a.again:
-        raise CitationsError(
-            f"{list_file}:{entry.line}: `{a.id}` was checked as `{entry.id}` with fingerprint "
-            f"{entry.fingerprint or 'none'}, and has {fingerprint} now; compare it with the page "
-            "again, then rerun with --again to replace that line"
-        )
-    if entry is None and a.again:
-        raise CitationsError(
-            f"{list_file}: --again replaces an earlier check of `{a.id}`, and none is listed"
-        )
+    # Read, decided and written under one lock: two calls that read the same list each write it
+    # back with only their own line, and the second erases the first.
+    with exclusive_lock(list_file):
+        listed = MC.read(list_file, cf.name) if _present(list_file) else None
+        if listed is not None and listed.problems:
+            # Written into, a list must parse: a line appended below one that does not would be
+            # recorded beside a problem nobody has looked at.
+            raise CitationsError("\n".join(listed.problems))
+        entry = MC.match(listed, cf).found.get(key) if listed is not None else None
+        if entry is not None and entry.fingerprint == fingerprint:
+            raise CitationsError(
+                f"{list_file}:{entry.line}: `{a.id}` is listed already, as `{entry.id}`, with the "
+                "fingerprint it has now"
+            )
+        if entry is not None and not a.again:
+            raise CitationsError(
+                f"{list_file}:{entry.line}: `{a.id}` was checked as `{entry.id}` with fingerprint "
+                f"{entry.fingerprint or 'none'}, and has {fingerprint} now; compare it with the "
+                "page again, then rerun with --again to replace that line"
+            )
+        if entry is None and a.again:
+            raise CitationsError(
+                f"{list_file}: --again replaces an earlier check of `{a.id}`, and none is listed"
+            )
+        # `--again` keeps the earlier line's page and note where none is given.
+        page = a.page if a.page is not None or entry is None else entry.page
+        note = a.note if a.note is not None or entry is None else entry.note
+        try:
+            line = MC.line(a.id, fingerprint, page, note or "")
+        except ValueError as e:
+            raise CitationsError(f"{list_file}: not written: {e}") from e
 
-    print(f"claims  {path}")
-    print(f"source  {cf.source.citation}  ({artifact or 'no copy named'})")
-    print(f"page    {q.page if q.page is not None else 'none recorded'}")
-    print(f"quote   {q.text}")
-    print(f"computed outcome: {r.state}; a manual check changes no outcome")
-    line = MC.Entry(
-        id=a.id, line=0, fingerprint=fingerprint, page=a.page, note=a.note or ""
-    ).written()
-    lines = list_file.read_text(encoding="utf-8-sig").splitlines() if listed is not None else []
-    if entry is not None:
-        lines[entry.line - 1] = line
-        print(f"replaces the earlier check on line {entry.line}: {entry.written()}")
-    else:
-        lines.append(line)
-    atomic_write(list_file, "\n".join(lines) + "\n")
+        print(f"claims  {path}")
+        print(f"source  {cf.source.citation}  ({artifact or 'no copy named'})")
+        print(f"page    {q.page if q.page is not None else 'none recorded'}")
+        print(f"quote   {q.text}")
+        print(f"computed outcome: {r.state}; a manual check changes no outcome")
+        atomic_write_bytes(list_file, _rewritten(list_file, listed, entry, line))
+        if entry is not None:
+            print(f"replaces the earlier check on line {entry.line}: {entry.written()}")
     print(f"wrote   {line}")
     print(f"to      {list_file}")
     return 0
 
 
+def _present(path: pathlib.Path) -> bool:
+    """Whether anything is at `path`: a file, a directory, or a link to nothing, so a list that
+    is there and cannot be read is recorded rather than taken for no list."""
+    return path.exists() or path.is_symlink()
+
+
+def _rewritten(
+    list_file: pathlib.Path, listed: MC.Listed | None, entry: MC.Entry | None, line: str
+) -> bytes:
+    """The list's bytes with `line` replacing `entry`'s, or appended, keeping the file's
+    byte-order mark and each line's own ending; an appended line takes the first line's."""
+    raw = list_file.read_bytes() if listed is not None else b""
+    bom = raw.startswith(b"\xef\xbb\xbf")
+    lines = raw.decode("utf-8-sig").splitlines(keepends=True)
+    ending = next((x[len(x.rstrip("\r\n")) :] for x in lines if x.endswith(("\r", "\n"))), "\n")
+    if entry is not None:
+        was = lines[entry.line - 1]
+        lines[entry.line - 1] = line + was[len(was.rstrip("\r\n")) :]
+    else:
+        if lines and not lines[-1].endswith(("\r", "\n")):
+            lines[-1] += ending
+        lines.append(line + ending)
+    return (b"\xef\xbb\xbf" if bom else b"") + "".join(lines).encode("utf-8")
+
+
 def _manual_list(cf: ClaimFile) -> MC.Listed | None:
-    """The list of manual checks beside this claims file, where there is one."""
-    if cf.path is None or not (path := MC.list_path(cf.path)).is_file():
+    """The list of manual checks beside this claims file, where there is one. One that is there
+    and cannot be read is returned with the reason in its `problems`."""
+    if cf.path is None or not _present(path := MC.list_path(cf.path)):
         return None
     return MC.read(path, cf.name)
 
@@ -432,7 +463,12 @@ def _manual_check(
     text, its source's digest, its reader or the reading are not what they were when it was
     listed."""
     now = MC.now(text, cf.source, r.extraction_digest)
-    if not now or entry.fingerprint != now:
+    if not now:
+        manual.unverifiable.append(
+            MC.Unverifiable(claim=claim, id=entry.id, listed=entry.fingerprint)
+        )
+        return
+    if entry.fingerprint != now:
         manual.stale.append(MC.Stale(claim=claim, id=entry.id, listed=entry.fingerprint, now=now))
         return
     manual.covered.append(
@@ -455,8 +491,14 @@ def _manual_lines(manual: MC.ManualChecks) -> list[str]:
             page = f"  p.{c.page}" if c.page is not None else ""
             lines.append(f"    {c.state:<{OUTCOME_WIDTH}}{c.claim[:38]:<40}{c.id}{page}")
     for s in manual.stale:
-        was, now = s.listed or "none", s.now or "unknown (source not read here)"
-        lines.append(f"  stale    {s.claim[:38]:<40}{s.id}  listed {was}  now {now}")
+        lines.append(
+            f"  stale    {s.claim[:38]:<40}{s.id}  listed {s.listed or 'none'}  now {s.now}"
+        )
+    for u in manual.unverifiable:
+        lines.append(
+            f"  unverifiable  {u.claim[:38]:<40}{u.id}  listed {u.listed or 'none'}; the source "
+            "was not read here and no derived_sha256 is recorded"
+        )
     for u in manual.unknown:
         lines.append(f"  unknown  {u.id}  in {u.path}")
     for path in manual.orphans:
@@ -872,6 +914,9 @@ def _main(argv: list[str] | None = None) -> int:
         p.set_defaults(fn=None, delegate=DELEGATED[name])
 
     args, rest = ap.parse_known_args(argv)
+    if args.cmd == "manual-check" and rest:
+        # A flag mistyped here would otherwise be dropped, and the line written without it.
+        h.error(f"unrecognized arguments: {' '.join(rest)}")
     if not args.cmd:
         ap.print_help()
         return 0

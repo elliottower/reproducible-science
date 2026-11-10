@@ -1048,7 +1048,8 @@ def test_a_citations_run_with_quotations_unchecked_is_given_as_a_count_and_never
 def test_manual_checks_reach_the_sarif_property_bag_and_never_the_text_or_the_verdict():
     manual = {
         "sha256": "9c" * 32, "passages": 5, "covered": [{"state": "found"}] * 2,
-        "stale": [{}], "unknown": [{}, {}], "orphans": [], "outcomes": {"found": 2},
+        "stale": [{}], "unverifiable": [{}, {}, {}], "unknown": [{}, {}], "orphans": [],
+        "problems": ["l:1: unread"], "outcomes": {"found": 2},
     }  # fmt: skip
     run = citations_run("passed", 5, 0, 5)
     listed = run.model_copy(update={"account": run.account | {"manual_checks": manual}})
@@ -1061,8 +1062,8 @@ def test_manual_checks_reach_the_sarif_property_bag_and_never_the_text_or_the_ve
     sarif = whole._with_checks({"runs": [{"properties": {}}]}, project, found)
     checks = sarif["runs"][0]["properties"]["checks"]
     assert checks["citations_manual_checks"] == {
-        "covered": 2, "passages": 5, "sha256": "9c" * 32, "stale": 1, "unknown": 2,
-        "orphans": 0, "outcomes": {"found": 2},
+        "covered": 2, "passages": 5, "sha256": "9c" * 32, "stale": 1, "unverifiable": 3,
+        "unknown": 2, "orphans": 0, "problems": 1, "outcomes": {"found": 2},
     }  # fmt: skip
     assert checks["exit_code"] == 0
     bare = whole.Project(**(project.model_dump() | {"tools": {"citations": run}}))

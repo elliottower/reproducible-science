@@ -25,8 +25,9 @@ manual check is recorded as stale, with the fingerprint the quotation has now. T
 version string is not in it: the same text read by two builds of one program is the same
 reading, and a fingerprint that moved with the build would go stale on every machine.
 
-A line that does not parse, a quotation listed twice, an id naming no quotation, and a list
-beside no claims file are recorded, and change nothing else. The file's SHA-256 is recorded,
+A line that does not parse, a quotation listed twice, an id naming no quotation, a list
+beside no claims file, and a list that cannot be read or is larger than `MAX_BYTES` are
+recorded, and change nothing else. The file's SHA-256 is recorded,
 with one digest over every list read. The suffix is `.txt`, not `.yaml`, so `verify` never
 reads the list as a claims file.
 """
@@ -47,6 +48,12 @@ SUFFIX = ".manual.txt"
 
 #: Hex characters of a fingerprint: enough to tell an edit from none, short enough to copy.
 FINGERPRINT_CHARS = 12
+
+#: The largest list read. One line names one quotation and runs to about 40 bytes, plus its note,
+#: so 1 MiB holds some 10,000 manual checks: more than any claims file has quotations, each
+#: compared with the page by a person. A list past it was not written that way, and reading it
+#: whole would cost a run's memory for no record anyone made by hand.
+MAX_BYTES = 1 << 20
 
 _FINGERPRINT = re.compile(rf"[0-9a-fA-F]{{{FINGERPRINT_CHARS}}}")
 _PAGE = re.compile(r"p\.?(\d+)")
@@ -103,9 +110,17 @@ class Stale(BaseModel):
     listed: str
     """The fingerprint on the list; empty where the line gave none."""
     now: str
-    """The fingerprint the quotation has now: what to write once it is checked again. Empty
-    where the source was not read here and records no `derived_sha256`, so there is no reading
-    to compare the listed one with."""
+    """The fingerprint the quotation has now: what to write once it is checked again."""
+
+
+class Unverifiable(BaseModel):
+    """A listed quotation whose source was not read here and whose claims file records no
+    `derived_sha256`, so there is no reading to compare the listed fingerprint with. Not stale:
+    on a machine holding the source the same line may be current."""
+
+    claim: str
+    id: str
+    listed: str
 
 
 class Unknown(BaseModel):
@@ -125,6 +140,7 @@ class ManualChecks(BaseModel):
     lists: list[Listed] = Field(default_factory=list)
     covered: list[Covered] = Field(default_factory=list)
     stale: list[Stale] = Field(default_factory=list)
+    unverifiable: list[Unverifiable] = Field(default_factory=list)
     unknown: list[Unknown] = Field(default_factory=list)
     problems: list[str] = Field(default_factory=list)
     """Every list's `problems`, and every line naming a quotation another line names."""
@@ -168,10 +184,24 @@ def read(path: pathlib.Path, claims_file: str) -> Listed:
     """A list: one quotation id per line, then its fingerprint and `p.N` in either order.
 
     A line that does not parse, and a second line for one id, is recorded in `problems` with
-    its line number and skipped. Nothing in a list stops a run.
+    its line number and skipped. A list that cannot be read (a directory, no permission, any
+    `OSError`) or is larger than `MAX_BYTES` is recorded there with no entries and an empty
+    `sha256`. Nothing in a list stops a run.
     """
-    raw = path.read_bytes()
-    listed = Listed(claims_file=claims_file, path=str(path), sha256=hashlib.sha256(raw).hexdigest())
+    listed = Listed(claims_file=claims_file, path=str(path), sha256="")
+    try:
+        with path.open("rb") as f:
+            raw = f.read(MAX_BYTES + 1)
+    except OSError as e:
+        listed.problems.append(f"{path}: not read ({e.strerror or e})")
+        return listed
+    if len(raw) > MAX_BYTES:
+        listed.problems.append(
+            f"{path}: not read, larger than {MAX_BYTES:,} bytes; a list of manual checks has "
+            "one line per quotation a person compared with the page"
+        )
+        return listed
+    listed.sha256 = hashlib.sha256(raw).hexdigest()
     try:
         # `utf-8-sig`, so a byte-order mark an editor wrote is not read into the first id.
         text = raw.decode("utf-8-sig")
@@ -219,6 +249,26 @@ def _entry(line: str, n: int) -> Entry | None:
                 f"with any note after a `#`; read {line.strip()!r}"
             )
     return entry
+
+
+def line(id: str, fingerprint: str, page: int | None, note: str) -> str:
+    """The line for one manual check, or ValueError where `read` would not read it back as the
+    same id, fingerprint, page and note: an id with a space or a `#`, a note holding a character
+    `str.splitlines` breaks a line at, a page below 1."""
+    if page is not None and page < 1:
+        raise ValueError(f"a page is 1 or more; read {page}")
+    entry = Entry(id=id, line=1, fingerprint=fingerprint, page=page, note=note.strip())
+    written = entry.written()
+    try:
+        back = _entry(written, 1) if len(written.splitlines()) == 1 else None
+    except ValueError:
+        back = None
+    if back != entry:
+        raise ValueError(
+            f"the line {written!r} would not read back as written; an id holds no space or `#`, "
+            "and a note no line or page break"
+        )
+    return written
 
 
 def quotation_ids(cf: ClaimFile) -> dict[tuple[str, int], list[str]]:

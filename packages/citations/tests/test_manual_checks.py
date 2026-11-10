@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
+import threading
 
 import pytest
 import yaml
@@ -138,13 +140,14 @@ def test_a_recorded_derived_sha256_names_the_reading_where_the_source_is_not_her
     assert [(c["id"], c["state"]) for c in hand["covered"]] == [("here", "unchecked")]
 
 
-def test_with_no_derived_sha256_an_unread_source_leaves_nothing_covered(tmp_path, capsys):
+def test_with_no_derived_sha256_an_unread_source_is_unverifiable_not_stale(tmp_path, capsys):
     pin(tmp_path, {"here": QUOTE})
     (tmp_path / "sources" / "fox.txt").unlink()
     listed(tmp_path, f"here  {fp(QUOTE)}\n")
     _, hand = verify(tmp_path, "--show-manual")
-    assert (hand["covered"], hand["stale"][0]["now"]) == ([], "")
-    assert "now unknown (source not read here)" in capsys.readouterr().out
+    assert (hand["covered"], hand["stale"]) == ([], [])
+    assert hand["unverifiable"] == [{"claim": "fox:here", "id": "here", "listed": fp(QUOTE)}]
+    assert "unverifiable  fox:here" in capsys.readouterr().out
 
 
 def test_a_list_beside_no_claims_file_is_reported(tmp_path, capsys):
@@ -256,5 +259,121 @@ def test_manual_check_replaces_a_stale_line_only_when_asked_again(tmp_path, caps
     assert manual_check(tmp_path, "here", "--again") == 0
     assert f"replaces the earlier check on line 2: {old}" in capsys.readouterr().out
     assert (tmp_path / "claims" / "fox.manual.txt").read_text() == (
-        f"other  {fp(ABSENT)}\nhere  {fp(QUOTE)}\n"
+        f"other  {fp(ABSENT)}\nhere  {fp(QUOTE)}  p.2\n"
     )
+
+
+def test_again_keeps_the_earlier_page_and_note_unless_new_ones_are_given(tmp_path):
+    pin(tmp_path, {"here": QUOTE})
+    listed(tmp_path, f"here  {fp('an earlier wording')}  p.2  # Table 2\n")
+    assert manual_check(tmp_path, "here", "--again") == 0
+    assert (tmp_path / "claims" / "fox.manual.txt").read_text() == (
+        f"here  {fp(QUOTE)}  p.2  # Table 2\n"
+    )
+    listed(tmp_path, f"here  {fp('an earlier wording')}  p.2  # Table 2\n")
+    assert manual_check(tmp_path, "here", "--again", "--page", "5", "--note", "") == 0
+    assert (tmp_path / "claims" / "fox.manual.txt").read_text() == f"here  {fp(QUOTE)}  p.5\n"
+
+
+@pytest.mark.parametrize("ending", ["\r\n", "\r"])
+@pytest.mark.parametrize("bom", [b"", b"\xef\xbb\xbf"])
+def test_manual_check_keeps_the_lists_line_endings_and_byte_order_mark(tmp_path, ending, bom):
+    pin(tmp_path, {"here": QUOTE, "other": ABSENT, "third": "near the quiet river bank"})
+    old = f"here  {fp('an earlier wording')}"
+    head = f"# compared{ending}other  {fp(ABSENT)}{ending}{old}"
+    (tmp_path / "claims" / "fox.manual.txt").write_bytes(bom + head.encode())
+    assert manual_check(tmp_path, "here", "--again") == 0
+    assert manual_check(tmp_path, "third") == 0
+    want = f"# compared{ending}other  {fp(ABSENT)}{ending}here  {fp(QUOTE)}{ending}"
+    want += f"third  {fp('near the quiet river bank')}{ending}"
+    assert (tmp_path / "claims" / "fox.manual.txt").read_bytes() == bom + want.encode()
+
+
+@pytest.mark.parametrize(
+    ("quotes", "args"),
+    [
+        ({"two words": QUOTE}, ["two words"]),
+        ({"a#b": QUOTE}, ["a#b"]),
+        *[
+            ({"here": QUOTE}, ["here", "--note", f"a{c}b"])
+            for c in "\f\v\x1c\x1d\x1e\x85\u2028\u2029"
+        ],
+        ({"here": QUOTE}, ["here", "--page", "-3"]),
+        ({"here": QUOTE}, ["here", "--page", "0"]),
+    ],
+)
+def test_manual_check_refuses_a_line_the_list_would_not_read_back(tmp_path, capsys, quotes, args):
+    pin(tmp_path, quotes)
+    listed(tmp_path, "# compared\n")
+    assert manual_check(tmp_path, *args) == 2
+    assert "not written" in capsys.readouterr().out or args[-2] == "--page"
+    assert (tmp_path / "claims" / "fox.manual.txt").read_text() == "# compared\n"
+
+
+def test_manual_check_refuses_arguments_it_does_not_take(tmp_path, capsys):
+    pin(tmp_path, {"here": QUOTE, "other": ABSENT})
+    for extra in (["other"], ["--pgae", "4"]):
+        with pytest.raises(SystemExit) as e:
+            manual_check(tmp_path, "here", *extra)
+        assert e.value.code == 2
+        assert "unrecognized arguments" in capsys.readouterr().err
+    assert not (tmp_path / "claims" / "fox.manual.txt").exists()
+
+
+def test_concurrent_manual_checks_each_keep_their_line(tmp_path):
+    n = 16
+    pin(tmp_path, {f"c{i}": QUOTE for i in range(n)})
+    listed(tmp_path, "")
+    start = threading.Barrier(n)
+    codes: list[int] = []
+
+    def one(i):
+        start.wait()
+        codes.append(manual_check(tmp_path, f"c{i}"))
+
+    threads = [threading.Thread(target=one, args=(i,)) for i in range(n)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    ids = [
+        line.split()[0]
+        for line in (tmp_path / "claims" / "fox.manual.txt").read_text().splitlines()
+    ]
+    assert codes == [0] * n
+    assert sorted(ids) == sorted(f"c{i}" for i in range(n))
+
+
+def unreadable_directory(path):
+    path.mkdir()
+
+
+def unreadable_mode(path):
+    path.write_text("here\n")
+    path.chmod(0)
+
+
+def unreadable_size(path):
+    path.write_bytes(b"# padding\n" * (MC.MAX_BYTES // 10 + 1))
+
+
+@pytest.mark.parametrize("make", [unreadable_directory, unreadable_mode, unreadable_size])
+def test_a_list_that_cannot_be_read_is_recorded_and_changes_nothing_else(tmp_path, capsys, make):
+    pin(tmp_path, {"here": QUOTE, "absent": ABSENT})
+    args = ["verify", "--claims", str(tmp_path / "claims")]
+    without = main(args), capsys.readouterr().out
+    target = tmp_path / "claims" / "fox.manual.txt"
+    make(target)
+    if make is unreadable_mode and os.access(target, os.R_OK):
+        target.chmod(0o644)
+        pytest.skip("this user reads a file whatever its mode")
+    try:
+        assert (main(args), capsys.readouterr().out) == without
+        code, hand = verify(tmp_path, "--strict")
+        assert code == 1
+        assert [p.split(": ")[0] for p in hand["problems"]] == [str(target.resolve())]
+        assert hand["lists"][0]["sha256"] == ""
+        assert manual_check(tmp_path, "here") == 2
+    finally:
+        if target.is_file():
+            target.chmod(0o644)

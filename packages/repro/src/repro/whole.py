@@ -353,8 +353,10 @@ def _with_checks(sarif: dict, project: Project, found: dict[str, bool | None]) -
             "passages": hand["passages"],
             "sha256": hand["sha256"],
             "stale": len(hand["stale"]),
+            "unverifiable": len(hand.get("unverifiable", [])),
             "unknown": len(hand["unknown"]),
             "orphans": len(hand.get("orphans", [])),
+            "problems": len(hand.get("problems", [])),
             "outcomes": hand.get("outcomes", {}),
         }
     return sarif

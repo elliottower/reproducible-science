@@ -345,20 +345,28 @@ orthogonal-cores  3f9a1c2b4d5e  p.4  # Table 2
 The line records that a person compared this passage with the page, so run the command only
 after doing so, and for one quotation at a time: it takes one id per call. The id is the claim
 id where the claim has one quotation, or `<claim id>/<n>` for its n-th, counting from 1. The
-command refuses an id that names no quotation, and one listed already with the fingerprint it has
-now.
+command refuses an id that names no quotation, one listed already with the fingerprint it has
+now, an argument it does not take, a page below 1, and a line the list would not read back as
+written: an id holding a space or a `#`, or a note holding a line or page break. It reads and
+writes the list under a lock, so two calls at once each keep their line, and it keeps the list's
+byte-order mark and line endings.
 
 The fingerprint is of the quotation's text, the source's `sha256`, the reader the source
 declares (`extract_cmd` or its built-in extractor), and the reading: the `derived_sha256` the
 claims file records or, where it records none, the digest of the text extracted. Where any of
 these changed after the line was written, the manual check is recorded as stale; `--again`
-replaces that line once the passage has been compared with the page again. The extractor's
-version string is not in the fingerprint.
+replaces that line once the passage has been compared with the page again, keeping its page and
+note unless new ones are given. Where the source is not on this machine and the claims file
+records no `derived_sha256`, there is no reading to compare the line with, and the manual check
+is recorded as unverifiable rather than stale. The extractor's version string is not in the
+fingerprint.
 
 `citations verify --json` records the manual checks under `manual_checks`: the lists' SHA-256s
-and one digest over them, each covered quotation with its computed outcome, the stale entries,
-ids naming no quotation, lists beside no claims file, and lines that did not parse. `--show-manual`
-prints the same. `repro verify` carries them in its JSON and in its SARIF property bag, and says
+and one digest over them, each covered quotation with its computed outcome, the stale and
+unverifiable entries, ids naming no quotation, lists beside no claims file, and lines that did
+not parse. A list that cannot be read, or is larger than 1 MiB, is recorded there with no
+entries; 1 MiB holds some 10,000 lines, more than a person compares by hand beside one claims
+file. `--show-manual` prints the same. `repro verify` carries them in its JSON and in its SARIF property bag, and says
 nothing about them in its text.
 
 ## Where a passage is, and how it is matched
