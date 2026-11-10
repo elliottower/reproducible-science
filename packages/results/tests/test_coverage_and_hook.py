@@ -1,5 +1,6 @@
 """The coverage command, and the hook that notices a number entering a manuscript."""
 
+import hashlib
 import json
 import pathlib
 import re
@@ -19,7 +20,8 @@ def tracked_repo(tmp_path, claims=(), wrote=""):
     run = {"event": "run", "run_id": "r1"}
     if wrote:
         (tmp_path / "out.json").write_text(wrote)
-        run["outputs"] = [{"path": "out.json", "sha256": "0" * 64}]
+        digest = hashlib.sha256(wrote.encode()).hexdigest()
+        run["outputs"] = [{"path": "out.json", "sha256": digest}]
     lines = [{"event": "init"}, run]
     lines += [{"event": "claim", "run_id": "r1", "claim": text} for text in claims]
     (results / "ledger.jsonl").write_text("\n".join(json.dumps(line) for line in lines) + "\n")
