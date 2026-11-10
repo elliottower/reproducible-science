@@ -136,4 +136,26 @@ def test_a_claim_is_not_checked_against_an_output_edited_since_its_run(project, 
 
     assert cli.main(["claim", "The ICC was 0.9913", "--run-id", "r1", "--strict"]) == 1
     assert claims(project) == []
-    assert "out.json is not the bytes run 'r1' recorded" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "out.json is not the bytes run 'r1' recorded" in out
+    assert "no output of run 'r1' is the bytes it recorded" in out
+    assert "can read as text" not in out
+
+
+def test_a_claim_whose_run_output_a_later_run_overwrote_is_unchecked_and_fails_strict(
+    project, capsys
+):
+    assert cli.main(["claim", "The ICC was 0.9913", "--run-id", "r1"]) == 0
+    assert cli.main(["verify", "--strict"]) == 1
+    (project / "out.json").write_text(json.dumps({"icc": 0.1234}))
+    assert cli.main(["run", "out.json", "--run-id", "r2"]) == 0
+    capsys.readouterr()
+
+    assert cli.main(["verify", "--files", "--json", "found.json"]) == 0
+    out = capsys.readouterr().out
+    assert "1 claim(s) could not be checked: their run's outputs were overwritten" in out
+    assert "out.json: rewritten by run 'r2'" in out
+    found = json.loads((project / "found.json").read_text())
+    assert found["claims_unchecked"][0]["outputs"] == {"out.json": "rewritten by run 'r2'"}
+    assert cli.main(["verify", "--strict"]) == 1
+    assert cli.main(["verify", "--files", "--strict"]) == 1

@@ -10,13 +10,19 @@ is a ledger that was rewritten.
 Read with git and nothing else. Outside a repository, or where the ledger was never
 committed, there is no history and nothing is reported: the check is as strong as what was
 committed, and no stronger.
+
+A commit in which the ledger is absent ends one chain. A ledger deleted and started again at the
+same path is a new chain, and every version of the old one failed as a rewrite of it. Only the
+versions committed after the latest such commit are compared, and the restart is reported with
+the exposures the earlier chain recorded and this one does not, since a restart is also the
+cheapest way to drop one.
 """
 
 from __future__ import annotations
 
 import json
 import pathlib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from provenance_core import try_run
 
@@ -58,8 +64,71 @@ def _commits(where: Located, path: str) -> list[str]:
     `--full-history`, because git's default simplification follows one parent where a merge
     leaves the path as that parent had it, and a merge taking one side's ledger then hid every
     commit on the other side, a committed exposure among them."""
-    out = try_run("log", "--full-history", "--format=%H", "--", path, cwd=where.top)
+    out = try_run("log", "--full-history", "--topo-order", "--format=%H", "--", path, cwd=where.top)
     return out.split() if out else []
+
+
+@dataclass(frozen=True)
+class Restart:
+    """The latest commit in which the ledger is absent, and what the chain before it held."""
+
+    deleted: str
+    #: The first commit after `deleted` holding a ledger, or "" where none is committed yet.
+    restarted: str
+    #: Events the latest version before `deleted` held.
+    events: int
+    #: Each exposure, an `access` event, an earlier version held and the ledger does not.
+    dropped: list[dict] = field(default_factory=list)
+
+
+def _after(where: Located, lp: pathlib.Path) -> tuple[set[str] | None, Restart | None]:
+    """The commits after the latest one in which the ledger is absent, and that restart; None
+    and None where every commit that changed the ledger holds one. Newest first in topological
+    order, so the first commit without a ledger has no later one among its descendants."""
+    shas = _commits(where, where.ledger)
+    deleted = next(
+        (
+            sha
+            for sha in shas
+            if try_run("cat-file", "-e", f"{sha}:{where.ledger}", cwd=where.top) is None
+        ),
+        None,
+    )
+    if deleted is None:
+        return None, None
+    out = try_run("rev-list", "--ancestry-path", f"{deleted}..HEAD", cwd=where.top)
+    after = set(out.split()) if out else set()
+    restarted = next((sha for sha in reversed(shas) if sha in after), "")
+    now = ledger.read_ledger(lp) if lp.exists() else []
+    kept = {(e.get("level"), e.get("note")) for e in now if e.get("event") == "access"}
+    dropped: list[dict] = []
+    events = 0
+    for sha in shas:
+        if sha in after or sha == deleted:
+            continue
+        text = try_run("show", f"{sha}:{where.ledger}", cwd=where.top)
+        if text is None:
+            continue
+        held = [json.loads(line) for line in _lines(text) if _is_event(line)]
+        events = events or len(held)
+        for e in held:
+            key = (e.get("level"), e.get("note"))
+            if e.get("event") == "access" and key not in kept and e not in dropped:
+                dropped.append(e)
+    return after, Restart(deleted, restarted, events, dropped)
+
+
+def _is_event(line: str) -> bool:
+    try:
+        return isinstance(json.loads(line), dict)
+    except json.JSONDecodeError:
+        return False
+
+
+def restart(lp: pathlib.Path) -> Restart | None:
+    """The restart before which committed versions of the ledger are not compared, or None."""
+    where = locate(lp)
+    return None if where is None else _after(where, lp)[1]
 
 
 def _lines(text: str) -> list[str]:
@@ -67,12 +136,16 @@ def _lines(text: str) -> list[str]:
 
 
 def committed_ledgers(lp: pathlib.Path) -> list[tuple[str, list[str]]]:
-    """Each version of the ledger a commit holds, as its lines, newest commit first."""
+    """Each version of the ledger a commit after the latest restart holds, as its lines, newest
+    commit first."""
     where = locate(lp)
     if where is None:
         return []
+    after = _after(where, lp)[0]
     found = []
     for sha in _commits(where, where.ledger):
+        if after is not None and sha not in after:
+            continue
         text = try_run("show", f"{sha}:{where.ledger}", cwd=where.top)
         if text is not None:
             found.append((sha, _lines(text)))
@@ -80,12 +153,16 @@ def committed_ledgers(lp: pathlib.Path) -> list[tuple[str, list[str]]]:
 
 
 def committed_counts(lp: pathlib.Path) -> list[tuple[str, int]]:
-    """The length each committed version of the anchor records, newest commit first."""
+    """The length each committed version of the anchor after the ledger's latest restart
+    records, newest commit first."""
     where = locate(lp)
     if where is None:
         return []
+    after = _after(where, lp)[0]
     found = []
     for sha in _commits(where, where.anchor):
+        if after is not None and sha not in after:
+            continue
         text = try_run("show", f"{sha}:{where.anchor}", cwd=where.top)
         try:
             count = json.loads(text).get("count") if text else None
@@ -151,4 +228,12 @@ def missing_proofs(lp: pathlib.Path) -> list[tuple[str, str]]:
     return [(path, sha) for path, sha in sorted(found.items()) if not (where.top / path).exists()]
 
 
-__all__ = ["committed_counts", "committed_ledgers", "locate", "missing_proofs", "rewritten"]
+__all__ = [
+    "Restart",
+    "committed_counts",
+    "committed_ledgers",
+    "locate",
+    "missing_proofs",
+    "restart",
+    "rewritten",
+]

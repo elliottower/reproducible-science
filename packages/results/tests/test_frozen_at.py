@@ -303,3 +303,23 @@ def test_a_plan_edited_after_the_outcomes_were_seen_protects_nothing(repo):
     r = confirm(repo, "late", named)
     assert r.returncode == 1
     assert "PREREG.md has changed since it was frozen" in r.stdout
+
+
+def test_verify_fails_a_confirmatory_claim_whose_plan_was_edited_after_the_claim(repo):
+    named = freeze(repo)
+    results("run", "out.json", "--run-id", "r1", cwd=repo)
+    assert confirm(repo, "r1", named).returncode == 0
+    commit(repo, "claim")
+    assert results("verify", cwd=repo).returncode == 0
+    assert tool("prereg", "log", "a note on the run", cwd=repo).returncode == 0
+    commit(repo, "log")
+    assert results("verify", cwd=repo).returncode == 0
+
+    plan = repo / "PREREG.md"
+    plan.chmod(0o644)
+    plan.write_text(PLAN + "\n**H2.** The effect is above 0.1.\n")
+    commit(repo, "edit plan")
+    r = results("verify", cwd=repo)
+    assert r.returncode == 1
+    assert "confirmatory claim(s) rest on a plan that has changed since it was frozen" in r.stdout
+    assert "d = 0.103" in r.stdout and "plan PREREG.md: PREREG.md has changed" in r.stdout

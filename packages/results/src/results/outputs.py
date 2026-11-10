@@ -104,15 +104,17 @@ class Held:
 
     Each output is read only where its bytes are ones the run recorded: an output edited since
     is listed in `changed` and holds nothing, so a claim is never checked against bytes the run
-    did not write."""
+    did not write. An output that cannot be read at all is listed in `absent`."""
 
     def __init__(self, outputs: list[tuple[pathlib.Path, set[str]]]) -> None:
         self.values: set[decimal.Decimal] = set()
         self.read = 0
         self.changed: list[pathlib.Path] = []
+        self.absent: list[pathlib.Path] = []
         for path, digests in outputs:
             got = _bytes(path)
             if got is None:
+                self.absent.append(path)
                 continue
             if got[1] not in digests:
                 self.changed.append(path)
@@ -122,6 +124,12 @@ class Held:
                 self.read += 1
                 self.values |= found
         self._at: dict[tuple[int, int], set[decimal.Decimal]] = {}
+
+    @property
+    def unchecked(self) -> bool:
+        """Whether no output was read because each was changed since the run or is gone: a
+        claim on these was checked against nothing, which is not the same as passing."""
+        return not self.read and bool(self.changed or self.absent)
 
     def _rounded(self, digits: int, scales: tuple[decimal.Decimal, ...]) -> set[decimal.Decimal]:
         key = (digits, len(scales))

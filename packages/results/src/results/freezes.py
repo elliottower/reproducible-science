@@ -88,16 +88,30 @@ def _name(top: pathlib.Path, path: pathlib.Path) -> str | None:
         return None
 
 
+def plan_of(record: pathlib.Path) -> pathlib.Path:
+    """The plan a freeze record describes: `PREREG.md` for `.prereg/PREREG.md.json`."""
+    return record.parent.parent / record.name.removesuffix(".json")
+
+
+def plan_changed(record: pathlib.Path, held: dict) -> str:
+    """Why the plan on disk is not the file the record froze, or "" where it is. A plan frozen
+    whole keeps its log in a file beside it, so a log entry never changes it."""
+    plan = plan_of(record)
+    if not plan.is_file():
+        return f"no plan {plan.name} stands beside the record"
+    if sha256_of_file(plan) != held.get("sha256"):
+        return f"{plan.name} has changed since it was frozen: `prereg check` reports it"
+    return ""
+
+
 def _plan_problem(record: pathlib.Path, held: dict, top: pathlib.Path | None) -> str:
     """Why the record's plan does not stand behind it, or "" where it does: the plan exists,
     is the file the record froze, as `prereg check` reads a plan frozen whole, and the commit
     the record names holds it with the digest the record gives. A plan edited after the
     outcomes were seen, beside a record left as it was, made a confirmatory claim pass."""
-    plan = record.parent.parent / record.name.removesuffix(".json")
-    if not plan.is_file():
-        return f"no plan {plan.name} stands beside the record"
-    if sha256_of_file(plan) != held.get("sha256"):
-        return f"{plan.name} has changed since it was frozen: `prereg check` reports it"
+    if changed := plan_changed(record, held):
+        return changed
+    plan = plan_of(record)
     if held.get("uncommitted"):
         return f"{plan.name} was frozen from bytes no commit holds"
     name = _name(top, plan) if top is not None else None
@@ -230,13 +244,12 @@ def _before_the_ledger(record: pathlib.Path, ledger: pathlib.Path, top: pathlib.
     return 0
 
 
-def read_all(project: pathlib.Path, ledger: pathlib.Path) -> list[Freeze]:
-    """Every freeze record in the repository holding `project`, or below `project` outside one."""
+def _records(project: pathlib.Path):
+    """Each freeze record in the repository holding `project`, or below `project` outside one,
+    with what it holds and the repository's top, or None outside one."""
     top = try_run("rev-parse", "--show-toplevel", cwd=project)
     base = pathlib.Path(top) if top else project
     repo = pathlib.Path(top) if top else None
-    lines = lines_of(ledger) if ledger.is_file() else []
-    found = []
     for record in sorted(base.rglob(f"{RECORDS}/*.json")):
         if any(part in SKIPPED for part in record.relative_to(base).parts):
             continue
@@ -246,6 +259,24 @@ def read_all(project: pathlib.Path, ledger: pathlib.Path) -> list[Freeze]:
             continue
         if not isinstance(held, dict) or not isinstance(held.get("commit"), str):
             continue
+        yield record, held, repo
+
+
+def changed_plans(project: pathlib.Path) -> list[tuple[pathlib.Path, str, str]]:
+    """Each plan frozen whole whose file is not the one its record froze, with the commit the
+    record names and why."""
+    return [
+        (plan_of(record), held["commit"], problem)
+        for record, held, _ in _records(project)
+        if (problem := plan_changed(record, held))
+    ]
+
+
+def read_all(project: pathlib.Path, ledger: pathlib.Path) -> list[Freeze]:
+    """Every freeze record in the repository holding `project`, or below `project` outside one."""
+    lines = lines_of(ledger) if ledger.is_file() else []
+    found = []
+    for record, held, repo in _records(project):
         frozen_at = str(held.get("frozen_at", ""))
         if problem := _plan_problem(record, held, repo):
             found.append(Freeze(record, held["commit"], frozen_at, None, problem, True))

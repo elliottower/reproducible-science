@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import hashlib
 import pathlib
+import re
 import subprocess
 
 from prereg import inplace, record
@@ -24,6 +25,9 @@ from provenance_core.gitref import DEFAULT_TIMEOUT, clean_env, try_run
 
 #: Larger than any plan. A changed data file is not read whole to learn it is not one.
 LARGEST_PLAN = 1 << 24
+
+#: The commit a freeze in place wrote into the plan's status line, to twelve characters.
+FROZEN_AT = re.compile(r"^\*\*Status:\*\* FROZEN at `([0-9a-f]+)`", re.M)
 
 
 def _git_bytes(base: pathlib.Path, *args: str) -> bytes | None:
@@ -81,3 +85,35 @@ def entries_appended(base: pathlib.Path, path: str, digest: str) -> int:
         return 0
     sealed = recorded_text(base, path, digest)
     return 0 if sealed is None else inplace.entries_appended(sealed, now)
+
+
+def changed_in_place(top: pathlib.Path) -> list[tuple[pathlib.Path, str, str]]:
+    """Each plan frozen in place, among the Markdown files git tracks under `top`, that
+    `prereg check` does not find unchanged, with the commit its status line names and why.
+
+    Read by `prereg`'s own rule, `inplace.in_place`, which hashes the plan without its status
+    lines and its log: a plan whose log grew by `prereg log` is unchanged, and is not listed.
+    """
+    listed = try_run("ls-files", "-z", "--", "*.md", cwd=top)
+    found = []
+    for name in (listed or "").split("\0"):
+        p = top / name
+        if not name or not p.is_file() or p.stat().st_size > LARGEST_PLAN:
+            continue
+        try:
+            text = p.read_bytes().decode("utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        try:
+            whole = record.read(p) is not None
+        except record.RecordError:
+            whole = True
+        if whole or not inplace.FROZEN_DIGEST.search(text):
+            continue
+        reading = inplace.in_place(text)
+        if reading.state != inplace.UNCHANGED:
+            at = FROZEN_AT.search(text)
+            found.append(
+                (p, at.group(1) if at else "", f"{p.name} is {reading.state} since it was frozen")
+            )
+    return found

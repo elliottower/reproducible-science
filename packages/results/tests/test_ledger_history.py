@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 
 import pytest
@@ -181,3 +182,63 @@ def test_a_merge_taking_one_sides_ledger_cannot_drop_a_committed_exposure(
 
     assert cli.main(["claim", "x was 0.73", "--run-id", "r1", "--confirmatory"]) == 1
     assert "git history holds a ledger this one does not extend" in capsys.readouterr().out
+
+
+def restart(root):
+    """Delete the ledger in one commit and start a new one in the next."""
+    git(root, "rm", "-q", "-r", ".results")
+    shutil.rmtree(root / ".results")
+    git(root, "commit", "-q", "-m", "ledger removed")
+    assert cli.main(["init"]) == 0
+    (root / "out.json").write_text(json.dumps({"icc": 0.5101}))
+    assert cli.main(["run", "out.json", "--run-id", "r9"]) == 0
+    git(root, "add", ".results", "out.json")
+    git(root, "commit", "-q", "-m", "ledger restarted")
+
+
+def test_a_ledger_deleted_and_restarted_is_a_new_chain_and_a_note(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    git(tmp_path, "init", "-q")
+    assert cli.main(["init"]) == 0
+    (tmp_path / "out.json").write_text(json.dumps({"icc": 0.4213}))
+    assert cli.main(["run", "out.json", "--run-id", "r1"]) == 0
+    git(tmp_path, "add", ".results", "out.json")
+    git(tmp_path, "commit", "-q", "-m", "ledger")
+    restart(tmp_path)
+    capsys.readouterr()
+
+    assert cli.main(["verify", "--files", "--strict"]) == 0
+    out = capsys.readouterr().out
+    assert "LEDGER HISTORY REWRITTEN" not in out
+    assert "the ledger was deleted in commit" in out and "restarted in" in out
+    assert cli.main(["claim", "The ICC was 0.5101", "--run-id", "r9"]) == 0
+
+
+def test_a_restart_that_drops_an_exposure_names_it_and_fails_under_strict(committed, capsys):
+    restart(committed)
+    capsys.readouterr()
+
+    assert cli.main(["verify", "--files"]) == 0
+    out = capsys.readouterr().out
+    assert "RESTART DROPPED AN EXPOSURE  outcomes seen: looked at the outcome" in out
+    assert cli.main(["verify", "--files", "--strict"]) == 1
+
+
+def test_a_ledger_replaced_in_one_commit_is_still_a_rewrite(committed, capsys):
+    shutil.rmtree(committed / ".results")
+    assert cli.main(["init"]) == 0
+    git(committed, "add", ".results")
+    git(committed, "commit", "-q", "-m", "ledger replaced")
+    capsys.readouterr()
+
+    assert cli.main(["verify", "--files"]) == 1
+    assert "LEDGER HISTORY REWRITTEN" in capsys.readouterr().out
+
+
+def test_a_rewrite_after_a_restart_is_still_caught(committed, capsys):
+    restart(committed)
+    rechain(lp(committed), lambda e: e.get("event") != "run")
+    capsys.readouterr()
+
+    assert cli.main(["verify", "--files"]) == 1
+    assert "LEDGER HISTORY REWRITTEN" in capsys.readouterr().out

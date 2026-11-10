@@ -251,6 +251,10 @@ its anchor are committed with the project. A ledger on one disk is a record nobo
 check. What is committed is public with the repository, so a run's `note` is written as a commit
 message would be.
 
+Two branches that both append to the ledger cannot be merged by taking one side's file: the other
+side's events are then missing, and `verify` reports the history as rewritten. Merge both sides'
+events.
+
 ## Timestamp
 
 The chain catches a line edited by hand. It cannot catch the ledger and its anchor rewritten

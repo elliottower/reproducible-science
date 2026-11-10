@@ -154,3 +154,22 @@ def test_an_ordinary_changed_file_still_fails_beside_the_states_that_pass(sealed
     code, files = verify(sealed_plan.parent)
     assert code == 1
     assert [file["state"] for file in files] == ["appended", "changed"]
+
+
+def test_a_confirmatory_claim_on_a_plan_frozen_in_place_fails_verify_once_the_plan_is_edited(
+    sealed_plan, capsys
+):
+    (sealed_plan.parent / "out.json").write_text(json.dumps({"d": 0.103}))
+    assert main(["run", "out.json", "--run-id", "r1"]) == 0
+    assert main(["claim", "d = 0.103", "--run-id", "r1", "--confirmatory"]) == 0
+    log.append(sealed_plan, "2026-10-07", "results recorded", "results seen")
+    commit(sealed_plan.parent)
+    assert main(["verify"]) == 0
+
+    sealed_plan.write_text(sealed_plan.read_text().replace("positive", "negative"))
+    commit(sealed_plan.parent)
+    capsys.readouterr()
+    assert main(["verify"]) == 1
+    out = capsys.readouterr().out
+    assert "plan PREREG.md: PREREG.md is changed since it was frozen" in out
+    assert "d = 0.103" in out

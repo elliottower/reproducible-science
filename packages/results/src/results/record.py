@@ -491,19 +491,27 @@ def claim(
         print("--derived takes how the number was derived, in words.")
         return 1
     if owed and absent and not derived:
+        said = "refusing" if strict else "warning"
         if held.read:
             print(
-                f"{'refusing' if strict else 'warning'}: run '{run_id}' wrote no value that "
-                f"rounds to {', '.join(absent)} at the precision the claim prints."
+                f"{said}: run '{run_id}' wrote no value that rounds to {', '.join(absent)} "
+                "at the precision the claim prints."
+            )
+        elif held.unchecked:
+            print(
+                f"{said}: no output of run '{run_id}' is the bytes it recorded, so the claim's "
+                "numbers were not checked against it."
             )
         else:
             print(
-                f"{'refusing' if strict else 'warning'}: run '{run_id}' records no output "
-                "this can read as text, so the claim's numbers were not checked against it."
+                f"{said}: run '{run_id}' records no output this can read as text, so the "
+                "claim's numbers were not checked against it."
             )
         for path in held.changed:
             print(f"  {record_path(path, root)} is not the bytes run '{run_id}' recorded, so")
             print("  it was not read: `results verify --files` reports it as changed.")
+        for path in held.absent:
+            print(f"  {record_path(path, root)} is not on disk.")
         print("  `results verify` reports it until the claim and the run agree.")
         if strict:
             print("nothing was written. Name the run that wrote these numbers.")
