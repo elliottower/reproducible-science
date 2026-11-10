@@ -16,10 +16,18 @@ same path is a new chain, and every version of the old one failed as a rewrite o
 versions committed after the latest such commit are compared, and the restart is reported with
 the exposures the earlier chain recorded and this one does not, since a restart is also the
 cheapest way to drop one.
+
+A restart is also the cheapest way to drop a run, a claim or an exposure and then claim
+confirmatorily as though they never happened, so it is a note only where the earlier chain held
+nothing beyond `init` and `seal`, or where no confirmatory claim follows; `verify` fails the
+rest. Every exposure the earlier chain held is carried forward with the commit that first added
+it, so an exposure re-added after the claim, which the comparison by content then finds kept,
+still orders before every run of the new chain committed after it.
 """
 
 from __future__ import annotations
 
+import datetime
 import json
 import pathlib
 from dataclasses import dataclass, field
@@ -27,6 +35,7 @@ from dataclasses import dataclass, field
 from provenance_core import try_run
 
 from results import ledger, stamps
+from results.timeline import precedes
 
 
 @dataclass(frozen=True)
@@ -68,6 +77,20 @@ def _commits(where: Located, path: str) -> list[str]:
     return out.split() if out else []
 
 
+#: The events a chain holds before any work: a restart over only these loses nothing.
+SETUP = frozenset({"init", "seal"})
+
+
+@dataclass(frozen=True)
+class Exposure:
+    """An `access` event a chain before the restart held, and the commit that first added it."""
+
+    event: dict
+    commit: str
+    #: That commit's committer time, which orders it only where commit order cannot.
+    committed_at: str
+
+
 @dataclass(frozen=True)
 class Restart:
     """The latest commit in which the ledger is absent, and what the chain before it held."""
@@ -79,6 +102,15 @@ class Restart:
     events: int
     #: Each exposure, an `access` event, an earlier version held and the ledger does not.
     dropped: list[dict] = field(default_factory=list)
+    #: Each event any version before `deleted` held, on every line of history, once.
+    earlier: list[dict] = field(default_factory=list)
+    #: Each `access` event any version before `deleted` held, kept here or not.
+    exposures: list[Exposure] = field(default_factory=list)
+
+    @property
+    def work(self) -> list[dict]:
+        """The earlier chain's events beyond `init` and `seal`: runs, claims, exposures."""
+        return [e for e in self.earlier if e.get("event") not in SETUP]
 
 
 def _after(where: Located, lp: pathlib.Path) -> tuple[set[str] | None, Restart | None]:
@@ -102,6 +134,8 @@ def _after(where: Located, lp: pathlib.Path) -> tuple[set[str] | None, Restart |
     now = ledger.read_ledger(lp) if lp.exists() else []
     kept = {(e.get("level"), e.get("note")) for e in now if e.get("event") == "access"}
     dropped: list[dict] = []
+    earlier: list[dict] = []
+    added: dict[str, tuple[dict, str]] = {}
     events = 0
     for sha in shas:
         if sha in after or sha == deleted:
@@ -112,10 +146,51 @@ def _after(where: Located, lp: pathlib.Path) -> tuple[set[str] | None, Restart |
         held = [json.loads(line) for line in _lines(text) if _is_event(line)]
         events = events or len(held)
         for e in held:
+            if e not in earlier:
+                earlier.append(e)
+            if e.get("event") == "access":
+                # Newest first, so the last commit seen holding it is the one that added it.
+                added[json.dumps(e, sort_keys=True)] = (e, sha)
             key = (e.get("level"), e.get("note"))
             if e.get("event") == "access" and key not in kept and e not in dropped:
                 dropped.append(e)
-    return after, Restart(deleted, restarted, events, dropped)
+    exposures = [Exposure(e, sha, _committed_at(where, sha)) for e, sha in added.values()]
+    return after, Restart(deleted, restarted, events, dropped, earlier, exposures)
+
+
+def _committed_at(where: Located, sha: str) -> str:
+    """The commit's committer time in UTC, as the ledger writes its own, or ""."""
+    said = try_run("show", "-s", "--format=%ct", sha, cwd=where.top)
+    if not said or not said.isdigit():
+        return ""
+    return datetime.datetime.fromtimestamp(int(said), datetime.UTC).isoformat()
+
+
+def exposed_before(lp: pathlib.Path, exposure: Exposure, run: dict) -> bool:
+    """Whether `exposure`, which a chain before the restart held, came before `run`, an event of
+    the ledger on disk. By commit order: the run is not committed, or the first commit holding
+    it descends from the one that added the exposure. Where neither descends from the other,
+    by that commit's time against the run's timestamp."""
+    where = locate(lp)
+    if where is None:
+        return True
+    after = _after(where, lp)[0] or set()
+    holding = [
+        sha
+        for sha in _commits(where, where.ledger)
+        if sha in after
+        and run in [json.loads(line) for line in _lines(_show(where, sha)) if _is_event(line)]
+    ]
+    if not holding:
+        return True
+    first = holding[-1]
+    if try_run("merge-base", "--is-ancestor", exposure.commit, first, cwd=where.top) is not None:
+        return True
+    return precedes(exposure.committed_at, str(run.get("timestamp") or ""))
+
+
+def _show(where: Located, sha: str) -> str:
+    return try_run("show", f"{sha}:{where.ledger}", cwd=where.top) or ""
 
 
 def _is_event(line: str) -> bool:
@@ -229,9 +304,12 @@ def missing_proofs(lp: pathlib.Path) -> list[tuple[str, str]]:
 
 
 __all__ = [
+    "SETUP",
+    "Exposure",
     "Restart",
     "committed_counts",
     "committed_ledgers",
+    "exposed_before",
     "locate",
     "missing_proofs",
     "restart",

@@ -530,9 +530,27 @@ def claim(
     recorded_at = timeline.first_run_timestamp(events, run_id)
 
     retrospective = None
-    if confirmatory and seen is not None:
-        if recorded_at is None or recorded_at > seen:
-            retrospective = seen
+    in_ledger = bool(
+        confirmatory and seen is not None and (recorded_at is None or recorded_at > seen)
+    )
+    if in_ledger:
+        retrospective = seen
+    # An exposure a chain before a restart held counts as though it were still in the ledger,
+    # placed by the commit that first added it, so restarting the ledger does not unsee it.
+    restarted = history.restart(lp) if confirmatory else None
+    run = next(
+        (e for e in reversed(events) if e.get("event") == "run" and e.get("run_id") == run_id),
+        None,
+    )
+    earlier = [
+        x
+        for x in (restarted.exposures if restarted else [])
+        if run is not None
+        and x.event.get("level") == "outcomes seen"
+        and history.exposed_before(lp, x, run)
+    ]
+    if earlier and retrospective is None:
+        retrospective = min(x.committed_at for x in earlier) or "a chain before the restart"
 
     # Exposure is evidence of possible contamination, not contamination. What
     # threatens a confirmatory reading is propagation: outcome information
@@ -541,7 +559,14 @@ def claim(
     # exposure logged, and the demotion is scoped to decisions not so protected.
     # Before means before in the ledger's order, read from the freeze record: never the commit
     # date, which the committer sets.
-    ordered = freezes.before(freeze, seen_at, seen) if freeze and retrospective else None
+    ordered = None
+    if freeze and retrospective:
+        # Before the exposure in the ledger, by the ledger's order; before one the chain ahead of
+        # a restart held, only where placed before every ledger at this path.
+        checks = ([freezes.before(freeze, seen_at, seen)] if in_ledger else []) + (
+            [freeze.prior] if earlier else []
+        )
+        ordered = False if False in checks else None if None in checks else True
     protected = bool(retrospective and ordered)
     if protected:
         retrospective = None

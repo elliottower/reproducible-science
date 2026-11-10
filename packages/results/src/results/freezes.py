@@ -62,6 +62,8 @@ class Freeze:
     misplaced: str = ""
     #: Whether a ledger exists to place it in, in which case `frozen_at` places nothing.
     ledgered: bool = False
+    #: Placed before every ledger at this path by commit order, a chain deleted since included.
+    prior: bool = False
 
 
 def lines_of(ledger: pathlib.Path) -> list[str]:
@@ -95,12 +97,20 @@ def plan_of(record: pathlib.Path) -> pathlib.Path:
 
 def plan_changed(record: pathlib.Path, held: dict) -> str:
     """Why the plan on disk is not the file the record froze, or "" where it is. A plan frozen
-    whole keeps its log in a file beside it, so a log entry never changes it."""
+    whole keeps its log in a file beside it, so a log entry never changes it. A companion frozen
+    with it, such as an analysis configuration, is part of the plan and is compared too."""
     plan = plan_of(record)
     if not plan.is_file():
         return f"no plan {plan.name} stands beside the record"
     if sha256_of_file(plan) != held.get("sha256"):
         return f"{plan.name} has changed since it was frozen: `prereg check` reports it"
+    companions = held.get("companions")
+    for name, digest in sorted(companions.items() if isinstance(companions, dict) else []):
+        companion = plan.parent / name
+        if not companion.is_file():
+            return f"companion {name} frozen with {plan.name} is not on disk"
+        if sha256_of_file(companion) != digest:
+            return f"companion {name} has changed since it was frozen with {plan.name}"
     return ""
 
 
@@ -262,14 +272,49 @@ def _records(project: pathlib.Path):
         yield record, held, repo
 
 
-def changed_plans(project: pathlib.Path) -> list[tuple[pathlib.Path, str, str]]:
-    """Each plan frozen whole whose file is not the one its record froze, with the commit the
-    record names and why."""
+def checked_plans(project: pathlib.Path) -> list[tuple[pathlib.Path, str, str]]:
+    """Each plan frozen whole, the commit its record names, and why the plan does not stand
+    behind the record, or "" where it does. In a repository by `_plan_problem`, which also asks
+    whether the commit holds the plan with the record's digest, so a record whose digest or
+    commit was rewritten to fit an edited plan is caught; outside one by the digests alone."""
     return [
-        (plan_of(record), held["commit"], problem)
-        for record, held, _ in _records(project)
-        if (problem := plan_changed(record, held))
+        (
+            plan_of(record),
+            held["commit"],
+            _plan_problem(record, held, repo) if repo is not None else plan_changed(record, held),
+        )
+        for record, held, repo in _records(project)
     ]
+
+
+def event_plan_problem(ledger: pathlib.Path, lines: list[str], commit: str) -> str | None:
+    """Why the plan a `freeze` event in the ledger names at `commit` does not stand behind it,
+    "" where it does, and None where no such event is in the ledger. For a claim whose freeze
+    record is gone: deleting the record, or the plan with it, left the claim on no plan at all,
+    while the chain still holds what was frozen."""
+    events = []
+    for line in lines:
+        try:
+            event = json.loads(line)
+        except ValueError:
+            continue
+        if isinstance(event, dict) and event.get("event") == "freeze" and event.get("commit"):
+            events.append(event)
+    named = [e for e in events if e["commit"] == commit]
+    if not named:
+        return None
+    top = try_run("rev-parse", "--show-toplevel", cwd=ledger.parent)
+    for event in named:
+        plan = ledger.parent.parent / str(event.get("file", ""))
+        if not plan.is_file():
+            return f"the ledger's freeze of {event.get('file')} names no plan on disk"
+        if sha256_of_file(plan) != event.get("sha256"):
+            return f"{plan.name} has changed since the ledger recorded its freeze"
+        name = _name(pathlib.Path(top), plan) if top else None
+        stored = _blob(pathlib.Path(top), f"{commit}:{name}") if top and name else None
+        if stored is None or hashlib.sha256(stored).hexdigest() != event.get("sha256"):
+            return f"commit {commit[:12]} does not hold {plan.name} as the ledger froze it"
+    return ""
 
 
 def read_all(project: pathlib.Path, ledger: pathlib.Path) -> list[Freeze]:
@@ -281,6 +326,7 @@ def read_all(project: pathlib.Path, ledger: pathlib.Path) -> list[Freeze]:
         if problem := _plan_problem(record, held, repo):
             found.append(Freeze(record, held["commit"], frozen_at, None, problem, True))
             continue
+        prior = False
         if isinstance(held.get("ledger"), dict):
             # A record stating a position is placed only where the chain holds the freeze
             # event `prereg freeze` wrote with it, at that position: a position written by
@@ -301,8 +347,9 @@ def read_all(project: pathlib.Path, ledger: pathlib.Path) -> list[Freeze]:
             # No position: written before any ledger existed, and placed by commit order alone.
             misplaced = ""
             position = _before_the_ledger(record, ledger, repo) if repo is not None else None
+            prior = position == 0
         found.append(
-            Freeze(record, held["commit"], frozen_at, position, misplaced, ledger.is_file())
+            Freeze(record, held["commit"], frozen_at, position, misplaced, ledger.is_file(), prior)
         )
     return found
 

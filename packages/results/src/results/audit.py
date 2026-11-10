@@ -367,7 +367,8 @@ def verify(
     outputs do not hold, a claim whose run's outputs were all retired, a claim whose run's
     outputs were all overwritten or removed, a timestamp proof that history holds and the disk
     does not, and a restart of the ledger that dropped an exposure. A confirmatory claim whose
-    plan has changed since its freeze fails whatever `strict` says."""
+    plan has changed since its freeze fails whatever `strict` says, as does one following a
+    restart of the ledger over a chain that held a run, a claim or an exposure."""
     root = require_root()
     report: dict = {"files_checked": check_files, "files": []}
     code = _verify(check_files, report, root, strict, explain)
@@ -440,6 +441,7 @@ def _verify(
         print(f"  the ledger {state}. A record is evidence once it is in history.\n")
 
     restarted = history.restart(lp)
+    restart_fails = ""
     if restarted is not None:
         report["restart"] = {
             "deleted_in": restarted.deleted,
@@ -463,6 +465,24 @@ def _verify(
         if restarted.dropped:
             print("  a restart that drops an exposure fails under `--strict`.")
         print()
+        # A restart over a chain that held work, with a confirmatory claim after it, is the
+        # cheapest way to claim confirmatorily over a run, claim or exposure the chain recorded.
+        if restarted.work and any(
+            e.get("event") == "claim" and e.get("confirmatory") for e in events
+        ):
+            restart_fails = restarted.restarted or restarted.deleted
+            held = sorted({str(e.get("event") or "?") for e in restarted.work})
+            report["restart"]["fails"] = True
+            print(
+                "LEDGER RESTARTED OVER A CHAIN WITH RUNS/CLAIMS/EXPOSURES; a confirmatory claim "
+                "follows"
+            )
+            print(
+                f"  restarted in commit {restart_fails[:12]} over {len(restarted.work)} "
+                f"earlier event(s): {', '.join(held)}"
+            )
+            print("  restore the earlier chain and record what follows on it, or claim")
+            print("  exploratorily: a new chain cannot vouch for what the old one held.\n")
 
     reading = stamps.read(lp)
     if reading.contradictions:
@@ -680,20 +700,42 @@ def _verify(
         lines = freezes.lines_of(lp)
         seen = first_outcomes_seen(events)
         seen_at = freezes.index_of(lines, "access", lambda e: e.get("level") == "outcomes seen")
-        if seen is not None:
-            late = [
-                c
-                for c in claims
-                if c.get("confirmatory")
-                and (first_run_timestamp(events, str(c.get("run_id") or "")) or "") > seen
-            ]
-            for c in late:
-                freeze = freezes.named(recorded, str(c.get("frozen_at") or ""))
-                if freeze is not None and freezes.before(freeze, seen_at, seen):
-                    protected.append(c)
-                elif c.get("frozen_at") and freeze is None:
-                    unrecorded.append(c)
-            contested = [c for c in late if c not in protected and c not in unrecorded]
+        # An exposure the chain before a restart held is read as though it were still in the
+        # ledger, placed by the commit that first added it: re-adding it after the claim, or
+        # dropping it, left the claim reading as one made before the outcomes were seen.
+        carried = [
+            x
+            for x in (restarted.exposures if restarted else [])
+            if x.event.get("level") == "outcomes seen"
+        ]
+        late = []
+        for c in claims:
+            if not c.get("confirmatory"):
+                continue
+            run_id = str(c.get("run_id") or "")
+            in_ledger = seen is not None and (first_run_timestamp(events, run_id) or "") > seen
+            run = next(
+                (
+                    e
+                    for e in reversed(events)
+                    if e.get("event") == "run" and e.get("run_id") == run_id
+                ),
+                None,
+            )
+            earlier = run is not None and any(history.exposed_before(lp, x, run) for x in carried)
+            if not in_ledger and not earlier:
+                continue
+            late.append(c)
+            freeze = freezes.named(recorded, str(c.get("frozen_at") or ""))
+            if (
+                freeze is not None
+                and (not in_ledger or freezes.before(freeze, seen_at, seen))
+                and (not earlier or freeze.prior)
+            ):
+                protected.append(c)
+            elif c.get("frozen_at") and freeze is None:
+                unrecorded.append(c)
+        contested = [c for c in late if c not in protected and c not in unrecorded]
         for c in claims:
             if not c.get("confirmatory"):
                 continue
@@ -740,7 +782,7 @@ def _verify(
             print("  no frozen plan governed these runs. Reported, not failed: a pilot can")
             print("  come before the plan it informs.")
 
-    edited = edited_plans(claims, root.parent)
+    edited = edited_plans(claims, root.parent, lp)
     report["confirmatory_claims_on_changed_plans"] = [
         {"claim": c["claim"], "plan": plan, "problem": problem} for c, plan, problem in edited
     ]
@@ -822,6 +864,11 @@ def _verify(
     if edited:
         print("a confirmatory claim rests on a plan edited after its freeze.")
         return 1
+    if restart_fails:
+        print(
+            f"a confirmatory claim follows a restart, in {restart_fails[:12]}, over recorded work."
+        )
+        return 1
     if strict and warned:
         print("strict: the notes above fail the check.")
         return 1
@@ -835,29 +882,44 @@ def _verify(
     return 0
 
 
-def edited_plans(claims: list[dict], project: pathlib.Path) -> list[tuple[dict, str, str]]:
+def edited_plans(
+    claims: list[dict], project: pathlib.Path, lp: pathlib.Path
+) -> list[tuple[dict, str, str]]:
     """Each confirmatory claim with each plan it rests on that is not the plan as frozen, and
-    why: the plan its `frozen_at` commit names, or every frozen plan where it names none.
+    why: the plan its `frozen_at` commit names, or every frozen plan in this project's directory
+    where it names none.
 
     Asked at `results claim` and not since, so a plan edited after the claim was recorded
-    left the claim confirmatory. A plan frozen whole is compared with its record's digest, and
-    one frozen in place by `prereg check`'s own rule, which leaves its log out.
+    left the claim confirmatory. A plan frozen whole is compared with its record's digest and
+    its companions' and read at the commit the record names, and one frozen in place by
+    `prereg check`'s own rule, which leaves its log out. A claim whose `frozen_at` names no
+    record here is held to the ledger's `freeze` event at that commit, so deleting the record,
+    or the plan and the record, does not leave the claim on nothing.
     """
     confirmatory = [c for c in claims if c.get("confirmatory")]
     if not confirmatory:
         return []
     top = try_run("rev-parse", "--show-toplevel", cwd=project)
-    changed = freezes.changed_plans(project)
+    checked = freezes.checked_plans(project)
+    changed = [found for found in checked if found[2]]
     if top:
         changed += plans.changed_in_place(pathlib.Path(top))
     base = pathlib.Path(top) if top else project
+    lines = freezes.lines_of(lp) if lp.is_file() else []
     found = []
     for c in confirmatory:
         at = str(c.get("frozen_at") or "")
         for plan, commit, problem in changed:
-            if not at or (commit and at.startswith(commit)):
+            if (at and commit and at.startswith(commit)) or (not at and _within(plan, project)):
                 found.append((c, _shown(plan, base), problem))
+        if at and not any(at == commit for _, commit, _ in checked):
+            if problem := freezes.event_plan_problem(lp, lines, at):
+                found.append((c, f"frozen at {at[:12]}, no freeze record", problem))
     return found
+
+
+def _within(path: pathlib.Path, project: pathlib.Path) -> bool:
+    return path.resolve().is_relative_to(project.resolve())
 
 
 def _shown(path: pathlib.Path, base: pathlib.Path) -> str:
@@ -883,7 +945,8 @@ def claim_backing(
     gone = retired(events)
     orphaned, unheld, unchecked = [], [], []
     cache: dict[str, outputs.Held] = {}
-    for c in claims:
+    ran = {e.get("run_id"): i for i, e in enumerate(events) if e.get("event") == "run"}
+    for n, c in enumerate(claims):
         run_id = str(c.get("run_id") or "")
         paths = outputs.run_outputs(events, run_id)
         if c.get("derived"):
@@ -899,9 +962,23 @@ def claim_backing(
         held = cache[run_id]
         if held.read and (absent := outputs.missing(c.get("claim", ""), held)):
             unheld.append((c, absent))
-        elif held.unchecked and outputs.owed(c.get("claim", "")):
+        elif (
+            held.unchecked
+            and outputs.owed(c.get("claim", ""))
+            and not _rebound(c, claims[n + 1 :], ran)
+        ):
             unchecked.append((c, _what_became(events, run_id, held, base)))
     return orphaned, unheld, unchecked
+
+
+def _rebound(claim: dict, later: list[dict], ran: dict) -> bool:
+    """Whether a later claim states the same sentence of a run recorded after this claim's run.
+    Re-binding a sentence to the run that wrote what is there now is the remedy `verify` names,
+    and the claim it replaces stays in the ledger, which only grows."""
+    at = ran.get(claim.get("run_id"), -1)
+    return any(
+        c.get("claim") == claim.get("claim") and ran.get(c.get("run_id"), -1) > at for c in later
+    )
 
 
 def _what_became(

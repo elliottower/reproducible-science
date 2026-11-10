@@ -323,3 +323,105 @@ def test_verify_fails_a_confirmatory_claim_whose_plan_was_edited_after_the_claim
     assert r.returncode == 1
     assert "confirmatory claim(s) rest on a plan that has changed since it was frozen" in r.stdout
     assert "d = 0.103" in r.stdout and "plan PREREG.md: PREREG.md has changed" in r.stdout
+
+
+def writable(path):
+    path.chmod(0o644)
+    return path
+
+
+def edit_companion(repo):
+    writable(repo / "analysis.yaml").write_text("alpha: 0.10\n")
+
+
+def delete_plan_and_record(repo):
+    git(repo, "rm", "-q", "-r", "-f", "PREREG.md", ".prereg")
+
+
+def rewrite_record(field, value):
+    def attack(repo):
+        writable(repo / "PREREG.md").write_text(PLAN + "\n**H2.** more\n")
+        record = writable(repo / ".prereg" / "PREREG.md.json")
+        held = json.loads(record.read_text())
+        held[field] = value(repo)
+        record.write_text(json.dumps(held, indent=2))
+
+    return attack
+
+
+def delete_record_edit_plan(repo):
+    git(repo, "rm", "-q", "-r", "--cached", ".prereg")
+    for record in (repo / ".prereg").iterdir():
+        record.unlink()
+    (repo / ".prereg").rmdir()
+    writable(repo / "PREREG.md").write_text(PLAN + "\n**H2.** more\n")
+
+
+@pytest.mark.parametrize(
+    ("attack", "said"),
+    [
+        (edit_companion, "companion analysis.yaml has changed since it was frozen with PREREG.md"),
+        (delete_plan_and_record, "the ledger's freeze of PREREG.md names no plan on disk"),
+        (
+            rewrite_record(
+                "sha256", lambda r: hashlib.sha256((r / "PREREG.md").read_bytes()).hexdigest()
+            ),
+            "is not the file the record froze",
+        ),
+        (
+            rewrite_record("commit", lambda r: "0" * 40),
+            "PREREG.md has changed since the ledger recorded its freeze",
+        ),
+        (delete_record_edit_plan, "PREREG.md has changed since the ledger recorded its freeze"),
+    ],
+    ids=[
+        "companion",
+        "plan and record deleted",
+        "record digest",
+        "record commit",
+        "record deleted",
+    ],
+)
+def test_verify_holds_a_confirmatory_claim_to_its_plan_by_record_companion_and_ledger_event(
+    repo, attack, said
+):
+    (repo / "analysis.yaml").write_text("alpha: 0.05\n")
+    commit(repo, "analysis")
+    done = tool("prereg", "freeze", "--companion", "analysis.yaml", cwd=repo)
+    assert done.returncode == 0, done.stdout
+    named = json.loads((repo / ".prereg" / "PREREG.md.json").read_text())["commit"]
+    commit(repo, "freeze")
+    results("run", "out.json", "--run-id", "r1", cwd=repo)
+    assert confirm(repo, "r1", named).returncode == 0
+    commit(repo, "claim")
+    assert results("verify", "--strict", cwd=repo).returncode == 0
+
+    attack(repo)
+    commit(repo, "attack")
+    r = results("verify", cwd=repo)
+    assert r.returncode == 1
+    assert "confirmatory claim(s) rest on a plan that has changed since it was frozen" in r.stdout
+    assert said in r.stdout
+    assert results("verify", "--strict", cwd=repo).returncode == 1
+
+
+def test_a_claim_naming_no_freeze_is_not_held_to_a_plan_outside_its_project(tmp_path):
+    git(tmp_path, "init", "-q")
+    other, exp = tmp_path / "other", tmp_path / "exp"
+    other.mkdir()
+    exp.mkdir()
+    (other / "PREREG.md").write_text(PLAN)
+    (exp / "out.json").write_text('{"d": 0.103}\n')
+    commit(tmp_path, "plan")
+    assert tool("prereg", "freeze", cwd=other).returncode == 0
+    assert results("init", cwd=exp).returncode == 0
+    results("run", "out.json", "--run-id", "r1", cwd=exp)
+    claimed = results("claim", "d = 0.103", "--run-id", "r1", "--confirmatory", cwd=exp)
+    assert claimed.returncode == 0, claimed.stdout
+    commit(tmp_path, "claim")
+
+    writable(other / "PREREG.md").write_text(PLAN + "\n**H2.** more\n")
+    commit(tmp_path, "edit the other plan")
+    r = results("verify", cwd=exp)
+    assert r.returncode == 0, r.stdout
+    assert "changed since it was frozen" not in r.stdout

@@ -242,3 +242,72 @@ def test_a_rewrite_after_a_restart_is_still_caught(committed, capsys):
 
     assert cli.main(["verify", "--files"]) == 1
     assert "LEDGER HISTORY REWRITTEN" in capsys.readouterr().out
+
+
+CONFIRM = ["claim", "The ICC was 0.5101", "--run-id", "r9", "--confirmatory", "--anyway"]
+
+
+@pytest.mark.parametrize("shape", ["restart", "re-added", "ledger only", "side branch"])
+def test_a_confirmatory_claim_after_a_restart_over_recorded_work_fails_verify(
+    committed, shape, capsys
+):
+    if shape == "side branch":
+        git(committed, "branch", "-q", "-m", "main")
+        git(committed, "checkout", "-q", "-b", "side")
+    if shape == "ledger only":
+        git(committed, "rm", "-q", ".results/ledger.jsonl")
+        git(committed, "commit", "-q", "-m", "ledger removed")
+        shutil.rmtree(committed / ".results")
+        assert cli.main(["init"]) == 0
+        (committed / "out.json").write_text(json.dumps({"icc": 0.5101}))
+        assert cli.main(["run", "out.json", "--run-id", "r9"]) == 0
+    else:
+        restart(committed)
+    assert cli.main(CONFIRM) == 0
+    if shape in ("re-added", "ledger only"):
+        assert cli.main(["access", "looked at the outcome", "--level", "outcomes seen"]) == 0
+    git(committed, "add", "-A")
+    git(committed, "commit", "-q", "-m", "claimed")
+    if shape == "side branch":
+        git(committed, "checkout", "-q", "main")
+        git(committed, "merge", "-q", "--no-ff", "-X", "theirs", "side", "-m", "merge side")
+    capsys.readouterr()
+
+    assert cli.main(["verify"]) == 1
+    out = capsys.readouterr().out
+    assert "LEDGER RESTARTED OVER A CHAIN WITH RUNS/CLAIMS/EXPOSURES" in out
+    assert "over 3 earlier event(s): access, claim, run" in out
+    assert "rest on runs recorded after outcomes were seen" in out
+    assert cli.main(["verify", "--files", "--strict"]) == 1
+
+
+def test_an_exposure_re_added_after_a_restart_still_comes_before_the_new_run(committed, capsys):
+    restart(committed)
+    assert cli.main(["access", "looked at the outcome", "--level", "outcomes seen"]) == 0
+    capsys.readouterr()
+
+    assert cli.main(CONFIRM[:-1]) == 1
+    assert "refusing: outcomes were seen at" in capsys.readouterr().out
+    assert cli.main(CONFIRM) == 0
+    capsys.readouterr()
+    assert cli.main(["verify"]) == 1
+    out = capsys.readouterr().out
+    assert "1 confirmatory claim(s) rest on runs recorded after outcomes were seen" in out
+
+
+def test_a_restart_over_only_an_init_is_a_note_under_a_confirmatory_claim(
+    tmp_path, monkeypatch, capsys
+):
+    monkeypatch.chdir(tmp_path)
+    git(tmp_path, "init", "-q")
+    assert cli.main(["init"]) == 0
+    git(tmp_path, "add", ".results")
+    git(tmp_path, "commit", "-q", "-m", "ledger")
+    restart(tmp_path)
+    assert cli.main(CONFIRM[:-1]) == 0
+    capsys.readouterr()
+
+    assert cli.main(["verify", "--files", "--strict"]) == 0
+    out = capsys.readouterr().out
+    assert "the ledger was deleted in commit" in out
+    assert "LEDGER RESTARTED OVER" not in out
