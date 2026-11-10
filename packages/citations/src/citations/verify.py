@@ -113,6 +113,7 @@ deliberate act with the consequence in view.
 from __future__ import annotations
 
 import codecs
+import difflib
 import functools
 import hashlib
 import html
@@ -151,6 +152,22 @@ MIN_PIECE_CHARS = 20
 #: only by text reaching to where a block ends: on a 1.1 MB source of repeated blocks that was
 #: two anchors of 553,000 characters each. Past this the answer is a refusal that says so.
 MAX_ANCHOR_CHARS = 1000
+
+#: The shortest `reads` a correction accepts, in folded characters. About two words: the word
+#: the extractor misread and one beside it. `reads` is how a correction names its place in the
+#: extractor's text, and it applies only where it occurs there exactly once; a single word
+#: passes that test by chance on a page that uses it once, and at `READS_LIKENESS` a string
+#: under twelve characters is within two edits of nearly any word of its length, so the
+#: passage could hold a "near-copy" of it anywhere. Shorter than `MIN_PIECE_CHARS`, because a
+#: misreading is often a word or two wide and the uniqueness test does the rest.
+MIN_READS_CHARS = 12
+
+#: How alike `reads` and the stretch of `passage` it corrects must be, as difflib's ratio over
+#: the two with white space removed. A dropped ligature or an OCR `li` for `k` costs a few
+#: characters in forty, about 0.95; an unrelated sentence sharing a phrase with the page scores
+#: under 0.5. The span must overlap the quotation, so a real stretch of the extractor's text
+#: cannot be borrowed as `reads` beside a passage that says something else.
+READS_LIKENESS = 0.8
 
 #: How many ways of fitting a quotation to its source `omission` will list before it stops
 #: counting. Each is a division into pieces and a place for each piece, and a source that
@@ -450,9 +467,12 @@ class Report:
     `derived_sha256`. The bytes match their pin and the extractor turns them into other text
     than was quoted, so every result against that source describes a reading the record
     does not."""
-    stale_corrections: list[tuple[str, str]] = field(default_factory=list)
-    """Quotations carrying a correction recorded against a reading that is not the one this
-    run read, with what changed. The correction was not applied."""
+    unapplied_corrections: list[tuple[str, str]] = field(default_factory=list)
+    """Quotations carrying a correction that was not applied, with why: it does not describe
+    this machine's reading, or it cannot stand for the quotation. See `correct`."""
+    corrected: list[tuple[str, str, str]] = field(default_factory=list)
+    """Quotations reported `corrected`, each with its text and the note saying where it was
+    applied under another reader, version or text than it was recorded under."""
     unneeded_corrections: list[str] = field(default_factory=list)
     """Quotations carrying a correction whose source text now holds the quotation as written.
     The computed verdict stands, and the correction may no longer be needed."""
@@ -1472,78 +1492,194 @@ def extractor_version(extractor: str) -> str:
     return ""
 
 
-def stale(correction: Correction, computed: Result, source_sha256: str) -> str:
-    """What changed since a correction was recorded, or empty where nothing did.
+def reads_count(
+    artifact: pathlib.Path,
+    reads: str,
+    page: int,
+    extract_cmd: str | None,
+    allowed: frozenset[str],
+    extractor: str,
+) -> tuple[int, str]:
+    """How often `reads` occurs where a correction says it does, and where that was.
 
-    A correction describes one reading: these bytes, this extractor at this version, and the
-    text it produced. Any of the four changing makes it a correction of a reading this run did
-    not make, so it is reported and not applied.
+    On page `page` of `extractor`'s reading where the source has pages to ask for, and in the
+    whole text otherwise: a declared command and a built-in extractor print one text. Raises
+    `SourceUnreadableError` where that text cannot be read.
     """
-    changed = []
-    recorded = correction.sha256.strip().lower()
-    if source_sha256 != recorded:
-        changed.append(f"the source's bytes (recorded {recorded[:12]}, read {source_sha256[:12]})")
-    if computed.extractor != correction.extractor:
-        changed.append(
-            f"the extractor (recorded {correction.extractor}, read by {computed.extractor})"
+    extract_cmd = declared_extractor(extract_cmd)
+    if extract_cmd is None and is_paginated(artifact) and not extractors.is_builtin(extractor):
+        return resolve_in(reads, _page_text(artifact, page, extractor)).count, f"on page {page} of"
+    got = reading(artifact, None, extract_cmd, allowed) if extract_cmd else reading(artifact)
+    return resolve_in(reads, got.text).count, "in"
+
+
+def _near_copy(quote: str, passage: str, reads: str) -> bool:
+    """Whether `passage` holds a stretch within `READS_LIKENESS` of `reads` overlapping `quote`.
+
+    All three with white space removed, as `skeleton` leaves them. Every window of a length
+    that could reach the ratio, among those overlapping an occurrence of the quotation, is
+    compared; `quick_ratio` is an upper bound on `ratio` and rules most of them out cheaply.
+    """
+    q, p, r = skeleton(quote), skeleton(passage), skeleton(reads)
+    spans, at = [], p.find(q)
+    while q and at >= 0:
+        spans.append((at, at + len(q)))
+        at = p.find(q, at + 1)
+    if not spans or not r:
+        return False
+    likeness = difflib.SequenceMatcher(None, autojunk=False)
+    likeness.set_seq2(r)
+    shortest = -(-2 * len(r) // 3)
+    for width in range(shortest, min(len(p), 3 * len(r) // 2) + 1):
+        for lo, hi in spans:
+            for i in range(max(0, lo - width + 1), min(hi, len(p) - width + 1)):
+                likeness.set_seq1(p[i : i + width])
+                if likeness.quick_ratio() >= READS_LIKENESS and (
+                    likeness.ratio() >= READS_LIKENESS
+                ):
+                    return True
+    return False
+
+
+def correction_fault(quote: str, passage: str, reads: str) -> str:
+    """Why a correction cannot stand for this quotation, or empty where it can.
+
+    Three ways, each checked by `pin --correct` before it writes and by `verify` before it
+    applies a record, which may have been written by hand: `reads` too short to name a place,
+    a passage that does not hold the quotation, and a passage holding nothing like `reads`
+    where it holds the quotation. The last is what stops a real stretch of the extractor's text
+    being recorded as `reads` beside a passage the page does not print.
+    """
+    if (n := len(passage_fold(reads))) < MIN_READS_CHARS:
+        return (
+            f"`reads` is {n} characters, and names a place in the extractor's text only from "
+            f"{MIN_READS_CHARS}"
         )
-    elif (now := extractor_version(computed.extractor)) != correction.extractor_version:
-        changed.append(
-            f"the extractor's version (recorded {correction.extractor_version or 'none'}, "
-            f"now {now or 'none'})"
+    if resolve_in(quote, passage).state == "not found":
+        return "the passage does not hold the quotation"
+    if not _near_copy(quote, passage, reads):
+        return (
+            f"the passage holds nothing within {READS_LIKENESS} of `reads` where it holds the "
+            f"quotation, so it does not correct the text `reads` names"
         )
-    derived = correction.derived_sha256.strip().lower()
-    if computed.extraction_digest != derived:
-        changed.append(
-            f"the extracted text (recorded {derived[:12]}, extracted "
-            f"{computed.extraction_digest[:12]})"
-        )
-    return "; ".join(changed)
+    return ""
+
+
+def _reader(extractor: str, version: str) -> str:
+    return f"{extractor}, {version}" if version else extractor
+
+
+@dataclass(frozen=True)
+class Correcting:
+    """What considering a correction made of a computed `not found`."""
+
+    result: Result
+    unapplied: str = ""
+    """Why the correction was not applied, or empty where it was."""
+    note: str = ""
+    """Where the correction was applied under another reader, version or text than it was
+    recorded under, the two named. Empty where it was not applied, or where nothing differs."""
 
 
 def correct(
-    quote: str, correction: Correction, computed: Result, source_sha256: str
-) -> tuple[Result, str]:
-    """The verdict on a quotation that carries a correction, and what made the correction stale.
+    quote: str,
+    quote_page: int | None,
+    correction: Correction,
+    computed: Result,
+    artifact: pathlib.Path,
+    extract_cmd: str | None = None,
+    allowed: frozenset[str] = DEFAULT_EXTRACTORS,
+) -> Correcting:
+    """The verdict on a quotation that carries a correction.
 
-    `computed` is the verdict against the extractor's text, which nothing here modifies. Only a
-    `not found` is compared with the correction: a quotation the extractor's text holds needs
-    none, and one whose source was not read cannot show the correction describes this reading.
-    A correction that is current and holds the quotation gives `corrected`, which is never
-    `found`. One that is current and does not hold it leaves the quotation `not found`. One that
-    is stale is not applied, and the second value says why.
+    `computed` is the verdict against the extractor's text, which nothing here modifies, and
+    only a `not found` is considered. The correction applies where the source's bytes are the
+    ones it was recorded against, `reads` occurs exactly once in this run's reading (on the
+    recorded page, where the source has pages), the passage holds the quotation, and
+    `correction_fault` finds nothing; it then gives `corrected`, which is never `found`.
+
+    The extractor, its version and `derived_sha256` are recorded and decide nothing, with one
+    exception: a built-in extractor is this package's own code, so its text differing means
+    the reading differs. `reads` is the test of whether this machine's reading is the one the
+    correction describes. A digest of the whole text changes with any page of it: poppler
+    24.02 and 26.04 give `-layout` text of different digests for 25 of 44 PDFs in one library,
+    and a version string is whatever the installed binary prints. Where any of the three
+    differs, `Correcting.note` says so.
     """
     if computed.state != "not found":
-        return computed, ""
-    if why := stale(correction, computed, source_sha256):
+        return Correcting(computed)
+
+    def unapplied(why: str) -> Correcting:
         computed.detail = (
             f"the correction recorded for page {correction.page} was not applied: {why}; "
             f"{computed.detail}"
         )
-        return computed, why
-    kept = {
-        "extractor": computed.extractor,
-        "extraction_digest": computed.extraction_digest,
-        "fallback": computed.fallback,
-        "fallback_reason": computed.fallback_reason,
-    }
-    warn = [w for w in computed.warnings if w == "short"]
+        return Correcting(computed, why)
+
+    recorded = correction.sha256.strip().lower()
+    if (read := sha256(artifact)) != recorded:
+        return unapplied(
+            f"the source changed: recorded {recorded[:12]}, read {read[:12]}, so it does not "
+            f"describe this machine's reading"
+        )
+    if quote_page is not None and quote_page != correction.page:
+        return unapplied(
+            f"the correction is recorded for page {correction.page} and the quotation for page "
+            f"{quote_page}"
+        )
+    derived = correction.derived_sha256.strip().lower()
+    builtin = extractors.is_builtin(computed.extractor) or extractors.is_builtin(
+        correction.extractor
+    )
+    if builtin and (computed.extractor, computed.extraction_digest) != (
+        correction.extractor,
+        derived,
+    ):
+        return unapplied(
+            f"it does not describe this machine's reading: the built-in {correction.extractor} "
+            f"produced text {derived[:12]}, and {computed.extractor} now produces "
+            f"{computed.extraction_digest[:12]}"
+        )
+    if fault := correction_fault(quote, correction.passage, correction.reads):
+        return unapplied(fault)
+    try:
+        n, where = reads_count(
+            artifact, correction.reads, correction.page, extract_cmd, allowed, computed.extractor
+        )
+    except SourceUnreadableError as e:
+        return unapplied(f"{computed.extractor} could not read page {correction.page}: {e.detail}")
+    if n != 1:
+        said = "does not occur" if n == 0 else f"occurs {n} times"
+        return unapplied(
+            f"it does not describe this machine's reading: `reads` {said} {where} what "
+            f"{computed.extractor} produced"
+        )
+
+    now = extractor_version(computed.extractor)
+    note = ""
+    if (computed.extractor, now) != (correction.extractor, correction.extractor_version):
+        note = (
+            f"applied under {_reader(computed.extractor, now)}; recorded under "
+            f"{_reader(correction.extractor, correction.extractor_version)}"
+        )
+    if computed.extraction_digest != derived:
+        text = f"extracted text {computed.extraction_digest[:12]}, recorded {derived[:12]}"
+        note = f"{note}; {text}" if note else f"applied to {text}"
     m = resolve_in(quote, correction.passage)
-    if m.state == "not found":
-        return Result(
-            "not found",
-            f"not in the source, and not in the passage recorded by hand for page "
-            f"{correction.page} either, so the correction does not support this quotation",
-            warn,
-            **kept,
-        ), ""
-    return Result(
-        "corrected",
-        f"in the passage recorded by hand for page {correction.page}, where "
-        f"{correction.extractor} reads {correction.reads[:80]!r}",
-        warn + (["normalized"] if m.normalized else []),
-        **kept,
-    ), ""
+    return Correcting(
+        Result(
+            "corrected",
+            f"in the passage recorded by hand for page {correction.page}, where "
+            f"{computed.extractor} reads {correction.reads[:80]!r}" + (f"; {note}" if note else ""),
+            [w for w in computed.warnings if w == "short"]
+            + (["normalized"] if m.normalized else []),
+            extractor=computed.extractor,
+            extraction_digest=computed.extraction_digest,
+            fallback=computed.fallback,
+            fallback_reason=computed.fallback_reason,
+        ),
+        note=note,
+    )
 
 
 def _second_opinion(

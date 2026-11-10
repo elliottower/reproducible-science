@@ -97,12 +97,20 @@ class Project(BaseModel):
     quotations it reports `corrected`. None where the citations check did not run."""
 
 
+def outcome(run: ci.ToolRun, graded: Assessment | None = None) -> str:
+    """The tool's own outcome, or `failed` where it passed and `graded`, the policy's
+    assessment of what it counted, does not."""
+    if run.outcome == audit.PASSED and graded is not None and not graded.passed:
+        return audit.FAILED
+    return run.outcome
+
+
 def tool_passed(run: ci.ToolRun, graded: Assessment | None = None) -> bool | None:
     """None for a tool the project does not use, which was not run. `graded` is the policy's
     assessment of what the tool counted, which can fail a run the tool passed."""
     if not run.command:
         return None
-    return run.outcome == audit.PASSED and (graded is None or graded.passed)
+    return outcome(run, graded) == audit.PASSED
 
 
 def _graded(project: Project, name: str) -> Assessment | None:
@@ -162,9 +170,9 @@ def words(project: Project, found: dict[str, bool | None]) -> dict[str, str]:
         for name, passed in found.items()
     }
     return said | {
-        name: run.outcome
+        name: outcome(run, _graded(project, name))
         for name, run in project.tools.items()
-        if run.command and (found[name] or run.outcome != audit.PASSED)
+        if run.command
     }
 
 
@@ -186,6 +194,7 @@ def sections(project: Project, found: dict[str, bool | None]) -> dict:
                 "used": bool(run.command),
                 "passed": tool_passed(run, _graded(project, name)),
                 **run.model_dump(mode="json", exclude={"fetched"}),
+                "outcome": outcome(run, _graded(project, name)),
                 **(
                     {"assessment": graded.model_dump(mode="json")}
                     if (graded := _graded(project, name))
@@ -203,14 +212,17 @@ def sections(project: Project, found: dict[str, bool | None]) -> dict:
     }
 
 
-def _tool_lines(run: ci.ToolRun) -> list[str]:
+def _tool_lines(run: ci.ToolRun, graded: Assessment | None = None, policy: str = "") -> list[str]:
+    """The lines said of one tool. `graded` is the policy's assessment of what it counted,
+    which says `FAILED under policy` of a run the tool itself passed."""
     if not run.command:
         return [f"  {run.check:<12} not used here: {run.output}"]
     said = " ".join(run.command)
     if run.outcome == audit.PASSED:
         missed = ci.unchecked(run)
         note = f", {ci.verified(run)}: {missed} not checked" if missed else ""
-        return [f"  {run.check:<12} passed{note}  ({said})"]
+        word = "passed" if tool_passed(run, graded) else f"FAILED under policy {policy}"
+        return [f"  {run.check:<12} {word}{note}  ({said})"]
     lines = [f"  {run.check:<12} {run.outcome.upper()} (exit {run.exit})  ({said})"]
     return lines + [f"      {line}" for line in run.output.rstrip().splitlines()]
 
@@ -236,8 +248,9 @@ def _project_text(
         for line in [*_stale_lines(staleness.report), *_stale_summary(staleness.report)]:
             print(f"    {line}" if line else "")
     for run in project.tools.values():
-        print("\n".join(_tool_lines(run)))
-        if (graded := _graded(project, run.check)) is not None:
+        graded = _graded(project, run.check)
+        print("\n".join(_tool_lines(run, graded, policy.name)))
+        if graded is not None:
             for v in graded.violations:
                 print(f"      {v.severity.value} under policy {policy.name}: {v.detail}")
 

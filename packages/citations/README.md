@@ -563,17 +563,36 @@ citations pin claims/smith2020.yaml --id efficiency --page 4 \
 ```
 
 `verify` compares the quotation with `passage` and reports it `corrected`, counted apart from
-`found` in the text report, `--json` and `repro verify`. A correction applies only to the
-reading it names. Where the source's bytes, the extractor, its version or the extracted text
-differ, `verify` lists it as recorded against another reading, does not apply it, and the
+`found` in the text report, `--json` and `repro verify`; `--verbose` and the `corrected` list in
+`--json` name each one. A correction applies only to a `not found`, and only where all of these
+hold:
+
+| Condition | Why |
+|-----------|-----|
+| the source's sha256 is the recorded `sha256` | other bytes are another document |
+| `reads` occurs exactly once in this run's reading, on the recorded `page` where the source has pages | it names the place the extractor misreads, and the place must be there |
+| the quotation's `page`, where it has one, is the correction's `page` | the two would otherwise describe two places |
+| `passage` holds the quotation | the correction must support what is quoted |
+| `reads` is at least 12 characters, and `passage` holds a stretch within a difflib ratio of 0.8 of it that overlaps the quotation | a short or unrelated `reads` names some place on the page, not the place the passage corrects |
+
+`extractor`, `extractor_version` and `derived_sha256` are recorded and decide nothing. A digest
+of the whole text changes with any page of it: poppler 24.02 and 26.04 give `-layout` text of
+different digests for 25 of 44 PDFs in one library, so the digest cannot say whether the
+corrected place reads the same; `reads` can. Where any of the three differs from this run, the report and the
+`note` in `--json` name both, for example `applied under pypdf, 6.1.0; recorded under pdftotext
+-layout, pdftotext version 26.04.0`. A built-in extractor (`html-text`, `jats-text`,
+`docx-text`, `sheet-rows`) is this package's own code, so there `derived_sha256` must match as
+well.
+
+A correction that does not apply is listed with why, for example ``it does not describe this
+machine's reading: `reads` occurs 2 times on page 4 of what pdftotext -layout produced``, and the
 quotation keeps the verdict the extractor's text gives it. Where the extractor's text now holds
 the quotation, the verdict is `found` and `verify` says the correction may no longer be needed.
-A correction whose `passage` does not hold the quotation leaves it `not found`.
 
-`pin --correct` refuses a quotation the extractor's text already holds, a `--reads` that is not
-in that text, and a quotation that is not in the passage given. `repro verify` grades
-`corrected` as a warning under `publication` and `strict` and ignores it under `exploratory`;
-`Policy.quotation_corrected` sets another severity.
+`pin --correct` refuses a quotation the extractor's text already holds and a correction
+`verify` would not apply here. `repro verify` grades `corrected` as a warning under
+`publication` and `strict` and ignores it under `exploratory`; `Policy.quotation_corrected` sets
+another severity.
 
 ## Restoring the source's passage
 

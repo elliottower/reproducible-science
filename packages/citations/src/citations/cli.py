@@ -115,13 +115,18 @@ def _check_reading(rep: V.Report, cf: ClaimFile, artifact, allowed) -> None:
 
 
 def _corrected(
-    rep: V.Report, name: str, q: Quote, r: V.Result, artifact: pathlib.Path | None
+    rep: V.Report,
+    name: str,
+    q: Quote,
+    r: V.Result,
+    artifact: pathlib.Path | None,
+    extract_cmd: str | None = None,
+    allowed: frozenset[str] = V.DEFAULT_EXTRACTORS,
 ) -> V.Result:
     """The verdict on a quotation once the correction it carries is considered.
 
     A correction whose source text now holds the quotation is noted as possibly unneeded, and
-    one recorded against another reading is noted as stale; neither is applied. See
-    `verify.correct`.
+    one that does not apply is noted with why; neither is applied. See `verify.correct`.
     """
     if q.correction is None:
         return r
@@ -130,10 +135,12 @@ def _corrected(
         return r
     if r.state != "not found" or artifact is None:
         return r
-    r, why = V.correct(q.text, q.correction, r, V.sha256(artifact))
-    if why:
-        rep.stale_corrections.append((name, why))
-    return r
+    made = V.correct(q.text, q.page, q.correction, r, artifact, extract_cmd, allowed)
+    if made.unapplied:
+        rep.unapplied_corrections.append((name, made.unapplied))
+    else:
+        rep.corrected.append((name, q.text, made.note))
+    return made.result
 
 
 COVERAGE = ["covered", "uncovered", "unresolvable"]
@@ -300,7 +307,9 @@ def cmd_verify(a) -> int:
                         q.suffix,
                         missing,
                     )
-                    r = _corrected(rep, f"{cf.name}:{cid}", q, r, artifact)
+                    r = _corrected(
+                        rep, f"{cf.name}:{cid}", q, r, artifact, cf.source.reader, allowed
+                    )
                     counts[r.state] += 1
                     _record_extractor(rep, extractors, r)
                     if r.state != "found" or r.warnings:
@@ -336,7 +345,7 @@ def cmd_verify(a) -> int:
             r = V.check_one(
                 q.text, artifact, q.page, None, allowed, a.triangulate, q.prefix, q.suffix
             )
-            r = _corrected(rep, rec.slug, q, r, artifact)
+            r = _corrected(rep, rec.slug, q, r, artifact, None, allowed)
             counts[r.state] += 1
             _record_extractor(rep, extractors, r)
             if r.state != "found" or r.warnings:
@@ -375,8 +384,12 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
                     "broken_pins": len(rep.broken_pins),
                     "unpinned_sources": len(rep.unpinned),
                     "skipped_files": len(rep.skipped),
-                    "stale_corrections": len(rep.stale_corrections),
+                    "unapplied_corrections": len(rep.unapplied_corrections),
                     "unneeded_corrections": len(rep.unneeded_corrections),
+                    "corrected": [
+                        {"claim": name, "quote": text, "note": note}
+                        for name, text, note in rep.corrected
+                    ],
                     "warnings": _warned(rep),
                 },
                 indent=2,
@@ -407,6 +420,8 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
         if s == "corrected":
             # Never folded into `found`: the passage was compared with text a person recorded.
             why = "   in a passage recorded by hand where the extractor misreads the page"
+            if not getattr(a, "verbose", False):
+                why += "; `--verbose` lists them"
         if s in ("unchecked", "indeterminate", "ambiguous"):
             # Untruncated: the reason is the only thing that says what to fix, and the one
             # that matters most -- "which this run does not allow" -- is at the end of it.
@@ -417,6 +432,9 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
                 else f"   {reasons.most_common(1)[0][0]}"
             )
         print(f"  {s:<{OUTCOME_WIDTH}}{n:>7,}{why}")
+        if s == "corrected" and getattr(a, "verbose", False):
+            for name, text, _ in rep.corrected:
+                print(f"             {name[:38]:<40}{text[:60]}")
 
     # Which extractor a verdict rests on, before the verdicts. A `found` taken through a
     # declared renderer and one taken through `pdftotext` are different records, and a report
@@ -560,15 +578,24 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
         if len(rep.changed_readings) > 10:
             print(f"  ... and {len(rep.changed_readings) - 10} more")
 
-    # A correction describes one reading of one source. Recorded against another, it is said
-    # here and not applied, and one whose source text now holds the quotation is said as well.
-    if rep.stale_corrections:
-        n = len(rep.stale_corrections)
-        print(
-            f"\n{n} correction{'' if n == 1 else 's'} recorded against another reading, not applied"
-        )
-        for name, why in rep.stale_corrections[:10]:
+    # A correction applies where its `reads` names one place in this machine's reading. One
+    # that does not is said here with why and not applied, and one applied under another
+    # reader than it was recorded under says both, so neither passes as the recorded reading.
+    if rep.unapplied_corrections:
+        n = len(rep.unapplied_corrections)
+        print(f"\n{n} correction{'' if n == 1 else 's'} not applied")
+        for name, why in rep.unapplied_corrections[:10]:
             print(f"  {name[:38]:<40}{why}")
+        if n > 10:
+            print(f"  ... and {n - 10} more")
+    if noted := [(name, note) for name, _, note in rep.corrected if note]:
+        n = len(noted)
+        print(
+            f"\n{n} correction{'' if n == 1 else 's'} applied under another reading than "
+            f"{'it was' if n == 1 else 'they were'} recorded under"
+        )
+        for name, note in noted[:10]:
+            print(f"  {name[:38]:<40}{note}")
         if n > 10:
             print(f"  ... and {n - 10} more")
     if rep.unneeded_corrections:

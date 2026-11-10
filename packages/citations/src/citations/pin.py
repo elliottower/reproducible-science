@@ -73,7 +73,9 @@ ligature, two columns read across. It takes the passage as the page prints it, `
 naming the extractor, its version, the sha256 of the source's bytes and of the extractor's text,
 and `verify` reports it `corrected`, never `found`. The extracted text is not modified. It is
 refused where the extractor's text already holds the quotation, because no correction is then
-needed, and where `--reads` is not in that text or the quotation is not in the passage.
+needed; where `--reads` is shorter than twelve characters or does not occur exactly once on
+that page of the extractor's text; and where the passage does not hold the quotation, or holds
+nothing like `--reads` where it holds it. `verify` applies the correction under the same tests.
 
     citations pin claims/smith2020.yaml --id efficiency --page 4 \
         --quote "the coefficient of efficiency was 0.81" \
@@ -91,7 +93,7 @@ from provenance_core import atomic_write, exclusive_lock
 
 from . import extractors, tracked, web
 from . import verify as V
-from .exceptions import CitationsError
+from .exceptions import CitationsError, SourceUnreadableError
 from .fetch import has_location
 from .models import ClaimFile, load_claim_file
 
@@ -195,9 +197,10 @@ def correction(
     """The `correction` written with a quotation the extractor misreads, from the reading `r`.
 
     Raises `PinRefused` where the extractor's text already holds the quotation, where the
-    source was not read, where the quotation is not in `passage`, and where `reads` is not in
-    the extractor's text: a correction records a reading, and these are four ways it would
-    record one that was not made.
+    source was not read, where `verify.correction_fault` finds the passage cannot stand for
+    the quotation, and where `reads` does not occur exactly once on page `page` of the
+    extractor's text: `verify` applies the correction under the same tests, so a record pinned
+    here is one it applies on this machine.
     """
     if r.state in ("found", "ambiguous"):
         raise PinRefused(
@@ -209,16 +212,20 @@ def correction(
             f"the source was not read ({r.state}: {r.detail}), and a correction is recorded "
             f"against what an extractor produced."
         )
-    if V.resolve_in(quote, passage).state == "not found":
-        raise PinRefused("the quotation is not in the passage given with --correct.")
+    if fault := V.correction_fault(quote, passage, reads):
+        raise PinRefused(f"{fault}.")
     artifact = _artifact(cf)
     assert artifact is not None
-    reader = V.declared_extractor(cf.source.reader)
-    got = V.reading(artifact, None, reader, allowed) if reader else V.reading(artifact)
-    if V.resolve_in(reads, got.text).state == "not found":
+    try:
+        n, where = V.reads_count(artifact, reads, page, cf.source.reader, allowed, r.extractor)
+    except SourceUnreadableError as e:
+        raise PinRefused(f"{r.extractor} could not read page {page}: {e.detail}") from e
+    if n != 1:
+        said = "does not occur" if n == 0 else f"occurs {n} times"
         raise PinRefused(
-            f"--reads is not in what {got.extractor} produced from this source. Copy it from the "
-            f"extracted text, so the record says what the extractor reads."
+            f"--reads {said} {where} what {r.extractor} produced from this source. Copy it from "
+            f"the extracted text, long enough to occur once, so the record names the place the "
+            f"extractor misreads."
         )
     made = {
         "passage": passage,
