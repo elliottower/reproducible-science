@@ -7,6 +7,7 @@ import json
 import os
 import re
 import threading
+import unicodedata
 
 import pytest
 import yaml
@@ -377,3 +378,88 @@ def test_a_list_that_cannot_be_read_is_recorded_and_changes_nothing_else(tmp_pat
     finally:
         if target.is_file():
             target.chmod(0o644)
+
+
+@pytest.mark.skipif(not hasattr(os, "mkfifo"), reason="no FIFOs on this platform")
+def test_a_fifo_as_the_list_is_recorded_without_waiting_for_a_writer(tmp_path, capsys):
+    pin(tmp_path, {"here": QUOTE, "absent": ABSENT})
+    args = ["verify", "--claims", str(tmp_path / "claims")]
+    without = main(args), capsys.readouterr().out
+    target = tmp_path / "claims" / "fox.manual.txt"
+    os.mkfifo(target)
+    codes: list[int] = []
+    run = threading.Thread(target=lambda: codes.append(main(args)), daemon=True)
+    run.start()
+    run.join(timeout=10)
+    if run.is_alive():
+        # A reader blocked in `open` waits for a writer: be one, so the thread can finish.
+        os.close(os.open(target, os.O_WRONLY | os.O_NONBLOCK))
+        pytest.fail("verify waited on a FIFO where the list should be")
+    assert (codes[0], capsys.readouterr().out) == without
+    code, hand = verify(tmp_path)
+    assert code == 1
+    assert hand["problems"] == [f"{target.resolve()}: not read, not a regular file"]
+    assert manual_check(tmp_path, "here") == 2
+    assert "not a regular file" in capsys.readouterr().out
+
+
+def test_manual_check_refuses_a_line_that_would_take_the_list_past_what_verify_reads(
+    tmp_path, capsys
+):
+    pin(tmp_path, {"here": QUOTE})
+    padding = b"#" * (MC.MAX_BYTES - 10) + b"\n"
+    (tmp_path / "claims" / "fox.manual.txt").write_bytes(padding)
+    assert manual_check(tmp_path, "here") == 2
+    assert "verify reads none larger than" in capsys.readouterr().out
+    assert (tmp_path / "claims" / "fox.manual.txt").read_bytes() == padding
+
+
+def test_an_id_matches_whether_written_composed_or_decomposed(tmp_path):
+    composed = unicodedata.normalize("NFC", "café")
+    decomposed = unicodedata.normalize("NFD", "café")
+    assert composed != decomposed
+    pin(tmp_path, {decomposed: QUOTE, "other": ABSENT})
+    listed(tmp_path, f"{composed}  {fp(QUOTE)}\n")
+    _, hand = verify(tmp_path)
+    assert [c["id"] for c in hand["covered"]] == [composed]
+    assert hand["unknown"] == []
+    assert manual_check(tmp_path, decomposed) == 2
+    pin(tmp_path, {composed: QUOTE, "other": ABSENT})
+    listed(tmp_path, "")
+    assert manual_check(tmp_path, decomposed) == 0
+    assert (tmp_path / "claims" / "fox.manual.txt").read_text() == f"{composed}  {fp(QUOTE)}\n"
+
+
+def test_two_links_to_one_list_share_one_lock(tmp_path):
+    n = 16
+    pin(tmp_path, {f"c{i}": QUOTE for i in range(n)})
+    claims = tmp_path / "claims"
+    real = tmp_path / "lists" / "fox.manual.txt"
+    real.parent.mkdir()
+    real.write_text("")
+    (claims / "fox.manual.txt").symlink_to(real)
+    other = tmp_path / "other"
+    other.mkdir()
+    (other / "fox.yaml").write_text(
+        (claims / "fox.yaml")
+        .read_text()
+        .replace("sources/fox.txt", str(tmp_path / "sources" / "fox.txt"))
+    )
+    (other / "fox.manual.txt").symlink_to(real)
+    start = threading.Barrier(n)
+    codes: list[int] = []
+
+    def one(i):
+        start.wait()
+        where = claims if i % 2 else other
+        codes.append(main(["manual-check", str(where / "fox.yaml"), f"c{i}"]))
+
+    threads = [threading.Thread(target=one, args=(i,)) for i in range(n)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert codes == [0] * n
+    assert sorted(x.split()[0] for x in real.read_text().splitlines()) == sorted(
+        f"c{i}" for i in range(n)
+    )

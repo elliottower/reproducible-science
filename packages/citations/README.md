@@ -347,9 +347,15 @@ after doing so, and for one quotation at a time: it takes one id per call. The i
 id where the claim has one quotation, or `<claim id>/<n>` for its n-th, counting from 1. The
 command refuses an id that names no quotation, one listed already with the fingerprint it has
 now, an argument it does not take, a page below 1, and a line the list would not read back as
-written: an id holding a space or a `#`, or a note holding a line or page break. It reads and
-writes the list under a lock, so two calls at once each keep their line, and it keeps the list's
-byte-order mark and line endings.
+written: an id holding a space or a `#`, or a note holding a line or page break. It also
+refuses a list that is not a regular file and a line that would take the list past the 1 MiB
+`verify` reads. Ids are compared in Unicode NFC, so `café` composed and decomposed are one id,
+and the line is written in NFC. It reads and writes the list under a lock on the file the list
+resolves to, so two calls at once each keep their line, through two links to one list as well,
+and it keeps the list's byte-order mark and line endings. The lock is a sidecar beside that file,
+`<stem>.manual.txt.provenance-lock`, which holds nothing and should not be committed: `repro init`
+writes `*.provenance-lock` into the project's `.gitignore`, and a project set up otherwise should
+add it.
 
 The fingerprint is of the quotation's text, the source's `sha256`, the reader the source
 declares (`extract_cmd` or its built-in extractor), and the reading: the `derived_sha256` the
@@ -364,8 +370,8 @@ fingerprint.
 `citations verify --json` records the manual checks under `manual_checks`: the lists' SHA-256s
 and one digest over them, each covered quotation with its computed outcome, the stale and
 unverifiable entries, ids naming no quotation, lists beside no claims file, and lines that did
-not parse. A list that cannot be read, or is larger than 1 MiB, is recorded there with no
-entries; 1 MiB holds some 10,000 lines, more than a person compares by hand beside one claims
+not parse. A list that cannot be read, is not a regular file (a FIFO, a device, a directory),
+or is larger than 1 MiB, is recorded there with no entries; 1 MiB holds some 10,000 lines, more than a person compares by hand beside one claims
 file. `--show-manual` prints the same. `repro verify` carries them in its JSON and in its SARIF property bag, and says
 nothing about them in its text.
 

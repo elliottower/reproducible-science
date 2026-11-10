@@ -25,9 +25,11 @@ manual check is recorded as stale, with the fingerprint the quotation has now. T
 version string is not in it: the same text read by two builds of one program is the same
 reading, and a fingerprint that moved with the build would go stale on every machine.
 
+Ids are compared in Unicode NFC, on the list and in the claims file alike.
+
 A line that does not parse, a quotation listed twice, an id naming no quotation, a list
-beside no claims file, and a list that cannot be read or is larger than `MAX_BYTES` are
-recorded, and change nothing else. The file's SHA-256 is recorded,
+beside no claims file, and a list that cannot be read, is not a regular file or is larger than
+`MAX_BYTES` are recorded, and change nothing else. The file's SHA-256 is recorded,
 with one digest over every list read. The suffix is `.txt`, not `.yaml`, so `verify` never
 reads the list as a claims file.
 """
@@ -36,8 +38,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import pathlib
 import re
+import stat
+import unicodedata
 
 from pydantic import BaseModel, Field
 
@@ -54,6 +59,10 @@ FINGERPRINT_CHARS = 12
 #: compared with the page by a person. A list past it was not written that way, and reading it
 #: whole would cost a run's memory for no record anyone made by hand.
 MAX_BYTES = 1 << 20
+
+#: Opened without blocking, so a FIFO or a terminal where a list should be is found at `fstat` and
+#: recorded, rather than waiting for a writer that never comes. Neither flag exists everywhere.
+_OPEN_FLAGS = os.O_RDONLY | getattr(os, "O_NONBLOCK", 0) | getattr(os, "O_BINARY", 0)
 
 _FINGERPRINT = re.compile(rf"[0-9a-fA-F]{{{FINGERPRINT_CHARS}}}")
 _PAGE = re.compile(r"p\.?(\d+)")
@@ -157,6 +166,11 @@ class ManualChecks(BaseModel):
         return out
 
 
+def nfc(id: str) -> str:
+    """An id in Unicode NFC, so `café` typed composed and `café` saved decomposed are one id."""
+    return unicodedata.normalize("NFC", id)
+
+
 def list_path(claims_file: pathlib.Path) -> pathlib.Path:
     return claims_file.with_name(claims_file.stem + SUFFIX)
 
@@ -184,13 +198,22 @@ def read(path: pathlib.Path, claims_file: str) -> Listed:
     """A list: one quotation id per line, then its fingerprint and `p.N` in either order.
 
     A line that does not parse, and a second line for one id, is recorded in `problems` with
-    its line number and skipped. A list that cannot be read (a directory, no permission, any
-    `OSError`) or is larger than `MAX_BYTES` is recorded there with no entries and an empty
-    `sha256`. Nothing in a list stops a run.
+    its line number and skipped. A list that cannot be read (no permission, any `OSError`), is
+    not a regular file (a directory, a FIFO, a device) or is larger than `MAX_BYTES` is recorded
+    there with no entries and an empty `sha256`. Nothing in a list stops a run.
     """
     listed = Listed(claims_file=claims_file, path=str(path), sha256="")
     try:
-        with path.open("rb") as f:
+        fd = os.open(path, _OPEN_FLAGS)
+    except OSError as e:
+        listed.problems.append(f"{path}: not read ({e.strerror or e})")
+        return listed
+    if not stat.S_ISREG(os.fstat(fd).st_mode):
+        os.close(fd)
+        listed.problems.append(f"{path}: not read, not a regular file")
+        return listed
+    try:
+        with os.fdopen(fd, "rb") as f:
             raw = f.read(MAX_BYTES + 1)
     except OSError as e:
         listed.problems.append(f"{path}: not read ({e.strerror or e})")
@@ -233,7 +256,7 @@ def _entry(line: str, n: int) -> Entry | None:
     words = body.split()
     if not words:
         return None
-    entry = Entry(id=words[0], line=n, note=note.strip())
+    entry = Entry(id=nfc(words[0]), line=n, note=note.strip())
     for word in words[1:]:
         if _FINGERPRINT.fullmatch(word) and not entry.fingerprint:
             if word != word.lower():
@@ -257,7 +280,7 @@ def line(id: str, fingerprint: str, page: int | None, note: str) -> str:
     `str.splitlines` breaks a line at, a page below 1."""
     if page is not None and page < 1:
         raise ValueError(f"a page is 1 or more; read {page}")
-    entry = Entry(id=id, line=1, fingerprint=fingerprint, page=page, note=note.strip())
+    entry = Entry(id=nfc(id), line=1, fingerprint=fingerprint, page=page, note=note.strip())
     written = entry.written()
     try:
         back = _entry(written, 1) if len(written.splitlines()) == 1 else None
@@ -274,16 +297,17 @@ def line(id: str, fingerprint: str, page: int | None, note: str) -> str:
 def quotation_ids(cf: ClaimFile) -> dict[tuple[str, int], list[str]]:
     """The ids that name each quotation, keyed by claim id and position from 0: `<claim>/<n>`
     always, and the claim id alone where the claim has one quotation and the id is not already
-    another quotation's `<claim>/<n>`, so no id names two quotations."""
+    another quotation's `<claim>/<n>`, so no id names two quotations. Each id is in NFC, as
+    `read` reads a list's."""
     quoted = {
         cid: [i for i, q in enumerate(claim.quotes) if q.text] for cid, claim in cf.claims.items()
     }
-    positional = {f"{cid}/{i + 1}" for cid, at in quoted.items() for i in at}
+    positional = {nfc(f"{cid}/{i + 1}") for cid, at in quoted.items() for i in at}
     out: dict[tuple[str, int], list[str]] = {}
     for cid, at in quoted.items():
-        alone = len(at) == 1 and cid not in positional
+        alone = len(at) == 1 and nfc(cid) not in positional
         for i in at:
-            out[(cid, i)] = [f"{cid}/{i + 1}"] + ([cid] if alone else [])
+            out[(cid, i)] = [nfc(f"{cid}/{i + 1}")] + ([nfc(cid)] if alone else [])
     return out
 
 

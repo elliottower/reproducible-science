@@ -361,7 +361,7 @@ def cmd_manual_check(a) -> int:
         raise CitationsError(f"--page is 1 or more; read {a.page}")
     path = pathlib.Path(a.claims_file).expanduser().resolve()
     cf = load_claim_file(path)
-    key = next((k for k, names in MC.quotation_ids(cf).items() if a.id in names), None)
+    key = next((k for k, names in MC.quotation_ids(cf).items() if MC.nfc(a.id) in names), None)
     if key is None:
         raise CitationsError(f"{path}: no quotation has the id `{a.id}`")
     cid, i = key
@@ -379,8 +379,9 @@ def cmd_manual_check(a) -> int:
         )
     list_file = MC.list_path(path)
     # Read, decided and written under one lock: two calls that read the same list each write it
-    # back with only their own line, and the second erases the first.
-    with exclusive_lock(list_file):
+    # back with only their own line, and the second erases the first. The lock is the resolved
+    # file's, as the write goes through a link to it, so two links to one list share one lock.
+    with exclusive_lock(os.path.realpath(list_file)):
         listed = MC.read(list_file, cf.name) if _present(list_file) else None
         if listed is not None and listed.problems:
             # Written into, a list must parse: a line appended below one that does not would be
@@ -409,13 +410,20 @@ def cmd_manual_check(a) -> int:
             line = MC.line(a.id, fingerprint, page, note or "")
         except ValueError as e:
             raise CitationsError(f"{list_file}: not written: {e}") from e
+        written = _rewritten(list_file, listed, entry, line)
+        if len(written) > MC.MAX_BYTES:
+            # `verify` reads no list past this size, so the line would be recorded nowhere.
+            raise CitationsError(
+                f"{list_file}: not written: the list would be {len(written):,} bytes, and verify "
+                f"reads none larger than {MC.MAX_BYTES:,}"
+            )
 
         print(f"claims  {path}")
         print(f"source  {cf.source.citation}  ({artifact or 'no copy named'})")
         print(f"page    {q.page if q.page is not None else 'none recorded'}")
         print(f"quote   {q.text}")
         print(f"computed outcome: {r.state}; a manual check changes no outcome")
-        atomic_write_bytes(list_file, _rewritten(list_file, listed, entry, line))
+        atomic_write_bytes(list_file, written)
         if entry is not None:
             print(f"replaces the earlier check on line {entry.line}: {entry.written()}")
     print(f"wrote   {line}")
