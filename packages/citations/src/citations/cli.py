@@ -54,6 +54,12 @@ WARNINGS = {
     "page": "found, but not on the page recorded",
     "page unchecked": "a page is recorded and was not checked: the source has no pages to ask "
     "for, or the passage matched only with spacing ignored",
+}
+
+#: The warnings `verify.correct` adds to a `corrected` result, apart from `WARNINGS`: they say
+#: what a correction typed by hand changes, and no check of a passage against a source's text
+#: can raise them.
+CORRECTION_WARNINGS = {
     "correction changes a number": "the passage recorded by hand has other numbers than what "
     "the extractor reads — compare it with the page",
     "correction adds a negation": "the passage recorded by hand denies what the extractor "
@@ -544,7 +550,7 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
     if warned:
         print("\nwarnings")
         for w, which in sorted(warned.items(), key=lambda kv: (-len(kv[1]), kv[0])):
-            print(f"  {len(which):>7,}  {w} — {WARNINGS.get(w, '')}")
+            print(f"  {len(which):>7,}  {w} — {(WARNINGS | CORRECTION_WARNINGS).get(w, '')}")
             # Which quotations, under `--verbose`. A count says how many to open and not
             # which; finding them meant calling `check_one` from a script.
             if getattr(a, "verbose", False):
