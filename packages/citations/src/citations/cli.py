@@ -54,6 +54,16 @@ WARNINGS = {
     "page": "found, but not on the page recorded",
     "page unchecked": "a page is recorded and was not checked: the source has no pages to ask "
     "for, or the passage matched only with spacing ignored",
+    "correction changes a number": "the passage recorded by hand has other numbers than what "
+    "the extractor reads — compare it with the page",
+    "correction adds a negation": "the passage recorded by hand denies what the extractor "
+    "reads — compare it with the page",
+    "correction removes a negation": "the extractor reads a denial the passage recorded by hand "
+    "drops — compare it with the page",
+    "correction adds a hedge": "the passage recorded by hand hedges what the extractor reads — "
+    "compare it with the page",
+    "correction removes a hedge": "the extractor reads a hedge the passage recorded by hand "
+    "drops — compare it with the page",
 }
 
 
@@ -129,6 +139,11 @@ def _corrected(
     one that does not apply is noted with why; neither is applied. See `verify.correct`.
     """
     if q.correction is None:
+        if "corrections" in (q.model_extra or {}):
+            # A misspelt key would otherwise drop the correction without a word.
+            rep.unapplied_corrections.append(
+                (name, "`corrections` is not a field this package reads; it is `correction`")
+            )
         return r
     if r.state in ("found", "ambiguous"):
         rep.unneeded_corrections.append(name)
@@ -139,7 +154,11 @@ def _corrected(
     if made.unapplied:
         rep.unapplied_corrections.append((name, made.unapplied))
     else:
-        rep.corrected.append((name, q.text, made.note))
+        flags = tuple(w for w in made.result.warnings if w.startswith("correction "))
+        c = q.correction
+        rep.corrected.append(
+            V.Corrected(name, q.text, made.note, c.reads, c.passage, made.diff, flags)
+        )
     return made.result
 
 
@@ -387,8 +406,15 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
                     "unapplied_corrections": len(rep.unapplied_corrections),
                     "unneeded_corrections": len(rep.unneeded_corrections),
                     "corrected": [
-                        {"claim": name, "quote": text, "note": note}
-                        for name, text, note in rep.corrected
+                        {
+                            "claim": c.claim,
+                            "quote": c.quote,
+                            "note": c.note,
+                            "reads": c.reads,
+                            "passage": c.passage,
+                            "diff": c.diff,
+                        }
+                        for c in rep.corrected
                     ],
                     "warnings": _warned(rep),
                 },
@@ -420,8 +446,6 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
         if s == "corrected":
             # Never folded into `found`: the passage was compared with text a person recorded.
             why = "   in a passage recorded by hand where the extractor misreads the page"
-            if not getattr(a, "verbose", False):
-                why += "; `--verbose` lists them"
         if s in ("unchecked", "indeterminate", "ambiguous"):
             # Untruncated: the reason is the only thing that says what to fix, and the one
             # that matters most -- "which this run does not allow" -- is at the end of it.
@@ -432,9 +456,16 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
                 else f"   {reasons.most_common(1)[0][0]}"
             )
         print(f"  {s:<{OUTCOME_WIDTH}}{n:>7,}{why}")
-        if s == "corrected" and getattr(a, "verbose", False):
-            for name, text, _ in rep.corrected:
-                print(f"             {name[:38]:<40}{text[:60]}")
+        if s == "corrected":
+            # What each correction changed, always: they are few, and a change of meaning
+            # typed by hand is read here or nowhere.
+            for c in rep.corrected:
+                flagged = f"   ({'; '.join(c.flags)})" if c.flags else ""
+                if getattr(a, "verbose", False):
+                    print(f"             {c.claim[:38]:<40}{c.quote[:60]}")
+                    print(f"             {'':<40}{c.diff}{flagged}")
+                else:
+                    print(f"             {c.claim[:38]:<40}{c.diff}{flagged}")
 
     # Which extractor a verdict rests on, before the verdicts. A `found` taken through a
     # declared renderer and one taken through `pdftotext` are different records, and a report
@@ -588,7 +619,7 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
             print(f"  {name[:38]:<40}{why}")
         if n > 10:
             print(f"  ... and {n - 10} more")
-    if noted := [(name, note) for name, _, note in rep.corrected if note]:
+    if noted := [(c.claim, c.note) for c in rep.corrected if c.note]:
         n = len(noted)
         print(
             f"\n{n} correction{'' if n == 1 else 's'} applied under another reading than "

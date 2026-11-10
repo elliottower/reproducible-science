@@ -485,13 +485,34 @@ class Record(_Base):
 
 #: libyaml's loader where PyYAML was built with it, which every published wheel is. It reads the
 #: same documents as the Python loader, several times faster.
-_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+_FAST_LOADER: Any = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+
+
+class _Loader(_FAST_LOADER):
+    """The loader above, refusing a mapping that names `correction` twice.
+
+    YAML keeps the last of two equal keys and says nothing, so of two corrections written on one
+    quotation the first would be dropped unread. Other repeated keys are left as YAML reads
+    them: claims files written before this check may carry them.
+    """
+
+    def construct_mapping(self, node, deep=False):
+        keys = [k.value for k, _ in node.value if isinstance(k, yaml.ScalarNode)]
+        if keys.count("correction") > 1:
+            raise yaml.constructor.ConstructorError(
+                None,
+                None,
+                "a quotation carries `correction` twice, and YAML would keep only the last; "
+                "keep one",
+                node.start_mark,
+            )
+        return super().construct_mapping(node, deep)
 
 
 def _load_yaml(path: pathlib.Path) -> dict[str, Any]:
     """Parse one YAML file into a mapping, naming the file when it is not one."""
     try:
-        raw = yaml.load(path.read_text(), Loader=_LOADER) or {}
+        raw = yaml.load(path.read_text(), Loader=_Loader) or {}
     except yaml.YAMLError as e:
         raise ClaimFileError(path, f"not valid YAML: {e}") from e
     except OSError as e:

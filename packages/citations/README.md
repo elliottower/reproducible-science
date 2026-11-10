@@ -563,17 +563,24 @@ citations pin claims/smith2020.yaml --id efficiency --page 4 \
 ```
 
 `verify` compares the quotation with `passage` and reports it `corrected`, counted apart from
-`found` in the text report, `--json` and `repro verify`; `--verbose` and the `corrected` list in
-`--json` name each one. A correction applies only to a `not found`, and only where all of these
-hold:
+`found` in the text report, `--json` and `repro verify`. The text report lists each corrected
+quotation with what its correction changes, `"eciency" → "efficiency"`, and `--verbose` adds
+the quotation; the `corrected` list in `--json` carries `reads`, `passage` and that `diff`. A
+correction that inserts, removes or changes a number, or adds or removes one of `not`, `no`,
+`never`, `without`, `cannot`, a word ending `n't`, `may` or `might`, carries a warning saying so
+(`correction changes a number`, `correction adds a negation`, `correction removes a hedge`, and
+so on). The warning fails nothing: it says where to compare the passage with the page.
+
+A correction applies only to a `not found`, and only where all of these hold:
 
 | Condition | Why |
 |-----------|-----|
 | the source's sha256 is the recorded `sha256` | other bytes are another document |
-| `reads` occurs exactly once in this run's reading, on the recorded `page` where the source has pages | it names the place the extractor misreads, and the place must be there |
+| `reads` is 12 to 200 characters and `passage` at most 400, white space removed | under 12 a `reads` matches nearly anywhere; a correction is for a misread span a person compares with the page, and the bounds keep a record written by hand from making `verify` slow |
+| `reads` occurs exactly once in this run's reading, on the recorded `page` where the source has pages | it names the place the extractor misreads, and the place must be there; where it was counted in the whole text, under a declared `extract_cmd` or a source without pages, the result carries `page unchecked` |
 | the quotation's `page`, where it has one, is the correction's `page` | the two would otherwise describe two places |
 | `passage` holds the quotation | the correction must support what is quoted |
-| `reads` is at least 12 characters, and `passage` holds a stretch within a difflib ratio of 0.8 of it that overlaps the quotation | a short or unrelated `reads` names some place on the page, not the place the passage corrects |
+| `passage` holds a stretch within a difflib ratio of 0.8 of `reads` that overlaps the quotation | an unrelated `reads` names some place on the page, not the place the passage corrects |
 | the quotation lies within the stretch of `passage` aligned with `reads`, to 3 characters (white space removed) at either end | text the passage carries past what `reads` covers is checked against nothing the extractor produced; 3 covers a misread `m` or a dropped `ffi` at the quotation's first or last letter |
 
 `extractor`, `extractor_version` and `derived_sha256` are recorded and decide nothing. A digest
@@ -589,6 +596,14 @@ A correction that does not apply is listed with why, for example ``it does not d
 machine's reading: `reads` occurs 2 times on page 4 of what pdftotext -layout produced``, and the
 quotation keeps the verdict the extractor's text gives it. Where the extractor's text now holds
 the quotation, the verdict is `found` and `verify` says the correction may no longer be needed.
+
+The stretch is found by one alignment: `reads` is anchored on the longest run it shares exactly
+with `passage`, aligned once around it, and the ratio is computed once on the span that
+alignment covers. The lengths are checked first, so an oversized record is refused before
+anything is searched.
+
+A quotation carrying `correction` twice is refused when its claims file is read, since YAML would
+keep only the last; a key spelled `corrections` is listed among the corrections not applied.
 
 `pin --correct` refuses a quotation the extractor's text already holds and a correction
 `verify` would not apply here. `repro verify` grades `corrected` as a warning under

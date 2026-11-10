@@ -153,14 +153,33 @@ MIN_PIECE_CHARS = 20
 #: two anchors of 553,000 characters each. Past this the answer is a refusal that says so.
 MAX_ANCHOR_CHARS = 1000
 
-#: The shortest `reads` a correction accepts, in folded characters. About two words: the word
-#: the extractor misread and one beside it. `reads` is how a correction names its place in the
-#: extractor's text, and it applies only where it occurs there exactly once; a single word
-#: passes that test by chance on a page that uses it once, and at `READS_LIKENESS` a string
-#: under twelve characters is within two edits of nearly any word of its length, so the
-#: passage could hold a "near-copy" of it anywhere. Shorter than `MIN_PIECE_CHARS`, because a
-#: misreading is often a word or two wide and the uniqueness test does the rest.
+#: The shortest `reads` a correction accepts, in characters with white space removed, as
+#: `READS_LIKENESS` compares them. About two words: the word the extractor misread and one
+#: beside it. `reads` is how a correction names its place in the extractor's text, and it
+#: applies only where it occurs there exactly once; a single word passes that test by chance on
+#: a page that uses it once, and at `READS_LIKENESS` a string under twelve characters is within
+#: two edits of nearly any word of its length, so the passage could hold a "near-copy" of it
+#: anywhere. Counted with spaces, `1 0 . 1 1 4 5` would pass as thirteen characters and compare
+#: as seven. Shorter than `MIN_PIECE_CHARS`, because a misreading is often a word or two wide
+#: and the uniqueness test does the rest.
 MIN_READS_CHARS = 12
+
+#: The longest `reads` a correction accepts, in characters with white space removed. A
+#: correction is for a misread word, a dropped ligature or a garbled number, a span a person
+#: compares with the page by eye. Placing `reads` in `passage` is one alignment of the two,
+#: which grows with the product of their lengths, and a bound keeps a record written by hand
+#: from making `verify` slow.
+MAX_READS_CHARS = 200
+
+#: The longest `passage` a correction accepts, likewise: room for the misread span and the
+#: words on either side of it.
+MAX_PASSAGE_CHARS = 2 * MAX_READS_CHARS
+
+#: Words that deny or hedge what a sentence says. A correction adding or removing one changes
+#: the claim the quotation makes, and the report says so beside it. A word ending `n't` is a
+#: negation too.
+NEGATIONS = frozenset({"not", "no", "never", "without", "cannot"})
+HEDGES = frozenset({"may", "might"})
 
 #: How alike `reads` and the stretch of `passage` it corrects must be, as difflib's ratio over
 #: the two with white space removed. A dropped ligature or an OCR `li` for `k` costs a few
@@ -465,6 +484,22 @@ class Pin:
         return self.state == "ok"
 
 
+@dataclass(frozen=True)
+class Corrected:
+    """One quotation reported `corrected`, and what its correction changed."""
+
+    claim: str
+    quote: str
+    note: str
+    """Where it was applied under another reader, version or text than it was recorded under."""
+    reads: str
+    passage: str
+    diff: str
+    """From `reads` to the passage. See `correction_difference`."""
+    flags: tuple[str, ...] = ()
+    """The warnings `correction_difference` raised."""
+
+
 @dataclass
 class Report:
     checked: int = 0
@@ -484,9 +519,8 @@ class Report:
     unapplied_corrections: list[tuple[str, str]] = field(default_factory=list)
     """Quotations carrying a correction that was not applied, with why: it does not describe
     this machine's reading, or it cannot stand for the quotation. See `correct`."""
-    corrected: list[tuple[str, str, str]] = field(default_factory=list)
-    """Quotations reported `corrected`, each with its text and the note saying where it was
-    applied under another reader, version or text than it was recorded under."""
+    corrected: list[Corrected] = field(default_factory=list)
+    """Quotations reported `corrected`. See `Corrected`."""
     unneeded_corrections: list[str] = field(default_factory=list)
     """Quotations carrying a correction whose source text now holds the quotation as written.
     The computed verdict stands, and the correction may no longer be needed."""
@@ -1527,89 +1561,175 @@ def reads_count(
     return resolve_in(reads, got.text).count, "in"
 
 
-def _near_copy(q: str, p: str, r: str) -> tuple[int, int] | None:
-    """A window of `p` within `READS_LIKENESS` of `r` overlapping an occurrence of `q`.
+def correction_size_fault(passage: str, reads: str) -> str:
+    """Why `reads` or `passage` is outside the lengths a correction may have, or empty.
 
-    The window as `(start, end)`, or None. All three are skeletons, white space removed.
-    Every window of a length that could reach the ratio, among those overlapping an occurrence
-    of the quotation, is compared until one does; `quick_ratio` is an upper bound on `ratio`
-    and rules most of them out cheaply.
+    Counted with white space removed, as `correction_fault` compares them, and checked before
+    anything is searched for: a record written by hand reaches `verify` without passing `pin`,
+    and a bound that applied only after the search would not bound it.
     """
-    spans, at = [], p.find(q)
-    while q and at >= 0:
-        spans.append((at, at + len(q)))
-        at = p.find(q, at + 1)
-    if not spans or not r:
-        return None
-    likeness = difflib.SequenceMatcher(None, autojunk=False)
-    likeness.set_seq2(r)
-    shortest = -(-2 * len(r) // 3)
-    for width in range(shortest, min(len(p), 3 * len(r) // 2) + 1):
-        for lo, hi in spans:
-            for i in range(max(0, lo - width + 1), min(hi, len(p) - width + 1)):
-                likeness.set_seq1(p[i : i + width])
-                if likeness.quick_ratio() >= READS_LIKENESS and (
-                    likeness.ratio() >= READS_LIKENESS
-                ):
-                    return i, i + width
-    return None
+    if (n := len(skeleton(reads))) < MIN_READS_CHARS:
+        return (
+            f"`reads` is {n} characters with white space removed, and names a place in the "
+            f"extractor's text only from {MIN_READS_CHARS}"
+        )
+    if n > MAX_READS_CHARS:
+        return (
+            f"a correction covers a misread passage of up to {MAX_READS_CHARS} characters, "
+            f"white space removed, and this `reads` is {n}; correct a shorter span"
+        )
+    if (m := len(skeleton(passage))) > MAX_PASSAGE_CHARS:
+        return (
+            f"a correction records a passage of up to {MAX_PASSAGE_CHARS} characters, white "
+            f"space removed, and this one is {m}; correct a shorter span"
+        )
+    return ""
 
 
-def _corrected_stretch(p: str, r: str, start: int, end: int) -> tuple[int, int] | None:
-    """The stretch of `p` that corrects `r`, from a window of it `_near_copy` found.
+def _aligned(doc: str, r: str) -> tuple[int, int] | None:
+    """Where `r` aligns in `doc`, from the first to the last run of `MIN_ALIGNED_RUN` aligned.
 
-    `r` is aligned once against the window widened by its own length at each end, which holds
-    any part of the correction the window left out, and the stretch runs from the first to the
-    last run of `MIN_ALIGNED_RUN` characters aligned. Shorter runs are what is left of `r` after
-    its copy is aligned, matched by chance in the text around it. None where the stretch is not
-    itself within `READS_LIKENESS` of `r`.
+    Anchored on the longest stretch the two share exactly: `r` is aligned once against the part
+    of `doc` its copy could occupy around that stretch, half its length again on each side, as
+    much as a copy within `READS_LIKENESS` of `r` can be longer than `r`. Runs shorter than
+    `MIN_ALIGNED_RUN` are what is left of `r` after its copy is aligned, matched by chance in
+    the text around it, and the margin keeps the rest of `doc` from offering more. None where
+    the two share no such run.
     """
-    base = max(0, start - len(r))
-    region = p[base : end + len(r)]
-    runs = [
-        b
-        for b in difflib.SequenceMatcher(None, region, r, autojunk=False).get_matching_blocks()
-        if b.size >= MIN_ALIGNED_RUN
-    ]
-    if not runs:
+    matcher = difflib.SequenceMatcher(None, doc, r, autojunk=False)
+    anchor = matcher.find_longest_match(0, len(doc), 0, len(r))
+    if anchor.size < MIN_ALIGNED_RUN:
         return None
-    a, b = base + runs[0].a, base + runs[-1].a + runs[-1].size
-    if difflib.SequenceMatcher(None, p[a:b], r, autojunk=False).ratio() < READS_LIKENESS:
+    margin = len(r) // 2 + READS_EDGE
+    lo = max(0, anchor.a - anchor.b - margin)
+    hi = min(len(doc), anchor.a + len(r) - anchor.b + margin)
+    matcher.set_seq1(doc[lo:hi])
+    runs = [b for b in matcher.get_matching_blocks() if b.size >= MIN_ALIGNED_RUN]
+    return lo + runs[0].a, lo + runs[-1].a + runs[-1].size
+
+
+def _corrected_stretch(p: str, r: str) -> tuple[int, int] | None:
+    """The stretch of `p` that corrects `r`, or None where nothing in `p` is like `r`.
+
+    Both are skeletons, white space removed. The stretch is where `_aligned` places `r`, and
+    the answer where it is itself within `READS_LIKENESS` of `r`, the one ratio computed. Two
+    alignments and a ratio, whatever the passage holds: comparing every window of every width
+    around every occurrence of the quotation took 53 seconds for a `reads` of 800 characters
+    beside a shuffled copy of it.
+    """
+    if (stretch := _aligned(p, r)) is None:
         return None
-    return a, b
+    ratio = difflib.SequenceMatcher(None, p[slice(*stretch)], r, autojunk=False).ratio()
+    return stretch if ratio >= READS_LIKENESS else None
+
+
+def _starts(needle: str, doc: str) -> list[int]:
+    """Every place `needle` begins in `doc`, overlapping ones included."""
+    out, at = [], doc.find(needle)
+    while needle and at >= 0:
+        out.append(at)
+        at = doc.find(needle, at + 1)
+    return out
 
 
 def correction_fault(quote: str, passage: str, reads: str) -> str:
     """Why a correction cannot stand for this quotation, or empty where it can.
 
-    Four ways, each checked by `pin --correct` before it writes and by `verify` before it
-    applies a record, which may have been written by hand: `reads` too short to name a place,
-    a passage that does not hold the quotation, a passage holding nothing like `reads` where it
-    holds the quotation, and a quotation reaching past the stretch of the passage that corrects
-    `reads`. The third is what stops a real stretch of the extractor's text being recorded as
-    `reads` beside a passage the page does not print; the fourth stops a faithful correction of
-    `reads` carrying invented text after it into what is quoted.
+    Five ways, each checked by `pin --correct` before it writes and by `verify` before it
+    applies a record, which may have been written by hand: `reads` too short to name a place
+    or `reads` or the passage longer than a correction covers (`correction_size_fault`), a
+    passage that does not hold the quotation, a passage holding nothing like `reads` where it
+    holds the quotation, and a quotation reaching past the stretch of the passage that
+    corrects `reads`. The fourth is what stops a real stretch of the extractor's text being
+    recorded as `reads` beside a passage the page does not print; the fifth stops a faithful
+    correction of `reads` carrying invented text after it into what is quoted.
     """
-    if (n := len(passage_fold(reads))) < MIN_READS_CHARS:
-        return (
-            f"`reads` is {n} characters, and names a place in the extractor's text only from "
-            f"{MIN_READS_CHARS}"
-        )
+    if fault := correction_size_fault(passage, reads):
+        return fault
     if resolve_in(quote, passage).state == "not found":
         return "the passage does not hold the quotation"
     q, p, r = skeleton(quote), skeleton(passage), skeleton(reads)
-    if (window := _near_copy(q, p, r)) is None:
+    stretch = _corrected_stretch(p, r)
+    overlaps = stretch is not None and any(
+        a < stretch[1] and a + len(q) > stretch[0] for a in _starts(q, p)
+    )
+    if stretch is None or not overlaps:
         return (
             f"the passage holds nothing within {READS_LIKENESS} of `reads` where it holds the "
             f"quotation, so it does not correct the text `reads` names"
         )
-    stretch = _corrected_stretch(p, r, *window)
-    if stretch is None or q not in p[max(0, stretch[0] - READS_EDGE) : stretch[1] + READS_EDGE]:
+    if q not in p[max(0, stretch[0] - READS_EDGE) : stretch[1] + READS_EDGE]:
         return (
             f"the quotation reaches more than {READS_EDGE} characters past the stretch of the "
             f"passage that corrects `reads`, so `reads` does not cover what is quoted"
         )
     return ""
+
+
+#: A word, a number with its decimal point, or one mark of punctuation: the units a correction's
+#: difference is counted in, so a full stop after the passage is not a change to its last word.
+_TOKEN = re.compile(r"\d+(?:[.,]\d+)*|\w+(?:'\w+)*|[^\w\s]")
+
+
+def _says(words: list[str]) -> tuple[list[str], int, int]:
+    """The numbers in `words`, white space removed, and how many words negate and hedge."""
+    numbers = re.findall(r"\d+(?:[.,]\d+)*", "".join(words))
+    negations = sum(w in NEGATIONS or w.endswith("n't") for w in words)
+    return numbers, negations, sum(w in HEDGES for w in words)
+
+
+def correction_difference(quote: str, passage: str, reads: str) -> tuple[str, list[str]]:
+    """What the correction changes from `reads` to `passage`, and the warnings it raises.
+
+    The difference is each changed stretch, as `"reads" → "passage"` in folded text, an
+    insertion or deletion shown with the word beside it. Words of the passage outside the part
+    `reads` aligns with are left out where the quotation does not reach them: they are the
+    sentence around the misreading, not a change to it. The warnings are `correction changes
+    a number` where the numbers on the two sides differ, white space removed, and `correction
+    adds a negation`, `removes a negation`, `adds a hedge` or `removes a hedge` for the words in
+    `NEGATIONS` and `HEDGES`. They disclose; nothing fails on them.
+    """
+    fr, fp, fq = passage_fold(reads), passage_fold(passage), passage_fold(quote)
+    # The part of the passage `reads` aligns with, and the quotation where it reaches further.
+    # The rest is the sentence around the misreading, and shares short words with `reads` by
+    # chance: diffed against the whole passage, `of` in `coefcient of` aligns with an `of`
+    # two clauses earlier.
+    lo, hi = _aligned(fp, fr) or (0, len(fp))
+    if fq and (k := fp.find(fq)) >= 0:
+        lo, hi = min(lo, k), max(hi, k + len(fq))
+    rt = list(_TOKEN.finditer(fr))
+    pt = [t for t in _TOKEN.finditer(fp) if t.end() > lo and t.start() < hi]
+    rw, pw = [t.group() for t in rt], [t.group() for t in pt]
+    ops = difflib.SequenceMatcher(None, rw, pw, autojunk=False).get_opcodes()
+
+    def text(fold: str, tokens: list[re.Match[str]], i: int, j: int) -> str:
+        return fold[tokens[i].start() : tokens[j - 1].end()] if i < j else ""
+
+    shown: list[str] = []
+    old: list[str] = []
+    new: list[str] = []
+    for tag, i1, i2, j1, j2 in ops:
+        if tag == "equal" or (i1 == i2 and j1 == j2):
+            continue
+        old += rw[i1:i2]
+        new += pw[j1:j2]
+        a, b = (i1, i2), (j1, j2)
+        if i1 == i2 or j1 == j2:
+            # With the word beside it, so an inserted `not` reads as `will` → `will not`.
+            if i1 > 0:
+                a, b = (i1 - 1, i2), (j1 - 1, j2)
+            elif i2 < len(rw):
+                a, b = (i1, i2 + 1), (j1, j2 + 1)
+        shown.append(f'"{text(fr, rt, *a)}" → "{text(fp, pt, *b)}"')
+    (n_old, neg_old, hedge_old), (n_new, neg_new, hedge_new) = _says(old), _says(new)
+    flags = []
+    if n_old != n_new:
+        flags.append("correction changes a number")
+    if neg_new != neg_old:
+        flags.append(f"correction {'adds' if neg_new > neg_old else 'removes'} a negation")
+    if hedge_new != hedge_old:
+        flags.append(f"correction {'adds' if hedge_new > hedge_old else 'removes'} a hedge")
+    return "; ".join(shown), flags
 
 
 def _reader(extractor: str, version: str) -> str:
@@ -1626,6 +1746,8 @@ class Correcting:
     note: str = ""
     """Where the correction was applied under another reader, version or text than it was
     recorded under, the two named. Empty where it was not applied, or where nothing differs."""
+    diff: str = ""
+    """What the correction changes from `reads` to the passage. See `correction_difference`."""
 
 
 def correct(
@@ -1641,9 +1763,11 @@ def correct(
 
     `computed` is the verdict against the extractor's text, which nothing here modifies, and
     only a `not found` is considered. The correction applies where the source's bytes are the
-    ones it was recorded against, `reads` occurs exactly once in this run's reading (on the
-    recorded page, where the source has pages), the passage holds the quotation, and
-    `correction_fault` finds nothing; it then gives `corrected`, which is never `found`.
+    ones it was recorded against, `reads` and the passage are of the lengths a correction
+    covers, `reads` occurs exactly once in this run's reading (on the recorded page, where the
+    source has pages, and with `page unchecked` where it was counted in the whole text), and
+    `correction_fault` finds nothing; it then gives `corrected`, which is never `found`, with
+    the warnings `correction_difference` raises.
 
     The extractor, its version and `derived_sha256` are recorded and decide nothing, with one
     exception: a built-in extractor is this package's own code, so its text differing means
@@ -1687,7 +1811,7 @@ def correct(
             f"produced text {derived[:12]}, and {computed.extractor} now produces "
             f"{computed.extraction_digest[:12]}"
         )
-    if fault := correction_fault(quote, correction.passage, correction.reads):
+    if fault := correction_size_fault(correction.passage, correction.reads):
         return unapplied(fault)
     try:
         n, where = reads_count(
@@ -1701,6 +1825,8 @@ def correct(
             f"it does not describe this machine's reading: `reads` {said} {where} what "
             f"{computed.extractor} produced"
         )
+    if fault := correction_fault(quote, correction.passage, correction.reads):
+        return unapplied(fault)
 
     now = extractor_version(computed.extractor)
     note = ""
@@ -1713,19 +1839,24 @@ def correct(
         text = f"extracted text {computed.extraction_digest[:12]}, recorded {derived[:12]}"
         note = f"{note}; {text}" if note else f"applied to {text}"
     m = resolve_in(quote, correction.passage)
+    diff, flags = correction_difference(quote, correction.passage, correction.reads)
     return Correcting(
         Result(
             "corrected",
             f"in the passage recorded by hand for page {correction.page}, where "
             f"{computed.extractor} reads {correction.reads[:80]!r}" + (f"; {note}" if note else ""),
             [w for w in computed.warnings if w == "short"]
-            + (["normalized"] if m.normalized else []),
+            + (["normalized"] if m.normalized else [])
+            # Counted in the whole text, `reads` said nothing about which page it is on.
+            + (["page unchecked"] if where == "in" else [])
+            + flags,
             extractor=computed.extractor,
             extraction_digest=computed.extraction_digest,
             fallback=computed.fallback,
             fallback_reason=computed.fallback_reason,
         ),
         note=note,
+        diff=diff,
     )
 
 

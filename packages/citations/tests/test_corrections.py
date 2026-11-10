@@ -11,6 +11,9 @@ from __future__ import annotations
 import hashlib
 import json
 import pathlib
+import random
+import string
+import time
 
 import pytest
 import yaml
@@ -95,10 +98,19 @@ def test_a_corrected_quotation_reports_corrected_never_found_and_is_named(paper,
     assert code == 0
     assert account["counts"]["corrected"] == 1
     assert account["counts"]["found"] == 0
-    assert account["corrected"] == [{"claim": "smith:eff", "quote": QUOTE, "note": ""}]
+    assert account["corrected"] == [
+        {
+            "claim": "smith:eff",
+            "quote": QUOTE,
+            "note": "",
+            "reads": READS,
+            "passage": PRINTED,
+            "diff": '"eciency" → "efficiency"',
+        }
+    ]
     assert "all found." not in out
     assert "1 corrected" in out
-    assert f"smith:eff{' ' * 31}{QUOTE[:60]}" in out
+    assert f'smith:eff{" " * 31}{QUOTE[:60]}\n{" " * 53}"eciency" → "efficiency"\n' in out
 
 
 def test_a_corrected_quotation_passes_under_strict(paper):
@@ -242,7 +254,7 @@ def test_the_quotation_may_reach_three_characters_past_the_corrected_stretch_and
 
 def test_a_reads_too_short_to_name_a_place_is_refused_and_not_applied(paper, capsys):
     assert pin_corrected(paper, reads="of eciency") == 1
-    assert "`reads` is 10 characters" in capsys.readouterr().out
+    assert "`reads` is 9 characters with white space removed" in capsys.readouterr().out
     write_by_hand(paper, QUOTE, reads="of eciency")
     code, account = verify(paper)
     assert code == 1
@@ -324,6 +336,152 @@ def test_pin_refuses_a_correction_where_the_extractor_already_reads_the_quotatio
     assert pin_corrected(paper, quote="reports that the coefficient of eciency was 0.81") == 1
     assert paper.read_text() == before
     assert "no correction is needed" in capsys.readouterr().out
+
+
+def test_a_reads_counted_long_only_through_its_spaces_is_refused_and_not_applied(tmp_path, capsys):
+    f = claims_file(tmp_path, "The DOI prefix 1 0 . 1 1 4 5 names the publisher.\n")
+    before = f.read_text()
+    assert pin_corrected(f, quote="10.1146", passage="10.1146", reads="1 0 . 1 1 4 5") == 1
+    assert f.read_text() == before
+    assert "`reads` is 7 characters with white space removed" in capsys.readouterr().out
+
+    write_by_hand(f, "10.1146", passage="10.1146", reads="1 0 . 1 1 4 5")
+    code, account = verify(f)
+    assert code == 1
+    assert account["counts"]["corrected"] == 0
+    assert account["unapplied_corrections"] == 1
+
+
+def prose(n: int) -> str:
+    words = "the of and a to in is was for that with as on by be are this from at or an".split()
+    out: list[str] = []
+    length = 0
+    while length < n:
+        out.append(random.choice([*words, "".join(random.choices(string.ascii_lowercase, k=6))]))
+        length += len(out[-1]) + 1
+    return " ".join(out)[:n]
+
+
+def test_a_reads_or_passage_longer_than_a_correction_covers_is_refused_and_not_applied(
+    tmp_path, capsys
+):
+    long_reads = "the coefficient of eciency " * 8 + "was 0.81 across all twelve sites"
+    f = claims_file(tmp_path, long_reads + "\n")
+    long_passage = long_reads.replace("eciency", "efficiency")
+    before = f.read_text()
+    assert pin_corrected(f, passage=long_passage, reads=long_reads) == 1
+    assert f.read_text() == before
+    out = capsys.readouterr().out
+    assert "a correction covers a misread passage of up to 200 characters" in out
+    assert "correct a shorter span" in out
+
+    passage = prose(2 * V.MAX_PASSAGE_CHARS) + " " + PRINTED
+    assert "records a passage of up to 400 characters" in V.correction_fault(QUOTE, passage, READS)
+
+
+def test_an_oversized_record_written_by_hand_is_not_applied_before_anything_is_searched(
+    paper, capsys, monkeypatch
+):
+    def searched(*a, **kw):
+        raise AssertionError("searched an oversized correction")
+
+    monkeypatch.setattr(V, "reads_count", searched)
+    monkeypatch.setattr(V, "_corrected_stretch", searched)
+    reads = "".join(random.choices(string.ascii_lowercase + " ", k=100_000))
+    write_by_hand(paper, QUOTE, reads=reads, passage=reads + " " + PRINTED)
+    started = time.perf_counter()
+    code, account = verify(paper)
+    assert time.perf_counter() - started < 2
+    assert code == 1
+    assert account["unapplied_corrections"] == 1
+    assert "correct a shorter span" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("shape", ["shuffled", "quotation repeated"])
+def test_correction_fault_on_the_slowest_shapes_within_the_bounds_takes_well_under_a_second(
+    shape,
+):
+    # At the bounds with white space removed, as they are counted.
+    reads = prose(3 * V.MAX_READS_CHARS).replace(" ", "")[: V.MAX_READS_CHARS]
+    if shape == "shuffled":
+        letters = reads + prose(3 * V.MAX_READS_CHARS).replace(" ", "")[: V.MAX_READS_CHARS]
+        passage = "".join(random.sample(letters, len(letters)))
+        quote = passage[5:17]
+    else:
+        passage = "".join("zq" + prose(20).replace(" ", "")[:10] for _ in range(33))
+        quote = "zq"
+    assert len(V.skeleton(passage)) <= V.MAX_PASSAGE_CHARS
+    started = time.perf_counter()
+    fault = V.correction_fault(quote, passage, reads)
+    assert time.perf_counter() - started < 0.5
+    assert "holds nothing within 0.8 of `reads`" in fault
+
+
+INCREASES = "Studies find that reproducibility increases impact, visibility, and trust.\n"
+
+
+def test_a_correction_that_adds_a_negation_is_shown_and_flagged_by_default(tmp_path, capsys):
+    f = claims_file(tmp_path, INCREASES)
+    quote = "reproducibility does not increase impact"
+    passage = "reproducibility does not increase impact, visibility, and"
+    reads = "reproducibility increases impact, visibility, and"
+    assert pin_corrected(f, quote=quote, passage=passage, reads=reads) == 0
+    capsys.readouterr()
+    code, account = verify(f)
+    out = capsys.readouterr().out
+    assert code == 0
+    shown = '"increases" → "does not increase"'
+    assert account["corrected"][0]["diff"] == shown
+    assert account["corrected"][0]["reads"] == reads
+    assert account["corrected"][0]["passage"] == passage
+    assert f"smith:eff{' ' * 31}{shown}   (correction adds a negation)\n" in out
+    assert [w["claim"] for w in account["warnings"]["correction adds a negation"]] == ["smith:eff"]
+
+
+def test_a_correction_that_changes_a_digit_is_flagged_and_one_that_fixes_a_ligature_is_not(
+    tmp_path,
+):
+    f = claims_file(tmp_path, TEXT)
+    quote = QUOTE.replace("0.81", "0.91")
+    assert pin_corrected(f, quote=quote, passage=PRINTED.replace("0.81", "0.91")) == 0
+    code, account = verify(f)
+    assert code == 0
+    assert account["corrected"][0]["diff"] == '"eciency" → "efficiency"; "0.81" → "0.91"'
+    assert "correction changes a number" in account["warnings"]
+    assert V.correction_difference(QUOTE, PRINTED, READS) == ('"eciency" → "efficiency"', [])
+
+
+def test_a_correction_counted_in_a_declared_readers_whole_text_keeps_page_unchecked(tmp_path):
+    f = claims_file(tmp_path, TEXT)
+    f.write_text(f.read_text().replace("claims: {}", "  extract_cmd: cat {}\nclaims: {}"))
+    assert pin_corrected(f) == 0
+    code, account = verify(f)
+    assert code == 0
+    assert account["counts"]["corrected"] == 1
+    assert [w["claim"] for w in account["warnings"]["page unchecked"]] == ["smith:eff"]
+
+
+def test_a_quotation_carrying_correction_twice_is_refused_naming_the_key(paper, capsys):
+    assert pin_corrected(paper) == 0
+    lines = paper.read_text().splitlines(keepends=True)
+    at = next(i for i, line in enumerate(lines) if line.strip() == "correction:")
+    block = [lines[at]]
+    for line in lines[at + 1 :]:
+        if len(line) - len(line.lstrip()) <= len(lines[at]) - len(lines[at].lstrip()):
+            break
+        block.append(line)
+    paper.write_text("".join(lines[: at + len(block)] + block + lines[at + len(block) :]))
+    verify(paper)
+    assert "carries `correction` twice" in capsys.readouterr().out
+
+
+def test_a_misspelt_corrections_key_is_reported_and_not_ignored(paper, capsys):
+    assert pin_corrected(paper) == 0
+    paper.write_text(paper.read_text().replace("correction:", "corrections:"))
+    code, account = verify(paper)
+    assert code == 1
+    assert account["unapplied_corrections"] == 1
+    assert "`corrections` is not a field this package reads" in capsys.readouterr().out
 
 
 def two_page_pdf(first: str, second: str) -> str:

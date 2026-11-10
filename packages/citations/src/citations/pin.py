@@ -199,10 +199,11 @@ def correction(
     """The `correction` written with a quotation the extractor misreads, from the reading `r`.
 
     Raises `PinRefused` where the extractor's text already holds the quotation, where the
-    source was not read, where `verify.correction_fault` finds the passage cannot stand for
-    the quotation, and where `reads` does not occur exactly once on page `page` of the
-    extractor's text: `verify` applies the correction under the same tests, so a record pinned
-    here is one it applies on this machine.
+    source was not read, where `reads` or the passage is outside the lengths a correction
+    covers, where `reads` does not occur exactly once on page `page` of the extractor's text,
+    and where `verify.correction_fault` finds the passage cannot stand for the quotation:
+    `verify` applies the correction under the same tests, so a record pinned here is one it
+    applies on this machine.
     """
     if r.state in ("found", "ambiguous"):
         raise PinRefused(
@@ -214,7 +215,7 @@ def correction(
             f"the source was not read ({r.state}: {r.detail}), and a correction is recorded "
             f"against what an extractor produced."
         )
-    if fault := V.correction_fault(quote, passage, reads):
+    if fault := V.correction_size_fault(passage, reads):
         raise PinRefused(f"{fault}.")
     artifact = _artifact(cf)
     assert artifact is not None
@@ -229,6 +230,8 @@ def correction(
             f"the extracted text, long enough to occur once, so the record names the place the "
             f"extractor misreads."
         )
+    if fault := V.correction_fault(quote, passage, reads):
+        raise PinRefused(f"{fault}.")
     made = {
         "passage": passage,
         "page": page,
