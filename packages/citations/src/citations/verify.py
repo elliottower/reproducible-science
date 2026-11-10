@@ -127,6 +127,7 @@ from provenance_core import sha256_of_file
 
 from citations import extraction_cache, extractors, readers
 from citations.exceptions import SourceUnreadableError
+from citations.hand_checked import HandChecks
 
 # Long enough to carry its own qualifiers. "We trained 50" resolves against a sentence that
 # continues "...and 5 refits each for 12 layered".
@@ -496,6 +497,11 @@ class Report:
     text the original quotation left out. Counted apart from the rest, because each is the
     source's text and not what the quoting party wrote, and a total that mixed the two would
     say more quotations resolved as written than did."""
+
+    hand_checks: HandChecks | None = None
+    """The quotations an author listed as compared against the rendered page, with each one's
+    computed outcome. None where no claims file has a list beside it. Changes no outcome and no
+    exit code. See `hand_checked`."""
 
     triangulated: int = 0
     from_cache: int = 0

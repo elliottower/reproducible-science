@@ -325,6 +325,40 @@ the same signal as a passage that was never there. A `not found` whose every wor
 source, as pieces with text left out between them, is counted separately on the same line; see
 [When a quotation will not resolve](#when-a-quotation-will-not-resolve).
 
+### Passages checked by hand
+
+An extractor reads pinned bytes the same way every time, so a passage it misread when the
+quotation was pinned is misread on every run, and no digest shows it. A quotation an author has
+compared against the rendered page goes in a plain file beside its claims file:
+`claims/smith2019.checked.txt` for `claims/smith2019.yaml`.
+
+```text
+# compared against the printed page
+orthogonal-cores   3f9a1c2b4d5e  p.4   # Table 2, second column
+main-result/2      77ab01c4e9d2
+```
+
+One quotation per line: the claim id where the claim has one quotation, or `<claim id>/<n>`
+for its n-th, counting from 1; then its fingerprint, and optionally the page as `p.N`; `#`
+starts a note. The fingerprint is of the quotation's text and the source's `sha256` and
+`derived_sha256`, as the claims file records them. Write the id alone first: `verify` reports
+the line as not covering anything and prints the fingerprint to add.
+
+A listed quotation keeps its computed outcome. One that is not found is still `not found`,
+still fails the run, and is marked `(checked by hand)` where the report lists it. The report
+adds a line beside the outcomes:
+
+```text
+checked by hand: 40 of 2,364 passages, list sha256 9c1e04b7a2d3
+  of those, as computed: 39 found, 1 not found; a hand check changes no outcome
+```
+
+The digest is over every list read, so a run's reliance on them is on record. A quotation
+edited after it was listed, or a source pinned again, no longer matches its fingerprint and is
+reported as not covered, with the fingerprint it has now. An id that names no quotation is
+reported too. `--json` carries all of it under `checked_by_hand`, and `repro verify` gives the
+count on its citations line.
+
 ## Where a passage is, and how it is matched
 
 A quotation carries the passage and, optionally, where it sits:

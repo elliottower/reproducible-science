@@ -30,6 +30,7 @@ from provenance_core import atomic_write, hint
 
 from citations import coverage as C
 from citations import extraction_cache, paths, projects, tracked, web
+from citations import hand_checked as HC
 from citations import verify as V
 from citations.entry import DELEGATED
 from citations.entry import delegate as _delegate
@@ -224,6 +225,8 @@ def cmd_verify(a) -> int:
         if extraction_cache.enabled() and len(files) > 1:
             _extract_ahead(files, allowed)
         read: list[tuple[str, pathlib.Path]] = []
+        lists: list[HC.Listed] = []
+        hand = HC.HandChecks(sha256="")
         for cf in files:
             artifact = cf.artifact()
             missing = V.MISSING
@@ -254,6 +257,12 @@ def cmd_verify(a) -> int:
             _check_reading(rep, cf, artifact, allowed)
             if cf.version_inferred:
                 rep.inferred.append((cf.name, cf.version_inferred))
+            listed = _hand_list(cf)
+            if listed is not None:
+                lists.append(listed)
+            by_id = {e.id: e for e in listed.entries} if listed else {}
+            ids = HC.quotation_ids(cf)
+            named: set[str] = set()
             for cid, claim in cf.claims.items():
                 if claim.interpretation is not None:
                     rep.interpretations += 1
@@ -262,7 +271,7 @@ def cmd_verify(a) -> int:
                         rep.foreign_readings += 1
                     if claim.interpretation.status == "contested":
                         rep.contested_readings += 1
-                for q in claim.quotes:
+                for i, q in enumerate(claim.quotes):
                     if not q.text:
                         continue
                     rep.checked += 1
@@ -282,6 +291,20 @@ def cmd_verify(a) -> int:
                     _record_extractor(rep, extractors, r)
                     if r.state != "found" or r.warnings:
                         rep.problems.append((f"{cf.name}:{cid}", q.text, r))
+                    names = ids[(cid, i)]
+                    entry = next((by_id[n] for n in names if n in by_id), None)
+                    if entry is not None:
+                        named.update(names)
+                        _hand_check(hand, cf, f"{cf.name}:{cid}", q.text, r.state, entry)
+            if listed is not None:
+                hand.unknown += [
+                    HC.Unknown(path=listed.path, id=e.id)
+                    for e in listed.entries
+                    if e.id not in named
+                ]
+        if lists:
+            hand.lists, hand.sha256, hand.passages = lists, HC.digest(lists), rep.checked
+            rep.hand_checks = hand
         rep.counts = dict(counts)
         rep.extractors = dict(extractors)
         rep.from_cache = extraction_cache.hits()
@@ -323,6 +346,56 @@ def cmd_verify(a) -> int:
     return _report(rep, counts, a, source)
 
 
+def _hand_list(cf: ClaimFile) -> HC.Listed | None:
+    """The list of quotations checked by hand beside this claims file, where there is one."""
+    if cf.path is None or not (path := HC.list_path(cf.path)).is_file():
+        return None
+    return HC.read(path, cf.name)
+
+
+def _hand_check(
+    hand: HC.HandChecks, cf: ClaimFile, claim: str, text: str, state: str, entry: HC.Entry
+) -> None:
+    """Record a listed quotation as covered, with its computed outcome, or as stale where its
+    text or its source's digests are not what they were when it was listed."""
+    now = HC.fingerprint(text, cf.source.sha256, cf.source.derived_sha256)
+    if entry.fingerprint != now:
+        hand.stale.append(HC.Stale(claim=claim, id=entry.id, listed=entry.fingerprint, now=now))
+        return
+    hand.covered.append(
+        HC.Covered(
+            claim=claim, id=entry.id, quote=text, state=state, page=entry.page, note=entry.note
+        )
+    )
+
+
+def _hand_lines(hand: HC.HandChecks) -> list[str]:
+    """The hand check, beside the outcomes it leaves as they are."""
+    lines = [
+        f"\nchecked by hand: {len(hand.covered):,} of {hand.passages:,} passages, "
+        f"list sha256 {hand.sha256[:12]}"
+    ]
+    if hand.covered:
+        # The computed outcome of each, so a hand check is never read as a pass.
+        said = ", ".join(f"{hand.outcomes[s]:,} {s}" for s in RESULTS if hand.outcomes.get(s))
+        lines.append(f"  of those, as computed: {said}; a hand check changes no outcome")
+    if hand.stale:
+        lines.append(
+            f"  {len(hand.stale):,} listed passage(s) not covered: changed since listed, or "
+            "listed with no fingerprint; check each against the page, then write the one it has now:"
+        )
+        for s in hand.stale:
+            was = s.listed or "none"
+            lines.append(f"    {s.claim[:38]:<40}{s.id}  listed {was}  now {s.now}")
+    if hand.unknown:
+        lines.append(
+            f"  {len(hand.unknown):,} listed id(s) name no quotation in their claims file:"
+        )
+        for u in hand.unknown:
+            lines.append(f"    {u.id}  in {u.path}")
+    return lines
+
+
 def _warned(rep: V.Report) -> dict[str, list[dict[str, str]]]:
     """Each warning, with the quotations carrying it: the claims file and claim, and the text."""
     out: dict[str, list[dict[str, str]]] = {}
@@ -352,6 +425,12 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
                     "unpinned_sources": len(rep.unpinned),
                     "skipped_files": len(rep.skipped),
                     "warnings": _warned(rep),
+                    "checked_by_hand": (
+                        None
+                        if rep.hand_checks is None
+                        else rep.hand_checks.model_dump(mode="json")
+                        | {"outcomes": rep.hand_checks.outcomes}
+                    ),
                 },
                 indent=2,
             )
@@ -449,6 +528,10 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
             f"written by `citations restore`; not what the quoting party wrote"
         )
 
+    # A person's reading of the page, reported beside what was computed and never in its place.
+    if rep.hand_checks is not None:
+        print("\n".join(_hand_lines(rep.hand_checks)))
+
     # A record that is not committed exists on one machine, and a verdict resting on it cannot
     # be appealed to later. Counted and reported, never blocking: a library mid-edit is the
     # ordinary state of working in one.
@@ -532,10 +615,12 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
             print(f"  ... and {len(rep.changed_readings) - 10} more")
 
     bad = [(s, q, r) for s, q, r in rep.problems if r.state == "not found"]
+    by_hand = {(c.claim, c.quote) for c in rep.hand_checks.covered} if rep.hand_checks else set()
     if bad and not a.quiet:
         print()
         for slug, text, r in bad[:20]:
-            print(f"  not found  {slug[:30]:<32}{text[:44]}")
+            marked = "  (checked by hand)" if (slug, text) in by_hand else ""
+            print(f"  not found  {slug[:30]:<32}{text[:44]}{marked}")
             # The detail carries where the passage stopped matching and what the source reads
             # there, which is the only part that says what to do. Printing the row without it
             # leaves a reader with an accusation and no way to act on it.
