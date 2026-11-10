@@ -19,7 +19,7 @@
     repro results         run `results`: seal a run, record it, verify the chain
     repro claims          run `claims`: check a manifest's claims alone, as `claims verify` does
     repro mcp             serve these checks to an agent as MCP tools, over standard input and output
-    repro ui              serve a page over this project's records on localhost
+    repro ui              serve a page over this project's records on localhost (experimental)
 
 A renderer over the library and nothing more. `verify` calls `claims.verify()` and
 `Policy.assess()`, both of which return values, then `repro.whole.check()` for the project's
@@ -659,11 +659,12 @@ def main(argv: list[str] | None = None, local_record: bool = True) -> int:
     # arguments to `citations`.
     p_ui = sub.add_parser(
         "ui",
-        help="serve a page over this project's records on localhost",
+        help="serve a page over this project's records on localhost (experimental)",
         description=(
             "Build a page over this project's claims, the files they read, the runs that wrote "
             "them, the quotations and the re-runs, and serve it on localhost. "
-            f"`repro ui --help` once installed lists its options. Needs {UI_EXTRA}."
+            f"`repro ui --help` once installed lists its options. Needs {UI_EXTRA}. "
+            "Experimental: its layout and options may change between releases."
         ),
         add_help=False,
     )

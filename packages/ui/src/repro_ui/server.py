@@ -393,7 +393,10 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="repro ui",
-        description="Build the page for a project's records and serve it on localhost.",
+        description=(
+            "Build the page for a project's records and serve it on localhost. "
+            "Experimental: its layout and options may change between releases."
+        ),
     )
     ap.add_argument(
         "project",

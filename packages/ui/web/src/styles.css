@@ -25,6 +25,7 @@ button { font: inherit; cursor: pointer; }
 .app { display: flex; flex-direction: column; height: 100%; }
 .top { display: flex; align-items: center; gap: 14px; height: 52px; padding: 0 18px; background: #0f1424; color: #fff; }
 .top .muted { color: #a3abc2; }
+.top .experimental { font-size: 11px; font-weight: 600; letter-spacing: .03em; text-transform: uppercase; color: #f5c46b; border: 1px solid #f5c46b; border-radius: 999px; padding: 1px 8px; }
 .brand { font-weight: 600; font-size: 15px; }
 .proj { font-size: 12px; }
 .spacer { flex: 1; }

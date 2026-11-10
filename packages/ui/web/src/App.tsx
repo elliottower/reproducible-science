@@ -198,6 +198,7 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
           {!STATIC && recheck.available && (
             <button className="burger" onClick={() => setDrawer(true)} title="Projects">☰</button>
           )}
+          <span className="experimental" title="Experimental: its layout and options may change between releases.">Experimental</span>
           <div className="tabs">
             {TABS.map(([k, label]) => (
               <button key={k} className={mode === k ? 'on' : ''} onClick={() => go(k)}>{label}</button>
