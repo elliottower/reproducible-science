@@ -325,39 +325,41 @@ the same signal as a passage that was never there. A `not found` whose every wor
 source, as pieces with text left out between them, is counted separately on the same line; see
 [When a quotation will not resolve](#when-a-quotation-will-not-resolve).
 
-### Passages checked by hand
+### Manual checks
 
-An extractor reads pinned bytes the same way every time, so a passage it misread when the
-quotation was pinned is misread on every run, and no digest shows it. A quotation an author has
-compared against the rendered page goes in a plain file beside its claims file:
-`claims/smith2019.checked.txt` for `claims/smith2019.yaml`.
+A manual check is an optional record that a person compared a passage with the page. It changes
+no outcome and no exit code, and `citations verify` prints nothing about it unless asked. The
+automatic check is the one that decides; a manual check is provenance beside it.
 
-```text
-# compared against the printed page
-orthogonal-cores   3f9a1c2b4d5e  p.4   # Table 2, second column
-main-result/2      77ab01c4e9d2
+```sh
+citations manual-check claims/smith2019.yaml orthogonal-cores --page 4 --note "Table 2"
 ```
 
-One quotation per line: the claim id where the claim has one quotation, or `<claim id>/<n>`
-for its n-th, counting from 1; then its fingerprint, and optionally the page as `p.N`; `#`
-starts a note. The fingerprint is of the quotation's text and the source's `sha256` and
-`derived_sha256`, as the claims file records them. Write the id alone first: `verify` reports
-the line as not covering anything and prints the fingerprint to add.
-
-A listed quotation keeps its computed outcome. One that is not found is still `not found`,
-still fails the run, and is marked `(checked by hand)` where the report lists it. The report
-adds a line beside the outcomes:
+prints the quotation, its source and page, and appends a line to `claims/smith2019.manual.txt`,
+the list beside the claims file:
 
 ```text
-checked by hand: 40 of 2,364 passages, list sha256 9c1e04b7a2d3
-  of those, as computed: 39 found, 1 not found; a hand check changes no outcome
+orthogonal-cores  3f9a1c2b4d5e  p.4  # Table 2
 ```
 
-The digest is over every list read, so a run's reliance on them is on record. A quotation
-edited after it was listed, or a source pinned again, no longer matches its fingerprint and is
-reported as not covered, with the fingerprint it has now. An id that names no quotation is
-reported too. `--json` carries all of it under `checked_by_hand`, and `repro verify` gives the
-count on its citations line.
+The line records that a person compared this passage with the page, so run the command only
+after doing so, and for one quotation at a time: it takes one id per call. The id is the claim
+id where the claim has one quotation, or `<claim id>/<n>` for its n-th, counting from 1. The
+command refuses an id that names no quotation, and one listed already with the fingerprint it has
+now.
+
+The fingerprint is of the quotation's text, the source's `sha256`, the reader the source
+declares (`extract_cmd` or its built-in extractor), and the reading: the `derived_sha256` the
+claims file records or, where it records none, the digest of the text extracted. Where any of
+these changed after the line was written, the manual check is recorded as stale; `--again`
+replaces that line once the passage has been compared with the page again. The extractor's
+version string is not in the fingerprint.
+
+`citations verify --json` records the manual checks under `manual_checks`: the lists' SHA-256s
+and one digest over them, each covered quotation with its computed outcome, the stale entries,
+ids naming no quotation, lists beside no claims file, and lines that did not parse. `--show-manual`
+prints the same. `repro verify` carries them in its JSON and in its SARIF property bag, and says
+nothing about them in its text.
 
 ## Where a passage is, and how it is matched
 

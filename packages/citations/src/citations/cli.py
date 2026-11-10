@@ -2,6 +2,7 @@
 
 citations init              make a library here
 citations verify            do my quotations resolve in the sources I pinned?
+citations manual-check      record that I compared one quotation with the page
 citations coverage          is every quotation in my manuscript pinned at all?
 citations audit             does the metadata match the record the identifier resolves to?
 citations resolve           backfill missing identifiers
@@ -30,7 +31,7 @@ from provenance_core import atomic_write, hint
 
 from citations import coverage as C
 from citations import extraction_cache, paths, projects, tracked, web
-from citations import hand_checked as HC
+from citations import manual_checks as MC
 from citations import verify as V
 from citations.entry import DELEGATED
 from citations.entry import delegate as _delegate
@@ -225,25 +226,12 @@ def cmd_verify(a) -> int:
         if extraction_cache.enabled() and len(files) > 1:
             _extract_ahead(files, allowed)
         read: list[tuple[str, pathlib.Path]] = []
-        lists: list[HC.Listed] = []
-        hand = HC.HandChecks(sha256="")
+        lists: list[MC.Listed] = []
+        manual = MC.ManualChecks(sha256="")
         for cf in files:
-            artifact = cf.artifact()
-            missing = V.MISSING
-            if artifact is not None and not artifact.exists() and not cf.source.local:
-                # A web page pinned by its URL, on a machine whose `retrieved` library does
-                # not hold it. Its bytes are named by their digest, so there is no second
-                # place to look, and the reason says which store was asked.
-                missing = web.missing(cf)
-            elif artifact is not None and not artifact.exists():
-                # The path as given first, and the library only where that is empty. A copy
-                # there is read only where it matches the pin: see `verify.library_copy`.
-                held, missing = V.library_copy(
-                    artifact.name, cf.source.sha256, library / "pdfs" if library else None
-                )
-                if held is not None:
-                    artifact = held
-                    rep.from_library.append((cf.name, held))
+            artifact, missing, held = _located(cf, library)
+            if held and artifact is not None:
+                rep.from_library.append((cf.name, artifact))
             pin = V.check_pin(artifact, cf.source.sha256)
             if pin.state == "broken":
                 rep.broken_pins.append((cf.name, pin))
@@ -257,12 +245,14 @@ def cmd_verify(a) -> int:
             _check_reading(rep, cf, artifact, allowed)
             if cf.version_inferred:
                 rep.inferred.append((cf.name, cf.version_inferred))
-            listed = _hand_list(cf)
+            listed = _manual_list(cf)
+            by_quote: dict[tuple[str, int], MC.Entry] = {}
             if listed is not None:
                 lists.append(listed)
-            by_id = {e.id: e for e in listed.entries} if listed else {}
-            ids = HC.quotation_ids(cf)
-            named: set[str] = set()
+                matched = MC.match(listed, cf)
+                by_quote = matched.found
+                manual.problems += listed.problems + matched.problems
+                manual.unknown += [MC.Unknown(path=listed.path, id=e.id) for e in matched.unknown]
             for cid, claim in cf.claims.items():
                 if claim.interpretation is not None:
                     rep.interpretations += 1
@@ -291,20 +281,12 @@ def cmd_verify(a) -> int:
                     _record_extractor(rep, extractors, r)
                     if r.state != "found" or r.warnings:
                         rep.problems.append((f"{cf.name}:{cid}", q.text, r))
-                    names = ids[(cid, i)]
-                    entry = next((by_id[n] for n in names if n in by_id), None)
-                    if entry is not None:
-                        named.update(names)
-                        _hand_check(hand, cf, f"{cf.name}:{cid}", q.text, r.state, entry)
-            if listed is not None:
-                hand.unknown += [
-                    HC.Unknown(path=listed.path, id=e.id)
-                    for e in listed.entries
-                    if e.id not in named
-                ]
-        if lists:
-            hand.lists, hand.sha256, hand.passages = lists, HC.digest(lists), rep.checked
-            rep.hand_checks = hand
+                    if (entry := by_quote.get((cid, i))) is not None:
+                        _manual_check(manual, cf, f"{cf.name}:{cid}", q.text, r, entry)
+        manual.orphans = MC.orphans(root, files)
+        if lists or manual.orphans:
+            manual.lists, manual.sha256, manual.passages = lists, MC.digest(lists), rep.checked
+            rep.manual_checks = manual
         rep.counts = dict(counts)
         rep.extractors = dict(extractors)
         rep.from_cache = extraction_cache.hits()
@@ -346,53 +328,141 @@ def cmd_verify(a) -> int:
     return _report(rep, counts, a, source)
 
 
-def _hand_list(cf: ClaimFile) -> HC.Listed | None:
-    """The list of quotations checked by hand beside this claims file, where there is one."""
-    if cf.path is None or not (path := HC.list_path(cf.path)).is_file():
+def _located(cf: ClaimFile, library: pathlib.Path | None) -> tuple[pathlib.Path | None, str, bool]:
+    """Where a claims file's source is on this machine, the reason recorded where it is not,
+    and whether the copy read is the library's."""
+    artifact = cf.artifact()
+    if artifact is None or artifact.exists():
+        return artifact, V.MISSING, False
+    if not cf.source.local:
+        # A web page pinned by its URL, on a machine whose `retrieved` library does not hold
+        # it. Its bytes are named by their digest, so there is no second place to look, and
+        # the reason says which store was asked.
+        return artifact, web.missing(cf), False
+    # The path as given first, and the library only where that is empty. A copy there is read
+    # only where it matches the pin: see `verify.library_copy`.
+    held, missing = V.library_copy(
+        artifact.name, cf.source.sha256, library / "pdfs" if library else None
+    )
+    return (held, missing, True) if held is not None else (artifact, missing, False)
+
+
+def cmd_manual_check(a) -> int:
+    """Record that a person compared one quotation with the page: print it, then append its line
+    to the list beside its claims file, with the fingerprint it has now.
+
+    One id per call, and no form that names several: the line says a person looked at this
+    passage, and a command that wrote it for every quotation at once would say that of passages
+    nobody looked at.
+    """
+    if a.note and ("\n" in a.note or "\r" in a.note):
+        raise CitationsError("--note is one line: it is written after a `#` on the quotation's")
+    path = pathlib.Path(a.claims_file).expanduser().resolve()
+    cf = load_claim_file(path)
+    key = next((k for k, names in MC.quotation_ids(cf).items() if a.id in names), None)
+    if key is None:
+        raise CitationsError(f"{path}: no quotation has the id `{a.id}`")
+    cid, i = key
+    q = cf.claims[cid].quotes[i]
+    allowed = V.DEFAULT_EXTRACTORS | frozenset(a.allow_extractor or ())
+    artifact, missing, _ = _located(cf, paths.find())
+    r = V.check_one(
+        q.text, artifact, q.page, cf.source.reader, allowed, False, q.prefix, q.suffix, missing
+    )
+    fingerprint = MC.now(q.text, cf.source, r.extraction_digest)
+    if not fingerprint:
+        raise CitationsError(
+            f"{path}: the source was not read here ({r.detail or r.state}) and the claims file "
+            "records no derived_sha256, so there is no reading to fingerprint"
+        )
+    list_file = MC.list_path(path)
+    listed = MC.read(list_file, cf.name) if list_file.is_file() else None
+    if listed is not None and listed.problems:
+        # Written into, a list must parse: a line appended below one that does not would be
+        # recorded beside a problem nobody has looked at.
+        raise CitationsError("\n".join(listed.problems))
+    entry = MC.match(listed, cf).found.get(key) if listed is not None else None
+    if entry is not None and entry.fingerprint == fingerprint:
+        raise CitationsError(
+            f"{list_file}:{entry.line}: `{a.id}` is listed already, as `{entry.id}`, with the "
+            "fingerprint it has now"
+        )
+    if entry is not None and not a.again:
+        raise CitationsError(
+            f"{list_file}:{entry.line}: `{a.id}` was checked as `{entry.id}` with fingerprint "
+            f"{entry.fingerprint or 'none'}, and has {fingerprint} now; compare it with the page "
+            "again, then rerun with --again to replace that line"
+        )
+    if entry is None and a.again:
+        raise CitationsError(
+            f"{list_file}: --again replaces an earlier check of `{a.id}`, and none is listed"
+        )
+
+    print(f"claims  {path}")
+    print(f"source  {cf.source.citation}  ({artifact or 'no copy named'})")
+    print(f"page    {q.page if q.page is not None else 'none recorded'}")
+    print(f"quote   {q.text}")
+    print(f"computed outcome: {r.state}; a manual check changes no outcome")
+    line = MC.Entry(
+        id=a.id, line=0, fingerprint=fingerprint, page=a.page, note=a.note or ""
+    ).written()
+    lines = list_file.read_text(encoding="utf-8-sig").splitlines() if listed is not None else []
+    if entry is not None:
+        lines[entry.line - 1] = line
+        print(f"replaces the earlier check on line {entry.line}: {entry.written()}")
+    else:
+        lines.append(line)
+    atomic_write(list_file, "\n".join(lines) + "\n")
+    print(f"wrote   {line}")
+    print(f"to      {list_file}")
+    return 0
+
+
+def _manual_list(cf: ClaimFile) -> MC.Listed | None:
+    """The list of manual checks beside this claims file, where there is one."""
+    if cf.path is None or not (path := MC.list_path(cf.path)).is_file():
         return None
-    return HC.read(path, cf.name)
+    return MC.read(path, cf.name)
 
 
-def _hand_check(
-    hand: HC.HandChecks, cf: ClaimFile, claim: str, text: str, state: str, entry: HC.Entry
+def _manual_check(
+    manual: MC.ManualChecks, cf: ClaimFile, claim: str, text: str, r: V.Result, entry: MC.Entry
 ) -> None:
     """Record a listed quotation as covered, with its computed outcome, or as stale where its
-    text or its source's digests are not what they were when it was listed."""
-    now = HC.fingerprint(text, cf.source.sha256, cf.source.derived_sha256)
-    if entry.fingerprint != now:
-        hand.stale.append(HC.Stale(claim=claim, id=entry.id, listed=entry.fingerprint, now=now))
+    text, its source's digest, its reader or the reading are not what they were when it was
+    listed."""
+    now = MC.now(text, cf.source, r.extraction_digest)
+    if not now or entry.fingerprint != now:
+        manual.stale.append(MC.Stale(claim=claim, id=entry.id, listed=entry.fingerprint, now=now))
         return
-    hand.covered.append(
-        HC.Covered(
-            claim=claim, id=entry.id, quote=text, state=state, page=entry.page, note=entry.note
+    manual.covered.append(
+        MC.Covered(
+            claim=claim, id=entry.id, quote=text, state=r.state, page=entry.page, note=entry.note
         )
     )
 
 
-def _hand_lines(hand: HC.HandChecks) -> list[str]:
-    """The hand check, beside the outcomes it leaves as they are."""
+def _manual_lines(manual: MC.ManualChecks) -> list[str]:
+    """The manual checks, printed only under `--show-manual`: provenance, never a verdict."""
     lines = [
-        f"\nchecked by hand: {len(hand.covered):,} of {hand.passages:,} passages, "
-        f"list sha256 {hand.sha256[:12]}"
+        f"\nmanual checks: {len(manual.covered):,} of {manual.passages:,} passages, "
+        f"list sha256 {manual.sha256[:12]}; they change no outcome"
     ]
-    if hand.covered:
-        # The computed outcome of each, so a hand check is never read as a pass.
-        said = ", ".join(f"{hand.outcomes[s]:,} {s}" for s in RESULTS if hand.outcomes.get(s))
-        lines.append(f"  of those, as computed: {said}; a hand check changes no outcome")
-    if hand.stale:
-        lines.append(
-            f"  {len(hand.stale):,} listed passage(s) not covered: changed since listed, or "
-            "listed with no fingerprint; check each against the page, then write the one it has now:"
-        )
-        for s in hand.stale:
-            was = s.listed or "none"
-            lines.append(f"    {s.claim[:38]:<40}{s.id}  listed {was}  now {s.now}")
-    if hand.unknown:
-        lines.append(
-            f"  {len(hand.unknown):,} listed id(s) name no quotation in their claims file:"
-        )
-        for u in hand.unknown:
-            lines.append(f"    {u.id}  in {u.path}")
+    if manual.covered:
+        said = ", ".join(f"{manual.outcomes[s]:,} {s}" for s in RESULTS if manual.outcomes.get(s))
+        lines.append(f"  of those, as computed: {said}")
+        for c in manual.covered:
+            page = f"  p.{c.page}" if c.page is not None else ""
+            lines.append(f"    {c.state:<{OUTCOME_WIDTH}}{c.claim[:38]:<40}{c.id}{page}")
+    for s in manual.stale:
+        was, now = s.listed or "none", s.now or "unknown (source not read here)"
+        lines.append(f"  stale    {s.claim[:38]:<40}{s.id}  listed {was}  now {now}")
+    for u in manual.unknown:
+        lines.append(f"  unknown  {u.id}  in {u.path}")
+    for path in manual.orphans:
+        lines.append(f"  beside no claims file read  {path}")
+    for problem in manual.problems:
+        lines.append(f"  not read  {problem}")
     return lines
 
 
@@ -425,11 +495,11 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
                     "unpinned_sources": len(rep.unpinned),
                     "skipped_files": len(rep.skipped),
                     "warnings": _warned(rep),
-                    "checked_by_hand": (
+                    "manual_checks": (
                         None
-                        if rep.hand_checks is None
-                        else rep.hand_checks.model_dump(mode="json")
-                        | {"outcomes": rep.hand_checks.outcomes}
+                        if rep.manual_checks is None
+                        else rep.manual_checks.model_dump(mode="json")
+                        | {"outcomes": rep.manual_checks.outcomes}
                     ),
                 },
                 indent=2,
@@ -528,9 +598,9 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
             f"written by `citations restore`; not what the quoting party wrote"
         )
 
-    # A person's reading of the page, reported beside what was computed and never in its place.
-    if rep.hand_checks is not None:
-        print("\n".join(_hand_lines(rep.hand_checks)))
+    # A person's reading of the page: provenance, printed only when asked for.
+    if getattr(a, "show_manual", False) and rep.manual_checks is not None:
+        print("\n".join(_manual_lines(rep.manual_checks)))
 
     # A record that is not committed exists on one machine, and a verdict resting on it cannot
     # be appealed to later. Counted and reported, never blocking: a library mid-edit is the
@@ -615,12 +685,10 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
             print(f"  ... and {len(rep.changed_readings) - 10} more")
 
     bad = [(s, q, r) for s, q, r in rep.problems if r.state == "not found"]
-    by_hand = {(c.claim, c.quote) for c in rep.hand_checks.covered} if rep.hand_checks else set()
     if bad and not a.quiet:
         print()
         for slug, text, r in bad[:20]:
-            marked = "  (checked by hand)" if (slug, text) in by_hand else ""
-            print(f"  not found  {slug[:30]:<32}{text[:44]}{marked}")
+            print(f"  not found  {slug[:30]:<32}{text[:44]}")
             # The detail carries where the passage stopped matching and what the source reads
             # there, which is the only part that says what to do. Printing the row without it
             # leaves a reader with an accusation and no way to act on it.
@@ -728,6 +796,27 @@ def _main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="ask every installed reader; report disagreement as indeterminate",
     )
+    h = sub.add_parser(
+        "manual-check",
+        help="record that I compared one quotation with the page; run it only after doing so",
+    )
+    h.add_argument("claims_file", help="the claims file the quotation is in")
+    h.add_argument("id", help="the claim id, or <claim id>/<n> for its n-th quotation")
+    h.add_argument("--page", type=int, help="the page compared, written as p.N")
+    h.add_argument("--note", help="a note, written after a `#`")
+    h.add_argument(
+        "--again",
+        action="store_true",
+        help="replace an earlier check whose fingerprint the quotation no longer has",
+    )
+    h.add_argument(
+        "--allow-extractor",
+        action="append",
+        metavar="NAME",
+        help="let the claims file's extract_cmd run this program",
+    )
+    h.set_defaults(fn=cmd_manual_check)
+
     c = sub.add_parser("coverage", help="is every quotation in my manuscript pinned at all?")
     c.add_argument("manuscript", help="the .tex the paper is written in")
     c.add_argument("--claims", default="claims", help="where the claim files live")
@@ -757,6 +846,11 @@ def _main(argv: list[str] | None = None) -> int:
         "--verbose", action="store_true", help="also list the quotations carrying each warning"
     )
     v.add_argument("--quiet", action="store_true")
+    v.add_argument(
+        "--show-manual",
+        action="store_true",
+        help="also print the manual checks beside each claims file, which change no outcome",
+    )
     v.set_defaults(fn=cmd_verify)
 
     for name, helptext in [

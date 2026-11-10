@@ -181,11 +181,10 @@ def _tool_lines(run: ci.ToolRun) -> list[str]:
     if not run.command:
         return [f"  {run.check:<12} not used here: {run.output}"]
     said = " ".join(run.command)
-    hand = f"; {by_hand}" if (by_hand := ci.hand_checked(run)) else ""
     if run.outcome == audit.PASSED:
         missed = ci.unchecked(run)
         note = f", {ci.verified(run)}: {missed} not checked" if missed else ""
-        return [f"  {run.check:<12} passed{note}{hand}  ({said})"]
+        return [f"  {run.check:<12} passed{note}  ({said})"]
     lines = [f"  {run.check:<12} {run.outcome.upper()} (exit {run.exit})  ({said})"]
     return lines + [f"      {line}" for line in run.output.rstrip().splitlines()]
 
@@ -347,14 +346,16 @@ def _with_checks(sarif: dict, project: Project, found: dict[str, bool | None]) -
         "sections": words(project, found),
         "exit_code": exit_code(found),
     }
-    # The quotations an author compared against the page, beside the verdict and not in it.
-    if hand := project.tools["citations"].account.get("checked_by_hand"):
-        sarif["runs"][0]["properties"]["checks"]["citations_checked_by_hand"] = {
+    # Manual checks: provenance in the property bag, never a result and never in the verdict.
+    if hand := project.tools["citations"].account.get("manual_checks"):
+        sarif["runs"][0]["properties"]["checks"]["citations_manual_checks"] = {
             "covered": len(hand["covered"]),
             "passages": hand["passages"],
             "sha256": hand["sha256"],
             "stale": len(hand["stale"]),
             "unknown": len(hand["unknown"]),
+            "orphans": len(hand.get("orphans", [])),
+            "outcomes": hand.get("outcomes", {}),
         }
     return sarif
 

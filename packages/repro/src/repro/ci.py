@@ -904,15 +904,6 @@ def verified(run: ToolRun) -> str:
     )
 
 
-def hand_checked(run: ToolRun) -> str:
-    """`checked by hand: <n> of <quotations> passages`, where a citations run read a list of
-    quotations compared against the page; empty otherwise. Beside the verdict, never in it."""
-    hand = run.account.get("checked_by_hand") if run.check == "citations" else None
-    if not hand:
-        return ""
-    return f"checked by hand: {len(hand['covered']):,} of {hand['passages']:,} passages"
-
-
 def _tool_verdict(run: ToolRun) -> str:
     word = run.outcome if run.outcome == audit.PASSED else run.outcome.upper()
     if unchecked(run):
