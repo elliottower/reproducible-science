@@ -302,11 +302,12 @@ requires nothing about what sits between them.
 
 ## Verify output
 
-Five results, and they are exhaustive:
+Six results, and they are exhaustive:
 
 | Result | Meaning |
 |--------|---------|
 | `found` | The passage is in the source |
+| `corrected` | The passage is in a correction recorded by hand where the extractor misreads the page; see [Recorded corrections](#recorded-corrections) |
 | `not found` | The source was read and the passage is not in it |
 | `indeterminate` | Independent readers disagree about whether it is in it |
 | `ambiguous` | The passage occurs more than once and the record does not say which occurrence |
@@ -532,6 +533,47 @@ is not read as an omission.
 
 **A source that is not what it claims to be.** A `.pdf` that is a Cloudflare interstitial or a
 login page fails under every reader. `file` will say so in one line.
+
+## Recorded corrections
+
+Some passages no installed extractor reads as the page prints them: a table, an equation, a
+dropped ligature, two columns read across. Editing the extracted text is not a repair, because
+`derived_sha256` would then describe text no extractor produced. `citations pin --correct`
+records the page's text beside the extractor's reading instead:
+
+```bash
+citations pin claims/smith2020.yaml --id efficiency --page 4 \
+    --quote "the coefficient of efficiency was 0.81" \
+    --correct "Table 2: the coefficient of efficiency was 0.81 at all sites." \
+    --reads "the coefficient of eciency was 0.81" --cause "ffi ligature dropped"
+```
+
+```yaml
+- exact: the coefficient of efficiency was 0.81
+  page: 4
+  correction:
+    passage: "Table 2: the coefficient of efficiency was 0.81 at all sites."
+    page: 4
+    extractor: pdftotext -layout
+    extractor_version: pdftotext version 24.02.0
+    sha256: 2ae7…            # the source's bytes
+    derived_sha256: 2dfe…    # the extractor's whole text
+    reads: the coefficient of eciency was 0.81
+    note: ffi ligature dropped
+```
+
+`verify` compares the quotation with `passage` and reports it `corrected`, counted apart from
+`found` in the text report, `--json` and `repro verify`. A correction applies only to the
+reading it names. Where the source's bytes, the extractor, its version or the extracted text
+differ, `verify` lists it as recorded against another reading, does not apply it, and the
+quotation keeps the verdict the extractor's text gives it. Where the extractor's text now holds
+the quotation, the verdict is `found` and `verify` says the correction may no longer be needed.
+A correction whose `passage` does not hold the quotation leaves it `not found`.
+
+`pin --correct` refuses a quotation the extractor's text already holds, a `--reads` that is not
+in that text, and a quotation that is not in the passage given. `repro verify` grades
+`corrected` as a warning under `publication` and `strict` and ignores it under `exploratory`;
+`Policy.quotation_corrected` sets another severity.
 
 ## Restoring the source's passage
 

@@ -34,12 +34,12 @@ from citations import verify as V
 from citations.entry import DELEGATED
 from citations.entry import delegate as _delegate
 from citations.exceptions import CitationsError, ClaimFileError, SourceUnreadableError
-from citations.models import ClaimFile, load_claim_file, load_record
+from citations.models import ClaimFile, Quote, load_claim_file, load_record
 
 #: Every member of `verify.State`, in reporting order. An outcome absent here is
 #: counted and never printed: the table stops summing to the number of quotations
 #: above it, and a run whose only problem is that outcome reads as clean.
-RESULTS = ["found", "not found", "ambiguous", "indeterminate", "unchecked"]
+RESULTS = ["found", "corrected", "not found", "ambiguous", "indeterminate", "unchecked"]
 
 #: Width of the outcome column, computed so adding an outcome does not silently ragged the
 #: table. `indeterminate` is the longest, and naming an outcome for what it means rather than
@@ -112,6 +112,28 @@ def _check_reading(rep: V.Report, cf: ClaimFile, artifact, allowed) -> None:
     derived = V.check_derived(text, cf.source.derived_sha256)
     if derived.state == "broken":
         rep.changed_readings.append((cf.name, derived))
+
+
+def _corrected(
+    rep: V.Report, name: str, q: Quote, r: V.Result, artifact: pathlib.Path | None
+) -> V.Result:
+    """The verdict on a quotation once the correction it carries is considered.
+
+    A correction whose source text now holds the quotation is noted as possibly unneeded, and
+    one recorded against another reading is noted as stale; neither is applied. See
+    `verify.correct`.
+    """
+    if q.correction is None:
+        return r
+    if r.state in ("found", "ambiguous"):
+        rep.unneeded_corrections.append(name)
+        return r
+    if r.state != "not found" or artifact is None:
+        return r
+    r, why = V.correct(q.text, q.correction, r, V.sha256(artifact))
+    if why:
+        rep.stale_corrections.append((name, why))
+    return r
 
 
 COVERAGE = ["covered", "uncovered", "unresolvable"]
@@ -278,6 +300,7 @@ def cmd_verify(a) -> int:
                         q.suffix,
                         missing,
                     )
+                    r = _corrected(rep, f"{cf.name}:{cid}", q, r, artifact)
                     counts[r.state] += 1
                     _record_extractor(rep, extractors, r)
                     if r.state != "found" or r.warnings:
@@ -313,6 +336,7 @@ def cmd_verify(a) -> int:
             r = V.check_one(
                 q.text, artifact, q.page, None, allowed, a.triangulate, q.prefix, q.suffix
             )
+            r = _corrected(rep, rec.slug, q, r, artifact)
             counts[r.state] += 1
             _record_extractor(rep, extractors, r)
             if r.state != "found" or r.warnings:
@@ -351,6 +375,8 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
                     "broken_pins": len(rep.broken_pins),
                     "unpinned_sources": len(rep.unpinned),
                     "skipped_files": len(rep.skipped),
+                    "stale_corrections": len(rep.stale_corrections),
+                    "unneeded_corrections": len(rep.unneeded_corrections),
                     "warnings": _warned(rep),
                 },
                 indent=2,
@@ -378,6 +404,9 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
             # Its own count, because the remedy differs: every piece is in the source. That
             # says nothing about the text left out, which can be what the sentence turns on.
             why = f"   {omitted:,} in the source only in pieces, with text left out between them"
+        if s == "corrected":
+            # Never folded into `found`: the passage was compared with text a person recorded.
+            why = "   in a passage recorded by hand where the extractor misreads the page"
         if s in ("unchecked", "indeterminate", "ambiguous"):
             # Untruncated: the reason is the only thing that says what to fix, and the one
             # that matters most -- "which this run does not allow" -- is at the end of it.
@@ -531,6 +560,28 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
         if len(rep.changed_readings) > 10:
             print(f"  ... and {len(rep.changed_readings) - 10} more")
 
+    # A correction describes one reading of one source. Recorded against another, it is said
+    # here and not applied, and one whose source text now holds the quotation is said as well.
+    if rep.stale_corrections:
+        n = len(rep.stale_corrections)
+        print(
+            f"\n{n} correction{'' if n == 1 else 's'} recorded against another reading, not applied"
+        )
+        for name, why in rep.stale_corrections[:10]:
+            print(f"  {name[:38]:<40}{why}")
+        if n > 10:
+            print(f"  ... and {n - 10} more")
+    if rep.unneeded_corrections:
+        n = len(rep.unneeded_corrections)
+        print(
+            f"\n{n} correction{'' if n == 1 else 's'} may no longer be needed: the extractor's "
+            f"text holds the quotation as written"
+        )
+        for name in rep.unneeded_corrections[:10]:
+            print(f"  {name}")
+        if n > 10:
+            print(f"  ... and {n - 10} more")
+
     bad = [(s, q, r) for s, q, r in rep.problems if r.state == "not found"]
     if bad and not a.quiet:
         print()
@@ -577,6 +628,11 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
         print(
             f"nothing failed. {counts['ambiguous']} ambiguous — those passages occur more than "
             "once in their sources, so the record does not say which occurrence it pinned."
+        )
+    elif counts.get("corrected"):
+        print(
+            f"nothing failed. {counts['corrected']} corrected — found in a passage recorded by "
+            "hand, not in the extractor's text."
         )
     else:
         print("all found.")

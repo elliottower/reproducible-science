@@ -23,6 +23,11 @@ The result -- did the passage appear? Exhaustive, four outcomes:
     indeterminate  extractors that both read the source disagree about whether it is in it
     unchecked      nothing could read the source, so no measurement was made
 
+and one that is not a measurement of the source:
+
+    corrected      the passage is in what a person recorded the page as printing, where the
+                   extractor misreads it; never counted as `found`. See `correct`.
+
 The warnings -- is the quote well formed? A quote can be `found` and still carry one:
 
     short        the source may qualify it in the next clause
@@ -111,6 +116,7 @@ import codecs
 import functools
 import hashlib
 import html
+import importlib.metadata
 import itertools
 import os
 import pathlib
@@ -127,6 +133,7 @@ from provenance_core import sha256_of_file
 
 from citations import extraction_cache, extractors, readers
 from citations.exceptions import SourceUnreadableError
+from citations.models import Correction
 
 # Long enough to carry its own qualifiers. "We trained 50" resolves against a sentence that
 # continues "...and 5 refits each for 12 layered".
@@ -305,7 +312,7 @@ EXTRACT_TIMEOUT = 120
 #: arriving from elsewhere does not.
 DEFAULT_EXTRACTORS = frozenset({"pdftotext", "detex"})
 
-State = Literal["found", "not found", "ambiguous", "indeterminate", "unchecked"]
+State = Literal["found", "corrected", "not found", "ambiguous", "indeterminate", "unchecked"]
 PinState = Literal["ok", "broken", "unpinned", "missing"]
 
 
@@ -443,6 +450,12 @@ class Report:
     `derived_sha256`. The bytes match their pin and the extractor turns them into other text
     than was quoted, so every result against that source describes a reading the record
     does not."""
+    stale_corrections: list[tuple[str, str]] = field(default_factory=list)
+    """Quotations carrying a correction recorded against a reading that is not the one this
+    run read, with what changed. The correction was not applied."""
+    unneeded_corrections: list[str] = field(default_factory=list)
+    """Quotations carrying a correction whose source text now holds the quotation as written.
+    The computed verdict stands, and the correction may no longer be needed."""
     unpinned: list[str] = field(default_factory=list)
     inferred: list[tuple[str, str]] = field(default_factory=list)
     """Claims files whose extractor version was inferred, with what was inferred. See
@@ -1438,6 +1451,99 @@ def check_one(
             f"absent under every reader installed here; {result.detail}"
         )
     return result
+
+
+def extractor_version(extractor: str) -> str:
+    """The version of the reader a result names, as a `Correction` records it.
+
+    A built-in extractor's number, what `pdftotext -v` says for a poppler reading, a Python
+    reader's installed version, and empty for text read off disk and for a declared command,
+    which have none this package can ask for.
+    """
+    if extractors.is_builtin(extractor):
+        return extractor.split()[0].partition("@")[2]
+    if extractor in (DEFAULT_EXTRACTOR, READING_ORDER, COLUMNS):
+        return extraction_cache.program_version("pdftotext") or ""
+    if extractor in readers.READERS:
+        try:
+            return importlib.metadata.version(extractor)
+        except importlib.metadata.PackageNotFoundError:
+            return ""
+    return ""
+
+
+def stale(correction: Correction, computed: Result, source_sha256: str) -> str:
+    """What changed since a correction was recorded, or empty where nothing did.
+
+    A correction describes one reading: these bytes, this extractor at this version, and the
+    text it produced. Any of the four changing makes it a correction of a reading this run did
+    not make, so it is reported and not applied.
+    """
+    changed = []
+    recorded = correction.sha256.strip().lower()
+    if source_sha256 != recorded:
+        changed.append(f"the source's bytes (recorded {recorded[:12]}, read {source_sha256[:12]})")
+    if computed.extractor != correction.extractor:
+        changed.append(
+            f"the extractor (recorded {correction.extractor}, read by {computed.extractor})"
+        )
+    elif (now := extractor_version(computed.extractor)) != correction.extractor_version:
+        changed.append(
+            f"the extractor's version (recorded {correction.extractor_version or 'none'}, "
+            f"now {now or 'none'})"
+        )
+    derived = correction.derived_sha256.strip().lower()
+    if computed.extraction_digest != derived:
+        changed.append(
+            f"the extracted text (recorded {derived[:12]}, extracted "
+            f"{computed.extraction_digest[:12]})"
+        )
+    return "; ".join(changed)
+
+
+def correct(
+    quote: str, correction: Correction, computed: Result, source_sha256: str
+) -> tuple[Result, str]:
+    """The verdict on a quotation that carries a correction, and what made the correction stale.
+
+    `computed` is the verdict against the extractor's text, which nothing here modifies. Only a
+    `not found` is compared with the correction: a quotation the extractor's text holds needs
+    none, and one whose source was not read cannot show the correction describes this reading.
+    A correction that is current and holds the quotation gives `corrected`, which is never
+    `found`. One that is current and does not hold it leaves the quotation `not found`. One that
+    is stale is not applied, and the second value says why.
+    """
+    if computed.state != "not found":
+        return computed, ""
+    if why := stale(correction, computed, source_sha256):
+        computed.detail = (
+            f"the correction recorded for page {correction.page} was not applied: {why}; "
+            f"{computed.detail}"
+        )
+        return computed, why
+    kept = {
+        "extractor": computed.extractor,
+        "extraction_digest": computed.extraction_digest,
+        "fallback": computed.fallback,
+        "fallback_reason": computed.fallback_reason,
+    }
+    warn = [w for w in computed.warnings if w == "short"]
+    m = resolve_in(quote, correction.passage)
+    if m.state == "not found":
+        return Result(
+            "not found",
+            f"not in the source, and not in the passage recorded by hand for page "
+            f"{correction.page} either, so the correction does not support this quotation",
+            warn,
+            **kept,
+        ), ""
+    return Result(
+        "corrected",
+        f"in the passage recorded by hand for page {correction.page}, where "
+        f"{correction.extractor} reads {correction.reads[:80]!r}",
+        warn + (["normalized"] if m.normalized else []),
+        **kept,
+    ), ""
 
 
 def _second_opinion(
