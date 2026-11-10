@@ -5,7 +5,8 @@ description: A local web page over a project's records, served by repro ui.
 
 `repro ui` serves a local web page over a project's records: the claims a manuscript makes and
 whether each still holds, the files each claim reads, the runs that wrote them, the quotations
-pinned from cited sources, and the rebuild steps with their re-runs. It ships in 0.7.0.
+pinned from cited sources, and the rebuild steps with their re-runs. It ships in 0.7.0 as an experimental feature: its layout and options may change
+between releases.
 
 ```bash
 pip install "reproducible-science[ui]"

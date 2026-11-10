@@ -91,7 +91,7 @@ export default defineConfig({
             { label: "Citations", link: "/tools/citations/", attrs: { "data-tool": "citations" } },
             { label: "Repro", link: "/tools/repro/", attrs: { "data-tool": "repro" } },
             { label: "Claims", link: "/tools/claims/", attrs: { "data-tool": "claims" } },
-            { label: "Web UI", link: "/tools/ui/" },
+            { label: "Web UI", link: "/tools/ui/", badge: { text: "Experimental", variant: "caution" } },
           ],
         },
         {
