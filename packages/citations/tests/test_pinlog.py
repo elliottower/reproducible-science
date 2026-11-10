@@ -295,3 +295,32 @@ def test_an_absent_source_with_no_pin_log_is_said_once(tmp_path):
 )
 def test_the_shape_of_a_doi(doi, wrong):
     assert bool(pinlog.doi_shape(doi)) is wrong
+
+
+def test_a_line_taken_out_inside_a_merge_commit_fails(tmp_path):
+    git(tmp_path, "init", "-q", "-b", "main")
+    claims = project(tmp_path)
+    assert pin.main([str(claims), "--id", "c0", "--quote", HONEST[:30]]) == 0
+    assert pin.main([str(claims), "--id", "c1", "--quote", HONEST]) == 0
+    commit(tmp_path, "pins")
+    git(tmp_path, "checkout", "-q", "-b", "side")
+    (tmp_path / "claims" / "x.txt").write_text("x\n")
+    commit(tmp_path, "side")
+    git(tmp_path, "checkout", "-q", "main")
+    git(
+        tmp_path,
+        "-c",
+        "user.email=t@t",
+        "-c",
+        "user.name=t",
+        "merge",
+        "--no-ff",
+        "--no-commit",
+        "side",
+    )
+    log = claims.parent / pinlog.LOG
+    log.write_text(log.read_text().splitlines(keepends=True)[1])
+    commit(tmp_path, "merge side")
+    code, found = account(tmp_path)
+    assert code == 1
+    assert any("taken out of the log" in s for s in said(found, "tampered"))

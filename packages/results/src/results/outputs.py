@@ -22,6 +22,7 @@ never wrote, and says nothing of a number taken from the wrong place in what it 
 from __future__ import annotations
 
 import decimal
+import hashlib
 import pathlib
 import re
 
@@ -52,13 +53,32 @@ def run_outputs(events: list[dict], run_id: str) -> list[str]:
     return paths
 
 
-def _stored(path: pathlib.Path) -> set[decimal.Decimal] | None:
-    """Every number in one output, or None where the file is not text this can read."""
+def recorded_digests(events: list[dict], run_id: str) -> dict[str, set[str]]:
+    """Each output path the runs recorded under `run_id` name, with the digests they recorded."""
+    found: dict[str, set[str]] = {}
+    for e in events:
+        if e.get("event") == "run" and e.get("run_id") == run_id:
+            for o in e.get("outputs", []):
+                found.setdefault(o["path"], set()).add(o.get("sha256", ""))
+    return found
+
+
+def _bytes(path: pathlib.Path) -> tuple[bytes, str] | None:
+    """The first `MAX_BYTES` of a file and the digest of all of it, or None where it cannot be
+    read."""
+    digest, kept = hashlib.sha256(), bytearray()
     try:
         with path.open("rb") as handle:
-            data = handle.read(MAX_BYTES)
+            for block in iter(lambda: handle.read(1 << 20), b""):
+                digest.update(block)
+                kept += block[: max(0, MAX_BYTES - len(kept))]
     except OSError:
         return None
+    return bytes(kept), digest.hexdigest()
+
+
+def _stored(data: bytes) -> set[decimal.Decimal] | None:
+    """Every number in one output's bytes, or None where they are not text this can read."""
     if b"\x00" in data[:8192]:
         return None
     text = data.decode("utf-8", errors="replace")
@@ -80,13 +100,24 @@ def places(value: str) -> int:
 
 
 class Held:
-    """The numbers one run's outputs print, rounded to whatever precision is asked of them."""
+    """The numbers one run's outputs print, rounded to whatever precision is asked of them.
 
-    def __init__(self, paths: list[pathlib.Path]) -> None:
+    Each output is read only where its bytes are ones the run recorded: an output edited since
+    is listed in `changed` and holds nothing, so a claim is never checked against bytes the run
+    did not write."""
+
+    def __init__(self, outputs: list[tuple[pathlib.Path, set[str]]]) -> None:
         self.values: set[decimal.Decimal] = set()
         self.read = 0
-        for path in paths:
-            found = _stored(path)
+        self.changed: list[pathlib.Path] = []
+        for path, digests in outputs:
+            got = _bytes(path)
+            if got is None:
+                continue
+            if got[1] not in digests:
+                self.changed.append(path)
+                continue
+            found = _stored(got[0])
             if found is not None:
                 self.read += 1
                 self.values |= found
@@ -122,7 +153,7 @@ class Held:
 
 def held_by(events: list[dict], run_id: str, base: pathlib.Path) -> Held:
     """What the outputs of the runs recorded under `run_id` hold, read from `base`."""
-    return Held([base / path for path in run_outputs(events, run_id)])
+    return Held([(base / path, d) for path, d in recorded_digests(events, run_id).items()])
 
 
 def printed_numbers(text: str) -> list[tuple[str, bool]]:

@@ -128,3 +128,12 @@ def test_a_derived_claim_still_gets_the_format_character_warning(project, capsys
     capsys.readouterr()
     assert cli.main(["claim", "The mean was 0.87​2", "--run-id", "r1", "--derived", "a mean"]) == 0
     assert "1 format character(s)" in capsys.readouterr().out
+
+
+def test_a_claim_is_not_checked_against_an_output_edited_since_its_run(project, capsys):
+    (project / "out.json").write_text(json.dumps({"icc": 0.9913}))
+    capsys.readouterr()
+
+    assert cli.main(["claim", "The ICC was 0.9913", "--run-id", "r1", "--strict"]) == 1
+    assert claims(project) == []
+    assert "out.json is not the bytes run 'r1' recorded" in capsys.readouterr().out

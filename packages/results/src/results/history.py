@@ -54,8 +54,11 @@ def locate(lp: pathlib.Path) -> Located | None:
 
 
 def _commits(where: Located, path: str) -> list[str]:
-    """Each commit in the history of HEAD that changed `path`, newest first."""
-    out = try_run("log", "--format=%H", "--", path, cwd=where.top)
+    """Each commit in the history of HEAD that changed `path`, newest first, merges included.
+    `--full-history`, because git's default simplification follows one parent where a merge
+    leaves the path as that parent had it, and a merge taking one side's ledger then hid every
+    commit on the other side, a committed exposure among them."""
+    out = try_run("log", "--full-history", "--format=%H", "--", path, cwd=where.top)
     return out.split() if out else []
 
 
@@ -121,12 +124,16 @@ def rewritten(lp: pathlib.Path) -> list[str]:
 
 
 def missing_proofs(lp: pathlib.Path) -> list[tuple[str, str]]:
-    """Each timestamp proof a commit added that is not on disk now, with the commit."""
+    """Each timestamp proof a commit added that is not on disk now, with the commit. On every
+    line of history, and with a merge diffed against each parent, so a proof added on a side a
+    merge dropped, or inside the merge itself, is still found."""
     where = locate(lp)
     if where is None:
         return []
     out = try_run(
         "log",
+        "--full-history",
+        "-m",
         "--diff-filter=A",
         "--name-only",
         "--format=commit %H",

@@ -106,3 +106,15 @@ def test_resealing_an_input_with_the_same_bytes_does_not_make_a_rerecord_a_rerun
     capsys.readouterr()
     assert cli.main(["run", "out.json", "--run-id", "r2", "--strict"]) == 1
     assert "no input of that run has been sealed since" in capsys.readouterr().out
+
+
+def test_a_second_rerecord_of_one_path_is_refused_under_strict_too(project, capsys):
+    edit_output(project)
+    assert cli.main(["run", "out.json", "--run-id", "r2"]) == 0
+    (project / "out.json").write_text(json.dumps({"icc": 0.1234}))
+    before = len(events(project))
+    capsys.readouterr()
+
+    assert cli.main(["run", "out.json", "--run-id", "r3", "--strict"]) == 1
+    assert len(events(project)) == before
+    assert "recorded by run 'r2' with other bytes" in capsys.readouterr().out

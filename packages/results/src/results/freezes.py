@@ -36,7 +36,7 @@ import re
 import subprocess
 from dataclasses import dataclass
 
-from provenance_core import sha256_of_text
+from provenance_core import sha256_of_file, sha256_of_text
 from provenance_core.gitref import clean_env, try_run
 
 from results.timeline import precedes
@@ -90,10 +90,14 @@ def _name(top: pathlib.Path, path: pathlib.Path) -> str | None:
 
 def _plan_problem(record: pathlib.Path, held: dict, top: pathlib.Path | None) -> str:
     """Why the record's plan does not stand behind it, or "" where it does: the plan exists,
-    and the commit the record names holds it with the digest the record gives."""
+    is the file the record froze, as `prereg check` reads a plan frozen whole, and the commit
+    the record names holds it with the digest the record gives. A plan edited after the
+    outcomes were seen, beside a record left as it was, made a confirmatory claim pass."""
     plan = record.parent.parent / record.name.removesuffix(".json")
     if not plan.is_file():
         return f"no plan {plan.name} stands beside the record"
+    if sha256_of_file(plan) != held.get("sha256"):
+        return f"{plan.name} has changed since it was frozen: `prereg check` reports it"
     if held.get("uncommitted"):
         return f"{plan.name} was frozen from bytes no commit holds"
     name = _name(top, plan) if top is not None else None

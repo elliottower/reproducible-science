@@ -289,6 +289,8 @@ def run(
 def rerecorded_paths(events: list[dict]) -> dict[str, tuple[str, str]]:
     """Each path a run recorded as an output under other bytes than an earlier run recorded
     there, with no input of the earlier run sealed again between the two, and the two runs.
+    Where a path was re-recorded more than once, the latest pair: keeping the first made every
+    later re-record of the path silent at `results run`.
 
     What separates a re-run from an output edited and recorded again is that a re-run reads
     its inputs, and an input the ledger knows is a seal. The inputs of a run are the paths
@@ -318,7 +320,7 @@ def rerecorded_paths(events: list[dict]) -> dict[str, tuple[str, str]]:
             for o in e.get("outputs", []):
                 path, digest = o.get("path", ""), o.get("sha256", "")
                 if path in last and last[path][1] != digest and path not in refreshed:
-                    found.setdefault(path, (last[path][0], run_id))
+                    found[path] = (last[path][0], run_id)
                 last[path] = (run_id, digest, frozenset(set(sealed) - {path}))
                 refreshed.discard(path)
     return found
@@ -499,6 +501,9 @@ def claim(
                 f"{'refusing' if strict else 'warning'}: run '{run_id}' records no output "
                 "this can read as text, so the claim's numbers were not checked against it."
             )
+        for path in held.changed:
+            print(f"  {record_path(path, root)} is not the bytes run '{run_id}' recorded, so")
+            print("  it was not read: `results verify --files` reports it as changed.")
         print("  `results verify` reports it until the claim and the run agree.")
         if strict:
             print("nothing was written. Name the run that wrote these numbers.")

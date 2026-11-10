@@ -169,20 +169,45 @@ def _inverse(sha: str, reverted: str, claims_dir: pathlib.Path) -> bool:
     return mine is not None and undone is not None and bool(mine) and mine == undone
 
 
+def _held_at(rev: str | None, claims_dir: pathlib.Path) -> set[str]:
+    """The log's lines as commit `rev` holds them; empty where it holds no log."""
+    said = try_run("show", f"{rev}:./{LOG}", cwd=claims_dir) if rev else None
+    return set((said or "").splitlines())
+
+
+def _merged_out(sha: str, parents: list[str], claims_dir: pathlib.Path) -> list[str]:
+    """The lines merge `sha` took out of the log (see `rewritten`). `git show` gives a merge
+    only its combined diff, which leaves out a line the merge took out, so the versions are
+    read whole."""
+    sides = [_held_at(p, claims_dir) for p in parents]
+    base = _held_at(try_run("merge-base", "--octopus", *parents, cwd=claims_dir), claims_dir)
+    lost = set().union(*sides) - _held_at(sha, claims_dir)
+    taken_on_a_side = {line for side in sides for line in base - side}
+    return sorted(line for line in lost - taken_on_a_side if line.strip())
+
+
 def rewritten(claims_dir: pathlib.Path) -> list[Removed]:
     """Lines taken out of the log: in any commit that changed it, or since the last one, each
     with the commit that removed it and, where that commit is a `git revert` of the commit that
     added the line, that commit.
 
-    A merge is not diffed, so a log that two branches added to reads as two sets of additions.
-    Empty outside a repository, where git is absent, and for a log git has never held.
+    A merge is read against its parents: a line a parent held that the merge does not was
+    taken out by the merge, unless another parent lacks a line the merge base held, in which
+    case that parent's own commit took it out and is read there. A log two branches added to
+    therefore reads as two sets of additions. `--full-history`, so a merge that keeps one
+    side's log does not hide the other side's commits. Empty outside a repository, where git
+    is absent, and for a log git has never held.
     """
     log = path(claims_dir)
     held = set(log.read_text(errors="replace").splitlines()) if log.is_file() else set()
     removed: list[Removed] = []
-    for sha in (
-        try_run("log", "--no-merges", "--format=%H", "--", LOG, cwd=claims_dir) or ""
-    ).split():
+    for entry in (
+        try_run("log", "--full-history", "--format=%H %P", "--", LOG, cwd=claims_dir) or ""
+    ).splitlines():
+        sha, *parents = entry.split()
+        if len(parents) > 1:
+            removed += [Removed(line, sha) for line in _merged_out(sha, parents, claims_dir)]
+            continue
         _, gone = _diff(sha, claims_dir)
         if not gone:
             continue

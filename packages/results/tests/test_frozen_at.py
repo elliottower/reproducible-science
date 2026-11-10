@@ -290,3 +290,16 @@ def test_a_hand_written_position_with_no_freeze_event_places_nothing(repo):
     assert r.returncode == 1
     assert "no freeze event in the ledger stands where the record says" in r.stdout
     assert not claims(repo)
+
+
+def test_a_plan_edited_after_the_outcomes_were_seen_protects_nothing(repo):
+    named = freeze(repo)
+    results("access", "read the outcomes", "--level", "outcomes seen", cwd=repo)
+    results("run", "out.json", "--run-id", "late", cwd=repo)
+    plan = repo / "PREREG.md"
+    plan.chmod(0o644)
+    plan.write_text(PLAN + "\n**H2.** The effect is above 0.1.\n")
+    commit(repo, "edit plan")
+    r = confirm(repo, "late", named)
+    assert r.returncode == 1
+    assert "PREREG.md has changed since it was frozen" in r.stdout

@@ -155,3 +155,29 @@ def test_a_confirmatory_claim_on_a_rewritten_ledger_is_refused(committed, capsys
     assert cli.main(["claim", "The ICC was 0.4213", "--run-id", "r1", "--confirmatory"]) == 1
     assert "git history holds a ledger this one does not extend" in capsys.readouterr().out
     assert len(ledger.read_ledger(lp(committed))) == before
+
+
+def test_a_merge_taking_one_sides_ledger_cannot_drop_a_committed_exposure(
+    tmp_path, monkeypatch, capsys
+):
+    monkeypatch.chdir(tmp_path)
+    git(tmp_path, "init", "-q", "-b", "main")
+    assert cli.main(["init"]) == 0
+    git(tmp_path, "add", ".results")
+    git(tmp_path, "commit", "-q", "-m", "ledger")
+    git(tmp_path, "branch", "side")
+    assert cli.main(["access", "looked at the outcome", "--level", "outcomes seen"]) == 0
+    git(tmp_path, "add", ".results")
+    git(tmp_path, "commit", "-q", "-m", "exposure")
+    git(tmp_path, "checkout", "-q", "side")
+    (tmp_path / "out.json").write_text(json.dumps({"x": 0.73}))
+    assert cli.main(["run", "out.json", "--run-id", "r1"]) == 0
+    git(tmp_path, "add", ".results", "out.json")
+    git(tmp_path, "commit", "-q", "-m", "run")
+    git(tmp_path, "checkout", "-q", "main")
+    git(tmp_path, "merge", "-q", "--no-ff", "-X", "theirs", "side", "-m", "merge side")
+    assert '"outcomes seen"' not in lp(tmp_path).read_text()
+    capsys.readouterr()
+
+    assert cli.main(["claim", "x was 0.73", "--run-id", "r1", "--confirmatory"]) == 1
+    assert "git history holds a ledger this one does not extend" in capsys.readouterr().out
