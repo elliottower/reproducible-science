@@ -169,6 +169,20 @@ MIN_READS_CHARS = 12
 #: cannot be borrowed as `reads` beside a passage that says something else.
 READS_LIKENESS = 0.8
 
+#: How far the quotation may reach past the stretch of `passage` that corrects `reads`, in
+#: characters with white space removed, at each end. The stretch is where `passage` aligns with
+#: `reads`, so a misread first or last letter leaves it short of the quotation: `rn` read for
+#: `m` by one, a dropped `ffi` or `ffl` ligature, the widest a ligature is, by three. Past that
+#: the quotation quotes text `reads` does not cover, which is the shape of a faithful correction
+#: with a sentence added after it. A whole word would let any short word through unread; a
+#: garbled word at the boundary is covered by widening `reads` to the word beside it.
+READS_EDGE = 3
+
+#: The shortest run of characters aligned between `reads` and `passage` that marks an end of
+#: the stretch correcting it. A single character of `reads` left over after its copy is aligned
+#: matches by chance somewhere in the text around it, and would carry the stretch there.
+MIN_ALIGNED_RUN = 3
+
 #: How many ways of fitting a quotation to its source `omission` will list before it stops
 #: counting. Each is a division into pieces and a place for each piece, and a source that
 #: repeats a phrase a hundred times has that many for every piece. Past this the shortest of
@@ -1513,20 +1527,20 @@ def reads_count(
     return resolve_in(reads, got.text).count, "in"
 
 
-def _near_copy(quote: str, passage: str, reads: str) -> bool:
-    """Whether `passage` holds a stretch within `READS_LIKENESS` of `reads` overlapping `quote`.
+def _near_copy(q: str, p: str, r: str) -> tuple[int, int] | None:
+    """A window of `p` within `READS_LIKENESS` of `r` overlapping an occurrence of `q`.
 
-    All three with white space removed, as `skeleton` leaves them. Every window of a length
-    that could reach the ratio, among those overlapping an occurrence of the quotation, is
-    compared; `quick_ratio` is an upper bound on `ratio` and rules most of them out cheaply.
+    The window as `(start, end)`, or None. All three are skeletons, white space removed.
+    Every window of a length that could reach the ratio, among those overlapping an occurrence
+    of the quotation, is compared until one does; `quick_ratio` is an upper bound on `ratio`
+    and rules most of them out cheaply.
     """
-    q, p, r = skeleton(quote), skeleton(passage), skeleton(reads)
     spans, at = [], p.find(q)
     while q and at >= 0:
         spans.append((at, at + len(q)))
         at = p.find(q, at + 1)
     if not spans or not r:
-        return False
+        return None
     likeness = difflib.SequenceMatcher(None, autojunk=False)
     likeness.set_seq2(r)
     shortest = -(-2 * len(r) // 3)
@@ -1537,18 +1551,44 @@ def _near_copy(quote: str, passage: str, reads: str) -> bool:
                 if likeness.quick_ratio() >= READS_LIKENESS and (
                     likeness.ratio() >= READS_LIKENESS
                 ):
-                    return True
-    return False
+                    return i, i + width
+    return None
+
+
+def _corrected_stretch(p: str, r: str, start: int, end: int) -> tuple[int, int] | None:
+    """The stretch of `p` that corrects `r`, from a window of it `_near_copy` found.
+
+    `r` is aligned once against the window widened by its own length at each end, which holds
+    any part of the correction the window left out, and the stretch runs from the first to the
+    last run of `MIN_ALIGNED_RUN` characters aligned. Shorter runs are what is left of `r` after
+    its copy is aligned, matched by chance in the text around it. None where the stretch is not
+    itself within `READS_LIKENESS` of `r`.
+    """
+    base = max(0, start - len(r))
+    region = p[base : end + len(r)]
+    runs = [
+        b
+        for b in difflib.SequenceMatcher(None, region, r, autojunk=False).get_matching_blocks()
+        if b.size >= MIN_ALIGNED_RUN
+    ]
+    if not runs:
+        return None
+    a, b = base + runs[0].a, base + runs[-1].a + runs[-1].size
+    if difflib.SequenceMatcher(None, p[a:b], r, autojunk=False).ratio() < READS_LIKENESS:
+        return None
+    return a, b
 
 
 def correction_fault(quote: str, passage: str, reads: str) -> str:
     """Why a correction cannot stand for this quotation, or empty where it can.
 
-    Three ways, each checked by `pin --correct` before it writes and by `verify` before it
+    Four ways, each checked by `pin --correct` before it writes and by `verify` before it
     applies a record, which may have been written by hand: `reads` too short to name a place,
-    a passage that does not hold the quotation, and a passage holding nothing like `reads`
-    where it holds the quotation. The last is what stops a real stretch of the extractor's text
-    being recorded as `reads` beside a passage the page does not print.
+    a passage that does not hold the quotation, a passage holding nothing like `reads` where it
+    holds the quotation, and a quotation reaching past the stretch of the passage that corrects
+    `reads`. The third is what stops a real stretch of the extractor's text being recorded as
+    `reads` beside a passage the page does not print; the fourth stops a faithful correction of
+    `reads` carrying invented text after it into what is quoted.
     """
     if (n := len(passage_fold(reads))) < MIN_READS_CHARS:
         return (
@@ -1557,10 +1597,17 @@ def correction_fault(quote: str, passage: str, reads: str) -> str:
         )
     if resolve_in(quote, passage).state == "not found":
         return "the passage does not hold the quotation"
-    if not _near_copy(quote, passage, reads):
+    q, p, r = skeleton(quote), skeleton(passage), skeleton(reads)
+    if (window := _near_copy(q, p, r)) is None:
         return (
             f"the passage holds nothing within {READS_LIKENESS} of `reads` where it holds the "
             f"quotation, so it does not correct the text `reads` names"
+        )
+    stretch = _corrected_stretch(p, r, *window)
+    if stretch is None or q not in p[max(0, stretch[0] - READS_EDGE) : stretch[1] + READS_EDGE]:
+        return (
+            f"the quotation reaches more than {READS_EDGE} characters past the stretch of the "
+            f"passage that corrects `reads`, so `reads` does not cover what is quoted"
         )
     return ""
 

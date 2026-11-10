@@ -574,6 +574,7 @@ hold:
 | the quotation's `page`, where it has one, is the correction's `page` | the two would otherwise describe two places |
 | `passage` holds the quotation | the correction must support what is quoted |
 | `reads` is at least 12 characters, and `passage` holds a stretch within a difflib ratio of 0.8 of it that overlaps the quotation | a short or unrelated `reads` names some place on the page, not the place the passage corrects |
+| the quotation lies within the stretch of `passage` aligned with `reads`, to 3 characters (white space removed) at either end | text the passage carries past what `reads` covers is checked against nothing the extractor produced; 3 covers a misread `m` or a dropped `ffi` at the quotation's first or last letter |
 
 `extractor`, `extractor_version` and `derived_sha256` are recorded and decide nothing. A digest
 of the whole text changes with any page of it: poppler 24.02 and 26.04 give `-layout` text of

@@ -23,7 +23,7 @@ from citations.exceptions import SourceUnreadableError
 TEXT = "Table 2 reports that the coefficient of eciency was 0.81 across all twelve sites.\n"
 QUOTE = "the coefficient of efficiency was 0.81 across all twelve sites"
 PRINTED = "Table 2 reports that the coefficient of efficiency was 0.81 across all twelve sites."
-READS = "the coefficient of eciency was 0.81"
+READS = "the coefficient of eciency was 0.81 across all twelve sites"
 
 
 @pytest.fixture(autouse=True)
@@ -140,7 +140,7 @@ def test_another_reader_whose_text_holds_reads_once_is_corrected_and_both_are_na
 
 def test_a_reading_that_does_not_hold_reads_is_not_corrected_and_says_why(paper, capsys):
     assert pin_corrected(paper) == 0
-    edit_correction(paper, reads="the coefficient of eciency was 0.31")
+    edit_correction(paper, reads="the coefficient of eciency was 0.31 across all twelve sites")
     code, account = verify(paper)
     out = capsys.readouterr().out
     assert code == 1
@@ -155,7 +155,10 @@ def test_a_reading_that_does_not_hold_reads_is_not_corrected_and_says_why(paper,
 
 
 def test_reads_occurring_twice_is_refused_at_pin_and_not_applied_at_verify(tmp_path, capsys):
-    f = claims_file(tmp_path, TEXT + "In the pilot the coefficient of eciency was 0.81 too.\n")
+    f = claims_file(
+        tmp_path,
+        TEXT + "In the pilot the coefficient of eciency was 0.81 across all twelve sites too.\n",
+    )
     before = f.read_text()
     assert pin_corrected(f) == 1
     assert f.read_text() == before
@@ -186,6 +189,55 @@ def test_reads_unrelated_to_the_passage_is_refused_at_pin_and_not_applied_at_ver
     assert account["counts"]["corrected"] == 0
     assert account["counts"]["not found"] == 1
     assert "holds nothing within 0.8 of `reads` where it holds the quotation" in out
+
+
+def test_a_faithful_correction_with_invented_text_after_it_is_refused_and_not_applied(
+    paper, capsys
+):
+    passage = PRINTED[:-1] + ", and the effect was shown to be causal."
+    quote = QUOTE + ", and the effect was shown to be causal"
+    before = paper.read_text()
+    assert pin_corrected(paper, quote=quote, passage=passage) == 1
+    assert paper.read_text() == before
+    reach = "the quotation reaches more than 3 characters past the stretch of the passage"
+    assert reach in capsys.readouterr().out
+
+    write_by_hand(paper, quote, passage=passage)
+    code, account = verify(paper)
+    out = capsys.readouterr().out
+    assert code == 1
+    assert account["counts"]["corrected"] == 0
+    assert account["counts"]["not found"] == 1
+    assert account["unapplied_corrections"] == 1
+    assert reach in out
+
+
+def test_a_quotation_spanning_the_whole_corrected_stretch_inside_a_longer_passage_applies(
+    tmp_path,
+):
+    f = claims_file(tmp_path, "Results. " + TEXT + "Discussion follows.\n")
+    passage = "Results. " + PRINTED + " Discussion follows."
+    assert pin_corrected(f, passage=passage) == 0
+    code, account = verify(f)
+    assert code == 0
+    assert account["counts"]["corrected"] == 1
+
+
+def test_a_misread_first_and_last_letter_at_the_quotations_ends_still_applies(tmp_path):
+    f = claims_file(tmp_path, "Here rnodern estimates put the coefficient at 0.8l in total.\n")
+    quote = "modern estimates put the coefficient at 0.81"
+    passage = "Here modern estimates put the coefficient at 0.81 in total."
+    reads = "rnodern estimates put the coefficient at 0.8l"
+    assert pin_corrected(f, quote=quote, passage=passage, reads=reads) == 0
+    code, account = verify(f)
+    assert code == 0
+    assert account["counts"]["corrected"] == 1
+
+
+def test_the_quotation_may_reach_three_characters_past_the_corrected_stretch_and_no_more():
+    passage = PRINTED[:-1] + " xqzk."
+    assert V.correction_fault(QUOTE + " xqz", passage, READS) == ""
+    assert "reaches more than 3 characters" in V.correction_fault(QUOTE + " xqzk", passage, READS)
 
 
 def test_a_reads_too_short_to_name_a_place_is_refused_and_not_applied(paper, capsys):

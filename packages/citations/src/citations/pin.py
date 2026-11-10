@@ -74,8 +74,10 @@ naming the extractor, its version, the sha256 of the source's bytes and of the e
 and `verify` reports it `corrected`, never `found`. The extracted text is not modified. It is
 refused where the extractor's text already holds the quotation, because no correction is then
 needed; where `--reads` is shorter than twelve characters or does not occur exactly once on
-that page of the extractor's text; and where the passage does not hold the quotation, or holds
-nothing like `--reads` where it holds it. `verify` applies the correction under the same tests.
+that page of the extractor's text; where the passage does not hold the quotation, or holds
+nothing like `--reads` where it holds it; and where the quotation reaches more than three
+characters past the stretch of the passage that corrects `--reads`. `verify` applies the
+correction under the same tests.
 
     citations pin claims/smith2020.yaml --id efficiency --page 4 \
         --quote "the coefficient of efficiency was 0.81" \

@@ -19,6 +19,7 @@ from repro.cli import main
 TEXT = "Table 2 reports that the coefficient of eciency was 0.81 across all twelve sites.\n"
 QUOTE = "the coefficient of efficiency was 0.81 across all twelve sites"
 PRINTED = "Table 2 reports that the coefficient of efficiency was 0.81 across all twelve sites."
+READS = "the coefficient of eciency was 0.81 across all twelve sites"
 
 
 @pytest.fixture
@@ -38,7 +39,7 @@ def project(tmp_path, monkeypatch):
         pin.main(
             [
                 *(str(f), "--id", "eff", "--quote", QUOTE, "--page", "4"),
-                *("--correct", PRINTED, "--reads", "the coefficient of eciency was 0.81"),
+                *("--correct", PRINTED, "--reads", READS),
             ]
         )
         == 0
