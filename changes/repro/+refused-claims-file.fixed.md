@@ -1,1 +1,0 @@
-**`repro verify` and `repro ci citations` no longer report the citations check as passed when `citations verify` refused a claims file.** The refused file's quotations went unchecked while the line read `citations passed`; the check is now `FAILED`, its output naming each refused file and why, and `repro verify` exits 1 under every policy.

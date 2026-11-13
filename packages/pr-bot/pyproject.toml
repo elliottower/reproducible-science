@@ -4,7 +4,7 @@ requires = [ "hatchling" ]
 
 [project]
 name = "reproducible-science-pr-bot"
-version = "0.7.0rc1"
+version = "0.7.0"
 description = "A pull-request bot that comments on each claim in repro.yaml that fails or went stale, and records the answers"
 readme = "README.md"
 keywords = [ "github-actions", "manuscript", "pull-request", "reproducibility" ]
@@ -24,8 +24,8 @@ classifiers = [
 ]
 dependencies = [
   # What fails is decided by the checker, and a set_aside entry is a manifest model.
-  "claims-cli>=0.7rc1,<0.8",
-  "provenance-core>=0.7rc1,<0.8",
+  "claims-cli>=0.7,<0.8",
+  "provenance-core>=0.7,<0.8",
   # Floors, not bare names: without them a fresh install resolves whatever is oldest on
   # PyPI, which is not the combination the tests exercise.
   "pydantic>=2.9",

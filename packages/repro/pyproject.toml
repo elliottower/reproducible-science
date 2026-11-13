@@ -4,7 +4,7 @@ requires = [ "hatchling" ]
 
 [project]
 name = "reproducible-science"
-version = "0.7.0rc1"
+version = "0.7.0"
 description = "One contract for verifying declared evidence assertions against pinned artifacts"
 readme = "README.md"
 keywords = [ "citations", "open science", "preregistration", "provenance", "reproducibility" ]
@@ -23,21 +23,21 @@ classifiers = [
   "Topic :: Scientific/Engineering",
 ]
 dependencies = [
-  "citations>=0.7rc1,<0.8",
+  "citations>=0.7,<0.8",
   # The contract, the engine and the commands that check a manifest. This distribution adds
   # the commands that run things and drive the other tools.
-  "claims-cli>=0.7rc1,<0.8",
+  "claims-cli>=0.7,<0.8",
   # `repro mcp`, the toolkit's checks as tools of an MCP server. The official Python SDK, pinned
   # exactly: its 2.x line moves fast, and the server is tested against this release. Imported
   # only when `repro mcp` runs, so no other command pays for it at startup.
   "mcp==2.2",
   # Floors, not bare names: without them a fresh install resolves whatever is oldest on
   # PyPI, which is not the combination the tests exercise.
-  "prereg>=0.7rc1,<0.8",
-  "provenance-core>=0.7rc1,<0.8",
+  "prereg>=0.7,<0.8",
+  "provenance-core>=0.7,<0.8",
   "pydantic>=2.9",
   "pyyaml>=6.0.2",
-  "results-cli>=0.7rc1,<0.8",
+  "results-cli>=0.7,<0.8",
 ]
 # Only needed to run the rule inside `adduce check`. repro itself never imports adduce.
 optional-dependencies.adduce = [ "adduce>=0.2" ]
@@ -56,12 +56,12 @@ optional-dependencies.mcp = [  ]
 optional-dependencies.netcdf = [ "claims-cli[netcdf]" ]
 optional-dependencies.parquet = [ "claims-cli[parquet]" ]
 # The pull-request bot's command, which the workflows `repro ci init --pr-bot` writes run.
-optional-dependencies.pr-bot = [ "reproducible-science-pr-bot>=0.7rc1,<0.8" ]
+optional-dependencies.pr-bot = [ "reproducible-science-pr-bot>=0.7,<0.8" ]
 optional-dependencies.rds = [ "claims-cli[rds]" ]
 optional-dependencies.sheets = [ "claims-cli[sheets]" ]
 optional-dependencies.stata-spss = [ "claims-cli[stata-spss]" ]
 # `repro ui`, the page over a project's records, served on localhost.
-optional-dependencies.ui = [ "reproducible-science-ui>=0.7rc1,<0.8" ]
+optional-dependencies.ui = [ "reproducible-science-ui>=0.7,<0.8" ]
 urls.Changelog = "https://github.com/elliottower/reproducible-science/blob/main/CHANGELOG.md"
 urls.Homepage = "https://github.com/elliottower/reproducible-science"
 urls.Issues = "https://github.com/elliottower/reproducible-science/issues"
