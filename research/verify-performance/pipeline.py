@@ -90,7 +90,7 @@ def _verdict_from_rendition(
     ):
         warn.append("short")
 
-    q, doc = V.fold(quote), V.fold(rend.text)
+    q, doc = V.passage_fold(quote), V.passage_fold(rend.text)
     if not q:
         return _row("not found", "the quotation is empty after normalization", warn)
 
@@ -109,7 +109,7 @@ def _verdict_from_rendition(
         return _row("found", "", warn)
     if V._cuts_a_token(q, doc):
         warn.append("truncated")
-    if page and q not in V.fold(rend.page(page)):
+    if page and q not in V.passage_fold(rend.page(page)):
         warn.append("page")
         found_at, capped = _find_page(q, rend)
         detail = f"not on page {page}"
@@ -129,7 +129,7 @@ def _find_page(folded_quote: str, rend: R.Rendition) -> tuple[int | None, bool]:
         text = rend.page(p)
         if not text:
             return None, False
-        if folded_quote in V.fold(text):
+        if folded_quote in V.passage_fold(text):
             return p, False
     return None, True
 
