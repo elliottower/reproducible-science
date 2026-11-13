@@ -1,6 +1,9 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
+import { statusLine } from './format'
+import { DiffView } from './issues'
 import { fmt, when } from './shared'
-import type { Graph } from './types'
+import { secs } from './reproduce'
+import type { Focus, Graph } from './types'
 
 /** One page per record, each opening with the line the Overview shows and a sentence on what the
  * record is, then the record itself as a table. */
@@ -25,25 +28,83 @@ const STATE: Record<string, [string, string]> = {
   never_rerun: ['Never re-run', 'warn'],
 }
 
-export function PreregTab({ graph }: { graph: Graph }) {
-  const lines = graph.tabs?.prereg.lines ?? []
+const PLAN_STATE: Record<string, [string, string]> = {
+  unchanged: ['Unchanged since frozen', 'good'],
+  changed: ['Changed since frozen', 'bad'],
+  'not frozen': ['Amendment not frozen', 'stale'],
+  'never frozen': ['Never frozen', 'stale'],
+  pending: ['No commit named yet', 'stale'],
+  'unknown commit': ['Commit not in this repository', 'bad'],
+}
+
+/** The item of an issue that serves a diff for `path` on this tab, if there is one. */
+function diffIssue(graph: Graph, tab: string, path: string): string | null {
+  for (const r of graph.issues ?? []) for (const i of r.items) if (i.open.tab === tab && i.open.path === path && i.open.diff) return i.open.diff
+  return null
+}
+
+export function PreregTab({ graph, focus }: { graph: Graph; focus?: Focus | null }) {
+  const t = graph.tabs?.prereg
+  const plans = t?.plans ?? []
+  const line = statusLine('prereg', graph.status)
+  const [diff, setDiff] = useState<{ issue: string; path: string } | null>(null)
+  useEffect(() => {
+    if (focus?.diff && focus.path) setDiff({ issue: focus.diff, path: focus.path })
+  }, [focus?.at])
   return (
     <div className="rec">
-      <Head cmd="prereg" line={graph.status?.prereg.text ?? '—'}
-        what="A preregistration is the analysis plan, frozen against a commit and a content hash before the analysis runs. Every later change is logged as an amendment or a deviation. Optional: a project without a plan is not failing." />
-      {graph.status?.prereg.next && (
+      <Head cmd="prereg" line={line.text}
+        what="A preregistration states the analysis before it runs, frozen against a commit and a content hash. Every later change is logged as an amendment or a deviation. Optional: a project without a preregistration is not failing." />
+      {line.next === 'prereg new' && (
         <p className="rec-next">To preregister: <span className="mono">prereg new</span>, then <span className="mono">prereg freeze</span>.</p>
       )}
-      <pre className="rec-pre">{lines.map((l) => (/^no PREREG\.md/i.test(l) ? 'No PREREG.md' : l)).join('\n') || 'No PREREG.md'}</pre>
+      {plans.length > 0 && (
+        <table>
+          <thead><tr><th>Preregistration</th><th>State</th><th>Frozen</th><th>Commit</th></tr></thead>
+          <tbody>
+            {plans.map((p) => {
+              const [label, tone] = PLAN_STATE[p.check] ?? [p.check, 'none']
+              const issue = diffIssue(graph, 'prereg', p.path)
+              return (
+                <tr key={p.path} className={`static ${diff?.path === p.path ? 'sel' : ''}`}>
+                  <td className="mono small">
+                    {issue ? <button className="file-link" onClick={() => setDiff({ issue, path: p.path })} title="Show the frozen text against the file now">{p.path}</button> : p.path}
+                  </td>
+                  <td><span className={`pill ${tone}`}>{label}</span></td>
+                  <td className="small nowrap">{p.frozen_at ? when(p.frozen_at) : p.pinned_by === 'commit line' ? 'by a Commit SHA line' : '—'}</td>
+                  <td className="mono small">{p.commit ? p.commit.slice(0, 12) : '—'}</td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      )}
+      {diff && (
+        <aside className="panel">
+          <button className="close" onClick={() => setDiff(null)}>×</button>
+          <div className="kicker">PREREGISTRATION</div>
+          <h2 className="mono">{diff.path}</h2>
+          <DiffView issue={diff.issue} path={diff.path} label="The frozen preregistration against the file now" />
+        </aside>
+      )}
+      <pre className="rec-pre">{t?.used ? t.output : 'No PREREG.md'}</pre>
     </div>
   )
 }
 
-export function ResultsTab({ graph, query }: { graph: Graph; query: string }) {
+export function ResultsTab({ graph, query, focus }: { graph: Graph; query: string; focus?: Focus | null }) {
   const t = graph.tabs?.results
   const [showBound, setShowBound] = useState(false)
   const [viewing, setViewing] = useState<string | null>(null)
   const [panel, setPanel] = useState<Run | null>(null)
+  // A sealed file Open in UI asked for: its run's panel, with the recorded bytes against the file now.
+  const [diff, setDiff] = useState<{ issue: string; path: string } | null>(null)
+  useEffect(() => {
+    if (!focus) return
+    const run = focus.run && (t?.runs ?? []).find((r) => r.run_id === focus.run?.run_id && r.timestamp === focus.run?.timestamp)
+    setPanel(run || null)
+    setDiff(focus.diff && focus.path ? { issue: focus.diff, path: focus.path } : null)
+  }, [focus?.at])
   const q = query.trim().toLowerCase()
   const runs = useMemo(
     () => [...(t?.runs ?? [])].reverse().filter((r) => !q || `${r.run_id} ${r.note} ${r.outputs.join(' ')}`.toLowerCase().includes(q)),
@@ -51,14 +112,14 @@ export function ResultsTab({ graph, query }: { graph: Graph; query: string }) {
   )
   return (
     <div className="rec">
-      <Head cmd="results" line={graph.status?.results.counts ? `${fmt(graph.status.results.counts.sealed)}/${fmt(graph.status.results.counts.runs)} runs sealed` : graph.status?.results.text ?? '—'}
+      <Head cmd="results" line={statusLine('results', graph.status).text}
         what="The results ledger, a hash chain of events. results seal hashes a run's inputs before it runs; results run records the files the run wrote, with their hashes. Click a run for its details, or a file to read it." />
       <table>
         <thead><tr><th>Run</th><th>Recorded</th><th>Inputs</th><th>Outputs</th><th>Files written</th><th>Outside records</th><th>Manuscript</th></tr></thead>
         <tbody>
           {runs.map((r) => (
             <tr key={`${r.run_id}${r.timestamp}`} className={`static ${panel === r ? 'sel' : ''}`}>
-              <td className="clickable" onClick={() => setPanel(r)} title="Details">
+              <td className="clickable" onClick={() => { setPanel(r); setDiff(null) }} title="Details">
                 <button className="file-link mono strong">{r.run_id}</button>
                 <div className="small muted claim-cell">{r.note}</div>
               </td>
@@ -71,13 +132,22 @@ export function ResultsTab({ graph, query }: { graph: Graph; query: string }) {
                 ))}
               </td>
               <td className="small"><OutsideLinks r={r} /></td>
-              <td className="small nowrap">{readBy(graph, r).length ? `${fmt(readBy(graph, r).length)} claims` : <span className="muted">—</span>}</td>
+              <td className="small nowrap">{claimsReading(graph, r).length ? `${fmt(claimsReading(graph, r).length)} claims` : <span className="muted">—</span>}</td>
             </tr>
           ))}
         </tbody>
       </table>
       {viewing && <FileViewer path={viewing} onClose={() => setViewing(null)} />}
-      {panel && <RunPanel graph={graph} r={panel} onClose={() => setPanel(null)} onView={setViewing} />}
+      {panel && <RunPanel graph={graph} r={panel} diff={diff} onClose={() => { setPanel(null); setDiff(null) }} onView={setViewing} />}
+      {!panel && diff && (
+        <aside className="panel">
+          <button className="close" onClick={() => setDiff(null)}>×</button>
+          <div className="kicker">SEALED FILE</div>
+          <h2 className="mono">{diff.path}</h2>
+          <p className="small muted">No run in the ledger follows the seal that recorded this file.</p>
+          <DiffView issue={diff.issue} path={diff.path} label="The sealed bytes against the file now" />
+        </aside>
+      )}
       <button className="more rec-more" onClick={() => setShowBound((v) => !v)}>
         {showBound ? 'Hide' : 'Show'} the {fmt(t?.bound.length ?? 0)} sentences bound with results claim
       </button>
@@ -105,7 +175,7 @@ export function ResultsTab({ graph, query }: { graph: Graph; query: string }) {
 type Run = NonNullable<Graph['tabs']>['results']['runs'][number]
 
 /** The manuscript claims that read a file this run wrote. */
-function readBy(graph: Graph, r: Run) {
+function claimsReading(graph: Graph, r: Run) {
   const paths = new Set(r.outputs)
   return graph.nodes.filter((n) => n.type === 'artifact' && n.path && paths.has(n.path)).flatMap((n) => n.claims)
 }
@@ -153,10 +223,16 @@ function kindLabel(kind: string): string {
 
 /** One run: its note, when it ran, the commit holding its bytes, each file it wrote, the records
  * outside the ledger it was linked to, and the manuscript claims that read its files. */
-function RunPanel({ graph, r, onClose, onView }: { graph: Graph; r: Run; onClose: () => void; onView: (path: string) => void }) {
+function RunPanel({ graph, r, diff, onClose, onView }: {
+  graph: Graph
+  r: Run
+  diff?: { issue: string; path: string } | null
+  onClose: () => void
+  onView: (path: string) => void
+}) {
   const [allClaims, setAllClaims] = useState(false)
   const files = r.files ?? r.outputs.map((path) => ({ path, sha256: '', on_disk: true }))
-  const claims = readBy(graph, r)
+  const claims = claimsReading(graph, r)
   const shown = allClaims ? claims : claims.slice(0, 20)
   return (
     <aside className="panel">
@@ -169,6 +245,12 @@ function RunPanel({ graph, r, onClose, onView }: { graph: Graph; r: Run; onClose
         <dt>Inputs</dt><dd>{r.sealed_before ? 'Sealed before the run' : 'Nothing sealed before the run'}</dd>
         <dt>Commit</dt><dd className="mono small"><CommitCell r={r} /></dd>
       </dl>
+      {diff && (
+        <>
+          <h3 className="mono small">{diff.path}</h3>
+          <DiffView issue={diff.issue} path={diff.path} label="The sealed bytes against the file now" />
+        </>
+      )}
       <h3>{files.length} file{files.length === 1 ? '' : 's'} written</h3>
       {files.map((f) => (
         <div key={f.path} className="run-file">
@@ -323,11 +405,14 @@ function SourcePanel({ s, onClose, onGo }: { s: Source; onClose: () => void; onG
   )
 }
 
-function Quotes({ st, words }: { st: Source['statements'][number]; words: Set<string> }) {
+/** The address Open in UI scrolls to: claims file, statement and the quote's place in it. */
+const quoteKey = (file: string, statement: string, index: number) => `${file}::${statement}::${index}`
+
+function Quotes({ file, st, words }: { file: string; st: Source['statements'][number]; words: Set<string> }) {
   return (
     <>
       {st.quotes.map((qq, k) => (
-        <div key={k} className="src-words">
+        <div key={k} className="src-words" data-quote={quoteKey(file, st.id, k)}>
           <span className="quote">“<Marked text={qq.exact} against={words} />”</span>
           {qq.section && <div className="muted small">(section: {qq.section})</div>}
         </div>
@@ -348,11 +433,13 @@ function Interpretation({ st }: { st: Source['statements'][number] }) {
 const sentenceWords = (texts: string[]) =>
   new Set(texts.flatMap((t) => t.toLowerCase().split(/\s+/).map((w) => w.replace(/[^a-z0-9-]/g, ''))))
 
-function CitationsByClaim({ graph, query, onOpen, focus }: {
+function CitationsByClaim({ graph, query, onOpen, focus, quote }: {
   graph: Graph
   query: string
   onOpen: (s: Source) => void
   focus?: { key: string; order: string; at: number } | null
+  /** A quotation Open in UI asked for: its section is opened and it is scrolled to and flashed. */
+  quote?: Focus | null
 }) {
   const q = query.trim().toLowerCase()
   const sources = (graph.tabs?.citations.sources ?? []).filter((s) => !q || JSON.stringify(s).toLowerCase().includes(q))
@@ -409,6 +496,22 @@ function CitationsByClaim({ graph, query, onOpen, focus }: {
       }))
       // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [focus?.at])
+    // A quotation picked from the issues menu: open the first section that shows its source, or
+    // the uncited sources, then scroll to the quotation and flash it.
+    useEffect(() => {
+      const want = quote?.quote
+      if (!want) return
+      const si = sections.findIndex((sec) => sec.items.some((it) => it.files.some((f) => f.file === want.file)))
+      setOpenSecs((prev) => new Set([...prev, si < 0 ? 'uncited' : `${si}`]))
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        const el = document.querySelector(`[data-quote="${CSS.escape(quoteKey(want.file, want.statement, want.index))}"]`)
+        if (!el) return
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+        el.classList.add('flash')
+        setTimeout(() => el.classList.remove('flash'), 1800)
+      }))
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [quote?.at])
     const rowsFor = (files: Source[]) => files.flatMap((s) => s.statements.map((st) => ({ s, st })))
     return (
       <>
@@ -430,7 +533,7 @@ function CitationsByClaim({ graph, query, onOpen, focus }: {
                   return rows.map(({ s, st }, i) => (
                     <tr key={`${si}-${k}-${i}`} id={i === 0 ? rowId(it) : undefined} className={`static ${i === 0 ? 'src-start' : 'interp-row'}`}>
                       {i === 0 && <td rowSpan={rows.length}><SourceCell s={it.files[0]} files={it.files} onOpen={onOpen} /></td>}
-                      <td><Quotes st={st} words={words} /></td>
+                      <td><Quotes file={s.file} st={st} words={words} /></td>
                       <td className="small"><Interpretation st={st} /></td>
                       {i === 0 && <td rowSpan={rows.length} className="small"><div className="ms-sentence">“{it.c.text}”</div></td>}
                     </tr>
@@ -449,7 +552,7 @@ function CitationsByClaim({ graph, query, onOpen, focus }: {
                 {openSecs.has('uncited') && uncited.map((s) => s.statements.map((st, i) => (
                   <tr key={`${s.file}-${st.id}`} className={`static ${i === 0 ? 'src-start' : 'interp-row'}`}>
                     {i === 0 && <td rowSpan={s.statements.length}><SourceCell s={s} onOpen={onOpen} /></td>}
-                    <td><Quotes st={st} words={new Set()} /></td>
+                    <td><Quotes file={s.file} st={st} words={new Set()} /></td>
                     <td className="small"><Interpretation st={st} /></td>
                     {i === 0 && <td rowSpan={s.statements.length} className="small muted">Not cited in any .tex file repro.yaml pins.</td>}
                   </tr>
@@ -473,7 +576,7 @@ function CitationsByClaim({ graph, query, onOpen, focus }: {
             return s.statements.map((st, i) => (
               <tr key={`${s.file}-${st.id}`} className={`static ${i === 0 ? 'src-start' : ''}`}>
                 {i === 0 && <td rowSpan={s.statements.length}><SourceCell s={s} onOpen={onOpen} /></td>}
-                <td><Quotes st={st} words={words} /></td>
+                <td><Quotes file={s.file} st={st} words={words} /></td>
                 <td className="small"><Interpretation st={st} /></td>
                 {i === 0 && (
                   <td rowSpan={s.statements.length} className="small">
@@ -494,14 +597,18 @@ function CitationsByClaim({ graph, query, onOpen, focus }: {
   )
 }
 
-export function CitationsTab({ graph, query }: { graph: Graph; query: string }) {
+export function CitationsTab({ graph, query, focus: picked }: { graph: Graph; query: string; focus?: Focus | null }) {
   const [panel, setPanel] = useState<Source | null>(null)
   const [focus, setFocus] = useState<{ key: string; order: string; at: number } | null>(null)
+  useEffect(() => {
+    if (picked?.source) setPanel((graph.tabs?.citations.sources ?? []).find((s) => s.file === picked.source) ?? null)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [picked?.at])
   return (
     <div className="rec">
-      <Head cmd="citations" line={graph.status?.citations.text ?? '—'}
+      <Head cmd="citations" line={statusLine('citations', graph.status).text}
         what="Passages quoted from other people's work, the paper's interpretation of them, and the sentences of the manuscript that cite each source. Click a title for the source's details. Highlighted words appear in both the source and the manuscript. The interpretations and notes are ours; citations verify checks only the quoted passages. A source is pinned when its file is saved with a hash." />
-      <CitationsByClaim graph={graph} query={query} onOpen={setPanel} focus={focus} />
+      <CitationsByClaim graph={graph} query={query} onOpen={setPanel} focus={focus} quote={picked} />
       {panel && <SourcePanel s={panel} onClose={() => setPanel(null)} onGo={(key, c) => setFocus({ key, order: c.order.join(','), at: Date.now() })} />}
     </div>
   )
@@ -511,13 +618,11 @@ export function ReproduceTab({ graph, query }: { graph: Graph; query: string }) 
   const t = graph.tabs?.reproduce
   const q = query.trim().toLowerCase()
   const steps = [...(t?.steps ?? [])].filter((s) => !q || `${s.id} ${s.command} ${s.state}`.toLowerCase().includes(q)).sort((a, b) => (a.state === 'current' ? 1 : 0) - (b.state === 'current' ? 1 : 0) || a.id.localeCompare(b.id))
-  const need = steps.filter((s) => s.state !== 'current').length
-  const rp = graph.reproduce
   const [panel, setPanel] = useState<Step | null>(null)
   const [viewing, setViewing] = useState<string | null>(null)
   return (
     <div className="rec">
-      <Head cmd="repro reproduce" line={rp?.runs ? `${fmt(rp.last.reproduced ?? 0)}/${fmt(rp.last_steps)} reproduced${rp.last_at ? ` ${new Date(rp.last_at).toLocaleDateString('en-US', { day: 'numeric', month: 'short' })}` : ''}${need ? ` · ${need} of ${steps.length} steps need re-running` : ''}` : 'never run'}
+      <Head cmd="repro reproduce" line={statusLine('repro', graph.status).text}
         what="A rebuild step is a command repro.yaml declares that turns input files into an output file, such as detex.py or a derive script. repro reproduce runs every step again and checks the output comes out identical. repro stale, run on every check, compares each step with the last re-run without running anything: that is the state column. Click a step for its details." />
       <table>
         <thead><tr><th>Step</th><th>State</th><th>What changed</th><th>Command</th></tr></thead>
@@ -537,11 +642,12 @@ export function ReproduceTab({ graph, query }: { graph: Graph; query: string }) 
       </table>
       <h3 className="rec-h3">Re-runs recorded</h3>
       <table>
-        <thead><tr><th>Finished</th><th>Steps</th><th>Result</th><th>Toolkit</th></tr></thead>
+        <thead><tr><th>Finished</th><th>Took</th><th>Steps</th><th>Result</th><th>Toolkit</th></tr></thead>
         <tbody>
           {[...(t?.reruns ?? [])].reverse().map((r, i) => (
             <tr key={i} className="static">
               <td className="small">{r.ended_at ? when(r.ended_at) : '—'}</td>
+              <td className="small nowrap">{r.started_at && r.ended_at ? (() => { const t = Math.round(Math.max(0, Date.parse(r.ended_at) - Date.parse(r.started_at)) / 1000); return t < 1 ? 'under 1 s' : `${t} s` })() : '—'}</td>
               <td className="num">{r.steps}</td>
               <td className="small">{Object.entries(r.counts).map(([k, v]) => `${v} ${k}`).join(', ')}</td>
               <td className="mono small muted">{r.tool_version}</td>
@@ -589,7 +695,7 @@ function StepPanel({ s, onClose, onView }: { s: Step; onClose: () => void; onVie
         <div key={i} className="run-claim small">
           <span className={h.state === 'reproduced' ? 'good-text' : 'stale-text'}>{h.state === 'reproduced' ? '✓' : '✗'}</span>{' '}
           {RERUN[h.state] ?? h.state} · {h.ended_at ? when(h.ended_at) : '—'}
-          <span className="muted">{h.duration_seconds != null ? ` · ${h.duration_seconds.toFixed(2)} s` : ''}{h.exit_code ? ` · exit ${h.exit_code}` : ''} · {h.tool_version}</span>
+          <span className="muted">{h.duration_seconds != null ? ` · ${secs(h.duration_seconds)}` : ''}{h.exit_code ? ` · exit ${h.exit_code}` : ''} · {h.tool_version}</span>
           {h.detail && <div className="muted">{h.detail}</div>}
         </div>
       ))}
