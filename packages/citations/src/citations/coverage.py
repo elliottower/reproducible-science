@@ -46,7 +46,7 @@ from collections.abc import Sequence
 from typing import Literal
 
 from citations.models import ClaimFile
-from citations.verify import MIN_QUOTE_CHARS, NEGATIONS, passage_fold
+from citations.verify import MIN_QUOTE_CHARS, SOURCE_NEGATIONS, passage_fold
 
 #: A LaTeX quotation: ``like this''. The non-greedy body stops at the first closing pair, so
 #: two quotations in one sentence are two matches rather than one spanning both.
@@ -452,7 +452,7 @@ def _covered(q: Quotation, search: _Search, span: str, source: str) -> Finding:
     if gaps is None:
         return Finding(q, "covered", source=source, ordered=False)
     negation = next(
-        (g for g in gaps if set(re.findall(r"[a-z]+", g)) & NEGATIONS or "n't" in g), ""
+        (g for g in gaps if set(re.findall(r"[a-z]+", g)) & SOURCE_NEGATIONS or "n't" in g), ""
     )
     return Finding(q, "covered", source=source, omitted=gaps, negation=negation)
 

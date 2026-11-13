@@ -1,5 +1,7 @@
 # reproducible-science-ui
 
+**Experimental.** The page's layout and options may change between releases.
+
 A local web page over a project's [Reproducible Science](https://reproducible.science) records:
 the claims a manuscript makes and whether each still holds, the files each claim reads, the runs
 that wrote them, the quotations pinned from cited sources, and the rebuild steps with their

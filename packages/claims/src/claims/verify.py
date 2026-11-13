@@ -175,12 +175,16 @@ def _text(evidence: Evidence, paths: Mapping[str, pathlib.Path]) -> pathlib.Path
 
 # -------------------------------------------------------------------------------- quotations
 
-#: Every state `citations.verify` can return. It answers with five, and only two were mapped, so
+#: Every state `citations.verify` can return. It answered with five, and only two were mapped, so
 #: a passage occurring twice in its source raised `KeyError: 'ambiguous'` from inside the backend
 #: and was reported as a defect in the tool rather than as an undecided quotation.
 _QUOTE_STATE = {
     "found": (ExtractionStatus.EXTRACTED, ComparisonStatus.MATCH, Reason.PASSAGE_PRESENT),
     "not found": (ExtractionStatus.EXTRACTED, ComparisonStatus.MISMATCH, Reason.PASSAGE_ABSENT),
+    # Found in a passage a person recorded where the extractor misreads the page, and not in the
+    # extractor's text. Never `match`: what the extractor produced does not hold the passage,
+    # which is what `passage_absent` says, and `citations verify` reports the correction apart.
+    "corrected": (ExtractionStatus.EXTRACTED, ComparisonStatus.MISMATCH, Reason.PASSAGE_ABSENT),
     # The address matched more than once, which is where `row_ambiguous` sits for a table: the
     # extraction did not single out one thing to compare, so there is no comparison, and no first
     # match is taken. Not `passage_ambiguous`, which says the document states two different

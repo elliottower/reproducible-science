@@ -12,6 +12,7 @@ assessed under several standards without being recomputed.
 from __future__ import annotations
 
 import enum
+from collections.abc import Mapping
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -170,6 +171,10 @@ class Policy(BaseModel):
     """Numbers the manuscript prints that no assertion accounts for, as `repro numbers`
     counts them. A warning wherever there are any; `--max-unbound N` makes more than N an
     error under any policy. Graded by `assess_numbers`, never by `assess`."""
+    quotation_corrected: Severity = Severity.WARNING
+    """A quotation `citations verify` reports `corrected`: found in a passage a person recorded
+    where the extractor misreads the page, and not in the extractor's text. A warning by
+    default: the record is the author's, and it is never a match."""
 
     require_one_check: bool = True
     """A run that evaluated nothing is not a pass. Without this a project with no evidence
@@ -396,6 +401,29 @@ class Policy(BaseModel):
             passed=severity is not Severity.ERROR,
         )
 
+    def assess_citations(self, counts: Mapping[str, int]) -> Assessment:
+        """Whether what `citations verify` counted is acceptable beyond its own exit code: the
+        quotations it reports `corrected`, graded as `quotation_corrected` says."""
+        n = counts.get("corrected", 0)
+        violations = (
+            ()
+            if not n or self.quotation_corrected is Severity.IGNORE
+            else (
+                Violation(
+                    severity=self.quotation_corrected,
+                    rule="citations.corrected",
+                    subject="citations",
+                    detail=f"{n} quotation{'' if n == 1 else 's'} found in a passage recorded "
+                    f"by hand, not in the extractor's text",
+                ),
+            )
+        )
+        return Assessment(
+            policy=self.name,
+            violations=violations,
+            passed=not any(v.severity is Severity.ERROR for v in violations),
+        )
+
     def assess_reproduction(self, report: ReproductionReport) -> Assessment:
         """Whether a set of re-runs is acceptable. The counterpart of `assess` for
         `repro.reproduce`: the same severities, over the five outcomes a re-run can have."""
@@ -493,6 +521,7 @@ EXPLORATORY = Policy(
     # A draft may point at a file the analysis has not written yet.
     artifact_absent=Severity.WARNING,
     ordering_unchecked=Severity.IGNORE,
+    quotation_corrected=Severity.IGNORE,
     never_rerun=Severity.IGNORE,
     staleness_undetermined=Severity.IGNORE,
     rerun_record_broken=Severity.WARNING,
@@ -515,6 +544,7 @@ PUBLICATION = Policy(
         Outcome.UNCHECKED: Severity.ERROR,
         Outcome.NOT_OFFERED: Severity.ERROR,
     },
+    quotation_corrected=Severity.WARNING,
 )
 
 STRICT = Policy(
@@ -527,6 +557,8 @@ STRICT = Policy(
     regeneration_unchecked=Severity.ERROR,
     regeneration_not_rerun=Severity.WARNING,
     reported_mismatch=Severity.ERROR,
+    # A correction is an author's record, accepted by the author, so not an error even here.
+    quotation_corrected=Severity.WARNING,
     stale=Severity.ERROR,
     never_rerun=Severity.ERROR,
     staleness_undetermined=Severity.ERROR,

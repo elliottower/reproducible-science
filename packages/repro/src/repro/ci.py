@@ -907,7 +907,12 @@ def unchecked(run: ToolRun) -> int:
     if run.check != "citations" or run.outcome != audit.PASSED:
         return 0
     counts = run.account.get("counts", {})
-    return run.account.get("quotes", 0) - counts.get("found", 0) - counts.get("not found", 0)
+    return (
+        run.account.get("quotes", 0)
+        - counts.get("found", 0)
+        - counts.get("corrected", 0)
+        - counts.get("not found", 0)
+    )
 
 
 def verified(run: ToolRun) -> str:
@@ -1025,7 +1030,7 @@ def _citations_rows(run: ToolRun) -> tuple[list[tuple[str, str]], list[str]]:
             "quotations",
             f"{counts.get('found', 0)} found, {counts.get('not found', 0)} not found, "
             f"{counts.get('unchecked', 0)} unchecked"
-            + _nonzero(counts, ("ambiguous", "indeterminate"))
+            + _nonzero(counts, ("corrected", "ambiguous", "indeterminate"))
             + f" of {_count(account.get('quotes', 0), 'quotation')}",
         ),
         (
@@ -1067,7 +1072,12 @@ def tool_summary(run: ToolRun) -> str:
         if run.check == "citations":
             counts = run.account.get("counts", {})
             total = run.account.get("quotes", 0)
-            unresolved = total - counts.get("found", 0) - counts.get("not found", 0)
+            unresolved = (
+                total
+                - counts.get("found", 0)
+                - counts.get("corrected", 0)
+                - counts.get("not found", 0)
+            )
             if unresolved:
                 # Before the table, so a pass is never read without it.
                 lines += [

@@ -71,6 +71,23 @@ Every pin written is also appended to `pins.jsonl` beside the claims file, with 
 source had, so a source and its pinned sha256 edited together show in `verify` as a source
 pinned again. A passage that resolves only by joining the source's words into others, `notable`
 against `not able`, is refused. See `pinlog` and `verify._joined`.
+`--correct` pins a passage no extractor reads as the page prints it: a table, an equation, a
+ligature, two columns read across. It takes the passage as the page prints it, `--page`, and
+`--reads`, what the extractor produced there. The quotation is written with a `correction`
+naming the extractor, its version, the sha256 of the source's bytes and of the extractor's text,
+and `verify` reports it `corrected`, never `found`. The extracted text is not modified. It is
+refused where the extractor's text already holds the quotation, because no correction is then
+needed; where `--reads` is shorter than twelve characters or does not occur exactly once on
+that page of the extractor's text; where the passage does not hold the quotation, or holds
+nothing like `--reads` where it holds it; and where the quotation reaches more than three
+characters past the stretch of the passage that corrects `--reads`. `verify` applies the
+correction under the same tests. When it writes, and under `--check`, it prints what the
+correction changes from `--reads` to the passage and the warnings `verify` will give it.
+
+    citations pin claims/smith2020.yaml --id efficiency --page 4 \
+        --quote "the coefficient of efficiency was 0.81" \
+        --correct "the coefficient of efficiency was 0.81" \
+        --reads "the coefficient of eciency was 0.81" --cause "ffi ligature dropped"
 """
 
 from __future__ import annotations
@@ -83,7 +100,7 @@ from provenance_core import atomic_write, exclusive_lock
 
 from . import extractors, pinlog, tracked, web
 from . import verify as V
-from .exceptions import CitationsError
+from .exceptions import CitationsError, SourceUnreadableError
 from .fetch import has_location
 from .models import ClaimFile, load_claim_file
 
@@ -174,6 +191,66 @@ def anchors(cf: ClaimFile, quote: str, occurrence: int, allowed: frozenset[str])
     return found
 
 
+def correction(
+    cf: ClaimFile,
+    quote: str,
+    r: V.Result,
+    passage: str,
+    page: int,
+    reads: str,
+    note: str | None,
+    allowed: frozenset[str],
+) -> dict:
+    """The `correction` written with a quotation the extractor misreads, from the reading `r`.
+
+    Raises `PinRefused` where the extractor's text already holds the quotation, where the
+    source was not read, where `reads` or the passage is outside the lengths a correction
+    covers, where `reads` does not occur exactly once on page `page` of the extractor's text,
+    and where `verify.correction_fault` finds the passage cannot stand for the quotation:
+    `verify` applies the correction under the same tests, so a record pinned here is one it
+    applies on this machine.
+    """
+    if r.state in ("found", "ambiguous"):
+        raise PinRefused(
+            f"{r.extractor} already reads the quotation in this source ({r.state}), so no "
+            f"correction is needed. Pin it without --correct."
+        )
+    if r.state != "not found":
+        raise PinRefused(
+            f"the source was not read ({r.state}: {r.detail}), and a correction is recorded "
+            f"against what an extractor produced."
+        )
+    if fault := V.correction_size_fault(passage, reads):
+        raise PinRefused(f"{fault}.")
+    artifact = _artifact(cf)
+    assert artifact is not None
+    try:
+        n, where = V.reads_count(artifact, reads, page, cf.source.reader, allowed, r.extractor)
+    except SourceUnreadableError as e:
+        raise PinRefused(f"{r.extractor} could not read page {page}: {e.detail}") from e
+    if n != 1:
+        said = "does not occur" if n == 0 else f"occurs {n} times"
+        raise PinRefused(
+            f"--reads {said} {where} what {r.extractor} produced from this source. Copy it from "
+            f"the extracted text, long enough to occur once, so the record names the place the "
+            f"extractor misreads."
+        )
+    if fault := V.correction_fault(quote, passage, reads):
+        raise PinRefused(f"{fault}.")
+    made = {
+        "passage": passage,
+        "page": page,
+        "extractor": r.extractor,
+        "extractor_version": V.extractor_version(r.extractor),
+        "sha256": V.sha256(artifact),
+        "derived_sha256": r.extraction_digest,
+        "reads": reads,
+    }
+    if note:
+        made["note"] = note
+    return made
+
+
 def reading_record(cf: ClaimFile, r: V.Result) -> dict:
     """What the source block gains from this pin: the extractor's version and its text's digest.
 
@@ -215,6 +292,7 @@ def entry(
     contest: str | None,
     prefix: str = "",
     suffix: str = "",
+    corrected: dict | None = None,
 ) -> dict:
     """The claim block as it will be written, with keys in the order a reader wants them."""
     claim: dict = {}
@@ -234,6 +312,8 @@ def entry(
         q["section"] = section
     if page is not None:
         q["page"] = page
+    if corrected:
+        q["correction"] = corrected
     claim["quotes"] = [q]
     return claim
 
@@ -320,6 +400,18 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="with --url, fetch the page again and pin that, whatever the library holds",
     )
+    ap.add_argument(
+        "--correct",
+        metavar="PASSAGE",
+        help="the passage as the page prints it, where the extractor misreads it; written as a "
+        "correction, needs --page and --reads, and reported as `corrected`, never `found`",
+    )
+    ap.add_argument(
+        "--reads", metavar="TEXT", help="with --correct, what the extractor produced there"
+    )
+    ap.add_argument(
+        "--cause", help="with --correct, what defeated the extractor: a ligature, column order"
+    )
     ap.add_argument("--check", action="store_true", help="resolve and report, write nothing")
     a = ap.parse_args(argv)
     # As the claims file will be read back: the model strips `exact` on load, and anchors
@@ -334,6 +426,13 @@ def main(argv: list[str] | None = None) -> int:
         # The schema's requirement, enforced at the point a characterization is written rather
         # than at the point someone later reads the file and cannot tell whose reading it is.
         print("--says needs --whose: a characterization with no owner reads as the source's.")
+        return 2
+
+    if a.correct is not None and (a.page is None or not a.reads or a.occurrence is not None):
+        print("--correct needs --page and --reads, and takes no --occurrence.")
+        return 2
+    if a.correct is None and (a.reads or a.cause):
+        print("--reads and --cause describe a correction, and need --correct.")
         return 2
 
     if a.recapture and not a.url:
@@ -364,6 +463,18 @@ def main(argv: list[str] | None = None) -> int:
     if cf.version_inferred:
         print(cf.version_inferred)
 
+    corrected: dict | None = None
+    if a.correct is not None:
+        try:
+            corrected = correction(
+                cf, a.quote, r, a.correct.strip(), a.page, a.reads, a.cause, allowed
+            )
+        except PinRefused as e:
+            print(f"refused   {a.quote[:60]}")
+            print(f"  {e}")
+            print("nothing written.")
+            return 1
+
     prefix = suffix = ""
     if a.occurrence is not None and r.state in ("found", "ambiguous"):
         if r.state == "found" and a.occurrence != 1:
@@ -385,7 +496,7 @@ def main(argv: list[str] | None = None) -> int:
             # written: what goes into the file is what was seen to resolve.
             r = resolve(cf, a.quote, a.page, allowed, prefix, suffix)
 
-    if r.state != "found":
+    if r.state != "found" and corrected is None:
         print(f"{r.state}  {a.quote[:60]}")
         if r.detail:
             print(f"  {r.detail}")
@@ -401,20 +512,31 @@ def main(argv: list[str] | None = None) -> int:
         print("nothing written. quote the passage with the spacing the source has.")
         return 1
 
-    claim = entry(a.quote, a.section, a.page, a.says, a.whose, a.status, a.contest, prefix, suffix)
+    claim = entry(
+        a.quote, a.section, a.page, a.says, a.whose, a.status, a.contest, prefix, suffix, corrected
+    )
     record = page | reading_record(cf, r)
+    said = "corrected" if corrected else "found    "
+    # What the correction changes, as `verify` reports it, said before anything is relied on.
+    changes = ""
+    if corrected:
+        diff, flags = V.correction_difference(a.quote, corrected["passage"], corrected["reads"])
+        if diff or flags:
+            changes = f"  changes   {diff}" + (f"   ({'; '.join(flags)})" if flags else "")
     singled = (
         f"  occurrence {a.occurrence}, singled out by the prefix and suffix written with it"
         if prefix or suffix
         else ""
     )
     if a.check:
-        print(f"found     {a.quote[:60]}")
+        print(f"{said} {a.quote[:60]}")
         print(f"would add {a.id} to {path.name}")
         if singled:
             print(singled)
         if r.warnings:
             print(f"  warnings: {', '.join(r.warnings)}")
+        if changes:
+            print(changes)
         return 0
 
     add_to(path, a.id, claim, record)
@@ -422,7 +544,7 @@ def main(argv: list[str] | None = None) -> int:
     key = pinlog.source_key(cf.source.citation, cf.source.local, path.name)
     earlier = pinlog.first_pins(pinlog.read(path.parent)).get(key)
     pinlog.record(path, a.id, a.quote, sha, key)
-    print(f"found     {a.quote[:60]}")
+    print(f"{said} {a.quote[:60]}")
     print(f"added     {a.id} to {path.name}")
     if earlier and sha and earlier != sha:
         print(
@@ -433,6 +555,10 @@ def main(argv: list[str] | None = None) -> int:
         print(singled)
     if r.warnings:
         print(f"  warnings: {', '.join(r.warnings)}")
+    if corrected:
+        print(f"  in the passage given for page {a.page}; {r.extractor} reads it otherwise")
+    if changes:
+        print(changes)
     if a.says is not None:
         print(f"  reading recorded as {a.whose}'s, unchecked")
     if (artifact := _artifact(cf)) is not None and (kept := tracked.advice(artifact)):

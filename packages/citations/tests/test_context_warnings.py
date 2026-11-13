@@ -176,7 +176,7 @@ def test_a_space_the_extractor_dropped_after_a_negation_fails_neither_strict_nor
 
     assert main(["verify", "--claims", str(folder), "--strict"]) == 0
     out = capsys.readouterr().out
-    assert "split" in out and "misstates the source" not in out
+    assert "split" in out and "words are not the source's" not in out
 
 
 def test_joining_two_numbers_is_not_a_quotation_of_either(source):
@@ -240,7 +240,7 @@ def test_a_dropped_negation_is_warned_and_strict_does_not_fail_on_it(tmp_path, c
     out = capsys.readouterr().out
     assert "after negation" in out and "`--strict` fails on" not in out
     assert main(["verify", "--claims", str(claims), "--strict"]) == 0
-    assert "misstates the source" not in capsys.readouterr().out
+    assert "words are not the source's" not in capsys.readouterr().out
 
 
 def test_strict_fails_a_quotation_that_joins_what_the_source_separates(tmp_path, capsys):
@@ -248,7 +248,7 @@ def test_strict_fails_a_quotation_that_joins_what_the_source_separates(tmp_path,
     assert main(["verify", "--claims", str(claims)]) == 0
     assert "`--strict` fails on joined" in capsys.readouterr().out
     assert main(["verify", "--claims", str(claims), "--strict"]) == 1
-    assert "misstates the source" in capsys.readouterr().out
+    assert "words are not the source's" in capsys.readouterr().out
 
 
 def test_strict_passes_a_hedge_and_a_quotation_from_quoted_words(tmp_path):

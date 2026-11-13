@@ -302,11 +302,12 @@ requires nothing about what sits between them.
 
 ## Verify output
 
-Five results, and they are exhaustive:
+Six results, and they are exhaustive:
 
 | Result | Meaning |
 |--------|---------|
 | `found` | The passage is in the source |
+| `corrected` | The passage is in a correction recorded by hand where the extractor misreads the page; see [Recorded corrections](#recorded-corrections) |
 | `not found` | The source was read and the passage is not in it |
 | `indeterminate` | Independent readers disagree about whether it is in it |
 | `ambiguous` | The passage occurs more than once and the record does not say which occurrence |
@@ -327,6 +328,15 @@ it is a note saying how to put the line back.
 `unchecked`, `indeterminate` and `ambiguous` are neither a pass nor a failure. Only
 `not found` fails; `--strict` also fails on the other three, for CI. A source whose bytes no
 longer match its pin fails the run whatever its quotations did.
+
+A claims file that cannot be read, does not parse, or is refused by the schema is left out of
+every count above and fails the run, with or without `--strict`: its quotations were never
+checked. The other files are still checked, and the report lists each refused file with why:
+
+```text
+1 claims file refused when read, quotations unchecked
+  refused  smith.yaml: not valid YAML: a correction carries `note` twice, and YAML would keep only the last; keep one
+```
 
 `not found` means read the source. A mirror-reversed scan or a two-column extraction produces
 the same signal as a passage that was never there. A `not found` whose every word is in the
@@ -590,6 +600,107 @@ is not read as an omission.
 
 **A source that is not what it claims to be.** A `.pdf` that is a Cloudflare interstitial or a
 login page fails under every reader. `file` will say so in one line.
+
+## Recorded corrections
+
+Some passages no installed extractor reads as the page prints them: a table, an equation, a
+dropped ligature, two columns read across. Editing the extracted text is not a repair, because
+`derived_sha256` would then describe text no extractor produced. `citations pin --correct`
+records the page's text beside the extractor's reading instead:
+
+```bash
+citations pin claims/smith2020.yaml --id efficiency --page 4 \
+    --quote "the coefficient of efficiency was 0.81" \
+    --correct "Table 2: the coefficient of efficiency was 0.81 at all sites." \
+    --reads "the coefficient of eciency was 0.81" --cause "ffi ligature dropped"
+```
+
+```yaml
+- exact: the coefficient of efficiency was 0.81
+  page: 4
+  correction:
+    passage: "Table 2: the coefficient of efficiency was 0.81 at all sites."
+    page: 4
+    extractor: pdftotext -layout
+    extractor_version: pdftotext version 24.02.0
+    sha256: 2ae7…            # the source's bytes
+    derived_sha256: 2dfe…    # the extractor's whole text
+    reads: the coefficient of eciency was 0.81
+    note: ffi ligature dropped
+```
+
+`verify` compares the quotation with `passage` and reports it `corrected`, counted apart from
+`found` in the text report, `--json` and `repro verify`. Every applied correction is shown with
+what it changes from `reads` to `passage`, `"eciency" → "efficiency"`, and its flags: in the
+text report of `verify`, always, with the quotation added under `--verbose`; by `pin --correct`
+when it writes, and under `--check`; and in the `corrected` list in `--json`, which carries
+`reads`, `passage`, that `diff` and `flags`. `repro verify` names each corrected quotation,
+under every policy, with its flags and the `citations verify` command that shows the difference.
+
+A flag is a warning that fails nothing and says to compare the passage with the page. It is
+raised by comparing the words the correction changes in `reads` with the words it puts in their
+place in `passage`:
+
+| Flag | Raised where the two differ in |
+|------|------------------------------------------|
+| `correction changes a number` | their digits, a number with its decimal point, white space removed; a minus sign before a digit, where a minus would be (below); or a number word: `zero` to `twenty`, `thirty` to `ninety` by tens, `hundred`, `thousand`, `million`, `billion`, `half`, `twice`, `double`, also compared with white space removed, so `oneof` corrected to `one of` changes none and `none` corrected to `one` changes one |
+| `correction changes a comparison` | `<`, `>`, `=`, `≤` or `≥`, with `<=` and `>=` read as `≤` and `≥` |
+| `correction adds a negation`, `correction removes a negation` | how many of `not`, `no`, `never`, `without`, `cannot` and words ending `n't` they hold |
+| `correction adds a hedge`, `correction removes a hedge` | how many of `may` and `might` they hold |
+
+A minus sign is `-` or `−`, and an en dash, an em dash or U+2010 before a digit is read as
+one too, since `verify` folds all five to `-`. Each counts only where a minus would be: at the
+start, after white space, or after an opening bracket, an operator or a mark between two numbers
+(`( [ { < > = ≤ ≥ ≈ ~ + ± × * / ^ , ; :`). A dash after a letter or a digit is a hyphen or a
+range, so `COVID19` corrected to `COVID-19`, `IL6` to `IL-6` and `10 20` to `10–20` change no
+number.
+
+The flags count words and do not read them. `twelve` corrected to `12` is flagged, though it
+names the same number. `increases` corrected to `decreases`, or a `not` moved from one clause to
+another, raises no flag, and the difference shown beside the quotation is where either is seen.
+So is a dash between two digits that is a minus, as in an exponent written `10−5`: it is read
+as a range, so its sign alone raises no flag.
+
+A correction applies only to a `not found`, and only where all of these hold:
+
+| Condition | Why |
+|-----------|-----|
+| the source's sha256 is the recorded `sha256` | other bytes are another document |
+| `reads` is 12 to 200 characters and `passage` at most 400, white space removed | under 12 a `reads` matches nearly anywhere; a correction is for a misread span a person compares with the page, and the bounds keep a record written by hand from making `verify` slow |
+| `reads` occurs exactly once in this run's reading, on the recorded `page` where the source has pages | it names the place the extractor misreads, and the place must be there; where it was counted in the whole text, under a declared `extract_cmd` or a source without pages, the result carries `page unchecked` |
+| the quotation's `page`, where it has one, is the correction's `page` | the two would otherwise describe two places |
+| `passage` holds the quotation | the correction must support what is quoted |
+| `passage` holds a stretch within a difflib ratio of 0.8 of `reads` that overlaps the quotation | an unrelated `reads` names some place on the page, not the place the passage corrects |
+| the quotation lies within the stretch of `passage` aligned with `reads`, to 3 characters (white space removed) at either end | text the passage carries past what `reads` covers is checked against nothing the extractor produced; 3 covers a misread `m` or a dropped `ffi` at the quotation's first or last letter |
+
+`extractor`, `extractor_version` and `derived_sha256` are recorded and decide nothing. A digest
+of the whole text changes with any page of it: poppler 24.02 and 26.04 give `-layout` text of
+different digests for 25 of 44 PDFs in one library, so the digest cannot say whether the
+corrected place reads the same; `reads` can. Where any of the three differs from this run, the report and the
+`note` in `--json` name both, for example `applied under pypdf, 6.1.0; recorded under pdftotext
+-layout, pdftotext version 26.04.0`. A built-in extractor (`html-text`, `jats-text`,
+`docx-text`, `sheet-rows`) is this package's own code, so there `derived_sha256` must match as
+well.
+
+A correction that does not apply is listed with why, for example ``it does not describe this
+machine's reading: `reads` occurs 2 times on page 4 of what pdftotext -layout produced``, and the
+quotation keeps the verdict the extractor's text gives it. Where the extractor's text now holds
+the quotation, the verdict is `found` and `verify` says the correction may no longer be needed.
+
+The stretch is found by one alignment: `reads` is anchored on the longest run it shares exactly
+with `passage`, aligned once around it, and the ratio is computed once on the span that
+alignment covers. The lengths are checked first, so an oversized record is refused before
+anything is searched.
+
+A quotation carrying `correction` twice, or a correction carrying one of its keys twice, such
+as two `passage` lines, is refused when its claims file is read, since YAML would keep only the
+last, and the run fails on it; a key spelled `corrections` is listed among the corrections not
+applied.
+
+`pin --correct` refuses a quotation the extractor's text already holds and a correction
+`verify` would not apply here. `repro verify` grades `corrected` as a warning under
+`publication` and `strict` and ignores it under `exploratory`; `Policy.quotation_corrected` sets
+another severity.
 
 ## Restoring the source's passage
 

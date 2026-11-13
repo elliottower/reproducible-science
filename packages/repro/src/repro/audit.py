@@ -69,7 +69,7 @@ READS: dict[tuple[str, str], tuple[str, str]] = {
     ),
     ("results", "verify"): (r"^chain .*|^\d+ file\(s\) .*|^all checks passed\.", r"(?!)"),
     ("citations", "verify"): (
-        r"^(?:found|not found) [\d,]+|^\d+ sources? .*",
+        r"^(?:found|corrected|not found) [\d,]+|^\d+ sources? .*",
         r"^(?:unchecked|indeterminate|ambiguous) [\d,]+.*",
     ),
     ("citations", "audit"): (

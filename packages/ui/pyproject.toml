@@ -5,7 +5,7 @@ requires = [ "hatchling" ]
 [project]
 name = "reproducible-science-ui"
 version = "0.6.1"
-description = "A local web page over a project's Reproducible Science records: claims, files, runs, quotations and re-runs"
+description = "Experimental. A local web page over a project's Reproducible Science records: claims, files, runs, quotations and re-runs"
 readme = "README.md"
 keywords = [ "lineage", "provenance", "reproducibility", "ui" ]
 license = "MIT"
