@@ -1,6 +1,8 @@
 import { useContext, useEffect, useRef, useState } from 'react'
 import { CopyPrompt, FixCtx } from './fix'
-import { issuePrompt } from './format'
+import { STATIC } from './api'
+import { issuePrompt, staticMessage } from './format'
+import { useToast } from './toast'
 import type { Graph, Issue, IssueOpen } from './types'
 
 /** `● 2 issues ▾`, shown only when prereg, results or citations report a problem. N counts kinds
@@ -33,7 +35,7 @@ export function IssuesPill({ graph, onOpen }: { graph: Graph; onOpen: (o: IssueO
   )
 }
 
-function IssueRow({ row, onOpen }: { row: Issue; onOpen: (o: IssueOpen) => void }) {
+export function IssueRow({ row, onOpen }: { row: Issue; onOpen: (o: IssueOpen) => void }) {
   const { project } = useContext(FixCtx)
   const first = row.items[0]
   return (
@@ -77,7 +79,13 @@ const size = (n: number) => `${n.toLocaleString('en-US')} bytes`
 export function DiffView({ issue, path, label }: { issue: string; path: string; label: string }) {
   const [d, setD] = useState<Diff | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const toast = useToast()
   useEffect(() => {
+    if (STATIC) {
+      toast(staticMessage('file'))
+      setError(staticMessage('file'))
+      return
+    }
     setD(null)
     setError(null)
     fetch(`api/diff?issue=${encodeURIComponent(issue)}&path=${encodeURIComponent(path)}`)

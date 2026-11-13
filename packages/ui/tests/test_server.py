@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import functools
+import hashlib
 import http.server
 import json
+import os
 import pathlib
 import socket
 import subprocess
@@ -16,7 +18,8 @@ import urllib.parse
 import urllib.request
 
 import pytest
-from repro_ui import graph, server
+import yaml
+from repro_ui import export, graph, runs, server
 
 TOKEN = "launch-token"
 
@@ -93,38 +96,6 @@ def test_a_step_the_manifest_does_not_declare_is_refused_and_nothing_runs(served
     status, _ = post(f"{served}/api/reproduce", {"only": ["not-a-step"]})
     assert status == 400
     assert not (project / ".repro" / "reproductions.jsonl").exists()
-
-
-def stream(url: str, body: dict) -> tuple[int, list[dict]]:
-    """POST and read the answer one JSON object per line, as the page does."""
-    req = urllib.request.Request(
-        url,
-        data=json.dumps(body).encode(),
-        method="POST",
-        headers={"Content-Type": "application/json", server.TOKEN_HEADER: TOKEN},
-    )
-    with urllib.request.urlopen(req, timeout=120) as r:
-        return r.status, [json.loads(line) for line in r.read().decode().splitlines() if line]
-
-
-def test_re_running_a_step_streams_its_output_then_what_it_recorded(served, project):
-    status, events = stream(f"{served}/api/reproduce", {"only": ["results"]})
-    assert status == 200
-    lines, (done,) = (
-        [e["line"] for e in events if "line" in e],
-        [e for e in events if e.get("done")],
-    )
-    assert lines[0] == "$ repro reproduce --only results"
-    assert len(lines) > 1, "nothing that repro reproduce printed reached the page"
-    assert (done["ok"], done["counts"]) == (True, {"reproduced": 1})
-    ((step_id, state, seconds),) = [(s["id"], s["state"], s["seconds"]) for s in done["steps"]]
-    assert (step_id, state) == ("results", "reproduced") and seconds >= 0
-    assert events[-1] == done, "the result comes last"
-    assert (project / ".repro" / "reproductions.jsonl").read_text().count("\n") == 1
-    _, g = get(f"{served}/graph.json")
-    (step,) = g["tabs"]["reproduce"]["steps"]
-    assert step["state"] == "current"
-    assert step["history"][0]["state"] == "reproduced"
 
 
 def test_the_page_is_served_from_the_built_files(served):
@@ -273,43 +244,6 @@ def test_a_request_not_from_this_page_says_so_rather_than_reload(served):
         assert json.loads(refused.value.read())["error"] == server.NOT_OURS
 
 
-def test_a_page_that_goes_away_mid_run_still_gets_the_run_recorded_and_shown(served, project):
-    host, port = served.removeprefix("http://").split(":")
-    body = json.dumps({"only": ["results"]}).encode()
-    request = (
-        f"POST /api/reproduce HTTP/1.1\r\nHost: {host}:{port}\r\n"
-        f"Content-Type: application/json\r\n{server.TOKEN_HEADER}: {TOKEN}\r\n"
-        f"Content-Length: {len(body)}\r\n\r\n"
-    ).encode() + body
-    with socket.create_connection((host, int(port)), timeout=15) as conn:
-        conn.sendall(request)
-        assert conn.recv(64).startswith(b"HTTP/1.0 200")
-    # The page is gone. The run goes on to the end, is recorded, and the data is rebuilt.
-    record = project / ".repro" / "reproductions.jsonl"
-    assert server.Handler.lock.acquire(timeout=90), "the run never released the lock"
-    server.Handler.lock.release()
-    assert record.read_text().count("\n") == 1
-    _, g = get(f"{served}/graph.json")
-    assert g["tabs"]["reproduce"]["steps"][0]["state"] == "current"
-    status, _ = post(f"{served}/api/refresh", {})
-    assert status == 200, "the lock was released"
-
-
-def test_a_failure_after_the_run_ends_the_stream_with_a_result_not_a_lost_connection(
-    served, project, monkeypatch
-):
-    def broken(*args, **kwargs):
-        raise RuntimeError("graph.json could not be written")
-
-    monkeypatch.setattr(graph, "build", broken)
-    status, events = stream(f"{served}/api/reproduce", {"only": ["results"]})
-    (done,) = [e for e in events if e.get("done")]
-    assert (status, done["ok"]) == (200, False)
-    assert "reading its record failed" in done["error"] and "could not be written" in done["error"]
-    assert done["seconds"] >= 0
-    assert (project / ".repro" / "reproductions.jsonl").read_text().count("\n") == 1
-
-
 def test_a_diff_the_issues_name_is_served_and_nothing_else_is(served_kept, kept):
     q = urllib.parse.urlencode
     status, body = get(
@@ -361,3 +295,332 @@ def test_the_diff_endpoint_changes_nothing_in_the_project(served_kept, kept):
         ).stdout
         == head
     )
+
+
+def wait_for(check, seconds: float = 90):
+    """Poll `check` until it returns something truthy, and return that."""
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        found = check()
+        if found:
+            return found
+        time.sleep(0.2)
+    raise AssertionError("timed out")
+
+
+def run_named(served: str, run_id: str) -> dict:
+    _, body = get(f"{served}/api/runs")
+    return next(r for r in body["runs"] if r["run_id"] == run_id)
+
+
+def test_a_run_started_from_the_page_is_read_back_as_running_then_done(served, project):
+    status, body = post(f"{served}/api/reproduce", {"only": ["results"]})
+    assert status == 200
+    run = body["run"]
+    assert run["only"] == ["results"] and run["record_before"] == 0
+    done = wait_for(lambda: (r := run_named(served, run["run_id"]))["state"] == "done" and r)
+    assert [(s["id"], s["state"]) for s in done["steps"]] == [("results", "reproduced")]
+    assert "results" in done["log"], "the log holds what repro reproduce printed"
+    assert (project / ".repro" / "reproductions.jsonl").read_text().count("\n") == 1
+
+
+def test_a_run_goes_on_when_the_server_that_started_it_stops(project, tmp_path):
+    httpd = serve(project, tmp_path)
+    url = f"http://127.0.0.1:{httpd.server_address[1]}"
+    status, _ = post(f"{url}/api/reproduce", {"only": None})
+    assert status == 200
+    httpd.shutdown()
+    httpd.server_close()
+    record = project / ".repro" / "reproductions.jsonl"
+    wait_for(lambda: record.exists() and record.read_text().count("\n") == 1)
+
+
+def test_a_step_with_a_live_run_cannot_be_started_again_and_stop_ends_it_as_interrupted(
+    served, project, tmp_path
+):
+    data = tmp_path / "data"
+    marker = runs.start(project, data, ["sleep", "60"], ["results"])
+    for only in (["results"], None):
+        status, body = post(f"{served}/api/reproduce", {"only": only})
+        assert (status, body["run"]) == (409, marker["run_id"])
+    assert run_named(served, marker["run_id"])["state"] == "running"
+    assert post(f"{served}/api/stop", {"run": "not-a-run"})[0] == 404
+    assert post(f"{served}/api/stop", {"run": marker["run_id"]})[0] == 200
+    wait_for(lambda: run_named(served, marker["run_id"])["state"] == "interrupted")
+    assert not (project / ".repro" / "reproductions.jsonl").exists()
+
+
+def test_a_run_whose_process_is_gone_is_done_when_the_record_holds_it_and_interrupted_otherwise(
+    project, tmp_path
+):
+    data = tmp_path / "data"
+    # Markers left by another server: processes this one never started, and that have ended.
+    gone = subprocess.Popen(["true"])
+    gone.wait()
+    folder = runs.folder(data)
+    folder.mkdir(parents=True)
+    for run_id, only in (("20260101T000000-aaaaaa", ["results"]), ("20260101T000001-bbbbbb", None)):
+        (folder / f"{run_id}.json").write_text(
+            json.dumps(
+                {
+                    "run_id": run_id,
+                    "pid": gone.pid,
+                    "only": only,
+                    "started_at": "",
+                    "record_before": 0,
+                }
+            )
+        )
+    assert {r["run_id"]: r["state"] for r in runs.listed(project, data)} == {
+        "20260101T000000-aaaaaa": "interrupted",
+        "20260101T000001-bbbbbb": "interrupted",
+    }
+    record = project / ".repro"
+    record.mkdir()
+    step = {"regeneration_id": "results", "state": "reproduced", "duration_seconds": 0.1}
+    (record / "reproductions.jsonl").write_text(
+        json.dumps({"ended_at": "2026-01-01T00:00:02+00:00", "regenerations": [step]}) + "\n"
+    )
+    states = {r["run_id"]: r for r in runs.listed(project, data)}
+    assert states["20260101T000000-aaaaaa"]["state"] == "done"
+    assert states["20260101T000000-aaaaaa"]["steps"][0]["id"] == "results"
+    assert states["20260101T000001-bbbbbb"]["state"] == "done"
+
+
+def embedded(page: str) -> dict:
+    start = page.index('<script type="application/json" id="repro-graph">')
+    body = page[start:].split(">", 1)[1].split("</script>", 1)[0]
+    return json.loads(body)
+
+
+def test_the_export_is_one_file_with_the_data_and_no_token(served, project, tmp_path):
+    req = urllib.request.Request(f"{served}/api/export")
+    with urllib.request.urlopen(req) as r:
+        page = r.read().decode()
+        assert r.headers["Content-Disposition"] == 'attachment; filename="project.html"'
+    assert TOKEN not in page and "repro-ui-token" not in page
+    assert '<meta name="repro-ui-static" content="1" />' in page
+    _, g = get(f"{served}/graph.json")
+    assert embedded(page) == {**g, "project_dir": None}
+
+
+def test_embedded_data_cannot_end_its_script_element():
+    data = json.dumps({"text": "</script><script>alert(1)</script><!-- x"}).encode()
+    assert "</script><script>" not in export.embedded_json(data)
+    assert json.loads(export.embedded_json(data)) == json.loads(data)
+
+
+def test_repro_ui_export_writes_the_file_to_a_folder_or_to_the_name_given(
+    project, tmp_path, monkeypatch
+):
+    static = tmp_path / "static"
+    (static / "assets").mkdir(parents=True)
+    (static / "assets" / "index-x.js").write_text("console.log('</script>')")
+    (static / "assets" / "index-x.css").write_text("body{}")
+    (static / "index.html").write_text(
+        "<!doctype html><html><head><title>repro ui</title>"
+        '<script type="module" crossorigin src="./assets/index-x.js"></script>'
+        '<link rel="stylesheet" crossorigin href="./assets/index-x.css"></head>'
+        '<body><div id="root"></div></body></html>'
+    )
+    monkeypatch.setattr(server, "DIST", static)
+    assert server.main([str(project), "--export", str(tmp_path / "site"), "--offline"]) == 0
+    assert server.main([str(project), "--export", str(tmp_path / "one.html"), "--offline"]) == 0
+    for page in (
+        (tmp_path / "site" / "index.html").read_text(),
+        (tmp_path / "one.html").read_text(),
+    ):
+        assert "<\\/script>" in page and "./assets/" not in page
+        assert "<style>body{}</style>" in page and "<title>project</title>" in page
+        assert embedded(page)["project_name"] == "project"
+
+
+def two_steps(project: pathlib.Path) -> None:
+    """A second rebuild step beside `results`, so a run of one step differs from a run of all."""
+    (project / "double.py").write_text(
+        "import json\njson.dump({'double': 12}, open('double.json', 'w'))\n"
+    )
+    (project / "double.json").write_text(json.dumps({"double": 12}))
+    manifest = yaml.safe_load((project / "repro.yaml").read_text())
+    digest = lambda p: {"algorithm": "sha256", "value": hashlib.sha256(p.read_bytes()).hexdigest()}  # noqa: E731
+    manifest["artifacts"] += [
+        {
+            "id": "double-code",
+            "path": "double.py",
+            "media_type": "text/x-python",
+            "digest": digest(project / "double.py"),
+        },
+        {
+            "id": "double",
+            "path": "double.json",
+            "media_type": "application/json",
+            "digest": digest(project / "double.json"),
+        },
+    ]
+    manifest["regenerations"].append(
+        {
+            "id": "double",
+            "command": ["python3", "double.py"],
+            "inputs": [{"artifact": "double-code", "digest": digest(project / "double.py")}],
+            "output": {"artifact": "double", "digest": digest(project / "double.json")},
+        }
+    )
+    (project / "repro.yaml").write_text(yaml.safe_dump(manifest, sort_keys=False))
+
+
+def test_a_run_of_one_step_runs_only_that_step_and_a_later_run_reads_its_own_record(
+    project, tmp_path
+):
+    two_steps(project)
+    httpd = serve(project, tmp_path)
+    url = f"http://127.0.0.1:{httpd.server_address[1]}"
+    try:
+        for n, only in enumerate((["double"], ["results"]), start=1):
+            status, body = post(f"{url}/api/reproduce", {"only": only})
+            assert status == 200 and body["run"]["record_before"] == n - 1
+            run_id = body["run"]["run_id"]
+            done = wait_for(
+                lambda run_id=run_id: (r := run_named(url, run_id))["state"] == "done" and r
+            )
+            assert [s["id"] for s in done["steps"]] == only
+            record = (project / ".repro" / "reproductions.jsonl").read_text().splitlines()
+            assert len(record) == n
+            ran = [
+                r["regeneration_id"]
+                for r in json.loads(record[-1])["regenerations"]
+                if r["state"] != "not_rerun"
+            ]
+            assert ran == only
+            assert (tmp_path / "data" / "runs" / f"{body['run']['run_id']}.log").is_file()
+        assert post(f"{url}/api/reproduce", {})[0] == 400, "a body without only starts nothing"
+    finally:
+        httpd.shutdown()
+
+
+def test_stop_ends_the_whole_process_group_including_what_the_step_started(project, tmp_path):
+    data = tmp_path / "data"
+    child = tmp_path / "child.pid"
+    marker = runs.start(
+        project, data, ["sh", "-c", f"sleep 600 & echo $! > {child}; wait"], ["results"]
+    )
+    pid = int(wait_for(lambda: child.exists() and child.read_text().strip()))
+    assert runs.stop(data, marker["run_id"])
+
+    def gone(p: int) -> bool:
+        try:
+            os.kill(p, 0)
+        except ProcessLookupError:
+            return True
+        return False
+
+    try:
+        wait_for(lambda: gone(pid) and not runs.alive(marker), 15)
+    finally:
+        if not gone(pid):
+            os.kill(pid, 9)
+    (listed,) = runs.listed(project, data)
+    assert listed["state"] == "interrupted"
+
+
+def test_a_run_reads_nothing_from_a_terminal(project, tmp_path):
+    data = tmp_path / "data"
+    marker = runs.start(project, data, ["sh", "-c", "cat; echo stdin-closed"], None)
+    wait_for(lambda: not runs.alive(marker), 20)
+    assert "stdin-closed" in (data / "runs" / f"{marker['run_id']}.log").read_text()
+
+
+def test_a_process_that_took_a_runs_id_is_never_read_as_the_run_nor_stopped(project, tmp_path):
+    data = tmp_path / "data"
+    stranger = subprocess.Popen(["sleep", "60"], start_new_session=True)
+    try:
+        folder = runs.folder(data)
+        folder.mkdir(parents=True)
+        run_id = "20200101T000000-abcdef"
+        (folder / f"{run_id}.json").write_text(
+            json.dumps(
+                {
+                    "run_id": run_id,
+                    "pid": stranger.pid,
+                    "only": ["results"],
+                    "started_at": "2020-01-01T00:00:00+00:00",
+                    "record_before": 0,
+                    "process_started": "Wed Jan  1 00:00:00 2020",
+                }
+            )
+        )
+        (listed,) = runs.listed(project, data)
+        assert listed["state"] == "interrupted"
+        assert not runs.stop(data, run_id)
+        assert stranger.poll() is None, "the stranger was not signalled"
+        started = runs.start(
+            project, data, ["true"], ["results"]
+        )  # not blocked by the stale marker
+        assert started["run_id"] != run_id
+    finally:
+        stranger.kill()
+        stranger.wait()
+
+
+def test_markers_that_are_not_markers_are_skipped_and_never_followed_out_of_the_folder(
+    project, tmp_path
+):
+    data = tmp_path / "data"
+    folder = runs.folder(data)
+    folder.mkdir(parents=True)
+    (tmp_path / "outside.log").write_text("outside")
+    bad = {
+        "20260101T000000-000001": [],
+        "20260101T000000-000002": {
+            "run_id": "20260101T000000-000002",
+            "only": None,
+            "record_before": 0,
+        },
+        "20260101T000000-000003": {
+            "run_id": "20260101T000000-000003",
+            "pid": "x",
+            "only": None,
+            "record_before": 0,
+        },
+        "20260101T000000-000004": {
+            "run_id": "../../outside",
+            "pid": 1,
+            "only": None,
+            "record_before": 0,
+        },
+        "20260101T000000-000005": {
+            "run_id": "20260101T000000-000005",
+            "pid": 1,
+            "only": "results",
+            "record_before": 0,
+        },
+    }
+    for name, body in bad.items():
+        (folder / f"{name}.json").write_text(json.dumps(body))
+    assert runs.listed(project, data) == []
+    runs.prune(data)
+    assert (tmp_path / "outside.log").read_text() == "outside"
+    assert runs.start(project, data, ["true"], None)["run_id"]
+
+
+def test_a_presubmit_check_lists_numbers_no_claim_accounts_for(project, tmp_path):
+    (project / "paper.txt").write_text(
+        "We count the values. The total is 6. We drew 4321 samples.\n"
+    )
+    g = graph.build(
+        project, tmp_path / "out" / "graph.json", check=True, fetch=False, presubmit=True
+    )
+    del g
+    found = json.loads((tmp_path / "out" / "graph.json").read_text())["presubmit"]
+    assert found["numbers_read"] is True
+    assert [n["text"] for n in found["unbound"]] == ["4321"]
+    assert (found["unpinned"], found["unsealed"]) == ([], [])
+    graph.build(project, tmp_path / "out" / "graph.json", check=False, fetch=False)
+    kept = json.loads((tmp_path / "out" / "graph.json").read_text())["presubmit"]
+    assert kept["unbound_count"] == 1, "a refresh keeps the last Pre-submit check"
+
+
+def test_the_export_does_not_carry_the_projects_folder_on_this_machine(served, project):
+    with urllib.request.urlopen(f"{served}/api/export") as r:
+        page = r.read().decode()
+    assert embedded(page)["project_dir"] is None
+    assert str(project) not in page

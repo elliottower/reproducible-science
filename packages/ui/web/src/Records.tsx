@@ -1,8 +1,9 @@
 import { Fragment, useEffect, useMemo, useState } from 'react'
-import { statusLine } from './format'
+import { STATIC } from './api'
+import { staticMessage, statusLine } from './format'
+import { useToast } from './toast'
 import { DiffView } from './issues'
 import { fmt, when } from './shared'
-import { secs } from './reproduce'
 import type { Focus, Graph } from './types'
 
 /** One page per record, each opening with the line the Overview shows and a sentence on what the
@@ -15,17 +16,6 @@ function Head({ cmd, line, what }: { cmd: string; line: string; what: string }) 
       <p className="rec-what">{what}</p>
     </div>
   )
-}
-
-const CAUSE: Record<string, string> = {
-  input_changed: 'input changed',
-  output_changed: 'output changed',
-  command_changed: 'command changed',
-}
-const STATE: Record<string, [string, string]> = {
-  current: ['Reproduced', 'good'],
-  stale: ['Changed since re-run', 'warn'],
-  never_rerun: ['Never re-run', 'warn'],
 }
 
 const PLAN_STATE: Record<string, [string, string]> = {
@@ -614,100 +604,17 @@ export function CitationsTab({ graph, query, focus: picked }: { graph: Graph; qu
   )
 }
 
-export function ReproduceTab({ graph, query }: { graph: Graph; query: string }) {
-  const t = graph.tabs?.reproduce
-  const q = query.trim().toLowerCase()
-  const steps = [...(t?.steps ?? [])].filter((s) => !q || `${s.id} ${s.command} ${s.state}`.toLowerCase().includes(q)).sort((a, b) => (a.state === 'current' ? 1 : 0) - (b.state === 'current' ? 1 : 0) || a.id.localeCompare(b.id))
-  const [panel, setPanel] = useState<Step | null>(null)
-  const [viewing, setViewing] = useState<string | null>(null)
-  return (
-    <div className="rec">
-      <Head cmd="repro reproduce" line={statusLine('repro', graph.status).text}
-        what="A rebuild step is a command repro.yaml declares that turns input files into an output file, such as detex.py or a derive script. repro reproduce runs every step again and checks the output comes out identical. repro stale, run on every check, compares each step with the last re-run without running anything: that is the state column. Click a step for its details." />
-      <table>
-        <thead><tr><th>Step</th><th>State</th><th>What changed</th><th>Command</th></tr></thead>
-        <tbody>
-          {steps.map((s) => {
-            const [label, tone] = STATE[s.state] ?? [s.state, 'none']
-            return (
-              <tr key={s.id} className={`static ${panel === s ? 'sel' : ''}`}>
-                <td className="clickable" onClick={() => setPanel(s)} title="Details"><button className="file-link mono strong">{s.id}</button></td>
-                <td><span className={`pill ${tone === 'warn' ? 'stale' : tone}`}>{label}</span></td>
-                <td className="small">{s.causes.map((c, i) => <div key={i}>{CAUSE[c.cause] ?? c.cause}: <span className="mono">{c.artifact}</span></div>)}</td>
-                <td className="mono small muted claim-cell">{s.command}</td>
-              </tr>
-            )
-          })}
-        </tbody>
-      </table>
-      <h3 className="rec-h3">Re-runs recorded</h3>
-      <table>
-        <thead><tr><th>Finished</th><th>Took</th><th>Steps</th><th>Result</th><th>Toolkit</th></tr></thead>
-        <tbody>
-          {[...(t?.reruns ?? [])].reverse().map((r, i) => (
-            <tr key={i} className="static">
-              <td className="small">{r.ended_at ? when(r.ended_at) : '—'}</td>
-              <td className="small nowrap">{r.started_at && r.ended_at ? (() => { const t = Math.round(Math.max(0, Date.parse(r.ended_at) - Date.parse(r.started_at)) / 1000); return t < 1 ? 'under 1 s' : `${t} s` })() : '—'}</td>
-              <td className="num">{r.steps}</td>
-              <td className="small">{Object.entries(r.counts).map(([k, v]) => `${v} ${k}`).join(', ')}</td>
-              <td className="mono small muted">{r.tool_version}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {panel && <StepPanel s={panel} onClose={() => setPanel(null)} onView={setViewing} />}
-      {viewing && <FileViewer path={viewing} onClose={() => setViewing(null)} />}
-    </div>
-  )
-}
-
-type Step = NonNullable<Graph['tabs']>['reproduce']['steps'][number]
-
-const RERUN: Record<string, string> = { reproduced: 'Reproduced', differs: 'Output differs', failed: 'Failed', skipped: 'Skipped' }
-
-/** One rebuild step: the command, the files it reads and writes, what changed since its last re-run,
- * and every re-run of it on record. */
-function StepPanel({ s, onClose, onView }: { s: Step; onClose: () => void; onView: (path: string) => void }) {
-  const [label, tone] = STATE[s.state] ?? [s.state, 'none']
-  const file = (artifact: string, path?: string) => path
-    ? <button className="file-link mono small" onClick={() => onView(path)} title={artifact}>{path}</button>
-    : <span className="mono small">{artifact}</span>
-  return (
-    <aside className="panel">
-      <button className="close" onClick={onClose}>×</button>
-      <div className="kicker">REBUILD STEP</div>
-      <h2 className="mono">{s.id}</h2>
-      <p><span className={`pill ${tone === 'warn' ? 'stale' : tone}`}>{label}</span></p>
-      <dl>
-        <dt>Command</dt><dd className="mono small">{s.command}</dd>
-        <dt>Writes</dt><dd>{file(s.artifact, s.output_path)}</dd>
-        <dt>Reads</dt><dd>{(s.inputs ?? []).map((i) => <div key={i.artifact}>{file(i.artifact, i.path)}</div>)}</dd>
-        <dt>Last re-run</dt><dd>{s.rerun_at ? when(s.rerun_at) : 'never'}</dd>
-      </dl>
-      {s.causes.length > 0 && (
-        <>
-          <h3>Changed since the last re-run</h3>
-          {s.causes.map((c, i) => <div key={i} className="small">{CAUSE[c.cause] ?? c.cause}: <span className="mono">{c.artifact}</span></div>)}
-        </>
-      )}
-      <h3>{(s.history ?? []).length ? `Re-runs of this step (${(s.history ?? []).length}${(s.history ?? []).length === 20 ? ', latest' : ''})` : 'Never re-run'}</h3>
-      {(s.history ?? []).map((h, i) => (
-        <div key={i} className="run-claim small">
-          <span className={h.state === 'reproduced' ? 'good-text' : 'stale-text'}>{h.state === 'reproduced' ? '✓' : '✗'}</span>{' '}
-          {RERUN[h.state] ?? h.state} · {h.ended_at ? when(h.ended_at) : '—'}
-          <span className="muted">{h.duration_seconds != null ? ` · ${secs(h.duration_seconds)}` : ''}{h.exit_code ? ` · exit ${h.exit_code}` : ''} · {h.tool_version}</span>
-          {h.detail && <div className="muted">{h.detail}</div>}
-        </div>
-      ))}
-    </aside>
-  )
-}
-
 /** A recorded file, read through the local server: JSON indented, anything else as text. */
 function FileViewer({ path, onClose }: { path: string; onClose: () => void }) {
   const [text, setText] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  useMemo(() => {
+  const toast = useToast()
+  useEffect(() => {
+    if (STATIC) {
+      toast(staticMessage('file'))
+      setError(staticMessage('file'))
+      return
+    }
     fetch(`api/file?path=${encodeURIComponent(path)}`)
       .then((r) => r.json())
       .then((res) => {
