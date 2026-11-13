@@ -1,8 +1,9 @@
 import { useContext, useMemo, useState } from 'react'
-import { claimPrompt, FixButtons, FixCtx, stalePrompt } from './fix'
+import { claimPrompt, CopyPrompt, FixCtx } from './fix'
+import { fmt } from './format'
 import type { ClaimRow, GNode, Graph, HistoryPoint } from './types'
 
-export const fmt = (n: number) => n.toLocaleString('en-US')
+export { fmt }
 export const when = (ts: string) =>
   new Date(ts).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
 
@@ -65,12 +66,7 @@ export function HistoryStrip({ points }: { points: HistoryPoint[] }) {
 
 function ClaimFix({ claim }: { claim: ClaimRow }) {
   const { project } = useContext(FixCtx)
-  return <FixButtons subject={claim.id} kind="claim" prompt={claimPrompt(claim, project)} />
-}
-
-function StaleFix({ node }: { node: GNode }) {
-  const { project } = useContext(FixCtx)
-  return <FixButtons subject={node.id} kind="stale" prompt={stalePrompt(node, project)} />
+  return <div className="fix"><CopyPrompt prompt={claimPrompt(claim, project)} small /></div>
 }
 
 /** A generated claim text reads "The manuscript states 2364 for corpus-quotations."; the value and the
@@ -185,7 +181,6 @@ export function Panel({ graph, id, onClose, onExpand, onPick }: {
               <div key={i} className="small mono">{CAUSE[c.cause] ?? c.cause}: {c.artifact}</div>
             ))}
             {node.freshness === 'no_producer' && <div className="muted small">no rebuild step declared; checked against its pin</div>}
-            {node.freshness === 'stale' && <StaleFix node={node} />}
           </dd>
           {node.last_checked && (
             <>

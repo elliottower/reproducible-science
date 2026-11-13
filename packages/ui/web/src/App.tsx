@@ -3,13 +3,14 @@ import { Background, Controls, ReactFlow, ReactFlowProvider, useReactFlow, type 
 import Catalog from './Catalog'
 import Overview, { type Tab } from './Overview'
 import { CitationsTab, PreregTab, ReproduceTab, ResultsTab } from './Records'
-import { FixCtx, ProblemPill, projectPrompt } from './fix'
-import { ReproduceButton, VerifyButton } from './reproduce'
-import { post } from './api'
+import { ClaimsPill, FixCtx } from './fix'
+import { IssuesPill } from './issues'
+import { ReproducedPill, ReproduceButton, type Run, VerifyButton } from './reproduce'
+import { post, postWhenFree } from './api'
 import { layout, summarize } from './layout'
 import { nodeTypes, UiCtx } from './nodes'
 import { fmt, Panel, when } from './shared'
-import type { Graph } from './types'
+import type { Focus, Graph } from './types'
 
 interface Recheck {
   available: boolean
@@ -17,8 +18,8 @@ interface Recheck {
   message: string | null
   run: (kind: 'refresh' | 'verify') => void
   reproduce: (only: string[] | null) => void
-  /** false when nothing is re-running; otherwise the steps re-running, null meaning all. */
-  reproducing: string[] | null | false
+  /** The re-run streaming in, or the last one to finish; null before any. */
+  live: Run | null
 }
 
 function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
@@ -33,6 +34,14 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
     ['overview', 'Overview'], ['prereg', 'Prereg'], ['results', 'Results'], ['citations', 'Citations'],
     ['claims', 'Claims'], ['reproduce', 'Reproduce'], ['graph', 'Graph'],
   ]
+  const [reproOpen, setReproOpen] = useState(false)
+  // Where Open in UI last took the page: the tab it opened reads it and shows that item.
+  const [focus, setFocus] = useState<Focus | null>(null)
+  /** Any other way to a tab drops the Open in UI target, so it is not applied again. */
+  const go = (m: Tab) => { setMode(m); setFocus(null) }
+  useEffect(() => {
+    document.title = graph.project_name ? `${graph.project_name} · repro ui` : 'repro ui'
+  }, [graph.project_name])
   const [mode, setMode] = useState<Tab>(TABS.map(([k]) => k).find((v) => v === initial.get('view')) ?? 'overview')
   const [flow, setFlow] = useState<{ nodes: Node[]; edges: Edge[] }>({ nodes: [], edges: [] })
   const rf = useReactFlow()
@@ -156,53 +165,32 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
     window.history.replaceState(null, '', `#${h.toString()}`)
   }, [open, selected, mode, openFiles])
 
-  const failing = graph.totals.failing
-  const needRerun = graph.nodes.filter((n) => n.type === 'artifact' && (n.freshness === 'stale' || n.freshness === 'never_rerun')).length
-
   return (
     <UiCtx.Provider value={{ selected: shown, matches, related, toggle, openFiles, toggleFile }}>
       <div className="app">
         <header className="top">
-          <div className="brand mono">{graph.project_name ?? 'Claim lineage'}</div>
           <div className="tabs">
             {TABS.map(([k, label]) => (
-              <button key={k} className={mode === k ? 'on' : ''} onClick={() => setMode(k)}>{label}</button>
+              <button key={k} className={mode === k ? 'on' : ''} onClick={() => go(k)}>{label}</button>
             ))}
           </div>
           <div className="spacer" />
-          {failing > 0 ? (
-            <ProblemPill className="bad" label={`● ${fmt(failing)} failing`} subject="project"
-              what={`${fmt(failing)} claim${failing === 1 ? '' : 's'} no longer match the file they read.`}
-              prompt={projectPrompt(graph, graph.project_dir ?? null)}
-              title={graph.totals.last_check ? `last check ${when(graph.totals.last_check)}` : undefined} />
-          ) : (
-            <span className="pill big good"
-              title={graph.totals.last_check ? `${fmt(graph.totals.assertions)} assertions over ${fmt(graph.totals.artifacts)} files · last check ${when(graph.totals.last_check)}` : undefined}>
-              ● {fmt(graph.totals.claims)} verified
-            </span>
-          )}
-          {needRerun > 0 && (
-            <ProblemPill className="stale" label={`◐ ${needRerun} need re-run`} subject="project"
-              what={<>{needRerun} {needRerun === 1 ? 'file whose rebuild step' : 'files whose rebuild steps'} changed since the last <code>repro reproduce</code>, or {needRerun === 1 ? 'was' : 'were'} never re-run.</>}
-              prompt={projectPrompt(graph, graph.project_dir ?? null)} />
-          )}
+          <ClaimsPill graph={graph} openClaims={() => go('claims')} />
+          <ReproducedPill graph={graph} live={recheck.live} openTab={() => go('reproduce')} />
+          <IssuesPill graph={graph} onOpen={(o) => { setMode(o.tab); setFocus({ ...o, at: Date.now() }) }} />
           {recheck.available && (
             <>
-              <button className="recheck" onClick={() => recheck.run('refresh')} disabled={recheck.busy !== null}
-                title="Re-read the records (repro stale, results verify, prereg check, the ledger and the check history). Writes nothing.">
-                {recheck.busy === 'refresh' ? 'Refreshing…' : <><span className="refresh-icon">⟳</span> Refresh</>}
-              </button>
-              <VerifyButton graph={graph} busy={recheck.busy === 'verify'} disabled={recheck.busy !== null} run={() => recheck.run('verify')} />
+              <VerifyButton graph={graph} busy={recheck.busy === 'verify'} disabled={recheck.busy !== null && recheck.busy !== 'refresh'} run={() => recheck.run('verify')} />
+              <ReproduceButton graph={graph} open={reproOpen} setOpen={setReproOpen} live={recheck.live} run={recheck.reproduce} />
             </>
           )}
-          {recheck.available && <ReproduceButton graph={graph} busy={recheck.reproducing} run={recheck.reproduce} />}
           {recheck.message && <span className="error-note">{recheck.message}</span>}
         </header>
         <div className="toolbar" style={mode === 'overview' ? { display: 'none' } : undefined}>
           <input
             className="search"
             placeholder={({
-              prereg: 'Search plans', results: 'Search runs, notes and files', citations: 'Search sources, quotations and interpretations',
+              prereg: 'Search preregistrations', results: 'Search runs, notes and files', citations: 'Search sources, quotations and interpretations',
               claims: 'Search claims, sections and files', reproduce: 'Search rebuild steps and commands', graph: 'Search files, sections, claim text… (e.g. 1,062 or timings)',
             } as Record<string, string>)[mode] ?? 'Search'}
             value={query}
@@ -215,13 +203,13 @@ function Canvas({ graph, recheck }: { graph: Graph; recheck: Recheck }) {
           {mode === 'graph' && <button onClick={() => setOpen(new Set())}>Collapse all</button>}
         </div>
         {mode === 'overview' ? (
-          <Overview graph={graph} onOpen={setMode} />
+          <Overview graph={graph} onOpen={go} />
         ) : mode === 'prereg' ? (
-          <PreregTab graph={graph} />
+          <PreregTab graph={graph} focus={focus?.tab === 'prereg' ? focus : null} />
         ) : mode === 'results' ? (
-          <ResultsTab graph={graph} query={query} />
+          <ResultsTab graph={graph} query={query} focus={focus?.tab === 'results' ? focus : null} />
         ) : mode === 'citations' ? (
-          <CitationsTab graph={graph} query={query} />
+          <CitationsTab graph={graph} query={query} focus={focus?.tab === 'citations' ? focus : null} />
         ) : mode === 'reproduce' ? (
           <ReproduceTab graph={graph} query={query} />
         ) : mode === 'claims' ? (
@@ -287,7 +275,7 @@ export default function App() {
   const [projectPath, setProjectPath] = useState<string | null>(null)
   const [busy, setBusy] = useState<'refresh' | 'verify' | 'reproduce' | null>(null)
   const [message, setMessage] = useState<string | null>(null)
-  const [reproducing, setReproducing] = useState<string[] | null | false>(false)
+  const [live, setLive] = useState<Run | null>(null)
 
   const load = () =>
     fetch(`graph.json?t=${Date.now()}`)
@@ -306,10 +294,30 @@ export default function App() {
       .catch(() => setAvailable(false))
   }, [])
 
+  // The page re-reads the records by itself, which writes nothing: when its tab comes back into
+  // view, and every 30 s while it is in view. Never while a check or a re-run is going.
+  const busyRef = useRef(busy)
+  busyRef.current = busy
+  useEffect(() => {
+    if (!available) return
+    const refresh = () => {
+      if (document.visibilityState !== 'visible' || busyRef.current !== null) return
+      setBusy('refresh')
+      post('api/refresh', {})
+        .then((r) => r.json())
+        .then((res) => (res.ok ? load() : undefined))
+        .catch(() => undefined)
+        .finally(() => setBusy((b) => (b === 'refresh' ? null : b)))
+    }
+    const t = setInterval(refresh, 30_000)
+    document.addEventListener('visibilitychange', refresh)
+    return () => { clearInterval(t); document.removeEventListener('visibilitychange', refresh) }
+  }, [available])
+
   const run = (kind: 'refresh' | 'verify') => {
     setBusy(kind)
     setMessage(null)
-    post(`api/${kind}`, {})
+    postWhenFree(`api/${kind}`, {})
       .then((r) => r.json())
       .then((res) => {
         setMessage(res.ok ? null : `${kind === 'verify' ? 'repro verify' : 'Refresh'} failed: ${res.error}`)
@@ -319,27 +327,56 @@ export default function App() {
       .finally(() => setBusy(null))
   }
 
-  const reproduce = (only: string[] | null) => {
+  /** Runs the steps and reads the answer as it streams: one JSON object per line, each printed
+   * line of `repro reproduce` and then what the re-run recorded. */
+  const reproduce = async (only: string[] | null) => {
     setBusy('reproduce')
-    setReproducing(only)
     setMessage(null)
-    post('api/reproduce', { only })
-      .then((r) => r.json())
-      .then((res) => {
-        const counts = Object.entries(res.counts ?? {}).map(([k, v]) => `${v} ${k}`).join(', ')
-        setMessage(res.ok ? `Reproduce: ${counts} in ${res.seconds} s` : `Reproduce failed: ${res.error}`)
-        return load()
-      })
-      .catch((e) => setMessage(`Reproduce failed: ${e}`))
-      .finally(() => { setBusy(null); setReproducing(false) })
+    const started = Date.now()
+    let run: Run = { only, lines: [], started }
+    setLive(run)
+    const finish = (done: Run['done']) => {
+      run = { ...run, done }
+      setLive(run)
+      // The result shows in the Reproduce dialog; only a failure is also said in the top bar.
+      if (done && !done.ok) setMessage(`Reproduce failed: ${done.error}`)
+    }
+    try {
+      const r = await postWhenFree('api/reproduce', { only })
+      if (!r.ok || !r.body) {
+        const res = await r.json().catch(() => ({}))
+        finish({ ok: false, error: res.error ?? `the server answered ${r.status}`, seconds: (Date.now() - started) / 1000 })
+        return
+      }
+      const reader = r.body.pipeThrough(new TextDecoderStream()).getReader()
+      let rest = ''
+      for (;;) {
+        const { value, done } = await reader.read()
+        if (done) break
+        rest += value
+        const parts = rest.split('\n')
+        rest = parts.pop() ?? ''
+        for (const part of parts.filter(Boolean)) {
+          const event = JSON.parse(part)
+          if (event.done) finish(event)
+          else { run = { ...run, lines: [...run.lines, event.line] }; setLive(run) }
+        }
+      }
+      if (!run.done) finish({ ok: false, error: 'the connection closed before the re-run finished', seconds: (Date.now() - started) / 1000 })
+      await load()
+    } catch (e) {
+      finish({ ok: false, error: String(e), seconds: (Date.now() - started) / 1000 })
+    } finally {
+      setBusy(null)
+    }
   }
 
   if (error) return <div className="center">{error}</div>
   if (!graph) return <div className="center muted">Loading…</div>
   return (
-    <FixCtx.Provider value={{ available, project: projectPath }}>
+    <FixCtx.Provider value={{ project: projectPath }}>
       <ReactFlowProvider>
-        <Canvas graph={graph} recheck={{ available, busy, message, run, reproduce, reproducing }} />
+        <Canvas graph={graph} recheck={{ available, busy, message, run, reproduce, live }} />
       </ReactFlowProvider>
     </FixCtx.Provider>
   )

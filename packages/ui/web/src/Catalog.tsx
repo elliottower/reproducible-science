@@ -1,4 +1,5 @@
-import { useMemo, useState } from 'react'
+import { useContext, useMemo, useState } from 'react'
+import { CopyPrompt, failingPrompt, FixCtx } from './fix'
 import { ClaimList, ClaimText, fmt, Freshness, HistoryStrip, Panel, when } from './shared'
 import type { ClaimRow, GNode, Graph } from './types'
 
@@ -21,6 +22,7 @@ function ClaimPanel({ claim, onClose }: { claim: ClaimRow; onClose: () => void }
 
 export default function Catalog({ graph, query }: { graph: Graph; query: string }) {
   const [view, setView] = useState<View>({ kind: 'claims', filter: 'all' })
+  const { project } = useContext(FixCtx)
   const [selected, setSelected] = useState<string | null>(null)
   const q = query.trim().toLowerCase()
 
@@ -102,6 +104,12 @@ export default function Catalog({ graph, query }: { graph: Graph; query: string 
           <div className="mono rec-line">
             <span className="ov-cmd">repro verify:</span> {fmt(claims.filter((x) => x.ok).length)}/{fmt(claims.length)} claims verified ({fmt(graph.totals.assertions)} checks)
           </div>
+          {claims.some((x) => !x.ok) && (
+            <div className="fix">
+              <span className="small muted">{claims.filter((x) => !x.ok).length} failing. Click a claim for its own prompt, or:</span>
+              <CopyPrompt prompt={failingPrompt(graph, project)} small />
+            </div>
+          )}
         </div>
         {view.kind === 'files' ? (
           <table>
