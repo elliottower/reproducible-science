@@ -56,8 +56,9 @@ WARNINGS = {
     "page": "found, but not on the page recorded",
     "page unchecked": "a page is recorded and was not checked: the source has no pages to ask "
     "for, or the passage matched only with spacing ignored",
-    "joined": "matched only by joining what the source separates, or splitting a word into a "
-    "negation — the words differ",
+    "joined": "matched only by joining what the source separates — the words differ",
+    "split": "matched only by splitting what the source's text joins into a negation or two "
+    "numbers — the words differ, or the extractor dropped a space",
     "after negation": "begins mid-sentence after a negation in the source — the source may "
     "say the opposite",
     "after hedge": "begins mid-sentence after a hedge in the source — `may`, `whether`, `suggest`",

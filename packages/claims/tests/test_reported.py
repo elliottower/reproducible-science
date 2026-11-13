@@ -56,7 +56,9 @@ def decision(found):
     return claim.decisions[0]
 
 
-def test_a_reported_value_the_claim_and_the_paper_do_not_print_fails_under_strict(results):
+def test_a_reported_value_the_claim_does_not_print_fails_under_strict_and_the_paper_warns(
+    results,
+):
     checked = verify(
         manifest(
             results,
@@ -76,7 +78,31 @@ def test_a_reported_value_the_claim_and_the_paper_do_not_print_fails_under_stric
     }
     assert noted(STRICT.assess(checked)) == {
         ("evidence.reported_not_in_claim", Severity.ERROR),
-        ("evidence.reported_not_in_manuscript", Severity.ERROR),
+        ("evidence.reported_not_in_manuscript", Severity.WARNING),
+    }
+
+
+def test_a_passage_printing_a_count_in_words_beside_another_number_fails_nothing(tmp_path):
+    """The paper's own case: `defects-split-sources` reports 0, and the passage it quotes says
+    `no source` beside a count of 178. The passage prints a number, and the 0 is the word `no`."""
+    (tmp_path / "out.json").write_text(json.dumps({"sources_in_any_commit": 0}))
+    (tmp_path / "paper.md").write_text(
+        "178 assertions marked verified, and no source in any commit.\n"
+    )
+    checked = verify(
+        manifest(
+            tmp_path,
+            "The manuscript states 0 for defects-split-sources.",
+            metric("0", "/sources_in_any_commit"),
+            QuoteEvidence(
+                artifact="paper", text="178 assertions marked verified, and no source in any commit"
+            ),
+        )
+    )
+
+    assert Warning_.REPORTED_NOT_IN_MANUSCRIPT in decision(checked).warnings
+    assert noted(STRICT.assess(checked)) == {
+        ("evidence.reported_not_in_manuscript", Severity.WARNING)
     }
 
 
@@ -106,7 +132,7 @@ def test_a_coarse_printed_precision_is_noted(results, text, reported, pointer, c
     found = decision(checked)
     assert found.outcome is Outcome.VERIFIED
     assert Warning_.COARSE_PRECISION in found.warnings
-    assert ("evidence.coarse_precision", Severity.ERROR) in noted(STRICT.assess(checked))
+    assert noted(STRICT.assess(checked)) == {("evidence.coarse_precision", Severity.WARNING)}
 
 
 def test_a_claim_printing_no_number_and_quoting_nothing_is_noted_once(results):
@@ -154,7 +180,7 @@ def test_a_tolerance_large_against_the_value_is_noted(results):
     assert found.outcome is Outcome.VERIFIED
     assert Warning_.LOOSE_TOLERANCE in found.warnings
     assert noted(PUBLICATION.assess(checked)) == {("evidence.loose_tolerance", Severity.WARNING)}
-    assert ("evidence.loose_tolerance", Severity.ERROR) in noted(STRICT.assess(checked))
+    assert noted(STRICT.assess(checked)) == {("evidence.loose_tolerance", Severity.WARNING)}
 
 
 def test_a_tight_tolerance_is_not_noted(results):

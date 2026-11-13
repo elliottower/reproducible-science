@@ -224,8 +224,13 @@ class Warning_(enum.StrEnum):
     neither confirmed nor refuted, and a policy grades it as it grades a check that did not
     run."""
     JOINED = "joined"
-    """The passage matched only by joining two of the source's words or numbers into one, or
-    splitting one into a negation: `notable` against `not able`, `12.5` against `1 2.5`."""
+    """The passage matched only by joining two of the source's words or numbers into one:
+    `notable` against `not able`, `12.5` against `1 2.5`."""
+    SPLIT = "split"
+    """The passage matched only by splitting one of the source's words into a negation and
+    another, or one number into two: `not able` against `notable`. An extractor that drops a
+    space between words leaves the same match, so this says where to look and not that the
+    passage is wrong."""
     AFTER_NEGATION = "after_negation"
     """The passage begins mid-sentence after a negation in its source, which may say the
     opposite of the passage quoted alone."""

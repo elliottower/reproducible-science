@@ -34,6 +34,9 @@ The warnings -- is the quote well formed? A quote can be `found` and still carry
     page unchecked  found, and nothing could check the page the record claims
     joined       matched only by joining what the source separates: `not able` read as
                  `notable`, `1 2.5` as `12.5`. See `_joined`
+    split        matched only by splitting what the source joins, where one side is a
+                 negation or both are digits: `notable` read as `not able`. An extractor that
+                 drops a space between words (`neveravoid`) gives the same match
     after negation  begins mid-sentence after a negation in the source: `We found no
                  evidence that` dropped from the front of `the treatment reduced mortality`
     after hedge  the same after a hedge: `may`, `whether`, `suggest`
@@ -45,10 +48,13 @@ The warnings -- is the quote well formed? A quote can be `found` and still carry
     invisible    found only in text a PDF does not show: white, under a point, or off the
                  page. See `invisible`
 
-`STRICT_WARNINGS` are the ones `--strict` fails on. Each says the quotation as recorded is a
-wrong statement about the source with a remedy in the author's hands: quote the negation,
-correct the page, quote the spacing the source has. The others say something a reader should
-look at and that an honest quotation can carry.
+`STRICT_WARNINGS` are the ones `--strict` fails on: the quotation's words are not the words the
+source's text holds (`joined`), or the source holds them only where a reader of the page
+cannot see them (`invisible`). The others are read off the text around the match, or off a
+page number, by rules an honest quotation can trip: a heading run into the next line reads as
+a negation before it, an appendix with no `Appendix` heading reads as part of the reference
+list, and a journal's page numbers are not the PDF's. They say where a reader should look, and
+fail nothing.
 
 One warning is about the source and not about any quotation: a source read from a file git
 tracks is listed after these, because publishing the repository then republishes its text. It
@@ -324,7 +330,7 @@ EXTRACT_TIMEOUT = 120
 DEFAULT_EXTRACTORS = frozenset({"pdftotext", "detex"})
 
 #: Warnings `--strict` fails on. See the module docstring.
-STRICT_WARNINGS = frozenset({"page", "joined", "after negation", "references", "invisible"})
+STRICT_WARNINGS = frozenset({"joined", "invisible"})
 
 State = Literal["found", "not found", "ambiguous", "indeterminate", "unchecked"]
 PinState = Literal["ok", "broken", "unpinned", "missing"]
@@ -2455,7 +2461,10 @@ class _Place:
     start: int
     end: int
     joined: str = ""
-    """Where the match folded two source words or numbers into one, as `source -> quoted`."""
+    """Where the match changed the spacing between two words or numbers, as `source -> quoted`."""
+    how: str = ""
+    """`joined` where the source has the space and the quotation does not, `split` where the
+    quotation has it and the source does not."""
 
 
 def _word_at(s: str, i: int) -> str:
@@ -2467,8 +2476,9 @@ def _word_at(s: str, i: int) -> str:
 
 def _joined(
     qn: str, gq: tuple[bool, ...], q: str, qat: tuple[int, ...], o: int, doc: str, read: tuple
-) -> str:
-    """Where a match of the unspaced quotation at `o` changes the source's words, or empty.
+) -> tuple[str, str]:
+    """Where a match of the unspaced quotation at `o` changes the source's words, and which way,
+    or two empty strings.
 
     `skeleton` deletes white space so that an extractor dropping or inserting a space inside a
     word does not hide a passage: `logit difference` against `logitdifference`, and against
@@ -2484,6 +2494,11 @@ def _joined(
     A difference between two letters that makes no negation is what an extractor does, and is
     left to `normalized`. Without a dictionary nothing here can tell `the rapist` from
     `therapist`; the negations are the joins that reverse a sentence.
+
+    Which text has the space decides the kind. `joined`, the source separating what the
+    quotation joins, says the quotation's words are not the source's. `split`, the quotation
+    separating what the source's text joins, is also what an extractor produces when it drops a
+    space: `pdftotext` reads `never avoid` as `neveravoid`, and the quotation of it is right.
     """
     _, dat, gd, made = read
     for i in range(1, len(qn)):
@@ -2501,15 +2516,16 @@ def _joined(
         quoted = (
             f"{_word_at(q, qat[i - 1])} {_word_at(q, qat[i])}" if quote_gap else _word_at(q, qat[i])
         )
+        how = "joined" if source_gap else "split"
         if a.isdigit() and b.isdigit():
-            return f"source `{source}`, quoted `{quoted}`"
+            return how, f"source `{source}`, quoted `{quoted}`"
         if (
             a.isalpha()
             and b.isalpha()
             and set((source if source_gap else quoted).split()) & (_SPLIT_NEGATIONS)
         ):
-            return f"source `{source}`, quoted `{quoted}`"
-    return ""
+            return how, f"source `{source}`, quoted `{quoted}`"
+    return "", ""
 
 
 def _places(quote: str, full: str, prefix: str, suffix: str) -> tuple[str, list[_Place]]:
@@ -2543,7 +2559,8 @@ def _places(quote: str, full: str, prefix: str, suffix: str) -> tuple[str, list[
     o = dn.find(qn)
     while o >= 0:
         start, end = dat[o], dat[o + len(qn) - 1] + 1
-        places.append(_Place(start, end, _joined(qn, gq, q, qat, o, doc, read)))
+        how, joined = _joined(qn, gq, q, qat, o, doc, read)
+        places.append(_Place(start, end, joined, how))
         o = dn.find(qn, o + 1)
     if anchored and len(places) > 1:
         pf = passage_fold(prefix).replace(" ", "")
@@ -2629,9 +2646,12 @@ def _around(quote: str, full: str, prefix: str, suffix: str, warn: list[str]) ->
         said = [test(p) for p in places]
         return said[0] if all(said) else ""
 
-    if joined := every(lambda p: p.joined):
+    if joined := every(lambda p: p.joined if p.how == "joined" else ""):
         warn.append("joined")
         notes["joined"] = joined
+    elif split := every(lambda p: p.joined):
+        warn.append("split")
+        notes["split"] = split
     for name, words in (("after negation", NEGATIONS), ("after hedge", HEDGES)):
         if lead := every(lambda p, words=words: _qualifier(doc, p.start, words)):
             warn.append(name)

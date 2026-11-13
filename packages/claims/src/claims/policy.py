@@ -153,10 +153,18 @@ class Policy(BaseModel):
     not accepted by an author. Graded whatever its outcome, so a draft binding that happens to
     match never passes as a verified one."""
 
+    reported_mismatch: Severity = Severity.WARNING
+    """A `reported` value the claim's own text does not print, where the text prints numbers:
+    the number checked against the file is not the number the claim states. A warning by default
+    and an error under `strict`."""
+
     reported_consistency: Severity = Severity.WARNING
-    """A `reported` value the claim's text or its quoted passages do not print, one printed to
-    under two significant digits or rounded across 0.05, or a tolerance above a tenth of the
-    value: what `claims.reported` notes. A warning by default and an error under `strict`."""
+    """The other notes `claims.reported` makes: a `reported` value the passages the claim quotes
+    do not print, one printed to under two significant digits or rounded across 0.05, or a
+    tolerance above a tenth of the value. Each says the comparison is wider or less direct than
+    it looks, and none that it is wrong: a passage prints other numbers than the one checked, or
+    a count as a word, and `0.03` is the right print of a stored `0.0314`. A warning under every
+    policy."""
 
     unbound_numbers: Severity = Severity.WARNING
     """Numbers the manuscript prints that no assertion accounts for, as `repro numbers`
@@ -331,17 +339,23 @@ class Policy(BaseModel):
                             "manuscript prints",
                         )
                     )
-                if self.reported_consistency is not Severity.IGNORE:
-                    violations.extend(
-                        Violation(
-                            severity=self.reported_consistency,
-                            rule=f"evidence.{warning.value}",
-                            subject=f"{claim.claim_id}/{decision.kind}",
-                            detail=REPORTED_SAID[warning],
-                        )
-                        for warning in decision.warnings
-                        if warning in REPORTED_SAID
+                for warning in decision.warnings:
+                    if warning not in REPORTED_SAID:
+                        continue
+                    graded = (
+                        self.reported_mismatch
+                        if warning is Warning_.REPORTED_NOT_IN_CLAIM
+                        else self.reported_consistency
                     )
+                    if graded is not Severity.IGNORE:
+                        violations.append(
+                            Violation(
+                                severity=graded,
+                                rule=f"evidence.{warning.value}",
+                                subject=f"{claim.claim_id}/{decision.kind}",
+                                detail=REPORTED_SAID[warning],
+                            )
+                        )
 
         if self.require_one_check and checked == 0:
             violations.append(
@@ -512,7 +526,7 @@ STRICT = Policy(
     ordering_unchecked=Severity.ERROR,
     regeneration_unchecked=Severity.ERROR,
     regeneration_not_rerun=Severity.WARNING,
-    reported_consistency=Severity.ERROR,
+    reported_mismatch=Severity.ERROR,
     stale=Severity.ERROR,
     never_rerun=Severity.ERROR,
     staleness_undetermined=Severity.ERROR,

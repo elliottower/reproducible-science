@@ -222,6 +222,7 @@ _QUOTE_WARNINGS = {
     "page": Warning_.WRONG_PAGE,
     "page unchecked": Warning_.PAGE_UNCHECKED,
     "joined": Warning_.JOINED,
+    "split": Warning_.SPLIT,
     "after negation": Warning_.AFTER_NEGATION,
     "after hedge": Warning_.AFTER_HEDGE,
     "quoted in source": Warning_.QUOTED_IN_SOURCE,

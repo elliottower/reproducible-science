@@ -3,9 +3,12 @@
 Each attack here resolved as `found` with no warning: a quotation that drops the negation
 before it, one taken from words the source itself quotes, one taken from the reference list,
 one matched by folding a superscript flat, and one matched by joining two words into a third.
-Every one is now `found` with a warning naming what the source reads there, and `--strict`
-fails the ones whose record misstates the source. Each has an honest neighbour beside it that
-must stay clean, because a warning on every quotation is no warning.
+Every one is now `found` with a warning naming what the source reads there. `--strict` fails
+only a quotation whose words are not the source's text, and never one of the warnings read off
+the text around a match, which an honest quotation trips: a heading run into the next line reads
+as a negation, and an appendix with no `Appendix` heading as part of the reference list. Each
+has an honest neighbour beside it that must stay clean, because a warning on every quotation is
+no warning.
 """
 
 from __future__ import annotations
@@ -110,7 +113,7 @@ def test_the_source_reporting_the_quotation_is_not_inside_it(source):
 def test_a_passage_found_only_in_the_reference_list_is_warned(source):
     r = check("Jones, A. (2018). The protocol reliably doubles recall in every cohort", source)
     assert "references" in r.warnings
-    assert "references" in V.STRICT_WARNINGS
+    assert "references" not in V.STRICT_WARNINGS
 
 
 def test_an_appendix_after_the_reference_list_is_not_in_it(source):
@@ -141,11 +144,39 @@ def test_joining_a_negation_onto_the_next_word_is_not_a_quotation_of_it(source):
     assert r.notes["joined"] == "source `not able`, quoted `notable`"
 
 
-def test_splitting_a_word_into_a_negation_is_not_a_quotation_of_it(tmp_path):
+def test_splitting_a_word_into_a_negation_is_warned_as_split(tmp_path):
     p = tmp_path / "s.txt"
     p.write_text("The model was notable for how well it separated the two groups of patients.")
     r = check("The model was not able for how well it separated the two groups", p)
-    assert "joined" in r.warnings
+    assert "split" in r.warnings and "joined" not in r.warnings
+    assert r.notes["split"] == "source `notable`, quoted `not able`"
+
+
+def test_a_space_the_extractor_dropped_after_a_negation_fails_neither_strict_nor_pin(
+    tmp_path, capsys
+):
+    """`pdftotext` reads Hardwig's `I can never avoid` as `I can neveravoid`: the quotation is
+    the page's words, and the text is what lost the space."""
+    text = "Thus, I can neveravoid some epistemic dependence on the expertise of others.\n"
+    folder = tmp_path / "claims"
+    folder.mkdir()
+    (tmp_path / "h.txt").write_text(text)
+    doc = {
+        "source": {
+            "citation": "hardwig1985",
+            "local": "h.txt",
+            "sha256": hashlib.sha256(text.encode()).hexdigest(),
+        },
+        "claims": {},
+    }
+    (folder / "hardwig1985.yaml").write_text(yaml.safe_dump(doc))
+    quote = "I can never avoid some epistemic dependence"
+    assert pin.main([str(folder / "hardwig1985.yaml"), "--id", "d", "--quote", quote]) == 0
+    capsys.readouterr()
+
+    assert main(["verify", "--claims", str(folder), "--strict"]) == 0
+    out = capsys.readouterr().out
+    assert "split" in out and "misstates the source" not in out
 
 
 def test_joining_two_numbers_is_not_a_quotation_of_either(source):
@@ -203,11 +234,19 @@ def claims_dir(tmp_path, quotes, page=None):
     return tmp_path / "claims"
 
 
-def test_strict_fails_a_dropped_negation_and_the_default_does_not(tmp_path, capsys):
+def test_a_dropped_negation_is_warned_and_strict_does_not_fail_on_it(tmp_path, capsys):
     claims = claims_dir(tmp_path, ["the treatment reduced mortality in every subgroup we examined"])
     assert main(["verify", "--claims", str(claims)]) == 0
     out = capsys.readouterr().out
-    assert "after negation" in out and "`--strict` fails on after negation" in out
+    assert "after negation" in out and "`--strict` fails on" not in out
+    assert main(["verify", "--claims", str(claims), "--strict"]) == 0
+    assert "misstates the source" not in capsys.readouterr().out
+
+
+def test_strict_fails_a_quotation_that_joins_what_the_source_separates(tmp_path, capsys):
+    claims = claims_dir(tmp_path, ["The model was notable to separate the groups"])
+    assert main(["verify", "--claims", str(claims)]) == 0
+    assert "`--strict` fails on joined" in capsys.readouterr().out
     assert main(["verify", "--claims", str(claims), "--strict"]) == 1
     assert "misstates the source" in capsys.readouterr().out
 
@@ -223,11 +262,13 @@ def test_strict_passes_a_hedge_and_a_quotation_from_quoted_words(tmp_path):
     assert main(["verify", "--claims", str(claims), "--strict"]) == 0
 
 
-def test_a_wrong_page_fails_strict():
-    r = V.Result("found", "not on page 3", ["page"], 1)
+def test_a_page_the_passage_is_not_on_is_a_warning_strict_does_not_fail():
+    """A journal prints its own page numbers, and a PDF of one article counts from 1: page 475
+    of the journal is page 2 of the file, and nothing here can tell the two apart."""
+    r = V.Result("found", "not on page 475", ["page"], 2)
     rep = V.Report(checked=1, counts={"found": 1}, problems=[("s:c1", "q", r)])
     assert rep.ok
-    assert not rep.strict_ok
+    assert rep.strict_ok
 
 
 def test_the_warning_notes_are_written_to_the_json(tmp_path):

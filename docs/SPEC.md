@@ -834,7 +834,8 @@ goes looking for a broken anchor.
 | `normalized` | `quote` | the passage matched only with spacing ignored (§3.1) |
 | `wrong_page` | `quote` | the passage is on another page than the one declared; the decision is a `mismatch` with reason `wrong_page` |
 | `page_unchecked` | `quote` | a `page` is declared and was not checked (§3.1) |
-| `joined` | `quote` | the passage matched only by joining two of the source's words or numbers into one, or splitting one into a negation: `notable` against `not able`, `12.5` against `1 2.5` |
+| `joined` | `quote` | the passage matched only by joining two of the source's words or numbers into one: `notable` against `not able`, `12.5` against `1 2.5` |
+| `split` | `quote` | the passage matched only by splitting one of the source's words into a negation and another, or one number into two: `not able` against `notable`; an extractor that drops a space leaves the same match |
 | `after_negation` | `quote` | the passage begins mid-sentence after a negation in its source, which may say the opposite of the passage quoted alone |
 | `after_hedge` | `quote` | the passage begins mid-sentence after a hedge in its source, such as `may`, `whether` or `suggest` |
 | `quoted_in_source` | `quote` | the passage sits inside quotation marks in its source, so the words are someone the source quotes |
@@ -959,10 +960,12 @@ the profile grades `unchecked` for that claim, under the rule `evidence.page_unc
 artifact ids for one file (§2) are the rule `artifact.alias`, a warning under `exploratory` and
 `publication` and an error under `strict`; two files holding the same bytes are the rule
 `artifact.same_bytes`, a warning under every profile. The notes on `reported` (§4.1) are the
-rules `evidence.reported_not_in_claim`, `evidence.reported_not_in_manuscript`,
-`evidence.coarse_precision`, `evidence.rounding_crosses_threshold` and
-`evidence.loose_tolerance`, a warning under `exploratory` and `publication` and an error under
-`strict`.
+rules `evidence.reported_not_in_claim`, a warning under `exploratory` and `publication` and an
+error under `strict`, and `evidence.reported_not_in_manuscript`, `evidence.coarse_precision`,
+`evidence.rounding_crosses_threshold` and `evidence.loose_tolerance`, a warning under every
+profile: the first says the number compared with the file is not the number the claim states,
+and the others that the comparison is wider or less direct than it looks, which an honest
+manifest produces.
 
 Numbers the manuscript prints that no assertion accounts for, as `repro numbers` counts them,
 are the rule `numbers.unbound`: one warning under every profile where there are any.
