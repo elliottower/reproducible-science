@@ -262,10 +262,10 @@ def check(quote: str, text: str | None) -> str:
     """
     if text is None:
         return "unchecked"
-    folded = V.fold(quote)
+    folded = V.passage_fold(quote)
     if not folded:
         return "empty"
-    if folded in V.fold(text):
+    if folded in V.passage_fold(text):
         return "found_verbatim"
     if V.skeleton(quote) and V.skeleton(quote) in V.skeleton(text):
         return "found_normalized"
@@ -302,7 +302,7 @@ def diagnose(quote: str, agreeing: str, dissenting: str | None) -> dict[str, Any
     else:
         finding = "absent"
 
-    folded_quote = V.fold(quote)
+    folded_quote = V.passage_fold(quote)
     hyphen_broken = _hyphen_broken_word(folded_quote, dissenting)
     return {
         "class": finding,
@@ -322,7 +322,7 @@ def _hyphen_broken_word(folded_quote: str, text: str) -> str | None:
     survives. A hyphen followed by a space does not fold away, and is what a reader that keeps
     the line break but loses the newline leaves behind.
     """
-    folded_text = V.fold(text)
+    folded_text = V.passage_fold(text)
     for word in WORD.findall(folded_quote):
         if len(word) < 6:
             continue
@@ -335,14 +335,14 @@ def _hyphen_broken_word(folded_quote: str, text: str) -> str | None:
 def _numeric_dense(folded_quote: str, text: str) -> bool:
     """Is the passage in a line carrying four or more numbers -- a table row rather than prose?"""
     for line in text.splitlines():
-        if folded_quote in V.fold(line):
+        if folded_quote in V.passage_fold(line):
             return len(re.findall(r"\d+(?:\.\d+)?", line)) >= 4
     return False
 
 
 def _spans_a_line(folded_quote: str, text: str) -> bool:
     """Does the passage cross a line break in the reader that found it?"""
-    return not any(folded_quote in V.fold(line) for line in text.splitlines())
+    return not any(folded_quote in V.passage_fold(line) for line in text.splitlines())
 
 
 # --- corpora ----------------------------------------------------------------------------
@@ -429,7 +429,7 @@ def measure_document(
     pdf: pathlib.Path, quotes: list[dict[str, Any]], corpus: str, rng: random.Random
 ) -> dict[str, Any]:
     readings = {name: read(pdf) for name, read in READERS.items()}
-    V.fold.cache_clear()
+    V.passage_fold.cache_clear()
     V.skeleton.cache_clear()
 
     passages = quotes if corpus == "quotations" else sampled_passages(readings, rng)
@@ -491,10 +491,10 @@ def _excerpt(quote: str, text: str | None, width: int = 130) -> str:
     """Where the passage sits in this reader's text, or the closest thing to it."""
     if text is None:
         return ""
-    folded = V.fold(text)
-    at = folded.find(V.fold(quote))
+    folded = V.passage_fold(text)
+    at = folded.find(V.passage_fold(quote))
     if at < 0:
-        head = V.fold(quote)[: max(12, len(V.fold(quote)) // 3)]
+        head = V.passage_fold(quote)[: max(12, len(V.passage_fold(quote)) // 3)]
         at = folded.find(head)
     if at < 0:
         return ""
@@ -588,7 +588,7 @@ def distinct(checks: list[tuple[dict[str, Any], dict[str, Any]]]) -> list[tuple[
     seen: set[tuple[str, str]] = set()
     out = []
     for record, check in checks:
-        key = (record.get("sha256") or record["pdf"], V.fold(check["text"]))
+        key = (record.get("sha256") or record["pdf"], V.passage_fold(check["text"]))
         if key in seen:
             continue
         seen.add(key)
@@ -614,7 +614,7 @@ def summarize(records: list[dict[str, Any]]) -> dict[str, Any]:
             if not r["readings"][name]["opened"]
         ]
         three_way = sum(1 for _, c in checks if not diverges(c["outcomes"]))
-        pairwise: dict[str, dict[str, int]] = {}
+        pairwise: dict[str, dict[str, Any]] = {}
         for a, b in itertools.combinations(READERS, 2):
             agree = dissent_a = dissent_b = comparable = 0
             for _, c in checks:

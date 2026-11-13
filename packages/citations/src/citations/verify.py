@@ -127,6 +127,7 @@ from provenance_core import sha256_of_file
 
 from citations import extraction_cache, extractors, readers
 from citations.exceptions import SourceUnreadableError
+from citations.manual_checks import ManualChecks
 
 # Long enough to carry its own qualifiers. "We trained 50" resolves against a sentence that
 # continues "...and 5 refits each for 12 layered".
@@ -496,6 +497,11 @@ class Report:
     text the original quotation left out. Counted apart from the rest, because each is the
     source's text and not what the quoting party wrote, and a total that mixed the two would
     say more quotations resolved as written than did."""
+
+    manual_checks: ManualChecks | None = None
+    """The quotations a person recorded as compared with the page, with each one's computed
+    outcome. None where no list was found. Changes no outcome and no exit code, and is printed
+    only under `--show-manual`. See `manual_checks`."""
 
     triangulated: int = 0
     from_cache: int = 0

@@ -1,11 +1,11 @@
 ---
-title: The evidence contract
+title: Declaring evidence
 ---
 
 Verification runs in three stages, and each records its own result. The outcome is derived
 from all three rather than asserted.
 
-```
+```text
 execution     did the check run at all?
 extraction    did the address resolve to exactly one value?
 comparison    did that value agree with what the manuscript prints?
@@ -46,7 +46,7 @@ A claim declares one of three states, and `not_applicable` requires a note sayin
 For a confirmatory claim the tool also checks **ordering** — that the run started after the
 plan it names was registered — and records who attests to that timestamp:
 
-```
+```text
 self_recorded  <  git_remote  <  osf / zenodo  <  trusted_timestamp
 ```
 
