@@ -1,10 +1,10 @@
 """The freeze a claim names, checked against the plans that were actually frozen.
 
-`results claim --frozen-at <ref>` takes a git reference and uses its commit date to decide
-whether an exposure to outcomes could have reached the plan. It verifies that the reference
-resolves to a commit, and it cannot verify more than that: `results` never reads a
-preregistration, so any commit in the repository is accepted. `prereg` records the freeze but
-never reads the ledger, so it cannot see what a claim cited.
+`results claim --frozen-at <commit>` now takes only a full commit id that a freeze record
+names, and places the freeze by that record. A ledger written by an earlier version holds
+claims citing any reference git could resolve, dated by its commit date, and the ledger keeps
+them. `prereg` records the freeze but never reads the ledger, so it cannot see what a claim
+cited.
 
 Neither tool can close that, and it does not need new data to close: `prereg freeze` already
 records the commit, in `.prereg/<plan>.json` beside a plan frozen whole and as

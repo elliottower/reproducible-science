@@ -19,16 +19,31 @@ from pydantic import BaseModel, ConfigDict, Field
 from claims.models import (
     Availability,
     Freshness,
+    NumbersReport,
     Ordering,
     Outcome,
     Regeneration,
     RegistrationAuthority,
     ReproductionReport,
     StalenessReport,
+    Standing,
     Validity,
     VerificationReport,
     Warning_,
 )
+
+#: What each note `claims.reported` puts on a decision says, by warning.
+REPORTED_SAID = {
+    Warning_.REPORTED_NOT_IN_CLAIM: "the claim's text prints numbers and none agrees with "
+    "`reported`",
+    Warning_.REPORTED_NOT_IN_MANUSCRIPT: "the passages the claim quotes print numbers and none "
+    "agrees with `reported`",
+    Warning_.COARSE_PRECISION: "`reported` has under two significant digits, so printed "
+    "precision accepts a wide range of stored values",
+    Warning_.ROUNDING_CROSSES_THRESHOLD: "the stored value and `reported` lie on opposite "
+    "sides of 0.05",
+    Warning_.LOOSE_TOLERANCE: "the tolerance is more than a tenth of the reported value",
+}
 
 
 class Severity(enum.StrEnum):
@@ -124,12 +139,38 @@ class Policy(BaseModel):
     staleness_undetermined: Severity = Severity.WARNING
     """A regeneration that could not be compared: a file is missing, or the records form a
     cycle."""
+    rerun_record_broken: Severity = Severity.ERROR
+    """The record of re-runs does not verify as a chain: an entry edited, removed, moved or
+    unreadable, or entries cut from the end. Every `current` rests on that record, so one
+    rewritten by hand can make any file current."""
+    rerun_record_unanchored: Severity = Severity.WARNING
+    """The chain verifies and its head file is missing or behind it, so entries cut from the
+    end would not be found."""
+    rerun_record_unchained: Severity = Severity.IGNORE
+    """Entries written before the record was chained, which nothing links but their order."""
 
     inferred: Severity = Severity.ERROR
     """An assertion the manifest marks `basis: inferred`: proposed by a program or a model and
     not accepted by an author. Graded whatever its outcome, so a draft binding that happens to
     match never passes as a verified one."""
 
+    reported_mismatch: Severity = Severity.WARNING
+    """A `reported` value the claim's own text does not print, where the text prints numbers:
+    the number checked against the file is not the number the claim states. A warning by default
+    and an error under `strict`."""
+
+    reported_consistency: Severity = Severity.WARNING
+    """The other notes `claims.reported` makes: a `reported` value the passages the claim quotes
+    do not print, one printed to under two significant digits or rounded across 0.05, or a
+    tolerance above a tenth of the value. Each says the comparison is wider or less direct than
+    it looks, and none that it is wrong: a passage prints other numbers than the one checked, or
+    a count as a word, and `0.03` is the right print of a stored `0.0314`. A warning under every
+    policy."""
+
+    unbound_numbers: Severity = Severity.WARNING
+    """Numbers the manuscript prints that no assertion accounts for, as `repro numbers`
+    counts them. A warning wherever there are any; `--max-unbound N` makes more than N an
+    error under any policy. Graded by `assess_numbers`, never by `assess`."""
     quotation_corrected: Severity = Severity.WARNING
     """A quotation `citations verify` reports `corrected`: found in a passage a person recorded
     where the extractor misreads the page, and not in the extractor's text. A warning by
@@ -290,6 +331,36 @@ class Policy(BaseModel):
                             detail=decision.detail or "the declared page was not checked",
                         )
                     )
+                if (
+                    self.reported_consistency is not Severity.IGNORE
+                    and Warning_.REPORTED_UNCOMPARED in decision.warnings
+                ):
+                    violations.append(
+                        Violation(
+                            severity=Severity.WARNING,
+                            rule=f"evidence.{Warning_.REPORTED_UNCOMPARED.value}",
+                            subject=f"{claim.claim_id}/{decision.kind}",
+                            detail="`reported` is checked against nothing the claim or its "
+                            "manuscript prints",
+                        )
+                    )
+                for warning in decision.warnings:
+                    if warning not in REPORTED_SAID:
+                        continue
+                    graded = (
+                        self.reported_mismatch
+                        if warning is Warning_.REPORTED_NOT_IN_CLAIM
+                        else self.reported_consistency
+                    )
+                    if graded is not Severity.IGNORE:
+                        violations.append(
+                            Violation(
+                                severity=graded,
+                                rule=f"evidence.{warning.value}",
+                                subject=f"{claim.claim_id}/{decision.kind}",
+                                detail=REPORTED_SAID[warning],
+                            )
+                        )
 
         if self.require_one_check and checked == 0:
             violations.append(
@@ -305,6 +376,29 @@ class Policy(BaseModel):
             policy=self.name,
             violations=tuple(violations),
             passed=not any(v.severity is Severity.ERROR for v in violations),
+        )
+
+    def assess_numbers(self, report: NumbersReport, limit: int | None = None) -> Assessment:
+        """Whether the manuscript's unbound numbers are acceptable: a warning where there are
+        any, and an error where there are more than `limit`. With no limit, never an error:
+        how many numbers a manuscript may leave unbound is the author's to say."""
+        unbound = report.counts[Standing.UNBOUND]
+        if not unbound:
+            return Assessment(policy=self.name, passed=True)
+        severity = Severity.ERROR if limit is not None and unbound > limit else self.unbound_numbers
+        if severity is Severity.IGNORE:
+            return Assessment(policy=self.name, passed=True)
+        bound = f"; at most {limit} allowed" if limit is not None else ""
+        violation = Violation(
+            severity=severity,
+            rule="numbers.unbound",
+            subject=report.project,
+            detail=f"{unbound} printed number(s) no assertion accounts for{bound}",
+        )
+        return Assessment(
+            policy=self.name,
+            violations=(violation,),
+            passed=severity is not Severity.ERROR,
         )
 
     def assess_citations(self, counts: Mapping[str, int]) -> Assessment:
@@ -377,11 +471,38 @@ class Policy(BaseModel):
             )
             for node in report.regenerations
             if node.state in severities
-        )
+        ) + self._record_violations(report)
         return Assessment(
             policy=self.name,
             violations=violations,
             passed=not any(v.severity is Severity.ERROR for v in violations),
+        )
+
+    def _record_violations(self, report: StalenessReport) -> tuple[Violation, ...]:
+        """The record of re-runs itself, where it is not the chain `repro reproduce` wrote."""
+        record = report.record
+        if record is None:
+            return ()
+        if record.broken:
+            severity, rule = self.rerun_record_broken, record.status
+        elif record.status in ("no_anchor", "extended"):
+            severity, rule = self.rerun_record_unanchored, record.status
+        elif record.unchained:
+            severity, rule = self.rerun_record_unchained, "unchained"
+        else:
+            return ()
+        if severity is Severity.IGNORE:
+            return ()
+        detail = "; ".join(record.problems) or (
+            f"{record.unchained} of {record.entries} entries predate the chain"
+        )
+        return (
+            Violation(
+                severity=severity,
+                rule=f"staleness.record.{rule}",
+                subject=".repro/reproductions.jsonl",
+                detail=detail,
+            ),
         )
 
 
@@ -403,6 +524,8 @@ EXPLORATORY = Policy(
     quotation_corrected=Severity.IGNORE,
     never_rerun=Severity.IGNORE,
     staleness_undetermined=Severity.IGNORE,
+    rerun_record_broken=Severity.WARNING,
+    rerun_record_unanchored=Severity.IGNORE,
 )
 
 PUBLICATION = Policy(
@@ -433,11 +556,14 @@ STRICT = Policy(
     ordering_unchecked=Severity.ERROR,
     regeneration_unchecked=Severity.ERROR,
     regeneration_not_rerun=Severity.WARNING,
+    reported_mismatch=Severity.ERROR,
     # A correction is an author's record, accepted by the author, so not an error even here.
     quotation_corrected=Severity.WARNING,
     stale=Severity.ERROR,
     never_rerun=Severity.ERROR,
     staleness_undetermined=Severity.ERROR,
+    rerun_record_unanchored=Severity.ERROR,
+    rerun_record_unchained=Severity.WARNING,
 )
 
 PROFILES = {p.name: p for p in (EXPLORATORY, PUBLICATION, STRICT)}

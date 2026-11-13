@@ -317,6 +317,14 @@ Warnings are separate, because a passage can be found and still worth a second l
 can be short enough that the next clause changes its meaning — `"We trained 50"` appears
 verbatim in a paper whose sentence continues `"...and 5 refits each for 12 layered"`.
 
+The pin log, `claims/pins.jsonl`, is keyed by the source's citation key, else its local path,
+and by each quotation's digest and sha256, so renaming a claims file does not hide a source
+pinned again against other bytes. A limit: a source moved to a new path under a new citation
+key, with its earlier quotations dropped, reads as a new source, which it cannot be told apart
+from. A line taken out of a committed log fails `verify` while its quotation stays in a claims
+file; taken out by a `git revert` of the commit that added it, or together with its quotation,
+it is a note saying how to put the line back.
+
 `unchecked`, `indeterminate` and `ambiguous` are neither a pass nor a failure. Only
 `not found` fails; `--strict` also fails on the other three, for CI. A source whose bytes no
 longer match its pin fails the run whatever its quotations did.

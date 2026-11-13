@@ -834,12 +834,29 @@ goes looking for a broken anchor.
 | `normalized` | `quote` | the passage matched only with spacing ignored (§3.1) |
 | `wrong_page` | `quote` | the passage is on another page than the one declared; the decision is a `mismatch` with reason `wrong_page` |
 | `page_unchecked` | `quote` | a `page` is declared and was not checked (§3.1) |
+| `joined` | `quote` | the passage matched only by joining two of the source's words or numbers into one: `notable` against `not able`, `12.5` against `1 2.5` |
+| `split` | `quote` | the passage matched only by splitting one of the source's words into a negation and another, or one number into two: `not able` against `notable`; an extractor that drops a space leaves the same match |
+| `after_negation` | `quote` | the passage begins mid-sentence after a negation in its source, which may say the opposite of the passage quoted alone |
+| `after_hedge` | `quote` | the passage begins mid-sentence after a hedge in its source, such as `may`, `whether` or `suggest` |
+| `quoted_in_source` | `quote` | the passage sits inside quotation marks in its source, so the words are someone the source quotes |
+| `references` | `quote` | the passage is found only in the source's reference list |
+| `superscript` | `quote` | the passage matched after folding changed a superscript or subscript: `x²` as `x2` |
+| `invisible` | `quote` | the passage is found only in text the PDF does not show: white, under a point high, or off the page |
 | `positional_address` | `table`, `value` | the cell is addressed by row index, which names another cell once the table is reordered |
+| `reported_not_in_claim` | `metric`, `table`, `value`, `aggregate` | the claim's text prints numbers and none agrees with `reported`, as printed, as a percentage of it or as a fraction of it, at the coarser of the two precisions |
+| `reported_not_in_manuscript` | `metric`, `table`, `value`, `aggregate` | the passages the claim's own quotations read print numbers and none agrees with `reported` |
+| `reported_uncompared` | `metric`, `table`, `value`, `aggregate` | the manifest names a manuscript, and neither the claim's text nor any passage it quotes or value its prose addresses select prints a number: `reported` is compared with nothing a reader sees; a warning under every policy |
+| `coarse_precision` | `metric`, `table`, `value`, `aggregate` | matched at printed precision, `reported` has fewer than two significant digits and differs from the stored value: `0.0` against `0.0491` |
+| `rounding_crosses_threshold` | `metric`, `table`, `value`, `aggregate` | matched at printed precision, the stored value and `reported` lie on opposite sides of 0.05 |
+| `loose_tolerance` | `metric`, `table`, `value`, `aggregate` | an absolute tolerance above a tenth of `reported`, or a relative one above 0.1 |
 
 `truncated` exists because *"an accuracy of 0.9"* genuinely occurs in a source reporting
 **0.95**, so the passage is present and the reader is told a true thing that misstates the
-result. `page_unchecked` is the one warning a policy reads (§6): the others qualify a check
-that ran, and it says a declared check did not.
+result. `page_unchecked` is graded as an unchecked assertion is (§6), since it says a declared
+check did not run. Five of the notes on `reported` are graded by the policy's
+`reported_consistency`, and `reported_uncompared` is a warning under every policy that does not
+ignore them. A value read from prose is the printed number already and carries none
+of them.
 
 ## 5. Backends
 
@@ -942,7 +959,18 @@ from its declared path is a warning under `exploratory` and an error under the o
 the profile grades `unchecked` for that claim, under the rule `evidence.page_unchecked`. Two
 artifact ids for one file (§2) are the rule `artifact.alias`, a warning under `exploratory` and
 `publication` and an error under `strict`; two files holding the same bytes are the rule
-`artifact.same_bytes`, a warning under every profile.
+`artifact.same_bytes`, a warning under every profile. The notes on `reported` (§4.1) are the
+rules `evidence.reported_not_in_claim`, a warning under `exploratory` and `publication` and an
+error under `strict`, and `evidence.reported_not_in_manuscript`, `evidence.coarse_precision`,
+`evidence.rounding_crosses_threshold` and `evidence.loose_tolerance`, a warning under every
+profile: the first says the number compared with the file is not the number the claim states,
+and the others that the comparison is wider or less direct than it looks, which an honest
+manifest produces.
+
+Numbers the manuscript prints that no assertion accounts for, as `repro numbers` counts them,
+are the rule `numbers.unbound`: one warning under every profile where there are any.
+`verify --max-unbound N` makes more than N an error under any profile. A manifest naming no
+text a claim reads its sentence from adds no such rule.
 
 Every policy requires at least one assertion to have been evaluated. A run that checked
 nothing is not a pass, and without that condition a project with no evidence anywhere
@@ -1098,6 +1126,23 @@ outside.
 This is a working directory, not a sandbox in the security sense: nothing stops a command
 writing to an absolute path elsewhere. Running `repro reproduce` on a manifest you have not
 read is running a program you have not read. That makes the record a claim about sufficiency and not only about provenance.
+
+Nor does the directory stop a command reading the project, and a command that copies the pinned
+output out of the working tree writes the pinned bytes. Two guards apply by default. A command
+whose arguments name a path inside the project by its absolute path, or the output's own path,
+is `failed` with `command_names_the_project` before it starts. While a command runs, its pinned
+output is moved to this project's directory in the user's cache (`~/.cache/repro/held/<digest of
+the project's path>/`, or `$REPRO_HELD_DIR`), with the note of where it went beside it, and
+moved back afterwards, so a command that reaches for it at its path finds nothing. This stops
+accidental or naive copying only; a script that looks in the cache finds it, and `--isolate` is
+the guard. A note inside the project is never read, and is warned of. A run that dies leaves the note: the next run puts the output
+back first, and where a file is at the output's path again it never moves over either, and the
+record is `not_rerun` with `output_already_set_aside`. One run at a time holds a project: a second waits briefly and then fails with `project_busy`, as it does where the cache directory cannot be used. Neither guard stops a command copying
+another file that holds the same bytes, or reading the committed output with `git show`. `--isolate` runs each
+command under `sandbox-exec` (macOS) or `bwrap` (Linux) with the project's directory
+unreadable, apart from a virtual environment inside it holding the program, and the state
+records `isolated: true`; with neither available the record is `failed` with
+`runner_unavailable` and nothing runs.
 
 The verdict is about the numbers the manuscript prints, not the output's bytes. Where the
 command writes the pinned bytes, the record reproduced. Where it writes other bytes, every

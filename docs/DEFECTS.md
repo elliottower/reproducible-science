@@ -10,10 +10,10 @@ marked withdrawn and keeps its number.
 
 | | |
 |---|---|
-| **Pinning and extraction** | RD-001 – RD-005 |
+| **Pinning and extraction** | RD-001 – RD-005, RD-022 |
 | **Repository structure** | RD-006 – RD-011 |
 | **Manuscript** | RD-012 – RD-015 |
-| **Tooling** | RD-016 – RD-020 |
+| **Tooling** | RD-016 – RD-021, RD-023 |
 
 ---
 
@@ -81,6 +81,24 @@ checkable by the author and by nobody else.
 bibliography, seven more from the citation library's own records, two from arXiv identifiers
 recorded in `note` fields, and six by fetching the candidate page and confirming a distinctive
 string from the pinned text appeared on it.
+
+### RD-022 — A quotation that resolves without the words that govern it
+
+**Detected by** `citations verify` (`after negation`, `after hedge`, `quoted in source`,
+`references`, `joined`, `invisible`), and `citations coverage` for an ellipsis that leaves out
+a negation.
+
+Every character of the quotation is in the source, so it is `found`, and the source says
+something else. The words that decide what it says sit outside the quoted span: a negation
+before it in the same clause, the quotation marks around it that make it someone the source
+quotes, the reference-list heading above it, an ellipsis standing where a `not` was. Or they
+sit inside it and the comparison folded them away, joining `not able` into `notable`. A check
+of the span alone cannot see any of these, because the span is correct.
+
+**Observed.** In a red-team pass over this toolkit, a source reading `We found no evidence that
+the treatment reduced mortality in every subgroup we examined` and a quotation of it from `the
+treatment` on resolved as `found` with no warning, as did `did ... improve` against a pin
+reading `did not improve`, and text set in white on a white PDF page.
 
 ---
 
@@ -305,3 +323,43 @@ The suite's 1115 tests included one that parsed `hooks.json` and asserted every 
 was present and executable; it passed throughout. `claude plugin validate` reported the error in
 one line and had never been run. The defect surfaced during an unrelated cleanup of installed
 plugins, not from any check the project performs.
+
+### RD-021 — A record checked only against the disk it sits on
+
+**Detected by** editing the record together with the file it describes, committing both, and
+running the check.
+
+A freeze record holds a digest, and the check compares the file on disk with it. Both sit in
+the same working tree, so anyone who can edit the file can edit the digest, and the pair then
+agrees. The check reads two files written by the same hand and reports that they match. A date
+the committer sets, such as a commit date, is the same defect in time: the value that is
+supposed to witness the order of events is one the actor chooses.
+
+The witness has to be something the edit cannot reach at the same moment: the file as it was
+at the commit the record names, the record's own history, a position in a hash chain, or a
+timestamp held outside the repository.
+
+**Observed.** A frozen plan edited with the digest in its freeze record, committed, passed
+`prereg check` and `repro verify`. The same held for a record deleted and frozen again over a
+backdated commit, a commit line pointed at a later edited commit, and a freeze dated by a commit
+backdated with `GIT_COMMITTER_DATE`, which let a plan frozen after the outcomes were seen protect
+a confirmatory claim.
+
+### RD-023 — A re-run that reads the answer it is compared against
+
+**Detected by** running the declared command with its pinned output out of reach.
+
+A reproduction check runs a command and compares what it writes with the file the manuscript
+was checked against. Where the command can read that file, it can write it back, and the
+comparison then reports a reproduction byte for byte whatever the code computes. Running the
+command in a directory holding only its declared inputs looks like isolation and is not: an
+absolute path, or a path assembled at run time, reaches the working tree from anywhere.
+
+The defect is invisible in the result, since an honest deterministic command writes exactly
+the same bytes. Only the conditions of the run can tell the two apart: whether the pinned file
+was there to be read.
+
+**Observed.** A declared command of `cp <project>/results/out.json results/out.json` reported
+`reproduced, bytes identical` from `repro reproduce`, and `repro stale` and the CI re-runs
+summary then counted the output as current. A record whose output was also one of its declared
+inputs had been refused for the same reason; reaching the output by path had not.

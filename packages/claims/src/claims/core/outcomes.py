@@ -223,8 +223,45 @@ class Warning_(enum.StrEnum):
     ignored. The passage is in the artifact, so the assertion is `verified`; the page is
     neither confirmed nor refuted, and a policy grades it as it grades a check that did not
     run."""
+    JOINED = "joined"
+    """The passage matched only by joining two of the source's words or numbers into one:
+    `notable` against `not able`, `12.5` against `1 2.5`."""
+    SPLIT = "split"
+    """The passage matched only by splitting one of the source's words into a negation and
+    another, or one number into two: `not able` against `notable`. An extractor that drops a
+    space between words leaves the same match, so this says where to look and not that the
+    passage is wrong."""
+    AFTER_NEGATION = "after_negation"
+    """The passage begins mid-sentence after a negation in its source, which may say the
+    opposite of the passage quoted alone."""
+    AFTER_HEDGE = "after_hedge"
+    """The passage begins mid-sentence after a hedge in its source: `may`, `whether`."""
+    QUOTED_IN_SOURCE = "quoted_in_source"
+    """The passage sits inside quotation marks in its source: words the source quotes."""
+    REFERENCES = "references"
+    """The passage is found only in the source's reference list."""
+    SUPERSCRIPT = "superscript"
+    """The passage matched after folding changed a superscript or subscript."""
+    INVISIBLE = "invisible"
+    """The passage is found only in text the PDF does not show: white, tiny or off the page."""
     POSITIONAL_ADDRESS = "positional_address"
     """Addressed by row index, which names a different cell if the table is reordered."""
+    REPORTED_NOT_IN_CLAIM = "reported_not_in_claim"
+    """The claim's text prints numbers and none agrees with `reported` at the coarser of the
+    two precisions: the file was compared with a value the sentence does not state."""
+    REPORTED_NOT_IN_MANUSCRIPT = "reported_not_in_manuscript"
+    """The passages the claim quotes from its manuscript print numbers and none agrees with
+    `reported`."""
+    REPORTED_UNCOMPARED = "reported_uncompared"
+    """Neither the claim's text nor any passage it quotes or locates in its manuscript prints a
+    number, so `reported` was compared with the file and with nothing a reader sees."""
+    COARSE_PRECISION = "coarse_precision"
+    """`reported` has fewer than two significant digits and differs from the stored value, so
+    printed precision accepted a wide range: `0.0` against `0.0491`."""
+    ROUNDING_CROSSES_THRESHOLD = "rounding_crosses_threshold"
+    """The stored value and `reported` lie on opposite sides of 0.05: `0.0496` printed `0.05`."""
+    LOOSE_TOLERANCE = "loose_tolerance"
+    """An absolute tolerance above a tenth of `reported`, or a relative one above 0.1."""
 
 
 class Tie(BaseModel):

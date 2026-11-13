@@ -1387,9 +1387,13 @@ def test_a_rerun_the_record_places_in_a_ci_run_is_said_to_be_there_and_linked(tm
     said = record_said(manifest)
     assert row(said, "where") == (
         f"of the 1 re-run compared: 1 recorded in GitHub Actions [run 123456]({PAGE}) of "
-        "someone/study, as the environment said"
+        "someone/study (unverified: from its environment variables)"
     )
-    assert RUN.said == "in GitHub Actions run 123456 of someone/study"
+    assert RUN.place == "in GitHub Actions run 123456 of someone/study"
+    assert (
+        RUN.said
+        == "in GitHub Actions run 123456 of someone/study (unverified: from its environment variables)"
+    )
     assert urllib.parse.urlsplit(PAGE).path == "/someone/study/actions/runs/123456"
     assert "machine" not in row(said, "where")
 
@@ -1415,7 +1419,7 @@ def test_witnessed_and_unwitnessed_reruns_are_counted_apart_and_add_up(tmp_path)
     assert row(said, "commands").startswith("2 of 2 declared commands have a recorded re-run")
     assert row(said, "where") == (
         f"of the 2 re-runs compared: 1 recorded in GitHub Actions [run 123456]({PAGE}) of "
-        "someone/study, as the environment said; 1 recorded with no witness, which is how a "
+        "someone/study (unverified: from its environment variables); 1 recorded with no witness, which is how a "
         "re-run on someone's own machine is recorded"
     )
 
@@ -1430,7 +1434,7 @@ def test_the_claims_row_says_where_the_last_rerun_was_recorded_when_the_record_d
     said = ci.claims_summary(ci.claims(manifest, PUBLICATION))
     assert row(said, "re-runs") == (
         f"not re-run in this job; the last recorded re-run, started {THEN} in GitHub Actions "
-        f"[run 123456]({PAGE}) of someone/study, as the environment said: "
+        f"[run 123456]({PAGE}) of someone/study (unverified: from its environment variables): "
         "1 of 1 command reproduced"
     )
 
@@ -1450,5 +1454,5 @@ def test_a_rerun_made_in_a_job_says_which_run_and_one_made_elsewhere_names_none(
     monkeypatch.setenv("GITHUB_RUN_ID", "123456")
     assert main(["ci", "reruns", "--run", str(path), "--summary", str(tmp_path / "b.md")]) == 0
     assert row((tmp_path / "b.md").read_text(), "where") == (
-        f"recorded in GitHub Actions [run 123456]({PAGE}) of someone/study, as the environment said"
+        f"recorded in GitHub Actions [run 123456]({PAGE}) of someone/study (unverified: from its environment variables)"
     )

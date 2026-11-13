@@ -59,6 +59,15 @@ from repro.proposals import mark_reviewed as record_review
 
 NAME = "reproducible-science"
 
+#: What a review written through this server says of itself. The agent calls the tool, and
+#: nothing the server receives comes from the person, so the record states what it is: the
+#: agent's report of an approval given in chat, not the person's own confirmation.
+AGENT_VIA = "repro mcp, agent-recorded"
+AGENT_RECORDED = (
+    "agent-recorded: the agent reports the person approved this in chat; no confirmation from "
+    "the person reached this tool"
+)
+
 NO_PROJECT = "no project: pass a path or a project"
 
 #: What an agent reads on connecting: the open-items procedure of the plugin's `open-items`
@@ -93,7 +102,8 @@ A paper's references, without its sources: citations_audit checks each entry of 
 against the registries, ten at a time.
 
 Reviews: list the matched items to the user first, and call mark_reviewed only for the items \
-the user has explicitly approved in this conversation.
+the user has explicitly approved in this conversation. The review is recorded as agent-recorded: \
+it says you report the approval, not that the person confirmed it to the tool.
 
 Never: edit open-items.json; delete a claim to close an item; write reviewed yourself; change \
 reported; edit a pinned quotation; change a digest or write repro.yaml; run anything in a \
@@ -575,14 +585,21 @@ def build(root: pathlib.Path | None = None) -> MCPServer:
         note: str = "",
     ) -> CallToolResult:
         """Record that the user approved, in this conversation, the inferred assertion filling
-        each item and each inferred artifact: reviewed {who (git user), when, how, digest}.
-        Call it only after listing the items and the user's explicit approval. A review lapses
-        when what it accepted changes."""
-        how = f"approved in chat via {_client(ctx)}" + (f": {note}" if note else "")
+        each item and each inferred artifact: reviewed {who, when, how, via, digest}. Call it
+        only after listing the items and the user's explicit approval. The record says an agent
+        wrote it: `via` is `repro mcp, agent-recorded`, `how` says no confirmation from the
+        person reached this tool, and `who` is the git user the project names, whose approval
+        the agent reports. A review lapses when what it accepted changes."""
+        how = f"{AGENT_RECORDED} via {_client(ctx)}" + (f": {note}" if note else "")
 
         def work(at: pathlib.Path):
             done = record_review(
-                at, str(absolute(open_items)), list(items or ()), list(artifacts or ()), how
+                at,
+                str(absolute(open_items)),
+                list(items or ()),
+                list(artifacts or ()),
+                how,
+                via=AGENT_VIA,
             )
             named = [*done.assertions, *done.artifacts]
             return done.model_dump(mode="json"), f"reviewed {', '.join(named)}: {how}"
@@ -650,4 +667,13 @@ def serve(root: pathlib.Path | None) -> None:
     build(root).run("stdio")
 
 
-__all__ = ["INSTRUCTIONS", "NAME", "NO_PROJECT", "PROJECT_MARKERS", "build", "serve"]
+__all__ = [
+    "AGENT_RECORDED",
+    "AGENT_VIA",
+    "INSTRUCTIONS",
+    "NAME",
+    "NO_PROJECT",
+    "PROJECT_MARKERS",
+    "build",
+    "serve",
+]

@@ -6,6 +6,7 @@ names every staged path whose frozen content differs from what was frozen, under
 format it was frozen in:
 
     a file frozen whole     the staged bytes against the digest in its freeze record
+    a companion file        the staged bytes against the digest the plan's record holds for it
     a freeze record         any change to one already committed
     a log beside a plan     anything but entries added after the committed ones
     a log's anchor          a count lower than the committed one
@@ -20,6 +21,7 @@ from __future__ import annotations
 import hashlib
 import json
 import pathlib
+import posixpath
 import re
 import subprocess
 
@@ -59,10 +61,35 @@ def _recorded(top: pathlib.Path, name: pathlib.Path) -> str | None:
         return None
 
 
-def _finding(top: pathlib.Path, name: pathlib.Path) -> str | None:
+def _companions() -> dict[str, str]:
+    """Each companion file a freeze record in the index names, by its path from the top of the
+    repository, and the digest it was frozen with."""
+    listed = try_run("ls-files", "-z", "--full-name", "--", ":(glob)**/.prereg/*.json") or ""
+    found: dict[str, str] = {}
+    for name in filter(None, listed.split("\0")):
+        try:
+            held = json.loads(_blob(f":{name}") or b"null") or {}
+            companions = held.get("companions") or {}
+        except (ValueError, AttributeError):
+            continue
+        plan_dir = pathlib.PurePosixPath(name).parent.parent
+        for path, digest in companions.items():
+            found[posixpath.normpath((plan_dir / path).as_posix())] = digest
+    return found
+
+
+def _finding(
+    top: pathlib.Path, name: pathlib.Path, companions: dict[str, str] | None = None
+) -> str | None:
     """Why the staged `name` is a change to something frozen, or None where it is not."""
     staged = _blob(f":{name.as_posix()}")
     committed = _blob(f"HEAD:{name.as_posix()}")
+    frozen_with = (companions or {}).get(name.as_posix())
+    if frozen_with is not None:
+        if staged is None:
+            return "frozen with a plan as its companion, and staged for removal"
+        if hashlib.sha256(staged).hexdigest() != frozen_with:
+            return "frozen with a plan as its companion"
     if name.parent.name == RECORDS and name.suffix == ".json":
         return "a freeze record already committed" if committed not in (None, staged) else None
 
@@ -119,8 +146,9 @@ def changes() -> list[tuple[pathlib.Path, str]] | None:
     top = pathlib.Path(root)
     listed = try_run("diff", "--cached", "--name-only", "--no-renames", "-z") or ""
     found = []
+    companions = _companions()
     for name in sorted(filter(None, listed.split("\0"))):
-        why = _finding(top, pathlib.Path(name))
+        why = _finding(top, pathlib.Path(name), companions)
         if why:
             found.append((pathlib.Path(name), why))
     return found

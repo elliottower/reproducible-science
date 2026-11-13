@@ -164,6 +164,7 @@ An analysis registered after `outcomes seen` is retrospective.
 | `CHAIN BROKEN` | The ledger was edited after it was written |
 | `ok` | File matches its recorded hash |
 | `RESEALED` | Recorded under more than one hash, and the file matches the latest record. Reported; passes |
+| `RERECORDED` | Recorded as an output by a later run under other bytes, with no input of the earlier run (a path sealed before it) sealed again between the two: an output changed and recorded again, or a re-run with no record of its inputs. Reported, and the path is still compared, so `CHANGED` shows beside it; a note, failing nothing |
 | `APPENDED` | A plan `prereg freeze` froze in place, which `prereg check` finds unchanged, and which differs from its latest seal only by entries `prereg log` appended and the `**Log:**` line it recounts. Passes |
 | `IGNORED` | One of the ledger's own files (`.results/`, a lock sidecar), recorded by an earlier version. Not compared; passes |
 | `REVERTED` | Recorded under more than one hash, and the file matches an earlier record and not the latest. Fails |
@@ -172,6 +173,56 @@ An analysis registered after `outcomes seen` is retrospective.
 | `CHANGED` | File was modified since it was recorded. Fails |
 | `MISSING` | File no longer exists. Fails |
 | `NOT A TREE`, `NOT A FILE` | Sealed as a directory and now a file, or the reverse. Fails |
+| `LEDGER HISTORY REWRITTEN` | A commit holds a version of the ledger, or of its anchor, that the ledger on disk does not extend: an event removed or changed and the chain recomputed. Fails |
+| `TIMESTAMP PROOF MISSING` | A commit added a proof under `.results/timestamps/` that is not on disk. Reported; a note, failing nothing |
+
+`results run` warns when it records an output whose path a run already recorded under other
+bytes and no input of that run has been sealed since: a re-run reads its inputs, so seal them
+first. Sealing some other file, or an input again with the bytes it had, does not count.
+`results run --strict` refuses it. A limit: the inputs of a run are every path sealed before it,
+so resealing one of them that the run never read, with new bytes, clears `RERECORDED`. `results reanchor`, and `results claim`, refuse where a commit
+holds a longer ledger or anchor than the one on disk.
+
+A ledger that is never committed, one a `.gitignore` keeps out of git, has no history to be
+checked against: it can be rewritten and anchored again, a forged freeze event included, and
+nothing here can tell. Commit the ledger; every check of the order of events rests on it.
+
+`results claim` reads the run's outputs as text and warns where a number the claim prints is held
+by none of them at the printed precision, with half-up or half-even rounding; a number printed
+with `%` or `percent` beside it is also held by a stored fraction or the reverse. `--strict`
+refuses the claim and writes nothing. The check is that some output holds the value, not that
+it is the value the sentence is about: a limit, since a number held under another key of the
+run's outputs passes, and so does a claim reading the wrong field that happens to hold the
+same digits. A claim whose numbers are derived from the outputs, a
+mean of stored values for instance, says so with `--derived "how"`: the note is recorded,
+shown by `verify`, and the numbers are not compared. Zero-width and other format characters are
+removed before numbers are read, with a warning. `results verify` counts such claims on one
+line (`--explain` lists them, and the JSON always does) and passes them; `results verify
+--strict` fails them. That is the one finding `--strict` adds: a number absent from outputs
+that are on disk as their run recorded them.
+
+What the records cannot establish is a note, under `--strict` too, because a check that could
+not run is not a check that failed:
+
+- a claim whose run's outputs a later run rewrote, or that changed, is `unchecked`, with what
+  became of each output; one a later claim re-binds, on a run that rewrote its outputs or in
+  the same words, is counted once as `superseded`;
+- a claim whose run's every output was retired;
+- a `RERECORDED` output and a missing timestamp proof;
+- a ledger deleted and started again, said with its date and the kinds of event the earlier
+  chain held. The earlier chain's exposures still order a confirmatory claim after them;
+- a freeze whose commit a shallow clone does not hold, a freeze made with `prereg freeze
+  --force`, and a frozen plan no longer on disk. A confirmatory claim fails only where its plan
+  is on disk, or at its freeze commit in this clone, with other bytes than were frozen.
+
+The records make drift visible to a reader with a clone. They do not resist an author who means
+to rewrite them: deleting the ledger and its history, or a freeze record and its plan, leaves a
+note and not a failure.
+
+A tree a seal or a verify
+reads says which names its digest skipped: symlinks, which are not followed, and cache
+directories. Every `.results/` ledger below the project's own is verified after it, and the exit
+code covers them all.
 
 A path is meant to be sealed once, and a new version is a new file, so `RESEALED` stays in the
 report although it does not fail. `APPENDED` reads the sealed bytes from the repository's
@@ -199,8 +250,8 @@ the ledger says nothing about what is there.
 `.results/`: each changes with every event, so a seal of one is out of date at the next command.
 
 With `--json PATH`, each recorded file is `{"path", "state"}`, with `state` one of `ok`,
-`resealed`, `appended`, `ignored`, `retired`, `reverted`, `reappeared`, `changed`, `missing`,
-`not a tree` and `not a file`. `resealed` and `reverted` also carry `hashes`, the number of distinct hashes
+`resealed`, `rerecorded`, `appended`, `ignored`, `retired`, `reverted`, `reappeared`, `changed`,
+`missing`, `not a tree` and `not a file`; `rerecorded` carries `runs`, the two run ids. `resealed` and `reverted` also carry `hashes`, the number of distinct hashes
 recorded for the path, and `reverted` carries `matches`, the position of the one the file holds,
 counted from 1 in the order recorded; `appended` carries `entries`, the log entries added since
 the seal; `ignored` carries `note`; `retired` and `reappeared` carry `note`, and
@@ -218,6 +269,10 @@ whether it should have.
 its anchor are committed with the project. A ledger on one disk is a record nobody else can
 check. What is committed is public with the repository, so a run's `note` is written as a commit
 message would be.
+
+Two branches that both append to the ledger cannot be merged by taking one side's file: the other
+side's events are then missing, and `verify` reports the history as rewritten. Merge both sides'
+events.
 
 ## Timestamp
 

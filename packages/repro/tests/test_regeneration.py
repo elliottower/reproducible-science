@@ -9,10 +9,14 @@ the same numbers has reproduced them.
 from __future__ import annotations
 
 import json
+import os
 import pathlib
+import platform
+import shutil
 import sys
 
 import pytest
+from repro import regenerate
 from repro.cli import main
 from repro.exceptions import ManifestError
 from repro.manifest import load
@@ -27,10 +31,11 @@ from repro.models import (
     Regeneration,
     RegenerationReason,
     RegenerationRecord,
+    ReproductionReport,
     RunOutput,
 )
 from repro.policy import PUBLICATION, STRICT, Severity
-from repro.regenerate import _scrub
+from repro.regenerate import ISOLATORS, _scrub, held_root, legacy_note
 from repro.reproduce import RECORD, UnknownRegenerationError, append, reproduce
 from repro.verify import verify
 
@@ -278,6 +283,309 @@ def test_the_working_tree_is_never_written_to(tmp_path):
     state(manifest)
     assert Digest.of_file(tmp_path / "figures.json").value == before
     assert (tmp_path / "figures.json").stat().st_mtime_ns == mtime
+
+
+# -- a command that copies the answer is not a reproduction ----------------------------------
+
+
+def copies(manifest, command):
+    record = manifest.regenerations[0]
+    return manifest.model_copy(
+        update={"regenerations": (record.model_copy(update={"command": command}),)}
+    )
+
+
+def test_copying_the_pinned_output_by_its_absolute_path_is_refused_before_it_runs(tmp_path):
+    """The red-team attack: `cp <project>/figures.json figures.json` was reported reproduced,
+    bytes identical, by a command that computes nothing."""
+    manifest = copies(project(tmp_path), ("cp", str(tmp_path / "figures.json"), "figures.json"))
+    result = state(manifest)
+    assert result.state is Regeneration.FAILED
+    assert result.reason is RegenerationReason.COMMAND_NAMES_THE_PROJECT
+    assert result.executed is False
+    assert PUBLICATION.assess_reproduction(reproduce(manifest)).passed is False
+
+
+@pytest.mark.parametrize("resolved", [False, True])
+def test_any_path_inside_the_project_named_absolutely_is_refused(tmp_path, resolved):
+    """Not only the output: a backup holding the same bytes is as good a copy. On macOS the
+    temporary directory resolves to another spelling, and both are the project."""
+    manifest = project(tmp_path)
+    backup = tmp_path / "backup.json"
+    backup.write_bytes((tmp_path / "figures.json").read_bytes())
+    at = str(backup.resolve() if resolved else backup)
+    result = state(copies(manifest, ("cp", f"--from={at}", "figures.json")))
+    assert (result.state, result.reason) == (
+        Regeneration.FAILED,
+        RegenerationReason.COMMAND_NAMES_THE_PROJECT,
+    )
+
+
+def test_a_copy_that_spells_the_path_another_way_finds_no_output_to_copy(tmp_path):
+    """The path is assembled at run time, so no argument names it. The pinned output is set
+    aside while the command runs, as a fresh clone would lack it, and the copy fails."""
+    pieces = list(tmp_path.resolve().parts[1:])
+    reach = (
+        f"import os, shutil; p = os.sep + os.sep.join({pieces!r}); "
+        "shutil.copy(os.path.join(p, 'figures.json'), 'figures.json')"
+    )
+    manifest = copies(project(tmp_path), (sys.executable, "-c", reach))
+    before = (tmp_path / "figures.json").read_bytes()
+    result = state(manifest)
+    assert result.state is Regeneration.FAILED
+    assert result.reason is RegenerationReason.COMMAND_FAILED
+    assert "set aside while it ran" in result.detail
+    # Put back as it was, and nothing left beside it.
+    assert (tmp_path / "figures.json").read_bytes() == before
+    assert not [p.name for p in tmp_path.iterdir() if "set-aside" in p.name]
+
+
+def test_an_honest_command_is_untouched_by_the_guards(tmp_path):
+    """Naming the output relative to the sandbox, as every honest command does, is fine."""
+    script = SCRIPT.replace('"figures.json"', "sys.argv[1]").replace(
+        "import json, pathlib", "import json, pathlib, sys"
+    )
+    manifest = project(tmp_path, script=script)
+    result = state(copies(manifest, (sys.executable, "make.py", "figures.json")))
+    assert result.state is Regeneration.REPRODUCED and result.bytes_identical is True
+
+
+def test_the_set_aside_output_is_put_back_over_whatever_the_command_wrote_there(tmp_path):
+    target = tmp_path / "figures.json"
+    script = SCRIPT + f"\npathlib.Path({str(target)!r}).write_text('overwritten')\n"
+    manifest = project(tmp_path, script=script)
+    before = target.read_bytes()
+    state(manifest)
+    assert target.read_bytes() == before
+
+
+def leave_held(root, output_name="figures.json", text=None):
+    """An output an interrupted run left in this project's held directory, and its note."""
+    held = held_root(root) / "run-left" / output_name
+    held.parent.mkdir(parents=True)
+    if text is None:
+        (root / output_name).rename(held)
+    else:
+        held.write_text(text)
+    (held_root(root) / "set-aside.json").write_text(json.dumps({output_name: str(held)}))
+    return held
+
+
+def test_a_copy_left_set_aside_is_never_moved_over(tmp_path):
+    """Left by an interrupted run, it may be the only copy of the pinned output."""
+    manifest = project(tmp_path)
+    held = leave_held(tmp_path, text="the only copy")
+    result = state(manifest)
+    assert (result.state, result.reason) == (
+        Regeneration.NOT_RERUN,
+        RegenerationReason.OUTPUT_ALREADY_SET_ASIDE,
+    )
+    assert result.executed is False
+    assert held.read_text() == "the only copy"
+
+
+def test_an_output_an_interrupted_run_left_set_aside_is_put_back_first(tmp_path):
+    manifest = project(tmp_path)
+    output = tmp_path / "figures.json"
+    before = output.read_bytes()
+    leave_held(tmp_path)
+    result = state(manifest)
+    assert result.state is Regeneration.REPRODUCED
+    assert output.read_bytes() == before
+    assert json.loads((held_root(tmp_path) / "set-aside.json").read_text()) == {}
+
+
+@pytest.mark.parametrize("planted_in", ["project", "cache"])
+def test_a_planted_note_moves_nothing(tmp_path, planted_in):
+    """A note naming a file outside the held directory, as one committed to a repository
+    would, moved that file into the project and removed the directory it sat in."""
+    manifest = project(tmp_path)
+    (tmp_path / "figures.json").rename(tmp_path.parent / f"{tmp_path.name}-gone.json")
+    victim = tmp_path.parent / f"{tmp_path.name}-victim" / "figures.json"
+    victim.parent.mkdir()
+    victim.write_text("somebody's file")
+    note = {"figures.json": str(victim)}
+    where = (tmp_path / ".repro") if planted_in == "project" else held_root(tmp_path)
+    where.mkdir(parents=True, exist_ok=True)
+    (where / "set-aside.json").write_text(json.dumps(note))
+    state(manifest)
+    assert victim.read_text() == "somebody's file"
+    if planted_in == "project":
+        assert legacy_note(tmp_path) is not None
+
+
+def test_a_second_run_on_the_project_waits_and_then_refuses(tmp_path, monkeypatch):
+    manifest = project(tmp_path)
+    monkeypatch.setattr(regenerate, "LOCK_WAIT", 0.2)
+    before = (tmp_path / "figures.json").read_bytes()
+    with regenerate.project_lock(tmp_path) as held:
+        assert held
+        result = state(manifest)
+    assert (result.state, result.reason) == (
+        Regeneration.FAILED,
+        RegenerationReason.PROJECT_BUSY,
+    )
+    assert "another `repro reproduce` is running" in result.detail
+    assert not PUBLICATION.assess_reproduction(
+        ReproductionReport(started_at="2026-01-01T00:00:00+00:00", regenerations=(result,))
+    ).passed
+    assert (tmp_path / "figures.json").read_bytes() == before
+    assert state(manifest).state is Regeneration.REPRODUCED
+
+
+@pytest.mark.parametrize(
+    "plant", ["directory at the lock", "file at the held folder", "linked lock"]
+)
+def test_a_planted_cache_entry_is_refused_cleanly(tmp_path, plant):
+    manifest = project(tmp_path)
+    before = (tmp_path / "figures.json").read_bytes()
+    home = held_root(tmp_path)
+    home.parent.mkdir(parents=True, exist_ok=True)
+    if plant == "directory at the lock":
+        (home / "run.lock").mkdir(parents=True)
+    elif plant == "file at the held folder":
+        home.write_text("planted")
+    else:
+        home.mkdir()
+        elsewhere = tmp_path.parent / f"{tmp_path.name}-lock"
+        elsewhere.write_text("")
+        (home / "run.lock").symlink_to(elsewhere)
+    result = state(manifest)
+    assert (result.state, result.reason) == (Regeneration.FAILED, RegenerationReason.PROJECT_BUSY)
+    assert (tmp_path / "figures.json").read_bytes() == before
+
+
+def test_an_output_outside_the_project_is_never_set_aside(tmp_path):
+    root = tmp_path / "project"
+    root.mkdir()
+    elsewhere = tmp_path / "elsewhere.json"
+    elsewhere.write_text("{}")
+    with regenerate.set_aside(elsewhere, root) as waiting:
+        assert waiting is None
+        assert elsewhere.read_text() == "{}"
+
+
+@pytest.mark.parametrize("how", ["linked folder", "hard link"])
+def test_a_held_file_reached_through_a_link_is_never_moved(tmp_path, how):
+    manifest = project(tmp_path)
+    output = tmp_path / "figures.json"
+    output.rename(tmp_path.parent / f"{tmp_path.name}-gone.json")
+    victim_dir = tmp_path.parent / f"{tmp_path.name}-user"
+    (victim_dir / "run-x").mkdir(parents=True)
+    victim = victim_dir / "run-x" / "figures.json"
+    victim.write_text("the user's file")
+    home = held_root(tmp_path)
+    home.parent.mkdir(parents=True, exist_ok=True)
+    if how == "linked folder":
+        home.symlink_to(victim_dir)
+        held = home / "run-x" / "figures.json"
+    else:
+        (home / "run-x").mkdir(parents=True)
+        held = home / "run-x" / "figures.json"
+        os.link(victim, held)
+    (victim_dir / "set-aside.json").write_text(json.dumps({"figures.json": str(held)}))
+    if how == "hard link":
+        (home / "set-aside.json").write_text(json.dumps({"figures.json": str(held)}))
+    state(manifest)
+    assert victim.read_text() == "the user's file"
+    assert not output.exists() or output.read_text() != "the user's file"
+
+
+def test_a_relative_cache_setting_is_ignored_and_said(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv(regenerate.HELD_ENV, ".held")
+    monkeypatch.setenv("XDG_CACHE_HOME", "cache")
+    assert not held_root(tmp_path).is_relative_to(tmp_path.resolve())
+    said = regenerate.held_notes(tmp_path)
+    assert any("REPRO_HELD_DIR=.held is not an absolute path" in line for line in said)
+    assert any("XDG_CACHE_HOME=cache is not an absolute path" in line for line in said)
+
+
+def test_an_honest_run_leaves_no_file_in_the_project(tmp_path):
+    manifest = project(tmp_path)
+    before = sorted(p.relative_to(tmp_path) for p in tmp_path.rglob("*"))
+    assert state(manifest).state is Regeneration.REPRODUCED
+    assert sorted(p.relative_to(tmp_path) for p in tmp_path.rglob("*")) == before
+
+
+def test_the_output_waits_outside_the_project_under_no_name_a_command_can_know(tmp_path):
+    """A command that copied `.figures.json.repro-set-aside`, the name it waited under beside
+    the output, reproduced byte for byte. The path is assembled at run time, past the argument
+    guard."""
+    pieces = list(tmp_path.resolve().parts[1:])
+    reach = (
+        f"import os, shutil; p = os.sep + os.sep.join({pieces!r}); "
+        "shutil.copy(os.path.join(p, '.figures.json.repro-set-aside'), 'figures.json')"
+    )
+    manifest = copies(project(tmp_path), (sys.executable, "-c", reach))
+    result = state(manifest)
+    assert (result.state, result.reason) == (
+        Regeneration.FAILED,
+        RegenerationReason.COMMAND_FAILED,
+    )
+    assert not [p.name for p in tmp_path.iterdir() if "set-aside" in p.name]
+
+
+ISOLATOR = ISOLATORS.get(platform.system())
+needs_isolator = pytest.mark.skipif(
+    ISOLATOR is None or shutil.which(ISOLATOR) is None,
+    reason="no sandbox-exec or bwrap on this system",
+)
+
+
+def reads_a_backup(tmp_path):
+    """A command that copies another file in the project holding the output's bytes, by a
+    path no argument names. Setting the output aside cannot stop it; isolating does."""
+    manifest = project(tmp_path)
+    (tmp_path / "backup.json").write_bytes((tmp_path / "figures.json").read_bytes())
+    pieces = list(tmp_path.resolve().parts[1:])
+    reach = (
+        f"import os, shutil; p = os.sep + os.sep.join({pieces!r}); "
+        "shutil.copy(os.path.join(p, 'backup.json'), 'figures.json')"
+    )
+    return copies(manifest, (sys.executable, "-c", reach))
+
+
+def test_without_isolation_a_copy_of_another_file_is_not_caught(tmp_path):
+    """The limit of the default, stated as a test so a change to it is seen."""
+    result = state(reads_a_backup(tmp_path))
+    assert result.state is Regeneration.REPRODUCED
+    assert result.isolated is False
+    assert "isolated" not in result.model_dump(mode="json")
+
+
+@needs_isolator
+def test_isolated_a_command_cannot_read_the_project(tmp_path):
+    result = state(reads_a_backup(tmp_path), isolate=True)
+    assert result.state is Regeneration.FAILED
+    assert result.reason is RegenerationReason.COMMAND_FAILED
+    assert result.isolated is True
+    assert result.model_dump(mode="json")["isolated"] is True
+
+
+@needs_isolator
+def test_isolated_an_honest_command_reproduces_even_with_its_interpreter_in_the_project(tmp_path):
+    """A virtual environment inside the project is where an interpreter usually lives, and
+    the program the command names is let read it."""
+    venv = tmp_path / ".venv"
+    (venv / "bin").mkdir(parents=True)
+    (venv / "pyvenv.cfg").write_text("home = elsewhere\n")
+    (venv / "bin" / "python").symlink_to(sys.executable)
+    manifest = copies(project(tmp_path), (str(venv / "bin" / "python"), "make.py"))
+    result = state(manifest, isolate=True)
+    assert result.state is Regeneration.REPRODUCED, result.detail
+    assert result.isolated is True
+
+
+def test_isolation_with_no_sandbox_to_use_fails_and_runs_nothing(tmp_path, monkeypatch):
+    manifest, mark = leaves_a_mark(tmp_path)
+    monkeypatch.setattr(shutil, "which", lambda name, *a, **k: None)
+    result = state(manifest, isolate=True)
+    assert (result.state, result.reason) == (
+        Regeneration.FAILED,
+        RegenerationReason.RUNNER_UNAVAILABLE,
+    )
+    assert not mark.exists()
 
 
 # -- opt-in ----------------------------------------------------------------------------------
@@ -810,7 +1118,10 @@ def test_a_rerun_records_where_it_ran_only_where_its_variables_say(tmp_path):
         "runner_os": "Linux",
     }
     # Beside `environment`, and nothing else about the entry differs in shape.
-    assert set(recorded) - {"witness"} == set(json.loads(local.model_dump_json()))
+    # The chain's two fields are written as the entry is appended, and a report carries none.
+    assert set(recorded) - {"witness", "seq", "prev_hash"} == set(
+        json.loads(local.model_dump_json())
+    )
 
 
 def test_the_command_names_the_witness_after_the_record_and_only_where_there_is_one(
@@ -829,11 +1140,20 @@ def test_the_command_names_the_witness_after_the_record_and_only_where_there_is_
     for name, value in RUNNER.items():
         monkeypatch.setenv(name, value)
     assert main(["reproduce", str(path)]) == 0
-    recorded, witnessed = capsys.readouterr().out.rstrip().splitlines()[-2:]
+    # These variables were set by hand, which is the red-team attack: nothing tells them apart
+    # from a runner's, so the run is never said to have been witnessed, only named.
+    out = capsys.readouterr().out
+    recorded, named, page = out.rstrip().splitlines()[-3:]
     assert recorded == f"  recorded in {RECORD.as_posix()}"
-    assert witnessed == (
-        "  witnessed in GitHub Actions run 123456 of owner/repo, as the environment said"
+    assert named == (
+        "  the environment named a run in GitHub Actions run 123456 of owner/repo "
+        "(unverified: from its environment variables)"
     )
+    assert page == (
+        "  nothing was checked against GitHub; its page is "
+        "https://github.com/owner/repo/actions/runs/123456"
+    )
+    assert "witnessed" not in out
     assert json.loads((tmp_path / RECORD).read_text().splitlines()[-1])["witness"]["run_id"] == (
         "123456"
     )
@@ -969,3 +1289,34 @@ def test_a_message_naming_both_spellings_of_a_directory_keeps_neither():
     assert "private" not in scrubbed
     assert "folders" not in scrubbed
     assert scrubbed == " ".join("./a.txt and ./b.txt" for _ in places)
+
+
+def test_a_record_that_does_not_verify_is_not_appended_to_and_the_run_still_reports(
+    tmp_path, capfd
+):
+    path = on_disk(tmp_path, SCRIPT)
+    assert main(["reproduce", str(path)]) == 0
+    assert main(["reproduce", str(path)]) == 0
+    first, second = (tmp_path / RECORD).read_text().splitlines()
+    (tmp_path / RECORD).write_text(
+        first.replace('"reproduced"', '"changed"') + "\n" + second + "\n"
+    )
+    before = (tmp_path / RECORD).read_bytes()
+    capfd.readouterr()
+    assert main(["reproduce", str(path)]) == 0
+    out, err = capfd.readouterr()
+    assert f"  not recorded: {RECORD.as_posix()} does not verify as a chain" in out
+    assert err.startswith("record not written: ") and "reported as edited" in err
+    assert (tmp_path / RECORD).read_bytes() == before
+
+
+@needs_isolator
+def test_a_record_left_unchecked_under_isolate_is_said_on_the_summary_line(tmp_path, capsys):
+    """What `git show` of a committed output becomes under `--isolate`: git is denied, the
+    output is written empty, and the record is unchecked rather than reproduced."""
+    empty = 'import pathlib\npathlib.Path("figures.json").write_text("{}")\n'
+    code = main(["reproduce", str(on_disk(tmp_path, empty)), "--isolate"])
+    out = capsys.readouterr().out
+    (line,) = [line for line in out.splitlines() if "under --isolate" in line]
+    assert "1 unchecked under --isolate, so not reproduced" in line, out
+    assert code in (0, 1)

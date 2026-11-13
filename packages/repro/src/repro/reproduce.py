@@ -46,10 +46,12 @@ from claims.models import (
     RegenerationRecord,
     RegenerationState,
     ReproductionReport,
+    RerunRecordState,
     Witness,
 )
+from claims.reruns import HEAD as HEAD
 from claims.reruns import RECORD as RECORD
-from claims.reruns import upstream
+from claims.reruns import chain, entries, upstream
 from claims.resolve import stored as stored
 from claims.toolchain import distribution_version
 from claims.verify import (
@@ -59,6 +61,8 @@ from claims.verify import (
     artifact_states,
     check_evidence,
 )
+from provenance_core import ZERO, atomic_write, exclusive_lock, sha256_of_text
+from provenance_core.chain import CANON_VERSION
 
 from repro.regenerate import check, skipped
 
@@ -251,12 +255,15 @@ def reproduce(
     skip: tuple[str, ...] = (),
     backends: tuple[Backend, ...] = DEFAULT_BACKENDS,
     variables: Mapping[str, str] | None = None,
+    isolate: bool = False,
 ) -> ReproductionReport:
     """Run the manifest's declared regenerations and report what each one found.
 
     Executes the commands the manifest names. `only` restricts the run to those records and
     `skip` leaves those out; a record left out is reported `not_rerun`, never omitted.
     `variables` is what `witness` reads, the process's environment where none is given.
+    `isolate` runs each command with the project's directory unreadable to it; see
+    `repro.regenerate`.
 
     Writes nothing to the project. `append` is what records a report.
     """
@@ -285,7 +292,9 @@ def reproduce(
     for record in manifest.regenerations:
         left_out = record.id in skip or (bool(only) and record.id not in only)
         states[record.id] = (
-            skipped(record) if left_out else check(record, manifest, artifacts, reader(record))
+            skipped(record)
+            if left_out
+            else check(record, manifest, artifacts, reader(record), isolate=isolate)
         )
 
     producers = {record.output.artifact: record for record in manifest.regenerations}
@@ -305,16 +314,59 @@ def reproduce(
     )
 
 
+class RecordBrokenError(ReproError):
+    """The record of re-runs does not verify as a chain, so nothing is appended to it."""
+
+    def __init__(self, path: pathlib.Path, state: RerunRecordState) -> None:
+        self.path = path
+        self.state = state
+        super().__init__(
+            f"{path}: refusing to append to a record reported as {state.status}: "
+            f"{'; '.join(state.problems)}"
+        )
+
+
+#: The states a new entry may follow: nothing was damaged, at most the head file lags or is gone.
+_APPENDABLE = ("absent", "unchained", "intact", "no_anchor", "extended")
+
+
 def append(report: ReproductionReport, root: pathlib.Path) -> pathlib.Path:
     """Add one report to the project's record of re-runs, and return where it was written.
 
     Appended, one object per line, so an earlier re-run is never replaced by a later one and a
-    second reproduction is not compared against the first.
+    second reproduction is not compared against the first. Each entry carries its position,
+    `seq`, and the SHA-256 of the entry before it as stored, `prev_hash`, and the head file
+    beside the record is rewritten with the count and the hash of the new last entry, as the
+    `results` ledger does. The record is checked first, under a lock held across the read and
+    the write, and an edited, reordered, unreadable or cut record is appended to no further:
+    `RecordBrokenError`. Entries written before the chain stay where they are, and the first
+    chained entry names the last of them.
     """
     target = root / RECORD
     target.parent.mkdir(parents=True, exist_ok=True)
-    with target.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(report.model_dump(mode="json"), sort_keys=True) + "\n")
+    with exclusive_lock(target):
+        state = chain(root)
+        if state.status not in _APPENDABLE:
+            raise RecordBrokenError(target, state)
+        held = entries(target)
+        entry = report.model_dump(mode="json") | {
+            "seq": len(held),
+            "prev_hash": sha256_of_text(held[-1]) if held else ZERO,
+        }
+        line = json.dumps(entry, sort_keys=True)
+        with target.open("a", encoding="utf-8") as handle:
+            handle.write(line + "\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        # After the entry, so a crash between the two leaves a head that lags (`extended`),
+        # which the next append goes on from, and never one ahead of the record.
+        head = {
+            "canon_version": CANON_VERSION,
+            "count": len(held) + 1,
+            "head": sha256_of_text(line),
+            "updated": datetime.datetime.now(datetime.UTC).isoformat(),
+        }
+        atomic_write(root / HEAD, json.dumps(head, indent=2, sort_keys=True) + "\n")
     return target
 
 

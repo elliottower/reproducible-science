@@ -220,6 +220,8 @@ def test_without_files_verify_lists_the_annotation_and_says_the_subject_was_not_
 
 def test_the_chain_stays_intact_with_annotations_among_the_other_events(tmp_path):
     project(tmp_path)
+    # The run's output prints the number the claim states, so the claim is backed.
+    (tmp_path / "model.pt").write_text("weights\naccuracy 0.9104\n")
     lp = tmp_path / ".results" / "ledger.jsonl"
     run_cli("seal", "model.pt", cwd=tmp_path)
     run_cli("annotate", "model.pt", *LINK, cwd=tmp_path)

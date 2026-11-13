@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import sys
 
+import pytest
 from provenance_core.gitref import clean_env
 from results import ledger
 
@@ -639,9 +641,262 @@ def a_repo_with_a_frozen_plan(tmp_path, plan="plan.md"):
     return sha
 
 
-def test_a_plan_frozen_before_the_exposure_is_confirmatory(tmp_path):
-    sha = a_repo_with_a_frozen_plan(tmp_path)
+def prereg_freeze(cwd):
+    frozen = subprocess.run(
+        [sys.executable, "-m", "prereg.cli", "freeze"],
+        cwd=cwd,
+        capture_output=True,
+        text=True,
+        env=clean_env(PROVENANCE_CALENDARS=""),
+    )
+    assert frozen.returncode == 0, frozen.stdout
+
+
+def git_in(cwd, *args) -> str:
+    done = subprocess.run(
+        ["git", *args], cwd=cwd, capture_output=True, text=True, env=clean_env(), check=True
+    )
+    return done.stdout.strip()
+
+
+def commit_paths(cwd, message, *paths) -> None:
+    git_in(cwd, "add", *paths)
+    git_in(cwd, "commit", "-q", "-m", message)
+
+
+def claim_after_exposure(tmp_path, sha):
+    run_cli("access", "read the outcomes", "--level", "outcomes seen", cwd=tmp_path)
+    (tmp_path / "out.json").write_text('{"d": 0.103}\n')
+    run_cli("run", "out.json", "--run-id", "late", cwd=tmp_path)
+    return run_cli(
+        "claim", "d = 0.103", "--run-id", "late", "--confirmatory", "--frozen-at", sha, cwd=tmp_path
+    )
+
+
+def test_a_freeze_committed_before_the_ledger_was_committed_protects_the_claim(tmp_path):
+    """Freeze the plan, then `results init`: the record holds no position, and the commit that
+    added it is an ancestor of the one that added the ledger."""
+    sha = a_repo_with_a_frozen_plan(tmp_path, "PREREG.md")
+    prereg_freeze(tmp_path)
+    commit_paths(tmp_path, "freeze", ".prereg")
     run_cli("init", cwd=tmp_path)
+    commit_paths(tmp_path, "ledger", ".results")
+    r = claim_after_exposure(tmp_path, sha)
+    assert r.returncode == 0, r.stdout
+    assert "confirmatory, exposure logged" in r.stdout
+
+
+def test_a_freeze_made_before_any_ledger_and_never_committed_places_nothing(tmp_path):
+    """The record holds no position, git shows no order, and its time is one anyone can
+    write, so where a ledger exists to place the freeze in, the record's time does not."""
+    sha = a_repo_with_a_frozen_plan(tmp_path, "PREREG.md")
+    prereg_freeze(tmp_path)
+    run_cli("init", cwd=tmp_path)
+    r = claim_after_exposure(tmp_path, sha)
+    assert r.returncode == 1
+    assert "cannot be placed before the exposure" in r.stdout
+
+
+def test_a_pre_ledger_record_rewritten_in_place_after_the_ledger_places_nothing(tmp_path):
+    a_repo_with_a_frozen_plan(tmp_path, "PREREG.md")
+    prereg_freeze(tmp_path)
+    commit_paths(tmp_path, "freeze", ".prereg")
+    run_cli("init", cwd=tmp_path)
+    commit_paths(tmp_path, "ledger", ".results")
+    run_cli("access", "read the outcomes", "--level", "outcomes seen", cwd=tmp_path)
+    plan = tmp_path / "PREREG.md"
+    plan.chmod(0o644)
+    plan.write_text(plan.read_text() + "H2. chosen after looking.\n")
+    commit_paths(tmp_path, "plan after looking", "PREREG.md")
+    later = git_in(tmp_path, "rev-parse", "HEAD")
+    record = tmp_path / ".prereg" / "PREREG.md.json"
+    held = json.loads(record.read_text())
+    held |= {"commit": later, "sha256": hashlib.sha256(plan.read_bytes()).hexdigest()}
+    record.write_text(json.dumps(held))
+    commit_paths(tmp_path, "record rewritten", ".prereg")
+    (tmp_path / "out.json").write_text('{"d": 0.103}\n')
+    run_cli("run", "out.json", "--run-id", "late", cwd=tmp_path)
+    r = run_cli(
+        "claim",
+        "d = 0.103",
+        "--run-id",
+        "late",
+        "--confirmatory",
+        "--frozen-at",
+        later,
+        cwd=tmp_path,
+    )
+    assert r.returncode == 1
+    assert "cannot be placed before the exposure" in r.stdout
+
+
+@pytest.mark.parametrize("ledger_key", ["absent", "null"])
+def test_a_side_branch_re_adding_the_ledger_and_merged_places_nothing(tmp_path, ledger_key):
+    """The record is committed on a branch from before the ledger, the ledger is re-added
+    there byte for byte, and main is merged in and fast-forwarded: git's default history
+    simplification then hid the ledger's first commit behind the side's re-add."""
+    before = a_repo_with_a_frozen_plan(tmp_path, "PREREG.md")
+    main = git_in(tmp_path, "rev-parse", "--abbrev-ref", "HEAD")
+    run_cli("init", cwd=tmp_path)
+    commit_paths(tmp_path, "ledger", ".results")
+    run_cli("access", "read the outcomes", "--level", "outcomes seen", cwd=tmp_path)
+    plan = tmp_path / "PREREG.md"
+    plan.write_text(plan.read_text() + "H2. chosen after looking.\n")
+    commit_paths(tmp_path, "plan after looking", "PREREG.md", ".results")
+    after = git_in(tmp_path, "rev-parse", "HEAD")
+    planned = plan.read_bytes()
+
+    git_in(tmp_path, "checkout", "-q", "-b", "side", before)
+    plan.write_bytes(planned)
+    record = {
+        "file": "PREREG.md",
+        "sha256": hashlib.sha256(planned).hexdigest(),
+        "commit": after,
+        "frozen_at": "2025-01-01T00:00:00+00:00",
+        "access": "nothing run",
+    }
+    if ledger_key == "null":
+        record["ledger"] = None
+    (tmp_path / ".prereg").mkdir()
+    (tmp_path / ".prereg" / "PREREG.md.json").write_text(json.dumps(record))
+    commit_paths(tmp_path, "record", ".prereg", "PREREG.md")
+    git_in(tmp_path, "checkout", "-q", main, "--", ".results")
+    commit_paths(tmp_path, "ledger again", ".results")
+    git_in(tmp_path, "merge", "-q", "--no-edit", main)
+    git_in(tmp_path, "checkout", "-q", main)
+    git_in(tmp_path, "merge", "-q", "--ff-only", "side")
+
+    (tmp_path / "out.json").write_text('{"d": 0.103}\n')
+    run_cli("run", "out.json", "--run-id", "late", cwd=tmp_path)
+    r = run_cli(
+        "claim",
+        "d = 0.103",
+        "--run-id",
+        "late",
+        "--confirmatory",
+        "--frozen-at",
+        after,
+        cwd=tmp_path,
+    )
+    assert r.returncode == 1, r.stdout
+    assert "confirmatory, exposure logged" not in r.stdout
+
+
+def hand_record(tmp_path, plan_name, commit):
+    held = {
+        "file": plan_name,
+        "sha256": hashlib.sha256((tmp_path / plan_name).read_bytes()).hexdigest(),
+        "commit": commit,
+        "frozen_at": "2025-01-01T00:00:00+00:00",
+        "access": "nothing run",
+    }
+    (tmp_path / ".prereg").mkdir(exist_ok=True)
+    (tmp_path / ".prereg" / f"{plan_name}.json").write_text(json.dumps(held))
+
+
+def test_a_record_written_inside_a_merge_places_nothing(tmp_path):
+    """A placeholder record committed before the ledger, and the real one written into a merge,
+    which `--no-merges` reads past: the placeholder's commit stood for the record."""
+    a_repo_with_a_frozen_plan(tmp_path, "PREREG.md")
+    main = git_in(tmp_path, "rev-parse", "--abbrev-ref", "HEAD")
+    prereg_freeze(tmp_path)
+    (tmp_path / ".prereg" / "PLAN2.md.json").write_text("{}")
+    commit_paths(tmp_path, "freeze and placeholder", ".prereg")
+    run_cli("init", cwd=tmp_path)
+    commit_paths(tmp_path, "ledger", ".results")
+    run_cli("access", "read the outcomes", "--level", "outcomes seen", cwd=tmp_path)
+    commit_paths(tmp_path, "seen", ".results")
+    (tmp_path / "PLAN2.md").write_text("# Plan 2\n\n**H1.** The AUC exceeds 0.70.\n")
+    commit_paths(tmp_path, "plan2 after outcomes", "PLAN2.md")
+    after = git_in(tmp_path, "rev-parse", "HEAD")
+    git_in(tmp_path, "checkout", "-q", "-b", "b")
+    git_in(tmp_path, "commit", "-q", "--allow-empty", "-m", "b")
+    git_in(tmp_path, "checkout", "-q", main)
+    git_in(tmp_path, "commit", "-q", "--allow-empty", "-m", "m")
+    git_in(tmp_path, "merge", "-q", "--no-commit", "--no-ff", "b")
+    hand_record(tmp_path, "PLAN2.md", after)
+    commit_paths(tmp_path, "Merge branch b", ".prereg")
+
+    (tmp_path / "out.json").write_text('{"d": 0.103}\n')
+    run_cli("run", "out.json", "--run-id", "late", cwd=tmp_path)
+    r = run_cli(
+        "claim",
+        "d = 0.103",
+        "--run-id",
+        "late",
+        "--confirmatory",
+        "--frozen-at",
+        after,
+        cwd=tmp_path,
+    )
+    assert r.returncode == 1, r.stdout
+    assert "confirmatory, exposure logged" not in r.stdout
+
+
+def test_a_freeze_before_the_ledger_survives_merging_a_branch_older_than_the_freeze(tmp_path):
+    sha = a_repo_with_a_frozen_plan(tmp_path, "PREREG.md")
+    main = git_in(tmp_path, "rev-parse", "--abbrev-ref", "HEAD")
+    prereg_freeze(tmp_path)
+    commit_paths(tmp_path, "freeze", ".prereg")
+    run_cli("init", cwd=tmp_path)
+    commit_paths(tmp_path, "ledger", ".results")
+    git_in(tmp_path, "checkout", "-q", "-b", "feat", sha)
+    (tmp_path / "notes.txt").write_text("hi\n")
+    commit_paths(tmp_path, "feat", "notes.txt")
+    git_in(tmp_path, "checkout", "-q", main)
+    git_in(tmp_path, "merge", "-q", "--no-edit", "feat")
+    r = claim_after_exposure(tmp_path, sha)
+    assert r.returncode == 0, r.stdout
+    assert "confirmatory, exposure logged" in r.stdout
+
+
+def test_a_record_committed_before_the_plan_commit_it_names_places_nothing(tmp_path):
+    """History rebased so the record sits before the ledger, naming a plan commit kept on
+    another line that the record's commit does not descend from."""
+    first = a_repo_with_a_frozen_plan(tmp_path, "PREREG.md")
+    main = git_in(tmp_path, "rev-parse", "--abbrev-ref", "HEAD")
+    plan = tmp_path / "PREREG.md"
+    git_in(tmp_path, "checkout", "-q", "-b", "kept")
+    plan.write_text(plan.read_text() + "H2. chosen after looking.\n")
+    commit_paths(tmp_path, "plan after looking", "PREREG.md")
+    after = git_in(tmp_path, "rev-parse", "HEAD")
+    planned = plan.read_bytes()
+    git_in(tmp_path, "checkout", "-q", main)
+    assert git_in(tmp_path, "rev-parse", "HEAD") == first
+    plan.write_bytes(planned)
+    hand_record(tmp_path, "PREREG.md", after)
+    commit_paths(tmp_path, "plan and record", "PREREG.md", ".prereg")
+    run_cli("init", cwd=tmp_path)
+    commit_paths(tmp_path, "ledger", ".results")
+    r = claim_after_exposure(tmp_path, after)
+    assert r.returncode == 1, r.stdout
+
+
+@pytest.mark.parametrize("order", ["same commit", "sibling branch"])
+def test_a_record_not_committed_before_the_ledger_places_nothing(tmp_path, order):
+    sha = a_repo_with_a_frozen_plan(tmp_path, "PREREG.md")
+    if order == "same commit":
+        prereg_freeze(tmp_path)
+        run_cli("init", cwd=tmp_path)
+        commit_paths(tmp_path, "both", ".prereg", ".results")
+    else:
+        main = git_in(tmp_path, "rev-parse", "--abbrev-ref", "HEAD")
+        git_in(tmp_path, "checkout", "-q", "-b", "side")
+        prereg_freeze(tmp_path)
+        commit_paths(tmp_path, "freeze", ".prereg")
+        git_in(tmp_path, "checkout", "-q", main)
+        run_cli("init", cwd=tmp_path)
+        commit_paths(tmp_path, "ledger", ".results")
+        git_in(tmp_path, "merge", "-q", "--no-edit", "side")
+    r = claim_after_exposure(tmp_path, sha)
+    assert r.returncode == 1
+    assert "cannot be placed before the exposure" in r.stdout
+
+
+def test_a_plan_frozen_before_the_exposure_is_confirmatory(tmp_path):
+    sha = a_repo_with_a_frozen_plan(tmp_path, "PREREG.md")
+    run_cli("init", cwd=tmp_path)
+    prereg_freeze(tmp_path)
     run_cli("access", "read the outcomes", "--level", "outcomes seen", cwd=tmp_path)
     (tmp_path / "out.json").write_text('{"d": 0.103}\n')
     run_cli("run", "out.json", "--run-id", "late", cwd=tmp_path)
@@ -680,7 +935,7 @@ def test_a_freeze_that_does_not_resolve_is_refused(tmp_path):
         "late",
         "--confirmatory",
         "--frozen-at",
-        "deadbeef",
+        "deadbeef" * 5,
         cwd=tmp_path,
     )
     assert r.returncode == 1

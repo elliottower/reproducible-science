@@ -23,6 +23,18 @@ An ellipsis is omitted text. `"the model ... performs well"` asserts that both f
 appear, and asserts nothing about what sits between them, so each fragment is required and
 contiguity is not. A fragment under `MIN_FRAGMENT` characters is required beside its long
 neighbour's match rather than anywhere in the span; `_search` says why.
+
+What an ellipsis leaves out is part of the finding. A quotation covered only with text left
+out carries that text in `Finding.omitted`, and `Finding.negation` names a negation among it:
+`did ... improve` covered by a pin reading `did not improve` says the opposite of the pin, and
+`--strict` fails it.
+
+A quotation is read in every form the plugin's hook reads one: ``LaTeX'', `\\enquote{}`,
+`\\textquote{}` and `\\blockquote{}`, the `quote`, `quotation` and `displayquote`
+environments, curly and straight double quotation marks, and a Markdown `>` block. Curly and
+straight marks and the commands are read from `MIN_QUOTE_CHARS` characters up, as the hook
+reads them, because the same marks set a term or a title apart; the environments and a
+Markdown block are a quotation by their form and are read at any length. See `QUOTATIONS`.
 """
 
 from __future__ import annotations
@@ -34,11 +46,50 @@ from collections.abc import Sequence
 from typing import Literal
 
 from citations.models import ClaimFile
-from citations.verify import passage_fold
+from citations.verify import MIN_QUOTE_CHARS, SOURCE_NEGATIONS, passage_fold
 
 #: A LaTeX quotation: ``like this''. The non-greedy body stops at the first closing pair, so
 #: two quotations in one sentence are two matches rather than one spanning both.
 TEX_QUOTE = re.compile(r"``(.+?)''", re.S)
+
+#: Every form a manuscript writes a quotation in, with the shortest body read as one. Group
+#: `q` is the quotation. Asked in this order, and a match inside one already taken is not a
+#: second quotation: a `quote` environment holding a ``phrase'' is one quotation. The plugin's
+#: hook reads the same list, so a quotation the hook says is unpinned is one this counts.
+QUOTATIONS: list[tuple[str, re.Pattern[str], int]] = [
+    (
+        "environment",
+        re.compile(
+            r"\\begin\{(?P<env>quote|quotation|displayquote)\}(?:\[[^\]]*\])?(?P<q>.+?)"
+            r"\\end\{(?P=env)\}",
+            re.S,
+        ),
+        0,
+    ),
+    ("markdown", re.compile(r"(?m)^(?P<q>[ \t]{0,3}>.*(?:\n[ \t]{0,3}>.*)*)"), 0),
+    ("latex", re.compile(r"``(?P<q>.+?)''", re.S), 0),
+    (
+        "command",
+        re.compile(
+            r"\\(?:enquote|textquote|blockquote)\*?\s*(?:\[[^\]]*\])*\s*"
+            r"\{(?P<q>(?:[^{}]|\{[^{}]*\})+)\}",
+            re.S,
+        ),
+        MIN_QUOTE_CHARS,
+    ),
+    ("curly", re.compile(r"\u201c(?P<q>[^\u201d]+?)\u201d", re.S), MIN_QUOTE_CHARS),
+    ("straight", re.compile(r'(?<!\\)"(?P<q>[^"\n]+?)(?<!\\)"'), MIN_QUOTE_CHARS),
+]
+
+#: Text no quotation is read from: LaTeX's verbatim environments, and Markdown's front matter,
+#: fenced code and inline code, where a double quotation mark is a string delimiter.
+_TEX_CODE = re.compile(r"\\begin\{(verbatim|lstlisting|minted)\}.*?\\end\{\1\}", re.S)
+#: Inline code is one backtick each side, so the two that open a LaTeX ``quotation'' written into
+#: Markdown are not code.
+_MD_CODE = re.compile(r"\A---\n.*?\n---\n|^```.*?^```|(?<!`)`(?!`)[^`\n]+`(?!`)", re.S | re.M)
+
+#: Manuscript suffixes read as LaTeX, where `%` begins a comment and a `>` line is text.
+TEX_SUFFIXES = (".tex", ".latex", ".ltx")
 
 #: A citation command and its comma-separated keys: \cite, \citep, \citet, \parencite...
 CITE = re.compile(r"\\[a-zA-Z]*cite[a-zA-Z]*\s*(?:\[[^\]]*\])*\s*\{([^}]*)\}")
@@ -88,6 +139,9 @@ class Quotation:
     keys: tuple[str, ...]
     """Citation keys in the neighbourhood, in the order they appear. Not ranked."""
 
+    form: str = "latex"
+    """Which of `QUOTATIONS` the manuscript wrote it in."""
+
     @property
     def fragments(self) -> list[str]:
         """The parts an ellipsis separates. Each must appear; contiguity is not required."""
@@ -103,6 +157,18 @@ class Finding:
     detail: str = ""
     source: str = ""
     """The claims file, or the citation key, the quotation was matched in."""
+
+    omitted: tuple[str, ...] = ()
+    """What each ellipsis of a covered quotation leaves out of the text it was matched in, in
+    order. Empty for a quotation with no ellipsis, and where the fragments are not in the
+    matched text in the quotation's order, which `ordered` then says."""
+
+    ordered: bool = True
+    """Whether the fragments of a covered quotation are in the matched text in its order."""
+
+    negation: str = ""
+    """The left-out text holding a negation, where one does: `not` in `did ... improve`
+    against `did not improve`."""
 
 
 def comparable(text: str) -> str:
@@ -168,26 +234,59 @@ def strip_comments(tex: str) -> str:
     return "\n".join(out)
 
 
-def quotations(tex: str) -> list[Quotation]:
-    """Every ``...'' in a LaTeX manuscript, with the citation keys near each."""
-    body = strip_comments(tex)
-    found = []
-    for m in TEX_QUOTE.finditer(body):
-        window = body[max(0, m.start() - LOOK_BACK) : m.end() + LOOK_FORWARD]
-        keys: list[str] = []
-        for group in CITE.findall(window):
-            for key in group.split(","):
-                if (k := key.strip()) and k not in keys:
-                    keys.append(k)
-        found.append(
-            Quotation(
-                line=body[: m.start()].count("\n") + 1,
-                raw=m.group(1),
-                text=passage_fold(unwrap(m.group(1))),
-                keys=tuple(keys),
+def _blank(m: re.Match[str]) -> str:
+    """A match replaced by its newlines alone, so the lines after it keep their numbers."""
+    return "\n" * m.group(0).count("\n")
+
+
+def _blockquote(body: str) -> str:
+    """A Markdown `>` block as its text, or empty for a GitHub alert (`> [!NOTE]`)."""
+    lines = [re.sub(r"^[ \t]{0,3}>[ \t]?", "", line) for line in body.split("\n")]
+    if lines and lines[0].lstrip().startswith("[!"):
+        return ""
+    return " ".join(line for line in lines if line.strip())
+
+
+def quotations(tex: str, latex: bool = True) -> list[Quotation]:
+    """Every quotation in a manuscript, in any of `QUOTATIONS`, with the citation keys near each.
+
+    `latex` for a `.tex` source, where `%` begins a comment and a `>` line is not a Markdown
+    block. Otherwise the manuscript is read as Markdown, whose front matter and code hold
+    quotation marks that are not quotations.
+    """
+    body = _TEX_CODE.sub(_blank, strip_comments(tex)) if latex else _MD_CODE.sub(_blank, tex)
+    taken: list[tuple[int, int]] = []
+    found: list[tuple[int, Quotation]] = []
+    for form, pattern, floor in QUOTATIONS:
+        if form == "markdown" and latex:
+            continue
+        for m in pattern.finditer(body):
+            start, end = m.span()
+            if any(a < end and start < b for a, b in taken):
+                continue
+            raw = _blockquote(m.group("q")) if form == "markdown" else m.group("q")
+            if not raw.strip() or len(" ".join(raw.split())) < floor:
+                continue
+            taken.append((start, end))
+            window = body[max(0, start - LOOK_BACK) : end + LOOK_FORWARD]
+            keys: list[str] = []
+            for group in CITE.findall(window):
+                for key in group.split(","):
+                    if (k := key.strip()) and k not in keys:
+                        keys.append(k)
+            found.append(
+                (
+                    start,
+                    Quotation(
+                        line=body[:start].count("\n") + 1,
+                        raw=raw,
+                        text=passage_fold(unwrap(raw)),
+                        keys=tuple(keys),
+                        form=form,
+                    ),
+                )
             )
-        )
-    return found
+    return [q for _, q in sorted(found, key=lambda pair: pair[0])]
 
 
 def pinned_spans(claim_files: list[ClaimFile]) -> list[tuple[str, str]]:
@@ -318,8 +417,44 @@ def cover(q: Quotation, pool: list[tuple[str, str]]) -> Finding:
         return search
     for name, pinned in pool:
         if search.present_in(pinned):
-            return Finding(q, "covered", source=name)
+            return _covered(q, search, pinned, name)
     return Finding(q, "uncovered", "no pinned quote contains it")
+
+
+def omitted(fragments: Sequence[str], span: str) -> tuple[str, ...] | None:
+    """The text of `span` between each fragment and the next, in order, or None where the
+    fragments are not in `span` in the quotation's order.
+
+    From each place the first fragment occurs, each later fragment at its first occurrence
+    after the one before; the reading that leaves the least out is returned.
+    """
+    best: tuple[str, ...] | None = None
+    for start in _positions(fragments[0], span) if fragments else []:
+        gaps: list[str] = []
+        end = start + len(fragments[0])
+        for fragment in fragments[1:]:
+            i = span.find(fragment, end)
+            if i < 0:
+                break
+            gaps.append(span[end:i].strip())
+            end = i + len(fragment)
+        else:
+            if best is None or sum(map(len, gaps)) < sum(map(len, best)):
+                best = tuple(gaps)
+    return best
+
+
+def _covered(q: Quotation, search: _Search, span: str, source: str) -> Finding:
+    """A covered finding, with what its ellipses leave out of `span`."""
+    if len(search.fragments) < 2:
+        return Finding(q, "covered", source=source)
+    gaps = omitted(search.fragments, span)
+    if gaps is None:
+        return Finding(q, "covered", source=source, ordered=False)
+    negation = next(
+        (g for g in gaps if set(re.findall(r"[a-z]+", g)) & SOURCE_NEGATIONS or "n't" in g), ""
+    )
+    return Finding(q, "covered", source=source, omitted=gaps, negation=negation)
 
 
 def _artifact_text(cf: ClaimFile, claims_dir: pathlib.Path, allowed) -> str | None:
@@ -367,7 +502,7 @@ def attribute(q: Quotation, by_key: dict[str, str], missing: set[str]) -> Findin
 
     for key in readable:
         if search.present_in(by_key[key]):
-            return Finding(q, "covered", source=key)
+            return _covered(q, search, by_key[key], key)
 
     # Absent from every source that could be read. That is only an accusation if every source
     # was read: a passage belonging to a neighbour whose artifact would not open has not been

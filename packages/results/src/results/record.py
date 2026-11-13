@@ -16,9 +16,10 @@ import os
 import pathlib
 import re
 
-from provenance_core import sha256_of_tree
+from provenance_core import SIDECAR_SUFFIXES, sha256_of_tree
 
-from results import ledger, timeline
+from results import freezes, history, ledger, outputs, timeline
+from results.manuscript import readable
 from results.paths import RESULTS_DIR, ledger_own, ledger_path, record_path, require_root
 
 ACCESS_LEVELS = [
@@ -150,7 +151,43 @@ def seal(files: list[str], role: str) -> int:
     print(f"sealed {what} as {role}")
     for entry in sealed:
         print(f"  {str(entry['sha256'])[:16]}…  {entry['path']}")
+        # Recorded in the event and said nowhere, so a symlink to data outside the tree, or a
+        # cache directory, sat outside a seal its author read as covering the directory.
+        for line in skipped_lines(entry.get("skipped"), root.parent / str(entry["path"])):
+            print(line)
     return 0
+
+
+#: Skipped names listed when a tree is sealed or verified; the ledger holds all of them.
+SHOWN_SKIPPED = 10
+
+#: Names skipped that are filesystem droppings and nothing else, never worth a warning.
+DROPPINGS = (".DS_Store", "Thumbs.db")
+
+
+def skipped_lines(skipped: object, tree: pathlib.Path) -> list[str]:
+    """A warning naming what a tree digest did not cover and why, or nothing.
+
+    A symlink is not followed and a cache directory is not read, so a dataset whose files are
+    symlinks into a store elsewhere seals as an empty tree, and nothing said so. `.DS_Store`
+    and its kind are left unsaid: they differ between two checkouts of the same data.
+    """
+    if not isinstance(skipped, list):
+        return []
+    notable = [
+        str(name)
+        for name in skipped
+        if not str(name).endswith(DROPPINGS) and not str(name).endswith(tuple(SIDECAR_SUFFIXES))
+    ]
+    if not notable:
+        return []
+    lines = [f"    warning: {len(notable)} name(s) the digest does not cover:"]
+    for name in notable[:SHOWN_SKIPPED]:
+        why = "a symlink, not followed" if (tree / name).is_symlink() else "a cache directory"
+        lines.append(f"      {name}  ({why})")
+    if len(notable) > SHOWN_SKIPPED:
+        lines.append(f"      ... and {len(notable) - SHOWN_SKIPPED} more, listed in the ledger")
+    return lines
 
 
 def access(note: str, level: str) -> int:
@@ -180,7 +217,12 @@ RUN_HOLDS = ["metadata only", "structure seen"]
 
 
 def run(
-    files: list[str], run_id: str, note: str | None, anyway: bool, holds: str | None = None
+    files: list[str],
+    run_id: str,
+    note: str | None,
+    anyway: bool,
+    holds: str | None = None,
+    strict: bool = False,
 ) -> int:
     if holds is not None and holds not in RUN_HOLDS:
         print(f"--holds must be one of: {', '.join(RUN_HOLDS)}")
@@ -198,7 +240,7 @@ def run(
         print("one run id names one run: choose another, or pass --anyway to record both")
         print("and accept that a claim naming this id is ordered by the later run.")
         return 1
-    outputs = []
+    written = []
     for name in files:
         p = pathlib.Path(name).resolve()
         if refusal := own_files(p, root):
@@ -209,11 +251,28 @@ def run(
             print(f"not a file: {name}")
             return 1
         digest = ledger.sha256_of_file(p)
-        outputs.append({"path": record_path(p, root), "sha256": digest})
+        path = record_path(p, root)
+        if (earlier := rerecorded(existing, path, digest)) is not None:
+            # An output edited by hand and then recorded again, under the same id with
+            # `--anyway` or under a new one, read as an honest re-run: verify said RESEALED
+            # and passed. A re-run is a run of its inputs, and the ledger shows one as a seal.
+            # A warning by default, since iterating under new ids is ordinary; `--strict`
+            # refuses, as `verify --strict` fails it.
+            print(
+                f"{'not recorded' if strict else 'warning'}: {name} was recorded by run "
+                f"'{earlier}' with other bytes, and no input of that run has been sealed since."
+            )
+            print("  a re-run reads its inputs: seal them before recording what it wrote")
+            print("  (`results seal <script> <data>`), or write the new version to a new file.")
+            if strict:
+                print("nothing was written.")
+                return 1
+            print("  `results verify` reports it as RERECORDED.")
+        written.append({"path": path, "sha256": digest})
     event = {
         "event": "run",
         "run_id": run_id,
-        "outputs": outputs,
+        "outputs": written,
         "note": note or "",
     }
     if holds is not None:
@@ -221,10 +280,58 @@ def run(
         # so the declaration is in the chain before anything that reads it.
         event["holds"] = holds
     ledger.append_event(lp, event)
-    print(f"run {run_id}: {len(outputs)} output(s){f', holding {holds}' if holds else ''}")
-    for o in outputs:
+    print(f"run {run_id}: {len(written)} output(s){f', holding {holds}' if holds else ''}")
+    for o in written:
         print(f"  {o['sha256'][:16]}…  {o['path']}")
     return 0
+
+
+def rerecorded_paths(events: list[dict]) -> dict[str, tuple[str, str]]:
+    """Each path a run recorded as an output under other bytes than an earlier run recorded
+    there, with no input of the earlier run sealed again between the two, and the two runs.
+    Where a path was re-recorded more than once, the latest pair: keeping the first made every
+    later re-record of the path silent at `results run`.
+
+    What separates a re-run from an output edited and recorded again is that a re-run reads
+    its inputs, and an input the ledger knows is a seal. The inputs of a run are the paths
+    sealed before it was recorded, and a seal of one of them after it, with bytes other than
+    its previous seal held, is the record of a re-run.
+    A seal of anything else is not: sealing an unrelated file cleared the check. A retirement
+    in between makes the later bytes new rather than a re-record.
+    """
+    sealed: dict[str, str] = {}
+    last: dict[str, tuple[str, str, frozenset[str]]] = {}
+    refreshed: set[str] = set()
+    found: dict[str, tuple[str, str]] = {}
+    for e in events:
+        kind = e.get("event")
+        if kind == "seal":
+            files = {f.get("path", ""): f.get("sha256", "") for f in e.get("files", [])}
+            # A seal of an input with the bytes it already had records no change to what the
+            # run reads, so it is no record of a re-run.
+            now = {path for path, digest in files.items() if sealed.get(path) != digest}
+            refreshed |= {path for path, (_, _, inputs) in last.items() if now & inputs}
+            sealed |= files
+        elif kind == "retire":
+            for path in e.get("paths", []):
+                last.pop(path, None)
+        elif kind == "run":
+            run_id = str(e.get("run_id", ""))
+            for o in e.get("outputs", []):
+                path, digest = o.get("path", ""), o.get("sha256", "")
+                if path in last and last[path][1] != digest and path not in refreshed:
+                    found[path] = (last[path][0], run_id)
+                last[path] = (run_id, digest, frozenset(set(sealed) - {path}))
+                refreshed.discard(path)
+    return found
+
+
+def rerecorded(events: list[dict], path: str, digest: str) -> str | None:
+    """The run that last recorded `path` as an output, where recording it now under `digest`
+    would be a re-record (see `rerecorded_paths`); None where it is a re-run or a first."""
+    probe = {"event": "run", "run_id": "", "outputs": [{"path": path, "sha256": digest}]}
+    found = rerecorded_paths([*events, probe])
+    return found[path][0] if path in found and found[path][1] == "" else None
 
 
 def label(run_id: str, holds: str, note: str) -> int:
@@ -346,9 +453,20 @@ def claim(
     anyway: bool,
     frozen_at: str | None,
     location: str | None,
+    strict: bool = False,
+    derived: str | None = None,
 ) -> int:
     root = require_root()
     lp = ledger_path(root)
+
+    # A claim on a ledger whose committed history it does not extend rests on a chain that was
+    # rewritten: `verify` fails it, and recording a claim on it is refused as `reanchor` is.
+    if rewrites := history.rewritten(lp):
+        print("refusing: git history holds a ledger this one does not extend.")
+        for problem in rewrites:
+            print(f"  {problem}")
+        print("nothing was written. Restore the ledger from the commit, then record the claim.")
+        return 1
 
     events = ledger.read_ledger(lp)
     run_ids = {e["run_id"] for e in events if e.get("event") == "run"}
@@ -357,67 +475,192 @@ def claim(
         print(f"known runs: {', '.join(sorted(run_ids)) or '(none)'}")
         return 1
 
-    retrospective = None
-    frozen_time = timeline.freeze_timestamp(root, frozen_at) if frozen_at else None
-    if frozen_at and frozen_time is None:
-        print(f"cannot resolve --frozen-at '{frozen_at}': not a commit in this repository.")
-        print("a freeze reference must name a commit that contains the frozen plan.")
+    # The numbers the sentence prints, against what the run wrote. Said before anything is
+    # written, and under `--strict` a refusal, so a claim the run does not back never enters
+    # the ledger by accident; without it a warning, since a run's outputs may hold a number in
+    # a form this cannot read.
+    if hidden := readable(text)[1]:
+        print(
+            f"warning: the claim holds {hidden} format character(s), zero-width or invisible; "
+            "its numbers are read without them."
+        )
+    held = outputs.held_by(events, run_id, root.parent)
+    owed = outputs.owed(text)
+    absent = outputs.missing(text, held) if held.read else owed
+    if derived is not None and not derived.strip():
+        print("--derived takes how the number was derived, in words.")
         return 1
+    if owed and absent and not derived:
+        said = "refusing" if strict else "warning"
+        if held.read:
+            print(
+                f"{said}: run '{run_id}' wrote no value that rounds to {', '.join(absent)} "
+                "at the precision the claim prints."
+            )
+        elif held.unchecked:
+            print(
+                f"{said}: no output of run '{run_id}' is the bytes it recorded, so the claim's "
+                "numbers were not checked against it."
+            )
+        else:
+            print(
+                f"{said}: run '{run_id}' records no output this can read as text, so the "
+                "claim's numbers were not checked against it."
+            )
+        for path in held.changed:
+            print(f"  {record_path(path, root)} is not the bytes run '{run_id}' recorded, so")
+            print("  it was not read: `results verify --files` reports it as changed.")
+        for path in held.absent:
+            print(f"  {record_path(path, root)} is not on disk.")
+        print("  `results verify` reports it until the claim and the run agree.")
+        if strict:
+            print("nothing was written. Name the run that wrote these numbers.")
+            return 1
 
-    if confirmatory:
-        seen = timeline.first_outcomes_seen(events)
-        if seen is not None:
-            recorded = timeline.first_run_timestamp(events, run_id)
-            if recorded is None or recorded > seen:
-                retrospective = seen
+    recorded = freezes.read_all(root.parent, lp)
+    freeze = None
+    if frozen_at:
+        freeze = _named_freeze(root, frozen_at, recorded)
+        if freeze is None:
+            return 1
+    lines = freezes.lines_of(lp)
+    seen = timeline.first_outcomes_seen(events)
+    seen_at = freezes.index_of(lines, "access", lambda e: e.get("level") == "outcomes seen")
+    run_at = freezes.run_index(lines, run_id)
+    recorded_at = timeline.first_run_timestamp(events, run_id)
+
+    retrospective = None
+    in_ledger = bool(
+        confirmatory and seen is not None and (recorded_at is None or recorded_at > seen)
+    )
+    if in_ledger:
+        retrospective = seen
+    # An exposure a chain before a restart held counts as though it were still in the ledger,
+    # placed by the commit that first added it, so restarting the ledger does not unsee it.
+    restarted = history.restart(lp) if confirmatory else None
+    run = next(
+        (e for e in reversed(events) if e.get("event") == "run" and e.get("run_id") == run_id),
+        None,
+    )
+    earlier = [
+        x
+        for x in (restarted.exposures if restarted else [])
+        if run is not None
+        and x.event.get("level") == "outcomes seen"
+        and history.exposed_before(lp, x, run)
+    ]
+    if earlier and retrospective is None:
+        retrospective = min(x.committed_at for x in earlier) or "a chain before the restart"
 
     # Exposure is evidence of possible contamination, not contamination. What
     # threatens a confirmatory reading is propagation: outcome information
-    # reaching a consequential choice. A plan committed before the exposure
+    # reaching a consequential choice. A plan frozen before the exposure
     # cannot be reached by it, so the disposition is confirmatory with the
     # exposure logged, and the demotion is scoped to decisions not so protected.
-    protected = bool(
-        retrospective and frozen_time and timeline.precedes(frozen_time, retrospective)
-    )
+    # Before means before in the ledger's order, read from the freeze record: never the commit
+    # date, which the committer sets.
+    ordered = None
+    if freeze and retrospective:
+        # Before the exposure in the ledger, by the ledger's order; before one the chain ahead of
+        # a restart held, only where placed before every ledger at this path.
+        checks = ([freezes.before(freeze, seen_at, seen)] if in_ledger else []) + (
+            [freeze.prior] if earlier else []
+        )
+        ordered = False if False in checks else None if None in checks else True
+    protected = bool(retrospective and ordered)
     if protected:
         retrospective = None
+
+    # A confirmatory claim rests on a run the plan governed. A run recorded before the plan it
+    # cites, or before every plan where it cites none, was not governed by one. Said, and kept
+    # in the claim, and never refused: an earlier run can be a pilot the plan was written from.
+    compared = [freeze] if freeze else recorded
+    unplanned = bool(
+        confirmatory
+        and compared
+        and all(freezes.before(f, run_at, recorded_at) is False for f in compared)
+    )
 
     if retrospective and not anyway:
         print(
             f"refusing: outcomes were seen at {retrospective[:19]}, and run "
             f"'{run_id}' was recorded after that."
         )
+        if freeze is not None and ordered is False:
+            print(f"the freeze record {freeze.record} was written after the outcomes were seen.")
+        elif freeze is not None:
+            print(f"the freeze record {freeze.record} cannot be placed before the exposure:")
+            print(f"  {freeze.misplaced or 'it holds no position in this ledger and no time'}")
         print("a claim from a run that postdates seeing the outcomes is retrospective,")
         print("unless the choices it rests on were fixed before the exposure.")
-        print("if a commit contains the frozen plan, pass --frozen-at <commit>;")
+        print("if a plan was frozen before then, pass --frozen-at <the commit its record names>;")
         print("otherwise drop --confirmatory, or pass --anyway to record it as")
         print("confirmatory with the ordering noted permanently in the ledger.")
         return 1
 
-    ledger.append_event(
-        lp,
-        {
-            "event": "claim",
-            "claim": text,
-            "run_id": run_id,
-            "confirmatory": confirmatory,
-            "after_outcomes_seen": bool(retrospective),
-            "frozen_at": frozen_at or "",
-            "frozen_at_time": frozen_time or "",
-            "location": location or "",
-        },
-    )
+    event = {
+        "event": "claim",
+        "claim": text,
+        "run_id": run_id,
+        "confirmatory": confirmatory,
+        "after_outcomes_seen": bool(retrospective),
+        "frozen_at": frozen_at or "",
+        "frozen_at_time": freeze.frozen_at if freeze else "",
+        "location": location or "",
+    }
+    if derived:
+        event["derived"] = derived
+    if unplanned:
+        event["run_before_freeze"] = True
+    ledger.append_event(lp, event)
     status = "confirmatory" if confirmatory else "exploratory"
     print(f"claim ({status}): {text[:72]}")
     print(f"  backed by run: {run_id}")
     if location:
         print(f"  appears in: {location}")
-    if protected and frozen_time:
-        print(f"  plan frozen at {frozen_at} on {frozen_time[:19]}, before outcomes")
+    if derived:
+        print(f"  derived: {derived}; its numbers are not compared with the run's outputs")
+    if protected and freeze is not None:
+        print(f"  plan frozen at {frozen_at} on {freeze.frozen_at[:19]}, before outcomes")
         print("  were seen: confirmatory, exposure logged")
     elif retrospective:
         print(f"  recorded after outcomes were seen at {retrospective[:19]}; verify will report it")
+    if unplanned:
+        which = "the plan it cites" if freeze else "every plan frozen here"
+        print(f"  run '{run_id}' was recorded before {which} was frozen; verify will report it")
     return 0
+
+
+def _named_freeze(
+    root: pathlib.Path, frozen_at: str, recorded: list[freezes.Freeze]
+) -> freezes.Freeze | None:
+    """The freeze record `--frozen-at` names, or None after saying why it names none.
+
+    A full commit id, which a record beside a frozen plan holds. Any reference git resolves was
+    accepted before, `HEAD` included, and then dated by its commit date.
+    """
+
+    def known() -> None:
+        if recorded:
+            print("the freeze records here name:")
+            for f in recorded:
+                print(f"  {f.commit}  {f.record}")
+        else:
+            print("no freeze record is here: `prereg freeze` writes one beside the plan.")
+
+    if not freezes.FULL_COMMIT.fullmatch(frozen_at):
+        print(f"--frozen-at takes the full commit id a freeze record names, not '{frozen_at}'.")
+        known()
+        return None
+    if timeline.freeze_timestamp(root, frozen_at) is None:
+        print(f"cannot resolve --frozen-at '{frozen_at}': not a commit in this repository.")
+        print("a freeze reference must name a commit that contains the frozen plan.")
+        return None
+    freeze = freezes.named(recorded, frozen_at)
+    if freeze is None:
+        print(f"no freeze record names commit {frozen_at}.")
+        known()
+    return freeze
 
 
 def session(model: str | None) -> dict[str, str]:

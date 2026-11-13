@@ -143,7 +143,8 @@ def test_a_claims_file_citations_refuses_fails_the_check_under_every_policy_nami
 
         assert main(["verify", "--policy", policy]) == 1
         out = capsys.readouterr().out
-        assert "  citations    FAILED (exit 1)  (citations verify --claims claims)" in out
+        # Under `strict` the tool runs with its own `--strict`, which the command line names.
+        assert "  citations    FAILED (exit 1)  (citations verify --claims claims" in out
         assert f"refused  {why}" in out
         assert "citations    passed" not in out
         assert "0 of 1 checks passed; failed: citations" in out

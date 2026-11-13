@@ -56,7 +56,12 @@ def cmd_access(a) -> int:
 
 def cmd_run(a) -> int:
     return record.run(
-        a.files, a.run_id, a.note, getattr(a, "anyway", False), getattr(a, "holds", None)
+        a.files,
+        a.run_id,
+        a.note,
+        getattr(a, "anyway", False),
+        getattr(a, "holds", None),
+        getattr(a, "strict", False),
     )
 
 
@@ -76,6 +81,8 @@ def cmd_claim(a) -> int:
         a.anyway,
         getattr(a, "frozen_at", None),
         a.location,
+        getattr(a, "strict", False),
+        getattr(a, "derived", None),
     )
 
 
@@ -96,7 +103,7 @@ def cmd_reanchor(a) -> int:
 
 
 def cmd_verify(a) -> int:
-    return audit.verify(a.files, a.json)
+    return audit.verify(a.files, a.json, getattr(a, "strict", False), getattr(a, "explain", False))
 
 
 def cmd_timestamp(a) -> int:
@@ -152,6 +159,12 @@ def _main(argv: list[str] | None = None) -> int:
         help="record a second run under an id that already exists; a claim naming that id "
         "is then ordered by the later run",
     )
+    r.add_argument(
+        "--strict",
+        action="store_true",
+        help="refuse an output recorded before under other bytes with no input of that run "
+        "sealed since (default: warn)",
+    )
     r.set_defaults(fn=cmd_run)
 
     lb = sub.add_parser(
@@ -194,11 +207,24 @@ def _main(argv: list[str] | None = None) -> int:
     )
     cl.add_argument(
         "--frozen-at",
-        help="a commit containing the frozen plan this claim rests on; if it "
-        "predates the exposure, the claim is confirmatory with the "
-        "exposure logged rather than retrospective",
+        help="the full commit id a `prereg freeze` record names for the plan this claim "
+        "rests on; if the record places the freeze before the exposure in the ledger, the "
+        "claim is confirmatory with the exposure logged rather than retrospective",
     )
     cl.add_argument("--location", help="where in the manuscript: Table 2, Section 4.1, etc.")
+    cl.add_argument(
+        "--strict",
+        action="store_true",
+        help="refuse a claim printing a number the run's outputs do not hold at the printed "
+        "precision (default: warn)",
+    )
+    cl.add_argument(
+        "--derived",
+        metavar="HOW",
+        help="the claim's numbers are derived from the run's outputs, and how (a mean of the "
+        "per-family values in results.json): recorded, shown by verify, and not compared with "
+        "the outputs",
+    )
     cl.set_defaults(fn=cmd_claim)
 
     rv = sub.add_parser(
@@ -250,6 +276,18 @@ def _main(argv: list[str] | None = None) -> int:
         "--json",
         metavar="PATH",
         help="also write the findings to this file as JSON: the chain, and each recorded file",
+    )
+    v.add_argument(
+        "--strict",
+        action="store_true",
+        help="also fail on what is otherwise a warning: a claim's number its run's outputs do "
+        "not hold, a claim whose run's outputs were all retired, a timestamp proof history "
+        "holds and the disk does not, an output recorded again with no input sealed between",
+    )
+    v.add_argument(
+        "--explain",
+        action="store_true",
+        help="list each claim printing numbers its run's outputs do not hold (default: count)",
     )
     v.set_defaults(fn=cmd_verify)
 

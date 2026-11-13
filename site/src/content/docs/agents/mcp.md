@@ -44,7 +44,7 @@ Any MCP client that launches a stdio server takes the same command and arguments
 | `next_open_item`, `get_open_item` | one open item: the claim, the printed value, the sentence, and each candidate's address, labels and stored value | carries no file contents beyond the cell and its labels |
 | `propose_binding` | inserts one assertion, `basis: inferred`, into the claim the item names, and checks it | another basis, `reviewed`, a claim not in the file or the draft, a kind that fills no open item, a missing or changed `reported`, an undeclared artifact, an oversized field; never replaces a matched, declared or reviewed assertion; warns from the sixth attempt |
 | `add_artifact` | declares a file in the draft, pinned by sha256 and `basis: inferred` | a path outside the project, a directory, a Git LFS pointer, a file over 64 MiB, a file or id already declared |
-| `mark_reviewed` | records the user's approval in the chat as `reviewed`: git user, time, client, and the digest of what was accepted | an item that did not match, a claim the draft lacks, a project with no git user; the review lapses when what it accepted changes |
+| `mark_reviewed` | records, as `reviewed`, what the agent reports the user approved in the chat: git user, time, client, `via: repro mcp, agent-recorded`, and the digest of what was accepted | an item that did not match, a claim the draft lacks, a project with no git user; the review lapses when what it accepted changes |
 | `pin_quote` | `citations pin`: adds a quotation that resolves in its pinned source | writes nothing for a passage the source lacks, or with `check`; refuses an id the file holds, so a pinned quotation is never replaced |
 
 Each write changes one line of the draft and no other byte. Every proposal is appended to a hash
@@ -70,7 +70,11 @@ as `root`.
 ## Does not claim
 
 A proposal that matched is a proposal that held, not a verified claim. It counts as declared
-only after a person approves it and `mark_reviewed` records the approval.
+only after a person approves it and `mark_reviewed` records the approval. The agent is what calls
+`mark_reviewed`, so the record shows that an agent reported an approval for the person git names,
+and marks itself agent-recorded; nothing the server receives comes from the person. A review the
+person writes into the manifest by hand, or gives on a pull request to the bot, carries no such
+mark.
 
 ## The other project
 

@@ -67,6 +67,10 @@ nobody fills in is a check nobody runs. A later quotation is refused where the e
 longer produces that text, because the file would then hold quotations taken from two
 different readings under one digest.
 
+Every pin written is also appended to `pins.jsonl` beside the claims file, with the sha256 the
+source had, so a source and its pinned sha256 edited together show in `verify` as a source
+pinned again. A passage that resolves only by joining the source's words into others, `notable`
+against `not able`, is refused. See `pinlog` and `verify._joined`.
 `--correct` pins a passage no extractor reads as the page prints it: a table, an equation, a
 ligature, two columns read across. It takes the passage as the page prints it, `--page`, and
 `--reads`, what the extractor produced there. The quotation is written with a `correction`
@@ -94,7 +98,7 @@ import pathlib
 import yaml
 from provenance_core import atomic_write, exclusive_lock
 
-from . import extractors, tracked, web
+from . import extractors, pinlog, tracked, web
 from . import verify as V
 from .exceptions import CitationsError, SourceUnreadableError
 from .fetch import has_location
@@ -499,6 +503,15 @@ def main(argv: list[str] | None = None) -> int:
         print("nothing written. read the source before recording the passage.")
         return 1
 
+    if "joined" in r.warnings:
+        # The skeleton found it by changing the source's words: `notable` against `not able`.
+        # A pin is a statement that these are the source's words, so it is refused here, where
+        # `verify` only warns and `--strict` fails.
+        print(f"joined    {a.quote[:60]}")
+        print(f"  matched only by changing the source's spacing: {r.notes.get('joined', '')}")
+        print("nothing written. quote the passage with the spacing the source has.")
+        return 1
+
     claim = entry(
         a.quote, a.section, a.page, a.says, a.whose, a.status, a.contest, prefix, suffix, corrected
     )
@@ -527,8 +540,17 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     add_to(path, a.id, claim, record)
+    sha = (record.get("sha256") or cf.source.sha256 or "").strip().lower()
+    key = pinlog.source_key(cf.source.citation, cf.source.local, path.name)
+    earlier = pinlog.first_pins(pinlog.read(path.parent)).get(key)
+    pinlog.record(path, a.id, a.quote, sha, key)
     print(f"{said} {a.quote[:60]}")
     print(f"added     {a.id} to {path.name}")
+    if earlier and sha and earlier != sha:
+        print(
+            f"  {path.name} was first pinned against {earlier[:12]} and now names {sha[:12]}: "
+            f"`citations verify` reports it as pinned again"
+        )
     if singled:
         print(singled)
     if r.warnings:

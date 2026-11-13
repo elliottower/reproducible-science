@@ -8,10 +8,12 @@ against a directory other than the one named.
 from __future__ import annotations
 
 import pathlib
+import subprocess
 
 import pytest
 from claims.policy import PUBLICATION
-from repro import whole
+from provenance_core.gitref import clean_env
+from repro import ci, whole
 from repro.delegate import BY_NAME, TOOLS, run
 
 
@@ -157,3 +159,64 @@ def test_a_preregistration_directory_needs_a_plan_in_it(tmp_path):
     assert not BY_NAME["prereg"].used_by(tmp_path)
     (directory / "PREREG.md").write_text("# plan\n")
     assert BY_NAME["prereg"].used_by(tmp_path)
+
+
+def _git(repo: pathlib.Path, *args: str) -> str:
+    done = subprocess.run(
+        ["git", "-c", "user.email=t@t", "-c", "user.name=t", *args],
+        cwd=repo,
+        env=clean_env(),
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return done.stdout.strip()
+
+
+def _commit(repo: pathlib.Path) -> str:
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "commit")
+    return _git(repo, "rev-parse", "HEAD")
+
+
+def test_a_registration_frozen_by_a_commit_line_is_checked_and_its_edit_fails(tmp_path):
+    """`prereg check` reported this registration changed while `repro verify` said prereg was
+    not used here and exited 0."""
+    _git(tmp_path, "init", "-q")
+    doc = tmp_path / "PREREGISTRATION.md"
+    doc.write_text("# Plan\n\n**Commit SHA:** _pending_\n\n## Hypotheses\n\n**H1.** icc > 0.40\n")
+    first = _commit(tmp_path)
+    doc.write_text(doc.read_text().replace("_pending_", first))
+    _commit(tmp_path)
+    assert BY_NAME["prereg"].used_by(tmp_path)
+    found = whole.verdicts(None, whole.check(tmp_path, None, PUBLICATION))
+    assert found["prereg"] is True
+
+    doc.write_text(doc.read_text().replace("0.40", "0.30"))
+    found = whole.verdicts(None, whole.check(tmp_path, None, PUBLICATION))
+    assert found["prereg"] is False
+    assert whole.exit_code(found) == 1
+
+
+def test_a_plan_four_levels_down_is_checked(tmp_path):
+    """`prereg check` reads a `PREREG.md` at any depth, and the detector stopped at three."""
+    _git(tmp_path, "init", "-q")
+    nested = tmp_path / "exp" / "a" / "b" / "c"
+    nested.mkdir(parents=True)
+    (nested / "PREREG.md").write_text("# plan\n\n**H1.** x\n")
+    _commit(tmp_path)
+    assert BY_NAME["prereg"].used_by(tmp_path)
+    ran = whole.check(tmp_path, None, PUBLICATION).tools["prereg"]
+    assert ran.command, "a plan below three levels is a plan the check reads"
+
+
+def test_a_note_the_check_flags_is_shown_beside_a_pass():
+    run_ = ci.ToolRun(
+        check="prereg",
+        command=("prereg", "check"),
+        exit=0,
+        outcome="passed",
+        account={"notes": ["PREREG.md: frozen at an access floor lowered after the fact: r1"]},
+    )
+    lines = whole._tool_lines(run_)
+    assert lines[1] == "      note: PREREG.md: frozen at an access floor lowered after the fact: r1"

@@ -28,6 +28,7 @@ import statistics
 from collections.abc import Mapping
 from typing import Protocol
 
+from claims import reported
 from claims.adapters.base import Occurrence
 from claims.adapters.prose import GROUPED, placed
 from claims.adapters.reads import once, reading_once
@@ -224,6 +225,14 @@ _QUOTE_WARNINGS = {
     "normalized": Warning_.NORMALIZED,
     "page": Warning_.WRONG_PAGE,
     "page unchecked": Warning_.PAGE_UNCHECKED,
+    "joined": Warning_.JOINED,
+    "split": Warning_.SPLIT,
+    "after negation": Warning_.AFTER_NEGATION,
+    "after hedge": Warning_.AFTER_HEDGE,
+    "quoted in source": Warning_.QUOTED_IN_SOURCE,
+    "references": Warning_.REFERENCES,
+    "superscript": Warning_.SUPERSCRIPT,
+    "invisible": Warning_.INVISIBLE,
 }
 
 
@@ -1544,10 +1553,19 @@ def verify(
     # resolved inside the same scope, so a comparison of two files reads their pin digests.
     with reading_once():
         states, paths = artifact_states(manifest)
+        manuscript = reported.names_a_manuscript(manifest)
         for claim in manifest.claims:
-            decisions = tuple(
-                check_evidence(claim, evidence, manifest, paths, states, registry)
+            checked = [
+                (evidence, check_evidence(claim, evidence, manifest, paths, states, registry))
                 for evidence in claim.evidence
+            ]
+            # What the claim reads from its manuscript: the passages it quotes, and the values
+            # its prose addresses select there, against which a `reported` value is compared.
+            passages = [e.text for e in claim.evidence if isinstance(e, QuoteEvidence)]
+            passages += _located(checked)
+            decisions = tuple(
+                _noted(claim, evidence, decision, passages, manuscript)
+                for evidence, decision in checked
             )
             ordering, ordering_reason, ordering_detail, authority = _ordering(
                 claim, manifest, states
@@ -1574,6 +1592,36 @@ def verify(
         artifacts=tuple(states.values()),
         claims=tuple(assessments),
     )
+
+
+def _located(checked: list[tuple[Evidence, Decision]]) -> list[str]:
+    """The values the claim's prose addresses read from the manuscript."""
+    found: list[str] = []
+    for evidence, decision in checked:
+        if isinstance(evidence, ValueEvidence) and isinstance(evidence.locator, ProseLocator):
+            found += [decision.extracted] if decision.extracted else []
+        elif isinstance(evidence, CorrespondenceEvidence):
+            found += [
+                said.extracted
+                for side, said in zip(evidence.sides, decision.sides, strict=False)
+                if isinstance(side.locator, ProseLocator) and said.extracted
+            ]
+    return found
+
+
+def _noted(
+    claim: Claim,
+    evidence: Evidence,
+    decision: Decision,
+    passages: list[str],
+    manuscript: bool = False,
+) -> Decision:
+    """The decision with what `claims.reported` notes of its `reported` value added to its
+    warnings. A decision with nothing to note is returned as it was."""
+    found = reported.notes(claim, evidence, decision, passages, manuscript)
+    if not found:
+        return decision
+    return decision.model_copy(update={"warnings": (*decision.warnings, *found)})
 
 
 def check_evidence(

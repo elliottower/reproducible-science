@@ -13,6 +13,7 @@ import pathlib
 import re
 
 import pytest
+from provenance_core.locking import lock_path
 from repro.cli import main
 from repro.models import (
     ArtifactRef,
@@ -35,7 +36,7 @@ from repro.models import (
 )
 from repro.policy import EXPLORATORY, PUBLICATION, STRICT
 from repro.regenerate import canonical_digest
-from repro.reproduce import RECORD, append
+from repro.reproduce import HEAD, RECORD, append
 from repro.stale import RecordUnreadableError, stale
 from repro.verify import verify
 
@@ -357,7 +358,9 @@ def test_an_output_differing_only_in_a_volatile_field_has_not_changed(tmp_path):
 
 def test_the_file_a_rerun_reproduced_with_other_bytes_is_its_output(tmp_path):
     (made,) = chain(tmp_path, "a", 1)
+    # The record and its head file go together: the record alone is a truncated chain.
     (tmp_path / RECORD).unlink()
+    (tmp_path / HEAD).unlink()
     log(
         tmp_path,
         rerun(
@@ -526,7 +529,8 @@ def test_the_command_writes_nothing(tmp_path, capsys):
     assert main(["stale", path, "--format", "json", "--policy", "strict"]) == 1
     assert snapshot(tmp_path) == before
 
-    (tmp_path / RECORD).unlink()
+    for written in (RECORD, HEAD, lock_path(RECORD)):
+        (tmp_path / written).unlink()
     (tmp_path / RECORD).parent.rmdir()
     before = snapshot(tmp_path)
     assert main(["stale", path]) == 0

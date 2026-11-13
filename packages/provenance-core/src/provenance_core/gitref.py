@@ -43,15 +43,22 @@ REDIRECTS = (
 )
 
 
+#: Set for every git command run here. A replace ref (`git replace`) swaps one object for
+#: another everywhere git reads it, so a local one could show a history the commits do not
+#: hold; read with replacements off, the commit graph is the one the ids name.
+NO_REPLACE = {"GIT_NO_REPLACE_OBJECTS": "1"}
+
+
 def clean_env(**overrides: str) -> dict[str, str]:
     """This process's environment with `REDIRECTS` dropped, plus any overrides.
 
     Exported because callers that run git themselves need the same guarantee and would
     otherwise each keep their own copy of the list. `GIT_COMMITTER_DATE` and the other
     variables that configure git rather than relocate it survive, so a caller can still set
-    them: `clean_env(GIT_COMMITTER_DATE=when)`.
+    them: `clean_env(GIT_COMMITTER_DATE=when)`. Replace refs are always off (`NO_REPLACE`).
     """
-    return {**{k: v for k, v in os.environ.items() if k not in REDIRECTS}, **overrides}
+    kept = {k: v for k, v in os.environ.items() if k not in REDIRECTS}
+    return {**kept, **NO_REPLACE, **overrides}
 
 
 def _env(cwd: pathlib.Path | None) -> dict[str, str] | None:
@@ -61,7 +68,7 @@ def _env(cwd: pathlib.Path | None) -> dict[str, str] | None:
     we are", and an inherited `GIT_DIR` is then the answer rather than an override, so the
     environment is passed through untouched.
     """
-    return None if cwd is None else clean_env()
+    return {**os.environ, **NO_REPLACE} if cwd is None else clean_env()
 
 
 class GitError(Exception):

@@ -220,16 +220,24 @@ MAX_SHOWN = 80
 MAX_READS = 3
 
 #: The states `results verify --files --json` gives a recorded file that fail the check.
-RESULTS_FAILING = ("changed", "missing", "reverted", "reappeared", "not a tree", "not a file")
+RESULTS_FAILING = (
+    "changed",
+    "missing",
+    "reverted",
+    "reappeared",
+    "not a tree",
+    "not a file",
+)
 #: The states that pass besides `ok`, each said on a line of its own and listed as no problem:
 #: a path that holds the latest of its records, a plan frozen in place whose log only grew,
-#: one of the ledger's own files, which is not compared, and a path `results retire` recorded
-#: as no longer part of the project.
+#: one of the ledger's own files, which is not compared, a path `results retire` recorded as no
+#: longer part of the project, and an output recorded again with no input sealed between.
 RESULTS_PASSING = {
     "resealed": "resealed, matching their latest record",
     "appended": "appended, a plan frozen in place whose log only grew",
     "ignored": "ignored, the ledger's own files, not compared",
     "retired": "retired, no longer part of the project",
+    "rerecorded": "rerecorded, recorded again with no input sealed between",
 }
 
 CLAIMS_SHOWS = (
@@ -474,20 +482,26 @@ def _account(path: pathlib.Path) -> dict:
     return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
 
 
-def tool(check: str, root: pathlib.Path, *, fetch: bool = False) -> ToolRun:
+#: The tools that take `--strict`, which `repro verify --policy strict` passes them, so what
+#: they report and pass by default fails there as it fails when run alone.
+STRICT_TOOLS = ("results", "citations")
+
+
+def tool(check: str, root: pathlib.Path, *, fetch: bool = False, strict: bool = False) -> ToolRun:
     """Run one tool's check over the project at `root` and read what it found.
 
     The tool is found and pointed by `repro.delegate`, run by `repro.audit.run_step`, and its
     outcome is the word `repro.audit.read` gives it, with one difference for `citations`: a run
     in which some quotations were found, none was not found and the rest were unchecked is
     `passed`, as `citations verify` exits 0 for it, where `repro audit` calls any unchecked
-    quotation `could not check`. A run that read no source stays `could not check`.
+    quotation `could not check`. A run that read no source stays `could not check`. With
+    `strict`, `results` and `citations` are run with their own `--strict`.
     """
     found = BY_NAME[check]
     if not found.used_by(root):
         return ToolRun(check=check, outcome=audit.NOTHING, output=NO_RECORD[check])
     command = TOOL_COMMANDS[check]
-    argv = command.argv(check, root)
+    argv = [*command.argv(check, root), *(["--strict"] if strict and check in STRICT_TOOLS else [])]
     fetched, output = None, ""
     with tempfile.TemporaryDirectory() as scratch:
         if fetch:
@@ -653,10 +667,9 @@ def _where(witness: Witness) -> str:
     """Where a re-run happened, as its entry in the record says, with the run linked. The
     clause is `Witness.said`, which `repro why` and `repro stale` print."""
     said = witness.said
-    if witness.repository and witness.run_id:
-        page = f"https://github.com/{witness.repository}/actions/runs/{witness.run_id}"
-        said = said.replace(f"run {witness.run_id}", f"[run {witness.run_id}]({page})", 1)
-    return f"{said}, as the environment said"
+    if witness.page:
+        said = said.replace(f"run {witness.run_id}", f"[run {witness.run_id}]({witness.page})", 1)
+    return said
 
 
 def _witnesses_found(report: StalenessReport) -> str:

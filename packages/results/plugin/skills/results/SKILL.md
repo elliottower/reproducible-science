@@ -72,10 +72,15 @@ code that computes the result, or abandoning an arm after a null.
 | a null caused an arm to be dropped | exploratory — continuation was data-contingent |
 | a human saw results and then exercised discretion | exploratory unless those choices were already fixed |
 
-Row two is the one that gets mishandled. A plan committed to git before the exposure cannot
-be reached by it, so `results claim --confirmatory --frozen-at <commit>` records the claim
-as confirmatory with the exposure logged. `verify` reports it separately from contested
-claims. Without a freeze reference the tool refuses, because it cannot tell the two apart.
+Row two is the one that gets mishandled. A plan frozen before the exposure cannot be reached
+by it, so `results claim --confirmatory --frozen-at <commit>` records the claim as
+confirmatory with the exposure logged. The commit is the full id a `prereg freeze` record
+names, and the freeze is placed by the `freeze` event `prereg freeze` writes into the ledger,
+or by the record's position there, never by the commit's date, which the committer sets. A plan
+frozen before `results init` is placed before every ledger event where the commit adding its
+record is an ancestor of the first commit adding the ledger: commit both. `verify` reports it separately from contested
+claims. Without a freeze reference the tool refuses, because it cannot tell the two apart. A
+confirmatory claim whose run was recorded before the plan was frozen is flagged, not refused.
 
 **Demote the affected decisions, never the study.** Blanket demotion is a category error, and
 it is why exposures get hidden rather than logged: if disclosure costs everything, nobody
@@ -101,6 +106,7 @@ With `--files`, every sealed input and recorded output is re-hashed against its 
 |---|---|
 | `ok` | file matches its recorded hash |
 | `RESEALED` | recorded under several hashes; the file matches the latest. Passes, and stays in the report: a new version is a new file |
+| `RERECORDED` | recorded again as an output under other bytes with no input of the earlier run sealed between the runs. Reported, failing nothing: seal the inputs before recording a re-run |
 | `APPENDED` | a plan frozen in place whose log `prereg log` extended since the seal, and which `prereg check` finds unchanged. Passes |
 | `IGNORED` | one of the ledger's own files, sealed by an earlier version. Passes; `seal` now refuses these |
 | `REVERTED` | recorded under several hashes; the file matches an earlier one, not the latest. Fails |

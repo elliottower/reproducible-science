@@ -823,7 +823,7 @@ results: the ledger's chain, and each recorded file against the hash recorded fo
 What this checks: the ledger's chain is intact and each recorded file is the bytes that were recorded. It does not show that the results are right.
 ```
 
-A recorded file the repository does not commit is `missing` in a clone, and the run fails on it. A file `reverted` to an earlier of its recorded hashes fails too. The states `results verify --files` passes besides `ok` are counted on rows of their own and not listed: `resealed`, a path recorded under more than one hash that holds the latest; `appended`, a plan frozen in place whose log only grew; `ignored`, one of the ledger's own files, which is not compared; and `retired`, a path `results retire` recorded as no longer part of the project. A retired path that `reappeared` with bytes no record names fails.
+A recorded file the repository does not commit is `missing` in a clone, and the run fails on it. A file `reverted` to an earlier of its recorded hashes fails too. The states `results verify --files` passes besides `ok` are counted on rows of their own and not listed: `resealed`, a path recorded under more than one hash that holds the latest; `appended`, a plan frozen in place whose log only grew; `ignored`, one of the ledger's own files, which is not compared; `retired`, a path `results retire` recorded as no longer part of the project; and `rerecorded`, an output recorded again with no input sealed between, which `--policy strict` fails. A retired path that `reappeared` with bytes no record names fails.
 
 ### claims in CI
 
