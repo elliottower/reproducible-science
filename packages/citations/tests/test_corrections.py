@@ -51,12 +51,18 @@ def paper(tmp_path) -> pathlib.Path:
 
 
 def pin_corrected(
-    f: pathlib.Path, quote: str = QUOTE, passage: str = PRINTED, reads: str = READS, page: int = 4
+    f: pathlib.Path,
+    quote: str = QUOTE,
+    passage: str = PRINTED,
+    reads: str = READS,
+    page: int = 4,
+    check: bool = False,
 ) -> int:
     return pin.main(
         [
             *(str(f), "--id", "eff", "--quote", quote, "--page", str(page)),
             *("--correct", passage, "--reads", reads, "--cause", "ffi ligature dropped"),
+            *(["--check"] if check else []),
         ]
     )
 
@@ -106,6 +112,7 @@ def test_a_corrected_quotation_reports_corrected_never_found_and_is_named(paper,
             "reads": READS,
             "passage": PRINTED,
             "diff": '"eciency" → "efficiency"',
+            "flags": [],
         }
     ]
     assert "all found." not in out
@@ -435,7 +442,56 @@ def test_a_correction_that_adds_a_negation_is_shown_and_flagged_by_default(tmp_p
     assert account["corrected"][0]["reads"] == reads
     assert account["corrected"][0]["passage"] == passage
     assert f"smith:eff{' ' * 31}{shown}   (correction adds a negation)\n" in out
+    assert account["corrected"][0]["flags"] == ["correction adds a negation"]
     assert [w["claim"] for w in account["warnings"]["correction adds a negation"]] == ["smith:eff"]
+
+
+def test_pin_correct_prints_what_the_correction_changes_under_check_and_when_it_writes(
+    tmp_path, capsys
+):
+    f = claims_file(tmp_path, INCREASES)
+    quote = "reproducibility does not increase impact"
+    passage = "reproducibility does not increase impact, visibility, and"
+    reads = "reproducibility increases impact, visibility, and"
+    shown = '  changes   "increases" → "does not increase"   (correction adds a negation)\n'
+    before = f.read_text()
+    assert pin_corrected(f, quote=quote, passage=passage, reads=reads, check=True) == 0
+    assert shown in capsys.readouterr().out
+    assert f.read_text() == before
+    assert pin_corrected(f, quote=quote, passage=passage, reads=reads) == 0
+    out = capsys.readouterr().out
+    assert "added     eff to smith.yaml" in out
+    assert shown in out
+
+
+@pytest.mark.parametrize(
+    ("reads", "printed", "flags"),
+    [
+        ("the mean change was 0.42 at all", "the mean change was -0.42 at all", ["number"]),
+        ("the mean change was 0.42 at all", "the mean change was \u22120.42 at all", ["number"]),
+        ("the mean change was \u22120.42 at all", "the mean change was 0.42 at all", ["number"]),
+        ("the mean change was \u22120.42 at all", "the mean change was -0.42 at all", []),
+        ("significant with p < 0.05 at all", "significant with p > 0.05 at all", ["comparison"]),
+        ("significant with p <= 0.05 at all", "significant with p < 0.05 at all", ["comparison"]),
+        ("significant with p = 0.05 at all", "significant with p ≥ 0.05 at all", ["comparison"]),
+        ("significant with p <= 0.05 at all", "significant with p ≤ 0.05 at all", []),
+        ("measured at all twelve sites", "measured at all twenty sites", ["number"]),
+        ("measured at all of the sites", "measured at half of the sites", ["number"]),
+        (
+            "the rate was as high when treated",
+            "the rate was twice as high when treated",
+            ["number"],
+        ),
+        ("the eciency was seventy per cent", "the efficiency was seventy per cent", []),
+        ("reproducibility increases impact", "reproducibility decreases impact", []),
+        ("it is the case that X does not hold", "it is not the case that X holds", []),
+    ],
+)
+def test_a_correction_is_flagged_for_a_sign_a_comparison_or_a_number_word_and_not_for_meaning(
+    reads, printed, flags
+):
+    _, raised = V.correction_difference(printed, printed, reads)
+    assert raised == [f"correction changes a {flag}" for flag in flags]
 
 
 def test_a_correction_that_changes_a_digit_is_flagged_and_one_that_fixes_a_ligature_is_not(
@@ -473,6 +529,21 @@ def test_a_quotation_carrying_correction_twice_is_refused_naming_the_key(paper, 
     paper.write_text("".join(lines[: at + len(block)] + block + lines[at + len(block) :]))
     verify(paper)
     assert "carries `correction` twice" in capsys.readouterr().out
+
+
+def test_a_correction_carrying_a_key_twice_is_refused_naming_the_key(paper, capsys):
+    assert pin_corrected(paper) == 0
+    lines = paper.read_text().splitlines(keepends=True)
+    at = next(i for i, line in enumerate(lines) if line.strip() == "correction:")
+    indent = lines[at + 1][: len(lines[at + 1]) - len(lines[at + 1].lstrip())]
+    # Read last-wins, the correction applies through the second `passage` and the first, the
+    # one a reader of the file sees, is never compared with anything.
+    lines.insert(at + 1, f"{indent}passage: Table 2 reports that the coefficient was 0.18.\n")
+    paper.write_text("".join(lines))
+    _, account = verify(paper)
+    assert account["counts"]["corrected"] == 0
+    assert account["skipped_files"] == 1
+    assert "a correction carries `passage` twice" in capsys.readouterr().out
 
 
 def test_a_misspelt_corrections_key_is_reported_and_not_ignored(paper, capsys):

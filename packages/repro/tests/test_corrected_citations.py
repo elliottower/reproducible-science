@@ -22,29 +22,33 @@ PRINTED = "Table 2 reports that the coefficient of efficiency was 0.81 across al
 READS = "the coefficient of eciency was 0.81 across all twelve sites"
 
 
-@pytest.fixture
-def project(tmp_path, monkeypatch):
+def corrected_project(root, monkeypatch, text=TEXT, quote=QUOTE, printed=PRINTED, reads=READS):
     """A git repository holding one claims file whose one quotation is pinned with a correction."""
     monkeypatch.setenv("PROVENANCE_CALENDARS", "")
     monkeypatch.setenv("CITATIONS_NO_CACHE", "1")
     monkeypatch.setenv("REPRO_NO_HINT", "1")
-    subprocess.run(["git", "init", "--quiet"], cwd=tmp_path, check=True)
-    monkeypatch.chdir(tmp_path)
-    (tmp_path / "sources").mkdir()
-    (tmp_path / "sources" / "smith.txt").write_text(TEXT)
-    (tmp_path / "claims").mkdir()
-    f = tmp_path / "claims" / "smith.yaml"
+    subprocess.run(["git", "init", "--quiet"], cwd=root, check=True)
+    monkeypatch.chdir(root)
+    (root / "sources").mkdir()
+    (root / "sources" / "smith.txt").write_text(text)
+    (root / "claims").mkdir()
+    f = root / "claims" / "smith.yaml"
     f.write_text("source:\n  citation: smith\n  local: sources/smith.txt\nclaims: {}\n")
     assert (
         pin.main(
             [
-                *(str(f), "--id", "eff", "--quote", QUOTE, "--page", "4"),
-                *("--correct", PRINTED, "--reads", READS),
+                *(str(f), "--id", "eff", "--quote", quote, "--page", "4"),
+                *("--correct", printed, "--reads", reads),
             ]
         )
         == 0
     )
-    return tmp_path
+    return root
+
+
+@pytest.fixture
+def project(tmp_path, monkeypatch):
+    return corrected_project(tmp_path, monkeypatch)
 
 
 def verified(capsys, *argv):
@@ -86,6 +90,31 @@ def test_a_policy_making_corrected_an_error_fails_the_line_the_json_and_the_exit
     out = capsys.readouterr().out
     assert "  citations    FAILED under policy publication  (" in out
     assert "  citations    passed" not in out
+
+
+def test_a_correction_that_adds_a_not_is_named_with_its_warning_under_every_policy(
+    tmp_path, monkeypatch, capsys
+):
+    corrected_project(
+        tmp_path,
+        monkeypatch,
+        text="Studies find that reproducibility increases impact, visibility, and trust.\n",
+        quote="reproducibility does not increase impact",
+        printed="reproducibility does not increase impact, visibility, and",
+        reads="reproducibility increases impact, visibility, and",
+    )
+    code, found = verified(capsys)
+    assert code == 0
+    assert found["citations"]["account"]["corrected"][0]["flags"] == ["correction adds a negation"]
+    for policy in ("publication", "exploratory"):
+        capsys.readouterr()
+        assert main(["verify", "--policy", policy]) == 0
+        out = capsys.readouterr().out
+        assert (
+            "      1 corrected by hand; `citations verify --claims claims` shows what each "
+            "correction changes\n"
+            f"        smith:eff{' ' * 31}correction adds a negation\n"
+        ) in out
 
 
 def test_ci_counts_a_corrected_quotation_as_checked_and_names_it_apart_from_found():

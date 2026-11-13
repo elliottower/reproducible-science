@@ -563,13 +563,27 @@ citations pin claims/smith2020.yaml --id efficiency --page 4 \
 ```
 
 `verify` compares the quotation with `passage` and reports it `corrected`, counted apart from
-`found` in the text report, `--json` and `repro verify`. The text report lists each corrected
-quotation with what its correction changes, `"eciency" → "efficiency"`, and `--verbose` adds
-the quotation; the `corrected` list in `--json` carries `reads`, `passage` and that `diff`. A
-correction that inserts, removes or changes a number, or adds or removes one of `not`, `no`,
-`never`, `without`, `cannot`, a word ending `n't`, `may` or `might`, carries a warning saying so
-(`correction changes a number`, `correction adds a negation`, `correction removes a hedge`, and
-so on). The warning fails nothing: it says where to compare the passage with the page.
+`found` in the text report, `--json` and `repro verify`. Every applied correction is shown with
+what it changes from `reads` to `passage`, `"eciency" → "efficiency"`, and its flags: in the
+text report of `verify`, always, with the quotation added under `--verbose`; by `pin --correct`
+when it writes, and under `--check`; and in the `corrected` list in `--json`, which carries
+`reads`, `passage`, that `diff` and `flags`. `repro verify` names each corrected quotation,
+under every policy, with its flags and the `citations verify` command that shows the difference.
+
+A flag is a warning that fails nothing and says to compare the passage with the page. It is
+raised by comparing the words the correction changes in `reads` with the words it puts in their
+place in `passage`:
+
+| Flag | Raised where the two differ in |
+|------|------------------------------------------|
+| `correction changes a number` | their digits, a number with its decimal point, white space removed; a minus sign, `-` or `−`, before a digit; or a number word: `zero` to `twenty`, `thirty` to `ninety` by tens, `hundred`, `thousand`, `million`, `billion`, `half`, `twice`, `double` |
+| `correction changes a comparison` | `<`, `>`, `=`, `≤` or `≥`, with `<=` and `>=` read as `≤` and `≥` |
+| `correction adds a negation`, `correction removes a negation` | how many of `not`, `no`, `never`, `without`, `cannot` and words ending `n't` they hold |
+| `correction adds a hedge`, `correction removes a hedge` | how many of `may` and `might` they hold |
+
+The flags count words and do not read them. `twelve` corrected to `12` is flagged, though it
+names the same number. `increases` corrected to `decreases`, or a `not` moved from one clause to
+another, raises no flag, and the difference shown beside the quotation is where either is seen.
 
 A correction applies only to a `not found`, and only where all of these hold:
 
@@ -602,8 +616,9 @@ with `passage`, aligned once around it, and the ratio is computed once on the sp
 alignment covers. The lengths are checked first, so an oversized record is refused before
 anything is searched.
 
-A quotation carrying `correction` twice is refused when its claims file is read, since YAML would
-keep only the last; a key spelled `corrections` is listed among the corrections not applied.
+A quotation carrying `correction` twice, or a correction carrying one of its keys twice, such
+as two `passage` lines, is refused when its claims file is read, since YAML would keep only the
+last; a key spelled `corrections` is listed among the corrections not applied.
 
 `pin --correct` refuses a quotation the extractor's text already holds and a correction
 `verify` would not apply here. `repro verify` grades `corrected` as a warning under

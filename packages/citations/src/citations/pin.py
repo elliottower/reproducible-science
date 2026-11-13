@@ -77,7 +77,8 @@ needed; where `--reads` is shorter than twelve characters or does not occur exac
 that page of the extractor's text; where the passage does not hold the quotation, or holds
 nothing like `--reads` where it holds it; and where the quotation reaches more than three
 characters past the stretch of the passage that corrects `--reads`. `verify` applies the
-correction under the same tests.
+correction under the same tests. When it writes, and under `--check`, it prints what the
+correction changes from `--reads` to the passage and the warnings `verify` will give it.
 
     citations pin claims/smith2020.yaml --id efficiency --page 4 \
         --quote "the coefficient of efficiency was 0.81" \
@@ -503,6 +504,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     record = page | reading_record(cf, r)
     said = "corrected" if corrected else "found    "
+    # What the correction changes, as `verify` reports it, said before anything is relied on.
+    changes = ""
+    if corrected:
+        diff, flags = V.correction_difference(a.quote, corrected["passage"], corrected["reads"])
+        if diff or flags:
+            changes = f"  changes   {diff}" + (f"   ({'; '.join(flags)})" if flags else "")
     singled = (
         f"  occurrence {a.occurrence}, singled out by the prefix and suffix written with it"
         if prefix or suffix
@@ -515,6 +522,8 @@ def main(argv: list[str] | None = None) -> int:
             print(singled)
         if r.warnings:
             print(f"  warnings: {', '.join(r.warnings)}")
+        if changes:
+            print(changes)
         return 0
 
     add_to(path, a.id, claim, record)
@@ -526,6 +535,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  warnings: {', '.join(r.warnings)}")
     if corrected:
         print(f"  in the passage given for page {a.page}; {r.extractor} reads it otherwise")
+    if changes:
+        print(changes)
     if a.says is not None:
         print(f"  reading recorded as {a.whose}'s, unchecked")
     if (artifact := _artifact(cf)) is not None and (kept := tracked.advice(artifact)):

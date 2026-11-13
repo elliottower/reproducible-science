@@ -62,6 +62,8 @@ WARNINGS = {
 CORRECTION_WARNINGS = {
     "correction changes a number": "the passage recorded by hand has other numbers than what "
     "the extractor reads — compare it with the page",
+    "correction changes a comparison": "the passage recorded by hand has another `<`, `>`, `=`, "
+    "`≤` or `≥` than what the extractor reads — compare it with the page",
     "correction adds a negation": "the passage recorded by hand denies what the extractor "
     "reads — compare it with the page",
     "correction removes a negation": "the extractor reads a denial the passage recorded by hand "
@@ -419,6 +421,7 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
                             "reads": c.reads,
                             "passage": c.passage,
                             "diff": c.diff,
+                            "flags": list(c.flags),
                         }
                         for c in rep.corrected
                     ],

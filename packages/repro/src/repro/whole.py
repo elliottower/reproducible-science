@@ -227,6 +227,24 @@ def _tool_lines(run: ci.ToolRun, graded: Assessment | None = None, policy: str =
     return lines + [f"      {line}" for line in run.output.rstrip().splitlines()]
 
 
+def _corrected_lines(run: ci.ToolRun) -> list[str]:
+    """Each quotation `citations verify` reports `corrected`, with the warnings its correction
+    raised, and the command that shows what each changes.
+
+    Under every policy, `exploratory` included: the policy grades a correction, and a
+    correction that adds a `not` or changes a number is named whatever its grade."""
+    listed = run.account.get("corrected", []) if run.check == "citations" else []
+    if not listed:
+        return []
+    lines = [
+        f"      {len(listed)} corrected by hand; `{' '.join(run.command)}` shows what each "
+        "correction changes"
+    ]
+    for c in listed:
+        lines.append(f"        {c['claim'][:38]:<40}{'; '.join(c.get('flags', []))}".rstrip())
+    return lines
+
+
 def _project_text(
     project: Project, policy: Policy, found: dict[str, bool | None], claims: str = ""
 ) -> None:
@@ -253,6 +271,8 @@ def _project_text(
         if graded is not None:
             for v in graded.violations:
                 print(f"      {v.severity.value} under policy {policy.name}: {v.detail}")
+        if corrected := _corrected_lines(run):
+            print("\n".join(corrected))
 
     cross = project.cross_tool
     if cross.unmatched:

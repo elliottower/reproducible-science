@@ -488,17 +488,22 @@ class Record(_Base):
 _FAST_LOADER: Any = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
 
 
+def _keys(node: yaml.MappingNode) -> list[str]:
+    return [k.value for k, _ in node.value if isinstance(k, yaml.ScalarNode)]
+
+
 class _Loader(_FAST_LOADER):
-    """The loader above, refusing a mapping that names `correction` twice.
+    """The loader above, refusing a mapping that names `correction` twice, and a correction
+    that names any of its keys twice.
 
     YAML keeps the last of two equal keys and says nothing, so of two corrections written on one
-    quotation the first would be dropped unread. Other repeated keys are left as YAML reads
-    them: claims files written before this check may carry them.
+    quotation the first would be dropped unread, and of two `passage` lines in one correction the
+    first. Other repeated keys are left as YAML reads them: claims files written before this
+    check may carry them.
     """
 
     def construct_mapping(self, node, deep=False):
-        keys = [k.value for k, _ in node.value if isinstance(k, yaml.ScalarNode)]
-        if keys.count("correction") > 1:
+        if _keys(node).count("correction") > 1:
             raise yaml.constructor.ConstructorError(
                 None,
                 None,
@@ -506,6 +511,18 @@ class _Loader(_FAST_LOADER):
                 "keep one",
                 node.start_mark,
             )
+        for k, v in node.value:
+            if not (k.value == "correction" and isinstance(v, yaml.MappingNode)):
+                continue
+            keys = _keys(v)
+            if twice := next((key for key in keys if keys.count(key) > 1), None):
+                raise yaml.constructor.ConstructorError(
+                    None,
+                    None,
+                    f"a correction carries `{twice}` twice, and YAML would keep only the last; "
+                    "keep one",
+                    v.start_mark,
+                )
         return super().construct_mapping(node, deep)
 
 

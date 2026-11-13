@@ -181,6 +181,21 @@ MAX_PASSAGE_CHARS = 2 * MAX_READS_CHARS
 NEGATIONS = frozenset({"not", "no", "never", "without", "cannot"})
 HEDGES = frozenset({"may", "might"})
 
+#: Words that name a number. A correction adding, removing or changing one changes a number as
+#: a digit does. A word, not its meaning: `twelve` for `12` is a change too.
+NUMBER_WORDS = frozenset(
+    {
+        *"zero one two three four five six seven eight nine ten eleven twelve".split(),
+        *"thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty".split(),
+        *"thirty forty fifty sixty seventy eighty ninety".split(),
+        *"hundred thousand million billion half twice double".split(),
+    }
+)
+
+#: The marks that compare two quantities. `<=` and `>=` are read as `≤` and `≥`, so a
+#: correction that only respells one changes nothing.
+COMPARISONS = frozenset("<>=≤≥")
+
 #: How alike `reads` and the stretch of `passage` it corrects must be, as difflib's ratio over
 #: the two with white space removed. A dropped ligature or an OCR `li` for `k` costs a few
 #: characters in forty, about 0.95; an unrelated sentence sharing a phrase with the page scores
@@ -1671,11 +1686,27 @@ def correction_fault(quote: str, passage: str, reads: str) -> str:
 _TOKEN = re.compile(r"\d+(?:[.,]\d+)*|\w+(?:'\w+)*|[^\w\s]")
 
 
-def _says(words: list[str]) -> tuple[list[str], int, int]:
-    """The numbers in `words`, white space removed, and how many words negate and hedge."""
+def _says(tokens: list[str], spans: list[tuple[int, int]]) -> tuple[list[str], str, int, int]:
+    """What the stretches `spans` of `tokens` say that a correction can change unread.
+
+    The numbers, white space removed: each run of digits with its decimal point, each word in
+    `NUMBER_WORDS`, and `-` for each minus sign before a digit, counted apart from the digits
+    because a flipped sign leaves them as they were. The comparisons in `COMPARISONS`, as one
+    string with `<=` and `>=` read as `≤` and `≥`. And how many words negate and hedge.
+    """
+    words = [w for i, j in spans for w in tokens[i:j]]
     numbers = re.findall(r"\d+(?:[.,]\d+)*", "".join(words))
+    numbers += [w for w in words if w in NUMBER_WORDS]
+    # `passage_fold` has made U+2212 `-`, and the token after it is the next in the text.
+    numbers += [
+        "-"
+        for i, j in spans
+        for k in range(i, j)
+        if tokens[k] == "-" and tokens[k + 1 : k + 2] and tokens[k + 1][0].isdigit()
+    ]
+    compared = "".join(w for w in words if w in COMPARISONS).replace("<=", "≤").replace(">=", "≥")
     negations = sum(w in NEGATIONS or w.endswith("n't") for w in words)
-    return numbers, negations, sum(w in HEDGES for w in words)
+    return numbers, compared, negations, sum(w in HEDGES for w in words)
 
 
 def correction_difference(quote: str, passage: str, reads: str) -> tuple[str, list[str]]:
@@ -1685,9 +1716,13 @@ def correction_difference(quote: str, passage: str, reads: str) -> tuple[str, li
     insertion or deletion shown with the word beside it. Words of the passage outside the part
     `reads` aligns with are left out where the quotation does not reach them: they are the
     sentence around the misreading, not a change to it. The warnings are `correction changes
-    a number` where the numbers on the two sides differ, white space removed, and `correction
-    adds a negation`, `removes a negation`, `adds a hedge` or `removes a hedge` for the words in
-    `NEGATIONS` and `HEDGES`. They disclose; nothing fails on them.
+    a number` where the changed words on the two sides differ in their digits, white space
+    removed, in a minus sign before a digit, or in a word of `NUMBER_WORDS`; `correction
+    changes a comparison` where they differ in a mark of `COMPARISONS`; and `correction adds a
+    negation`, `removes a negation`, `adds a hedge` or `removes a hedge` for the words in
+    `NEGATIONS` and `HEDGES`. Each is a count of words, not a reading of them: `increases`
+    turned into `decreases`, or a `not` moved within the passage, raises none, and the
+    difference shows it. They disclose; nothing fails on them.
     """
     fr, fp, fq = passage_fold(reads), passage_fold(passage), passage_fold(quote)
     # The part of the passage `reads` aligns with, and the quotation where it reaches further.
@@ -1706,13 +1741,13 @@ def correction_difference(quote: str, passage: str, reads: str) -> tuple[str, li
         return fold[tokens[i].start() : tokens[j - 1].end()] if i < j else ""
 
     shown: list[str] = []
-    old: list[str] = []
-    new: list[str] = []
+    old: list[tuple[int, int]] = []
+    new: list[tuple[int, int]] = []
     for tag, i1, i2, j1, j2 in ops:
         if tag == "equal" or (i1 == i2 and j1 == j2):
             continue
-        old += rw[i1:i2]
-        new += pw[j1:j2]
+        old.append((i1, i2))
+        new.append((j1, j2))
         a, b = (i1, i2), (j1, j2)
         if i1 == i2 or j1 == j2:
             # With the word beside it, so an inserted `not` reads as `will` → `will not`.
@@ -1721,10 +1756,13 @@ def correction_difference(quote: str, passage: str, reads: str) -> tuple[str, li
             elif i2 < len(rw):
                 a, b = (i1, i2 + 1), (j1, j2 + 1)
         shown.append(f'"{text(fr, rt, *a)}" → "{text(fp, pt, *b)}"')
-    (n_old, neg_old, hedge_old), (n_new, neg_new, hedge_new) = _says(old), _says(new)
+    (n_old, cmp_old, neg_old, hedge_old) = _says(rw, old)
+    (n_new, cmp_new, neg_new, hedge_new) = _says(pw, new)
     flags = []
     if n_old != n_new:
         flags.append("correction changes a number")
+    if cmp_old != cmp_new:
+        flags.append("correction changes a comparison")
     if neg_new != neg_old:
         flags.append(f"correction {'adds' if neg_new > neg_old else 'removes'} a negation")
     if hedge_new != hedge_old:
