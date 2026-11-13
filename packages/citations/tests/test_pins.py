@@ -115,9 +115,13 @@ def test_strict_and_ok_disagree_exactly_where_nothing_was_established():
     assert unpinned.ok
     assert not unpinned.strict_ok
 
+
+def test_a_claims_file_refused_when_read_fails_ok_and_strict_alike():
+    # Its quotations were never examined, so passing the run would report a check that did not
+    # happen, whatever the other files found.
     unparsed = V.Report(checked=1, counts={"found": 1})
     unparsed.skipped.append(("broken.yaml", "mapping values are not allowed here"))
-    assert unparsed.ok
+    assert not unparsed.ok
     assert not unparsed.strict_ok
 
 

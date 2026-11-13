@@ -117,6 +117,38 @@ def test_a_correction_that_adds_a_not_is_named_with_its_warning_under_every_poli
         ) in out
 
 
+def test_a_claims_file_citations_refuses_fails_the_check_under_every_policy_naming_it(
+    project, capsys
+):
+    f = project / "claims" / "smith.yaml"
+    lines = f.read_text().splitlines(keepends=True)
+    at = next(i for i, line in enumerate(lines) if line.strip() == "correction:")
+    indent = lines[at + 1][: len(lines[at + 1]) - len(lines[at + 1].lstrip())]
+    lines.insert(at + 1, f"{indent}passage: Table 2 reports that the coefficient was 0.18.\n")
+    f.write_text("".join(lines))
+    (project / "sources" / "jones.txt").write_text("Plain text quoted exactly as written here.\n")
+    (project / "claims" / "jones.yaml").write_text(
+        "source:\n  citation: jones\n  local: sources/jones.txt\n"
+        "claims:\n  a:\n    quotes:\n    - exact: Plain text quoted exactly as written here\n"
+    )
+    why = "smith.yaml: not valid YAML: a correction carries `passage` twice"
+    for policy in ("exploratory", "publication", "strict"):
+        code, found = verified(capsys, "--policy", policy)
+        assert code == 1
+        cited = found["citations"]
+        assert cited["passed"] is False and cited["outcome"] == "failed"
+        assert cited["account"]["counts"]["found"] == 1
+        assert cited["account"]["skipped_files"] == 1
+        assert found["project"]["checks"]["citations"] == "failed"
+
+        assert main(["verify", "--policy", policy]) == 1
+        out = capsys.readouterr().out
+        assert "  citations    FAILED (exit 1)  (citations verify --claims claims)" in out
+        assert f"refused  {why}" in out
+        assert "citations    passed" not in out
+        assert "0 of 1 checks passed; failed: citations" in out
+
+
 def test_ci_counts_a_corrected_quotation_as_checked_and_names_it_apart_from_found():
     run = ci.ToolRun(
         check="citations",

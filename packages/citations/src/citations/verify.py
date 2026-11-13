@@ -196,6 +196,12 @@ NUMBER_WORDS = frozenset(
 #: correction that only respells one changes nothing.
 COMPARISONS = frozenset("<>=≤≥")
 
+#: What may stand just before a dash that is a minus sign, besides white space and the start of
+#: the text: an opening bracket, an operator, or a mark separating two numbers. A dash after a
+#: letter or a digit is a hyphen or a range, as in `COVID-19`, `IL-6` and `10–20`, and is not
+#: read as one: a correction that only restores it changes no number.
+MINUS_AFTER = frozenset("([{<>=≤≥≈~+±×*/^,;:")
+
 #: How alike `reads` and the stretch of `passage` it corrects must be, as difflib's ratio over
 #: the two with white space removed. A dropped ligature or an OCR `li` for `k` costs a few
 #: characters in forty, about 0.95; an unrelated sentence sharing a phrase with the page scores
@@ -550,7 +556,8 @@ class Report:
     counts above say where their bytes came from: the same claims directory resolves on the
     machine holding the library and is `unchecked` on one that does not."""
     skipped: list[tuple[str, str]] = field(default_factory=list)
-    """Claims files that would not parse, so their quotations were never examined."""
+    """Claims files refused when read, each with why, so their quotations were never examined.
+    A failure of the run, with or without `--strict`: see `ok`."""
     tracked_sources: list[tuple[str, pathlib.Path]] = field(default_factory=list)
     """Sources read from a file git tracks, with the claims file that pins each. Reported and
     never a failure, with or without `--strict`: the quotations resolve all the same, and what
@@ -624,15 +631,20 @@ class Report:
         `ok` is the substantive verdict -- a quotation that is genuinely absent. It
         deliberately ignores an unchecked quote, because a missing extractor says nothing
         about the paper. For CI that is the wrong question: a deleted source, an unpinned
-        one, a claims file that would not parse, and a missing `pdftotext` all left a build
-        green while nothing had been verified at all.
+        one and a missing `pdftotext` all left a build green while nothing had been verified
+        at all.
         """
-        return self.ok and not self.unresolved and not self.unpinned and not self.skipped
+        return self.ok and not self.unresolved and not self.unpinned
 
     @property
     def ok(self) -> bool:
-        """Only `not found`, a broken pin and a changed reading are failures. Unchecked and
-        indeterminate are not.
+        """Only `not found`, a broken pin, a changed reading and a claims file refused when
+        read are failures. Unchecked and indeterminate are not.
+
+        A refused claims file fails the run whatever the other files found: its quotations
+        were never examined, so a run that passed with it skipped would report a check that
+        did not happen. It is reported naming the file and why, and the other files are still
+        checked, so one malformed file does not hide the state of the rest.
 
         A run that measured nothing is not a pass, decided here so no caller can report
         success on an empty run. Two runs measure nothing. One has no quotations. The other
@@ -650,7 +662,7 @@ class Report:
             return False
         if self.unresolved >= self.checked:
             return False
-        if self.broken_pins or self.changed_readings:
+        if self.broken_pins or self.changed_readings or self.skipped:
             return False
         return not any(r.state == "not found" for _, _, r in self.problems)
 
@@ -1686,27 +1698,72 @@ def correction_fault(quote: str, passage: str, reads: str) -> str:
 _TOKEN = re.compile(r"\d+(?:[.,]\d+)*|\w+(?:'\w+)*|[^\w\s]")
 
 
-def _says(tokens: list[str], spans: list[tuple[int, int]]) -> tuple[list[str], str, int, int]:
-    """What the stretches `spans` of `tokens` say that a correction can change unread.
+def _says(
+    fold: str, tokens: list[re.Match[str]], spans: list[tuple[int, int]]
+) -> tuple[list[str], str, int, int]:
+    """What the stretches `spans` of `tokens`, read in `fold`, say that a correction can change
+    unread.
 
-    The numbers, white space removed: each run of digits with its decimal point, each word in
-    `NUMBER_WORDS`, and `-` for each minus sign before a digit, counted apart from the digits
-    because a flipped sign leaves them as they were. The comparisons in `COMPARISONS`, as one
-    string with `<=` and `>=` read as `≤` and `≥`. And how many words negate and hedge.
+    The numbers, white space removed: each run of digits with its decimal point, and `-` for
+    each minus sign before a digit, counted apart from the digits because a flipped sign leaves
+    them as they were. A dash is a minus sign at the start of `fold`, after white space, or
+    after a mark of `MINUS_AFTER`. The comparisons in `COMPARISONS`, as one string with `<=` and
+    `>=` read as `≤` and `≥`. And how many words negate and hedge. Number words are compared
+    apart, by `_number_words_differ`.
     """
-    words = [w for i, j in spans for w in tokens[i:j]]
+    words = [t.group() for i, j in spans for t in tokens[i:j]]
     numbers = re.findall(r"\d+(?:[.,]\d+)*", "".join(words))
-    numbers += [w for w in words if w in NUMBER_WORDS]
-    # `passage_fold` has made U+2212 `-`, and the token after it is the next in the text.
+    # `passage_fold` has made U+2212, an en or em dash and U+2010 `-`, and the token after it
+    # is the next in the text.
     numbers += [
         "-"
         for i, j in spans
         for k in range(i, j)
-        if tokens[k] == "-" and tokens[k + 1 : k + 2] and tokens[k + 1][0].isdigit()
+        if tokens[k].group() == "-"
+        and tokens[k + 1 : k + 2]
+        and tokens[k + 1].group()[0].isdigit()
+        and (
+            (at := tokens[k].start()) == 0 or fold[at - 1].isspace() or fold[at - 1] in MINUS_AFTER
+        )
     ]
     compared = "".join(w for w in words if w in COMPARISONS).replace("<=", "≤").replace(">=", "≥")
     negations = sum(w in NEGATIONS or w.endswith("n't") for w in words)
     return numbers, compared, negations, sum(w in HEDGES for w in words)
+
+
+def _number_words_differ(old: list[str], new: list[str]) -> bool:
+    """Whether one changed stretch, `old` in `reads` and `new` in the passage, changes a word of
+    `NUMBER_WORDS`, compared as digits are, with white space removed.
+
+    A number word on one side is unchanged where the other side, its words joined, holds the
+    same letters at the same place: within one run the two have in common, and not run into a
+    letter or digit the other side has there and this side does not. `oneof` corrected to `one
+    of` changes none; `twelve` to `two`, `none` to `one` and an added `twice` each change one.
+    """
+    a, b = "".join(old), "".join(new)
+    runs = [
+        (m.a, m.b, m.size)
+        for m in difflib.SequenceMatcher(None, a, b, autojunk=False).get_matching_blocks()
+    ]
+
+    def kept(words: list[str], here: str, there: str, runs: list[tuple[int, int, int]]) -> bool:
+        at = 0
+        for w in words:
+            s, e, at = at, at + len(w), at + len(w)
+            if w not in NUMBER_WORDS:
+                continue
+            run = next(((x, y, n) for x, y, n in runs if x <= s and e <= x + n), None)
+            if run is None:
+                return False
+            x, y, n = run
+            t = y + s - x
+            if s == x and t > 0 and there[t - 1].isalnum():
+                return False
+            if e == x + n and t + len(w) < len(there) and there[t + len(w)].isalnum():
+                return False
+        return True
+
+    return not (kept(old, a, b, runs) and kept(new, b, a, [(y, x, n) for x, y, n in runs]))
 
 
 def correction_difference(quote: str, passage: str, reads: str) -> tuple[str, list[str]]:
@@ -1717,8 +1774,9 @@ def correction_difference(quote: str, passage: str, reads: str) -> tuple[str, li
     `reads` aligns with are left out where the quotation does not reach them: they are the
     sentence around the misreading, not a change to it. The warnings are `correction changes
     a number` where the changed words on the two sides differ in their digits, white space
-    removed, in a minus sign before a digit, or in a word of `NUMBER_WORDS`; `correction
-    changes a comparison` where they differ in a mark of `COMPARISONS`; and `correction adds a
+    removed, in a minus sign before a digit (see `_says`), or in a word of `NUMBER_WORDS`,
+    white space removed as well (see `_number_words_differ`); `correction changes a
+    comparison` where they differ in a mark of `COMPARISONS`; and `correction adds a
     negation`, `removes a negation`, `adds a hedge` or `removes a hedge` for the words in
     `NEGATIONS` and `HEDGES`. Each is a count of words, not a reading of them: `increases`
     turned into `decreases`, or a `not` moved within the passage, raises none, and the
@@ -1756,10 +1814,13 @@ def correction_difference(quote: str, passage: str, reads: str) -> tuple[str, li
             elif i2 < len(rw):
                 a, b = (i1, i2 + 1), (j1, j2 + 1)
         shown.append(f'"{text(fr, rt, *a)}" → "{text(fp, pt, *b)}"')
-    (n_old, cmp_old, neg_old, hedge_old) = _says(rw, old)
-    (n_new, cmp_new, neg_new, hedge_new) = _says(pw, new)
+    (n_old, cmp_old, neg_old, hedge_old) = _says(fr, rt, old)
+    (n_new, cmp_new, neg_new, hedge_new) = _says(fp, pt, new)
     flags = []
-    if n_old != n_new:
+    if n_old != n_new or any(
+        _number_words_differ(rw[i1:i2], pw[j1:j2])
+        for (i1, i2), (j1, j2) in zip(old, new, strict=True)
+    ):
         flags.append("correction changes a number")
     if cmp_old != cmp_new:
         flags.append("correction changes a comparison")

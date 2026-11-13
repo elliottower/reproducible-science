@@ -321,6 +321,15 @@ verbatim in a paper whose sentence continues `"...and 5 refits each for 12 layer
 `not found` fails; `--strict` also fails on the other three, for CI. A source whose bytes no
 longer match its pin fails the run whatever its quotations did.
 
+A claims file that cannot be read, does not parse, or is refused by the schema is left out of
+every count above and fails the run, with or without `--strict`: its quotations were never
+checked. The other files are still checked, and the report lists each refused file with why:
+
+```text
+1 claims file refused when read, quotations unchecked
+  refused  smith.yaml: not valid YAML: a correction carries `note` twice, and YAML would keep only the last; keep one
+```
+
 `not found` means read the source. A mirror-reversed scan or a two-column extraction produces
 the same signal as a passage that was never there. A `not found` whose every word is in the
 source, as pieces with text left out between them, is counted separately on the same line; see
@@ -576,14 +585,23 @@ place in `passage`:
 
 | Flag | Raised where the two differ in |
 |------|------------------------------------------|
-| `correction changes a number` | their digits, a number with its decimal point, white space removed; a minus sign, `-` or `−`, before a digit; or a number word: `zero` to `twenty`, `thirty` to `ninety` by tens, `hundred`, `thousand`, `million`, `billion`, `half`, `twice`, `double` |
+| `correction changes a number` | their digits, a number with its decimal point, white space removed; a minus sign before a digit, where a minus would be (below); or a number word: `zero` to `twenty`, `thirty` to `ninety` by tens, `hundred`, `thousand`, `million`, `billion`, `half`, `twice`, `double`, also compared with white space removed, so `oneof` corrected to `one of` changes none and `none` corrected to `one` changes one |
 | `correction changes a comparison` | `<`, `>`, `=`, `≤` or `≥`, with `<=` and `>=` read as `≤` and `≥` |
 | `correction adds a negation`, `correction removes a negation` | how many of `not`, `no`, `never`, `without`, `cannot` and words ending `n't` they hold |
 | `correction adds a hedge`, `correction removes a hedge` | how many of `may` and `might` they hold |
 
+A minus sign is `-` or `−`, and an en dash, an em dash or U+2010 before a digit is read as
+one too, since `verify` folds all five to `-`. Each counts only where a minus would be: at the
+start, after white space, or after an opening bracket, an operator or a mark between two numbers
+(`( [ { < > = ≤ ≥ ≈ ~ + ± × * / ^ , ; :`). A dash after a letter or a digit is a hyphen or a
+range, so `COVID19` corrected to `COVID-19`, `IL6` to `IL-6` and `10 20` to `10–20` change no
+number.
+
 The flags count words and do not read them. `twelve` corrected to `12` is flagged, though it
 names the same number. `increases` corrected to `decreases`, or a `not` moved from one clause to
 another, raises no flag, and the difference shown beside the quotation is where either is seen.
+So is a dash between two digits that is a minus, as in an exponent written `10−5`: it is read
+as a range, so its sign alone raises no flag.
 
 A correction applies only to a `not found`, and only where all of these hold:
 
@@ -618,7 +636,8 @@ anything is searched.
 
 A quotation carrying `correction` twice, or a correction carrying one of its keys twice, such
 as two `passage` lines, is refused when its claims file is read, since YAML would keep only the
-last; a key spelled `corrections` is listed among the corrections not applied.
+last, and the run fails on it; a key spelled `corrections` is listed among the corrections not
+applied.
 
 `pin --correct` refuses a quotation the extractor's text already holds and a correction
 `verify` would not apply here. `repro verify` grades `corrected` as a warning under

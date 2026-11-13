@@ -83,8 +83,9 @@ def _records() -> list:
 def _claim_files(root: pathlib.Path, skipped=None) -> list[ClaimFile]:
     """Every claims file under `root`, validated.
 
-    A file that cannot be parsed is reported and skipped rather than ending the run: one
-    malformed file should not hide the state of the other three hundred.
+    A file that is refused when read is reported and skipped rather than ending the run: one
+    malformed file should not hide the state of the other three hundred. `verify` fails the
+    run on it all the same; see `verify.Report.ok`.
     """
     out: list[ClaimFile] = []
     skipped = [] if skipped is None else skipped
@@ -383,6 +384,17 @@ def cmd_verify(a) -> int:
     return _report(rep, counts, a, source)
 
 
+def _refused(rep: V.Report) -> list[str]:
+    """The claims files refused when read, each with why. Their quotations were never examined,
+    so none of them is in any count, and the run fails on them with or without `--strict`."""
+    n = len(rep.skipped)
+    lines = [f"{n} claims file{'' if n == 1 else 's'} refused when read, quotations unchecked"]
+    lines += [f"  refused  {name}: {why}" for name, why in rep.skipped[:10]]
+    if n > 10:
+        lines.append(f"  ... and {n - 10} more")
+    return lines
+
+
 def _warned(rep: V.Report) -> dict[str, list[dict[str, str]]]:
     """Each warning, with the quotations carrying it: the claims file and claim, and the text."""
     out: dict[str, list[dict[str, str]]] = {}
@@ -431,6 +443,10 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
             )
             + "\n",
         )
+    if rep.checked == 0 and rep.skipped:
+        # Not "nothing to check": there were claims files, and none of them could be read.
+        print("\n".join(_refused(rep)))
+        return 1
     if rep.checked == 0:
         print("nothing to check.\n")
         print("quotes live in a paper's claims/ directory. point at one:")
@@ -649,6 +665,11 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
         if n > 10:
             print(f"  ... and {n - 10} more")
 
+    # Before the quotations' failures: every count above leaves these files out.
+    if rep.skipped:
+        print()
+        print("\n".join(_refused(rep)))
+
     bad = [(s, q, r) for s, q, r in rep.problems if r.state == "not found"]
     if bad and not a.quiet:
         print()
@@ -672,6 +693,13 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
         print(
             "every quote resolved, but in text that is not the text recorded when they were "
             "pinned: the extractor's output changed. Read the difference, then pin again."
+        )
+    elif rep.skipped:
+        n = len(rep.skipped)
+        print(
+            f"{n} claims file{'' if n == 1 else 's'} refused when read, so the quotations in "
+            f"{'it' if n == 1 else 'them'} went unchecked. The run fails until "
+            f"{'it is' if n == 1 else 'they are'} fixed, with or without `--strict`."
         )
     elif rep.checked and rep.unresolved >= rep.checked:
         # Distinct from the partial case below, and the reason this branch exists: "nothing
@@ -707,7 +735,7 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
     # failure, and a reader who has some has no other way to learn the flag exists.
     if rep.ok and rep.unresolved and not a.strict:
         print(f"  {rep.unresolved} unresolved here is not a failure; `--strict` refuses them.")
-    if a.strict and not rep.strict_ok:
+    if a.strict and (rep.unresolved or rep.unpinned):
         if rep.unresolved:
             print(f"\n{rep.unresolved} quotation(s) could not be checked at all.")
             # Which ones, and why. The count on its own says a build should fail and not
@@ -726,8 +754,6 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
                 print(f"                ... and {len(unresolved) - 20} more")
         if rep.unpinned:
             print(f"{len(rep.unpinned)} source(s) carry no digest: {', '.join(rep.unpinned[:3])}")
-        if rep.skipped:
-            print(f"{len(rep.skipped)} claims file(s) did not parse and were never examined.")
         print("--strict fails on these: nothing was established about them either way.")
     return 0 if (rep.strict_ok if a.strict else rep.ok) else 1
 

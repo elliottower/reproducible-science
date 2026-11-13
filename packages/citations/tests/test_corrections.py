@@ -485,6 +485,27 @@ def test_pin_correct_prints_what_the_correction_changes_under_check_and_when_it_
         ("the eciency was seventy per cent", "the efficiency was seventy per cent", []),
         ("reproducibility increases impact", "reproducibility decreases impact", []),
         ("it is the case that X does not hold", "it is not the case that X holds", []),
+        ("the mean change was 0.42 at all", "the mean change was 0.24 at all", ["number"]),
+        ("none of the sites responded at all", "one of the sites responded at all", ["number"]),
+        (
+            "the interval was (0.31, 0.12) at all",
+            "the interval was (-0.31, 0.12) at all",
+            ["number"],
+        ),
+        (
+            "the interval was (-0.31,0.12) at all",
+            "the interval was (-0.31,\u22120.12) at all",
+            ["number"],
+        ),
+        ("only oneof the twelve sites responded", "only one of the twelve sites responded", []),
+        ("in twoarms of the trial we found it", "in two arms of the trial we found it", []),
+        (
+            "patients with COVID19 were enrolled here",
+            "patients with COVID-19 were enrolled here",
+            [],
+        ),
+        ("levels of IL6 rose in the treated group", "levels of IL-6 rose in the treated group", []),
+        ("doses of 10 20 mg were given to all", "doses of 10\u201320 mg were given to all", []),
     ],
 )
 def test_a_correction_is_flagged_for_a_sign_a_comparison_or_a_number_word_and_not_for_meaning(
@@ -540,10 +561,62 @@ def test_a_correction_carrying_a_key_twice_is_refused_naming_the_key(paper, caps
     # one a reader of the file sees, is never compared with anything.
     lines.insert(at + 1, f"{indent}passage: Table 2 reports that the coefficient was 0.18.\n")
     paper.write_text("".join(lines))
-    _, account = verify(paper)
+    code, account = verify(paper)
+    assert code == 1
     assert account["counts"]["corrected"] == 0
     assert account["skipped_files"] == 1
     assert "a correction carries `passage` twice" in capsys.readouterr().out
+
+
+def refused_beside_a_clean_file(paper: pathlib.Path) -> None:
+    """`paper` made a file the claims loader refuses, beside a second file that resolves."""
+    assert pin_corrected(paper) == 0
+    lines = paper.read_text().splitlines(keepends=True)
+    at = next(i for i, line in enumerate(lines) if line.strip() == "correction:")
+    indent = lines[at + 1][: len(lines[at + 1]) - len(lines[at + 1].lstrip())]
+    lines.insert(at + 1, f"{indent}note: first\n")
+    paper.write_text("".join(lines))
+    root = paper.parent.parent
+    (root / "jones.txt").write_text("Plain text that is quoted exactly as written here.\n")
+    digest = hashlib.sha256((root / "jones.txt").read_bytes()).hexdigest()
+    (paper.parent / "jones.yaml").write_text(
+        f"source:\n  citation: jones\n  local: jones.txt\n  sha256: {digest}\n"
+        "claims:\n  a:\n    quotes:\n    - exact: quoted exactly as written here\n"
+    )
+
+
+@pytest.mark.parametrize("strict", [False, True])
+def test_a_refused_claims_file_beside_a_clean_one_fails_the_run_naming_it_and_why(
+    paper, capsys, strict
+):
+    refused_beside_a_clean_file(paper)
+    capsys.readouterr()
+    code, account = verify(paper, *(["--strict"] if strict else []))
+    out = capsys.readouterr().out
+    assert code == 1
+    assert account["counts"]["found"] == 1
+    assert account["skipped_files"] == 1
+    why = "not valid YAML: a correction carries `note` twice"
+    assert (
+        f"1 claims file refused when read, quotations unchecked\n  refused  smith.yaml: {why}"
+        in out
+    )
+    assert "1 claims file refused when read, so the quotations in it went unchecked." in out
+    assert "all found." not in out
+
+
+def test_a_directory_whose_every_claims_file_is_refused_fails_and_names_them(paper, capsys):
+    refused_beside_a_clean_file(paper)
+    (paper.parent / "jones.yaml").write_text("source: [\n")
+    capsys.readouterr()
+    code, account = verify(paper)
+    out = capsys.readouterr().out
+    assert code == 1
+    assert account["quotes"] == 0
+    assert account["skipped_files"] == 2
+    assert "2 claims files refused when read, quotations unchecked\n  refused  jones.yaml: " in out
+    assert "  refused  smith.yaml: not valid YAML: a correction carries `note` twice" in out
+    assert "nothing to check." not in out
 
 
 def test_a_misspelt_corrections_key_is_reported_and_not_ignored(paper, capsys):
