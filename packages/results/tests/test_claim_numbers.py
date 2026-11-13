@@ -180,6 +180,17 @@ def test_a_claim_re_bound_after_a_re_run_supersedes_the_old_one(project, capsys,
     assert found["claims_unchecked"] == []
 
 
+def test_a_re_run_that_writes_the_same_bytes_supersedes_nothing(project, capsys):
+    assert cli.main(["claim", "The ICC was 0.4312", "--run-id", "r1"]) == 0
+    assert cli.main(["run", "out.json", "--run-id", "r2"]) == 0
+    assert cli.main(["claim", "The sample size was 57", "--run-id", "r2"]) == 0
+    capsys.readouterr()
+
+    assert cli.main(["verify", "--files", "--strict"]) == 1
+    out = capsys.readouterr().out
+    assert "superseded" not in out and "0.4312" in out
+
+
 def test_a_re_bound_claim_printing_a_number_the_re_run_never_wrote_still_fails_strict(
     project, capsys
 ):

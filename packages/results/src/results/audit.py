@@ -980,12 +980,16 @@ def claim_backing(
         if c.get("derived"):
             # Declared derived: the number is computed from the outputs and is not in them.
             continue
-        if by := _superseded_by(c, claims[n + 1 :], events, ran):
-            superseded.append((c, by))
-            continue
         if run_id not in cache:
             cache[run_id] = outputs.held_by(events, run_id, base)
         held = cache[run_id]
+        # A later run supersedes a claim only where it changed the bytes the claim was read
+        # against: a deterministic re-run leaves them as recorded, so the claim is still checked.
+        if (held.changed or held.absent) and (
+            by := _superseded_by(c, claims[n + 1 :], events, ran)
+        ):
+            superseded.append((c, by))
+            continue
         absent = outputs.missing(c.get("claim", ""), held) if held.read else []
         if held.changed or held.absent:
             if outputs.owed(c.get("claim", "")) and (absent or not held.read):
