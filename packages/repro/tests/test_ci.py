@@ -18,7 +18,7 @@ import pytest
 import repro
 import yaml
 from claims.cli import main as claims_main
-from repro import ci
+from repro import ci, whole
 from repro.cli import main
 from repro.models import (
     AggregateEvidence,
@@ -1043,6 +1043,32 @@ def test_a_citations_run_with_quotations_unchecked_is_given_as_a_count_and_never
     failed = citations_run("failed", 3, 1, 5, exit=1)
     assert "**FAILED** (exit 1)" in ci.tool_summary(failed)
     assert ci.unchecked(failed) == 0
+
+
+def test_manual_checks_reach_the_sarif_property_bag_and_never_the_text_or_the_verdict():
+    manual = {
+        "sha256": "9c" * 32, "passages": 5, "covered": [{"state": "found"}] * 2,
+        "stale": [{}], "unverifiable": [{}, {}, {}], "unknown": [{}, {}], "orphans": [],
+        "problems": ["l:1: unread"], "outcomes": {"found": 2},
+    }  # fmt: skip
+    run = citations_run("passed", 5, 0, 5)
+    listed = run.model_copy(update={"account": run.account | {"manual_checks": manual}})
+    assert whole._tool_lines(listed) == whole._tool_lines(run)
+    project = whole.Project(
+        root=".", staleness=whole.Staleness(used=False), tools={"citations": listed},
+        cross_tool=whole.CrossTool(),
+    )  # fmt: skip
+    found = {"citations": True}
+    sarif = whole._with_checks({"runs": [{"properties": {}}]}, project, found)
+    checks = sarif["runs"][0]["properties"]["checks"]
+    assert checks["citations_manual_checks"] == {
+        "covered": 2, "passages": 5, "sha256": "9c" * 32, "stale": 1, "unverifiable": 3,
+        "unknown": 2, "orphans": 0, "problems": 1, "outcomes": {"found": 2},
+    }  # fmt: skip
+    assert checks["exit_code"] == 0
+    bare = whole.Project(**(project.model_dump() | {"tools": {"citations": run}}))
+    plain = whole._with_checks({"runs": [{"properties": {}}]}, bare, found)
+    assert "citations_manual_checks" not in plain["runs"][0]["properties"]["checks"]
 
 
 def test_a_citations_run_that_read_no_source_could_not_check_and_does_not_pass(tools, capsys):
