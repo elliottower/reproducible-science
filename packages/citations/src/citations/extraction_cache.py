@@ -87,6 +87,11 @@ def _version(program: str) -> str | None:
     return lines[0].strip() if lines else None
 
 
+def program_version(program: str) -> str | None:
+    """What the program says it is, as the cache files an extraction under it."""
+    return _version(program)
+
+
 def address(source_sha256: str, argv: list[str], source: pathlib.Path) -> str | None:
     """Where this extraction is filed, or None where it is not kept at all."""
     if _State.directory is None or not source_sha256:

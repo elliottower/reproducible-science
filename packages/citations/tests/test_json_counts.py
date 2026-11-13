@@ -48,6 +48,7 @@ def test_verify_writes_each_outcome_and_the_outcomes_add_up_to_the_quotations(tm
     assert account["quotes"] == 5 == sum(account["counts"].values())
     assert account["counts"] == {
         "found": 1,
+        "corrected": 0,
         "not found": 1,
         "ambiguous": 0,
         "indeterminate": 0,

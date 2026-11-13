@@ -57,6 +57,49 @@ class _Base(BaseModel):
     model_config = ConfigDict(extra="allow", populate_by_name=True, str_strip_whitespace=True)
 
 
+class Correction(_Base):
+    """What the page prints where no extractor reads it correctly, recorded by a person.
+
+    A table, an equation, a ligature or a column order can defeat every reader installed, and
+    editing the extracted text would leave `derived_sha256` describing text nobody extracted.
+    This is kept beside the extractor's reading instead, which is never modified, and names
+    the reading it corrects so that it stops applying once that reading changes. `verify`
+    reports a quotation resolved against it as `corrected`, never as `found`: the passage was
+    compared with text a person typed, not text a program produced.
+    """
+
+    passage: str
+    """The passage as the page prints it."""
+
+    page: int
+    """The page it is printed on, where a reader can compare it."""
+
+    extractor: str
+    """The reader whose text this corrects, as `verify` names it on a result."""
+
+    extractor_version: str = ""
+    """That reader's version, as `verify.extractor_version` reports it. Empty where it has none
+    this package can ask for."""
+
+    sha256: str
+    """sha256 of the source's bytes the correction was recorded against."""
+
+    derived_sha256: str
+    """sha256 of the extractor's whole text when the correction was recorded."""
+
+    reads: Verbatim
+    """What the extractor produced at that place, or the nearest stretch of it."""
+
+    note: str | None = None
+    """What defeated the extractor: a ligature, the column order, a digit misread."""
+
+    @field_validator("extractor_version", mode="before")
+    @classmethod
+    def _version_to_str(cls, v: Any) -> str:
+        """YAML reads a built-in extractor's `2` as an int. It is the same version."""
+        return "" if v is None else str(v)
+
+
 class Quote(_Base):
     """One passage taken from a source, and where it was taken from."""
 
@@ -81,6 +124,9 @@ class Quote(_Base):
 
     page: int | None = None
     """The page it was taken from, when the source is paginated. Verified when present."""
+
+    correction: Correction | None = None
+    """The page's text where the extractor misreads it. See `Correction`."""
 
 
 class ClaimSource(_Base):
@@ -439,13 +485,51 @@ class Record(_Base):
 
 #: libyaml's loader where PyYAML was built with it, which every published wheel is. It reads the
 #: same documents as the Python loader, several times faster.
-_LOADER = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+_FAST_LOADER: Any = getattr(yaml, "CSafeLoader", yaml.SafeLoader)
+
+
+def _keys(node: yaml.MappingNode) -> list[str]:
+    return [k.value for k, _ in node.value if isinstance(k, yaml.ScalarNode)]
+
+
+class _Loader(_FAST_LOADER):
+    """The loader above, refusing a mapping that names `correction` twice, and a correction
+    that names any of its keys twice.
+
+    YAML keeps the last of two equal keys and says nothing, so of two corrections written on one
+    quotation the first would be dropped unread, and of two `passage` lines in one correction the
+    first. Other repeated keys are left as YAML reads them: claims files written before this
+    check may carry them.
+    """
+
+    def construct_mapping(self, node, deep=False):
+        if _keys(node).count("correction") > 1:
+            raise yaml.constructor.ConstructorError(
+                None,
+                None,
+                "a quotation carries `correction` twice, and YAML would keep only the last; "
+                "keep one",
+                node.start_mark,
+            )
+        for k, v in node.value:
+            if not (k.value == "correction" and isinstance(v, yaml.MappingNode)):
+                continue
+            keys = _keys(v)
+            if twice := next((key for key in keys if keys.count(key) > 1), None):
+                raise yaml.constructor.ConstructorError(
+                    None,
+                    None,
+                    f"a correction carries `{twice}` twice, and YAML would keep only the last; "
+                    "keep one",
+                    v.start_mark,
+                )
+        return super().construct_mapping(node, deep)
 
 
 def _load_yaml(path: pathlib.Path) -> dict[str, Any]:
     """Parse one YAML file into a mapping, naming the file when it is not one."""
     try:
-        raw = yaml.load(path.read_text(), Loader=_LOADER) or {}
+        raw = yaml.load(path.read_text(), Loader=_Loader) or {}
     except yaml.YAMLError as e:
         raise ClaimFileError(path, f"not valid YAML: {e}") from e
     except OSError as e:
@@ -490,6 +574,7 @@ __all__ = [
     "Claim",
     "ClaimFile",
     "ClaimSource",
+    "Correction",
     "Quote",
     "Record",
     "load_claim_file",

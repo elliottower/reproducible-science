@@ -92,11 +92,29 @@ class Project(BaseModel):
     staleness: Staleness
     tools: dict[str, ci.ToolRun]
     cross_tool: CrossTool
+    citations: Assessment | None = None
+    """The policy's grading of what `citations verify` counted beyond its exit code: the
+    quotations it reports `corrected`. None where the citations check did not run."""
 
 
-def tool_passed(run: ci.ToolRun) -> bool | None:
-    """None for a tool the project does not use, which was not run."""
-    return run.outcome == audit.PASSED if run.command else None
+def outcome(run: ci.ToolRun, graded: Assessment | None = None) -> str:
+    """The tool's own outcome, or `failed` where it passed and `graded`, the policy's
+    assessment of what it counted, does not."""
+    if run.outcome == audit.PASSED and graded is not None and not graded.passed:
+        return audit.FAILED
+    return run.outcome
+
+
+def tool_passed(run: ci.ToolRun, graded: Assessment | None = None) -> bool | None:
+    """None for a tool the project does not use, which was not run. `graded` is the policy's
+    assessment of what the tool counted, which can fail a run the tool passed."""
+    if not run.command:
+        return None
+    return outcome(run, graded) == audit.PASSED
+
+
+def _graded(project: Project, name: str) -> Assessment | None:
+    return project.citations if name == "citations" else None
 
 
 def check(root: Path, manifest: Manifest | None, policy: Policy) -> Project:
@@ -108,10 +126,17 @@ def check(root: Path, manifest: Manifest | None, policy: Policy) -> Project:
     else:
         report = run_stale(manifest)
         staleness = Staleness(used=True, report=report, assessment=policy.assess_staleness(report))
+    tools = {name: ci.tool(name, root) for name in TOOLS}
+    cited = tools.get("citations")
     return Project(
         root=root.as_posix(),
         staleness=staleness,
-        tools={name: ci.tool(name, root) for name in TOOLS},
+        tools=tools,
+        citations=(
+            policy.assess_citations(cited.account.get("counts", {}))
+            if cited is not None and cited.command
+            else None
+        ),
         cross_tool=CrossTool(
             unmatched=tuple({"claim": c.claim, "ref": c.ref} for c in crosscheck.unmatched(root)),
             confirmatory_without_a_plan=tuple(crosscheck.confirmatory_without_a_plan(root)),
@@ -124,7 +149,7 @@ def verdicts(claims: bool | None, project: Project) -> dict[str, bool | None]:
     return {
         "claims": claims,
         "staleness": project.staleness.passed,
-        **{name: tool_passed(run) for name, run in project.tools.items()},
+        **{name: tool_passed(run, _graded(project, name)) for name, run in project.tools.items()},
         "cross_tool": project.cross_tool.passed,
     }
 
@@ -144,7 +169,11 @@ def words(project: Project, found: dict[str, bool | None]) -> dict[str, str]:
         name: "not used" if passed is None else "passed" if passed else "failed"
         for name, passed in found.items()
     }
-    return said | {name: run.outcome for name, run in project.tools.items() if run.command}
+    return said | {
+        name: outcome(run, _graded(project, name))
+        for name, run in project.tools.items()
+        if run.command
+    }
 
 
 def sections(project: Project, found: dict[str, bool | None]) -> dict:
@@ -163,8 +192,14 @@ def sections(project: Project, found: dict[str, bool | None]) -> dict:
         **{
             name: {
                 "used": bool(run.command),
-                "passed": tool_passed(run),
+                "passed": tool_passed(run, _graded(project, name)),
                 **run.model_dump(mode="json", exclude={"fetched"}),
+                "outcome": outcome(run, _graded(project, name)),
+                **(
+                    {"assessment": graded.model_dump(mode="json")}
+                    if (graded := _graded(project, name))
+                    else {}
+                ),
             }
             for name, run in project.tools.items()
         },
@@ -177,16 +212,37 @@ def sections(project: Project, found: dict[str, bool | None]) -> dict:
     }
 
 
-def _tool_lines(run: ci.ToolRun) -> list[str]:
+def _tool_lines(run: ci.ToolRun, graded: Assessment | None = None, policy: str = "") -> list[str]:
+    """The lines said of one tool. `graded` is the policy's assessment of what it counted,
+    which says `FAILED under policy` of a run the tool itself passed."""
     if not run.command:
         return [f"  {run.check:<12} not used here: {run.output}"]
     said = " ".join(run.command)
     if run.outcome == audit.PASSED:
         missed = ci.unchecked(run)
         note = f", {ci.verified(run)}: {missed} not checked" if missed else ""
-        return [f"  {run.check:<12} passed{note}  ({said})"]
+        word = "passed" if tool_passed(run, graded) else f"FAILED under policy {policy}"
+        return [f"  {run.check:<12} {word}{note}  ({said})"]
     lines = [f"  {run.check:<12} {run.outcome.upper()} (exit {run.exit})  ({said})"]
     return lines + [f"      {line}" for line in run.output.rstrip().splitlines()]
+
+
+def _corrected_lines(run: ci.ToolRun) -> list[str]:
+    """Each quotation `citations verify` reports `corrected`, with the warnings its correction
+    raised, and the command that shows what each changes.
+
+    Under every policy, `exploratory` included: the policy grades a correction, and a
+    correction that adds a `not` or changes a number is named whatever its grade."""
+    listed = run.account.get("corrected", []) if run.check == "citations" else []
+    if not listed:
+        return []
+    lines = [
+        f"      {len(listed)} corrected by hand; `{' '.join(run.command)}` shows what each "
+        "correction changes"
+    ]
+    for c in listed:
+        lines.append(f"        {c['claim'][:38]:<40}{'; '.join(c.get('flags', []))}".rstrip())
+    return lines
 
 
 def _project_text(
@@ -210,7 +266,13 @@ def _project_text(
         for line in [*_stale_lines(staleness.report), *_stale_summary(staleness.report)]:
             print(f"    {line}" if line else "")
     for run in project.tools.values():
-        print("\n".join(_tool_lines(run)))
+        graded = _graded(project, run.check)
+        print("\n".join(_tool_lines(run, graded, policy.name)))
+        if graded is not None:
+            for v in graded.violations:
+                print(f"      {v.severity.value} under policy {policy.name}: {v.detail}")
+        if corrected := _corrected_lines(run):
+            print("\n".join(corrected))
 
     cross = project.cross_tool
     if cross.unmatched:

@@ -36,12 +36,12 @@ from citations import verify as V
 from citations.entry import DELEGATED
 from citations.entry import delegate as _delegate
 from citations.exceptions import CitationsError, ClaimFileError, SourceUnreadableError
-from citations.models import ClaimFile, load_claim_file, load_record
+from citations.models import ClaimFile, Quote, load_claim_file, load_record
 
 #: Every member of `verify.State`, in reporting order. An outcome absent here is
 #: counted and never printed: the table stops summing to the number of quotations
 #: above it, and a run whose only problem is that outcome reads as clean.
-RESULTS = ["found", "not found", "ambiguous", "indeterminate", "unchecked"]
+RESULTS = ["found", "corrected", "not found", "ambiguous", "indeterminate", "unchecked"]
 
 #: Width of the outcome column, computed so adding an outcome does not silently ragged the
 #: table. `indeterminate` is the longest, and naming an outcome for what it means rather than
@@ -58,6 +58,24 @@ WARNINGS = {
     "for, or the passage matched only with spacing ignored",
 }
 
+#: The warnings `verify.correct` adds to a `corrected` result, apart from `WARNINGS`: they say
+#: what a correction typed by hand changes, and no check of a passage against a source's text
+#: can raise them.
+CORRECTION_WARNINGS = {
+    "correction changes a number": "the passage recorded by hand has other numbers than what "
+    "the extractor reads — compare it with the page",
+    "correction changes a comparison": "the passage recorded by hand has another `<`, `>`, `=`, "
+    "`≤` or `≥` than what the extractor reads — compare it with the page",
+    "correction adds a negation": "the passage recorded by hand denies what the extractor "
+    "reads — compare it with the page",
+    "correction removes a negation": "the extractor reads a denial the passage recorded by hand "
+    "drops — compare it with the page",
+    "correction adds a hedge": "the passage recorded by hand hedges what the extractor reads — "
+    "compare it with the page",
+    "correction removes a hedge": "the extractor reads a hedge the passage recorded by hand "
+    "drops — compare it with the page",
+}
+
 
 def _records() -> list:
     """Every record in the governing library, validated."""
@@ -67,8 +85,9 @@ def _records() -> list:
 def _claim_files(root: pathlib.Path, skipped=None) -> list[ClaimFile]:
     """Every claims file under `root`, validated.
 
-    A file that cannot be parsed is reported and skipped rather than ending the run: one
-    malformed file should not hide the state of the other three hundred.
+    A file that is refused when read is reported and skipped rather than ending the run: one
+    malformed file should not hide the state of the other three hundred. `verify` fails the
+    run on it all the same; see `verify.Report.ok`.
     """
     out: list[ClaimFile] = []
     skipped = [] if skipped is None else skipped
@@ -114,6 +133,44 @@ def _check_reading(rep: V.Report, cf: ClaimFile, artifact, allowed) -> None:
     derived = V.check_derived(text, cf.source.derived_sha256)
     if derived.state == "broken":
         rep.changed_readings.append((cf.name, derived))
+
+
+def _corrected(
+    rep: V.Report,
+    name: str,
+    q: Quote,
+    r: V.Result,
+    artifact: pathlib.Path | None,
+    extract_cmd: str | None = None,
+    allowed: frozenset[str] = V.DEFAULT_EXTRACTORS,
+) -> V.Result:
+    """The verdict on a quotation once the correction it carries is considered.
+
+    A correction whose source text now holds the quotation is noted as possibly unneeded, and
+    one that does not apply is noted with why; neither is applied. See `verify.correct`.
+    """
+    if q.correction is None:
+        if "corrections" in (q.model_extra or {}):
+            # A misspelt key would otherwise drop the correction without a word.
+            rep.unapplied_corrections.append(
+                (name, "`corrections` is not a field this package reads; it is `correction`")
+            )
+        return r
+    if r.state in ("found", "ambiguous"):
+        rep.unneeded_corrections.append(name)
+        return r
+    if r.state != "not found" or artifact is None:
+        return r
+    made = V.correct(q.text, q.page, q.correction, r, artifact, extract_cmd, allowed)
+    if made.unapplied:
+        rep.unapplied_corrections.append((name, made.unapplied))
+    else:
+        flags = tuple(w for w in made.result.warnings if w.startswith("correction "))
+        c = q.correction
+        rep.corrected.append(
+            V.Corrected(name, q.text, made.note, c.reads, c.passage, made.diff, flags)
+        )
+    return made.result
 
 
 COVERAGE = ["covered", "uncovered", "unresolvable"]
@@ -277,6 +334,9 @@ def cmd_verify(a) -> int:
                         q.suffix,
                         missing,
                     )
+                    r = _corrected(
+                        rep, f"{cf.name}:{cid}", q, r, artifact, cf.source.reader, allowed
+                    )
                     counts[r.state] += 1
                     _record_extractor(rep, extractors, r)
                     if r.state != "found" or r.warnings:
@@ -318,6 +378,7 @@ def cmd_verify(a) -> int:
             r = V.check_one(
                 q.text, artifact, q.page, None, allowed, a.triangulate, q.prefix, q.suffix
             )
+            r = _corrected(rep, rec.slug, q, r, artifact, None, allowed)
             counts[r.state] += 1
             _record_extractor(rep, extractors, r)
             if r.state != "found" or r.warnings:
@@ -516,6 +577,17 @@ def _manual_lines(manual: MC.ManualChecks) -> list[str]:
     return lines
 
 
+def _refused(rep: V.Report) -> list[str]:
+    """The claims files refused when read, each with why. Their quotations were never examined,
+    so none of them is in any count, and the run fails on them with or without `--strict`."""
+    n = len(rep.skipped)
+    lines = [f"{n} claims file{'' if n == 1 else 's'} refused when read, quotations unchecked"]
+    lines += [f"  refused  {name}: {why}" for name, why in rep.skipped[:10]]
+    if n > 10:
+        lines.append(f"  ... and {n - 10} more")
+    return lines
+
+
 def _warned(rep: V.Report) -> dict[str, list[dict[str, str]]]:
     """Each warning, with the quotations carrying it: the claims file and claim, and the text."""
     out: dict[str, list[dict[str, str]]] = {}
@@ -544,6 +616,20 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
                     "broken_pins": len(rep.broken_pins),
                     "unpinned_sources": len(rep.unpinned),
                     "skipped_files": len(rep.skipped),
+                    "unapplied_corrections": len(rep.unapplied_corrections),
+                    "unneeded_corrections": len(rep.unneeded_corrections),
+                    "corrected": [
+                        {
+                            "claim": c.claim,
+                            "quote": c.quote,
+                            "note": c.note,
+                            "reads": c.reads,
+                            "passage": c.passage,
+                            "diff": c.diff,
+                            "flags": list(c.flags),
+                        }
+                        for c in rep.corrected
+                    ],
                     "warnings": _warned(rep),
                     "manual_checks": (
                         None
@@ -556,6 +642,10 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
             )
             + "\n",
         )
+    if rep.checked == 0 and rep.skipped:
+        # Not "nothing to check": there were claims files, and none of them could be read.
+        print("\n".join(_refused(rep)))
+        return 1
     if rep.checked == 0:
         print("nothing to check.\n")
         print("quotes live in a paper's claims/ directory. point at one:")
@@ -577,6 +667,9 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
             # Its own count, because the remedy differs: every piece is in the source. That
             # says nothing about the text left out, which can be what the sentence turns on.
             why = f"   {omitted:,} in the source only in pieces, with text left out between them"
+        if s == "corrected":
+            # Never folded into `found`: the passage was compared with text a person recorded.
+            why = "   in a passage recorded by hand where the extractor misreads the page"
         if s in ("unchecked", "indeterminate", "ambiguous"):
             # Untruncated: the reason is the only thing that says what to fix, and the one
             # that matters most -- "which this run does not allow" -- is at the end of it.
@@ -587,6 +680,16 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
                 else f"   {reasons.most_common(1)[0][0]}"
             )
         print(f"  {s:<{OUTCOME_WIDTH}}{n:>7,}{why}")
+        if s == "corrected":
+            # What each correction changed, always: they are few, and a change of meaning
+            # typed by hand is read here or nowhere.
+            for c in rep.corrected:
+                flagged = f"   ({'; '.join(c.flags)})" if c.flags else ""
+                if getattr(a, "verbose", False):
+                    print(f"             {c.claim[:38]:<40}{c.quote[:60]}")
+                    print(f"             {'':<40}{c.diff}{flagged}")
+                else:
+                    print(f"             {c.claim[:38]:<40}{c.diff}{flagged}")
 
     # Which extractor a verdict rests on, before the verdicts. A `found` taken through a
     # declared renderer and one taken through `pdftotext` are different records, and a report
@@ -669,7 +772,7 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
     if warned:
         print("\nwarnings")
         for w, which in sorted(warned.items(), key=lambda kv: (-len(kv[1]), kv[0])):
-            print(f"  {len(which):>7,}  {w} — {WARNINGS.get(w, '')}")
+            print(f"  {len(which):>7,}  {w} — {(WARNINGS | CORRECTION_WARNINGS).get(w, '')}")
             # Which quotations, under `--verbose`. A count says how many to open and not
             # which; finding them meant calling `check_one` from a script.
             if getattr(a, "verbose", False):
@@ -734,6 +837,42 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
         if len(rep.changed_readings) > 10:
             print(f"  ... and {len(rep.changed_readings) - 10} more")
 
+    # A correction applies where its `reads` names one place in this machine's reading. One
+    # that does not is said here with why and not applied, and one applied under another
+    # reader than it was recorded under says both, so neither passes as the recorded reading.
+    if rep.unapplied_corrections:
+        n = len(rep.unapplied_corrections)
+        print(f"\n{n} correction{'' if n == 1 else 's'} not applied")
+        for name, why in rep.unapplied_corrections[:10]:
+            print(f"  {name[:38]:<40}{why}")
+        if n > 10:
+            print(f"  ... and {n - 10} more")
+    if noted := [(c.claim, c.note) for c in rep.corrected if c.note]:
+        n = len(noted)
+        print(
+            f"\n{n} correction{'' if n == 1 else 's'} applied under another reading than "
+            f"{'it was' if n == 1 else 'they were'} recorded under"
+        )
+        for name, note in noted[:10]:
+            print(f"  {name[:38]:<40}{note}")
+        if n > 10:
+            print(f"  ... and {n - 10} more")
+    if rep.unneeded_corrections:
+        n = len(rep.unneeded_corrections)
+        print(
+            f"\n{n} correction{'' if n == 1 else 's'} may no longer be needed: the extractor's "
+            f"text holds the quotation as written"
+        )
+        for name in rep.unneeded_corrections[:10]:
+            print(f"  {name}")
+        if n > 10:
+            print(f"  ... and {n - 10} more")
+
+    # Before the quotations' failures: every count above leaves these files out.
+    if rep.skipped:
+        print()
+        print("\n".join(_refused(rep)))
+
     bad = [(s, q, r) for s, q, r in rep.problems if r.state == "not found"]
     if bad and not a.quiet:
         print()
@@ -758,6 +897,13 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
             "every quote resolved, but in text that is not the text recorded when they were "
             "pinned: the extractor's output changed. Read the difference, then pin again."
         )
+    elif rep.skipped:
+        n = len(rep.skipped)
+        print(
+            f"{n} claims file{'' if n == 1 else 's'} refused when read, so the quotations in "
+            f"{'it' if n == 1 else 'them'} went unchecked. The run fails until "
+            f"{'it is' if n == 1 else 'they are'} fixed, with or without `--strict`."
+        )
     elif rep.checked and rep.unresolved >= rep.checked:
         # Distinct from the partial case below, and the reason this branch exists: "nothing
         # failed" over a run that read no source at all was read as a pass, and the quotations
@@ -781,13 +927,18 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
             f"nothing failed. {counts['ambiguous']} ambiguous — those passages occur more than "
             "once in their sources, so the record does not say which occurrence it pinned."
         )
+    elif counts.get("corrected"):
+        print(
+            f"nothing failed. {counts['corrected']} corrected — found in a passage recorded by "
+            "hand, not in the extractor's text."
+        )
     else:
         print("all found.")
     # Named where it is needed. `--strict` is what turns an unresolved quotation into a build
     # failure, and a reader who has some has no other way to learn the flag exists.
     if rep.ok and rep.unresolved and not a.strict:
         print(f"  {rep.unresolved} unresolved here is not a failure; `--strict` refuses them.")
-    if a.strict and not rep.strict_ok:
+    if a.strict and (rep.unresolved or rep.unpinned):
         if rep.unresolved:
             print(f"\n{rep.unresolved} quotation(s) could not be checked at all.")
             # Which ones, and why. The count on its own says a build should fail and not
@@ -806,8 +957,6 @@ def _report(rep: V.Report, counts, a, source: str = "") -> int:
                 print(f"                ... and {len(unresolved) - 20} more")
         if rep.unpinned:
             print(f"{len(rep.unpinned)} source(s) carry no digest: {', '.join(rep.unpinned[:3])}")
-        if rep.skipped:
-            print(f"{len(rep.skipped)} claims file(s) did not parse and were never examined.")
         print("--strict fails on these: nothing was established about them either way.")
     return 0 if (rep.strict_ok if a.strict else rep.ok) else 1
 
