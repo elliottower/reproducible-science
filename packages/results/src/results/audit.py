@@ -983,11 +983,11 @@ def claim_backing(
         if run_id not in cache:
             cache[run_id] = outputs.held_by(events, run_id, base)
         held = cache[run_id]
-        # A later run supersedes a claim only where it changed the bytes the claim was read
-        # against: a deterministic re-run leaves them as recorded, so the claim is still checked.
-        if (held.changed or held.absent) and (
-            by := _superseded_by(c, claims[n + 1 :], events, ran)
-        ):
+        # A claim restated later is superseded by the restatement. A later run's different claim
+        # supersedes it only where that run changed the bytes the claim was read against: a
+        # deterministic re-run leaves them as recorded, so the claim is still checked.
+        rewrote = bool(held.changed or held.absent)
+        if by := _superseded_by(c, claims[n + 1 :], events, ran, rewrote):
             superseded.append((c, by))
             continue
         absent = outputs.missing(c.get("claim", ""), held) if held.read else []
@@ -999,17 +999,19 @@ def claim_backing(
     return orphaned, unheld, unchecked, superseded
 
 
-def _superseded_by(claim: dict, later: list[dict], events: list[dict], ran: dict) -> str:
-    """The run of the first later claim that supersedes `claim`, or "": one bound to a run
-    recorded after this claim's run, which states the same sentence or rewrote an output of
-    this claim's run."""
+def _superseded_by(
+    claim: dict, later: list[dict], events: list[dict], ran: dict, rewrote: bool
+) -> str:
+    """The run of the first later claim that supersedes `claim`, or "": one stating the same
+    sentence, bound to this claim's run or a later one, or, where `rewrote`, one bound to a later
+    run that recorded an output of this claim's run."""
     at = ran.get(claim.get("run_id"), -1)
     mine = set(outputs.run_outputs(events, str(claim.get("run_id") or "")))
     for c in later:
         other = str(c.get("run_id") or "")
-        if ran.get(other, -1) <= at:
-            continue
-        if c.get("claim") == claim.get("claim") or mine & set(outputs.run_outputs(events, other)):
+        if c.get("claim") == claim.get("claim") and ran.get(other, -1) >= at:
+            return other
+        if rewrote and ran.get(other, -1) > at and mine & set(outputs.run_outputs(events, other)):
             return other
     return ""
 
