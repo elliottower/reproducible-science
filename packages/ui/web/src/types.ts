@@ -70,8 +70,18 @@ export interface Graph {
   checked_at?: string
   project_dir?: string
   project_name?: string
+  /** The origin remote: where to clone from, and the repository on its host. */
+  remote?: { clone: string; host: string; owner: string; name: string; subdir: string } | null
+  manuscript_path?: string | null
+  /** The last Pre-submit check's findings; absent until one has run. */
+  presubmit?: import('./format').Presubmit | null
   tabs?: {
-    prereg: { lines: string[] }
+    prereg: {
+      /** Each plan `prereg check` read, with what its freeze recorded. */
+      plans: { path: string; frozen: boolean; check: string; commit: string | null; sha256: string | null; frozen_at: string | null; pinned_by: 'freeze' | 'commit line' }[]
+      used: boolean
+      output: string
+    }
     results: {
       runs: {
         run_id: string; timestamp: string; note: string; outputs: string[]; sealed_before: boolean
@@ -107,11 +117,15 @@ export interface Graph {
         output_path?: string
         /** This step in each recorded re-run, newest first. */
         history?: { ended_at: string; tool_version: string; state: string; bytes_identical: boolean | null; exit_code: number | null; duration_seconds: number | null; detail: string }[]
+        /** Each file that changed since the last re-run, served by the diff endpoint as `step:<id>`. */
+        diffs?: { label: string; open: IssueOpen }[]
       }[]
       reruns: { started_at: string; ended_at: string; tool_version: string; counts: Record<string, number>; steps: number }[]
     }
   }
-  status?: Record<'prereg' | 'results' | 'citations' | 'repro', StatusField>
+  status?: Status
+  /** One row per kind of problem prereg, results or citations report. */
+  issues?: Issue[]
   reproduce?: { runs: number; declared: number; last_at: string | null; last: Record<string, number>; last_steps: number }
   manifest_digest: string
   totals: {
@@ -130,9 +144,39 @@ export interface Graph {
   edges: GEdge[]
 }
 
+/** The counts behind one status line; the page words them (`format.ts`). */
 export interface StatusField {
-  text: string
+  state: 'none' | 'read' | 'unread' | 'broken' | 'unverified'
   ok: boolean | null
-  next?: string
-  counts?: Record<string, number>
+  plans?: number; frozen?: number; changed?: number; drafts?: number; amendments?: number; unknown?: number
+  runs?: number; sealed?: number; chain?: string
+  quotes?: number; found?: number; not_found?: number; pinned?: number
+  total?: number; verified?: number
+  steps?: number; current?: number; never?: number; last_at?: string | null
 }
+
+export type Status = Partial<Record<'prereg' | 'results' | 'citations' | 'claims' | 'repro', StatusField>>
+
+/** Where Open in UI takes the page for one item of an issue. */
+export interface IssueOpen {
+  tab: 'prereg' | 'results' | 'citations' | 'reproduce'
+  /** The issue id the diff endpoint serves this path's diff under. */
+  diff?: string
+  path?: string
+  run?: { run_id: string; timestamp: string } | null
+  quote?: { file: string; statement: string; index: number }
+  source?: string
+}
+
+export interface Issue {
+  id: string
+  tool: 'prereg' | 'results' | 'citations'
+  title: string
+  note: string
+  items: { label: string; open: IssueOpen }[]
+  /** False for a row with nothing to fix, which shows its note and no buttons. */
+  fix: boolean
+}
+
+/** What the page is taken to by Open in UI; `at` makes a second click on the same item count. */
+export type Focus = IssueOpen & { at: number }

@@ -408,6 +408,19 @@ def _with_checks(sarif: dict, project: Project, found: dict[str, bool | None]) -
         "sections": words(project, found),
         "exit_code": exit_code(found),
     }
+    # Manual checks: provenance in the property bag, never a result and never in the verdict.
+    if hand := project.tools["citations"].account.get("manual_checks"):
+        sarif["runs"][0]["properties"]["checks"]["citations_manual_checks"] = {
+            "covered": len(hand["covered"]),
+            "passages": hand["passages"],
+            "sha256": hand["sha256"],
+            "stale": len(hand["stale"]),
+            "unverifiable": len(hand.get("unverifiable", [])),
+            "unknown": len(hand["unknown"]),
+            "orphans": len(hand.get("orphans", [])),
+            "problems": len(hand.get("problems", [])),
+            "outcomes": hand.get("outcomes", {}),
+        }
     return sarif
 
 
