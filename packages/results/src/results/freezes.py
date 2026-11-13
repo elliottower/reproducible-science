@@ -9,21 +9,21 @@ existed, how many of its events it held then and the digest of the last. The pos
 part no clock can move. An event the ledger held at the freeze came before it, and one it did
 not came after, and the chain fixes which is which.
 
-The record is a file in the working tree, so its position and its time are only as good as
-the checks made of it here. A record is placed only where its plan exists with the digest it
+The record is a file in the working tree, so its position and its time are only as good as the
+checks made of it here. A record is placed only where its plan exists with the digest it
 records; a record with no plan behind it, or one whose commit holds the plan with other bytes,
 places nothing. A commit this clone does not hold, as in the shallow clone CI checks out, and a
 freeze made with `--force` from bytes no commit held, leave nothing to compare at the commit:
 each is a note, as `prereg check` reads it, and fails nothing. Where `prereg freeze` wrote a
-`freeze` event into the ledger, that event is the position, since it sits inside the hash chain and the
-record does not: a record stating a position is placed only where the chain holds that event
-at that position. A record written before any ledger existed holds no position; it precedes
-every ledger event where every commit that touched it is a strict ancestor, in the commit
-graph, of every commit that added the ledger. The position a record states is also checked
-against the ledger as committed at the record's commit: the freeze came after that commit, so a record saying the
-ledger held fewer events than the commit already did is false. Where a ledger exists and the
-record cannot be placed in it, the record's `frozen_at`, a time anyone can write, places
-nothing either.
+`freeze` event into the ledger, that event is the position, since it sits inside the hash chain
+and the record does not: a record stating a position is placed only where the chain holds that
+event at that position. A record written before any ledger existed holds no position; it
+precedes every ledger event where every commit that touched it is a strict ancestor, in the
+commit graph, of every commit that added the ledger. The position a record states is also
+checked against the ledger as committed at the record's commit: the freeze came after that
+commit, so a record saying the ledger held fewer events than the commit already did is false.
+Where a ledger exists and the record cannot be placed in it, the record's `frozen_at`, a time
+anyone can write, places nothing either.
 
 This module reads those records and never imports `prereg`, as `prereg` reads the ledger and
 never imports this package.
@@ -128,7 +128,8 @@ def plan_changed(record: pathlib.Path, held: dict) -> tuple[str, str]:
 
 
 def _commit_held(top: pathlib.Path, commit: str) -> bool:
-    """Whether this clone holds `commit`. A shallow clone, as CI checks out, holds the last."""
+    """Whether this clone holds `commit`. A shallow clone, as CI checks out, holds only the
+    latest commits."""
     return try_run("cat-file", "-e", f"{commit}^{{commit}}", cwd=top) is not None
 
 
