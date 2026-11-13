@@ -164,7 +164,7 @@ An analysis registered after `outcomes seen` is retrospective.
 | `CHAIN BROKEN` | The ledger was edited after it was written |
 | `ok` | File matches its recorded hash |
 | `RESEALED` | Recorded under more than one hash, and the file matches the latest record. Reported; passes |
-| `RERECORDED` | Recorded as an output by a later run under other bytes, with no input of the earlier run (a path sealed before it) sealed again between the two: an output changed and recorded again, or a re-run with no record of its inputs. Reported, and the path is still compared, so `CHANGED` shows beside it; fails under `--strict` |
+| `RERECORDED` | Recorded as an output by a later run under other bytes, with no input of the earlier run (a path sealed before it) sealed again between the two: an output changed and recorded again, or a re-run with no record of its inputs. Reported, and the path is still compared, so `CHANGED` shows beside it; a note, failing nothing |
 | `APPENDED` | A plan `prereg freeze` froze in place, which `prereg check` finds unchanged, and which differs from its latest seal only by entries `prereg log` appended and the `**Log:**` line it recounts. Passes |
 | `IGNORED` | One of the ledger's own files (`.results/`, a lock sidecar), recorded by an earlier version. Not compared; passes |
 | `REVERTED` | Recorded under more than one hash, and the file matches an earlier record and not the latest. Fails |
@@ -174,14 +174,13 @@ An analysis registered after `outcomes seen` is retrospective.
 | `MISSING` | File no longer exists. Fails |
 | `NOT A TREE`, `NOT A FILE` | Sealed as a directory and now a file, or the reverse. Fails |
 | `LEDGER HISTORY REWRITTEN` | A commit holds a version of the ledger, or of its anchor, that the ledger on disk does not extend: an event removed or changed and the chain recomputed. Fails |
-| `TIMESTAMP PROOF MISSING` | A commit added a proof under `.results/timestamps/` that is not on disk. Reported; fails under `--strict` |
+| `TIMESTAMP PROOF MISSING` | A commit added a proof under `.results/timestamps/` that is not on disk. Reported; a note, failing nothing |
 
 `results run` warns when it records an output whose path a run already recorded under other
 bytes and no input of that run has been sealed since: a re-run reads its inputs, so seal them
 first. Sealing some other file, or an input again with the bytes it had, does not count.
-`--strict` refuses it. A limit: the inputs of a run are every path sealed before it, so
-resealing one of them that the run never read, with new bytes, clears `RERECORDED`; that
-matters under `--strict` only. `results reanchor`, and `results claim`, refuse where a commit
+`results run --strict` refuses it. A limit: the inputs of a run are every path sealed before it,
+so resealing one of them that the run never read, with new bytes, clears `RERECORDED`. `results reanchor`, and `results claim`, refuse where a commit
 holds a longer ledger or anchor than the one on disk.
 
 A ledger that is never committed, one a `.gitignore` keeps out of git, has no history to be
@@ -198,9 +197,29 @@ same digits. A claim whose numbers are derived from the outputs, a
 mean of stored values for instance, says so with `--derived "how"`: the note is recorded,
 shown by `verify`, and the numbers are not compared. Zero-width and other format characters are
 removed before numbers are read, with a warning. `results verify` counts such claims on one
-line (`--explain` lists them, and the JSON always does), lists claims whose run's every output
-was retired, and passes them; `results verify --strict` fails them, a missing timestamp proof
-and a `RERECORDED` output. A tree a seal or a verify
+line (`--explain` lists them, and the JSON always does) and passes them; `results verify
+--strict` fails them. That is the one finding `--strict` adds: a number absent from outputs
+that are on disk as their run recorded them.
+
+What the records cannot establish is a note, under `--strict` too, because a check that could
+not run is not a check that failed:
+
+- a claim whose run's outputs a later run rewrote, or that changed, is `unchecked`, with what
+  became of each output; one a later claim re-binds, on a run that rewrote its outputs or in
+  the same words, is counted once as `superseded`;
+- a claim whose run's every output was retired;
+- a `RERECORDED` output and a missing timestamp proof;
+- a ledger deleted and started again, said with its date and the kinds of event the earlier
+  chain held. The earlier chain's exposures still order a confirmatory claim after them;
+- a freeze whose commit a shallow clone does not hold, a freeze made with `prereg freeze
+  --force`, and a frozen plan no longer on disk. A confirmatory claim fails only where its plan
+  is on disk, or at its freeze commit in this clone, with other bytes than were frozen.
+
+The records make drift visible to a reader with a clone. They do not resist an author who means
+to rewrite them: deleting the ledger and its history, or a freeze record and its plan, leaves a
+note and not a failure.
+
+A tree a seal or a verify
 reads says which names its digest skipped: symlinks, which are not followed, and cache
 directories. Every `.results/` ledger below the project's own is verified after it, and the exit
 code covers them all.

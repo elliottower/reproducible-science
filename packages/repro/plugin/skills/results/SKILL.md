@@ -73,7 +73,7 @@ With `--files`, every sealed input and recorded output is re-hashed against its 
 |---|---|
 | `ok` | file matches its recorded hash |
 | `RESEALED` | recorded under several hashes; the file matches the latest. Passes, and stays in the report: a new version is a new file |
-| `RERECORDED` | recorded again as an output under other bytes with no input of the earlier run sealed between the runs. Reported, failed under `--strict`: seal the inputs before recording a re-run |
+| `RERECORDED` | recorded again as an output under other bytes with no input of the earlier run sealed between the runs. Reported, failing nothing: seal the inputs before recording a re-run |
 | `APPENDED` | a plan frozen in place whose log `prereg log` extended since the seal, and which `prereg check` finds unchanged. Passes |
 | `IGNORED` | one of the ledger's own files, sealed by an earlier version. Passes; `seal` now refuses these |
 | `REVERTED` | recorded under several hashes; the file matches an earlier one, not the latest. Fails |

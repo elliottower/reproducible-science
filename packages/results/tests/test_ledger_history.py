@@ -92,7 +92,7 @@ def test_reanchor_still_anchors_an_uncommitted_ledger(tmp_path, monkeypatch):
     assert cli.main(["reanchor"]) == 0
 
 
-def test_a_deleted_timestamp_proof_is_reported_and_fails_only_under_strict(committed, capsys):
+def test_a_deleted_timestamp_proof_is_reported_and_fails_nothing(committed, capsys):
     proof = committed / ".results" / "timestamps" / "000004-0123456789abcdef.ots"
     proof.parent.mkdir()
     proof.write_bytes(b"proof")
@@ -103,7 +103,7 @@ def test_a_deleted_timestamp_proof_is_reported_and_fails_only_under_strict(commi
 
     assert cli.main(["verify", "--files"]) == 0
     assert "TIMESTAMP PROOF MISSING" in capsys.readouterr().out
-    assert cli.main(["verify", "--files", "--strict"]) == 1
+    assert cli.main(["verify", "--files", "--strict"]) == 0
 
 
 def test_a_nested_ledger_with_a_changed_file_fails_verify_at_the_top(tmp_path, monkeypatch, capsys):
@@ -214,14 +214,14 @@ def test_a_ledger_deleted_and_restarted_is_a_new_chain_and_a_note(tmp_path, monk
     assert cli.main(["claim", "The ICC was 0.5101", "--run-id", "r9"]) == 0
 
 
-def test_a_restart_that_drops_an_exposure_names_it_and_fails_under_strict(committed, capsys):
+def test_a_restart_that_drops_an_exposure_names_it_and_fails_nothing(committed, capsys):
     restart(committed)
     capsys.readouterr()
 
-    assert cli.main(["verify", "--files"]) == 0
+    assert cli.main(["verify", "--files", "--strict"]) == 0
     out = capsys.readouterr().out
     assert "RESTART DROPPED AN EXPOSURE  outcomes seen: looked at the outcome" in out
-    assert cli.main(["verify", "--files", "--strict"]) == 1
+    assert "a restart is a note and fails nothing" in out
 
 
 def test_a_ledger_replaced_in_one_commit_is_still_a_rewrite(committed, capsys):
@@ -248,8 +248,8 @@ CONFIRM = ["claim", "The ICC was 0.5101", "--run-id", "r9", "--confirmatory", "-
 
 
 @pytest.mark.parametrize("shape", ["restart", "re-added", "ledger only", "side branch"])
-def test_a_confirmatory_claim_after_a_restart_over_recorded_work_fails_verify(
-    committed, shape, capsys
+def test_a_restart_over_recorded_work_is_a_note_naming_its_date_and_events(
+    committed, shape, capsys, tmp_path
 ):
     if shape == "side branch":
         git(committed, "branch", "-q", "-m", "main")
@@ -273,12 +273,15 @@ def test_a_confirmatory_claim_after_a_restart_over_recorded_work_fails_verify(
         git(committed, "merge", "-q", "--no-ff", "-X", "theirs", "side", "-m", "merge side")
     capsys.readouterr()
 
-    assert cli.main(["verify"]) == 1
+    found = tmp_path / "found.json"
+    assert cli.main(["verify", "--files", "--strict", "--json", str(found)]) == 0
     out = capsys.readouterr().out
-    assert "LEDGER RESTARTED OVER A CHAIN WITH RUNS/CLAIMS/EXPOSURES" in out
-    assert "over 3 earlier event(s): access, claim, run" in out
+    day = json.loads(found.read_text())["restart"]["on"][:10]
+    assert "the ledger was deleted in commit" in out and f" on {day}; restarted in " in out
+    assert "(1 init, 1 run, 1 access, 1 claim) is a different chain" in out
+    assert "a restart is a note and fails nothing" in out
+    # The earlier chain's exposure still orders the claim, which is said to follow it.
     assert "rest on runs recorded after outcomes were seen" in out
-    assert cli.main(["verify", "--files", "--strict"]) == 1
 
 
 def test_an_exposure_re_added_after_a_restart_still_comes_before_the_new_run(committed, capsys):
@@ -290,7 +293,7 @@ def test_an_exposure_re_added_after_a_restart_still_comes_before_the_new_run(com
     assert "refusing: outcomes were seen at" in capsys.readouterr().out
     assert cli.main(CONFIRM) == 0
     capsys.readouterr()
-    assert cli.main(["verify"]) == 1
+    assert cli.main(["verify", "--strict"]) == 0
     out = capsys.readouterr().out
     assert "1 confirmatory claim(s) rest on runs recorded after outcomes were seen" in out
 
@@ -310,4 +313,4 @@ def test_a_restart_over_only_an_init_is_a_note_under_a_confirmatory_claim(
     assert cli.main(["verify", "--files", "--strict"]) == 0
     out = capsys.readouterr().out
     assert "the ledger was deleted in commit" in out
-    assert "LEDGER RESTARTED OVER" not in out
+    assert "(1 init) is a different chain" in out

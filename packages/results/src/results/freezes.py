@@ -10,10 +10,12 @@ part no clock can move. An event the ledger held at the freeze came before it, a
 not came after, and the chain fixes which is which.
 
 The record is a file in the working tree, so its position and its time are only as good as
-the checks made of it here. A record is placed only where its plan exists and the commit it
-names holds the plan with the digest it records; a record with no plan behind it, or one whose
-plan the commit does not hold, places nothing. Where `prereg freeze` wrote a `freeze` event
-into the ledger, that event is the position, since it sits inside the hash chain and the
+the checks made of it here. A record is placed only where its plan exists with the digest it
+records; a record with no plan behind it, or one whose commit holds the plan with other bytes,
+places nothing. A commit this clone does not hold, as in the shallow clone CI checks out, and a
+freeze made with `--force` from bytes no commit held, leave nothing to compare at the commit:
+each is a note, as `prereg check` reads it, and fails nothing. Where `prereg freeze` wrote a
+`freeze` event into the ledger, that event is the position, since it sits inside the hash chain and the
 record does not: a record stating a position is placed only where the chain holds that event
 at that position. A record written before any ledger existed holds no position; it precedes
 every ledger event where every commit that touched it is a strict ancestor, in the commit
@@ -95,44 +97,70 @@ def plan_of(record: pathlib.Path) -> pathlib.Path:
     return record.parent.parent / record.name.removesuffix(".json")
 
 
-def plan_changed(record: pathlib.Path, held: dict) -> str:
-    """Why the plan on disk is not the file the record froze, or "" where it is. A plan frozen
-    whole keeps its log in a file beside it, so a log entry never changes it. A companion frozen
-    with it, such as an analysis configuration, is part of the plan and is compared too."""
+def no_plan(record: pathlib.Path) -> str:
+    """Why the record has no plan beside it, or "" where it has one. A record standing alone
+    places no freeze, and says nothing of an edit: there are no bytes to compare."""
     plan = plan_of(record)
-    if not plan.is_file():
-        return f"no plan {plan.name} stands beside the record"
+    return "" if plan.is_file() else f"no plan {plan.name} stands beside the record"
+
+
+def plan_changed(record: pathlib.Path, held: dict) -> tuple[str, str]:
+    """Why the plan on disk is not the file the record froze, and a note on what could not be
+    compared, each "" where there is none. A plan frozen whole keeps its log in a file beside
+    it, so a log entry never changes it. A companion frozen with it, such as an analysis
+    configuration, is part of the plan and is compared too.
+
+    Only bytes that are present and differ are a change. A plan or a companion that is not on
+    disk is a note: nothing was compared, and nothing on disk says it was edited."""
+    plan = plan_of(record)
+    if absent := no_plan(record):
+        return "", absent
     if sha256_of_file(plan) != held.get("sha256"):
-        return f"{plan.name} has changed since it was frozen: `prereg check` reports it"
+        return f"{plan.name} has changed since it was frozen: `prereg check` reports it", ""
     companions = held.get("companions")
     for name, digest in sorted(companions.items() if isinstance(companions, dict) else []):
         companion = plan.parent / name
         if not companion.is_file():
-            return f"companion {name} frozen with {plan.name} is not on disk"
+            return "", f"companion {name} frozen with {plan.name} is not on disk"
         if sha256_of_file(companion) != digest:
-            return f"companion {name} has changed since it was frozen with {plan.name}"
-    return ""
+            return f"companion {name} has changed since it was frozen with {plan.name}", ""
+    return "", ""
 
 
-def _plan_problem(record: pathlib.Path, held: dict, top: pathlib.Path | None) -> str:
-    """Why the record's plan does not stand behind it, or "" where it does: the plan exists,
-    is the file the record froze, as `prereg check` reads a plan frozen whole, and the commit
-    the record names holds it with the digest the record gives. A plan edited after the
-    outcomes were seen, beside a record left as it was, made a confirmatory claim pass."""
-    if changed := plan_changed(record, held):
-        return changed
+def _commit_held(top: pathlib.Path, commit: str) -> bool:
+    """Whether this clone holds `commit`. A shallow clone, as CI checks out, holds the last."""
+    return try_run("cat-file", "-e", f"{commit}^{{commit}}", cwd=top) is not None
+
+
+def _plan_problem(record: pathlib.Path, held: dict, top: pathlib.Path | None) -> tuple[str, str]:
+    """Why the record's plan does not stand behind it, and a note on what could not be read,
+    each "" where there is none, as `prereg check` reads a plan frozen whole.
+
+    A problem only where bytes are present and differ: the plan or a companion on disk is not
+    what the record froze, or the commit the record names is in this clone and holds the plan
+    with other bytes. A plan edited after the outcomes were seen, beside a record left as it was,
+    made a confirmatory claim pass. Everything that leaves nothing to compare is a note and
+    fails nothing: a freeze made with `--force` from bytes no commit held, a commit a shallow
+    clone does not hold, a commit that does not hold the plan at this path, a plan outside git.
+    """
+    problem, note = plan_changed(record, held)
+    if problem or note:
+        return problem, note
     plan = plan_of(record)
+    commit = held["commit"]
     if held.get("uncommitted"):
-        return f"{plan.name} was frozen from bytes no commit holds"
+        return "", f"frozen with --force from bytes that are not those of commit {commit[:12]}"
     name = _name(top, plan) if top is not None else None
     if top is None or name is None:
-        return f"{plan.name} is not in a git repository, so its commit cannot be read"
-    stored = _blob(top, f"{held['commit']}:{name}")
+        return "", f"{plan.name} is not in a git repository, so its commit was not read"
+    if not _commit_held(top, commit):
+        return "", f"commit {commit[:12]} is not in this clone, so {name} was not read there"
+    stored = _blob(top, f"{commit}:{name}")
     if stored is None:
-        return f"commit {held['commit'][:12]} does not hold {name}"
+        return "", f"{name} is not in commit {commit[:12]}, so it was not read there"
     if hashlib.sha256(stored).hexdigest() != held.get("sha256"):
-        return f"{name} at commit {held['commit'][:12]} is not the file the record froze"
-    return ""
+        return f"{name} at commit {commit[:12]} is not the file the record froze", ""
+    return "", ""
 
 
 def _event_position(record: pathlib.Path, held: dict, ledger: pathlib.Path, lines: list[str]):
@@ -272,26 +300,32 @@ def _records(project: pathlib.Path):
         yield record, held, repo
 
 
-def checked_plans(project: pathlib.Path) -> list[tuple[pathlib.Path, str, str]]:
-    """Each plan frozen whole, the commit its record names, and why the plan does not stand
-    behind the record, or "" where it does. In a repository by `_plan_problem`, which also asks
-    whether the commit holds the plan with the record's digest, so a record whose digest or
-    commit was rewritten to fit an edited plan is caught; outside one by the digests alone."""
-    return [
-        (
-            plan_of(record),
-            held["commit"],
-            _plan_problem(record, held, repo) if repo is not None else plan_changed(record, held),
+def checked_plans(project: pathlib.Path) -> list[tuple[pathlib.Path, str, str, str]]:
+    """Each plan frozen whole, the commit its record names, why the plan does not stand behind
+    the record, and a note on what could not be compared, each "" where there is none. In a
+    repository by `_plan_problem`, which also asks whether the commit holds the plan with the
+    record's digest, so a record whose digest was rewritten to fit an edited plan is caught;
+    outside one by the digests alone."""
+    found = []
+    for record, held, repo in _records(project):
+        problem, note = (
+            _plan_problem(record, held, repo) if repo is not None else plan_changed(record, held)
         )
-        for record, held, repo in _records(project)
-    ]
+        found.append((plan_of(record), held["commit"], problem, note))
+    return found
 
 
-def event_plan_problem(ledger: pathlib.Path, lines: list[str], commit: str) -> str | None:
+def event_plan_problem(
+    ledger: pathlib.Path, lines: list[str], commit: str
+) -> tuple[str, str] | None:
     """Why the plan a `freeze` event in the ledger names at `commit` does not stand behind it,
-    "" where it does, and None where no such event is in the ledger. For a claim whose freeze
-    record is gone: deleting the record, or the plan with it, left the claim on no plan at all,
-    while the chain still holds what was frozen."""
+    and a note on what could not be compared, each "" where there is none; None where no such
+    event is in the ledger. For a claim whose freeze record is gone: deleting the record left
+    the claim on no plan at all, while the chain still holds what was frozen.
+
+    A problem only where bytes are present and differ: the plan on disk, or the plan at a commit
+    this clone holds. A plan no longer on disk, or a commit a shallow clone does not hold, is a
+    note."""
     events = []
     for line in lines:
         try:
@@ -303,18 +337,26 @@ def event_plan_problem(ledger: pathlib.Path, lines: list[str], commit: str) -> s
     named = [e for e in events if e["commit"] == commit]
     if not named:
         return None
-    top = try_run("rev-parse", "--show-toplevel", cwd=ledger.parent)
+    found = try_run("rev-parse", "--show-toplevel", cwd=ledger.parent)
+    top = pathlib.Path(found) if found else None
+    notes = []
     for event in named:
         plan = ledger.parent.parent / str(event.get("file", ""))
         if not plan.is_file():
-            return f"the ledger's freeze of {event.get('file')} names no plan on disk"
+            notes.append(f"the ledger's freeze of {event.get('file')} names no plan on disk")
+            continue
         if sha256_of_file(plan) != event.get("sha256"):
-            return f"{plan.name} has changed since the ledger recorded its freeze"
-        name = _name(pathlib.Path(top), plan) if top else None
-        stored = _blob(pathlib.Path(top), f"{commit}:{name}") if top and name else None
-        if stored is None or hashlib.sha256(stored).hexdigest() != event.get("sha256"):
-            return f"commit {commit[:12]} does not hold {plan.name} as the ledger froze it"
-    return ""
+            return f"{plan.name} has changed since the ledger recorded its freeze", ""
+        name = _name(top, plan) if top is not None else None
+        if top is None or name is None:
+            notes.append(f"{plan.name} is not in a git repository, so its commit was not read")
+        elif not _commit_held(top, commit):
+            notes.append(f"commit {commit[:12]} is not in this clone, so {name} was not read there")
+        elif (stored := _blob(top, f"{commit}:{name}")) is None:
+            notes.append(f"{name} is not in commit {commit[:12]}, so it was not read there")
+        elif hashlib.sha256(stored).hexdigest() != event.get("sha256"):
+            return f"commit {commit[:12]} does not hold {plan.name} as the ledger froze it", ""
+    return "", "; ".join(notes)
 
 
 def read_all(project: pathlib.Path, ledger: pathlib.Path) -> list[Freeze]:
@@ -323,7 +365,11 @@ def read_all(project: pathlib.Path, ledger: pathlib.Path) -> list[Freeze]:
     found = []
     for record, held, repo in _records(project):
         frozen_at = str(held.get("frozen_at", ""))
-        if problem := _plan_problem(record, held, repo):
+        # A plan edited since the freeze places nothing, nor does a record with no plan beside
+        # it. What could not be read, such as a commit a shallow clone does not hold or a freeze
+        # made with `--force`, leaves the record placed by the ledger as it would be otherwise.
+        problem, _ = _plan_problem(record, held, repo)
+        if problem := problem or no_plan(record):
             found.append(Freeze(record, held["commit"], frozen_at, None, problem, True))
             continue
         prior = False

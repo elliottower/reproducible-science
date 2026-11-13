@@ -53,7 +53,7 @@ def test_sealing_an_unrelated_file_does_not_make_a_rerecord_a_rerun(project, cap
     assert cli.main(["run", "out.json", "--run-id", "r2", "--strict"]) == 1
     assert cli.main(["run", "out.json", "--run-id", "r2"]) == 0
     capsys.readouterr()
-    assert cli.main(["verify", "--files", "--strict"]) == 1
+    assert cli.main(["verify", "--files", "--strict"]) == 0
     assert "RERECORDED out.json" in capsys.readouterr().out
 
 
@@ -72,7 +72,7 @@ def test_an_identical_rerun_needs_no_seal(project):
     assert cli.main(["run", "out.json", "--run-id", "r2"]) == 0
 
 
-def test_a_ledger_holding_a_rerecord_warns_and_fails_only_under_strict(project, capsys):
+def test_a_ledger_holding_a_rerecord_is_a_note_and_fails_nothing(project, capsys):
     # Written as an older version, or by hand, would write it: the refusal above never ran.
     edit_output(project)
     digest = ledger.sha256_of_file(project / "out.json")
@@ -85,7 +85,7 @@ def test_a_ledger_holding_a_rerecord_warns_and_fails_only_under_strict(project, 
     assert cli.main(["verify", "--files"]) == 0
     out = capsys.readouterr().out
     assert "RERECORDED out.json" in out
-    assert cli.main(["verify", "--files", "--strict"]) == 1
+    assert cli.main(["verify", "--files", "--strict"]) == 0
 
 
 def test_a_rerecorded_output_changed_since_is_also_reported_changed(project, capsys):

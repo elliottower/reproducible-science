@@ -17,12 +17,13 @@ versions committed after the latest such commit are compared, and the restart is
 the exposures the earlier chain recorded and this one does not, since a restart is also the
 cheapest way to drop one.
 
-A restart is also the cheapest way to drop a run, a claim or an exposure and then claim
-confirmatorily as though they never happened, so it is a note only where the earlier chain held
-nothing beyond `init` and `seal`, or where no confirmatory claim follows; `verify` fails the
-rest. Every exposure the earlier chain held is carried forward with the commit that first added
-it, so an exposure re-added after the claim, which the comparison by content then finds kept,
-still orders before every run of the new chain committed after it.
+A restart is a note, naming the date and the events the earlier chain held, and fails nothing:
+honest work restarts a ledger, and the records make a restart visible to a reader with a clone
+rather than resist an author who means to rewrite them. Every exposure the earlier chain held is
+carried forward with the commit that first added it, so an exposure re-added after a claim,
+which the comparison by content then finds kept, still orders before every run of the new chain
+committed after it, and a confirmatory claim on such a run is reported as made after the
+outcomes were seen.
 """
 
 from __future__ import annotations
@@ -77,10 +78,6 @@ def _commits(where: Located, path: str) -> list[str]:
     return out.split() if out else []
 
 
-#: The events a chain holds before any work: a restart over only these loses nothing.
-SETUP = frozenset({"init", "seal"})
-
-
 @dataclass(frozen=True)
 class Exposure:
     """An `access` event a chain before the restart held, and the commit that first added it."""
@@ -106,11 +103,17 @@ class Restart:
     earlier: list[dict] = field(default_factory=list)
     #: Each `access` event any version before `deleted` held, kept here or not.
     exposures: list[Exposure] = field(default_factory=list)
+    #: When the ledger was deleted: the committer time of `deleted`, in UTC, or "".
+    on: str = ""
 
     @property
-    def work(self) -> list[dict]:
-        """The earlier chain's events beyond `init` and `seal`: runs, claims, exposures."""
-        return [e for e in self.earlier if e.get("event") not in SETUP]
+    def kinds(self) -> dict[str, int]:
+        """How many events of each kind the earlier chain held, in the order first seen."""
+        counted: dict[str, int] = {}
+        for e in self.earlier:
+            kind = str(e.get("event") or "?")
+            counted[kind] = counted.get(kind, 0) + 1
+        return counted
 
 
 def _after(where: Located, lp: pathlib.Path) -> tuple[set[str] | None, Restart | None]:
@@ -155,7 +158,8 @@ def _after(where: Located, lp: pathlib.Path) -> tuple[set[str] | None, Restart |
             if e.get("event") == "access" and key not in kept and e not in dropped:
                 dropped.append(e)
     exposures = [Exposure(e, sha, _committed_at(where, sha)) for e, sha in added.values()]
-    return after, Restart(deleted, restarted, events, dropped, earlier, exposures)
+    on = _committed_at(where, deleted)
+    return after, Restart(deleted, restarted, events, dropped, earlier, exposures, on)
 
 
 def _committed_at(where: Located, sha: str) -> str:
@@ -304,7 +308,6 @@ def missing_proofs(lp: pathlib.Path) -> list[tuple[str, str]]:
 
 
 __all__ = [
-    "SETUP",
     "Exposure",
     "Restart",
     "committed_counts",

@@ -361,7 +361,6 @@ def delete_record_edit_plan(repo):
     ("attack", "said"),
     [
         (edit_companion, "companion analysis.yaml has changed since it was frozen with PREREG.md"),
-        (delete_plan_and_record, "the ledger's freeze of PREREG.md names no plan on disk"),
         (
             rewrite_record(
                 "sha256", lambda r: hashlib.sha256((r / "PREREG.md").read_bytes()).hexdigest()
@@ -376,7 +375,6 @@ def delete_record_edit_plan(repo):
     ],
     ids=[
         "companion",
-        "plan and record deleted",
         "record digest",
         "record commit",
         "record deleted",
@@ -424,4 +422,57 @@ def test_a_claim_naming_no_freeze_is_not_held_to_a_plan_outside_its_project(tmp_
     commit(tmp_path, "edit the other plan")
     r = results("verify", cwd=exp)
     assert r.returncode == 0, r.stdout
+    assert "changed since it was frozen" not in r.stdout
+
+
+def test_a_plan_and_record_both_deleted_leave_a_note_and_fail_nothing(repo):
+    named = freeze(repo)
+    results("run", "out.json", "--run-id", "r1", cwd=repo)
+    assert confirm(repo, "r1", named).returncode == 0
+    delete_plan_and_record(repo)
+    commit(repo, "plan and record removed")
+
+    r = results("verify", "--strict", cwd=repo)
+    assert r.returncode == 0, r.stdout
+    assert "the ledger's freeze of PREREG.md names no plan on disk" in r.stdout
+
+
+def test_a_confirmatory_claim_verifies_in_a_shallow_clone_and_an_edit_there_still_fails(
+    repo, tmp_path_factory
+):
+    named = freeze(repo)
+    results("run", "out.json", "--run-id", "r1", cwd=repo)
+    assert confirm(repo, "r1", named).returncode == 0
+    commit(repo, "claim")
+    (repo / "notes.txt").write_text("later work\n")
+    commit(repo, "later work")
+    shallow = tmp_path_factory.mktemp("ci") / "clone"
+    git(repo, "clone", "-q", "--depth", "1", f"file://{repo}", str(shallow))
+    assert git(shallow, "rev-parse", "--is-shallow-repository") == "true"
+
+    for argv in (["verify"], ["verify", "--files", "--strict"]):
+        r = results(*argv, cwd=shallow)
+        assert r.returncode == 0, r.stdout
+        assert f"commit {named[:12]} is not in this clone, so PREREG.md was not read" in r.stdout
+    assert tool("prereg", "check", cwd=shallow).returncode == 0
+
+    writable(shallow / "PREREG.md").write_text(PLAN + "\n**H2.** more\n")
+    r = results("verify", cwd=shallow)
+    assert r.returncode == 1
+    assert "plan PREREG.md: PREREG.md has changed since it was frozen" in r.stdout
+
+
+def test_a_plan_frozen_with_force_before_its_edit_was_committed_passes_with_a_note(repo):
+    writable(repo / "PREREG.md").write_text(PLAN + "\n**H2.** a typo fixed before freezing.\n")
+    done = tool("prereg", "freeze", "--force", cwd=repo)
+    assert done.returncode == 0, done.stdout
+    named = json.loads((repo / ".prereg" / "PREREG.md.json").read_text())["commit"]
+    commit(repo, "freeze, plan committed with it")
+    results("run", "out.json", "--run-id", "r1", cwd=repo)
+    assert confirm(repo, "r1", named).returncode == 0
+    commit(repo, "claim")
+
+    r = results("verify", "--files", "--strict", cwd=repo)
+    assert r.returncode == 0, r.stdout
+    assert f"frozen with --force from bytes that are not those of commit {named[:12]}" in r.stdout
     assert "changed since it was frozen" not in r.stdout
