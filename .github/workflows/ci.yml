@@ -154,8 +154,11 @@ jobs:
       - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
       # The workspace always installs the newest thing available, so a floor that is too low
       # is invisible here and fails for the first user who resolves differently. This target
-      # existed and ran nowhere.
+      # existed and ran nowhere. The interpreter is pinned to the declared floor: the runner's
+      # own python3 moved to 3.14, for which the lowest pyarrow and h5py publish no wheel.
       - run: make check-lowest
+        env:
+          UV_PYTHON: "3.11"
 
   types:
     name: types
