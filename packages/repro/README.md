@@ -689,7 +689,7 @@ The statistic of the members that did resolve is never compared. `repro why` lis
 # .pre-commit-config.yaml
 repos:
   - repo: https://github.com/elliottower/reproducible-science
-    rev: v0.7.0rc1
+    rev: v0.7.0
     hooks:
       - id: repro-verify
 ```
