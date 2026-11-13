@@ -170,10 +170,13 @@ def test_the_pr_bot_extra_pins_the_bot_to_this_release_series_and_all_includes_i
     manifest = REUSABLE.parents[2] / "packages" / "repro" / "pyproject.toml"
     project = tomllib.loads(manifest.read_text())["project"]
     extras = project["optional-dependencies"]
-    major, minor, _ = project["version"].split(".", 2)
-    assert extras["pr-bot"] == [
-        f"reproducible-science-pr-bot>={major}.{minor},<{major}.{int(minor) + 1}"
-    ]
+    spec = importlib.util.spec_from_file_location(
+        "versions", REUSABLE.parents[2] / "scripts" / "versions.py"
+    )
+    versions = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(versions)
+    # A candidate pins its siblings from itself (`>=0.7rc1,<0.8`), a release from its series.
+    assert extras["pr-bot"] == [f"reproducible-science-pr-bot{versions.series(project['version'])}"]
     (everything,) = extras["all"]
     named = everything.split("[", 1)[1].rstrip("]").split(",")
     # An empty extra, kept so an old install line resolves, installs nothing for `all` to add.
