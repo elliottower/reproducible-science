@@ -4,7 +4,7 @@ requires = [ "hatchling" ]
 
 [project]
 name = "reproducible-science-ui"
-version = "0.6.1"
+version = "0.7.0rc1"
 description = "Experimental. A local web page over a project's Reproducible Science records: claims, files, runs, quotations and re-runs"
 readme = "README.md"
 keywords = [ "lineage", "provenance", "reproducibility", "ui" ]
@@ -25,7 +25,7 @@ classifiers = [
 dependencies = [
   "pyyaml>=6.0.2",
   # Run, never imported: the page is built from what `repro`, `prereg` and `results` print.
-  "reproducible-science>=0.6,<0.7",
+  "reproducible-science>=0.7rc1,<0.8",
 ]
 urls.Changelog = "https://github.com/elliottower/reproducible-science/blob/main/CHANGELOG.md"
 urls.Homepage = "https://github.com/elliottower/reproducible-science"
