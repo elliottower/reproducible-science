@@ -381,3 +381,43 @@ def test_the_page_says_preregistration_never_plan(kept, tmp_path):
     g = built(kept, tmp_path / "out")
     shown = [f"{r['title']} {r['note']}" for r in g["issues"]]
     assert [s for s in shown if re.search(r"\bplans?\b", s, re.I)] == []
+
+
+def test_a_step_whose_input_changed_since_its_re_run_names_the_commit_of_the_bytes_it_saw(
+    project, tmp_path, tools
+):
+    tools.git(project, "init", "-q")
+    tools.git(project, "add", "-A")
+    tools.git(project, "commit", "-q", "-m", "project")
+    tools.cli(project, "repro", "reproduce")
+    (project / "data.json").write_text(json.dumps({"values": [1, 2, 3, 4]}))
+    g = built(project, tmp_path / "out")
+    (step,) = g["tabs"]["reproduce"]["steps"]
+    assert step["state"] == "stale"
+    (item,) = step["diffs"]
+    assert item["open"] == {"tab": "reproduce", "path": "data.json", "diff": "step:results"}
+    assert item["diff"]["commit"] == tools.git(project, "rev-parse", "HEAD")
+    d = graph.issue_diff(project, g, "step:results", "data.json")
+    assert '+{"values": [1, 2, 3, 4]}' in d["diff"].splitlines()
+    for issue, path in (("step:results", "repro.yaml"), ("step:other", "data.json")):
+        with pytest.raises(graph.NotNamed):
+            graph.issue_diff(project, g, issue, path)
+
+
+def test_the_clone_address_never_carries_a_token_and_names_the_folder_in_the_repository(
+    tmp_path, tools
+):
+    outer = tmp_path / "repo"
+    (outer / "paper").mkdir(parents=True)
+    tools.git(outer, "init", "-q")
+    tools.git(outer, "remote", "add", "origin", "https://user:secret-token@github.com/o/r.git")
+    assert graph.remote_of(outer / "paper") == {
+        "clone": "https://github.com/o/r.git",
+        "host": "github.com",
+        "owner": "o",
+        "name": "r",
+        "subdir": "paper",
+    }
+    tools.git(outer, "remote", "set-url", "origin", "git@github.com:o/r.git")
+    assert graph.remote_of(outer)["clone"] == "https://github.com/o/r.git"
+    assert graph.remote_of(tmp_path) is None

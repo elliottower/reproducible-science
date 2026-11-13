@@ -159,7 +159,8 @@ describe('issue prompts', () => {
     const prompt = issuePrompt(row, '/work/my paper')
     expect(prompt).toContain('In /work/my paper,')
     expect(prompt).toContain(row.title)
-    expect(prompt).toContain('- paper/x.json')
+    expect(prompt).toContain('Items: paper/x.json.')
+    for (const para of prompt.split('\n\n')) expect(para).not.toContain('\n')
     expect(prompt.endsWith(ASK_FIRST)).toBe(true)
     // Every sentence, except the closing one that forbids acting, opens on something other
     // than an instruction to change a record.
@@ -186,9 +187,8 @@ describe('issue prompts', () => {
   it('lists at most twenty items and says how many more', () => {
     const row = { ...ROWS[2], items: Array.from({ length: 25 }, (_, i) => ({ label: `f${i}`, open: { tab: 'results' as const } })) }
     const prompt = issuePrompt(row, null)
-    expect(prompt).toContain('- f19')
-    expect(prompt).not.toContain('- f20')
-    expect(prompt).toContain('- and 5 more')
+    expect(prompt).toContain('; f19; and 5 more.')
+    expect(prompt).not.toContain('f20')
     expect(prompt.startsWith('In this project,')).toBe(true)
   })
 })
