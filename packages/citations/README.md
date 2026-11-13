@@ -333,6 +333,56 @@ the same signal as a passage that was never there. A `not found` whose every wor
 source, as pieces with text left out between them, is counted separately on the same line; see
 [When a quotation will not resolve](#when-a-quotation-will-not-resolve).
 
+### Manual checks
+
+A manual check is an optional record that a person compared a passage with the page. It changes
+no outcome and no exit code, and `citations verify` prints nothing about it unless asked. The
+automatic check is the one that decides; a manual check is provenance beside it.
+
+```sh
+citations manual-check claims/smith2019.yaml orthogonal-cores --page 4 --note "Table 2"
+```
+
+prints the quotation, its source and page, and appends a line to `claims/smith2019.manual.txt`,
+the list beside the claims file:
+
+```text
+orthogonal-cores  3f9a1c2b4d5e  p.4  # Table 2
+```
+
+The line records that a person compared this passage with the page, so run the command only
+after doing so, and for one quotation at a time: it takes one id per call. The id is the claim
+id where the claim has one quotation, or `<claim id>/<n>` for its n-th, counting from 1. The
+command refuses an id that names no quotation, one listed already with the fingerprint it has
+now, an argument it does not take, a page below 1, and a line the list would not read back as
+written: an id holding a space or a `#`, or a note holding a line or page break. It also
+refuses a list that is not a regular file and a line that would take the list past the 1 MiB
+`verify` reads. Ids are compared in Unicode NFC, so `café` composed and decomposed are one id,
+and the line is written in NFC. It reads and writes the list under a lock on the file the list
+resolves to, so two calls at once each keep their line, through two links to one list as well,
+and it keeps the list's byte-order mark and line endings. The lock is a sidecar beside that file,
+`<stem>.manual.txt.provenance-lock`, which holds nothing and should not be committed: `repro init`
+writes `*.provenance-lock` into the project's `.gitignore`, and a project set up otherwise should
+add it.
+
+The fingerprint is of the quotation's text, the source's `sha256`, the reader the source
+declares (`extract_cmd` or its built-in extractor), and the reading: the `derived_sha256` the
+claims file records or, where it records none, the digest of the text extracted. Where any of
+these changed after the line was written, the manual check is recorded as stale; `--again`
+replaces that line once the passage has been compared with the page again, keeping its page and
+note unless new ones are given. Where the source is not on this machine and the claims file
+records no `derived_sha256`, there is no reading to compare the line with, and the manual check
+is recorded as unverifiable rather than stale. The extractor's version string is not in the
+fingerprint.
+
+`citations verify --json` records the manual checks under `manual_checks`: the lists' SHA-256s
+and one digest over them, each covered quotation with its computed outcome, the stale and
+unverifiable entries, ids naming no quotation, lists beside no claims file, and lines that did
+not parse. A list that cannot be read, is not a regular file (a FIFO, a device, a directory),
+or is larger than 1 MiB, is recorded there with no entries; 1 MiB holds some 10,000 lines, more than a person compares by hand beside one claims
+file. `--show-manual` prints the same. `repro verify` carries them in its JSON and in its SARIF property bag, and says
+nothing about them in its text.
+
 ## Where a passage is, and how it is matched
 
 A quotation carries the passage and, optionally, where it sits:
