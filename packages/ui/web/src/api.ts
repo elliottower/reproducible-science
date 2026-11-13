@@ -16,11 +16,20 @@ export function loadGraph(): Promise<unknown> {
 
 /** POST to the local server as the page itself: JSON, with the token the server wrote into this
  * page when it served it. The server refuses a POST without both, so another site cannot send one. */
+let shownProject: string | null = null
+/** The project this page shows. Every POST names it, so a server another tab switched to another
+ * project refuses the request instead of acting on that project. */
+export const showing = (path: string | null | undefined) => { shownProject = path ?? null }
+
 export function post(url: string, body: unknown): Promise<Response> {
   const token = document.querySelector<HTMLMetaElement>('meta[name="repro-ui-token"]')?.content ?? ''
   return fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Repro-UI-Token': token },
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Repro-UI-Token': token,
+      ...(shownProject ? { 'X-Repro-UI-Project': shownProject } : {}),
+    },
     body: JSON.stringify(body),
   })
 }
