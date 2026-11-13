@@ -11,9 +11,12 @@ where no claim does, each declared artifact with a manuscript's suffix. Quotatio
 with `citations.coverage`, in this process; numbers with `results coverage --strict`, through
 `repro.delegate`, because the verifier imports none of the ledger's code.
 
-Graded by the policy's name, here and nowhere else: reported under `exploratory`, a warning
-under `publication`, and a failure under `strict`. Nothing is failed by default, because an
-unpinned quotation or an unbound number is an omission, not evidence of a wrong one.
+Graded by the policy's name, here and nowhere else: reported under `exploratory`, and a warning
+under `publication` and `strict`. No policy fails an unpinned quotation or an unbound number,
+because each is an omission, not evidence of a wrong one: a table quoting retraction notices
+nobody pinned has misquoted nothing this can show. `--max-unbound N` is how an author makes more
+than N unbound numbers in a manuscript an error, under any policy. A manuscript the manifest
+declares and the disk does not hold is a warning, and an error under `strict`.
 """
 
 from __future__ import annotations
@@ -36,12 +39,23 @@ from repro.delegate import BY_NAME
 #: these and refuses a rendered PDF, which loses the structure that says what a number is.
 MANUSCRIPT_SUFFIXES = (".tex", ".md", ".qmd", ".rst")
 
-#: How each policy grades an uncovered quotation or an unbound number.
+#: How each policy grades an uncovered quotation or an unbound number: an omission, which no
+#: policy fails.
 SEVERITY = {
+    "exploratory": Severity.IGNORE,
+    "publication": Severity.WARNING,
+    "strict": Severity.WARNING,
+}
+
+#: How each policy grades a declared manuscript that is not on disk.
+MISSING = {
     "exploratory": Severity.IGNORE,
     "publication": Severity.WARNING,
     "strict": Severity.ERROR,
 }
+
+MISSING_RULE = "coverage.manuscript_missing"
+UNBOUND_RULE = "coverage.numbers_unbound"
 
 #: The count `results coverage` prints of the numbers bound to nothing.
 UNBOUND = re.compile(r"yours, bound to nothing\s+(\d+)")
@@ -94,9 +108,17 @@ class Coverage(BaseModel):
         return not any(v.severity is Severity.ERROR for v in self.violations)
 
     def under(self, policy: str) -> tuple[Violation, ...]:
-        """The same findings graded under another policy, with nothing run again."""
-        severity = SEVERITY.get(policy, Severity.WARNING)
-        return tuple(v.model_copy(update={"severity": severity}) for v in self.violations)
+        """The same findings graded under another policy, with nothing run again. More unbound
+        numbers than `--max-unbound` allows stay an error, as they are under any policy."""
+        return tuple(v.model_copy(update={"severity": _graded(v, policy)}) for v in self.violations)
+
+
+def _graded(v: Violation, policy: str) -> Severity:
+    if v.rule == MISSING_RULE:
+        return MISSING.get(policy, Severity.WARNING)
+    if v.rule == UNBOUND_RULE and v.severity is Severity.ERROR:
+        return Severity.ERROR
+    return SEVERITY.get(policy, Severity.WARNING)
 
 
 def _plan(path: pathlib.Path) -> bool:
@@ -210,8 +232,8 @@ def coverage(
     severity = SEVERITY.get(policy, Severity.WARNING)
     violations = [
         Violation(
-            severity=severity,
-            rule="coverage.manuscript_missing",
+            severity=MISSING.get(policy, Severity.WARNING),
+            rule=MISSING_RULE,
             subject=_shown(path, root),
             detail=f"manuscript missing: {_shown(path, root)}; nothing was read in its place",
         )
@@ -241,7 +263,7 @@ def coverage(
             violations.append(
                 Violation(
                     severity=Severity.ERROR if over else severity,
-                    rule="coverage.numbers_unbound",
+                    rule=UNBOUND_RULE,
                     subject=n.manuscript,
                     detail=f"{n.unbound} printed number(s) no ledger claim names"
                     + (f"; at most {limit} allowed" if limit is not None else ""),

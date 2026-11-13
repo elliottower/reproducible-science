@@ -230,14 +230,14 @@ RESULTS_FAILING = (
 )
 #: The states that pass besides `ok`, each said on a line of its own and listed as no problem:
 #: a path that holds the latest of its records, a plan frozen in place whose log only grew,
-#: one of the ledger's own files, which is not compared, and a path `results retire` recorded
-#: as no longer part of the project.
+#: one of the ledger's own files, which is not compared, a path `results retire` recorded as no
+#: longer part of the project, and an output recorded again with no input sealed between.
 RESULTS_PASSING = {
     "resealed": "resealed, matching their latest record",
     "appended": "appended, a plan frozen in place whose log only grew",
     "ignored": "ignored, the ledger's own files, not compared",
     "retired": "retired, no longer part of the project",
-    "rerecorded": "rerecorded, recorded again with no input sealed between; `--strict` fails them",
+    "rerecorded": "rerecorded, recorded again with no input sealed between",
 }
 
 CLAIMS_SHOWS = (

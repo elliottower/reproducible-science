@@ -185,12 +185,12 @@ def strict_failures(
 
 def _tool_strict(project: Project) -> list[Violation]:
     """What a tool reports and passes, and fails under its own `--strict`: a claim printing
-    numbers its run's outputs do not hold, a claim whose run's outputs were all retired and a
-    timestamp proof history holds and the disk does not, and an output recorded again with no
-    input sealed between, from `results verify`; and from `citations verify`, each found
-    quotation carrying a warning its `--strict` fails, a pin finding it fails, and each
-    unresolved quotation, unpinned source and unparsed claims file. Under
-    `--policy strict` both run with `--strict`, so these are what that run fails."""
+    numbers its run's outputs do not hold, from `results verify`; and from `citations verify`,
+    each found quotation carrying a warning its `--strict` fails, a pin finding it fails, and
+    each unresolved quotation, unpinned source and unparsed claims file. Under
+    `--policy strict` both run with `--strict`, so these are what that run fails. What `results`
+    reports as a note, such as a restart, a superseded claim or an output recorded again, fails
+    under no policy and is not counted."""
 
     def error(rule: str, subject: str, detail: str) -> Violation:
         return Violation(severity=Severity.ERROR, rule=rule, subject=subject, detail=detail)
@@ -206,18 +206,6 @@ def _tool_strict(project: Project) -> list[Violation]:
                     f"{', '.join(c.get('numbers', []))} in: {c.get('claim', '')}",
                 )
                 for c in account.get("claims_numbers_not_in_outputs", [])
-            ]
-            found += [
-                error("results.claim_on_retired_outputs", "", str(claim))
-                for claim in account.get("claims_on_retired_outputs", [])
-            ]
-            found += [
-                error("results.timestamp_proof_missing", str(p.get("path")), "deleted from disk")
-                for p in account.get("missing_proofs", [])
-            ]
-            found += [
-                error("results.rerecorded", str(path), "recorded again with no input sealed")
-                for path in account.get("rerecorded", [])
             ]
     citations = project.tools.get("citations")
     if citations is not None and citations.command:
