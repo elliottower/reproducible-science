@@ -191,6 +191,18 @@ def test_a_re_run_that_writes_the_same_bytes_supersedes_nothing(project, capsys)
     assert "superseded" not in out and "0.4312" in out
 
 
+def test_a_claim_restated_as_derived_on_its_own_run_supersedes_the_first(project, capsys):
+    assert cli.main(["claim", "The ratio was 0.75", "--run-id", "r1"]) == 0
+    assert (
+        cli.main(["claim", "The ratio was 0.75", "--run-id", "r1", "--derived", "three over four"])
+        == 0
+    )
+    capsys.readouterr()
+
+    assert cli.main(["verify", "--files", "--strict"]) == 0
+    assert "1 claim(s) superseded" in capsys.readouterr().out
+
+
 def test_a_re_bound_claim_printing_a_number_the_re_run_never_wrote_still_fails_strict(
     project, capsys
 ):
