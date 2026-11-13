@@ -125,11 +125,14 @@ def opened(project: pathlib.Path) -> None:
 
 
 def known(path: str) -> pathlib.Path | None:
-    """`path` as a project folder, only where it is a remembered one that still holds repro.yaml."""
-    if not any(e["path"] == norm(path) for e in read()):
-        return None
-    folder = pathlib.Path(path)
-    return folder if (folder / "repro.yaml").is_file() else None
+    """The remembered project folder `path` names, where it still holds repro.yaml. The folder
+    returned is the one the list holds, never the string a request sent."""
+    wanted = norm(path)
+    for entry in read():
+        if entry["path"] == wanted:
+            folder = pathlib.Path(entry["path"])
+            return folder if (folder / "repro.yaml").is_file() else None
+    return None
 
 
 TITLE = re.compile(r"\\title\s*(?:\[[^\]]*\])?\s*\{")
